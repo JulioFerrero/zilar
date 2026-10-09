@@ -10,12 +10,8 @@ import {
   testApp,
   type TestContext,
 } from '../test-support';
-import {
-  mountEffectRoutes,
-  SOCKET_ADDRESS_HEADER,
-  socketAddressOf,
-  withErrorEnvelope,
-} from './http';
+import { mountEffectRoutes, SOCKET_ADDRESS_HEADER } from './http';
+import { socketAddressOf, withErrorEnvelope } from './http-core';
 
 const silentLogger = { error: () => undefined } as unknown as Logger;
 
@@ -137,7 +133,7 @@ describe('effect http adapter', () => {
     }
   });
 
-  it('rejects an excess claim-body key with the legacy zod message', async () => {
+  it('rejects an excess claim-body key with the fixed invalid_request message', async () => {
     const alice = await bootstrapUser(context, app, 'alice@example.com');
     const response = await app.request(`${TEST_BASE_URL}/api/me/handle`, {
       method: 'PUT',
@@ -149,11 +145,15 @@ describe('effect http adapter', () => {
     const requestId = response.headers.get('x-request-id');
     expect(requestId).toBeTruthy();
     expect(await response.json()).toEqual({
-      error: { code: 'invalid_request', message: 'Unrecognized key: "extra"', requestId },
+      error: {
+        code: 'invalid_request',
+        message: 'handle must be a string of 1 to 64 characters, with no other keys',
+        requestId,
+      },
     });
   });
 
-  it('keeps the legacy zod message for a missing claim handle', async () => {
+  it('keeps the fixed invalid_request message for a missing claim handle', async () => {
     const alice = await bootstrapUser(context, app, 'alice@example.com');
     const response = await app.request(`${TEST_BASE_URL}/api/me/handle`, {
       method: 'PUT',
@@ -166,7 +166,7 @@ describe('effect http adapter', () => {
     expect(await response.json()).toEqual({
       error: {
         code: 'invalid_request',
-        message: 'Invalid input: expected string, received undefined',
+        message: 'handle must be a string of 1 to 64 characters, with no other keys',
         requestId,
       },
     });

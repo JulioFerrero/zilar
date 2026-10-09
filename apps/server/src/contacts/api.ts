@@ -17,7 +17,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import { listContacts } from './service';
 
 export interface ContactsApiDependencies {

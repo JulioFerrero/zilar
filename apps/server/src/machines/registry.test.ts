@@ -1,9 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { ServerDatabase } from '../db/client';
-import { machines } from '../db/schema';
-import { bootstrapUser, createTestContext, testApp, type TestContext } from '../test-support';
+import {
+  bootstrapUser,
+  createTestContext,
+  testApp,
+  testSql,
+  type TestContext,
+} from '../test-support';
 import { createDbMachineRegistry } from './registry';
 
 describe('db machine registry', () => {
@@ -18,26 +23,25 @@ describe('db machine registry', () => {
   });
 
   async function insertMachine(
-    db: ServerDatabase,
+    source: Pick<TestContext, 'db'>,
     owner: string,
     overrides: { status?: 'pending' | 'approved' | 'revoked'; publicKey?: string } = {},
   ): Promise<string> {
     const id = randomUUID();
-    await db.insert(machines).values({
-      id,
-      ownerUserId: owner,
-      name: 'julio-mbp',
-      publicKey: overrides.publicKey ?? `public-key-for-${id}`,
-      capabilities: { os: 'macos' },
-      status: overrides.status ?? 'approved',
-    });
+    await testSql(source)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO machines (id, owner_user_id, name, public_key, capabilities, status)
+          VALUES (${id}, ${owner}, ${'julio-mbp'}, ${overrides.publicKey ?? `public-key-for-${id}`}, ${JSON.stringify({ os: 'macos' })}::jsonb, ${overrides.status ?? 'approved'})`;
+      }),
+    );
     return id;
   }
 
   it('returns the key for an approved machine', async () => {
     const app = testApp(context);
     const user = await bootstrapUser(context, app, 'owner@example.com');
-    const id = await insertMachine(context.db, user.id, {
+    const id = await insertMachine(context, user.id, {
       status: 'approved',
       publicKey: 'approved-key',
     });
@@ -49,8 +53,8 @@ describe('db machine registry', () => {
   it('returns null for pending, revoked and unknown machines', async () => {
     const app = testApp(context);
     const user = await bootstrapUser(context, app, 'owner@example.com');
-    const pending = await insertMachine(context.db, user.id, { status: 'pending' });
-    const revoked = await insertMachine(context.db, user.id, { status: 'revoked' });
+    const pending = await insertMachine(context, user.id, { status: 'pending' });
+    const revoked = await insertMachine(context, user.id, { status: 'revoked' });
 
     const registry = createDbMachineRegistry(context.db);
     await expect(registry.getApprovedPublicKey(pending)).resolves.toBeNull();
@@ -61,13 +65,21 @@ describe('db machine registry', () => {
   it('writes last_seen_at without touching anything else', async () => {
     const app = testApp(context);
     const user = await bootstrapUser(context, app, 'owner@example.com');
-    const id = await insertMachine(context.db, user.id, { status: 'approved' });
+    const id = await insertMachine(context, user.id, { status: 'approved' });
 
     const registry = createDbMachineRegistry(context.db);
     const at = new Date('2026-09-28T12:00:00.000Z');
     await registry.touchLastSeen(id, at);
 
-    const [row] = await context.db.select().from(machines).where(eq(machines.id, id));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          lastSeenAt: Date | null;
+          status: string;
+        }>`SELECT last_seen_at, status FROM machines WHERE id = ${id}`;
+      }),
+    );
     expect(row?.lastSeenAt).toEqual(at);
     expect(row?.status).toBe('approved');
 

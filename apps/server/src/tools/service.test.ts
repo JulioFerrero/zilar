@@ -1,25 +1,14 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
-import {
-  aiLimits,
-  ais,
-  aiTools,
-  aiToolRuns,
-  aiToolVersions,
-  auditLog,
-  groupAis,
-  groupMembers,
-  groups,
-  providerConnections,
-  topics,
-} from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createAuditRecorder } from '../audit/service';
 import { sqlRuntimeFor } from '../effect/sql';
 import {
   bootstrapUser,
   createTestContext,
   testApp,
+  testSql,
   type TestApp,
   type TestContext,
 } from '../test-support';
@@ -47,30 +36,53 @@ import type { ToolRunResult, ToolRunner } from './types';
 
 const NOW = new Date('2026-01-01T00:00:00Z');
 
+interface AuditRow {
+  action: string;
+  detail: unknown;
+}
+
+interface AuditSubjectRow {
+  action: string;
+  subjectId: string | null;
+  actorUserId: string | null;
+  aiId: string | null;
+  detail: unknown;
+}
+
+interface ToolVersionRow {
+  id: string;
+  toolId: string;
+  version: number;
+  source: string;
+  hosts: unknown;
+  message: string;
+  createdBy: string;
+}
+
+interface ToolRunRow {
+  id: string;
+  toolId: string;
+  version: number;
+  trigger: string;
+  status: string;
+  errorKind: string | null;
+  durationMs: number;
+  fetchCount: number;
+  outputText: string | null;
+}
+
 async function seedAi(context: TestContext, ownerId: string): Promise<string> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Helper AI',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart,
-    jid: `${localpart}@zilar.localhost`,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key) VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${'sealed-placeholder'})`;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status) VALUES (${aiId}, ${ownerId}, ${'Helper AI'}, ${'dev'}, ${'A persona'}, ${connectionId}, ${'gpt-4o-mini'}, ${localpart}, ${`${localpart}@zilar.localhost`}, ${'active'})`;
+      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${'1.00'}, ${'20.00'})`;
+    }),
+  );
   return aiId;
 }
 
@@ -81,36 +93,23 @@ async function seedGroup(
   aiIds: string[],
 ): Promise<{ groupId: string; generalTopicId: string }> {
   const groupId = randomUUID();
-  await context.db.insert(groups).values({
-    id: groupId,
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    title: 'Trip',
-    createdBy: ownerId,
-  });
-  await context.db
-    .insert(groupMembers)
-    .values(
-      [
-        { userId: ownerId, role: 'owner' as const },
-        ...memberIds.map((userId) => ({ userId, role: 'member' as const })),
-      ].map((entry) => ({ groupId, ...entry })),
-    );
-  for (const aiId of aiIds) {
-    await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
-  }
+  const groupRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
   const generalTopicId = randomUUID();
-  await context.db.insert(topics).values({
-    id: generalTopicId,
-    groupId,
-    name: 'General',
-    glyph: 'G',
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    visibility: 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: true,
-    createdBy: ownerId,
-  });
+  const generalRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${groupRoom}, ${'Trip'}, ${ownerId})`;
+      yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${ownerId}, ${'owner'})`;
+      for (const userId of memberIds) {
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${userId}, ${'member'})`;
+      }
+      for (const aiId of aiIds) {
+        yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${ownerId})`;
+      }
+      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${generalTopicId}, ${groupId}, ${'General'}, ${'G'}, ${generalRoom}, ${'public'}, ${'chat'}, ${'open'}, ${true}, ${ownerId})`;
+    }),
+  );
   return { groupId, generalTopicId };
 }
 
@@ -121,18 +120,13 @@ async function seedTopic(
   name: string,
 ): Promise<string> {
   const topicId = randomUUID();
-  await context.db.insert(topics).values({
-    id: topicId,
-    groupId,
-    name,
-    glyph: 'T',
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    visibility: 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: false,
-    createdBy: creatorId,
-  });
+  const topicRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${topicId}, ${groupId}, ${name}, ${'T'}, ${topicRoom}, ${'public'}, ${'chat'}, ${'open'}, ${false}, ${creatorId})`;
+    }),
+  );
   return topicId;
 }
 
@@ -325,10 +319,14 @@ describe('tools service (T-0103)', () => {
       ]);
       const versions = [a.version.version, b.version.version].sort();
       expect(versions).toEqual([2, 3]);
-      const rows = await context.db
-        .select({ version: aiToolVersions.version })
-        .from(aiToolVersions)
-        .where(eq(aiToolVersions.toolId, tool.id));
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            version: number;
+          }>`SELECT version FROM ai_tool_versions WHERE tool_id = ${tool.id}`;
+        }),
+      );
       expect(rows.map((row) => row.version).sort()).toEqual([1, 2, 3]);
     });
 
@@ -752,25 +750,36 @@ describe('tools service (T-0103)', () => {
         },
         NOW,
       );
-      const versionsBefore = await context.db
-        .select()
-        .from(aiToolVersions)
-        .where(eq(aiToolVersions.toolId, tool.id));
-      const toolsBefore = await context.db.select().from(aiTools).where(eq(aiTools.id, tool.id));
+      const versionsBefore = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<ToolVersionRow>`SELECT id, tool_id, version, source, hosts, message, created_by FROM ai_tool_versions WHERE tool_id = ${tool.id}`;
+        }),
+      );
+      const toolsBefore = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ai_tools WHERE id = ${tool.id}`;
+        }),
+      );
       await revertTool(context.db, { toolId: tool.id, toVersion: 1, userId: ownerId }, NOW);
-      const versionsAfterRevert = await context.db
-        .select()
-        .from(aiToolVersions)
-        .where(eq(aiToolVersions.toolId, tool.id));
+      const versionsAfterRevert = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<ToolVersionRow>`SELECT id, tool_id, version, source, hosts, message, created_by FROM ai_tool_versions WHERE tool_id = ${tool.id}`;
+        }),
+      );
       for (const before of versionsBefore) {
         const after = versionsAfterRevert.find((row) => row.id === before.id);
         expect(after).toEqual(before);
       }
       await deleteTool(context.db, tool.id, NOW);
-      const versionsAfterDelete = await context.db
-        .select()
-        .from(aiToolVersions)
-        .where(eq(aiToolVersions.toolId, tool.id));
+      const versionsAfterDelete = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<ToolVersionRow>`SELECT id, tool_id, version, source, hosts, message, created_by FROM ai_tool_versions WHERE tool_id = ${tool.id}`;
+        }),
+      );
       expect(versionsAfterDelete).toHaveLength(versionsAfterRevert.length);
       for (const before of versionsAfterRevert) {
         const after = versionsAfterDelete.find((row) => row.id === before.id);
@@ -988,7 +997,12 @@ describe('tools service (T-0103)', () => {
       expect(revoked.approvedHosts).toEqual([]);
       const listed = await listTools(context.db, { aiId, groupId: null, topicId: null });
       expect(listed[0]?.approvedHosts).toEqual([]);
-      const rows = await context.db.select().from(auditLog);
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditRow>`SELECT action, detail FROM audit_log`;
+        }),
+      );
       expect(rows.find((row) => row.action === 'tool.hosts_approved')?.detail).toEqual({
         name: 'morning-prices',
         version: 1,
@@ -1069,10 +1083,12 @@ describe('tools service (T-0103)', () => {
           new Date(NOW.getTime() + index * 1000),
         );
       }
-      const runs = await context.db
-        .select({ id: aiToolRuns.id })
-        .from(aiToolRuns)
-        .where(eq(aiToolRuns.toolId, tool.id));
+      const runs = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ai_tool_runs WHERE tool_id = ${tool.id}`;
+        }),
+      );
       expect(runs).toHaveLength(MAX_RUNS_PER_TOOL);
     }, 60000);
 
@@ -1110,16 +1126,23 @@ describe('tools service (T-0103)', () => {
         },
         NOW,
       );
-      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, aiId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = 'stopped' WHERE id = ${aiId}`;
+        }),
+      );
       const runner = okRunner();
       await expect(
         runToolVersion({ db: context.db, runner }, { toolId: tool.id, trigger: 'manual' }, NOW),
       ).rejects.toMatchObject({ errorCode: 'ai_not_active' });
       expect(runner.calls).toHaveLength(0);
-      const runs = await context.db
-        .select({ id: aiToolRuns.id })
-        .from(aiToolRuns)
-        .where(eq(aiToolRuns.toolId, tool.id));
+      const runs = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ai_tool_runs WHERE tool_id = ${tool.id}`;
+        }),
+      );
       expect(runs).toHaveLength(0);
     });
 
@@ -1135,7 +1158,12 @@ describe('tools service (T-0103)', () => {
         },
         NOW,
       );
-      await context.db.update(ais).set({ status: 'disabled' }).where(eq(ais.id, aiId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = 'disabled' WHERE id = ${aiId}`;
+        }),
+      );
       const runner = okRunner();
       await expect(
         runToolVersion({ db: context.db, runner }, { toolId: tool.id, trigger: 'manual' }, NOW),
@@ -1187,20 +1215,24 @@ describe('tools service (T-0103)', () => {
       );
       const runner = okRunner('first');
       await runToolVersion({ db: context.db, runner }, { toolId: tool.id, trigger: 'manual' }, NOW);
-      const before = await context.db
-        .select()
-        .from(aiToolRuns)
-        .where(eq(aiToolRuns.toolId, tool.id));
+      const before = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<ToolRunRow>`SELECT id, tool_id, version, trigger, status, error_kind, duration_ms, fetch_count, output_text FROM ai_tool_runs WHERE tool_id = ${tool.id}`;
+        }),
+      );
       const second = okRunner('second');
       await runToolVersion(
         { db: context.db, runner: second },
         { toolId: tool.id, trigger: 'manual' },
         new Date(NOW.getTime() + 1000),
       );
-      const after = await context.db
-        .select()
-        .from(aiToolRuns)
-        .where(eq(aiToolRuns.toolId, tool.id));
+      const after = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<ToolRunRow>`SELECT id, tool_id, version, trigger, status, error_kind, duration_ms, fetch_count, output_text FROM ai_tool_runs WHERE tool_id = ${tool.id}`;
+        }),
+      );
       for (const row of before) {
         expect(after.find((candidate) => candidate.id === row.id)).toEqual(row);
       }
@@ -1224,7 +1256,14 @@ describe('tools service (T-0103)', () => {
       expect(await getTool(context.db, tool.id)).toBeNull();
       expect(await deleteTool(context.db, tool.id, NOW)).toEqual({ deleted: false });
       expect(await deleteTool(context.db, 'no-such-tool', NOW)).toEqual({ deleted: false });
-      const [row] = await context.db.select().from(aiTools).where(eq(aiTools.id, tool.id));
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            deletedAt: Date | null;
+          }>`SELECT deleted_at FROM ai_tools WHERE id = ${tool.id}`;
+        }),
+      );
       expect(row?.deletedAt).not.toBeNull();
     });
   });
@@ -1271,7 +1310,12 @@ describe('tools service (T-0103)', () => {
         audit,
       );
       expect(identical.unchanged).toBe(true);
-      const rows = await context.db.select().from(auditLog);
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditSubjectRow>`SELECT action, subject_id, actor_user_id, ai_id, detail FROM audit_log`;
+        }),
+      );
       const created = rows.find((row) => row.action === 'tool.created');
       const updated = rows.find((row) => row.action === 'tool.updated');
       expect(created?.subjectId).toBe(first.tool.id);

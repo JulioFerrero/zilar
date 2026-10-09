@@ -1,8 +1,16 @@
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createApp } from './app';
+import { createApp, effectMountsOf } from './app';
 import { HttpError } from './errors';
+import { sqlRuntimeFor } from './effect/sql';
 import { createTestContext, type TestContext } from './test-support';
+
+// Only `sqlRuntimeFor` is wrapped; every other export is the real module. The
+// down-database test breaks the runtime for the next call (T-0675 pattern).
+vi.mock('./effect/sql', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./effect/sql')>();
+  return { ...actual, sqlRuntimeFor: vi.fn(actual.sqlRuntimeFor) };
+});
 
 function createTestRoutes(): Hono {
   const routes = new Hono();
@@ -62,8 +70,11 @@ describe('createApp', () => {
   });
 
   it('reports a down database when the health query fails', async () => {
-    vi.spyOn(context.db, 'execute').mockRejectedValue(new Error('connection refused'));
-    const res = await testApp().request('/health');
+    const app = testApp();
+    vi.mocked(sqlRuntimeFor).mockReturnValueOnce({
+      runPromise: () => Promise.reject(new Error('connection refused')),
+    } as never);
+    const res = await app.request('/health');
 
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ ok: false, db: 'down' });
@@ -138,6 +149,18 @@ describe('createApp', () => {
     for (const path of ['/health', '/does-not-exist', '/test/conflict']) {
       const res = await testApp().request(path);
       expect(res.headers.get('x-request-id')).toBeTruthy();
+    }
+  });
+
+  it('lists the 36 Effect module mounts, each route registered on the app', () => {
+    const app = testApp();
+    const mounts = effectMountsOf(app);
+    expect(mounts).toHaveLength(36);
+    const registered = app.routes.map((route) => `${route.method} ${route.path}`);
+    for (const mount of mounts) {
+      for (const route of mount.routes) {
+        expect(registered).toContain(`${route.method} ${route.path}`);
+      }
     }
   });
 });

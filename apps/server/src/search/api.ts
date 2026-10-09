@@ -26,7 +26,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import {
   SEARCH_MAX_LIMIT,
   SEARCH_RATE_LIMIT_MAX,

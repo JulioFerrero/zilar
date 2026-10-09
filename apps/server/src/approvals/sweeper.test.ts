@@ -1,8 +1,9 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { aiLimits, ais, approvals, auditLog, providerConnections, user } from '../db/schema';
-import { createTestContext, type TestContext } from '../test-support';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import type { AuditEntry } from '../audit/service';
+import { createTestContext, testSql, type TestContext } from '../test-support';
 import { createApproval } from './service';
 import { startApprovalsSweeper, type SweeperLogger } from './sweeper';
 
@@ -30,37 +31,48 @@ function captureLogger(): SweeperLogger & { calls: CapturedError[] } {
 
 async function seedUser(context: TestContext): Promise<string> {
   const id = randomUUID();
-  await context.db.insert(user).values({
-    id,
-    name: 'User',
-    email: `${id}@example.com`,
-  });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "user" ${sql.insert({ id, name: 'User', email: `${id}@example.com` })}`;
+    }),
+  );
   return id;
 }
 
 async function seedAi(context: TestContext, ownerId: string): Promise<{ aiId: string }> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections ${sql.insert({
+        id: connectionId,
+        owner: ownerId,
+        provider: 'openai',
+        encrypted_key: 'sealed-placeholder',
+        label: null,
+      })}`;
+    }),
+  );
   const aiId = randomUUID();
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Helper',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart: `ai-${aiId}`,
-    jid: `ai-${aiId}@zilar.localhost`,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ais ${sql.insert({
+        id: aiId,
+        owner: ownerId,
+        name: 'Helper',
+        template: 'dev',
+        persona: 'A persona',
+        provider_connection_id: connectionId,
+        model: 'gpt-4o-mini',
+        localpart: `ai-${aiId}`,
+        jid: `ai-${aiId}@zilar.localhost`,
+        status: 'active',
+      })}`;
+      yield* sql`INSERT INTO ai_limits ${sql.insert({ ai_id: aiId, per_day_usd: '1.00', per_month_usd: '20.00' })}`;
+    }),
+  );
   return { aiId };
 }
 
@@ -86,11 +98,81 @@ async function seedPastDueApproval(
     now,
   );
   // Roll the stored expiry into the past so the sweeper will see it.
-  await context.db
-    .update(approvals)
-    .set({ expiresAt: new Date(now.getTime() - 1) })
-    .where(eq(approvals.id, row.id));
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE approvals SET expires_at = ${new Date(now.getTime() - 1)} WHERE id = ${row.id}`;
+    }),
+  );
   return { id: row.id };
+}
+
+async function recordAuditRow(context: TestContext, entry: AuditEntry, now: Date): Promise<void> {
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const detail =
+        entry.detail === null ? sql`NULL` : sql`${JSON.stringify(entry.detail)}::jsonb`;
+      yield* sql`INSERT INTO audit_log (
+          id, at, actor_user_id, ai_id, group_id, action, subject_id, args_hash,
+          cost_currency, cost_amount, result, detail
+        ) VALUES (
+          ${randomUUID()}, ${now}, ${entry.actorUserId}, ${entry.aiId}, ${entry.groupId},
+          ${entry.action}, ${entry.subjectId}, ${entry.argsHash},
+          ${entry.costCurrency}, ${entry.costAmount === null ? null : entry.costAmount.toFixed(2)},
+          ${entry.result}, ${detail}
+        )`;
+    }),
+  );
+}
+
+function auditRecorder(
+  context: TestContext,
+  now: Date,
+): { record: (entry: AuditEntry) => Promise<void> } {
+  return {
+    async record(entry) {
+      await recordAuditRow(context, entry, now);
+    },
+  };
+}
+
+interface AuditRow {
+  action: string;
+  actorUserId: string | null;
+  aiId: string | null;
+  groupId: string | null;
+  subjectId: string | null;
+  argsHash: string | null;
+  result: string;
+  detail: unknown;
+}
+
+async function listAuditRows(context: TestContext): Promise<readonly AuditRow[]> {
+  return testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<AuditRow>`SELECT action, actor_user_id, ai_id, group_id, subject_id, args_hash, result, detail FROM audit_log`;
+    }),
+  );
+}
+
+interface ApprovalStatusRow {
+  status: string;
+  note: string | null;
+}
+
+async function approvalStatus(
+  context: TestContext,
+  id: string,
+): Promise<ApprovalStatusRow | undefined> {
+  const [row] = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ApprovalStatusRow>`SELECT status, note FROM approvals WHERE id = ${id}`;
+    }),
+  );
+  return row;
 }
 
 interface Deferred {
@@ -132,34 +214,17 @@ describe('approvals sweeper', () => {
     const logger = captureLogger();
     const sweeper = startApprovalsSweeper({
       db: context.db,
-      audit: {
-        async record(entry) {
-          await context.db.insert(auditLog).values({
-            id: randomUUID(),
-            at: now,
-            actorUserId: entry.actorUserId,
-            aiId: entry.aiId,
-            groupId: entry.groupId,
-            action: entry.action,
-            subjectId: entry.subjectId,
-            argsHash: entry.argsHash,
-            costCurrency: entry.costCurrency,
-            costAmount: entry.costAmount === null ? null : entry.costAmount.toFixed(2),
-            result: entry.result,
-            detail: entry.detail,
-          });
-        },
-      },
+      audit: auditRecorder(context, now),
       logger,
       intervalMs: 1000,
       now: () => now,
     });
 
     // First tick is one interval after start, not at boot.
-    expect(await context.db.select().from(auditLog)).toHaveLength(0);
+    expect(await listAuditRows(context)).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(1000);
 
-    const rows = await context.db.select().from(auditLog);
+    const rows = await listAuditRows(context);
     expect(rows).toHaveLength(2);
     const subjectIds = rows.map((row) => row.subjectId).sort();
     expect(subjectIds).toEqual([a.id, b.id].sort());
@@ -184,24 +249,7 @@ describe('approvals sweeper', () => {
 
     const sweeper = startApprovalsSweeper({
       db: context.db,
-      audit: {
-        async record(entry) {
-          await context.db.insert(auditLog).values({
-            id: randomUUID(),
-            at: now,
-            actorUserId: entry.actorUserId,
-            aiId: entry.aiId,
-            groupId: entry.groupId,
-            action: entry.action,
-            subjectId: entry.subjectId,
-            argsHash: entry.argsHash,
-            costCurrency: entry.costCurrency,
-            costAmount: entry.costAmount === null ? null : entry.costAmount.toFixed(2),
-            result: entry.result,
-            detail: entry.detail,
-          });
-        },
-      },
+      audit: auditRecorder(context, now),
       logger: captureLogger(),
       intervalMs: 1000,
       now: () => now,
@@ -209,7 +257,7 @@ describe('approvals sweeper', () => {
 
     await vi.advanceTimersByTimeAsync(1000);
 
-    const [stored] = await context.db.select().from(approvals).where(eq(approvals.id, id));
+    const stored = await approvalStatus(context, id);
     expect(stored?.status).toBe('denied');
     expect(stored?.note).toBe('expired');
 
@@ -235,24 +283,7 @@ describe('approvals sweeper', () => {
 
     const sweeper = startApprovalsSweeper({
       db: context.db,
-      audit: {
-        async record(entry) {
-          await context.db.insert(auditLog).values({
-            id: randomUUID(),
-            at: now,
-            actorUserId: entry.actorUserId,
-            aiId: entry.aiId,
-            groupId: entry.groupId,
-            action: entry.action,
-            subjectId: entry.subjectId,
-            argsHash: entry.argsHash,
-            costCurrency: entry.costCurrency,
-            costAmount: entry.costAmount === null ? null : entry.costAmount.toFixed(2),
-            result: entry.result,
-            detail: entry.detail,
-          });
-        },
-      },
+      audit: auditRecorder(context, now),
       logger: captureLogger(),
       intervalMs: 1000,
       now: () => now,
@@ -260,7 +291,7 @@ describe('approvals sweeper', () => {
 
     await vi.advanceTimersByTimeAsync(1000);
 
-    const rows = await context.db.select().from(auditLog);
+    const rows = await listAuditRows(context);
     expect(rows).toEqual([]);
 
     sweeper.close();
@@ -284,20 +315,7 @@ describe('approvals sweeper', () => {
           if (tickCount === 1) {
             throw new Error('database is down');
           }
-          await context.db.insert(auditLog).values({
-            id: randomUUID(),
-            at: now,
-            actorUserId: entry.actorUserId,
-            aiId: entry.aiId,
-            groupId: entry.groupId,
-            action: entry.action,
-            subjectId: entry.subjectId,
-            argsHash: entry.argsHash,
-            costCurrency: entry.costCurrency,
-            costAmount: entry.costAmount === null ? null : entry.costAmount.toFixed(2),
-            result: entry.result,
-            detail: entry.detail,
-          });
+          await recordAuditRow(context, entry, now);
         },
       },
       logger,
@@ -310,7 +328,7 @@ describe('approvals sweeper', () => {
     // `expireStale`, so the next sweep returns nothing.
     expect(logger.calls.length).toBeGreaterThanOrEqual(1);
     expect(logger.calls[0]?.message).toMatch(/approvals sweeper/);
-    const auditRowsAfterFirstTick = await context.db.select().from(auditLog);
+    const auditRowsAfterFirstTick = await listAuditRows(context);
     expect(auditRowsAfterFirstTick).toHaveLength(0);
 
     // Re-create a past-due row so the next tick has work to do. Then
@@ -319,7 +337,7 @@ describe('approvals sweeper', () => {
     await seedPastDueApproval(context, aiId, 9, now);
     await vi.advanceTimersByTimeAsync(1000);
     expect(tickCount).toBeGreaterThanOrEqual(2);
-    expect(await context.db.select().from(auditLog)).toHaveLength(1);
+    expect(await listAuditRows(context)).toHaveLength(1);
 
     sweeper.close();
   });
@@ -344,20 +362,7 @@ describe('approvals sweeper', () => {
           activeTicks += 1;
           maxActiveTicks = Math.max(maxActiveTicks, activeTicks);
           await parking.promise;
-          await context.db.insert(auditLog).values({
-            id: randomUUID(),
-            at: now,
-            actorUserId: entry.actorUserId,
-            aiId: entry.aiId,
-            groupId: entry.groupId,
-            action: entry.action,
-            subjectId: entry.subjectId,
-            argsHash: entry.argsHash,
-            costCurrency: entry.costCurrency,
-            costAmount: entry.costAmount === null ? null : entry.costAmount.toFixed(2),
-            result: entry.result,
-            detail: entry.detail,
-          });
+          await recordAuditRow(context, entry, now);
           activeTicks -= 1;
         },
       },
@@ -386,36 +391,19 @@ describe('approvals sweeper', () => {
     const logger = captureLogger();
     const sweeper = startApprovalsSweeper({
       db: context.db,
-      audit: {
-        async record(entry) {
-          await context.db.insert(auditLog).values({
-            id: randomUUID(),
-            at: now,
-            actorUserId: entry.actorUserId,
-            aiId: entry.aiId,
-            groupId: entry.groupId,
-            action: entry.action,
-            subjectId: entry.subjectId,
-            argsHash: entry.argsHash,
-            costCurrency: entry.costCurrency,
-            costAmount: entry.costAmount === null ? null : entry.costAmount.toFixed(2),
-            result: entry.result,
-            detail: entry.detail,
-          });
-        },
-      },
+      audit: auditRecorder(context, now),
       logger,
       intervalMs: 1000,
       now: () => now,
     });
 
     await vi.advanceTimersByTimeAsync(1000);
-    const afterFirstTick = await context.db.select().from(auditLog);
+    const afterFirstTick = await listAuditRows(context);
     expect(afterFirstTick).toHaveLength(1);
 
     sweeper.close();
     await vi.advanceTimersByTimeAsync(10_000);
-    const afterClose = await context.db.select().from(auditLog);
+    const afterClose = await listAuditRows(context);
     expect(afterClose).toHaveLength(1);
     expect(logger.calls).toEqual([]);
   });

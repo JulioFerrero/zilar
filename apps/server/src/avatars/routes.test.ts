@@ -3,8 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createApp } from '../app';
-import { aiLimits, ais, avatars, providerConnections } from '../db/schema';
 import { avatarUrlFor } from './service';
 import {
   bootstrapUser,
@@ -12,6 +13,7 @@ import {
   createTestContext,
   TEST_BASE_URL,
   TEST_XMPP_DOMAIN,
+  testSql,
   type SignedInUser,
   type TestContext,
 } from '../test-support';
@@ -191,30 +193,47 @@ describe('avatars routes', () => {
     return (await response.json()) as { id: string };
   }
 
+  async function storedAvatars(): Promise<ReadonlyArray<{ id: string; storageKey: string }>> {
+    return testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string; storageKey: string }>`SELECT id, storage_key FROM avatars`;
+      }),
+    );
+  }
+
   async function addAi(ownerId: string): Promise<{ id: string; jid: string }> {
     const connectionId = randomUUID();
-    await context.db.insert(providerConnections).values({
-      id: connectionId,
-      owner: ownerId,
-      provider: 'openai',
-      encryptedKey: 'not-a-real-key',
-      label: null,
-    });
     const id = randomUUID();
     const jid = `ai-${id}@${TEST_XMPP_DOMAIN}`;
-    await context.db.insert(ais).values({
-      id,
-      owner: ownerId,
-      name: 'Helper',
-      template: 'dev',
-      persona: 'A persona',
-      providerConnectionId: connectionId,
-      model: 'gpt-4o-mini',
-      localpart: `ai-${id}`,
-      jid,
-      status: 'active',
-    });
-    await context.db.insert(aiLimits).values({ aiId: id, perDayUsd: '1.00', perMonthUsd: '20.00' });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO provider_connections ${sql.insert({
+          id: connectionId,
+          owner: ownerId,
+          provider: 'openai',
+          encrypted_key: 'not-a-real-key',
+        })}`;
+        yield* sql`INSERT INTO ais ${sql.insert({
+          id,
+          owner: ownerId,
+          name: 'Helper',
+          template: 'dev',
+          persona: 'A persona',
+          provider_connection_id: connectionId,
+          model: 'gpt-4o-mini',
+          localpart: `ai-${id}`,
+          jid,
+          status: 'active',
+        })}`;
+        yield* sql`INSERT INTO ai_limits ${sql.insert({
+          ai_id: id,
+          per_day_usd: '1.00',
+          per_month_usd: '20.00',
+        })}`;
+      }),
+    );
     return { id, jid };
   }
 
@@ -356,7 +375,7 @@ describe('avatars routes', () => {
       expect(response.status, name).toBe(status);
       expect(((await response.json()) as { error: { code: string } }).error.code, name).toBe(code);
     }
-    expect(await context.db.select().from(avatars)).toHaveLength(0);
+    expect(await storedAvatars()).toHaveLength(0);
   });
 
   it('rejects the same animated bytes the sticker upload accepts', async () => {
@@ -372,7 +391,7 @@ describe('avatars routes', () => {
         'avatar_animated',
       );
     }
-    expect(await context.db.select().from(avatars)).toHaveLength(0);
+    expect(await storedAvatars()).toHaveLength(0);
   });
 
   it('a delete racing a replace never leaves a row without a file', async () => {
@@ -388,7 +407,7 @@ describe('avatars routes', () => {
     ]);
     expect(removeResponse.status).toBe(200);
     expect(putResponse.status).toBe(200);
-    const rows = await context.db.select().from(avatars);
+    const rows = await storedAvatars();
     expect(rows.length).toBeLessThanOrEqual(1);
     for (const row of rows) {
       await expect(readFile(join(storageDir, row.storageKey))).resolves.toBeDefined();
@@ -416,7 +435,7 @@ describe('avatars routes', () => {
     expect(((await oversize.json()) as { error: { code: string } }).error.code).toBe(
       'avatar_too_large',
     );
-    expect(await context.db.select().from(avatars)).toHaveLength(0);
+    expect(await storedAvatars()).toHaveLength(0);
   });
 
   it('validates by magic bytes even when the content type lies', async () => {
@@ -428,14 +447,14 @@ describe('avatars routes', () => {
   it('replace swaps the file and removes the old one; remove is idempotent', async () => {
     const first = await putAvatar('user', alice.id, alice, pngSquare(128));
     const firstUrl = ((await first.json()) as { url: string }).url;
-    const [firstRow] = await context.db.select().from(avatars);
+    const [firstRow] = await storedAvatars();
     expect(firstRow).toBeDefined();
 
     const second = await putAvatar('user', alice.id, alice, webpSquare(256));
     expect(second.status).toBe(200);
     const secondUrl = ((await second.json()) as { url: string }).url;
     expect(secondUrl).not.toBe(firstUrl);
-    const rows = await context.db.select().from(avatars);
+    const rows = await storedAvatars();
     expect(rows).toHaveLength(1);
     expect(rows[0]?.id).not.toBe(firstRow?.id);
     // The old file is gone, the new one serves.
@@ -450,7 +469,7 @@ describe('avatars routes', () => {
     expect(remove.status).toBe(200);
     const again = await deleteAvatar('user', alice.id, alice);
     expect(again.status).toBe(200);
-    expect(await context.db.select().from(avatars)).toHaveLength(0);
+    expect(await storedAvatars()).toHaveLength(0);
   });
 
   it('concurrent uploads for the same owner end with exactly one row', async () => {
@@ -462,7 +481,7 @@ describe('avatars routes', () => {
     for (const response of results) {
       expect(response.status).toBe(200);
     }
-    expect(await context.db.select().from(avatars)).toHaveLength(1);
+    expect(await storedAvatars()).toHaveLength(1);
   });
 
   it('rate limits uploads to 10 per hour per user', async () => {

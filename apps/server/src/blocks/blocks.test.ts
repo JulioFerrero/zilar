@@ -3,14 +3,15 @@
 // test setup as the contact-request tests.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
 import type { RequestIdVariables } from 'hono/request-id';
-import { contactRequests, user, userBlocks } from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import {
   bootstrapUser,
   createTestContext,
   expectedJid,
   testApp,
+  testSql,
   TEST_BASE_URL,
   type TestApp,
   type TestContext,
@@ -20,6 +21,15 @@ import { createRateLimiter } from '../rate-limit';
 import { mountEffectRoutes } from '../effect/http';
 import { BLOCK_WRITE_RATE_LIMIT_MAX, createBlocksApi } from './api';
 import { blockUser, listBlockedUsers, MAX_BLOCK_LIST_ROWS, unblockUser } from './service';
+
+interface UserBlockRow {
+  userId: string;
+}
+
+interface ContactRequestRow {
+  status: string;
+  decidedAt: Date | null;
+}
 
 function authHeaders(cookie: string): Record<string, string> {
   return { cookie };
@@ -66,6 +76,28 @@ describe('blocks', () => {
     });
   }
 
+  async function storedBlocks(): Promise<readonly UserBlockRow[]> {
+    return testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<UserBlockRow>`SELECT user_id FROM user_blocks`;
+      }),
+    );
+  }
+
+  async function storedRequests(fromUserId?: string): Promise<readonly ContactRequestRow[]> {
+    return testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        if (fromUserId === undefined) {
+          return yield* sql<ContactRequestRow>`SELECT status, decided_at FROM contact_requests`;
+        }
+        return yield* sql<ContactRequestRow>`SELECT status, decided_at FROM contact_requests
+          WHERE from_user_id = ${fromUserId}`;
+      }),
+    );
+  }
+
   it('blocks and unblocks idempotently', async () => {
     const alice = await withHandle('alice@example.com', 'alice_w');
     const bob = await withHandle('bob@example.com', 'bob_b');
@@ -73,18 +105,18 @@ describe('blocks', () => {
     const first = await putBlock(alice.cookie, bob.id);
     expect(first.status).toBe(200);
     expect(await first.json()).toEqual({ blocked: true });
-    expect(await context.db.select().from(userBlocks)).toHaveLength(1);
+    expect(await storedBlocks()).toHaveLength(1);
 
     // Blocking twice keeps one row and still answers success.
     const second = await putBlock(alice.cookie, bob.id);
     expect(second.status).toBe(200);
     expect(await second.json()).toEqual({ blocked: true });
-    expect(await context.db.select().from(userBlocks)).toHaveLength(1);
+    expect(await storedBlocks()).toHaveLength(1);
 
     const unblocked = await deleteBlock(alice.cookie, bob.id);
     expect(unblocked.status).toBe(200);
     expect(await unblocked.json()).toEqual({ blocked: false });
-    expect(await context.db.select().from(userBlocks)).toHaveLength(0);
+    expect(await storedBlocks()).toHaveLength(0);
 
     // Unblocking someone never blocked still answers success.
     const again = await deleteBlock(alice.cookie, bob.id);
@@ -111,7 +143,7 @@ describe('blocks', () => {
     expect((await postRequest(alice.cookie, 'bob_b')).status).toBe(201);
     expect((await putBlock(bob.cookie, alice.id)).status).toBe(200);
 
-    const rows = await context.db.select().from(contactRequests);
+    const rows = await storedRequests();
     expect(rows).toHaveLength(1);
     expect(rows[0]?.status).toBe('cancelled');
     expect(rows[0]?.decidedAt).not.toBeNull();
@@ -121,10 +153,7 @@ describe('blocks', () => {
     const dave = await withHandle('dave@example.com', 'dave_d');
     expect((await postRequest(carol.cookie, 'dave_d')).status).toBe(201);
     expect((await putBlock(carol.cookie, dave.id)).status).toBe(200);
-    const cancelled = await context.db
-      .select()
-      .from(contactRequests)
-      .where(eq(contactRequests.fromUserId, carol.id));
+    const cancelled = await storedRequests(carol.id);
     expect(cancelled).toHaveLength(1);
     expect(cancelled[0]?.status).toBe('cancelled');
   });
@@ -163,8 +192,12 @@ describe('blocks', () => {
     expect(JSON.stringify(body)).not.toContain('carol@example.com');
 
     // A blocked person with no handle lists with `handle: null`.
-    const { handles } = await import('../db/schema');
-    await context.db.delete(handles).where(eq(handles.userId, bob.id));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM handles WHERE user_id = ${bob.id}`;
+      }),
+    );
     const relisted = (await (
       await app.request(`${TEST_BASE_URL}/api/blocks`, {
         headers: authHeaders(alice.cookie),
@@ -175,23 +208,37 @@ describe('blocks', () => {
 
   it('orders the list newest first and caps it at 500', async () => {
     const blockerId = 'blocker-cap';
-    await context.db.insert(user).values({ id: blockerId, name: 'Blocker', email: 'b@x.test' });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO "user" (id, name, email)
+          VALUES (${blockerId}, ${'Blocker'}, ${'b@x.test'})`;
+      }),
+    );
     const blockedIds: string[] = [];
     for (let index = 0; index < MAX_BLOCK_LIST_ROWS + 1; index += 1) {
       const id = `blocked-${index}`;
       blockedIds.push(id);
-      await context.db.insert(user).values({ id, name: `Person ${index}`, email: `${id}@x.test` });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO "user" (id, name, email)
+            VALUES (${id}, ${`Person ${index}`}, ${`${id}@x.test`})`;
+        }),
+      );
     }
     for (let index = 0; index < blockedIds.length; index += 1) {
       const id = blockedIds[index];
       if (!id) {
         throw new Error('missing blocked id');
       }
-      await context.db.insert(userBlocks).values({
-        userId: blockerId,
-        blockedUserId: id,
-        createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)),
-      });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO user_blocks (user_id, blocked_user_id, created_at)
+            VALUES (${blockerId}, ${id}, ${new Date(Date.UTC(2026, 0, 1, 0, 0, index))})`;
+        }),
+      );
     }
 
     const listed = await listBlockedUsers({ db: context.db }, blockerId);
@@ -218,10 +265,7 @@ describe('blocks', () => {
     expect(createdBody.request.status).toBe('pending');
     expect(createdBody.request.decidedAt).toBeUndefined();
 
-    const stored = await context.db
-      .select()
-      .from(contactRequests)
-      .where(eq(contactRequests.fromUserId, alice.id));
+    const stored = await storedRequests(alice.id);
     expect(stored).toHaveLength(1);
     expect(stored[0]?.status).toBe('declined');
     expect(stored[0]?.decidedAt).not.toBeNull();

@@ -1,25 +1,13 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
-import {
-  aiLimits,
-  aiMemoryFacts,
-  aiMemoryMessages,
-  aiMemoryNodes,
-  aiMemoryState,
-  ais,
-  groupAis,
-  groupMembers,
-  groups,
-  providerConnections,
-  topicAis,
-  topics,
-} from '../../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { sqlRuntimeFor } from '../../effect/sql';
 import {
   bootstrapUser,
   createTestContext,
   testApp,
+  testSql,
   TEST_XMPP_DOMAIN,
   type TestApp,
   type TestContext,
@@ -39,28 +27,37 @@ function roomChatKey(localpart: string): string {
 
 async function seedAi(context: TestContext, ownerId: string): Promise<string> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Helper AI',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart,
-    jid: `${localpart}@${TEST_XMPP_DOMAIN}`,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections ${sql.insert({
+        id: connectionId,
+        owner: ownerId,
+        provider: 'openai',
+        encrypted_key: 'sealed-placeholder',
+        label: null,
+      })}`;
+      yield* sql`INSERT INTO ais ${sql.insert({
+        id: aiId,
+        owner: ownerId,
+        name: 'Helper AI',
+        template: 'dev',
+        persona: 'A persona',
+        provider_connection_id: connectionId,
+        model: 'gpt-4o-mini',
+        localpart,
+        jid: `${localpart}@${TEST_XMPP_DOMAIN}`,
+        status: 'active',
+      })}`;
+      yield* sql`INSERT INTO ai_limits ${sql.insert({
+        ai_id: aiId,
+        per_day_usd: '1.00',
+        per_month_usd: '20.00',
+      })}`;
+    }),
+  );
   return aiId;
 }
 
@@ -72,31 +69,40 @@ async function seedMemory(
   chatKey: string,
   tag: string,
 ): Promise<void> {
-  await context.db.insert(aiMemoryMessages).values({
-    aiId,
-    chatKey,
-    seq: 0,
-    messageId: `${tag}-m0`,
-    at: NOW,
-    sender: 'Bob',
-    text: 'hello',
-    deleted: false,
-  });
-  await context.db.insert(aiMemoryNodes).values({
-    aiId,
-    chatKey,
-    lo: 0,
-    hi: 16,
-    summary: `${tag} summary`,
-  });
-  await context.db.insert(aiMemoryFacts).values({
-    id: randomUUID(),
-    aiId,
-    chatKey,
-    text: `${tag} fact`,
-    createdAt: NOW,
-  });
-  await context.db.insert(aiMemoryState).values({ aiId, chatKey, floorSeq: 0 });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ai_memory_messages ${sql.insert({
+        ai_id: aiId,
+        chat_key: chatKey,
+        seq: 0,
+        message_id: `${tag}-m0`,
+        at: NOW,
+        sender: 'Bob',
+        text: 'hello',
+        deleted: false,
+      })}`;
+      yield* sql`INSERT INTO ai_memory_nodes ${sql.insert({
+        ai_id: aiId,
+        chat_key: chatKey,
+        lo: 0,
+        hi: 16,
+        summary: `${tag} summary`,
+      })}`;
+      yield* sql`INSERT INTO ai_memory_facts ${sql.insert({
+        id: randomUUID(),
+        ai_id: aiId,
+        chat_key: chatKey,
+        text: `${tag} fact`,
+        created_at: NOW,
+      })}`;
+      yield* sql`INSERT INTO ai_memory_state ${sql.insert({
+        ai_id: aiId,
+        chat_key: chatKey,
+        floor_seq: 0,
+      })}`;
+    }),
+  );
 }
 
 interface MemoryCounts {
@@ -111,30 +117,25 @@ async function countMemory(
   aiId: string,
   chatKey: string,
 ): Promise<MemoryCounts> {
-  const [messages, nodes, facts, state] = await Promise.all([
-    context.db
-      .select({ seq: aiMemoryMessages.seq })
-      .from(aiMemoryMessages)
-      .where(and(eq(aiMemoryMessages.aiId, aiId), eq(aiMemoryMessages.chatKey, chatKey))),
-    context.db
-      .select({ lo: aiMemoryNodes.lo })
-      .from(aiMemoryNodes)
-      .where(and(eq(aiMemoryNodes.aiId, aiId), eq(aiMemoryNodes.chatKey, chatKey))),
-    context.db
-      .select({ id: aiMemoryFacts.id })
-      .from(aiMemoryFacts)
-      .where(and(eq(aiMemoryFacts.aiId, aiId), eq(aiMemoryFacts.chatKey, chatKey))),
-    context.db
-      .select({ aiId: aiMemoryState.aiId })
-      .from(aiMemoryState)
-      .where(and(eq(aiMemoryState.aiId, aiId), eq(aiMemoryState.chatKey, chatKey))),
-  ]);
-  return {
-    messages: messages.length,
-    nodes: nodes.length,
-    facts: facts.length,
-    state: state.length,
-  };
+  return testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const [messages] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+        FROM ai_memory_messages WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+      const [nodes] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+        FROM ai_memory_nodes WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+      const [facts] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+        FROM ai_memory_facts WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+      const [state] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+        FROM ai_memory_state WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+      return {
+        messages: messages?.total ?? 0,
+        nodes: nodes?.total ?? 0,
+        facts: facts?.total ?? 0,
+        state: state?.total ?? 0,
+      };
+    }),
+  );
 }
 
 const GONE: MemoryCounts = { messages: 0, nodes: 0, facts: 0, state: 0 };
@@ -154,28 +155,41 @@ async function seedGroup(
 ): Promise<SeededGroup> {
   const groupId = randomUUID();
   const groupRoomLocalpart = roomLocalpart();
-  await context.db.insert(groups).values({
-    id: groupId,
-    roomLocalpart: groupRoomLocalpart,
-    title: 'Trip',
-    createdBy: ownerId,
-  });
-  await context.db.insert(groupMembers).values({ groupId, userId: ownerId, role: 'owner' });
-  await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
   const generalTopicId = randomUUID();
   const generalRoomLocalpart = roomLocalpart();
-  await context.db.insert(topics).values({
-    id: generalTopicId,
-    groupId,
-    name: 'General',
-    glyph: 'G',
-    roomLocalpart: generalRoomLocalpart,
-    visibility: 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: true,
-    createdBy: ownerId,
-  });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO groups ${sql.insert({
+        id: groupId,
+        room_localpart: groupRoomLocalpart,
+        title: 'Trip',
+        created_by: ownerId,
+      })}`;
+      yield* sql`INSERT INTO group_members ${sql.insert({
+        group_id: groupId,
+        user_id: ownerId,
+        role: 'owner',
+      })}`;
+      yield* sql`INSERT INTO group_ais ${sql.insert({
+        group_id: groupId,
+        ai_id: aiId,
+        added_by: ownerId,
+      })}`;
+      yield* sql`INSERT INTO topics ${sql.insert({
+        id: generalTopicId,
+        group_id: groupId,
+        name: 'General',
+        glyph: 'G',
+        room_localpart: generalRoomLocalpart,
+        visibility: 'public',
+        kind: 'chat',
+        status: 'open',
+        is_general: true,
+        created_by: ownerId,
+      })}`;
+    }),
+  );
   return {
     groupId,
     roomLocalpart: groupRoomLocalpart,
@@ -192,19 +206,28 @@ async function seedTopic(
 ): Promise<{ topicId: string; roomLocalpart: string }> {
   const topicId = randomUUID();
   const localpart = roomLocalpart();
-  await context.db.insert(topics).values({
-    id: topicId,
-    groupId,
-    name: `work-${topicId.slice(0, 8)}`,
-    glyph: 'W',
-    roomLocalpart: localpart,
-    visibility: 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: false,
-    createdBy: ownerId,
-  });
-  await context.db.insert(topicAis).values({ topicId, aiId, addedBy: ownerId });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO topics ${sql.insert({
+        id: topicId,
+        group_id: groupId,
+        name: `work-${topicId.slice(0, 8)}`,
+        glyph: 'W',
+        room_localpart: localpart,
+        visibility: 'public',
+        kind: 'chat',
+        status: 'open',
+        is_general: false,
+        created_by: ownerId,
+      })}`;
+      yield* sql`INSERT INTO topic_ais ${sql.insert({
+        topic_id: topicId,
+        ai_id: aiId,
+        added_by: ownerId,
+      })}`;
+    }),
+  );
   return { topicId, roomLocalpart: localpart };
 }
 

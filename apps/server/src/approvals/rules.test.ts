@@ -1,21 +1,8 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { Schema } from 'effect';
-import {
-  aiLimits,
-  ais,
-  approvalRules,
-  approvals,
-  groupAis,
-  groupMembers,
-  groups,
-  providerConnections,
-  topicAis,
-  topics,
-  user,
-} from '../db/schema';
-import { createTestContext, type TestContext } from '../test-support';
+import { Effect, Schema } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { createTestContext, testSql, type TestContext } from '../test-support';
 import { createApp } from '../app';
 import { bootstrapUser } from '../test-support';
 import { ApprovalServiceError, createApproval, decideApproval, toPublicApproval } from './service';
@@ -32,7 +19,20 @@ import { sqlRuntimeFor } from '../effect/sql';
 import { buildAlwaysEligible, buildRegistry, type ActionAdapter } from '../actions/registry';
 import { createActionGateway } from '../actions/gateway';
 import { createAuditRecorder } from '../audit/service';
-import { auditLog } from '../db/schema';
+
+interface RuleIdRow {
+  id: string;
+}
+
+interface AuditRow {
+  action: string;
+  subjectId: string | null;
+  argsHash: string | null;
+}
+
+interface CountRow {
+  total: number;
+}
 
 function argsHash(seed: number): string {
   const buf = randomBytes(32);
@@ -43,11 +43,14 @@ function argsHash(seed: number): string {
 
 async function seedUser(context: TestContext, overrides: { name?: string } = {}): Promise<string> {
   const id = randomUUID();
-  await context.db.insert(user).values({
-    id,
-    name: overrides.name ?? 'User',
-    email: `${id}@example.com`,
-  });
+  const name = overrides.name ?? 'User';
+  const email = `${id}@example.com`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "user" (id, name, email) VALUES (${id}, ${name}, ${email})`;
+    }),
+  );
   return id;
 }
 
@@ -56,29 +59,35 @@ async function seedAi(
   ownerId: string,
 ): Promise<{ aiId: string; jid: string }> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
+  const encryptedKey = 'sealed-placeholder';
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label) VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${encryptedKey}, ${null})`;
+    }),
+  );
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
   const jid = `${localpart}@zilar.localhost`;
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Helper AI',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart,
-    jid,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  const aiName = 'Helper AI';
+  const template = 'dev';
+  const persona = 'A persona';
+  const model = 'gpt-4o-mini';
+  const status = 'active';
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status) VALUES (${aiId}, ${ownerId}, ${aiName}, ${template}, ${persona}, ${connectionId}, ${model}, ${localpart}, ${jid}, ${status})`;
+    }),
+  );
+  const perDay = '1.00';
+  const perMonth = '20.00';
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${perDay}, ${perMonth})`;
+    }),
+  );
   return { aiId, jid };
 }
 
@@ -89,36 +98,40 @@ async function seedGroup(
   aiIds: string[],
 ): Promise<{ groupId: string; generalTopicId: string }> {
   const groupId = randomUUID();
-  await context.db.insert(groups).values({
-    id: groupId,
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    title: 'Trip',
-    createdBy: ownerId,
-  });
-  await context.db.insert(groupMembers).values(
-    members.map((entry) => ({
-      groupId,
-      userId: entry.userId,
-      role: entry.role,
-    })),
+  const roomLocalpart = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+  const title = 'Trip';
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${roomLocalpart}, ${title}, ${ownerId})`;
+    }),
   );
+  for (const entry of members) {
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${entry.userId}, ${entry.role})`;
+      }),
+    );
+  }
   for (const aiId of aiIds) {
-    await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${ownerId})`;
+      }),
+    );
   }
   // Every group has a General topic; group-scoped fixtures use it.
   const generalTopicId = randomUUID();
-  await context.db.insert(topics).values({
-    id: generalTopicId,
-    groupId,
-    name: 'General',
-    glyph: 'G',
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    visibility: 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: true,
-    createdBy: ownerId,
-  });
+  const generalRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+  const generalName = 'General';
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${generalTopicId}, ${groupId}, ${generalName}, ${'G'}, ${generalRoom}, ${'public'}, ${'chat'}, ${'open'}, ${true}, ${ownerId})`;
+    }),
+  );
   return { groupId, generalTopicId };
 }
 
@@ -129,18 +142,15 @@ async function seedTopic(
   overrides: { name?: string; visibility?: 'public' | 'private' } = {},
 ): Promise<string> {
   const topicId = randomUUID();
-  await context.db.insert(topics).values({
-    id: topicId,
-    groupId,
-    name: overrides.name ?? `Topic ${topicId.slice(0, 8)}`,
-    glyph: 'T',
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    visibility: overrides.visibility ?? 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: false,
-    createdBy: creatorId,
-  });
+  const name = overrides.name ?? `Topic ${topicId.slice(0, 8)}`;
+  const visibility = overrides.visibility ?? 'public';
+  const roomLocalpart = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${topicId}, ${groupId}, ${name}, ${'T'}, ${roomLocalpart}, ${visibility}, ${'chat'}, ${'open'}, ${false}, ${creatorId})`;
+    }),
+  );
   return topicId;
 }
 
@@ -237,10 +247,12 @@ describe('approval rules service (T-0099)', () => {
       expect(first.rule.id).toBe(second.rule.id);
       expect(second.created).toBe(false);
 
-      const rows = await context.db
-        .select()
-        .from(approvalRules)
-        .where(eq(approvalRules.aiId, aiId));
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<RuleIdRow>`SELECT id FROM approval_rules WHERE ai_id = ${aiId}`;
+        }),
+      );
       expect(rows).toHaveLength(1);
     });
 
@@ -261,14 +273,13 @@ describe('approval rules service (T-0099)', () => {
       // The partial unique index refuses the second active rule directly,
       // bypassing the service-level dedupe.
       await expect(
-        context.db.insert(approvalRules).values({
-          id: randomUUID(),
-          aiId,
-          groupId,
-          topicId: generalTopicId,
-          action: 'demo.echo',
-          createdBy: ownerId,
-        }),
+        testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            const ruleId = randomUUID();
+            yield* sql`INSERT INTO approval_rules (id, ai_id, group_id, topic_id, action, created_by) VALUES (${ruleId}, ${aiId}, ${groupId}, ${generalTopicId}, ${'demo.echo'}, ${ownerId})`;
+          }),
+        ),
       ).rejects.toThrow();
     });
 
@@ -282,24 +293,22 @@ describe('approval rules service (T-0099)', () => {
         [aiId],
       );
       await expect(
-        context.db.insert(approvalRules).values({
-          id: randomUUID(),
-          aiId,
-          groupId,
-          topicId: null,
-          action: 'demo.echo',
-          createdBy: ownerId,
-        }),
+        testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            const ruleId = randomUUID();
+            yield* sql`INSERT INTO approval_rules (id, ai_id, group_id, topic_id, action, created_by) VALUES (${ruleId}, ${aiId}, ${groupId}, ${null}, ${'demo.echo'}, ${ownerId})`;
+          }),
+        ),
       ).rejects.toThrow();
       await expect(
-        context.db.insert(approvalRules).values({
-          id: randomUUID(),
-          aiId,
-          groupId: null,
-          topicId: generalTopicId,
-          action: 'demo.echo',
-          createdBy: ownerId,
-        }),
+        testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            const ruleId = randomUUID();
+            yield* sql`INSERT INTO approval_rules (id, ai_id, group_id, topic_id, action, created_by) VALUES (${ruleId}, ${aiId}, ${null}, ${generalTopicId}, ${'demo.echo'}, ${ownerId})`;
+          }),
+        ),
       ).rejects.toThrow();
     });
 
@@ -606,9 +615,21 @@ describe('approval rules service (T-0099)', () => {
       expect(caught).toBeInstanceOf(ApprovalServiceError);
       expect((caught as ApprovalServiceError).errorCode).toBe('always_not_allowed');
       // The approval row is still pending — nothing changed.
-      const [row] = await context.db.select().from(approvals).where(eq(approvals.id, approvalId));
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            status: string;
+          }>`SELECT status FROM approvals WHERE id = ${approvalId}`;
+        }),
+      );
       expect(row?.status).toBe('pending');
-      const rules = await context.db.select().from(approvalRules);
+      const rules = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<RuleIdRow>`SELECT id FROM approval_rules`;
+        }),
+      );
       expect(rules).toHaveLength(0);
     });
 
@@ -641,7 +662,12 @@ describe('approval rules service (T-0099)', () => {
         now,
       );
       expect(memberResult).toBeNull();
-      const rules = await context.db.select().from(approvalRules);
+      const rules = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<RuleIdRow>`SELECT id FROM approval_rules`;
+        }),
+      );
       expect(rules).toHaveLength(0);
     });
 
@@ -673,10 +699,12 @@ describe('approval rules service (T-0099)', () => {
       expect(r1?.rule?.created).toBe(true);
       expect(r2?.rule?.created).toBe(false);
       expect(r1?.rule?.id).toBe(r2?.rule?.id);
-      const rows = await context.db
-        .select()
-        .from(approvalRules)
-        .where(eq(approvalRules.aiId, aiId));
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<RuleIdRow>`SELECT id FROM approval_rules WHERE ai_id = ${aiId}`;
+        }),
+      );
       expect(rows).toHaveLength(1);
     });
   });
@@ -728,15 +756,23 @@ describe('approval rules service (T-0099)', () => {
       expect(revoked).toHaveLength(1);
       expect(revoked[0]?.id).toBe(group.rule.id);
 
-      const [personalRow] = await context.db
-        .select()
-        .from(approvalRules)
-        .where(eq(approvalRules.id, personal.rule.id));
+      const [personalRow] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            revokedAt: Date | null;
+          }>`SELECT revoked_at FROM approval_rules WHERE id = ${personal.rule.id}`;
+        }),
+      );
       expect(personalRow?.revokedAt).toBeNull();
-      const [groupRow] = await context.db
-        .select()
-        .from(approvalRules)
-        .where(eq(approvalRules.id, group.rule.id));
+      const [groupRow] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            revokedAt: Date | null;
+          }>`SELECT revoked_at FROM approval_rules WHERE id = ${group.rule.id}`;
+        }),
+      );
       expect(groupRow?.revokedAt).not.toBeNull();
     });
 
@@ -770,15 +806,23 @@ describe('approval rules service (T-0099)', () => {
       expect(revoked).toHaveLength(1);
       expect(revoked[0]?.id).toBe(other.rule.id);
 
-      const [generalRow] = await context.db
-        .select()
-        .from(approvalRules)
-        .where(eq(approvalRules.id, general.rule.id));
+      const [generalRow] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            revokedAt: Date | null;
+          }>`SELECT revoked_at FROM approval_rules WHERE id = ${general.rule.id}`;
+        }),
+      );
       expect(generalRow?.revokedAt).toBeNull();
-      const [otherRow] = await context.db
-        .select()
-        .from(approvalRules)
-        .where(eq(approvalRules.id, other.rule.id));
+      const [otherRow] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            revokedAt: Date | null;
+          }>`SELECT revoked_at FROM approval_rules WHERE id = ${other.rule.id}`;
+        }),
+      );
       expect(otherRow?.revokedAt).not.toBeNull();
     });
 
@@ -790,8 +834,18 @@ describe('approval rules service (T-0099)', () => {
         { aiId, groupId: null, topicId: null, action: 'demo.echo', createdBy: ownerId },
         now,
       );
-      await context.db.delete(ais).where(eq(ais.id, aiId));
-      const rows = await context.db.select().from(approvalRules);
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM ais WHERE id = ${aiId}`;
+        }),
+      );
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<RuleIdRow>`SELECT id FROM approval_rules`;
+        }),
+      );
       expect(rows).toHaveLength(0);
     });
   });
@@ -895,7 +949,12 @@ describe('approval rules service (T-0099)', () => {
       );
 
       // Second request: auto-runs, no approval row, no card.
-      const approvalCountBefore = (await context.db.select().from(approvals)).length;
+      const [{ total: approvalCountBefore }] = (await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<CountRow>`SELECT count(*)::int AS total FROM approvals`;
+        }),
+      )) as [CountRow];
       const second = await gateway.request({
         aiId,
         action: 'demo.echo',
@@ -903,10 +962,20 @@ describe('approval rules service (T-0099)', () => {
         requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(second).toEqual({ status: 'executed', summary: 'Echoed: second' });
-      const approvalCountAfter = (await context.db.select().from(approvals)).length;
+      const [{ total: approvalCountAfter }] = (await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<CountRow>`SELECT count(*)::int AS total FROM approvals`;
+        }),
+      )) as [CountRow];
       expect(approvalCountAfter).toBe(approvalCountBefore);
 
-      const audits = await context.db.select().from(auditLog);
+      const audits = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditRow>`SELECT action, subject_id, args_hash FROM audit_log`;
+        }),
+      );
       const autoApproved = audits.find((row) => row.action === 'action.auto_approved');
       expect(autoApproved).toBeDefined();
       expect(autoApproved?.subjectId).toMatch(/^[0-9a-z-]+$/); // a rule id
@@ -939,7 +1008,12 @@ describe('approval rules service (T-0099)', () => {
         now,
       );
       // Stop the AI: kill switch.
-      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, aiId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = ${'stopped'} WHERE id = ${aiId}`;
+        }),
+      );
 
       const gateway = createActionGateway({
         db: context.db,
@@ -958,7 +1032,12 @@ describe('approval rules service (T-0099)', () => {
         requestedBy: 'ai-bot@zilar.localhost',
       });
       expect(outcome).toEqual({ status: 'denied', reason: 'ai_not_active' });
-      const audits = await context.db.select().from(auditLog);
+      const audits = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditRow>`SELECT action, subject_id, args_hash FROM audit_log`;
+        }),
+      );
       const autoApproved = audits.find((row) => row.action === 'action.auto_approved');
       expect(autoApproved).toBeUndefined();
     });
@@ -1060,7 +1139,12 @@ describe('approval rules service (T-0099)', () => {
 
       // The AI left the room without the rule being revoked (a direct row
       // delete): the rule alone must not let it act there.
-      await context.db.delete(groupAis).where(eq(groupAis.groupId, group.groupId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM group_ais WHERE group_id = ${group.groupId}`;
+        }),
+      );
       const outside = await gateway.request({
         aiId,
         groupId: group.groupId,
@@ -1095,11 +1179,12 @@ describe('approval rules service (T-0099)', () => {
       const topicB = await seedTopic(context, group1.groupId, owner.id, { name: 'Topic B' });
       // The AI works in both topics: membership of topic B (a `topic_ais`
       // row) lets the request reach the approval path there.
-      await context.db.insert(topicAis).values({
-        topicId: topicB,
-        aiId,
-        addedBy: owner.id,
-      });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO topic_ais (topic_id, ai_id, added_by) VALUES (${topicB}, ${aiId}, ${owner.id})`;
+        }),
+      );
       const group2 = await seedGroup(
         context,
         owner.id,

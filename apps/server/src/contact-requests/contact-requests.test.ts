@@ -1,18 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { contacts } from '../db/schema';
-import { contactRequests } from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { UNNAMED_CONTACT_NAME } from '../contacts/service';
 import {
   bootstrapUser,
   createTestContext,
   testApp,
+  testSql,
   TEST_BASE_URL,
   type TestApp,
   type TestContext,
 } from '../test-support';
 import { localpartFor } from '../xmpp/provisioning';
 import { claimHandle } from '../handles/store';
+
+interface ContactRow {
+  userId: string;
+  contactUserId: string;
+  source: string;
+  rosterSynced: boolean;
+}
+
+interface ContactRequestRow {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  status: string;
+}
 
 function authHeaders(cookie: string): Record<string, string> {
   return { cookie };
@@ -30,6 +44,24 @@ describe('contact requests', () => {
   afterEach(async () => {
     await context.close();
   });
+
+  async function contactRows(source: Pick<TestContext, 'db'> = context) {
+    return testSql(source)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<ContactRow>`SELECT user_id, contact_user_id, source, roster_synced FROM contacts`;
+      }),
+    );
+  }
+
+  async function contactRequestRows() {
+    return testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<ContactRequestRow>`SELECT id, from_user_id, to_user_id, status FROM contact_requests`;
+      }),
+    );
+  }
 
   async function withHandle(email: string, handle: string) {
     const user = await bootstrapUser(context, app, email);
@@ -81,7 +113,7 @@ describe('contact requests', () => {
     );
     expect(accept.status).toBe(200);
 
-    const rows = await context.db.select().from(contacts);
+    const rows = await contactRows();
     expect(rows.map((row) => `${row.userId}->${row.contactUserId}`).sort()).toEqual(
       [`${alice.id}->${bob.id}`, `${bob.id}->${alice.id}`].sort(),
     );
@@ -94,7 +126,7 @@ describe('contact requests', () => {
       { method: 'POST', headers: authHeaders(bob.cookie) },
     );
     expect(again.status).toBe(200);
-    expect((await context.db.select().from(contacts)).length).toBe(2);
+    expect((await contactRows()).length).toBe(2);
   });
 
   it('refuses self, existing contact, duplicates, and reverse duplicates', async () => {
@@ -122,7 +154,7 @@ describe('contact requests', () => {
     expect(reverseBody.incoming).toBe(true);
     expect(reverseBody.request.fromUserId).toBe(alice.id);
     expect(reverseBody.request.toUserId).toBe(bob.id);
-    expect((await context.db.select().from(contactRequests)).length).toBe(1);
+    expect((await contactRequestRows()).length).toBe(1);
   });
 
   it('answers an invalid create body with 400 invalid_request and a fixed message', async () => {
@@ -151,7 +183,7 @@ describe('contact requests', () => {
       createContactRequest({ db }, alice.id, 'bob_b'),
       createContactRequest({ db }, bob.id, 'alice_w'),
     ]);
-    const rows = await context.db.select().from(contactRequests);
+    const rows = await contactRequestRows();
     expect(rows).toHaveLength(1);
     const fulfilled = [aResult, bResult].filter((r) => r.status === 'fulfilled');
     const rejected = [aResult, bResult].filter((r) => r.status === 'rejected');
@@ -209,13 +241,12 @@ describe('contact requests', () => {
           // connection commits: the winner the aborted tx never saw. If the
           // recovery had run inside the aborted tx, this insert would fail or
           // be rolled back with it.
-          await context.db.insert(contactRequests).values({
-            id: winnerId,
-            fromUserId: bob.id,
-            toUserId: alice.id,
-            status: 'pending',
-            createdAt: new Date(),
-          });
+          await testSql(context)(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              yield* sql`INSERT INTO contact_requests (id, from_user_id, to_user_id, status) VALUES (${winnerId}, ${bob.id}, ${alice.id}, 'pending')`;
+            }),
+          );
           seams.push('recovery');
         },
       },
@@ -250,7 +281,7 @@ describe('contact requests', () => {
     expect(isPendingPairViolation(violation('contact_requests_pending_pair_idx'))).toBe(true);
     expect(isPendingPairViolation(violation('some_other_index'))).toBe(false);
     // The winner row survived the rollback and is the only pending row left.
-    const rows = await context.db.select().from(contactRequests);
+    const rows = await contactRequestRows();
     expect(rows).toHaveLength(1);
     expect(rows[0]?.id).toBe(winnerId);
   });
@@ -277,10 +308,12 @@ describe('contact requests', () => {
     expect(((await cooled.json()) as { error: { code: string } }).error.code).toBe(
       'declined_recently',
     );
-    await context.db
-      .update(contactRequests)
-      .set({ decidedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000) })
-      .where(eq(contactRequests.fromUserId, alice.id));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE contact_requests SET decided_at = ${new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)} WHERE from_user_id = ${alice.id}`;
+      }),
+    );
     expect((await postRequest(alice.cookie, 'bob_b')).status).toBe(201);
 
     const toCarol = (await (await postRequest(alice.cookie, 'carol_c')).json()) as {
@@ -338,11 +371,12 @@ describe('contact requests', () => {
 
     const bob = await withHandle('bob@example.com', 'bob_retired');
     // Retire bob's handle by backdating and moving to a new one.
-    const { handles } = await import('../db/schema');
-    await context.db
-      .update(handles)
-      .set({ changedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000) })
-      .where(eq(handles.userId, bob.id));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE handles SET changed_at = ${new Date(Date.now() - 15 * 24 * 60 * 60 * 1000)} WHERE user_id = ${bob.id}`;
+      }),
+    );
     await claimHandle(context.db, bob.id, 'bob_now');
     const retired = await postRequest(alice.cookie, 'bob_retired');
     expect(retired.status).toBe(404);
@@ -428,7 +462,7 @@ describe('contact requests', () => {
       { method: 'POST', headers: authHeaders(bob.cookie) },
     );
     expect(accept.status).toBe(200);
-    expect((await context.db.select().from(contacts)).length).toBe(2);
+    expect((await contactRows()).length).toBe(2);
   });
 
   it('retries roster sync like invites when ejabberd is down', async () => {
@@ -458,7 +492,7 @@ describe('contact requests', () => {
       );
       expect(accept.status).toBe(200);
       expect(adminClient.rosterItems).toHaveLength(0);
-      const rows = await failing.db.select().from(contacts);
+      const rows = await contactRows(failing);
       expect(rows).toHaveLength(2);
       expect(rows.every((row) => !row.rosterSynced)).toBe(true);
 
@@ -517,15 +551,20 @@ describe('contact requests', () => {
 
     // Simulate the crash between the flip and the pair write: the row says
     // accepted but the contacts are gone.
-    await context.db.delete(contacts);
-    expect(await context.db.select().from(contacts)).toHaveLength(0);
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM contacts`;
+      }),
+    );
+    expect(await contactRows()).toHaveLength(0);
 
     const repair = await app.request(`${TEST_BASE_URL}/api/contact-requests/${request.id}/accept`, {
       method: 'POST',
       headers: authHeaders(bob.cookie),
     });
     expect(repair.status).toBe(200);
-    const rows = await context.db.select().from(contacts);
+    const rows = await contactRows();
     expect(rows.map((row) => `${row.userId}->${row.contactUserId}`).sort()).toEqual(
       [`${alice.id}->${bob.id}`, `${bob.id}->${alice.id}`].sort(),
     );

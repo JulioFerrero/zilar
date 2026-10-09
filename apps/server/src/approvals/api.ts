@@ -21,7 +21,7 @@ import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { approvalRules } from '../db/schema';
 import { HttpError } from '../errors';
-import type { EffectApiMount, EffectApiRoute } from '../effect/http';
+import type { EffectApiMount, EffectApiRoute } from '../effect/http-core';
 import {
   CurrentUser,
   Session,
@@ -29,7 +29,7 @@ import {
   requestIdOf,
   sessionLayer,
   withErrorEnvelope,
-} from '../effect/http';
+} from '../effect/http-core';
 import { sqlRuntimeFor } from '../effect/sql';
 import { canSeeTopic, type TopicRow } from '../topics/access';
 import {

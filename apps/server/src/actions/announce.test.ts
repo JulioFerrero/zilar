@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { ApprovalRequestSchema, isValid } from '@zilar/protocol';
-import { approvals } from '../db/schema';
 import {
   approvalCardBody,
   buildApprovalCardPayload,
@@ -9,7 +8,25 @@ import {
   summaryForOutcome,
 } from './announce';
 
-type ApprovalRow = typeof approvals.$inferSelect;
+interface ApprovalRow {
+  id: string;
+  aiId: string;
+  groupId: string | null;
+  topicId: string | null;
+  action: string;
+  summary: string;
+  details: string | null;
+  argsHash: string;
+  worstCaseCurrency: string | null;
+  worstCaseAmount: string | null;
+  requestedBy: string;
+  status: 'pending' | 'approved_once' | 'approved_always' | 'denied' | 'consumed';
+  decidedBy: string | null;
+  decidedAt: Date | null;
+  note: string | null;
+  expiresAt: Date;
+  createdAt: Date;
+}
 
 function approvalRow(overrides: Partial<ApprovalRow> = {}): ApprovalRow {
   return {

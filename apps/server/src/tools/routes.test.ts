@@ -1,23 +1,14 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { pino } from 'pino';
-import {
-  aiLimits,
-  ais,
-  auditLog,
-  groupAis,
-  groupMembers,
-  groups,
-  providerConnections,
-  topicMembers,
-  topics,
-} from '../db/schema';
 import { createAuditRecorder } from '../audit/service';
 import {
   bootstrapUser,
   createTestContext,
   testApp,
+  testSql,
   TEST_BASE_URL,
   type TestApp,
   type TestContext,
@@ -28,30 +19,23 @@ import type { ToolRunResult, ToolRunner } from './types';
 
 const NOW = new Date('2026-01-01T00:00:00Z');
 
+interface AuditRow {
+  action: string;
+  detail: unknown;
+}
+
 async function seedAi(context: TestContext, ownerId: string): Promise<string> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Helper AI',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart,
-    jid: `${localpart}@zilar.localhost`,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key) VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${'sealed-placeholder'})`;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status) VALUES (${aiId}, ${ownerId}, ${'Helper AI'}, ${'dev'}, ${'A persona'}, ${connectionId}, ${'gpt-4o-mini'}, ${localpart}, ${`${localpart}@zilar.localhost`}, ${'active'})`;
+      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${'1.00'}, ${'20.00'})`;
+    }),
+  );
   return aiId;
 }
 
@@ -62,31 +46,22 @@ async function seedGroup(
   aiIds: string[],
 ): Promise<{ groupId: string; generalTopicId: string }> {
   const groupId = randomUUID();
-  await context.db.insert(groups).values({
-    id: groupId,
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    title: 'Trip',
-    createdBy: ownerId,
-  });
-  await context.db
-    .insert(groupMembers)
-    .values(members.map((entry) => ({ groupId, userId: entry.userId, role: entry.role })));
-  for (const aiId of aiIds) {
-    await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
-  }
+  const groupRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
   const generalTopicId = randomUUID();
-  await context.db.insert(topics).values({
-    id: generalTopicId,
-    groupId,
-    name: 'General',
-    glyph: 'G',
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    visibility: 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: true,
-    createdBy: ownerId,
-  });
+  const generalRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${groupRoom}, ${'Trip'}, ${ownerId})`;
+      for (const entry of members) {
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${entry.userId}, ${entry.role})`;
+      }
+      for (const aiId of aiIds) {
+        yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${ownerId})`;
+      }
+      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${generalTopicId}, ${groupId}, ${'General'}, ${'G'}, ${generalRoom}, ${'public'}, ${'chat'}, ${'open'}, ${true}, ${ownerId})`;
+    }),
+  );
   return { groupId, generalTopicId };
 }
 
@@ -310,23 +285,14 @@ describe('tools routes (T-0103)', () => {
         [owner.aiId],
       );
       const privateTopicId = randomUUID();
-      await context.db.insert(topics).values({
-        id: privateTopicId,
-        groupId,
-        name: 'Hiring',
-        glyph: 'H',
-        roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-        visibility: 'private',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: false,
-        createdBy: owner.id,
-      });
-      await context.db.insert(topicMembers).values({
-        topicId: privateTopicId,
-        userId: owner.id,
-        addedBy: owner.id,
-      });
+      const privateRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${privateTopicId}, ${groupId}, ${'Hiring'}, ${'H'}, ${privateRoom}, ${'private'}, ${'chat'}, ${'open'}, ${false}, ${owner.id})`;
+          yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by) VALUES (${privateTopicId}, ${owner.id}, ${owner.id})`;
+        }),
+      );
       await seedTool(context, {
         aiId: owner.aiId,
         groupId,
@@ -369,23 +335,14 @@ describe('tools routes (T-0103)', () => {
         [owner.aiId],
       );
       const privateTopicId = randomUUID();
-      await context.db.insert(topics).values({
-        id: privateTopicId,
-        groupId,
-        name: 'Hiring',
-        glyph: 'H',
-        roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-        visibility: 'private',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: false,
-        createdBy: owner.id,
-      });
-      await context.db.insert(topicMembers).values({
-        topicId: privateTopicId,
-        userId: owner.id,
-        addedBy: owner.id,
-      });
+      const privateRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${privateTopicId}, ${groupId}, ${'Hiring'}, ${'H'}, ${privateRoom}, ${'private'}, ${'chat'}, ${'open'}, ${false}, ${owner.id})`;
+          yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by) VALUES (${privateTopicId}, ${owner.id}, ${owner.id})`;
+        }),
+      );
       await seedTool(context, {
         aiId: owner.aiId,
         groupId,
@@ -583,7 +540,12 @@ describe('tools routes (T-0103)', () => {
       const body = (await response.json()) as { version: number; message: string };
       expect(body.version).toBe(2);
       expect(body.message).toBe('Revert to v1');
-      const rows = await context.db.select().from(auditLog);
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditRow>`SELECT action, detail FROM audit_log`;
+        }),
+      );
       const reverted = rows.find((row) => row.action === 'tool.reverted');
       expect(reverted?.detail).toEqual({ name: 'morning-prices', version: 2 });
       expect(JSON.stringify(reverted?.detail)).not.toContain('gold 3000');
@@ -629,7 +591,12 @@ describe('tools routes (T-0103)', () => {
         headers: { cookie: owner.cookie },
       });
       expect(afterDelete.status).toBe(404);
-      const rows = await context.db.select().from(auditLog);
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditRow>`SELECT action, detail FROM audit_log`;
+        }),
+      );
       const deleted = rows.filter((row) => row.action === 'tool.deleted');
       expect(deleted).toHaveLength(1);
       expect(deleted[0]?.detail).toEqual({ name: 'morning-prices', version: 1 });
@@ -695,7 +662,12 @@ describe('tools routes (T-0103)', () => {
       const body = (await response.json()) as { ok: boolean; output: { text: string } };
       expect(body.ok).toBe(true);
       expect(body.output.text).toBe('ok output');
-      const rows = await context.db.select().from(auditLog);
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AuditRow>`SELECT action, detail FROM audit_log`;
+        }),
+      );
       const run = rows.find((row) => row.action === 'tool.run');
       expect(run?.detail).toEqual({ name: 'morning-prices', version: 1, status: 'ok' });
       expect(JSON.stringify(run?.detail)).not.toContain('ok output');
@@ -744,7 +716,12 @@ describe('tools routes (T-0103)', () => {
         topicId: null,
         userId: owner.id,
       });
-      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, owner.aiId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = 'stopped' WHERE id = ${owner.aiId}`;
+        }),
+      );
       const response = await app.request(`${TEST_BASE_URL}/api/tools/${toolId}/run`, {
         method: 'POST',
         headers: { cookie: owner.cookie, 'content-type': 'application/json' },

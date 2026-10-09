@@ -9,10 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0689](T-0689-plan-edge-flip.md) | plan (no code): B1 edge flip, Hono edge → Effect HTTP | in-progress | auto | | |
-| [T-0690](T-0690-better-auth-sql-adapter.md) | D2 step 1: better-auth adapter over effect/sql (built + tested, not switched) | in-progress | auto | | |
-| [T-0691](T-0691-plan-drizzle-removal.md) | plan (no code): last drizzle removal (tests, test-support, migrator, deletes) | in-progress | auto | | |
-| [T-0692](T-0692-retired-handle-create-test.md) | test: public create with another group's retired handle → 409; ais row-type nit | in-progress | haiku-5.5 | T-0688 | |
 
 ## Follow-ups
 
@@ -721,3 +717,44 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0687](T-0687-create-patch-topic-effect-sql.md) | effect/sql: createTopic and patchTopic; topics/service.ts drops drizzle | 2026-10-08 |
 | [T-0688](T-0688-create-patch-group-effect-sql.md) | effect/sql: createGroup and patchGroup; groups/service.ts drops drizzle | 2026-10-09 |
 | [T-0684](T-0684-approvals-service-effect-sql.md) | effect/sql: rest of approvals/service.ts and the gateway approval transaction; approvals drops drizzle | 2026-10-09 |
+| [T-0692](T-0692-retired-handle-create-test.md) | test: public create on another group retired handle; ais row type | 2026-10-09 |
+| [T-0689](T-0689-plan-edge-flip.md) | plan: B1 edge flip, Hono edge to Effect HTTP | 2026-10-09 |
+| [T-0693](T-0693-health-check-effect-sql.md) | effect/sql: /health probe; app.ts drops drizzle | 2026-10-09 |
+| [T-0691](T-0691-plan-drizzle-removal.md) | plan: last drizzle removal | 2026-10-09 |
+| [T-0695](T-0695-test-sql-helper.md) | H1: testSql helper; pins tests off drizzle | 2026-10-09 |
+| [T-0690](T-0690-better-auth-sql-adapter.md) | D2 step 1: better-auth adapter over effect/sql | 2026-10-09 |
+| [T-0699](T-0699-search-tests-off-drizzle.md) | tests off drizzle: search | 2026-10-09 |
+| [T-0701](T-0701-auth-tests-off-drizzle.md) | tests off drizzle: auth | 2026-10-09 |
+| [T-0702](T-0702-push-tests-off-drizzle.md) | tests off drizzle: push | 2026-10-09 |
+| [T-0697](T-0697-chats-media-tests-off-drizzle.md) | tests off drizzle: chats and media | 2026-10-09 |
+| [T-0698](T-0698-voice-integrations-tests-off-drizzle.md) | tests off drizzle: voice-transcription and integrations | 2026-10-09 |
+| [T-0696](T-0696-platform-node-smoke.md) | B1.2: @effect/platform-node 4.0.2 and NodeHttpServer smoke test | 2026-10-09 |
+| [T-0700](T-0700-blocks-handles-tests-off-drizzle.md) | tests off drizzle: blocks and handles | 2026-10-09 |
+| [T-0703](T-0703-chat-prefs-tests-off-drizzle.md) | tests off drizzle: chat-prefs | 2026-10-09 |
+| [T-0706](T-0706-audit-tests-off-drizzle.md) | tests off drizzle: audit | 2026-10-09 |
+| [T-0694](T-0694-split-effect-http-core.md) | B1.1: effect/http split into http-core and the Hono bridge | 2026-10-09 |
+| [T-0704](T-0704-contacts-tests-off-drizzle.md) | tests off drizzle: contacts and contact-requests | 2026-10-09 |
+| [T-0705](T-0705-backgrounds-delegation-tests-off-drizzle.md) | tests off drizzle: backgrounds and agents/delegation | 2026-10-09 |
+| [T-0710](T-0710-stickers-tests-off-drizzle.md) | tests off drizzle: stickers | 2026-10-09 |
+| [T-0708](T-0708-xmpp-tests-off-drizzle.md) | tests off drizzle: xmpp | 2026-10-09 |
+| [T-0707](T-0707-invite-links-tests-off-drizzle.md) | tests off drizzle: invite-links | 2026-10-09 |
+| [T-0709](T-0709-small-folders-tests-off-drizzle.md) | tests off drizzle: avatars, chat-folders, connections, files | 2026-10-09 |
+| [T-0711](T-0711-listener-score-tests-off-drizzle.md) | tests off drizzle: agents/listener | 2026-10-09 |
+| [T-0715](T-0715-roles-tests-off-drizzle.md) | tests off drizzle: roles | 2026-10-09 |
+| [T-0714](T-0714-topics-tests-off-drizzle.md) | tests off drizzle: topics | 2026-10-09 |
+| [T-0716](T-0716-setup-tests-off-drizzle.md) | tests off drizzle: setup | 2026-10-09 |
+| [T-0712](T-0712-agents-memory-tests-off-drizzle.md) | tests off drizzle: agents/memory | 2026-10-09 |
+| [T-0713](T-0713-machines-tests-off-drizzle.md) | tests off drizzle: machines | 2026-10-09 |
+| [T-0717](T-0717-app-mount-list.md) | B1.3a: one ordered module mount list in app.ts | 2026-10-09 |
+| [T-0718](T-0718-routines-tests-off-drizzle.md) | tests off drizzle: routines | 2026-10-09 |
+| [T-0729](T-0729-sql-adapter-test-off-drizzle.md) | tests off drizzle: auth/sql-adapter | 2026-10-09 |
+| [T-0721](T-0721-actions-small-tests-off-drizzle.md) | tests off drizzle: actions (announce, production-announcer, demo) | 2026-10-09 |
+| [T-0719](T-0719-groups-tests-off-drizzle.md) | tests off drizzle: groups | 2026-10-09 |
+| [T-0720](T-0720-tools-tests-off-drizzle.md) | tests off drizzle: tools | 2026-10-09 |
+| [T-0725](T-0725-ais-routes-tests-off-drizzle.md) | tests off drizzle: ais/routes | 2026-10-09 |
+| [T-0722](T-0722-actions-flow-tests-off-drizzle.md) | tests off drizzle: actions/flow.e2e | 2026-10-09 |
+| [T-0723](T-0723-actions-gateway-tests-off-drizzle.md) | tests off drizzle: actions/gateway | 2026-10-09 |
+| [T-0724](T-0724-ais-small-tests-off-drizzle.md) | tests off drizzle: ais (integration, usage, service) | 2026-10-09 |
+| [T-0726](T-0726-approvals-a-tests-off-drizzle.md) | tests off drizzle: approvals (sweepers, service) | 2026-10-09 |
+| [T-0728](T-0728-agents-gateway-tests-off-drizzle.md) | tests off drizzle: agents/gateway | 2026-10-09 |
+| [T-0727](T-0727-approvals-b-tests-off-drizzle.md) | tests off drizzle: approvals (routes, rules) | 2026-10-09 |

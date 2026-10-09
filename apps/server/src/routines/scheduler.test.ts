@@ -1,20 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { eq } from 'drizzle-orm';
-import {
-  aiLimits,
-  ais,
-  aiTools,
-  auditLog,
-  groupAis,
-  groupMembers,
-  groups,
-  providerConnections,
-  routines,
-  topicAis,
-  topicMembers,
-  topics,
-} from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createAuditRecorder } from '../audit/service';
 import { approveToolHosts, saveToolVersion } from '../tools/service';
 import type { ToolRunResult, ToolRunner } from '../tools/types';
@@ -24,6 +11,7 @@ import {
   TEST_BASE_URL,
   TEST_XMPP_DOMAIN,
   testApp,
+  testSql,
   type TestApp,
   type TestContext,
 } from '../test-support';
@@ -62,28 +50,19 @@ function failingRunner(kind = 'sandbox_failure'): ToolRunner {
 
 async function seedAi(context: TestContext, ownerId: string, status = 'active'): Promise<string> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Helper AI',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart,
-    jid: `${localpart}@${TEST_XMPP_DOMAIN}`,
-    status: status as 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
+        VALUES (${connectionId}, ${ownerId}, 'openai', 'sealed-placeholder', NULL)`;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status)
+        VALUES (${aiId}, ${ownerId}, 'Helper AI', 'dev', 'A persona', ${connectionId}, 'gpt-4o-mini', ${localpart}, ${`${localpart}@${TEST_XMPP_DOMAIN}`}, ${status})`;
+      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd)
+        VALUES (${aiId}, '1.00', '20.00')`;
+    }),
+  );
   return aiId;
 }
 
@@ -93,27 +72,22 @@ async function seedGroupWithTopic(
   aiId: string,
 ): Promise<{ groupId: string; topicId: string }> {
   const groupId = randomUUID();
-  await context.db.insert(groups).values({
-    id: groupId,
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    title: 'Trip',
-    createdBy: ownerId,
-  });
-  await context.db.insert(groupMembers).values({ groupId, userId: ownerId, role: 'owner' });
-  await context.db.insert(groupAis).values({ groupId, aiId, addedBy: ownerId });
+  const groupRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
   const topicId = randomUUID();
-  await context.db.insert(topics).values({
-    id: topicId,
-    groupId,
-    name: 'General',
-    glyph: 'G',
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    visibility: 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: true,
-    createdBy: ownerId,
-  });
+  const topicRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO groups (id, room_localpart, title, created_by)
+        VALUES (${groupId}, ${groupRoom}, 'Trip', ${ownerId})`;
+      yield* sql`INSERT INTO group_members (group_id, user_id, role)
+        VALUES (${groupId}, ${ownerId}, 'owner')`;
+      yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by)
+        VALUES (${groupId}, ${aiId}, ${ownerId})`;
+      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by)
+        VALUES (${topicId}, ${groupId}, 'General', 'G', ${topicRoom}, 'public', 'chat', 'open', true, ${ownerId})`;
+    }),
+  );
   return { groupId, topicId };
 }
 
@@ -124,21 +98,18 @@ async function seedNonGeneralTopic(
   aiId: string | null,
 ): Promise<string> {
   const topicId = randomUUID();
-  await context.db.insert(topics).values({
-    id: topicId,
-    groupId,
-    name: `work-${topicId.slice(0, 8)}`,
-    glyph: 'W',
-    roomLocalpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-    visibility: 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: false,
-    createdBy: ownerId,
-  });
-  if (aiId !== null) {
-    await context.db.insert(topicAis).values({ topicId, aiId, addedBy: ownerId });
-  }
+  const room = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by)
+        VALUES (${topicId}, ${groupId}, ${`work-${topicId.slice(0, 8)}`}, 'W', ${room}, 'public', 'chat', 'open', false, ${ownerId})`;
+      if (aiId !== null) {
+        yield* sql`INSERT INTO topic_ais (topic_id, ai_id, added_by)
+          VALUES (${topicId}, ${aiId}, ${ownerId})`;
+      }
+    }),
+  );
   return topicId;
 }
 
@@ -212,23 +183,52 @@ async function seedRoutine(
     NOW,
   ).then(async (created) => {
     if (args.nextRunAt !== undefined) {
-      await context.db
-        .update(routines)
-        .set({ nextRunAt: args.nextRunAt })
-        .where(eq(routines.id, created.id));
+      const nextRunAt = args.nextRunAt;
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE routines SET next_run_at = ${nextRunAt} WHERE id = ${created.id}`;
+        }),
+      );
       return { ...created, nextRunAt: args.nextRunAt };
     }
     return created;
   });
 }
 
+interface RoutineRow {
+  lastStatus: string | null;
+  consecutiveFailures: number;
+  lastRunAt: Date | null;
+  nextRunAt: Date;
+  status: string;
+  pausedReason: string | null;
+  deletedAt: Date | null;
+}
+
 async function readRoutine(context: TestContext, id: string) {
-  const [row] = await context.db.select().from(routines).where(eq(routines.id, id)).limit(1);
-  return row;
+  const rows = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<RoutineRow>`SELECT last_status, consecutive_failures, last_run_at, next_run_at, status, paused_reason, deleted_at FROM routines WHERE id = ${id} LIMIT 1`;
+    }),
+  );
+  return rows[0];
+}
+
+interface AuditRow {
+  action: string;
+  result: string;
+  detail: unknown;
 }
 
 async function auditEntries(context: TestContext) {
-  return context.db.select().from(auditLog);
+  return testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<AuditRow>`SELECT action, result, detail FROM audit_log`;
+    }),
+  );
 }
 
 describe('routine scheduler (T-0104)', () => {
@@ -409,10 +409,12 @@ describe('routine scheduler (T-0104)', () => {
         userId: owner.id,
         nextRunAt: new Date(NOW.getTime() - 1_000),
       });
-      await context.db
-        .update(routines)
-        .set({ status: 'paused', pausedReason: 'user' })
-        .where(eq(routines.id, due.id));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE routines SET status = 'paused', paused_reason = 'user' WHERE id = ${due.id}`;
+        }),
+      );
       const posts: Array<unknown> = [];
       const { scheduler } = schedulerFor(okRunner(), posts as never);
       await scheduler.tick();
@@ -435,7 +437,12 @@ describe('routine scheduler (T-0104)', () => {
         userId: owner.id,
         nextRunAt: new Date(NOW.getTime() - 1_000),
       });
-      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, aiId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = 'stopped' WHERE id = ${aiId}`;
+        }),
+      );
       const posts: Array<unknown> = [];
       const { scheduler } = schedulerFor(okRunner(), posts as never);
       await scheduler.tick();
@@ -445,11 +452,18 @@ describe('routine scheduler (T-0104)', () => {
       expect(skipped?.status).toBe('active');
       expect(skipped?.consecutiveFailures).toBe(0);
 
-      await context.db.update(ais).set({ status: 'active' }).where(eq(ais.id, aiId));
-      await context.db
-        .update(routines)
-        .set({ nextRunAt: new Date(NOW.getTime() - 1_000) })
-        .where(eq(routines.id, created.id));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = 'active' WHERE id = ${aiId}`;
+        }),
+      );
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE routines SET next_run_at = ${new Date(NOW.getTime() - 1_000)} WHERE id = ${created.id}`;
+        }),
+      );
       await scheduler.tick();
       expect(posts).toHaveLength(1);
       expect((await readRoutine(context, created.id))?.lastStatus).toBe('ok');
@@ -481,7 +495,12 @@ describe('routine scheduler (T-0104)', () => {
       const { owner, aiId } = await ownerWithAi(`sched-private-${emailCounter}@example.com`);
       const { groupId } = await seedGroupWithTopic(context, owner.id, aiId);
       const topicId = await seedNonGeneralTopic(context, owner.id, groupId, aiId);
-      await context.db.update(topics).set({ visibility: 'private' }).where(eq(topics.id, topicId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE topics SET visibility = 'private' WHERE id = ${topicId}`;
+        }),
+      );
       const toolId = await seedTool(context, { aiId, groupId, topicId, userId: owner.id });
       const created = await seedRoutine(context, {
         aiId,
@@ -499,13 +518,19 @@ describe('routine scheduler (T-0104)', () => {
       expect(posts).toHaveLength(0);
       expect((await readRoutine(context, created.id))?.lastStatus).toBe('skipped');
 
-      await context.db
-        .insert(topicMembers)
-        .values({ topicId, userId: owner.id, addedBy: owner.id });
-      await context.db
-        .update(routines)
-        .set({ nextRunAt: new Date(NOW.getTime() - 1_000) })
-        .where(eq(routines.id, created.id));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by)
+            VALUES (${topicId}, ${owner.id}, ${owner.id})`;
+        }),
+      );
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE routines SET next_run_at = ${new Date(NOW.getTime() - 1_000)} WHERE id = ${created.id}`;
+        }),
+      );
       await scheduler.tick();
       expect(runner).toHaveBeenCalledTimes(1);
       expect(posts).toHaveLength(1);
@@ -575,10 +600,12 @@ describe('routine scheduler (T-0104)', () => {
       const posts: Array<{ text: string }> = [];
       const { scheduler } = schedulerFor(failingRunner(), posts as never);
       const rearm = () =>
-        context.db
-          .update(routines)
-          .set({ nextRunAt: new Date(NOW.getTime() - 1_000) })
-          .where(eq(routines.id, created.id));
+        testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`UPDATE routines SET next_run_at = ${new Date(NOW.getTime() - 1_000)} WHERE id = ${created.id}`;
+          }),
+        );
 
       await scheduler.tick();
       expect((await readRoutine(context, created.id))?.consecutiveFailures).toBe(1);
@@ -618,10 +645,12 @@ describe('routine scheduler (T-0104)', () => {
       await scheduler.tick();
       expect((await readRoutine(context, created.id))?.consecutiveFailures).toBe(1);
       fail = false;
-      await context.db
-        .update(routines)
-        .set({ nextRunAt: new Date(NOW.getTime() - 1_000) })
-        .where(eq(routines.id, created.id));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE routines SET next_run_at = ${new Date(NOW.getTime() - 1_000)} WHERE id = ${created.id}`;
+        }),
+      );
       await scheduler.tick();
       expect((await readRoutine(context, created.id))?.consecutiveFailures).toBe(0);
     });
@@ -678,8 +707,16 @@ describe('routine scheduler (T-0104)', () => {
           groupId,
           topicId,
           name:
-            (await context.db.select().from(aiTools).where(eq(aiTools.id, toolId)).limit(1))[0]
-              ?.name ?? 'tool',
+            (
+              await testSql(context)(
+                Effect.gen(function* () {
+                  const sql = yield* SqlClient.SqlClient;
+                  return yield* sql<{
+                    name: string;
+                  }>`SELECT name FROM ai_tools WHERE id = ${toolId} LIMIT 1`;
+                }),
+              )
+            )[0]?.name ?? 'tool',
           description: 'Posts the price of gold, S&P 500 and BTC',
           source: 'return { text: "v2" };',
           hosts: ['api.example.com', 'new.example.com'],
@@ -724,8 +761,16 @@ describe('routine scheduler (T-0104)', () => {
         approvedHosts: ['api.example.com', 'extra.example.com'],
       });
       const toolName =
-        (await context.db.select().from(aiTools).where(eq(aiTools.id, toolId)).limit(1))[0]?.name ??
-        'tool';
+        (
+          await testSql(context)(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              return yield* sql<{
+                name: string;
+              }>`SELECT name FROM ai_tools WHERE id = ${toolId} LIMIT 1`;
+            }),
+          )
+        )[0]?.name ?? 'tool';
       await saveToolVersion(
         context.db,
         {
@@ -766,7 +811,14 @@ describe('routine scheduler (T-0104)', () => {
       const { scheduler } = schedulerFor(okRunner(), posts as never);
       await scheduler.tick();
       expect(posts).toHaveLength(0);
-      const rows = await context.db.select().from(routines).where(eq(routines.toolId, toolId));
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            deletedAt: Date | null;
+          }>`SELECT deleted_at FROM routines WHERE tool_id = ${toolId}`;
+        }),
+      );
       expect(rows).toHaveLength(1);
       expect(rows[0]?.deletedAt).not.toBeNull();
     });
@@ -886,15 +938,19 @@ describe('routine scheduler (T-0104)', () => {
       const posts: Array<unknown> = [];
       const { scheduler } = schedulerFor(failingRunner(), posts as never);
       for (let run = 0; run < 3; run += 1) {
-        await context.db
-          .update(routines)
-          .set({ nextRunAt: new Date(NOW.getTime() - 1_000) })
-          .where(eq(routines.id, created.id));
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`UPDATE routines SET next_run_at = ${new Date(NOW.getTime() - 1_000)} WHERE id = ${created.id}`;
+          }),
+        );
         if (run > 0) {
-          await context.db
-            .update(routines)
-            .set({ status: 'active' })
-            .where(eq(routines.id, created.id));
+          await testSql(context)(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              yield* sql`UPDATE routines SET status = 'active' WHERE id = ${created.id}`;
+            }),
+          );
         }
         await scheduler.tick();
       }

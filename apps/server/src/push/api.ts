@@ -40,7 +40,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { syncPushSubscriptionsForUser } from '../topics/rooms';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';

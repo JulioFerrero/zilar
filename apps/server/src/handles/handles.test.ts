@@ -1,15 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { handles, retiredHandles } from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import {
   bootstrapUser,
   createTestContext,
   testApp,
+  testSql,
   TEST_BASE_URL,
   type TestApp,
   type TestContext,
 } from '../test-support';
 import { checkHandleAvailability, claimHandle, HANDLE_CHANGE_INTERVAL_DAYS } from './store';
+
+interface RetiredHandleRow {
+  formerUserId: string | null;
+}
 
 function authHeaders(cookie: string): Record<string, string> {
   return { cookie };
@@ -34,6 +39,26 @@ describe('handles', () => {
       headers: { 'content-type': 'application/json', ...authHeaders(cookie) },
       body: JSON.stringify({ handle }),
     });
+  }
+
+  async function backdateHandleChange(userId: string): Promise<void> {
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE handles
+          SET changed_at = ${new Date(Date.now() - 15 * 24 * 60 * 60 * 1000)}
+          WHERE user_id = ${userId}`;
+      }),
+    );
+  }
+
+  async function storedRetiredHandles(): Promise<readonly RetiredHandleRow[]> {
+    return testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<RetiredHandleRow>`SELECT former_user_id FROM retired_handles`;
+      }),
+    );
   }
 
   it('claims through PUT /api/me/handle and reads back on GET /api/me', async () => {
@@ -131,7 +156,7 @@ describe('handles', () => {
     }
     const afterBudget = await setHandle(alice.cookie, 'Ada');
     expect(afterBudget.status).toBe(200);
-    expect((await context.db.select().from(retiredHandles)).length).toBe(0);
+    expect((await storedRetiredHandles()).length).toBe(0);
   });
 
   it('a casing-only change needs the interval and retires nothing', async () => {
@@ -142,12 +167,9 @@ describe('handles', () => {
       code: 'handle_change_too_soon',
     });
     // After the interval the new casing is stored and nothing retires.
-    await context.db
-      .update(handles)
-      .set({ changedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000) })
-      .where(eq(handles.userId, alice.id));
+    await backdateHandleChange(alice.id);
     expect(await claimHandle(context.db, alice.id, 'ADA')).toEqual({ handle: 'ADA' });
-    expect(await context.db.select().from(retiredHandles)).toHaveLength(0);
+    expect(await storedRetiredHandles()).toHaveLength(0);
     const check = await checkHandleAvailability(context.db, alice.id, 'ada');
     expect(check).toEqual({ available: false, reason: 'taken' });
   });
@@ -158,16 +180,19 @@ describe('handles', () => {
     expect((await setHandle(alice.cookie, 'ada_old')).status).toBe(200);
 
     // Backdate the change so a new claim is allowed.
-    const rows = await context.db.select().from(handles).where(eq(handles.userId, alice.id));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ userId: string | null }>`SELECT user_id FROM handles
+          WHERE user_id = ${alice.id}`;
+      }),
+    );
     expect(rows).toHaveLength(1);
-    await context.db
-      .update(handles)
-      .set({ changedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000) })
-      .where(eq(handles.userId, alice.id));
+    await backdateHandleChange(alice.id);
 
     expect((await setHandle(alice.cookie, 'ada_new')).status).toBe(200);
 
-    const retired = await context.db.select().from(retiredHandles);
+    const retired = await storedRetiredHandles();
     expect(retired).toHaveLength(1);
     expect(retired[0]?.formerUserId).toBe(alice.id);
 
@@ -177,10 +202,7 @@ describe('handles', () => {
     expect(((await taken.json()) as { error: { code: string } }).error.code).toBe('handle_taken');
 
     // The former owner may reclaim it.
-    await context.db
-      .update(handles)
-      .set({ changedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000) })
-      .where(eq(handles.userId, alice.id));
+    await backdateHandleChange(alice.id);
     expect((await setHandle(alice.cookie, 'ada_old')).status).toBe(200);
   });
 
@@ -201,25 +223,37 @@ describe('handles', () => {
 
     // The race outcome is coherent: one live row owned by the winner,
     // no retired reservation shadows it, and the loser owns nothing.
-    const live = await context.db.select().from(handles);
+    const live = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          handleLower: string;
+          userId: string | null;
+        }>`SELECT handle_lower, user_id
+          FROM handles`;
+      }),
+    );
     expect(live).toHaveLength(1);
     expect(live[0]?.handleLower).toBe('race_handle');
     const winnerId = live[0]?.userId;
     expect([alice.id, bob.id]).toContain(winnerId);
     const loserId = winnerId === alice.id ? bob.id : alice.id;
-    const loserRows = await context.db.select().from(handles).where(eq(handles.userId, loserId));
+    const loserRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ userId: string | null }>`SELECT user_id FROM handles
+          WHERE user_id = ${loserId}`;
+      }),
+    );
     expect(loserRows).toHaveLength(0);
-    expect(await context.db.select().from(retiredHandles)).toHaveLength(0);
+    expect(await storedRetiredHandles()).toHaveLength(0);
   });
 
   it('counts retired-by-me as available on check but taken for others', async () => {
     const alice = await bootstrapUser(context, app, 'alice@example.com');
     const bob = await bootstrapUser(context, app, 'bob@example.com');
     expect((await setHandle(alice.cookie, 'mine_once')).status).toBe(200);
-    await context.db
-      .update(handles)
-      .set({ changedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000) })
-      .where(eq(handles.userId, alice.id));
+    await backdateHandleChange(alice.id);
     expect((await setHandle(alice.cookie, 'mine_now')).status).toBe(200);
 
     expect(await checkHandleAvailability(context.db, alice.id, 'mine_once')).toEqual({
@@ -281,7 +315,14 @@ describe('handles', () => {
     );
     expect(tooSoon?.code).toBe('handle_change_too_soon');
     // The refused change wrote nothing: still exactly the first handle.
-    const rows = await context.db.select().from(handles).where(eq(handles.userId, alice.id));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          handle: string;
+        }>`SELECT handle FROM handles WHERE user_id = ${alice.id}`;
+      }),
+    );
     expect(rows.map((row) => row.handle)).toEqual(['interval_one']);
   });
 });

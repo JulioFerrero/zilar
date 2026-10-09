@@ -26,7 +26,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import { publicGroupForHandle, searchDirectory, type GroupKind } from './service';
 
 export const DIRECTORY_RATE_LIMIT_MAX = 30;

@@ -1,13 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createApp } from '../app';
-import { mediaItems } from '../db/schema';
 import { localpartFor } from '../xmpp/provisioning';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
+  testSql,
   TEST_BASE_URL,
   TEST_XMPP_DOMAIN,
   type TestContext,
@@ -227,6 +229,29 @@ describe('GET /api/files', () => {
     return { alice, bob, stranger };
   }
 
+  async function seedMediaItem(own: string, peer: string, messageId: string, name: string) {
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO media_items ${sql.insert({
+          id: randomUUID(),
+          archive_owner: own,
+          chat_jid: peer,
+          message_id: messageId,
+          at_micros: at('2026-05-01T00:00:00.000Z'),
+          sender_jid: `${peer}/phone`,
+          kind: 'file',
+          url: UPLOAD_URL,
+          name,
+          mime: 'application/pdf',
+          size: 11,
+          ref: UPLOAD_URL,
+          deleted: false,
+        })}`;
+      }),
+    );
+  }
+
   it('answers 401 without a session', async () => {
     const { fetchImpl } = makeFetch(200, { 'content-type': 'application/pdf' }, 'x');
     const { status } = await getFile(
@@ -420,21 +445,7 @@ describe('GET /api/files', () => {
     const { alice, bob } = await setupDm();
     const own = localpartFor(alice.id);
     const peer = dmJid(bob.id);
-    await context.db.insert(mediaItems).values({
-      id: randomUUID(),
-      archiveOwner: own,
-      chatJid: peer,
-      messageId: 'o-tricky',
-      atMicros: at('2026-05-01T00:00:00.000Z'),
-      senderJid: `${peer}/phone`,
-      kind: 'file',
-      url: UPLOAD_URL,
-      name: "it's (1)*.pdf",
-      mime: 'application/pdf',
-      size: 11,
-      ref: UPLOAD_URL,
-      deleted: false,
-    });
+    await seedMediaItem(own, peer, 'o-tricky', "it's (1)*.pdf");
     const { fetchImpl } = makeFetch(200, { 'content-type': 'application/pdf' }, 'hello-bytes');
     const { status, headers } = await getFile(filesApp(fetchImpl), alice.cookie, fileParams(peer));
     expect(status).toBe(200);
@@ -461,7 +472,12 @@ describe('GET /api/files', () => {
         xml: payloadMessage(DOC, undefined, `${own}@${TEST_XMPP_DOMAIN}/desk`),
       },
     ]);
-    const before = await context.db.select().from(mediaItems);
+    const before = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM media_items`;
+      }),
+    );
     expect(before).toEqual([]);
     const { fetchImpl } = makeFetch(200, { 'content-type': 'application/pdf' }, 'hello-bytes');
     const { status, text } = await getFile(filesApp(fetchImpl), alice.cookie, fileParams(peer));
@@ -473,21 +489,7 @@ describe('GET /api/files', () => {
     const { alice, bob } = await setupDm();
     const own = localpartFor(alice.id);
     const peer = dmJid(bob.id);
-    await context.db.insert(mediaItems).values({
-      id: randomUUID(),
-      archiveOwner: own,
-      chatJid: peer,
-      messageId: 'o-doc',
-      atMicros: at('2026-05-01T00:00:00.000Z'),
-      senderJid: `${peer}/phone`,
-      kind: 'file',
-      url: UPLOAD_URL,
-      name: 'doc.pdf',
-      mime: 'application/pdf',
-      size: 11,
-      ref: UPLOAD_URL,
-      deleted: false,
-    });
+    await seedMediaItem(own, peer, 'o-doc', 'doc.pdf');
     const { fetchImpl, calls } = makeFetch(
       206,
       { 'content-type': 'application/pdf', 'content-range': 'bytes 0-3/11' },
@@ -579,21 +581,7 @@ describe('GET /api/files', () => {
     const { alice, bob } = await setupDm();
     const own = localpartFor(alice.id);
     const peer = dmJid(bob.id);
-    await context.db.insert(mediaItems).values({
-      id: randomUUID(),
-      archiveOwner: own,
-      chatJid: peer,
-      messageId: 'o-doc',
-      atMicros: at('2026-05-01T00:00:00.000Z'),
-      senderJid: `${peer}/phone`,
-      kind: 'file',
-      url: UPLOAD_URL,
-      name: 'doc.pdf',
-      mime: 'application/pdf',
-      size: 11,
-      ref: UPLOAD_URL,
-      deleted: false,
-    });
+    await seedMediaItem(own, peer, 'o-doc', 'doc.pdf');
     const { fetchImpl } = makeFetch(200, { 'content-type': 'application/pdf' }, 'hello-bytes');
     const target = filesApp(fetchImpl);
     const params = fileParams(peer);

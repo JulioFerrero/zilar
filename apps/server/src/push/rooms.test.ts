@@ -1,15 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   FakeAdminClient,
   testApp,
+  testSql,
   TEST_XMPP_DOMAIN,
   type TestContext,
 } from '../test-support';
-import { groupMembers, groups, topicMembers, topics } from '../db/schema';
 import { syncTopicRoom } from '../topics/rooms';
 import type { TopicRow } from '../topics/access';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -35,11 +37,12 @@ describe('topic room push subscription sync', () => {
   let privateTopicId: string;
 
   async function topicRow(roomLocalpart: string): Promise<TopicRow> {
-    const { eq } = await import('drizzle-orm');
-    const [row] = await context.db
-      .select()
-      .from(topics)
-      .where(eq(topics.roomLocalpart, roomLocalpart));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<TopicRow>`SELECT * FROM topics WHERE room_localpart = ${roomLocalpart}`;
+      }),
+    );
     if (!row) {
       throw new Error(`no topic for room ${roomLocalpart}`);
     }
@@ -59,45 +62,16 @@ describe('topic room push subscription sync', () => {
     generalRoom = 'gpushsyncgeneral0';
     secretRoom = 'gpushsyncsecret00';
     privateTopicId = randomUUID();
-    await context.db.insert(groups).values({
-      id: groupId,
-      roomLocalpart: generalRoom,
-      title: 'Push group',
-      createdBy: anaId,
-    });
-    await context.db.insert(groupMembers).values([
-      { groupId, userId: anaId, role: 'owner' },
-      { groupId, userId: bobId, role: 'member' },
-    ]);
-    await context.db.insert(topics).values({
-      id: randomUUID(),
-      groupId,
-      name: 'General',
-      glyph: 'G',
-      roomLocalpart: generalRoom,
-      visibility: 'public',
-      kind: 'chat',
-      status: 'open',
-      isGeneral: true,
-      createdBy: anaId,
-    });
-    await context.db.insert(topics).values({
-      id: privateTopicId,
-      groupId,
-      name: 'Secret',
-      glyph: 'S',
-      roomLocalpart: secretRoom,
-      visibility: 'private',
-      kind: 'chat',
-      status: 'open',
-      isGeneral: false,
-      createdBy: anaId,
-    });
-    await context.db.insert(topicMembers).values({
-      topicId: privateTopicId,
-      userId: anaId,
-      addedBy: anaId,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${generalRoom}, 'Push group', ${anaId})`;
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${anaId}, 'owner'), (${groupId}, ${bobId}, 'member')`;
+        yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${randomUUID()}, ${groupId}, 'General', 'G', ${generalRoom}, 'public', 'chat', 'open', true, ${anaId})`;
+        yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${privateTopicId}, ${groupId}, 'Secret', 'S', ${secretRoom}, 'private', 'chat', 'open', false, ${anaId})`;
+        yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by) VALUES (${privateTopicId}, ${anaId}, ${anaId})`;
+      }),
+    );
   });
 
   afterEach(async () => {
@@ -160,11 +134,12 @@ describe('topic room push subscription sync', () => {
 
   it('unsubscribes everyone when the topic is archived', async () => {
     await giveDevice(anaId, 'ana-device');
-    const { eq } = await import('drizzle-orm');
-    await context.db
-      .update(topics)
-      .set({ archivedAt: new Date() })
-      .where(eq(topics.id, privateTopicId));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE topics SET archived_at = now() WHERE id = ${privateTopicId}`;
+      }),
+    );
     // A stale affiliation and push subscription from before the archive.
     const anaJid = jidFor(localpartFor(anaId), TEST_XMPP_DOMAIN);
     adminClient.affiliationState.set(secretRoom, new Map([[anaJid, 'member']]));

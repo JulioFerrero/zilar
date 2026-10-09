@@ -27,7 +27,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { BackgroundsRoutesDependencies } from './routes';
 import {

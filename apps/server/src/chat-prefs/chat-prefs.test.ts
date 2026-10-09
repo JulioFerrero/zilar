@@ -1,20 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
-import {
-  ais,
-  aiLimits,
-  chatBackgroundDefaults,
-  chatBackgrounds,
-  chatPrefs,
-  providerConnections,
-} from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { aiLocalpart } from '../ais/service';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   testApp,
+  testSql,
   TEST_BASE_URL,
   TEST_XMPP_DOMAIN,
   type TestApp,
@@ -77,15 +71,14 @@ describe('chat prefs', () => {
 
   async function seedBackgroundImage(userId: string): Promise<string> {
     const id = randomUUID();
-    await context.db.insert(chatBackgrounds).values({
-      id,
-      userId,
-      mime: 'image/webp',
-      width: 2048,
-      height: 1152,
-      bytes: 1024,
-      storageKey: `${id}.webp`,
-    });
+    const storageKey = `${id}.webp`;
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO chat_backgrounds (id, user_id, mime, width, height, bytes, storage_key)
+          VALUES (${id}, ${userId}, 'image/webp', 2048, 1152, 1024, ${storageKey})`;
+      }),
+    );
     return id;
   }
 
@@ -98,28 +91,19 @@ describe('chat prefs', () => {
   async function seedAi(ownerId: string, name = 'Helper AI'): Promise<{ jid: string }> {
     const aiId = randomUUID();
     const connectionId = randomUUID();
-    await context.db.insert(providerConnections).values({
-      id: connectionId,
-      owner: ownerId,
-      provider: 'openai',
-      encryptedKey: 'sealed-placeholder',
-      label: null,
-    });
     const localpart = aiLocalpart(aiId);
     const jid = `${localpart}@${TEST_XMPP_DOMAIN}`;
-    await context.db.insert(ais).values({
-      id: aiId,
-      owner: ownerId,
-      name,
-      template: 'dev',
-      persona: 'A helpful persona.',
-      providerConnectionId: connectionId,
-      model: 'gpt-4o-mini',
-      localpart,
-      jid,
-      status: 'active',
-    });
-    await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
+          VALUES (${connectionId}, ${ownerId}, 'openai', 'sealed-placeholder', NULL)`;
+        yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status)
+          VALUES (${aiId}, ${ownerId}, ${name}, 'dev', 'A helpful persona.', ${connectionId}, 'gpt-4o-mini', ${localpart}, ${jid}, 'active')`;
+        yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd)
+          VALUES (${aiId}, '1.00', '20.00')`;
+      }),
+    );
     return { jid };
   }
 
@@ -195,7 +179,14 @@ describe('chat prefs', () => {
     });
     expect(cleared.status).toBe(200);
     expect(await cleared.json()).toEqual({ prefs: null });
-    expect(await context.db.select().from(chatPrefs)).toEqual([]);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ userId: string }>`SELECT user_id FROM chat_prefs`;
+        }),
+      ),
+    ).toEqual([]);
     expect(bob.id.length).toBeGreaterThan(0);
   });
 
@@ -238,7 +229,14 @@ describe('chat prefs', () => {
       const cleared = await putPref(alice.cookie, jid, { backgroundPreset: null });
       expect(cleared.status).toBe(200);
       expect(await cleared.json()).toEqual({ prefs: null });
-      expect(await context.db.select().from(chatPrefs)).toEqual([]);
+      expect(
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{ userId: string }>`SELECT user_id FROM chat_prefs`;
+          }),
+        ),
+      ).toEqual([]);
     });
 
     it('rejects an unknown preset, both a preset and an image, and a dim alone', async () => {
@@ -295,7 +293,12 @@ describe('chat prefs', () => {
       expect(view.backgroundPreset).toBeNull();
 
       // Deleting the image row makes the FK set the pref's id to null.
-      await context.db.delete(chatBackgrounds).where(eq(chatBackgrounds.id, imageId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM chat_backgrounds WHERE id = ${imageId}`;
+        }),
+      );
       const listed = (await (await listPrefs(alice.cookie)).json()) as { prefs: PrefView[] };
       expect(listed.prefs).toHaveLength(1);
       expect(listed.prefs[0]?.backgroundImageId).toBeNull();
@@ -346,7 +349,14 @@ describe('chat prefs', () => {
       expect(
         ((await cleared.json()) as { defaultBackground: BackgroundView }).defaultBackground,
       ).toEqual({ backgroundPreset: null, backgroundImageId: null, backgroundDim: null });
-      expect(await context.db.select().from(chatBackgroundDefaults)).toEqual([]);
+      expect(
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{ userId: string }>`SELECT user_id FROM chat_background_defaults`;
+          }),
+        ),
+      ).toEqual([]);
     });
 
     it('applies the same background validation to the default', async () => {
@@ -467,15 +477,16 @@ describe('chat prefs', () => {
       expect(response.status).toBe(404);
     }
     // Seed 20 pins directly, then the 21st pin is refused.
-    for (let index = 0; index < 20; index += 1) {
-      await context.db.insert(chatPrefs).values({
-        userId: alice.id,
-        chatJid: `seed${index}@example.com`,
-        archived: false,
-        pinnedAt: new Date('2026-01-01T00:00:00Z'),
-        mutedUntil: null,
-      });
-    }
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        for (let index = 0; index < 20; index += 1) {
+          const chatJid = `seed${index}@example.com`;
+          yield* sql`INSERT INTO chat_prefs (user_id, chat_jid, archived, pinned_at, muted_until)
+            VALUES (${alice.id}, ${chatJid}, false, ${'2026-01-01T00:00:00Z'}, NULL)`;
+        }
+      }),
+    );
     const chats = await (
       await app.request(`${TEST_BASE_URL}/api/chats`, { headers: { cookie: alice.cookie } })
     ).json();
@@ -488,16 +499,17 @@ describe('chat prefs', () => {
     expect((await putPref(alice.cookie, dm.chatJid, { pinned: true })).status).toBe(409);
 
     // Row cap: 200 rows, then a new chat is refused.
-    await context.db.delete(chatPrefs);
-    for (let index = 0; index < 200; index += 1) {
-      await context.db.insert(chatPrefs).values({
-        userId: alice.id,
-        chatJid: `row${index}@example.com`,
-        archived: true,
-        pinnedAt: null,
-        mutedUntil: null,
-      });
-    }
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM chat_prefs`;
+        for (let index = 0; index < 200; index += 1) {
+          const chatJid = `row${index}@example.com`;
+          yield* sql`INSERT INTO chat_prefs (user_id, chat_jid, archived, pinned_at, muted_until)
+            VALUES (${alice.id}, ${chatJid}, true, NULL, NULL)`;
+        }
+      }),
+    );
     expect((await putPref(alice.cookie, dm.chatJid, { archived: true })).status).toBe(409);
   });
 
@@ -564,8 +576,14 @@ describe('chat prefs', () => {
       body: JSON.stringify({ archived: true }),
     });
     expect(malformed.status).toBe(404);
-    expect(
-      await context.db.select().from(chatPrefs).where(eq(chatPrefs.userId, alice.id)),
-    ).toHaveLength(1);
+    const aliceRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          chatJid: string;
+        }>`SELECT chat_jid FROM chat_prefs WHERE user_id = ${alice.id}`;
+      }),
+    );
+    expect(aliceRows).toHaveLength(1);
   });
 });

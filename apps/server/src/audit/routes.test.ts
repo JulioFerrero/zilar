@@ -1,19 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
 import { pino } from 'pino';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  aiLimits,
-  ais as aisTable,
-  auditLog,
-  groupMembers,
-  groups,
-  providerConnections,
-} from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import {
   bootstrapUser,
   createTestContext,
   testApp,
+  testSql,
   TEST_BASE_URL,
   type TestApp,
   type TestContext,
@@ -39,27 +33,19 @@ function baseEntry(overrides: Partial<AuditEntry> = {}): AuditEntry {
 
 async function seedAi(context: TestContext, ownerId: string): Promise<{ aiId: string }> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
   const aiId = randomUUID();
-  await context.db.insert(aisTable).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Helper',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart: `ai-${aiId}`,
-    jid: `ai-${aiId}@zilar.localhost`,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  const localpart = `ai-${aiId}`;
+  const jid = `ai-${aiId}@zilar.localhost`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
+        VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${'sealed-placeholder'}, ${null})`;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status)
+        VALUES (${aiId}, ${ownerId}, ${'Helper'}, ${'dev'}, ${'A persona'}, ${connectionId}, ${'gpt-4o-mini'}, ${localpart}, ${jid}, ${'active'})`;
+      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${'1.00'}, ${'20.00'})`;
+    }),
+  );
   return { aiId };
 }
 
@@ -189,15 +175,17 @@ describe('audit routes', () => {
     const member = await bootstrapUser(context, app, 'g-member@x.com');
     const stranger = await bootstrapUser(context, app, 'g-stranger@x.com');
     const groupId = randomUUID();
-    await context.db.insert(groups).values({
-      id: groupId,
-      roomLocalpart: `g${randomUUID().slice(0, 16)}`,
-      title: 'Crew',
-      createdBy: owner.id,
-    });
-    await context.db.insert(groupMembers).values({ groupId, userId: owner.id, role: 'owner' });
-    await context.db.insert(groupMembers).values({ groupId, userId: admin.id, role: 'admin' });
-    await context.db.insert(groupMembers).values({ groupId, userId: member.id, role: 'member' });
+    const roomLocalpart = `g${randomUUID().slice(0, 16)}`;
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO groups (id, room_localpart, title, created_by)
+          VALUES (${groupId}, ${roomLocalpart}, ${'Crew'}, ${owner.id})`;
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${owner.id}, ${'owner'})`;
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${admin.id}, ${'admin'})`;
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${member.id}, ${'member'})`;
+      }),
+    );
     await recordAudit(
       context.db,
       baseEntry({
@@ -320,7 +308,14 @@ describe('audit routes', () => {
     // The route answered; the row is in the DB. We cannot rewrite it from any
     // route. The trigger test lives in service.test.ts; this case is here to
     // pin the behaviour end-to-end against the running test app.
-    const [row] = await context.db.select().from(auditLog).where(eq(auditLog.subjectId, 'm1'));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          action: string;
+        }>`SELECT action FROM audit_log WHERE subject_id = ${'m1'}`;
+      }),
+    );
     expect(row?.action).toBe('machine.paired');
   });
 });

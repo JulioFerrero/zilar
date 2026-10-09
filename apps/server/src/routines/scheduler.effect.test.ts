@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { aiLimits, ais, providerConnections, routines, user } from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createAuditRecorder } from '../audit/service';
 import { approveToolHosts, saveToolVersion } from '../tools/service';
 import type { ToolRunResult, ToolRunner } from '../tools/types';
-import { createTestContext, type TestContext } from '../test-support';
+import { createTestContext, testSql, type TestContext } from '../test-support';
 import { createRoutine } from './service';
 import { createRoutineScheduler } from './scheduler';
 
@@ -43,33 +43,34 @@ function deferred(): Deferred {
 
 async function seedUser(context: TestContext): Promise<string> {
   const id = randomUUID();
-  await context.db.insert(user).values({ id, name: 'Owner', email: `${id}@example.com` });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "user" (id, name, email) VALUES (${id}, 'Owner', ${`${id}@example.com`})`;
+    }),
+  );
   return id;
 }
 
 async function seedActiveAi(context: TestContext, ownerId: string): Promise<string> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'sealed-placeholder',
-    label: null,
-  });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
+        VALUES (${connectionId}, ${ownerId}, 'openai', 'sealed-placeholder', NULL)`;
+    }),
+  );
   const aiId = randomUUID();
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Helper AI',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart: `ai-${aiId}`,
-    jid: `ai-${aiId}@zilar.localhost`,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status)
+        VALUES (${aiId}, ${ownerId}, 'Helper AI', 'dev', 'A persona', ${connectionId}, 'gpt-4o-mini', ${`ai-${aiId}`}, ${`ai-${aiId}@zilar.localhost`}, 'active')`;
+      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd)
+        VALUES (${aiId}, '1.00', '20.00')`;
+    }),
+  );
   return aiId;
 }
 
@@ -128,7 +129,12 @@ describe('routine scheduler effect loop', () => {
     );
     const due = new Date(NOW.getTime() - 1_000);
     const rearm = () =>
-      context.db.update(routines).set({ nextRunAt: due }).where(eq(routines.id, created.id));
+      testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE routines SET next_run_at = ${due} WHERE id = ${created.id}`;
+        }),
+      );
     await rearm();
 
     const posts: Array<{ text: string }> = [];
@@ -179,7 +185,12 @@ describe('routine scheduler effect loop', () => {
     );
     const due = new Date(NOW.getTime() - 1_000);
     const rearm = () =>
-      context.db.update(routines).set({ nextRunAt: due }).where(eq(routines.id, created.id));
+      testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE routines SET next_run_at = ${due} WHERE id = ${created.id}`;
+        }),
+      );
     await rearm();
 
     const parking = deferred();

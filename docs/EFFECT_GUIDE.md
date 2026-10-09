@@ -224,6 +224,13 @@ The recipe is `docs/audit/effect-sql-migration.md` §(a). The examples are `apps
 - **Every database needs a registered runtime:** `createApp` and `createTestContext` register one. A test or CLI that builds its own `db` calls `registerSqlRuntime(db, url)` itself and `disposeSqlRuntime(db)` on teardown (`auth/invites.test.ts`, `auth/invite-cli.ts`, T-0574). **Never register inside a domain module.**
 - **jsonb:** write `${JSON.stringify(value)}::jsonb`; the driver parses jsonb back on read (T-0568).
 - **Tests that fake drizzle stop working:** effect/sql never calls `db.transaction` or `db.select`, so a test that patches `db.transaction` to park a join or that passes a fake `{ select }` db to inject a failure fails after the move (T-0607, T-0609). Before writing a spec, grep the module's tests for `db.transaction =`, `realTransaction` and fake `{ select` objects. If you find one, allow that test file and say how to replace the injection: a test-only deps hook (`beforeJoinTransaction`, `onInsert`), a `vi.mock` that fails once, or a failing `SqlClient` layer. The assertions stay. Proven patterns: `voice-transcription/pipeline.test.ts` (T-0669) and `setup/routes.test.ts` (T-0675) use a partial `vi.mock('../effect/sql', …)` with `sqlRuntimeFor: vi.fn(actual.sqlRuntimeFor)`, then `mockReturnValueOnce({ runPromise: () => Promise.reject(err) })` on the call they want to fail.
+- **Seed and assert in tests with `testSql(context)`** (`test-support.ts`, T-0695). It runs an Effect on the test db's runtime: ``await testSql(context)(Effect.gen(function* () { const sql = yield* SqlClient.SqlClient; return yield* sql<Row>`SELECT ...`; }))``. Rules:
+  - write snake_case columns, and read rows back camelCased;
+  - give every column that drizzle filled in JavaScript (`$defaultFn`); columns with a SQL default can be left out;
+  - give each read a small local row type;
+  - a no-secret check keeps `SELECT *`, so it still covers every column.
+
+  Examples: `pins/pins.test.ts`, `search/search.test.ts`, `actions/gateway.test.ts`. Tests no longer import `drizzle-orm` (T-0697 to T-0729).
 
 ## Moving a mobile API client onto Effect (T-0506)
 

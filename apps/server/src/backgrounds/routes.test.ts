@@ -2,19 +2,53 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createApp } from '../app';
-import { chatBackgroundDefaults, chatBackgrounds, chatPrefs, groups } from '../db/schema';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   TEST_BASE_URL,
+  testSql,
   type SignedInUser,
   type TestContext,
 } from '../test-support';
 import { BACKGROUND_MAX_BYTES, BACKGROUND_MAX_PER_USER } from './service';
+
+interface IdRow {
+  id: string;
+}
+
+interface StorageRow {
+  storageKey: string;
+}
+
+interface MutedPrefRow {
+  mutedUntil: Date | null;
+  backgroundImageId: string | null;
+  backgroundDim: number | null;
+}
+
+interface ArchivedPrefRow {
+  archived: boolean;
+  backgroundImageId: string | null;
+  backgroundDim: number | null;
+}
+
+interface ChatJidRow {
+  chatJid: string;
+}
+
+interface UserIdRow {
+  userId: string;
+}
+
+interface GroupBackgroundRow {
+  backgroundImageId: string | null;
+  backgroundDim: number | null;
+}
 
 function concat(...parts: Uint8Array[]): Uint8Array {
   const total = parts.reduce((sum, part) => sum + part.length, 0);
@@ -159,7 +193,14 @@ describe('backgrounds routes', () => {
     const remove = await deleteAs(bob, created.id);
     expect(remove.status).toBe(404);
     // Bob's refused delete changed nothing: Alice still owns and can read it.
-    expect(await context.db.select().from(chatBackgrounds)).toHaveLength(1);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM chat_backgrounds`;
+        }),
+      ),
+    ).toHaveLength(1);
     expect((await getAs(alice, created.id)).status).toBe(200);
   });
 
@@ -182,7 +223,14 @@ describe('backgrounds routes', () => {
     );
 
     // Nothing was stored by any refused upload.
-    expect(await context.db.select().from(chatBackgrounds)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM chat_backgrounds`;
+        }),
+      ),
+    ).toHaveLength(0);
   });
 
   it('refuses a side under 64 and an unknown type', async () => {
@@ -196,42 +244,38 @@ describe('backgrounds routes', () => {
     expect(((await svg.json()) as { error: { code: string } }).error.code).toBe(
       'background_not_image',
     );
-    expect(await context.db.select().from(chatBackgrounds)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM chat_backgrounds`;
+        }),
+      ),
+    ).toHaveLength(0);
   });
 
   it('lists only the owner images, newest first', async () => {
     const older = randomUUID();
     const newer = randomUUID();
-    await context.db.insert(chatBackgrounds).values({
-      id: older,
-      userId: alice.id,
-      mime: 'image/png',
-      width: 64,
-      height: 64,
-      bytes: 10,
-      storageKey: 'older.png',
-      createdAt: new Date(Date.UTC(2026, 0, 1)),
-    });
-    await context.db.insert(chatBackgrounds).values({
-      id: newer,
-      userId: alice.id,
-      mime: 'image/png',
-      width: 64,
-      height: 64,
-      bytes: 10,
-      storageKey: 'newer.png',
-      createdAt: new Date(Date.UTC(2026, 0, 2)),
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO chat_backgrounds (id, user_id, mime, width, height, bytes, storage_key, created_at) VALUES (${older}, ${alice.id}, ${'image/png'}, ${64}, ${64}, ${10}, ${'older.png'}, ${new Date(Date.UTC(2026, 0, 1)).toISOString()})`;
+      }),
+    );
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO chat_backgrounds (id, user_id, mime, width, height, bytes, storage_key, created_at) VALUES (${newer}, ${alice.id}, ${'image/png'}, ${64}, ${64}, ${10}, ${'newer.png'}, ${new Date(Date.UTC(2026, 0, 2)).toISOString()})`;
+      }),
+    );
     // Bob has one too: Alice's list must not include it.
-    await context.db.insert(chatBackgrounds).values({
-      id: randomUUID(),
-      userId: bob.id,
-      mime: 'image/png',
-      width: 64,
-      height: 64,
-      bytes: 10,
-      storageKey: 'bob.png',
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO chat_backgrounds (id, user_id, mime, width, height, bytes, storage_key) VALUES (${randomUUID()}, ${bob.id}, ${'image/png'}, ${64}, ${64}, ${10}, ${'bob.png'})`;
+      }),
+    );
 
     const response = await app.request(`${TEST_BASE_URL}/api/backgrounds`, {
       headers: { cookie: alice.cookie },
@@ -246,35 +290,48 @@ describe('backgrounds routes', () => {
 
   it('gives the 21st image a 409 once the cap is reached', async () => {
     for (let index = 0; index < BACKGROUND_MAX_PER_USER; index += 1) {
-      await context.db.insert(chatBackgrounds).values({
-        id: randomUUID(),
-        userId: alice.id,
-        mime: 'image/png',
-        width: 64,
-        height: 64,
-        bytes: 10,
-        storageKey: `seed-${index}.png`,
-      });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO chat_backgrounds (id, user_id, mime, width, height, bytes, storage_key) VALUES (${randomUUID()}, ${alice.id}, ${'image/png'}, ${64}, ${64}, ${10}, ${`seed-${index}.png`})`;
+        }),
+      );
     }
     const capped = await uploadAs(alice, pngRect(1200, 800));
     expect(capped.status).toBe(409);
     expect(((await capped.json()) as { error: { code: string } }).error.code).toBe(
       'too_many_backgrounds',
     );
-    expect(await context.db.select().from(chatBackgrounds)).toHaveLength(BACKGROUND_MAX_PER_USER);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM chat_backgrounds`;
+        }),
+      ),
+    ).toHaveLength(BACKGROUND_MAX_PER_USER);
   });
 
   it('deletes the row and the file, and answers 404 afterwards', async () => {
     const created = await uploadOne(alice);
-    const [row] = await context.db
-      .select()
-      .from(chatBackgrounds)
-      .where(eq(chatBackgrounds.id, created.id));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<StorageRow>`SELECT storage_key FROM chat_backgrounds WHERE id = ${created.id}`;
+      }),
+    );
     expect(row).toBeDefined();
 
     const remove = await deleteAs(alice, created.id);
     expect(remove.status).toBe(204);
-    expect(await context.db.select().from(chatBackgrounds)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM chat_backgrounds`;
+        }),
+      ),
+    ).toHaveLength(0);
     await expect(readFile(join(storageDir, row!.storageKey))).rejects.toThrow();
     expect((await getAs(alice, created.id)).status).toBe(404);
     expect((await deleteAs(alice, created.id)).status).toBe(404);
@@ -282,19 +339,20 @@ describe('backgrounds routes', () => {
 
   it('clears the image and dim from a pref that keeps another setting', async () => {
     const created = await uploadOne(alice);
-    await context.db.insert(chatPrefs).values({
-      userId: alice.id,
-      chatJid: 'muted@example.com',
-      backgroundImageId: created.id,
-      backgroundDim: 40,
-      mutedUntil: new Date(Date.UTC(2030, 0, 1)),
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO chat_prefs (user_id, chat_jid, background_image_id, background_dim, muted_until) VALUES (${alice.id}, ${'muted@example.com'}, ${created.id}, ${40}, ${new Date(Date.UTC(2030, 0, 1)).toISOString()})`;
+      }),
+    );
 
     expect((await deleteAs(alice, created.id)).status).toBe(204);
-    const [row] = await context.db
-      .select()
-      .from(chatPrefs)
-      .where(and(eq(chatPrefs.userId, alice.id), eq(chatPrefs.chatJid, 'muted@example.com')));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<MutedPrefRow>`SELECT muted_until, background_image_id, background_dim FROM chat_prefs WHERE user_id = ${alice.id} AND chat_jid = ${'muted@example.com'}`;
+      }),
+    );
     expect(row).toBeDefined();
     expect(row?.backgroundImageId).toBeNull();
     expect(row?.backgroundDim).toBeNull();
@@ -303,34 +361,39 @@ describe('backgrounds routes', () => {
 
   it('deletes a pref row that held only the background', async () => {
     const created = await uploadOne(alice);
-    await context.db.insert(chatPrefs).values({
-      userId: alice.id,
-      chatJid: 'only@example.com',
-      backgroundImageId: created.id,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO chat_prefs (user_id, chat_jid, background_image_id) VALUES (${alice.id}, ${'only@example.com'}, ${created.id})`;
+      }),
+    );
 
     expect((await deleteAs(alice, created.id)).status).toBe(204);
-    const [row] = await context.db
-      .select()
-      .from(chatPrefs)
-      .where(and(eq(chatPrefs.userId, alice.id), eq(chatPrefs.chatJid, 'only@example.com')));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<ChatJidRow>`SELECT chat_jid FROM chat_prefs WHERE user_id = ${alice.id} AND chat_jid = ${'only@example.com'}`;
+      }),
+    );
     expect(row).toBeUndefined();
   });
 
   it('keeps an archived pref row and clears its background', async () => {
     const created = await uploadOne(alice);
-    await context.db.insert(chatPrefs).values({
-      userId: alice.id,
-      chatJid: 'archived@example.com',
-      backgroundImageId: created.id,
-      archived: true,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO chat_prefs (user_id, chat_jid, background_image_id, archived) VALUES (${alice.id}, ${'archived@example.com'}, ${created.id}, ${true})`;
+      }),
+    );
 
     expect((await deleteAs(alice, created.id)).status).toBe(204);
-    const [row] = await context.db
-      .select()
-      .from(chatPrefs)
-      .where(and(eq(chatPrefs.userId, alice.id), eq(chatPrefs.chatJid, 'archived@example.com')));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<ArchivedPrefRow>`SELECT archived, background_image_id, background_dim FROM chat_prefs WHERE user_id = ${alice.id} AND chat_jid = ${'archived@example.com'}`;
+      }),
+    );
     expect(row).toBeDefined();
     expect(row?.archived).toBe(true);
     expect(row?.backgroundImageId).toBeNull();
@@ -339,17 +402,20 @@ describe('backgrounds routes', () => {
 
   it('clears the per-user default row', async () => {
     const created = await uploadOne(alice);
-    await context.db.insert(chatBackgroundDefaults).values({
-      userId: alice.id,
-      backgroundImageId: created.id,
-      backgroundDim: 40,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO chat_background_defaults (user_id, background_image_id, background_dim) VALUES (${alice.id}, ${created.id}, ${40})`;
+      }),
+    );
 
     expect((await deleteAs(alice, created.id)).status).toBe(204);
-    const rows = await context.db
-      .select()
-      .from(chatBackgroundDefaults)
-      .where(eq(chatBackgroundDefaults.userId, alice.id));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<UserIdRow>`SELECT user_id FROM chat_background_defaults WHERE user_id = ${alice.id}`;
+      }),
+    );
     expect(rows).toHaveLength(0);
   });
 
@@ -381,7 +447,12 @@ describe('backgrounds routes', () => {
 
     // The owner deletes the image: the group's background fields are cleared.
     expect((await deleteAs(alice, created.id)).status).toBe(204);
-    const [row] = await context.db.select().from(groups).where(eq(groups.id, groupId));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<GroupBackgroundRow>`SELECT background_image_id, background_dim FROM groups WHERE id = ${groupId}`;
+      }),
+    );
     expect(row?.backgroundImageId).toBeNull();
     expect(row?.backgroundDim).toBeNull();
     expect((await getAs(bob, created.id)).status).toBe(404);

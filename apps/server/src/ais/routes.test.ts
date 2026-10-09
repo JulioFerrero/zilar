@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import {
   LitellmApiError,
   type AddModelInput,
@@ -16,18 +17,11 @@ import { createAuditRecorder, type AuditRecorder } from '../audit/service';
 import type { ProbeOutcome, ProviderProbe } from '../connections/probe';
 import { createKeyCipher } from '../connections/crypto';
 import {
-  aiLimits,
-  ais,
-  auditLog,
-  llmVirtualKeys,
-  machines,
-  providerConnections,
-} from '../db/schema';
-import {
   bootstrapUser,
   createTestContext,
   FakeAdminClient,
   TEST_BASE_URL,
+  testSql,
   TEST_XMPP_DOMAIN,
   type TestApp,
   type TestContext,
@@ -38,6 +32,19 @@ import { DEFAULT_PERSONAS } from './templates';
 
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
 const PROVIDER_KEY = 'sk-provider-key-do-not-leak';
+
+interface VirtualKeyRow {
+  encryptedKey: string;
+  budgetUsd: string;
+  budgetDuration: string;
+  litellmKeyId: string | null;
+  litellmModelId: string | null;
+}
+
+interface VirtualKeyIds {
+  litellmKeyId: string | null;
+  litellmModelId: string | null;
+}
 
 class FakeProbe implements ProviderProbe {
   testKey(): Promise<ProbeOutcome> {
@@ -232,14 +239,19 @@ describe('AI routes', () => {
     overrides: { provider?: string; status?: 'active' | 'revoked' } = {},
   ): Promise<string> {
     const id = randomUUID();
-    await context.db.insert(providerConnections).values({
-      id,
-      owner: ownerId,
-      provider: overrides.provider ?? 'openai',
-      encryptedKey: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
-      label: null,
-      status: overrides.status ?? 'active',
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO provider_connections ${sql.insert({
+          id,
+          owner: ownerId,
+          provider: overrides.provider ?? 'openai',
+          encrypted_key: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
+          label: null,
+          status: overrides.status ?? 'active',
+        })}`;
+      }),
+    );
     return id;
   }
 
@@ -303,7 +315,12 @@ describe('AI routes', () => {
     ]);
     expect(litellm.order.slice(0, 2)).toEqual(['addModel', 'generateKey']);
 
-    const keyRows = await context.db.select().from(llmVirtualKeys);
+    const keyRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<VirtualKeyRow>`SELECT encrypted_key, budget_usd, budget_duration, litellm_key_id, litellm_model_id FROM llm_virtual_keys`;
+      }),
+    );
     expect(keyRows).toHaveLength(1);
     expect(keyRows[0]!.encryptedKey).not.toContain('sk-virtual');
     expect(createKeyCipher(MASTER_KEY).decrypt(keyRows[0]!.encryptedKey)).toBe(
@@ -378,7 +395,15 @@ describe('AI routes', () => {
     });
     expect(JSON.stringify(patchedBody)).not.toContain('sk-virtual');
     expect(litellm.updated).toEqual([{ key: keyRows[0]!.litellmKeyId, maxBudget: 50 }]);
-    const limitRows = await context.db.select().from(aiLimits);
+    const limitRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          perDayUsd: string;
+          perMonthUsd: string;
+        }>`SELECT per_day_usd, per_month_usd FROM ai_limits`;
+      }),
+    );
     expect(limitRows[0]).toMatchObject({ perDayUsd: '2.00', perMonthUsd: '50.00' });
 
     // Delete tears down the key and the account, then the row.
@@ -390,9 +415,30 @@ describe('AI routes', () => {
     expect(litellm.revoked).toEqual([keyRows[0]!.litellmKeyId]);
     expect(litellm.deletedModels).toEqual([keyRows[0]!.litellmModelId]);
     expect(context.adminClient.unregistered).toContain(localpart);
-    expect(await context.db.select().from(ais)).toHaveLength(0);
-    expect(await context.db.select().from(aiLimits)).toHaveLength(0);
-    expect(await context.db.select().from(llmVirtualKeys)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      ),
+    ).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ aiId: string }>`SELECT ai_id FROM ai_limits`;
+        }),
+      ),
+    ).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ aiId: string }>`SELECT ai_id FROM llm_virtual_keys`;
+        }),
+      ),
+    ).toHaveLength(0);
 
     const empty = await app.request(`${TEST_BASE_URL}/api/ais`, {
       headers: { cookie: user.cookie },
@@ -425,10 +471,15 @@ describe('AI routes', () => {
     expect(patched.status).toBe(200);
     expect(await patched.json()).toMatchObject({ canDelegate: true, acceptsDelegation: true });
 
-    const [row] = await context.db
-      .select()
-      .from(ais)
-      .where(eq(ais.id, ai['id'] as string));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          canDelegate: boolean;
+          acceptsDelegation: boolean;
+        }>`SELECT can_delegate, accepts_delegation FROM ais WHERE id = ${ai['id'] as string}`;
+      }),
+    );
     expect(row?.canDelegate).toBe(true);
     expect(row?.acceptsDelegation).toBe(true);
 
@@ -439,10 +490,14 @@ describe('AI routes', () => {
       body: JSON.stringify({ canDelegate: false }),
     });
     expect(stolen.status).toBe(404);
-    const [after] = await context.db
-      .select()
-      .from(ais)
-      .where(eq(ais.id, ai['id'] as string));
+    const [after] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          canDelegate: boolean;
+        }>`SELECT can_delegate FROM ais WHERE id = ${ai['id'] as string}`;
+      }),
+    );
     expect(after?.canDelegate).toBe(true);
   });
 
@@ -494,7 +549,14 @@ describe('AI routes', () => {
     }
 
     // Alice's AI is untouched by Bob's attempts.
-    expect(await context.db.select().from(ais)).toHaveLength(1);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      ),
+    ).toHaveLength(1);
   });
 
   it('rejects unknown fields on create and patch', async () => {
@@ -507,7 +569,14 @@ describe('AI routes', () => {
       status: 'active',
     });
     expect(create.status).toBe(400);
-    expect(await context.db.select().from(ais)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      ),
+    ).toHaveLength(0);
 
     const created = await postAi(app, user.cookie, createBody(connectionId));
     const id = ((await created.json()) as { id: string }).id;
@@ -536,7 +605,14 @@ describe('AI routes', () => {
       const response = await postAi(app, user.cookie, createBody(connectionId, { limits }));
       expect(response.status).toBe(400);
     }
-    expect(await context.db.select().from(ais)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      ),
+    ).toHaveLength(0);
   });
 
   it('rejects a connection that is missing, foreign, inactive or not an LLM provider', async () => {
@@ -560,7 +636,14 @@ describe('AI routes', () => {
       expect(((await response.json()) as { error: { code: string } }).error.code).toBe(code);
     }
     // The foreign connection still is not usable as a hint that it exists.
-    expect(await context.db.select().from(ais)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      ),
+    ).toHaveLength(0);
 
     const wrongLlm = await postAi(app, alice.cookie, createBody(aliceConnection));
     expect(wrongLlm.status).toBe(201);
@@ -580,8 +663,22 @@ describe('AI routes', () => {
       'ai_provisioning_failed',
     );
 
-    expect(await context.db.select().from(ais)).toHaveLength(0);
-    expect(await context.db.select().from(aiLimits)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      ),
+    ).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ aiId: string }>`SELECT ai_id FROM ai_limits`;
+        }),
+      ),
+    ).toHaveLength(0);
     expect(litellm.generated).toHaveLength(0);
     expect(adminClient.unregistered).toHaveLength(0);
     expect(adminClient.removedRosterItems).toHaveLength(0);
@@ -598,7 +695,14 @@ describe('AI routes', () => {
     const response = await postAi(app, user.cookie, createBody(connectionId));
     expect(response.status).toBe(502);
 
-    expect(await context.db.select().from(ais)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      ),
+    ).toHaveLength(0);
     expect(litellm.generated).toHaveLength(0);
     expect(adminClient.unregistered).toHaveLength(1);
     expect(adminClient.unregistered[0]).toMatch(/^ai-/);
@@ -618,8 +722,22 @@ describe('AI routes', () => {
     expect(text).not.toContain('sk-master-must-not-leak');
     expect(text).not.toContain('gateway down');
 
-    expect(await context.db.select().from(ais)).toHaveLength(0);
-    expect(await context.db.select().from(llmVirtualKeys)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      ),
+    ).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ aiId: string }>`SELECT ai_id FROM llm_virtual_keys`;
+        }),
+      ),
+    ).toHaveLength(0);
     expect(context.adminClient.unregistered).toHaveLength(1);
     expect(context.adminClient.removedRosterItems).toHaveLength(2);
     expect(litellm.revoked).toHaveLength(0);
@@ -651,8 +769,22 @@ describe('AI routes', () => {
     expect(text).not.toContain('sk-master-must-not-leak');
     expect(text).not.toContain('gateway down');
 
-    expect(await context.db.select().from(ais)).toHaveLength(0);
-    expect(await context.db.select().from(llmVirtualKeys)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      ),
+    ).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ aiId: string }>`SELECT ai_id FROM llm_virtual_keys`;
+        }),
+      ),
+    ).toHaveLength(0);
     expect(litellm.generated).toHaveLength(0);
     expect(litellm.addedModels).toHaveLength(1);
     expect(litellm.deletedModels).toHaveLength(0);
@@ -682,8 +814,22 @@ describe('AI routes', () => {
     );
 
     // The AI is still there, and nothing was torn down after the failed revoke.
-    expect(await context.db.select().from(ais)).toHaveLength(1);
-    expect(await context.db.select().from(llmVirtualKeys)).toHaveLength(1);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ aiId: string }>`SELECT ai_id FROM llm_virtual_keys`;
+        }),
+      ),
+    ).toHaveLength(1);
     expect(context.adminClient.unregistered).toHaveLength(0);
     expect(litellm.deletedModels).toHaveLength(0);
   });
@@ -695,7 +841,12 @@ describe('AI routes', () => {
     const connectionId = await addConnection(user.id);
     const created = await postAi(app, user.cookie, createBody(connectionId));
     const id = ((await created.json()) as { id: string }).id;
-    const keyRows = await context.db.select().from(llmVirtualKeys);
+    const keyRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<VirtualKeyIds>`SELECT litellm_key_id, litellm_model_id FROM llm_virtual_keys`;
+      }),
+    );
     const localpart = aiLocalpart(id);
 
     // First attempt: the key is revoked, then the roster delete fails.
@@ -707,8 +858,22 @@ describe('AI routes', () => {
     expect(failed.status).toBe(502);
     expect(litellm.revoked).toEqual([keyRows[0]!.litellmKeyId]);
     // The key row is gone at once, so the retry will not revoke again.
-    expect(await context.db.select().from(llmVirtualKeys)).toHaveLength(0);
-    expect(await context.db.select().from(ais)).toHaveLength(1);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ aiId: string }>`SELECT ai_id FROM llm_virtual_keys`;
+        }),
+      ),
+    ).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      ),
+    ).toHaveLength(1);
 
     // Retry: the roster is removed, the account is unregistered, the row goes.
     context.adminClient.failRoster = false;
@@ -720,7 +885,14 @@ describe('AI routes', () => {
     expect(litellm.revoked).toEqual([keyRows[0]!.litellmKeyId]);
     expect(litellm.deletedModels).toEqual([keyRows[0]!.litellmModelId]);
     expect(context.adminClient.unregistered).toContain(localpart);
-    expect(await context.db.select().from(ais)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      ),
+    ).toHaveLength(0);
   });
 
   it('can retry a delete that failed at the model, deleting the model exactly once', async () => {
@@ -730,7 +902,12 @@ describe('AI routes', () => {
     const connectionId = await addConnection(user.id);
     const created = await postAi(app, user.cookie, createBody(connectionId));
     const id = ((await created.json()) as { id: string }).id;
-    const keyRows = await context.db.select().from(llmVirtualKeys);
+    const keyRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<VirtualKeyIds>`SELECT litellm_key_id, litellm_model_id FROM llm_virtual_keys`;
+      }),
+    );
     const modelId = keyRows[0]!.litellmModelId;
 
     // First attempt: the key is revoked (and its id cleared), the model delete
@@ -742,11 +919,23 @@ describe('AI routes', () => {
     });
     expect(failed.status).toBe(502);
     expect(litellm.revoked).toEqual([keyRows[0]!.litellmKeyId]);
-    const afterFail = await context.db.select().from(llmVirtualKeys);
+    const afterFail = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<VirtualKeyIds>`SELECT litellm_key_id, litellm_model_id FROM llm_virtual_keys`;
+      }),
+    );
     expect(afterFail).toHaveLength(1);
     expect(afterFail[0]!.litellmKeyId).toBeNull();
     expect(afterFail[0]!.litellmModelId).toBe(modelId);
-    expect(await context.db.select().from(ais)).toHaveLength(1);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      ),
+    ).toHaveLength(1);
 
     // Retry: the model is deleted, the row goes, and the key is not revoked
     // a second time.
@@ -758,8 +947,22 @@ describe('AI routes', () => {
     expect(retried.status).toBe(204);
     expect(litellm.revoked).toEqual([keyRows[0]!.litellmKeyId]);
     expect(litellm.deletedModels).toEqual([modelId]);
-    expect(await context.db.select().from(ais)).toHaveLength(0);
-    expect(await context.db.select().from(llmVirtualKeys)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      ),
+    ).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ aiId: string }>`SELECT ai_id FROM llm_virtual_keys`;
+        }),
+      ),
+    ).toHaveLength(0);
   });
 
   it('skips the model delete for an old AI that has no model id', async () => {
@@ -769,7 +972,12 @@ describe('AI routes', () => {
     const connectionId = await addConnection(user.id);
     const created = await postAi(app, user.cookie, createBody(connectionId));
     const id = ((await created.json()) as { id: string }).id;
-    await context.db.update(llmVirtualKeys).set({ litellmModelId: null });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE llm_virtual_keys SET litellm_model_id = NULL`;
+      }),
+    );
 
     const removed = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
       method: 'DELETE',
@@ -785,19 +993,29 @@ describe('AI routes', () => {
     const app = mount({ litellm });
     const user = await bootstrapUser(context, app, `crash${testCounter}@example.com`);
     const aiId = randomUUID();
-    await context.db.insert(ais).values({
-      id: aiId,
-      owner: user.id,
-      name: 'Half-created',
-      template: 'dev',
-      persona: 'A persona',
-      providerConnectionId: await addConnection(user.id),
-      model: 'gpt-4o-mini',
-      localpart: `ai-${aiId}`,
-      jid: `ai-${aiId}@${TEST_XMPP_DOMAIN}`,
-      status: 'disabled',
-    });
-    await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
+    const connectionId = await addConnection(user.id);
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO ais ${sql.insert({
+          id: aiId,
+          owner: user.id,
+          name: 'Half-created',
+          template: 'dev',
+          persona: 'A persona',
+          provider_connection_id: connectionId,
+          model: 'gpt-4o-mini',
+          localpart: `ai-${aiId}`,
+          jid: `ai-${aiId}@${TEST_XMPP_DOMAIN}`,
+          status: 'disabled',
+        })}`;
+        yield* sql`INSERT INTO ai_limits ${sql.insert({
+          ai_id: aiId,
+          per_day_usd: '1.00',
+          per_month_usd: '20.00',
+        })}`;
+      }),
+    );
 
     const response = await app.request(`${TEST_BASE_URL}/api/ais/${aiId}`, {
       method: 'DELETE',
@@ -806,7 +1024,14 @@ describe('AI routes', () => {
     expect(response.status).toBe(204);
     expect(litellm.revoked).toHaveLength(0);
     expect(context.adminClient.unregistered).toHaveLength(0);
-    expect(await context.db.select().from(ais)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      ),
+    ).toHaveLength(0);
   });
 
   it('updates the virtual key cap on a limits patch', async () => {
@@ -816,7 +1041,14 @@ describe('AI routes', () => {
     const connectionId = await addConnection(user.id);
     const created = await postAi(app, user.cookie, createBody(connectionId));
     const id = ((await created.json()) as { id: string }).id;
-    const keyRows = await context.db.select().from(llmVirtualKeys);
+    const keyRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          litellmKeyId: string | null;
+        }>`SELECT litellm_key_id FROM llm_virtual_keys`;
+      }),
+    );
 
     const response = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
       method: 'PATCH',
@@ -829,7 +1061,12 @@ describe('AI routes', () => {
       perDayUsd: 1,
       perMonthUsd: 30,
     });
-    const keyAfter = await context.db.select().from(llmVirtualKeys);
+    const keyAfter = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ budgetUsd: string }>`SELECT budget_usd FROM llm_virtual_keys`;
+      }),
+    );
     expect(keyAfter[0]!.budgetUsd).toBe('30.00');
   });
 
@@ -924,7 +1161,12 @@ describe('AI routes', () => {
     const connectionId = await addConnection(user.id);
     const created = await postAi(app, user.cookie, createBody(connectionId));
     const id = ((await created.json()) as { id: string }).id;
-    const keyRows = await context.db.select().from(llmVirtualKeys);
+    const keyRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<VirtualKeyIds>`SELECT litellm_key_id, litellm_model_id FROM llm_virtual_keys`;
+      }),
+    );
     const oldModelId = keyRows[0]!.litellmModelId;
     const keyId = keyRows[0]!.litellmKeyId;
     const callsBefore = litellm.addedModels.length + litellm.updated.length;
@@ -952,9 +1194,24 @@ describe('AI routes', () => {
     });
     expect(litellm.updated).toEqual([{ key: keyId, models: [`ai-${id}`] }]);
 
-    const [aiRow] = await context.db.select().from(ais);
+    const [aiRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          model: string;
+          providerConnectionId: string;
+        }>`SELECT model, provider_connection_id FROM ais`;
+      }),
+    );
     expect(aiRow).toMatchObject({ model: 'gpt-4o', providerConnectionId: connectionId });
-    const [keyAfter] = await context.db.select().from(llmVirtualKeys);
+    const [keyAfter] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          litellmModelId: string | null;
+        }>`SELECT litellm_model_id FROM llm_virtual_keys`;
+      }),
+    );
     expect(keyAfter!.litellmModelId).not.toBe(oldModelId);
     expect(keyAfter!.litellmModelId).not.toBeNull();
   });
@@ -983,7 +1240,15 @@ describe('AI routes', () => {
       modelName: `ai-${id}`,
       litellmModel: 'anthropic/claude-sonnet-5',
     });
-    const [aiRow] = await context.db.select().from(ais);
+    const [aiRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          model: string;
+          providerConnectionId: string;
+        }>`SELECT model, provider_connection_id FROM ais`;
+      }),
+    );
     expect(aiRow).toMatchObject({
       model: 'claude-sonnet-5',
       providerConnectionId: anthropicConnection,
@@ -1038,7 +1303,15 @@ describe('AI routes', () => {
     expect(litellm.addedModels.length + litellm.updated.length + litellm.deletedModels.length).toBe(
       callsBefore,
     );
-    const [aiRow] = await context.db.select().from(ais);
+    const [aiRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          model: string;
+          providerConnectionId: string;
+        }>`SELECT model, provider_connection_id FROM ais`;
+      }),
+    );
     expect(aiRow).toMatchObject({ model: 'gpt-4o-mini', providerConnectionId: connectionId });
   });
 
@@ -1072,7 +1345,14 @@ describe('AI routes', () => {
     const connectionId = await addConnection(alice.id);
     const created = await postAi(app, alice.cookie, createBody(connectionId));
     const id = ((await created.json()) as { id: string }).id;
-    const keyRows = await context.db.select().from(llmVirtualKeys);
+    const keyRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          litellmKeyId: string | null;
+        }>`SELECT litellm_key_id FROM llm_virtual_keys`;
+      }),
+    );
     const keyId = keyRows[0]!.litellmKeyId as string;
     litellm.spendByKey.set(keyId, 1.5);
 
@@ -1156,7 +1436,14 @@ describe('AI routes', () => {
     const connectionId = await addConnection(user.id);
     const created = await postAi(app, user.cookie, createBody(connectionId));
     const id = ((await created.json()) as { id: string }).id;
-    const keyRows = await context.db.select().from(llmVirtualKeys);
+    const keyRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          litellmModelId: string | null;
+        }>`SELECT litellm_model_id FROM llm_virtual_keys`;
+      }),
+    );
     const oldModelId = keyRows[0]!.litellmModelId;
     litellm.failAddModel = true;
 
@@ -1174,9 +1461,24 @@ describe('AI routes', () => {
     // row still points at the old model and connection: the next gateway turn
     // re-registers it.
     expect(litellm.deletedModels).toEqual([oldModelId]);
-    const [aiRow] = await context.db.select().from(ais);
+    const [aiRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          model: string;
+          providerConnectionId: string;
+        }>`SELECT model, provider_connection_id FROM ais`;
+      }),
+    );
     expect(aiRow).toMatchObject({ model: 'gpt-4o-mini', providerConnectionId: connectionId });
-    const [keyAfter] = await context.db.select().from(llmVirtualKeys);
+    const [keyAfter] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          litellmModelId: string | null;
+        }>`SELECT litellm_model_id FROM llm_virtual_keys`;
+      }),
+    );
     expect(keyAfter!.litellmModelId).toBeNull();
 
     // No key material reaches the log either.
@@ -1221,13 +1523,18 @@ describe('AI stop / resume routes', () => {
 
   async function addConnection(ownerId: string): Promise<string> {
     const id = randomUUID();
-    await context.db.insert(providerConnections).values({
-      id,
-      owner: ownerId,
-      provider: 'openai',
-      encryptedKey: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
-      label: null,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO provider_connections ${sql.insert({
+          id,
+          owner: ownerId,
+          provider: 'openai',
+          encrypted_key: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
+          label: null,
+        })}`;
+      }),
+    );
     return id;
   }
 
@@ -1296,7 +1603,12 @@ describe('AI stop / resume routes', () => {
       expect([stop.status, resume.status]).toEqual([404, 404]);
     }
     // Alice's AI is untouched by Bob's attempts.
-    const [row] = await context.db.select().from(ais);
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ status: string }>`SELECT status FROM ais`;
+      }),
+    );
     expect(row?.status).toBe('active');
   });
 
@@ -1311,7 +1623,12 @@ describe('AI stop / resume routes', () => {
     expect(stopped.status).toBe(200);
     const stoppedBody = (await stopped.json()) as { status: string };
     expect(stoppedBody.status).toBe('stopped');
-    const [rowAfterStop] = await context.db.select().from(ais).where(eq(ais.id, id));
+    const [rowAfterStop] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ status: string }>`SELECT status FROM ais WHERE id = ${id}`;
+      }),
+    );
     expect(rowAfterStop?.status).toBe('stopped');
 
     const resumed = await app.request(`${TEST_BASE_URL}/api/ais/${id}/resume`, {
@@ -1321,7 +1638,12 @@ describe('AI stop / resume routes', () => {
     expect(resumed.status).toBe(200);
     const resumedBody = (await resumed.json()) as { status: string };
     expect(resumedBody.status).toBe('active');
-    const [rowAfterResume] = await context.db.select().from(ais).where(eq(ais.id, id));
+    const [rowAfterResume] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ status: string }>`SELECT status FROM ais WHERE id = ${id}`;
+      }),
+    );
     expect(rowAfterResume?.status).toBe('active');
   });
 
@@ -1412,13 +1734,18 @@ describe('AI stop / resume audit entries', () => {
 
   async function addConnection(ownerId: string): Promise<string> {
     const id = randomUUID();
-    await context.db.insert(providerConnections).values({
-      id,
-      owner: ownerId,
-      provider: 'openai',
-      encryptedKey: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
-      label: null,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO provider_connections ${sql.insert({
+          id,
+          owner: ownerId,
+          provider: 'openai',
+          encrypted_key: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
+          label: null,
+        })}`;
+      }),
+    );
     return id;
   }
 
@@ -1578,7 +1905,12 @@ describe('AI stop / resume audit entries', () => {
     });
     expect(resumeOnActive.status).toBe(200);
 
-    await context.db.update(ais).set({ status: 'disabled' }).where(eq(ais.id, id));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE ais SET status = 'disabled' WHERE id = ${id}`;
+      }),
+    );
     const stopOnDisabled = await app.request(`${TEST_BASE_URL}/api/ais/${id}/stop`, {
       method: 'POST',
       headers: { cookie: alice.cookie },
@@ -1626,7 +1958,12 @@ describe('AI stop / resume audit entries', () => {
     expect(((await stopped.json()) as { status: string }).status).toBe('stopped');
     expect(calls).toEqual([1]);
 
-    const rows = await context.db.select().from(auditLog);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM audit_log`;
+      }),
+    );
     expect(rows).toHaveLength(0);
   });
 
@@ -1688,14 +2025,19 @@ describe('AI home machine assignment (T-0091)', () => {
 
   async function addConnection(ownerId: string): Promise<string> {
     const id = randomUUID();
-    await context.db.insert(providerConnections).values({
-      id,
-      owner: ownerId,
-      provider: 'openai',
-      encryptedKey: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
-      label: null,
-      status: 'active',
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO provider_connections ${sql.insert({
+          id,
+          owner: ownerId,
+          provider: 'openai',
+          encrypted_key: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
+          label: null,
+          status: 'active',
+        })}`;
+      }),
+    );
     return id;
   }
 
@@ -1704,14 +2046,12 @@ describe('AI home machine assignment (T-0091)', () => {
     overrides: { status?: 'pending' | 'approved' | 'revoked'; publicKey?: string } = {},
   ): Promise<string> {
     const id = randomUUID();
-    await context.db.insert(machines).values({
-      id,
-      ownerUserId: ownerId,
-      name: 'julio-mbp',
-      publicKey: overrides.publicKey ?? `public-key-for-${id}`,
-      capabilities: { os: 'macos' },
-      status: overrides.status ?? 'approved',
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO machines (id, owner_user_id, name, public_key, capabilities, status) VALUES (${id}, ${ownerId}, 'julio-mbp', ${overrides.publicKey ?? `public-key-for-${id}`}, ${JSON.stringify({ os: 'macos' })}::jsonb, ${overrides.status ?? 'approved'})`;
+      }),
+    );
     return id;
   }
 
@@ -1767,14 +2107,28 @@ describe('AI home machine assignment (T-0091)', () => {
     expect(assigned.status).toBe(200);
     expect(((await assigned.json()) as { machineId: string | null }).machineId).toBe(machineId);
 
-    const [rowAfterAssign] = await context.db.select().from(ais).where(eq(ais.id, id));
+    const [rowAfterAssign] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          machineId: string | null;
+        }>`SELECT machine_id FROM ais WHERE id = ${id}`;
+      }),
+    );
     expect(rowAfterAssign?.machineId).toBe(machineId);
 
     const cleared = await putMachine(app, alice.cookie, id, { machineId: null });
     expect(cleared.status).toBe(200);
     expect(((await cleared.json()) as { machineId: string | null }).machineId).toBeNull();
 
-    const [rowAfterClear] = await context.db.select().from(ais).where(eq(ais.id, id));
+    const [rowAfterClear] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          machineId: string | null;
+        }>`SELECT machine_id FROM ais WHERE id = ${id}`;
+      }),
+    );
     expect(rowAfterClear?.machineId).toBeNull();
 
     // Every public AI response carries machineId: list, get, create, patch,
@@ -1848,7 +2202,14 @@ describe('AI home machine assignment (T-0091)', () => {
       );
     }
     // Alice's AI is untouched.
-    const [row] = await context.db.select().from(ais).where(eq(ais.id, aliceAi));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          machineId: string | null;
+        }>`SELECT machine_id FROM ais WHERE id = ${aliceAi}`;
+      }),
+    );
     expect(row?.machineId).toBeNull();
   });
 
@@ -1875,7 +2236,14 @@ describe('AI home machine assignment (T-0091)', () => {
     expect(ok.status).toBe(200);
 
     // None of the failed attempts stored a value.
-    const [row] = await context.db.select().from(ais).where(eq(ais.id, id));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          machineId: string | null;
+        }>`SELECT machine_id FROM ais WHERE id = ${id}`;
+      }),
+    );
     expect(row?.machineId).toBe(aliceApproved);
   });
 
@@ -1997,7 +2365,14 @@ describe('AI home machine assignment (T-0091)', () => {
     const response = await putMachine(app, alice.cookie, id, { machineId: machineId });
     expect(response.status).toBe(200);
     expect(calls).toEqual([1]);
-    expect(await context.db.select().from(auditLog)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM audit_log`;
+        }),
+      ),
+    ).toHaveLength(0);
   });
 
   it('assigns the same machine to two AIs and clears them independently', async () => {
@@ -2015,8 +2390,22 @@ describe('AI home machine assignment (T-0091)', () => {
     const clearSecond = await putMachine(app, alice.cookie, second, { machineId: null });
     expect(clearSecond.status).toBe(200);
 
-    const [firstRow] = await context.db.select().from(ais).where(eq(ais.id, first));
-    const [secondRow] = await context.db.select().from(ais).where(eq(ais.id, second));
+    const [firstRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          machineId: string | null;
+        }>`SELECT machine_id FROM ais WHERE id = ${first}`;
+      }),
+    );
+    const [secondRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          machineId: string | null;
+        }>`SELECT machine_id FROM ais WHERE id = ${second}`;
+      }),
+    );
     expect(firstRow?.machineId).toBe(machineId);
     expect(secondRow?.machineId).toBeNull();
   });

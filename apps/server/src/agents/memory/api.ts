@@ -35,7 +35,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../../effect/http';
+} from '../../effect/http-core';
 import { clearMemory, deleteFact, listFacts, renderMemoryBlock } from './store';
 
 export const AI_MEMORY_WRITE_RATE_LIMIT_MAX = 60;

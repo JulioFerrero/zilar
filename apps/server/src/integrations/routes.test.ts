@@ -6,16 +6,17 @@
 // or real mail: the client and the test send are injected.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createAuditRecorder } from '../audit/service';
 import { CurrentMailer } from '../auth/mailer';
 import { createApp } from '../app';
-import { auditLog, instanceSettings } from '../db/schema';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   TEST_BASE_URL,
+  testSql,
   type SignedInUser,
   type TestContext,
 } from '../test-support';
@@ -30,6 +31,34 @@ import { getStoredTelegramToken, TELEGRAM_BOT_TOKEN_SETTING } from './settings';
 import { MAIL_FROM_SETTING, RESEND_API_KEY_SETTING, settingsCipherFor } from '../setup/settings';
 import type { TelegramClient } from '../stickers/telegram-import';
 import { TelegramImportError } from '../stickers/telegram-import';
+
+interface AuditRow {
+  id: string;
+  at: Date;
+  actorUserId: string | null;
+  aiId: string | null;
+  groupId: string | null;
+  action: string;
+  subjectId: string | null;
+  argsHash: string | null;
+  costCurrency: string | null;
+  costAmount: string | null;
+  result: string;
+  detail: unknown;
+}
+
+interface SettingRow {
+  value: string;
+}
+
+interface SettingKeyRow {
+  key: string;
+  value: string;
+}
+
+interface KeyRow {
+  key: string;
+}
 
 const SENTINEL_TOKEN = 'SENTINEL_TELEGRAM_BOT_TOKEN_9f8e7d6c5b4a';
 const SENTINEL_KEY = 're_SENTINEL_RESEND_KEY_9f8e7d6c5b4a';
@@ -150,10 +179,12 @@ describe('PUT /api/settings/integrations/telegram', () => {
 
     const stored = await getStoredTelegramToken(context.db, settingsCipherFor(context.config));
     expect(stored).toBe(SENTINEL_TOKEN);
-    const [row] = await context.db
-      .select()
-      .from(instanceSettings)
-      .where(eq(instanceSettings.key, TELEGRAM_BOT_TOKEN_SETTING));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<SettingRow>`SELECT value FROM instance_settings WHERE key = ${TELEGRAM_BOT_TOKEN_SETTING}`;
+      }),
+    );
     expect(row?.value).not.toContain(SENTINEL_TOKEN);
 
     const status = (await (
@@ -322,17 +353,21 @@ describe('PUT /api/settings/integrations/telegram', () => {
     await jsonRequest(app, 'DELETE', '/api/settings/integrations/telegram', owner);
     expect(context.logOutput()).not.toContain(SENTINEL_TOKEN);
 
-    const rows = await context.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, 'integrations.telegram_set'));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditRow>`SELECT id, "at", actor_user_id, ai_id, group_id, action, subject_id, args_hash, cost_currency, cost_amount, result, detail FROM audit_log WHERE action = ${'integrations.telegram_set'}`;
+      }),
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.detail).toBeNull();
     expect(JSON.stringify(rows[0])).not.toContain(SENTINEL_TOKEN);
-    const removed = await context.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, 'integrations.telegram_removed'));
+    const removed = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditRow>`SELECT id, "at", actor_user_id, ai_id, group_id, action, subject_id, args_hash, cost_currency, cost_amount, result, detail FROM audit_log WHERE action = ${'integrations.telegram_removed'}`;
+      }),
+    );
     expect(removed).toHaveLength(1);
     expect(JSON.stringify(removed[0])).not.toContain(SENTINEL_TOKEN);
   });
@@ -379,7 +414,12 @@ describe('PUT /api/settings/integrations/email', () => {
     // The test mail went to the owner's own address.
     expect(sentTo).toEqual(['owner@example.com']);
     // The key is stored encrypted, the sender in clear.
-    const rows = await context.db.select().from(instanceSettings);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<SettingKeyRow>`SELECT key, value FROM instance_settings`;
+      }),
+    );
     const byKey = new Map(rows.map((row) => [row.key, row.value]));
     expect(byKey.get(RESEND_API_KEY_SETTING)).not.toContain(SENTINEL_KEY);
     expect(byKey.get(MAIL_FROM_SETTING)).toBe(SENTINEL_FROM);
@@ -402,7 +442,12 @@ describe('PUT /api/settings/integrations/email', () => {
     });
     expect(response.status).toBe(200);
     expect(sentTo).toEqual(['owner@example.com']);
-    const rows = await context.db.select().from(instanceSettings);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<SettingKeyRow>`SELECT key, value FROM instance_settings`;
+      }),
+    );
     const byKey = new Map(rows.map((row) => [row.key, row.value]));
     expect(byKey.get(MAIL_FROM_SETTING)).toBe(next);
     // The encrypted blob still decrypts to the original key.
@@ -429,7 +474,12 @@ describe('PUT /api/settings/integrations/email', () => {
     // contain the digits "535" by chance.
     expect(raw).not.toContain('535 rejected');
     expect(raw).not.toContain('bad key');
-    const rows = await context.db.select().from(instanceSettings);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<KeyRow>`SELECT key FROM instance_settings`;
+      }),
+    );
     expect(rows).toHaveLength(0);
   });
 
@@ -490,10 +540,12 @@ describe('PUT /api/settings/integrations/email', () => {
     expect(context.logOutput()).not.toContain(SENTINEL_KEY);
     expect(context.logOutput()).not.toContain('owner@example.com');
 
-    const rows = await context.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, 'integrations.email_set'));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditRow>`SELECT id, "at", actor_user_id, ai_id, group_id, action, subject_id, args_hash, cost_currency, cost_amount, result, detail FROM audit_log WHERE action = ${'integrations.email_set'}`;
+      }),
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.detail).toBeNull();
     const serialised = JSON.stringify(rows[0]);

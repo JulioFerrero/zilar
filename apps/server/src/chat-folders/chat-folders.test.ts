@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { chatFolderSeeds, chatFolders } from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import {
   bootstrapUser,
   createTestContext,
   testApp,
+  testSql,
   TEST_BASE_URL,
   type TestApp,
   type TestContext,
@@ -110,7 +112,13 @@ describe('chat folders', () => {
       }
     ).folders;
     expect(stillEmpty).toEqual([]);
-    expect(await context.db.select().from(chatFolderSeeds)).toHaveLength(1);
+    const seeds = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ userId: string }>`SELECT user_id FROM chat_folder_seeds`;
+      }),
+    );
+    expect(seeds).toHaveLength(1);
   });
 
   it('creates folders appended last and returns 201', async () => {
@@ -217,7 +225,13 @@ describe('chat folders', () => {
     expect((await createFolder(alice.cookie, { icon: 'folder' })).status).toBe(400);
 
     // The failures stored nothing beyond the two seeded defaults.
-    expect(await context.db.select().from(chatFolders)).toHaveLength(2);
+    const storedFolders = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM chat_folders`;
+      }),
+    );
+    expect(storedFolders).toHaveLength(2);
   });
 
   it("patches my folder but 404s another user's id", async () => {
@@ -361,7 +375,12 @@ describe('chat folders', () => {
     expect(aliceFolders.map((entry) => entry.id)).not.toEqual(
       expect.arrayContaining(bobFolders.map((entry) => entry.id)),
     );
-    const rows = await context.db.select().from(chatFolders);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ userId: string }>`SELECT user_id FROM chat_folders`;
+      }),
+    );
     expect(rows.filter((row) => row.userId === alice.id)).toHaveLength(2);
     expect(rows.filter((row) => row.userId === bob.id)).toHaveLength(2);
   });

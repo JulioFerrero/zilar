@@ -1,17 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
-import { auditLog, groupMembers, pinnedMessages, topics } from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   expectedJid,
   testApp,
+  testSql,
   TEST_BASE_URL,
   type TestApp,
   type TestContext,
 } from '../test-support';
 import type { TopicView } from '../topics/access';
+
+interface AuditRow {
+  action: string;
+  subjectId: string | null;
+  groupId: string | null;
+  detail: unknown;
+}
+
+interface PinRow {
+  chatJid: string;
+}
 
 interface PinBody {
   id: string;
@@ -180,17 +192,21 @@ describe('pins', () => {
     // `other` becomes a real group admin (direct row update, like
     // groups.test.ts) who still cannot see the private topic: the admin path
     // below is the "cannot see" path, not the stranger path.
-    await context.db
-      .update(groupMembers)
-      .set({ role: 'admin' })
-      .where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, other.id)));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE group_members SET role = 'admin' WHERE group_id = ${group.id} AND user_id = ${other.id}`;
+      }),
+    );
     // The creator is demoted to a plain member after creating the topic
     // (T-0116 will do this through the API): the `createdBy` branch is what
     // lets them pin, not any current role.
-    await context.db
-      .update(topics)
-      .set({ createdBy: member.id })
-      .where(eq(topics.id, created.body.id));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE topics SET created_by = ${member.id} WHERE id = ${created.body.id}`;
+      }),
+    );
 
     // A plain member of the private topic who did not create it cannot pin.
     expect((await pin(other.cookie, pinBody(chatJid, 'msg-x'))).status).toBe(404);
@@ -315,7 +331,12 @@ describe('pins', () => {
     const limited = attempts.filter((response) => response.status === 400);
     expect(created).toHaveLength(20);
     expect(limited).toHaveLength(5);
-    const stored = await context.db.select().from(pinnedMessages);
+    const stored = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM pinned_messages`;
+      }),
+    );
     expect(stored).toHaveLength(20);
   });
 
@@ -337,7 +358,12 @@ describe('pins', () => {
     });
     await pin(owner.cookie, pinBody(privateTopic.body.chatJid, 'secret-msg'));
 
-    const rows = await context.db.select().from(auditLog);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditRow>`SELECT action, subject_id, group_id, detail FROM audit_log`;
+      }),
+    );
     const pinned = rows.filter((row) => row.action === 'message.pinned');
     const unpinned = rows.filter((row) => row.action === 'message.unpinned');
     expect(pinned.length).toBe(3);
@@ -359,7 +385,12 @@ describe('pins', () => {
     // The pin rows themselves exist with the canonical DM pair key shared
     // by both sides (re-pin, since the DM pin above was unpinned again).
     await pin(owner.cookie, pinBody(memberJid, 'msg-kept'));
-    const stored = await context.db.select().from(pinnedMessages);
+    const stored = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<PinRow>`SELECT chat_jid FROM pinned_messages`;
+      }),
+    );
     expect(stored.some((row) => row.chatJid.includes('|'))).toBe(true);
   });
 

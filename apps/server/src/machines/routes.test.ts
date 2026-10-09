@@ -1,14 +1,17 @@
 import { createHash, createPrivateKey, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
-import { PGlite } from '@electric-sql/pglite';
-import { drizzle } from 'drizzle-orm/pglite';
-import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createApp } from '../app';
 import { createAuditRecorder, type AuditRecorder } from '../audit/service';
-import * as schema from '../db/schema';
-import { ais, auditLog, machinePairingCodes, machines, providerConnections } from '../db/schema';
 import { SOCKET_ADDRESS_HEADER } from '../effect/http';
-import { bootstrapUser, createTestContext, TEST_BASE_URL, type TestContext } from '../test-support';
+import {
+  bootstrapUser,
+  createTestContext,
+  TEST_BASE_URL,
+  testSql,
+  type TestContext,
+} from '../test-support';
 import {
   createMachinesApi,
   PAIR_RATE_LIMIT_WINDOW_MS,
@@ -65,6 +68,21 @@ function capabilities(overrides: Record<string, unknown> = {}): Record<string, u
     runner_version: '0.1.0',
     ...overrides,
   };
+}
+
+interface CodeHashRow {
+  codeHash: string;
+}
+
+interface AuditRow {
+  action: string;
+  actorUserId: string | null;
+  subjectId: string | null;
+  detail: unknown;
+}
+
+interface AiMachineRow {
+  machineId: string | null;
 }
 
 describe('machines routes', () => {
@@ -219,7 +237,12 @@ describe('machines routes', () => {
 
     const normalized = normalizePairingCode(code);
     expect(normalized).not.toBeNull();
-    const rows = await context.db.select().from(machinePairingCodes);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<CodeHashRow>`SELECT code_hash FROM machine_pairing_codes`;
+      }),
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.codeHash).toBe(hashPairingCode(normalized ?? ''));
     const dumped = JSON.stringify(rows);
@@ -662,10 +685,12 @@ describe('machines routes', () => {
     // Expired code with a valid signature.
     const expired = await newCode(appInstance, user.cookie);
     const expiredNormalized = normalizePairingCode(expired.code) ?? '';
-    await context.db
-      .update(machinePairingCodes)
-      .set({ expiresAt: new Date(Date.now() - 1000) })
-      .where(eq(machinePairingCodes.codeHash, hashPairingCode(expiredNormalized)));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE machine_pairing_codes SET expires_at = ${new Date(Date.now() - 1000)} WHERE code_hash = ${hashPairingCode(expiredNormalized)}`;
+      }),
+    );
     const expiredKey = generateKey();
     failures.push(
       await pair(pairHost, {
@@ -980,7 +1005,12 @@ describe('machines routes', () => {
     });
     expect(deleted.status).toBe(204);
 
-    const rows = await context.db.select().from(auditLog);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditRow>`SELECT action, actor_user_id, subject_id, detail FROM audit_log`;
+      }),
+    );
     const actions = rows.map((row) => row.action).sort();
     expect(actions).toEqual([
       'machine.approved',
@@ -1004,11 +1034,10 @@ describe('machines routes', () => {
 
   it('keeps answering when the recorder swallows a DB failure', async () => {
     // A closed PGlite makes every insert reject; the real recorder swallows.
-    const brokenClient = new PGlite();
-    const brokenDb = drizzle(brokenClient, { schema });
-    await brokenClient.close();
+    const broken = await createTestContext();
+    await broken.client.close();
     const recorder = createAuditRecorder({
-      db: brokenDb,
+      db: broken.db,
       logger: { error: () => undefined },
     });
     const mounted = mountMachines({ audit: recorder });
@@ -1022,7 +1051,12 @@ describe('machines routes', () => {
     });
     expect(approved.status).toBe(200);
     // The broken recorder caught every write: nothing landed in the real DB.
-    const rows = await context.db.select().from(auditLog);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditRow>`SELECT action, actor_user_id, subject_id, detail FROM audit_log`;
+      }),
+    );
     expect(rows).toHaveLength(0);
   });
 
@@ -1035,69 +1069,51 @@ describe('machines routes', () => {
     const { revokeMachine } = await import('./service');
     const alice = await bootstrapUser(context, app(), `revmachine${testCounter}@example.com`);
     const connectionId = randomUUID();
-    await context.db.insert(providerConnections).values({
-      id: connectionId,
-      owner: alice.id,
-      provider: 'openai',
-      encryptedKey: 'irrelevant',
-      label: null,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
+          VALUES (${connectionId}, ${alice.id}, ${'openai'}, ${'irrelevant'}, ${null})`;
+      }),
+    );
     const targeted = randomUUID();
     const other = randomUUID();
-    await context.db.insert(machines).values([
-      {
-        id: targeted,
-        ownerUserId: alice.id,
-        name: 'julio-mbp',
-        publicKey: `pub-${targeted}`,
-        capabilities: { os: 'macos' },
-        status: 'approved',
-      },
-      {
-        id: other,
-        ownerUserId: alice.id,
-        name: 'office-linux',
-        publicKey: `pub-${other}`,
-        capabilities: { os: 'linux' },
-        status: 'approved',
-      },
-    ]);
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO machines (id, owner_user_id, name, public_key, capabilities, status)
+          VALUES (${targeted}, ${alice.id}, ${'julio-mbp'}, ${`pub-${targeted}`}, ${JSON.stringify({ os: 'macos' })}::jsonb, ${'approved'})`;
+        yield* sql`INSERT INTO machines (id, owner_user_id, name, public_key, capabilities, status)
+          VALUES (${other}, ${alice.id}, ${'office-linux'}, ${`pub-${other}`}, ${JSON.stringify({ os: 'linux' })}::jsonb, ${'approved'})`;
+      }),
+    );
     const aiAId = randomUUID();
     const aiBId = randomUUID();
-    await context.db.insert(ais).values([
-      {
-        id: aiAId,
-        owner: alice.id,
-        name: 'Dev-1',
-        template: 'dev',
-        persona: 'p',
-        providerConnectionId: connectionId,
-        model: 'gpt-4o-mini',
-        localpart: `ai-${aiAId}`,
-        jid: `ai-${aiAId}@zilar.localhost`,
-        status: 'active',
-        machineId: targeted,
-      },
-      {
-        id: aiBId,
-        owner: alice.id,
-        name: 'Dev-2',
-        template: 'dev',
-        persona: 'p',
-        providerConnectionId: connectionId,
-        model: 'gpt-4o-mini',
-        localpart: `ai-${aiBId}`,
-        jid: `ai-${aiBId}@zilar.localhost`,
-        status: 'active',
-        machineId: other,
-      },
-    ]);
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status, machine_id)
+          VALUES (${aiAId}, ${alice.id}, ${'Dev-1'}, ${'dev'}, ${'p'}, ${connectionId}, ${'gpt-4o-mini'}, ${`ai-${aiAId}`}, ${`ai-${aiAId}@zilar.localhost`}, ${'active'}, ${targeted})`;
+        yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status, machine_id)
+          VALUES (${aiBId}, ${alice.id}, ${'Dev-2'}, ${'dev'}, ${'p'}, ${connectionId}, ${'gpt-4o-mini'}, ${`ai-${aiBId}`}, ${`ai-${aiBId}@zilar.localhost`}, ${'active'}, ${other})`;
+      }),
+    );
 
     const updated = await revokeMachine(context.db, targeted, alice.id, new Date());
     expect(updated?.status).toBe('revoked');
 
-    const [aiA] = await context.db.select().from(ais).where(eq(ais.id, aiAId));
-    const [aiB] = await context.db.select().from(ais).where(eq(ais.id, aiBId));
+    const [aiA] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AiMachineRow>`SELECT machine_id FROM ais WHERE id = ${aiAId}`;
+      }),
+    );
+    const [aiB] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AiMachineRow>`SELECT machine_id FROM ais WHERE id = ${aiBId}`;
+      }),
+    );
     expect(aiA?.machineId).toBeNull();
     expect(aiB?.machineId).toBe(other);
   });
@@ -1105,39 +1121,42 @@ describe('machines routes', () => {
   it('deleting a machine row nulls machineId on the AIs that pointed at it', async () => {
     const alice = await bootstrapUser(context, app(), `delmachine${testCounter}@example.com`);
     const connectionId = randomUUID();
-    await context.db.insert(providerConnections).values({
-      id: connectionId,
-      owner: alice.id,
-      provider: 'openai',
-      encryptedKey: 'irrelevant',
-      label: null,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
+          VALUES (${connectionId}, ${alice.id}, ${'openai'}, ${'irrelevant'}, ${null})`;
+      }),
+    );
     const machineId = randomUUID();
-    await context.db.insert(machines).values({
-      id: machineId,
-      ownerUserId: alice.id,
-      name: 'julio-mbp',
-      publicKey: `pub-${machineId}`,
-      capabilities: { os: 'macos' },
-      status: 'revoked',
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO machines (id, owner_user_id, name, public_key, capabilities, status)
+          VALUES (${machineId}, ${alice.id}, ${'julio-mbp'}, ${`pub-${machineId}`}, ${JSON.stringify({ os: 'macos' })}::jsonb, ${'revoked'})`;
+      }),
+    );
     const aiId = randomUUID();
-    await context.db.insert(ais).values({
-      id: aiId,
-      owner: alice.id,
-      name: 'Dev-1',
-      template: 'dev',
-      persona: 'p',
-      providerConnectionId: connectionId,
-      model: 'gpt-4o-mini',
-      localpart: `ai-${aiId}`,
-      jid: `ai-${aiId}@zilar.localhost`,
-      status: 'active',
-      machineId,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status, machine_id)
+          VALUES (${aiId}, ${alice.id}, ${'Dev-1'}, ${'dev'}, ${'p'}, ${connectionId}, ${'gpt-4o-mini'}, ${`ai-${aiId}`}, ${`ai-${aiId}@zilar.localhost`}, ${'active'}, ${machineId})`;
+      }),
+    );
 
-    await context.db.delete(machines).where(eq(machines.id, machineId));
-    const [aiRow] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM machines WHERE id = ${machineId}`;
+      }),
+    );
+    const [aiRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AiMachineRow>`SELECT machine_id FROM ais WHERE id = ${aiId}`;
+      }),
+    );
     expect(aiRow?.machineId).toBeNull();
   });
 });

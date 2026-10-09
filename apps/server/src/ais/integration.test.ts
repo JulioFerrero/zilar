@@ -2,12 +2,13 @@
 import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createLitellmAdminClient, DEFAULT_LITELLM_BASE_URL } from '../ai/litellm-client';
 import { createKeyCipher } from '../connections/crypto';
 import { createDb } from '../db/client';
-import { llmVirtualKeys } from '../db/schema';
 import { FakeAdminClient } from '../test-support';
+import { disposeSqlRuntime, registerSqlRuntime, sqlRuntimeFor } from '../effect/sql';
 import { createEjabberdAdminClient } from '../xmpp/admin-client';
 import type { XmppConfig } from '../xmpp/config';
 import { localpartFor } from '../xmpp/provisioning';
@@ -499,12 +500,16 @@ describe.skipIf(!MODELS_ENABLED)('AI models integration (real server + LiteLLM)'
       //     database handle points at the same Postgres the server runs
       //     against; the key cipher matches the server's, so the stored
       //     connection key decrypts.
-      const directDb = createDb(requireEnv('DATABASE_URL'));
+      const databaseUrl = requireEnv('DATABASE_URL');
+      const directDb = createDb(databaseUrl);
+      registerSqlRuntime(directDb.db, databaseUrl);
       try {
-        await directDb.db
-          .update(llmVirtualKeys)
-          .set({ litellmModelId: null })
-          .where(eq(llmVirtualKeys.aiId, created.id));
+        await sqlRuntimeFor(directDb.db).runPromise(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`UPDATE llm_virtual_keys SET litellm_model_id = ${null} WHERE ai_id = ${created.id}`;
+          }),
+        );
         await litellm.updateKey({ key: keyToken, models: ['gpt-4o-mini'] });
         expect((await litellm.getKeyInfo(keyToken)).models).toEqual(['gpt-4o-mini']);
 
@@ -524,6 +529,7 @@ describe.skipIf(!MODELS_ENABLED)('AI models integration (real server + LiteLLM)'
         expect((await litellm.getKeyInfo(keyToken)).models).toEqual([modelName]);
         expect((await litellm.listModels()).some((entry) => entry.name === modelName)).toBe(true);
       } finally {
+        await disposeSqlRuntime(directDb.db);
         await directDb.close();
       }
 

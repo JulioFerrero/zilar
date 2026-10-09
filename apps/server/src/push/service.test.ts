@@ -1,14 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   testApp,
+  testSql,
   TEST_XMPP_DOMAIN,
   type TestContext,
 } from '../test-support';
-import { chatPrefs, groupMembers, groups, topicMembers, topics } from '../db/schema';
 import { localpartFor } from '../xmpp/provisioning';
 import { createPushCipher } from './crypto';
 import { handleIncomingPush, type PushServiceDeps } from './service';
@@ -154,28 +156,14 @@ describe('push send-time service', () => {
     const bob = await contactOf(context, app, ana.id, 'bob@example.com');
     const groupId = randomUUID();
     const room = 'gownmessage0000001';
-    await context.db.insert(groups).values({
-      id: groupId,
-      roomLocalpart: room,
-      title: 'Own nick group',
-      createdBy: ana.id,
-    });
-    await context.db.insert(groupMembers).values([
-      { groupId, userId: ana.id, role: 'owner' },
-      { groupId, userId: bob.id, role: 'member' },
-    ]);
-    await context.db.insert(topics).values({
-      id: randomUUID(),
-      groupId,
-      name: 'General',
-      glyph: 'G',
-      roomLocalpart: room,
-      visibility: 'public',
-      kind: 'chat',
-      status: 'open',
-      isGeneral: true,
-      createdBy: ana.id,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${room}, 'Own nick group', ${ana.id})`;
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${ana.id}, 'owner'), (${groupId}, ${bob.id}, 'member')`;
+        yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${randomUUID()}, ${groupId}, 'General', 'G', ${room}, 'public', 'chat', 'open', true, ${ana.id})`;
+      }),
+    );
     await registerDevice(bob.id, 'p-bob-own');
     const roomJid = `${room}@${MUC}`;
     // Newest row is Bob's own message (sent from another session while this
@@ -201,28 +189,14 @@ describe('push send-time service', () => {
     const bob = await contactOf(context, app, ana.id, 'bob@example.com');
     const groupId = randomUUID();
     const room = 'gweekendtrip000001';
-    await context.db.insert(groups).values({
-      id: groupId,
-      roomLocalpart: 'gweekendtrip000001',
-      title: 'Weekend trip',
-      createdBy: ana.id,
-    });
-    await context.db.insert(groupMembers).values([
-      { groupId, userId: ana.id, role: 'owner' },
-      { groupId, userId: bob.id, role: 'member' },
-    ]);
-    await context.db.insert(topics).values({
-      id: randomUUID(),
-      groupId,
-      name: 'General',
-      glyph: 'G',
-      roomLocalpart: room,
-      visibility: 'public',
-      kind: 'chat',
-      status: 'open',
-      isGeneral: true,
-      createdBy: ana.id,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, 'gweekendtrip000001', 'Weekend trip', ${ana.id})`;
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${ana.id}, 'owner'), (${groupId}, ${bob.id}, 'member')`;
+        yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${randomUUID()}, ${groupId}, 'General', 'G', ${room}, 'public', 'chat', 'open', true, ${ana.id})`;
+      }),
+    );
     await registerDevice(bob.id, 'p-bob-1');
     archiveRows = [roomRow(`${room}@${MUC}`, 'Ana', 'packing the tent now', 'room-1')];
 
@@ -239,14 +213,12 @@ describe('push send-time service', () => {
     const bob = await contactOf(context, app, ana.id, 'bob@example.com');
     await registerDevice(ana.id, 'p-ana-2');
     const bobJid = `${localpartFor(bob.id)}@${TEST_XMPP_DOMAIN}`;
-    await context.db.insert(chatPrefs).values({
-      userId: ana.id,
-      chatJid: bobJid,
-      mutedUntil: new Date('2026-10-30T00:00:00Z'),
-      archived: false,
-      pinnedAt: null,
-      updatedAt: new Date(),
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO chat_prefs (user_id, chat_jid, muted_until, archived) VALUES (${ana.id}, ${bobJid}, '2026-10-30T00:00:00Z', false)`;
+      }),
+    );
     archiveRows = [dmRow(localpartFor(ana.id), bobJid, 'muted hello', 'dm-2')];
 
     const shared = deps();
@@ -265,46 +237,16 @@ describe('push send-time service', () => {
     const generalRoom = 'ggeneralroom00001';
     const secretRoom = 'gsecretroom000001';
     const privateTopicId = randomUUID();
-    await context.db.insert(groups).values({
-      id: groupId,
-      roomLocalpart: generalRoom,
-      title: 'Acme Web',
-      createdBy: ana.id,
-    });
-    await context.db.insert(groupMembers).values([
-      { groupId, userId: ana.id, role: 'owner' },
-      { groupId, userId: bob.id, role: 'member' },
-      { groupId, userId: cara.id, role: 'member' },
-    ]);
-    await context.db.insert(topics).values({
-      id: randomUUID(),
-      groupId,
-      name: 'General',
-      glyph: 'G',
-      roomLocalpart: generalRoom,
-      visibility: 'public',
-      kind: 'chat',
-      status: 'open',
-      isGeneral: true,
-      createdBy: ana.id,
-    });
-    await context.db.insert(topics).values({
-      id: privateTopicId,
-      groupId,
-      name: 'Layoffs',
-      glyph: 'L',
-      roomLocalpart: secretRoom,
-      visibility: 'private',
-      kind: 'chat',
-      status: 'open',
-      isGeneral: false,
-      createdBy: ana.id,
-    });
-    await context.db.insert(topicMembers).values({
-      topicId: privateTopicId,
-      userId: ana.id,
-      addedBy: ana.id,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${generalRoom}, 'Acme Web', ${ana.id})`;
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${ana.id}, 'owner'), (${groupId}, ${bob.id}, 'member'), (${groupId}, ${cara.id}, 'member')`;
+        yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${randomUUID()}, ${groupId}, 'General', 'G', ${generalRoom}, 'public', 'chat', 'open', true, ${ana.id})`;
+        yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${privateTopicId}, ${groupId}, 'Layoffs', 'L', ${secretRoom}, 'private', 'chat', 'open', false, ${ana.id})`;
+        yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by) VALUES (${privateTopicId}, ${ana.id}, ${ana.id})`;
+      }),
+    );
     // Bob is a group member but not in the private topic.
     await registerDevice(bob.id, 'p-bob-2');
     archiveRows = [roomRow(`${secretRoom}@${MUC}`, 'Ana', 'secret layoff plan text', 'room-2')];
@@ -520,14 +462,12 @@ describe('push send-time service', () => {
     const bob = await contactOf(context, app, ana.id, 'bob@example.com');
     await registerDevice(ana.id, 'p-ana-racer');
     const bobJid = `${localpartFor(bob.id)}@${TEST_XMPP_DOMAIN}`;
-    await context.db.insert(chatPrefs).values({
-      userId: ana.id,
-      chatJid: bobJid,
-      mutedUntil: new Date('2026-10-30T00:00:00Z'),
-      archived: false,
-      pinnedAt: null,
-      updatedAt: new Date(),
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO chat_prefs (user_id, chat_jid, muted_until, archived) VALUES (${ana.id}, ${bobJid}, '2026-10-30T00:00:00Z', false)`;
+      }),
+    );
     const mutedRow = dmRow(localpartFor(ana.id), bobJid, 'muted late', 'dm-muted-late');
     let reads = 0;
     const racing: ArchivePool = {
@@ -557,45 +497,16 @@ describe('push send-time service', () => {
     const generalRoom = 'gracegeneral00001';
     const secretRoom = 'gracesecret000001';
     const privateTopicId = randomUUID();
-    await context.db.insert(groups).values({
-      id: groupId,
-      roomLocalpart: generalRoom,
-      title: 'Grace Group',
-      createdBy: ana.id,
-    });
-    await context.db.insert(groupMembers).values([
-      { groupId, userId: ana.id, role: 'owner' },
-      { groupId, userId: bob.id, role: 'member' },
-    ]);
-    await context.db.insert(topics).values({
-      id: randomUUID(),
-      groupId,
-      name: 'General',
-      glyph: 'G',
-      roomLocalpart: generalRoom,
-      visibility: 'public',
-      kind: 'chat',
-      status: 'open',
-      isGeneral: true,
-      createdBy: ana.id,
-    });
-    await context.db.insert(topics).values({
-      id: privateTopicId,
-      groupId,
-      name: 'Secrets',
-      glyph: 'S',
-      roomLocalpart: secretRoom,
-      visibility: 'private',
-      kind: 'chat',
-      status: 'open',
-      isGeneral: false,
-      createdBy: ana.id,
-    });
-    await context.db.insert(topicMembers).values({
-      topicId: privateTopicId,
-      userId: ana.id,
-      addedBy: ana.id,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${generalRoom}, 'Grace Group', ${ana.id})`;
+        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${ana.id}, 'owner'), (${groupId}, ${bob.id}, 'member')`;
+        yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${randomUUID()}, ${groupId}, 'General', 'G', ${generalRoom}, 'public', 'chat', 'open', true, ${ana.id})`;
+        yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${privateTopicId}, ${groupId}, 'Secrets', 'S', ${secretRoom}, 'private', 'chat', 'open', false, ${ana.id})`;
+        yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by) VALUES (${privateTopicId}, ${ana.id}, ${ana.id})`;
+      }),
+    );
     await registerDevice(bob.id, 'p-bob-race');
     archiveRows = [roomRow(`${secretRoom}@${MUC}`, 'Ana', 'hidden plan text', 'room-hidden-1')];
 
@@ -606,11 +517,12 @@ describe('push send-time service', () => {
 
     // Bob joins the private topic; the same row is still unmarked, so the
     // next IQ notifies it.
-    await context.db.insert(topicMembers).values({
-      topicId: privateTopicId,
-      userId: bob.id,
-      addedBy: ana.id,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by) VALUES (${privateTopicId}, ${bob.id}, ${ana.id})`;
+      }),
+    );
     const second = await handleIncomingPush(shared, { node: 'p-bob-race', from: TEST_XMPP_DOMAIN });
     expect(second).toMatchObject({ kind: 'sent' });
     expect(JSON.parse(sent[0]!.payload)).toMatchObject({

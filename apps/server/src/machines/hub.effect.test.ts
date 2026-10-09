@@ -1,11 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateRunnerKeypair, RunnerClient, type RunnerKeypair } from '@zilar/runner-tunnel';
-import { user } from '../auth/auth-schema';
 import type { ServerDatabase } from '../db/client';
-import { machines } from '../db/schema';
-import { createTestContext, type TestContext } from '../test-support';
+import { createTestContext, testSql, type TestContext } from '../test-support';
 import {
   createHubKeyRegistry,
   startRunnerHub,
@@ -44,20 +43,21 @@ function silentLogger(): HubLogger {
   return { info: () => undefined, warn: () => undefined, error: () => undefined };
 }
 
-async function insertApprovedMachine(db: ServerDatabase, publicKey: string): Promise<string> {
+async function insertApprovedMachine(
+  source: Pick<TestContext, 'db'>,
+  publicKey: string,
+): Promise<string> {
   const ownerUserId = randomUUID();
-  await db
-    .insert(user)
-    .values({ id: ownerUserId, name: 'Owner', email: `${ownerUserId}@example.com` });
   const id = randomUUID();
-  await db.insert(machines).values({
-    id,
-    ownerUserId,
-    name: 'test-machine',
-    publicKey,
-    capabilities: { os: 'macos' },
-    status: 'approved',
-  });
+  await testSql(source)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "user" (id, name, email)
+        VALUES (${ownerUserId}, ${'Owner'}, ${`${ownerUserId}@example.com`})`;
+      yield* sql`INSERT INTO machines (id, owner_user_id, name, public_key, capabilities, status)
+        VALUES (${id}, ${ownerUserId}, ${'test-machine'}, ${publicKey}, ${JSON.stringify({ os: 'macos' })}::jsonb, ${'approved'})`;
+    }),
+  );
   return id;
 }
 
@@ -120,7 +120,7 @@ describe('hub background loops as Effect fibers', () => {
   });
 
   it('runs the first refresh after one interval, repeats, and close stops it', async () => {
-    const first = await insertApprovedMachine(context.db, 'effect-key-1');
+    const first = await insertApprovedMachine(context, 'effect-key-1');
     const cache = createHubKeyRegistry({
       db: context.db,
       registry: noopRegistry(),
@@ -136,7 +136,7 @@ describe('hub background loops as Effect fibers', () => {
 
     // The loop keeps repeating: an approval made after the first run shows up
     // on a later run.
-    const second = await insertApprovedMachine(context.db, 'effect-key-2');
+    const second = await insertApprovedMachine(context, 'effect-key-2');
     await waitFor(() => cache.getPublicKey(second) === 'effect-key-2', 2_000, 'second refresh');
 
     // After close the fiber is interrupted: a revoked row is never read again,
@@ -146,17 +146,19 @@ describe('hub background loops as Effect fibers', () => {
     cache.onRevoke(() => {
       revoked = true;
     });
-    await context.db
-      .update(machines)
-      .set({ status: 'revoked', revokedAt: new Date() })
-      .where(eq(machines.id, first));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE machines SET status = 'revoked', revoked_at = ${new Date()} WHERE id = ${first}`;
+      }),
+    );
     await new Promise((resolve) => setTimeout(resolve, 150));
     expect(revoked).toBe(false);
     expect(cache.getPublicKey(first)).toBe('effect-key-1');
   });
 
   it('survives an unexpected throw from the refresh loop and keeps running', async () => {
-    const id = await insertApprovedMachine(context.db, 'effect-key-survives');
+    const id = await insertApprovedMachine(context, 'effect-key-survives');
 
     const messages: string[] = [];
     let internalThrew = false;
@@ -197,7 +199,7 @@ describe('hub background loops as Effect fibers', () => {
 
   it('survives an unexpected throw from the last-seen poll and logs it', async () => {
     const key = generateRunnerKeypair();
-    const id = await insertApprovedMachine(context.db, key.publicKey);
+    const id = await insertApprovedMachine(context, key.publicKey);
 
     // A registry whose last-seen write always fails, and a logger whose `warn`
     // throws the first time: `flushLastSeen` logs the failed write, the logger

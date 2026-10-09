@@ -2,6 +2,63 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 03:24, 8 workers:**
+- **Merged since 02:20:** T-0694 (B1.1, the http-core split), T-0696 (B1.2, platform-node), T-0717 (B1.3a, the mount list) and 23 test-folder tasks moving tests off drizzle. Each Haiku result was reviewed in its diff; each DeepSeek result went through its pre-review.
+- **Running:**
+  - T-0730: B1.3b, the Effect edge core (paid Muse after the rate-limit fallback);
+  - the last test folders: T-0722 (packet ready), T-0723 (done), T-0724, T-0726, T-0727 and T-0728.
+- **After the edge:** B1.4 (CORS middleware), B1.5 (`remoteAddress`), B1.7 (the route manifest), then B1.8 (retire the bridge).
+- **A comment sweep** waits for the edge: about 55 stale "drizzle service" and "under Hono" header comments in `*/api.ts`.
+- **Found tonight:** `git/routes.ts` and `git/proxy.ts` are not mounted anywhere (only their own tests use them), so A12 is not runtime work.
+- **For Julio:**
+  - D3 (the migrator switch on the live DB);
+  - DEL (deleting `db/schema.ts` and the drizzle dependencies);
+  - A12 (delete or mount `git/*`);
+  - the D2 switch: `auth.ts` onto the T-0690 adapter, after checking the timestamp parsing on production `pg`.
+
+**2026-10-09 02:20, 8 workers:**
+- **Merged since 02:05:**
+  - T-0692 (the retired-handle test);
+  - T-0693 (`/health` on effect/sql: `app.ts` drops drizzle);
+  - T-0689 (the B1 edge-flip plan) and T-0691 (the drizzle-removal plan);
+  - T-0695 (H1, the `testSql` helper);
+  - T-0690 (the better-auth adapter over effect/sql, built and tested, not switched).
+- **Lead decisions (in `docs/audit/effect-edge-flip-plan.md` §5):**
+  - add `@effect/platform-node@4.0.2`;
+  - B1.9 (deleting Hono) waits for A12;
+  - architecture A.
+- **Running:**
+  - T-0694: B1.1, the `effect/http` split (DeepSeek);
+  - T-0696: B1.2, the platform-node smoke test (DeepSeek);
+  - T-0700 and T-0701: the blocks + handles and the auth tests (DeepSeek);
+  - T-0697, T-0698, T-0699 and T-0702: the chats + media, voice + integrations, search and push tests (Haiku).
+- **Next:**
+  - T-0703 to T-0705 are written (chat-prefs, contacts, backgrounds + delegation), and more test folders follow;
+  - B1.3, the Effect edge core, after T-0694.
+- **For Julio:**
+  - D3 (the migrator switch on the live DB);
+  - DEL (deleting `db/schema.ts` and the drizzle dependencies);
+  - A12 (git).
+
+**2026-10-09 02:05, Julio asleep:**
+- **Merged since 01:50:**
+  - T-0682 to T-0688: the groups, topics and approvals files, and `setup/routes.ts` deleted;
+  - T-0684: round 2 moved the gateway approval transaction onto effect/sql.
+- **No domain module uses drizzle any more.** What is still on drizzle:
+  - `app.ts` (the health check);
+  - `auth/auth-schema.ts` and `auth/cli-config.ts`;
+  - `db/client.ts`, `db/schema.ts` and `db/migrate.ts`;
+  - the `effect/sql.ts` snapshot helper;
+  - `test-support.ts`;
+  - 56 test files.
+- **Hono is left in:** `app.ts`, `effect/http.ts` and `git/*`.
+- **Running:**
+  - T-0689: the B1 edge-flip plan (DeepSeek, doc only);
+  - T-0690: the better-auth adapter over effect/sql (DeepSeek, built and tested, not switched);
+  - T-0691: the last drizzle removal plan (DeepSeek, doc only);
+  - T-0692: the retired-handle test (Haiku).
+- **Next:** cut T-0689 and T-0691 into small tasks and launch them.
+
 **2026-10-09 01:50, Julio asleep:**
 - **Merged since 01:22:**
   - T-0669 to T-0681 (except T-0679 and T-0680, listed separately below);

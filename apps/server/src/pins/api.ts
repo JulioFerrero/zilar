@@ -29,7 +29,7 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
-} from '../effect/http';
+} from '../effect/http-core';
 import {
   PIN_MESSAGE_ID_MAX,
   PIN_SENDER_NAME_MAX,

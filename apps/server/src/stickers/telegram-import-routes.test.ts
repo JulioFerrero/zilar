@@ -2,20 +2,29 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { auditLog } from '../db/schema';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createApp } from '../app';
-import { stickers } from '../db/schema';
-import { eq } from 'drizzle-orm';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   TEST_BASE_URL,
+  testSql,
   type SignedInUser,
   type TestContext,
 } from '../test-support';
 import type { TelegramClient, TelegramStickerSet } from './telegram-import';
 import { TelegramImportError } from './telegram-import';
+
+interface StickerIdRow {
+  id: string;
+}
+
+interface AuditRow {
+  action: string;
+  detail: unknown;
+}
 
 function pngBytes(width: number, height: number): Uint8Array {
   const bytes = new Uint8Array(33);
@@ -200,7 +209,12 @@ describe('telegram sticker import', () => {
     };
     expect(second.pack.id).toBe(first.pack.id);
     expect(second.imported).toBe(0);
-    const rows = await context.db.select().from(stickers).where(eq(stickers.packId, first.pack.id));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<StickerIdRow>`SELECT id FROM stickers WHERE pack_id = ${first.pack.id}`;
+      }),
+    );
     expect(rows).toHaveLength(2);
   });
 
@@ -317,7 +331,12 @@ describe('telegram sticker import', () => {
     );
     const response = await importRequest(appWithFake(client), owner, { input: 'FunCats' });
     expect(response.status).toBe(200);
-    const rows = await context.db.select().from(auditLog);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditRow>`SELECT action, detail FROM audit_log`;
+      }),
+    );
     const entry = rows.find((row) => row.action === 'sticker_pack.imported');
     expect(entry).toBeDefined();
     expect(JSON.stringify(entry?.detail)).not.toContain('Fun Cats');
@@ -381,19 +400,24 @@ describe('telegram sticker import', () => {
     expect(first.imported).toBe(3);
 
     // Local stickers, like uploads from the pack editor: no `source_id`.
-    await context.db.insert(stickers).values(
-      Array.from({ length: 117 }, (_, index) => ({
-        id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
-        packId: first.pack.id,
-        position: 100 + index,
-        emoji: null,
-        mime: 'image/png' as const,
-        width: 64,
-        height: 64,
-        bytes: 33,
-        storageKey: `local-${index}.png`,
-        sourceId: null,
-      })),
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO stickers ${sql.insert(
+          Array.from({ length: 117 }, (_, index) => ({
+            id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+            pack_id: first.pack.id,
+            position: 100 + index,
+            emoji: null,
+            mime: 'image/png',
+            width: 64,
+            height: 64,
+            bytes: 33,
+            storage_key: `local-${index}.png`,
+            source_id: null,
+          })),
+        )}`;
+      }),
     );
     const rerun = await importRequest(app, owner, { input: 'FunCats' });
     expect(rerun.status).toBe(200);
@@ -421,18 +445,23 @@ describe('telegram sticker import', () => {
     current = stickerSet([{ sourceId: 'u-1', fileId: 'f-1', emoji: null, animated: false }]);
     const download = client.downloadFile;
     client.downloadFile = async (fileId: string) => {
-      await context.db.insert(stickers).values({
-        id: '20000000-0000-4000-8000-000000000001',
-        packId: created.pack.id,
-        position: 0,
-        emoji: null,
-        mime: 'image/png',
-        width: 64,
-        height: 64,
-        bytes: 33,
-        storageKey: 'winner.png',
-        sourceId: 'u-1',
-      });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO stickers ${sql.insert({
+            id: '20000000-0000-4000-8000-000000000001',
+            pack_id: created.pack.id,
+            position: 0,
+            emoji: null,
+            mime: 'image/png',
+            width: 64,
+            height: 64,
+            bytes: 33,
+            storage_key: 'winner.png',
+            source_id: 'u-1',
+          })}`;
+        }),
+      );
       return download(fileId);
     };
     const response = await importRequest(app, owner, { input: 'Racy' });
@@ -441,10 +470,12 @@ describe('telegram sticker import', () => {
     expect(summary.imported).toBe(0);
     expect(summary.skippedInvalid).toBe(0);
     expect(await readdir(storageDir)).toEqual([]);
-    const rows = await context.db
-      .select()
-      .from(stickers)
-      .where(eq(stickers.packId, created.pack.id));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<StickerIdRow>`SELECT id FROM stickers WHERE pack_id = ${created.pack.id}`;
+      }),
+    );
     expect(rows).toHaveLength(1);
   });
 
@@ -473,38 +504,48 @@ describe('telegram sticker import', () => {
       pack: { id: string };
     };
     current = stickerSet(entries);
-    await context.db.insert(stickers).values(
-      Array.from({ length: 114 }, (_, index) => ({
-        id: `10000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
-        packId: created.pack.id,
-        position: index,
-        emoji: null,
-        mime: 'image/png' as const,
-        width: 64,
-        height: 64,
-        bytes: 33,
-        storageKey: `prefill-${index}.png`,
-        sourceId: null,
-      })),
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO stickers ${sql.insert(
+          Array.from({ length: 114 }, (_, index) => ({
+            id: `10000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+            pack_id: created.pack.id,
+            position: index,
+            emoji: null,
+            mime: 'image/png',
+            width: 64,
+            height: 64,
+            bytes: 33,
+            storage_key: `prefill-${index}.png`,
+            source_id: null,
+          })),
+        )}`;
+      }),
     );
     const originalDownload = client.downloadFile;
     let filled = false;
     client.downloadFile = async (fileId: string) => {
       if (!filled) {
         filled = true;
-        await context.db.insert(stickers).values(
-          Array.from({ length: 2 }, (_, index) => ({
-            id: `20000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
-            packId: created.pack.id,
-            position: 1000 + index,
-            emoji: null,
-            mime: 'image/png' as const,
-            width: 64,
-            height: 64,
-            bytes: 33,
-            storageKey: `filler-${index}.png`,
-            sourceId: null,
-          })),
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* sql`INSERT INTO stickers ${sql.insert(
+              Array.from({ length: 2 }, (_, index) => ({
+                id: `20000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+                pack_id: created.pack.id,
+                position: 1000 + index,
+                emoji: null,
+                mime: 'image/png',
+                width: 64,
+                height: 64,
+                bytes: 33,
+                storage_key: `filler-${index}.png`,
+                source_id: null,
+              })),
+            )}`;
+          }),
         );
       }
       return originalDownload(fileId);
@@ -519,10 +560,12 @@ describe('telegram sticker import', () => {
     };
     expect(summary.pack.id).toBe(created.pack.id);
     expect(summary.imported).toBe(4);
-    const rows = await context.db
-      .select()
-      .from(stickers)
-      .where(eq(stickers.packId, created.pack.id));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<StickerIdRow>`SELECT id FROM stickers WHERE pack_id = ${created.pack.id}`;
+      }),
+    );
     expect(rows).toHaveLength(120);
   });
 
@@ -665,7 +708,12 @@ describe('telegram sticker import', () => {
     expect(body.imported).toBe(120);
     expect(body.partial).toBeUndefined();
     expect(client.fileCalls).toHaveLength(120);
-    const rows = await context.db.select().from(stickers).where(eq(stickers.packId, body.pack.id));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<StickerIdRow>`SELECT id FROM stickers WHERE pack_id = ${body.pack.id}`;
+      }),
+    );
     expect(rows).toHaveLength(120);
   });
 
@@ -722,7 +770,12 @@ describe('telegram sticker import', () => {
     expect(second.pack.id).toBe(first.pack.id);
     expect(second.imported).toBe(4);
     expect(second.partial).toBeUndefined();
-    const rows = await context.db.select().from(stickers).where(eq(stickers.packId, first.pack.id));
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<StickerIdRow>`SELECT id FROM stickers WHERE pack_id = ${first.pack.id}`;
+      }),
+    );
     expect(rows).toHaveLength(12);
   });
 });

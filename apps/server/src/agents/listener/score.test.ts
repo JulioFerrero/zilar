@@ -1,16 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  ais,
-  groupAis,
-  groupMembers,
-  groups,
-  providerConnections,
-  topicAis,
-  topics,
-  user,
-} from '../../db/schema';
-import { createTestContext, TEST_XMPP_DOMAIN, type TestContext } from '../../test-support';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { createTestContext, TEST_XMPP_DOMAIN, testSql, type TestContext } from '../../test-support';
 import type { CompleteChatInput } from '../reply';
 import {
   LISTENER_THRESHOLDS,
@@ -25,9 +17,12 @@ import {
 
 async function seedOwner(context: TestContext): Promise<string> {
   const ownerId = randomUUID();
-  await context.db
-    .insert(user)
-    .values({ id: ownerId, name: 'Owner', email: `${ownerId}@example.com` });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "user" (id, name, email) VALUES (${ownerId}, ${'Owner'}, ${`${ownerId}@example.com`})`;
+    }),
+  );
   return ownerId;
 }
 
@@ -38,56 +33,43 @@ async function seedAi(
   persona: string,
 ): Promise<string> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'CHANGE_ME',
-    label: null,
-  });
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name,
-    template: 'dev',
-    persona,
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart,
-    jid: `${localpart}@${TEST_XMPP_DOMAIN}`,
-    status: 'active',
-  });
+  const jid = `${localpart}@${TEST_XMPP_DOMAIN}`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
+        VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${'CHANGE_ME'}, ${null})`;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status)
+        VALUES (${aiId}, ${ownerId}, ${name}, ${'dev'}, ${persona}, ${connectionId}, ${'gpt-4o-mini'}, ${localpart}, ${jid}, ${'active'})`;
+    }),
+  );
   return aiId;
 }
 
 async function seedGroup(context: TestContext, ownerId: string): Promise<string> {
   const groupId = randomUUID();
-  await context.db.insert(groups).values({
-    id: groupId,
-    roomLocalpart: randomUUID(),
-    title: 'Room',
-    createdBy: ownerId,
-  });
-  await context.db.insert(groupMembers).values({ groupId, userId: ownerId, role: 'owner' });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO groups (id, room_localpart, title, created_by)
+        VALUES (${groupId}, ${randomUUID()}, ${'Room'}, ${ownerId})`;
+      yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${ownerId}, ${'owner'})`;
+    }),
+  );
   return groupId;
 }
 
 async function seedTopic(context: TestContext, ownerId: string, groupId: string): Promise<string> {
   const topicId = randomUUID();
-  await context.db.insert(topics).values({
-    id: topicId,
-    groupId,
-    name: 'General',
-    glyph: 'G',
-    roomLocalpart: randomUUID(),
-    visibility: 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral: true,
-    createdBy: ownerId,
-  });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by)
+        VALUES (${topicId}, ${groupId}, ${'General'}, ${'G'}, ${randomUUID()}, ${'public'}, ${'chat'}, ${'open'}, ${true}, ${ownerId})`;
+    }),
+  );
   return topicId;
 }
 
@@ -119,10 +101,13 @@ describe('listener scoring core', () => {
       const zedId = await seedAi(context, ownerId, 'Zed', longPersona);
       const alphaId = await seedAi(context, ownerId, 'Alpha', '  First line  \nsecond line');
       const outsiderId = await seedAi(context, ownerId, 'Outsider', 'not in the group');
-      await context.db.insert(groupAis).values([
-        { groupId, aiId: zedId, addedBy: ownerId },
-        { groupId, aiId: alphaId, addedBy: ownerId },
-      ]);
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${zedId}, ${ownerId})`;
+          yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${alphaId}, ${ownerId})`;
+        }),
+      );
 
       const roster = await loadRoster(context.db, { groupId });
 
@@ -139,8 +124,13 @@ describe('listener scoring core', () => {
       const topicId = await seedTopic(context, ownerId, groupId);
       const groupAiId = await seedAi(context, ownerId, 'Group AI', 'group');
       const topicAiId = await seedAi(context, ownerId, 'Topic AI', 'topic');
-      await context.db.insert(groupAis).values({ groupId, aiId: groupAiId, addedBy: ownerId });
-      await context.db.insert(topicAis).values({ topicId, aiId: topicAiId, addedBy: ownerId });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${groupAiId}, ${ownerId})`;
+          yield* sql`INSERT INTO topic_ais (topic_id, ai_id, added_by) VALUES (${topicId}, ${topicAiId}, ${ownerId})`;
+        }),
+      );
 
       const roster = await loadRoster(context.db, { groupId, topicId });
 

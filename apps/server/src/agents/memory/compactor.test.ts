@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq, lt } from 'drizzle-orm';
-import { aiMemoryMessages, aiMemoryNodes, ais, providerConnections, user } from '../../db/schema';
-import { createTestContext, TEST_XMPP_DOMAIN, type TestContext } from '../../test-support';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { createTestContext, testSql, TEST_XMPP_DOMAIN, type TestContext } from '../../test-support';
 import { compactMemory } from './compactor';
 
 const BASE = Date.UTC(2026, 0, 1);
@@ -18,30 +18,37 @@ function lineFor(seq: number): string {
 
 async function seedAi(context: TestContext): Promise<string> {
   const ownerId = randomUUID();
-  await context.db
-    .insert(user)
-    .values({ id: ownerId, name: 'Owner', email: `${ownerId}@example.com` });
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'CHANGE_ME',
-    label: null,
-  });
   const aiId = randomUUID();
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Memory AI',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart: `ai-${aiId}`,
-    jid: `ai-${aiId}@${TEST_XMPP_DOMAIN}`,
-    status: 'active',
-  });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "user" ${sql.insert({
+        id: ownerId,
+        name: 'Owner',
+        email: `${ownerId}@example.com`,
+      })}`;
+      yield* sql`INSERT INTO provider_connections ${sql.insert({
+        id: connectionId,
+        owner: ownerId,
+        provider: 'openai',
+        encrypted_key: 'CHANGE_ME',
+        label: null,
+      })}`;
+      yield* sql`INSERT INTO ais ${sql.insert({
+        id: aiId,
+        owner: ownerId,
+        name: 'Memory AI',
+        template: 'dev',
+        persona: 'A persona',
+        provider_connection_id: connectionId,
+        model: 'gpt-4o-mini',
+        localpart: `ai-${aiId}`,
+        jid: `ai-${aiId}@${TEST_XMPP_DOMAIN}`,
+        status: 'active',
+      })}`;
+    }),
+  );
   return aiId;
 }
 
@@ -52,24 +59,32 @@ async function seedRows(
   count: number,
 ): Promise<void> {
   const values = Array.from({ length: count }, (_, seq) => ({
-    aiId,
-    chatKey,
+    ai_id: aiId,
+    chat_key: chatKey,
     seq,
-    messageId: `${chatKey}-m${seq}`,
+    message_id: `${chatKey}-m${seq}`,
     at: day(seq),
     sender: 'Bob',
     text: `m${seq}`,
     deleted: false,
   }));
-  await context.db.insert(aiMemoryMessages).values(values);
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO ai_memory_messages ${sql.insert(values)}`;
+    }),
+  );
 }
 
 async function countNodes(context: TestContext, aiId: string, chatKey: string): Promise<number> {
-  const rows = await context.db
-    .select({ lo: aiMemoryNodes.lo })
-    .from(aiMemoryNodes)
-    .where(and(eq(aiMemoryNodes.aiId, aiId), eq(aiMemoryNodes.chatKey, chatKey)));
-  return rows.length;
+  const [row] = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ total: number }>`SELECT count(*)::int AS total
+        FROM ai_memory_nodes WHERE ai_id = ${aiId} AND chat_key = ${chatKey}`;
+    }),
+  );
+  return row?.total ?? 0;
 }
 
 async function summaryFor(
@@ -79,17 +94,14 @@ async function summaryFor(
   lo: number,
   hi: number,
 ): Promise<string | undefined> {
-  const [row] = await context.db
-    .select({ summary: aiMemoryNodes.summary })
-    .from(aiMemoryNodes)
-    .where(
-      and(
-        eq(aiMemoryNodes.aiId, aiId),
-        eq(aiMemoryNodes.chatKey, chatKey),
-        eq(aiMemoryNodes.lo, lo),
-        eq(aiMemoryNodes.hi, hi),
-      ),
-    );
+  const [row] = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ summary: string }>`SELECT summary FROM ai_memory_nodes
+        WHERE ai_id = ${aiId} AND chat_key = ${chatKey} AND lo = ${lo} AND hi = ${hi}
+        LIMIT 1`;
+    }),
+  );
   return row?.summary;
 }
 
@@ -170,16 +182,13 @@ describe('memory compactor', () => {
     const aiId = await seedAi(context);
     const chatKey = 'dm:a';
     await seedRows(context, aiId, chatKey, 66);
-    await context.db
-      .update(aiMemoryMessages)
-      .set({ deleted: true })
-      .where(
-        and(
-          eq(aiMemoryMessages.aiId, aiId),
-          eq(aiMemoryMessages.chatKey, chatKey),
-          lt(aiMemoryMessages.seq, 16),
-        ),
-      );
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE ai_memory_messages SET deleted = true
+          WHERE ai_id = ${aiId} AND chat_key = ${chatKey} AND seq < 16`;
+      }),
+    );
     let calls = 0;
     const complete = (): Promise<string> => {
       calls += 1;

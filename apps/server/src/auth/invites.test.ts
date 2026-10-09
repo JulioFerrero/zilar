@@ -1,10 +1,7 @@
-import { PGlite } from '@electric-sql/pglite';
-import { drizzle } from 'drizzle-orm/pglite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { PgliteServerDatabase } from '../db/client';
-import { runMigrations } from '../db/migrate';
-import * as schema from '../db/schema';
-import { disposeSqlRuntime, registerSqlRuntime } from '../effect/sql';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { createTestContext, testSql, type TestContext } from '../test-support';
 import {
   DEFAULT_INVITE_MAX_USES,
   consumeInvite,
@@ -18,19 +15,14 @@ import {
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 describe('invites', () => {
-  let client: PGlite;
-  let db: PgliteServerDatabase;
+  let context: TestContext;
 
   beforeEach(async () => {
-    client = new PGlite();
-    db = drizzle(client, { schema });
-    registerSqlRuntime(db, '');
-    await runMigrations(db);
+    context = await createTestContext();
   });
 
   afterEach(async () => {
-    await disposeSqlRuntime(db);
-    await client.close();
+    await context.close();
   });
 
   it('generates 128-bit base64url codes', () => {
@@ -41,7 +33,7 @@ describe('invites', () => {
 
   it('creates an invite with the documented defaults', async () => {
     const before = Date.now();
-    const invite = await createInvite(db, { createdBy: null });
+    const invite = await createInvite(context.db, { createdBy: null });
 
     expect(invite.maxUses).toBe(DEFAULT_INVITE_MAX_USES);
     expect(invite.uses).toBe(0);
@@ -51,61 +43,64 @@ describe('invites', () => {
   });
 
   it('records the creator when there is one', async () => {
-    await db
-      .insert(schema.user)
-      .values({ id: 'user-1', name: 'Creator', email: 'creator@example.com' });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO "user" (id, name, email) VALUES (${'user-1'}, ${'Creator'}, ${'creator@example.com'})`;
+      }),
+    );
 
-    const invite = await createInvite(db, { createdBy: 'user-1' });
+    const invite = await createInvite(context.db, { createdBy: 'user-1' });
     expect(invite.createdBy).toBe('user-1');
   });
 
   it('finds usable invites and ignores expired, revoked or used-up ones', async () => {
-    const usable = await createInvite(db, { createdBy: null });
-    expect(await findUsableInvite(db, usable.code)).not.toBeNull();
+    const usable = await createInvite(context.db, { createdBy: null });
+    expect(await findUsableInvite(context.db, usable.code)).not.toBeNull();
 
-    const expired = await createInvite(db, { createdBy: null, expiresInDays: -1 });
-    expect(await findUsableInvite(db, expired.code)).toBeNull();
+    const expired = await createInvite(context.db, { createdBy: null, expiresInDays: -1 });
+    expect(await findUsableInvite(context.db, expired.code)).toBeNull();
 
-    const revoked = await createInvite(db, { createdBy: null });
-    await revokeInvite(db, revoked.code);
-    expect(await findUsableInvite(db, revoked.code)).toBeNull();
+    const revoked = await createInvite(context.db, { createdBy: null });
+    await revokeInvite(context.db, revoked.code);
+    expect(await findUsableInvite(context.db, revoked.code)).toBeNull();
 
-    const usedUp = await createInvite(db, { createdBy: null, maxUses: 1 });
-    await consumeInvite(db, usedUp.code);
-    expect(await findUsableInvite(db, usedUp.code)).toBeNull();
+    const usedUp = await createInvite(context.db, { createdBy: null, maxUses: 1 });
+    await consumeInvite(context.db, usedUp.code);
+    expect(await findUsableInvite(context.db, usedUp.code)).toBeNull();
 
-    expect(await findUsableInvite(db, 'missing-code')).toBeNull();
+    expect(await findUsableInvite(context.db, 'missing-code')).toBeNull();
   });
 
   it('consumes an invite atomically under concurrency', async () => {
-    const invite = await createInvite(db, { createdBy: null, maxUses: 1 });
+    const invite = await createInvite(context.db, { createdBy: null, maxUses: 1 });
 
     const results = await Promise.all(
-      Array.from({ length: 10 }, () => consumeInvite(db, invite.code)),
+      Array.from({ length: 10 }, () => consumeInvite(context.db, invite.code)),
     );
 
     expect(results.filter((row) => row !== null)).toHaveLength(1);
-    const stored = await findInviteByCode(db, invite.code);
+    const stored = await findInviteByCode(context.db, invite.code);
     expect(stored?.uses).toBe(1);
   });
 
   it('increments uses up to maxUses and then stops', async () => {
-    const invite = await createInvite(db, { createdBy: null, maxUses: 2 });
+    const invite = await createInvite(context.db, { createdBy: null, maxUses: 2 });
 
-    expect(await consumeInvite(db, invite.code)).not.toBeNull();
-    expect(await consumeInvite(db, invite.code)).not.toBeNull();
-    expect(await consumeInvite(db, invite.code)).toBeNull();
+    expect(await consumeInvite(context.db, invite.code)).not.toBeNull();
+    expect(await consumeInvite(context.db, invite.code)).not.toBeNull();
+    expect(await consumeInvite(context.db, invite.code)).toBeNull();
 
-    const stored = await findInviteByCode(db, invite.code);
+    const stored = await findInviteByCode(context.db, invite.code);
     expect(stored?.uses).toBe(2);
   });
 
   it('revokes an invite once', async () => {
-    const invite = await createInvite(db, { createdBy: null });
+    const invite = await createInvite(context.db, { createdBy: null });
 
-    const revoked = await revokeInvite(db, invite.code);
+    const revoked = await revokeInvite(context.db, invite.code);
     expect(revoked?.revokedAt).toBeInstanceOf(Date);
-    expect(await revokeInvite(db, invite.code)).toBeNull();
-    expect(await consumeInvite(db, invite.code)).toBeNull();
+    expect(await revokeInvite(context.db, invite.code)).toBeNull();
+    expect(await consumeInvite(context.db, invite.code)).toBeNull();
   });
 });
