@@ -1,7 +1,7 @@
 ---
 id: T-0771
 title: "S5a: sandbox host fetch on Effect — sandbox/host-fetch.ts validateFetchRequest (DNS resolve + SSRF check) and fetchPinnedHttps (https request as Effect.callback, destroy on interrupt) as Effects behind the unchanged exported Promise functions; same FetchCheck results, same error texts, same pinning to the validated IP"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0771-sandbox-host-fetch
 model: auto
@@ -57,4 +57,46 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What changed
+- `apps/server/src/sandbox/host-fetch.ts`: `validateFetchRequest` and `fetchPinnedHttps` keep their signatures and now run `validateFetchRequestEffect` and `fetchPinnedHttpsEffect` through `Effect.runPromise`. `HostFetcher`, `DnsResolver`, `createDefaultFetcher`, `normalizeHost`, `isHostAllowed` and all exported types are unchanged in shape. No `new Promise` and no `async` function remain.
+- Validation: an internal `checkFetchRequest` (`Effect.fnUntraced`) runs the checks in the old order (method, body, URL parse, scheme, credentials, port, empty host, allow-list, DNS, empty list, per-address `isIP` / `classifyIp`). Each rejection is a `FetchRejected` tagged error carrying the old message; `validateFetchRequestEffect` maps it back to `{ ok: false, message }` and success to `{ ok: true, request }`, so its error channel is `never`. URL parse uses `Effect.try` (chat-core is not a dependency of the server). The resolver call is `Effect.tryPromise`, whose catch gives `host not allowed: <host>` exactly as the old try/catch did.
+- `normalizeHost` keeps its try/catch: it is a pure, total parse with a fallback value, not an effectful failure.
+- Fetch: `Effect.callback` with a `settled` flag (first outcome wins) and an interruption finalizer that calls `req.destroy()`, the T-0760 pattern. `req.setTimeout` and the `timeout` event stay as before.
+- `apps/server/src/sandbox/host-fetch.test.ts`: only added imports and a new `describe('fetchPinnedHttpsEffect')`; the existing tests are untouched.
+
+### Interruption test
+A local TLS server (self-signed cert made with openssl in a temp dir, 127.0.0.1) receives the request and never answers, and records when its socket closes. The test runs `fetchPinnedHttpsEffect` with a 60 s fetch timeout through `Effect.runPromise(..., { signal })`, waits until the server saw the request, aborts, expects the promise to reject, then awaits the server-side socket close. Without the finalizer the socket stays open for 60 s: I removed the `req.destroy()` call once and the test timed out at 30 s; the code is restored.
+
+### Extra tests
+Timeout text (`fetch timeout`, 50 ms against a silent server), size cap text (`response too large`, two 600-byte chunks against a 1024 cap), redirect returns status and an empty body with no follow.
+
+### Test counts
+Sandbox before: 4 files, 106 tests. After: 4 files, 110 tests, all passing (`pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/sandbox`).
+
+### Behaviour notes
+- `Effect.runPromise` rejects with the raw failure (`causeSquash` returns the `Fail` error or the `Die` defect), so `run-tool.ts` still sees the original `Error` and its message.
+- A single small response can end before the size-cap `destroy` takes effect (data and end in one tick); this race exists unchanged in the old code, and `run-tool.ts` re-checks the body length.
+
+### Gate
+`pnpm gate` (second run, after fixing two `no-useless-spread` lint errors in my new test helper):
+```
+gate: 3 changed file(s) against main
+PASS  install (frozen)
+PASS  format
+PASS  lint
+PASS  typecheck
+PASS  effect
+PASS  tests @zilar/server
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Deviations / open questions
+None. The spec's test restriction ("only add tests") was kept: I added top-level imports and one `describe`, and changed no existing test.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Sonnet 5.5. The lead reviewed the diff and the test setup.
+- **The SSRF guard is unchanged:** the same order of checks, the same messages, pinning to the validated address with SNI, no redirects and the same size cap and timeout texts. The Promise exports run the new Effects.
+- **Interrupting the fetch now destroys the request.** A local TLS test proves it, with a runtime `openssl` certificate, so no key is committed.
+- **Results:** sandbox tests go from 106 to 110, and the gate passed (including the effect step).

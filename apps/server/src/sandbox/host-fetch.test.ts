@@ -1,5 +1,18 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createServer as createTlsServer } from 'node:https';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Effect } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
-import { isHostAllowed, normalizeHost, validateFetchRequest } from './host-fetch';
+import {
+  fetchPinnedHttps,
+  fetchPinnedHttpsEffect,
+  isHostAllowed,
+  normalizeHost,
+  validateFetchRequest,
+} from './host-fetch';
 
 function bridge(overrides: Record<string, unknown> = {}) {
   return {
@@ -269,5 +282,143 @@ describe('validateFetchRequest', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('fetchPinnedHttpsEffect', () => {
+  type Handler = (req: IncomingMessage, res: ServerResponse) => void;
+
+  // Runs `body` against a local TLS server (self-signed cert, no outbound
+  // network) and tears everything down afterwards.
+  async function withTlsServer(
+    handler: Handler,
+    body: (port: number) => Promise<void>,
+  ): Promise<void> {
+    const dir = mkdtempSync(join(tmpdir(), 'zilar-eff-'));
+    try {
+      execFileSync(
+        'openssl',
+        [
+          'req',
+          '-x509',
+          '-newkey',
+          'rsa:2048',
+          '-keyout',
+          join(dir, 'k.pem'),
+          '-out',
+          join(dir, 'c.pem'),
+          '-days',
+          '1',
+          '-nodes',
+          '-subj',
+          '/CN=tooltest.local',
+        ],
+        { stdio: 'ignore' },
+      );
+      const server = createTlsServer(
+        { key: readFileSync(join(dir, 'k.pem')), cert: readFileSync(join(dir, 'c.pem')) },
+        handler,
+      );
+      await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const port = (server.address() as { port: number }).port;
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+      try {
+        await body(port);
+      } finally {
+        delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+        server.closeAllConnections();
+        await new Promise<void>((resolve) => server.close(() => resolve()));
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('destroys the request when the fiber is interrupted', async () => {
+    let closed: () => void = () => undefined;
+    const connectionClosed = new Promise<void>((resolve) => {
+      closed = resolve;
+    });
+    let received: () => void = () => undefined;
+    const requestReceived = new Promise<void>((resolve) => {
+      received = resolve;
+    });
+    await withTlsServer(
+      // The server never answers, so only the client can end the connection.
+      (req) => {
+        req.socket.on('close', closed);
+        received();
+      },
+      async (port) => {
+        const controller = new AbortController();
+        const outcome = Effect.runPromise(
+          fetchPinnedHttpsEffect(new URL('https://tooltest.local/slow'), '127.0.0.1', {
+            fetchTimeoutMs: 60_000,
+            maxResponseBytes: 65536,
+            port,
+          }),
+          { signal: controller.signal },
+        );
+        await requestReceived;
+        controller.abort();
+        await expect(outcome).rejects.toBeDefined();
+        // Without the interruption finalizer the socket would stay open for
+        // the whole 60 s timeout and this would never resolve.
+        await connectionClosed;
+      },
+    );
+  });
+
+  it('keeps the timeout text', async () => {
+    await withTlsServer(
+      () => undefined,
+      async (port) => {
+        await expect(
+          fetchPinnedHttps(new URL('https://tooltest.local/slow'), '127.0.0.1', {
+            fetchTimeoutMs: 50,
+            maxResponseBytes: 65536,
+            port,
+          }),
+        ).rejects.toThrow('fetch timeout');
+      },
+    );
+  });
+
+  it('keeps the size cap text', async () => {
+    await withTlsServer(
+      (_req, res) => {
+        // Two chunks with the end held back, so the cap trips mid-stream.
+        res.writeHead(200);
+        res.write(Buffer.alloc(600, 1));
+        setTimeout(() => res.write(Buffer.alloc(600, 1)), 50);
+      },
+      async (port) => {
+        await expect(
+          fetchPinnedHttps(new URL('https://tooltest.local/big'), '127.0.0.1', {
+            fetchTimeoutMs: 5000,
+            maxResponseBytes: 1024,
+            port,
+          }),
+        ).rejects.toThrow('response too large');
+      },
+    );
+  });
+
+  it('returns an empty body for a redirect without following it', async () => {
+    await withTlsServer(
+      (_req, res) => {
+        res.writeHead(302, { location: 'https://elsewhere.example/' });
+        res.end();
+      },
+      async (port) => {
+        const response = await fetchPinnedHttps(new URL('https://tooltest.local/r'), '127.0.0.1', {
+          fetchTimeoutMs: 5000,
+          maxResponseBytes: 1024,
+          port,
+        });
+        expect(response.status).toBe(302);
+        expect(response.body.length).toBe(0);
+      },
+    );
   });
 });
