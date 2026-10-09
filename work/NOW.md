@@ -13,6 +13,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - SIGTERM logs "shutting down" and exits in 2 s with no error.
 - **Found tonight:** every "Production images" run on main had failed since at least 2026-10-08 11:54 UTC, on the web image (`@zilar/ui-tokens` was missing from the Docker build). The deploy job never ran. The repo has no Actions secrets, so auto-deploy is off anyway; production has not changed tonight.
 - **Hono now:** only `git/*` (A12, Julio's call; not mounted). **Drizzle now:** the D-group files, which wait for Julio.
+- **06:55:** "Production images" run 37885620151 is green: all four images, including web, were built and published as `:latest`. Its deploy job skipped with "Auto-deploy skipped: set COOLIFY_URL, COOLIFY_TOKEN and COOLIFY_SERVICE_UUID". Production is unchanged until Julio deploys.
 
 **2026-10-09 05:50, Julio asleep:**
 - **Merged since 03:24:**
