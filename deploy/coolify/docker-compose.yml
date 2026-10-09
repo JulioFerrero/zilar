@@ -142,6 +142,11 @@ services:
       # below), fixed absolute path, always set — never relative, never
       # empty. Same rules as the sticker dir.
       AVATAR_STORAGE_DIR: /data/avatars
+      # Where chat background wallpapers live (T-0460): it reuses the existing
+      # `avatar-data` volume mounted at /data/avatars, so no new volume is
+      # needed. Same rules as the avatar dir: a manual edit orphans previously
+      # uploaded wallpapers.
+      BACKGROUND_STORAGE_DIR: /data/avatars/backgrounds
       # See deploy/docker-compose.yml: an empty string fails the `z.url()`
       # schema, so the default is an unreachable placeholder URL. The AI
       # module treats "no master key" as "no gateway" and the placeholder is

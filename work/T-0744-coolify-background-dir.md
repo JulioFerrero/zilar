@@ -1,7 +1,7 @@
 ---
 id: T-0744
 title: "deploy/coolify/docker-compose.yml: set BACKGROUND_STORAGE_DIR=/data/avatars/backgrounds on the server (as deploy/docker-compose.yml does), so chat backgrounds land on the avatar volume, not the container layer"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0744-coolify-background-dir
 model: auto
@@ -44,4 +44,32 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did:** added the same comment and `BACKGROUND_STORAGE_DIR: /data/avatars/backgrounds` line as `deploy/docker-compose.yml:150-153`, directly after `AVATAR_STORAGE_DIR` in the `server` service of `deploy/coolify/docker-compose.yml` (comment at lines 145-148, variable at line 149). Nothing else changed.
+
+**Files changed:**
+- `deploy/coolify/docker-compose.yml`
+- `work/T-0744-coolify-background-dir.md` (this report and status)
+
+**Commands and results:**
+- `pnpm install`: done (10.8s).
+- `pnpm exec prettier --file-info deploy/coolify/docker-compose.yml`: parser `yaml`, not ignored.
+- `pnpm exec prettier --check deploy/coolify/docker-compose.yml`: "All matched files use Prettier code style!"
+- `pnpm exec prettier --write deploy/coolify/docker-compose.yml`: unchanged.
+- `grep -n BACKGROUND_STORAGE_DIR deploy/coolify/docker-compose.yml`: line 149 shows the new line.
+- `pnpm gate` (run from `/Users/julio/personal-projects/zilar-T-0744`), summary lines:
+  - `gate: 2 changed file(s) against main`
+  - `PASS  install (frozen)  (1.0s)`
+  - `PASS  format  (14.9s)`
+  - `PASS  lint  (0.9s)`
+  - `PASS  typecheck  (1.2s)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+- No single Vitest tests were run: no package code changed and the gate ran no test step.
+
+**Problems / deviations:** none. The comment says "(T-0460)", copied from the plain compose file.
+
+**Open questions:** none.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 1 min). It adds one line and its comment, matching `deploy/docker-compose.yml:150-153`, and the gate passed. **The live Coolify compose still needs the same line, which is Julio's OK.**
