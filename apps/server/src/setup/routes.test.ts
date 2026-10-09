@@ -3,13 +3,13 @@
 // No test touches a real mail provider: the test-code send is injected.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { count, eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createAuditRecorder } from '../audit/service';
 import { CurrentMailer, type Mailer } from '../auth/mailer';
 import { createApp } from '../app';
-import { auditLog, instanceSettings, invites, user } from '../db/schema';
 import { sqlRuntimeFor, type SqlRuntime } from '../effect/sql';
-import { createTestContext, TEST_BASE_URL, type TestContext } from '../test-support';
+import { createTestContext, testSql, TEST_BASE_URL, type TestContext } from '../test-support';
 import { SETUP_API_ROUTES, SETUP_RATE_LIMIT_MAX, type SetupApiDependencies } from './api';
 import {
   getMailSettings,
@@ -35,6 +35,21 @@ let liveMailer: CurrentMailer;
 let sentThrough: Mailer | null;
 let sentTo: Array<{ email: string; code: string }>;
 let swapped: Mailer | null;
+
+interface InstanceSettingRow {
+  key: string;
+  value: string;
+}
+
+interface InviteRow {
+  createdBy: string | null;
+  maxUses: number;
+  uses: number;
+}
+
+interface AuditRow {
+  detail: unknown;
+}
 
 function failingSend(): SetupApiDependencies['sendTestCode'] {
   return async () => {
@@ -113,12 +128,12 @@ describe('setup status', () => {
 
   it('reports needsSetup false once a user exists, without touching mail state', async () => {
     const app = appFor();
-    await context.db.insert(user).values({
-      id: 'u-admin',
-      name: 'Admin',
-      email: 'admin@example.com',
-      emailVerified: true,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO "user" (id, name, email, email_verified) VALUES (${'u-admin'}, ${'Admin'}, ${'admin@example.com'}, ${true})`;
+      }),
+    );
     const response = await app.request(`${TEST_BASE_URL}/api/setup/status`);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ needsSetup: false, mailConfigured: true });
@@ -161,7 +176,12 @@ describe('POST /api/setup', () => {
     expect(stored).toEqual({ resendApiKey: SENTINEL_KEY, from: SENTINEL_FROM });
 
     // The key is stored encrypted, never in clear text.
-    const rows = await context.db.select().from(instanceSettings);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<InstanceSettingRow>`SELECT key, value FROM instance_settings`;
+      }),
+    );
     const byKey = new Map(rows.map((row) => [row.key, row.value]));
     expect(byKey.get(RESEND_API_KEY_SETTING)).not.toContain(SENTINEL_KEY);
     expect(byKey.get(MAIL_FROM_SETTING)).toBe(SENTINEL_FROM);
@@ -223,7 +243,12 @@ describe('POST /api/setup', () => {
     const response = await postSetup(app, validBody);
 
     expect(response.status).toBe(422);
-    const rows = await context.db.select().from(invites);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM invites`;
+      }),
+    );
     expect(rows).toHaveLength(0);
   });
 
@@ -275,12 +300,12 @@ describe('POST /api/setup', () => {
   });
 
   it('answers the same 404 once an admin exists', async () => {
-    await context.db.insert(user).values({
-      id: 'u-admin',
-      name: 'Admin',
-      email: 'admin@example.com',
-      emailVerified: true,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO "user" (id, name, email, email_verified) VALUES (${'u-admin'}, ${'Admin'}, ${'admin@example.com'}, ${true})`;
+      }),
+    );
     const app = appFor();
     const response = await postSetup(app, validBody);
     expect(response.status).toBe(404);
@@ -311,10 +336,12 @@ describe('POST /api/setup', () => {
 
     // The audit row carries ids only: detail is null and no audit column
     // holds the key, the sender, the admin email or the invite code.
-    const auditRows = await context.db
-      .select()
-      .from(auditLog)
-      .where(eq(auditLog.action, 'setup.completed'));
+    const auditRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<AuditRow>`SELECT * FROM audit_log WHERE action = ${'setup.completed'}`;
+      }),
+    );
     expect(auditRows).toHaveLength(1);
     expect(auditRows[0]?.detail).toBeNull();
     expect(JSON.stringify(auditRows[0])).not.toContain(SENTINEL_KEY);
@@ -333,12 +360,12 @@ describe('POST /api/setup', () => {
     expect((await postSetup(app, {})).status).toBe(429);
     // Setup finishes another way (a user exists): every caller now gets
     // the same 404 as an unknown route, never a 429.
-    await context.db.insert(user).values({
-      id: 'u-admin',
-      name: 'Admin',
-      email: 'admin@example.com',
-      emailVerified: true,
-    });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO "user" (id, name, email, email_verified) VALUES (${'u-admin'}, ${'Admin'}, ${'admin@example.com'}, ${true})`;
+      }),
+    );
     const response = await postSetup(app, validBody);
     expect(response.status).toBe(404);
     expect(await response.json()).toMatchObject({ error: { code: 'not_found' } });
@@ -361,24 +388,30 @@ describe('setup route shape', () => {
       adminEmail: 'admin@example.com',
     });
     const { inviteCode } = (await response.json()) as { inviteCode: string };
-    const [row] = await context.db.select().from(invites).where(eq(invites.code, inviteCode));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<InviteRow>`SELECT created_by, max_uses, uses FROM invites WHERE code = ${inviteCode}`;
+      }),
+    );
     expect(row?.createdBy).toBeNull();
     expect(row?.maxUses).toBe(1);
     expect(row?.uses).toBe(0);
   });
 
   it('uses at most one invite per setup (no duplicate rows)', async () => {
-    const { invites } = await import('../db/schema');
     const app = appFor();
     await postSetup(app, {
       resendApiKey: SENTINEL_KEY,
       from: SENTINEL_FROM,
       adminEmail: 'admin@example.com',
     });
-    const [row] = await context.db
-      .select({ total: count() })
-      .from(invites)
-      .then((rows) => rows as Array<{ total: number }>);
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM invites`;
+      }),
+    );
     expect(Number(row?.total ?? 0)).toBe(1);
   });
 });

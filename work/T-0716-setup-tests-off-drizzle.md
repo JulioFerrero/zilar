@@ -1,7 +1,7 @@
 ---
 id: T-0716
 title: "tests off drizzle (setup): replace every drizzle query in setup/routes.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0716-setup-tests-off-drizzle
 model: auto
@@ -50,4 +50,73 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Replaced every drizzle query in `apps/server/src/setup/routes.test.ts` with
+`testSql(context)(Effect.gen(function* () { const sql = yield* SqlClient.SqlClient; ... }))`,
+keeping the same rows, values, order and assertions.
+
+1. Dropped the `drizzle-orm` import (`count`, `eq`) and the `../db/schema` import
+   (`auditLog`, `instanceSettings`, `invites`, `user`); added `Effect`,
+   `SqlClient` and `testSql`.
+2. Three `context.db.insert(user)` seeds → `INSERT INTO "user" (id, name, email,
+   email_verified) VALUES (...)`, keeping `emailVerified` true.
+3. `select().from(instanceSettings)` → `SELECT key, value FROM instance_settings`
+   with a local `InstanceSettingRow`.
+4. `select().from(invites)` (empty-row check) → `SELECT id FROM invites`.
+5. `select().from(auditLog).where(eq(auditLog.action, 'setup.completed'))` →
+   `SELECT * FROM audit_log WHERE action = ${...}`, with a local `AuditRow`. The
+   `SELECT *` keeps the existing "no audit column holds the key" `JSON.stringify`
+   assertion meaningful.
+6. `select().from(invites).where(eq(invites.code, inviteCode))` →
+   `SELECT created_by, max_uses, uses FROM invites WHERE code = ${...}`, with a
+   local `InviteRow`.
+7. The dynamic `import('../db/schema')` + `count()` query →
+   `SELECT count(*)::int AS total FROM invites`.
+
+Left alone, per spec: the `db: context.db` arguments to `createApp` /
+`createAuditRecorder` and the `getMailSettings(context.db, ...)` /
+`needsSetup(context.db)` calls (module boundaries, not drizzle queries).
+
+### Files changed
+
+- `apps/server/src/setup/routes.test.ts`
+- `work/T-0716-setup-tests-off-drizzle.md` (status + this Report)
+
+### Commands and real results
+
+- `git grep -n "drizzle-orm\|db/schema" -- apps/server/src/setup/routes.test.ts`
+  → no output (acceptance met).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/setup/routes.test.ts`
+  → 1 file passed, **16 tests passed**.
+- `pnpm gate` (repo root) summary:
+```
+gate: 2 changed file(s) against main
+PASS  install (frozen)  (1.7s)
+PASS  format  (41.8s)
+PASS  lint  (1.2s)
+PASS  typecheck  (5.1s)
+PASS  tests @zilar/server  (14.2s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Tests before / after
+
+- Before: 16 test cases in `routes.test.ts` at `HEAD` (counted with
+  `git show HEAD:apps/server/src/setup/routes.test.ts | grep -c "  it("`; the
+  baseline is green on `main`). I did not re-run the pre-change file.
+- After: **16 passed** (`vitest run ... src/setup/routes.test.ts`).
+- No test count change.
+
+### Deviations / problems
+
+None. No dependencies added, no check disabled, no secrets read or written.
+
+### Blocked / needs a decision
+
+None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head 5129c74c). The setup tests are on `testSql`, and the `sqlRuntimeFor` failure seam from T-0675 is unchanged.
