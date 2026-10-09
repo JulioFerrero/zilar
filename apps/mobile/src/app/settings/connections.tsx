@@ -1,6 +1,7 @@
+import { Effect } from 'effect';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ChevronLeft, Eye, EyeOff, KeyRound, Plus, Trash2, X, Zap } from 'lucide-react-native';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useColorScheme } from 'nativewind';
@@ -22,6 +23,7 @@ import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import type { ProviderConnection } from '@/lib/connections-api';
+import { useAction } from '@/lib/effect/use-action';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
@@ -41,6 +43,11 @@ const PROVIDERS = [
  * secure API key field. The key is write-only: the field state is cleared
  * the moment the save succeeds, and the key is never rendered, logged or
  * stored anywhere else.
+ *
+ * The screen's state stays in React `useState` as before; each network call
+ * is an Effect run by `useAction`, which writes the results back into that
+ * state. `useAction` also gives the single-flight guard (a second tap while
+ * one call runs is ignored) and interrupts a running call on unmount.
  */
 export default function ConnectionsScreen() {
   return (
@@ -60,29 +67,102 @@ function ConnectionsList() {
   const [errorInfo, setErrorInfo] = useState<ConnectionsErrorInfo>({ message: '' });
   const [showForm, setShowForm] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
-  const testingRef = useRef(false);
   const [testResults, setTestResults] = useState<Record<string, boolean>>({});
   const [testErrors, setTestErrors] = useState<Record<string, string>>({});
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [removeError, setRemoveError] = useState('');
   const [busy, setBusy] = useState(false);
-  // Guards against a double tap landing before React re-renders the disabled
-  // button, so one Remove can never DELETE twice.
-  const busyRef = useRef(false);
+
+  // Latest reload wins: a focus reload replaces a load still in flight.
+  const [, load] = useAction(
+    () =>
+      Effect.tryPromise({
+        try: () => api.listConnections(),
+        catch: (cause): ConnectionsErrorInfo =>
+          describeConnectionsError(cause, 'Could not load your connections.'),
+      }).pipe(
+        Effect.tap((list) =>
+          Effect.sync(() => {
+            setConnections(list);
+            setStatus('ready');
+          }),
+        ),
+        Effect.catch((info) =>
+          Effect.sync(() => {
+            setErrorInfo(info);
+            setStatus('error');
+          }),
+        ),
+      ),
+    { mode: 'replace' },
+  );
 
   const reload = useCallback(() => {
     setStatus('loading');
-    void api
-      .listConnections()
-      .then((list) => {
-        setConnections(list);
-        setStatus('ready');
-      })
-      .catch((error: unknown) => {
-        setErrorInfo(describeConnectionsError(error, 'Could not load your connections.'));
-        setStatus('error');
+    load(undefined);
+  }, [load]);
+
+  // A second tap on any Test is ignored while one test runs (one lock for
+  // all rows, as the server rate-limits key tests per user).
+  const [, runTest] = useAction((id: string) =>
+    Effect.sync(() => {
+      setTestingId(id);
+      setTestErrors((previous) => {
+        if (!(id in previous)) return previous;
+        const { [id]: _removed, ...rest } = previous;
+        void _removed;
+        return rest;
       });
-  }, [api]);
+    }).pipe(
+      Effect.andThen(
+        Effect.tryPromise({
+          try: () => api.testConnection(id),
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.tap((result) =>
+            Effect.sync(() => {
+              setTestResults((previous) => ({ ...previous, [id]: result.ok }));
+              if (!result.ok) {
+                setTestErrors((previous) => ({ ...previous, [id]: 'The key was rejected.' }));
+              }
+            }),
+          ),
+          Effect.catch(() =>
+            Effect.sync(() => {
+              setTestResults((previous) => ({ ...previous, [id]: false }));
+              setTestErrors((previous) => ({ ...previous, [id]: 'Could not test the key.' }));
+            }),
+          ),
+        ),
+      ),
+      Effect.ensuring(Effect.sync(() => setTestingId(null))),
+    ),
+  );
+
+  // A second tap on any Remove is ignored while one removal runs.
+  const [, removeConnection] = useAction((id: string) =>
+    Effect.sync(() => {
+      setBusy(true);
+      setRemoveError('');
+    }).pipe(
+      Effect.andThen(
+        Effect.tryPromise({
+          try: () => api.deleteConnection(id),
+          catch: (cause): ConnectionsErrorInfo =>
+            describeConnectionsError(cause, 'Could not remove the connection.'),
+        }).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              setConnections((previous) => previous.filter((connection) => connection.id !== id));
+              setConfirmingId(null);
+            }),
+          ),
+          Effect.catch((info) => Effect.sync(() => setRemoveError(info.message))),
+        ),
+      ),
+      Effect.ensuring(Effect.sync(() => setBusy(false))),
+    ),
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -90,58 +170,14 @@ function ConnectionsList() {
     }, [reload]),
   );
 
-  const test = (id: string): void => {
-    // A second tap that lands before the disabled state propagates must
-    // not fire a second test (the server rate-limits key tests per user).
-    if (testingRef.current) {
-      return;
-    }
-    testingRef.current = true;
-    setTestingId(id);
-    setTestErrors((previous) => {
-      if (!(id in previous)) return previous;
-      const { [id]: _removed, ...rest } = previous;
-      void _removed;
-      return rest;
-    });
-    void api
-      .testConnection(id)
-      .then((result) => {
-        setTestResults((previous) => ({ ...previous, [id]: result.ok }));
-        if (!result.ok) {
-          setTestErrors((previous) => ({ ...previous, [id]: 'The key was rejected.' }));
-        }
-      })
-      .catch(() => {
-        setTestResults((previous) => ({ ...previous, [id]: false }));
-        setTestErrors((previous) => ({ ...previous, [id]: 'Could not test the key.' }));
-      })
-      .finally(() => {
-        testingRef.current = false;
-        setTestingId(null);
-      });
+  const askRemove = (id: string): void => {
+    setConfirmingId(id);
+    setRemoveError('');
   };
 
-  const confirmRemove = (id: string): void => {
-    if (busyRef.current) {
-      return;
-    }
-    busyRef.current = true;
-    setBusy(true);
+  const cancelRemove = (): void => {
+    setConfirmingId(null);
     setRemoveError('');
-    void api
-      .deleteConnection(id)
-      .then(() => {
-        setConnections((previous) => previous.filter((connection) => connection.id !== id));
-        setConfirmingId(null);
-      })
-      .catch((error: unknown) => {
-        setRemoveError(describeConnectionsError(error, 'Could not remove the connection.').message);
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setBusy(false);
-      });
   };
 
   return (
@@ -225,10 +261,7 @@ function ConnectionsList() {
                               size="sm"
                               accessibilityLabel="Cancel removing"
                               disabled={busy}
-                              onPress={() => {
-                                setConfirmingId(null);
-                                setRemoveError('');
-                              }}
+                              onPress={cancelRemove}
                             >
                               <Text>Cancel</Text>
                             </Button>
@@ -237,7 +270,7 @@ function ConnectionsList() {
                               size="sm"
                               accessibilityLabel="Confirm remove"
                               disabled={busy}
-                              onPress={() => confirmRemove(connection.id)}
+                              onPress={() => removeConnection(connection.id)}
                             >
                               <Text>{busy ? 'Removing…' : 'Remove'}</Text>
                             </Button>
@@ -279,7 +312,7 @@ function ConnectionsList() {
                               className="h-9 w-9 rounded-full"
                               accessibilityLabel={`Test ${providerLabel(connection.provider)} key`}
                               disabled={testingId === connection.id}
-                              onPress={() => test(connection.id)}
+                              onPress={() => runTest(connection.id)}
                             >
                               <Zap size={16} color={ICON[scheme]} />
                             </Button>
@@ -288,10 +321,7 @@ function ConnectionsList() {
                               size="icon"
                               className="h-9 w-9 rounded-full"
                               accessibilityLabel={`Remove ${providerLabel(connection.provider)} connection`}
-                              onPress={() => {
-                                setConfirmingId(connection.id);
-                                setRemoveError('');
-                              }}
+                              onPress={() => askRemove(connection.id)}
                             >
                               <Trash2 size={16} color={ICON[scheme]} />
                             </Button>
@@ -342,10 +372,33 @@ function AddConnectionForm({
   const [showKey, setShowKey] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const busyRef = useRef(false);
+
+  const [, saveForm] = useAction(
+    (draft: { readonly provider: string; readonly key: string; readonly label: string }) =>
+      Effect.sync(() => {
+        setBusy(true);
+        setError('');
+      }).pipe(
+        Effect.andThen(Effect.promise(() => saveConnection(api, draft))),
+        Effect.tap((outcome) =>
+          Effect.sync(() => {
+            // Write-only: the transition empties the field on success and keeps
+            // the typed key for retry on failure.
+            setKey(keyAfterSave(outcome, draft.key));
+            setShowKey(false);
+            if (outcome.connection !== null) {
+              onSaved(outcome.connection);
+            } else {
+              setError(outcome.error);
+            }
+          }),
+        ),
+        Effect.ensuring(Effect.sync(() => setBusy(false))),
+      ),
+  );
 
   const submit = (): void => {
-    if (busyRef.current) {
+    if (busy) {
       return;
     }
     const trimmedKey = key.trim();
@@ -353,22 +406,7 @@ function AddConnectionForm({
       setError('Paste your API key.');
       return;
     }
-    busyRef.current = true;
-    setBusy(true);
-    setError('');
-    void saveConnection(api, { provider, key: trimmedKey, label: label.trim() }).then((outcome) => {
-      // Write-only: the transition empties the field on success and keeps
-      // the typed key for retry on failure.
-      setKey(keyAfterSave(outcome, trimmedKey));
-      setShowKey(false);
-      if (outcome.connection !== null) {
-        onSaved(outcome.connection);
-      } else {
-        setError(outcome.error);
-      }
-      busyRef.current = false;
-      setBusy(false);
-    });
+    saveForm({ provider, key: trimmedKey, label: label.trim() });
   };
 
   return (

@@ -1,7 +1,7 @@
 ---
 id: T-0820
 title: "MU11: mobile settings B: connections, integrations on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0820-mobile-mu11
 model: auto
@@ -55,4 +55,23 @@ Run `pnpm exec prettier --write` on your changed files before committing. Do not
 
 ## Report (written by the worker when done)
 
+- Commits: `15251dbd` "T-0820: tests before conversion" (both new test files, on the old code), `d417f3c5` (first conversion), then `T-0820: fix round 1` (restores the state shape the existing tests need; see below).
+- Fix round 1 (lead wave check): the four existing `connections-screen.test.tsx` and nine `integrations-screen.test.tsx` cases failed because the first conversion moved the screen state into `useAction`. Both screens now keep their original `useState` shape and hook order (the existing tests force state through it). Each network call is an Effect run by `useAction`, which writes its result into that state. `useAction` also ignores a second press while a call runs, and interrupts a running call on unmount. The existing tests are unchanged.
+- `effect:map` kinds: `apps/mobile/src/app/settings/connections.tsx` was `needs-effect`, now `effect`; `apps/mobile/src/app/settings/integrations.tsx` was `needs-effect`, now `effect`.
+- Tests: before the conversion the two files had none. New tests: `settings-connections-screen.test.tsx` 9, `settings-integrations-screen.test.tsx` 10 (19 total). All 19 pass on the old code and on the converted code, and three repeat runs were green. Rendering uses jsdom with `react-dom/client` (the media-sheet and use-action pattern), with DOM stand-ins for the native primitives.
+- Typecheck: `pnpm --filter @zilar/mobile typecheck` exit 0. Prettier check clean on the four files.
+- Shape: the Test lock is one list-level action, so it is global again, as before. Card helpers stay Promise-based (they never reject) and are wrapped with `Effect.promise`. API calls use `Effect.tryPromise` with the fixed sentence as the typed error, not `fromApi`, because the sentence depends on the `ConnectionsApiError` / `IntegrationsApiError` class, which `ApiFailure` does not keep. `useAction` does not call `useState`, so the test mocks see the same hook order as before.
+- Behaviour differences:
+  - A focus reload while another load is in flight now replaces it (`mode: 'replace'`): the last load to start wins. Before, both ran and the last to finish won.
+  - Leaving the screen or closing the add form during a save, test, remove or load interrupts that call. The server still applies it, but the screen does not update afterwards (the setState calls ran on an unmounted component before, with no visible effect).
+  - Otherwise none: texts, error sentences, the 404 owner check, the write-only key clearing, the reload-after-save, the single-flight guards, and the order of the state updates are the same.
+- Verification (fix round 1): `pnpm --filter @zilar/mobile exec vitest run --reporter=dot src/components/connections src/components/integrations src/components/screens/settings-connections src/components/screens/settings-integrations`: 10 files, 84 tests, green in 3 runs. `oxlint` on the four files: clean. `pnpm --filter @zilar/mobile typecheck`: exit 0. `effect:map`: both screens `effect`.
+- Unsure: nothing open.
+
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved (wave 2). Worker: Haiku 5.5. The lead reviewed the Report.
+- **Combined check:** all 25 wave 2 branches together pass lint, typecheck and the full mobile suite (`lead batch check`, report 20261009T172300Z). The remaining failures were server and web tests that pass on main, caused by load.
+- **This task:** 19 new tests. Wave check fix: both screens keep their original `useState` shape so the existing screen tests pass; the Test lock is global again, as before.
+- **Phone:** the wave branch is smoked on the emulator after the merge.
