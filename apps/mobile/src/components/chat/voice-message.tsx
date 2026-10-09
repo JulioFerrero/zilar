@@ -1,5 +1,6 @@
 import { formatDuration } from '@zilar/chat-core';
 import type { VoiceMeta } from '@zilar/protocol';
+import { Effect, Fiber } from 'effect';
 import { AudioLines, Pause, Play } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -59,23 +60,43 @@ const VOICE_MIN_WIDTH = 236;
  * only the latest tap's source. Extracted so tests drive the race without
  * rendering; the bubble runs the same function from `toggle`.
  */
-export async function resolvePlaySource(
+export function resolvePlaySourceEffect(
+  input: { voice: VoiceMeta; localUri?: string | undefined; trustedHosts: ReadonlySet<string> },
+  seen: { current: number },
+  request: number,
+  onSource: (source: { uri: string; headers?: Record<string, string> }) => void,
+  onMissing: () => void,
+): Effect.Effect<void, unknown> {
+  return Effect.gen(function* () {
+    const source = yield* Effect.tryPromise({
+      try: () => voiceAudioSource(input),
+      catch: (error) => error,
+    });
+    if (seen.current !== request) {
+      return;
+    }
+    if (source === undefined) {
+      onMissing();
+      return;
+    }
+    onSource(source);
+  });
+}
+
+export function resolvePlaySource(
   input: { voice: VoiceMeta; localUri?: string | undefined; trustedHosts: ReadonlySet<string> },
   seen: { current: number },
   request: number,
   onSource: (source: { uri: string; headers?: Record<string, string> }) => void,
   onMissing: () => void,
 ): Promise<void> {
-  const source = await voiceAudioSource(input);
-  if (seen.current !== request) {
-    return;
-  }
-  if (source === undefined) {
-    onMissing();
-    return;
-  }
-  onSource(source);
+  return Effect.runPromise(resolvePlaySourceEffect(input, seen, request, onSource, onMissing));
 }
+
+const resolved = (): Promise<void> => Effect.runPromise(Effect.void);
+
+const isPromiseLike = (value: unknown): value is PromiseLike<void> =>
+  typeof value === 'object' && value !== null && 'then' in value;
 
 function sampleBars(waveform: readonly number[], count: number): number[] {
   if (waveform.length <= count) {
@@ -161,16 +182,14 @@ export function VoiceMessage({
     if (transcripts !== undefined) {
       return;
     }
-    let cancelled = false;
-    void readTranscripts()
-      .then((all) => {
-        if (!cancelled) {
-          setStoredTranscripts(all);
-        }
-      })
-      .catch(() => {});
+    const reading = Effect.runFork(
+      Effect.tryPromise(() => readTranscripts()).pipe(
+        Effect.flatMap((all) => Effect.sync(() => setStoredTranscripts(all))),
+        Effect.ignore,
+      ),
+    );
     return () => {
-      cancelled = true;
+      Effect.runFork(Fiber.interrupt(reading));
     };
   }, [transcripts, message.id]);
 
@@ -188,7 +207,7 @@ export function VoiceMessage({
           speed: update.rate,
           play: () => {},
           pause: () => {},
-          seekTo: () => Promise.resolve(),
+          seekTo: resolved,
           cycleSpeed: () => {},
           release: () => {},
         });
@@ -201,7 +220,7 @@ export function VoiceMessage({
           speed: update.rate,
           play: () => {},
           pause: () => {},
-          seekTo: () => Promise.resolve(),
+          seekTo: resolved,
           cycleSpeed: () => {},
           release: () => {},
         });
@@ -238,12 +257,9 @@ export function VoiceMessage({
   // The Transcribe button shows only on phones with the engine, only when
   // no transcript exists yet, and only when the audio is playable. Probing
   // the engine is synchronous and safe (it only reads the ABI list).
-  let whistleAvailable = false;
-  try {
-    whistleAvailable = whistlePort.isAvailable();
-  } catch {
-    whistleAvailable = false;
-  }
+  const whistleAvailable = Effect.runSync(
+    Effect.try(() => whistlePort.isAvailable()).pipe(Effect.orElseSucceed(() => false)),
+  );
   const showTranscribe = whistleAvailable && !hasTranscript && playable;
 
   const runTranscribe = () => {
@@ -252,27 +268,45 @@ export function VoiceMessage({
     setTranscribeBusy(true);
     setTranscribeError(undefined);
     setTranscribePhase(undefined);
-    void voiceAudioSource({ voice, localUri: upload.localUri, trustedHosts: hosts })
-      .then(async (source) => {
-        if (transcribeRun.current !== run) {
-          return;
+    // The model download needs the user's yes (round 1): the sheet's
+    // Download sets `transcribeConsent` for this run, and the gate
+    // consumes it — no yes, no download, the sheet re-opens instead.
+    const consent = transcribeConsent.current;
+    const askDownload = (): boolean => {
+      if (transcribeRun.current !== run) {
+        return false;
+      }
+      const ok = consumeTranscribeConsent(consent, () => {
+        if (transcribeRun.current === run) {
+          setConfirmOpen(true);
         }
-        if (source === undefined) {
-          setTranscribeBusy(false);
-          setTranscribeError('Could not read that voice message.');
-          return;
-        }
-        // A local file transcribes in place; a served URL downloads to the
-        // cache with its headers (the flow always deletes the cached file).
-        const audioSource: VoiceTranscribeSource =
-          upload.localUri !== undefined && upload.localUri !== ''
-            ? { localUri: upload.localUri }
-            : { url: source.uri, headers: source.headers };
-        // The model download needs the user's yes (round 1): the sheet's
-        // Download sets `transcribeConsent` for this run, and the gate
-        // consumes it — no yes, no download, the sheet re-opens instead.
-        const consent = transcribeConsent.current;
-        const result = await transcribeVoiceNote({
+      });
+      if (!ok && transcribeRun.current === run) {
+        setTranscribeBusy(false);
+        setTranscribePhase(undefined);
+      }
+      return ok;
+    };
+    const program = Effect.gen(function* () {
+      const source = yield* Effect.tryPromise(() =>
+        voiceAudioSource({ voice, localUri: upload.localUri, trustedHosts: hosts }),
+      );
+      if (transcribeRun.current !== run) {
+        return;
+      }
+      if (source === undefined) {
+        setTranscribeBusy(false);
+        setTranscribeError('Could not read that voice message.');
+        return;
+      }
+      // A local file transcribes in place; a served URL downloads to the
+      // cache with its headers (the flow always deletes the cached file).
+      const audioSource: VoiceTranscribeSource =
+        upload.localUri !== undefined && upload.localUri !== ''
+          ? { localUri: upload.localUri }
+          : { url: source.uri, headers: source.headers };
+      const result = yield* Effect.tryPromise(() =>
+        transcribeVoiceNote({
           port: whistlePort,
           source: audioSource,
           audioMs: voice.duration_ms,
@@ -281,55 +315,52 @@ export function VoiceMessage({
               setTranscribePhase(phase);
             }
           },
-          confirmDownload: async () => {
-            if (transcribeRun.current !== run) {
-              return false;
-            }
-            const ok = consumeTranscribeConsent(consent, () => {
-              if (transcribeRun.current === run) {
-                setConfirmOpen(true);
-              }
-            });
-            if (!ok && transcribeRun.current === run) {
+          confirmDownload: () => Effect.runPromise(Effect.sync(askDownload)),
+        }),
+      );
+      if (transcribeRun.current !== run) {
+        return;
+      }
+      setTranscribeBusy(false);
+      setTranscribePhase(undefined);
+      if (result.status === 'cancelled') {
+        return;
+      }
+      if (result.status === 'error') {
+        setTranscribeError(result.message);
+        return;
+      }
+      const text = result.transcript.text.trim();
+      const entry: StoredTranscript =
+        result.transcript.language === ''
+          ? { text }
+          : { text, language: result.transcript.language };
+      setLocalText(entry);
+      setShowTranscript(true);
+      setStoredTranscripts((current) => ({ ...current, [message.id]: entry }));
+      // The text is already on screen; a blocked store keeps it local.
+      yield* Effect.try(
+        () => onSaveTranscript?.(message.id, entry) ?? saveTranscript(message.id, entry),
+      ).pipe(
+        Effect.flatMap((pending) =>
+          isPromiseLike(pending) ? Effect.tryPromise(() => pending) : Effect.void,
+        ),
+        Effect.ignore,
+      );
+    });
+    Effect.runFork(
+      program.pipe(
+        Effect.catchCause(() =>
+          Effect.sync(() => {
+            if (transcribeRun.current === run) {
               setTranscribeBusy(false);
               setTranscribePhase(undefined);
+              setTranscribeError('Could not transcribe that voice note. Try again.');
             }
-            return ok;
-          },
-        });
-        if (transcribeRun.current !== run) {
-          return;
-        }
-        setTranscribeBusy(false);
-        setTranscribePhase(undefined);
-        if (result.status === 'cancelled') {
-          return;
-        }
-        if (result.status === 'error') {
-          setTranscribeError(result.message);
-          return;
-        }
-        const text = result.transcript.text.trim();
-        const entry: StoredTranscript =
-          result.transcript.language === ''
-            ? { text }
-            : { text, language: result.transcript.language };
-        setLocalText(entry);
-        setShowTranscript(true);
-        setStoredTranscripts((current) => ({ ...current, [message.id]: entry }));
-        try {
-          await (onSaveTranscript?.(message.id, entry) ?? saveTranscript(message.id, entry));
-        } catch {
-          // The text is already on screen; a blocked store keeps it local.
-        }
-      })
-      .catch(() => {
-        if (transcribeRun.current === run) {
-          setTranscribeBusy(false);
-          setTranscribePhase(undefined);
-          setTranscribeError('Could not transcribe that voice note. Try again.');
-        }
-      });
+          }),
+        ),
+      ),
+    );
   };
 
   const startTranscribe = () => {
@@ -339,18 +370,20 @@ export function VoiceMessage({
     // The user's yes must be fresh (round 1): a previous confirm never
     // carries over — the model check decides whether the sheet opens.
     transcribeConsent.current.confirmed = false;
-    void whistlePort
-      .modelStatus()
-      .then((status) => {
-        if (status === 'ready') {
-          runTranscribe();
-        } else {
-          setConfirmOpen(true);
-        }
-      })
-      .catch(() => {
-        runTranscribe();
-      });
+    Effect.runFork(
+      Effect.tryPromise(() => whistlePort.modelStatus()).pipe(
+        Effect.flatMap((status) =>
+          Effect.try(() => {
+            if (status === 'ready') {
+              runTranscribe();
+            } else {
+              setConfirmOpen(true);
+            }
+          }),
+        ),
+        Effect.catch(() => Effect.sync(runTranscribe)),
+      ),
+    );
   };
 
   const confirmTranscribe = () => {
@@ -377,12 +410,14 @@ export function VoiceMessage({
     playRequestRef.current += 1;
     const request = playRequestRef.current;
     const atMs = positionMs;
-    void resolvePlaySource(
-      { voice, localUri: upload.localUri, trustedHosts: hosts },
-      { current: playRequestRef.current },
-      request,
-      (source) => controls.play(message.id, source, atMs),
-      () => setPlayError('Could not play that voice message.'),
+    Effect.runFork(
+      resolvePlaySourceEffect(
+        { voice, localUri: upload.localUri, trustedHosts: hosts },
+        { current: playRequestRef.current },
+        request,
+        (source) => controls.play(message.id, source, atMs),
+        () => setPlayError('Could not play that voice message.'),
+      ),
     );
   };
 

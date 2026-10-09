@@ -1,3 +1,4 @@
+import { Effect, Fiber } from 'effect';
 import { Mic, Trash2 } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { PanResponder, Pressable, View, type GestureResponderHandlers } from 'react-native';
@@ -73,14 +74,24 @@ export function waveformFromLevels(levels: readonly number[], durationMs: number
  * the permission is refused. Resolves true once recording, false otherwise.
  * The caller owns the `starting` re-entry guard (see the component).
  */
-export async function runRecorderBegin(
+export type RecorderBeginResult = { started: true } | { started: false; error: string };
+
+/** The Effect behind `runRecorderBegin`: a rejected start fails with the original error. */
+export function runRecorderBeginEffect(
   deps: RecorderDecisionDeps,
-): Promise<{ started: true } | { started: false; error: string }> {
-  const started = await deps.recorder.start();
-  if (started.status === 'error') {
-    return { started: false, error: started.message };
-  }
-  return { started: true };
+): Effect.Effect<RecorderBeginResult, unknown> {
+  return Effect.tryPromise({ try: () => deps.recorder.start(), catch: (error) => error }).pipe(
+    Effect.map((started): RecorderBeginResult => {
+      if (started.status === 'error') {
+        return { started: false, error: started.message };
+      }
+      return { started: true };
+    }),
+  );
+}
+
+export function runRecorderBegin(deps: RecorderDecisionDeps): Promise<RecorderBeginResult> {
+  return Effect.runPromise(runRecorderBeginEffect(deps));
 }
 
 /**
@@ -91,56 +102,67 @@ export async function runRecorderBegin(
  * nothing and says nothing). A too-short recording is discarded through the
  * recorder's `cancel`, so no file is left behind.
  */
-export async function runRecorderFinish(
+export function runRecorderFinish(
   deps: RecorderDecisionDeps,
   cancel: boolean,
 ): Promise<string | undefined> {
-  if (cancel) {
-    await deps.recorder.cancel().catch(() => {});
+  return Effect.runPromise(runRecorderFinishEffect(deps, cancel));
+}
+
+/** The Effect behind `runRecorderFinish`: a rejected `stop` fails with the original error. */
+export function runRecorderFinishEffect(
+  deps: RecorderDecisionDeps,
+  cancel: boolean,
+): Effect.Effect<string | undefined, unknown> {
+  return Effect.gen(function* () {
+    const discard = Effect.tryPromise(() => deps.recorder.cancel()).pipe(Effect.ignore);
+    if (cancel) {
+      yield* discard;
+      return undefined;
+    }
+    // A press shorter than the minimum is a miss press, not a recording: the
+    // live duration is checked before stopping so the take is discarded with
+    // `cancel` (no file is left behind) instead of `stop`. Nothing is sent and
+    // no hint appears; a failure of the duration read falls through to `stop`
+    // and the post-stop guard below.
+    const liveMs = yield* Effect.try(() => deps.recorder.currentDurationMs()).pipe(
+      Effect.orElseSucceed(() => undefined),
+    );
+    if (liveMs !== undefined && liveMs < VOICE_MIN_MS) {
+      yield* discard;
+      return undefined;
+    }
+    const result = yield* Effect.tryPromise({
+      try: () => deps.recorder.stop(),
+      catch: (error) => error,
+    });
+    if (result.status === 'cancelled') {
+      return undefined;
+    }
+    if (result.status === 'error') {
+      return result.message;
+    }
+    const finished: FinishedRecording = result.recording;
+    if (finished.durationMs < VOICE_MIN_MS) {
+      return undefined;
+    }
+    if (finished.durationMs > VOICE_MAX_DURATION_MS || finished.size > VOICE_MAX_BYTES) {
+      return RECORD_TOO_LONG_MESSAGE;
+    }
+    const build = deps.waveformFor ?? flatWaveform;
+    deps.onSendVoice(
+      {
+        uri: finished.uri,
+        mimeType: finished.mimeType,
+        size: finished.size,
+        durationMs: finished.durationMs,
+        waveform: build(finished.durationMs),
+      },
+      deps.replyTo === undefined ? undefined : { replyTo: deps.replyTo },
+    );
+    deps.onCancelReply();
     return undefined;
-  }
-  // A press shorter than the minimum is a miss press, not a recording: the
-  // live duration is checked before stopping so the take is discarded with
-  // `cancel` (no file is left behind) instead of `stop`. Nothing is sent and
-  // no hint appears; a failure of the duration read falls through to `stop`
-  // and the post-stop guard below.
-  let liveMs: number | undefined;
-  try {
-    liveMs = deps.recorder.currentDurationMs();
-  } catch {
-    liveMs = undefined;
-  }
-  if (liveMs !== undefined && liveMs < VOICE_MIN_MS) {
-    await deps.recorder.cancel().catch(() => {});
-    return undefined;
-  }
-  const result = await deps.recorder.stop();
-  if (result.status === 'cancelled') {
-    return undefined;
-  }
-  if (result.status === 'error') {
-    return result.message;
-  }
-  const finished: FinishedRecording = result.recording;
-  if (finished.durationMs < VOICE_MIN_MS) {
-    return undefined;
-  }
-  if (finished.durationMs > VOICE_MAX_DURATION_MS || finished.size > VOICE_MAX_BYTES) {
-    return RECORD_TOO_LONG_MESSAGE;
-  }
-  const build = deps.waveformFor ?? flatWaveform;
-  deps.onSendVoice(
-    {
-      uri: finished.uri,
-      mimeType: finished.mimeType,
-      size: finished.size,
-      durationMs: finished.durationMs,
-      waveform: build(finished.durationMs),
-    },
-    deps.replyTo === undefined ? undefined : { replyTo: deps.replyTo },
-  );
-  deps.onCancelReply();
-  return undefined;
+  });
 }
 
 function formatElapsed(durationMs: number): string {
@@ -174,6 +196,25 @@ const CANCEL_SLIDE_PX = -90;
 
 type HoldHandlers = { begin: () => void; release: (cancel: boolean) => void };
 type FlagRef = { current: boolean };
+type TickerRef = { current: Fiber.Fiber<unknown, unknown> | undefined };
+
+/**
+ * Runs `tick` every `everyMs` (the first run after one interval) until the fiber is
+ * interrupted. A throw inside one tick is dropped, so the next tick still runs
+ * (as with `setInterval`).
+ */
+function startTicker(everyMs: number, tick: () => void): Fiber.Fiber<unknown, unknown> {
+  const safeTick = Effect.sync(tick).pipe(Effect.catchDefect(() => Effect.void));
+  return Effect.runFork(Effect.sleep(everyMs).pipe(Effect.andThen(safeTick), Effect.forever));
+}
+
+function stopTicker(ref: TickerRef): void {
+  const fiber = ref.current;
+  if (fiber !== undefined) {
+    ref.current = undefined;
+    Effect.runFork(Fiber.interrupt(fiber));
+  }
+}
 
 /**
  * The hold gesture on the mic: grant starts, release sends, a slide past
@@ -235,17 +276,21 @@ export function VoiceRecorderButton({
   }, [recording, onRecordingChange]);
   const [willCancel, setWillCancel] = useState(false);
   const levelsRef = useRef<number[]>([]);
-  const levelTimerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const levelTimerRef: TickerRef = useRef<Fiber.Fiber<unknown, unknown> | undefined>(undefined);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (error === undefined) {
       return undefined;
     }
-    const timer = setTimeout(() => setError(undefined), ERROR_VISIBLE_MS);
-    return () => clearTimeout(timer);
+    const hide = Effect.runFork(
+      Effect.sleep(ERROR_VISIBLE_MS).pipe(Effect.andThen(Effect.sync(() => setError(undefined)))),
+    );
+    return () => {
+      Effect.runFork(Fiber.interrupt(hide));
+    };
   }, [error]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const timerRef: TickerRef = useRef<Fiber.Fiber<unknown, unknown> | undefined>(undefined);
   const recordingRef = useRef(false);
   // Set synchronously before the first await so a double tap cannot create
   // two native recorders (finding 6); cleared once the start settles.
@@ -255,29 +300,19 @@ export function VoiceRecorderButton({
   // recording (the OS recording indicator must go off).
   useEffect(
     () => () => {
-      if (timerRef.current !== undefined) {
-        clearInterval(timerRef.current);
-      }
-      if (levelTimerRef.current !== undefined) {
-        clearInterval(levelTimerRef.current);
-      }
+      stopTicker(timerRef);
+      stopTicker(levelTimerRef);
       if (recordingRef.current) {
         recordingRef.current = false;
-        void recorder.cancel().catch(() => {});
+        Effect.runFork(Effect.tryPromise(() => recorder.cancel()).pipe(Effect.ignore));
       }
     },
     [recorder],
   );
 
   const stopTimer = () => {
-    if (levelTimerRef.current !== undefined) {
-      clearInterval(levelTimerRef.current);
-      levelTimerRef.current = undefined;
-    }
-    if (timerRef.current !== undefined) {
-      clearInterval(timerRef.current);
-      timerRef.current = undefined;
-    }
+    stopTicker(levelTimerRef);
+    stopTicker(timerRef);
   };
 
   // Releases that arrive before the native recorder finished starting (the
@@ -294,66 +329,79 @@ export function VoiceRecorderButton({
     // A throw from the native import or the permission request (e.g. the
     // pre-rebuild state) is a handled mic failure, never a silent death
     // (finding 1, round 3): the button shows the failed copy.
-    void runRecorderBegin({ recorder, onSendVoice, onCancelReply, replyTo, waveformFor })
-      .then((result) => {
-        if (!result.started) {
-          setError(result.error);
-          return;
-        }
-        recordingRef.current = true;
-        setRecording(true);
-        setElapsedMs(0);
-        levelsRef.current = [];
-        levelTimerRef.current = setInterval(() => {
-          levelsRef.current.push(recorder.currentLevel());
-        }, LEVEL_TICK_MS);
-        timerRef.current = setInterval(() => {
-          const elapsed = recorder.currentDurationMs();
-          setElapsedMs(elapsed);
-          // The 5-minute cap stops the recording automatically, like the
-          // server's `VOICE_MAX_DURATION_MS` refusal would.
-          if (elapsed >= VOICE_MAX_DURATION_MS) {
-            void finish(false);
-          }
-        }, TIMER_TICK_MS);
-        if (!heldRef.current) {
-          void finish(cancelRef.current);
-        }
-      })
-      .catch(() => {
-        setError(MIC_FAILED_MESSAGE);
-      })
-      .finally(() => {
-        startingRef.current = false;
+    const onBegun = (result: RecorderBeginResult): void => {
+      if (!result.started) {
+        setError(result.error);
+        return;
+      }
+      recordingRef.current = true;
+      setRecording(true);
+      setElapsedMs(0);
+      levelsRef.current = [];
+      levelTimerRef.current = startTicker(LEVEL_TICK_MS, () => {
+        levelsRef.current.push(recorder.currentLevel());
       });
+      timerRef.current = startTicker(TIMER_TICK_MS, () => {
+        const elapsed = recorder.currentDurationMs();
+        setElapsedMs(elapsed);
+        // The 5-minute cap stops the recording automatically, like the
+        // server's `VOICE_MAX_DURATION_MS` refusal would.
+        if (elapsed >= VOICE_MAX_DURATION_MS) {
+          finish(false);
+        }
+      });
+      if (!heldRef.current) {
+        finish(cancelRef.current);
+      }
+    };
+    Effect.runFork(
+      runRecorderBeginEffect({ recorder, onSendVoice, onCancelReply, replyTo, waveformFor }).pipe(
+        Effect.flatMap((result) =>
+          Effect.try({ try: () => onBegun(result), catch: (error) => error }),
+        ),
+        Effect.catch(() => Effect.sync(() => setError(MIC_FAILED_MESSAGE))),
+        Effect.ensuring(
+          Effect.sync(() => {
+            startingRef.current = false;
+          }),
+        ),
+      ),
+    );
   };
 
-  const finish = async (cancel: boolean): Promise<void> => {
+  const finish = (cancel: boolean): void => {
     stopTimer();
     recordingRef.current = false;
     setRecording(false);
     setWillCancel(false);
     const levels = levelsRef.current;
-    const copy = await runRecorderFinish(
-      {
-        recorder,
-        onSendVoice,
-        onCancelReply,
-        replyTo,
-        waveformFor: waveformFor ?? ((durationMs) => waveformFromLevels(levels, durationMs)),
-      },
-      cancel,
+    Effect.runFork(
+      runRecorderFinishEffect(
+        {
+          recorder,
+          onSendVoice,
+          onCancelReply,
+          replyTo,
+          waveformFor: waveformFor ?? ((durationMs) => waveformFromLevels(levels, durationMs)),
+        },
+        cancel,
+      ).pipe(
+        Effect.flatMap((copy) =>
+          Effect.sync(() => {
+            if (copy !== undefined) {
+              setError(copy);
+            }
+          }),
+        ),
+      ),
     );
-    if (copy !== undefined) {
-      setError(copy);
-    }
   };
 
   const release = (cancel: boolean) => {
     heldRef.current = false;
     cancelRef.current = cancel;
     if (recordingRef.current) {
-      void finish(cancel);
+      finish(cancel);
     }
   };
 

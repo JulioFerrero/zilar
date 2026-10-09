@@ -17,6 +17,7 @@
  * mid-play must not release the player another bubble is using.
  */
 
+import { Effect } from 'effect';
 import { useEffect, useState } from 'react';
 
 import type { VoicePlayback, VoiceSpeed } from '@/lib/voice-native';
@@ -45,7 +46,7 @@ export function useVoicePlayerHost(): VoicePlayerHost {
   useEffect(() => {
     return () => {
       host.playback.stopAll();
-      void releasePlayer().catch(() => {});
+      Effect.runSync(releasePlayer());
     };
   }, [host]);
   return host;
@@ -101,16 +102,27 @@ const progressListeners = new Map<
   (update: { positionMs: number; durationMs: number }) => void
 >();
 
-async function releasePlayer(): Promise<void> {
-  const player = sharedPlayer;
-  sharedPlayer = undefined;
-  activeMessageId = undefined;
-  try {
-    player?.remove();
-  } catch {
-    // Releasing never throws to the screen.
-  }
+/** Releasing never throws to the screen. */
+function releasePlayer(): Effect.Effect<void> {
+  return Effect.suspend(() => {
+    const player = sharedPlayer;
+    sharedPlayer = undefined;
+    activeMessageId = undefined;
+    return Effect.try(() => player?.remove()).pipe(Effect.ignore);
+  });
 }
+
+/** Runs one native call that may throw; a failure is dropped. */
+function attempt(call: () => unknown): void {
+  Effect.runSync(Effect.try(call).pipe(Effect.ignore));
+}
+
+/** Starts one native call that returns a Promise; a failure is dropped. */
+function attemptAsync(call: () => PromiseLike<unknown>): void {
+  Effect.runFork(Effect.tryPromise(call).pipe(Effect.ignore));
+}
+
+const resolved = (): Promise<void> => Effect.runPromise(Effect.void);
 
 function currentRate(player: NativePlayer): VoiceSpeed {
   const rate = (player as { playbackRate?: number }).playbackRate ?? 1;
@@ -166,14 +178,13 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
     if (add === undefined) {
       return;
     }
-    try {
+    // A player without status events still plays; the bubble keeps its
+    // optimistic state and the registry still gates one-at-a-time.
+    attempt(() =>
       add.call(player, 'playbackStatusUpdate', (status: PlayerStatusTick) =>
         onPlayerStatus(messageId, player, status),
-      );
-    } catch {
-      // A player without status events still plays; the bubble keeps its
-      // optimistic state and the registry still gates one-at-a-time.
-    }
+      ),
+    );
   };
   const controls: VoicePlayerControls = {
     play(messageId, source, resumeMs?: number) {
@@ -189,7 +200,7 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
         resumeMs > 0
       ) {
         const player = sharedPlayer;
-        void player.seekTo(resumeMs / 1000).catch(() => {});
+        attemptAsync(() => player.seekTo(resumeMs / 1000));
         activeMessageId = messageId;
         const rate = currentRate(player);
         player.setPlaybackRate(rate);
@@ -209,13 +220,11 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
         // first player and leave the bubble's bar dead.
         const previous = activeMessageId;
         if (sharedPlayer !== player) {
-          if (sharedPlayer !== undefined) {
-            try {
-              sharedPlayer.remove();
-            } catch {
-              // Releasing the previous player never breaks the switch.
-            }
-            injectedStatus.delete(sharedPlayer);
+          const old = sharedPlayer;
+          if (old !== undefined) {
+            // Releasing the previous player never breaks the switch.
+            attempt(() => old.remove());
+            injectedStatus.delete(old);
           }
           sharedPlayer = player;
           playerPlaybacks.set(player, playback);
@@ -226,7 +235,7 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
           // position (finding 2, round 3).
           const atSeconds = Math.max(0, (atMs ?? 0) / 1000);
           if (atSeconds > 0) {
-            void player.seekTo(atSeconds).catch(() => {});
+            attemptAsync(() => player.seekTo(atSeconds));
           }
         }
         activeMessageId = messageId;
@@ -240,32 +249,35 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
         playback.claim(activeSpeaker(messageId, rate));
         listeners.get(messageId)?.({ playing: true, rate });
       };
+      const reportFailure = Effect.sync(() =>
+        notifyPlayError(messageId, 'Could not play that voice message.'),
+      );
       if (createPlayer !== undefined) {
-        try {
-          startWith(createPlayer() as NativePlayer, resumeMs);
-        } catch {
-          notifyPlayError(messageId, 'Could not play that voice message.');
-        }
+        Effect.runSync(
+          Effect.try(() => startWith(createPlayer() as NativePlayer, resumeMs)).pipe(
+            Effect.catch(() => reportFailure),
+          ),
+        );
         return;
       }
-      void (async () => {
-        try {
-          const { createAudioPlayer } = await import('expo-audio');
-          startWith(createAudioPlayer(source, { updateInterval: 120 }) as NativePlayer, resumeMs);
-        } catch {
-          notifyPlayError(messageId, 'Could not play that voice message.');
-        }
-      })().catch(() => {
-        notifyPlayError(messageId, 'Could not play that voice message.');
-      });
+      Effect.runFork(
+        Effect.tryPromise(() => import('expo-audio')).pipe(
+          Effect.flatMap(({ createAudioPlayer }) =>
+            Effect.try(() =>
+              startWith(
+                createAudioPlayer(source, { updateInterval: 120 }) as NativePlayer,
+                resumeMs,
+              ),
+            ),
+          ),
+          Effect.catch(() => reportFailure),
+        ),
+      );
     },
     pause() {
       const player = sharedPlayer;
-      try {
-        player?.pause();
-      } catch {
-        // Pausing a released player is not an error here.
-      }
+      // Pausing a released player is not an error here.
+      attempt(() => player?.pause());
       // Pause keeps the native player alive for a resume (finding 2):
       // only the registry and the active id clear, so playing the same
       // message again seeks on this instance instead of minting one.
@@ -277,7 +289,12 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
       }
     },
     seekTo(positionMs) {
-      return sharedPlayer?.seekTo(positionMs / 1000).catch(() => {}) ?? Promise.resolve();
+      const player = sharedPlayer;
+      return Effect.runPromise(
+        player === undefined
+          ? Effect.void
+          : Effect.tryPromise(() => player.seekTo(positionMs / 1000)).pipe(Effect.ignore),
+      );
     },
     cycleSpeed() {
       const player = sharedPlayer;
@@ -307,7 +324,7 @@ function activeSpeaker(messageId: string, rate: VoiceSpeed) {
       // The registry only records UI state: pausing the shared player here
       // would also stop the bubble that just claimed it (finding 1).
     },
-    seekTo: () => Promise.resolve(),
+    seekTo: resolved,
     cycleSpeed: () => {},
     release: () => {},
   };
@@ -322,7 +339,7 @@ function resignedSpeaker(messageId: string) {
     speed: 1 as VoiceSpeed,
     play: () => {},
     pause: () => {},
-    seekTo: () => Promise.resolve(),
+    seekTo: resolved,
     cycleSpeed: () => {},
     release: () => {},
   };
@@ -372,11 +389,8 @@ export function emitPlayerStatusForTest(player: HostPlayer, status: PlayerStatus
 
 /** Test seam: reset the module host state between tests. */
 export function resetVoicePlayerForTest(): void {
-  try {
-    sharedPlayer?.remove();
-  } catch {
-    // Releasing never throws.
-  }
+  // Releasing never throws.
+  attempt(() => sharedPlayer?.remove());
   sharedPlayer = undefined;
   activeMessageId = undefined;
   injectedStatus.clear();
