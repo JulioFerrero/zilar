@@ -452,4 +452,21 @@ describe('ChatList', () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it('starts the install prompt inside the click, before any await', async () => {
+    renderApp('/');
+    const prompt = vi.fn(() => Promise.resolve());
+    const installEvent = Object.assign(new Event('beforeinstallprompt', { cancelable: true }), {
+      prompt,
+      userChoice: Promise.resolve({ outcome: 'accepted', platform: '' }),
+    });
+    act(() => {
+      window.dispatchEvent(installEvent);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Install app' }));
+    // No await or flush before this: the prompt must already be running.
+    expect(prompt).toHaveBeenCalledTimes(1);
+    await act(async () => {});
+  });
 });

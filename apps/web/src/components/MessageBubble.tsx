@@ -11,6 +11,7 @@ import {
   type SendFailureReason,
   type UiMessage,
 } from '@zilar/chat-core';
+import { Effect } from 'effect';
 import { MoreHorizontal } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { AiBadge } from './AiBadge';
@@ -33,6 +34,7 @@ import { VoiceMessage } from './VoiceMessage';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { copyText } from '@/lib/clipboard';
+import { runWeb } from '@/lib/effect/runtime';
 import { useSmoothText } from '@/lib/useSmoothText';
 import { cn } from '@/lib/utils';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -42,6 +44,14 @@ const SENDER_COLORS = ['#d4d4d4', '#a1a1a1', '#8a8a8a', '#ededed'] as const;
 
 /** No known media host (mock store, signed out): every absolute URL is untrusted. */
 const EMPTY_HOSTS: ReadonlySet<string> = new Set();
+
+/**
+ * Runs a store call the user does not wait for (pin, unpin). Any failure is
+ * dropped, as the old empty handler did.
+ */
+function runDetached(call: () => Promise<unknown>): void {
+  void runWeb(Effect.promise(call).pipe(Effect.ignore));
+}
 
 function senderColor(id: string): string {
   let hash = 0x811c9dc5;
@@ -464,18 +474,12 @@ export function MessageBubble({
                 }}
                 onPin={() => {
                   setMenuOpen(false);
-                  storeApi
-                    .getState()
-                    .pinMessage(chat.id, message.id)
-                    .catch(() => {});
+                  runDetached(() => storeApi.getState().pinMessage(chat.id, message.id));
                 }}
                 onUnpin={() => {
                   setMenuOpen(false);
                   if (pin !== undefined) {
-                    storeApi
-                      .getState()
-                      .unpinMessage(chat.id, pin.id)
-                      .catch(() => {});
+                    runDetached(() => storeApi.getState().unpinMessage(chat.id, pin.id));
                   }
                 }}
                 onClose={() => setMenuOpen(false)}
@@ -800,18 +804,12 @@ export function MessageBubble({
             }}
             onPin={() => {
               setMenuOpen(false);
-              storeApi
-                .getState()
-                .pinMessage(chat.id, message.id)
-                .catch(() => {});
+              runDetached(() => storeApi.getState().pinMessage(chat.id, message.id));
             }}
             onUnpin={() => {
               setMenuOpen(false);
               if (pin !== undefined) {
-                storeApi
-                  .getState()
-                  .unpinMessage(chat.id, pin.id)
-                  .catch(() => {});
+                runDetached(() => storeApi.getState().unpinMessage(chat.id, pin.id));
               }
             }}
             onClose={() => setMenuOpen(false)}

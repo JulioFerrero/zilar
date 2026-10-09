@@ -1,7 +1,7 @@
 ---
 id: T-0790
 title: "WU26: ChatList, MessageBubble, App on Effect (fire-and-forget calls and the try/catch sites)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0790-web-list-bubble-app
 model: auto
@@ -48,7 +48,7 @@ Convert the listed files with the pattern.
 `AGENTS.md`, `docs/EFFECT_GUIDE.md`, `docs/audit/effect-100-plan.md` §3.6, `apps/web/src/lib/effect/use-action.ts`, `apps/web/src/routes/BlockedPage.tsx`, the listed files and their tests.
 
 ### Allowed files
-`apps/web/src/components/ChatList.tsx`, `apps/web/src/components/MessageBubble.tsx`, `apps/web/src/App.tsx`, `work/T-0790-web-list-bubble-app.md`.
+`apps/web/src/components/ChatList.tsx`, `apps/web/src/components/MessageBubble.tsx`, `apps/web/src/App.tsx`, `work/T-0790-web-list-bubble-app.md`, `apps/web/src/components/ChatList.test.tsx` (added in fix round 1 for the install-prompt test).
 
 ### Checks
 ```bash
@@ -66,4 +66,66 @@ Run `pnpm effect:map` and list each file's kind in the Report, then run the whol
 
 ## Report (written by the worker when done)
 
+### Sites found
+The three files have no literal `try`/`catch`. The effect map's W4 signal matches `.catch(`, so each file had only `.catch` sites (6 in total). Their timers and `async` code: none.
+
+| File | Site | Now |
+|---|---|---|
+| `App.tsx` | `ensureServiceWorker(browser).catch(() => undefined)` in the mount effect | `void runWeb(Effect.promise(() => ensureServiceWorker(browser)).pipe(Effect.ignore))` |
+| `ChatList.tsx` | `promptInstall().catch(() => setInstallFailed(true))` and the `installFailed` state | `useAction` with a typed `InstallFailed` error; `installFailed = !isWaiting(state) && failureOf(state) !== undefined` |
+| `MessageBubble.tsx` | `pinMessage(...).catch(() => {})` (2 sites) and `unpinMessage(...).catch(() => {})` (2 sites) | a module helper `runDetached(call)` = `void runWeb(Effect.promise(call).pipe(Effect.ignore))`, one call per site |
+
+Effect kind (`pnpm effect:map`): all three files went from `needs-effect` (W4) to `effect`. The total moved from effect 250 to 253 and needs-effect 186 to 183.
+
+### Files changed
+- `apps/web/src/App.tsx`
+- `apps/web/src/components/ChatList.tsx`
+- `apps/web/src/components/MessageBubble.tsx`
+- `work/T-0790-web-list-bubble-app.md` (status and this Report)
+- `apps/web/src/components/ChatList.test.tsx` (fix round 1: one new test; no existing test edited)
+
+No rendering, props, exports, labels or user-facing text changed. No new file was added.
+
+### Behaviour differences
+1. **ChatList install (`useAction`):** a second "Install app" click while a prompt is still waiting is dropped before `prompt()` runs (`isWaiting(installState)` guard in the click). The old code called `prompt()` again. A rejection of any kind (typed or defect) still shows "Install failed — try again", since the old `.catch` caught all of them.
+2. **ChatList install timing (fixed in round 1):** the click handler calls `promptInstall()` itself, so `installEvent.prompt()` runs synchronously inside the click, as before. `promptInstall` is an `async` function, and its body runs up to the first `await` at once. Only the wait for the result goes into the action (`runInstall(promptInstall())`, with `Effect.tryPromise` wrapping that promise into `InstallFailed`). This is the open question below.
+3. **MessageBubble pin/unpin:** the store call now runs inside an Effect (`Effect.promise`). A synchronous throw from `pinMessage` would have escaped the click handler before; now it is a defect and is ignored. The store functions are `async`, so this should not happen in practice.
+4. **App service worker:** a failed registration is still ignored. The registration now runs inside `webRuntime`.
+
+### Checks run (real results)
+- `pnpm install`: done.
+- Baseline before the change, `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/components/ChatList src/components/MessageBubble src/App`: 4 files, 41 tests passed.
+- The same command after the change: 4 files, 41 tests passed.
+- `pnpm --filter @zilar/web typecheck`: passed (tsc on both tsconfig files, no output).
+- `pnpm --filter @zilar/web test --maxWorkers=4 --reporter=dot` (whole web suite, after the change): Test Files 170 passed (170), Tests 1813 passed (1813). I did not run the whole suite before the change; the spec states 1813 on main.
+- `pnpm exec prettier --write` on the three files: unchanged.
+- `pnpm gate` from the worktree root: exit 0.
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (1.2s)
+  PASS  format  (0.6s)
+  PASS  lint  (0.8s)
+  PASS  typecheck  (4.0s)
+  PASS  effect  (1.2s)
+  PASS  tests @zilar/web  (7.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Fix round 1 (coordinator review, item 2)
+- `ChatList.tsx`: the install action now takes the promise the click created (`useAction<Promise<void>, void, InstallFailed>`); the click checks `isWaiting(installState)` and then calls `runInstall(promptInstall())`.
+- `ChatList.test.tsx` (added to the Allowed files for this round): new test "starts the install prompt inside the click, before any await". It dispatches a fake `beforeinstallprompt` event whose `prompt` is a `vi.fn`, clicks Open menu then "Install app", and asserts the spy was called once with no await in between.
+- Results: `pnpm --filter @zilar/web test ... src/components/ChatList` 2 files, 36 tests passed; whole web suite 170 files, 1814 tests passed (1813 before plus the new test); `pnpm --filter @zilar/web typecheck` no errors.
+
+### Coverage gap
+No existing test covers pin or unpin, or the service-worker registration failure. Those paths are checked by typecheck, lint, the effect map and reading the code only.
+
+### Open question
+Only a real browser can confirm that Chrome accepts the synchronous `prompt()` call from this click (the test uses a spy, not the browser's activation check). The code now makes that call exactly where the old code did.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved after one fix round. Worker: Haiku 5.5. The lead reviewed the Report.
+- **The files:** all three are Effect files. The six `.catch` sites became `runWeb` with `Effect.ignore` or a `useAction`.
+- **Fix round 1:** `installEvent.prompt()` runs synchronously inside the click again, so the user activation is kept; only the wait for its result is an Effect. A test checks the synchronous call.
+- **Results:** the whole web suite passes (1814); the gate passed.

@@ -1,3 +1,4 @@
+import { Data, Effect } from 'effect';
 import { Archive, Loader2, Menu as MenuIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -23,6 +24,7 @@ import { IconButton } from './ui/icon-button';
 import { StateMessage } from './ui/state-message';
 import { Menu, MenuItem } from './ui/menu';
 import { useInstallPrompt } from '@/lib/push';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
 import { groupChats, visibleChats } from '@/store/store';
@@ -39,6 +41,9 @@ const CONNECTION_BANNER_DELAY_MS = 1500;
 
 // The menu badge caps at 9+; any number bigger than that just reads "9+".
 const APPROVAL_BADGE_CAP = 9;
+
+/** The install prompt failed or was refused; the menu then offers a retry. */
+class InstallFailed extends Data.TaggedError('InstallFailed') {}
 
 function statusLabel(status: string): string | undefined {
   switch (status) {
@@ -110,7 +115,13 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   // Installable app (T-0119): the browser offers `beforeinstallprompt` when
   // Zilar is installable; the menu then carries an Install entry.
   const { installEvent, promptInstall } = useInstallPrompt();
-  const [installFailed, setInstallFailed] = useState(false);
+  // The prompt is started by the click itself (it needs the click's user
+  // activation), so the action only waits for the promise the click created.
+  const [installState, runInstall] = useAction<Promise<void>, void, InstallFailed>((prompt) =>
+    Effect.tryPromise({ try: () => prompt, catch: () => new InstallFailed() }),
+  );
+  // The retry label shows after a failed prompt, and hides while a new prompt runs.
+  const installFailed = !isWaiting(installState) && failureOf(installState) !== undefined;
   const approvalsBadge =
     pendingApprovals !== null && pendingApprovals > 0
       ? pendingApprovals > APPROVAL_BADGE_CAP
@@ -246,8 +257,10 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
             <MenuItem
               onSelect={() => {
                 setMenuOpen(false);
-                setInstallFailed(false);
-                promptInstall().catch(() => setInstallFailed(true));
+                // A click while a prompt waits is dropped before prompt() runs.
+                if (!isWaiting(installState)) {
+                  runInstall(promptInstall());
+                }
               }}
             >
               {installFailed ? 'Install failed — try again' : 'Install app'}
