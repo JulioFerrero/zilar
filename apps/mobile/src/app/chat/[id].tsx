@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, View } from 'react-native';
@@ -43,6 +44,29 @@ import { mockDemoStickerPacks } from '@/mock/stickers';
 import { mockDemoAttachments } from '@/mock/attachments';
 import { mockDemoGifs } from '@/mock/gifs';
 import { useChatStore } from '@/store/chat-store-provider';
+
+interface BackgroundHandlers<A> {
+  /** Runs with the value when the call resolves. */
+  onSuccess?: (value: A) => void;
+  /** Runs with the rejection (kept as it came: the role messages read its `status`). */
+  onFailure?: (error: unknown) => void;
+  /** Runs last, after a success, a failure or an interrupt. */
+  onSettled?: () => void;
+}
+
+// Starts one store or native call now and returns at once, like the
+// `void call().then(..).catch(..).finally(..)` chains it replaces: calls from
+// separate taps run side by side (no single-flight), and a throw in
+// `onSuccess` reaches `onFailure`.
+function runInBackground<A>(call: () => Promise<A>, handlers: BackgroundHandlers<A>): void {
+  Effect.runFork(
+    Effect.tryPromise({ try: call, catch: (error) => error }).pipe(
+      Effect.tap((value) => Effect.sync(() => handlers.onSuccess?.(value))),
+      Effect.catch((error) => Effect.sync(() => handlers.onFailure?.(error))),
+      Effect.ensuring(Effect.sync(() => handlers.onSettled?.())),
+    ),
+  );
+}
 
 export default function ChatScreen() {
   return (
@@ -238,19 +262,15 @@ function Chat() {
     }
     setOpeningId(message.id);
     setOpenError('');
-    void opener
-      .open(attachment.url, attachment.name)
-      .then((result) => {
+    runInBackground(() => opener.open(attachment.url, attachment.name), {
+      onSuccess: (result) => {
         if (result.status === 'error') {
           setOpenError(result.message);
         }
-      })
-      .catch(() => {
-        setOpenError('Could not open that file. Try again.');
-      })
-      .finally(() => {
-        setOpeningId((current) => (current === message.id ? undefined : current));
-      });
+      },
+      onFailure: () => setOpenError('Could not open that file. Try again.'),
+      onSettled: () => setOpeningId((current) => (current === message.id ? undefined : current)),
+    });
   };
 
   const sendAttachmentNow = (file: PickedFile, options?: SendAttachmentOptions) => {
@@ -384,16 +404,17 @@ function Chat() {
   const sheetUnpin = (pin: SheetPin) => {
     setUnpinningId(pin.id);
     setPinsSheetError('');
-    void unpinMessage(chatId, pin.id)
-      .catch(() => setPinsSheetError('Could not unpin. Try again.'))
-      .finally(() => setUnpinningId(null));
+    runInBackground(() => unpinMessage(chatId, pin.id), {
+      onFailure: () => setPinsSheetError('Could not unpin. Try again.'),
+      onSettled: () => setUnpinningId(null),
+    });
   };
 
   const pin = (message: UiMessage) => {
     setPinError('');
-    void pinMessage(chatId, message.id).catch(() =>
-      setPinError('Could not pin the message. Try again.'),
-    );
+    runInBackground(() => pinMessage(chatId, message.id), {
+      onFailure: () => setPinError('Could not pin the message. Try again.'),
+    });
   };
 
   const unpin = (message: UiMessage) => {
@@ -403,9 +424,9 @@ function Chat() {
     }
     setPinError('');
     const pinId = pinRow.id;
-    void unpinMessage(chatId, pinId).catch(() =>
-      setPinError('Could not unpin the message. Try again.'),
-    );
+    runInBackground(() => unpinMessage(chatId, pinId), {
+      onFailure: () => setPinError('Could not unpin the message. Try again.'),
+    });
   };
 
   const isTopic = chat.topic !== undefined;
@@ -436,15 +457,13 @@ function Chat() {
     ...infoAis.map((ai) => ({ kind: 'ai' as const, id: ai.id, name: ai.name })),
   ];
 
-  const patch = async (input: Parameters<typeof patchTopic>[1]): Promise<void> => {
+  const patch = (input: Parameters<typeof patchTopic>[1]): void => {
     setStripError('');
-    try {
-      await patchTopic(chat.id, input);
-    } catch {
+    runInBackground(() => patchTopic(chat.id, input), {
       // The row keeps its server state (the store only applies the patch on
       // success), so a failure needs no rollback, just the inline error.
-      setStripError('Could not save. Try again.');
-    }
+      onFailure: () => setStripError('Could not save. Try again.'),
+    });
   };
 
   const chooseStatus = (next: TopicStatus): void => {
@@ -452,7 +471,7 @@ function Chat() {
     if (next === chat.topic?.status) {
       return;
     }
-    void patch({ status: next });
+    patch({ status: next });
   };
 
   const refreshInfoRoles = () => {
@@ -460,25 +479,27 @@ function Chat() {
     setInfoGroupRolesError('');
     // Loads map a 404 to "no longer available" (refreshable) and never show
     // raw server messages; a 403 stays the neutral denied line.
-    void refreshTopicRoles(chat.id).catch((error: unknown) =>
-      setInfoRolesError(describeRolesError(error, 'load')),
-    );
+    runInBackground(() => refreshTopicRoles(chat.id), {
+      onFailure: (error) => setInfoRolesError(describeRolesError(error, 'load')),
+    });
     if (chatGroupId !== undefined) {
-      void refreshGroupRoles(chatGroupId).catch((error: unknown) =>
-        setInfoGroupRolesError(describeRolesError(error, 'load')),
-      );
+      runInBackground(() => refreshGroupRoles(chatGroupId), {
+        onFailure: (error) => setInfoGroupRolesError(describeRolesError(error, 'load')),
+      });
     }
   };
 
   const openInfo = () => {
     setInfoError('');
     setInfoOpen(true);
-    void listTopicMembers(chat.id)
-      .then(setInfoMembers)
-      .catch(() => setInfoMembers([]));
-    void listTopicAis(chat.id)
-      .then(setInfoAis)
-      .catch(() => setInfoAis([]));
+    runInBackground(() => listTopicMembers(chat.id), {
+      onSuccess: setInfoMembers,
+      onFailure: () => setInfoMembers([]),
+    });
+    runInBackground(() => listTopicAis(chat.id), {
+      onSuccess: setInfoAis,
+      onFailure: () => setInfoAis([]),
+    });
     // The access picker reads the attached roles fresh.
     refreshInfoRoles();
   };
@@ -487,9 +508,9 @@ function Chat() {
     setInfoRolesError('');
     // Writes map 403 and 404 to the neutral denied line (the server answers
     // the same 404 for unknown and hidden ids); nothing raw reaches the UI.
-    void setTopicRoles(chat.id, { roleIds, approverRoleId }).catch((error: unknown) =>
-      setInfoRolesError(describeRolesError(error, 'write')),
-    );
+    runInBackground(() => setTopicRoles(chat.id, { roleIds, approverRoleId }), {
+      onFailure: (error) => setInfoRolesError(describeRolesError(error, 'write')),
+    });
   };
 
   const toggleTopicRole = (roleId: string): void => {
@@ -882,7 +903,7 @@ function Chat() {
           if (same) {
             return;
           }
-          void patch({ owner: owner === null ? null : { kind: owner.kind, id: owner.id } });
+          patch({ owner: owner === null ? null : { kind: owner.kind, id: owner.id } });
         }}
         ownerCandidates={ownerCandidates}
         linkOpen={linkOpen}
@@ -906,7 +927,7 @@ function Chat() {
           setLinkOpen(false);
           const nextUrl = trimmed === '' ? null : trimmed;
           const nextLabel = linkLabel.trim() === '' ? null : linkLabel.trim().slice(0, 40);
-          void patch({ linkUrl: nextUrl, linkLabel: nextLabel });
+          patch({ linkUrl: nextUrl, linkLabel: nextLabel });
         }}
         error={stripError}
       />
@@ -1012,18 +1033,20 @@ function Chat() {
         onLeave={() => {
           setInfoBusy(true);
           setInfoError('');
-          void removeTopicMember(chat.id, myUserId)
-            .then(() => setInfoOpen(false))
-            .catch(() => setInfoError('Could not leave the topic. Try again.'))
-            .finally(() => setInfoBusy(false));
+          runInBackground(() => removeTopicMember(chat.id, myUserId), {
+            onSuccess: () => setInfoOpen(false),
+            onFailure: () => setInfoError('Could not leave the topic. Try again.'),
+            onSettled: () => setInfoBusy(false),
+          });
         }}
         onArchive={() => {
           setInfoBusy(true);
           setInfoError('');
-          void patchTopic(chat.id, { archived: true })
-            .then(() => setInfoOpen(false))
-            .catch(() => setInfoError('Could not archive the topic. Try again.'))
-            .finally(() => setInfoBusy(false));
+          runInBackground(() => patchTopic(chat.id, { archived: true }), {
+            onSuccess: () => setInfoOpen(false),
+            onFailure: () => setInfoError('Could not archive the topic. Try again.'),
+            onSettled: () => setInfoBusy(false),
+          });
         }}
         onClose={() => {
           if (!infoBusy) {
@@ -1045,16 +1068,16 @@ function Chat() {
         }
         onRetryRoles={() => {
           setInfoRolesError('');
-          void refreshTopicRoles(chat.id).catch((error: unknown) =>
-            setInfoRolesError(describeRolesError(error, 'load')),
-          );
+          runInBackground(() => refreshTopicRoles(chat.id), {
+            onFailure: (error) => setInfoRolesError(describeRolesError(error, 'load')),
+          });
         }}
         onRetryGroupRoles={() => {
           setInfoGroupRolesError('');
           if (chatGroupId !== undefined) {
-            void refreshGroupRoles(chatGroupId).catch((error: unknown) =>
-              setInfoGroupRolesError(describeRolesError(error, 'load')),
-            );
+            runInBackground(() => refreshGroupRoles(chatGroupId), {
+              onFailure: (error) => setInfoGroupRolesError(describeRolesError(error, 'load')),
+            });
           }
         }}
         onOpenAiMemory={(ai) => {

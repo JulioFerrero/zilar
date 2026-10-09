@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | [T-0810](T-0810-mobile-mu1.md) | MU1: mobile auth on Effect | in-progress | sonnet-5.5 | | wave 2 |
 | [T-0814](T-0814-mobile-mu5.md) | MU5: mobile whistle module on Effect | in-progress | haiku-5.5 | | wave 2 |
-| [T-0817](T-0817-mobile-mu8.md) | MU8: mobile chat screen on Effect | in-progress | sonnet-5.5 | | wave 2 |
 | [T-0818](T-0818-mobile-mu9.md) | MU9: mobile group and AI screens on Effect | in-progress | haiku-5.5 | | wave 2 |
 | [T-0819](T-0819-mobile-mu10.md) | MU10: mobile settings A on Effect | in-progress | haiku-5.5 | | wave 2 |
 | [T-0820](T-0820-mobile-mu11.md) | MU11: mobile settings B on Effect | in-progress | haiku-5.5 | | wave 2 |
@@ -866,3 +865,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0813](T-0813-mobile-mu4.md) | MU4: mobile on Effect | 2026-10-09 |
 | [T-0815](T-0815-mobile-mu6.md) | MU6: mobile on Effect | 2026-10-09 |
 | [T-0816](T-0816-mobile-mu7.md) | MU7: mobile on Effect | 2026-10-09 |
+| [T-0817](T-0817-mobile-mu8.md) | MU8: mobile on Effect | 2026-10-09 |

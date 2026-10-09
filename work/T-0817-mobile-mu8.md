@@ -1,7 +1,7 @@
 ---
 id: T-0817
 title: "MU8: mobile chat screen app/chat/[id].tsx on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0817-mobile-mu8
 model: auto
@@ -54,4 +54,15 @@ Run `pnpm exec prettier --write` on your changed files before committing. Do not
 
 ## Report (written by the worker when done)
 
+- **effect:map:** `apps/mobile/src/app/chat/[id].tsx` is `effect` (not tier B). Remaining soft signals: W4 (false positive from `Effect.catch(` and the `catch:` key of `Effect.tryPromise`) and W7 (three `process.env.NODE_ENV` / `EXPO_PUBLIC_ZILAR_MOCK` demo-data reads; `mock/gate.ts` has no constant for them, so the reads stay, as the spec allows).
+- **Tests:** before: no test for the screen. New `apps/mobile/src/components/screens/chat-id-screen.test.tsx`, 32 tests (jsdom, the real screen mounted, child components stubbed), committed first as "T-0817: tests before" and green on the old code. After the conversion: 32 passed, unchanged, 3 runs in a row; `src/lib/hooks-guard.test.ts` (reads this file) also passes (6). Mobile `typecheck`: clean.
+- **How:** every `void x().then().catch().finally()` chain and the `async`/`try`/`catch` in `patch` is now one module-level helper `runInBackground(call, { onSuccess, onFailure, onSettled })` built on `Effect.tryPromise` + `Effect.tap` + `Effect.catch` + `Effect.ensuring`, started with `Effect.runFork`. Used for: opening an attachment, pin, unpin (message menu and pins sheet), `patch` (status, owner, link), topic info loads (members, AIs, roles), saving topic roles, leave, archive and both role retries. `patch` now returns `void` (nobody awaited it); the `void patch(...)` call sites lost the `void`.
+- **Behaviour differences:** none intended. I did not use `useAction` on purpose: its default mode drops a second tap while one runs, and `replace` cancels the first, but the old chains let concurrent taps (two pins, two patches) run side by side, so `runFork` keeps that exactly. No new hooks, so the hooks-above-`if (!chat)` rule holds. Two edge notes: a synchronous throw from `opener.open` now lands in the "Could not open that file" message instead of escaping the tap handler; nothing is interrupted on unmount (same as before: late state updates after unmount are no-ops).
+- **Unsure:** whether the lead prefers `useAction` per action despite the single-flight change above. Not run: `pnpm gate`, the whole suite, the emulator (wave mode).
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved (wave 2). Worker: Sonnet 5.5. The lead reviewed the Report.
+- **Combined check:** all 25 wave 2 branches together pass lint, typecheck and the full mobile suite (`lead batch check`, report 20261009T172300Z). The remaining failures were server and web tests that pass on main, caused by load.
+- **This task:** Chat screen converted; no behaviour change reported.
+- **Phone:** the wave branch is smoked on the emulator after the merge.
