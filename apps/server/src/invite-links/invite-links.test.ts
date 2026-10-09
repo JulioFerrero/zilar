@@ -1,21 +1,18 @@
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { MAX_GROUP_MEMBERS } from '../groups/service';
 import { createApp } from '../app';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { createAuditRecorder } from '../audit/service';
-import { auditLog } from '../db/schema';
-import { groupInviteLinks } from '../db/schema';
-import { groupMembers } from '../db/schema';
-import { groups } from '../db/schema';
-import { user } from '../auth/auth-schema';
 import { localpartFor } from '../xmpp/provisioning';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   testApp,
+  testSql,
   TEST_BASE_URL,
   TEST_XMPP_DOMAIN,
   type SignedInUser,
@@ -113,12 +110,22 @@ describe('group invite links', () => {
   }
 
   async function auditActions(): Promise<string[]> {
-    const rows = await context.db.select({ action: auditLog.action }).from(auditLog);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ action: string }>`SELECT action FROM audit_log`;
+      }),
+    );
     return rows.map((row) => row.action);
   }
 
   async function auditDetails(): Promise<unknown[]> {
-    const rows = await context.db.select({ detail: auditLog.detail }).from(auditLog);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ detail: unknown }>`SELECT detail FROM audit_log`;
+      }),
+    );
     return rows.map((row) => row.detail);
   }
 
@@ -133,7 +140,14 @@ describe('group invite links', () => {
     expect(body.token).toMatch(/^[0-9a-f]{64}$/);
     expect(body.url).toBe(`http://localhost:5173/j/${body.token}`);
 
-    const rows = await context.db.select().from(groupInviteLinks);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ tokenHash: string; tokenHint: string; label: string | null }>`
+          SELECT token_hash, token_hint, label FROM group_invite_links
+        `;
+      }),
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0]!.tokenHash).toBe(createHash('sha256').update(body.token, 'utf8').digest('hex'));
     expect(rows[0]!.tokenHash).not.toContain(body.token.slice(0, 8));
@@ -186,10 +200,12 @@ describe('group invite links', () => {
     expect((await revokeLink(member.cookie, groupId, 'whatever')).status).toBe(403);
     expect((await revokeLink(stranger.cookie, groupId, 'whatever')).status).toBe(404);
 
-    await context.db
-      .update(groupMembers)
-      .set({ role: 'admin' })
-      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, member.id)));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE group_members SET role = 'admin' WHERE group_id = ${groupId} AND user_id = ${member.id}`;
+      }),
+    );
     expect((await createLink(member.cookie, groupId)).status).toBe(201);
     expect((await listLinks(member.cookie, groupId)).status).toBe(200);
   });
@@ -267,26 +283,41 @@ describe('group invite links', () => {
     expect(joined.status).toBe(200);
     expect(await joined.json()).toEqual({ groupId, alreadyMember: false });
 
-    const membership = await context.db
-      .select()
-      .from(groupMembers)
-      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, friend.id)));
+    const membership = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ role: string }>`
+          SELECT role FROM group_members WHERE group_id = ${groupId} AND user_id = ${friend.id}
+        `;
+      }),
+    );
     expect(membership).toHaveLength(1);
     expect(membership[0]!.role).toBe('member');
 
     // The room sync ran through the add-member flow: the newcomer holds a
     // member affiliation on the group room and every public topic room.
-    const [groupRow] = await context.db.select().from(groups).where(eq(groups.id, groupId));
+    const [groupRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ roomLocalpart: string }>`
+          SELECT room_localpart FROM groups WHERE id = ${groupId}
+        `;
+      }),
+    );
     const newcomerJid = `${localpartFor(friend.id)}@${TEST_XMPP_DOMAIN}`;
     expect(
       context.adminClient.affiliationState.get(groupRow!.roomLocalpart)?.get(newcomerJid),
     ).toBe('member');
 
     // The use was consumed.
-    const [linkRow] = await context.db
-      .select()
-      .from(groupInviteLinks)
-      .where(eq(groupInviteLinks.id, created.id));
+    const [linkRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ uses: number }>`
+          SELECT uses FROM group_invite_links WHERE id = ${created.id}
+        `;
+      }),
+    );
     expect(linkRow!.uses).toBe(1);
 
     // Preview now reports membership, with the group id the join page
@@ -312,10 +343,14 @@ describe('group invite links', () => {
     const response = await join(link.token, member.cookie);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ groupId, alreadyMember: true });
-    const [row] = await context.db
-      .select()
-      .from(groupInviteLinks)
-      .where(eq(groupInviteLinks.id, link.id));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ uses: number }>`
+          SELECT uses FROM group_invite_links WHERE id = ${link.id}
+        `;
+      }),
+    );
     expect(row!.uses).toBe(0);
   });
 
@@ -358,10 +393,12 @@ describe('group invite links', () => {
     const expiring = (await (
       await createLink(owner.cookie, groupId, { expiresInHours: 1 })
     ).json()) as CreatedLinkBody;
-    await context.db
-      .update(groupInviteLinks)
-      .set({ expiresAt: new Date(Date.now() - 1000) })
-      .where(eq(groupInviteLinks.id, expiring.id));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE group_invite_links SET expires_at = ${new Date(Date.now() - 1000)} WHERE id = ${expiring.id}`;
+      }),
+    );
     expect(errorOf(await (await preview(expiring.token, stranger.cookie)).json())).toEqual(
       missingBody,
     );
@@ -422,15 +459,23 @@ describe('group invite links', () => {
       releaseFirst();
     }
 
-    const members = await context.db
-      .select()
-      .from(groupMembers)
-      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, friend.id)));
+    const members = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ userId: string }>`
+          SELECT user_id FROM group_members WHERE group_id = ${groupId} AND user_id = ${friend.id}
+        `;
+      }),
+    );
     expect(members).toHaveLength(1);
-    const [row] = await context.db
-      .select()
-      .from(groupInviteLinks)
-      .where(eq(groupInviteLinks.id, link.id));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ uses: number }>`
+          SELECT uses FROM group_invite_links WHERE id = ${link.id}
+        `;
+      }),
+    );
     // One membership was created, so exactly one use was consumed — the
     // loser never claimed.
     expect(row!.uses).toBe(1);
@@ -454,15 +499,23 @@ describe('group invite links', () => {
     const loser = one.status === 200 ? two : one;
     expect(errorOf(await loser.json()).code).toBe('invalid_link');
 
-    const members = await context.db
-      .select({ userId: groupMembers.userId })
-      .from(groupMembers)
-      .where(eq(groupMembers.groupId, groupId));
+    const members = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          userId: string;
+        }>`SELECT user_id FROM group_members WHERE group_id = ${groupId}`;
+      }),
+    );
     expect(members).toHaveLength(2);
-    const [row] = await context.db
-      .select()
-      .from(groupInviteLinks)
-      .where(eq(groupInviteLinks.id, link.id));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ uses: number }>`
+          SELECT uses FROM group_invite_links WHERE id = ${link.id}
+        `;
+      }),
+    );
     expect(row!.uses).toBe(1);
   });
 
@@ -471,10 +524,13 @@ describe('group invite links', () => {
     const groupId = await lonelyGroup(owner);
     for (let index = 0; index < MAX_GROUP_MEMBERS - 1; index += 1) {
       const id = `cap-user-${index}`;
-      await context.db
-        .insert(user)
-        .values({ id, name: `Cap ${index}`, email: `${id}@example.com` });
-      await context.db.insert(groupMembers).values({ groupId, userId: id, role: 'member' });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO "user" (id, name, email) VALUES (${id}, ${`Cap ${index}`}, ${`${id}@example.com`})`;
+          yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${id}, 'member')`;
+        }),
+      );
     }
     const link = (await (await createLink(owner.cookie, groupId)).json()) as CreatedLinkBody;
     const late = await bootstrapUser(context, app, 'late@example.com');
@@ -484,10 +540,14 @@ describe('group invite links', () => {
     expect(errorOf(await response.json()).code).toBe('group_full');
 
     // A full group never burns a use: the cap check runs before the claim.
-    const [row] = await context.db
-      .select()
-      .from(groupInviteLinks)
-      .where(eq(groupInviteLinks.id, link.id));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ uses: number }>`
+          SELECT uses FROM group_invite_links WHERE id = ${link.id}
+        `;
+      }),
+    );
     expect(row!.uses).toBe(0);
   });
 
@@ -501,25 +561,37 @@ describe('group invite links', () => {
     const response = await join(link.token, friend.cookie);
     expect(response.status).toBe(503);
     expect(errorOf(await response.json()).code).toBe('xmpp_unavailable');
-    const [row] = await context.db
-      .select()
-      .from(groupInviteLinks)
-      .where(eq(groupInviteLinks.id, link.id));
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ uses: number }>`
+          SELECT uses FROM group_invite_links WHERE id = ${link.id}
+        `;
+      }),
+    );
     expect(row!.uses).toBe(0);
     expect(
-      await context.db
-        .select()
-        .from(groupMembers)
-        .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, friend.id))),
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ userId: string }>`
+            SELECT user_id FROM group_members WHERE group_id = ${groupId} AND user_id = ${friend.id}
+          `;
+        }),
+      ),
     ).toEqual([]);
 
     // The link still works once the room is back: the refunded use was not lost.
     context.adminClient.failAffiliation = false;
     expect((await join(link.token, friend.cookie)).status).toBe(200);
-    const [after] = await context.db
-      .select()
-      .from(groupInviteLinks)
-      .where(eq(groupInviteLinks.id, link.id));
+    const [after] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ uses: number }>`
+          SELECT uses FROM group_invite_links WHERE id = ${link.id}
+        `;
+      }),
+    );
     expect(after!.uses).toBe(1);
   });
 
@@ -799,7 +871,14 @@ describe('group invite links', () => {
     const link = (await (await createLink(owner.cookie, groupId)).json()) as CreatedLinkBody;
     // The group room itself works; only the topic rooms fail. The member
     // row still commits and the route answers 200 (best effort, logged).
-    const [groupRow] = await context.db.select().from(groups).where(eq(groups.id, groupId));
+    const [groupRow] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ roomLocalpart: string }>`
+          SELECT room_localpart FROM groups WHERE id = ${groupId}
+        `;
+      }),
+    );
     const groupRoom = groupRow!.roomLocalpart;
     const realSetAffiliation = context.adminClient.setAffiliation.bind(context.adminClient);
     context.adminClient.setAffiliation = (roomId, jid, affiliation) => {
@@ -811,10 +890,14 @@ describe('group invite links', () => {
 
     const response = await join(link.token, friend.cookie);
     expect(response.status).toBe(200);
-    const membership = await context.db
-      .select()
-      .from(groupMembers)
-      .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, friend.id)));
+    const membership = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ userId: string }>`
+          SELECT user_id FROM group_members WHERE group_id = ${groupId} AND user_id = ${friend.id}
+        `;
+      }),
+    );
     expect(membership).toHaveLength(1);
     expect(context.logOutput()).toContain('could not sync a topic room');
   });
