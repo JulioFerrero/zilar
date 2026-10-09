@@ -1,7 +1,7 @@
 ---
 id: T-0831
 title: "MU22: mobile chat search and small: message-search, message-search-list, search-jump, jump-scroll, skeleton, swipe-to-reply, approval-card on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0831-mobile-mu22
 model: auto
@@ -60,4 +60,39 @@ Run `pnpm exec prettier --write` on your changed files before committing. Do not
 
 ## Report (written by the worker when done)
 
+Commits: `c49f8b6c` T-0831: tests before (3 new test files, on the old code); conversion commit follows.
+
+**effect:map kinds (after)**
+- approval-card.tsx: effect
+- jump-scroll.ts: effect
+- message-search.ts: effect
+- search-jump.ts: effect
+- skeleton.tsx: effect
+- swipe-to-reply.tsx: effect
+- message-search-list.tsx: **needs-effect** (weak W4). It imports no Effect module, and its only async is `void openSearchHit(...).catch(...)`. `search-jump.test.ts` reads that file and requires `void openSearchHit(` followed by `.catch(` and `notFoundRef.current` within 900 chars, so I kept that call unchanged. Needs a decision from Claude (change that test, or accept needs-effect for this file).
+
+**Tests**
+- Before the task: 21 tests across the 7 listed files (existing).
+- New tests (tests before): approval-card.test.tsx 8, skeleton.test.tsx 6, message-search-list.test.tsx 9 (23 total). All passed on the old code.
+- After conversion: the 7 Checks files, 44 passed (3 runs, all green). `pnpm --filter @zilar/mobile typecheck`: exit 0. `pnpm exec oxlint` on the 10 changed files: exit 0, no output. `pnpm exec prettier --write` run on every changed file.
+
+**Behaviour differences**
+- approval-card: the card's load is a `useQuery`. When `api` or the request id changes, the card now shows the loading placeholder until the new read lands (before, it kept the old state). Retry still shows the placeholder. A decision is kept with the api and request id it was made for, so it does not leak onto another card. Decision texts unchanged; the inline failure text is still the `applyDecision` message as before.
+- jump-scroll: the default timers are Effect fibers (`Effect.sleep` + `Fiber.interrupt`). The injectable `timers` seam is unchanged, because its tests drive the retries synchronously.
+- message-search: the default `frames` scheduler is Effect-based, same seam. The three `.then` request paths now run through one `settleSearch` helper (`tryPromise` + `matchEffect`, forked). Differences: the api call starts when the fiber starts (one scheduler tick later at most); a synchronous throw from `searchMessages` now reaches the error handler instead of escaping `fetch`/`loadMore`. Controller API and all messages unchanged.
+- search-jump: `openSearchHit` is now `openSearchHitEffect` (Effect) plus a Promise export via `Effect.runPromise`. A rejection still carries the original error (checked: `runPromise` throws `causeSquash`). Same landed / not-found / rethrow logic.
+- skeleton: the delay is an `Effect.sleep` fiber, interrupted on unmount or a delay change.
+- swipe-to-reply: the haptic is `tryPromise` + `Effect.ignore` in a forked fiber; a failed haptic is still ignored.
+- Native imports (expo-haptics, Animated, reanimated) unchanged; no permission prompts in these files.
+
+**Unsure / not run**
+- `use-message-search.test.ts` (13 tests of `MessageSearchController`, which I converted) is NOT in the Checks, so I did not run it (wave rule). Please include it in the wave check. The controller's timing relies on `flush()` (setTimeout 0) after Effect-fiber requests; I expect it to pass but have not verified.
+- The `apps/mobile/src/components/chat/message-search.ts` `fetch` method name matches the H2 signal (a false positive); the file is still `effect`.
+- Stray: I wrote and removed an empty `/tmp/unused` (outside the worktree) once while checking typecheck output. Nothing else outside the worktree.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved (wave 2). Worker: Haiku 5.5. The lead reviewed the Report.
+- **Combined check:** all 25 wave 2 branches together pass lint, typecheck and the full mobile suite (`lead batch check`, report 20261009T172300Z). The remaining failures were server and web tests that pass on main, caused by load.
+- **This task:** 23 new tests. `message-search-list.tsx` stays needs-effect because `search-jump.test.ts` pins its `.catch`; follow-up to change that test.
+- **Phone:** the wave branch is smoked on the emulator after the merge.

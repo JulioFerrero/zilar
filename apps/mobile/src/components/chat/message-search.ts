@@ -1,4 +1,11 @@
-import { SearchApiError, type SearchApi, type SearchItem } from '../../lib/search-api';
+import { Effect, Fiber } from 'effect';
+
+import {
+  SearchApiError,
+  type SearchApi,
+  type SearchItem,
+  type SearchPage,
+} from '../../lib/search-api';
 
 /**
  * The plain logic behind mobile message search (T-0138), kept pure and next
@@ -131,10 +138,36 @@ export interface SearchScheduler {
   clearTimeout: (handle: unknown) => void;
 }
 
+// Each debounce is a fiber that sleeps; clearing it interrupts the fiber.
 const defaultScheduler: SearchScheduler = {
-  setTimeout: (callback, ms) => setTimeout(callback, ms),
-  clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  setTimeout: (callback, ms) =>
+    Effect.runFork(Effect.sleep(ms).pipe(Effect.andThen(Effect.sync(callback)))),
+  clearTimeout: (handle) => {
+    Effect.runFork(Fiber.interrupt(handle as Fiber.Fiber<void>));
+  },
 };
+
+type SearchInput = Parameters<SearchApi['searchMessages']>[0];
+
+/**
+ * Runs one search request as a fiber. `onPage` or `onError` runs on that fiber
+ * once the request settles; an error thrown by `onPage` is not sent to `onError`.
+ */
+function settleSearch(
+  api: SearchApi,
+  input: SearchInput,
+  onPage: (page: SearchPage) => void,
+  onError: (error: unknown) => void,
+): void {
+  Effect.runFork(
+    Effect.tryPromise({ try: () => api.searchMessages(input), catch: (error) => error }).pipe(
+      Effect.matchEffect({
+        onSuccess: (page) => Effect.sync(() => onPage(page)),
+        onFailure: (error) => Effect.sync(() => onError(error)),
+      }),
+    ),
+  );
+}
 
 export interface MessageSearchControllerOptions {
   api: SearchApi;
@@ -249,64 +282,62 @@ export class MessageSearchController {
     const q = this.debounced;
     const chat = this.chat;
     const before = this.current.nextBefore;
-    void this.api
-      .searchMessages({
+    settleSearch(
+      this.api,
+      {
         q,
         ...(chat === undefined ? {} : { chat }),
         limit: MESSAGE_SEARCH_LIMIT,
         before,
         signal: controller.signal,
-      })
-      .then(
-        (page) => {
-          if (this.pageController === controller) {
-            this.pageController = null;
-          }
-          if (this.disposed || this.pageRequest !== id || this.requestId !== id) {
-            return;
-          }
-          this.paging = false;
-          if (this.current.status !== 'ready') {
-            return;
-          }
-          const known = new Set(
-            this.current.items.map((item) => `${item.chatJid}:${item.messageId}`),
-          );
-          const fresh = page.items.filter(
-            (item) => !known.has(`${item.chatJid}:${item.messageId}`),
-          );
-          this.set({
-            status: 'ready',
-            items: [...this.current.items, ...fresh],
-            ...(page.nextBefore === undefined ? {} : { nextBefore: page.nextBefore }),
-          });
-        },
-        (error: unknown) => {
-          if (this.pageController === controller) {
-            this.pageController = null;
-          }
-          if (this.disposed || this.pageRequest !== id || this.requestId !== id) {
-            return;
-          }
-          this.paging = false;
-          if (error instanceof DOMException && error.name === 'AbortError') {
-            return;
-          }
-          if (this.current.status !== 'ready') {
-            return;
-          }
-          const kept = this.current;
-          this.set({
-            status: 'ready',
-            items: kept.items,
-            ...(kept.nextBefore === undefined ? {} : { nextBefore: kept.nextBefore }),
-            pageError: {
-              message: "Couldn't load more messages",
-              retry: () => this.loadMore(),
-            },
-          });
-        },
-      );
+      },
+      (page) => {
+        if (this.pageController === controller) {
+          this.pageController = null;
+        }
+        if (this.disposed || this.pageRequest !== id || this.requestId !== id) {
+          return;
+        }
+        this.paging = false;
+        if (this.current.status !== 'ready') {
+          return;
+        }
+        const known = new Set(
+          this.current.items.map((item) => `${item.chatJid}:${item.messageId}`),
+        );
+        const fresh = page.items.filter((item) => !known.has(`${item.chatJid}:${item.messageId}`));
+        this.set({
+          status: 'ready',
+          items: [...this.current.items, ...fresh],
+          ...(page.nextBefore === undefined ? {} : { nextBefore: page.nextBefore }),
+        });
+      },
+      (error: unknown) => {
+        if (this.pageController === controller) {
+          this.pageController = null;
+        }
+        if (this.disposed || this.pageRequest !== id || this.requestId !== id) {
+          return;
+        }
+        this.paging = false;
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+        if (this.current.status !== 'ready') {
+          return;
+        }
+        const kept = this.current;
+        this.set({
+          status: 'ready',
+          items: kept.items,
+          ...(kept.nextBefore === undefined ? {} : { nextBefore: kept.nextBefore }),
+          pageError: {
+            message: "Couldn't load more messages",
+            retry: () => this.loadMore(),
+          },
+        });
+      },
+    );
   }
 
   dispose(): void {
@@ -363,54 +394,54 @@ export class MessageSearchController {
     const controller = new AbortController();
     this.inflight = controller;
     const attempt = this.attempt;
-    void this.api
-      .searchMessages({
+    settleSearch(
+      this.api,
+      {
         q: active,
         ...(this.chat === undefined ? {} : { chat: this.chat }),
         limit: MESSAGE_SEARCH_LIMIT,
         signal: controller.signal,
-      })
-      .then(
-        (page) => {
-          if (this.disposed || this.requestId !== id || this.attempt !== attempt) {
-            return;
-          }
-          this.inflight = null;
-          this.set({
-            status: 'ready',
-            items: page.items,
-            ...(page.nextBefore === undefined ? {} : { nextBefore: page.nextBefore }),
-          });
-        },
-        (error: unknown) => {
-          if (this.disposed || this.requestId !== id || this.attempt !== attempt) {
-            return;
-          }
-          this.inflight = null;
-          if (error instanceof DOMException && error.name === 'AbortError') {
-            return;
-          }
-          if (error instanceof SearchApiError && error.status === 501) {
-            this.set({ status: 'unavailable' });
-            return;
-          }
-          if (error instanceof SearchApiError && error.status === 429) {
-            this.set({
-              status: 'error',
-              message: 'Too many searches. Try again in a moment.',
-              rateLimited: true,
-              retry: () => this.retry(),
-            });
-            return;
-          }
+      },
+      (page) => {
+        if (this.disposed || this.requestId !== id || this.attempt !== attempt) {
+          return;
+        }
+        this.inflight = null;
+        this.set({
+          status: 'ready',
+          items: page.items,
+          ...(page.nextBefore === undefined ? {} : { nextBefore: page.nextBefore }),
+        });
+      },
+      (error: unknown) => {
+        if (this.disposed || this.requestId !== id || this.attempt !== attempt) {
+          return;
+        }
+        this.inflight = null;
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+        if (error instanceof SearchApiError && error.status === 501) {
+          this.set({ status: 'unavailable' });
+          return;
+        }
+        if (error instanceof SearchApiError && error.status === 429) {
           this.set({
             status: 'error',
-            message: "Couldn't search messages",
-            rateLimited: false,
+            message: 'Too many searches. Try again in a moment.',
+            rateLimited: true,
             retry: () => this.retry(),
           });
-        },
-      );
+          return;
+        }
+        this.set({
+          status: 'error',
+          message: "Couldn't search messages",
+          rateLimited: false,
+          retry: () => this.retry(),
+        });
+      },
+    );
   }
 
   private set(next: MessageSearchStatus): void {

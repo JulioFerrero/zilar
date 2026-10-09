@@ -1,3 +1,4 @@
+import { Effect, Fiber } from 'effect';
 import { useEffect, useState } from 'react';
 import { Animated, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
@@ -18,8 +19,13 @@ export const SKELETON_DELAY_MS = 250;
 export function useDelayedVisible(delayMs = SKELETON_DELAY_MS): boolean {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
-    const timer = setTimeout(() => setVisible(true), delayMs);
-    return () => clearTimeout(timer);
+    // A fiber sleeps for the delay; unmounting (or a new delay) interrupts it.
+    const fiber = Effect.runFork(
+      Effect.sleep(delayMs).pipe(Effect.andThen(Effect.sync(() => setVisible(true)))),
+    );
+    return () => {
+      Effect.runFork(Fiber.interrupt(fiber));
+    };
   }, [delayMs]);
   return visible;
 }
