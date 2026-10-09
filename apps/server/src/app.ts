@@ -1,8 +1,5 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { requestId, type RequestIdVariables } from 'hono/request-id';
 import type { Logger } from 'pino';
 import { protocolVersion } from '@zilar/protocol';
 import { createLitellmAdminClientFromConfig, type LitellmAdminClient } from './ai/litellm-client';
@@ -36,11 +33,10 @@ import { createContactsApi } from './contacts/api';
 import { createContactRequestsApi } from './contact-requests/api';
 import { createDirectoryApi } from './directory/api';
 import { createHandlesApi } from './handles/api';
-import { mountEffectRoutes } from './effect/http';
 import type { EffectApiMount } from './effect/http-core';
+import { createEdge, type EdgeHealth, type ZilarEdge } from './effect/edge';
 import { registerSqlRuntime, sqlRuntimeFor } from './effect/sql';
 import type { ServerDatabase } from './db/client';
-import { HttpError } from './errors';
 import { createGroupsApi } from './groups/api';
 import { createInviteLinksApi, type TestInviteLinksOverrides } from './invite-links/api';
 import { createPinsApi } from './pins/api';
@@ -65,6 +61,10 @@ import { createVoiceApi } from './voice/api';
 import { createVoiceTranscriptionApi } from './voice-transcription/api';
 import type { EjabberdAdminClient } from './xmpp/admin-client';
 import { createXmppApi } from './xmpp/api';
+
+// Re-exported for the authz sweep and the scheduler test, which read the
+// edge's route manifest through `app.routes`.
+export type { EdgeHealth, ZilarEdge };
 
 // Test seam for the join rate windows (T-0115): the invite-links tests set
 // an injected clock and client IP through `setTestAppInviteLinks` so the
@@ -205,16 +205,10 @@ export interface AppDependencies {
 }
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
-const UNSAFE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const mountsByApp = new WeakMap<
-  Hono<{ Variables: RequestIdVariables }>,
-  ReadonlyArray<EffectApiMount>
->();
+const mountsByApp = new WeakMap<ZilarEdge, ReadonlyArray<EffectApiMount>>();
 
 /** The Effect module mounts of an app built by `createApp`, in mount order. */
-export function effectMountsOf(
-  app: Hono<{ Variables: RequestIdVariables }>,
-): ReadonlyArray<EffectApiMount> {
+export function effectMountsOf(app: ZilarEdge): ReadonlyArray<EffectApiMount> {
   return mountsByApp.get(app) ?? [];
 }
 
@@ -255,12 +249,11 @@ export function createApp({
   gifProvider,
   gifMediaFetcher,
   gifNow,
-}: AppDependencies): Hono<{ Variables: RequestIdVariables }> {
+}: AppDependencies): ZilarEdge {
   // Bind the `effect/sql` runtime for this database once, before any module
   // that runs queries through it is built. The registry memoizes per handle,
   // so building routes (pins, blocks) no longer has to register it.
   registerSqlRuntime(db, config.DATABASE_URL);
-  const app = new Hono<{ Variables: RequestIdVariables }>();
   const auditRecorder = audit ?? createAuditRecorder({ db, logger });
   // Default gateway: empty registry. Every action is denied
   // `unknown_action` until a later task registers an adapter, and there is
@@ -274,49 +267,6 @@ export function createApp({
       logger,
     });
 
-  app.use('*', requestId());
-
-  app.use('*', async (c, next) => {
-    const start = performance.now();
-    // T-0115: the join token is a bearer secret — `/api/join/<token>` is
-    // logged as `/api/join/:token` so the raw token never reaches the
-    // server log, on success or on error.
-    const fields = {
-      method: c.req.method,
-      path: logPath(c.req.path),
-      requestId: c.get('requestId'),
-    };
-
-    try {
-      await next();
-    } catch (error) {
-      logger.info(
-        { ...fields, status: statusFor(error), durationMs: durationSince(start) },
-        'request',
-      );
-      throw error;
-    }
-
-    logger.info({ ...fields, status: c.res.status, durationMs: durationSince(start) }, 'request');
-  });
-
-  app.use(
-    '/api/*',
-    cors({
-      origin: config.WEB_ORIGINS,
-      credentials: true,
-    }),
-  );
-
-  app.use('/api/*', async (c, next) => {
-    const origin = c.req.header('origin');
-    if (origin && UNSAFE_METHODS.has(c.req.method) && !allowedOrigins(config).includes(origin)) {
-      throw new HttpError(403, 'forbidden', 'Origin is not allowed');
-    }
-    await next();
-  });
-
-  app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
   const mounts: EffectApiMount[] = [];
   const authApi = createAuthApi({ auth, db, config, adminClient, logger });
   mounts.push(authApi);
@@ -620,14 +570,12 @@ export function createApp({
     ...(aisLitellm === undefined ? {} : { litellm: aisLitellm }),
   });
   mounts.push(aisApi);
-  for (const mount of mounts) {
-    mountEffectRoutes(app, mount.routes, mount.handler);
-  }
 
-  app.get('/health', async (c) => {
+  const health = async (): Promise<EdgeHealth> => {
     const up = await isDatabaseUp(db);
-    return c.json(
-      {
+    return {
+      status: up ? 200 : 503,
+      body: {
         ok: up,
         name: 'zilar-server',
         version: serverVersion,
@@ -635,51 +583,12 @@ export function createApp({
         protocolVersion,
         db: up ? 'ok' : 'down',
       },
-      up ? 200 : 503,
-    );
-  });
+    };
+  };
 
-  app.notFound((c) =>
-    c.json(
-      { error: { code: 'not_found', message: 'Not found', requestId: c.get('requestId') } },
-      404,
-    ),
-  );
-
-  app.onError((error, c) => {
-    const requestIdValue = c.get('requestId');
-
-    if (error instanceof HttpError) {
-      return c.json(
-        {
-          // `detail` first: a detail key (e.g. a future `code`) can never
-          // overwrite the real `code`, `message` or `requestId`.
-          error: {
-            ...error.detail,
-            code: error.code,
-            message: error.message,
-            requestId: requestIdValue,
-          },
-        },
-        error.status,
-      );
-    }
-
-    logger.error({ err: error, requestId: requestIdValue }, 'unhandled request error');
-    return c.json(
-      {
-        error: {
-          code: 'internal_error',
-          message: 'Internal server error',
-          requestId: requestIdValue,
-        },
-      },
-      500,
-    );
-  });
-
-  mountsByApp.set(app, mounts);
-  return app;
+  const edge = createEdge({ mounts, auth, config, logger, health });
+  mountsByApp.set(edge, mounts);
+  return edge;
 }
 
 async function isDatabaseUp(db: ServerDatabase): Promise<boolean> {
@@ -713,38 +622,4 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
       },
     );
   });
-}
-
-function statusFor(error: unknown): number {
-  return error instanceof HttpError ? error.status : 500;
-}
-
-function durationSince(start: number): number {
-  return Math.round(performance.now() - start);
-}
-
-// Join tokens (T-0115), sign-up invite codes, GIF media tokens (T-0122) and
-// avatar ids (unguessable uuids) are bearer secrets, so the request log
-// redacts every segment after `/api/join/`, `/api/invites/`,
-// `/api/gifs/media/` and `/api/avatars/`
-// (`/api/join/<token>` and any variant such as a trailing slash, which 404s in
-// routing but still reaches this log line).
-function logPath(path: string): string {
-  if (path.startsWith('/api/join/')) {
-    return '/api/join/:token';
-  }
-  if (path.startsWith('/api/gifs/media/')) {
-    return '/api/gifs/media/:token';
-  }
-  if (path.startsWith('/api/avatars/')) {
-    return '/api/avatars/:id';
-  }
-  return path.startsWith('/api/invites/') ? '/api/invites/:code' : path;
-}
-
-function allowedOrigins(config: ServerConfig): string[] {
-  const origins = new Set(config.WEB_ORIGINS);
-  origins.add(new URL(config.PUBLIC_URL).origin);
-  origins.add(new URL(config.BETTER_AUTH_URL).origin);
-  return [...origins];
 }
