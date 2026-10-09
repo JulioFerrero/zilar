@@ -1,3 +1,4 @@
+import { Data, Effect } from 'effect';
 import { useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import {
@@ -8,13 +9,10 @@ import {
   type FolderChatType,
   type FolderIcon,
 } from '@zilar/chat-core';
-import {
-  ApiError,
-  createChatFolder,
-  deleteChatFolder,
-  patchChatFolder,
-  type ApiChatFolder,
-} from '@/lib/api';
+import { createChatFolder, deleteChatFolder, patchChatFolder, type ApiChatFolder } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { type ApiFailure } from '@/lib/effect/errors';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/ChatStoreProvider';
 import { folderIconComponent } from './folderIcon';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -33,6 +31,11 @@ const TYPE_SWITCHES: { type: FolderChatType; label: string }[] = [
 ];
 
 const SECTION_LABEL = 'text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase';
+
+class FolderDeleteFailed extends Data.TaggedError('FolderDeleteFailed') {}
+
+/** The two writes of this dialog; one action runs them, so they never overlap. */
+type FolderWrite = 'save' | 'delete';
 
 /**
  * Create/edit dialog for one chat folder (T-0238): name and icon, which
@@ -59,8 +62,6 @@ export function FolderEditorDialog({
   const [excludeRead, setExcludeRead] = useState(folder?.excludeRead ?? false);
   const [includeSearch, setIncludeSearch] = useState('');
   const [excludeSearch, setExcludeSearch] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const trimmed = name.trim();
@@ -70,13 +71,8 @@ export function FolderEditorDialog({
   const toggle = (list: string[], id: string): string[] =>
     list.includes(id) ? list.filter((item) => item !== id) : [...list, id];
 
-  const save = async (): Promise<void> => {
-    if (!canSave || busy) {
-      return;
-    }
-    setBusy(true);
-    setError(undefined);
-    try {
+  const saveFolder = (): Effect.Effect<void, ApiFailure> =>
+    Effect.gen(function* () {
       const body = {
         name: trimmed,
         icon,
@@ -87,38 +83,35 @@ export function FolderEditorDialog({
         excludeRead,
       };
       if (folder === null) {
-        const created = await createChatFolder(body);
+        const created = yield* fromApi(() => createChatFolder(body));
         store.setFolders([...store.folders, created as ChatFolder]);
       } else {
-        const updated = await patchChatFolder(folder.id, body);
+        const updated = yield* fromApi(() => patchChatFolder(folder.id, body));
         store.setFolders(
           store.folders.map((item) => (item.id === folder.id ? (updated as ChatFolder) : item)),
         );
       }
       onClose();
-    } catch (saveError) {
-      setError(saveErrorMessage(saveError));
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
 
-  const remove = async (): Promise<void> => {
-    if (folder === null || busy) {
-      return;
-    }
-    setBusy(true);
-    try {
-      await deleteChatFolder(folder.id);
-      store.setFolders(store.folders.filter((item) => item.id !== folder.id));
+  const deleteFolder = (id: string): Effect.Effect<void, FolderDeleteFailed> =>
+    Effect.gen(function* () {
+      yield* fromApi(() => deleteChatFolder(id)).pipe(
+        Effect.tapError(() => Effect.sync(() => setConfirmingDelete(false))),
+        Effect.mapError(() => new FolderDeleteFailed()),
+      );
+      store.setFolders(store.folders.filter((item) => item.id !== id));
       onClose();
-    } catch {
-      setConfirmingDelete(false);
-      setError('Could not delete the folder. Try again.');
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
+
+  // A second click while a write waits is dropped (mode 'ignore'), and so is a
+  // save during a delete: one state holds both, as the shared busy flag did.
+  const [writeState, runWrite] = useAction(
+    (request: FolderWrite): Effect.Effect<void, ApiFailure | FolderDeleteFailed> =>
+      request === 'save' ? saveFolder() : folder === null ? Effect.void : deleteFolder(folder.id),
+  );
+  const busy = isWaiting(writeState);
+  const writeFailure = busy ? undefined : failureOf(writeState);
 
   return (
     <>
@@ -149,7 +142,11 @@ export function FolderEditorDialog({
                 variant="default"
                 size="lg"
                 disabled={!canSave || busy}
-                onClick={() => void save()}
+                onClick={() => {
+                  if (canSave) {
+                    runWrite('save');
+                  }
+                }}
               >
                 {busy ? 'Saving…' : 'Save'}
               </Button>
@@ -280,9 +277,11 @@ export function FolderEditorDialog({
           </div>
         </section>
 
-        {error !== undefined && (
+        {writeFailure !== undefined && (
           <p role="alert" className="mt-4 text-[14px] text-danger">
-            {error}
+            {writeFailure._tag === 'FolderDeleteFailed'
+              ? 'Could not delete the folder. Try again.'
+              : saveErrorMessage(writeFailure)}
           </p>
         )}
       </Dialog>
@@ -291,7 +290,7 @@ export function FolderEditorDialog({
           title="Delete folder"
           body={`Delete the folder ${folder.name}? Chats stay where they are.`}
           confirmLabel="Delete"
-          onConfirm={() => void remove()}
+          onConfirm={() => runWrite('delete')}
           onCancel={() => setConfirmingDelete(false)}
         />
       )}
@@ -394,14 +393,12 @@ function ChatPicker({
   );
 }
 
-function saveErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.code === 'folder_limit') {
-      return error.message;
-    }
-    if (error.code === 'rate_limited') {
-      return 'Too many changes. Wait a moment.';
-    }
+function saveErrorMessage(error: ApiFailure): string {
+  if (error.code === 'folder_limit') {
+    return error.message;
+  }
+  if (error.code === 'rate_limited') {
+    return 'Too many changes. Wait a moment.';
   }
   return 'Could not save the folder. Try again.';
 }

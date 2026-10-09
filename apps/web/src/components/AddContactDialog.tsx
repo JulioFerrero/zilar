@@ -1,10 +1,48 @@
-import { useEffect, useState } from 'react';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useState } from 'react';
 import { Link } from 'react-router';
-import { ApiError, lookupByHandle, type HandleProfile } from '@/lib/api';
+import { lookupByHandle, type HandleProfile } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { type ApiFailure } from '@/lib/effect/errors';
+import { useQuery } from '@/lib/effect/use-query';
 import { ContactProfileRow } from './ContactProfileRow';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
 import { TextInput } from './ui/text-input';
+
+type Lookup =
+  | { state: 'idle' }
+  | { state: 'found'; profile: HandleProfile }
+  | { state: 'missing' }
+  | { state: 'error'; message: string };
+
+const IDLE: Lookup = { state: 'idle' };
+
+// Debounced exact lookup: the 300 ms sleep is the debounce, and useQuery
+// interrupts it when the handle changes or the dialog closes. Unknown handles
+// read as "missing".
+const lookupHandle = (handle: string): Effect.Effect<Lookup> =>
+  handle === ''
+    ? Effect.succeed(IDLE)
+    : Effect.sleep(300).pipe(
+        Effect.andThen(fromApi(() => lookupByHandle(handle))),
+        Effect.map((profile): Lookup => ({ state: 'found', profile })),
+        Effect.catchTag('ApiFailure', (failure) => Effect.succeed(lookupFailure(failure))),
+      );
+
+function lookupFailure(failure: ApiFailure): Lookup {
+  if (failure.status === 404) {
+    return { state: 'missing' };
+  }
+  return {
+    state: 'error',
+    message:
+      failure.code === 'rate_limited'
+        ? 'Too many lookups — wait a little and try again.'
+        : 'Could not look up that username. Try again.',
+  };
+}
 
 /** "Add contact" dialog: type a `@username`, see the card, send a request. */
 export function AddContactDialog({
@@ -16,12 +54,6 @@ export function AddContactDialog({
 }) {
   const seed = initialHandle?.replace(/^@/, '') ?? '';
   const [query, setQuery] = useState(seed);
-  const [lookup, setLookup] = useState<
-    | { state: 'idle' }
-    | { state: 'found'; profile: HandleProfile }
-    | { state: 'missing' }
-    | { state: 'error'; message: string }
-  >({ state: 'idle' });
 
   const trimmed = query.trim().replace(/^@/, '');
 
@@ -31,50 +63,21 @@ export function AddContactDialog({
   if (seed !== seedHandle) {
     setSeedHandle(seed);
     setQuery(seed);
-    setLookup({ state: 'idle' });
   }
 
-  // Debounced exact lookup; unknown handles read as "missing". The effect
-  // only schedules the lookup (the lint rule flags synchronous setState
-  // inside effects); the timeout callback applies the result once.
-  useEffect(() => {
-    if (trimmed === '') {
-      return;
-    }
-    let active = true;
-    const pending = setTimeout(() => {
-      void lookupByHandle(trimmed).then(
-        (profile) => {
-          if (active) {
-            setLookup({ state: 'found', profile });
-          }
-        },
-        (error: unknown) => {
-          if (!active) {
-            return;
-          }
-          if (error instanceof ApiError && error.status === 404) {
-            setLookup({ state: 'missing' });
-            return;
-          }
-          setLookup({
-            state: 'error',
-            message:
-              error instanceof ApiError && error.code === 'rate_limited'
-                ? 'Too many lookups — wait a little and try again.'
-                : 'Could not look up that username. Try again.',
-          });
-        },
-      );
-    }, 300);
-    return () => {
-      active = false;
-      clearTimeout(pending);
-    };
-  }, [trimmed]);
+  const [lookupResult] = useQuery(() => lookupHandle(trimmed), [trimmed]);
+  // A relation change from the card (send, accept, ...) replaces the looked-up
+  // profile for the handle it was made on.
+  const [refreshed, setRefreshed] = useState<{ handle: string; profile: HandleProfile }>();
+  const lookup: Lookup =
+    refreshed !== undefined && refreshed.handle === trimmed
+      ? { state: 'found', profile: refreshed.profile }
+      : AsyncResult.isSuccess(lookupResult)
+        ? lookupResult.value
+        : IDLE;
 
   const refreshRelation = (profile: HandleProfile): void => {
-    setLookup({ state: 'found', profile });
+    setRefreshed({ handle: trimmed, profile });
   };
 
   return (

@@ -1,6 +1,12 @@
-import { useEffect, useState } from 'react';
+import { Data, Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { ApiError, checkGroupHandle } from '@/lib/api';
+import { checkGroupHandle } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import { type ApiFailure } from '@/lib/effect/errors';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Avatar } from './Avatar';
 import { HandleSuffix } from './HandleSuffix';
@@ -9,6 +15,43 @@ import { Checkbox } from './ui/checkbox';
 import { Dialog } from './ui/dialog';
 import { SegmentedControl } from './ui/segmented-control';
 import { TextArea, TextInput } from './ui/text-input';
+
+type HandleCheck =
+  { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined };
+
+const IDLE_CHECK: HandleCheck = { state: 'idle' };
+
+// Debounced live availability for the public handle: the 300 ms sleep is the
+// debounce, and useQuery interrupts it when the handle or visibility changes.
+const checkHandle = (
+  visibility: 'private' | 'public',
+  handle: string,
+): Effect.Effect<HandleCheck> =>
+  visibility !== 'public' || handle === ''
+    ? Effect.succeed(IDLE_CHECK)
+    : Effect.sleep(300).pipe(
+        Effect.andThen(fromApi(() => checkGroupHandle(handle))),
+        Effect.map((result): HandleCheck => ({
+          state: 'done',
+          available: result.available,
+          reason: result.reason,
+        })),
+        Effect.catchTag('ApiFailure', (failure) =>
+          Effect.succeed(
+            failure.code === 'rate_limited'
+              ? ({ state: 'done', available: false, reason: 'rate_limited' } as const)
+              : IDLE_CHECK,
+          ),
+        ),
+      );
+
+class NameMissing extends Data.TaggedError('NameMissing') {}
+class HandleMissing extends Data.TaggedError('HandleMissing') {}
+class HandleRefused extends Data.TaggedError('HandleRefused')<{
+  readonly reason: string | undefined;
+}> {}
+
+type CreateFailure = NameMissing | HandleMissing | HandleRefused | ApiFailure;
 
 /** Two-step dialog: pick contacts, set a title, then create the group. */
 export function NewGroupDialog({
@@ -31,46 +74,13 @@ export function NewGroupDialog({
   // `@handle`, in the directory, joinable with one tap).
   const [visibility, setVisibility] = useState<'private' | 'public'>('private');
   const [handle, setHandle] = useState('');
-  const [check, setCheck] = useState<
-    { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined }
-  >({ state: 'idle' });
-  const [error, setError] = useState<string | undefined>(undefined);
-  const [busy, setBusy] = useState(false);
-
   const trimmedHandle = handle.trim();
 
-  // Debounced live availability for the public handle. The effect only
-  // schedules the check; the timeout callback applies the result once.
-  useEffect(() => {
-    if (visibility !== 'public' || trimmedHandle === '') {
-      return;
-    }
-    let active = true;
-    const value = trimmedHandle;
-    const pending = setTimeout(() => {
-      void checkGroupHandle(value).then(
-        (result) => {
-          if (active) {
-            setCheck({ state: 'done', available: result.available, reason: result.reason });
-          }
-        },
-        (checkError: unknown) => {
-          if (!active) {
-            return;
-          }
-          if (checkError instanceof ApiError && checkError.code === 'rate_limited') {
-            setCheck({ state: 'done', available: false, reason: 'rate_limited' });
-            return;
-          }
-          setCheck({ state: 'idle' });
-        },
-      );
-    }, 300);
-    return () => {
-      active = false;
-      clearTimeout(pending);
-    };
-  }, [visibility, trimmedHandle]);
+  const [checkResult] = useQuery(
+    () => checkHandle(visibility, trimmedHandle),
+    [visibility, trimmedHandle],
+  );
+  const check: HandleCheck = AsyncResult.isSuccess(checkResult) ? checkResult.value : IDLE_CHECK;
 
   const toggle = (userId: string): void => {
     setSelected((current) =>
@@ -78,51 +88,51 @@ export function NewGroupDialog({
     );
   };
 
-  const create = async (): Promise<void> => {
-    const trimmed = title.trim();
-    if (trimmed.length === 0) {
-      setError(channel ? 'Enter a channel name' : 'Enter a group name');
-      return;
-    }
-    const cleanDescription = description.trim();
-    if (visibility === 'public') {
-      if (trimmedHandle === '') {
-        setError('Choose a handle for the public group.');
-        return;
+  // Validation failures are typed errors too, so one state holds the message.
+  // A second click while the call waits is dropped (mode 'ignore').
+  const [createState, runCreate, createControls] = useAction<void, void, CreateFailure>(
+    (): Effect.Effect<void, CreateFailure> => {
+      const trimmed = title.trim();
+      if (trimmed.length === 0) {
+        return Effect.fail(new NameMissing());
       }
-      if (check.state === 'done' && !check.available) {
-        setError(handleReasonText(check.reason));
-        return;
+      const cleanDescription = description.trim();
+      if (visibility === 'public') {
+        if (trimmedHandle === '') {
+          return Effect.fail(new HandleMissing());
+        }
+        if (check.state === 'done' && !check.available) {
+          return Effect.fail(new HandleRefused({ reason: check.reason }));
+        }
       }
-    }
-    setBusy(true);
-    setError(undefined);
-    try {
-      const chatJid = channel
-        ? await storeApi
-            .getState()
-            .createChannel(
-              trimmed,
-              selected,
-              description,
-              visibility === 'public'
+      return fromApi(() =>
+        channel
+          ? storeApi
+              .getState()
+              .createChannel(
+                trimmed,
+                selected,
+                description,
+                visibility === 'public'
+                  ? { visibility: 'public' as const, handle: trimmedHandle }
+                  : undefined,
+              )
+          : storeApi.getState().createGroup(trimmed, selected, {
+              ...(channel ? { kind: 'channel' as const } : {}),
+              ...(cleanDescription === '' ? {} : { description: cleanDescription }),
+              ...(visibility === 'public'
                 ? { visibility: 'public' as const, handle: trimmedHandle }
-                : undefined,
-            )
-        : await storeApi.getState().createGroup(trimmed, selected, {
-            ...(channel ? { kind: 'channel' as const } : {}),
-            ...(cleanDescription === '' ? {} : { description: cleanDescription }),
-            ...(visibility === 'public'
-              ? { visibility: 'public' as const, handle: trimmedHandle }
-              : {}),
-          });
-      onClose();
-      navigate(`/c/${encodeURIComponent(chatJid)}`);
-    } catch (requestError) {
-      setBusy(false);
-      setError(friendlyCreateError(requestError, channel));
-    }
-  };
+                : {}),
+            }),
+      ).pipe(
+        Effect.map((chatJid) => {
+          onClose();
+          navigate(`/c/${encodeURIComponent(chatJid)}`);
+        }),
+      );
+    },
+  );
+  const createFailure = isWaiting(createState) ? undefined : failureOf(createState);
 
   const dialogLabel = channel ? 'New channel' : 'New group';
   const nameLabel = channel ? 'Channel name' : 'Group name';
@@ -154,7 +164,12 @@ export function NewGroupDialog({
             <Button type="button" variant="ghost" size="lg" onClick={() => setStep('members')}>
               Back
             </Button>
-            <Button type="button" size="lg" disabled={busy} onClick={() => void create()}>
+            <Button
+              type="button"
+              size="lg"
+              disabled={isWaiting(createState)}
+              onClick={() => runCreate()}
+            >
               Create
             </Button>
           </>
@@ -235,8 +250,9 @@ export function NewGroupDialog({
                     return;
                   }
                   setVisibility(next);
-                  setCheck({ state: 'idle' });
-                  setError(undefined);
+                  if (!isWaiting(createState)) {
+                    createControls.reset();
+                  }
                 }}
               />
             </div>
@@ -261,10 +277,7 @@ export function NewGroupDialog({
                   autoCorrect="off"
                   spellCheck={false}
                   maxLength={32}
-                  onChange={(event) => {
-                    setHandle(event.target.value);
-                    setCheck({ state: 'idle' });
-                  }}
+                  onChange={(event) => setHandle(event.target.value)}
                   placeholder="hiking_club"
                   aria-label="Group handle"
                 />
@@ -292,9 +305,9 @@ export function NewGroupDialog({
               )}
             </>
           )}
-          {error !== undefined && (
+          {createFailure !== undefined && (
             <p role="alert" className="mt-2 text-[14px] text-danger">
-              {error}
+              {createErrorText(createFailure, channel)}
             </p>
           )}
         </>
@@ -316,22 +329,36 @@ function handleReasonText(reason: string | undefined): string {
   }
 }
 
-function friendlyCreateError(error: unknown, channel: boolean): string {
-  if (error instanceof ApiError) {
-    switch (error.code) {
-      case 'handle_invalid':
-        return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
-      case 'handle_reserved':
-        return 'That handle is reserved. Try another.';
-      case 'handle_taken':
-        return 'That handle was just taken. Try another.';
-      case 'rate_limited':
-        return 'Too many tries — wait a little and try again.';
-      default:
-        return error.message;
-    }
+function createErrorText(failure: CreateFailure, channel: boolean): string {
+  switch (failure._tag) {
+    case 'NameMissing':
+      return channel ? 'Enter a channel name' : 'Enter a group name';
+    case 'HandleMissing':
+      return 'Choose a handle for the public group.';
+    case 'HandleRefused':
+      return handleReasonText(failure.reason);
+    case 'ApiFailure':
+      return friendlyCreateError(failure, channel);
   }
-  return channel
-    ? 'Could not create the channel. Try again.'
-    : 'Could not create the group. Try again.';
+}
+
+function friendlyCreateError(error: ApiFailure, channel: boolean): string {
+  // toApiFailure gives status 0 to anything that was not an ApiError.
+  if (error.status === 0) {
+    return channel
+      ? 'Could not create the channel. Try again.'
+      : 'Could not create the group. Try again.';
+  }
+  switch (error.code) {
+    case 'handle_invalid':
+      return 'Use 3–32 characters: letters, numbers and _, starting with a letter.';
+    case 'handle_reserved':
+      return 'That handle is reserved. Try another.';
+    case 'handle_taken':
+      return 'That handle was just taken. Try another.';
+    case 'rate_limited':
+      return 'Too many tries — wait a little and try again.';
+    default:
+      return error.message;
+  }
 }
