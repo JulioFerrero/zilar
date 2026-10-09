@@ -1,7 +1,7 @@
 // GIF search, trending and the media proxy on the Effect `HttpApi` adapter
 // (T-0586): the same methods, paths, step order, statuses, texts, log fields,
-// headers and SSRF checks as the deleted Hono router (`routes.ts`), mounted
-// under Hono by `apps/server/src/effect/http.ts`.
+// headers and SSRF checks as the deleted router (`routes.ts`), mounted by the
+// Effect edge (`apps/server/src/effect/edge.ts`).
 //
 // The queries are decoded manually inside the handlers (Effect Schema, same
 // rules as the old zod schemas) instead of as endpoint `query`, because the
@@ -65,7 +65,7 @@ export interface GifsApiDependencies extends GifsRoutesDependencies {
 // Replaces `searchQuerySchema` (zod): strict, `q` is 1..100 characters,
 // `pos?` is at most 128 characters. Values arrive as strings from the query
 // string, so the decode runs over the raw `URLSearchParams` view (first value
-// wins, like Hono's `c.req.query()`).
+// wins, like the old `c.req.query()`).
 const GifSearchQuery = Schema.Struct({
   q: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100))),
   pos: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMaxLength(128)))),
@@ -94,7 +94,7 @@ function queryRecord(request: HttpServerRequest.HttpServerRequest): Record<strin
 }
 
 // Every field `shape` and `searchBody` produce, side by side with the old
-// Hono bodies: `id`, `title`, `mediaToken`, `kind`, `width`, `height`, the
+// Bodies as before: `id`, `title`, `mediaToken`, `kind`, `width`, `height`, the
 // optional `sizeBytes`, and the page's optional `nextPos`. An item with no
 // media URL is dropped before encoding, so it never reaches the schema.
 const GifResultItem = Schema.Struct({
@@ -151,7 +151,7 @@ const GifsGroup = HttpApiGroup.make('gifs')
   // guards against a future endpoint adding one; the query decode runs
   // manually in each handler with its fixed text.
   .middleware(GifsSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const GifsApi = HttpApi.make('gifs').add(GifsGroup);
@@ -378,7 +378,7 @@ export function createGifsApi(deps: GifsApiDependencies): EffectApiMount {
             if (!mediaLimiter.allow(user.id)) {
               throw new HttpError(429, 'rate_limited', 'Too many GIF requests, try again later');
             }
-            // The Effect router hands out decoded params (like Hono's
+            // The Effect router hands out decoded params (like the old
             // `c.req.param`), so this second decode is idempotent on normal
             // tokens and keeps the old 404 on a bad escape.
             const rawToken = yield* Effect.sync(() => {
@@ -443,7 +443,7 @@ export function createGifsApi(deps: GifsApiDependencies): EffectApiMount {
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   // The router caps a path segment at 100 characters by default, but a media
   // token is ~200 characters (base64url payload + signature), so the cap is

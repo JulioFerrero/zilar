@@ -1,10 +1,8 @@
 // Routines module on the Effect `HttpApi` adapter (T-0554): the same
 // methods, paths, statuses (204 on delete), bodies, audit calls and step
-// order as the old Hono router (`routes.ts`), which has since been deleted
-// along with its thin wrapper; mounted under Hono by
-// `apps/server/src/effect/http.ts`. The module's own
-// reads run on effect/sql; the calls it still makes to the service stay
-// drizzle for now (the DB rewrite is a separate lane).
+// order as the old router (`routes.ts`), which has since been deleted along
+// with its thin wrapper; mounted by the Effect edge
+// (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -135,7 +133,7 @@ const RoutinesGroup = HttpApiGroup.make('routines')
   )
   .middleware(Session)
   .middleware(RoutinesSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const RoutinesApi = HttpApi.make('routines').add(RoutinesGroup);
@@ -309,7 +307,7 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
@@ -467,7 +465,7 @@ async function deletedAccessFor(
 }
 
 // The module's own reads on `effect/sql`. `SELECT *` returns camelCased
-// columns (see `../effect/sql`), so the rows keep the drizzle `TopicRow` and
+// columns (see `../effect/sql`), so the rows keep the `TopicRow` and
 // `RoutineRow` shapes the access helpers and wire mappers already expect.
 async function findTopicById(db: ServerDatabase, topicId: string): Promise<TopicRow | null> {
   const [row] = await runSql(

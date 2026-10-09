@@ -26,18 +26,13 @@ import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from 'e
 import type { Logger } from 'pino';
 import type { ServerConfig } from '../config';
 import { HttpError } from '../errors';
-import {
-  REQUEST_ID_HEADER,
-  SOCKET_ADDRESS_HEADER,
-  type EffectApiMount,
-  type EffectApiRoute,
-} from './http-core';
+import { REQUEST_ID_HEADER, SOCKET_ADDRESS_HEADER, type EffectApiMount } from './http-core';
 
 const REQUEST_ID_RESPONSE_HEADER = 'X-Request-Id';
 const REQUEST_ID_LIMIT = 255;
 const REQUEST_ID_PATTERN = /[^\w\-=]/;
 
-const CORS_ALLOW_METHODS = 'GET, HEAD, PUT, POST, DELETE, PATCH';
+const CORS_ALLOW_METHODS = 'GET,HEAD,PUT,POST,DELETE,PATCH,QUERY';
 
 // The real TCP socket address never reaches the router through
 // `HttpServerRequest.remoteAddress`: `HttpRouter.toWebHandler` wraps the
@@ -229,12 +224,10 @@ function appendVary(
 // credentials flag and the Vary, as Hono does).
 function applyCors(
   response: HttpServerResponse.HttpServerResponse,
-  origin: string | undefined,
   allowedOrigin: string | null,
   preflightHeaders: string | undefined,
   preflight: boolean,
 ): HttpServerResponse.HttpServerResponse {
-  void origin;
   let result = response;
   if (allowedOrigin !== null) {
     result = HttpServerResponse.setHeader('Access-Control-Allow-Origin', allowedOrigin)(result);
@@ -318,7 +311,7 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
       preflight = false,
       preflightHeaders: string | undefined = undefined,
     ): HttpServerResponse.HttpServerResponse =>
-      isApi ? applyCors(response, origin, allowedOrigin, preflightHeaders, preflight) : response;
+      isApi ? applyCors(response, allowedOrigin, preflightHeaders, preflight) : response;
     const withId = (
       response: HttpServerResponse.HttpServerResponse,
     ): HttpServerResponse.HttpServerResponse => withRequestIdHeader(response, requestId);
@@ -361,7 +354,7 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
 
       // Origin guard on /api/*: unsafe methods with a disallowed Origin
       // answer 403 before anything else runs.
-      if (isApi && origin !== undefined && UNSAFE_METHODS.has(method) && allowedOrigin === null) {
+      if (isApi && origin && UNSAFE_METHODS.has(method) && allowedOrigin === null) {
         const forbidden = new HttpError(403, 'forbidden', 'Origin is not allowed');
         const response = withId(
           cors(HttpServerResponse.jsonUnsafe(errorBody(requestId, forbidden), { status: 403 })),
@@ -373,8 +366,7 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
       // better-auth passthrough keeps Hono's precedence over mounts.
       if (pathname === '/api/auth' || pathname.startsWith('/api/auth/')) {
         const webRequest = yield* HttpServerRequest.toWeb(request);
-        const forwarded = forwardEdgeRequest(webRequest, requestId, socketAddress);
-        const webResponse = yield* Effect.promise(() => auth.handler(forwarded));
+        const webResponse = yield* Effect.promise(() => auth.handler(webRequest));
         const response = withId(cors(HttpServerResponse.fromWeb(webResponse)));
         logRequest(response.status);
         return response;
@@ -422,9 +414,7 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
         response: HttpServerResponse.HttpServerResponse,
         responseStatus: number,
       ): Effect.Effect<HttpServerResponse.HttpServerResponse> => {
-        const withCors = isApi
-          ? applyCors(response, origin, allowedOrigin, undefined, false)
-          : response;
+        const withCors = isApi ? applyCors(response, allowedOrigin, undefined, false) : response;
         logRequest(responseStatus);
         return Effect.succeed(withRequestIdHeader(withCors, requestId));
       };
@@ -482,5 +472,3 @@ export function createEdge(input: CreateEdgeInput): ZilarEdge {
     dispose,
   };
 }
-
-export type { EffectApiRoute };

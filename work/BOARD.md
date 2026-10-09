@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0732](T-0732-edge-nits-comment-sweep.md) | sweep: edge nits, errors.ts off hono, api.ts header comments | in-progress | haiku-5.5 | T-0730 | |
 
 ## Follow-ups
 
@@ -761,3 +760,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0727](T-0727-approvals-b-tests-off-drizzle.md) | tests off drizzle: approvals (routes, rules) | 2026-10-09 |
 | [T-0730](T-0730-effect-edge-core.md) | B1.3b: the Effect edge replaces the Hono app in createApp | 2026-10-09 |
 | [T-0731](T-0731-retire-hono-bridge.md) | B1.8: retire the Hono bridge | 2026-10-09 |
+| [T-0732](T-0732-edge-nits-comment-sweep.md) | sweep: edge nits, errors.ts off hono, api.ts header comments | 2026-10-09 |

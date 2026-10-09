@@ -97,6 +97,16 @@ describe('effect edge', () => {
     });
   });
 
+  it('does not answer 403 to a POST with an empty Origin header', async () => {
+    const app = edgeApp();
+    const res = await app.request(`${TEST_BASE_URL}/api/me`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: '' },
+      body: '{}',
+    });
+    expect(res.status).not.toBe(403);
+  });
+
   it('masks /api/join/<token> in the request log', async () => {
     const app = edgeApp();
     const token = 'secret-join-token-abc123';

@@ -1,8 +1,8 @@
 // Media gallery module on the Effect `HttpApi` adapter (T-0560): the same
-// method, path, step order, statuses, texts and payloads as the deleted Hono
-// router (`routes.ts`), mounted under Hono by `apps/server/src/effect/http.ts`.
+// method, path, step order, statuses, texts and payloads as the deleted
+// router (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
 // Handlers keep calling `allowedArchives` / `resolveChatFilter` / `indexChat`
-// and the drizzle gallery read; the DB rewrite is a separate lane.
+// and the gallery read, which runs on effect/sql.
 //
 // The query is decoded manually inside the handler (Effect Schema, same rules
 // as the old zod schema) instead of as an endpoint `query`, because the old
@@ -83,7 +83,7 @@ export interface MediaApiDependencies extends MediaRoutesDependencies {
 // the four tabs, `before` is a coerced positive int, `limit` is a coerced int
 // 1..MEDIA_MAX_LIMIT. Strict, so an excess key fails like the old `.strict()`.
 // Values arrive as strings from the query string, so the decode runs over the
-// raw `URLSearchParams` view (first value wins, like Hono's `c.req.query()`).
+// raw `URLSearchParams` view (first value wins, like the old `c.req.query()`).
 const MediaQuery = Schema.Struct({
   chat: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
   type: Schema.optional(Schema.Literals(MEDIA_TYPES)),
@@ -167,7 +167,7 @@ function runSql<A>(
 }
 
 // The effect/sql gallery read returns the same columns in the same camelCase
-// shape as the drizzle row above. `at_micros` is int8, which the pg driver
+// shape as the row above. `at_micros` is int8, which the pg driver
 // hands back as a string, so it is `string | number` here and converted to a
 // number when mapping (the values fit in a double).
 
@@ -255,7 +255,7 @@ const MediaGroup = HttpApiGroup.make('media')
   // guards against a future endpoint adding one; the query decode runs
   // manually in the handler with its fixed text.
   .middleware(MediaSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const MediaApi = HttpApi.make('media').add(MediaGroup);
@@ -392,7 +392,7 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

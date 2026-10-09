@@ -1,8 +1,7 @@
 // Approvals module on the Effect `HttpApi` adapter (T-0553): the same
 // methods, paths, statuses (204 on delete), bodies, audit calls and step
-// order as the deleted Hono router (`routes.ts`), mounted under Hono by
-// `apps/server/src/effect/http.ts`. Handlers keep calling the drizzle
-// service; the DB rewrite is a separate lane.
+// order as the deleted router (`routes.ts`), mounted by the Effect edge
+// (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
 import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
@@ -52,7 +51,7 @@ import {
 
 // Reads run on the `effect/sql` client registered for this database (see
 // `../effect/sql`); `transformResultNames` camelCases the columns so the rows
-// keep the drizzle shapes the access helpers already take.
+// keep the shapes the access helpers already take.
 function runSql<A>(
   db: ServerDatabase,
   effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
@@ -204,7 +203,7 @@ const ApprovalsGroup = HttpApiGroup.make('approvals')
   )
   .middleware(Session)
   .middleware(ApprovalsSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const ApprovalsApi = HttpApi.make('approvals').add(ApprovalsGroup);
@@ -552,7 +551,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

@@ -1,6 +1,6 @@
 // Public directory module on the Effect `HttpApi` adapter (T-0514): the same
-// methods, paths, limiter order and answers as the deleted Hono router.
-// Handlers keep calling the drizzle store; the DB rewrite is a separate lane.
+// methods, paths, limiter order and answers as the deleted router.
+// Its store runs on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
 import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
@@ -148,7 +148,7 @@ const DirectoryGroup = HttpApiGroup.make('directory')
   )
   .middleware(Session)
   .middleware(DirectorySchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const DirectoryApi = HttpApi.make('directory').add(DirectoryGroup);
@@ -215,7 +215,7 @@ export function createDirectoryApi(deps: DirectoryApiDependencies): EffectApiMou
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

@@ -1,7 +1,7 @@
 // Handles module on the Effect `HttpApi` adapter (T-0498): the same methods,
-// paths, query and body rules and status codes as the deleted Hono router
-// (`routes.ts`), mounted under Hono by `apps/server/src/effect/http.ts`.
-// Handlers keep calling the drizzle store; the DB rewrite is a separate lane.
+// paths, query and body rules and status codes as the deleted router
+// (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
+// Its store runs on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
 import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
@@ -132,7 +132,7 @@ const HandlesGroup = HttpApiGroup.make('handles')
   )
   .middleware(Session)
   .middleware(HandlesSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const HandlesApi = HttpApi.make('handles').add(HandlesGroup);
@@ -245,7 +245,7 @@ export function createHandlesApi(deps: HandlesApiDependencies): EffectApiMount {
     Layer.provide(checkRateLimitLayer(checkLimiter)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

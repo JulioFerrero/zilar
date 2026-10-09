@@ -1,7 +1,6 @@
 // Audit module on the Effect `HttpApi` adapter (T-0525): the same method,
-// path, query rules and answers as the deleted Hono router. Handlers keep
-// calling the drizzle service; the DB rewrite is a separate lane. `app.ts`
-// mounts {@link createAuditApi} under Hono with `mountEffectRoutes`.
+// path, query rules and answers as the deleted router. Its service runs on
+// effect/sql. `app.ts` mounts {@link createAuditApi} through the Effect edge.
 
 import { Effect, Layer, Schema } from 'effect';
 import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
@@ -117,7 +116,7 @@ const AuditGroup = HttpApiGroup.make('audit')
   )
   .middleware(Session)
   .middleware(AuditSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const AuditApi = HttpApi.make('audit').add(AuditGroup);
@@ -184,7 +183,7 @@ export function createAuditApi(deps: AuditApiDependencies): EffectApiMount {
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

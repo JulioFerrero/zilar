@@ -1,8 +1,7 @@
 // Auth module on the Effect `HttpApi` adapter (T-0561): the same methods,
-// paths, statuses, bodies and texts as the deleted Hono router
-// (`routes.ts`), mounted under Hono by `apps/server/src/effect/http.ts`.
-// Handlers keep calling the drizzle services and Better Auth's API; the DB
-// rewrite is a separate lane.
+// paths, statuses, bodies and texts as the deleted router (`routes.ts`),
+// mounted by the Effect edge (`apps/server/src/effect/edge.ts`). Its services
+// run on effect/sql and call Better Auth's API.
 //
 // The name decode runs manually inside the PATCH handler (Effect Schema,
 // same rules as the old zod schema) instead of as an endpoint payload, so
@@ -212,7 +211,7 @@ const AuthGroup = HttpApiGroup.make('auth')
   )
   .middleware(Session)
   .middleware(AuthSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const AuthInvitesPublicGroup = HttpApiGroup.make('authInvitesPublic')
@@ -377,7 +376,7 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
@@ -432,8 +431,8 @@ async function sessionUserById(
   deps: AuthApiDependencies,
   userId: string,
 ): Promise<{ id: string; email: string; name: string; image: string | null; createdAt: Date }> {
-  // `created_at` is a timestamp WITHOUT a time zone, which drizzle reads as
-  // UTC while the raw pg driver parses it in the process's local zone. The
+  // `created_at` is a timestamp WITHOUT a time zone, which the pg driver parses
+  // in the process's local zone. The
   // `AT TIME ZONE 'UTC'` cast returns the same instant as a timestamptz, so
   // `/me` answers the same `createdAt` in any process time zone.
   const [sessionUser] = await runSql(

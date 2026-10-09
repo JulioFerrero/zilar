@@ -1,6 +1,6 @@
 // Draft stream on the Effect `HttpApi` adapter (T-0581): the SSE pilot.
-// The same method, path, statuses, headers and bytes as the old Hono router
-// (`routes.ts`), mounted under Hono by `apps/server/src/effect/http.ts`.
+// The same method, path, statuses, headers and bytes as the old router
+// (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
 //
 // The response is an endless `Stream` of SSE text frames: hub events offered
 // into an unbounded `Queue` are drained one at a time, each followed by an
@@ -43,7 +43,7 @@ const DraftsGroup = HttpApiGroup.make('drafts')
   // No payload schema: the handler streams raw SSE text frames itself.
   .add(HttpApiEndpoint.get('stream', '/drafts/stream', { success: DraftStreamSuccess }))
   .middleware(Session)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const DraftsApi = HttpApi.make('drafts').add(DraftsGroup);
@@ -52,7 +52,7 @@ export const DRAFTS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
   { method: 'GET', path: '/api/drafts/stream' },
 ];
 
-// `writeSSE({ event, data })` from Hono's `streamSSE` splits `data` on
+// The old `streamSSE` helper's `writeSSE({ event, data })` splits `data` on
 // newlines into one `data: <line>` frame per line, then writes
 // `event: <event>\ndata: <json>\n\n`. `JSON.stringify` of the hub event never
 // contains a newline, so each event is exactly one `event:` line, one
@@ -131,7 +131,7 @@ export function createDraftsApi(deps: DraftsApiDependencies): EffectApiMount {
     Layer.provide(sessionLayer(deps.auth, logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

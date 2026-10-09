@@ -1,7 +1,7 @@
 // Push module on the Effect `HttpApi` adapter (T-0543): the same methods,
-// paths, statuses, bodies, texts and per-route step order as the retired Hono
-// router, mounted under Hono by `apps/server/src/effect/http.ts`.
-// Handlers keep calling the drizzle store; the DB rewrite is a separate lane.
+// paths, statuses, bodies, texts and per-route step order as the retired
+// router, mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
+// Its store runs on effect/sql.
 //
 // The three bodies are decoded manually inside their handlers (Effect Schema,
 // same rules as the old zod schemas) instead of as endpoint payloads, so each
@@ -188,7 +188,7 @@ const PushGroup = HttpApiGroup.make('push')
   )
   .middleware(Session)
   .middleware(PushSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const PushApi = HttpApi.make('push').add(PushGroup);
@@ -203,7 +203,7 @@ export const PUSH_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
   { method: 'POST', path: '/api/push/test' },
 ];
 
-// Drizzle wraps driver failures, so the unique code (23505 on Postgres and
+// Driver failures can be wrapped, so the unique code (23505 on Postgres and
 // PGlite) lives on a nested `cause`. Walk the chain.
 function isUniqueViolation(error: unknown): boolean {
   let current: unknown = error;
@@ -616,7 +616,7 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

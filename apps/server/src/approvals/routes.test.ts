@@ -640,6 +640,7 @@ describe('approvals routes', () => {
         },
       );
       expect(response.status).toBe(200);
+      expect(calls).toBe(4);
       const auditRows = await testSql(context)(
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
