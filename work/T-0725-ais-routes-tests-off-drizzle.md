@@ -1,7 +1,7 @@
 ---
 id: T-0725
 title: "tests off drizzle (ais/routes): replace every drizzle query in ais/routes.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0725-ais-routes-tests-off-drizzle
 model: auto
@@ -51,4 +51,39 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+- Replaced every drizzle query in `apps/server/src/ais/routes.test.ts` (seed inserts, updates, reads used by assertions, and `where eq(...)` lookups) with `testSql(context)(Effect.gen(...))` using `effect/sql`. Inserts use `sql.insert({...})` with snake_case keys, including the `ais` and `ai_limits` seeds in the "crash" test. The `machines` insert is written as a `VALUES (...)` statement with `${JSON.stringify({ os: 'macos' })}::jsonb`, because `sql.insert` cannot add a jsonb cast.
+- Columns written and read were checked against `apps/server/src/db/schema.ts`: `provider_connections`, `ais`, `ai_limits`, `llm_virtual_keys`, `machines`, `audit_log`. The JS-filled defaults in the schema are only `chatFolders.id`, so no value needed to be filled in by the test. Other defaults are SQL defaults.
+- Reads select only the columns the test uses. Local row types: `VirtualKeyRow` (5 columns, one read that uses all of them), `VirtualKeyIds` (2 columns), and inline types for the rest.
+- Removed the `drizzle-orm` and `../db/schema` imports. Added `Effect`, `SqlClient` and `testSql`.
+- Left the `db: context.db` lines (module functions and `createAuditRecorder`), as the spec says.
+- The file has no drizzle method patches (no `vi.mock`, `spyOn` or `transaction` injection), so the failure-injection seam in item 5 did not apply.
+- Ran `pnpm exec prettier --write apps/server/src/ais/routes.test.ts`.
+- Ran `pnpm install --frozen-lockfile` once before starting.
+
+**Test counts (single file, `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/ais/routes.test.ts`)**
+- Before any change: `Test Files 1 passed (1)`, `Tests 49 passed (49)`.
+- After the conversion, rerun at two checkpoints and after the final narrowing of selects: `Tests 49 passed (49)`.
+
+**Acceptance**
+- `git grep -n "drizzle-orm\|db/schema" -- apps/server/src/ais/routes.test.ts` prints nothing (exit 1).
+
+**Gate (`pnpm gate` from `/Users/julio/personal-projects/zilar-T-0725`, exit 0)**
+- `PASS install (frozen) (2.6s)`
+- `PASS format (34.9s)`
+- `PASS lint (2.4s)`
+- `PASS typecheck (5.3s)`
+- `PASS tests @zilar/server (29.5s)`
+- `scope: every changed file is inside the Allowed files`
+- `GATE PASS`
+- The gate reported 2 changed files against main: `apps/server/src/ais/routes.test.ts` and this task file.
+
+**Problems or deviations**
+- None in behaviour. I did not change any assertion, expected value or test name.
+
+**Open questions**
+- Unsure only whether reviewers want the `machines` insert as a `VALUES` statement rather than `sql.insert`, since `sql.insert` cannot add the jsonb cast.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 6.8 min). The lead reviewed the diff directly and checked it against main. The two updates match the drizzle originals, and the machine seed writes capabilities as `::jsonb` through `VALUES`, which is fine. There are 49 tests before and after, no drizzle import is left, and the gate passed.
