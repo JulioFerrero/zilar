@@ -6,6 +6,7 @@ import {
   sign,
   verify,
 } from 'node:crypto';
+import { Effect } from 'effect';
 
 export interface RunnerKeypair {
   /** ed25519 public key (SPKI DER), base64. This is what the server registry holds. */
@@ -42,20 +43,20 @@ export function signNonce(privateKey: string, nonce: Buffer): string {
  * input, a wrong key, or a signature over a different nonce.
  */
 export function verifyNonce(publicKey: string, nonce: Buffer, signatureBase64: string): boolean {
-  try {
-    const key = createPublicKey({
-      key: Buffer.from(publicKey, 'base64'),
-      format: 'der',
-      type: 'spki',
-    });
-    const signature = Buffer.from(signatureBase64, 'base64');
-    if (signature.length === 0) {
-      return false;
-    }
-    return verify(null, nonce, key, signature);
-  } catch {
-    return false;
-  }
+  return Effect.runSync(
+    Effect.try(() => {
+      const key = createPublicKey({
+        key: Buffer.from(publicKey, 'base64'),
+        format: 'der',
+        type: 'spki',
+      });
+      const signature = Buffer.from(signatureBase64, 'base64');
+      if (signature.length === 0) {
+        return false;
+      }
+      return verify(null, nonce, key, signature);
+    }).pipe(Effect.orElseSucceed(() => false)),
+  );
 }
 
 /**

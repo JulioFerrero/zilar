@@ -1,3 +1,4 @@
+// effect-plain: manual demo script (npm run demo), not shipped
 import http from 'node:http';
 import { createHash } from 'node:crypto';
 import { InMemoryKeyRegistry, generateRunnerKeypair } from './keys.ts';

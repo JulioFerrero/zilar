@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0792](T-0792-gateway-s2.md) | S2: AI gateway part 2 on Effect | in-progress | sonnet-5.5 | | wave 1 |
 | [T-0799](T-0799-lead-batch.md) | lead batch: one combined check per wave | in-progress | sonnet-5.5 | | wave 1 |
-| [T-0806](T-0806-runner-chain.md) | H2 + H3: runner-tunnel and apps/runner on Effect | in-progress | sonnet-5.5 | | wave 1 |
 | [T-0807](T-0807-web-onboarding.md) | WU5: web onboarding routes on Effect | in-progress | sonnet-5.5 | | wave 1 |
 | [T-0808](T-0808-web-notifications.md) | WU9: NotificationsPage and GroupHandleRoute on Effect | in-progress | haiku-5.5 | | wave 1 |
 | [T-0809](T-0809-web-composer.md) | WU18: Composer on Effect | in-progress | sonnet-5.5 | | wave 1; Julio checks sending live before deploy |
@@ -838,3 +837,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0803](T-0803-mobile-r5-mock-gate.md) | R5: mobile mock env in one place | 2026-10-09 |
 | [T-0804](T-0804-server-auth-db.md) | S10: server auth and db client on Effect | 2026-10-09 |
 | [T-0805](T-0805-small-sweep.md) | Small sweep: spike delete, markers, group events | 2026-10-09 |
+| [T-0806](T-0806-runner-chain.md) | H2 + H3: runner-tunnel and apps/runner on Effect | 2026-10-09 |

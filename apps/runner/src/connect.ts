@@ -1,3 +1,4 @@
+import { Deferred, Effect, Result } from 'effect';
 import {
   CLOSE_AUTH,
   CLOSE_REVOKED,
@@ -26,20 +27,26 @@ export function hubUrlFromServer(serverUrl: string, hubPort: number): string {
   return `${parsed.protocol}//${parsed.host}/tunnel`;
 }
 
+function checkHubUrl(url: string): Result.Result<URL, ConnectError> {
+  return Result.try({
+    try: () => new URL(url),
+    catch: () => new ConnectError('invalid_hub', `Hub URL is not valid: ${url}`),
+  }).pipe(
+    Result.flatMap((parsed) =>
+      parsed.protocol === 'ws:' || parsed.protocol === 'wss:'
+        ? Result.succeed(parsed)
+        : Result.fail(
+            new ConnectError(
+              'invalid_hub',
+              `Hub URL must use ws:// or wss:// (got ${parsed.protocol}).`,
+            ),
+          ),
+    ),
+  );
+}
+
 export function validateHubUrl(url: string): URL {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    throw new ConnectError('invalid_hub', `Hub URL is not valid: ${url}`);
-  }
-  if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
-    throw new ConnectError(
-      'invalid_hub',
-      `Hub URL must use ws:// or wss:// (got ${parsed.protocol}).`,
-    );
-  }
-  return parsed;
+  return Result.getOrThrowWith(checkHubUrl(url), (error) => error);
 }
 
 export class ConnectError extends Error {
@@ -51,60 +58,65 @@ export class ConnectError extends Error {
   }
 }
 
-export async function runRunner(options: RunOptions): Promise<RunResult> {
-  const hub = validateHubUrl(options.hubUrl);
-  const log = options.logger ?? ((): void => undefined);
-  log('connecting');
+export const runRunnerEffect = (options: RunOptions): Effect.Effect<RunResult, ConnectError> =>
+  Effect.gen(function* () {
+    const hub = yield* Effect.fromResult(checkHubUrl(options.hubUrl));
+    const log = options.logger ?? ((): void => undefined);
+    log('connecting');
 
-  const keypair: RunnerKeypair = {
-    publicKey: options.identity.publicKey,
-    privateKey: options.identity.privateKey,
-  };
+    const keypair: RunnerKeypair = {
+      publicKey: options.identity.publicKey,
+      privateKey: options.identity.privateKey,
+    };
 
-  const client = new RunnerClient({
-    serverUrl: hub.toString(),
-    runnerId: options.identity.machineId,
-    keypair,
-    exposedPorts: [],
-    enableModelListener: false,
-    reconnectBaseMs: 250,
-    reconnectMaxMs: 5000,
-  });
+    const client = new RunnerClient({
+      serverUrl: hub.toString(),
+      runnerId: options.identity.machineId,
+      keypair,
+      exposedPorts: [],
+      enableModelListener: false,
+      reconnectBaseMs: 250,
+      reconnectMaxMs: 5000,
+    });
 
-  let failureMessage = '';
-  let failureSeen = false;
-  const onFailure = new Promise<void>((resolve) => {
-    const off = client.on('failed', (err?: Error) => {
+    let failureMessage = '';
+    let failureSeen = false;
+    const failed = yield* Deferred.make<void>();
+    const offFailed = client.on('failed', (err?: Error) => {
       failureSeen = true;
       failureMessage = err?.message ?? 'unknown';
       log(`disconnected (${failureMessage})`);
-      off();
-      resolve();
+      offFailed();
+      Deferred.doneUnsafe(failed, Effect.void);
     });
+    const offReady = client.on('ready', () => {
+      log('online');
+    });
+
+    const stopClient = Effect.sync(offReady).pipe(
+      Effect.andThen(Effect.ignore(Effect.tryPromise(() => client.stop()))),
+    );
+
+    const afterStart = waitForSignalOrFailure(options.signal, failed).pipe(
+      Effect.map((): RunResult =>
+        failureSeen ? mapFailure(failureMessage) : { status: 'stopped', message: 'runner stopped' },
+      ),
+    );
+
+    return yield* Effect.tryPromise({
+      try: () => client.start(),
+      catch: (err) => mapFailure(err instanceof Error ? err.message : String(err)),
+    }).pipe(
+      Effect.matchEffect({
+        onFailure: (result) => Effect.succeed(result),
+        onSuccess: () => afterStart,
+      }),
+      Effect.ensuring(stopClient),
+    );
   });
-  const offReady = client.on('ready', () => {
-    log('online');
-  });
 
-  try {
-    try {
-      await client.start();
-    } catch (err) {
-      return mapFailure(err instanceof Error ? err.message : String(err));
-    }
-
-    await waitForSignalOrFailure(options.signal, onFailure);
-
-    if (failureSeen) {
-      return mapFailure(failureMessage);
-    }
-
-    return { status: 'stopped', message: 'runner stopped' };
-  } finally {
-    offReady();
-    await client.stop().catch(() => undefined);
-  }
-}
+export const runRunner = (options: RunOptions): Promise<RunResult> =>
+  Effect.runPromise(runRunnerEffect(options));
 
 export function mapFailure(message: string): RunResult {
   if (message.includes(`(${CLOSE_REVOKED})`)) {
@@ -135,19 +147,17 @@ export function mapFailure(message: string): RunResult {
 
 function waitForSignalOrFailure(
   signal: AbortSignal | undefined,
-  onFailure: Promise<void>,
-): Promise<void> {
-  if (signal?.aborted) return Promise.resolve();
-  return new Promise<void>((resolve) => {
-    let done = false;
-    const finish = (): void => {
-      if (done) return;
-      done = true;
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    };
-    const onAbort = (): void => finish();
-    signal?.addEventListener('abort', onAbort);
-    onFailure.then(finish, finish);
+  failed: Deferred.Deferred<void>,
+): Effect.Effect<void> {
+  // Lazy: the signal may abort while the client is still starting.
+  return Effect.suspend(() => {
+    if (signal === undefined) return Deferred.await(failed);
+    if (signal.aborted) return Effect.void;
+    const aborted = Effect.callback<void>((resume) => {
+      const onAbort = (): void => resume(Effect.void);
+      signal.addEventListener('abort', onAbort);
+      return Effect.sync(() => signal.removeEventListener('abort', onAbort));
+    });
+    return Effect.raceFirst(Deferred.await(failed), aborted);
   });
 }
