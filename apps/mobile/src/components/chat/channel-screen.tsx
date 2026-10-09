@@ -1,6 +1,8 @@
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { Megaphone } from 'lucide-react-native';
+import { Data, Effect, Option } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, Share, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,6 +20,7 @@ import {
   channelViewerRole,
   mayManageChannel,
 } from '@/lib/channels';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
 
 type ChannelScreenProps = {
@@ -25,6 +28,24 @@ type ChannelScreenProps = {
   feedId: string;
   title: string;
 };
+
+/** A store call that rejected; `code` is what the server said (empty when none). */
+class ChannelCallFailed extends Data.TaggedError('ChannelCallFailed')<{
+  readonly code: string;
+}> {}
+
+const codeOf = (error: unknown): string =>
+  typeof error === 'object' && error !== null && 'code' in error
+    ? String((error as { code: unknown }).code)
+    : '';
+
+/** A store promise as an Effect: a rejection keeps its code for the message. */
+function callStore<A>(call: () => Promise<A>): Effect.Effect<A, ChannelCallFailed> {
+  return Effect.tryPromise({
+    try: call,
+    catch: (error) => new ChannelCallFailed({ code: codeOf(error) }),
+  });
+}
 
 /**
  * The channel screen (T-0144), the mobile twin of web's `ChannelPanel`: the
@@ -60,14 +81,48 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
   const createInviteLink = useChatStore((state) => state.createInviteLink);
   const revokeInviteLink = useChatStore((state) => state.revokeInviteLink);
 
-  const [slice, setSlice] = useState<
-    { userId: string; name: string; role: 'owner' | 'admin' | 'member' }[] | undefined
-  >(undefined);
-  const [sliceError, setSliceError] = useState('');
-  const [roleBusy, setRoleBusy] = useState(false);
-  const [roleError, setRoleError] = useState('');
-  const [leaving, setLeaving] = useState(false);
-  const [leaveError, setLeaveError] = useState('');
+  // A role change ignores a second press while one is waiting (the old
+  // `roleBusy` guard). The message is cleared while a new attempt runs.
+  // Uninterruptible: the change must land even if the screen unmounts first.
+  const [roleState, changeRole] = useAction(
+    ({ userId, role }: { userId: string; role: 'admin' | 'member' }) =>
+      callStore(() => changeChannelRole(feedId, userId, role)).pipe(Effect.uninterruptible),
+  );
+  const roleBusy = isWaiting(roleState);
+  const roleFailure = roleBusy ? undefined : failureOf(roleState);
+  // The last-admin guard reads as a plain message, never a raw dump.
+  const roleError =
+    roleFailure === undefined
+      ? ''
+      : roleFailure.code === 'channel_needs_admin'
+        ? 'The channel needs at least one admin.'
+        : 'Could not change the role. Try again.';
+
+  // Leaving navigates home on success; the button stays "Leaving…" after it.
+  const [leaveState, leaveAction] = useAction(() =>
+    // Uninterruptible: leaving navigates away, so the screen may unmount
+    // before the store call resolves; the navigation must still happen.
+    callStore(() => leaveChannel(feedId)).pipe(
+      Effect.andThen(
+        Effect.try({
+          try: () => router.replace('/'),
+          catch: () => new ChannelCallFailed({ code: '' }),
+        }),
+      ),
+      Effect.uninterruptible,
+    ),
+  );
+  const leaving = isWaiting(leaveState) || AsyncResult.isSuccess(leaveState);
+  const leaveFailed = !isWaiting(leaveState) && failureOf(leaveState) !== undefined;
+
+  // The admins slice of a subscriber: the last loaded value is kept while a
+  // new load runs, and a failed load keeps it too (the old `slice` state).
+  const [sliceState, loadSlice] = useAction(() => callStore(() => listChannelMembers(groupId)), {
+    mode: 'replace',
+  });
+  const slice = Option.getOrUndefined(AsyncResult.value(sliceState));
+  const sliceFailed = failureOf(sliceState) !== undefined;
+
   const [linksOpen, setLinksOpen] = useState(false);
   const [linksNow, setLinksNow] = useState(() => Date.now());
   const [links, setLinks] = useState<
@@ -112,30 +167,14 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
   // Non-managers never see the audience: the admins slice (owner/admins —
   // who posts is public, every admin post carries its name) loads once the
   // detail settles. Managers read the full list from the detail they
-  // already hold, so no second request. The state settles exactly once per
-  // load (no synchronous setState in the effect body).
+  // already hold, so no second request. The load is an action, so a state
+  // change never runs inside the effect body.
   useEffect(() => {
     if (isManager || groupDetail === undefined) {
       return;
     }
-    let active = true;
-    void listChannelMembers(groupId).then(
-      (members) => {
-        if (active) {
-          setSlice(members);
-          setSliceError('');
-        }
-      },
-      () => {
-        if (active) {
-          setSliceError('Could not load the admins. Try again.');
-        }
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [isManager, groupDetail, groupId, listChannelMembers]);
+    loadSlice(undefined);
+  }, [isManager, groupDetail, groupId, loadSlice]);
 
   const members = groupDetail?.members ?? [];
   const shown = isManager ? members : (slice ?? []);
@@ -148,14 +187,17 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
   );
   const description = channelDescription(feedRow ?? {}, groupDetail);
 
-  const reloadLinks = async (): Promise<void> => {
-    setLinksError('');
-    try {
-      setLinks(await listInviteLinks(groupId));
-    } catch {
-      setLinksError('Could not load invite links. Try again.');
-    }
-  };
+  // The links list, each step an Effect run in the background (the old
+  // promise chains, same order and same messages). A new load clears the
+  // error first; a failed load keeps the last list.
+  const reloadLinks = (): Effect.Effect<void> =>
+    Effect.sync(() => setLinksError('')).pipe(
+      Effect.andThen(callStore(() => listInviteLinks(groupId))),
+      Effect.match({
+        onFailure: () => setLinksError('Could not load invite links. Try again.'),
+        onSuccess: (next) => setLinks(next),
+      }),
+    );
 
   const openLinks = () => {
     setLinksError('');
@@ -163,54 +205,40 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
     setRevokingId(undefined);
     setLinksNow(Date.now());
     setLinksOpen(true);
-    void reloadLinks();
+    Effect.runFork(reloadLinks());
   };
 
   const flipRole = (userId: string, role: 'admin' | 'member') => {
-    if (roleBusy) {
-      return;
-    }
-    setRoleBusy(true);
-    setRoleError('');
-    void changeChannelRole(feedId, userId, role)
-      .catch((error: unknown) => {
-        const code =
-          typeof error === 'object' && error !== null && 'code' in error
-            ? String((error as { code: unknown }).code)
-            : '';
-        // The last-admin guard reads as a plain message, never a raw dump.
-        setRoleError(
-          code === 'channel_needs_admin'
-            ? 'The channel needs at least one admin.'
-            : 'Could not change the role. Try again.',
-        );
-      })
-      .finally(() => setRoleBusy(false));
+    changeRole({ userId, role });
   };
 
   const leave = () => {
     if (leaving) {
       return;
     }
-    setLeaving(true);
-    setLeaveError('');
-    void leaveChannel(feedId)
-      .then(() => router.replace('/'))
-      .catch(() => {
-        setLeaveError('Could not leave the channel. Try again.');
-        setLeaving(false);
-      });
+    leaveAction(undefined);
   };
 
   // The clipboard/share bridge for the shown-once block: `expo-clipboard`
   // and React Native's `Share` cannot run in Node tests, so the sheet takes
-  // callbacks and this screen wires the real modules at the edge.
+  // callbacks and this screen wires the real modules at the edge. The sheet
+  // takes Promises, so each bridge call runs its Effect to a Promise.
   const linksShare = useMemo(
     () => ({
-      copyText: (text: string) => Clipboard.setStringAsync(text).then(() => {}),
-      shareText: async (text: string): Promise<void> => {
-        await Share.share({ message: text });
-      },
+      copyText: (text: string) =>
+        Effect.runPromise(
+          Effect.tryPromise({
+            try: () => Clipboard.setStringAsync(text),
+            catch: (error) => error,
+          }).pipe(Effect.asVoid),
+        ),
+      shareText: (text: string): Promise<void> =>
+        Effect.runPromise(
+          Effect.tryPromise({
+            try: () => Share.share({ message: text }),
+            catch: (error) => error,
+          }).pipe(Effect.asVoid),
+        ),
     }),
     [],
   );
@@ -254,9 +282,9 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
         {groupDetail === undefined && slice === undefined ? (
           <Text className="mt-1 text-[13px] text-muted-foreground">Loading…</Text>
         ) : null}
-        {!isManager && sliceError !== '' ? (
+        {!isManager && sliceFailed ? (
           <Text role="alert" className="mt-1 text-[13px] text-danger">
-            {sliceError}
+            Could not load the admins. Try again.
           </Text>
         ) : null}
         {admins.map((member) => (
@@ -326,9 +354,9 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
             <Text>{leaving ? 'Leaving…' : 'Leave channel'}</Text>
           </Button>
         )}
-        {!isManager && leaveError !== '' ? (
+        {!isManager && leaveFailed ? (
           <Text role="alert" className="mt-2 text-[13px] text-danger">
-            {leaveError}
+            Could not leave the channel. Try again.
           </Text>
         ) : null}
       </View>
@@ -344,21 +372,29 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
         onCreate={(input: CreateInviteLinkForm) => {
           setLinksBusy(true);
           setLinksError('');
-          void createInviteLink(groupId, input)
-            .then((created) => {
-              setCreatedUrl(created.url);
-              return reloadLinks();
-            })
-            .catch(() => setLinksError('Could not create the invite link. Try again.'))
-            .finally(() => setLinksBusy(false));
+          Effect.runFork(
+            callStore(() => createInviteLink(groupId, input)).pipe(
+              Effect.tap((created) => Effect.sync(() => setCreatedUrl(created.url))),
+              Effect.andThen(reloadLinks()),
+              Effect.catchTag('ChannelCallFailed', () =>
+                Effect.sync(() => setLinksError('Could not create the invite link. Try again.')),
+              ),
+              Effect.ensuring(Effect.sync(() => setLinksBusy(false))),
+            ),
+          );
         }}
         onRevoke={(linkId: string) => {
           setRevokingId(linkId);
           setLinksError('');
-          void revokeInviteLink(groupId, linkId)
-            .then(() => reloadLinks())
-            .catch(() => setLinksError('Could not revoke the invite link. Try again.'))
-            .finally(() => setRevokingId(undefined));
+          Effect.runFork(
+            callStore(() => revokeInviteLink(groupId, linkId)).pipe(
+              Effect.andThen(reloadLinks()),
+              Effect.catchTag('ChannelCallFailed', () =>
+                Effect.sync(() => setLinksError('Could not revoke the invite link. Try again.')),
+              ),
+              Effect.ensuring(Effect.sync(() => setRevokingId(undefined))),
+            ),
+          );
         }}
         onDismissCreated={() => setCreatedUrl(undefined)}
         onClose={() => {

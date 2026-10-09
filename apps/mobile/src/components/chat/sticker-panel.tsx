@@ -1,3 +1,4 @@
+import { Effect, Fiber } from 'effect';
 import { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -57,6 +58,18 @@ export function isPanelStickerUrl(url: string, apiUrl: string): boolean {
   return isSameOriginStickerUrl(url, apiUrl);
 }
 
+/**
+ * Runs an Effect for as long as the component's effect lasts: the returned
+ * cleanup interrupts it, so a late answer never reaches an unmounted or
+ * re-keyed view (the old `cancelled` flag).
+ */
+function runUntilCleanup(effect: Effect.Effect<void>): () => void {
+  const fiber = Effect.runFork(effect);
+  return () => {
+    Effect.runFork(Fiber.interrupt(fiber));
+  };
+}
+
 type StickerPanelProps = {
   open: boolean;
   packs: StickerPack[] | undefined;
@@ -89,17 +102,18 @@ export function StickerGrid({
   // inside the half-height sheet the window is wider than the content.
   const [sheetWidth, setSheetWidth] = useState(DEFAULT_SHEET_WIDTH);
 
-  useEffect(() => {
-    let cancelled = false;
-    void getSessionToken().then((value) => {
-      if (!cancelled) {
-        setToken(value);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  useEffect(
+    () =>
+      runUntilCleanup(
+        Effect.tryPromise({ try: () => getSessionToken(), catch: (error) => error }).pipe(
+          Effect.match({
+            onFailure: () => undefined,
+            onSuccess: (value) => setToken(value),
+          }),
+        ),
+      ),
+    [],
+  );
 
   const rows = packs ?? [];
   const activePackId = resolveActivePackId(activePackIdProp, rows, recents);
@@ -306,7 +320,7 @@ export type RecentsStorage = {
  * re-send from Recent puts the real size on the wire); a failing storage
  * never breaks sending.
  */
-export async function persistRecent(
+export function persistRecent(
   storage: RecentsStorage,
   recents: readonly RecentStickerEntry[],
   sticker: StickerItem | RecentStickerEntry,
@@ -323,16 +337,23 @@ export async function persistRecent(
     mime: sticker.mime,
   };
   const next = rememberRecentSticker(recents, entry);
-  try {
-    await storage.write(JSON.stringify(next));
-  } catch {
-    // A blocked storage must never break sending.
-  }
-  return next;
+  // A blocked storage must never break sending: a failed write is dropped.
+  const write = Effect.tryPromise({
+    try: () => storage.write(JSON.stringify(next)),
+    catch: (error) => error,
+  }).pipe(
+    Effect.catch(() => Effect.void),
+    Effect.as(next),
+  );
+  return Effect.runPromise(write);
 }
 
 /** Loads the panel packs; throws so the sheet can show its error + Retry. */
-export async function loadStickerPacks(api?: StickersApi): Promise<StickerPack[]> {
-  const client = api ?? createStickersApi();
-  return client.listStickerPacks();
+export function loadStickerPacks(api?: StickersApi): Promise<StickerPack[]> {
+  return Effect.runPromise(
+    Effect.tryPromise({
+      try: () => (api ?? createStickersApi()).listStickerPacks(),
+      catch: (error) => error,
+    }),
+  );
 }
