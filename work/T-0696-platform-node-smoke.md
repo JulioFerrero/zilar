@@ -1,7 +1,7 @@
 ---
 id: T-0696
 title: "B1.2: add @effect/platform-node 4.0.2 to apps/server and a smoke test that NodeHttpServer serves one HttpRouter route on a random port (no app change)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0696-platform-node-smoke
 model: auto
@@ -59,4 +59,48 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added `@effect/platform-node` pinned exactly at `4.0.2` to `apps/server` (same pin style as the `@effect/sql-*` packages). The lockfile updated.
+- Added `apps/server/src/effect/node-server.test.ts`: one `GET /ping` `HttpRouter` route served by `NodeHttpServer.layer(() => createServer(), { port: 0 })`. The handler returns `{ ok: true, remoteAddress }` (read from `HttpServerRequest.remoteAddress`), logs it at debug level, and the test `fetch`es `/ping`, asserting `200`, `ok: true` and a non-empty string `remoteAddress`.
+- The test reads the bound port from the `HttpServer` service (`address`) and disposes the server with `ManagedRuntime.dispose()` in a `finally`, so no handle stays open and vitest exits on its own.
+- No app code changed; nothing imports the new package except this test.
+
+### `.d.ts` lines cited
+- `node_modules/.pnpm/@effect+platform-node@4.0.2_.../dist/NodeHttpServer.d.ts`: `layer` :111 (`Layer.Layer<HttpServer | NodeServices | HttpPlatform | Etag.Generator, ServeError>`); `make` :52-58 with `address` :57.
+- `.../dist/NodeHttpIncomingMessage.d.ts`: `get remoteAddress(): Option.Option<string>` :53.
+- `node_modules/.pnpm/effect@4.0.2/node_modules/effect/dist/http/HttpRouter.d.ts`: `add` :230; `serve` :718 (options incl. `disableLogger`/`disableListenLog`).
+- `.../effect/dist/net/NetAddress.d.ts`: `InetAddressV4.port` :186, `InetAddressV6.port` :201, `SocketAddress` union :236.
+
+### Files changed
+- `apps/server/package.json` (one dependency line).
+- `pnpm-lock.yaml`.
+- `apps/server/src/effect/node-server.test.ts` (new, 56 lines).
+- `work/T-0696-platform-node-smoke.md` (status + this Report).
+
+### Commands and real results
+- `pnpm install`: done in 12.3s; the pre-existing `@types/react-dom` peer warning is unrelated.
+- `pnpm --filter @zilar/server add @effect/platform-node@4.0.2`: done in 5.9s; `package.json` line added as `"@effect/platform-node": "4.0.2"`.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/effect/node-server.test`: `Test Files 1 passed (1)`, `Tests 1 passed (1)`.
+- `pnpm gate` (final):
+  ```
+  PASS  install (frozen)  (1.6s)
+  PASS  format  (19.4s)
+  PASS  lint  (0.7s)
+  PASS  typecheck  (4.0s)
+  PASS  tests @zilar/server  (1.4s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+- The spec said "serve it with `NodeHttpServer.layer(() => createServer(), { port: 0 })` (or the 4.0.2 equivalent)". The installed 4.0.2 `layer` takes `(evaluate: LazyArg<Http.Server>, options)`, so the call is exactly that.
+- The spec said "read the bound port from the `HttpServer` service (`address`)" and "shut the server down when the test ends (a scoped layer, `Effect.scoped`, or `ManagedRuntime.dispose`)". I used `ManagedRuntime` + `dispose`, and `Layer.provideMerge` (not `Layer.provide`) so the `HttpServer` service stays in the runtime context for the port read.
+- The handler does `Effect.logDebug('ping handled', { remoteAddress })`; debug is below the default Info log level, so it does not print during the test, and the same value is asserted from the response body.
+- First two gate runs failed typecheck while I fixed the service type annotation; the final run is green. No out-of-scope files were ever listed.
+
+### Blocked / needs a decision
+None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head d347500a). `@effect/platform-node` is pinned at `4.0.2` and the lockfile is updated. The smoke test serves `GET /ping` through `HttpRouter.serve` and `NodeHttpServer.layer` on port 0, reads the port from `HttpServer.address`, checks that `remoteAddress` is set (B1.5 relies on it), and disposes the runtime.
