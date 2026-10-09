@@ -1,7 +1,7 @@
 ---
 id: T-0756
 title: "gate faster: format checks only the changed files (prettier --check --ignore-unknown <files>), and lead merge skips its gate re-run when the rebased tree (ignoring work/) is identical to a tree that already passed the gate — a pass record keyed by that tree hash in ~/.zilar-lead/gate-pass/"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0756-gate-faster
 model: auto
@@ -58,4 +58,54 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Done.** All four build items are in place: the format step checks only the changed files that still exist, a passing gate writes a pass record, `lead merge` skips its gate re-run when the rebased tree has a record, and the record folder is pruned to 500.
+
+**Files changed (all inside Allowed files):**
+- `packages/devtools/src/gate/plan.ts`: `formatStep` (new) builds `pnpm exec prettier --check --ignore-unknown <changed files that exist>`; `full` keeps `pnpm format:check`; no present files gives `skipReason: 'no changed files'`.
+- `packages/devtools/src/gate/cli.ts`: computes `treeKey(root)` before the steps; on `GATE PASS` writes the record with `writePassRecord(gatePassDir, key)`.
+- `packages/devtools/src/gate/pass-record.ts` (new): `gatePassDir` (`~/.zilar-lead/gate-pass`), `MAX_PASS_RECORDS = 500`, `treeKey`, `hasPassRecord`, `writePassRecord`, `pruneOldestRecords`, `alreadyPassedKey` (the skip decision, with injected `treeKey` and `hasRecord`).
+- `packages/devtools/src/gate/pass-record.test.ts` (new): 10 tests, each in its own temp folder; a temp git repo for `treeKey`.
+- `packages/devtools/src/gate/gate.test.ts`: 3 new format-step tests (changed files only, skipped when none left, `--full` keeps `format:check`).
+- `packages/devtools/src/lead/cli.ts`: `runGate` calls `alreadyPassedKey` first; on a hit it returns `{ ok: true, output: 'gate: skipped, this tree already passed (<12-char key>)' }` without spawning the gate.
+- `work/T-0756-gate-faster.md`: status and this Report.
+
+**Commands and results:**
+- `pnpm install --frozen-lockfile`: done (vitest 5.0.2 linked).
+- `pnpm --filter @zilar/devtools test --maxWorkers=2 --reporter=dot src/gate/gate.test.ts src/gate/pass-record.test.ts`: 2 files, 36 passed, 0 failed.
+- `pnpm exec prettier --write` on the six changed source files: `pass-record.ts` and `pass-record.test.ts` were reformatted, the other four were already clean. Prettier `--check` on the ignored `work/` file passes silently.
+- `pnpm gate` (from the worktree root, 7 changed files):
+  ```
+  gate: 7 changed file(s) against main
+  PASS  install (frozen)  (2.3s)
+  PASS  format  (1.0s)
+  PASS  lint  (1.3s)
+  PASS  typecheck  (3.5s)
+  PASS  tests @zilar/devtools  (17.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+- A pass record was written by that gate run: `~/.zilar-lead/gate-pass/e9259cdc9a0006c57302c47b01c96c0a63d8ded9` (the only file there).
+
+**Format step time:** before, `pnpm format:check` (the whole repo, 2765 tracked files) took 19.3 s wall, measured once with `time` before the change. After, the gate's format step on the 7 changed files took 1.0 s.
+
+**Not done / not verified:**
+- I did not run `lead merge` or any `lead` command, as instructed. The merge skip is verified only by its unit test (`alreadyPassedKey` with injected deps), not end to end.
+- The `SKIP format (no changed files)` line goes through the existing `SKIP ${label} (${skipReason})` print in `gate/cli.ts`. The skip itself is unit-tested, but I did not see the printed line.
+- `treeKey` runs `git add -A` on a fresh temp index at every gate start; its own cost is not timed separately (the whole gate run is above).
+
+**Deviations:** none from the spec. The skip decision lives in `pass-record.ts` (not in `runGate` itself) so it can be tested with injected dependencies; `runGate` only wires the real functions in.
+
+**Open questions:**
+- A key failure (git cannot hash the tree) means no record is written and the merge runs the full gate. This is the safe default, but I did not check it against a real broken worktree.
+- The key is computed at gate start, so the record names the tree the steps checked even if files change during the run.
+
 ## Review (written by Claude)
+
+## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5. The lead reviewed the diff directly.
+- **The format step:** checks only the changed files that still exist (`exists` is wired at `gate/cli.ts:166`) and skips when there are none. It took 1.0 s, against 19.3 s for the whole repo; `--full` keeps the whole-repo check.
+- **The pass record:** keyed by a temporary-index `write-tree` with `work/` left out (about 5 s on this repo). It is written only when the gate passes, and the key is taken before the steps run.
+- **At merge:** `runGate` skips the gate when the rebased tree already has a record, and runs it as before when main has moved.
+- **Unchanged:** a scope violation is still printed, not counted as a failure.
+- **First real check:** the next `lead merge` of an unchanged branch should print "gate: skipped".

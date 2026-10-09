@@ -1,10 +1,12 @@
 // `pnpm gate` runs the checks a task must pass before it can go to review (and
 // that `lead merge` runs again after the rebase): install, format, lint,
 // typecheck, the nearest tests of every package the branch touched, and a scope
-// report of files changed outside the task's "Allowed files". By default only
-// the changed test files and the tests next to each changed source file run;
-// `--full` lets Vitest pull in every test that imports the changes instead. It
-// prints one summary line per step and ends with `GATE PASS` or `GATE FAIL`.
+// report of files changed outside the task's "Allowed files". Format checks only
+// the changed files unless `--full`. By default only the changed test files and
+// the tests next to each changed source file run; `--full` lets Vitest pull in
+// every test that imports the changes instead. It prints one summary line per
+// step and ends with `GATE PASS` or `GATE FAIL`. A pass writes a pass record
+// (see pass-record.ts) so `lead merge` can skip re-running it on the same tree.
 
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -18,6 +20,7 @@ import {
   type GateStep,
   type WorkspacePackage,
 } from './plan.js';
+import { gatePassDir, treeKey, writePassRecord } from './pass-record.js';
 import { scopeReport } from './scope.js';
 import { gateSlotsDir, release, tryAcquire } from './slots.js';
 
@@ -152,6 +155,8 @@ function main(): void {
   const merge = args.includes('--merge');
   const root = run(process.cwd(), 'git', ['rev-parse', '--show-toplevel']).output.trim();
   const files = changedFiles(root, base);
+  // Hashed before any step runs, so the record names the tree the steps checked.
+  const passKey = treeKey(root);
   const tracked = lines(run(root, 'git', ['ls-files']).output);
   const steps: GateStep[] = gateSteps(files, readWorkspace(root), base, {
     full,
@@ -225,6 +230,9 @@ function main(): void {
     }
   } finally {
     releaseSlot();
+  }
+  if (!failed && passKey !== undefined) {
+    writePassRecord(gatePassDir, passKey);
   }
   console.log(failed ? 'GATE FAIL' : 'GATE PASS');
   process.exit(failed ? 1 : 0);

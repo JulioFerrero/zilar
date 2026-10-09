@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { runAutopilot, type AutopilotDeps } from './autopilot.js';
+import { alreadyPassedKey, gatePassDir, hasPassRecord, treeKey } from '../gate/pass-record.js';
 import { OpencodeCliClient } from './client.js';
 import { doctorWorktreeFor, startDoctorSession } from './doctor.js';
 import { RealGitRunner } from './git.js';
@@ -223,8 +224,20 @@ function todayUtc(): string {
 }
 
 // The checks every merge must pass, run in the rebased worktree. The output
-// tail is kept so the lead sees the failing step without rerunning it.
+// tail is kept so the lead sees the failing step without rerunning it. A tree
+// that already passed the gate (a pass record exists for its hash) is not run
+// again: the code is identical to what passed.
 function runGate(worktree: string): { ok: boolean; output: string } {
+  const passedKey = alreadyPassedKey(worktree, {
+    treeKey,
+    hasRecord: (key) => hasPassRecord(gatePassDir, key),
+  });
+  if (passedKey !== undefined) {
+    return {
+      ok: true,
+      output: `gate: skipped, this tree already passed (${passedKey.slice(0, 12)})`,
+    };
+  }
   const result = spawnSync('pnpm', ['gate', '--merge'], {
     cwd: worktree,
     encoding: 'utf8',
