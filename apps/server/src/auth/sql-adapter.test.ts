@@ -1,12 +1,22 @@
 import { betterAuth } from 'better-auth';
 import { bearer, emailOTP } from 'better-auth/plugins';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { user } from '../db/schema';
-import { createTestContext, type TestContext } from '../test-support';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { createTestContext, testSql, type TestContext } from '../test-support';
 import { effectSqlAdapter } from './sql-adapter';
 import { OTP_ALLOWED_ATTEMPTS, OTP_EXPIRES_IN_SECONDS, OTP_LENGTH } from './auth';
 
 const BASE_URL = 'http://localhost:3000';
+
+interface UserTimestampRow {
+  emailVerified: boolean;
+  createdAt: Date;
+}
+
+interface UserEmailRow {
+  email: string;
+}
 
 // A fresh factory instance per call: `createTestContext` registers the
 // effect/sql runtime the adapter runs on.
@@ -212,7 +222,12 @@ describe('effectSqlAdapter', () => {
       data: { name: 'Ada', email: 'ada@example.com' },
     });
 
-    const rows = await context.db.select().from(user);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<UserTimestampRow>`SELECT email_verified, created_at FROM "user"`;
+      }),
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.emailVerified).toBe(false);
     expect(rows[0]?.createdAt).toBeInstanceOf(Date);
@@ -282,7 +297,12 @@ describe('better-auth on the effect/sql adapter', () => {
       signIn.headers.getSetCookie().some((cookie) => cookie.includes('better-auth.session_token=')),
     ).toBe(true);
 
-    const rows = await context.db.select().from(user);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<UserEmailRow>`SELECT email FROM "user"`;
+      }),
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.email).toBe(email);
   });

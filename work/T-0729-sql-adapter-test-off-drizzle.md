@@ -1,7 +1,7 @@
 ---
 id: T-0729
 title: "tests off drizzle (auth/sql-adapter): replace every drizzle query in auth/sql-adapter.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0729-sql-adapter-test-off-drizzle
 model: auto
@@ -51,4 +51,41 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did.** In `apps/server/src/auth/sql-adapter.test.ts` I replaced the three drizzle uses with `testSql(context)(Effect.gen(...))` + `SqlClient`:
+- line 215 (old): `context.db.select().from(user)` in the "snake_case columns" test became `SELECT email_verified, created_at FROM "user"`, read into a local `UserTimestampRow` (`emailVerified`, `createdAt: Date`). Assertions unchanged.
+- line 285 (old): the OTP test's `context.db.select().from(user)` became `SELECT email FROM "user"`, read into a local `UserEmailRow`. Assertions unchanged.
+- Removed `import { user } from '../db/schema'`; added `Effect` from `effect`, `SqlClient` from `effect/sql`, and `testSql` from `../test-support`.
+- Left alone: `effectSqlAdapter(context.db)` (lines 14 and 237), which passes `context.db` to a module function.
+- No test in this file patches `context.db.transaction` or another drizzle method, so the item-5 seam move did not apply.
+- The task file's status was set to `in-progress` at the start, then `review`.
+
+**Files changed:** `apps/server/src/auth/sql-adapter.test.ts`, `work/T-0729-sql-adapter-test-off-drizzle.md`.
+
+**Commands and results:**
+- `pnpm install`: exit 0.
+- Before any change, `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/auth/sql-adapter.test.ts`: 8 passed (1 file).
+- After the change, same command: 8 passed (1 file). `createdAt` came back as a `Date`, so the `toBeInstanceOf(Date)` assertion still holds.
+- `pnpm exec prettier --write apps/server/src/auth/sql-adapter.test.ts`: unchanged.
+- `git grep -n "drizzle-orm\|db/schema" -- apps/server/src/auth/sql-adapter.test.ts`: no output (exit 1), as the acceptance requires.
+- `pnpm gate` (from `/Users/julio/personal-projects/zilar-T-0729`, exit 0):
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (2.5s)
+  PASS  format  (34.4s)
+  PASS  lint  (1.2s)
+  PASS  typecheck  (6.8s)
+  PASS  tests @zilar/server  (11.0s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+- The gate's own tests step ran the nearest server tests; I did not run the whole server suite.
+
+**Problems / deviations:** none. A first gate attempt failed only because `timeout` is not installed on this macOS shell (exit 127, nothing ran); I reran it without it.
+
+**Blocked / needs a decision:** none.
+
+**Open questions:** none.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 2.8 min). The lead reviewed the diff directly. The two `"user"` reads are on `testSql`. There are 8 tests before and after, no drizzle import is left, and the gate passed.
