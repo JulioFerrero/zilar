@@ -1,7 +1,7 @@
 ---
 id: T-0690
 title: "D2 step 1: build a custom better-auth database adapter over effect/sql (auth/sql-adapter.ts, built with createAdapterFactory) and test it against the four auth tables on PGlite; production keeps drizzleAdapter for now"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0690-better-auth-sql-adapter
 model: auto
@@ -65,4 +65,84 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Built a better-auth custom database adapter over `effect/sql` and tested it on
+PGlite, without touching `auth.ts`.
+
+**`apps/server/src/auth/sql-adapter.ts`** — exports
+`effectSqlAdapter(db: ServerDatabase)`, a `createAdapterFactory` factory that
+implements `create`, `findOne`, `findMany`, `count`, `update`, `updateMany`,
+`delete` and `deleteMany`, each running on `sqlRuntimeFor(db).runPromise`.
+
+- Field/model mapping is an explicit map for the four tables (`user`, `session`,
+  `account`, `verification`); unlisted fields keep their name. Results are read
+  via `snakeToCamel` (already configured on the effect/sql client), so canonical
+  camelCase rows come back.
+- Where operators: `eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `in`, `not_in`,
+  `contains`, `starts_with`, `ends_with`, with `AND`/`OR` folding left to right
+  like the memory adapter; `LIKE`/`ILIKE` per `mode`, wildcards escaped;
+  `sortBy`, `limit`, `offset`.
+- Config: `supportsJSON: true`, `supportsDates: true`, `supportsBooleans: true`,
+  `transaction: false`.
+- Two small behaviours needed to match what `drizzleAdapter` did for the schema:
+  - `session.updated_at` and `account.updated_at` have no DB default (drizzle
+    supplies them from `$onUpdate` on insert), so `create` fills `updated_at`
+    when missing.
+  - the auth tables use `timestamp` with no time zone; the PGlite driver writes
+    a `Date` as UTC wall clock but parses it back as local time, so rows are
+    normalized back to UTC on read (identity on a UTC host). Postgres-parsed
+    auth rows and this round trip are equivalent to drizzle's `+0000` parse.
+
+**`apps/server/src/auth/sql-adapter.test.ts`** — 8 tests:
+- direct adapter on `createTestContext`: create/find by id, by unique email, by
+  unique session token; update; `count`; `in` and `OR` filters; `deleteMany`;
+  account and verification round-trips; a raw check that `email_verified` and
+  `created_at` are the stored snake_case columns.
+- one full email-OTP sign-up **and** sign-in through
+  `betterAuth({ database: effectSqlAdapter(context.db), plugins: [emailOTP, bearer] })`
+  using the `TestMailer` fake, asserting 200 + a session cookie and the stored
+  user row.
+
+`auth.ts` and every other production file are unchanged.
+
+### Commands and results
+
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/auth/sql-adapter.test`
+  → **8 passed** (1 file). I ran no other test file.
+- `pnpm gate` (from repo root) →
+
+```
+gate: 3 changed file(s) against main
+PASS  install (frozen)  (1.0s)
+PASS  format  (13.9s)
+PASS  lint  (0.8s)
+PASS  typecheck  (2.8s)
+PASS  tests @zilar/server  (10.8s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+The 3 changed files are the two Allowed source files plus this task file.
+
+### Problems / deviations from the spec
+
+- Two runtime issues showed up only once the OTP flow exercised real rows, and
+  are fixed as described above: the missing `updated_at` default and the
+  PGlite `timestamp` timezone round trip (`OTP_EXPIRED` until reads were
+  normalized).
+- The date normalization is keyed off the factory schema's `type: 'date'`
+  fields. It is correct for the four tables here (all `timestamp` without time
+  zone). It should be re-checked when the production switch happens, since
+  production goes through `@effect/sql-pg` rather than PGlite.
+
+### Open questions
+
+- For the later "switch `auth.ts`" task: confirm the production pg driver parses
+  `timestamp` (without time zone) the same way as PGlite; if it parses as UTC
+  already, the read normalization should be dropped/guarded.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head 25923e4f) with 2 nits: an unreachable snake_case fallback in `create()`, and `LIKE`/`sortBy`/`offset` have no tests. The adapter passes a full email-OTP sign-up and sign-in through better-auth on PGlite, and `auth.ts` is unchanged.
+- **Follow-up for the switch task:** check how production `@effect/sql-pg` parses `timestamp` without a time zone before relying on `utcTimestamp`, and add tests for the `LIKE`, `sortBy` and `offset` paths.
