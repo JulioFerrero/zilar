@@ -1,7 +1,7 @@
 ---
 id: T-0838
 title: "S12 + S13: the server entry apps/server/src/index.ts on Effect — startup as one Effect program, shutdown by closing its Scope in the same order, NodeRuntime.runMain; local start/stop rehearsal"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0838-server-entry
 model: auto
@@ -94,4 +94,63 @@ Plus the rehearsal above. If you add `main.test.ts`, run it 3 times.
 
 ## Report (written by the worker when done)
 
+Two commits: S12 (`0c9ed0ec`, startup) and S13 (this one, shutdown and `runMain`). Wave mode: `pnpm gate` was not run.
+
+### What was done
+- **effect:map kinds:** `apps/server/src/index.ts` is `effect` (3 lines, no signals). `apps/server/src/main.ts` is `effect` with the weak signals W4 and W7 only (`Effect.catch(` matches the `.catch(` pattern; `process.env` is passed to `loadServerConfigOrExit` and `loadPushConfigOrExit`). No `async`, `await`, `try {`, `.then(` or `setTimeout` in either file. `main.test.ts` is a test file (not counted).
+- **Layers or plain factories:** plain factory calls inside one `Effect.gen` (`startServer`). No Layers: the components are built by synchronous factories and the order matters, so Layers would not have been simpler.
+- **`RunningServer`:** a small mutable record of the handles (logger, db, `closeDb`, `closeHttp`, runner hub, push, agent gateway, sweeper, recovery timer, routine scheduler). `startServer` fills each field as soon as the thing exists. It replaces the old `runnerHub` and `gatewayRef` variables (`isMachineOnline` and the announcer read `running.runnerHub` / `running.gateway`).
+- **Old sites:**
+  - each `await` became `Effect.promise(() => ...)`;
+  - the mailer try/catch became `Effect.try` + `Effect.catch` (`MailerConfigurationError`: `console.error(message)`, `process.exit(1)`; any other error: `Effect.die(error)`);
+  - the push try/catch became `Effect.try` + `Effect.catch` with the same two log lines;
+  - the four fire-and-forget sites (push room reconcile, runner hub, `gateway.start()` with its secret redaction, `recoverStuck`) became `Effect.tryPromise` + `Effect.catch` (same log text and fields) + `Effect.forkDetach({ startImmediately: true })`. `startImmediately` keeps the old order: each call runs up to its first await before the next line, exactly like `void x().catch()`;
+  - `Promise.resolve(false)` in the two `post` callbacks became one shared `post` (`Effect.runPromise(Effect.succeed(false))`);
+  - the two `...OrExit` loaders run in `Effect.sync` and keep their own exits.
+- **S13, shutdown:** `index.ts` is `NodeRuntime.runMain(serverProgram, { teardown: serverTeardown })`. `serverProgram` = `Effect.scoped` of: `emptyRunning()`, ONE `Effect.addFinalizer(() => shutdownServer(running))`, a signal logger, `startServer(running)`, `Effect.never`.
+  - **Deviation from the spec text:** the finalizer is registered BEFORE startup, not after, and reads the handles from `RunningServer`. That is what makes it run correctly when shutdown begins while startup is in flight (it stops only what exists); a finalizer registered after startup could not.
+  - `shutdownServer`: forks the 15 s force-exit (`'shutdown timed out; exiting'`, exit 1) with `Effect.forkDetach`, then runs `stopServer` in the old order (HTTP server, runner hub, push, gateway, sweeper, recovery timer, routine scheduler, `disposeSqlRuntime`, `closeDb`). The force-exit fiber is interrupted when the stop ends (found by a test: otherwise it would still fire 15 s later).
+  - `runMain` (read in `platform-node-shared/dist/NodeRuntime.js`) interrupts the main fiber on SIGINT/SIGTERM, then calls the teardown, then `process.exit(code)` when a signal was received. The default teardown gives 130 for interruption, so `serverTeardown` maps "interruption only" to 0 and leaves every other case to `Runtime.defaultTeardown` (failure = 1).
+  - `runMain` does not give the signal name, so `logShutdownSignals` adds a listener per signal that logs `'shutting down'` with `{ signal }` once; a second signal logs nothing.
+
+### Rehearsal (local docker stack, scratch database `zilar_t0838` created with the postgres superuser because the `zilar` role cannot create databases, dropped at the end; `.env` symlink removed before each commit; no `.env` values printed; `NODE_ENV=test` so pino writes JSON)
+Log lines compared without time, pid, hostname and request id.
+
+| Run | Old (before S12) | S12 | S13 |
+| --- | --- | --- | --- |
+| start + `/api/me` | `push is disabled`, `zilar-server listening` `{port:3199}`, `agent gateway is disabled`, 401 | identical | identical |
+| SIGTERM | `shutting down` `{signal:"SIGTERM"}`, exit 0 | identical | identical |
+| SIGINT | `shutting down` `{signal:"SIGINT"}`, exit 0 | identical | identical |
+| runner hub + gateway + routines + tools on (SIGTERM / SIGINT) | adds `runner hub listening` `{port:3197}`, exit 0 | identical | identical |
+| push on with a bad host | `push component error`, `push component failed to start` (warn), 401, exit 0 | identical | not rerun |
+| unfinished request open at SIGTERM | exit 0 after 3016 ms | not run | exit 0 after 3011 ms |
+| two SIGTERMs 2 ms apart | not run | not run | one `shutting down`, exit 0 |
+| `STICKER_STORAGE_DIR=/proc/nope` | message `STICKER_STORAGE_DIR (/proc/nope) is not writable: ...`, exit 1 | identical | identical |
+| invalid config (`NODE_ENV` bad) | `Invalid server configuration: ...`, exit 1 | identical | identical |
+| database refuses the login | uncaught `SqlError` with stack, exit 1 | not run | `ERROR effect/sql/SqlError: ...` with stack, exit 1 |
+
+Not rehearsed: the 15 s force-exit and the `MailerConfigurationError` exit (config validation rejects every input that reaches it, so no env var triggers it). The force-exit and the in-flight stop are covered by `main.test.ts`. A signal sent while the server is still in startup could not be hit reliably: startup takes tens of ms after the module loads, so the signal either arrived before `runMain` installed its handlers (default kill, as before) or after the server was up.
+
+### Checks (real results)
+- `pnpm --filter @zilar/server typecheck`: clean.
+- `pnpm exec oxlint apps/server/src/index.ts apps/server/src/main.ts apps/server/src/main.test.ts`: clean (exit 0). Prettier check: clean.
+- `pnpm --filter @zilar/server exec vitest run --reporter=dot src/startup.test.ts src/app.test.ts src/main.test.ts`: 3 files, 32 tests passed (startup + app 22 as before S13; main.test.ts 10). `main.test.ts` alone, 3 runs: 10 passed each time.
+- New `main.test.ts` (10 tests): stop order with fakes (HTTP first; the SQL runtime is already disposed when `closeDb` runs and still registered while the routine scheduler stops), partial startup, nothing started, a failing step ends the sequence, force-exit fires on a hung stop, no force-exit when the stop is in time, the finalizer runs once under a double interrupt, teardown codes (interrupt 0, success 0, failure 1, defect 1).
+
+### Behaviour differences
+1. A SIGINT/SIGTERM that arrives while startup is in flight (after `runMain` has installed its handlers) now stops gracefully with exit 0; before, the handlers were installed only after startup, so it killed the process by the signal. This is what the spec asked for.
+2. A startup defect (database refusing, a thrown factory, `assertRunnerHubConfig`) now ends with the scope closing (whatever was started is stopped), the cause printed by Effect's default logger (`ERROR ...` with the stack) and exit 1. Before it was Node's uncaught-error print and exit 1. The text of the print differs; the exit code is the same.
+3. After a startup defect the shutdown finalizer also runs (with its 15 s force-exit); before, nothing was cleaned up because the process crashed.
+4. Otherwise none: log lines, fields, order, fail-fast messages and codes, non-blocking starts, stop order, force-exit text and code, the 3 s grace and exit 0 on a clean stop matched in every rehearsal above.
+
+### Unsure
+- `runMain` also holds a keep-alive interval while the main fiber runs; the process stays up through `Effect.never` and the listening server, and every stop ends in `process.exit`, so nothing else is needed. Only the rehearsal above shows this; I did not read a long-run test.
+- The finalizer registered before startup differs from the spec's "after everything has started"; I chose it to meet the in-flight requirement.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Sonnet 5.5 (chain). The lead reviewed the Report and `main.ts` (stop sequence, force-exit, teardown, signal log).
+- **Shape:** `index.ts` is 3 lines that run `NodeRuntime.runMain(serverProgram, { teardown: serverTeardown })`. `main.ts` holds `startServer`; the one finalizer runs `stopServer` in the old order under the 15 s force-exit, and an interrupt-only exit gives code 0.
+- **Rehearsal** (local docker): SIGTERM, SIGINT, a double signal, an open request and fail-fast config give the same lines and exit codes as the old code. `main.test.ts` covers the stop order and the force-exit.
+- **Behaviour:** a signal during startup now stops cleanly with exit 0, where before it killed the process. A startup defect prints Effect's error and still exits 1.
+- **Before the next deploy:** the CI image smoke checks `zilar-server listening`. Julio checks the live start, and a redeploy (SIGTERM) for a clean stop.
