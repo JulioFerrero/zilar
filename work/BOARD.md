@@ -12,6 +12,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0690](T-0690-better-auth-sql-adapter.md) | D2 step 1: better-auth adapter over effect/sql (built + tested, not switched) | in-progress | auto | | |
 | [T-0694](T-0694-split-effect-http-core.md) | B1.1: split effect/http.ts into http-core (no Hono) + the bridge | in-progress | auto | T-0689 | |
 | [T-0695](T-0695-test-sql-helper.md) | H1: testSql helper; pins tests off drizzle | in-progress | haiku-5.5 | T-0691 | |
+| [T-0696](T-0696-platform-node-smoke.md) | B1.2: add @effect/platform-node 4.0.2 + NodeHttpServer smoke test | in-progress | auto | T-0689 | |
 
 ## Follow-ups
 
