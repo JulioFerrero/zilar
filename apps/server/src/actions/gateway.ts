@@ -7,7 +7,7 @@ import type { ServerDatabase } from '../db/client';
 import { ais, pendingActions } from '../db/schema';
 import type { approvals, groupAis, topics } from '../db/schema';
 import { sqlRuntimeFor } from '../effect/sql';
-import { createApproval, verifyApproval } from '../approvals/service';
+import { createApprovalEffect, verifyApproval } from '../approvals/service';
 import { allowedTopicAiIds } from '../topics/access';
 import { findActiveRule } from '../approvals/rules';
 import { type ActionAnnouncer, summaryForOutcome } from './announce';
@@ -480,54 +480,59 @@ async function runApprovalPath(
 
   const expiresAt = new Date(at.getTime() + APPROVAL_TTL_MS);
 
-  // This one transaction stays on drizzle: it passes `tx` to
-  // `createApproval` (still a drizzle transaction client) and inserts the
-  // `pending_actions` row on the same `tx`, so it moves when the approvals
-  // service moves to `effect/sql` (C1 in `docs/audit/effect-sql-migration.md`).
-  // Every other statement in this module runs on `effect/sql`.
-
-  // One transaction: if either insert fails nothing is left behind. The
-  // approval row carries `args_hash`; the pending-action row carries the
-  // exact parsed args. The hash is computed from the parsed args, the
-  // approval's `verifyApproval` re-hashes the stored value, and the two
-  // must match — `argsHash` here is the only place that gets to touch
-  // the args.
+  // One transaction: the approval row and the `pending_actions` row commit
+  // together or not at all. The approval row carries `args_hash`; the
+  // pending-action row carries the exact parsed args. The hash is computed
+  // from the parsed args, the approval's `verifyApproval` re-hashes the
+  // stored value, and the two must match — `argsHash` here is the only place
+  // that gets to touch the args. `createApprovalEffect` fails with an
+  // `ApprovalServiceError` (e.g. `pending_limit`), which the catch below maps
+  // to a stable reason.
   let approvalId: string;
   try {
-    approvalId = await deps.db.transaction(async (tx) => {
-      const approval = await createApproval(
-        tx as unknown as ServerDatabase,
-        {
-          aiId: params.aiId,
-          ...(params.groupId === undefined ? {} : { groupId: params.groupId }),
-          ...(params.topicId === undefined ? {} : { topicId: params.topicId }),
-          action: params.action,
-          summary: truncateText(described.summary, 500),
-          ...(described.details === undefined
-            ? {}
-            : { details: truncateText(described.details, 20000) }),
-          argsHash: hash,
-          ...(worstCase === undefined ? {} : { worstCase }),
-          requestedBy: params.requestedBy,
-          expiresAt,
-        },
-        at,
-      );
-      const newPendingId = randomUUID();
-      await tx.insert(pendingActions).values({
-        id: newPendingId,
-        approvalId: approval.id,
-        aiId: params.aiId,
-        groupId: params.groupId ?? null,
-        topicId: params.topicId ?? null,
-        action: params.action,
-        args: parsedArgs,
-        argsHash: hash,
-        requestedBy: params.requestedBy,
-        status: 'waiting',
-      });
-      return approval.id;
-    });
+    approvalId = await sqlRuntimeFor(deps.db).runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql.withTransaction(
+          Effect.gen(function* () {
+            const approval = yield* createApprovalEffect(
+              {
+                aiId: params.aiId,
+                ...(params.groupId === undefined ? {} : { groupId: params.groupId }),
+                ...(params.topicId === undefined ? {} : { topicId: params.topicId }),
+                action: params.action,
+                summary: truncateText(described.summary, 500),
+                ...(described.details === undefined
+                  ? {}
+                  : { details: truncateText(described.details, 20000) }),
+                argsHash: hash,
+                ...(worstCase === undefined ? {} : { worstCase }),
+                requestedBy: params.requestedBy,
+                expiresAt,
+              },
+              at,
+            );
+            const newPendingId = randomUUID();
+            yield* sql`INSERT INTO pending_actions
+                (id, approval_id, ai_id, group_id, topic_id, action, args,
+                  args_hash, requested_by, status)
+              VALUES (
+                ${newPendingId},
+                ${approval.id},
+                ${params.aiId},
+                ${params.groupId ?? null},
+                ${params.topicId ?? null},
+                ${params.action},
+                ${JSON.stringify(parsedArgs)}::jsonb,
+                ${hash},
+                ${params.requestedBy},
+                'waiting'
+              )`;
+            return approval.id;
+          }),
+        );
+      }),
+    );
   } catch {
     // The approval service throws `ApprovalServiceError` (e.g.
     // `pending_limit`); the gateway answers `denied` with a stable reason
