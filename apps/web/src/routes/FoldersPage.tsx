@@ -1,7 +1,11 @@
-import { useRef, useState } from 'react';
+import { Effect } from 'effect';
+import { useState } from 'react';
 import { GripVertical, Pencil, Plus } from 'lucide-react';
 import { FOLDERS_MAX, type ChatFolder, type FolderChatType } from '@zilar/chat-core';
-import { ApiError, reorderChatFolders } from '@/lib/api';
+import { reorderChatFolders } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatFolders } from '@/lib/useChatFolders';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { FolderEditorDialog } from '@/components/FolderEditorDialog';
@@ -29,7 +33,6 @@ export function FoldersPage({ onBack }: { onBack: () => void }) {
   // the hook twice is safe.
   useChatFolders();
   const [dragId, setDragId] = useState<string | undefined>(undefined);
-  const [error, setError] = useState<string | undefined>(undefined);
   const [editor, setEditor] = useState<{ open: boolean; folder: ChatFolder | null }>({
     open: false,
     folder: null,
@@ -37,8 +40,17 @@ export function FoldersPage({ onBack }: { onBack: () => void }) {
 
   const folders = store.folders;
   const atLimit = folders.length >= FOLDERS_MAX;
-  const reorderSeq = useRef(0);
-  const [reordering, setReordering] = useState(false);
+  // One reorder at a time: a second one is dropped while the first waits.
+  // On failure the previous order comes back; a success stores the server's order.
+  const [reorderState, reorder] = useAction((ids: string[]) =>
+    fromApi(() => reorderChatFolders(ids)).pipe(
+      Effect.tap((ordered) => Effect.sync(() => storeApi.getState().setFolders(ordered))),
+      Effect.tapError(() => Effect.sync(() => storeApi.getState().setFolders(folders))),
+    ),
+  );
+  const reordering = isWaiting(reorderState);
+  const reorderFailure = isWaiting(reorderState) ? undefined : failureOf(reorderState);
+  const error = reorderFailure === undefined ? undefined : reorderMessage(reorderFailure);
 
   const move = (fromId: string, toId: string): void => {
     if (reordering || fromId === toId) {
@@ -56,7 +68,7 @@ export function FoldersPage({ onBack }: { onBack: () => void }) {
       return;
     }
     next.splice(to, 0, moved);
-    void persist(next);
+    reorder(next);
   };
 
   const moveByKey = (id: string, direction: -1 | 1): void => {
@@ -75,30 +87,7 @@ export function FoldersPage({ onBack }: { onBack: () => void }) {
       return;
     }
     next.splice(target, 0, moved);
-    void persist(next);
-  };
-
-  const persist = async (ids: string[]): Promise<void> => {
-    const previous = folders;
-    const sequence = reorderSeq.current + 1;
-    reorderSeq.current = sequence;
-    setReordering(true);
-    setError(undefined);
-    try {
-      const ordered = await reorderChatFolders(ids);
-      if (reorderSeq.current === sequence) {
-        storeApi.getState().setFolders(ordered);
-      }
-    } catch (reorderError) {
-      if (reorderSeq.current === sequence) {
-        storeApi.getState().setFolders(previous);
-        setError(reorderMessage(reorderError));
-      }
-    } finally {
-      if (reorderSeq.current === sequence) {
-        setReordering(false);
-      }
-    }
+    reorder(next);
   };
 
   return (
@@ -230,8 +219,8 @@ function summary(folder: ChatFolder): string {
   return `${typePart}, ${chatPart}`;
 }
 
-function reorderMessage(error: unknown): string {
-  if (error instanceof ApiError && error.code === 'rate_limited') {
+function reorderMessage(error: ApiFailure): string {
+  if (error.code === 'rate_limited') {
     return 'Too many changes. Wait a moment.';
   }
   return 'Could not reorder folders. Try again.';

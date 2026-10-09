@@ -1,25 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Effect, Schedule } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ShieldCheck } from 'lucide-react';
-import { ApiError, decideApproval, listApprovals, type PublicApproval } from '@/lib/api';
+import { decideApproval, listApprovals, type PublicApproval } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { StateMessage } from '@/components/ui/state-message';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { ApprovalRow } from '@/components/approvals/ApprovalRow';
 import { ApprovalsListSkeleton } from '@/components/approvals/ApprovalsListSkeleton';
 import { expiresInText } from '@/components/approvals/formatRelative';
-
-type PageStatus = 'loading' | 'ready' | 'error';
-
-interface RowState {
-  approval: PublicApproval;
-  busy: null | 'approve' | 'deny';
-  error: string;
-}
-
-interface RowsById {
-  [id: string]: RowState;
-}
 
 const REFRESH_INTERVAL_MS = 30_000;
 const COUNTDOWN_TICK_MS = 60_000;
@@ -32,184 +26,73 @@ const STALE_NOTICE_TIMEOUT_MS = 5000;
  */
 export function ApprovalsPage() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState<PageStatus>('loading');
-  const [rows, setRows] = useState<RowsById>({});
-  const [errorMessage, setErrorMessage] = useState('');
-  const [notice, setNotice] = useState('');
   const [now, setNow] = useState<Date>(() => new Date());
-  const noticeTimer = useRef<number | null>(null);
-  const mounted = useRef(true);
+  const [notice, setNotice] = useState('');
   // Requests decided in this session: a list response that was already in
   // flight when the decision landed must not bring their rows back.
-  const decidedIds = useRef(new Set<string>());
-
-  const showNotice = useCallback((message: string, durationMs: number): void => {
-    setNotice(message);
-    if (noticeTimer.current !== null) {
-      window.clearTimeout(noticeTimer.current);
-    }
-    noticeTimer.current = window.setTimeout(() => {
-      setNotice('');
-      noticeTimer.current = null;
-    }, durationMs);
-  }, []);
-
-  const applyList = useCallback((list: PublicApproval[]): void => {
-    if (!mounted.current) {
-      return;
-    }
-    setRows((previous) => {
-      const next: RowsById = {};
-      for (const approval of list) {
-        if (decidedIds.current.has(approval.id)) {
-          continue;
-        }
-        const prior = previous[approval.id];
-        next[approval.id] = {
-          approval,
-          busy: null,
-          error: '',
-          ...(prior === undefined ? {} : { busy: prior.busy, error: prior.error }),
-        };
-      }
-      return next;
-    });
-    setStatus('ready');
-    setErrorMessage('');
-  }, []);
-
-  const applyError = useCallback((error: unknown): void => {
-    if (!mounted.current) {
-      return;
-    }
-    setStatus('error');
-    setErrorMessage(error instanceof Error ? error.message : 'Could not load your approvals.');
-  }, []);
-
-  const load = useCallback(
-    async (showLoading: boolean) => {
-      if (showLoading) {
-        setStatus('loading');
-      }
-      try {
-        applyList(await listApprovals());
-      } catch (error) {
-        applyError(error);
-      }
-    },
-    [applyList, applyError],
+  const [decidedIds, setDecidedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [list, refresh] = useQuery(() => fromApi(() => listApprovals()), []);
+  // The notice stays while its timer runs. A new notice replaces the timer,
+  // as clearing the old timeout did before.
+  const [noticeTimer, startNoticeTimer] = useAction(
+    (durationMs: number) => Effect.sleep(durationMs),
+    { mode: 'replace' },
   );
 
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-      if (noticeTimer.current !== null) {
-        window.clearTimeout(noticeTimer.current);
-        noticeTimer.current = null;
-      }
-    };
-  }, []);
+  const showNotice = (message: string, durationMs: number): void => {
+    setNotice(message);
+    startNoticeTimer(durationMs);
+  };
+  const markDecided = (id: string): void => {
+    setDecidedIds((ids) => new Set(ids).add(id));
+  };
 
-  // The first load. The status already starts as `loading`; the other
-  // refreshes (focus, timer, buttons) go through `load`.
-  useEffect(() => {
-    listApprovals().then(applyList).catch(applyError);
-  }, [applyList, applyError]);
+  // 30 s background refresh while the page is open. The first run comes one
+  // interval after mount; unmounting interrupts it.
+  useQuery(
+    () =>
+      Effect.sync(() => {
+        setNow(new Date());
+        refresh();
+      }).pipe(
+        Effect.repeat(Schedule.spaced(REFRESH_INTERVAL_MS)),
+        Effect.delay(REFRESH_INTERVAL_MS),
+      ),
+    [],
+  );
+  // Also tick `now` every minute so the "expires in" countdown updates
+  // without a full reload.
+  useQuery(
+    () =>
+      Effect.sync(() => setNow(new Date())).pipe(
+        Effect.repeat(Schedule.spaced(COUNTDOWN_TICK_MS)),
+        Effect.delay(COUNTDOWN_TICK_MS),
+      ),
+    [],
+  );
 
   // Refresh when the tab regains focus so coming back from another window
   // picks up anything decided elsewhere.
   useEffect(() => {
     const onFocus = (): void => {
-      void load(false);
+      refresh();
     };
     window.addEventListener('focus', onFocus);
     return () => {
       window.removeEventListener('focus', onFocus);
     };
-  }, [load]);
+  }, [refresh]);
 
-  // 30 s background refresh while the page is open.
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setNow(new Date());
-      void load(false);
-    }, REFRESH_INTERVAL_MS);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [load]);
-
-  // Also tick `now` every minute so the "expires in" countdown updates
-  // without a full reload.
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), COUNTDOWN_TICK_MS);
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  const retry = (): void => {
-    void load(true);
-  };
-
-  const refresh = (): void => {
-    void load(false);
-  };
-
-  const decide = async (id: string, decision: 'approve' | 'deny'): Promise<void> => {
-    setRows((previous) => {
-      const current = previous[id];
-      if (current === undefined) {
-        return previous;
-      }
-      return { ...previous, [id]: { ...current, busy: decision, error: '' } };
+  const listFailure = isWaiting(list) ? undefined : failureOf(list);
+  const status = AsyncResult.isSuccess(list) ? 'ready' : 'loading';
+  const noticeVisible = notice !== '' && isWaiting(noticeTimer);
+  const ordered = (AsyncResult.isSuccess(list) ? list.value : [])
+    .filter((approval) => !decidedIds.has(approval.id))
+    .sort((a, b) => {
+      const left = new Date(a.createdAt).getTime();
+      const right = new Date(b.createdAt).getTime();
+      return right - left;
     });
-    try {
-      const updated = await decideApproval(id, decision === 'approve' ? 'approve_once' : 'deny');
-      decidedIds.current.add(id);
-      if (!mounted.current) {
-        return;
-      }
-      setRows((previous) => {
-        const next = { ...previous };
-        delete next[id];
-        return next;
-      });
-      showNotice(
-        decision === 'approve' ? `Approved “${updated.action}”.` : `Denied “${updated.action}”.`,
-        NOTICE_TIMEOUT_MS,
-      );
-    } catch (error) {
-      if (!mounted.current) {
-        return;
-      }
-      if (error instanceof ApiError && (error.code === 'not_pending' || error.code === 'expired')) {
-        decidedIds.current.add(id);
-        setRows((previous) => {
-          const next = { ...previous };
-          delete next[id];
-          return next;
-        });
-        showNotice('That request was already decided or expired.', STALE_NOTICE_TIMEOUT_MS);
-        return;
-      }
-      const message = error instanceof Error ? error.message : 'Could not send the decision.';
-      setRows((previous) => {
-        const current = previous[id];
-        if (current === undefined) {
-          return previous;
-        }
-        return { ...previous, [id]: { ...current, busy: null, error: message } };
-      });
-    }
-  };
-
-  const ordered = Object.values(rows).sort((a, b) => {
-    const left = new Date(a.approval.createdAt).getTime();
-    const right = new Date(b.approval.createdAt).getTime();
-    return right - left;
-  });
 
   return (
     <SettingsShell
@@ -227,22 +110,20 @@ export function ApprovalsPage() {
                 size="sm"
                 variant="outline"
                 className="rounded-full px-3"
-                onClick={refresh}
+                onClick={() => refresh()}
               >
                 Refresh
               </Button>
             </div>
 
             <ul className="flex flex-col gap-2">
-              {ordered.map((row) => (
-                <li key={row.approval.id}>
-                  <ApprovalRow
-                    approval={row.approval}
-                    expiresIn={expiresInText(row.approval.expiresAt, now)}
-                    busy={row.busy}
-                    actionError={row.error}
-                    onApprove={() => void decide(row.approval.id, 'approve')}
-                    onDeny={() => void decide(row.approval.id, 'deny')}
+              {ordered.map((approval) => (
+                <li key={approval.id}>
+                  <PendingApproval
+                    approval={approval}
+                    now={now}
+                    onDecided={markDecided}
+                    onNotice={showNotice}
                   />
                 </li>
               ))}
@@ -259,7 +140,7 @@ export function ApprovalsPage() {
                 size="sm"
                 variant="outline"
                 className="rounded-full px-3"
-                onClick={refresh}
+                onClick={() => refresh()}
               >
                 Refresh
               </Button>
@@ -268,18 +149,18 @@ export function ApprovalsPage() {
           </section>
         )}
 
-        {notice !== '' && (
+        {noticeVisible && (
           <p role="status" className="text-[14px] text-muted-foreground">
             {notice}
           </p>
         )}
 
-        {status === 'loading' && <ApprovalsListSkeleton />}
+        {status === 'loading' && listFailure === undefined && <ApprovalsListSkeleton />}
 
-        {status === 'error' && (
+        {listFailure !== undefined && (
           <div className="flex flex-col items-center gap-3 py-8 text-center">
-            <FieldError>{errorMessage}</FieldError>
-            <Button type="button" size="lg" className="rounded-full px-5" onClick={retry}>
+            <FieldError>{listMessage(listFailure)}</FieldError>
+            <Button type="button" size="lg" className="rounded-full px-5" onClick={() => refresh()}>
               Retry
             </Button>
           </div>
@@ -287,4 +168,72 @@ export function ApprovalsPage() {
       </div>
     </SettingsShell>
   );
+}
+
+/** One pending request. Each row runs its own decision, so two rows can be decided at once. */
+function PendingApproval({
+  approval,
+  now,
+  onDecided,
+  onNotice,
+}: {
+  approval: PublicApproval;
+  now: Date;
+  onDecided: (id: string) => void;
+  onNotice: (message: string, durationMs: number) => void;
+}) {
+  const [busy, setBusy] = useState<null | 'approve' | 'deny'>(null);
+  const [decisionState, decide] = useAction((decision: 'approve' | 'deny') =>
+    fromApi(() =>
+      decideApproval(approval.id, decision === 'approve' ? 'approve_once' : 'deny'),
+    ).pipe(
+      Effect.tap((updated) =>
+        Effect.sync(() => {
+          onDecided(approval.id);
+          onNotice(
+            decision === 'approve'
+              ? `Approved “${updated.action}”.`
+              : `Denied “${updated.action}”.`,
+            NOTICE_TIMEOUT_MS,
+          );
+        }),
+      ),
+      Effect.catchIf(isStaleDecision, () =>
+        Effect.sync(() => {
+          onDecided(approval.id);
+          onNotice('That request was already decided or expired.', STALE_NOTICE_TIMEOUT_MS);
+        }),
+      ),
+      Effect.ensuring(Effect.sync(() => setBusy(null))),
+    ),
+  );
+
+  const start = (decision: 'approve' | 'deny'): void => {
+    setBusy(decision);
+    decide(decision);
+  };
+  const failure = isWaiting(decisionState) ? undefined : failureOf(decisionState);
+
+  return (
+    <ApprovalRow
+      approval={approval}
+      expiresIn={expiresInText(approval.expiresAt, now)}
+      busy={busy}
+      actionError={failure === undefined ? '' : decisionMessage(failure)}
+      onApprove={() => start('approve')}
+      onDeny={() => start('deny')}
+    />
+  );
+}
+
+function isStaleDecision(failure: ApiFailure): boolean {
+  return failure.code === 'not_pending' || failure.code === 'expired';
+}
+
+function listMessage(failure: ApiFailure): string {
+  return failure.code === 'unknown_error' ? 'Could not load your approvals.' : failure.message;
+}
+
+function decisionMessage(failure: ApiFailure): string {
+  return failure.code === 'unknown_error' ? 'Could not send the decision.' : failure.message;
 }

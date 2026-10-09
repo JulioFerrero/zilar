@@ -80,4 +80,50 @@ describe('BlockedPage', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Unblock' })[0]!);
     expect(await screen.findByText('Could not unblock. Try again.')).toBeTruthy();
   });
+
+  it('two different rows can be unblocked at once', async () => {
+    listMock.mockResolvedValue(PEOPLE);
+    const finish: Array<() => void> = [];
+    unblockMock.mockImplementation(
+      () =>
+        new Promise<{ blocked: boolean }>((resolve) => {
+          finish.push(() => resolve({ blocked: false }));
+        }),
+    );
+    renderApp('/settings/blocked');
+
+    await screen.findByText('Bob');
+    const [bob, ana] = screen.getAllByRole('button', { name: 'Unblock' });
+    fireEvent.click(bob!);
+    fireEvent.click(ana!);
+
+    await waitFor(() => expect(unblockMock).toHaveBeenCalledTimes(2));
+    expect(unblockMock).toHaveBeenNthCalledWith(1, 'u-bob');
+    expect(unblockMock).toHaveBeenNthCalledWith(2, 'u-ana');
+    finish.forEach((done) => done());
+    await waitFor(() => expect(screen.queryByText('Bob')).toBeNull());
+    expect(screen.queryByText('Ana')).toBeNull();
+  });
+
+  it('a second click on the same row waits for its first unblock', async () => {
+    listMock.mockResolvedValue(PEOPLE);
+    let finish: () => void = () => undefined;
+    unblockMock.mockImplementation(
+      () =>
+        new Promise<{ blocked: boolean }>((resolve) => {
+          finish = () => resolve({ blocked: false });
+        }),
+    );
+    renderApp('/settings/blocked');
+
+    await screen.findByText('Bob');
+    const bob = screen.getAllByRole('button', { name: 'Unblock' })[0]!;
+    fireEvent.click(bob);
+    fireEvent.click(bob);
+
+    await waitFor(() => expect(unblockMock).toHaveBeenCalledTimes(1));
+    finish();
+    await waitFor(() => expect(screen.queryByText('Bob')).toBeNull());
+    expect(unblockMock).toHaveBeenCalledTimes(1);
+  });
 });
