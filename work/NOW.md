@@ -2,6 +2,14 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 14:10 UTC: speed-ups merged (T-0754, T-0755, T-0756) and the map on Pages (T-0752)**
+- **CI:** pushes that touch only `work/`, `docs/` or `*.md` no longer start CI; the checks run as 4 parallel jobs with a Turborepo cache.
+- **Images:** green-main builds are amd64-only (the live host is x86_64) with a gha cache, and only `v*` tags build arm64. The image-build check takes the last commit that changed code, so docs commits on top are fine.
+- **Gate:** the format check covers only the changed files (1 s instead of 19 s), and `lead merge` skips the re-gate when the tree already passed (pass records in `~/.zilar-lead/gate-pass/`).
+- **Effect map:** https://julioferrero.github.io/zilar/ (Pages enabled with Julio's OK at 14:10), rebuilt by `effect-map.yml` on every push to main. The claude.ai map artifact is retired.
+- **Running:** T-0753 (Sonnet), the plan to reach 100% Effect.
+- **First real runs to check:** CI duration, cache hits, the image build time, and a "gate: skipped" line at the next merge.
+
 **2026-10-09 13:55 UTC: drizzle-free server LIVE on `73fae1bf` (`IMAGE_TAG=sha-73fae1bf1ad5`)**
 - **The deploy:** T-0749 (row types) and T-0751 (drizzle out) are deployed after a dump and a `postgres-data` backup at 13:54. The server is listening with no errors, health ok, web 200, `/api/me` 401, and real traffic arriving.
 - **The server has no legacy libraries left.** Drizzle stays only as better-auth's optional peer in the lockfile (follow-up).
