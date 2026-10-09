@@ -91,6 +91,7 @@ function likePattern(kind: 'contains' | 'starts_with' | 'ends_with', value: unkn
 }
 
 function clauseFragment(
+  db: ServerDatabase,
   sql: Statement.Constructor,
   model: string,
   clause: CleanedWhere,
@@ -98,22 +99,23 @@ function clauseFragment(
   const columnName = columnFor(model, clause.field);
   const column = sql(columnName);
   const { value } = clause;
-  const list = Array.isArray(value) ? value : [value];
+  const list = (Array.isArray(value) ? value : [value]).map((item) => bindValue(db, item));
+  const bound = bindValue(db, value);
   switch (clause.operator) {
     case 'in':
       return sql`${sql.in(columnName, list)}`;
     case 'not_in':
       return sql`${column} NOT IN ${sql.in(list)}`;
     case 'ne':
-      return value === null ? sql`${column} IS NOT NULL` : sql`${column} <> ${value}`;
+      return value === null ? sql`${column} IS NOT NULL` : sql`${column} <> ${bound}`;
     case 'lt':
-      return sql`${column} < ${value}`;
+      return sql`${column} < ${bound}`;
     case 'lte':
-      return sql`${column} <= ${value}`;
+      return sql`${column} <= ${bound}`;
     case 'gt':
-      return sql`${column} > ${value}`;
+      return sql`${column} > ${bound}`;
     case 'gte':
-      return sql`${column} >= ${value}`;
+      return sql`${column} >= ${bound}`;
     case 'contains':
     case 'starts_with':
     case 'ends_with': {
@@ -124,13 +126,14 @@ function clauseFragment(
       )} ESCAPE '\\'`;
     }
     default:
-      return value === null ? sql`${column} IS NULL` : sql`${column} = ${value}`;
+      return value === null ? sql`${column} IS NULL` : sql`${column} = ${bound}`;
   }
 }
 
 // The where clauses fold left to right: each clause's connector links it to the
 // running result, matching how the memory adapter evaluates them.
 function whereFragment(
+  db: ServerDatabase,
   sql: Statement.Constructor,
   model: string,
   where: ReadonlyArray<CleanedWhere> | undefined,
@@ -138,11 +141,11 @@ function whereFragment(
   if (!where || where.length === 0) {
     return null;
   }
-  let combined = clauseFragment(sql, model, where[0] as CleanedWhere);
+  let combined = clauseFragment(db, sql, model, where[0] as CleanedWhere);
   for (let index = 1; index < where.length; index += 1) {
     const clause = where[index] as CleanedWhere;
     const connector = clause.connector === 'OR' ? ' OR ' : ' AND ';
-    combined = sql`(${combined})${sql.literal(connector)}(${clauseFragment(sql, model, clause)})`;
+    combined = sql`(${combined})${sql.literal(connector)}(${clauseFragment(db, sql, model, clause)})`;
   }
   return combined;
 }
@@ -206,14 +209,16 @@ function normalizeRow(db: ServerDatabase, config: AdapterConfig, model: string, 
 // On real pg a `Date` binds as `timestamptz`, and a `timestamp` column stores it
 // as wall clock in the session `TimeZone`. `PgTypes.timestamp` binds the UTC
 // fields instead, so the stored wall clock is UTC whatever the session is. PGlite
-// keeps the plain `Date` binding it has always had.
+// keeps the plain `Date` binding it has always had. Written values and where
+// values bind the same way, so a comparison sees the stored wall clock.
+function bindValue(db: ServerDatabase, value: unknown): unknown {
+  return !isPgliteDatabase(db) && value instanceof Date ? PgTypes.timestamp(value) : value;
+}
+
 function bindRow(db: ServerDatabase, row: Row): Row {
-  if (isPgliteDatabase(db)) {
-    return row;
-  }
   const bound: Row = {};
   for (const [column, value] of Object.entries(row)) {
-    bound[column] = value instanceof Date ? PgTypes.timestamp(value) : value;
+    bound[column] = bindValue(db, value);
   }
   return bound;
 }
@@ -244,7 +249,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const clause = whereFragment(sql, model, where);
+        const clause = whereFragment(db, sql, model, where);
         if (clause === null) {
           return [];
         }
@@ -260,7 +265,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const clause = whereFragment(sql, model, where);
+        const clause = whereFragment(db, sql, model, where);
         const order =
           sortBy === undefined
             ? sql.literal('')
@@ -283,7 +288,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const clause = whereFragment(sql, model, where);
+        const clause = whereFragment(db, sql, model, where);
         if (clause === null) {
           const rows = yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM ${sql(
             tableFor(model),
@@ -304,7 +309,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const clause = whereFragment(sql, model, where);
+        const clause = whereFragment(db, sql, model, where);
         if (clause === null) {
           return [];
         }
@@ -323,7 +328,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const clause = whereFragment(sql, model, where);
+        const clause = whereFragment(db, sql, model, where);
         if (clause === null) {
           return 0;
         }
@@ -340,7 +345,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const clause = whereFragment(sql, model, where);
+        const clause = whereFragment(db, sql, model, where);
         if (clause === null) {
           return;
         }
@@ -354,7 +359,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const clause = whereFragment(sql, model, where);
+        const clause = whereFragment(db, sql, model, where);
         if (clause === null) {
           return 0;
         }

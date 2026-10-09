@@ -1,16 +1,15 @@
 import { betterAuth } from 'better-auth';
-import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { bearer, emailOTP } from 'better-auth/plugins';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import * as schema from '../db/schema';
 import { setUpContactsFromInvite } from '../contacts/service';
 import { ensureXmppAccount } from '../xmpp/provisioning';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { consumeInvite, findUsableInvite } from './invites';
 import type { Mailer } from './mailer';
 import { isTransportConfigured, MailNotConfiguredError } from './mailer';
+import { effectSqlAdapter } from './sql-adapter';
 
 export const INVITE_HEADER = 'x-zilar-invite';
 export const OTP_LENGTH = 6;
@@ -45,7 +44,7 @@ export function createAuth({
   return betterAuth({
     baseURL: config.BETTER_AUTH_URL,
     secret: config.BETTER_AUTH_SECRET,
-    database: drizzleAdapter(db, { provider: 'pg', schema }),
+    database: effectSqlAdapter(db),
     emailAndPassword: { enabled: false },
     telemetry: { enabled: false },
     logger: { disabled: true },

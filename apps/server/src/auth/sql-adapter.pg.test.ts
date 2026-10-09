@@ -3,16 +3,29 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import type { ServerConfig } from '../config';
+import { loadServerConfig } from '../config';
 import { createDb, type DbClient, type ServerDatabase } from '../db/client';
 import * as schema from '../db/schema';
 import { disposeSqlRuntime, registerSqlRuntime, sqlRuntimeFor } from '../effect/sql';
+import {
+  FakeAdminClient,
+  TEST_SECRET,
+  TEST_XMPP_JWT_SECRET,
+  TEST_XMPP_WS_URL,
+  TestMailer,
+} from '../test-support';
+import { createAuth, INVITE_HEADER, type Auth } from './auth';
+import { createInvite } from './invites';
 import { effectSqlAdapter } from './sql-adapter';
 
 /**
  * The gated check for the effect/sql auth adapter on real Postgres. It writes
  * and reads `verification` rows through the adapter and through `drizzleAdapter`
- * (the one `auth.ts` uses today), under a Madrid process time zone, and checks
- * that every read returns the same instant. It deletes only the rows it created.
+ * (the adapter `auth.ts` used before T-0738), under a Madrid process time zone,
+ * and checks that every read returns the same instant. It also runs a full
+ * email-OTP sign-up and sign-in through `createAuth` on real Postgres. It deletes
+ * only the rows it created.
  *
  * Required env vars:
  *   ZILAR_PG_INTEGRATION=1                  (turns the test on)
@@ -26,11 +39,33 @@ const ENABLED = process.env['ZILAR_PG_INTEGRATION'] === '1';
 const DATABASE_URL = process.env['DATABASE_URL'];
 const LOCAL_HOSTS = ['127.0.0.1', 'localhost'];
 const TEST_TIME_ZONE = 'Europe/Madrid';
+const AUTH_BASE_URL = 'http://localhost:3000';
+// better-auth's default session lifetime (7 days), which `createAuth` does not override.
+const SESSION_LIFETIME_MS = 60 * 60 * 24 * 7 * 1000;
+// A host-offset shift is an hour or more, so a minute of slack still catches it.
+const SESSION_EXPIRY_TOLERANCE_MS = 60 * 1000;
+const BOUNDARY_WINDOW_MS = 10 * 60 * 1000;
 
 // 12:34:56 UTC is 13:34:56 in Madrid, so a host-offset shift shows up as a
 // different instant.
 const EXPIRES_AT = new Date('2030-03-10T12:34:56.789Z');
 const EXPIRES_AT_WALL_CLOCK = '2030-03-10 12:34:56.789';
+
+// Only the fields `createAuth` reads. The database URL is a placeholder: the
+// test's real client is built from DATABASE_URL, and this config never opens it.
+function pgTestConfig(): ServerConfig {
+  return loadServerConfig({
+    NODE_ENV: 'test',
+    DATABASE_URL: 'postgres://test:CHANGE_ME@127.0.0.1:5432/zilar',
+    BETTER_AUTH_SECRET: TEST_SECRET,
+    PUBLIC_URL: AUTH_BASE_URL,
+    EJABBERD_API_URL: 'http://127.0.0.1:5280/api',
+    EJABBERD_ADMIN_JID: 'admin@zilar.localhost',
+    EJABBERD_ADMIN_PASSWORD: 'admin-password',
+    XMPP_WS_PUBLIC_URL: TEST_XMPP_WS_URL,
+    ZILAR_XMPP_JWT_SECRET: TEST_XMPP_JWT_SECRET,
+  });
+}
 
 describe.skipIf(!ENABLED)('effectSqlAdapter on real Postgres', () => {
   let client: DbClient | undefined;
@@ -69,6 +104,77 @@ describe.skipIf(!ENABLED)('effectSqlAdapter on real Postgres', () => {
           wall: string;
         }>`SELECT expires_at::text AS wall FROM verification WHERE id = ${id}`;
         return rows[0]?.wall;
+      }),
+    );
+  }
+
+  function authFor(mailer: TestMailer): Auth {
+    return createAuth({
+      db: db(),
+      config: pgTestConfig(),
+      mailer,
+      adminClient: new FakeAdminClient(),
+    });
+  }
+
+  function authPost(
+    auth: Auth,
+    path: string,
+    body: unknown,
+    headers: Record<string, string> = {},
+  ): Promise<Response> {
+    return auth.handler(
+      new Request(`${AUTH_BASE_URL}/api/auth${path}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-forwarded-for': '10.20.30.40',
+          ...headers,
+        },
+        body: JSON.stringify(body),
+      }),
+    );
+  }
+
+  // The user's sessions, read through the adapter the way better-auth reads them.
+  // With `expiresBetween`, only sessions expiring strictly inside that window match.
+  async function sessionsFor(
+    email: string,
+    expiresBetween?: readonly [Date, Date],
+  ): Promise<Array<{ expiresAt: Date }>> {
+    const user = await effectAdapter().findOne<{ id: string }>({
+      model: 'user',
+      where: [{ field: 'email', value: email }],
+    });
+    if (user === null) {
+      throw new Error('expected the signed-up user row');
+    }
+    const expiryWhere =
+      expiresBetween === undefined
+        ? []
+        : [
+            { field: 'expiresAt', operator: 'gt' as const, value: expiresBetween[0] },
+            { field: 'expiresAt', operator: 'lt' as const, value: expiresBetween[1] },
+          ];
+    return effectAdapter().findMany<{ expiresAt: Date }>({
+      model: 'session',
+      where: [{ field: 'userId', value: user.id }, ...expiryWhere],
+      limit: 10,
+    });
+  }
+
+  // Removes only what the sign-up created: the user (its sessions, accounts,
+  // XMPP account and invite link cascade), the invite and the OTP rows for this email.
+  async function deleteOwnRows(email: string, inviteId: string): Promise<void> {
+    await effectAdapter().deleteMany({
+      model: 'verification',
+      where: [{ field: 'identifier', operator: 'contains', value: email }],
+    });
+    await effectAdapter().deleteMany({ model: 'user', where: [{ field: 'email', value: email }] });
+    await sqlRuntimeFor(db()).runPromise(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM invites WHERE id = ${inviteId}`;
       }),
     );
   }
@@ -155,5 +261,63 @@ describe.skipIf(!ENABLED)('effectSqlAdapter on real Postgres', () => {
       where: [{ field: 'identifier', value: identifier }],
     });
     expect(found?.expiresAt.toISOString()).toBe(EXPIRES_AT.toISOString());
+  });
+
+  it('signs up and back in with an email OTP through createAuth, with the session expiry at now plus the lifetime', async () => {
+    const email = `pg-otp-${randomUUID()}@example.com`;
+    const invite = await createInvite(db(), { createdBy: null });
+    const mailer = new TestMailer();
+    const auth = authFor(mailer);
+    try {
+      const sentForSignUp = await authPost(
+        auth,
+        '/email-otp/send-verification-otp',
+        { email, type: 'sign-in' },
+        { [INVITE_HEADER]: invite.code },
+      );
+      expect(sentForSignUp.status).toBe(200);
+
+      const signUp = await authPost(
+        auth,
+        '/sign-in/email-otp',
+        { email, otp: mailer.codeFor(email) },
+        { [INVITE_HEADER]: invite.code },
+      );
+      expect(signUp.status).toBe(200);
+      expect(
+        signUp.headers
+          .getSetCookie()
+          .some((cookie) => cookie.includes('better-auth.session_token=')),
+      ).toBe(true);
+
+      const [session] = await sessionsFor(email);
+      expect(session).toBeDefined();
+      const expiry = session?.expiresAt.getTime() ?? 0;
+      expect(Math.abs(expiry - (Date.now() + SESSION_LIFETIME_MS))).toBeLessThan(
+        SESSION_EXPIRY_TOLERANCE_MS,
+      );
+      // A Date in a where clause must compare at the same instant as the stored
+      // row: the session matches a window of ten minutes either side of its expiry.
+      expect(
+        await sessionsFor(email, [
+          new Date(expiry - BOUNDARY_WINDOW_MS),
+          new Date(expiry + BOUNDARY_WINDOW_MS),
+        ]),
+      ).toHaveLength(1);
+
+      const sentForSignIn = await authPost(auth, '/email-otp/send-verification-otp', {
+        email,
+        type: 'sign-in',
+      });
+      expect(sentForSignIn.status).toBe(200);
+      const signIn = await authPost(auth, '/sign-in/email-otp', {
+        email,
+        otp: mailer.codeFor(email),
+      });
+      expect(signIn.status).toBe(200);
+      expect(await sessionsFor(email)).toHaveLength(2);
+    } finally {
+      await deleteOwnRows(email, invite.id);
+    }
   });
 });
