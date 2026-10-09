@@ -1,3 +1,5 @@
+import { Effect } from 'effect';
+
 // In-process notifier so the agent gateway learns about group AI membership
 // changes without polling. The gateway also reconciles periodically as a
 // safety net, so a missed event only delays a room join, never loses it.
@@ -15,16 +17,22 @@ export function onGroupAi(listener: (event: GroupAiEvent) => void): () => void {
   };
 }
 
+// Calls each listener in turn, synchronously. A listener that throws is
+// dropped for this emit and the next one still runs. The Set is walked live
+// (sequential forEach), so a listener that unsubscribes mid-emit is simply
+// not visited again.
+function notifyListeners<T>(listeners: Set<(event: T) => void>, event: T): void {
+  Effect.runSync(
+    Effect.forEach(listeners, (listener) => Effect.try(() => listener(event)).pipe(Effect.ignore), {
+      concurrency: 1,
+      discard: true,
+    }),
+  );
+}
+
 export function emitGroupAi(event: GroupAiEvent): void {
-  // Deleting from a Set while iterating it is safe: a listener that
-  // unsubscribes mid-emit is simply not visited again.
-  for (const listener of groupAiListeners) {
-    try {
-      listener(event);
-    } catch {
-      // A gateway listener must never break group management.
-    }
-  }
+  // A gateway listener must never break group management.
+  notifyListeners(groupAiListeners, event);
 }
 
 // Sibling notifier for per-topic AI membership (T-0109). The gateway treats
@@ -45,11 +53,6 @@ export function onTopicAi(listener: (event: TopicAiEvent) => void): () => void {
 }
 
 export function emitTopicAi(event: TopicAiEvent): void {
-  for (const listener of topicAiListeners) {
-    try {
-      listener(event);
-    } catch {
-      // A gateway listener must never break topic management.
-    }
-  }
+  // A gateway listener must never break topic management.
+  notifyListeners(topicAiListeners, event);
 }

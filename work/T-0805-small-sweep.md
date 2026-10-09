@@ -1,7 +1,7 @@
 ---
 id: T-0805
 title: "Small sweep: delete the spike apps/server/src/ai/integration.ts (decision D4), a marker for scripts/screenshots.ts, groups/events.ts listener isolation as an Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0805-small-sweep
 model: auto
@@ -52,4 +52,16 @@ Run the tests 3 times when the code has timers or concurrency. Run `pnpm exec pr
 
 ## Report (written by the worker when done)
 
+- `apps/server/src/groups/events.ts`: effect:map kind `effect` (was needs-effect: W4 try/catch). Both emitters now go through one helper, `notifyListeners`: `Effect.runSync(Effect.forEach(listeners, (l) => Effect.try(() => l(event)).pipe(Effect.ignore), { concurrency: 1, discard: true }))`. The exports and signatures are unchanged.
+- `apps/server/src/groups/events.test.ts` (new): 5 tests. Throwing listener does not stop the next one (group and topic), unsubscribing a later listener mid-emit skips it, unsubscribing itself does not skip the next one, and delivery is synchronous. Not counted by effect:map (test file).
+- `scripts/screenshots.ts`: marker `// effect-plain: dev screenshot script, not shipped` added as line 1. effect:map kind `exempt` (marker). No other change.
+- `apps/server/src/ai/integration.ts`: deleted with `git rm`. Before deleting, `git grep` showed no import of it anywhere in apps, packages or scripts; the only hit was its own header comment. It is no longer in effect:map.
+- Tests: `pnpm --filter @zilar/server exec vitest run --reporter=dot src/groups`: first run 82 passed, 4 failed. The 4 failures were 5s timeouts in the DB-backed visibility and groups tests (the package script uses 30s; I ran without it). The rerun passed 86/86. Before the change there were 81 tests in 2 files, and 86 in 3 files now (81 + 5 new).
+- Typecheck: `pnpm --filter @zilar/server typecheck` exit 0.
+- Behaviour differences: none in what the listeners receive or when. Sequential `forEach` walks the Set live (`concurrency: 1` is the default, and it uses the live iterator), so mid-emit unsubscribe and mid-emit additions behave as before. A throwing listener is still silently dropped (no log). A listener that returns a rejected Promise is still not awaited, as before.
+- Unsure: the first groups run timed out under machine load, so the DB tests can be flaky at the default 5s timeout. That was not caused by this change; the rerun passed.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead (wave 1):** approved. The lead reviewed the Report. The wave 1 combined check (all 12 branches on one tree, by hand) passed the whole-repo typecheck and every package suite: web 1916, server 2279, mobile 2222, xmpp-core 245, runner 63, runner-tunnel 71, devtools 796 after the T-0799 fix, chat-core 174, protocol 174.
+- Worker: Haiku 5.5. The `ai/integration.ts` spike is deleted (D4), `screenshots.ts` is marked, and `groups/events.ts` is a synchronous Effect with 5 new tests.
