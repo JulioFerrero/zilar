@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0781](T-0781-web-group-panel.md) | WU15: GroupPanel on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
 | [T-0782](T-0782-web-topic-panel.md) | WU16: TopicPanel on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
-| [T-0784](T-0784-web-gif-sticker-panels.md) | WU19: GifPanel and StickerPanel on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
 | [T-0785](T-0785-web-channel-invites.md) | WU17: channel and invite components on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
 | [T-0786](T-0786-web-pack-editor-import.md) | WU20: PackEditor and Telegram import on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
 
@@ -815,3 +814,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0779](T-0779-web-tools-sections.md) | WU13: web tools sections on Effect | 2026-10-09 |
 | [T-0780](T-0780-xmpp-request-tests.md) | xmpp-core request path tests | 2026-10-09 |
 | [T-0783](T-0783-web-stickers-page.md) | WU10: StickersPage on Effect | 2026-10-09 |
+| [T-0784](T-0784-web-gif-sticker-panels.md) | WU19: GifPanel and StickerPanel on Effect | 2026-10-09 |
