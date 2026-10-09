@@ -7,7 +7,7 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import type { chatPrefs } from '../db/schema';
+import type { ChatPrefRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { canSeeTopic, type TopicRow } from '../topics/access';
@@ -42,7 +42,7 @@ export interface BackgroundFieldsInput {
   backgroundDim?: number | null | undefined;
 }
 
-export type ChatPrefRow = typeof chatPrefs.$inferSelect;
+export type { ChatPrefRow };
 
 export interface ChatPrefView extends BackgroundFields {
   chatJid: string;

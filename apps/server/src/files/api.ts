@@ -1,9 +1,8 @@
 // Files module on the Effect `HttpApi` adapter (T-0580): the same method,
-// path, step order, statuses, texts, logs and headers as the Hono router
-// (`routes.ts`), mounted under Hono by `apps/server/src/effect/http.ts`.
+// path, step order, statuses, texts, logs and headers as the old router
+// (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
 // Handlers keep calling `allowedArchives` / `resolveChatFilter` / `indexChat`;
-// the file-row read runs on the `effect/sql` client, and the rest of the DB
-// rewrite is a separate lane.
+// the file-row read runs on the `effect/sql` client.
 //
 // The query is decoded manually inside the handler (Effect Schema, same rules
 // as the old zod schema) instead of as an endpoint `query`, because the old
@@ -60,7 +59,7 @@ export interface FilesRoutesDependencies {
 // Replaces `querySchema` (zod): `chat` is 1..256 characters, `url` is
 // 1..2048. Strict, so an excess key fails like the old `.strict()`. Values
 // arrive as strings from the query string, so the decode runs over the raw
-// `URLSearchParams` view (first value wins, like Hono's `c.req.query()`).
+// `URLSearchParams` view (first value wins, like the old `c.req.query()`).
 const FilesQuery = Schema.Struct({
   chat: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
   url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048)),
@@ -161,7 +160,7 @@ const FilesGroup = HttpApiGroup.make('files')
   // the 501/429 guards run first) and streams the upstream body itself.
   .add(HttpApiEndpoint.get('file', '/files'))
   .middleware(Session)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const FilesApi = HttpApi.make('files').add(FilesGroup);
@@ -316,7 +315,7 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
     Layer.provide(sessionLayer(deps.auth, logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

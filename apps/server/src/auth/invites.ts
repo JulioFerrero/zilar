@@ -6,7 +6,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import type { invites } from '../db/schema';
+import type { InviteRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 
 export const INVITE_CODE_BYTES = 16;
@@ -15,7 +15,7 @@ export const DEFAULT_INVITE_TTL_DAYS = 7;
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
-export type Invite = typeof invites.$inferSelect;
+export type Invite = InviteRow;
 
 export interface CreateInviteOptions {
   createdBy?: string | null;

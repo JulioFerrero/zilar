@@ -1,11 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Hono, type Context } from 'hono';
-import type { RequestIdVariables } from 'hono/request-id';
 import { HttpError } from './errors';
 import { testApp, type TestContext, TEST_BASE_URL, createTestContext } from './test-support';
+import type { ZilarEdge } from './app';
 
-type SweepEnv = { Variables: RequestIdVariables };
-type SweepApp = Hono<SweepEnv>;
+type SweepApp = Pick<ZilarEdge, 'request' | 'routes'>;
 
 type RouteSpec = { method: string; path: string };
 
@@ -39,12 +37,9 @@ function actualizePath(path: string): string {
   return path.replace(/:[^/]+/g, 'probe').replace(/\*/g, 'x');
 }
 
-// Top-level middleware entries (`app.use('*', ...)` and `app.use('/api/*', ...)`)
-// show up in `app.routes` with method ALL and a path that ends in `*`. The
-// Better Auth handler is also `ALL` with a wildcard path, so we cannot tell
-// them apart from the route record alone — instead we filter the two exact
-// paths the middleware uses. If a future change adds another `app.use(...)`
-// pattern, this filter must be updated too.
+// The edge manifest lists only real routes (`ALL /api/auth/*` plus the
+// module routes plus `GET /health`); there are no middleware entries to
+// filter. The helper stays so the sweep keeps skipping them if one appears.
 function isMiddlewareEntry(routePath: string): boolean {
   return routePath === '/*' || routePath === '/api/*';
 }
@@ -201,16 +196,31 @@ describe('authorization sweep', () => {
   });
 
   it('flags a throwaway route without auth on a local instance', async () => {
-    const local: SweepApp = new Hono<SweepEnv>();
-    local.onError((error, c: Context) => {
-      if (error instanceof HttpError) {
-        return c.json({ error: { code: error.code } }, error.status);
-      }
-      return c.json({ error: { code: 'internal_error' } }, 500);
-    });
-    local.get('/api/open-route', (c) => c.json({ ok: true }));
-    local.get('/api/guarded-route', () => {
-      throw new HttpError(401, 'unauthorized', 'Authentication required');
+    const { createEdge } = await import('./effect/edge');
+    const local: SweepApp = createEdge({
+      mounts: [
+        {
+          routes: [
+            { method: 'GET', path: '/api/open-route' },
+            { method: 'GET', path: '/api/guarded-route' },
+          ],
+          handler: (request: Request) => {
+            const url = new URL(request.url);
+            if (url.pathname === '/api/guarded-route') {
+              throw new HttpError(401, 'unauthorized', 'Authentication required');
+            }
+            return Promise.resolve(
+              new Response(JSON.stringify({ ok: true }), {
+                headers: { 'content-type': 'application/json' },
+              }),
+            );
+          },
+        },
+      ],
+      auth: { handler: () => Promise.resolve(new Response('not found', { status: 404 })) },
+      config: context.config,
+      logger: context.logger,
+      health: () => Promise.resolve({ status: 200, body: { ok: true } }),
     });
 
     const outcomes = await sweep(local, { baseUrl: TEST_BASE_URL, allowlist: new Set() });

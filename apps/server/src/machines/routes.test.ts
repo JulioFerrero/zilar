@@ -4,7 +4,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { createApp } from '../app';
 import { createAuditRecorder, type AuditRecorder } from '../audit/service';
-import { SOCKET_ADDRESS_HEADER } from '../effect/http';
+import { SOCKET_ADDRESS_HEADER } from '../effect/http-core';
 import {
   bootstrapUser,
   createTestContext,

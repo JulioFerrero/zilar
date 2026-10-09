@@ -1,9 +1,9 @@
-import http from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '@zilar/server/src/app.ts';
+import { serveEdgeOnNode } from '@zilar/server/src/effect/node-serve.ts';
 import {
   bootstrapUser,
   createTestContext,
@@ -15,25 +15,9 @@ import { pairRunner } from './pair.ts';
 import { runRunner } from './connect.ts';
 import { identityPaths, type RunnerIdentity } from './identity.ts';
 
-// `serve` from `@hono/node-server` lives inside `@zilar/server/node_modules`
-// because the runner does not list it as a direct dependency. A dynamic
-// import lets Node resolve it through the workspace symlink and keeps the
-// runner's typecheck free of `@hono/node-server` types.
-type ServeOptions = {
-  fetch: (request: Request) => Promise<Response> | Response;
-  port: number;
-};
-type ServeFn = (options: ServeOptions) => http.Server;
-async function loadServe(): Promise<ServeFn> {
-  const mod = (await import('@zilar/server/node_modules/@hono/node-server/dist/index.mjs')) as {
-    serve: ServeFn;
-  };
-  return mod.serve;
-}
-
 interface E2EHandle {
   context: TestContext;
-  httpServer: http.Server;
+  closeHttp: () => Promise<void>;
   httpPort: number;
   registry: ReturnType<typeof createDbMachineRegistry>;
   user: { id: string; cookie: string; bearer: string };
@@ -62,18 +46,10 @@ async function startE2E(): Promise<E2EHandle> {
     machineRegistry: registry,
     isMachineOnline,
   });
-  const serve = await loadServe();
-  const httpServer = serve({ fetch: appWithOnline.fetch, port: 0 });
-  const httpPort = await new Promise<number>((resolve, reject) => {
-    httpServer.once('error', reject);
-    httpServer.once('listening', () => {
-      const address = httpServer.address();
-      if (address !== null && typeof address === 'object') {
-        resolve(address.port);
-      } else {
-        reject(new Error('http server did not bind a port'));
-      }
-    });
+  // Serve the app on its own Node server through the shared helper
+  // (`serveEdgeOnNode`), the same path `index.ts` uses in production.
+  const { port: httpPort, close: closeHttp } = await serveEdgeOnNode(appWithOnline, {
+    port: 0,
   });
   const bootstrapApp = createApp({
     db: context.db,
@@ -88,7 +64,7 @@ async function startE2E(): Promise<E2EHandle> {
   let closed = false;
   return {
     context,
-    httpServer,
+    closeHttp,
     httpPort,
     registry,
     user,
@@ -100,9 +76,7 @@ async function startE2E(): Promise<E2EHandle> {
     cleanup: async () => {
       if (closed) return;
       closed = true;
-      await new Promise<void>((resolve) => {
-        httpServer.close(() => resolve());
-      });
+      await closeHttp();
       if (hub !== null) {
         await hub.close().catch(() => undefined);
         hub = null;

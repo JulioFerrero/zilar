@@ -4,7 +4,7 @@ import { SqlClient, SqlError, type Statement } from 'effect/sql';
 import { ARGS_HASH_PATTERN } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
 import { sqlRuntimeFor } from '../effect/sql';
-import type { approvals } from '../db/schema';
+import type { ApprovalInsert, ApprovalRow } from '../db/rows';
 import { canSeeTopic, getTopic } from '../topics/access';
 import { createRuleEffect, isGroupAdmin } from './rules';
 
@@ -172,8 +172,6 @@ export class ApprovalServiceError extends Error {
   }
 }
 
-type ApprovalRow = typeof approvals.$inferSelect;
-
 // The raw shape the driver returns for one `approvals` row. The effect/sql
 // client camelCases the columns but may hand back `timestamptz` as an ISO
 // string rather than a `Date`; `toApprovalRow` normalises the three
@@ -277,7 +275,7 @@ export function createApprovalEffect(
     }
 
     const id = randomUUID();
-    const row: typeof approvals.$inferInsert = {
+    const row: ApprovalInsert = {
       id,
       aiId: data.aiId,
       groupId: data.groupId ?? null,

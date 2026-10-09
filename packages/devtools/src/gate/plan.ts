@@ -1,6 +1,7 @@
-// Which checks the gate runs for a set of changed files. The whole repo always
-// gets format, lint and typecheck (they are fast and global); tests run only
-// for the packages whose files changed, always with the worker cap. By default
+// Which checks the gate runs for a set of changed files. Lint and typecheck
+// cover the whole repo (typecheck only the affected packages); format checks
+// just the changed files unless `--full`; tests run only for the packages whose
+// files changed, always with the worker cap. By default
 // only the nearest tests run: the changed test files themselves plus, for each
 // changed source file, the tests sitting in the same folder. `--full` keeps the
 // older behaviour of letting Vitest pull in every test that imports the change.
@@ -36,7 +37,7 @@ export interface GateOptions {
   cacheDir?: string;
   /** Every test file in the repo, relative to the root; the near-test search space. */
   testFiles?: string[];
-  /** Whether a selected path is still on disk; a deleted test must not be run. */
+  /** Whether a changed path is still on disk; a deleted file must not be checked or run. */
   exists?: (file: string) => boolean;
 }
 
@@ -134,12 +135,11 @@ export function gateSteps(
   const full = options.full ?? false;
   const merge = options.merge ?? false;
   const cacheDir = options.cacheDir ?? turboCacheDir;
-  const selected = full
-    ? []
-    : selectTestFiles(changedFiles, options.testFiles ?? [], options.exists);
+  const exists = options.exists ?? (() => true);
+  const selected = full ? [] : selectTestFiles(changedFiles, options.testFiles ?? [], exists);
   const steps: GateStep[] = [
     { label: 'install (frozen)', command: 'pnpm', args: ['install', '--frozen-lockfile'] },
-    { label: 'format', command: 'pnpm', args: ['format:check'] },
+    formatStep(changedFiles, full, exists),
     { label: 'lint', command: 'pnpm', args: ['lint'] },
     {
       label: 'typecheck',
@@ -192,6 +192,33 @@ export function gateSteps(
     });
   }
   return steps;
+}
+
+// The format step: the changed files that still exist, checked with Prettier
+// directly. `--full` keeps the whole-repo check. Nothing changed means nothing
+// to check, so the step is skipped rather than checking the whole repo.
+function formatStep(
+  changedFiles: string[],
+  full: boolean,
+  exists: (file: string) => boolean,
+): GateStep {
+  if (full) {
+    return { label: 'format', command: 'pnpm', args: ['format:check'] };
+  }
+  const present = changedFiles.filter(exists);
+  if (present.length === 0) {
+    return {
+      label: 'format',
+      command: 'pnpm',
+      args: [],
+      skipReason: 'no changed files',
+    };
+  }
+  return {
+    label: 'format',
+    command: 'pnpm',
+    args: ['exec', 'prettier', '--check', '--ignore-unknown', ...present],
+  };
 }
 
 // Merge and patch leftovers that must never be committed.

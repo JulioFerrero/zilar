@@ -2,7 +2,7 @@ import { Data, Duration, Effect, type Effect as EffectType } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import type { groups } from '../db/schema';
+import type { GroupRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { allowedArchives, type ArchivePool, type SearchOwner } from '../search/service';
 import { stanzaFrom } from '../search/routes';
@@ -439,7 +439,7 @@ async function resolveRoomCandidate(
     deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<typeof groups.$inferSelect>`SELECT * FROM groups
+      return yield* sql<GroupRow>`SELECT * FROM groups
         WHERE id = ${topic.groupId} LIMIT 1`;
     }),
   );

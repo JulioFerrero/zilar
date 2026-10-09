@@ -1,6 +1,6 @@
 // The AI-memory routes on the Effect `HttpApi` adapter (T-0533): the same
-// methods, paths, limiter order, status codes and bodies as the deleted Hono
-// router (`routes.ts`), mounted under Hono by `apps/server/src/effect/http.ts`.
+// methods, paths, limiter order, status codes and bodies as the deleted
+// router (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
 // A DM is visible to and changeable by the AI's owner only; a room is visible
 // to everyone who can see it and changeable by the AI's owner and the topic
 // managers. Text is never logged.
@@ -222,7 +222,7 @@ const AiMemoryGroup = HttpApiGroup.make('aiMemory')
   )
   .middleware(Session)
   .middleware(AiMemorySchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const AiMemoryApi = HttpApi.make('aiMemory').add(AiMemoryGroup);
@@ -336,7 +336,7 @@ export function createAiMemoryApi(deps: AiMemoryApiDependencies): EffectApiMount
     Layer.provide(writeRateLimitLayer(writeLimiter)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

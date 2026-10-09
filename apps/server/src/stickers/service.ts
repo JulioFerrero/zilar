@@ -7,7 +7,7 @@ import { Effect, Option, Schema } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import type { stickerPacks, stickers } from '../db/schema';
+import type { StickerPackRow, StickerRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { probeErrorCode, probeStickerBytes, STICKER_MAX_BYTES } from './image';
@@ -28,8 +28,7 @@ export const DISCOVER_PAGE_SIZE = 30;
 export const stickerVisibilitySchema = Schema.Literals(['private', 'server']);
 export type StickerVisibility = typeof stickerVisibilitySchema.Type;
 
-export type StickerRow = typeof stickers.$inferSelect;
-export type StickerPackRow = typeof stickerPacks.$inferSelect;
+export type { StickerPackRow, StickerRow };
 
 export interface StickerView {
   id: string;

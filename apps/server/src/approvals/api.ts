@@ -1,8 +1,7 @@
 // Approvals module on the Effect `HttpApi` adapter (T-0553): the same
 // methods, paths, statuses (204 on delete), bodies, audit calls and step
-// order as the deleted Hono router (`routes.ts`), mounted under Hono by
-// `apps/server/src/effect/http.ts`. Handlers keep calling the drizzle
-// service; the DB rewrite is a separate lane.
+// order as the deleted router (`routes.ts`), mounted by the Effect edge
+// (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
 import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
@@ -19,7 +18,7 @@ import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import type { approvalRules } from '../db/schema';
+import type { ApprovalRuleRow } from '../db/rows';
 import { HttpError } from '../errors';
 import type { EffectApiMount, EffectApiRoute } from '../effect/http-core';
 import {
@@ -52,7 +51,7 @@ import {
 
 // Reads run on the `effect/sql` client registered for this database (see
 // `../effect/sql`); `transformResultNames` camelCases the columns so the rows
-// keep the drizzle shapes the access helpers already take.
+// keep the shapes the access helpers already take.
 function runSql<A>(
   db: ServerDatabase,
   effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
@@ -204,7 +203,7 @@ const ApprovalsGroup = HttpApiGroup.make('approvals')
   )
   .middleware(Session)
   .middleware(ApprovalsSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const ApprovalsApi = HttpApi.make('approvals').add(ApprovalsGroup);
@@ -552,7 +551,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
@@ -612,14 +611,12 @@ async function loadAiOwnerRow(db: ServerDatabase, aiId: string): Promise<AiOwner
 async function loadApprovalRule(
   db: ServerDatabase,
   ruleId: string,
-): Promise<typeof approvalRules.$inferSelect | null> {
+): Promise<ApprovalRuleRow | null> {
   const [row] = await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<
-        typeof approvalRules.$inferSelect
-      >`SELECT * FROM approval_rules WHERE id = ${ruleId} LIMIT 1`;
+      return yield* sql<ApprovalRuleRow>`SELECT * FROM approval_rules WHERE id = ${ruleId} LIMIT 1`;
     }),
   );
   return row ?? null;
@@ -631,7 +628,7 @@ async function loadApprovalRule(
 // group admin may revoke, but only for topics they can see.
 async function canManageRuleFor(
   db: ServerDatabase,
-  rule: typeof approvalRules.$inferSelect,
+  rule: ApprovalRuleRow,
   userId: string,
 ): Promise<boolean> {
   if (rule.topicId !== null) {

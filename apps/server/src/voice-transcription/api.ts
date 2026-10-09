@@ -1,7 +1,7 @@
 // Voice transcription routes on the Effect `HttpApi` adapter (T-0545): the
 // same methods, paths, statuses, bodies, limiter order and audit calls as the
-// old Hono router (`routes.ts`), mounted under Hono by
-// `apps/server/src/effect/http.ts`. The handlers call the pipeline, and the
+// old router (`routes.ts`), mounted by the Effect edge
+// (`apps/server/src/effect/edge.ts`). The handlers call the pipeline, and the
 // database reads and writes run on effect/sql. The owner settings carry the
 // provider API key, which never appears in a response, log line or error text.
 
@@ -194,7 +194,7 @@ const VoiceTranscriptionGroup = HttpApiGroup.make('voiceTranscription')
   )
   .middleware(Session)
   .middleware(VoiceTranscriptionSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const VoiceTranscriptionApi = HttpApi.make('voiceTranscription').add(VoiceTranscriptionGroup);
@@ -471,7 +471,7 @@ export function createVoiceTranscriptionApi(
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

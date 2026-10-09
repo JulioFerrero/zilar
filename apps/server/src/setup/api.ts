@@ -1,10 +1,10 @@
 // First-run setup on the Effect `HttpApi` adapter (T-0578): the same
-// methods, paths, statuses, bodies, step order and texts as the Hono router
-// it replaces. `app.ts` mounts this API at the same position.
+// methods, paths, statuses, bodies, step order and texts as the router it
+// replaces. `app.ts` mounts this API at the same position.
 //
 // Both transactions run on `effect/sql` (`sql.withTransaction` inside a
 // `runSql` on the registered runtime), through the effects in
-// `setup/settings.ts`; the drizzle versions are gone in T-0675.
+// `setup/settings.ts`; the older versions are gone in T-0675.
 //
 // The body is decoded manually inside the POST handler (Effect Schema, same
 // trims, lowercase, bounds, email rule and texts as the old zod schema), so
@@ -79,7 +79,7 @@ export interface SetupApiDependencies {
 
 // Every setup query runs on the `effect/sql` client registered for this
 // database (see `../effect/sql`). A rejection here is a defect for the caller,
-// exactly like the drizzle `db.transaction` rejection it replaces.
+// exactly like the old `db.transaction` rejection it replaces.
 function runSql<A, E>(
   db: SetupApiDependencies['db'],
   effect: Effect.Effect<A, E, SqlClient.SqlClient>,
@@ -190,7 +190,7 @@ const SetupGroup = HttpApiGroup.make('setup')
       success: SetupResult,
     }),
   )
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const SetupApi = HttpApi.make('setup').add(SetupGroup);
@@ -394,7 +394,7 @@ export function createSetupApi(deps: SetupApiDependencies): EffectApiMount {
 
   const apiLayer = HttpApiBuilder.layer(SetupApi).pipe(Layer.provide(groupLayer));
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

@@ -1,7 +1,7 @@
 ---
 id: T-0730
 title: "B1.3b: the Effect edge — new effect/edge.ts builds the whole HTTP edge with effect/http (request id, masked request log, CORS + origin guard on /api, better-auth passthrough, the 36 module mounts, /health, 404, error envelope) via HttpRouter.toWebHandler; createApp returns it ({ fetch, request, routes }) instead of a Hono app"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0730-effect-edge-core
 model: auto
@@ -93,4 +93,177 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Built the Effect edge core: new `apps/server/src/effect/edge.ts` with
+`createEdge({ mounts, auth, config, logger, health })` returning
+`ZilarEdge = { fetch, request, routes, dispose }`, built from one
+`HttpRouter.use(router => router.add('*', '/*', respond))` layer via
+`HttpRouter.toWebHandler(layer, { disableLogger: true })`.
+`createApp` (`apps/server/src/app.ts`) now builds the same 36 module mounts
+and delegates to `createEdge`; the Hono app, its middleware and the
+`mountEffectRoutes` loop are deleted, and `app.ts` imports nothing from
+`hono` or `@hono/*`. `index.ts` is untouched (`serve({ fetch: app.fetch })`
+keeps working). No module, bridge, or `effect/http-core.ts` file was changed.
+
+Behaviour parity, in the same order as before:
+- Request id: accepts an inbound `x-request-id` when non-empty, <=255 chars
+  and matching `[\w\-=]`, else `crypto.randomUUID()`; set as the
+  `X-Request-Id` response header on every response (errors and 404 included).
+- Masked request log: pino `logger.info({ method, path: logPath(path),
+  requestId, status, durationMs }, 'request')`, also for throws (with
+  `statusFor`). `logPath`, `statusFor`, `durationSince`, `allowedOrigins`,
+  `UNSAFE_METHODS` moved from `app.ts` to `edge.ts`.
+- CORS + origin guard on `/api` and `/api/*` only: allowed request origins
+  echoed with `Access-Control-Allow-Origin`, credentials always `true`,
+  preflight `OPTIONS` answers 204 here echoing `Access-Control-Request-Headers`
+  with `Vary: Origin` (+ `Vary: Access-Control-Request-Headers` when echoed);
+  unsafe methods with a disallowed `Origin` answer 403 `forbidden` first.
+  `allowMethods` is `GET, HEAD, PUT, POST, DELETE, PATCH` as Hono's default
+  (its default list also had `QUERY`, which no route uses; exact-requested
+  header values were not asserted anywhere in the suite).
+- `/api/auth` + `/api/auth/*` go straight to `auth.handler(webRequest)`,
+  checked before any mount route (Hono's precedence).
+- Each mount route dispatches by exact method plus case-sensitive strict
+  path match with `:param` segments (Hono semantics; find-my-way is
+  case-insensitive and ignores trailing slashes, so matching is by hand).
+  The web request gets `x-request-id` and a re-stamped
+  `x-zilar-socket-address` header (client-forged value stripped; socket
+  address from `HttpServerRequest.remoteAddress`, `'unknown'` when none),
+  then `mount.handler`, then `HttpServerResponse.fromWeb`.
+- `/health` (GET only, like Hono's `app.get`), the 404 `not_found` catch-all,
+  and the error envelope (`HttpError` -> status + `{ ...detail, code,
+  message, requestId }`; anything else logged via `logger.error({ err,
+  requestId }, 'unhandled request error')` -> 500 `internal_error`).
+  Thrown `HttpError`s are recovered via `Effect.catchCause` +
+  `Cause.squash` (effect 4.0.2 has no `Cause.defects`/`Effect.catchAllCause`;
+  that cost one debug round).
+
+Files changed (all inside Allowed files):
+- `apps/server/src/effect/edge.ts` (new): the edge, helpers, types.
+- `apps/server/src/effect/edge.test.ts` (new): 8 parity tests (request-id
+  echo/replace, preflight allow/disallow, 403 origin guard, join-token log
+  masking, socket-address `unknown`, route-manifest order).
+- `apps/server/src/app.ts`: `createApp` returns `ZilarEdge`, keeps the
+  `AppDependencies` signature and `effectMountsOf` (now keyed by the edge).
+- `apps/server/src/app.test.ts`: `createTestRoutes`/`app.route` replaced by
+  a `createEdge`-based throwing mount; all assertions kept.
+- `apps/server/src/authz-sweep.test.ts`: type-only change (`SweepApp` is now
+  `Pick<ZilarEdge, 'request' | 'routes'>`, throwaway Hono app replaced by a
+  `createEdge` app); `test-support.ts` needed no change (`TestApp =
+  ReturnType<typeof createApp>` still works).
+
+Deviations from the spec:
+- `request` accepts a `URL` too (`string | URL | Request`), matching Hono's
+  `input.toString()` handling; relative paths resolve against
+  `http://localhost` exactly like Hono's `app.request`.
+- No `HttpRouter.middleware`/`HttpMiddleware.cors` layers: one dispatch
+  function implements id/log/CORS/guard/dispatch uniformly (avoids ~250
+  `HttpRouter.add` layer fragments and keeps ordering explicit).
+- Known Hono edge-case differences, none covered by the suite:
+  `OPTIONS /health` 404s instead of Hono's 404-with-CORS-headers
+  (non-`/api`); trailing-slash and case variants 404 instead of Hono's
+  redirect/strict handling. (HEAD-as-GET was fixed in round 3.)
+
+Commands (real results):
+- `pnpm install`: done (20.7s).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  src/effect/edge.test.ts`: 8 passed.
+- `... src/app.test.ts src/effect/edge.test.ts`: 18 passed.
+- `... src/authz-sweep.test.ts`: 5 passed.
+- `... src/auth src/handles`: 9 files, 99 passed.
+- `pnpm gate`: GATE PASS — PASS install (frozen), format, lint, typecheck,
+  tests @zilar/server; "scope: every changed file is inside the Allowed
+  files". Single tests I ran while working: edge (8), app (10), sweep (5),
+  auth+handles (99).
+
+Security checklist: bearer tokens (`/api/join/`, `/api/invites/`,
+`/api/gifs/media/`, `/api/avatars/`) only reach the log masked; no new
+routes (404 catch-all and 403 guard only); deletes/updates scoping
+unchanged (modules untouched); audit entries untouched.
+
+### Round 2 (fix round, 2026-10-09)
+
+Findings fixed:
+- Finding 1 (must-fix, socket address always `'unknown'`): `fetch` now
+  accepts the optional `serve({ fetch })` bindings as a second argument,
+  reads `incoming.socket.remoteAddress` from them (same read and same
+  `'unknown'` fallback as the old Hono edge's `getConnInfo`), and carries
+  it into the dispatch through a `SocketAddressOverride` context tag
+  (`toWebHandler` merges the per-request context, so `Effect.serviceOption`
+  sees it). `forwardEdgeRequest` now takes the resolved address string;
+  direct callers (`request`, tests) keep the `'unknown'` fallback. New test:
+  "carries the serve bindings socket address into the module request"
+  passes forged header + bindings and asserts the module saw `203.0.113.7`.
+
+Disagreements (code left as is):
+- Finding 2 (should-fix, `OPTIONS /api/auth/*` must reach better-auth): the
+  premise does not hold. I ran the old stack (Hono + its cors middleware +
+  an `app.all('/api/auth/*')` stub): `OPTIONS` answered 204 with the CORS
+  headers and the auth handler was hit 0 times; `POST` reached it once.
+  Hono's cors middleware short-circuits every preflight before routing, so
+  the edge answering 204 for `OPTIONS /api/auth/*` is exact parity, not a
+  regression. Added a locking test instead: "answers OPTIONS /api/auth/*
+  with 204 before better-auth" (204 + allow-origin header + auth handler
+  hit 0 times).
+- Nits 3-6: untouched per the round instructions (none is on a line I
+  changed: `CORS_ALLOW_METHODS`, `void origin`, the `EffectApiRoute`
+  re-export, and the sweep probe bodies are all outside this round's edits).
+
+Tests added: 2 in `apps/server/src/effect/edge.test.ts` (now 10 tests).
+
+Commands (real results, round 2):
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  src/effect/edge.test.ts`: 10 passed.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  src/effect/edge.test src/app.test src/authz-sweep.test src/auth
+  src/handles`: 11 files, 119 passed.
+- `pnpm gate` (first run): GATE FAIL on typecheck — the spec's
+  `fetch(request: Request)` type rejected the bindings second argument in
+  the new test. Fixed by widening `ZilarEdge.fetch` to
+  `(request: Request, bindings?: ServeBindings)` (exported structural
+  interface; still assignable everywhere the spec shape is used, and
+  `serve({ fetch })` passes the real bindings at runtime).
+- `pnpm gate` (second run): GATE PASS — PASS install (frozen), format,
+  lint, typecheck, tests @zilar/server; "scope: every changed file is
+  inside the Allowed files".
+
+### Round 3 (fix round, 2026-10-09)
+
+Findings fixed:
+- Finding 1 (must-fix, HEAD on GET routes 404s): dispatch now routes
+  `HEAD` as `GET` (`routeMethod`), matching Hono's `#dispatch`
+  (`hono-base.js:280`: `if (method === "HEAD")` re-dispatches as GET).
+  The body strip needs no code: the Effect runtime already does it
+  (`HttpEffect.js:215`: `const withoutBody = request.method === "HEAD"`).
+  Logging, the preflight check and the origin guard keep the raw method.
+  Mount matching (`route.method !== routeMethod`) and the `/health` check
+  use `routeMethod`. New test: "answers HEAD on a GET route with 200 and
+  an empty body" (`HEAD /health` -> 200, empty body, `x-request-id` set).
+- Nits 2-4: untouched per the round instructions (none is on a line I
+  changed: `CORS_ALLOW_METHODS`, the `origin !== undefined` guard, and
+  the auth `forwardEdgeRequest` are all outside this round's edits).
+
+Tests added: 1 in `apps/server/src/effect/edge.test.ts` (now 11 tests).
+
+Commands (real results, round 3):
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  src/effect/edge.test.ts`: 11 passed.
+- `pnpm gate`: GATE PASS — PASS install (frozen), format, lint,
+  typecheck, tests @zilar/server; "scope: every changed file is inside
+  the Allowed files". Single tests I ran while working: edge (11),
+  full check `src/effect/edge.test src/app.test src/authz-sweep.test
+  src/auth src/handles` (11 files, 120 passed).
+
+status: review
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved after 2 automatic rounds (packet head f47f245c).
+- **Round 1** fixed the production socket address: it is now read from the `serve()` bindings, because `toWebHandler` never sets `remoteAddress`.
+- **Round 2** fixed HEAD parity: HEAD is routed as GET with an empty body.
+- `createApp` now returns the Effect edge (`effect/edge.ts`), and `app.ts` has no Hono import. The suite and the gate pass.
+- **Accepted nits, for the follow-up sweep:**
+  - CORS allow-methods should match Hono's `GET,HEAD,PUT,POST,DELETE,PATCH,QUERY`;
+  - an empty `Origin` should not be a 403;
+  - send the raw request to `auth.handler`;
+  - remove the dead `void origin;` and the unused re-export.
+- **Still on Hono:** `index.ts` (`serve`, B1.6) and the bridge in `effect/http.ts` (B1.8).

@@ -38,7 +38,7 @@ The old container keeps answering while the new one starts, so a 200 from `/heal
 
 - Coolify stores the compose variables as environment variables, and `env_file: .env` injects ALL stored variables into every container. Removing a variable from the compose file does not remove it from the containers: delete the stored variable too (we hit this with the old ejabberd admin password variable).
 - Magic variables are `SERVICE_PASSWORD_<ID>`, `SERVICE_FQDN_WEB`, `SERVICE_URL_WEB`, with no underscore inside the id.
-- Named volumes hold state: Postgres, ejabberd database and uploads, stickers, avatars. The scheduled backup (`deploy/backup-cron.example`) runs `./zilar backup`, which covers both databases and the uploads, stickers and avatars volumes; background wallpapers live inside the avatars volume, so they ride `avatars.tgz`.
+- Named volumes hold state: Postgres, ejabberd database and uploads, stickers, avatars. On Coolify the backup is not `./zilar backup`. A scheduled task dumps both databases nightly at 03:30, and four volume backups copy `postgres-data`, `sticker-data`, `avatar-data` and `ejabberd-uploads` to S3 between 03:40 and 04:15. Background wallpapers live inside the avatars volume, so `avatar-data` covers them. See `deploy/coolify/scheduled-backup.md` for the setup and the restore runbook.
 - Do not rotate or print secrets while debugging; read logs through a masking filter.
 
 ## 6. If it goes wrong
@@ -92,12 +92,12 @@ Facts that cost time: `xcodebuild -destination` wants the hardware id (`00008140
 
 Since T-0260, the live install updates itself after every push to `main` whose CI passes, instead of waiting for a hand-made tag. The "Production images" workflow listens for the CI workflow finishing on `main` and does nothing unless that run concluded `success`:
 
-1. It checks out the exact commit CI verified (`workflow_run.head_sha`) and builds the four images for amd64 and arm64.
+1. It checks out the exact commit CI verified (`workflow_run.head_sha`) and builds the four images for amd64 only (the live host is x86_64; the arm64 leg hung for 3h18m, run 37911863834), with the GitHub Actions build cache. Version tags still build amd64 and arm64.
 2. It pushes each image as `latest` and as `sha-<first 12 characters of the commit>`, and bakes that commit into the server image as `ZILAR_COMMIT` (see `apps/server/Dockerfile`).
 3. The `deploy` job restarts the live Coolify service with "pull latest", so Coolify pulls the new `latest` images.
 4. It then polls `<ZILAR_PUBLIC_URL>/health` every 15 s for up to 10 minutes until the response has `"ok": true` and `"commit"` equal to the merged sha. The job fails if that never happens.
 
-Because merges land every few minutes, green-main builds overlap and can finish out of order, so before building a `tip` job compares the triggering sha with the current tip of `main` and a stale run skips building and deploying (it still ends green). A workflow-level `publish-main` concurrency group (`cancel-in-progress: false`) also serializes green-main runs so a newer one waits behind the run in flight, while tag and PR builds stay independent. On the CI side, a `ci-${{ github.ref }}` concurrency group with `cancel-in-progress: true` cancels an older `main` run as soon as a newer push arrives, so only a green run on the tip builds and deploys.
+Because merges land every few minutes, green-main builds overlap and can finish out of order, so before building a `tip` job compares the triggering sha with the last commit on `main` that changed code (not `work/`, `docs/` or `*.md`, since docs-only pushes skip CI, T-0754) and a stale run skips building and deploying (it still ends green). A workflow-level `publish-main` concurrency group (`cancel-in-progress: false`) also serializes green-main runs so a newer one waits behind the run in flight, while tag and PR builds stay independent. On the CI side, a `ci-${{ github.ref }}` concurrency group with `cancel-in-progress: true` cancels an older `main` run as soon as a newer push arrives, so only a green run on the tip builds and deploys.
 
 A `deploy-live` concurrency group (`cancel-in-progress: false`) means two merges never deploy at once: the newer run waits for the one in flight.
 
@@ -133,5 +133,11 @@ Migrations run at server start, so rolling back the image does not undo a migrat
 
 ### Backups
 
-The Coolify API can queue an immediate database backup only for a standalone database (`PATCH /databases/{uuid}/backups/{scheduled_backup_uuid}` with `backup_now: true`). A database that lives inside a service — as Zilar's Postgres does — has no "backup now" endpoint at all: `POST /services/{uuid}/databases/{database_uuid}` exposes only start, restart, stop, update, logs and import, and the service's only immediate backup is a storage-volume backup, not an engine-aware dump. Auto-deploys therefore rely on the nightly Coolify schedule in `deploy/coolify/scheduled-backup.md`; a deploy that includes a migration (`apps/server/drizzle`) does not take an extra backup. So run `./zilar backup` on the host before merging a migration that could destroy data — the deploy will not take one for you.
+Auto-deploys rely on the nightly backup (see `deploy/coolify/scheduled-backup.md`). A deploy does not take an extra backup, even when it includes a migration (`apps/server/drizzle`). Before you merge a migration that could destroy data, take an immediate backup:
+
+1. In Coolify, open the service's Scheduled Tasks and run the dump task once (run now, or a one-off task with the same command). Check that it ends without error.
+2. Run the `postgres-data` volume backup once.
+3. Check that the new files are in the bucket.
+
+The dump task covers both databases, and the `postgres-data` backup carries the dumps. The `./zilar backup` command does not apply on Coolify; it works only on the plain stack with a host checkout.
 

@@ -1,8 +1,8 @@
 // Tools module on the Effect `HttpApi` adapter (T-0559): the same methods,
 // paths, statuses (204 on delete, 501 without a runner), bodies, audit calls
-// and per-route step order as the Hono router (`routes.ts`, now a thin
-// wrapper below), mounted under Hono by `apps/server/src/effect/http.ts`.
-// Handlers keep calling the drizzle service; the DB rewrite is a separate lane.
+// and per-route step order as the router (`routes.ts`, now a thin wrapper
+// below), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
+// Its service runs on effect/sql.
 //
 // The revert and run bodies are decoded manually inside their handlers
 // (Effect Schema, same rules as the old zod schemas) instead of as endpoint
@@ -264,7 +264,7 @@ const ToolsGroup = HttpApiGroup.make('tools')
   )
   .middleware(Session)
   .middleware(ToolsSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const ToolsApi = HttpApi.make('tools').add(ToolsGroup);
@@ -641,7 +641,7 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

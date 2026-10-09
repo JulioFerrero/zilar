@@ -229,7 +229,7 @@ function runSql<A>(
 }
 
 // The `media_items` row the indexer writes. Local to this file now that the
-// insert is raw SQL; the columns mirror `db/schema.ts:1393-1434`, and a
+// insert is raw SQL; the columns mirror the `media_items` migration SQL, and a
 // `bigint` read would come back as a string (none is read here).
 interface MediaItemRow {
   id: string;

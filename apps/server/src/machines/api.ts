@@ -1,8 +1,7 @@
 // Machines and runner pairing on the Effect `HttpApi` adapter (T-0572): the
 // same methods, paths, statuses, bodies, texts, logs, audit entries and per
-// route step order as the deleted Hono router (`routes.ts`), mounted under
-// Hono by `apps/server/src/effect/http.ts`. Handlers keep calling the drizzle
-// service; the DB rewrite is a separate lane.
+// route step order as the deleted router (`routes.ts`), mounted by the Effect
+// edge (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 //
 // Two details keep the tests unchanged:
 // - the owner routes run the session middleware before anything else, and the
@@ -156,7 +155,7 @@ const MachineIdParams = Schema.Struct({ id: Schema.String });
 // Every field of `PublicMachine` (`service.ts`), compared side by side: id,
 // name, status, os, osVersion, arch, cpu, cores, ramGb, diskFreeGb, drivers,
 // fingerprint, online, createdAt, approvedAt, lastSeenAt. Dates encode to the
-// ISO strings JSON.stringify produced on the Hono route.
+// ISO strings JSON.stringify produced on the old route.
 const PublicMachineView = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -214,7 +213,7 @@ const MachinesGroup = HttpApiGroup.make('machines')
     // Public: the pairing code plus signature are the credential.
     HttpApiEndpoint.post('pair', '/runner/pair', { success: PairResult }),
   )
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const MachinesApi = HttpApi.make('machines').add(MachinesGroup);
@@ -566,7 +565,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
     Layer.provide(sessionLayer(deps.auth, logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

@@ -2,6 +2,135 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 14:10 UTC: speed-ups merged (T-0754, T-0755, T-0756) and the map on Pages (T-0752)**
+- **CI:** pushes that touch only `work/`, `docs/` or `*.md` no longer start CI; the checks run as 4 parallel jobs with a Turborepo cache.
+- **Images:** green-main builds are amd64-only (the live host is x86_64) with a gha cache, and only `v*` tags build arm64. The image-build check takes the last commit that changed code, so docs commits on top are fine.
+- **Gate:** the format check covers only the changed files (1 s instead of 19 s), and `lead merge` skips the re-gate when the tree already passed (pass records in `~/.zilar-lead/gate-pass/`).
+- **Effect map:** https://julioferrero.github.io/zilar/ (Pages enabled with Julio's OK at 14:10), rebuilt by `effect-map.yml` on every push to main. The claude.ai map artifact is retired.
+- **Running:** T-0753 (Sonnet), the plan to reach 100% Effect.
+- **First real runs to check:** CI duration, cache hits, the image build time, and a "gate: skipped" line at the next merge.
+
+**2026-10-09 13:55 UTC: drizzle-free server LIVE on `73fae1bf` (`IMAGE_TAG=sha-73fae1bf1ad5`)**
+- **The deploy:** T-0749 (row types) and T-0751 (drizzle out) are deployed after a dump and a `postgres-data` backup at 13:54. The server is listening with no errors, health ok, web 200, `/api/me` 401, and real traffic arriving.
+- **The server has no legacy libraries left.** Drizzle stays only as better-auth's optional peer in the lockfile (follow-up).
+- **Codebase measure** (non-test files that import Effect): 198 of 848 files, which is 36% of lines. The server is at 83%.
+- **Julio wants 100% Effect.** T-0753 (Sonnet) writes the plan and the definition of "100%". T-0752 (Haiku) builds the self-updating map on GitHub Pages; enabling Pages needs Julio's OK.
+- **Follow-up:** an intermittent QuickJS `Aborted(JS_FreeRuntime)` line in the `sandbox/tool-worker` tests (1 run in 3; all tests pass).
+
+**2026-10-09 12:58 UTC: D3 LIVE on `f98f4c31` (`IMAGE_TAG=sha-f98f4c3122a1`)**
+- **The migrator is on effect/sql.** Live logged "migrations: adopted 46 drizzle migrations" and is listening. The journal check gives `drizzle.__drizzle_migrations` 46 rows, untouched, and `effect_sql_migrations` 1 row at id 46.
+- **Checks:** health ok on the new commit, web 200, `/api/me` 401, and real traffic already arriving (`/api/xmpp/token` 200).
+- **The backup before the deploy:** a dump task run at 12:27, then the `postgres-data` backup to B2.
+- **The local rehearsal on real Postgres before merging** is described in the T-0741 Review.
+- **The deploy was delayed** because images run 37911863834 hung for 3h18m in the multi-arch server build and held `publish-main`. The lead force-cancelled it; the fix is T-0750 (timeouts).
+- **Julio is OK with everything** (10-09): migrations become hand-written SQL once drizzle-kit is gone.
+- **Next:** T-0750 (timeouts) and T-0749 (row types off drizzle), then S1 (test-support) and DEL (delete schema, client and the drizzle dependencies).
+
+**2026-10-09 10:30 UTC, off-host backups to Backblaze B2 (Coolify S3 storage `zilar-s3`, uuid `jvzs3n2dntdpr7klevjaaeac`):**
+- **Coolify database backups do not apply to this stack.** Coolify lists the `postgres` component as an application (`databases: []`), probably because of the custom `zilar-postgres` image. `deploy/coolify/scheduled-backup.md` is wrong on this point; that is a docs task.
+- **The dumps:** the Coolify scheduled task `pg-dump-nightly` (uuid `q22gm2wng2osueqajwts8nj5`, 03:30, container `postgres`) writes `globals.sql`, `zilar.dump` and `ejabberd.dump` (`pg_dump -Fc`) to `/var/lib/postgresql/dumps` on the `postgres-data` volume. Each file goes to a temp name and is then renamed, and the mode is 600. A test run succeeded: zilar 152 KB, ejabberd 50 KB.
+- **Volume backups to S3**, each with 3 copies locally and 30 copies or 30 days on S3, live copy with no stop:
+  - `postgres-data`, 03:40 (it carries the dumps; restore from the dumps, not from the raw files);
+  - `sticker-data`, 03:45;
+  - `avatar-data`, 04:00 (it includes backgrounds);
+  - `ejabberd-uploads`, 04:15.
+- **One run of each was queued at 10:27.** Coolify has no read-back, so **Julio checks the B2 bucket for 4 archives.**
+- **Still to do:** a restore drill on a throwaway local DB, and the docs fix (`RELEASING.md:41`, `scheduled-backup.md`).
+
+**2026-10-09 09:40 UTC:**
+- **Backgrounds on the volume (Julio said yes):** the lead added the service variable `BACKGROUND_STORAGE_DIR=/data/avatars/backgrounds`, which Coolify injects into the containers, so the compose body is not edited. A restart on the same pinned image followed (about 25 s down).
+- **Result:** the server created `/data/avatars/backgrounds` on the `avatar-data` volume, and the container-layer warning is gone. Health is ok, web returns 200 and `/api/me` returns 401.
+- **S3 (Julio chose "backups + plan app storage"):** audit T-0747 is running and writes `docs/audit/s3-storage-plan.md`. Off-host backups then need Julio's bucket and keys.
+- **Live sign-in:** the lead does not sign in on the live site, even with its own account. A local test copy is the only place the lead logs in. Julio signs in himself, and the lead watches the logs.
+
+**2026-10-09 08:59 UTC: LIVE on `748bbae7`**
+- **The deploy:** the lead set the service variable `IMAGE_TAG=sha-748bbae78c44` and restarted with `pull_latest`. The swap took about 20 s.
+- **The new server container** is `3e7eb5a3f0ad`. It applied the pending migrations (the 0043 notice is in the log), logged "listening", and shows no errors.
+- **Checks:** `/health` shows the commit `748bbae7`, the web app returns 200 and `/api/me` returns 401.
+- **What is live now:** about 830 commits since `eeaddee3` (10-06), including the Effect edge, effect/sql everywhere, login on the effect/sql adapter (D2), migrations 0041 to 0045, and the removal of Hono.
+- **Not checked yet:** a real sign-in on live. That needs Julio's email (OTP); a live message needs his OK.
+- **Pinned:** `IMAGE_TAG` stays on the explicit sha, so a rollback means setting it back to `sha-eeaddee30d85` and restarting. Migrations 0041 to 0045 are additive, so the old image runs on the new schema.
+- **Main CI** is green again since T-0745. T-0738 had broken an approvals test that counted `sqlRuntimeFor` calls; the lead bisected it.
+- **Waiting for Julio:** the live Coolify compose needs `BACKGROUND_STORAGE_DIR: /data/avatars/backgrounds`. The live log warns that `/app/data/backgrounds` is on the container layer.
+- **Follow-ups:**
+  - T-0746 (merged 11:20 local) fixed the startup "created" log label and moved the voice timeout test to `TestClock` (4 ms, was 20 s). It goes live with the next deploy; live stays pinned to `sha-748bbae78c44`.
+  - One fragile `sqlRuntimeFor` call counter remains, at `setup/routes.test.ts:265` (it fails the 3rd call, the rollback). It passes today and its route runs no login queries, so it is left as is. `agents/gateway.test.ts:2270` and `actions/recovery-loop.effect.test.ts:35` count fakes, not `sqlRuntimeFor`, and are fine.
+
+**2026-10-09 ~08:20 UTC:**
+- **Merged:**
+  - T-0739: `@electric-sql/pglite` is now a production dependency, and CI smoke-starts the server image;
+  - T-0740: the git proxy is on Effect;
+  - T-0742: the `hono` dependency is removed, so **Hono is gone from Zilar**;
+  - T-0743: hotfix 2. Startup read mail settings before `registerSqlRuntime`, which crashed when `MAIL_TRANSPORT` is unset, as on live. The CI smoke now starts against a real Postgres and requires "zilar-server listening".
+- **Upgrade rehearsal (lead, local, tip `2dae6b1f`):** a throwaway `postgres:17` was migrated by the live image `sha-eeaddee30d85` (41 drizzle rows, listening), then the tip image started on the same DB. It applied 46 migrations, logged "listening", and returned health `db: ok` and `/api/me` 401.
+- **Found in the rehearsal:**
+  - T-0744 (running): `deploy/coolify/docker-compose.yml` lacks `BACKGROUND_STORAGE_DIR`, so chat backgrounds would sit on the container layer;
+  - **the live Coolify compose needs the same line (Julio's OK);** until then, uploaded backgrounds are lost on each redeploy.
+- **Deploy plan:** after T-0744 merges, wait for green CI and the images run (with the new smoke step), then delete `IMAGE_TAG` and restart with `pull_latest`. Then check that the hostname changed, that `/health` shows the new commit, and that `/api/me` returns 401.
+
+**2026-10-09 ~07:55 UTC, after Julio's answers:**
+- **Deploy incident:**
+  - At 07:35 UTC the lead restarted the live service on `latest` (`34b73d1c`). The server crash-looped with `ERR_MODULE_NOT_FOUND @electric-sql/pglite`: a devDependency imported by `effect/sql.ts` since T-0496, so no server image since 10-08 can start.
+  - The site was down for about 12 minutes. The lead rolled it back by setting the service variable `IMAGE_TAG=sha-eeaddee30d85` and restarting.
+  - Live is on `eeaddee3` again (health ok, web 200, `/api/me` 401).
+  - The crash happens at import, before the migrations, so the live DB is untouched.
+  - **Fix: T-0739** (running) moves the package to dependencies and adds a CI step that starts the server image before any push.
+  - **Before the next deploy:** the lead runs the fixed image against a scratch Postgres, then deletes `IMAGE_TAG` and redeploys.
+- **D2: yes.** T-0738 merged at 09:50 local. Login is on the effect/sql adapter, and a gated real-pg OTP sign-in test passes. It is not live yet; it goes out with the next deploy.
+- **D3: plan first.** The draft spec is `docs/audit/d3-migrator-draft-T-0741.md`, not launched. It adds the partial-adoption case (live has 41 drizzle rows, and the repo has 46 migration files) and a dry run on a copy of the live DB.
+- **A12: convert to Effect.** T-0740 is running: `git/api.ts` becomes an Effect mount, `git/routes.ts` is deleted, and Hono is gone from `src`. It is still not mounted, because the edge has no wildcard routes.
+- **Deploy:** Julio said "you deploy". The deploy is blocked on T-0739; see the incident above.
+
+**2026-10-09 07:00, morning summary for Julio:**
+- **Overnight:** about 70 tasks merged. Haiku 5.5 did about 40 of them, and the lead checked each diff. Every merge passed the gate.
+- **Effect 4 status:**
+  - every server module and every test is off drizzle;
+  - the HTTP edge is Effect: `createApp` returns `effect/edge.ts`, served on `NodeHttpServer`;
+  - Hono is left only in `git/*`;
+  - the lead smoke-tested the server locally (health GET and HEAD, 401, CORS preflight, SIGTERM).
+- **Production:** unchanged. The images pipeline was broken since yesterday (web image, fixed in T-0734) and is green now, but auto-deploy has no Coolify secrets, so nothing deployed.
+- **Decisions waiting for you:**
+  1. **D2:** switch login (`auth.ts`) to the new effect/sql adapter (T-0690). The timestamp question is now answered, in T-0737 (merged 07:50):
+     - real pg reads `timestamp` as UTC, so the adapter's PGlite fix now runs on PGlite only;
+     - pg writes bind with `PgTypes.timestamp`;
+     - a gated real-pg test passes against the local dev Postgres under both `Europe/Madrid` and UTC.
+
+     One item is left for the switch task: `Date` values in `WHERE` clauses, which are safe while Postgres runs in UTC.
+
+     The switch spec is drafted as T-0738 (`auth.ts` onto `effectSqlAdapter`, the `WHERE` date binding, and a gated real-pg OTP sign-in test). It is not committed or launched; it waits for your yes.
+  2. **D3:** switch the migrator on the live DB (the adoption seed).
+  3. **DEL:** delete `db/schema.ts` and the drizzle dependencies, after D2, S1 and D3.
+  4. **A12:** delete `git/*` or mount it.
+  5. **Deploy:** when to deploy tonight's work. That means a manual Coolify deploy, or setting the three secrets.
+
+**2026-10-09 06:35, Julio asleep:**
+- **Merged:**
+  - T-0733 (B1.6): the server starts through `serveEdgeOnNode` (`effect/node-serve.ts`) on `NodeHttpServer`, and `@hono/node-server` is gone;
+  - T-0734: the production web image now copies `packages/ui-tokens`.
+- **Smoke test on main by the lead** (local infra, port 3188):
+  - `GET` and `HEAD /health` give 200 with `db: ok`, and HEAD has no body;
+  - `/api/me` gives the 401 envelope with a request id;
+  - the CORS preflight gives 204 with Hono's method list;
+  - SIGTERM logs "shutting down" and exits in 2 s with no error.
+- **Found tonight:** every "Production images" run on main had failed since at least 2026-10-08 11:54 UTC, on the web image (`@zilar/ui-tokens` was missing from the Docker build). The deploy job never ran. The repo has no Actions secrets, so auto-deploy is off anyway; production has not changed tonight.
+- **Hono now:** only `git/*` (A12, Julio's call; not mounted). **Drizzle now:** the D-group files, which wait for Julio.
+- **06:55:** "Production images" run 37885620151 is green: all four images, including web, were built and published as `:latest`. Its deploy job skipped with "Auto-deploy skipped: set COOLIFY_URL, COOLIFY_TOKEN and COOLIFY_SERVICE_UUID". Production is unchanged until Julio deploys.
+
+**2026-10-09 05:50, Julio asleep:**
+- **Merged since 03:24:**
+  - every test folder is off drizzle (T-0718 to T-0729); only `db/migrate.test.ts` and `effect/sql.test.ts` remain, and they belong to D3;
+  - T-0730: the Effect edge replaced the Hono app in `createApp`, after 2 automatic rounds that fixed the production socket address and HEAD parity;
+  - T-0731: the Hono bridge `effect/http.ts` is deleted;
+  - T-0732: the edge nits, `errors.ts` off Hono, and the 36 `api.ts` header comments.
+- **Running:** T-0733 (B1.6): `index.ts` starts on `NodeHttpServer` and `@hono/node-server` is removed.
+- **Hono after T-0733:** only `git/*`, which is A12 and Julio's call; its routes are not mounted anywhere.
+- **Drizzle left:** `db/*`, `auth/auth.ts` (`drizzleAdapter`), `auth/auth-schema.ts`, `auth/cli-config.ts`, `test-support.ts` and the `effect/sql.ts` snapshot helper. All wait for Julio:
+  - **D2 switch:** `auth.ts` onto the T-0690 adapter. This is the login path, and the timestamp parsing needs checking on production `pg`;
+  - **S1:** the test-support switch, which needs D2;
+  - **D3:** the migrator switch on the live DB;
+  - **DEL:** deleting `db/schema.ts` and the drizzle dependencies.
+- **Fallback:** the free Muse was rate-limited from about 03:15, so workers have run on paid Muse.
+
 **2026-10-09 03:24, 8 workers:**
 - **Merged since 02:20:** T-0694 (B1.1, the http-core split), T-0696 (B1.2, platform-node), T-0717 (B1.3a, the mount list) and 23 test-folder tasks moving tests off drizzle. Each Haiku result was reviewed in its diff; each DeepSeek result went through its pre-review.
 - **Running:**

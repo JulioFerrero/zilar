@@ -1,9 +1,8 @@
 // Connections module on the Effect `HttpApi` adapter (T-0557): the same
 // methods, paths, statuses (201 on create, 204 on delete), bodies, texts and
-// per-route step order as the old Hono router (`routes.ts`), which has since
-// been deleted along with its thin wrapper; mounted under Hono by
-// `apps/server/src/effect/http.ts`.
-// Handlers keep calling the drizzle service; the DB rewrite is a separate lane.
+// per-route step order as the old router (`routes.ts`), which has since been
+// deleted along with its thin wrapper; mounted by the Effect edge
+// (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 //
 // These routes carry provider API keys. A key never appears in a response, a
 // log line or an error text: the list/create views omit the encrypted key,
@@ -133,7 +132,7 @@ const ConnectionsGroup = HttpApiGroup.make('connections')
     }),
   )
   .middleware(Session)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const ConnectionsApi = HttpApi.make('connections').add(ConnectionsGroup);
@@ -327,7 +326,7 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
     Layer.provide(sessionLayer(deps.auth, defectLogger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

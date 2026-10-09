@@ -3,7 +3,6 @@
 // test setup as the contact-request tests.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { RequestIdVariables } from 'hono/request-id';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import {
@@ -18,7 +17,7 @@ import {
 } from '../test-support';
 import { claimHandle } from '../handles/store';
 import { createRateLimiter } from '../rate-limit';
-import { mountEffectRoutes } from '../effect/http';
+import { createEdge } from '../effect/edge';
 import { BLOCK_WRITE_RATE_LIMIT_MAX, createBlocksApi } from './api';
 import { blockUser, listBlockedUsers, MAX_BLOCK_LIST_ROWS, unblockUser } from './service';
 
@@ -342,20 +341,25 @@ describe('blocks', () => {
 
   it('refuses reads after the injected read limiter is exhausted', async () => {
     const alice = await withHandle('alice@example.com', 'alice_rl');
-    const { Hono } = await import('hono');
-    const wrapper = new Hono<{ Variables: RequestIdVariables }>();
-    const blocksApi = createBlocksApi({
+    const edge = createEdge({
+      mounts: [
+        createBlocksApi({
+          auth: context.auth,
+          db: context.db,
+          logger: context.logger,
+          readLimiter: createRateLimiter({ max: 1, windowMs: 60_000 }),
+        }),
+      ],
       auth: context.auth,
-      db: context.db,
+      config: context.config,
       logger: context.logger,
-      readLimiter: createRateLimiter({ max: 1, windowMs: 60_000 }),
+      health: async () => ({ status: 200, body: {} }),
     });
-    mountEffectRoutes(wrapper, blocksApi.routes, blocksApi.handler);
-    const first = await wrapper.request('/api/blocks', {
+    const first = await edge.request('/api/blocks', {
       headers: authHeaders(alice.cookie),
     });
     expect(first.status).toBe(200);
-    const second = await wrapper.request('/api/blocks', {
+    const second = await edge.request('/api/blocks', {
       headers: authHeaders(alice.cookie),
     });
     expect(second.status).toBe(429);
@@ -364,21 +368,26 @@ describe('blocks', () => {
   it('refuses writes after the injected limiter is exhausted', async () => {
     const alice = await withHandle('alice@example.com', 'alice_i');
     const bob = await withHandle('bob@example.com', 'bob_i');
-    const { Hono } = await import('hono');
-    const wrapper = new Hono<{ Variables: RequestIdVariables }>();
-    const blocksApi = createBlocksApi({
+    const edge = createEdge({
+      mounts: [
+        createBlocksApi({
+          auth: context.auth,
+          db: context.db,
+          logger: context.logger,
+          writeLimiter: createRateLimiter({ max: 1, windowMs: 60_000 }),
+        }),
+      ],
       auth: context.auth,
-      db: context.db,
+      config: context.config,
       logger: context.logger,
-      writeLimiter: createRateLimiter({ max: 1, windowMs: 60_000 }),
+      health: async () => ({ status: 200, body: {} }),
     });
-    mountEffectRoutes(wrapper, blocksApi.routes, blocksApi.handler);
-    const first = await wrapper.request(`/api/blocks/${bob.id}`, {
+    const first = await edge.request(`/api/blocks/${bob.id}`, {
       method: 'PUT',
       headers: authHeaders(alice.cookie),
     });
     expect(first.status).toBe(200);
-    const second = await wrapper.request(`/api/blocks/${bob.id}`, {
+    const second = await edge.request(`/api/blocks/${bob.id}`, {
       method: 'PUT',
       headers: authHeaders(alice.cookie),
     });

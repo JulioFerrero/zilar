@@ -1,7 +1,7 @@
 // Integrations module on the Effect `HttpApi` adapter (T-0544): the same
 // methods, paths, statuses, bodies, limiter order, audit calls and texts as
-// the deleted Hono router (`routes.ts`), mounted under Hono by
-// `apps/server/src/effect/http.ts`. These routes carry secrets (the Telegram
+// the deleted router (`routes.ts`), mounted by the Effect edge
+// (`apps/server/src/effect/edge.ts`). These routes carry secrets (the Telegram
 // bot token, the Resend key); like before, no secret reaches a response, a
 // log line or an error text. Helpers stay in `routes.ts`.
 
@@ -242,7 +242,7 @@ const IntegrationsGroup = HttpApiGroup.make('integrations')
   )
   .middleware(Session)
   .middleware(IntegrationsSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const IntegrationsApi = HttpApi.make('integrations').add(IntegrationsGroup);
@@ -474,7 +474,7 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

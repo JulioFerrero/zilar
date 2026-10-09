@@ -2,7 +2,7 @@ import { createHash, createPublicKey, randomUUID, verify } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import type { machinePairingCodes, machines } from '../db/schema';
+import type { MachinePairingCodeRow, MachineRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import {
   generatePairingCode,
@@ -16,7 +16,7 @@ export const MAX_PAIRING_CODES_PER_USER = 5;
 export const MAX_MACHINES_PER_USER = 20;
 export const MAX_PENDING_MACHINES_PER_USER = 5;
 
-export type MachineRow = typeof machines.$inferSelect;
+export type { MachineRow };
 export type MachineStatus = 'pending' | 'approved' | 'revoked';
 
 // Every query runs on the `effect/sql` client registered for this database
@@ -164,7 +164,7 @@ export async function createPairingCode(
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        return yield* sql<typeof machinePairingCodes.$inferSelect>`INSERT INTO machine_pairing_codes
+        return yield* sql<MachinePairingCodeRow>`INSERT INTO machine_pairing_codes
             (id, owner_user_id, code_hash, expires_at)
           VALUES (${randomUUID()}, ${ownerUserId}, ${hashPairingCode(normalized)}, ${expiresAt})
           ON CONFLICT DO NOTHING
@@ -185,12 +185,12 @@ export async function consumePairingCode(
   db: ServerDatabase,
   codeHash: string,
   now: Date,
-): Promise<typeof machinePairingCodes.$inferSelect | null> {
+): Promise<MachinePairingCodeRow | null> {
   const [row] = await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<typeof machinePairingCodes.$inferSelect>`UPDATE machine_pairing_codes
+      return yield* sql<MachinePairingCodeRow>`UPDATE machine_pairing_codes
         SET used_at = ${now}
         WHERE code_hash = ${codeHash} AND used_at IS NULL AND expires_at > ${now}
         RETURNING *`;

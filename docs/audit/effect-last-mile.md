@@ -3,7 +3,22 @@
 Status: audit (T-0626), 2026-10-08. Written from the code; every claim cites
 `file:line`. No code was changed by this task.
 
-**Progress (lead, 2026-10-09 ~01:55): the line numbers below are from 10-08 and are now stale.**
+**Progress (lead, 2026-10-09 07:00): the line numbers below are from 10-08 and are now stale.**
+
+**Since 01:55:**
+- **Modules:** every domain module is off drizzle. Groups finished in T-0688, topics in T-0687, approvals in T-0684 (with the gateway approval transaction), and `/health` in T-0693.
+- **Tests:** every test file is off drizzle except the D3 migrator tests (`db/migrate.test.ts`, `effect/sql.test.ts`). They use the `testSql` helper (T-0695), across T-0697 to T-0729.
+- **B1, the edge flip, is done.** The tasks are B1.1 T-0694, B1.2 T-0696, B1.3 T-0717 and T-0730, B1.8 T-0731 and B1.6 T-0733, plus the cleanups T-0732 and T-0735. `createApp` returns the Effect edge (`effect/edge.ts`), and `index.ts` serves it on `NodeHttpServer` (`effect/node-serve.ts`). `@hono/node-server` is gone, and `hono` is used only by `git/*` (A12).
+- **D2 step 1:** the better-auth adapter over effect/sql is built and tested (T-0690); `auth.ts` is not switched yet.
+- **Plans:** `docs/audit/effect-edge-flip-plan.md` (T-0689) and `docs/audit/drizzle-removal-plan.md` (T-0691).
+
+**Left, all Julio's call:**
+- **D2 switch:** `auth.ts` onto the adapter, then S1, the test-support switch;
+- **D3:** the migrator, on the live DB;
+- **DEL:** deleting the schema and the drizzle dependencies;
+- **A12:** `git/*`, which is not mounted anywhere.
+
+**Earlier record (~01:55):**
 
 | Done | Items | Tasks |
 |---|---|---|

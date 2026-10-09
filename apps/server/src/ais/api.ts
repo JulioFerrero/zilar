@@ -1,8 +1,7 @@
 // AIs module on the Effect `HttpApi` adapter (T-0555): the same methods,
 // paths, statuses (201 on create, 204 on delete, 503 gating), bodies, audit
-// calls and step order as the deleted Hono router (`routes.ts`), mounted
-// under Hono by `apps/server/src/effect/http.ts`. Handlers keep calling the
-// drizzle service; the DB rewrite is a separate lane.
+// calls and step order as the deleted router (`routes.ts`), mounted by the
+// Effect edge (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
 import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
@@ -311,7 +310,7 @@ const AisGroup = HttpApiGroup.make('ais')
   )
   .middleware(Session)
   .middleware(AisSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const AisApi = HttpApi.make('ais').add(AisGroup);
@@ -645,7 +644,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
     ),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

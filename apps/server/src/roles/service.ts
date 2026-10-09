@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import type { groupRoles, topics } from '../db/schema';
+import type { GroupRoleRow, TopicRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -13,7 +13,7 @@ import { syncTopicRoom } from '../topics/rooms';
 export const MAX_ROLES_PER_GROUP = 20;
 export const ROLE_NAME_MAX = 30;
 
-export type GroupRoleRow = typeof groupRoles.$inferSelect;
+export type { GroupRoleRow };
 
 export interface GroupRoleView {
   id: string;
@@ -251,9 +251,7 @@ async function syncTopicsWithRoles(
     deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<
-        typeof topics.$inferSelect
-      >`SELECT * FROM topics WHERE group_id = ${groupId}`;
+      return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}`;
     }),
   );
   const accessRows = await runSql(
@@ -473,7 +471,7 @@ export async function deleteRole(
       deps.db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        return yield* sql<typeof topics.$inferSelect>`SELECT * FROM topics
+        return yield* sql<TopicRow>`SELECT * FROM topics
           WHERE id IN ${sql.in(topicIds)}`;
       }),
     );

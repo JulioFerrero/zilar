@@ -1,7 +1,6 @@
 // Stickers module on the Effect `HttpApi` adapter (T-0582 part A, T-0602 part
 // B): the same methods, paths, order, statuses, texts, bodies and headers as
-// the deleted Hono routers. Handlers keep calling the drizzle service; the DB
-// rewrite is a separate lane.
+// the deleted routers. Its service runs on effect/sql.
 //
 // All 14 routes live here. The 12 JSON routes came first (part A); part B adds
 // the multipart/raw upload (`POST /sticker-packs/:id/stickers`) and the file
@@ -367,7 +366,7 @@ const StickersGroup = HttpApiGroup.make('stickers')
   )
   .middleware(Session)
   .middleware(StickersSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const StickersApi = HttpApi.make('stickers').add(StickersGroup);
@@ -391,7 +390,7 @@ export const STICKERS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
 ];
 
 // A malformed percent escape is an unknown id (404), not a server error.
-// The Effect router hands out decoded params (like Hono's `c.req.param`), so
+// The Effect router hands out decoded params (like the old `c.req.param`), so
 // this second decode is idempotent on normal ids and keeps the old final id.
 function decodePathId(raw: string): string {
   try {
@@ -420,7 +419,7 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
       now,
     });
   // One limiter per api instance, built once (never per request), like the
-  // old Hono factory and the avatars api.
+  // old factory and the avatars api.
   const uploadLimiter =
     deps.uploadLimiter ??
     createRateLimiter({
@@ -680,7 +679,7 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
         );
       })
       // The multipart/raw upload (part B, T-0602). Step order matches the old
-      // Hono route: session -> limiter -> content-type branch -> upload. The
+      // route: session -> limiter -> content-type branch -> upload. The
       // multipart branch checks the declared length before parsing the form,
       // so an over-cap body is rejected without buffering it; the raw branch
       // streams through `readCapped`, which stops as soon as the cap is
@@ -778,7 +777,7 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
       // Streams the stored file. The id is a random unguessable uuid and a
       // signed-in session is required, but the URL is a capability for
       // signed-in users. An unknown id and a malformed escape answer the same
-      // 404; the strict headers match the old Hono route byte for byte.
+      // 404; the strict headers match the old route byte for byte.
       .handle('serveFile', (request) => {
         const requestId = requestIdOf(request.request);
         return withErrorEnvelope(
@@ -819,7 +818,7 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

@@ -86,8 +86,8 @@ export function startApprovalsSweeper({
   }
 
   // First run after one interval, not at boot. `index.ts` starts the sweeper
-  // after `serve()` resolves so the API is already listening and the timer
-  // delay never blocks startup.
+  // after the edge server is listening (`serveEdgeOnNode` in `index.ts`) so
+  // the API is already listening and the timer delay never blocks startup.
   fiber = Effect.runFork(loop());
 
   return {

@@ -1,8 +1,7 @@
 // Avatars module on the Effect `HttpApi` adapter (T-0576): the same methods,
 // paths, statuses, texts, bodies, headers, limiter order and streaming cap as
-// the deleted Hono router (`routes.ts`), mounted under Hono by
-// `apps/server/src/effect/http.ts`. Handlers keep calling the drizzle service;
-// the DB rewrite is a separate lane.
+// the deleted router (`routes.ts`), mounted by the Effect edge
+// (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 //
 // The PUT upload declares no payload schema, so nothing is buffered or decoded
 // before the handler: the handler reads `request.request.stream` chunk by
@@ -74,7 +73,7 @@ const AvatarsGroup = HttpApiGroup.make('avatars')
     }),
   )
   .middleware(Session)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const AvatarsApi = HttpApi.make('avatars').add(AvatarsGroup);
@@ -86,7 +85,7 @@ export const AVATARS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
 ];
 
 // A malformed percent escape is an unknown owner (404), not a server error.
-// The Effect router hands out decoded params (like Hono's `c.req.param`), so
+// The Effect router hands out decoded params, so
 // this second decode is idempotent on normal ids and keeps the old final id.
 function decodePathId(raw: string): string {
   try {
@@ -216,7 +215,7 @@ export function createAvatarsApi(deps: AvatarsApiDependencies): EffectApiMount {
     Layer.provide(sessionLayer(deps.auth, logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

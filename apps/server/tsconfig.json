@@ -5,5 +5,5 @@
     "types": ["node"],
     "allowImportingTsExtensions": true
   },
-  "include": ["src", "drizzle.config.ts", "../../packages/xmpp-core/src/types/xmpp.d.ts"]
+  "include": ["src", "../../packages/xmpp-core/src/types/xmpp.d.ts"]
 }

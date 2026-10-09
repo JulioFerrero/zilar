@@ -1,7 +1,7 @@
 // Chat preferences on the Effect `HttpApi` adapter (T-0520): the same methods,
-// paths, limiter order and answers as the deleted Hono router (`routes.ts`),
-// mounted under Hono by `apps/server/src/effect/http.ts`. Handlers keep calling
-// the drizzle service; the DB rewrite is a separate lane.
+// paths, limiter order and answers as the deleted router (`routes.ts`),
+// mounted by the Effect edge (`apps/server/src/effect/edge.ts`). Its service
+// runs on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
 import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
@@ -168,7 +168,7 @@ const ChatPrefsGroup = HttpApiGroup.make('chatPrefs')
   )
   .middleware(Session)
   .middleware(ChatPrefsSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const ChatPrefsApi = HttpApi.make('chatPrefs').add(ChatPrefsGroup);
@@ -310,7 +310,7 @@ export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMou
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

@@ -1,7 +1,7 @@
 // Voice conversion on the Effect `HttpApi` adapter (T-0573): the binary pilot.
 // The same method, path, statuses, texts, headers and step order as the old
-// Hono router (`routes.ts`), mounted under Hono by
-// `apps/server/src/effect/http.ts`.
+// router (`routes.ts`), mounted by the Effect edge
+// (`apps/server/src/effect/edge.ts`).
 //
 // This is the first module that moves a raw binary body. The endpoint declares
 // no payload schema, so nothing is buffered or decoded before the handler: the
@@ -38,7 +38,7 @@ const VoiceGroup = HttpApiGroup.make('voice')
   // No payload schema: the handler reads the raw body stream itself.
   .add(HttpApiEndpoint.post('convert', '/voice'))
   .middleware(Session)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const VoiceApi = HttpApi.make('voice').add(VoiceGroup);
@@ -143,7 +143,7 @@ export function createVoiceApi(deps: VoiceApiDependencies): EffectApiMount {
     Layer.provide(sessionLayer(deps.auth, logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

@@ -9,6 +9,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0757](T-0757-watch-claude-tasks.md) | lead watch shows Claude-subagent tasks from the board | in-progress | haiku-5.5 | | Julio asked 10-09 |
+| [T-0758](T-0758-effect-map-rule.md) | R1: the Effect map measures the 100% rule | in-progress | haiku-5.5 | | effect-100-plan Phase 0 |
+| [T-0759](T-0759-web-effect-runtime.md) | F1: web Effect runtime, ApiFailure, fromApi | in-progress | haiku-5.5 | | effect-100-plan Phase 1 |
 
 ## Follow-ups
 
@@ -758,3 +761,30 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0726](T-0726-approvals-a-tests-off-drizzle.md) | tests off drizzle: approvals (sweepers, service) | 2026-10-09 |
 | [T-0728](T-0728-agents-gateway-tests-off-drizzle.md) | tests off drizzle: agents/gateway | 2026-10-09 |
 | [T-0727](T-0727-approvals-b-tests-off-drizzle.md) | tests off drizzle: approvals (routes, rules) | 2026-10-09 |
+| [T-0730](T-0730-effect-edge-core.md) | B1.3b: the Effect edge replaces the Hono app in createApp | 2026-10-09 |
+| [T-0731](T-0731-retire-hono-bridge.md) | B1.8: retire the Hono bridge | 2026-10-09 |
+| [T-0732](T-0732-edge-nits-comment-sweep.md) | sweep: edge nits, errors.ts off hono, api.ts header comments | 2026-10-09 |
+| [T-0733](T-0733-node-http-server-start.md) | B1.6: server starts on NodeHttpServer; @hono/node-server removed | 2026-10-09 |
+| [T-0734](T-0734-web-dockerfile-ui-tokens.md) | fix the production web image: Dockerfile copies packages/ui-tokens | 2026-10-09 |
+| [T-0735](T-0735-drop-serve-bindings-path.md) | cleanup after B1.6: drop the dead serve-bindings path | 2026-10-09 |
+| [T-0736](T-0736-stale-serve-comments.md) | comments: stale serve() wording | 2026-10-09 |
+| [T-0737](T-0737-sql-adapter-pg-timestamps.md) | D2 prep: auth adapter timestamps correct on real pg | 2026-10-09 |
+| [T-0738](T-0738-auth-switch-to-sql-adapter.md) | D2 switch: login on the effect/sql adapter | 2026-10-09 |
+| [T-0740](T-0740-git-proxy-effect.md) | A12: git proxy off Hono, Effect mount | 2026-10-09 |
+| [T-0739](T-0739-server-image-pglite-dep.md) | HOTFIX: server image starts (pglite dependency) + CI image smoke | 2026-10-09 |
+| [T-0742](T-0742-drop-hono-dep.md) | B1.9: drop the hono dependency | 2026-10-09 |
+| [T-0743](T-0743-startup-sql-runtime-order.md) | HOTFIX 2: register the sql runtime before startup reads + CI smoke on real Postgres | 2026-10-09 |
+| [T-0744](T-0744-coolify-background-dir.md) | Coolify compose: chat backgrounds on the avatar volume | 2026-10-09 |
+| [T-0745](T-0745-approvals-audit-fail-test.md) | main CI green: approvals audit-failure test independent of query order | 2026-10-09 |
+| [T-0746](T-0746-startup-label-voice-clock.md) | startup log names the right dir; voice timeout test on TestClock | 2026-10-09 |
+| [T-0747](T-0747-s3-storage-audit.md) | AUDIT: S3 storage plan | 2026-10-09 |
+| [T-0748](T-0748-backup-docs.md) | docs: real Coolify backup setup and restore runbook | 2026-10-09 |
+| [T-0741](T-0741-migrator-switch.md) | D3: migrations on effect/sql | 2026-10-09 |
+| [T-0750](T-0750-images-build-timeout.md) | images.yml: job timeouts | 2026-10-09 |
+| [T-0749](T-0749-row-types-off-drizzle.md) | row types off drizzle (db/rows.ts) | 2026-10-09 |
+| [T-0751](T-0751-drizzle-out.md) | drizzle out of the server | 2026-10-09 |
+| [T-0755](T-0755-images-faster.md) | images faster: amd64 on main, gha cache, docs-safe tip | 2026-10-09 |
+| [T-0754](T-0754-ci-faster.md) | CI faster: docs-only skip, parallel jobs, turbo cache | 2026-10-09 |
+| [T-0756](T-0756-gate-faster.md) | gate faster: changed-file format, skip re-gate of passed tree | 2026-10-09 |
+| [T-0752](T-0752-effect-map-pages.md) | self-updating Effect map on GitHub Pages | 2026-10-09 |
+| [T-0753](T-0753-effect-100-plan.md) | the plan to a 100% Effect codebase | 2026-10-09 |

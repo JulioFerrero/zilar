@@ -286,7 +286,7 @@ Channels add no env vars. A channel is a group with `kind = 'channel'` and an op
 
 ### How migrations run
 
-Migrations run **at startup**, not on demand. `index.ts:47-48` opens the database and immediately calls `runMigrations(db)`, which reads the SQL files in `apps/server/drizzle/` (the folder is `migrationsFolder` at `db/migrate.ts:6`) and applies them via Drizzle's `migrate` — `migratePglite` for tests, `migratePostgres` for production (`db/migrate.ts:8-14`). If a migration fails, the server never reaches `serve()` (`index.ts:202`).
+Migrations run **at startup**, not on demand. `index.ts` registers the `effect/sql` runtime for the database and then calls `runMigrations(db)`, which runs `migrateSql` (`effect/sql.ts`): each committed `apps/server/drizzle/NNNN_name.sql` file runs in its own transaction, in file order, and is journaled in `effect_sql_migrations`. A database that drizzle migrated before the switch is adopted once, so the committed history is not re-run. If a migration fails, the server never reaches `serve()`.
 
 For an out-of-band migration run (e.g. against a read replica during a deploy):
 
@@ -294,13 +294,9 @@ For an out-of-band migration run (e.g. against a read replica during a deploy):
 pnpm --filter @zilar/server db:migrate
 ```
 
-The command is defined at `apps/server/package.json:12` and runs `tsx --env-file-if-exists=.env src/db/migrate-cli.ts`, which loads the same config schema and exits non-zero on failure (`db/migrate-cli.ts:6`). Generate a new migration after editing `apps/server/src/db/schema.ts`:
+The command is defined at `apps/server/package.json:12` and runs `tsx --env-file-if-exists=.env src/db/migrate-cli.ts`, which loads the same config schema and exits non-zero on failure.
 
-```bash
-pnpm --filter @zilar/server db:generate
-```
-
-(`apps/server/package.json:11`; `drizzle.config.ts:1-3` pins the dialect, schema and out folder.) Never use `npx drizzle-kit …` — the lockfile drift and the missing schema flag produce surprising diffs.
+A new migration is a hand-written `NNNN_name.sql` file in `apps/server/drizzle/`, numbered after the highest one there. Put `--> statement-breakpoint` between statements, because the loader runs each part on its own. Every new migration must update `db/rows.ts` to match and add a test.
 
 ### Append-only guarantees
 

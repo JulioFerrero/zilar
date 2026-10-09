@@ -10,6 +10,7 @@
 // tables' snake_case columns, so no other layer needs to know the difference.
 
 import { Effect } from 'effect';
+import { PgTypes } from '@effect/sql-pg';
 import { SqlClient, SqlError, Statement } from 'effect/sql';
 import { createAdapterFactory } from 'better-auth/adapters';
 import type {
@@ -20,7 +21,7 @@ import type {
 } from 'better-auth/adapters';
 import type { BetterAuthOptions, DBAdapter } from 'better-auth';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { isPgliteDatabase, sqlRuntimeFor } from '../effect/sql';
 
 const TABLES = ['user', 'session', 'account', 'verification'] as const;
 type AuthTable = (typeof TABLES)[number];
@@ -90,6 +91,7 @@ function likePattern(kind: 'contains' | 'starts_with' | 'ends_with', value: unkn
 }
 
 function clauseFragment(
+  db: ServerDatabase,
   sql: Statement.Constructor,
   model: string,
   clause: CleanedWhere,
@@ -97,22 +99,23 @@ function clauseFragment(
   const columnName = columnFor(model, clause.field);
   const column = sql(columnName);
   const { value } = clause;
-  const list = Array.isArray(value) ? value : [value];
+  const list = (Array.isArray(value) ? value : [value]).map((item) => bindValue(db, item));
+  const bound = bindValue(db, value);
   switch (clause.operator) {
     case 'in':
       return sql`${sql.in(columnName, list)}`;
     case 'not_in':
       return sql`${column} NOT IN ${sql.in(list)}`;
     case 'ne':
-      return value === null ? sql`${column} IS NOT NULL` : sql`${column} <> ${value}`;
+      return value === null ? sql`${column} IS NOT NULL` : sql`${column} <> ${bound}`;
     case 'lt':
-      return sql`${column} < ${value}`;
+      return sql`${column} < ${bound}`;
     case 'lte':
-      return sql`${column} <= ${value}`;
+      return sql`${column} <= ${bound}`;
     case 'gt':
-      return sql`${column} > ${value}`;
+      return sql`${column} > ${bound}`;
     case 'gte':
-      return sql`${column} >= ${value}`;
+      return sql`${column} >= ${bound}`;
     case 'contains':
     case 'starts_with':
     case 'ends_with': {
@@ -123,13 +126,14 @@ function clauseFragment(
       )} ESCAPE '\\'`;
     }
     default:
-      return value === null ? sql`${column} IS NULL` : sql`${column} = ${value}`;
+      return value === null ? sql`${column} IS NULL` : sql`${column} = ${bound}`;
   }
 }
 
 // The where clauses fold left to right: each clause's connector links it to the
 // running result, matching how the memory adapter evaluates them.
 function whereFragment(
+  db: ServerDatabase,
   sql: Statement.Constructor,
   model: string,
   where: ReadonlyArray<CleanedWhere> | undefined,
@@ -137,11 +141,11 @@ function whereFragment(
   if (!where || where.length === 0) {
     return null;
   }
-  let combined = clauseFragment(sql, model, where[0] as CleanedWhere);
+  let combined = clauseFragment(db, sql, model, where[0] as CleanedWhere);
   for (let index = 1; index < where.length; index += 1) {
     const clause = where[index] as CleanedWhere;
     const connector = clause.connector === 'OR' ? ' OR ' : ' AND ';
-    combined = sql`(${combined})${sql.literal(connector)}(${clauseFragment(sql, model, clause)})`;
+    combined = sql`(${combined})${sql.literal(connector)}(${clauseFragment(db, sql, model, clause)})`;
   }
   return combined;
 }
@@ -172,6 +176,9 @@ type DeleteArgs = { model: string; where: CleanedWhere[] };
 // writes a `Date` as its UTC wall clock but reads it back as local time; rebuild
 // the instant from the local components so the round trip preserves the value,
 // the way drizzle's `+0000` parse does. On a UTC host this is the identity.
+// Real pg needs no rebuild: its `timestamp` codec already maps the wall-clock
+// fields to the UTC fields of the `Date` (@effect/sql-pg 4.0.2,
+// dist/PgTypes.js:23-27), so `normalizeRow` leaves those rows unchanged.
 function utcTimestamp(value: Date): Date {
   return new Date(
     Date.UTC(
@@ -186,7 +193,10 @@ function utcTimestamp(value: Date): Date {
   );
 }
 
-function normalizeRow(config: AdapterConfig, model: string, row: Row): Row {
+function normalizeRow(db: ServerDatabase, config: AdapterConfig, model: string, row: Row): Row {
+  if (!isPgliteDatabase(db)) {
+    return row;
+  }
   const fields = config.schema[config.getDefaultModelName(model)]?.fields ?? {};
   for (const [field, value] of Object.entries(row)) {
     if (value instanceof Date && fields[field]?.type === 'date') {
@@ -194,6 +204,23 @@ function normalizeRow(config: AdapterConfig, model: string, row: Row): Row {
     }
   }
   return row;
+}
+
+// On real pg a `Date` binds as `timestamptz`, and a `timestamp` column stores it
+// as wall clock in the session `TimeZone`. `PgTypes.timestamp` binds the UTC
+// fields instead, so the stored wall clock is UTC whatever the session is. PGlite
+// keeps the plain `Date` binding it has always had. Written values and where
+// values bind the same way, so a comparison sees the stored wall clock.
+function bindValue(db: ServerDatabase, value: unknown): unknown {
+  return !isPgliteDatabase(db) && value instanceof Date ? PgTypes.timestamp(value) : value;
+}
+
+function bindRow(db: ServerDatabase, row: Row): Row {
+  const bound: Row = {};
+  for (const [column, value] of Object.entries(row)) {
+    bound[column] = bindValue(db, value);
+  }
+  return bound;
 }
 
 function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
@@ -208,11 +235,13 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        return yield* sql<Row>`INSERT INTO ${sql(tableFor(model))} ${sql.insert(row)} RETURNING *`;
+        return yield* sql<Row>`INSERT INTO ${sql(tableFor(model))} ${sql.insert(
+          bindRow(db, row),
+        )} RETURNING *`;
       }),
     );
     const created = rows[0];
-    return created === undefined ? row : normalizeRow(config, model, created);
+    return created === undefined ? row : normalizeRow(db, config, model, created);
   }
 
   async function findOne({ model, where }: FindOneArgs): Promise<Row | null> {
@@ -220,7 +249,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const clause = whereFragment(sql, model, where);
+        const clause = whereFragment(db, sql, model, where);
         if (clause === null) {
           return [];
         }
@@ -228,7 +257,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       }),
     );
     const found = rows[0];
-    return found === undefined ? null : normalizeRow(config, model, found);
+    return found === undefined ? null : normalizeRow(db, config, model, found);
   }
 
   async function findMany({ model, where, limit, offset, sortBy }: FindManyArgs): Promise<Row[]> {
@@ -236,7 +265,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const clause = whereFragment(sql, model, where);
+        const clause = whereFragment(db, sql, model, where);
         const order =
           sortBy === undefined
             ? sql.literal('')
@@ -251,7 +280,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
         return yield* sql<Row>`SELECT * FROM ${sql(tableFor(model))} WHERE ${clause}${order}${pagination}`;
       }),
     );
-    return rows.map((row) => normalizeRow(config, model, row));
+    return rows.map((row) => normalizeRow(db, config, model, row));
   }
 
   async function count({ model, where }: CountArgs): Promise<number> {
@@ -259,7 +288,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const clause = whereFragment(sql, model, where);
+        const clause = whereFragment(db, sql, model, where);
         if (clause === null) {
           const rows = yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM ${sql(
             tableFor(model),
@@ -280,17 +309,17 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const clause = whereFragment(sql, model, where);
+        const clause = whereFragment(db, sql, model, where);
         if (clause === null) {
           return [];
         }
         return yield* sql<Row>`UPDATE ${sql(tableFor(model))} SET ${sql.update(
-          row,
+          bindRow(db, row),
         )} WHERE ${clause} RETURNING *`;
       }),
     );
     const updated = rows[0];
-    return updated === undefined ? null : normalizeRow(config, model, updated);
+    return updated === undefined ? null : normalizeRow(db, config, model, updated);
   }
 
   async function updateMany({ model, where, update: values }: UpdateArgs): Promise<number> {
@@ -299,12 +328,12 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const clause = whereFragment(sql, model, where);
+        const clause = whereFragment(db, sql, model, where);
         if (clause === null) {
           return 0;
         }
         const rows = yield* sql<{ id: string }>`UPDATE ${sql(tableFor(model))} SET ${sql.update(
-          row,
+          bindRow(db, row),
         )} WHERE ${clause} RETURNING id`;
         return rows.length;
       }),
@@ -316,7 +345,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const clause = whereFragment(sql, model, where);
+        const clause = whereFragment(db, sql, model, where);
         if (clause === null) {
           return;
         }
@@ -330,7 +359,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const clause = whereFragment(sql, model, where);
+        const clause = whereFragment(db, sql, model, where);
         if (clause === null) {
           return 0;
         }

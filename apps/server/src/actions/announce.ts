@@ -4,11 +4,7 @@ import {
   type ApprovalRequest,
   type Payload,
 } from '@zilar/protocol';
-import { approvals } from '../db/schema';
-
-// The approval row shape: just the column inference from the schema, since
-// `db/schema.ts` does not export a named type for it.
-type ApprovalRow = typeof approvals.$inferSelect;
+import type { ApprovalRow } from '../db/rows';
 
 // The narrow port the action gateway calls. Every call is best-effort: the
 // gateway swallows a rejection from the announcer and never lets it change an

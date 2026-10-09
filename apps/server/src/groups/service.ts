@@ -4,7 +4,7 @@ import { SqlClient, type SqlError } from 'effect/sql';
 import { findOwnedAi } from '../ais/service';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
-import { groupMembers, groups } from '../db/schema';
+import type { GroupMemberRow, GroupRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -39,9 +39,6 @@ const ROOM_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567';
 const ROOM_ROLES = { owner: 0, admin: 1, member: 2 } as const;
 
 export type GroupRole = 'owner' | 'admin' | 'member';
-
-type GroupRow = typeof groups.$inferSelect;
-type GroupMemberRow = typeof groupMembers.$inferSelect;
 
 // Minimal slice of pino's Logger the invite sending needs.
 export interface InviteLogger {

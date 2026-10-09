@@ -2,15 +2,13 @@ import { Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
 import type { Payload } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
-import type { approvals } from '../db/schema';
+import type { ApprovalRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { approvalCardBody, buildApprovalCardPayload, type ActionAnnouncer } from './announce';
 
-// The approval row shape comes from the schema so the card builder keeps
-// receiving the camelCase row it expects; the read below returns it through
-// `transformResultNames`.
-type ApprovalRow = typeof approvals.$inferSelect;
+// The card builder receives the camelCase row; the read below returns it
+// through `transformResultNames`.
 
 // The narrow slice of pino the production announcer needs. Real wiring
 // passes the server's logger; tests pass a captor.

@@ -144,6 +144,42 @@ describe('gateSteps', () => {
     ]);
   });
 
+  it('formats only the changed files that still exist', () => {
+    const steps = gateSteps(
+      ['apps/mobile/src/a.ts', 'apps/mobile/src/gone.ts', 'work/T-1.md'],
+      workspace,
+      'main',
+      { exists: (file) => file !== 'apps/mobile/src/gone.ts' },
+    );
+    expect(steps.find((step) => step.label === 'format')).toEqual({
+      label: 'format',
+      command: 'pnpm',
+      args: [
+        'exec',
+        'prettier',
+        '--check',
+        '--ignore-unknown',
+        'apps/mobile/src/a.ts',
+        'work/T-1.md',
+      ],
+    });
+  });
+
+  it('skips the format step when no changed file is left', () => {
+    const steps = gateSteps(['apps/mobile/src/gone.ts'], workspace, 'main', {
+      exists: () => false,
+    });
+    expect(steps.find((step) => step.label === 'format')).toMatchObject({
+      label: 'format',
+      skipReason: 'no changed files',
+    });
+  });
+
+  it('keeps the whole-repo format check for the full run', () => {
+    const steps = gateSteps(['apps/mobile/src/a.ts'], workspace, 'main', { full: true });
+    expect(steps.find((step) => step.label === 'format')?.args).toEqual(['format:check']);
+  });
+
   it('typechecks only the affected packages with one shared cache', () => {
     const typecheck = gateSteps(['apps/mobile/src/a.ts'], workspace, 'main', {
       testFiles: ['apps/mobile/src/a.test.ts'],

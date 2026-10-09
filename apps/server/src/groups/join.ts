@@ -7,7 +7,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import type { groups } from '../db/schema';
+import type { GroupRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { syncPublicTopicsByLink, type InviteLinkServiceDeps } from '../invite-links/service';
@@ -15,8 +15,6 @@ import type { InviteLogger } from './service';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { PUBLIC_GROUP_MAX_MEMBERS } from '../directory/service';
-
-type GroupRow = typeof groups.$inferSelect;
 
 export interface JoinPublicGroupDeps {
   db: ServerDatabase;

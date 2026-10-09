@@ -3,7 +3,7 @@ import { Effect, Schema } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { aiToolRuns, aiToolVersions, aiTools } from '../db/schema';
+import type { AiToolRow, AiToolRunRow, AiToolVersionRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { deleteRoutinesForTool } from '../routines/service';
 import { parseToolVersionInput, toolHostsSchema } from './schemas';
@@ -35,9 +35,9 @@ export class ToolServiceError extends Error {
   }
 }
 
-type ToolRow = typeof aiTools.$inferSelect;
-type VersionRow = typeof aiToolVersions.$inferSelect;
-type RunRow = typeof aiToolRuns.$inferSelect;
+type ToolRow = AiToolRow;
+type VersionRow = AiToolVersionRow;
+type RunRow = AiToolRunRow;
 
 export interface SaveToolVersionInput {
   aiId: string;

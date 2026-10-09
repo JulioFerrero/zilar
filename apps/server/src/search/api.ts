@@ -1,6 +1,6 @@
 // Search module on the Effect `HttpApi` adapter (T-0558): the same method,
-// path, step order, statuses and bodies as the deleted Hono router
-// (`routes.ts`), mounted under Hono by `apps/server/src/effect/http.ts`.
+// path, step order, statuses and bodies as the deleted router
+// (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
 // The archive query core lives in `routes.ts` (`runSearch`); this module
 // owns the Effect query schema, the 501/429 guards and the adapter wiring.
 
@@ -137,7 +137,7 @@ const SearchGroup = HttpApiGroup.make('search')
   )
   .middleware(Session)
   .middleware(SearchSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const SearchApi = HttpApi.make('search').add(SearchGroup);
@@ -183,7 +183,7 @@ export function createSearchApi(deps: SearchRoutesDependencies): EffectApiMount 
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

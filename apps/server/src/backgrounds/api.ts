@@ -1,7 +1,7 @@
 // Background images on the Effect `HttpApi` adapter (T-0577): the same
 // methods, paths, limiter order, statuses, texts, bodies and GET headers as
-// the old Hono router (`routes.ts`), mounted under Hono by
-// `apps/server/src/effect/http.ts`. The upload reads the raw body stream
+// the old router (`routes.ts`), mounted by the Effect edge
+// (`apps/server/src/effect/edge.ts`). The upload reads the raw body stream
 // under a cap (`readCapped`, item 12) exactly like `voice/api.ts`; the file
 // route answers raw bytes with `HttpServerResponse.uint8Array`, which
 // `HttpApiBuilder` returns untouched, headers included.
@@ -46,7 +46,7 @@ export interface BackgroundsApiDependencies extends BackgroundsRoutesDependencie
 }
 
 // A malformed percent escape is an unknown image (404), not a server error.
-// The Effect router hands the handler the same decoded param Hono's
+// The Effect router hands the handler the same decoded param the old router's
 // `c.req.param()` gave (see `chat-prefs/api.ts`), so the lookup decodes it
 // again while the etag keeps the param as received — the same final id and
 // etag as the old route for the test inputs (plain uuids).
@@ -154,7 +154,7 @@ const BackgroundsGroup = HttpApiGroup.make('backgrounds')
   )
   .middleware(Session)
   .middleware(BackgroundsSchemaErrors)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const BackgroundsApi = HttpApi.make('backgrounds').add(BackgroundsGroup);
@@ -286,7 +286,7 @@ export function createBackgroundsApi(deps: BackgroundsApiDependencies): EffectAp
     Layer.provide(uploadRateLimitLayer(uploadLimiter)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

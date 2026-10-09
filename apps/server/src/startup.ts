@@ -21,14 +21,14 @@ export interface EnsureWritableDirDeps {
   onCreated?: ((dir: string) => void) | undefined;
 }
 
-function defaultDeps(): EnsureWritableDirDeps {
+function defaultDeps(envName: string): EnsureWritableDirDeps {
   return {
     mkdir: (dir, options) => mkdir(dir, options),
     access: (dir, mode) => access(dir, mode),
     writeAccess: constants.W_OK,
     onError: (message) => console.error(message),
     exit: (code) => process.exit(code),
-    onCreated: (dir) => console.warn(`STICKER_STORAGE_DIR did not exist; created ${dir}`),
+    onCreated: (dir) => console.warn(`${envName} did not exist; created ${dir}`),
   };
 }
 
@@ -36,7 +36,7 @@ function defaultDeps(): EnsureWritableDirDeps {
 export async function ensureWritableDir(
   dir: string,
   envName: string,
-  deps: EnsureWritableDirDeps = defaultDeps(),
+  deps: EnsureWritableDirDeps = defaultDeps(envName),
 ): Promise<void> {
   let created = false;
   // `recursive: true` succeeds whether or not the dir existed, so check

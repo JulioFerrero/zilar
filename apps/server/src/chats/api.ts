@@ -1,7 +1,6 @@
 // The chats list on the Effect `HttpApi` adapter (T-0533): the same method,
-// path and answer as the deleted Hono router (`routes.ts`), mounted under Hono
-// by `apps/server/src/effect/http.ts`. Handlers keep calling the drizzle
-// services; the DB rewrite is a separate lane.
+// path and answer as the deleted router (`routes.ts`), mounted by the Effect
+// edge (`apps/server/src/effect/edge.ts`). Its services run on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
 import { HttpServer, HttpRouter } from 'effect/http';
@@ -72,7 +71,7 @@ export interface ChatsApiDependencies {
 
 // The chat list is a discriminated union already typed by `ChatListEntry`; the
 // schema passes each entry through unchanged, so the wire shape stays exactly
-// what the Hono route returned (a named Struct would drop keys it does not
+// what the old route returned (a named Struct would drop keys it does not
 // list).
 const ChatsResult = Schema.Struct({
   chats: Schema.Array(Schema.Unknown),
@@ -81,7 +80,7 @@ const ChatsResult = Schema.Struct({
 const ChatsGroup = HttpApiGroup.make('chats')
   .add(HttpApiEndpoint.get('list', '/chats', { success: ChatsResult }))
   .middleware(Session)
-  // The adapter forwards `c.req.raw` unchanged, so paths keep Hono's `/api`.
+  // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const ChatsApi = HttpApi.make('chats').add(ChatsGroup);
@@ -203,7 +202,7 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
     Layer.provide(sessionLayer(deps.auth, logger)),
   );
 
-  // Hono keeps the request log (redacted path); the router's own logger prints
+  // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
   const { handler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),

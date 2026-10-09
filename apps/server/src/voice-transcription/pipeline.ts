@@ -214,21 +214,25 @@ const fetchAndTranscribeEffect = Effect.fnUntraced(function* (
  * fixed 502 `audio_unavailable`; size and content-type refusals keep their
  * 413/422; a provider refusal answers fixed 502 `transcription_failed`.
  *
- * The `Promise` boundary: typed pipeline errors become the same fixed
- * `HttpError`s the old code threw; defects (DB down) reject unchanged.
+ * The Effect form: typed pipeline errors become the same fixed `HttpError`s
+ * the old code threw; defects (DB down) stay defects and reject unchanged.
  */
-export function fetchAndTranscribe(input: FetchAndTranscribeInput): Promise<string> {
-  return Effect.runPromise(
-    fetchAndTranscribeEffect(input).pipe(
-      Effect.catchTags({
-        AudioUnavailable: (error: AudioUnavailable) => Effect.fail(transcriptErrorToHttp(error)),
-        VoiceTooLarge: (error: VoiceTooLarge) => Effect.fail(transcriptErrorToHttp(error)),
-        NotAudio: (error: NotAudio) => Effect.fail(transcriptErrorToHttp(error)),
-        TranscriptionFailed: (error: TranscriptionFailed) =>
-          Effect.fail(transcriptErrorToHttp(error)),
-      }),
-    ),
+export const fetchAndTranscribeAsEffect = (
+  input: FetchAndTranscribeInput,
+): EffectType.Effect<string, HttpError, never> =>
+  fetchAndTranscribeEffect(input).pipe(
+    Effect.catchTags({
+      AudioUnavailable: (error: AudioUnavailable) => Effect.fail(transcriptErrorToHttp(error)),
+      VoiceTooLarge: (error: VoiceTooLarge) => Effect.fail(transcriptErrorToHttp(error)),
+      NotAudio: (error: NotAudio) => Effect.fail(transcriptErrorToHttp(error)),
+      TranscriptionFailed: (error: TranscriptionFailed) =>
+        Effect.fail(transcriptErrorToHttp(error)),
+    }),
   );
+
+/** The `Promise` boundary over `fetchAndTranscribeAsEffect`, for the handlers. */
+export function fetchAndTranscribe(input: FetchAndTranscribeInput): Promise<string> {
+  return Effect.runPromise(fetchAndTranscribeAsEffect(input));
 }
 
 export interface TranscriptionInFlight {
