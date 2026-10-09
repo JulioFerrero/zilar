@@ -14,7 +14,6 @@ import {
   HttpApiMiddleware,
 } from 'effect/http-api';
 import type { Logger } from 'pino';
-import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
@@ -66,9 +65,8 @@ const ContactRequest = Schema.Struct({
 
 const ContactRequestResult = Schema.Struct({ request: ContactRequest });
 
-// The create body replaces `createBodySchema` (zod): 1..64 characters. The
-// payload decode is strict (`PayloadParseOptions` below) so an excess key
-// fails like the old `.strict()`.
+// The create body: 1..64 characters. The payload decode is strict
+// (`PayloadParseOptions` below) so an excess key is rejected.
 const CreateContactRequestBody = Schema.Struct({
   handle: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
 });
@@ -110,31 +108,8 @@ const ByHandleResult = Schema.Struct({
   ]),
 });
 
-// The legacy zod schema, kept only to reproduce its exact `issues[0].message`
-// for an invalid create body (`Unrecognized key: ...`, `Invalid input: ...`).
-// The payload is decoded by `CreateContactRequestBody`; this runs on the
-// cached body only when that decode failed.
-const legacyCreateBodySchema = z.object({ handle: z.string().min(1).max(64) }).strict();
-
-function legacyCreateBodyMessage(body: unknown): string {
-  const parsed = legacyCreateBodySchema.safeParse(body);
-  return parsed.success
-    ? 'Invalid request'
-    : (parsed.error.issues[0]?.message ?? 'Invalid request');
-}
-
-// Mirrors `c.req.json().catch(() => null)`: an unparseable or empty body is
-// `null`, which the legacy schema reports as `expected object, received null`.
-function parseJsonOrNull(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
-// Applied to the group so a payload decode failure renders like the old zod
-// path: a 400 `invalid_request` with the same `issues[0].message`.
+// Applied to the group so a payload decode failure answers 400
+// `invalid_request` with one fixed message.
 class ContactRequestsSchemaErrors extends HttpApiMiddleware.Service<ContactRequestsSchemaErrors>()(
   'zilar/effect/http/ContactRequestsSchemaErrors',
 ) {}
@@ -143,12 +118,14 @@ function schemaErrorLayer(logger: Logger): Layer.Layer<ContactRequestsSchemaErro
   return HttpApiMiddleware.layerSchemaErrorTransform(ContactRequestsSchemaErrors, () =>
     Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      // The body was already read (and cached) by the failed payload decode.
-      const body = parseJsonOrNull(yield* Effect.orDie(request.text));
       return failureResponse(
         logger,
         requestIdOf(request),
-        new HttpError(400, 'invalid_request', legacyCreateBodyMessage(body)),
+        new HttpError(
+          400,
+          'invalid_request',
+          'handle must be a string of 1 to 64 characters, with no other keys',
+        ),
       );
     }),
   );

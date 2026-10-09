@@ -1,8 +1,8 @@
 // Voice transcription routes on the Effect `HttpApi` adapter (T-0545): the
 // same methods, paths, statuses, bodies, limiter order and audit calls as the
 // old Hono router (`routes.ts`), mounted under Hono by
-// `apps/server/src/effect/http.ts`. Handlers keep calling the drizzle
-// pipeline; the DB rewrite is a separate lane. The owner settings carry the
+// `apps/server/src/effect/http.ts`. The handlers call the pipeline, and the
+// database reads and writes run on effect/sql. The owner settings carry the
 // provider API key, which never appears in a response, log line or error text.
 
 import { Effect, Layer, Schema } from 'effect';
@@ -14,10 +14,9 @@ import {
   HttpApiGroup,
   HttpApiMiddleware,
 } from 'effect/http-api';
-import { eq } from 'drizzle-orm';
+import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
 import type { ServerDatabase } from '../db/client';
-import { voiceTranscripts } from '../db/schema';
 import { HttpError } from '../errors';
 import {
   CurrentUser,
@@ -30,6 +29,7 @@ import {
   type EffectApiMount,
   type EffectApiRoute,
 } from '../effect/http';
+import { sqlRuntimeFor } from '../effect/sql';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {
   defaultAudioFetcher,
@@ -296,11 +296,14 @@ export function createVoiceTranscriptionApi(
             // covers the re-check + insert below, with `onConflictDoNothing`
             // as the backstop).
             const [fastHit] = yield* Effect.promise(() =>
-              db
-                .select({ text: voiceTranscripts.text })
-                .from(voiceTranscripts)
-                .where(eq(voiceTranscripts.urlHash, urlHash))
-                .limit(1),
+              sqlRuntimeFor(db).runPromise(
+                Effect.gen(function* () {
+                  const sql = yield* SqlClient.SqlClient;
+                  return yield* sql<{
+                    text: string;
+                  }>`SELECT text FROM voice_transcripts WHERE url_hash = ${urlHash} LIMIT 1`;
+                }),
+              ),
             );
             // Every successful request is audited, cache hits included (ids
             // and the URL hash only, never the text).

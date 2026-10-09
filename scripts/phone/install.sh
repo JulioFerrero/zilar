@@ -81,6 +81,10 @@ echo "$MOCK_FLAG" >"$STATE_DIR/mock"
 if [ -z "$MOCK_FLAG" ]; then
   echo "$HEAD_SHORT" >"$STATE_DIR/commit"
 fi
+# Both branches above leave us in apps/mobile/android. Stray Gradle and Kotlin
+# daemons hold memory after a build, so stop them; a failure here must not fail
+# the install.
+./gradlew --stop || true
 echo
 echo "installed $HEAD_SHORT on $SERIAL"
 if [ -n "$LAST_COMMIT" ]; then

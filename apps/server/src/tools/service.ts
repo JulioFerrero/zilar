@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Effect, Schema } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
-import { and, eq, isNull } from 'drizzle-orm';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { aiToolRuns, aiToolVersions, aiTools } from '../db/schema';
@@ -124,9 +123,7 @@ interface AppendVersionResult {
 
 // Every query runs on the `effect/sql` client registered for this database
 // (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition. `deleteToolsForAiInGroup`
-// is the one exception: its caller (`groups/service.ts`) hands it a drizzle
-// transaction, so it stays on drizzle.
+// tests keep their shape during the transition.
 function runSql<A, E>(
   db: ServerDatabase,
   effect: Effect.Effect<A, E, SqlClient.SqlClient>,
@@ -607,48 +604,37 @@ export async function deleteTool(
   return { deleted: true };
 }
 
-// Soft-deletes every active tool of one AI in one topic. Called from
-// topic-AI removal with `deps.db`, but `service.test.ts` drives it inside
-// a drizzle transaction and passes the transaction, so it stays on
-// drizzle like `deleteToolsForAiInGroup`. Returns the deleted tool ids.
-export async function deleteToolsForAiInTopic(
-  tx: ServerDatabase,
-  input: { aiId: string; topicId: string; now: Date },
-): Promise<string[]> {
-  const rows = await tx
-    .update(aiTools)
-    .set({ deletedAt: input.now, updatedAt: input.now })
-    .where(
-      and(
-        eq(aiTools.aiId, input.aiId),
-        eq(aiTools.topicId, input.topicId),
-        isNull(aiTools.deletedAt),
-      ),
-    )
-    .returning();
-  return rows.map((row) => row.id);
+// Effect versions of the two deletes (T-0664): one AI's tools in one topic,
+// and one AI's tools in every topic of a group. A caller that already holds a
+// `SqlClient` runs them directly. Returns the deleted ids.
+export function deleteToolsForAiInTopicEffect(input: {
+  aiId: string;
+  topicId: string;
+  now: Date;
+}): Effect.Effect<string[], SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ id: string }>`UPDATE ai_tools
+      SET deleted_at = ${input.now.toISOString()}, updated_at = ${input.now.toISOString()}
+      WHERE ai_id = ${input.aiId} AND topic_id = ${input.topicId} AND deleted_at IS NULL
+      RETURNING id`;
+    return rows.map((row) => row.id);
+  });
 }
 
-// Soft-deletes every active tool of one AI in every topic of a group.
-// Called from `groups/service.ts` `removeGroupAi` in the same transaction
-// (the `tx` parameter is the caller's transaction). Returns the deleted
-// tool ids.
-export async function deleteToolsForAiInGroup(
-  tx: ServerDatabase,
-  input: { aiId: string; groupId: string; now: Date },
-): Promise<string[]> {
-  const rows = await tx
-    .update(aiTools)
-    .set({ deletedAt: input.now, updatedAt: input.now })
-    .where(
-      and(
-        eq(aiTools.aiId, input.aiId),
-        eq(aiTools.groupId, input.groupId),
-        isNull(aiTools.deletedAt),
-      ),
-    )
-    .returning();
-  return rows.map((row) => row.id);
+export function deleteToolsForAiInGroupEffect(input: {
+  aiId: string;
+  groupId: string;
+  now: Date;
+}): Effect.Effect<string[], SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ id: string }>`UPDATE ai_tools
+      SET deleted_at = ${input.now.toISOString()}, updated_at = ${input.now.toISOString()}
+      WHERE ai_id = ${input.aiId} AND group_id = ${input.groupId} AND deleted_at IS NULL
+      RETURNING id`;
+    return rows.map((row) => row.id);
+  });
 }
 
 export interface RunToolVersionDeps {

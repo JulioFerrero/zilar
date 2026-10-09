@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { Hono } from 'hono';
+import pino from 'pino';
 import {
   aiLimits,
   ais,
@@ -15,7 +15,6 @@ import {
   topicMembers,
   topics,
 } from '../db/schema';
-import { HttpError } from '../errors';
 import { createAuditRecorder } from '../audit/service';
 import {
   bootstrapUser,
@@ -25,7 +24,11 @@ import {
   type TestApp,
   type TestContext,
 } from '../test-support';
-import { createApprovalsRoutes } from './routes';
+import {
+  createApprovalsApi,
+  type ApprovalsApiDependencies,
+  type ApprovalsRouteLogger,
+} from './api';
 import { createApproval } from './service';
 import { createRule } from './rules';
 
@@ -103,29 +106,41 @@ async function seedGroup(
   return { groupId, generalTopicId };
 }
 
+interface ApprovalsRequester {
+  request(input: string, init?: RequestInit): Promise<Response> | Response;
+}
+
+// Dependencies for the in-process requester: the API wants a full pino
+// logger, while a test may only need an `error(fields, message)` captor, so
+// accept the narrow shape and widen it where the API is built.
+type ApprovalsRequesterDependencies = Omit<ApprovalsApiDependencies, 'logger'> & {
+  logger?: ApprovalsRouteLogger;
+};
+
+// Routes the full `/api/...` request straight at the Effect handler, which
+// renders the same error envelope Hono's `onError` used to. No Hono mount.
+function approvalsRequester(deps: ApprovalsRequesterDependencies): ApprovalsRequester {
+  const api = createApprovalsApi({
+    ...deps,
+    logger: (deps.logger ?? pino({ level: 'silent' })) as ApprovalsApiDependencies['logger'],
+  });
+  return {
+    request: (input: string, init?: RequestInit) => api.handler(new Request(input, init)),
+  };
+}
+
 function buildRoutesHarness(
   context: TestContext,
   now: Date,
   alwaysEligible: (action: string) => boolean = () => false,
-) {
-  const routes = new Hono();
-  routes.onError((error, c) => {
-    if (error instanceof HttpError) {
-      return c.json({ error: { code: error.code, message: error.message } }, error.status);
-    }
-    throw error;
+): ApprovalsRequester {
+  return approvalsRequester({
+    auth: context.auth,
+    db: context.db,
+    audit: createAuditRecorder({ db: context.db, now: () => now }),
+    now: () => now.getTime(),
+    alwaysEligible,
   });
-  routes.route(
-    '/api',
-    createApprovalsRoutes({
-      auth: context.auth,
-      db: context.db,
-      audit: createAuditRecorder({ db: context.db, now: () => now }),
-      now: () => now.getTime(),
-      alwaysEligible,
-    }),
-  );
-  return routes;
 }
 
 async function errorOf(response: Response): Promise<{ code: string; message: string }> {
@@ -136,7 +151,7 @@ async function errorOf(response: Response): Promise<{ code: string; message: str
 describe('approval rules routes (T-0099)', () => {
   let context: TestContext;
   let authApp: TestApp;
-  let app: Hono;
+  let app: ApprovalsRequester;
   let testCounter = 0;
   let now: Date;
 
@@ -593,7 +608,7 @@ describe('approval rules routes (T-0099)', () => {
     }
 
     function decideRequest(
-      app2: Hono,
+      app2: ApprovalsRequester,
       args: { cookie: string; approvalId: string; decision: string },
     ): Promise<Response> | Response {
       return app2.request(`${TEST_BASE_URL}/api/approvals/${args.approvalId}/decision`, {

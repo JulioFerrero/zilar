@@ -5,14 +5,11 @@
 // this task exposes no HTTP route that creates a routine.
 //
 // Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`); `deleteRoutinesForAiInGroup` is the one exception,
-// because its caller (`groups/service.ts`) hands it a drizzle transaction.
-// The exported functions stay `async` so routes and tests keep their shape
-// during the transition.
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
 import { randomUUID } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
 import { Effect, Exit, Schema, SchemaIssue } from 'effect';
-import { SqlClient } from 'effect/sql';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { routines } from '../db/schema';
@@ -549,25 +546,21 @@ export async function deleteRoutinesForAiInTopic(
 }
 
 // Soft-deletes every active routine of one AI in every topic of a group.
-// Stays on drizzle: `groups/service.ts` `removeGroupAi` calls it inside a
-// drizzle transaction and hands that transaction in. It moves to effect/sql
-// when `removeGroupAi`'s transaction moves. Returns the deleted ids.
-export async function deleteRoutinesForAiInGroup(
-  tx: ServerDatabase,
-  input: { aiId: string; groupId: string; now: Date },
-): Promise<string[]> {
-  const rows = await tx
-    .update(routines)
-    .set({ deletedAt: input.now, updatedAt: input.now })
-    .where(
-      and(
-        eq(routines.aiId, input.aiId),
-        eq(routines.groupId, input.groupId),
-        isNull(routines.deletedAt),
-      ),
-    )
-    .returning();
-  return rows.map((row) => row.id);
+// Called from `removeGroupAi` inside its `sql.withTransaction`. Returns the
+// deleted ids.
+export function deleteRoutinesForAiInGroupEffect(input: {
+  aiId: string;
+  groupId: string;
+  now: Date;
+}): Effect.Effect<string[], SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql<{ id: string }>`UPDATE routines
+      SET deleted_at = ${input.now.toISOString()}, updated_at = ${input.now.toISOString()}
+      WHERE ai_id = ${input.aiId} AND group_id = ${input.groupId} AND deleted_at IS NULL
+      RETURNING id`;
+    return rows.map((row) => row.id);
+  });
 }
 
 // Soft-deletes every active routine running one tool. Called from

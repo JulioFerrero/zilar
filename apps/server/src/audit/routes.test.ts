@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { Hono } from 'hono';
+import { pino } from 'pino';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   aiLimits,
@@ -10,7 +10,6 @@ import {
   groups,
   providerConnections,
 } from '../db/schema';
-import { HttpError } from '../errors';
 import {
   bootstrapUser,
   createTestContext,
@@ -20,7 +19,7 @@ import {
   type TestContext,
 } from '../test-support';
 import { recordAudit, type AuditEntry } from './service';
-import { createAuditRoutes } from './routes';
+import { createAuditApi } from './api';
 
 function baseEntry(overrides: Partial<AuditEntry> = {}): AuditEntry {
   return {
@@ -67,21 +66,21 @@ async function seedAi(context: TestContext, ownerId: string): Promise<{ aiId: st
 describe('audit routes', () => {
   let context: TestContext;
   let app: TestApp;
-  let auditApp: Hono;
+  let auditApp: { request: (input: string, init?: RequestInit) => Promise<Response> };
   let now: Date;
 
   beforeEach(async () => {
     context = await createTestContext();
     app = testApp(context);
     now = new Date('2026-09-15T00:00:00Z');
-    auditApp = new Hono();
-    auditApp.onError((error, c) => {
-      if (error instanceof HttpError) {
-        return c.json({ error: { code: error.code, message: error.message } }, error.status);
-      }
-      throw error;
+    const api = createAuditApi({
+      auth: context.auth,
+      db: context.db,
+      logger: pino({ level: 'silent' }),
     });
-    auditApp.route('/api', createAuditRoutes({ auth: context.auth, db: context.db }));
+    auditApp = {
+      request: (input, init) => api.handler(new Request(input, init)),
+    };
   });
 
   afterEach(async () => {

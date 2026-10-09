@@ -1,7 +1,7 @@
 ---
 id: T-0639
 title: "Hono: retire the connections item-11 wrapper (connections/routes.ts); the rate-limit window test calls createConnectionsApi(deps).handler with an injected now; app.ts imports ConnectionsLogger from ./connections/api; delete the wrapper; same assertions"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0639-retire-connections-hono-wrapper
 model: auto
@@ -58,4 +58,65 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/server/src/app.ts:33`: import the `ConnectionsLogger` type (type-only) from
+  `./connections/api` instead of the deleted wrapper. Nothing else in `app.ts` changed.
+- `apps/server/src/connections/routes.test.ts`: import
+  `CONNECTION_TEST_RATE_LIMIT_MAX`, `CONNECTION_TEST_RATE_LIMIT_WINDOW_MS` and
+  `createConnectionsApi` from `./api`; removed the now-unused `Hono` and `HttpError`
+  imports. In the "allows key tests again after the window" test, replaced the Hono app
+  + `onError` + `createConnectionsRoutes` mount with
+  `const api = createConnectionsApi({ ...same deps, now: () => now })`, and `testKey()`
+  now calls `api.handler(new Request(`${TEST_BASE_URL}/api/connections/${id}/test`, { ...same init }))`
+  with the full `/api` path. Every assertion stayed the same: `MAX` × 200, then 429, then
+  200 after the window.
+- Deleted `apps/server/src/connections/routes.ts` (the item-11 Hono wrapper).
+
+### Files changed
+- `apps/server/src/app.ts` (edited)
+- `apps/server/src/connections/routes.test.ts` (edited)
+- `apps/server/src/connections/routes.ts` (deleted)
+- `work/T-0639-retire-connections-hono-wrapper.md` (this report + status)
+
+### Commands run (real results)
+- `pnpm install` → Done in 12.9s.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/connections src/app`
+  → Test Files 11 passed | 1 skipped (12); Tests 167 passed | 1 skipped (168);
+  Duration 47.87s.
+- `pnpm gate` → summary lines:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.9s)
+  PASS  format  (19.8s)
+  PASS  lint  (0.8s)
+  PASS  typecheck  (9.8s)
+  PASS  tests @zilar/server  (8.6s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations
+- Spec "What to build" step 3 asks `git grep -n "connections/routes" apps` to show
+  nothing. It still matches one **stale doc comment** at
+  `apps/mobile/src/lib/connections-api.ts:10` ("The wire contract lives in
+  `apps/server/src/connections/routes.ts`"). That file is outside the Allowed files, so I
+  left it untouched, exactly as `AGENTS.md` requires. No code imports the deleted module;
+  the only remaining match is a documentation reference. Recommend a follow-up nits task
+  to repoint it at `apps/server/src/connections/api.ts` (same pattern as the deferred
+  drafts stale-comment follow-up noted in T-0637's review).
+- No assertion changed, and none failed.
+
+### Blocked / needs a decision
+- Not blocking. The single open point is the stale mobile doc comment above: a scope
+  question that can be handled in a follow-up rather than by editing a file outside the
+  Allowed files.
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet head is d83da582, the current HEAD.
+- **Lead check:**
+  - the wrapper is deleted;
+  - `app.ts:33` imports the type from `./connections/api`;
+  - no `expect` line changed.
+- **Follow-up:** the stale comment at `apps/mobile/src/lib/connections-api.ts:10`.

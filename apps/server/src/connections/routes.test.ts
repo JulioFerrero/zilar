@@ -1,9 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Hono } from 'hono';
 import { createApp } from '../app';
 import { ais, providerConnections } from '../db/schema';
-import { HttpError } from '../errors';
 import {
   bootstrapUser,
   createTestContext,
@@ -17,8 +15,8 @@ import type { ProviderId } from './providers';
 import {
   CONNECTION_TEST_RATE_LIMIT_MAX,
   CONNECTION_TEST_RATE_LIMIT_WINDOW_MS,
-  createConnectionsRoutes,
-} from './routes';
+  createConnectionsApi,
+} from './api';
 
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
 const KEY = 'sk-test-provider-key-1234567890';
@@ -449,31 +447,23 @@ describe('connections routes', () => {
     const id = ((await created.json()) as { id: string }).id;
 
     let now = Date.now();
-    const limited = new Hono();
-    limited.onError((error, c) => {
-      if (error instanceof HttpError) {
-        return c.json({ error: { code: error.code, message: error.message } }, error.status);
-      }
-      throw error;
+    const api = createConnectionsApi({
+      auth: context.auth,
+      db: context.db,
+      logger: context.logger,
+      cipher: createKeyCipher(MASTER_KEY),
+      probe,
+      now: () => now,
     });
-    limited.route(
-      '/api',
-      createConnectionsRoutes({
-        auth: context.auth,
-        db: context.db,
-        logger: context.logger,
-        cipher: createKeyCipher(MASTER_KEY),
-        probe,
-        now: () => now,
-      }),
-    );
 
     async function testKey() {
-      return limited.request(`/api/connections/${id}/test`, {
-        method: 'POST',
-        headers: { cookie: user.cookie, 'content-type': 'application/json' },
-        body: '{}',
-      });
+      return api.handler(
+        new Request(`${TEST_BASE_URL}/api/connections/${id}/test`, {
+          method: 'POST',
+          headers: { cookie: user.cookie, 'content-type': 'application/json' },
+          body: '{}',
+        }),
+      );
     }
 
     for (let attempt = 0; attempt < CONNECTION_TEST_RATE_LIMIT_MAX; attempt += 1) {

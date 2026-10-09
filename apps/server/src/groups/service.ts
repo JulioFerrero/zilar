@@ -1,37 +1,36 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { and, count, eq, inArray } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient, type SqlError } from 'effect/sql';
 import { findOwnedAi } from '../ais/service';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
-import {
-  ais,
-  chatBackgrounds,
-  contacts,
-  groupAis,
-  groupMembers,
-  groups,
-  handles,
-  retiredHandles,
-  topicAis,
-  topicMembers,
-  topics,
-  user,
-} from '../db/schema';
+import { groupMembers, groups } from '../db/schema';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { emitGroupAi, emitTopicAi } from './events';
-import { aiMayBeInTopic } from '../topics/access';
+import { aiMayBeInTopic, type TopicRow } from '../topics/access';
 import { recordAudit, type AuditRecorder } from '../audit/service';
 import { dropMemberRoles, roleHoldersByGroup, topicRoleHolderIds } from '../roles/service';
-import { revokeActiveRulesForAiInGroup } from '../approvals/rules';
-import { deleteRoutinesForAiInGroup } from '../routines/service';
-import { deleteRoomMemory } from '../agents/memory/store';
-import { deleteToolsForAiInGroup } from '../tools/service';
+import { revokeActiveRulesForAiInGroupEffect } from '../approvals/rules';
+import { deleteRoutinesForAiInGroupEffect } from '../routines/service';
+import { deleteRoomMemoryEffect } from '../agents/memory/store';
+import { deleteToolsForAiInGroupEffect } from '../tools/service';
 import { syncTopicRoom } from '../topics/rooms';
 import { isUniqueViolation } from '../handles/store';
 import { classifyHandle, normalizeHandle } from '../handles/rules';
 import { handleForGroup, type GroupVisibility } from './visibility';
+
+// The `removeGroupAi` transaction below runs on the `effect/sql` client
+// registered for this database (see `../effect/sql`), through the phase-1
+// Effects of the rules, tools, routines and memory helpers.
+function runSql<A, E>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError | E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
 
 export const MAX_GROUP_MEMBERS = 50;
 export const ROOM_LOCALPART_LENGTH = 16;
@@ -40,6 +39,9 @@ const ROOM_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567';
 const ROOM_ROLES = { owner: 0, admin: 1, member: 2 } as const;
 
 export type GroupRole = 'owner' | 'admin' | 'member';
+
+type GroupRow = typeof groups.$inferSelect;
+type GroupMemberRow = typeof groupMembers.$inferSelect;
 
 // Minimal slice of pino's Logger the invite sending needs.
 export interface InviteLogger {
@@ -226,11 +228,14 @@ async function resolveGroupBackground(
     throw new HttpError(400, 'invalid_request', 'Dim needs an image');
   }
   if (backgroundImageId !== null) {
-    const [image] = await db
-      .select({ id: chatBackgrounds.id })
-      .from(chatBackgrounds)
-      .where(and(eq(chatBackgrounds.id, backgroundImageId), eq(chatBackgrounds.userId, actorId)))
-      .limit(1);
+    const [image] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM chat_backgrounds
+          WHERE id = ${backgroundImageId} AND user_id = ${actorId} LIMIT 1`;
+      }),
+    );
     if (image === undefined) {
       throw new HttpError(400, 'invalid_request', 'Unknown background image');
     }
@@ -270,19 +275,29 @@ export async function patchGroup(db: ServerDatabase, input: PatchGroupInput): Pr
     input.listenerEnabled !== undefined ||
     input.listenerEagerness !== undefined
   ) {
-    await db
-      .update(groups)
-      .set({
-        ...(input.membersCanCreateTopics === undefined
-          ? {}
-          : { membersCanCreateTopics: input.membersCanCreateTopics }),
-        ...(input.listenerEnabled === undefined ? {} : { listenerEnabled: input.listenerEnabled }),
-        ...(input.listenerEagerness === undefined
-          ? {}
-          : { listenerEagerness: input.listenerEagerness }),
-        ...background,
-      })
-      .where(eq(groups.id, input.groupId));
+    const changes = {
+      ...(input.membersCanCreateTopics === undefined
+        ? {}
+        : { members_can_create_topics: input.membersCanCreateTopics }),
+      ...(input.listenerEnabled === undefined ? {} : { listener_enabled: input.listenerEnabled }),
+      ...(input.listenerEagerness === undefined
+        ? {}
+        : { listener_eagerness: input.listenerEagerness }),
+      ...(background === undefined
+        ? {}
+        : {
+            background_preset: background.backgroundPreset,
+            background_image_id: background.backgroundImageId,
+            background_dim: background.backgroundDim,
+          }),
+    };
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE groups SET ${sql.update(changes)} WHERE id = ${input.groupId}`;
+      }),
+    );
   }
   const detail = await getGroupDetail(db, input.groupId);
   if (!detail) {
@@ -338,112 +353,133 @@ export async function createGroup(
   }
 
   try {
-    await db.transaction(async (tx) => {
-      await tx.insert(groups).values({
-        id: groupId,
-        roomLocalpart,
-        title: input.title,
-        createdBy: input.creatorId,
-        kind,
-        description,
-        ...(wantPublic ? { visibility: 'public' as const } : {}),
-      });
-      await tx
-        .insert(groupMembers)
-        .values([
-          { groupId, userId: input.creatorId, role: 'owner' },
-          ...memberIds.map((userId) => ({ groupId, userId, role: 'member' as const })),
-        ]);
-      // T-0108: the group's room becomes its General topic (same room, same
-      // history). The row is created in the same transaction as the group.
-      // T-0124: a channel's General topic is its only topic — the feed.
-      await tx.insert(topics).values({
-        id: randomUUID(),
-        groupId,
-        name: 'General',
-        glyph: 'G',
-        roomLocalpart,
-        visibility: 'public',
-        kind: 'chat',
-        status: 'open',
-        isGeneral: true,
-        createdBy: input.creatorId,
-      });
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* sql`INSERT INTO groups ${sql.insert({
+              id: groupId,
+              room_localpart: roomLocalpart,
+              title: input.title,
+              created_by: input.creatorId,
+              kind,
+              description,
+              ...(wantPublic ? { visibility: 'public' } : {}),
+            })}`;
+            yield* sql`INSERT INTO group_members ${sql.insert([
+              { group_id: groupId, user_id: input.creatorId, role: 'owner' },
+              ...memberIds.map((userId) => ({
+                group_id: groupId,
+                user_id: userId,
+                role: 'member',
+              })),
+            ])}`;
+            // T-0108: the group's room becomes its General topic (same room, same
+            // history). The row is created in the same transaction as the group.
+            // T-0124: a channel's General topic is its only topic — the feed.
+            yield* sql`INSERT INTO topics ${sql.insert({
+              id: randomUUID(),
+              group_id: groupId,
+              name: 'General',
+              glyph: 'G',
+              room_localpart: roomLocalpart,
+              visibility: 'public',
+              kind: 'chat',
+              status: 'open',
+              is_general: true,
+              created_by: input.creatorId,
+            })}`;
 
-      // T-0164: a public create claims the handle in the same transaction
-      // (the creator's first claim is always allowed — no interval — and a
-      // retired reservation of this group reads as free, reclaimed by
-      // deleting it here). Concurrent creates race on the primary key:
-      // exactly one wins and the loser maps to 409 `handle_taken`.
-      if (wantPublic) {
-        const lower = normalizeHandle(trimmedHandle);
-        const [taken] = await tx
-          .select()
-          .from(handles)
-          .where(eq(handles.handleLower, lower))
-          .limit(1);
-        if (taken) {
-          throw new HttpError(409, 'handle_taken', 'That handle is taken');
-        }
-        const [retired] = await tx
-          .select()
-          .from(retiredHandles)
-          .where(eq(retiredHandles.handleLower, lower))
-          .limit(1);
-        if (retired) {
-          const reserved = retired.reservedUntil.getTime() > now.getTime();
-          if (reserved && retired.formerGroupId !== groupId) {
-            throw new HttpError(409, 'handle_taken', 'That handle is taken');
-          }
-          await tx.delete(retiredHandles).where(eq(retiredHandles.handleLower, lower));
-        }
-        try {
-          await tx.insert(handles).values({
-            handleLower: lower,
-            handle: trimmedHandle,
-            userId: null,
-            groupId,
-            createdAt: now,
-            changedAt: now,
-          });
-        } catch (error) {
-          if (isUniqueViolation(error)) {
-            throw new HttpError(409, 'handle_taken', 'That handle is taken');
-          }
-          throw error;
-        }
-      }
+            // T-0164: a public create claims the handle in the same transaction
+            // (the creator's first claim is always allowed — no interval — and a
+            // retired reservation of this group reads as free, reclaimed by
+            // deleting it here). Concurrent creates race on the primary key:
+            // exactly one wins and the loser maps to 409 `handle_taken`.
+            if (wantPublic) {
+              const lower = normalizeHandle(trimmedHandle);
+              const [taken] = yield* sql<{ handleLower: string }>`SELECT handle_lower
+                FROM handles WHERE handle_lower = ${lower} LIMIT 1`;
+              if (taken) {
+                return yield* Effect.fail(
+                  new HttpError(409, 'handle_taken', 'That handle is taken'),
+                );
+              }
+              const [retired] = yield* sql<{
+                formerGroupId: string | null;
+                reservedUntil: Date | string;
+              }>`SELECT former_group_id, reserved_until FROM retired_handles
+                WHERE handle_lower = ${lower} LIMIT 1`;
+              if (retired) {
+                const reserved = new Date(retired.reservedUntil).getTime() > now.getTime();
+                if (reserved && retired.formerGroupId !== groupId) {
+                  return yield* Effect.fail(
+                    new HttpError(409, 'handle_taken', 'That handle is taken'),
+                  );
+                }
+                yield* sql`DELETE FROM retired_handles WHERE handle_lower = ${lower}`;
+              }
+              yield* sql`INSERT INTO handles ${sql.insert({
+                handle_lower: lower,
+                handle: trimmedHandle,
+                user_id: null,
+                group_id: groupId,
+                created_at: now,
+                changed_at: now,
+              })}`.pipe(
+                Effect.catchIf(
+                  (error) => isUniqueViolation(error),
+                  () => Effect.fail(new HttpError(409, 'handle_taken', 'That handle is taken')),
+                ),
+              );
+            }
 
-      // T-0124: a channel's room is moderated with `members_by_default:
-      // false`, so subscribers (affiliation `member`) join as visitors:
-      // they read but cannot post. Affiliations `admin`/`owner` carry voice,
-      // so admins and the owner post. Group rooms stay unmoderated with the
-      // ejabberd default, so every member keeps voice.
-      await adminClient.createRoom(roomLocalpart, {
-        title: input.title,
-        membersOnly: true,
-        persistent: true,
-        mam: true,
-        anonymous: false,
-        ...(kind === 'channel' ? { moderated: true, membersByDefault: false } : {}),
-      });
-      roomCreated = true;
-      await adminClient.setAffiliation(
-        roomLocalpart,
-        jidFor(localpartFor(input.creatorId), input.domain),
-        'owner',
-      );
-      for (const userId of memberIds) {
-        // T-0124: in a moderated channel room only affiliations admin/owner
-        // carry voice, so every initial member joins as a voice-less member
-        // (a visitor once they enter). Group rooms keep `member` for all.
-        await adminClient.setAffiliation(
-          roomLocalpart,
-          jidFor(localpartFor(userId), input.domain),
-          'member',
+            // T-0124: a channel's room is moderated with `members_by_default:
+            // false`, so subscribers (affiliation `member`) join as visitors:
+            // they read but cannot post. Affiliations `admin`/`owner` carry voice,
+            // so admins and the owner post. Group rooms stay unmoderated with the
+            // ejabberd default, so every member keeps voice.
+            yield* Effect.tryPromise({
+              try: () =>
+                adminClient.createRoom(roomLocalpart, {
+                  title: input.title,
+                  membersOnly: true,
+                  persistent: true,
+                  mam: true,
+                  anonymous: false,
+                  ...(kind === 'channel' ? { moderated: true, membersByDefault: false } : {}),
+                }),
+              catch: (error) => error,
+            });
+            roomCreated = true;
+            yield* Effect.tryPromise({
+              try: () =>
+                adminClient.setAffiliation(
+                  roomLocalpart,
+                  jidFor(localpartFor(input.creatorId), input.domain),
+                  'owner',
+                ),
+              catch: (error) => error,
+            });
+            for (const userId of memberIds) {
+              // T-0124: in a moderated channel room only affiliations admin/owner
+              // carry voice, so every initial member joins as a voice-less member
+              // (a visitor once they enter). Group rooms keep `member` for all.
+              yield* Effect.tryPromise({
+                try: () =>
+                  adminClient.setAffiliation(
+                    roomLocalpart,
+                    jidFor(localpartFor(userId), input.domain),
+                    'member',
+                  ),
+                catch: (error) => error,
+              });
+            }
+          }),
         );
-      }
-    });
+      }),
+    );
   } catch (error) {
     if (roomCreated) {
       await destroyQuietly(adminClient, roomLocalpart);
@@ -464,7 +500,13 @@ export async function getGroupDetail(
   groupId: string,
   listenerAvailable = false,
 ): Promise<GroupDetail | null> {
-  const [group] = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  const [group] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`;
+    }),
+  );
   if (!group) {
     return null;
   }
@@ -518,11 +560,14 @@ export async function getMembership(
   groupId: string,
   userId: string,
 ): Promise<{ groupId: string; userId: string; role: GroupRole } | null> {
-  const [row] = await db
-    .select()
-    .from(groupMembers)
-    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupMemberRow>`SELECT * FROM group_members
+        WHERE group_id = ${groupId} AND user_id = ${userId} LIMIT 1`;
+    }),
+  );
   return row ?? null;
 }
 
@@ -543,19 +588,27 @@ export async function addGroupMembers(
   const targets = [...new Set(input.userIds)].filter((id) => id !== input.actorId);
   await assertContacts(db, input.actorId, targets);
 
-  const existing = await db
-    .select({ userId: groupMembers.userId })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, input.groupId));
+  const existing = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM group_members
+        WHERE group_id = ${input.groupId}`;
+    }),
+  );
   const existingIds = new Set(existing.map((row) => row.userId));
   const toAdd = targets.filter((id) => !existingIds.has(id));
 
   if (toAdd.length > 0) {
     // People and AIs share the same cap.
-    const aiRows = await db
-      .select({ aiId: groupAis.aiId })
-      .from(groupAis)
-      .where(eq(groupAis.groupId, input.groupId));
+    const aiRows = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
+          WHERE group_id = ${input.groupId}`;
+      }),
+    );
     if (existingIds.size + aiRows.length + toAdd.length > MAX_GROUP_MEMBERS) {
       throw new HttpError(
         400,
@@ -564,20 +617,34 @@ export async function addGroupMembers(
       );
     }
     try {
-      await db.transaction(async (tx) => {
-        for (const userId of toAdd) {
-          await adminClient.setAffiliation(
-            group.roomLocalpart,
-            jidFor(localpartFor(userId), input.domain),
-            'member',
+      await runSql(
+        db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql.withTransaction(
+            Effect.gen(function* () {
+              for (const userId of toAdd) {
+                yield* Effect.tryPromise({
+                  try: () =>
+                    adminClient.setAffiliation(
+                      group.roomLocalpart,
+                      jidFor(localpartFor(userId), input.domain),
+                      'member',
+                    ),
+                  catch: (error) => error,
+                });
+              }
+              yield* sql`INSERT INTO group_members ${sql.insert(
+                toAdd.map((userId) => ({
+                  group_id: input.groupId,
+                  user_id: userId,
+                  role: 'member',
+                })),
+              )}`;
+            }),
           );
-        }
-        await tx
-          .insert(groupMembers)
-          .values(
-            toAdd.map((userId) => ({ groupId: input.groupId, userId, role: 'member' as const })),
-          );
-      });
+        }),
+      );
     } catch (error) {
       throw mapXmppError(error);
     }
@@ -627,35 +694,36 @@ export async function removeGroupMember(
   }
 
   try {
-    await db.transaction(async (tx) => {
-      await adminClient.setAffiliation(
-        group.roomLocalpart,
-        jidFor(localpartFor(input.targetUserId), input.domain),
-        'none',
-      );
-      await tx
-        .delete(groupMembers)
-        .where(
-          and(eq(groupMembers.groupId, input.groupId), eq(groupMembers.userId, input.targetUserId)),
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* Effect.tryPromise({
+              try: () =>
+                adminClient.setAffiliation(
+                  group.roomLocalpart,
+                  jidFor(localpartFor(input.targetUserId), input.domain),
+                  'none',
+                ),
+              catch: (error) => error,
+            });
+            yield* sql`DELETE FROM group_members
+              WHERE group_id = ${input.groupId} AND user_id = ${input.targetUserId}`;
+            // T-0108: a removed person loses their private-topic rows too. The
+            // topic room sync below then drops them from every topic room.
+            const topicRows = yield* sql<{ id: string }>`SELECT id FROM topics
+              WHERE group_id = ${input.groupId}`;
+            const privateIds = topicRows.map((row) => row.id);
+            if (privateIds.length > 0) {
+              yield* sql`DELETE FROM topic_members
+                WHERE topic_id IN ${sql.in(privateIds)} AND user_id = ${input.targetUserId}`;
+            }
+          }),
         );
-      // T-0108: a removed person loses their private-topic rows too. The
-      // topic room sync below then drops them from every topic room.
-      const topicRows = await tx
-        .select({ id: topics.id })
-        .from(topics)
-        .where(eq(topics.groupId, input.groupId));
-      const privateIds = topicRows.map((row) => row.id);
-      if (privateIds.length > 0) {
-        await tx
-          .delete(topicMembers)
-          .where(
-            and(
-              inArray(topicMembers.topicId, privateIds),
-              eq(topicMembers.userId, input.targetUserId),
-            ),
-          );
-      }
-    });
+      }),
+    );
   } catch (error) {
     throw mapXmppError(error);
   }
@@ -774,14 +842,16 @@ export async function changeMemberRole(
     await assertChannelKeepsAnAdmin(db, input.groupId, input.targetUserId);
   }
   try {
-    await db.transaction(async (tx) => {
-      await tx
-        .update(groupMembers)
-        .set({ role: input.role })
-        .where(
-          and(eq(groupMembers.groupId, input.groupId), eq(groupMembers.userId, input.targetUserId)),
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          sql`UPDATE group_members SET role = ${input.role}
+            WHERE group_id = ${input.groupId} AND user_id = ${input.targetUserId}`,
         );
-    });
+      }),
+    );
   } catch (error) {
     throw mapXmppError(error);
   }
@@ -850,10 +920,14 @@ async function assertChannelKeepsAnAdmin(
   groupId: string,
   losingUserId: string,
 ): Promise<void> {
-  const rows = await db
-    .select({ userId: groupMembers.userId, role: groupMembers.role })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, groupId));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string; role: GroupRole }>`SELECT user_id, role
+        FROM group_members WHERE group_id = ${groupId}`;
+    }),
+  );
   const adminsLeft = rows.some((row) => row.userId !== losingUserId && row.role === 'admin');
   if (!adminsLeft) {
     throw new HttpError(
@@ -880,7 +954,13 @@ export async function listMembersForViewer(
   if (!viewer) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
-  const [group] = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  const [group] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`;
+    }),
+  );
   if (!group) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
@@ -905,14 +985,24 @@ export async function syncChannelVoice(
   domain: string,
   logger: InviteLogger,
 ): Promise<void> {
-  const [group] = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  const [group] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`;
+    }),
+  );
   if (!group || group.kind !== 'channel') {
     return;
   }
-  const rows = await db
-    .select({ userId: groupMembers.userId, role: groupMembers.role })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, groupId));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string; role: GroupRole }>`SELECT user_id, role
+        FROM group_members WHERE group_id = ${groupId}`;
+    }),
+  );
   for (const row of rows) {
     const wanted: 'owner' | 'admin' | 'member' =
       row.role === 'owner' ? 'owner' : row.role === 'admin' ? 'admin' : 'member';
@@ -954,11 +1044,14 @@ export async function addGroupAi(
     throw new HttpError(404, 'not_found', 'AI not found');
   }
 
-  const [existing] = await db
-    .select({ aiId: groupAis.aiId })
-    .from(groupAis)
-    .where(and(eq(groupAis.groupId, input.groupId), eq(groupAis.aiId, input.aiId)))
-    .limit(1);
+  const [existing] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
+        WHERE group_id = ${input.groupId} AND ai_id = ${input.aiId} LIMIT 1`;
+    }),
+  );
   if (existing) {
     const detail = await getGroupDetail(db, input.groupId);
     if (!detail) {
@@ -973,28 +1066,41 @@ export async function addGroupAi(
     throw new HttpError(409, 'ai_not_active', 'Resume the AI before adding it to a group');
   }
 
-  const memberRows = await db
-    .select({ userId: groupMembers.userId })
-    .from(groupMembers)
-    .where(eq(groupMembers.groupId, input.groupId));
-  const aiRows = await db
-    .select({ aiId: groupAis.aiId })
-    .from(groupAis)
-    .where(eq(groupAis.groupId, input.groupId));
+  const [memberRows, aiRows] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const members = yield* sql<{ userId: string }>`SELECT user_id FROM group_members
+        WHERE group_id = ${input.groupId}`;
+      const aiLinks = yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
+        WHERE group_id = ${input.groupId}`;
+      return [members, aiLinks] as const;
+    }),
+  );
   if (memberRows.length + aiRows.length + 1 > MAX_GROUP_MEMBERS) {
     throw new HttpError(400, 'invalid_request', `A group has at most ${MAX_GROUP_MEMBERS} members`);
   }
 
   try {
-    await db.transaction(async (tx) => {
-      await adminClient.setAffiliation(group.roomLocalpart, ai.jid, 'member');
-      // Two concurrent adds both pass the check above: the loser lands here
-      // and still answers 200, keeping the add idempotent.
-      await tx
-        .insert(groupAis)
-        .values({ groupId: input.groupId, aiId: input.aiId, addedBy: input.actorId })
-        .onConflictDoNothing({ target: [groupAis.groupId, groupAis.aiId] });
-    });
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* Effect.tryPromise({
+              try: () => adminClient.setAffiliation(group.roomLocalpart, ai.jid, 'member'),
+              catch: (error) => error,
+            });
+            // Two concurrent adds both pass the check above: the loser lands here
+            // and still answers 200, keeping the add idempotent.
+            yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by)
+              VALUES (${input.groupId}, ${input.aiId}, ${input.actorId})
+              ON CONFLICT (group_id, ai_id) DO NOTHING`;
+          }),
+        );
+      }),
+    );
   } catch (error) {
     throw mapXmppError(error);
   }
@@ -1007,11 +1113,14 @@ export async function addGroupAi(
   // heals it.
   if (group.kind === 'channel') {
     try {
-      const [feed] = await db
-        .select()
-        .from(topics)
-        .where(and(eq(topics.groupId, input.groupId), eq(topics.isGeneral, true)))
-        .limit(1);
+      const [feed] = await runSql(
+        db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<TopicRow>`SELECT * FROM topics
+            WHERE group_id = ${input.groupId} AND is_general = true LIMIT 1`;
+        }),
+      );
       if (feed) {
         await syncTopicRoom({ db, adminClient, domain: input.domain, logger: input.logger }, feed);
       }
@@ -1038,11 +1147,14 @@ export async function removeGroupAi(
   const group = await requireGroup(db, input.groupId);
   // Authorize before looking at the group's AIs, so someone who may not
   // remove the AI can't learn whether it is in the group (404 vs 403).
-  const [ai] = await db
-    .select({ id: ais.id, jid: ais.jid, owner: ais.owner })
-    .from(ais)
-    .where(eq(ais.id, input.aiId))
-    .limit(1);
+  const [ai] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string; jid: string; owner: string }>`SELECT id, jid, owner
+        FROM ais WHERE id = ${input.aiId} LIMIT 1`;
+    }),
+  );
   const actor = await getMembership(db, input.groupId, input.actorId);
   const isAiOwner = ai !== undefined && ai.owner === input.actorId;
   const isGroupManager = actor !== null && actor.role !== 'member';
@@ -1054,67 +1166,77 @@ export async function removeGroupAi(
     );
   }
 
-  const [membership] = await db
-    .select({ aiId: groupAis.aiId })
-    .from(groupAis)
-    .where(and(eq(groupAis.groupId, input.groupId), eq(groupAis.aiId, input.aiId)))
-    .limit(1);
+  const [membership] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
+        WHERE group_id = ${input.groupId} AND ai_id = ${input.aiId} LIMIT 1`;
+    }),
+  );
   if (!membership || !ai) {
     throw new HttpError(404, 'not_found', 'That AI is not in this group');
   }
 
   try {
-    await db.transaction(async (tx) => {
-      await adminClient.setAffiliation(group.roomLocalpart, ai.jid, 'none');
-      await tx
-        .delete(groupAis)
-        .where(and(eq(groupAis.groupId, input.groupId), eq(groupAis.aiId, input.aiId)));
-      // T-0109: removing the AI from the group removes it from every topic
-      // of that group. The rows are deleted in the same transaction as the
-      // rules/tools cleanup below; every non-General topic room is re-synced
-      // after the commit (the gateway leaves through the same event).
-      const topicRows = await tx
-        .select({ id: topics.id, roomLocalpart: topics.roomLocalpart })
-        .from(topics)
-        .where(eq(topics.groupId, input.groupId));
-      const topicIds = topicRows.map((row) => row.id);
-      if (topicIds.length > 0) {
-        await tx
-          .delete(topicAis)
-          .where(and(inArray(topicAis.topicId, topicIds), eq(topicAis.aiId, input.aiId)));
-      }
-      // T-0099: an "always" rule tied to this (AI, group) pair must
-      // die with the membership. Personal rules and other-group rules
-      // are unaffected. `now` is the same timestamp the admin client
-      // saw for the affiliation change so audit rows line up.
-      await revokeActiveRulesForAiInGroup(tx as unknown as ServerDatabase, {
-        aiId: input.aiId,
-        groupId: input.groupId,
-        actorId: input.actorId,
-        now: new Date(),
-      });
-      // T-0103: the AI's tools made in this group die with the
-      // membership, like the rules above. Personal-chat tools and
-      // other-group tools are unaffected.
-      await deleteToolsForAiInGroup(tx as unknown as ServerDatabase, {
-        aiId: input.aiId,
-        groupId: input.groupId,
-        now: new Date(),
-      });
-      // T-0104: the AI's routines in this group die with the membership
-      // too, next to the tools above.
-      await deleteRoutinesForAiInGroup(tx as unknown as ServerDatabase, {
-        aiId: input.aiId,
-        groupId: input.groupId,
-        now: new Date(),
-      });
-      // T-0442: the AI's memory of the group room and every topic room dies
-      // with the membership, in the same transaction (plan §3.5). Its DM
-      // memory and rows of other AIs are unaffected.
-      await deleteRoomMemory(tx as unknown as ServerDatabase, input.aiId, [
-        ...new Set([group.roomLocalpart, ...topicRows.map((row) => row.roomLocalpart)]),
-      ]);
-    });
+    await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            yield* Effect.tryPromise({
+              try: () => adminClient.setAffiliation(group.roomLocalpart, ai.jid, 'none'),
+              catch: (error) => error,
+            });
+            yield* sql`DELETE FROM group_ais
+              WHERE group_id = ${input.groupId} AND ai_id = ${input.aiId}`;
+            // T-0109: removing the AI from the group removes it from every topic
+            // of that group. The rows are deleted in the same transaction as the
+            // rules/tools cleanup below; every non-General topic room is re-synced
+            // after the commit (the gateway leaves through the same event).
+            const topicRows = yield* sql<{ id: string; roomLocalpart: string }>`SELECT id,
+              room_localpart FROM topics WHERE group_id = ${input.groupId}`;
+            const topicIds = topicRows.map((row) => row.id);
+            if (topicIds.length > 0) {
+              yield* sql`DELETE FROM topic_ais
+                WHERE topic_id IN ${sql.in(topicIds)} AND ai_id = ${input.aiId}`;
+            }
+            // T-0099: an "always" rule tied to this (AI, group) pair must
+            // die with the membership. Personal rules and other-group rules
+            // are unaffected. `now` is the same timestamp the admin client
+            // saw for the affiliation change so audit rows line up.
+            yield* revokeActiveRulesForAiInGroupEffect({
+              aiId: input.aiId,
+              groupId: input.groupId,
+              actorId: input.actorId,
+              now: new Date(),
+            });
+            // T-0103: the AI's tools made in this group die with the
+            // membership, like the rules above. Personal-chat tools and
+            // other-group tools are unaffected.
+            yield* deleteToolsForAiInGroupEffect({
+              aiId: input.aiId,
+              groupId: input.groupId,
+              now: new Date(),
+            });
+            // T-0104: the AI's routines in this group die with the membership
+            // too, next to the tools above.
+            yield* deleteRoutinesForAiInGroupEffect({
+              aiId: input.aiId,
+              groupId: input.groupId,
+              now: new Date(),
+            });
+            // T-0442: the AI's memory of the group room and every topic room dies
+            // with the membership, in the same transaction (plan §3.5). Its DM
+            // memory and rows of other AIs are unaffected.
+            yield* deleteRoomMemoryEffect(input.aiId, [
+              ...new Set([group.roomLocalpart, ...topicRows.map((row) => row.roomLocalpart)]),
+            ]);
+          }),
+        );
+      }),
+    );
   } catch (error) {
     throw mapXmppError(error);
   }
@@ -1133,40 +1255,59 @@ export async function removeGroupAi(
 
 // Groups the user belongs to, with the data the chat list needs.
 export async function listGroupsForUser(db: ServerDatabase, userId: string): Promise<ChatGroup[]> {
-  const memberships = await db
-    .select({ groupId: groupMembers.groupId, role: groupMembers.role })
-    .from(groupMembers)
-    .where(eq(groupMembers.userId, userId));
+  const memberships = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ groupId: string; role: GroupRole }>`SELECT group_id, role
+        FROM group_members WHERE user_id = ${userId}`;
+    }),
+  );
   if (memberships.length === 0) {
     return [];
   }
 
   const groupIds = memberships.map((row) => row.groupId);
-  const groupRows = await db
-    .select({
-      id: groups.id,
-      roomLocalpart: groups.roomLocalpart,
-      title: groups.title,
-      kind: groups.kind,
-      description: groups.description,
-      visibility: groups.visibility,
-      backgroundPreset: groups.backgroundPreset,
-      backgroundImageId: groups.backgroundImageId,
-      backgroundDim: groups.backgroundDim,
-    })
-    .from(groups)
-    .where(inArray(groups.id, groupIds));
-  const counts = await db
-    .select({ groupId: groupMembers.groupId, total: count() })
-    .from(groupMembers)
-    .where(inArray(groupMembers.groupId, groupIds))
-    .groupBy(groupMembers.groupId);
+  const groupRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<
+        Pick<
+          GroupRow,
+          | 'id'
+          | 'roomLocalpart'
+          | 'title'
+          | 'kind'
+          | 'description'
+          | 'visibility'
+          | 'backgroundPreset'
+          | 'backgroundImageId'
+          | 'backgroundDim'
+        >
+      >`SELECT id, room_localpart, title, kind, description, visibility,
+        background_preset, background_image_id, background_dim
+        FROM groups WHERE id IN ${sql.in(groupIds)}`;
+    }),
+  );
+  const counts = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ groupId: string; total: number }>`SELECT group_id, count(*)::int AS total
+        FROM group_members WHERE group_id IN ${sql.in(groupIds)} GROUP BY group_id`;
+    }),
+  );
   // T-0164: the `@handle` of every public group on the list, in the same
   // query shape as the member handles elsewhere.
-  const handleRows = await db
-    .select({ groupId: handles.groupId, handle: handles.handle })
-    .from(handles)
-    .where(inArray(handles.groupId, groupIds));
+  const handleRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ groupId: string | null; handle: string }>`SELECT group_id, handle
+        FROM handles WHERE group_id IN ${sql.in(groupIds)}`;
+    }),
+  );
 
   const groupsById = new Map(groupRows.map((row) => [row.id, row]));
   const countsById = new Map(counts.map((row) => [row.groupId, Number(row.total)]));
@@ -1204,17 +1345,22 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
 }
 
 async function listGroupMembers(db: ServerDatabase, groupId: string): Promise<GroupMemberView[]> {
-  const rows = await db
-    .select({
-      userId: groupMembers.userId,
-      role: groupMembers.role,
-      name: user.name,
-      handle: handles.handle,
-    })
-    .from(groupMembers)
-    .innerJoin(user, eq(user.id, groupMembers.userId))
-    .leftJoin(handles, eq(handles.userId, groupMembers.userId))
-    .where(eq(groupMembers.groupId, groupId));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{
+        userId: string;
+        role: GroupRole;
+        name: string;
+        handle: string | null;
+      }>`SELECT group_members.user_id, group_members.role, "user".name, handles.handle
+        FROM group_members
+        INNER JOIN "user" ON "user".id = group_members.user_id
+        LEFT JOIN handles ON handles.user_id = group_members.user_id
+        WHERE group_members.group_id = ${groupId}`;
+    }),
+  );
 
   // T-0116: fold each member's custom roles into the same row. Role
   // membership is not secret: every group member sees the same list.
@@ -1245,11 +1391,16 @@ async function listGroupMembers(db: ServerDatabase, groupId: string): Promise<Gr
 }
 
 async function listGroupAis(db: ServerDatabase, groupId: string): Promise<GroupAiView[]> {
-  const rows = await db
-    .select({ aiId: groupAis.aiId, jid: ais.jid, name: ais.name, ownerId: ais.owner })
-    .from(groupAis)
-    .innerJoin(ais, eq(ais.id, groupAis.aiId))
-    .where(eq(groupAis.groupId, groupId));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ aiId: string; jid: string; name: string; ownerId: string }>`SELECT
+        group_ais.ai_id, ais.jid, ais.name, ais.owner AS owner_id
+        FROM group_ais INNER JOIN ais ON ais.id = group_ais.ai_id
+        WHERE group_ais.group_id = ${groupId}`;
+    }),
+  );
 
   return rows
     .map((row) => ({ aiId: row.aiId, jid: row.jid, name: row.name, ownerId: row.ownerId }))
@@ -1257,7 +1408,13 @@ async function listGroupAis(db: ServerDatabase, groupId: string): Promise<GroupA
 }
 
 async function requireGroup(db: ServerDatabase, groupId: string) {
-  const [group] = await db.select().from(groups).where(eq(groups.id, groupId)).limit(1);
+  const [group] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`;
+    }),
+  );
   if (!group) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
@@ -1274,10 +1431,14 @@ async function assertContacts(
   if (memberIds.length === 0) {
     return;
   }
-  const rows = await db
-    .select({ id: contacts.contactUserId })
-    .from(contacts)
-    .where(and(eq(contacts.userId, ownerId), inArray(contacts.contactUserId, memberIds)));
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`SELECT contact_user_id AS id FROM contacts
+        WHERE user_id = ${ownerId} AND contact_user_id IN ${sql.in(memberIds)}`;
+    }),
+  );
   const known = new Set(rows.map((row) => row.id));
   if (memberIds.some((id) => !known.has(id))) {
     throw new HttpError(403, 'forbidden', 'All members must be your contacts');
@@ -1314,6 +1475,17 @@ function mapXmppError(error: unknown): HttpError {
   return new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
 }
 
+async function groupTopicRows(db: ServerDatabase, groupId: string): Promise<TopicRow[]> {
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}`;
+    }),
+  );
+  return [...rows];
+}
+
 // T-0108: re-apply the desired members to every active topic room of the
 // group (public topics gain/lose the person; private topics drop anyone
 // whose `topic_members` row is gone). Best effort: the database is the
@@ -1327,7 +1499,7 @@ async function syncGroupTopicRooms(
   domain: string,
   logger: InviteLogger,
 ): Promise<void> {
-  const rows = await db.select().from(topics).where(eq(topics.groupId, groupId));
+  const rows = await groupTopicRows(db, groupId);
   for (const topic of rows) {
     if (topic.archivedAt !== null) {
       continue;
@@ -1345,16 +1517,21 @@ async function syncGroupTopicRooms(
 // so a live gateway session leaves the room without waiting for reconcile.
 // The `topic_ais` rows stay: re-adding the owner brings the AI back.
 async function emitDroppedGroupTopicAis(db: ServerDatabase, groupId: string): Promise<void> {
-  const topicRows = await db.select().from(topics).where(eq(topics.groupId, groupId));
+  const topicRows = await groupTopicRows(db, groupId);
   for (const topic of topicRows) {
     if (topic.isGeneral || topic.archivedAt !== null || topic.visibility !== 'private') {
       continue;
     }
-    const aiRows = await db
-      .select({ aiId: topicAis.aiId, owner: ais.owner, status: ais.status })
-      .from(topicAis)
-      .innerJoin(ais, eq(ais.id, topicAis.aiId))
-      .where(eq(topicAis.topicId, topic.id));
+    const aiRows = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ aiId: string; owner: string; status: string }>`SELECT topic_ais.ai_id,
+          ais.owner, ais.status FROM topic_ais
+          INNER JOIN ais ON ais.id = topic_ais.ai_id
+          WHERE topic_ais.topic_id = ${topic.id}`;
+      }),
+    );
     for (const row of aiRows) {
       const allowed = await aiMayBeInTopic(db, topic, {
         id: row.aiId,
@@ -1372,24 +1549,33 @@ async function emitDroppedGroupTopicAis(db: ServerDatabase, groupId: string): Pr
 // holders count as members — a topic a role still grants access to stays
 // alive even with zero direct rows.
 async function archiveDrainedPrivateTopics(db: ServerDatabase, groupId: string): Promise<void> {
-  const rows = await db.select().from(topics).where(eq(topics.groupId, groupId));
+  const rows = await groupTopicRows(db, groupId);
   for (const topic of rows) {
     if (topic.archivedAt !== null || topic.visibility !== 'private' || topic.isGeneral) {
       continue;
     }
-    const [row] = await db
-      .select({ total: count() })
-      .from(topicMembers)
-      .where(eq(topicMembers.topicId, topic.id));
+    const [row] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM topic_members
+          WHERE topic_id = ${topic.id}`;
+      }),
+    );
     if (Number(row?.total ?? 0) !== 0) {
       continue;
     }
     const holders = await topicRoleHolderIds(db, topic.id, groupId);
     if (holders.size === 0) {
-      await db
-        .update(topics)
-        .set({ archivedAt: new Date(), updatedAt: new Date() })
-        .where(eq(topics.id, topic.id));
+      const now = new Date();
+      await runSql(
+        db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE topics SET archived_at = ${now}, updated_at = ${now}
+            WHERE id = ${topic.id}`;
+        }),
+      );
     }
   }
 }

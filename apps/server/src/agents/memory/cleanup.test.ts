@@ -15,6 +15,7 @@ import {
   topicAis,
   topics,
 } from '../../db/schema';
+import { sqlRuntimeFor } from '../../effect/sql';
 import {
   bootstrapUser,
   createTestContext,
@@ -23,7 +24,7 @@ import {
   type TestApp,
   type TestContext,
 } from '../../test-support';
-import { deleteRoomMemory } from './store';
+import { deleteRoomMemoryEffect } from './store';
 
 const DM_CHAT_KEY = 'dm:owner';
 const NOW = new Date('2026-06-01T12:00:00Z');
@@ -237,8 +238,8 @@ describe('AI memory room cleanup (T-0442)', () => {
     return { owner, aiId };
   }
 
-  it('deleteRoomMemory deletes only one AI and only the named rooms', async () => {
-    const { owner, aiId } = await ownerWithAi(`cleanup-direct-${emailCounter}@example.com`);
+  it('deleteRoomMemoryEffect deletes only one AI and only the named rooms', async () => {
+    const { owner, aiId } = await ownerWithAi(`cleanup-effect-${emailCounter}@example.com`);
     const otherAiId = await seedAi(context, owner.id);
     const roomA = roomLocalpart();
     const roomB = roomLocalpart();
@@ -247,7 +248,7 @@ describe('AI memory room cleanup (T-0442)', () => {
     await seedMemory(context, aiId, DM_CHAT_KEY, 'dm');
     await seedMemory(context, otherAiId, roomChatKey(roomA), 'other');
 
-    await deleteRoomMemory(context.db, aiId, [roomA]);
+    await sqlRuntimeFor(context.db).runPromise(deleteRoomMemoryEffect(aiId, [roomA]));
 
     expect(await countMemory(context, aiId, roomChatKey(roomA))).toEqual(GONE);
     expect(await countMemory(context, aiId, roomChatKey(roomB))).toEqual(KEPT);
@@ -255,12 +256,12 @@ describe('AI memory room cleanup (T-0442)', () => {
     expect(await countMemory(context, otherAiId, roomChatKey(roomA))).toEqual(KEPT);
   });
 
-  it('deleteRoomMemory does nothing for an empty list', async () => {
-    const { aiId } = await ownerWithAi(`cleanup-empty-${emailCounter}@example.com`);
+  it('deleteRoomMemoryEffect does nothing for an empty list', async () => {
+    const { aiId } = await ownerWithAi(`cleanup-effect-empty-${emailCounter}@example.com`);
     const roomA = roomLocalpart();
     await seedMemory(context, aiId, roomChatKey(roomA), 'a');
 
-    await deleteRoomMemory(context.db, aiId, []);
+    await sqlRuntimeFor(context.db).runPromise(deleteRoomMemoryEffect(aiId, []));
 
     expect(await countMemory(context, aiId, roomChatKey(roomA))).toEqual(KEPT);
   });

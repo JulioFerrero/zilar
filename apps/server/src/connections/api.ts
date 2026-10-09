@@ -1,7 +1,8 @@
 // Connections module on the Effect `HttpApi` adapter (T-0557): the same
 // methods, paths, statuses (201 on create, 204 on delete), bodies, texts and
-// per-route step order as the old Hono router (`routes.ts`, now a thin wrapper
-// around this module), mounted under Hono by `apps/server/src/effect/http.ts`.
+// per-route step order as the old Hono router (`routes.ts`), which has since
+// been deleted along with its thin wrapper; mounted under Hono by
+// `apps/server/src/effect/http.ts`.
 // Handlers keep calling the drizzle service; the DB rewrite is a separate lane.
 //
 // These routes carry provider API keys. A key never appears in a response, a

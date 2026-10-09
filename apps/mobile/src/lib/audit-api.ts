@@ -7,7 +7,7 @@ import { API_URL } from './auth';
 /**
  * The AI activity read API (`GET /api/audit?aiId=…`), the mobile twin of the
  * web client in `apps/web/src/lib/api.ts` (`listAudit`). The wire contract
- * lives in `apps/server/src/audit/routes.ts`.
+ * lives in `apps/server/src/audit/api.ts`.
  *
  * The boundary is validated with Effect Schema (T-0506 recipe): the request is
  * an Effect pipeline, cut back to a `Promise` at the edge with

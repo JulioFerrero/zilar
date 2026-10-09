@@ -7,7 +7,7 @@ import { API_URL } from './auth';
 /**
  * The model provider connections API (`/api/connections`), the mobile twin
  * of the web client in `apps/web/src/lib/api.ts`. The wire contract lives in
- * `apps/server/src/connections/routes.ts`.
+ * `apps/server/src/connections/api.ts`.
  *
  * An API key is write-only: the server never returns one, and this module
  * never stores one. The key travels only in the POST body of

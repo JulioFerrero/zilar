@@ -16,8 +16,7 @@ import { createAuditApi } from './audit/api';
 import type { Auth } from './auth/auth';
 import { createAuthApi } from './auth/api';
 import { CurrentMailer, createMailer } from './auth/mailer';
-import { createSetupApi } from './setup/api';
-import { type SetupRoutesDependencies } from './setup/routes';
+import { createSetupApi, type SetupApiDependencies } from './setup/api';
 import { createGetBotToken } from './integrations/routes';
 import { createIntegrationsApi } from './integrations/api';
 import { settingsCipherFor } from './setup/settings';
@@ -30,7 +29,7 @@ import { createDraftsApi } from './drafts/api';
 import { createKeyCipher, type KeyCipher } from './connections/crypto';
 import type { ProviderProbe } from './connections/probe';
 import { createConnectionsApi } from './connections/api';
-import { type ConnectionsLogger } from './connections/routes';
+import { type ConnectionsLogger } from './connections/api';
 import { createBlocksApi } from './blocks/api';
 import { createContactsApi } from './contacts/api';
 import { createContactRequestsApi } from './contact-requests/api';
@@ -41,8 +40,7 @@ import { registerSqlRuntime } from './effect/sql';
 import type { ServerDatabase } from './db/client';
 import { HttpError } from './errors';
 import { createGroupsApi } from './groups/api';
-import { createInviteLinksApi } from './invite-links/api';
-import type { TestInviteLinksOverrides } from './invite-links/routes';
+import { createInviteLinksApi, type TestInviteLinksOverrides } from './invite-links/api';
 import { createPinsApi } from './pins/api';
 import { createPushApi } from './push/api';
 import { createRolesApi } from './roles/api';
@@ -57,8 +55,7 @@ import { createTopicsApi } from './topics/api';
 import { createMachinesApi } from './machines/api';
 import { createDbMachineRegistry, type DbMachineRegistry } from './machines/registry';
 import { serverVersion } from './version';
-import { createToolsApi } from './tools/api';
-import type { ToolsRoutesDependencies } from './tools/routes';
+import { createToolsApi, type ToolsApiDependencies } from './tools/api';
 import { createRoutinesApi } from './routines/api';
 import type { ToolRunner } from './tools/types';
 import type { VoiceEngine } from './voice/engine';
@@ -87,10 +84,7 @@ export interface AppDependencies {
   /** T-0161: overrides the setup routes (tests inject a fake sender). */
   setup?:
     | Partial<
-        Pick<
-          SetupRoutesDependencies,
-          'limiter' | 'getClientIp' | 'trustedProxyHops' | 'sendTestCode'
-        >
+        Pick<SetupApiDependencies, 'limiter' | 'getClientIp' | 'trustedProxyHops' | 'sendTestCode'>
       >
     | undefined;
   /** Overrides the ffmpeg engine; tests inject a fake. */
@@ -538,7 +532,7 @@ export function createApp({
     ...(alwaysEligible === undefined ? {} : { alwaysEligible }),
   });
   mountEffectRoutes(app, approvalsApi.routes, approvalsApi.handler);
-  const toolsDeps: ToolsRoutesDependencies = {
+  const toolsDeps: Omit<ToolsApiDependencies, 'logger'> = {
     auth,
     db,
     audit: auditRecorder,

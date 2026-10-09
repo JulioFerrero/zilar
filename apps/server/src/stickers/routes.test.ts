@@ -133,6 +133,28 @@ describe('stickers routes', () => {
     expect((json as unknown as { error: { code: string } }).error.code).toBe('pack_limit');
   });
 
+  it('answers 400 invalid_request with Nothing to update for an empty PATCH', async () => {
+    const { json } = await createPack(owner);
+    const response = await jsonRequest(app, 'PATCH', `/api/sticker-packs/${json.id}`, owner, {});
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe('invalid_request');
+    expect(body.error.message).toBe('Nothing to update');
+  });
+
+  it('answers 400 invalid_request for a create body with extra keys', async () => {
+    const response = await jsonRequest(app, 'POST', '/api/sticker-packs', owner, {
+      title: 'ok',
+      extra: 1,
+    });
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe('invalid_request');
+    expect(body.error.message).toBe(
+      'title must be 1 to 60 characters and visibility private or server, with no other keys',
+    );
+  });
+
   it('uploads a PNG by magic bytes with a wrong content type', async () => {
     const { json } = await createPack(owner);
     // Multipart with a lying filename and content type: the magic bytes win.

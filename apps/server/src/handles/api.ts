@@ -13,7 +13,6 @@ import {
   HttpApiMiddleware,
 } from 'effect/http-api';
 import type { Logger } from 'pino';
-import { z } from 'zod';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
@@ -43,9 +42,8 @@ export const HANDLE_CHECK_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 export const HANDLE_CLAIM_RATE_LIMIT_MAX = 10;
 export const HANDLE_CLAIM_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-// The check query replaces `checkQuerySchema` (zod). A decode failure is a
-// success answer, not an error: the middleware below turns it into
-// `{ available: false, reason: 'invalid' }`, exactly like the old safeParse.
+// The check query. A decode failure is a success answer, not an error: the
+// middleware below turns it into `{ available: false, reason: 'invalid' }`.
 const HandleCheckQuery = Schema.Struct({
   handle: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
   // `kind=group` asks for a public group or channel; absent (or `user`) keeps
@@ -58,41 +56,18 @@ const HandleCheckResult = Schema.Struct({
   reason: Schema.optional(Schema.Literals(['invalid', 'reserved', 'taken'])),
 });
 
-// The claim body replaces `claimBodySchema` (zod). 1..64 characters; the
-// store re-checks the shape and reserved words. The payload decode is strict
-// (`PayloadParseOptions` below) so an excess key fails like the old `.strict()`.
+// The claim body: 1..64 characters; the store re-checks the shape and reserved
+// words. The payload decode is strict (`PayloadParseOptions` below) so an excess
+// key fails.
 const HandleClaimBody = Schema.Struct({
   handle: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
 });
 
-// The legacy zod schema, kept only to reproduce its exact `issues[0].message`
-// for an invalid claim body (`Unrecognized key: ...`, `Invalid input: ...`).
-// The payload is decoded by `HandleClaimBody`; this runs on the cached body
-// only when that decode failed.
-const legacyClaimBodySchema = z.object({ handle: z.string().min(1).max(64) }).strict();
-
-function legacyClaimBodyMessage(body: unknown): string {
-  const parsed = legacyClaimBodySchema.safeParse(body);
-  return parsed.success
-    ? 'Invalid request'
-    : (parsed.error.issues[0]?.message ?? 'Invalid request');
-}
-
-// Mirrors `c.req.json().catch(() => null)`: an unparseable or empty body is
-// `null`, which the legacy schema reports as `expected object, received null`.
-function parseJsonOrNull(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
-}
-
 const HandleClaimResult = Schema.Struct({ handle: Schema.String });
 
-// Applied to the group so a query or payload decode failure renders like the
-// old zod path: an invalid check query is a 200 `invalid` answer, an invalid
-// claim body is the same 400 `invalid_request` error.
+// Applied to the group so a query or payload decode failure renders as the
+// module's typed envelope: an invalid check query is a 200 `invalid` answer,
+// an invalid claim body is a 400 `invalid_request` error.
 class HandlesSchemaErrors extends HttpApiMiddleware.Service<HandlesSchemaErrors>()(
   'zilar/effect/http/HandlesSchemaErrors',
 ) {}
@@ -104,12 +79,14 @@ function schemaErrorLayer(logger: Logger): Layer.Layer<HandlesSchemaErrors> {
         return HttpServerResponse.jsonUnsafe({ available: false, reason: 'invalid' });
       }
       const request = yield* HttpServerRequest.HttpServerRequest;
-      // The body was already read (and cached) by the failed payload decode.
-      const body = parseJsonOrNull(yield* Effect.orDie(request.text));
       return failureResponse(
         logger,
         requestIdOf(request),
-        new HttpError(400, 'invalid_request', legacyClaimBodyMessage(body)),
+        new HttpError(
+          400,
+          'invalid_request',
+          'handle must be a string of 1 to 64 characters, with no other keys',
+        ),
       );
     }),
   );

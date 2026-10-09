@@ -13,6 +13,7 @@
 // messages. Tool run output and input never appear in a log line, as before.
 
 import { Effect, Layer, Option, Schema } from 'effect';
+import { SqlClient, type SqlError } from 'effect/sql';
 import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
 import {
   HttpApi,
@@ -21,12 +22,10 @@ import {
   HttpApiGroup,
   HttpApiMiddleware,
 } from 'effect/http-api';
-import { and, eq } from 'drizzle-orm';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
-import { ais, aiTools, groupAis, groupMembers, topicAis, topics } from '../db/schema';
 import {
   CurrentUser,
   Session,
@@ -37,9 +36,10 @@ import {
   type EffectApiMount,
   type EffectApiRoute,
 } from '../effect/http';
+import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import { canSeeTopic } from '../topics/access';
+import { canSeeTopic, getTopic, type TopicRow } from '../topics/access';
 import type { ToolRunner } from './types';
 import {
   deleteTool,
@@ -58,6 +58,15 @@ import {
   type ToolDetail,
   type ToolVersionDetail,
 } from './service';
+
+// Every read runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported surface stays the same.
+function runSql<A>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
 
 // Manual runs are capped per user per minute.
 export const TOOL_RUN_RATE_LIMIT_MAX = 5;
@@ -320,9 +329,7 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
                 continue;
               }
               const topicId = tool.topicId;
-              const [topic] = yield* Effect.promise(() =>
-                deps.db.select().from(topics).where(eq(topics.id, topicId)).limit(1),
-              );
+              const topic = yield* Effect.promise(() => getTopic(deps.db, topicId));
               if (topic && (yield* Effect.promise(() => canSeeTopic(deps.db, topic, user.id)))) {
                 visible.push(tool);
               }
@@ -362,9 +369,7 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
           Effect.gen(function* () {
             const user = yield* CurrentUser;
             const topicId = request.params.id;
-            const [topic] = yield* Effect.promise(() =>
-              deps.db.select().from(topics).where(eq(topics.id, topicId)).limit(1),
-            );
+            const topic = yield* Effect.promise(() => getTopic(deps.db, topicId));
             if (
               !topic ||
               topic.archivedAt !== null ||
@@ -374,16 +379,24 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             }
             const result: Array<PublicTool & { scope: 'personal' | 'group' }> = [];
             const aiRows = yield* Effect.promise(() =>
-              deps.db
-                .select({ aiId: groupAis.aiId })
-                .from(groupAis)
-                .where(eq(groupAis.groupId, topic.groupId)),
+              runSql(
+                deps.db,
+                Effect.gen(function* () {
+                  const sql = yield* SqlClient.SqlClient;
+                  return yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
+                    WHERE group_id = ${topic.groupId}`;
+                }),
+              ),
             );
             const topicAiRows = yield* Effect.promise(() =>
-              deps.db
-                .select({ aiId: topicAis.aiId })
-                .from(topicAis)
-                .where(eq(topicAis.topicId, topic.id)),
+              runSql(
+                deps.db,
+                Effect.gen(function* () {
+                  const sql = yield* SqlClient.SqlClient;
+                  return yield* sql<{ aiId: string }>`SELECT ai_id FROM topic_ais
+                    WHERE topic_id = ${topic.id}`;
+                }),
+              ),
             );
             const aiIds = new Set([
               ...aiRows.map((row) => row.aiId),
@@ -787,11 +800,13 @@ async function toolAccess(
   if (!tool) {
     return null;
   }
-  const [ai] = await db
-    .select({ owner: ais.owner })
-    .from(ais)
-    .where(eq(ais.id, tool.aiId))
-    .limit(1);
+  const [ai] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ owner: string }>`SELECT owner FROM ais WHERE id = ${tool.aiId} LIMIT 1`;
+    }),
+  );
   if (!ai) {
     return null;
   }
@@ -799,7 +814,7 @@ async function toolAccess(
     // Personal-chat tool: the AI owner only.
     return ai.owner === userId ? { tool, manager: true } : null;
   }
-  const [topic] = await db.select().from(topics).where(eq(topics.id, tool.topicId)).limit(1);
+  const topic = await getTopic(db, tool.topicId);
   if (!topic || !(await canSeeTopic(db, topic, userId))) {
     return null;
   }
@@ -831,28 +846,37 @@ async function toolAccessIncludingDeleted(
   };
   manager: boolean;
 } | null> {
-  const [row] = await db
-    .select({
-      aiId: aiTools.aiId,
-      groupId: aiTools.groupId,
-      topicId: aiTools.topicId,
-      name: aiTools.name,
-      currentVersion: aiTools.currentVersion,
-    })
-    .from(aiTools)
-    .where(eq(aiTools.id, toolId))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{
+        aiId: string;
+        groupId: string | null;
+        topicId: string | null;
+        name: string;
+        currentVersion: number;
+      }>`SELECT ai_id, group_id, topic_id, name, current_version FROM ai_tools
+        WHERE id = ${toolId} LIMIT 1`;
+    }),
+  );
   if (!row) {
     return null;
   }
-  const [ai] = await db.select({ owner: ais.owner }).from(ais).where(eq(ais.id, row.aiId)).limit(1);
+  const [ai] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ owner: string }>`SELECT owner FROM ais WHERE id = ${row.aiId} LIMIT 1`;
+    }),
+  );
   if (!ai) {
     return null;
   }
   if (row.topicId === null) {
     return ai.owner === userId ? { tool: row, manager: true } : null;
   }
-  const [topic] = await db.select().from(topics).where(eq(topics.id, row.topicId)).limit(1);
+  const topic = await getTopic(db, row.topicId);
   if (!topic || !(await canSeeTopic(db, topic, userId))) {
     return null;
   }
@@ -930,7 +954,13 @@ async function listToolsForGroup(
   groupId: string,
   userId: string,
 ): Promise<Array<PublicTool & { scope: 'personal' | 'group' }>> {
-  const topicRows = await db.select().from(topics).where(eq(topics.groupId, groupId));
+  const topicRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}`;
+    }),
+  );
   const result: Array<PublicTool & { scope: 'personal' | 'group' }> = [];
   for (const topic of topicRows) {
     if (topic.archivedAt !== null) {
@@ -939,14 +969,22 @@ async function listToolsForGroup(
     if (!(await canSeeTopic(db, topic, userId))) {
       continue;
     }
-    const aiRows = await db
-      .select({ aiId: groupAis.aiId })
-      .from(groupAis)
-      .where(eq(groupAis.groupId, groupId));
-    const topicAiRows = await db
-      .select({ aiId: topicAis.aiId })
-      .from(topicAis)
-      .where(eq(topicAis.topicId, topic.id));
+    const aiRows = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
+          WHERE group_id = ${groupId}`;
+      }),
+    );
+    const topicAiRows = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ aiId: string }>`SELECT ai_id FROM topic_ais
+          WHERE topic_id = ${topic.id}`;
+      }),
+    );
     const aiIds = new Set([
       ...aiRows.map((row) => row.aiId),
       ...topicAiRows.map((row) => row.aiId),
@@ -962,20 +1000,26 @@ async function listToolsForGroup(
 }
 
 async function findOwnedAiRow(db: ServerDatabase, aiId: string, ownerId: string) {
-  const [row] = await db
-    .select({ id: ais.id })
-    .from(ais)
-    .where(and(eq(ais.id, aiId), eq(ais.owner, ownerId)))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`SELECT id FROM ais
+        WHERE id = ${aiId} AND owner = ${ownerId} LIMIT 1`;
+    }),
+  );
   return row ?? null;
 }
 
 async function findMembership(db: ServerDatabase, groupId: string, userId: string) {
-  const [row] = await db
-    .select({ role: groupMembers.role })
-    .from(groupMembers)
-    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
-    .limit(1);
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ role: 'owner' | 'admin' | 'member' }>`SELECT role FROM group_members
+        WHERE group_id = ${groupId} AND user_id = ${userId} LIMIT 1`;
+    }),
+  );
   return row ?? null;
 }
 

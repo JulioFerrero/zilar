@@ -1,7 +1,7 @@
 ---
 id: T-0640
 title: "Hono: retire the routines item-11 wrapper (routines/routes.ts); service.test.ts's buildRoutesHarness calls createRoutinesApi(...).handler with a silent logger and the same audit; delete the wrapper; same assertions"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0640-retire-routines-hono-wrapper
 model: auto
@@ -56,4 +56,48 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/server/src/routines/service.test.ts`:
+  - rewrote `buildRoutesHarness(context)` to return `{ request(url, init) }` backed by `createRoutinesApi({ auth, db, audit, logger: pino({ level: 'silent' }) }).handler(new Request(url, init))` (the `T-0637` drafts pattern);
+  - removed the local Hono app and its `onError`, and the now-unused `Hono`, `HttpError` and `createRoutinesRoutes` imports; added `pino` and `createRoutinesApi` imports;
+  - changed `let app: Hono` to `let app: ReturnType<typeof buildRoutesHarness>`.
+  - Every assertion is unchanged.
+- Deleted `apps/server/src/routines/routes.ts` (`git rm`). No code imports it any more.
+
+### Files changed
+- `apps/server/src/routines/routes.ts` (deleted)
+- `apps/server/src/routines/service.test.ts` (edited)
+- `work/T-0640-retire-routines-hono-wrapper.md` (status + this report)
+
+### Commands run (real results)
+- `pnpm install` → Done in 13.7s.
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/routines/service` → `Test Files 1 passed (1)`, `Tests 19 passed (19)`.
+- `pnpm gate` (from repo root):
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.8s)
+  PASS  format  (30.4s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (0.7s)
+  PASS  tests @zilar/server  (33.5s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+- `git grep -n "routines/routes" apps` → only two stale doc comments remain; no code imports the deleted module:
+  - `apps/mobile/src/lib/tools-api.ts:11` — "The wire contract lives in `apps/server/src/tools/routes.ts` and `apps/server/src/routines/routes.ts`."
+  - `apps/web/src/lib/tools.ts:3` — "The wire contract lives in apps/server/src/tools/routes.ts and apps/server/src/routines/routes.ts."
+  Per the lead's clarification these stay (outside Allowed files); the check means "no code imports the deleted module", which holds.
+
+### Follow-ups (out of scope, left untouched)
+- `apps/mobile/src/lib/tools-api.ts:11` and `apps/web/src/lib/tools.ts:3` still name the deleted `apps/server/src/routines/routes.ts` as the routines wire contract; the contract now lives in `apps/server/src/routines/api.ts`.
+- `apps/server/src/routines/api.ts:3` has the same stale reference ("the old Hono router (`routes.ts`, now a thin wrapper below)").
+
 ## Review (written by Claude)
+
+**2026-10-08, lead:** approved.
+- **Pre-review:** clean. The packet head is 8b225ae2, the current HEAD.
+- **Lead check:**
+  - the wrapper is deleted;
+  - `service.test.ts` calls `createRoutinesApi(...).handler`;
+  - no `expect` line changed.
+- **Follow-ups:** stale comments at `apps/server/src/routines/api.ts:1-3`, `apps/mobile/src/lib/tools-api.ts:11` and `apps/web/src/lib/tools.ts:3`.

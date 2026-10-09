@@ -3,7 +3,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
-import { Hono } from 'hono';
+import pino from 'pino';
 import { createAuditRecorder, type AuditRecorder } from '../audit/service';
 import {
   aiLimits,
@@ -21,7 +21,6 @@ import {
   user,
 } from '../db/schema';
 import * as schema from '../db/schema';
-import { HttpError } from '../errors';
 import {
   bootstrapUser,
   createTestContext,
@@ -30,7 +29,11 @@ import {
   type TestApp,
   type TestContext,
 } from '../test-support';
-import { createApprovalsRoutes } from './routes';
+import {
+  createApprovalsApi,
+  type ApprovalsApiDependencies,
+  type ApprovalsRouteLogger,
+} from './api';
 import { createApproval } from './service';
 
 function argsHash(seed: number): string {
@@ -82,33 +85,41 @@ interface HonoRequester {
   request(input: string, init?: RequestInit): Promise<Response> | Response;
 }
 
-// Builds a clock-controllable Hono with only the approvals routes mounted.
+// Dependencies for the in-process requester: the API wants a full pino
+// logger, while the hook-failure test only needs an `error(fields, message)`
+// captor, so accept the narrow shape and widen it where the API is built.
+type ApprovalsRequesterDependencies = Omit<ApprovalsApiDependencies, 'logger'> & {
+  logger?: ApprovalsRouteLogger;
+};
+
+// Routes the full `/api/...` request straight at the Effect handler, which
+// renders the same error envelope Hono's `onError` used to. No Hono mount.
+function approvalsRequester(deps: ApprovalsRequesterDependencies): HonoRequester {
+  const api = createApprovalsApi({
+    ...deps,
+    logger: (deps.logger ?? pino({ level: 'silent' })) as ApprovalsApiDependencies['logger'],
+  });
+  return {
+    request: (input: string, init?: RequestInit) => api.handler(new Request(input, init)),
+  };
+}
+
+// Builds a clock-controllable requester with only the approvals routes.
 // Tests still pass `testApp` to `bootstrapUser` (which writes through the
 // Better Auth handler on the full app stack), then issue the approval
-// requests against this clock-controllable mount, sending the same cookie.
-// The session is read off the headers in both apps, so the cookie works.
+// requests against this mount, sending the same cookie. The session is read
+// off the headers in both, so the cookie works.
 function buildApprovalsHarness(context: TestContext, start: Date): ApprovalsHarness {
   let clockNow = start.getTime();
   const audit = createAuditRecorder({ db: context.db, now: () => new Date(clockNow) });
-  const routes = new Hono();
-  routes.onError((error, c) => {
-    if (error instanceof HttpError) {
-      return c.json({ error: { code: error.code, message: error.message } }, error.status);
-    }
-    throw error;
-  });
-  routes.route(
-    '/api',
-    createApprovalsRoutes({
+
+  return {
+    app: approvalsRequester({
       auth: context.auth,
       db: context.db,
       audit,
       now: () => clockNow,
     }),
-  );
-
-  return {
-    app: routes as unknown as HonoRequester,
     advance: (ms: number) => {
       clockNow += ms;
     },
@@ -583,28 +594,21 @@ describe('approvals routes', () => {
       logger: { error: () => undefined },
     });
 
-    let clockNow = now.getTime();
-    const routes = new Hono();
-    routes.onError((error, c) => {
-      if (error instanceof HttpError) {
-        return c.json({ error: { code: error.code, message: error.message } }, error.status);
-      }
-      throw error;
+    const clockNow = now.getTime();
+    const localApp = approvalsRequester({
+      auth: context.auth,
+      db: context.db,
+      audit: recorder,
+      now: () => clockNow,
     });
-    routes.route(
-      '/api',
-      createApprovalsRoutes({
-        auth: context.auth,
-        db: context.db,
-        audit: recorder,
-        now: () => clockNow,
-      }),
+    const response = await localApp.request(
+      `${TEST_BASE_URL}/api/approvals/${created.id}/decision`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: owner.cookie },
+        body: JSON.stringify({ decision: 'approve_once' }),
+      },
     );
-    const response = await routes.request(`${TEST_BASE_URL}/api/approvals/${created.id}/decision`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', cookie: owner.cookie },
-      body: JSON.stringify({ decision: 'approve_once' }),
-    });
     expect(response.status).toBe(200);
     const auditRows = await context.db.select().from(auditLog);
     expect(auditRows).toHaveLength(0);
@@ -627,35 +631,25 @@ describe('approvals routes', () => {
     );
 
     const hookCalls: string[] = [];
-    let clockNow = now.getTime();
-    const routes = new Hono();
-    routes.onError((error, c) => {
-      if (error instanceof HttpError) {
-        return c.json({ error: { code: error.code, message: error.message } }, error.status);
-      }
-      throw error;
+    const clockNow = now.getTime();
+    const hookApp = approvalsRequester({
+      auth: context.auth,
+      db: context.db,
+      audit: createAuditRecorder({ db: context.db, now: () => new Date(clockNow) }),
+      now: () => clockNow,
+      onDecided: async (approvalId) => {
+        hookCalls.push(approvalId);
+      },
     });
-    routes.route(
-      '/api',
-      createApprovalsRoutes({
-        auth: context.auth,
-        db: context.db,
-        audit: createAuditRecorder({ db: context.db, now: () => new Date(clockNow) }),
-        now: () => clockNow,
-        onDecided: async (approvalId) => {
-          hookCalls.push(approvalId);
-        },
-      }),
-    );
 
-    const first = await routes.request(`${TEST_BASE_URL}/api/approvals/${created.id}/decision`, {
+    const first = await hookApp.request(`${TEST_BASE_URL}/api/approvals/${created.id}/decision`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: owner.cookie },
       body: JSON.stringify({ decision: 'approve_once' }),
     });
     expect(first.status).toBe(200);
 
-    const second = await routes.request(`${TEST_BASE_URL}/api/approvals/${created.id}/decision`, {
+    const second = await hookApp.request(`${TEST_BASE_URL}/api/approvals/${created.id}/decision`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: owner.cookie },
       body: JSON.stringify({ decision: 'deny' }),
@@ -684,37 +678,30 @@ describe('approvals routes', () => {
     );
 
     const loggerCalls: Array<{ fields: Record<string, unknown>; message: string }> = [];
-    let clockNow = now.getTime();
-    const routes = new Hono();
-    routes.onError((error, c) => {
-      if (error instanceof HttpError) {
-        return c.json({ error: { code: error.code, message: error.message } }, error.status);
-      }
-      throw error;
+    const clockNow = now.getTime();
+    const throwingApp = approvalsRequester({
+      auth: context.auth,
+      db: context.db,
+      audit: createAuditRecorder({ db: context.db, now: () => new Date(clockNow) }),
+      now: () => clockNow,
+      logger: {
+        error: (fields, message) => {
+          loggerCalls.push({ fields, message });
+        },
+      },
+      onDecided: () => {
+        throw new Error('hook blew up');
+      },
     });
-    routes.route(
-      '/api',
-      createApprovalsRoutes({
-        auth: context.auth,
-        db: context.db,
-        audit: createAuditRecorder({ db: context.db, now: () => new Date(clockNow) }),
-        now: () => clockNow,
-        logger: {
-          error: (fields, message) => {
-            loggerCalls.push({ fields, message });
-          },
-        },
-        onDecided: () => {
-          throw new Error('hook blew up');
-        },
-      }),
-    );
 
-    const response = await routes.request(`${TEST_BASE_URL}/api/approvals/${created.id}/decision`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', cookie: owner.cookie },
-      body: JSON.stringify({ decision: 'approve_once' }),
-    });
+    const response = await throwingApp.request(
+      `${TEST_BASE_URL}/api/approvals/${created.id}/decision`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: owner.cookie },
+        body: JSON.stringify({ decision: 'approve_once' }),
+      },
+    );
     expect(response.status).toBe(200);
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(loggerCalls).toHaveLength(1);

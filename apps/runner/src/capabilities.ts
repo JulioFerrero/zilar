@@ -12,7 +12,7 @@ async function statfsBytesAvailable(path: string): Promise<{ bsize: number; bava
 }
 
 // Kept in sync with the server's capability schema
-// (apps/server/src/machines/routes.ts). The runner is the source of truth
+// (apps/server/src/machines/api.ts). The runner is the source of truth
 // here: anything this rejects will also be rejected by the server.
 const MAX_DRIVERS = 32;
 const MAX_LABELS = 32;

@@ -2,6 +2,107 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 01:50, Julio asleep:**
+- **Merged since 01:22:**
+  - T-0669 to T-0681 (except T-0679 and T-0680, listed separately below);
+  - T-0672 (C1, the approval decision);
+  - T-0675 (C4 phase 2: the setup transactions; `SetupTransaction` is gone);
+  - T-0679 (the last drizzle deletes);
+  - T-0680 (topic members);
+  - T-0681 (createAi).
+- **Now with no drizzle:** `ais/service.ts`, `connections`, `tools/service.ts`, `routines/service.ts`, `agents/memory/store.ts`, `voice-transcription/*`, `setup/settings.ts`, `setup/api.ts`, `integrations/settings.ts` and `push/test-tables.ts`.
+- **Running:**
+  - T-0682 (groups reads, merging);
+  - T-0683 (setTopicRoles and the topic helpers, Haiku);
+  - T-0685 (A7, deleting `setup/routes.ts`, Haiku);
+  - T-0684 (the rest of `approvals/service.ts`, DeepSeek).
+- **Next:**
+  - groups slice 4 (the member writes);
+  - groups slice 5 (`createGroup`, `patchGroup`);
+  - topics slice 3b (`createTopic`, `patchTopic`, using `sql.update`);
+  - then group D (the migrator, test-support, better-auth; D2 needs a decision);
+  - A12 git (Julio's decision);
+  - B1 (the edge flip).
+- **Haiku 5.5:** 17 tasks so far, all correct. Two needed a lead decision on drizzle-mocking tests.
+
+**2026-10-09 01:22, 6 workers (3 DeepSeek and 2 Haiku running, 1 queued):**
+- **The other Claude session was killed** (pid 6161, an old bg session), on Julio's order: "we can not have two claude at the same time". This fork is the only lead.
+- **Merged since 01:10:**
+  - T-0660 (C3);
+  - T-0661 (TypeScript 7.0.2);
+  - T-0662 (sweeper);
+  - T-0663 to T-0666 (phase 1 of removeGroupAi);
+  - T-0667 (setup settings Effects);
+  - T-0668 (Telegram token store).
+  - T-0669 (voice transcript store) is merging.
+- **Haiku 5.5 verdict: good.** 6 tasks, all correct. It stops honestly when a test mocks drizzle. It now takes the small single-folder tasks; the lead reviews its diffs directly.
+- **Running:**
+  - T-0670: removeGroupAi on `sql.withTransaction`, and the 3 drizzle helpers deleted;
+  - T-0671: the ais reads;
+  - T-0672: C1, the approval decision and `createRule`;
+  - T-0673 and T-0674 (Haiku): the voice fast-path read and the push test tables.
+- **Queued:** T-0675 (C4 phase 2: the setup transactions; `SetupTransaction` goes away).
+- **Next:**
+  - `ais` stop, resume and assign (after T-0671);
+  - topics/service.ts;
+  - the rest of groups/service.ts (5 transactions);
+  - the tools and routines leftovers;
+  - the memory store's `deleteRoomMemory` (topics caller).
+
+**2026-10-09 01:10. Julio is asleep ("dont stop", up to 8 workers, "dont hold any launches"). ONE LEAD ONLY: the forked session (`claude --resume fcd95e40 --fork-session`, pid 44863) owns the loop tonight. Any other lead session must not review, merge, launch, queue runner lines, or edit BOARD or NOW.** At 01:05 both sessions wrote a T-0661 Review and both queued its merge; one merge ran.
+- **Merged since 00:45:** T-0656 (gate slots).
+- **Merging:** T-0661 (**TypeScript 7.0.2**, native `tsc`; mobile keeps the TS 6 API for Expo), then T-0662.
+- **Haiku 5.5 trial (Claude Code subagents, never OpenCode):**
+  - T-0662 (sweeper survivors and dry-run throttle) was good. It took 2 short rounds: one blocked on a real conflict in my spec, and one review fix. It is approved and queued for merge;
+  - now also running T-0665 and T-0666.
+  - With no OpenCode pre-review, the lead reviews Haiku diffs directly.
+- **Running on DeepSeek:** T-0663 and T-0664. These and the two Haiku tasks are phase 1 of the `removeGroupAi` chain: an Effect version of each helper sits next to its drizzle one. Phase 2 (one task) will move `groups/service.ts:1067` to `sql.withTransaction` and delete the drizzle versions.
+- **In review:** T-0660 (C3), waiting for its fix-round packet.
+- **Next:**
+  - C4 phase 1 (setup and integrations settings as Effects; the callers are `setup/api.ts:238,282`, `integrations/api.ts:336,367,445` and `voice-transcription/pipeline.ts:165`);
+  - then C1 (the `approvals/service.ts:331` decision and `createRule`/`findActiveRuleForUpdate`).
+
+**2026-10-09 00:45, 3 workers, all in review:**
+- **Merged since 23:55:**
+  - the Hono test wrappers for connections, routines, audit, tools, machines, approvals and push (T-0639 to T-0645), and invite-links/routes.ts (T-0646);
+  - effect/sql for the tools reads (T-0647), the ais update and persona transactions (T-0648) and the ais delete and model-clear transactions (T-0652);
+  - the stale comment fixes (T-0649);
+  - **zod is gone from the server:** T-0650, T-0651, T-0653 and T-0654, then the dependency itself (T-0659);
+  - the gate typechecks only affected packages with a shared Turbo cache (T-0655): 0.9s warm, 1 package instead of 12;
+  - the tsgo spike (T-0657);
+  - the autopilot sweeper for leftover test and typecheck processes (T-0658). The autopilot was restarted at 00:36 to load it.
+- **In review:**
+  - T-0656: gate slots (2 + merge), nice, Gradle stop, turbo `globalDependencies`;
+  - T-0660: C3, the last ais transactions plus `connections` decryptForGatewayUse;
+  - T-0661: **TypeScript 7.0.2** everywhere (Julio: "use tsgo"; 7.0 is stable and its `tsc` is native). apps/mobile keeps TS 6 for Expo via `@typescript/typescript6`, with `@typescript/native` = 7.0.2.
+- **Julio's decisions (2026-10-09):**
+  - no auto-merge lane;
+  - load-aware scheduling only after measuring T-0655/56;
+  - OrbStack: Julio installs it himself (`brew install --cask orbstack`, then migrate the volumes);
+  - wants to test **Claude Haiku 5.5** as a worker through a Claude Code subagent, not OpenCode, because the subscription must not be used in OpenCode. It needs a session restart to see the model.
+- **Next:**
+  - after T-0656, measure the load at 4 workers;
+  - the C chains (C1 approvals and rules, C2 tools deletes, C4 setup settings, C5 routines and memory deletes);
+  - A7 setup/routes.ts (after C4);
+  - A12 git (Julio's decision).
+
+**2026-10-08 23:55, 5 workers, on small files, smallest first (Julio: "for small files, spawn more workers"):**
+- **Merged since 23:00:**
+  - the effect/sql conversions: T-0625, T-0627 to T-0631, T-0633 to T-0636 (stickers fully off drizzle);
+  - the T-0626 audit (`docs/audit/effect-last-mile.md`, the plan to follow);
+  - T-0632 (review nits);
+  - the drafts, files and connections Hono wrappers retired (T-0637 to T-0639).
+- **Running:** the Hono wrappers for routines (T-0640), approvals (T-0641), tools (T-0642), machines (T-0643) and audit (T-0644).
+- **Next small files:**
+  - `invite-links/routes.ts` (A11, which edits `app.ts`, so it starts after T-0642);
+  - the push wrapper (A9).
+- **On hold:**
+  - `handles` E1 changes an error message the client sees;
+  - `git/routes.ts` waits for Julio's decision on the git proxy;
+  - the setup files wait for the C4 chain.
+- **Follow-ups:** stale doc comments that name the deleted `connections/routes.ts` and `routines/routes.ts` (in mobile and web).
+- **Load** is about 20 on 11 cores at 5 workers, so there is no 6th worker for now.
+
 **2026-10-08 23:00, 4 workers (Julio: "lets go up to 4 workers maybe?"):**
 - **Merged since 22:40:** T-0620 (the gate falls back to a folder's tests), T-0621 (approval rules), T-0622 (owner lookups), T-0623 (voice settings), T-0624 (announcer reads).
 - **Running:**

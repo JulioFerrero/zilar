@@ -14,6 +14,7 @@ import {
   HttpApiGroup,
   HttpApiMiddleware,
 } from 'effect/http-api';
+import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
 import { createResendMailer } from '../auth/mailer';
 import type { ServerConfig } from '../config';
@@ -30,8 +31,9 @@ import {
   type EffectApiMount,
   type EffectApiRoute,
 } from '../effect/http';
+import { sqlRuntimeFor } from '../effect/sql';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import { getMailSettings, saveMailSettings, settingsCipherFor } from '../setup/settings';
+import { getMailSettings, saveMailSettingsEffect, settingsCipherFor } from '../setup/settings';
 import { createTelegramClient } from '../stickers/telegram-import';
 import { voiceTranscriptionStatusFor } from '../voice-transcription/routes';
 import {
@@ -332,11 +334,7 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
               }),
             );
             const cipher = settingsCipherFor(deps.config);
-            yield* Effect.promise(() =>
-              deps.db.transaction(async (tx) => {
-                await saveStoredTelegramToken(tx, cipher, botToken);
-              }),
-            );
+            yield* Effect.promise(() => saveStoredTelegramToken(deps.db, cipher, botToken));
             void deps.audit?.record({
               actorUserId: user.id,
               aiId: null,
@@ -363,11 +361,7 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
           Effect.gen(function* () {
             const user = yield* CurrentUser;
             yield* Effect.promise(() => requireOwner(user.id));
-            yield* Effect.promise(() =>
-              deps.db.transaction(async (tx) => {
-                await deleteStoredTelegramToken(tx);
-              }),
-            );
+            yield* Effect.promise(() => deleteStoredTelegramToken(deps.db));
             void deps.audit?.record({
               actorUserId: user.id,
               aiId: null,
@@ -442,9 +436,14 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
             );
             const storedKey: string = key;
             yield* Effect.promise(() =>
-              deps.db.transaction(async (tx) => {
-                await saveMailSettings(tx, cipher, { resendApiKey: storedKey, from });
-              }),
+              sqlRuntimeFor(deps.db).runPromise(
+                Effect.gen(function* () {
+                  const sql = yield* SqlClient.SqlClient;
+                  return yield* sql.withTransaction(
+                    saveMailSettingsEffect(cipher, { resendApiKey: storedKey, from }),
+                  );
+                }),
+              ),
             );
             swap(candidate);
             void deps.audit?.record({

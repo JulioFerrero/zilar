@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { Hono } from 'hono';
+import { pino } from 'pino';
 import {
   aiLimits,
   ais,
@@ -15,7 +15,6 @@ import {
   topicMembers,
   topics,
 } from '../db/schema';
-import { HttpError } from '../errors';
 import { createAuditRecorder } from '../audit/service';
 import { approveToolHosts, deleteTool, saveToolVersion } from '../tools/service';
 import {
@@ -28,8 +27,14 @@ import {
   type TestApp,
   type TestContext,
 } from '../test-support';
-import { createRoutinesRoutes } from './routes';
-import { createRoutine, MAX_ROUTINES_PER_TOPIC, RoutineServiceError } from './service';
+import { createRoutinesApi } from './api';
+import { sqlRuntimeFor } from '../effect/sql';
+import {
+  createRoutine,
+  deleteRoutinesForAiInGroupEffect,
+  MAX_ROUTINES_PER_TOPIC,
+  RoutineServiceError,
+} from './service';
 
 const NOW = new Date('2026-06-01T12:00:00Z');
 const INTERVAL_60 = { kind: 'interval', everyMinutes: 60 } as const;
@@ -149,22 +154,22 @@ async function seedTool(
 }
 
 function buildRoutesHarness(context: TestContext) {
-  const routes = new Hono();
-  routes.onError((error, c) => {
-    if (error instanceof HttpError) {
-      return c.json({ error: { code: error.code, message: error.message } }, error.status);
-    }
-    throw error;
-  });
   const audit = createAuditRecorder({ db: context.db, now: () => NOW });
-  routes.route('/api', createRoutinesRoutes({ auth: context.auth, db: context.db, audit }));
-  return routes;
+  const { handler } = createRoutinesApi({
+    auth: context.auth,
+    db: context.db,
+    audit,
+    logger: pino({ level: 'silent' }),
+  });
+  return {
+    request: (url: string, init?: RequestInit) => handler(new Request(url, init)),
+  };
 }
 
 describe('routines service and routes (T-0104)', () => {
   let context: TestContext;
   let authApp: TestApp;
-  let app: Hono;
+  let app: ReturnType<typeof buildRoutesHarness>;
   let emailCounter = 0;
 
   beforeEach(async () => {
@@ -744,6 +749,47 @@ describe('routines service and routes (T-0104)', () => {
         .where(eq(routines.id, setup.routine.id))
         .limit(1);
       expect(row?.deletedAt).not.toBeNull();
+    });
+
+    it('the effect delete soft-deletes only this AI in this group', async () => {
+      const setup = await ownerWithGroupRoutine(`effect-del-${emailCounter}@example.com`);
+      const other = await seedGroup(context, setup.owner.id, 'owner', [setup.aiId]);
+      const otherToolId = await seedTool(context, {
+        aiId: setup.aiId,
+        groupId: other.groupId,
+        topicId: other.generalTopicId,
+        userId: setup.owner.id,
+      });
+      const elsewhere = await createRoutine(
+        context.db,
+        {
+          aiId: setup.aiId,
+          groupId: other.groupId,
+          topicId: other.generalTopicId,
+          toolId: otherToolId,
+          title: 'Other group routine',
+          schedule: INTERVAL_60,
+          approvedHosts: ['api.example.com'],
+          userId: setup.owner.id,
+        },
+        NOW,
+      );
+      const deletedIds = await sqlRuntimeFor(context.db).runPromise(
+        deleteRoutinesForAiInGroupEffect({ aiId: setup.aiId, groupId: setup.groupId, now: NOW }),
+      );
+      expect(deletedIds).toEqual([setup.routine.id]);
+      const [groupRow] = await context.db
+        .select()
+        .from(routines)
+        .where(eq(routines.id, setup.routine.id))
+        .limit(1);
+      const [elsewhereRow] = await context.db
+        .select()
+        .from(routines)
+        .where(eq(routines.id, elsewhere.id))
+        .limit(1);
+      expect(groupRow?.deletedAt).not.toBeNull();
+      expect(elsewhereRow?.deletedAt).toBeNull();
     });
 
     it('removing the AI from a topic soft-deletes its routines there', async () => {

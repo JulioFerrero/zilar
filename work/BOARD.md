@@ -9,9 +9,10 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0639](T-0639-retire-connections-hono-wrapper.md) | Hono: retire the connections test wrapper | in-progress | auto | | |
-| [T-0640](T-0640-retire-routines-hono-wrapper.md) | Hono: retire the routines test wrapper | in-progress | auto | | |
-| [T-0641](T-0641-retire-approvals-hono-wrapper.md) | Hono: retire the approvals test wrapper | in-progress | auto | | |
+| [T-0689](T-0689-plan-edge-flip.md) | plan (no code): B1 edge flip, Hono edge → Effect HTTP | in-progress | auto | | |
+| [T-0690](T-0690-better-auth-sql-adapter.md) | D2 step 1: better-auth adapter over effect/sql (built + tested, not switched) | in-progress | auto | | |
+| [T-0691](T-0691-plan-drizzle-removal.md) | plan (no code): last drizzle removal (tests, test-support, migrator, deletes) | in-progress | auto | | |
+| [T-0692](T-0692-retired-handle-create-test.md) | test: public create with another group's retired handle → 409; ais row-type nit | in-progress | haiku-5.5 | T-0688 | |
 
 ## Follow-ups
 
@@ -670,3 +671,53 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0636](T-0636-effect-sql-sticker-files.md) | sticker favorites, files and import on effect/sql | 2026-10-08 |
 | [T-0638](T-0638-retire-files-hono-wrapper.md) | retire the files Hono test wrapper | 2026-10-08 |
 | [T-0626](T-0626-audit-effect-last-mile.md) | audit: the Effect last mile and the bigint check | 2026-10-08 |
+| [T-0639](T-0639-retire-connections-hono-wrapper.md) | retire the connections Hono test wrapper | 2026-10-08 |
+| [T-0640](T-0640-retire-routines-hono-wrapper.md) | retire the routines Hono test wrapper | 2026-10-08 |
+| [T-0644](T-0644-retire-audit-hono-wrapper.md) | retire the audit Hono test wrapper | 2026-10-08 |
+| [T-0642](T-0642-retire-tools-hono-wrapper.md) | retire the tools Hono test wrapper | 2026-10-08 |
+| [T-0643](T-0643-retire-machines-hono-wrapper.md) | retire the machines Hono test wrapper | 2026-10-08 |
+| [T-0641](T-0641-retire-approvals-hono-wrapper.md) | retire the approvals Hono test wrapper | 2026-10-08 |
+| [T-0645](T-0645-retire-push-hono-wrapper.md) | retire the push Hono test wrapper | 2026-10-08 |
+| [T-0646](T-0646-delete-invite-links-routes.md) | delete invite-links/routes.ts | 2026-10-08 |
+| [T-0647](T-0647-tools-api-adapters-effect-sql.md) | tools API and adapters reads on effect/sql | 2026-10-08 |
+| [T-0649](T-0649-stale-routes-comments.md) | repoint comments that named the deleted routes.ts files | 2026-10-08 |
+| [T-0648](T-0648-ais-update-persona-effect-sql.md) | ais update and persona transactions on effect/sql | 2026-10-08 |
+| [T-0650](T-0650-handles-drop-zod.md) | handles without the legacy zod schema | 2026-10-08 |
+| [T-0651](T-0651-contact-requests-drop-zod.md) | contact requests without the legacy zod schema | 2026-10-08 |
+| [T-0654](T-0654-db-schema-drop-zod.md) | db/schema.ts enums become plain unions | 2026-10-08 |
+| [T-0653](T-0653-stickers-drop-zod.md) | stickers API without the legacy zod schemas | 2026-10-08 |
+| [T-0655](T-0655-gate-affected-typecheck.md) | gate typechecks affected packages with a shared Turbo cache | 2026-10-08 |
+| [T-0657](T-0657-tsgo-spike.md) | tsgo spike: same result as tsc, about 2-4x faster | 2026-10-08 |
+| [T-0652](T-0652-ais-delete-and-model-clear-effect-sql.md) | ais delete and model-clear transactions on effect/sql | 2026-10-08 |
+| [T-0659](T-0659-server-drop-zod-dependency.md) | drop the zod dependency from the server | 2026-10-08 |
+| [T-0658](T-0658-autopilot-sweeper.md) | autopilot sweeps leftover test and typecheck processes | 2026-10-08 |
+| [T-0656](T-0656-gate-slots-and-nice.md) | gate slots, nice, Gradle stop, turbo globalDependencies | 2026-10-08 |
+| [T-0661](T-0661-typecheck-with-tsgo.md) | TypeScript 7.0.2 (native tsc) everywhere; mobile keeps the TS 6 API for Expo via @typescript/typescript6 | 2026-10-08 |
+| [T-0662](T-0662-sweeper-survivors-and-dry-run.md) | sweeper reports SIGKILL survivors with LEAD: SWEEP FAILED; dry runs no longer arm the sweep throttle | 2026-10-08 |
+| [T-0660](T-0660-ais-ensure-change-model-effect-sql.md) | effect/sql: ais ensure/change model transactions, gateway lookups and connections decryptForGatewayUse (C3) | 2026-10-08 |
+| [T-0663](T-0663-rules-revoke-effect.md) | effect/sql phase 1: revokeActiveRulesForAiInGroupEffect | 2026-10-08 |
+| [T-0664](T-0664-tools-deletes-effect.md) | effect/sql phase 1: tools deletes as Effects | 2026-10-08 |
+| [T-0665](T-0665-routines-delete-effect.md) | effect/sql phase 1: deleteRoutinesForAiInGroupEffect | 2026-10-08 |
+| [T-0666](T-0666-room-memory-delete-effect.md) | effect/sql phase 1: deleteRoomMemoryEffect | 2026-10-08 |
+| [T-0667](T-0667-setup-settings-effects.md) | effect/sql phase 1 (C4): setup settings helpers as Effects | 2026-10-08 |
+| [T-0668](T-0668-telegram-token-effect-sql.md) | effect/sql (C4): Telegram token store, no drizzle transactions | 2026-10-08 |
+| [T-0669](T-0669-voice-transcript-store-effect-sql.md) | effect/sql (C4): voice transcript store on sql.withTransaction | 2026-10-08 |
+| [T-0674](T-0674-push-test-tables-effect-sql.md) | effect/sql: push test-table helper | 2026-10-08 |
+| [T-0670](T-0670-remove-group-ai-effect-sql.md) | effect/sql phase 2: removeGroupAi on sql.withTransaction, 3 drizzle helpers deleted | 2026-10-08 |
+| [T-0671](T-0671-ais-reads-effect-sql.md) | effect/sql: ais reads (listAis, listActiveAisForGateway, findOwnedAi) | 2026-10-08 |
+| [T-0673](T-0673-voice-api-fast-path-effect-sql.md) | effect/sql: voice API fast-path read | 2026-10-08 |
+| [T-0676](T-0676-topic-ais-effect-sql.md) | effect/sql: topic AIs (add, remove, dropped) | 2026-10-08 |
+| [T-0677](T-0677-ais-stop-resume-assign-effect-sql.md) | effect/sql: ais stop, resume, assign, findUserName | 2026-10-08 |
+| [T-0678](T-0678-group-ais-and-topic-helpers-effect-sql.md) | effect/sql: addGroupAi + group-topic helpers | 2026-10-08 |
+| [T-0679](T-0679-delete-last-drizzle-deletes.md) | effect/sql cleanup: drizzle deleteToolsForAiInTopic and deleteRoomMemory deleted, stale comments fixed | 2026-10-08 |
+| [T-0680](T-0680-topic-members-effect-sql.md) | effect/sql: topic members (list, add, remove) | 2026-10-08 |
+| [T-0681](T-0681-ais-create-effect-sql.md) | effect/sql: createAi and compensateCreate; ais/service.ts drops drizzle | 2026-10-08 |
+| [T-0675](T-0675-setup-transactions-effect-sql.md) | effect/sql phase 2 (C4): setup transactions on sql.withTransaction, SetupTransaction gone | 2026-10-08 |
+| [T-0672](T-0672-approvals-decision-effect-sql.md) | effect/sql (C1): approval decision transaction and createRule | 2026-10-08 |
+| [T-0682](T-0682-group-reads-effect-sql.md) | effect/sql: groups read helpers | 2026-10-08 |
+| [T-0685](T-0685-delete-setup-routes.md) | A7: setup Hono wrapper deleted | 2026-10-08 |
+| [T-0683](T-0683-topic-roles-and-helpers-effect-sql.md) | effect/sql: setTopicRoles and topic helpers | 2026-10-08 |
+| [T-0686](T-0686-group-member-writes-effect-sql.md) | effect/sql: group member writes | 2026-10-08 |
+| [T-0687](T-0687-create-patch-topic-effect-sql.md) | effect/sql: createTopic and patchTopic; topics/service.ts drops drizzle | 2026-10-08 |
+| [T-0688](T-0688-create-patch-group-effect-sql.md) | effect/sql: createGroup and patchGroup; groups/service.ts drops drizzle | 2026-10-09 |
+| [T-0684](T-0684-approvals-service-effect-sql.md) | effect/sql: rest of approvals/service.ts and the gateway approval transaction; approvals drops drizzle | 2026-10-09 |

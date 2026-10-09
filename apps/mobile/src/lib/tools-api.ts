@@ -8,7 +8,7 @@ import { API_URL } from './auth';
  * The tools and routines read API (`GET /api/ais/:id/tools` and
  * `GET /api/ais/:id/routines`), the mobile twin of the web client in
  * `apps/web/src/lib/tools.ts`. The wire contract lives in
- * `apps/server/src/tools/routes.ts` and `apps/server/src/routines/routes.ts`.
+ * `apps/server/src/tools/api.ts` and `apps/server/src/routines/api.ts`.
  *
  * The boundary is validated with Effect Schema (T-0506 recipe): the request is
  * an Effect pipeline, cut back to a `Promise` at the edge with

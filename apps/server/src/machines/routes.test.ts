@@ -2,21 +2,20 @@ import { createHash, createPrivateKey, generateKeyPairSync, randomUUID, sign } f
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { eq } from 'drizzle-orm';
-import { Hono, type Context } from 'hono';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app';
 import { createAuditRecorder, type AuditRecorder } from '../audit/service';
 import * as schema from '../db/schema';
 import { ais, auditLog, machinePairingCodes, machines, providerConnections } from '../db/schema';
-import { HttpError } from '../errors';
+import { SOCKET_ADDRESS_HEADER } from '../effect/http';
 import { bootstrapUser, createTestContext, TEST_BASE_URL, type TestContext } from '../test-support';
-import { hashPairingCode, normalizePairingCode } from './codes';
-import { createDbMachineRegistry, type DbMachineRegistry } from './registry';
 import {
-  createMachinesRoutes,
+  createMachinesApi,
   PAIR_RATE_LIMIT_WINDOW_MS,
   PAIRING_CODE_RATE_LIMIT_WINDOW_MS,
-} from './routes';
+} from './api';
+import { hashPairingCode, normalizePairingCode } from './codes';
+import { createDbMachineRegistry, type DbMachineRegistry } from './registry';
 
 type TestApp = ReturnType<typeof createApp>;
 
@@ -94,28 +93,25 @@ describe('machines routes', () => {
   function mountMachines(
     overrides: {
       now?: () => number;
-      getClientIp?: (c: Context) => string;
+      getClientIp?: () => string;
       registry?: DbMachineRegistry;
       audit?: AuditRecorder;
     } = {},
-  ): Hono {
-    const routes = new Hono();
-    routes.onError((error, c) => {
-      if (error instanceof HttpError) {
-        return c.json({ error: { code: error.code, message: error.message } }, error.status);
-      }
-      throw error;
+  ): Requestable {
+    const { getClientIp, ...deps } = overrides;
+    const api = createMachinesApi({
+      auth: context.auth,
+      db: context.db,
+      logger: context.logger,
+      ...deps,
     });
-    routes.route(
-      '/api',
-      createMachinesRoutes({
-        auth: context.auth,
-        db: context.db,
-        logger: context.logger,
-        ...overrides,
-      }),
-    );
-    return routes;
+    return {
+      request(url: string, init: RequestInit = {}): Promise<Response> {
+        const headers = new Headers(init.headers);
+        headers.set(SOCKET_ADDRESS_HEADER, getClientIp?.() ?? 'unknown');
+        return api.handler(new Request(url, { ...init, headers }));
+      },
+    };
   }
 
   async function newCode(

@@ -1,6 +1,6 @@
 // T-0107: tools and routines read model + mutations for the web UI.
-// The wire contract lives in apps/server/src/tools/routes.ts and
-// apps/server/src/routines/routes.ts. Dates arrive as ISO strings and stay
+// The wire contract lives in apps/server/src/tools/api.ts and
+// apps/server/src/routines/api.ts. Dates arrive as ISO strings and stay
 // strings, like the approvals and audit schemas in api.ts.
 
 import { Result, Schema } from 'effect';

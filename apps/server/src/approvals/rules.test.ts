@@ -24,10 +24,11 @@ import {
   findActiveRule,
   listActiveRulesForAi,
   listActiveRulesForTopic,
-  revokeActiveRulesForAiInGroup,
+  revokeActiveRulesForAiInGroupEffect,
   revokeActiveRulesForAiInTopic,
   revokeRule,
 } from './rules';
+import { sqlRuntimeFor } from '../effect/sql';
 import { buildAlwaysEligible, buildRegistry, type ActionAdapter } from '../actions/registry';
 import { createActionGateway } from '../actions/gateway';
 import { createAuditRecorder } from '../audit/service';
@@ -702,7 +703,7 @@ describe('approval rules service (T-0099)', () => {
   });
 
   describe('lifecycle: removeGroupAi revokes group rules', () => {
-    it('kills the AI rules for the group but leaves personal rules alone', async () => {
+    it('revokes the group rule through the Effect helper and leaves personal rules alone', async () => {
       const ownerId = await seedUser(context);
       const { aiId } = await seedAi(context, ownerId);
       const { groupId, generalTopicId } = await seedGroup(
@@ -721,13 +722,9 @@ describe('approval rules service (T-0099)', () => {
         { aiId, groupId, topicId: generalTopicId, action: 'demo.echo', createdBy: ownerId },
         now,
       );
-      // Run the same revoke helper removeGroupAi uses.
-      const revoked = await revokeActiveRulesForAiInGroup(context.db, {
-        aiId,
-        groupId,
-        actorId: ownerId,
-        now,
-      });
+      const revoked = await sqlRuntimeFor(context.db).runPromise(
+        revokeActiveRulesForAiInGroupEffect({ aiId, groupId, actorId: ownerId, now }),
+      );
       expect(revoked).toHaveLength(1);
       expect(revoked[0]?.id).toBe(group.rule.id);
 

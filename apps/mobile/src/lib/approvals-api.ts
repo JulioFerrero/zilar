@@ -7,7 +7,7 @@ import { API_URL } from './auth';
 /**
  * The approvals API (`/api/approvals`), the mobile twin of the web client in
  * `apps/web/src/lib/api.ts`. The wire contract lives in
- * `apps/server/src/approvals/routes.ts` and `apps/server/src/approvals/service.ts`.
+ * `apps/server/src/approvals/api.ts` and `apps/server/src/approvals/service.ts`.
  *
  * The boundary is validated with Effect Schema (T-0541, the T-0506 recipe):
  * the request is an Effect pipeline, cut back to a `Promise` at the edge

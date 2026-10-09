@@ -1,20 +1,22 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { and, count, desc, eq, gt, inArray, lt, or } from 'drizzle-orm';
-import { Result, Schema } from 'effect';
+import { Effect, Result, Schema } from 'effect';
+import { SqlClient, SqlError, type Statement } from 'effect/sql';
 import { ARGS_HASH_PATTERN } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
-import {
-  ais,
-  approvals,
-  groupAis,
-  groupMemberRoles,
-  groupMembers,
-  groupRoles,
-  topics,
-  user,
-} from '../db/schema';
-import { canSeeTopic } from '../topics/access';
-import { createRule, isGroupAdmin } from './rules';
+import { sqlRuntimeFor } from '../effect/sql';
+import type { approvals } from '../db/schema';
+import { canSeeTopic, getTopic } from '../topics/access';
+import { createRuleEffect, isGroupAdmin } from './rules';
+
+// Every query runs on the `effect/sql` client registered for this database
+// (see `../effect/sql`). The exported functions stay `async` so routes and
+// tests keep their shape during the transition.
+function runSql<A, E>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
 
 // `approved_always` is treated exactly like `approved_once` for the
 // single-use path; T-0099 adds a separate standing-rule flow that the
@@ -172,85 +174,158 @@ export class ApprovalServiceError extends Error {
 
 type ApprovalRow = typeof approvals.$inferSelect;
 
+// The raw shape the driver returns for one `approvals` row. The effect/sql
+// client camelCases the columns but may hand back `timestamptz` as an ISO
+// string rather than a `Date`; `toApprovalRow` normalises the three
+// timestamp columns so the rest of the module keeps the drizzle row type.
+type ApprovalSqlRow = Omit<ApprovalRow, 'decidedAt' | 'expiresAt' | 'createdAt'> & {
+  decidedAt: Date | string | null;
+  expiresAt: Date | string;
+  createdAt: Date | string;
+};
+
+function toDate(value: Date | string): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
+function toApprovalRow(raw: ApprovalSqlRow): ApprovalRow {
+  return {
+    ...raw,
+    decidedAt: raw.decidedAt === null ? null : toDate(raw.decidedAt),
+    expiresAt: toDate(raw.expiresAt),
+    createdAt: toDate(raw.createdAt),
+  };
+}
+
 // Validates input at the boundary and writes one row. The AI must exist; if
 // `groupId` is set, `topicId` must name a topic of that group (both set or
 // both absent — personal chat). `expiresAt` must be in the future and at
 // most 24 hours ahead. Per-AI pending cap is 50.
+//
+// The Effect version lets the action gateway yield it inside its
+// `sql.withTransaction`, so the approval row and the `pending_actions` row
+// commit together. The validation errors are typed `ApprovalServiceError`
+// failures (not defects), so callers that catch around the Effect see the
+// same error instance the old `throw` produced.
+export function createApprovalEffect(
+  input: CreateApprovalInput,
+  now: Date,
+): Effect.Effect<
+  ApprovalRow,
+  SqlError.SqlError | ApprovalServiceError | Error,
+  SqlClient.SqlClient
+> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+
+    const data = yield* Effect.try({
+      try: () => parseCreateApprovalInput(input),
+      catch: (error) =>
+        error instanceof ApprovalServiceError
+          ? error
+          : new ApprovalServiceError('invalid_request', INVALID_APPROVAL_REQUEST_MESSAGE),
+    });
+
+    if (data.expiresAt.getTime() <= now.getTime()) {
+      return yield* Effect.fail(
+        new ApprovalServiceError('invalid_request', 'expires_at must be in the future'),
+      );
+    }
+    if (data.expiresAt.getTime() - now.getTime() > MAX_APPROVAL_EXPIRY_MS) {
+      return yield* Effect.fail(
+        new ApprovalServiceError(
+          'invalid_request',
+          'expires_at must be at most 24 hours in the future',
+        ),
+      );
+    }
+
+    const [ai] = yield* sql<{ id: string }>`SELECT id FROM ais WHERE id = ${data.aiId} LIMIT 1`;
+    if (!ai) {
+      return yield* Effect.fail(new ApprovalServiceError('invalid_request', 'Unknown AI'));
+    }
+
+    if (data.groupId !== undefined) {
+      const groupId = data.groupId;
+      const [link] = yield* sql<{ aiId: string }>`SELECT ai_id FROM group_ais
+        WHERE group_id = ${groupId} AND ai_id = ${data.aiId} LIMIT 1`;
+      if (!link) {
+        return yield* Effect.fail(
+          new ApprovalServiceError('ai_not_in_group', 'The AI is not in that topic'),
+        );
+      }
+      // The topic must belong to the group; the AI's membership of the topic
+      // is checked by the gateway before this service is reached.
+      const [topic] = yield* sql<{ id: string; groupId: string }>`SELECT id, group_id FROM topics
+        WHERE id = ${data.topicId as string} LIMIT 1`;
+      if (!topic || topic.groupId !== groupId) {
+        return yield* Effect.fail(
+          new ApprovalServiceError('ai_not_in_group', 'The AI is not in that topic'),
+        );
+      }
+    }
+
+    const [countRow] = yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM approvals
+      WHERE ai_id = ${data.aiId} AND status = 'pending'`;
+    if (Number(countRow?.total ?? 0) >= MAX_PENDING_APPROVALS_PER_AI) {
+      return yield* Effect.fail(
+        new ApprovalServiceError(
+          'pending_limit',
+          `At most ${MAX_PENDING_APPROVALS_PER_AI} pending approvals per AI`,
+        ),
+      );
+    }
+
+    const id = randomUUID();
+    const row: typeof approvals.$inferInsert = {
+      id,
+      aiId: data.aiId,
+      groupId: data.groupId ?? null,
+      topicId: data.topicId ?? null,
+      action: data.action,
+      summary: data.summary,
+      details: data.details ?? null,
+      argsHash: data.argsHash,
+      worstCaseCurrency: data.worstCase?.currency ?? null,
+      worstCaseAmount: data.worstCase?.amount.toFixed(2) ?? null,
+      requestedBy: data.requestedBy,
+      status: 'pending',
+      expiresAt: data.expiresAt,
+    };
+    const [created] = yield* sql<ApprovalSqlRow>`INSERT INTO approvals
+        (id, ai_id, group_id, topic_id, action, summary, details, args_hash,
+          worst_case_currency, worst_case_amount, requested_by, status, expires_at)
+      VALUES (
+        ${row.id},
+        ${row.aiId},
+        ${row.groupId},
+        ${row.topicId},
+        ${row.action},
+        ${row.summary},
+        ${row.details},
+        ${row.argsHash},
+        ${row.worstCaseCurrency},
+        ${row.worstCaseAmount},
+        ${row.requestedBy},
+        ${row.status},
+        ${row.expiresAt}
+      )
+      RETURNING *`;
+    if (!created) {
+      return yield* Effect.fail(new Error('Failed to create approval'));
+    }
+    return toApprovalRow(created);
+  });
+}
+
+// Async wrapper kept for the routes, the sweeper and the tests during the
+// transition (the action gateway yields `createApprovalEffect` directly).
 export async function createApproval(
   db: ServerDatabase,
   input: CreateApprovalInput,
   now: Date,
 ): Promise<ApprovalRow> {
-  const data = parseCreateApprovalInput(input);
-
-  if (data.expiresAt.getTime() <= now.getTime()) {
-    throw new ApprovalServiceError('invalid_request', 'expires_at must be in the future');
-  }
-  if (data.expiresAt.getTime() - now.getTime() > MAX_APPROVAL_EXPIRY_MS) {
-    throw new ApprovalServiceError(
-      'invalid_request',
-      'expires_at must be at most 24 hours in the future',
-    );
-  }
-
-  const [ai] = await db.select({ id: ais.id }).from(ais).where(eq(ais.id, data.aiId)).limit(1);
-  if (!ai) {
-    throw new ApprovalServiceError('invalid_request', 'Unknown AI');
-  }
-
-  if (data.groupId !== undefined) {
-    const [link] = await db
-      .select({ aiId: groupAis.aiId })
-      .from(groupAis)
-      .where(and(eq(groupAis.groupId, data.groupId), eq(groupAis.aiId, data.aiId)))
-      .limit(1);
-    if (!link) {
-      throw new ApprovalServiceError('ai_not_in_group', 'The AI is not in that topic');
-    }
-    // The topic must belong to the group; the AI's membership of the topic
-    // is checked by the gateway before this service is reached.
-    const [topic] = await db
-      .select({ id: topics.id, groupId: topics.groupId })
-      .from(topics)
-      .where(eq(topics.id, data.topicId as string))
-      .limit(1);
-    if (!topic || topic.groupId !== data.groupId) {
-      throw new ApprovalServiceError('ai_not_in_group', 'The AI is not in that topic');
-    }
-  }
-
-  const [{ total } = { total: 0 }] = await db
-    .select({ total: count() })
-    .from(approvals)
-    .where(and(eq(approvals.aiId, data.aiId), eq(approvals.status, 'pending')));
-  if (Number(total ?? 0) >= MAX_PENDING_APPROVALS_PER_AI) {
-    throw new ApprovalServiceError(
-      'pending_limit',
-      `At most ${MAX_PENDING_APPROVALS_PER_AI} pending approvals per AI`,
-    );
-  }
-
-  const id = randomUUID();
-  const row: typeof approvals.$inferInsert = {
-    id,
-    aiId: data.aiId,
-    groupId: data.groupId ?? null,
-    topicId: data.topicId ?? null,
-    action: data.action,
-    summary: data.summary,
-    details: data.details ?? null,
-    argsHash: data.argsHash,
-    worstCaseCurrency: data.worstCase?.currency ?? null,
-    worstCaseAmount: data.worstCase?.amount.toFixed(2) ?? null,
-    requestedBy: data.requestedBy,
-    status: 'pending',
-    expiresAt: data.expiresAt,
-  };
-  const [created] = await db.insert(approvals).values(row).returning();
-  if (!created) {
-    throw new Error('Failed to create approval');
-  }
-  return created;
+  return runSql(db, createApprovalEffect(input, now));
 }
 
 // Atomically decides a pending, unexpired request, but only if `userId` may
@@ -284,14 +359,18 @@ export async function decideApproval(
     throw new ApprovalServiceError('invalid_request', 'Invalid note');
   }
 
-  const [row] = await db
-    .select()
-    .from(approvals)
-    .where(eq(approvals.id, params.approvalId))
-    .limit(1);
-  if (!row) {
+  const [rawRow] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ApprovalSqlRow>`SELECT * FROM approvals
+        WHERE id = ${params.approvalId} LIMIT 1`;
+    }),
+  );
+  if (!rawRow) {
     return null;
   }
+  const row = toApprovalRow(rawRow);
   // Authorisation comes first: a caller who may not decide must not learn
   // whether the request is expired or already decided.
   if (!(await canDecide(db, row, params.userId))) {
@@ -326,64 +405,72 @@ export async function decideApproval(
   }
 
   // The decision + (optional) rule creation share one transaction. If
-  // either fails, both roll back.
+  // either fails, both roll back. The decision is one conditional UPDATE; the
+  // rule (on approve_always) is inserted on the same `effect/sql` client, so
+  // `sql.withTransaction` wraps both.
   let createdRule: CreatedApprovalRule | null = null;
-  const updated = await db.transaction(async (tx) => {
-    const [decisionRow] = await tx
-      .update(approvals)
-      .set({
-        status: decisionToStatus(params.decision),
-        decidedBy: params.userId,
-        decidedAt: now,
-        note: params.note ?? null,
-      })
-      .where(
-        and(
-          eq(approvals.id, row.id),
-          eq(approvals.status, 'pending'),
-          gt(approvals.expiresAt, now),
-        ),
-      )
-      .returning();
-    if (!decisionRow) {
-      // A concurrent decision won, or the row expired between our
-      // checks and the update. Signal "no row updated" so the caller
-      // can re-read and pick the right error.
-      return undefined;
-    }
+  const updated = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const rows = yield* sql<ApprovalSqlRow>`UPDATE approvals
+            SET status = ${decisionToStatus(params.decision)},
+                decided_by = ${params.userId},
+                decided_at = ${now},
+                note = ${params.note ?? null}
+            WHERE id = ${row.id} AND status = 'pending' AND expires_at > ${now}
+            RETURNING *`;
+          const decisionRow = rows[0];
+          if (!decisionRow) {
+            // A concurrent decision won, or the row expired between our
+            // checks and the update. Signal "no row updated" so the caller
+            // can re-read and pick the right error.
+            return undefined;
+          }
 
-    if (params.decision === 'approve_always') {
-      // The rule shares the decision's transaction: both commit or neither.
-      const { rule, created } = await createRule(
-        tx as unknown as ServerDatabase,
-        {
-          aiId: row.aiId,
-          groupId: row.groupId,
-          topicId: row.topicId,
-          action: row.action,
-          createdBy: params.userId,
-        },
-        now,
+          if (params.decision === 'approve_always') {
+            // The rule shares the decision's transaction: both commit or neither.
+            const { rule, created } = yield* createRuleEffect(
+              {
+                aiId: row.aiId,
+                groupId: row.groupId,
+                topicId: row.topicId,
+                action: row.action,
+                createdBy: params.userId,
+              },
+              now,
+            );
+            createdRule = {
+              id: rule.id,
+              action: rule.action,
+              groupId: rule.groupId,
+              topicId: rule.topicId,
+              created,
+            };
+          }
+
+          return toApprovalRow(decisionRow);
+        }),
       );
-      createdRule = {
-        id: rule.id,
-        action: rule.action,
-        groupId: rule.groupId,
-        topicId: rule.topicId,
-        created,
-      };
-    }
-
-    return decisionRow;
-  });
+    }),
+  );
 
   if (!updated) {
     // A concurrent decision won, or the row expired between our checks and the
     // update. Re-read to give the caller a stable error.
-    const [fresh] = await db.select().from(approvals).where(eq(approvals.id, row.id)).limit(1);
-    if (!fresh) {
+    const [rawFresh] = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<ApprovalSqlRow>`SELECT * FROM approvals WHERE id = ${row.id} LIMIT 1`;
+      }),
+    );
+    if (!rawFresh) {
       return null;
     }
+    const fresh = toApprovalRow(rawFresh);
     if (fresh.expiresAt.getTime() <= now.getTime()) {
       throw new ApprovalServiceError('expired', 'Approval request has expired');
     }
@@ -408,14 +495,18 @@ export async function verifyApproval(
   params: { approvalId: string; argsHash: string },
   now: Date,
 ): Promise<ApprovalVerifyResult> {
-  const [row] = await db
-    .select()
-    .from(approvals)
-    .where(eq(approvals.id, params.approvalId))
-    .limit(1);
-  if (!row) {
+  const [rawRow] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ApprovalSqlRow>`SELECT * FROM approvals
+        WHERE id = ${params.approvalId} LIMIT 1`;
+    }),
+  );
+  if (!rawRow) {
     return { ok: false };
   }
+  const row = toApprovalRow(rawRow);
   if (row.status !== 'approved_once' && row.status !== 'approved_always') {
     return { ok: false };
   }
@@ -426,11 +517,14 @@ export async function verifyApproval(
     return { ok: false };
   }
 
-  const [consumed] = await db
-    .update(approvals)
-    .set({ status: 'consumed' })
-    .where(and(eq(approvals.id, row.id), eq(approvals.status, row.status)))
-    .returning();
+  const [consumed] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`UPDATE approvals SET status = 'consumed'
+        WHERE id = ${row.id} AND status = ${row.status} RETURNING id`;
+    }),
+  );
   if (!consumed) {
     return { ok: false };
   }
@@ -456,7 +550,14 @@ export async function approverNamesForTopics(
   if (unique.length === 0) {
     return names;
   }
-  const topicRows = await db.select().from(topics).where(inArray(topics.id, unique));
+  const topicRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string; approverRoleId: string | null }>`SELECT * FROM topics
+        WHERE id IN ${sql.in(unique)}`;
+    }),
+  );
   const withRole = topicRows.filter((topic) => topic.approverRoleId !== null);
   if (withRole.length === 0) {
     return names;
@@ -468,19 +569,20 @@ export async function approverNamesForTopics(
     list.push(topic.id);
     roleToTopics.set(roleId, list);
   }
-  const holderRows = await db
-    .select({ roleId: groupMemberRoles.roleId, name: user.name, userId: user.id })
-    .from(groupMemberRoles)
-    .innerJoin(user, eq(user.id, groupMemberRoles.userId))
-    .innerJoin(groupRoles, eq(groupRoles.id, groupMemberRoles.roleId))
-    .innerJoin(
-      groupMembers,
-      and(
-        eq(groupMembers.groupId, groupRoles.groupId),
-        eq(groupMembers.userId, groupMemberRoles.userId),
-      ),
-    )
-    .where(inArray(groupMemberRoles.roleId, [...roleToTopics.keys()]));
+  const holderRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ roleId: string; name: string; userId: string }>`SELECT
+          gmr.role_id, u.name, u.id AS user_id
+        FROM group_member_roles gmr
+        INNER JOIN "user" u ON u.id = gmr.user_id
+        INNER JOIN group_roles gr ON gr.id = gmr.role_id
+        INNER JOIN group_members gm
+          ON gm.group_id = gr.group_id AND gm.user_id = gmr.user_id
+        WHERE gmr.role_id IN ${sql.in([...roleToTopics.keys()])}`;
+    }),
+  );
   const byTopic = new Map<string, Array<{ name: string; userId: string }>>();
   for (const row of holderRows) {
     const topicIds = roleToTopics.get(row.roleId) ?? [];
@@ -512,35 +614,39 @@ export async function listDecidableApprovals(
   const allowedAiIds = await decidableAiIdsForUser(db, userId);
   const allowedGroupIds = await decidableGroupIdsForUser(db, userId);
 
-  const conditions = [];
-  if (allowedAiIds.length > 0) {
-    conditions.push(
-      and(
-        eq(approvals.status, 'pending'),
-        gt(approvals.expiresAt, now),
-        inArray(approvals.aiId, allowedAiIds),
-      ),
-    );
-  }
-  if (allowedGroupIds.length > 0) {
-    conditions.push(
-      and(
-        eq(approvals.status, 'pending'),
-        gt(approvals.expiresAt, now),
-        inArray(approvals.groupId, allowedGroupIds),
-      ),
-    );
-  }
-  if (conditions.length === 0) {
+  if (allowedAiIds.length === 0 && allowedGroupIds.length === 0) {
     return [];
   }
 
-  const rows = await db
-    .select()
-    .from(approvals)
-    .where(or(...conditions))
-    .orderBy(desc(approvals.createdAt))
-    .limit(100);
+  const rawRows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const conditions: Array<Statement.Fragment> = [];
+      if (allowedAiIds.length > 0) {
+        conditions.push(
+          sql.and([
+            sql`status = 'pending'`,
+            sql`expires_at > ${now}`,
+            sql`ai_id IN ${sql.in(allowedAiIds)}`,
+          ]),
+        );
+      }
+      if (allowedGroupIds.length > 0) {
+        conditions.push(
+          sql.and([
+            sql`status = 'pending'`,
+            sql`expires_at > ${now}`,
+            sql`group_id IN ${sql.in(allowedGroupIds)}`,
+          ]),
+        );
+      }
+      return yield* sql<ApprovalSqlRow>`SELECT * FROM approvals
+        WHERE ${sql.or(conditions)}
+        ORDER BY created_at DESC LIMIT 100`;
+    }),
+  );
+  const rows = rawRows.map(toApprovalRow);
   // A group admin who cannot see a private topic must not count its rows
   // in the pending badge: drop anything outside their visible topics.
   // Approver names ride the same batch so the card needs no extra read.
@@ -569,10 +675,18 @@ export async function getDecidableApproval(
   userId: string,
   now: Date,
 ): Promise<PublicApproval | null> {
-  const [row] = await db.select().from(approvals).where(eq(approvals.id, approvalId)).limit(1);
-  if (!row) {
+  const [rawRow] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<ApprovalSqlRow>`SELECT * FROM approvals
+        WHERE id = ${approvalId} LIMIT 1`;
+    }),
+  );
+  if (!rawRow) {
     return null;
   }
+  const row = toApprovalRow(rawRow);
   if (!(await canDecide(db, row, userId))) {
     return null;
   }
@@ -589,11 +703,16 @@ export async function expireStale(
   db: ServerDatabase,
   now: Date,
 ): Promise<Array<{ id: string; aiId: string; groupId: string | null }>> {
-  const updated = await db
-    .update(approvals)
-    .set({ status: 'denied', decidedAt: now, note: 'expired' })
-    .where(and(eq(approvals.status, 'pending'), lt(approvals.expiresAt, now)))
-    .returning();
+  const updated = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string; aiId: string; groupId: string | null }>`UPDATE approvals
+          SET status = 'denied', decided_at = ${now}, note = 'expired'
+        WHERE status = 'pending' AND expires_at < ${now}
+        RETURNING id, ai_id, group_id`;
+    }),
+  );
   return updated.map((row) => ({ id: row.id, aiId: row.aiId, groupId: row.groupId }));
 }
 
@@ -608,12 +727,18 @@ export async function canDecide(
   row: ApprovalRow,
   userId: string,
 ): Promise<boolean> {
-  const [ai] = await db.select({ owner: ais.owner }).from(ais).where(eq(ais.id, row.aiId)).limit(1);
+  const [ai] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ owner: string }>`SELECT owner FROM ais WHERE id = ${row.aiId} LIMIT 1`;
+    }),
+  );
   if (!ai) {
     return false;
   }
   if (row.topicId !== null) {
-    const [topic] = await db.select().from(topics).where(eq(topics.id, row.topicId)).limit(1);
+    const topic = await getTopic(db, row.topicId);
     if (!topic || !(await canSeeTopic(db, topic, userId))) {
       return false;
     }
@@ -624,20 +749,19 @@ export async function canDecide(
     // membership row ever survived a group leave. (`topicId` set implies
     // `groupId` set by the topic-scope CHECK; the guard below is for the
     // type checker.)
-    if (topic.approverRoleId !== null && row.groupId !== null) {
+    const approverRoleId = topic.approverRoleId;
+    if (approverRoleId !== null && row.groupId !== null) {
       const groupId = row.groupId;
-      const [held] = await db
-        .select({ userId: groupMemberRoles.userId })
-        .from(groupMemberRoles)
-        .innerJoin(groupRoles, eq(groupRoles.id, groupMemberRoles.roleId))
-        .where(
-          and(
-            eq(groupMemberRoles.roleId, topic.approverRoleId),
-            eq(groupMemberRoles.userId, userId),
-            eq(groupRoles.groupId, groupId),
-          ),
-        )
-        .limit(1);
+      const [held] = await runSql(
+        db,
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ userId: string }>`SELECT gmr.user_id FROM group_member_roles gmr
+            INNER JOIN group_roles gr ON gr.id = gmr.role_id
+            WHERE gmr.role_id = ${approverRoleId} AND gmr.user_id = ${userId}
+              AND gr.group_id = ${groupId} LIMIT 1`;
+        }),
+      );
       if (held) {
         return true;
       }
@@ -649,32 +773,38 @@ export async function canDecide(
   if (row.groupId === null) {
     return false;
   }
-  const [membership] = await db
-    .select({ role: groupMembers.role })
-    .from(groupMembers)
-    .where(and(eq(groupMembers.groupId, row.groupId), eq(groupMembers.userId, userId)))
-    .limit(1);
+  const groupId = row.groupId;
+  const [membership] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ role: string }>`SELECT role FROM group_members
+        WHERE group_id = ${groupId} AND user_id = ${userId} LIMIT 1`;
+    }),
+  );
   return membership !== undefined && (membership.role === 'owner' || membership.role === 'admin');
 }
 
-function decidableAiIdsForUser(db: ServerDatabase, userId: string): Promise<string[]> {
-  return db
-    .select({ id: ais.id })
-    .from(ais)
-    .where(eq(ais.owner, userId))
-    .then((rows) => rows.map((row) => row.id));
+async function decidableAiIdsForUser(db: ServerDatabase, userId: string): Promise<string[]> {
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`SELECT id FROM ais WHERE owner = ${userId}`;
+    }),
+  );
+  return rows.map((row) => row.id);
 }
 
 async function decidableGroupIdsForUser(db: ServerDatabase, userId: string): Promise<string[]> {
-  const rows = await db
-    .select({ groupId: groupMembers.groupId })
-    .from(groupMembers)
-    .where(
-      and(
-        eq(groupMembers.userId, userId),
-        or(eq(groupMembers.role, 'owner'), eq(groupMembers.role, 'admin')),
-      ),
-    );
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ groupId: string }>`SELECT group_id FROM group_members
+        WHERE user_id = ${userId} AND role IN ('owner', 'admin')`;
+    }),
+  );
   return rows.map((row) => row.groupId);
 }
 

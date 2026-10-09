@@ -1,7 +1,8 @@
 // Routines module on the Effect `HttpApi` adapter (T-0554): the same
 // methods, paths, statuses (204 on delete), bodies, audit calls and step
-// order as the old Hono router (`routes.ts`, now a thin wrapper below),
-// mounted under Hono by `apps/server/src/effect/http.ts`. The module's own
+// order as the old Hono router (`routes.ts`), which has since been deleted
+// along with its thin wrapper; mounted under Hono by
+// `apps/server/src/effect/http.ts`. The module's own
 // reads run on effect/sql; the calls it still makes to the service stay
 // drizzle for now (the DB rewrite is a separate lane).
 

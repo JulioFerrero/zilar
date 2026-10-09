@@ -1359,7 +1359,7 @@ export async function deleteConnection(id: string): Promise<void> {
 }
 
 // --- Machines (T-0070) ---------------------------------------------------
-// The wire contract lives in apps/server/src/machines/routes.ts and
+// The wire contract lives in apps/server/src/machines/api.ts and
 // service.ts. `ApiError` carries the server's `code` and `status`, so callers
 // can branch without parsing the message again. `online` is optional so the
 // schema works before T-0071 (the runner hub) lands.
@@ -1454,7 +1454,7 @@ export async function deleteMachine(id: string): Promise<void> {
 }
 
 // --- Approvals (T-0076) ---------------------------------------------------
-// The wire contract lives in apps/server/src/approvals/routes.ts and
+// The wire contract lives in apps/server/src/approvals/api.ts and
 // service.ts. Dates arrive as ISO strings; we keep them as strings so the
 // types line up with `ApprovalRequest.expires_at` and we don't have to think
 // about zod's string-to-Date coercion in tests.
@@ -1537,7 +1537,7 @@ export function decideApproval(
 }
 
 // --- Approval rules (T-0100) ------------------------------------------------
-// The wire contract lives in apps/server/src/approvals/routes.ts and
+// The wire contract lives in apps/server/src/approvals/api.ts and
 // rules.ts. Dates arrive as ISO strings, kept as strings like the
 // approvals schemas. The two list routes 404 for a viewer who may not
 // manage the rules, and so does revoke; all three flow through `ApiError`.
@@ -1748,7 +1748,7 @@ export async function removeStickerPanelPack(packId: string): Promise<void> {
 }
 
 // --- Push notifications (T-0119) -------------------------------------------
-// The wire contract lives in apps/server/src/push/routes.ts. The browser
+// The wire contract lives in apps/server/src/push/api.ts. The browser
 // registers its Web Push subscription, stores it, then enables the push
 // pair over its own XMPP session (ejabberd requires the enable IQ from the
 // user's session). The device list carries labels and dates only — never
@@ -2185,7 +2185,7 @@ export function gifMediaUrl(mediaToken: string): string {
 }
 
 // --- Audit log (T-0079, T-0084) --------------------------------------------
-// The wire contract lives in apps/server/src/audit/routes.ts and service.ts.
+// The wire contract lives in apps/server/src/audit/api.ts and service.ts.
 
 const auditCostSchema = Schema.NullOr(
   struct({

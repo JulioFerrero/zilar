@@ -4,9 +4,10 @@
 // effects with fakes — no layers, no real network, no real clock beyond
 // short sleeps.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Duration, Effect, Fiber } from 'effect';
 import { TestClock } from 'effect/testing';
+import { sqlRuntimeFor, type SqlRuntime } from '../effect/sql';
 import { HttpError } from '../errors';
 import {
   AudioUnavailable,
@@ -36,6 +37,13 @@ function deferred<T = void>(): {
 
 const fakeDb = {} as FetchAndTranscribeInput['db'];
 const fakeSettings = { baseUrl: 'https://x.example/v1', apiKey: null, model: 'whisper-1' };
+
+// Only `sqlRuntimeFor` is wrapped; every other export is the real module. A
+// test can queue a one-off runtime for the next call; unqueued calls pass through.
+vi.mock('../effect/sql', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../effect/sql')>();
+  return { ...actual, sqlRuntimeFor: vi.fn(actual.sqlRuntimeFor) };
+});
 
 describe('shareInFlight', () => {
   it('shares one start between concurrent callers', async () => {
@@ -115,11 +123,11 @@ describe('fetchAndTranscribe error mapping', () => {
 
   it('a DB failure rejects with the original error, identical and unwrapped', async () => {
     const dbDown = new Error('db down');
-    const db = {
-      transaction: () => Promise.reject(dbDown),
-    } as unknown as FetchAndTranscribeInput['db'];
+    vi.mocked(sqlRuntimeFor).mockReturnValueOnce({
+      runPromise: () => Promise.reject(dbDown),
+    } as unknown as SqlRuntime);
     const error = await fetchAndTranscribe({
-      db,
+      db: fakeDb,
       urlHash: 'hash',
       internalUrl: 'https://internal/upload/x',
       settings: fakeSettings,

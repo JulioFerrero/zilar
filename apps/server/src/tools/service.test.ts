@@ -15,6 +15,7 @@ import {
   topics,
 } from '../db/schema';
 import { createAuditRecorder } from '../audit/service';
+import { sqlRuntimeFor } from '../effect/sql';
 import {
   bootstrapUser,
   createTestContext,
@@ -25,8 +26,8 @@ import {
 import {
   approveToolHosts,
   deleteTool,
-  deleteToolsForAiInGroup,
-  deleteToolsForAiInTopic,
+  deleteToolsForAiInGroupEffect,
+  deleteToolsForAiInTopicEffect,
   getTool,
   getVersion,
   listRuns,
@@ -779,8 +780,8 @@ describe('tools service (T-0103)', () => {
     });
   });
 
-  describe('deleteToolsForAiInGroup', () => {
-    it('soft-deletes that AI group tools only', async () => {
+  describe('AI removal deletes', () => {
+    it('deleteToolsForAiInGroupEffect soft-deletes that AI group tools only', async () => {
       const { groupId, generalTopicId } = await seedGroup(context, ownerId, [], [aiId]);
       const other = await seedGroup(context, ownerId, [], [aiId]);
       const groupTool = await saveToolVersion(
@@ -790,7 +791,7 @@ describe('tools service (T-0103)', () => {
           groupId,
           topicId: generalTopicId,
           userId: ownerId,
-          ...baseInput({ name: 'group-tool' }),
+          ...baseInput({ name: 'effect-group-tool' }),
         },
         NOW,
       );
@@ -801,7 +802,7 @@ describe('tools service (T-0103)', () => {
           groupId: null,
           topicId: null,
           userId: ownerId,
-          ...baseInput({ name: 'personal-tool' }),
+          ...baseInput({ name: 'effect-personal-tool' }),
         },
         NOW,
       );
@@ -812,16 +813,12 @@ describe('tools service (T-0103)', () => {
           groupId: other.groupId,
           topicId: other.generalTopicId,
           userId: ownerId,
-          ...baseInput({ name: 'other-tool' }),
+          ...baseInput({ name: 'effect-other-tool' }),
         },
         NOW,
       );
-      const deleted = await context.db.transaction(async (rawTx) =>
-        deleteToolsForAiInGroup(rawTx as unknown as typeof context.db, {
-          aiId,
-          groupId,
-          now: NOW,
-        }),
+      const deleted = await sqlRuntimeFor(context.db).runPromise(
+        deleteToolsForAiInGroupEffect({ aiId, groupId, now: NOW }),
       );
       expect(deleted).toEqual([groupTool.tool.id]);
       expect(await getTool(context.db, groupTool.tool.id)).toBeNull();
@@ -829,9 +826,9 @@ describe('tools service (T-0103)', () => {
       expect(await getTool(context.db, otherTool.tool.id)).not.toBeNull();
     });
 
-    it('deleteToolsForAiInTopic soft-deletes only that topic tools', async () => {
+    it('deleteToolsForAiInTopicEffect soft-deletes only that topic tools', async () => {
       const { groupId, generalTopicId } = await seedGroup(context, ownerId, [], [aiId]);
-      const otherTopicId = await seedTopic(context, groupId, ownerId, 'Other');
+      const otherTopicId = await seedTopic(context, groupId, ownerId, 'Other Effect');
       const generalTool = await saveToolVersion(
         context.db,
         {
@@ -839,7 +836,7 @@ describe('tools service (T-0103)', () => {
           groupId,
           topicId: generalTopicId,
           userId: ownerId,
-          ...baseInput({ name: 'general-tool' }),
+          ...baseInput({ name: 'effect-general-tool' }),
         },
         NOW,
       );
@@ -850,16 +847,12 @@ describe('tools service (T-0103)', () => {
           groupId,
           topicId: otherTopicId,
           userId: ownerId,
-          ...baseInput({ name: 'other-tool' }),
+          ...baseInput({ name: 'effect-topic-tool' }),
         },
         NOW,
       );
-      const deleted = await context.db.transaction(async (rawTx) =>
-        deleteToolsForAiInTopic(rawTx as unknown as typeof context.db, {
-          aiId,
-          topicId: otherTopicId,
-          now: NOW,
-        }),
+      const deleted = await sqlRuntimeFor(context.db).runPromise(
+        deleteToolsForAiInTopicEffect({ aiId, topicId: otherTopicId, now: NOW }),
       );
       expect(deleted).toEqual([otherTool.tool.id]);
       expect(await getTool(context.db, otherTool.tool.id)).toBeNull();

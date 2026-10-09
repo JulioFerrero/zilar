@@ -19,8 +19,7 @@
 //   and a missing file all answer 404 `not_found`.
 // - DELETE /sticker-favorites decodes the body from the query string.
 // - Every other JSON route: session -> body/query decode -> service call.
-// Decode failures answer 400 `invalid_request` with the first message,
-// mirroring the old `issues[0]?.message` texts (see the legacy schemas).
+// Decode failures answer 400 `invalid_request` with a fixed per-route message.
 // `decodePathId` keeps the old final id (404 on a bad escape).
 //
 // The binary routes declare no payload schema, so nothing is buffered before
@@ -38,7 +37,6 @@ import {
   HttpApiMiddleware,
 } from 'effect/http-api';
 import type { Logger } from 'pino';
-import { z } from 'zod';
 import {
   CurrentUser,
   Session,
@@ -95,9 +93,8 @@ export interface StickersApiDependencies extends StickersRoutesDependencies {
 
 const StickerVisibility = Schema.Literals(['private', 'server']);
 
-// Replaces `createPackBodySchema` (zod): strict, trimmed title 1..60,
-// optional visibility. Strictness comes from the endpoint's
-// `PayloadParseOptions` below.
+// Strict, trimmed title 1..60, optional visibility. Strictness comes from
+// the endpoint's `PayloadParseOptions` below.
 const CreatePackBody = Schema.Struct({
   title: Schema.Trim.pipe(
     Schema.check(
@@ -108,9 +105,8 @@ const CreatePackBody = Schema.Struct({
   visibility: Schema.optional(StickerVisibility),
 });
 
-// Replaces `patchPackBodySchema` (zod): all optional, strict, plus the
-// byte-identical "Nothing to update" refine (a `makeFilter`, because Effect
-// 4.0.2 drops `{ message }` on length checks).
+// All optional and strict, plus the "Nothing to update" refine (a
+// `makeFilter`, because Effect 4.0.2 drops `{ message }` on length checks).
 const PatchPackBody = Schema.Struct({
   title: Schema.optional(
     Schema.Trim.pipe(
@@ -129,69 +125,37 @@ const PatchPackBody = Schema.Struct({
   ),
 );
 
-// Replaces `discoverQuerySchema` (zod): optional `q` <= 60, `cursor` <= 128.
-// The route decodes manually with the legacy schema for the exact
-// `issues[0].message`; this Schema is kept for parity documentation only.
+// Optional `q` <= 60, `cursor` <= 128. The route decodes the query manually
+// with this Schema (the endpoint declares no query) so an invalid query
+// answers the fixed 400 message.
 const DiscoverQuery = Schema.Struct({
   q: Schema.optional(Schema.String.check(Schema.isMaxLength(60))),
   cursor: Schema.optional(Schema.String.check(Schema.isMaxLength(128))),
 });
 
-// Replaces `telegramImportBodySchema` (zod): strict, `input` 1..512. The
-// import route decodes this manually in its handler (after the 501 token
-// check), so strictness comes from `STRICT_PAYLOAD` below.
+// Strict, `input` 1..512. The import route decodes this manually in its
+// handler (after the 501 token check), so strictness comes from
+// `STRICT_PAYLOAD` below.
 const TelegramImportBody = Schema.Struct({
   input: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
 });
 
 const STRICT_PAYLOAD = { onExcessProperty: 'error' } as const;
 
-// Replaces `reorderPanelBodySchema` (zod): strict, ids 1..128, at most 200.
+// Strict, ids 1..128, at most 200.
 const ReorderPanelBody = Schema.Struct({
   order: Schema.Array(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128))).check(
     Schema.isMaxLength(STICKER_PANEL_MAX),
   ),
 });
 
-// Replaces `favoriteBodySchema` (zod): strict, `sticker_id: uuid`.
+// Strict, `sticker_id: uuid`.
 const FavoriteBody = Schema.Struct({
   sticker_id: Schema.String.pipe(Schema.check(Schema.isUUID())),
 });
 
-// The legacy zod bodies, kept only to reproduce the exact `issues[0].message`
-// texts for an invalid body (the pattern from `handles/api.ts` and
-// `contact-requests/api.ts`). Each runs on the cached body only when the
-// Schema decode failed.
-const stickerVisibilityZod = z.enum(['private', 'server']);
-const legacyCreatePackBodySchema = z
-  .object({
-    title: z.string().trim().min(STICKER_PACK_TITLE_MIN).max(STICKER_PACK_TITLE_MAX),
-    visibility: stickerVisibilityZod.optional(),
-  })
-  .strict();
-const legacyPatchPackBodySchema = z
-  .object({
-    title: z.string().trim().min(STICKER_PACK_TITLE_MIN).max(STICKER_PACK_TITLE_MAX).optional(),
-    visibility: stickerVisibilityZod.optional(),
-    order: z.array(z.string().min(1).max(128)).max(STICKERS_MAX_PER_PACK).optional(),
-  })
-  .strict()
-  .refine((value) => Object.keys(value).length > 0, { message: 'Nothing to update' });
-const legacyTelegramImportBodySchema = z.object({ input: z.string().min(1).max(512) }).strict();
-const legacyReorderPanelBodySchema = z
-  .object({ order: z.array(z.string().min(1).max(128)).max(STICKER_PANEL_MAX) })
-  .strict();
-const legacyFavoriteBodySchema = z.object({ sticker_id: z.uuid() }).strict();
-
-function legacyMessage(schema: z.ZodType, body: unknown): string {
-  const parsed = schema.safeParse(body);
-  return parsed.success
-    ? 'Invalid request'
-    : (parsed.error.issues[0]?.message ?? 'Invalid request');
-}
-
 // Mirrors `c.req.json().catch(() => null)`: an unparseable or empty body is
-// `null`, which the legacy schema reports as `expected object, received null`.
+// `null`, which the per-route message treats as an invalid body.
 function parseJsonOrNull(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -199,13 +163,6 @@ function parseJsonOrNull(text: string): unknown {
     return null;
   }
 }
-
-// The legacy zod query schema, kept only to reproduce its exact
-// `issues[0].message` for an invalid discover query.
-const legacyDiscoverQuerySchema = z.object({
-  q: z.string().max(60).optional(),
-  cursor: z.string().max(128).optional(),
-});
 
 function discoverQueryRecord(request: HttpServerRequest.HttpServerRequest): Record<string, string> {
   const queryIndex = request.originalUrl.indexOf('?');
@@ -226,11 +183,11 @@ function favoriteQueryRecord(request: HttpServerRequest.HttpServerRequest): Reco
   return discoverQueryRecord(request);
 }
 
-// Applied to the group so a payload decode failure renders like the old zod
-// path: 400 `invalid_request` with the same `issues[0].message`. The body
-// was already read (and cached) by the failed payload decode. The discover
-// and favorite-delete routes decode manually in their handlers, so they never
-// reach this layer with a query failure.
+// Applied to the group so a payload decode failure renders as 400
+// `invalid_request` with the fixed per-route message. The body was already
+// read (and cached) by the failed payload decode. The discover and
+// favorite-delete routes decode manually in their handlers, so they never
+// reach this layer.
 class StickersSchemaErrors extends HttpApiMiddleware.Service<StickersSchemaErrors>()(
   'zilar/effect/http/StickersSchemaErrors',
 ) {}
@@ -240,7 +197,7 @@ function schemaErrorLayer(logger: Logger): Layer.Layer<StickersSchemaErrors> {
     Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
       const body = parseJsonOrNull(yield* Effect.orDie(request.text));
-      const message = matchLegacyBodyMessage(request.originalUrl, body);
+      const message = matchSchemaErrorMessage(request.originalUrl, body);
       return failureResponse(
         logger,
         requestIdOf(request),
@@ -250,23 +207,36 @@ function schemaErrorLayer(logger: Logger): Layer.Layer<StickersSchemaErrors> {
   );
 }
 
-// Picks the legacy body schema by the request path (the method is implied by
-// the route): every path below carries exactly one JSON body shape.
-function matchLegacyBodyMessage(url: string, body: unknown): string {
+function isEmptyRecord(value: unknown): boolean {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 0
+  );
+}
+
+// Picks the fixed message by the request path (the method is implied by the
+// route): every path below carries exactly one JSON body shape. The patch
+// route reads the cached body only to tell `{}` apart.
+function matchSchemaErrorMessage(url: string, body: unknown): string {
   const path = url.split('?')[0] ?? url;
   if (path.endsWith('/sticker-packs/import/telegram')) {
-    return legacyMessage(legacyTelegramImportBodySchema, body);
+    return 'input must be a string of 1 to 512 characters, with no other keys';
   }
   if (path.endsWith('/sticker-panel')) {
-    return legacyMessage(legacyReorderPanelBodySchema, body);
+    return `order must be a list of at most ${STICKER_PANEL_MAX} sticker ids, with no other keys`;
   }
   if (path.endsWith('/sticker-favorites')) {
-    return legacyMessage(legacyFavoriteBodySchema, body);
+    return 'sticker_id must be a UUID, with no other keys';
   }
   if (path.endsWith('/sticker-packs')) {
-    return legacyMessage(legacyCreatePackBodySchema, body);
+    return 'title must be 1 to 60 characters and visibility private or server, with no other keys';
   }
-  return legacyMessage(legacyPatchPackBodySchema, body);
+  if (isEmptyRecord(body)) {
+    return 'Nothing to update';
+  }
+  return `title must be 1 to 60 characters, visibility private or server and order at most ${STICKERS_MAX_PER_PACK} ids, with no other keys`;
 }
 
 // Runs the Telegram import budget after the pack-input parse, exactly like
@@ -502,25 +472,25 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
           requestId,
         );
       })
-      // The query is decoded manually inside the handler (Schema, same rules
-      // as the old zod schema) with the legacy first-issue text, like the
-      // media gallery's hand decode.
+      // The query is decoded manually inside the handler (the endpoint
+      // declares no query) so an invalid query answers the fixed 400 message,
+      // like the media gallery's hand decode.
       .handle('discover', (request) => {
         const requestId = requestIdOf(request.request);
         return withErrorEnvelope(
           Effect.gen(function* () {
             yield* CurrentUser;
             const record = discoverQueryRecord(request.request);
-            const legacy = legacyDiscoverQuerySchema.safeParse(record);
-            if (!legacy.success) {
+            const decoded = Schema.decodeUnknownOption(DiscoverQuery)(record);
+            if (Option.isNone(decoded)) {
               throw new HttpError(
                 400,
                 'invalid_request',
-                legacy.error.issues[0]?.message ?? 'Invalid request',
+                'q must be at most 60 characters and cursor at most 128',
               );
             }
             const page = yield* Effect.promise(() =>
-              discoverPacks(serviceDeps(), legacy.data.q, legacy.data.cursor),
+              discoverPacks(serviceDeps(), decoded.value.q, decoded.value.cursor),
             );
             return page;
           }),
@@ -532,8 +502,7 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
       // token check: the framework-level payload decode used to run before
       // any handler code, so a malformed body answered 400 instead of the
       // specified 501 `import_unavailable` (the old order is session ->
-      // token -> body -> pack-input parse -> limiter -> import). The
-      // legacy-message replay keeps the exact old `issues[0].message`.
+      // token -> body -> pack-input parse -> limiter -> import).
       .handle('importTelegram', (request) => {
         const requestId = requestIdOf(request.request);
         return withErrorEnvelope(
@@ -549,7 +518,7 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
               throw new HttpError(
                 400,
                 'invalid_request',
-                legacyMessage(legacyTelegramImportBodySchema, raw),
+                'input must be a string of 1 to 512 characters, with no other keys',
               );
             }
             // The budget is consumed only by a well-formed request for a real
@@ -686,24 +655,23 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
           requestId,
         );
       })
-      // The id comes from the query string, like the old
-      // `favoriteBodySchema.safeParse(c.req.query())`.
+      // The id comes from the query string; the endpoint declares no body.
       .handle('removeFavorite', (request) => {
         const requestId = requestIdOf(request.request);
         return withErrorEnvelope(
           Effect.gen(function* () {
             const user = yield* CurrentUser;
             const record = favoriteQueryRecord(request.request);
-            const parsed = legacyFavoriteBodySchema.safeParse(record);
-            if (!parsed.success) {
+            const decoded = Schema.decodeUnknownOption(FavoriteBody, STRICT_PAYLOAD)(record);
+            if (Option.isNone(decoded)) {
               throw new HttpError(
                 400,
                 'invalid_request',
-                parsed.error.issues[0]?.message ?? 'Invalid request',
+                'sticker_id must be a UUID, with no other keys',
               );
             }
             yield* Effect.promise(() =>
-              removeFavorite(serviceDeps(), user.id, parsed.data.sticker_id),
+              removeFavorite(serviceDeps(), user.id, decoded.value.sticker_id),
             );
             return { ok: true as const };
           }),

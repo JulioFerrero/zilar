@@ -1,11 +1,7 @@
 // Audit module on the Effect `HttpApi` adapter (T-0525): the same method,
-// path, query rules and answers as the deleted Hono router (`routes.ts`),
-// mounted under Hono by `apps/server/src/effect/http.ts`. Handlers keep calling
-// the drizzle service; the DB rewrite is a separate lane.
-//
-// `createAuditRoutes` is kept here (and re-exported by the old `routes.ts`
-// path) because the unchanged Hono-level `audit/routes.test.ts` builds its own
-// Hono and mounts that factory under `/api`.
+// path, query rules and answers as the deleted Hono router. Handlers keep
+// calling the drizzle service; the DB rewrite is a separate lane. `app.ts`
+// mounts {@link createAuditApi} under Hono with `mountEffectRoutes`.
 
 import { Effect, Layer, Schema } from 'effect';
 import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
@@ -16,9 +12,7 @@ import {
   HttpApiGroup,
   HttpApiMiddleware,
 } from 'effect/http-api';
-import { Hono } from 'hono';
-import type { RequestIdVariables } from 'hono/request-id';
-import { pino, type Logger } from 'pino';
+import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
@@ -27,7 +21,6 @@ import {
   Session,
   failureResponse,
   httpErrorResponse,
-  mountEffectRoutes,
   requestIdOf,
   sessionLayer,
   withErrorEnvelope,
@@ -135,12 +128,6 @@ export interface AuditApiDependencies {
   logger: Logger;
 }
 
-export interface AuditRoutesDependencies {
-  auth: Auth;
-  db: ServerDatabase;
-  logger?: Logger;
-}
-
 export const AUDIT_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
   { method: 'GET', path: '/api/audit' },
 ];
@@ -205,31 +192,4 @@ export function createAuditApi(deps: AuditApiDependencies): EffectApiMount {
   );
 
   return { handler, routes: AUDIT_API_ROUTES };
-}
-
-let silentLogger: Logger | undefined;
-
-function defaultLogger(): Logger {
-  silentLogger ??= pino({ level: 'silent' });
-  return silentLogger;
-}
-
-/**
- * Compatibility factory for the unchanged Hono-level `audit/routes.test.ts`,
- * which mounts it under `/api` on its own Hono. It builds the Effect mount and
- * registers the module routes relative to the mount prefix; production wiring
- * in `app.ts` uses {@link createAuditApi} with {@link mountEffectRoutes}.
- */
-export function createAuditRoutes(deps: AuditRoutesDependencies): Hono<{
-  Variables: RequestIdVariables;
-}> {
-  const api = createAuditApi({ ...deps, logger: deps.logger ?? defaultLogger() });
-  const routes = new Hono<{ Variables: RequestIdVariables }>();
-  // The caller mounts this sub-app under `/api`, so strip the adapter prefix.
-  const relative = api.routes.map((route): EffectApiRoute => ({
-    ...route,
-    path: route.path.replace(/^\/api/, ''),
-  }));
-  mountEffectRoutes(routes, relative, api.handler);
-  return routes;
 }
