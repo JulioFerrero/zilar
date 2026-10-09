@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import { Clock, Info, X } from 'lucide-react-native';
 import { useColorScheme } from 'nativewind';
 import { useRef, useState } from 'react';
@@ -59,6 +60,16 @@ export function TelegramImportSheet({
   const [special, setSpecial] = useState<'not-set-up' | 'token-rejected' | null>(null);
   const busyRef = useRef(false);
 
+  const showFailure = (cause: unknown): void => {
+    const failure = telegramImportFailure(cause);
+    if (failure.kind === 'not-set-up' || failure.kind === 'token-rejected') {
+      setResult(null);
+      setSpecial(failure.kind);
+    } else {
+      setError(failure.error);
+    }
+  };
+
   const run = (rawInput: string): void => {
     if (busyRef.current) {
       return;
@@ -71,23 +82,22 @@ export function TelegramImportSheet({
     setBusy(true);
     setError('');
     const invoke = importFn ?? ((value: string) => api.importTelegramStickers(value));
-    void invoke(rawInput.trim())
-      .then((outcome) => {
-        setResult(outcome);
-      })
-      .catch((cause: unknown) => {
-        const failure = telegramImportFailure(cause);
-        if (failure.kind === 'not-set-up' || failure.kind === 'token-rejected') {
-          setResult(null);
-          setSpecial(failure.kind);
-        } else {
-          setError(failure.error);
-        }
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setBusy(false);
-      });
+    // The import runs as a fiber; the sheet is updated from its outcome and
+    // the busy flag clears on every exit, as the old promise chain did.
+    Effect.runFork(
+      Effect.tryPromise({ try: () => invoke(rawInput.trim()), catch: (cause) => cause }).pipe(
+        Effect.matchEffect({
+          onSuccess: (outcome) => Effect.sync(() => setResult(outcome)),
+          onFailure: (cause) => Effect.sync(() => showFailure(cause)),
+        }),
+        Effect.ensuring(
+          Effect.sync(() => {
+            busyRef.current = false;
+            setBusy(false);
+          }),
+        ),
+      ),
+    );
   };
 
   const close = (): void => {

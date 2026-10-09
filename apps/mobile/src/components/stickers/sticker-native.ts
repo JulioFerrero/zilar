@@ -1,3 +1,4 @@
+import { Effect, type Effect as EffectType } from 'effect';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
@@ -70,21 +71,123 @@ export function fitStickerSize(width: number, height: number): { width: number; 
   };
 }
 
+/**
+ * The byte size of a local file as an Effect: a failed stat is `undefined`,
+ * the same as the old try/catch.
+ */
+const sizeOfEffect = (
+  getInfo: typeof LegacyFileSystem.getInfoAsync,
+  uri: string,
+): EffectType.Effect<number | undefined> =>
+  Effect.tryPromise({ try: () => getInfo(uri), catch: () => undefined }).pipe(
+    Effect.map((info) =>
+      info.exists === true && info.isDirectory === false ? info.size : undefined,
+    ),
+    Effect.catch(() => Effect.succeed(undefined)),
+  );
+
 /** The real size reader: `expo-file-system` stat of the prepared file. */
 export function createStickerSizeReader(
   getInfo: typeof LegacyFileSystem.getInfoAsync = LegacyFileSystem.getInfoAsync,
 ): StickerSizeReader {
   return {
-    async sizeOf(uri) {
-      try {
-        const info = await getInfo(uri);
-        return info.exists === true && info.isDirectory === false ? info.size : undefined;
-      } catch {
-        return undefined;
-      }
+    sizeOf(uri) {
+      return Effect.runPromise(sizeOfEffect(getInfo, uri));
     },
   };
 }
+
+/**
+ * A manipulator call as an Effect: a throw is `undefined`, so the caller
+ * skips that step, the way the old try/catch did.
+ */
+const manipulateOrUndefined = <A>(run: () => PromiseLike<A>): EffectType.Effect<A | undefined> =>
+  Effect.tryPromise(run).pipe(Effect.catch(() => Effect.succeed(undefined)));
+
+/** The size reader is a Promise seam, so its rejection stays a defect. */
+const sizeOfPrepared = (
+  reader: StickerSizeReader,
+  uri: string,
+): EffectType.Effect<number | undefined> => Effect.promise(() => reader.sizeOf(uri));
+
+const prepareEffect = Effect.fnUntraced(function* (
+  manipulate: typeof manipulateAsync,
+  reader: StickerSizeReader,
+  image: PickedStickerImage,
+): EffectType.fn.Return<PrepareStickerResult> {
+  const size = fitStickerSize(image.width, image.height);
+  for (const quality of STICKER_PREP_QUALITY_STEPS) {
+    const saved = yield* manipulateOrUndefined(() =>
+      manipulate(image.uri, [{ resize: { width: size.width, height: size.height } }], {
+        format: SaveFormat.WEBP,
+        compress: quality,
+      }),
+    );
+    if (saved === undefined) {
+      continue;
+    }
+    const bytes = yield* sizeOfPrepared(reader, saved.uri);
+    if (bytes === undefined) {
+      // The size is unknown: accept the first WebP save, like the
+      // avatar flow accepts an unknown size (only a real zero refuses).
+      return {
+        status: 'prepared',
+        image: {
+          uri: saved.uri,
+          mimeType: 'image/webp',
+          width: size.width,
+          height: size.height,
+          bytes: STICKER_PREP_MAX_BYTES,
+        },
+      };
+    }
+    if (bytes === 0) {
+      return { status: 'error', message: 'This image is empty.' };
+    }
+    if (bytes <= STICKER_PREP_MAX_BYTES) {
+      return {
+        status: 'prepared',
+        image: {
+          uri: saved.uri,
+          mimeType: 'image/webp',
+          width: size.width,
+          height: size.height,
+          bytes,
+        },
+      };
+    }
+  }
+  // No WebP fit (every step too big, or the saves threw): one PNG try.
+  const savedPng = yield* manipulateOrUndefined(() =>
+    manipulate(image.uri, [{ resize: { width: size.width, height: size.height } }], {
+      format: SaveFormat.PNG,
+    }),
+  );
+  if (savedPng === undefined) {
+    return { status: 'error', message: 'This image could not be prepared.' };
+  }
+  const uri = savedPng.uri;
+  const bytes = yield* sizeOfPrepared(reader, uri);
+  if (bytes !== undefined && bytes === 0) {
+    return { status: 'error', message: 'This image is empty.' };
+  }
+  if (bytes !== undefined && bytes > STICKER_PREP_MAX_BYTES) {
+    return {
+      status: 'error',
+      message: 'This image is too big. A sticker can be up to 512 KB and 512 px.',
+    };
+  }
+  return {
+    status: 'prepared',
+    image: {
+      uri,
+      mimeType: 'image/png',
+      width: size.width,
+      height: size.height,
+      bytes: bytes ?? STICKER_PREP_MAX_BYTES,
+    },
+  };
+});
 
 /**
  * The real preparer: fit inside 512 x 512 keeping the ratio, encode WebP
@@ -99,114 +202,55 @@ export function createStickerPreparer(
 ): StickerImagePreparer {
   const reader = sizeReader ?? createStickerSizeReader();
   return {
-    async prepare(image) {
-      const size = fitStickerSize(image.width, image.height);
-      for (const quality of STICKER_PREP_QUALITY_STEPS) {
-        let saved: { uri: string };
-        try {
-          saved = await manipulate(
-            image.uri,
-            [{ resize: { width: size.width, height: size.height } }],
-            { format: SaveFormat.WEBP, compress: quality },
-          );
-        } catch {
-          continue;
-        }
-        const bytes = await reader.sizeOf(saved.uri);
-        if (bytes === undefined) {
-          // The size is unknown: accept the first WebP save, like the
-          // avatar flow accepts an unknown size (only a real zero refuses).
-          return {
-            status: 'prepared',
-            image: {
-              uri: saved.uri,
-              mimeType: 'image/webp',
-              width: size.width,
-              height: size.height,
-              bytes: STICKER_PREP_MAX_BYTES,
-            },
-          };
-        }
-        if (bytes === 0) {
-          return { status: 'error', message: 'This image is empty.' };
-        }
-        if (bytes <= STICKER_PREP_MAX_BYTES) {
-          return {
-            status: 'prepared',
-            image: {
-              uri: saved.uri,
-              mimeType: 'image/webp',
-              width: size.width,
-              height: size.height,
-              bytes,
-            },
-          };
-        }
-      }
-      // No WebP fit (every step too big, or the saves threw): one PNG try.
-      let uri: string;
-      try {
-        const saved = await manipulate(
-          image.uri,
-          [{ resize: { width: size.width, height: size.height } }],
-          { format: SaveFormat.PNG },
-        );
-        uri = saved.uri;
-      } catch {
-        return { status: 'error', message: 'This image could not be prepared.' };
-      }
-      const bytes = await reader.sizeOf(uri);
-      if (bytes !== undefined && bytes === 0) {
-        return { status: 'error', message: 'This image is empty.' };
-      }
-      if (bytes !== undefined && bytes > STICKER_PREP_MAX_BYTES) {
-        return {
-          status: 'error',
-          message: 'This image is too big. A sticker can be up to 512 KB and 512 px.',
-        };
-      }
-      return {
-        status: 'prepared',
-        image: {
-          uri,
-          mimeType: 'image/png',
-          width: size.width,
-          height: size.height,
-          bytes: bytes ?? STICKER_PREP_MAX_BYTES,
-        },
-      };
+    prepare(image) {
+      return Effect.runPromise(prepareEffect(manipulate, reader, image));
     },
   };
 }
 
+const launchEffect = (): EffectType.Effect<PickStickerResult> =>
+  Effect.tryPromise(() =>
+    ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+    }),
+  ).pipe(
+    Effect.matchEffect({
+      onFailure: () =>
+        Effect.succeed<PickStickerResult>({ status: 'error', message: PICK_FAILED_MESSAGE }),
+      onSuccess: (result) => Effect.succeed(pickResultOf(result)),
+    }),
+  );
+
+/** Maps the picker's answer to the screen's result; a cancel is not an error. */
+function pickResultOf(result: ImagePicker.ImagePickerResult): PickStickerResult {
+  if (result.canceled) {
+    return { status: 'cancelled' };
+  }
+  return {
+    status: 'picked',
+    images: result.assets.map((asset) => ({
+      uri: asset.uri,
+      width: asset.width,
+      height: asset.height,
+    })),
+  };
+}
+
+const pickEffect = (): EffectType.Effect<PickStickerResult> =>
+  Effect.promise(() => ImagePicker.requestMediaLibraryPermissionsAsync()).pipe(
+    Effect.flatMap((permission) =>
+      permission.granted
+        ? launchEffect()
+        : Effect.succeed<PickStickerResult>({ status: 'error', message: DENIED_MESSAGE }),
+    ),
+  );
+
 /** The real picker: the photo library, multi-select, images only, no editing. */
 export function createStickerImagePicker(): StickerImagePicker {
   return {
-    async pickImages() {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        return { status: 'error', message: DENIED_MESSAGE };
-      }
-      let result: ImagePicker.ImagePickerResult;
-      try {
-        result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ['images'],
-          allowsMultipleSelection: true,
-        });
-      } catch {
-        return { status: 'error', message: PICK_FAILED_MESSAGE };
-      }
-      if (result.canceled) {
-        return { status: 'cancelled' };
-      }
-      return {
-        status: 'picked',
-        images: result.assets.map((asset) => ({
-          uri: asset.uri,
-          width: asset.width,
-          height: asset.height,
-        })),
-      };
+    pickImages() {
+      return Effect.runPromise(pickEffect());
     },
   };
 }

@@ -12,7 +12,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0814](T-0814-mobile-mu5.md) | MU5: mobile whistle module on Effect | in-progress | haiku-5.5 | | wave 2 |
 | [T-0819](T-0819-mobile-mu10.md) | MU10: mobile settings A on Effect | in-progress | haiku-5.5 | | wave 2 |
 | [T-0824](T-0824-mobile-mu15.md) | MU15: mobile AI components B on Effect | in-progress | haiku-5.5 | | wave 2 |
-| [T-0832](T-0832-mobile-mu23.md) | MU23: mobile stickers on Effect | in-progress | haiku-5.5 | | wave 2 |
 | [T-0833](T-0833-mobile-mu24.md) | MU24: mobile contacts on Effect | in-progress | haiku-5.5 | | wave 2 |
 | [T-0834](T-0834-mobile-mu25.md) | MU25: mobile small components on Effect | in-progress | haiku-5.5 | | wave 2 |
 | [T-0835](T-0835-web-store.md) | WS1-WS11: web chat store on Effect | in-progress | sonnet-5.5 | T-0801 | chain; Julio checks connect, history, sending live |
@@ -866,3 +865,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0829](T-0829-mobile-mu20.md) | MU20: mobile on Effect | 2026-10-09 |
 | [T-0830](T-0830-mobile-mu21.md) | MU21: mobile on Effect | 2026-10-09 |
 | [T-0831](T-0831-mobile-mu22.md) | MU22: mobile on Effect | 2026-10-09 |
+| [T-0832](T-0832-mobile-mu23.md) | MU23: mobile on Effect | 2026-10-09 |
