@@ -375,6 +375,36 @@ describe('ChatBackgroundDialog images (T-0464)', () => {
     expect(screen.queryByRole('button', { name: 'Background image 1' })).toBeNull();
   });
 
+  it('still clears the deleted selection when the dialog closes mid-delete', async () => {
+    listBackgroundsMock.mockResolvedValue([bg1]);
+    const setChatBackground = vi.fn(async () => {});
+    let finishDelete: () => void = () => {};
+    deleteBackgroundMock.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishDelete = resolve;
+        }),
+    );
+    renderReopenable({ setChatBackground, chatPrefs: chatPrefs('bg-1', 40) });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete background image 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(deleteBackgroundMock).toHaveBeenCalledWith('bg-1'));
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // Let the unmounted row's state settle (a macrotask) before the server answers.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    await act(async () => {
+      finishDelete();
+    });
+
+    await waitFor(() => expect(setChatBackground).toHaveBeenCalledWith('c-ana', null));
+  });
+
   it('cancels a pending dim save when the dialog closes', async () => {
     vi.useFakeTimers();
     try {

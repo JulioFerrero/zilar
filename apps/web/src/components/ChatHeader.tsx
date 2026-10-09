@@ -1,5 +1,6 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { ArrowLeft, Lock, MoreVertical, Search } from 'lucide-react';
+import { Data, Effect } from 'effect';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { AiBadge } from './AiBadge';
@@ -9,9 +10,16 @@ import { ChatPrefMenuItems } from './ChatActionsMenu';
 import { TypingDots } from './TypingDots';
 import { IconButton } from './ui/icon-button';
 import { Menu, MenuItem } from './ui/menu';
+import { runWeb } from '@/lib/effect/runtime';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { chatSubtitle, typingLabel } from '@/lib/format';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+
+const ARCHIVE_ERROR = 'Could not archive the topic.';
+
+/** The topic could not be archived (the store rejected the patch). */
+class ArchiveFailed extends Data.TaggedError('ArchiveFailed') {}
 
 export function ChatHeader({
   chat,
@@ -47,9 +55,15 @@ export function ChatHeader({
     if (!isWide) {
       navigate('/');
     }
-    // The list search box lives outside this view; focus it on the next
-    // frame so the scope chip is already painted.
-    window.setTimeout(() => window.dispatchEvent(new Event('zilar:focus-search')), 0);
+    // The list search box lives outside this view; focus it after a zero-delay
+    // macrotask so the scope chip is already painted. The narrow-screen navigate
+    // above unmounts this header, so the wait runs detached (runWeb), not in a
+    // fiber that the unmount would interrupt.
+    void runWeb(
+      Effect.sleep(0).pipe(
+        Effect.andThen(Effect.sync(() => window.dispatchEvent(new Event('zilar:focus-search')))),
+      ),
+    );
   };
   const groupTitle = chat.groupTitle ?? store.groupInfo(chat.id)?.title;
   const openPanel = onOpenTopicPanel ?? onOpenAiPanel ?? onOpenGroupPanel;
@@ -61,9 +75,35 @@ export function ChatHeader({
         ? `Open ${chat.title} channel info`
         : `Open ${chat.title} info`;
   const [menuOpen, setMenuOpen] = useState(false);
-  const [actionError, setActionError] = useState('');
-  const [archiving, setArchiving] = useState(false);
   const [backgroundOpen, setBackgroundOpen] = useState(false);
+  // Archiving the topic for everyone: patch it, then leave the dead topic like
+  // the topic panel does (to General when it exists, else `/`).
+  const [archiveState, runArchive] = useAction<void, void, ArchiveFailed>(() =>
+    Effect.tryPromise({
+      try: () => storeApi.getState().patchTopic(chat.id, { archived: true }),
+      catch: () => new ArchiveFailed(),
+    }).pipe(
+      Effect.flatMap((): Effect.Effect<string | undefined> => {
+        const groupId = chat.groupId;
+        if (groupId === undefined) {
+          return Effect.succeed(undefined);
+        }
+        const known = storeApi
+          .getState()
+          .chats.find((entry) => entry.groupId === groupId && entry.topic?.isGeneral === true)?.id;
+        return known !== undefined
+          ? Effect.succeed(known)
+          : Effect.promise(() => storeApi.getState().refreshGeneralTopic(groupId));
+      }),
+      Effect.tap((generalId) =>
+        Effect.sync(() => {
+          navigate(generalId === undefined ? '/' : `/c/${encodeURIComponent(generalId)}`);
+        }),
+      ),
+    ),
+  );
+  const archiving = isWaiting(archiveState);
+  const actionError = !archiving && failureOf(archiveState) !== undefined ? ARCHIVE_ERROR : '';
 
   // A topic's Archive entry needs a manager; the entry hides until the
   // group detail loads and the role is known (see `TopicArchiveItem`).
@@ -96,35 +136,6 @@ export function ChatHeader({
       </div>
     </>
   );
-
-  const archive = async (): Promise<void> => {
-    setMenuOpen(false);
-    setArchiving(true);
-    setActionError('');
-    try {
-      await storeApi.getState().patchTopic(chat.id, { archived: true });
-    } catch {
-      setActionError('Could not archive the topic.');
-      setArchiving(false);
-      return;
-    }
-    setArchiving(false);
-    // The archived row is gone for everyone: leave the dead topic exactly
-    // like the topic panel does (to General when it exists, else `/`).
-    const groupId = chat.groupId;
-    const generalId =
-      groupId === undefined
-        ? undefined
-        : (storeApi
-            .getState()
-            .chats.find((entry) => entry.groupId === groupId && entry.topic?.isGeneral === true)
-            ?.id ?? (await storeApi.getState().refreshGeneralTopic(groupId)));
-    if (generalId !== undefined) {
-      navigate(`/c/${encodeURIComponent(generalId)}`);
-    } else {
-      navigate('/');
-    }
-  };
 
   return (
     <header className="relative flex h-16 shrink-0 items-center gap-2.5 border-b border-divider bg-panel/85 px-4">
@@ -232,7 +243,10 @@ export function ChatHeader({
               <TopicArchiveItem
                 chat={chat}
                 archiving={archiving}
-                onArchive={() => void archive()}
+                onArchive={() => {
+                  setMenuOpen(false);
+                  runArchive();
+                }}
               />
             </ChatPrefMenuItems>
           </Menu>
