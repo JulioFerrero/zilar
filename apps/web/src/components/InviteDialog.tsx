@@ -1,42 +1,32 @@
 import { Check, Copy } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { copyText } from '@/lib/clipboard';
+import { fromApi } from '@/lib/effect/api-effect';
+import { failureOf, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
 
 /** Creates an invite link and lets the user copy it. */
 export function InviteDialog({ onClose }: { onClose: () => void }) {
   const storeApi = useChatStoreApi();
-  const [url, setUrl] = useState<string | undefined>(undefined);
-  const [error, setError] = useState<string | undefined>(undefined);
-  const [copied, setCopied] = useState(false);
+  const [created] = useQuery(() => fromApi(() => storeApi.getState().createInvite()), [storeApi]);
+  const url = AsyncResult.isSuccess(created) ? created.value : undefined;
+  const failed = failureOf(created) !== undefined;
 
-  useEffect(() => {
-    let active = true;
-    storeApi
-      .getState()
-      .createInvite()
-      .then((value) => {
-        if (active) {
-          setUrl(value);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setError('Could not create an invite link. Try again.');
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [storeApi]);
+  // A copy that the clipboard refuses leaves the button on "Copy", as before.
+  const [copyState, copyUrl] = useAction<string, void, unknown>((value) =>
+    Effect.tryPromise({ try: () => copyText(value), catch: (cause) => cause }),
+  );
+  const copied = AsyncResult.isSuccess(copyState);
 
   const copy = (): void => {
     if (url === undefined) {
       return;
     }
-    void copyText(url).then(() => setCopied(true));
+    copyUrl(url);
   };
 
   return (
@@ -52,9 +42,9 @@ export function InviteDialog({ onClose }: { onClose: () => void }) {
         </Button>
       }
     >
-      {error !== undefined ? (
+      {failed ? (
         <p role="alert" className="mt-4 text-[14px] text-danger">
-          {error}
+          Could not create an invite link. Try again.
         </p>
       ) : (
         <div className="mt-4 flex items-center gap-2 rounded-lg border border-divider bg-muted px-2 py-1.5">

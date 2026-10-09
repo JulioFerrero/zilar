@@ -1,7 +1,9 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { useState } from 'react';
 import { Composer } from './Composer';
 import type { ReplyRef } from '@zilar/chat-core';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Button } from '@/components/ui/button';
 
@@ -23,8 +25,15 @@ export function ChannelComposerBar({
 }) {
   const store = useChatStore();
   const storeApi = useChatStoreApi();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  // A second click while the mute waits is ignored (the hook's default mode).
+  const [muteState, toggleMute] = useAction<void, void, ApiFailure>(() =>
+    // Muted = mute forever; unmuted = clear. The T-0113 durations live in
+    // the chat menu; this bar is the quick toggle.
+    fromApi(() => storeApi.getState().setMuted(chat.id, chat.muted ? null : 'forever')),
+  );
+  const busy = isWaiting(muteState);
+  // The failure shows until the next click, which clears it while it runs.
+  const failed = !busy && failureOf(muteState) !== undefined;
 
   // The role rides the chat row (`myRole`) for channels; the group detail
   // backs it up once loaded. Unknown = subscriber (read-only) until proven
@@ -40,23 +49,6 @@ export function ChannelComposerBar({
     );
   }
 
-  const toggleMute = async (): Promise<void> => {
-    if (busy) {
-      return;
-    }
-    setBusy(true);
-    setError('');
-    try {
-      // Muted = mute forever; unmuted = clear. The T-0113 durations live in
-      // the chat menu; this bar is the quick toggle.
-      await storeApi.getState().setMuted(chat.id, chat.muted ? null : 'forever');
-    } catch {
-      setError('Could not change the mute. Try again.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="chat-background relative shrink-0 px-3 pt-2 pb-3 wide:px-8 wide:pt-3 wide:pb-5">
       <div className="flex items-center gap-3 rounded-[14px] bg-surface-raised px-4 py-2.5">
@@ -68,14 +60,14 @@ export function ChannelComposerBar({
           variant="ghost"
           className="shrink-0"
           disabled={busy}
-          onClick={() => void toggleMute()}
+          onClick={() => toggleMute()}
         >
           {chat.muted ? 'Unmute' : 'Mute'}
         </Button>
       </div>
-      {error !== '' && (
+      {failed && (
         <p role="alert" className="mt-1 px-1 text-[12px] text-danger">
-          {error}
+          Could not change the mute. Try again.
         </p>
       )}
     </div>
