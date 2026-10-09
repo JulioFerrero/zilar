@@ -1,7 +1,7 @@
 ---
 id: T-0774
 title: "CI on main stops cancelling: concurrency cancel-in-progress only for pull requests, so a running main check finishes and GitHub keeps just the newest push queued behind it (busy merge days never finished a main run)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0774-ci-no-cancel-main
 model: auto
@@ -46,4 +46,31 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did**
+- `.github/workflows/ci.yml`: the concurrency block now reads `cancel-in-progress: ${{ github.event_name == 'pull_request' }}`. The two-line comment above it replaces the old one and explains that pull requests cancel stale runs while main lets the running check finish, citing the 2026-10-09 incident. The `group` line is unchanged.
+- Nothing else in the workflow changed.
+
+**Files changed**
+- `.github/workflows/ci.yml`
+- `work/T-0774-ci-no-cancel-main.md` (status and this Report)
+
+**Commands run**
+- `pnpm install`: completed (Done in 15s).
+- `pnpm exec prettier --write .github/workflows/ci.yml`: unchanged (prettier parsed the YAML).
+- `pnpm gate` from `/Users/julio/personal-projects/zilar-T-0774`: GATE PASS. Summary lines:
+  - `gate: 2 changed file(s) against main`
+  - `PASS  install (frozen)`, `PASS  format`, `PASS  lint`, `PASS  typecheck`
+  - `SKIP effect (no source files changed)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+**Problems / deviations**
+- None. No single tests were run: the task's Checks list only `pnpm gate`. The gate output has no test step; it only ran install, format, lint and typecheck, and skipped the effect check because no source files changed.
+- I did not push or trigger any workflow, so the new concurrency behaviour is not exercised on GitHub yet.
+
+**Blocked / needs a decision**
+- None.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5. The lead reviewed the diff directly: `cancel-in-progress` now applies only to pull requests, with the comment as specified. The gate passed.
