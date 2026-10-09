@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createApp } from '../app';
-import { invites, session, user, verification, xmppAccounts } from '../db/schema';
 import {
   FakeAdminClient,
   TEST_SECRET,
   TEST_XMPP_DOMAIN,
   createTestContext,
+  testSql,
   type TestContext,
 } from '../test-support';
 import { localpartFor } from '../xmpp/provisioning';
@@ -19,6 +21,25 @@ import {
 } from './invites';
 
 const BASE_URL = 'http://localhost:3000';
+
+interface IdRow {
+  id: string;
+}
+
+interface VerificationRow {
+  id: string;
+  identifier: string;
+  value: string;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface XmppAccountRow {
+  userId: string;
+  localpart: string;
+  provisioned: boolean;
+}
 
 type TestApp = ReturnType<typeof createApp>;
 
@@ -130,8 +151,22 @@ describe('auth flows', () => {
     const response = await signInWithOtp(app, { email: 'no-invite@example.com', otp });
 
     expect(response.status).toBe(400);
-    expect(await context.db.select().from(user)).toHaveLength(0);
-    expect(await context.db.select().from(session)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM "user"`;
+        }),
+      ),
+    ).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM "session"`;
+        }),
+      ),
+    ).toHaveLength(0);
 
     const stored = await findInviteByCode(context.db, invite.code);
     expect(stored?.uses).toBe(0);
@@ -151,7 +186,14 @@ describe('auth flows', () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await context.db.select().from(user)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM "user"`;
+        }),
+      ),
+    ).toHaveLength(0);
   });
 
   it('(c) rejects a revoked invite', async () => {
@@ -169,7 +211,14 @@ describe('auth flows', () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await context.db.select().from(user)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM "user"`;
+        }),
+      ),
+    ).toHaveLength(0);
   });
 
   it('(c) rejects a used-up invite', async () => {
@@ -187,7 +236,14 @@ describe('auth flows', () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await context.db.select().from(user)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM "user"`;
+        }),
+      ),
+    ).toHaveLength(0);
   });
 
   it('(d) lets exactly one of two concurrent sign-ups consume the last use', async () => {
@@ -208,7 +264,14 @@ describe('auth flows', () => {
 
     const stored = await findInviteByCode(context.db, invite.code);
     expect(stored?.uses).toBe(1);
-    expect(await context.db.select().from(user)).toHaveLength(1);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM "user"`;
+        }),
+      ),
+    ).toHaveLength(1);
   });
 
   it('(e) signs an existing user in again without an invite', async () => {
@@ -244,7 +307,14 @@ describe('auth flows', () => {
       invite: invite.code,
     });
     expect(locked.status).toBe(403);
-    expect(await context.db.select().from(user)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM "user"`;
+        }),
+      ),
+    ).toHaveLength(0);
   });
 
   it('(g) authenticates with a bearer token', async () => {
@@ -366,7 +436,14 @@ describe('auth flows', () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ code: 'EMAIL_PASSWORD_SIGN_UP_DISABLED' });
-    expect(await context.db.select().from(user)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM "user"`;
+        }),
+      ),
+    ).toHaveLength(0);
   });
 
   it('rejects a valid OTP presented with an unusable invite', async () => {
@@ -384,7 +461,14 @@ describe('auth flows', () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await context.db.select().from(user)).toHaveLength(0);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM "user"`;
+        }),
+      ),
+    ).toHaveLength(0);
   });
 
   it('does not send a code to an unknown email without an invite', async () => {
@@ -472,7 +556,12 @@ describe('auth flows', () => {
     await sendSignInOtp(app, 'hashed@example.com', invite.code);
     const otp = context.mailer.codeFor('hashed@example.com');
 
-    const rows = await context.db.select().from(verification);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<VerificationRow>`SELECT * FROM verification`;
+      }),
+    );
     expect(rows.length).toBeGreaterThan(0);
     expect(JSON.stringify(rows)).not.toContain(otp);
 
@@ -605,7 +694,14 @@ describe('auth flows', () => {
 
     const stored = await findInviteByCode(context.db, invite.code);
     expect(stored?.uses).toBe(2);
-    expect(await context.db.select().from(invites)).toHaveLength(1);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM invites`;
+        }),
+      ),
+    ).toHaveLength(1);
   });
 
   it('provisions the XMPP account on sign-up', async () => {
@@ -618,7 +714,12 @@ describe('auth flows', () => {
     const { id } = (await me.json()) as { id: string };
     const localpart = localpartFor(id);
 
-    const rows = await context.db.select().from(xmppAccounts);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<XmppAccountRow>`SELECT user_id, localpart, provisioned FROM xmpp_accounts`;
+      }),
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ userId: id, localpart, provisioned: true });
     expect(context.adminClient.registered).toEqual([localpart]);
@@ -633,7 +734,12 @@ describe('auth flows', () => {
       const { response } = await bootstrap(failing, 'offline@example.com', invite.code);
       expect(response.status).toBe(200);
 
-      const rows = await failing.db.select().from(xmppAccounts);
+      const rows = await testSql(failing)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<XmppAccountRow>`SELECT user_id, localpart, provisioned FROM xmpp_accounts`;
+        }),
+      );
       expect(rows).toHaveLength(1);
       expect(rows[0]?.provisioned).toBe(false);
       expect(failing.adminClient.registered).toEqual([]);

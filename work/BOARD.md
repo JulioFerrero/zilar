@@ -14,7 +14,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0697](T-0697-chats-media-tests-off-drizzle.md) | tests off drizzle: chats + media | in-progress | haiku-5.5 | T-0695 | |
 | [T-0698](T-0698-voice-integrations-tests-off-drizzle.md) | tests off drizzle: voice-transcription + integrations | in-progress | haiku-5.5 | T-0695 | |
 | [T-0700](T-0700-blocks-handles-tests-off-drizzle.md) | tests off drizzle: blocks + handles | in-progress | auto | T-0695 | |
-| [T-0701](T-0701-auth-tests-off-drizzle.md) | tests off drizzle: auth | in-progress | auto | T-0695 | |
 | [T-0702](T-0702-push-tests-off-drizzle.md) | tests off drizzle: push | in-progress | haiku-5.5 | T-0695 | |
 
 ## Follow-ups
@@ -731,3 +730,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0695](T-0695-test-sql-helper.md) | H1: testSql helper; pins tests off drizzle | 2026-10-09 |
 | [T-0690](T-0690-better-auth-sql-adapter.md) | D2 step 1: better-auth adapter over effect/sql | 2026-10-09 |
 | [T-0699](T-0699-search-tests-off-drizzle.md) | tests off drizzle: search | 2026-10-09 |
+| [T-0701](T-0701-auth-tests-off-drizzle.md) | tests off drizzle: auth | 2026-10-09 |

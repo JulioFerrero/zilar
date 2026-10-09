@@ -1,7 +1,7 @@
 ---
 id: T-0701
 title: "tests off drizzle (auth): replace every drizzle query in auth/invites.test.ts, auth/auth.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0701-auth-tests-off-drizzle
 model: auto
@@ -51,4 +51,59 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/server/src/auth/auth.test.ts`: removed the `../db/schema` import and every
+  drizzle read. The 12 `context.db.select().from(...)` reads plus the
+  `failing.db.select().from(xmppAccounts)` read now run through
+  `testSql(context)`/`testSql(failing)` with `effect/sql`; added `Effect` and
+  `SqlClient` imports, `testSql` to the `test-support` import, and three small
+  local row types (`IdRow`, `VerificationRow`, `XmppAccountRow`). Selects name the
+  snake_case columns (`"user"`, `session`, `invites`, `verification`,
+  `xmpp_accounts`) and read only the columns each assertion uses
+  (`SELECT id ...`, `SELECT user_id, localpart, provisioned ...`), except the
+  OTP test which keeps `SELECT *` so its `JSON.stringify(rows)` assertion still
+  sees the whole stored row. `db: context.db` and all module calls
+  (`createInvite(context.db, ...)`, `findInviteByCode`, `revokeInvite`,
+  `consumeInvite`) are left as they were.
+- `apps/server/src/auth/invites.test.ts`: dropped the `PGlite` + `drizzle` +
+  `runMigrations` + `registerSqlRuntime`/`disposeSqlRuntime` setup (drizzle at
+  old lines 2, 6, 26) for `createTestContext()` / `context.close()` as
+  `docs/audit/drizzle-removal-plan.md` §2.2 prescribes for the files that built
+  their own database. The one seed insert (`schema.user`) became an
+  `INSERT INTO "user" (id, name, email)` through `testSql(context)`. All module
+  calls now take `context.db`. Values are unchanged (that `user` insert leaves
+  out `email_verified`, `created_at` and `updated_at`, which have SQL defaults).
+
+No assertion was changed in meaning or number. `git grep -n "drizzle-orm\|db/schema" -- apps/server/src/auth/invites.test.ts apps/server/src/auth/auth.test.ts` prints nothing (exit 1).
+
+### Commands and results
+- `pnpm install`: done, 1176 packages, no errors.
+- Before: `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/auth/invites.test.ts src/auth/auth.test.ts` -> `Test Files 2 passed (2)`, `Tests 43 passed (43)`.
+- After (same command): `Test Files 2 passed (2)`, `Tests 43 passed (43)`.
+- `pnpm gate` (repo root):
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (2.9s)
+  PASS  format  (52.0s)
+  PASS  lint  (1.3s)
+  PASS  typecheck  (5.5s)
+  PASS  tests @zilar/server  (17.8s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Files changed
+- `apps/server/src/auth/auth.test.ts`
+- `apps/server/src/auth/invites.test.ts`
+- `work/T-0701-auth-tests-off-drizzle.md` (front matter + this Report)
+
+### Deviations / notes
+- `invites.test.ts` switched its `beforeEach` to `createTestContext()` rather
+  than keeping a bare `PGlite`, because `registerPgliteSqlRuntime` from the plan
+  does not exist in this tree; §2.2 lists that switch as the alternative for
+  exactly these files.
+- No open questions, nothing blocked.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head 365e31cc). There are 43 tests before and after. `invites.test.ts` now uses `createTestContext()` in place of its own drizzle PGlite, which drops 5 drizzle imports and uses the migrated snapshot.
