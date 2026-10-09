@@ -1,7 +1,7 @@
 ---
 id: T-0810
 title: "MU1: mobile auth: AuthFlow, NameForm, session storage, session store, session on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0810-mobile-mu1
 model: auto
@@ -59,4 +59,21 @@ Run `pnpm exec prettier --write` on your changed files before committing. Do not
 
 ## Report (written by the worker when done)
 
+- Commits: `T-0810: tests before` (new tests on the old code), then the conversion commit.
+- effect:map kinds: `AuthFlow.tsx` effect, `NameForm.tsx` effect, `session-store.ts` effect, `session.ts` effect, `session-storage.ts` effect, `secure-session-storage.ts` effect (Tier B, signal H9: it still imports `expo-secure-store`, a native module).
+- Tests (the Checks command, 6 files): before the conversion 48 passed (existing 12: AuthFlow 3, session-store 9; new 36: NameForm 9, secure-session-storage 8, session-storage 5, session 14); after the conversion 48 passed, same tests, no existing test edited. Mobile typecheck: clean.
+- Not done: `AuthFlow.test.tsx` and `session-store.test.ts` are not in Allowed files, so AuthFlow's actions (send code, verify, countdown) have no committed test. I checked them once with a scratch jsdom test (deleted, not committed): send code shows "Resend in 30s", counts 29 and 28 after about 1 s each, verify calls `signIn` and routes to `/welcome/name?from=%2F`, a rejected send shows the generic message and re-enables the button.
+- How: storage and store are Effects exported as the same Promise functions through `runMobile` (a rejection still reaches the caller as the original error object, checked on 4.0.2). `session.ts` fire-and-forget token write is `Effect.runFork(Effect.ignore(...))`. AuthFlow and NameForm use `useAction` (busy = isWaiting); the resend countdown is `useQuery` with one `Effect.sleep(1000)` per `secondsLeft`, interrupted on change or unmount (same timing as the old interval recreated each tick). `attempt` (a `tryPromise` that keeps the original error) is repeated in session.ts, session-store.ts and secure-session-storage.ts because only these files are allowed.
+- Behaviour differences:
+  1. AuthFlow: if `requestSignInCode` or `signIn` rejects (network throw), the screen now shows "Something went wrong. Try again." and unlocks the form. Before, the rejection was unhandled and `busy` stayed true forever (form locked).
+  2. NameForm: if `setName` rejects (e.g. secure store read fails), it now shows "Could not save your name. Try again." Before: unhandled rejection and a locked form.
+  3. `busy` now turns on at the next render after the press (derived from the action state) instead of synchronously; a repeat press of the same action is ignored in between by the useAction "ignore" mode.
+  4. `session.ts` `sendCode` / `signOut` and the storages: none (errors, order and texts the same).
+- Unsure: `process.env` reads are not in these files (the API url read is in `lib/auth.ts`, out of scope). The no-test-edit rule left AuthFlow's own actions covered only by the scratch check above.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved (wave 2). Worker: Sonnet 5.5. The lead reviewed the Report.
+- **Combined check:** all 25 wave 2 branches together pass lint, typecheck and the full mobile suite (`lead batch check`, report 20261009T172300Z). The remaining failures were server and web tests that pass on main, caused by load.
+- **This task:** Auth flow, name form and session files converted; texts and session order unchanged.
+- **Phone:** the wave branch is smoked on the emulator after the merge.

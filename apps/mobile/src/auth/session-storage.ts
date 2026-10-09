@@ -1,3 +1,7 @@
+import { Effect } from 'effect';
+
+import { runMobile } from '@/lib/effect/runtime';
+
 /** Where the bearer session token is persisted between app launches. */
 export interface SessionStorage {
   getToken(): Promise<string | undefined>;
@@ -9,14 +13,18 @@ export interface SessionStorage {
 export function createMemorySessionStorage(initial?: string): SessionStorage {
   let token: string | undefined = initial;
   return {
-    getToken: () => Promise.resolve(token),
-    setToken: (next) => {
-      token = next;
-      return Promise.resolve();
-    },
-    clearToken: () => {
-      token = undefined;
-      return Promise.resolve();
-    },
+    getToken: () => runMobile(Effect.sync(() => token)),
+    setToken: (next) =>
+      runMobile(
+        Effect.sync(() => {
+          token = next;
+        }),
+      ),
+    clearToken: () =>
+      runMobile(
+        Effect.sync(() => {
+          token = undefined;
+        }),
+      ),
   };
 }

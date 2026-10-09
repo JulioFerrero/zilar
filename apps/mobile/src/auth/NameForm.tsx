@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useColorScheme } from 'nativewind';
@@ -10,6 +11,7 @@ import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
 import { CHAT_BACKGROUND } from '@/lib/colors';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 
 import { safeTarget } from './guard';
 import { useAuthStore } from './session';
@@ -23,30 +25,33 @@ export function NameForm() {
   const setName = useAuthStore((state) => state.setName);
   const [name, setNameInput] = useState(me?.name ?? '');
   const [error, setError] = useState<string | undefined>(undefined);
-  const [busy, setBusy] = useState(false);
+  const [saveState, save] = useAction((trimmed: string) =>
+    Effect.gen(function* () {
+      setError(undefined);
+      // A rejected save is a failed save, shown with the same sentence.
+      const result = yield* Effect.tryPromise({
+        try: () => setName(trimmed),
+        catch: (cause) => cause,
+      }).pipe(Effect.orElseSucceed(() => ({ ok: false })));
+      if (!result.ok) {
+        setError('Could not save your name. Try again.');
+        return;
+      }
+      // Callers (e.g. the join-by-link page) pass `from` to come back after
+      // the name step; the default chains into the handle step, like web.
+      const from = safeTarget(params.from);
+      router.replace(from !== '/' ? (from as Href) : ('/welcome/handle' as Href));
+    }),
+  );
+  const busy = isWaiting(saveState);
 
-  const submit = async (): Promise<void> => {
+  const submit = (): void => {
     const trimmed = name.trim();
     if (trimmed.length === 0) {
       setError('Enter your name');
       return;
     }
-    setBusy(true);
-    setError(undefined);
-    const result = await setName(trimmed);
-    setBusy(false);
-    if (!result.ok) {
-      setError('Could not save your name. Try again.');
-      return;
-    }
-    // Callers (e.g. the join-by-link page) pass `from` to come back after
-    // the name step; the default chains into the handle step, like web.
-    const from = safeTarget(params.from);
-    if (from !== '/') {
-      router.replace(from as Href);
-      return;
-    }
-    router.replace('/welcome/handle' as Href);
+    save(trimmed);
   };
 
   return (
@@ -84,7 +89,7 @@ export function NameForm() {
           <Button
             accessibilityLabel="Continue"
             disabled={busy}
-            onPress={() => void submit()}
+            onPress={submit}
             variant="default"
             size="lg"
             className="mt-4"

@@ -1,9 +1,16 @@
+import { Effect } from 'effect';
 import * as SecureStore from 'expo-secure-store';
+
+import { runMobile } from '@/lib/effect/runtime';
 
 import type { SessionStorage } from './session-storage';
 
 /** SecureStore key. One session token per install, cleared on sign-out. */
 export const SESSION_TOKEN_KEY = 'zilar.session-token';
+
+// A SecureStore failure stays the error it was, so callers see what they saw.
+const secureCall = <A>(call: () => Promise<A>): Effect.Effect<A, unknown> =>
+  Effect.tryPromise({ try: call, catch: (error) => error });
 
 /**
  * The session token lives in the OS keychain/keystore via SecureStore, never in
@@ -11,15 +18,14 @@ export const SESSION_TOKEN_KEY = 'zilar.session-token';
  */
 export function createSecureSessionStorage(): SessionStorage {
   return {
-    async getToken() {
-      const value = await SecureStore.getItemAsync(SESSION_TOKEN_KEY);
-      return value === null || value === '' ? undefined : value;
-    },
-    async setToken(token) {
-      await SecureStore.setItemAsync(SESSION_TOKEN_KEY, token);
-    },
-    async clearToken() {
-      await SecureStore.deleteItemAsync(SESSION_TOKEN_KEY);
-    },
+    getToken: () =>
+      runMobile(
+        secureCall(() => SecureStore.getItemAsync(SESSION_TOKEN_KEY)).pipe(
+          Effect.map((value) => (value === null || value === '' ? undefined : value)),
+        ),
+      ),
+    setToken: (token) =>
+      runMobile(secureCall(() => SecureStore.setItemAsync(SESSION_TOKEN_KEY, token))),
+    clearToken: () => runMobile(secureCall(() => SecureStore.deleteItemAsync(SESSION_TOKEN_KEY))),
   };
 }

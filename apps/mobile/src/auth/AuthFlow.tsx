@@ -1,7 +1,8 @@
+import { Effect } from 'effect';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useColorScheme } from 'nativewind';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -10,11 +11,14 @@ import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
 import { CHAT_BACKGROUND } from '@/lib/colors';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 
 import { errorMessageFor, isEmailValid } from './errors';
 import { OtpInput } from './OtpInput';
 import { requestSignInCode, useAuthStore } from './session';
 import { safeTarget } from './guard';
+import type { AuthError, SignInOutcome } from './session-store';
 
 export const RESEND_SECONDS = 30;
 
@@ -38,62 +42,76 @@ export function AuthFlow({
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
-  const [busy, setBusy] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
 
-  useEffect(() => {
-    if (secondsLeft <= 0) {
-      return;
-    }
-    const timer = setInterval(() => {
-      setSecondsLeft((value) => Math.max(0, value - 1));
-    }, RESEND_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [secondsLeft]);
+  // The resend countdown: one sleep per second left, interrupted when the
+  // count changes or the screen goes away.
+  useQuery(
+    () =>
+      secondsLeft <= 0
+        ? Effect.void
+        : Effect.sleep(RESEND_INTERVAL_MS).pipe(
+            Effect.andThen(Effect.sync(() => setSecondsLeft((value) => Math.max(0, value - 1)))),
+          ),
+    [secondsLeft],
+  );
 
-  const requestCode = async (): Promise<void> => {
-    setBusy(true);
-    setError(undefined);
-    const result = await requestSignInCode(email.trim(), inviteCode);
-    setBusy(false);
-    if (result.error !== undefined) {
-      setError(errorMessageFor(result.error));
-      return;
-    }
-    setCode('');
-    setStep('code');
-    setSecondsLeft(RESEND_SECONDS);
-  };
+  // A call that rejects counts as a failed call with the generic message.
+  const [requestState, sendCode] = useAction<void, void, never>(() =>
+    Effect.gen(function* () {
+      setError(undefined);
+      const result = yield* Effect.tryPromise({
+        try: () => requestSignInCode(email.trim(), inviteCode),
+        catch: (cause) => cause,
+      }).pipe(Effect.orElseSucceed((): { error?: AuthError } => ({ error: {} })));
+      if (result.error !== undefined) {
+        setError(errorMessageFor(result.error));
+        return;
+      }
+      setCode('');
+      setStep('code');
+      setSecondsLeft(RESEND_SECONDS);
+    }),
+  );
+
+  const [verifyState, sendVerify] = useAction((value: string) =>
+    Effect.gen(function* () {
+      setError(undefined);
+      const outcome = yield* Effect.tryPromise({
+        try: () => signIn({ email: email.trim(), otp: value, inviteCode }),
+        catch: (cause) => cause,
+      }).pipe(Effect.orElseSucceed((): SignInOutcome => ({ ok: false, error: {} })));
+      if (!outcome.ok) {
+        setError(errorMessageFor(outcome.error));
+        setCode('');
+        return;
+      }
+
+      const target = safeTarget(params.from);
+      if (outcome.me.name.trim() === '') {
+        router.replace(`/welcome/name?from=${encodeURIComponent(target)}`);
+        return;
+      }
+      // `target` starts with `/`; `safeTarget` guarantees it before the cast.
+      router.replace(target as Href);
+    }),
+  );
+
+  const busy = isWaiting(requestState) || isWaiting(verifyState);
 
   const submitEmail = (): void => {
     if (!isEmailValid(email)) {
       setError('Enter a valid email address');
       return;
     }
-    void requestCode();
+    sendCode();
   };
 
-  const verify = async (value: string): Promise<void> => {
+  const verify = (value: string): void => {
     if (busy || value.length !== 6) {
       return;
     }
-    setBusy(true);
-    setError(undefined);
-    const outcome = await signIn({ email: email.trim(), otp: value, inviteCode });
-    setBusy(false);
-    if (!outcome.ok) {
-      setError(errorMessageFor(outcome.error));
-      setCode('');
-      return;
-    }
-
-    const target = safeTarget(params.from);
-    if (outcome.me.name.trim() === '') {
-      router.replace(`/welcome/name?from=${encodeURIComponent(target)}`);
-      return;
-    }
-    // `target` starts with `/`; `safeTarget` guarantees it before the cast.
-    router.replace(target as Href);
+    sendVerify(value);
   };
 
   return (
@@ -164,7 +182,7 @@ export function AuthFlow({
               <OtpInput
                 value={code}
                 onChange={setCode}
-                onComplete={(value) => void verify(value)}
+                onComplete={verify}
                 disabled={busy}
                 invalid={error !== undefined}
               />
@@ -177,7 +195,7 @@ export function AuthFlow({
                 <Button
                   accessibilityLabel="Continue"
                   disabled={busy}
-                  onPress={() => void verify(code)}
+                  onPress={() => verify(code)}
                   variant="default"
                   size="default"
                 >
@@ -194,7 +212,7 @@ export function AuthFlow({
                     className="px-0"
                     accessibilityLabel="Resend code"
                     disabled={busy}
-                    onPress={() => void requestCode()}
+                    onPress={() => sendCode()}
                   >
                     <Text className="text-[14px] text-accent">Resend code</Text>
                   </Button>
