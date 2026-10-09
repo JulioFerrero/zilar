@@ -1,7 +1,7 @@
 ---
 id: T-0793
 title: "WU21: VoiceMessage and AvatarUploader on Effect (playback interval and image loading as Effects)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0793-web-voice-avatar
 model: auto
@@ -66,4 +66,50 @@ Run `pnpm effect:map` and list each file's kind, then paste the whole web suite 
 
 ## Report (written by the worker when done)
 
+**Files changed:** `apps/web/src/components/VoiceMessage.tsx`, `apps/web/src/components/AvatarUploader.tsx`, this task file. Test files unchanged.
+
+**effect:map kind:** VoiceMessage.tsx = `effect`, no signals left. AvatarUploader.tsx = `effect`, no signals left. Map totals: 842 files, coverage 60.0% (effect 256, needs-effect 179, plain 304, exempt 103, legacy 0).
+
+**Counts (the two target files):** before, 3 test files and 20 tests passed (VoiceMessage.test.tsx, VoiceMessage.player.test.tsx, AvatarUploader.test.tsx). After, the same 3 files and 20 tests pass, unchanged.
+
+**Whole web suite (after):** `pnpm --filter @zilar/web test --maxWorkers=4 --reporter=dot`: Test Files 172 passed (172), Tests 1844 passed (1844). I did not measure the whole suite before the change.
+
+**Gate (`pnpm gate`, run from the worktree root):**
+- `gate: 2 changed file(s) against main`
+- PASS install (frozen), PASS format, PASS lint, PASS typecheck, PASS effect, PASS tests @zilar/web
+- `scope: every changed file is inside the Allowed files`
+- `GATE PASS`
+
+Other checks: `tsc --noEmit` for `apps/web/tsconfig.json` and `tsconfig.node.json` both exit 0. `oxlint` on the two files is clean. The first gate run listed a scratch file of mine; I deleted it and re-ran the gate.
+
+**What changed**
+- VoiceMessage: the progress interval is a `useQuery` tick, `Effect.repeat(Schedule.spaced(TICK_MS))` plus `Effect.delay(TICK_MS)`, rebuilt on each `playing` change (same pattern as ApprovalsPage). Transcript fetches use `useAction` with `fromApi(getVoiceTranscript)`. Play uses `useAction` (mode `replace`): `Effect.try` on `audio.play()`, then `tryPromise` on the returned Promise, and a refused play sets `failed`. The try/catch and the `.then`/`.catch` chains are gone.
+- AvatarUploader: `loadImageSize` is an `Effect.callback` that clears `onload`/`onerror` on interrupt. `encodeExport` is an `Effect.callback` (`encodeAvatar`). Pick, save and remove are `useAction` effects. `busy` is `isWaiting` of the save and remove states. `createPreviewUrl`/`revokePreviewUrl` use `Effect.try` with `orElseSucceed`/`ignore`, with `Effect.runSync` in `closeCrop`. The save chain is `Effect.gen` with `matchEffect` for the error sentence.
+
+**Deviations from the spec (and why)**
+- Props are unchanged: `imageLoader` and `exporter` keep their Promise types, because the tests inject Promise fakes. The browser defaults are `Effect.runPromise(...)` wrappers around the Effect versions. The Effect callbacks therefore live behind a Promise seam.
+- AvatarUploader does not use `fromApi`. `toApiFailure` would replace a plain `Error` carrying `code` (the test's rejection shape) with "Something went wrong", so the raw cause is kept and passed to the unchanged `friendlyUploadError`.
+- `failureOf` is not used: every failure is handled inside its Effect with `matchEffect`, so the action states only need `isWaiting`.
+- `encodeExport` was not in "What to build"; I converted it because it held the file's other `new Promise`.
+
+**Behaviour differences**
+1. VoiceMessage transcript errors: `fromApi` maps any non-`ApiError` to `unknown_error`, so the fixed fallback "Transcription failed. Try again." replaces the raw `Error.message` in that case. Every known code gives the same sentence. `getVoiceTranscript` throws `ApiError` on its failure paths, so no visible change is expected.
+2. VoiceMessage: unmounting during a transcript fetch interrupts it. The answer is dropped and not cached. Before, the cache was filled and the state update was a no-op.
+3. VoiceMessage: a second play request replaces a pending one (before, each click just called `play()`). The first `play()` call still happens synchronously inside the click, and the "Pause" label appears right after the click in the existing tests.
+4. AvatarUploader: a newer pick replaces one still loading, and unmount also interrupts a load. The superseded or abandoned preview URL is revoked on interrupt (before, it leaked).
+5. AvatarUploader: unmount during a save interrupts it. `onChanged` is not called afterwards (before, it ran on the unmounted parent).
+6. AvatarUploader: a drawing or decode throw in the browser defaults rejects through `runPromise` and reaches `friendlyUploadError` as before. The text is the same, though it may be the raw Error message in that rare case.
+7. The save failure path still does not revoke the crop URL (as before; I kept that).
+
+**Open questions / unsure**
+- The default seams go Effect, then Promise, then Effect again. Changing the props to Effect-typed would need the test fakes to change, which the task forbids. Please say if you want that follow-up.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5. The lead reviewed the Report.
+- **The components:** both are Effect files. `play()` still runs inside the click.
+- **The injected `imageLoader` and `exporter` props stay Promise-typed** for the test fakes, which is accepted.
+- **Fixed:** an abandoned preview URL is now revoked.
+- **Behaviour changes accepted:** unmount interrupts the transcript fetch, the load and the save.
+- **Results:** 20 tests and the whole web suite (1844) pass; the gate passed.
+- **Follow-up:** the crop URL is not revoked after a failed save (a leak in the old code too).

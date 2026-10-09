@@ -1,3 +1,4 @@
+import { Data, Effect, Schedule } from 'effect';
 import { formatDuration, type VoiceMeta } from '@zilar/chat-core';
 import { Captions, Pause, Play } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -5,11 +6,18 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { cn } from '@/lib/utils';
-import { ApiError, getVoiceTranscript } from '@/lib/api';
+import { getVoiceTranscript } from '@/lib/api';
 import { mediaSrc } from '@/lib/attachments';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { useVoiceTranscriptionEnabled } from '@/lib/useVoiceTranscription';
 
 const TICK_MS = 100;
+
+/** The browser refused to start playback (autoplay policy, missing bytes, no audio API). */
+class PlayRefused extends Data.TaggedError('PlayRefused') {}
 
 type TranscriptState =
   | { kind: 'idle' }
@@ -29,26 +37,23 @@ export function resetVoiceTranscriptCache(): void {
   transcriptCache.clear();
 }
 
-function friendlyTranscriptError(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.code === 'transcription_not_configured') {
-      return 'Transcription is not set up on this server.';
-    }
-    if (error.code === 'rate_limited') {
-      return 'Too many tries — wait a little and try again.';
-    }
-    if (error.code === 'voice_too_large') {
-      return 'The recording is too large to transcribe.';
-    }
-    if (error.code === 'not_audio') {
-      return 'The file is not a supported recording.';
-    }
-    if (error.code === 'network_error') {
-      return 'Could not reach the server.';
-    }
-    return 'Transcription failed. Try again.';
+function friendlyTranscriptError(failure: ApiFailure): string {
+  if (failure.code === 'transcription_not_configured') {
+    return 'Transcription is not set up on this server.';
   }
-  return error instanceof Error ? error.message : 'Transcription failed. Try again.';
+  if (failure.code === 'rate_limited') {
+    return 'Too many tries — wait a little and try again.';
+  }
+  if (failure.code === 'voice_too_large') {
+    return 'The recording is too large to transcribe.';
+  }
+  if (failure.code === 'not_audio') {
+    return 'The file is not a supported recording.';
+  }
+  if (failure.code === 'network_error') {
+    return 'Could not reach the server.';
+  }
+  return 'Transcription failed. Try again.';
 }
 
 export function VoiceMessage({
@@ -83,19 +88,56 @@ export function VoiceMessage({
   const canTranscribe = transcriptionEnabled && voice.url !== undefined && voice.url !== '';
   const showControl = voice.transcript !== undefined || canTranscribe;
 
-  useEffect(() => {
-    if (!playing) {
-      return;
-    }
-    const timer = window.setInterval(() => {
-      const audio = audioRef.current;
-      if (audio === null || !Number.isFinite(audio.duration) || audio.duration <= 0) {
-        return;
-      }
-      setProgress(Math.min(1, audio.currentTime / audio.duration));
-    }, TICK_MS);
-    return () => window.clearInterval(timer);
-  }, [playing]);
+  // The playback progress tick: one read every TICK_MS while the message
+  // plays. The query is rebuilt on each `playing` change, so a pause, the end
+  // or an unmount interrupts the loop. The first read comes one tick after play.
+  useQuery(
+    (): Effect.Effect<unknown> =>
+      playing
+        ? Effect.sync(() => {
+            const audio = audioRef.current;
+            if (audio === null || !Number.isFinite(audio.duration) || audio.duration <= 0) {
+              return;
+            }
+            setProgress(Math.min(1, audio.currentTime / audio.duration));
+          }).pipe(Effect.repeat(Schedule.spaced(TICK_MS)), Effect.delay(TICK_MS))
+        : Effect.void,
+    [playing],
+  );
+
+  // One transcript fetch; the outcome lands in `transcript`. Unmounting
+  // interrupts it, so a late answer never updates a message that is gone.
+  const [, fetchTranscript] = useAction((url: string) =>
+    fromApi(() => getVoiceTranscript(url)).pipe(
+      Effect.matchEffect({
+        onSuccess: ({ text }) =>
+          Effect.sync(() => {
+            transcriptCache.set(url, text);
+            setTranscript({ kind: 'ready', text });
+          }),
+        onFailure: (failure) =>
+          Effect.sync(() => {
+            setTranscript({ kind: 'error', message: friendlyTranscriptError(failure) });
+          }),
+      }),
+    ),
+  );
+
+  // Starting playback. A refused play shows the unavailable state. When the
+  // play resolves, the element's own `onPlay` flips the button, so this never
+  // sets `playing` directly: the button always reflects the real state.
+  const [, startPlayback] = useAction(
+    (audio: HTMLAudioElement) =>
+      Effect.try({ try: () => audio.play(), catch: () => new PlayRefused() }).pipe(
+        Effect.flatMap((started) =>
+          started === undefined
+            ? Effect.void
+            : Effect.tryPromise({ try: () => started, catch: () => new PlayRefused() }),
+        ),
+        Effect.catchTag('PlayRefused', () => Effect.sync(() => setFailed(true))),
+      ),
+    { mode: 'replace' },
+  );
 
   // A voice message that unmounts mid-play leaves nothing behind: another
   // player is free to start, and this element never resumes on its own.
@@ -153,15 +195,7 @@ export function VoiceMessage({
       return;
     }
     setTranscript({ kind: 'loading' });
-    void getVoiceTranscript(url).then(
-      ({ text }) => {
-        transcriptCache.set(url, text);
-        setTranscript({ kind: 'ready', text });
-      },
-      (error: unknown) => {
-        setTranscript({ kind: 'error', message: friendlyTranscriptError(error) });
-      },
-    );
+    fetchTranscript(url);
   };
 
   const retryTranscript = (): void => {
@@ -170,15 +204,7 @@ export function VoiceMessage({
       return;
     }
     setTranscript({ kind: 'loading' });
-    void getVoiceTranscript(url).then(
-      ({ text }) => {
-        transcriptCache.set(url, text);
-        setTranscript({ kind: 'ready', text });
-      },
-      (error: unknown) => {
-        setTranscript({ kind: 'error', message: friendlyTranscriptError(error) });
-      },
-    );
+    fetchTranscript(url);
   };
 
   const togglePlay = (): void => {
@@ -201,18 +227,7 @@ export function VoiceMessage({
       setProgress(0);
     }
     setFailed(false);
-    try {
-      const play = audio.play();
-      // A rejected play (autoplay policy, missing bytes) shows the
-      // unavailable state instead of a dead button. When the play resolves,
-      // the element's own `onPlay` flips the button, so this never sets
-      // `playing` directly: the button always reflects the real state.
-      if (play !== undefined) {
-        void Promise.resolve(play).catch(() => setFailed(true));
-      }
-    } catch {
-      setFailed(true);
-    }
+    startPlayback(audio);
   };
 
   return (
