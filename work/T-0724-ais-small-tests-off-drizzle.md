@@ -1,7 +1,7 @@
 ---
 id: T-0724
 title: "tests off drizzle (ais (integration, usage, service)): replace every drizzle query in ais/integration.test.ts, ais/usage.test.ts, ais/service.test.ts with testSql(context) + effect/sql; drop the drizzle-orm and db/schema imports"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0724-ais-small-tests-off-drizzle
 model: auto
@@ -53,4 +53,55 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Replaced every drizzle query in the three ais test files with effect/sql via
+`testSql(context)` (usage, service) and `registerSqlRuntime` +
+`sqlRuntimeFor` (integration backfill, which points at a live Postgres, not a
+PGlite test context). Removed all `drizzle-orm` and `../db/schema` imports.
+Same rows, values, order and assertions; selects name snake_case columns and
+read into small local row types (`VirtualKeyRow`, `AiRow`,
+`{ baselineUsd }`, etc.). Numerics still assert as strings (`'1.50'`,
+`'3.25'`), unchanged meaning. No test patched `context.db.transaction`, so no
+vi.mock seam was needed. `db: context.db` / `db: directDb.db` passed into
+module functions left alone.
+
+Files changed:
+- `apps/server/src/ais/usage.test.ts` — seed inserts, `baselineFor` select,
+  two `aiDailySpend` count/shape reads, two `ai_limits` updates.
+- `apps/server/src/ais/service.test.ts` — `seedOldAi` / `seedSwappableAi` /
+  `addOwnedConnection` / stranger inserts, all `llm_virtual_keys` and `ais`
+  reads, `ais` status updates, `ai_limits` untouched (no drizzle there),
+  full-table `DELETE FROM llm_virtual_keys`, empty-table length assertions.
+- `apps/server/src/ais/integration.test.ts` — backfill
+  `update(llmVirtualKeys).set({ litellmModelId: null })` replaced with an
+  effect/sql `UPDATE llm_virtual_keys ...` on a runtime registered for the
+  live handle (`registerSqlRuntime(directDb.db, databaseUrl)`), disposed in
+  the `finally` next to `directDb.close()`. Deviation from spec: `testSql`
+  cannot typecheck here (`TestContext['db']` is the PGlite drizzle type,
+  `createDb(DATABASE_URL)` is postgres-js), so the proven
+  register/sqlRuntimeFor pair from `effect/sql.ts` is used instead; same SQL,
+  same effect/sql path the modules use.
+- `work/T-0724-ais-small-tests-off-drizzle.md` — this report.
+
+Commands and real results:
+- `pnpm install`: done (27.6s).
+- Before: `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot
+  src/ais/integration.test.ts src/ais/usage.test.ts src/ais/service.test.ts`
+  → 39 passed, 2 skipped (integration file gated off), 0 failed.
+- After (same command): 39 passed, 2 skipped, 0 failed. The 2 skipped live
+  integration tests never ran (need `ZILAR_AIS_INTEGRATION=1` plus ejabberd /
+  LiteLLM / Postgres), so the backfill-path edit above is typechecked but not
+  executed.
+- `git grep -n "drizzle-orm\|db/schema" -- <the three files>`: prints nothing.
+- `pnpm prettier --write` on the touched test files (gate's format check
+  flagged my hand indentation).
+- `pnpm gate` summary:
+  `gate: 4 changed file(s) against main` / `PASS install (frozen)` /
+  `PASS format` / `PASS lint` / `PASS typecheck` /
+  `PASS tests @zilar/server` /
+  `scope: every changed file is inside the Allowed files` / `GATE PASS`.
+
+Blocked / needs a decision: none.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. The pre-review was clean (packet head b2c41e07). Its one nit is accepted: the backfill UPDATE runs only in the gated live-integration test, a 1:1 translation of the drizzle line.

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import type {
   AddModelInput,
   GenerateVirtualKeyInput,
@@ -11,8 +12,7 @@ import type {
   VirtualKeyInfo,
 } from '../ai/litellm-client';
 import { createKeyCipher } from '../connections/crypto';
-import { aiLimits, ais, llmVirtualKeys, providerConnections, user } from '../db/schema';
-import { createTestContext, TEST_XMPP_DOMAIN, type TestContext } from '../test-support';
+import { createTestContext, testSql, TEST_XMPP_DOMAIN, type TestContext } from '../test-support';
 import {
   ensureAiModel,
   changeAiModel,
@@ -107,45 +107,38 @@ function depsFor(context: TestContext, litellm: FakeLitellm): AiServiceDeps {
   };
 }
 
+interface VirtualKeyRow {
+  litellmModelId: string | null;
+}
+
+interface AiRow {
+  owner: string;
+  model: string;
+  providerConnectionId: string;
+  status: string;
+}
+
 // An AI as T-0030 created it: a key row with no registered model, so its key
 // allowlist still points at the raw model name.
 async function seedOldAi(context: TestContext): Promise<string> {
   const ownerId = randomUUID();
-  await context.db
-    .insert(user)
-    .values({ id: ownerId, name: 'Owner', email: `${ownerId}@example.com` });
-
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
-    label: null,
-  });
-
   const aiId = randomUUID();
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Old AI',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart: `ai-${aiId}`,
-    jid: `ai-${aiId}@${TEST_XMPP_DOMAIN}`,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
-  await context.db.insert(llmVirtualKeys).values({
-    aiId,
-    litellmKeyId: 'old-token-1',
-    litellmModelId: null,
-    encryptedKey: createKeyCipher(MASTER_KEY).encrypt('sk-virtual-old'),
-    budgetUsd: '20.00',
-    budgetDuration: '30d',
-  });
+  const encryptedConnection = createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY);
+  const encryptedVirtual = createKeyCipher(MASTER_KEY).encrypt('sk-virtual-old');
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "user" (id, name, email) VALUES (${ownerId}, ${'Owner'}, ${`${ownerId}@example.com`})`;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
+        VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${encryptedConnection}, ${null})`;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status)
+        VALUES (${aiId}, ${ownerId}, ${'Old AI'}, ${'dev'}, ${'A persona'}, ${connectionId}, ${'gpt-4o-mini'}, ${`ai-${aiId}`}, ${`ai-${aiId}@${TEST_XMPP_DOMAIN}`}, ${'active'})`;
+      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${'1.00'}, ${'20.00'})`;
+      yield* sql`INSERT INTO llm_virtual_keys (ai_id, litellm_key_id, litellm_model_id, encrypted_key, budget_usd, budget_duration)
+        VALUES (${aiId}, ${'old-token-1'}, ${null}, ${encryptedVirtual}, ${'20.00'}, ${'30d'})`;
+    }),
+  );
   return aiId;
 }
 
@@ -168,7 +161,12 @@ describe('ensureAiModel', () => {
       ]);
       expect(litellm.updated).toEqual([{ key: 'old-token-1', models: [`ai-${aiId}`] }]);
 
-      const [row] = await context.db.select().from(llmVirtualKeys);
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<VirtualKeyRow>`SELECT litellm_model_id FROM llm_virtual_keys`;
+        }),
+      );
       expect(row?.litellmModelId).toBe('model-1');
     } finally {
       await context.close();
@@ -183,7 +181,12 @@ describe('ensureAiModel', () => {
       const deps = depsFor(context, litellm);
 
       await ensureAiModel(deps, aiId);
-      const afterFirst = await context.db.select().from(llmVirtualKeys);
+      const afterFirst = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<VirtualKeyRow>`SELECT litellm_model_id FROM llm_virtual_keys`;
+        }),
+      );
       expect(afterFirst[0]?.litellmModelId).toBe('model-1');
 
       await ensureAiModel(deps, aiId);
@@ -191,7 +194,12 @@ describe('ensureAiModel', () => {
       expect(litellm.added).toHaveLength(1);
       expect(litellm.updated).toHaveLength(1);
       expect(litellm.deleted).toHaveLength(0);
-      const afterSecond = await context.db.select().from(llmVirtualKeys);
+      const afterSecond = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<VirtualKeyRow>`SELECT litellm_model_id FROM llm_virtual_keys`;
+        }),
+      );
       expect(afterSecond[0]?.litellmModelId).toBe('model-1');
     } finally {
       await context.close();
@@ -208,7 +216,12 @@ describe('ensureAiModel', () => {
       await expect(ensureAiModel(depsFor(context, litellm), aiId)).rejects.toThrow('gateway down');
 
       expect(litellm.deleted).toEqual(['model-1']);
-      const [row] = await context.db.select().from(llmVirtualKeys);
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<VirtualKeyRow>`SELECT litellm_model_id FROM llm_virtual_keys`;
+        }),
+      );
       expect(row?.litellmModelId).toBeNull();
     } finally {
       await context.close();
@@ -224,7 +237,12 @@ describe('ensureAiModel', () => {
       await expect(ensureAiModel(deps, randomUUID())).rejects.toThrow('not found');
 
       const aiId = await seedOldAi(context);
-      await context.db.delete(llmVirtualKeys);
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`DELETE FROM llm_virtual_keys`;
+        }),
+      );
       await expect(ensureAiModel(deps, aiId)).rejects.toThrow('no virtual key');
       expect(litellm.added).toHaveLength(0);
     } finally {
@@ -243,7 +261,12 @@ describe('ensureAiModel', () => {
 
       expect(litellm.added).toHaveLength(1);
       expect(litellm.updated).toEqual([{ key: 'old-token-1', models: [`ai-${aiId}`] }]);
-      const [row] = await context.db.select().from(llmVirtualKeys);
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<VirtualKeyRow>`SELECT litellm_model_id FROM llm_virtual_keys`;
+        }),
+      );
       expect(row?.litellmModelId).toBe('model-1');
     } finally {
       await context.close();
@@ -261,7 +284,12 @@ describe('ensureAiModel', () => {
 
       expect(litellm.deleted).toEqual(['stray-model-9']);
       expect(litellm.added).toHaveLength(1);
-      const [row] = await context.db.select().from(llmVirtualKeys);
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<VirtualKeyRow>`SELECT litellm_model_id FROM llm_virtual_keys`;
+        }),
+      );
       expect(row?.litellmModelId).toBe('model-1');
     } finally {
       await context.close();
@@ -278,41 +306,23 @@ async function seedSwappableAi(
   provider = 'openai',
 ): Promise<{ aiId: string; ownerId: string; connectionId: string }> {
   const ownerId = randomUUID();
-  await context.db
-    .insert(user)
-    .values({ id: ownerId, name: 'Owner', email: `${ownerId}@example.com` });
-
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider,
-    encryptedKey: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
-    label: null,
-  });
-
   const aiId = randomUUID();
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name: 'Swappable AI',
-    template: 'dev',
-    persona: 'A persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart: `ai-${aiId}`,
-    jid: `ai-${aiId}@${TEST_XMPP_DOMAIN}`,
-    status: 'active',
-  });
-  await context.db.insert(aiLimits).values({ aiId, perDayUsd: '1.00', perMonthUsd: '20.00' });
-  await context.db.insert(llmVirtualKeys).values({
-    aiId,
-    litellmKeyId: 'swap-token-1',
-    litellmModelId: null,
-    encryptedKey: createKeyCipher(MASTER_KEY).encrypt('sk-virtual-swap'),
-    budgetUsd: '20.00',
-    budgetDuration: '30d',
-  });
+  const encryptedConnection = createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY);
+  const encryptedVirtual = createKeyCipher(MASTER_KEY).encrypt('sk-virtual-swap');
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "user" (id, name, email) VALUES (${ownerId}, ${'Owner'}, ${`${ownerId}@example.com`})`;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
+        VALUES (${connectionId}, ${ownerId}, ${provider}, ${encryptedConnection}, ${null})`;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status)
+        VALUES (${aiId}, ${ownerId}, ${'Swappable AI'}, ${'dev'}, ${'A persona'}, ${connectionId}, ${'gpt-4o-mini'}, ${`ai-${aiId}`}, ${`ai-${aiId}@${TEST_XMPP_DOMAIN}`}, ${'active'})`;
+      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${'1.00'}, ${'20.00'})`;
+      yield* sql`INSERT INTO llm_virtual_keys (ai_id, litellm_key_id, litellm_model_id, encrypted_key, budget_usd, budget_duration)
+        VALUES (${aiId}, ${'swap-token-1'}, ${null}, ${encryptedVirtual}, ${'20.00'}, ${'30d'})`;
+    }),
+  );
 
   await ensureAiModel(
     {
@@ -339,13 +349,14 @@ async function addOwnedConnection(
   provider: string,
 ): Promise<string> {
   const id = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id,
-    owner: ownerId,
-    provider,
-    encryptedKey: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
-    label: null,
-  });
+  const encrypted = createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY);
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
+        VALUES (${id}, ${ownerId}, ${provider}, ${encrypted}, ${null})`;
+    }),
+  );
   return id;
 }
 
@@ -376,10 +387,20 @@ describe('changeAiModel', () => {
       ]);
       expect(litellm.updated).toEqual([{ key: 'swap-token-1', models: [`ai-${aiId}`] }]);
 
-      const [aiRow] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      const [aiRow] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AiRow>`SELECT owner, model, provider_connection_id, status FROM ais WHERE id = ${aiId}`;
+        }),
+      );
       expect(aiRow?.model).toBe('gpt-4o');
       expect(aiRow?.providerConnectionId).toBe(connectionId);
-      const [keyRow] = await context.db.select().from(llmVirtualKeys);
+      const [keyRow] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<VirtualKeyRow>`SELECT litellm_model_id FROM llm_virtual_keys`;
+        }),
+      );
       expect(keyRow?.litellmModelId).toBe('model-2');
     } finally {
       await context.close();
@@ -451,10 +472,20 @@ describe('changeAiModel', () => {
         }),
       ).rejects.toMatchObject({ status: 502 });
 
-      const [aiRow] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      const [aiRow] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AiRow>`SELECT owner, model, provider_connection_id, status FROM ais WHERE id = ${aiId}`;
+        }),
+      );
       expect(aiRow?.model).toBe('gpt-4o-mini');
       expect(aiRow?.providerConnectionId).toBe(connectionId);
-      const [keyRow] = await context.db.select().from(llmVirtualKeys);
+      const [keyRow] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<VirtualKeyRow>`SELECT litellm_model_id FROM llm_virtual_keys`;
+        }),
+      );
       expect(keyRow?.litellmModelId).toBeNull();
 
       // The next gateway turn re-registers the old model, so the AI works.
@@ -465,7 +496,12 @@ describe('changeAiModel', () => {
         modelName: `ai-${aiId}`,
         litellmModel: 'openai/gpt-4o-mini',
       });
-      const [recovered] = await context.db.select().from(llmVirtualKeys);
+      const [recovered] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<VirtualKeyRow>`SELECT litellm_model_id FROM llm_virtual_keys`;
+        }),
+      );
       expect(recovered?.litellmModelId).not.toBeNull();
     } finally {
       await context.close();
@@ -490,9 +526,19 @@ describe('changeAiModel', () => {
 
       // The old model is gone and the new one is cleaned up: no orphans.
       expect(litellm.deleted).toEqual(['model-1', 'model-2']);
-      const [aiRow] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      const [aiRow] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AiRow>`SELECT owner, model, provider_connection_id, status FROM ais WHERE id = ${aiId}`;
+        }),
+      );
       expect(aiRow?.model).toBe('gpt-4o-mini');
-      const [keyRow] = await context.db.select().from(llmVirtualKeys);
+      const [keyRow] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<VirtualKeyRow>`SELECT litellm_model_id FROM llm_virtual_keys`;
+        }),
+      );
       expect(keyRow?.litellmModelId).toBeNull();
     } finally {
       await context.close();
@@ -504,7 +550,12 @@ describe('changeAiModel', () => {
     try {
       // An old AI: a key row with no registered model yet.
       const aiId = await seedOldAi(context);
-      const [aiRow] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      const [aiRow] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AiRow>`SELECT owner, model, provider_connection_id, status FROM ais WHERE id = ${aiId}`;
+        }),
+      );
       const litellm = new FakeLitellm();
       const deps = depsFor(context, litellm);
 
@@ -518,9 +569,19 @@ describe('changeAiModel', () => {
         }),
       ]);
 
-      const [finalAi] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      const [finalAi] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AiRow>`SELECT owner, model, provider_connection_id, status FROM ais WHERE id = ${aiId}`;
+        }),
+      );
       expect(finalAi?.model).toBe('gpt-4o');
-      const [keyRow] = await context.db.select().from(llmVirtualKeys);
+      const [keyRow] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<VirtualKeyRow>`SELECT litellm_model_id FROM llm_virtual_keys`;
+        }),
+      );
       expect(keyRow?.litellmModelId).not.toBeNull();
       expect(litellm.updated.at(-1)).toEqual({ key: 'old-token-1', models: [`ai-${aiId}`] });
       // Every registered model but the live one was deleted.
@@ -554,8 +615,20 @@ describe('changeAiModel', () => {
         deleteAi(deps, aiId, ownerId),
       ]);
 
-      expect(await context.db.select().from(ais)).toHaveLength(0);
-      expect(await context.db.select().from(llmVirtualKeys)).toHaveLength(0);
+      const remainingAis = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ id: string }>`SELECT id FROM ais`;
+        }),
+      );
+      expect(remainingAis).toHaveLength(0);
+      const remainingKeys = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ aiId: string }>`SELECT ai_id FROM llm_virtual_keys`;
+        }),
+      );
+      expect(remainingKeys).toHaveLength(0);
       expect(litellm.revoked).toEqual(['swap-token-1']);
       for (const id of litellm.createdIds) {
         expect(litellm.deleted).toContain(id);
@@ -582,9 +655,12 @@ describe('changeAiModel', () => {
       ).rejects.toMatchObject({ status: 404 });
 
       const strangerId = randomUUID();
-      await context.db
-        .insert(user)
-        .values({ id: strangerId, name: 'Stranger', email: `${strangerId}@example.com` });
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO "user" (id, name, email) VALUES (${strangerId}, ${'Stranger'}, ${`${strangerId}@example.com`})`;
+        }),
+      );
       const strangerConnection = await addOwnedConnection(context, strangerId, 'openai');
       await expect(
         changeAiModel(deps, {
@@ -600,7 +676,12 @@ describe('changeAiModel', () => {
       ).rejects.toMatchObject({ status: 400 });
 
       expect(litellm.order).toEqual([]);
-      const [aiRow] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      const [aiRow] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AiRow>`SELECT owner, model, provider_connection_id, status FROM ais WHERE id = ${aiId}`;
+        }),
+      );
       expect(aiRow?.model).toBe('gpt-4o-mini');
     } finally {
       await context.close();
@@ -653,7 +734,12 @@ describe('stopAi', () => {
       try {
         const ai = await stopAi(depsFor(context, litellm), aiId, ownerId);
         expect(ai.status).toBe('stopped');
-        const [row] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+        const [row] = await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<AiRow>`SELECT owner, model, provider_connection_id, status FROM ais WHERE id = ${aiId}`;
+          }),
+        );
         expect(row?.status).toBe('stopped');
         expect(seen).toEqual([{ type: 'stopped', aiId }]);
       } finally {
@@ -672,7 +758,12 @@ describe('stopAi', () => {
       await expect(stopAi(depsFor(context, litellm), aiId, 'someone-else')).rejects.toMatchObject({
         status: 404,
       });
-      const [row] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AiRow>`SELECT owner, model, provider_connection_id, status FROM ais WHERE id = ${aiId}`;
+        }),
+      );
       expect(row?.status).toBe('active');
     } finally {
       await context.close();
@@ -685,7 +776,12 @@ describe('stopAi', () => {
       const seen: Array<{ type: string; aiId: string }> = [];
       const litellm = new FakeLitellm();
       const { aiId, ownerId } = await seedSwappableAi(context, litellm);
-      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, aiId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = ${'stopped'} WHERE id = ${aiId}`;
+        }),
+      );
       const events = onAiLifecycle((event) => {
         seen.push(event);
       });
@@ -706,7 +802,12 @@ describe('stopAi', () => {
     try {
       const litellm = new FakeLitellm();
       const { aiId, ownerId } = await seedSwappableAi(context, litellm);
-      await context.db.update(ais).set({ status: 'disabled' }).where(eq(ais.id, aiId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = ${'disabled'} WHERE id = ${aiId}`;
+        }),
+      );
       await expect(stopAi(depsFor(context, litellm), aiId, ownerId)).rejects.toMatchObject({
         status: 409,
         code: 'not_active',
@@ -715,7 +816,12 @@ describe('stopAi', () => {
         status: 409,
         code: 'not_active',
       });
-      const [row] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AiRow>`SELECT owner, model, provider_connection_id, status FROM ais WHERE id = ${aiId}`;
+        }),
+      );
       expect(row?.status).toBe('disabled');
     } finally {
       await context.close();
@@ -731,7 +837,12 @@ describe('stopAi', () => {
       // Either order converges: stop that wins leaves the row `stopped`,
       // delete that wins removes the row, both ends never resurrect.
       await Promise.allSettled([stopAi(deps, aiId, ownerId), deleteAi(deps, aiId, ownerId)]);
-      const remaining = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      const remaining = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AiRow>`SELECT owner, model, provider_connection_id, status FROM ais WHERE id = ${aiId}`;
+        }),
+      );
       if (remaining.length === 0) {
         expect(remaining).toHaveLength(0);
       } else {
@@ -754,7 +865,12 @@ describe('stopAi', () => {
       ]);
       expect(first.status).toBe('stopped');
       expect(second.status).toBe('stopped');
-      const [row] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AiRow>`SELECT owner, model, provider_connection_id, status FROM ais WHERE id = ${aiId}`;
+        }),
+      );
       expect(row?.status).toBe('stopped');
     } finally {
       await context.close();
@@ -769,14 +885,24 @@ describe('resumeAi', () => {
       const seen: Array<{ type: string; aiId: string }> = [];
       const litellm = new FakeLitellm();
       const { aiId, ownerId } = await seedSwappableAi(context, litellm);
-      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, aiId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = ${'stopped'} WHERE id = ${aiId}`;
+        }),
+      );
       const events = onAiLifecycle((event) => {
         seen.push(event);
       });
       try {
         const ai = await resumeAi(depsFor(context, litellm), aiId, ownerId);
         expect(ai.status).toBe('active');
-        const [row] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+        const [row] = await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<AiRow>`SELECT owner, model, provider_connection_id, status FROM ais WHERE id = ${aiId}`;
+          }),
+        );
         expect(row?.status).toBe('active');
         expect(seen).toEqual([{ type: 'resumed', aiId }]);
       } finally {
@@ -792,11 +918,21 @@ describe('resumeAi', () => {
     try {
       const litellm = new FakeLitellm();
       const { aiId } = await seedSwappableAi(context, litellm);
-      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, aiId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = ${'stopped'} WHERE id = ${aiId}`;
+        }),
+      );
       await expect(resumeAi(depsFor(context, litellm), aiId, 'someone-else')).rejects.toMatchObject(
         { status: 404 },
       );
-      const [row] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AiRow>`SELECT owner, model, provider_connection_id, status FROM ais WHERE id = ${aiId}`;
+        }),
+      );
       expect(row?.status).toBe('stopped');
     } finally {
       await context.close();
@@ -829,7 +965,12 @@ describe('resumeAi', () => {
     try {
       const litellm = new FakeLitellm();
       const { aiId, ownerId } = await seedSwappableAi(context, litellm);
-      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, aiId));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = ${'stopped'} WHERE id = ${aiId}`;
+        }),
+      );
       const deps = depsFor(context, litellm);
       // Two writers race: resume wins → row is `active`, stop is the no-op
       // (conditional UPDATE matches zero rows and reports 409 through the
@@ -838,7 +979,12 @@ describe('resumeAi', () => {
         resumeAi(deps, aiId, ownerId),
         stopAi(deps, aiId, ownerId),
       ]);
-      const [row] = await context.db.select().from(ais).where(eq(ais.id, aiId));
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<AiRow>`SELECT owner, model, provider_connection_id, status FROM ais WHERE id = ${aiId}`;
+        }),
+      );
       expect(['active', 'stopped']).toContain(row?.status);
       expect([resume.status, stop.status]).toContain('fulfilled');
     } finally {
@@ -858,8 +1004,18 @@ describe('listActiveAisForGateway', () => {
       const active = await seedOldAi(context);
       const stopped = await seedOldAi(context);
       const disabled = await seedOldAi(context);
-      await context.db.update(ais).set({ status: 'stopped' }).where(eq(ais.id, stopped));
-      await context.db.update(ais).set({ status: 'disabled' }).where(eq(ais.id, disabled));
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = ${'stopped'} WHERE id = ${stopped}`;
+        }),
+      );
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`UPDATE ais SET status = ${'disabled'} WHERE id = ${disabled}`;
+        }),
+      );
 
       const rows = await listActiveAisForGateway(context.db);
       const ids = new Set(rows.map((row) => row.id));

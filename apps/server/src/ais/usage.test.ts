@@ -1,17 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import type { LitellmAdminClient, VirtualKeyInfo } from '../ai/litellm-client';
 import { createKeyCipher } from '../connections/crypto';
-import {
-  aiDailySpend,
-  aiLimits,
-  ais,
-  llmVirtualKeys,
-  providerConnections,
-  user,
-} from '../db/schema';
-import { createTestContext, TEST_XMPP_DOMAIN, type TestContext } from '../test-support';
+import { createTestContext, TEST_XMPP_DOMAIN, testSql, type TestContext } from '../test-support';
 import { getAiUsage, utcDayString, type AiUsageDeps } from './usage';
 
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
@@ -91,39 +84,23 @@ describe('getAiUsage', () => {
 
   async function seedAi(keyId: string | null = 'tok-usage-1'): Promise<string> {
     const ownerId = randomUUID();
-    await context.db
-      .insert(user)
-      .values({ id: ownerId, name: 'Owner', email: `${ownerId}@example.com` });
     const connectionId = randomUUID();
-    await context.db.insert(providerConnections).values({
-      id: connectionId,
-      owner: ownerId,
-      provider: 'openai',
-      encryptedKey: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
-      label: null,
-    });
     const aiId = randomUUID();
-    await context.db.insert(ais).values({
-      id: aiId,
-      owner: ownerId,
-      name: 'Spendy AI',
-      template: 'dev',
-      persona: 'A persona',
-      providerConnectionId: connectionId,
-      model: 'gpt-4o-mini',
-      localpart: `ai-${aiId}`,
-      jid: `ai-${aiId}@${TEST_XMPP_DOMAIN}`,
-      status: 'active',
-    });
-    await context.db.insert(aiLimits).values({ aiId, perDayUsd: '2.00', perMonthUsd: '20.00' });
-    await context.db.insert(llmVirtualKeys).values({
-      aiId,
-      litellmKeyId: keyId,
-      litellmModelId: 'model-1',
-      encryptedKey: createKeyCipher(MASTER_KEY).encrypt('sk-virtual-usage-do-not-leak'),
-      budgetUsd: '20.00',
-      budgetDuration: '30d',
-    });
+    const encryptedConnection = createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY);
+    const encryptedVirtual = createKeyCipher(MASTER_KEY).encrypt('sk-virtual-usage-do-not-leak');
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO "user" (id, name, email) VALUES (${ownerId}, ${'Owner'}, ${`${ownerId}@example.com`})`;
+        yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
+          VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${encryptedConnection}, ${null})`;
+        yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status)
+          VALUES (${aiId}, ${ownerId}, ${'Spendy AI'}, ${'dev'}, ${'A persona'}, ${connectionId}, ${'gpt-4o-mini'}, ${`ai-${aiId}`}, ${`ai-${aiId}@${TEST_XMPP_DOMAIN}`}, ${'active'})`;
+        yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${'2.00'}, ${'20.00'})`;
+        yield* sql`INSERT INTO llm_virtual_keys (ai_id, litellm_key_id, litellm_model_id, encrypted_key, budget_usd, budget_duration)
+          VALUES (${aiId}, ${keyId}, ${'model-1'}, ${encryptedVirtual}, ${'20.00'}, ${'30d'})`;
+      }),
+    );
     return aiId;
   }
 
@@ -136,12 +113,15 @@ describe('getAiUsage', () => {
   }
 
   async function baselineFor(aiId: string, day: string): Promise<string | null> {
-    const [row] = await context.db
-      .select({ baselineUsd: aiDailySpend.baselineUsd })
-      .from(aiDailySpend)
-      .where(and(eq(aiDailySpend.aiId, aiId), eq(aiDailySpend.day, day)))
-      .limit(1);
-    return row?.baselineUsd ?? null;
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          baselineUsd: string;
+        }>`SELECT baseline_usd FROM ai_daily_spend WHERE ai_id = ${aiId} AND day = ${day} LIMIT 1`;
+      }),
+    );
+    return rows[0]?.baselineUsd ?? null;
   }
 
   it('records the baseline on the first read of the day and answers today 0', async () => {
@@ -238,7 +218,15 @@ describe('getAiUsage', () => {
 
     expect(first?.todayUsd).toBe(0);
     expect(second?.todayUsd).toBe(0);
-    const rows = await context.db.select().from(aiDailySpend);
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          aiId: string;
+          baselineUsd: string;
+        }>`SELECT ai_id, baseline_usd FROM ai_daily_spend`;
+      }),
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ aiId, baselineUsd: '3.25' });
   });
@@ -250,7 +238,13 @@ describe('getAiUsage', () => {
     const { deps, logger } = depsFor(litellm);
 
     expect(await getAiUsage(deps, aiId)).toBeNull();
-    expect(await context.db.select().from(aiDailySpend)).toHaveLength(0);
+    const spendRows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ aiId: string }>`SELECT ai_id FROM ai_daily_spend`;
+      }),
+    );
+    expect(spendRows).toHaveLength(0);
     expect(logger.calls).toHaveLength(1);
     expect(logger.calls[0]?.fields['aiId']).toBe(aiId);
     const logged = JSON.stringify(logger.calls);
@@ -337,7 +331,12 @@ describe('getAiUsage', () => {
     const litellm = new FakeLitellm();
     litellm.spendByKey.set('tok-usage-1', 1);
     const aiId = await seedAi();
-    await context.db.update(aiLimits).set({ perDayUsd: '0.00' }).where(eq(aiLimits.aiId, aiId));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE ai_limits SET per_day_usd = ${'0.00'} WHERE ai_id = ${aiId}`;
+      }),
+    );
     const { deps } = depsFor(litellm);
 
     await getAiUsage(deps, aiId);
@@ -381,7 +380,12 @@ describe('getAiUsage', () => {
   it('never warns for a zero monthly cap', async () => {
     const litellm = new FakeLitellm();
     const aiId = await seedAi();
-    await context.db.update(aiLimits).set({ perMonthUsd: '0.00' }).where(eq(aiLimits.aiId, aiId));
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE ai_limits SET per_month_usd = ${'0.00'} WHERE ai_id = ${aiId}`;
+      }),
+    );
     litellm.spendByKey.set('tok-usage-1', 16);
     const { deps } = depsFor(litellm);
 
