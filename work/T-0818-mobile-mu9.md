@@ -1,7 +1,7 @@
 ---
 id: T-0818
 title: "MU9: mobile group and AI screens: group/[id], ais/[id], ais/new on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0818-mobile-mu9
 model: auto
@@ -56,4 +56,23 @@ Run `pnpm exec prettier --write` on your changed files before committing. Do not
 
 ## Report (written by the worker when done)
 
+- effect:map kind after: `apps/mobile/src/app/ais/[id].tsx` effect, `apps/mobile/src/app/ais/new.tsx` effect, `apps/mobile/src/app/group/[id].tsx` effect. (Before: not recorded.)
+- Tests: tests-before commit 41cc6632 added 30 tests (ais-id 9, ais-new 6, group 15), all passing on the old code. After the conversion the same 30 pass, with no act warnings. The tests render the real route in jsdom (`react-dom/client`, the `use-action.test.tsx` pattern), so they do not depend on hook internals. Native modules, pickers, sheets and API hooks are stubs.
+- Loads (`listAis`, connections, machines, roles, invite links, visibility) run through `useQuery` or `useAction`. Form fields fill from the answer inside an `Effect.tap`, as before.
+- Writes (save, machine change, create AI, topic create, archive, pref, invite link create/revoke, visibility save) run through `useAction`. Busy and error come from the action state. Error text still goes through `describeAisError` / `describeRolesError` / `visibilitySaveError`, so each raw error keeps its class (the raw rejection is kept, not mapped to `ApiFailure`).
+- Timer: the visibility handle check is a `useQuery` that sleeps 300 ms; a deps change or unmount interrupts it.
+- Sheet callbacks that must return a Promise (roles writes, links copy/share, visibility bridge) use `Effect.runPromise` in the component, because the sheets are outside this task and chain `.then` on them.
+- Behaviour differences:
+  - `useAction` mode is `ignore`: a second run while one is waiting is dropped. Affected: save, machine change, create AI, topic create, archive/pref, invite-link create/revoke, visibility save, invite-links load. Before, a double action could run twice; the buttons were already disabled while busy, so this should not be visible.
+  - Roles writes are not `useAction`: concurrent writes still run as before.
+  - A failed topic create keeps the sheet open and shows the same fixed text; a failed AI add still names the AI.
+  - Save/create keep "Saving…"/"Creating…" after success until the route leaves (same as before).
+- Checks: `pnpm --filter @zilar/mobile exec vitest run --reporter=dot` on the 3 test files: 30 passed. `pnpm --filter @zilar/mobile exec tsc --noEmit -p .`: exit 0. `oxlint` on the 6 changed files: exit 0.
+- Unsure: `Effect.runPromise` rejects with the raw Share error (`shareText`) in the same way as the old Promise (not verified on a device). Phone smoke not run (lead's wave check).
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved (wave 2). Worker: Haiku 5.5. The lead reviewed the Report.
+- **Combined check:** all 25 wave 2 branches together pass lint, typecheck and the full mobile suite (`lead batch check`, report 20261009T172300Z). The remaining failures were server and web tests that pass on main, caused by load.
+- **This task:** 30 new tests. Wave check fix: the roles load keeps `setRolesLoadError(describeRolesError(error, 'load'))`, which two guard tests pin.
+- **Phone:** the wave branch is smoked on the emulator after the merge.

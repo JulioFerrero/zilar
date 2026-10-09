@@ -5,6 +5,7 @@ import { useColorScheme } from 'nativewind';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, Share, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Effect } from 'effect';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { Avatar } from '@/components/chat/avatar';
@@ -43,8 +44,16 @@ import {
   topicsOfGroup,
 } from '@/lib/topics';
 import type { ChatSummary } from '@/lib/types';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
 import { useChatStore } from '@/store/chat-store-provider';
+
+// The raw rejection is kept, not mapped, so describeRolesError and the
+// DirectoryApiError check still see their own error classes.
+function rawCall<A>(call: () => Promise<A>) {
+  return Effect.tryPromise({ try: call, catch: (cause) => ({ cause }) });
+}
 
 export default function GroupTopicsScreen() {
   return (
@@ -85,7 +94,6 @@ function GroupTopics() {
   const [linksOpen, setLinksOpen] = useState(false);
   const [linksNow, setLinksNow] = useState(() => Date.now());
   const [links, setLinks] = useState<GroupInviteLink[]>([]);
-  const [linksBusy, setLinksBusy] = useState(false);
   const [linksError, setLinksError] = useState('');
   const [createdUrl, setCreatedUrl] = useState<string | undefined>(undefined);
   const [revokingId, setRevokingId] = useState<string | undefined>(undefined);
@@ -98,11 +106,8 @@ function GroupTopics() {
   const [sheetFor, setSheetFor] = useState<ChatSummary | null>(null);
   const [sheetMuteOpen, setSheetMuteOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
-  const [composerBusy, setComposerBusy] = useState(false);
-  const [composerError, setComposerError] = useState('');
-  const [sheetBusy, setSheetBusy] = useState(false);
-  const [sheetError, setSheetError] = useState('');
   const [composerAiError, setComposerAiError] = useState('');
+  const [sheetError, setSheetError] = useState('');
   const [rolesOpen, setRolesOpen] = useState(false);
   const [rolesBusy, setRolesBusy] = useState(false);
   const [rolesError, setRolesError] = useState('');
@@ -122,24 +127,33 @@ function GroupTopics() {
     null,
   );
   const [checking, setChecking] = useState(false);
-  const [visibilityBusy, setVisibilityBusy] = useState(false);
   const [visibilityError, setVisibilityError] = useState('');
   const [visibilitySaved, setVisibilitySaved] = useState(false);
   const [confirmingPrivate, setConfirmingPrivate] = useState(false);
 
   // The detail is keyed by group id (not chat id): load it on mount so the
   // member list, the "+" gate and the AI count resolve even on first visit.
-  // The roles ride a second load for the members/roles sheet.
+  // The roles ride a query for the members/roles sheet; its first load maps
+  // through the same error helper as every retry (404 means the group is gone).
   useEffect(() => {
     if (groupId !== '') {
       ensureGroupDetail(groupId);
-      // The first load maps through the same error helper as every retry
-      // (404 on a load means the group is gone, not denied).
-      void refreshGroupRoles(groupId).catch((error: unknown) =>
-        setRolesLoadError(describeRolesError(error, 'load')),
-      );
     }
-  }, [groupId, ensureGroupDetail, refreshGroupRoles]);
+  }, [groupId, ensureGroupDetail]);
+
+  const [, reloadRoles] = useQuery(
+    () =>
+      groupId === ''
+        ? Effect.void
+        : rawCall(() => refreshGroupRoles(groupId)).pipe(
+            Effect.catch(({ cause: error }) =>
+              Effect.sync(() => {
+                setRolesLoadError(describeRolesError(error, 'load'));
+              }),
+            ),
+          ),
+    [groupId, refreshGroupRoles],
+  );
 
   const topics = useMemo(() => topicsOfGroup(chats, groupId), [chats, groupId]);
   const general = topics.find((topic) => topic.topic?.isGeneral === true);
@@ -196,21 +210,31 @@ function GroupTopics() {
 
   // Roles writes (T-0137) take the route's group id directly, so an empty
   // group with no loaded topic rows still works. The store replaces its
-  // cache on success, so the sheet re-renders with server truth.
+  // cache on success, so the sheet re-renders with server truth. The sheet
+  // awaits the returned promise, which settles on success and on failure.
   const runRolesWrite = (work: () => Promise<unknown>): Promise<void> => {
     setRolesBusy(true);
     setRolesError('');
-    return work()
-      .then(() => {})
-      .catch((error: unknown) => setRolesError(describeRolesError(error, 'write')))
-      .finally(() => setRolesBusy(false));
+    return Effect.runPromise(
+      rawCall(work).pipe(
+        Effect.asVoid,
+        Effect.catch(({ cause }) =>
+          Effect.sync(() => {
+            setRolesError(describeRolesError(cause, 'write'));
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            setRolesBusy(false);
+          }),
+        ),
+      ),
+    );
   };
 
   const retryRolesLoad = () => {
     setRolesLoadError('');
-    void refreshGroupRoles(groupId).catch((error: unknown) =>
-      setRolesLoadError(describeRolesError(error, 'load')),
-    );
+    reloadRoles();
   };
 
   const toggleRoleMember = (role: CustomGroupRole, userId: string): Promise<void> => {
@@ -225,15 +249,27 @@ function GroupTopics() {
 
   // Invite links (T-0136): owner/admin only, like the web panel. The list
   // loads when the sheet opens; the created URL is kept only until
-  // dismissed, never stored.
-  const reloadLinks = async (): Promise<void> => {
-    setLinksError('');
-    try {
-      setLinks(await listInviteLinks(groupId));
-    } catch {
-      setLinksError('Could not load invite links. Try again.');
-    }
-  };
+  // dismissed, never stored. A failed load keeps the sheet open with a message.
+  const fetchLinks = (linksGroupId: string) =>
+    Effect.sync(() => {
+      setLinksError('');
+    }).pipe(
+      Effect.andThen(
+        rawCall(() => listInviteLinks(linksGroupId)).pipe(
+          Effect.tap((list) =>
+            Effect.sync(() => {
+              setLinks(list);
+            }),
+          ),
+          Effect.catch(() =>
+            Effect.sync(() => {
+              setLinksError('Could not load invite links. Try again.');
+            }),
+          ),
+        ),
+      ),
+    );
+  const [, loadLinks] = useAction((linksGroupId: string) => fetchLinks(linksGroupId));
 
   const openLinks = () => {
     setLinksError('');
@@ -243,34 +279,74 @@ function GroupTopics() {
     // stays mounted while hidden, so a mount-time stamp would go stale.
     setLinksNow(Date.now());
     setLinksOpen(true);
-    void reloadLinks();
+    loadLinks(groupId);
   };
 
+  const [linkCreate, runLinkCreate] = useAction((input: CreateInviteLinkForm) =>
+    rawCall(() => createInviteLink(groupId, input)).pipe(
+      Effect.tap((created) =>
+        Effect.sync(() => {
+          setCreatedUrl(created.url);
+        }),
+      ),
+      Effect.andThen(fetchLinks(groupId)),
+      Effect.catch(() =>
+        Effect.sync(() => {
+          setLinksError('Could not create the invite link. Try again.');
+        }),
+      ),
+    ),
+  );
+  const linksBusy = isWaiting(linkCreate);
+
+  const [, runLinkRevoke] = useAction((linkId: string) =>
+    rawCall(() => revokeInviteLink(groupId, linkId)).pipe(
+      Effect.andThen(fetchLinks(groupId)),
+      Effect.catch(() =>
+        Effect.sync(() => {
+          setLinksError('Could not revoke the invite link. Try again.');
+        }),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          setRevokingId(undefined);
+        }),
+      ),
+    ),
+  );
+
   const createLink = (input: CreateInviteLinkForm) => {
-    setLinksBusy(true);
     setLinksError('');
-    void createInviteLink(groupId, input)
-      .then((created) => {
-        setCreatedUrl(created.url);
-        return reloadLinks();
-      })
-      .catch(() => setLinksError('Could not create the invite link. Try again.'))
-      .finally(() => setLinksBusy(false));
+    runLinkCreate(input);
   };
 
   const revokeLink = (linkId: string) => {
     setRevokingId(linkId);
     setLinksError('');
-    void revokeInviteLink(groupId, linkId)
-      .then(() => reloadLinks())
-      .catch(() => setLinksError('Could not revoke the invite link. Try again.'))
-      .finally(() => setRevokingId(undefined));
+    runLinkRevoke(linkId);
   };
 
   // Visibility (T-0183): loads server truth when the sheet opens, keeps a
   // debounced live availability check for a changed handle, and saves
   // through the directory API (the store refreshes the detail so the header
   // re-renders with server truth).
+  const [, loadVisibility] = useAction((visibilityGroupId: string) =>
+    rawCall(() => directoryApi.getGroupVisibility(visibilityGroupId)).pipe(
+      Effect.tap((truth) =>
+        Effect.sync(() => {
+          setVisibilityTruth(truth);
+          setPicked(truth.visibility);
+          setTyped(truth.handle ?? '');
+        }),
+      ),
+      Effect.catch(() =>
+        Effect.sync(() => {
+          setVisibilityLoadError('Could not load visibility. Try again.');
+        }),
+      ),
+    ),
+  );
+
   const openVisibility = () => {
     setVisibilityError('');
     setVisibilitySaved(false);
@@ -278,14 +354,7 @@ function GroupTopics() {
     setCheck(null);
     setVisibilityOpen(true);
     setVisibilityLoadError('');
-    void directoryApi
-      .getGroupVisibility(groupId)
-      .then((truth) => {
-        setVisibilityTruth(truth);
-        setPicked(truth.visibility);
-        setTyped(truth.handle ?? '');
-      })
-      .catch(() => setVisibilityLoadError('Could not load visibility. Try again.'));
+    loadVisibility(groupId);
   };
 
   const trimmedHandle = typed.trim();
@@ -297,45 +366,71 @@ function GroupTopics() {
 
   // Debounced live availability for a changed handle (the group's own
   // handle is skipped: the server sees its live row and would report
-  // "taken"). The effect only schedules the check; the timeout applies the
-  // busy state and the promise the result once (the lint rule flags
-  // synchronous setState inside effects).
-  useEffect(() => {
-    if (!visibilityOpen || picked !== 'public' || trimmedHandle === '' || ownHandle) {
-      return;
-    }
-    let active = true;
-    const value = trimmedHandle;
-    const pending = setTimeout(() => {
-      if (!active) {
-        return;
-      }
-      setChecking(true);
-      void directoryApi
-        .checkGroupHandle(value)
-        .then((result) => {
-          if (active) {
-            setCheck(result);
-            setChecking(false);
-          }
-        })
-        .catch((error: unknown) => {
-          if (!active) {
-            return;
-          }
-          if (error instanceof DirectoryApiError && error.code === 'rate_limited') {
-            setCheck({ available: false, reason: 'rate_limited' });
-          } else {
-            setCheck(null);
-          }
-          setChecking(false);
-        });
-    }, 300);
-    return () => {
-      active = false;
-      clearTimeout(pending);
-    };
-  }, [visibilityOpen, picked, trimmedHandle, ownHandle, directoryApi]);
+  // "taken"). The query is the timer: a deps change or unmount interrupts a
+  // check still waiting, which replaces the old cleanup.
+  const checkHandle = (value: string) =>
+    Effect.sleep(300).pipe(
+      Effect.andThen(
+        Effect.sync(() => {
+          setChecking(true);
+        }),
+      ),
+      Effect.andThen(
+        rawCall(() => directoryApi.checkGroupHandle(value)).pipe(
+          Effect.tap((result) =>
+            Effect.sync(() => {
+              setCheck(result);
+              setChecking(false);
+            }),
+          ),
+          Effect.catch(({ cause }) =>
+            Effect.sync(() => {
+              if (cause instanceof DirectoryApiError && cause.code === 'rate_limited') {
+                setCheck({ available: false, reason: 'rate_limited' });
+              } else {
+                setCheck(null);
+              }
+              setChecking(false);
+            }),
+          ),
+        ),
+      ),
+    );
+  const wantsCheck = visibilityOpen && picked === 'public' && trimmedHandle !== '' && !ownHandle;
+  useQuery(
+    () => (wantsCheck ? checkHandle(trimmedHandle) : Effect.void),
+    [visibilityOpen, picked, trimmedHandle, ownHandle, directoryApi],
+  );
+
+  const [visibilitySave, runVisibilitySave] = useAction(
+    (input: { readonly visibility: GroupVisibility; readonly handle: string }) =>
+      rawCall(() =>
+        directoryApi.setGroupVisibility(
+          groupId,
+          input.visibility === 'public'
+            ? { visibility: input.visibility, handle: input.handle }
+            : { visibility: input.visibility },
+        ),
+      ).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            setVisibilityTruth({
+              visibility: input.visibility,
+              handle: input.visibility === 'public' ? input.handle : null,
+            });
+            setVisibilitySaved(true);
+            setConfirmingPrivate(false);
+            refreshGroupDetail(groupId);
+          }),
+        ),
+        Effect.catch(({ cause }) =>
+          Effect.sync(() => {
+            setVisibilityError(visibilitySaveError(cause));
+          }),
+        ),
+      ),
+  );
+  const visibilityBusy = isWaiting(visibilitySave);
 
   const saveVisibility = () => {
     if (visibilityTruth === null) {
@@ -349,36 +444,26 @@ function GroupTopics() {
       setConfirmingPrivate(true);
       return;
     }
-    setVisibilityBusy(true);
     setVisibilityError('');
     setVisibilitySaved(false);
-    void directoryApi
-      .setGroupVisibility(groupId, {
-        visibility: picked,
-        ...(picked === 'public' ? { handle: trimmedHandle } : {}),
-      })
-      .then(() => {
-        setVisibilityTruth({
-          visibility: picked,
-          handle: picked === 'public' ? trimmedHandle : null,
-        });
-        setVisibilitySaved(true);
-        setConfirmingPrivate(false);
-        refreshGroupDetail(groupId);
-      })
-      .catch((error: unknown) => setVisibilityError(visibilitySaveError(error)))
-      .finally(() => setVisibilityBusy(false));
+    runVisibilitySave({ visibility: picked, handle: trimmedHandle });
   };
 
   // The clipboard/share bridge for the shown-once block: `expo-clipboard`
   // and React Native's `Share` cannot run in Node tests, so the sheet takes
-  // callbacks and this screen wires the real modules at the edge.
+  // callbacks and this screen wires the real modules at the edge. The
+  // sheets await these, so each returns a Promise.
   const linksShare = useMemo(
     () => ({
-      copyText: (text: string) => Clipboard.setStringAsync(text).then(() => {}),
-      shareText: async (text: string): Promise<void> => {
-        await Share.share({ message: text });
-      },
+      copyText: (text: string) =>
+        Effect.runPromise(Effect.promise(() => Clipboard.setStringAsync(text)).pipe(Effect.asVoid)),
+      shareText: (text: string) =>
+        Effect.runPromise(
+          Effect.tryPromise({
+            try: () => Share.share({ message: text }),
+            catch: (cause) => cause,
+          }).pipe(Effect.asVoid),
+        ),
     }),
     [],
   );
@@ -388,20 +473,47 @@ function GroupTopics() {
     router.push({ pathname: '/chat/[id]', params: { id: chat.id } });
   };
 
+  const [archiveState, runArchive] = useAction((chatId: string) =>
+    rawCall(() => archiveTopic(chatId)).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          setSheetFor(null);
+          setSheetMuteOpen(false);
+        }),
+      ),
+      Effect.catch(() =>
+        Effect.sync(() => {
+          setSheetError('Could not archive the topic. Try again.');
+        }),
+      ),
+    ),
+  );
+
+  const [prefState, runPref] = useAction(
+    (request: { readonly chatId: string; readonly change: Parameters<typeof setChatPref>[1] }) =>
+      rawCall(() => setChatPref(request.chatId, request.change)).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            setSheetFor(null);
+            setSheetMuteOpen(false);
+          }),
+        ),
+        Effect.catch(() =>
+          Effect.sync(() => {
+            setSheetError('Could not save. Try again.');
+          }),
+        ),
+      ),
+  );
+  const sheetBusy = isWaiting(archiveState) || isWaiting(prefState);
+
   const runSheetAction = (_action: TopicSheetAction) => {
     const chat = sheetFor;
     if (chat === null) {
       return;
     }
-    setSheetBusy(true);
     setSheetError('');
-    void archiveTopic(chat.id)
-      .then(() => {
-        setSheetFor(null);
-        setSheetMuteOpen(false);
-      })
-      .catch(() => setSheetError('Could not archive the topic. Try again.'))
-      .finally(() => setSheetBusy(false));
+    runArchive(chat.id);
   };
 
   const runSheetPref = (action: TopicPrefAction) => {
@@ -409,7 +521,6 @@ function GroupTopics() {
     if (chat === null) {
       return;
     }
-    setSheetBusy(true);
     setSheetError('');
     const input =
       action.kind === 'mute'
@@ -419,13 +530,7 @@ function GroupTopics() {
           : action.kind === 'pin'
             ? { pinned: action.pinned }
             : { archived: action.archived };
-    void setChatPref(chat.id, input)
-      .then(() => {
-        setSheetFor(null);
-        setSheetMuteOpen(false);
-      })
-      .catch(() => setSheetError('Could not save. Try again.'))
-      .finally(() => setSheetBusy(false));
+    runPref({ chatId: chat.id, change: input });
   };
 
   const openSheetFor = (chat: ChatSummary) => {
@@ -438,36 +543,48 @@ function GroupTopics() {
   // until the topic exists: a `createTopic` failure shows its error in the
   // open sheet, and a failed AI add names the AI (the topic still exists, so
   // the user lands in it and can retry from the topic panel).
-  const create = (input: NewTopicInput) => {
-    setComposerBusy(true);
-    setComposerError('');
-    setComposerAiError('');
+  const [topicState, runTopicCreate, topicControls] = useAction((input: NewTopicInput) => {
     const aiNames = new Map(myAisInGroup.map((ai) => [ai.aiId, ai.name]));
-    void createTopic(groupChatId, {
-      name: input.name,
-      kind: input.kind,
-      visibility: input.visibility,
-      ...(input.memberIds === undefined ? {} : { memberIds: input.memberIds }),
-    })
-      .then(async (chatId) => {
-        const failed: string[] = [];
-        for (const aiId of input.aiIds) {
-          try {
-            await addTopicAi(chatId, aiId);
-          } catch {
-            failed.push(aiNames.get(aiId) ?? 'An AI');
+    return rawCall(() =>
+      createTopic(groupChatId, {
+        name: input.name,
+        kind: input.kind,
+        visibility: input.visibility,
+        ...(input.memberIds === undefined ? {} : { memberIds: input.memberIds }),
+      }),
+    ).pipe(
+      Effect.flatMap((chatId) =>
+        Effect.forEach(input.aiIds, (aiId) =>
+          rawCall(() => addTopicAi(chatId, aiId)).pipe(
+            Effect.map((): string[] => []),
+            Effect.catch(() => Effect.succeed([aiId])),
+          ),
+        ).pipe(Effect.map((groups) => ({ chatId, failed: groups.flat() }))),
+      ),
+      Effect.tap(({ chatId, failed }) =>
+        Effect.sync(() => {
+          setComposerOpen(false);
+          if (failed.length > 0) {
+            setComposerAiError(
+              `Topic created, but could not add: ${failed
+                .map((aiId) => aiNames.get(aiId) ?? 'An AI')
+                .join(', ')}. Add them from the topic panel.`,
+            );
           }
-        }
-        setComposerOpen(false);
-        if (failed.length > 0) {
-          setComposerAiError(
-            `Topic created, but could not add: ${failed.join(', ')}. Add them from the topic panel.`,
-          );
-        }
-        router.push({ pathname: '/chat/[id]', params: { id: chatId } });
-      })
-      .catch(() => setComposerError('Could not create the topic. Try again.'))
-      .finally(() => setComposerBusy(false));
+          router.push({ pathname: '/chat/[id]', params: { id: chatId } });
+        }),
+      ),
+    );
+  });
+  const composerBusy = isWaiting(topicState);
+  const composerError =
+    !composerBusy && failureOf(topicState) !== undefined
+      ? 'Could not create the topic. Try again.'
+      : '';
+
+  const create = (input: NewTopicInput) => {
+    setComposerAiError('');
+    runTopicCreate(input);
   };
 
   if (topics.length === 0 && chatsLoad === 'loaded') {
@@ -584,7 +701,7 @@ function GroupTopics() {
           accessibilityRole="button"
           accessibilityLabel="New topic"
           onPress={() => {
-            setComposerError('');
+            topicControls.reset();
             setComposerAiError('');
             setComposerOpen(true);
           }}
