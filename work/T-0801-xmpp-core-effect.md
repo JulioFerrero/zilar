@@ -1,7 +1,7 @@
 ---
 id: T-0801
 title: "X3-X7: xmpp-core Effect core — events as PubSub/Stream, the remaining async/try sites (restart, credentials, keepalive, afterOnline, send ops, disconnect) as Effects, createXmppCore as an unchanged Promise facade, and a new exported XmppCoreEffect; every existing test unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0801-xmpp-core-effect
 model: auto
@@ -70,4 +70,39 @@ Run the suite 3 times at the end. Add tests for the new `XmppCoreEffect` API in 
 
 ## Report (written by the worker when done)
 
+**Commits:** X3 `8fccf7ab`, X5 `66e61bb3`, X6 `f5d08ca4`, X7 `69a327ad`; the Report commit follows.
+
+**effect:map kinds** (`pnpm effect:map`, wave mode):
+- `client.ts` `effect` (now only the Promise facade; no signals left);
+- `core-effect.ts` `effect`, signal H1 (Tier B): the facade-facing `Effect.runPromise` in the `credentials` provider, which the library requires to return a Promise;
+- `events.ts` `effect`;
+- `index.ts` and `types.ts` `plain` (no async work).
+- `client.ts`, `core-effect.ts` and `events.ts` contain no `async`, `await`, `try` or `.catch(` (grep).
+
+**Tests:** xmpp-core before 237 passed / 4 skipped (241); after 245 passed / 4 skipped (249), the 8 new ones in `core-effect.test.ts`. 3 of 3 runs identical. Existing tests unchanged. `pnpm --filter @zilar/xmpp-core typecheck` (both tsconfigs) passes; `oxlint packages/xmpp-core/src` prints nothing. Integration tests not run (lead's job). I did not run `pnpm gate`.
+
+**What I did about `on()` synchronicity:** I tried the spec's first choice (`on` forks a consumer fiber on the PubSub). All 237 existing tests passed with it, so no test proves synchronicity. I still kept the synchronous listener sets for `on` and publish to the PubSub as well (`events.ts`). Reasons: (1) a fiber delivers a scheduler tick later than today; (2) a callback that throws would kill the consumer fiber and silence every later event, where today the throw reaches the stanza handler; (3) the web/mobile stores and the gateway are the messaging path and the plan flags it risky. `emit` calls the listeners first, then `PubSub.publishUnsafe`, so the order of delivery is unchanged. A new test checks `on` is synchronous.
+
+**Structure:** `git mv client.ts core-effect.ts` (history kept). `core-effect.ts` has `createCoreEffect(options, deps): CoreEffect` (the whole closure, now with Effect sites) plus the `ClientOptions`/`ClientFactory`/`CoreDependencies` types. `client.ts` keeps `createCore(options, deps): XmppCore` as a thin facade (`Effect.runPromise` per method, `Effect.runFork` for `sendTyping`/`markDisplayed`) and re-exports those types, so no test or other module changed its imports.
+
+**XmppCoreEffect API shape** (`types.ts`, exported with `SendError`, `EventName`, `EventPayload`, `EventStreams` from `index.ts`):
+- sync reads: `status()`, `me()`, `occupants(roomJid)`;
+- Effects: `connect(): Effect<void, Error>`, `disconnect(): Effect<void>`, `joinRoom: Effect<void, XmppCoreError>`, `leaveRoom: Effect<void>`, `sendMessage`/`sendCorrection: Effect<{id}, SendError>`, `sendReactions`/`sendRetraction: Effect<void, SendError>`, `loadHistory: Effect<HistoryPage, XmppCoreError>`, `requestUploadSlot: Effect<UploadSlot, XmppCoreError>`, `setPushEnabled: Effect<void, XmppCoreError>`, `sendTyping`/`markDisplayed: Effect<void>` (fire and forget, no-op offline);
+- `events`: one `Stream` per event kind (`status`, `message`, `typing`, `displayed`, `occupants`, `presence`, `invited`, `roster`, `error`, `replaced`);
+- `SendError = NotOnline | Error`.
+- Factory: `createXmppCoreEffect(options)`, a plain factory, not a `Context.Service` + layer: the core is per-login state built from the options (`getToken`, domain) and no consumer provides it through a Layer yet; a Service can wrap it when the apps move. The internal `CoreEffect` also carries the callback `on`, used only by the facade.
+
+**Behaviour differences:**
+- A library rejection of `send` that is not an `Error` (never the case for xmpp.js) now reaches the caller as `new Error(String(x))`; an `Error` passes through as the same object. Same text in `error` events.
+- `start()`, `stop()`, `disconnect()` and `send()` of the library client are called through `Effect.tryPromise`, so a synchronous throw from them (real xmpp.js never throws synchronously) is now handled like a rejection: in the `void x.catch` sites (`sendTyping`, `markDisplayed`, ping/roster replies, `connect()`'s start) it no longer propagates to the caller; it is reported/ignored like a rejection.
+- Continuations after a library Promise resolve through the Effect scheduler instead of a bare `await` microtask, so they may run a tick later (no test is sensitive to it).
+- `connect()` now awaits a `Deferred` instead of a hand-made Promise; concurrent callers share the outcome as before.
+- Stale-client guards (`current !== xmpp`) kept as they were: the client is not yet a Scope (not asked in this task).
+- Otherwise none: error classes and messages, backoff and watchdog schedules, keepalive timing (still `schedule()` from `timers.ts`), stanza order after online, stream management are untouched.
+
+**Unsure:** (1) whether the lead wants the Scope-per-connection redesign (§3.1 Target) as a later task; I kept the stale guards. (2) The `Error` typing of `connect()` is wide because the library's own errors (conflict, SASL, token) pass through as thrown.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead (wave 1):** approved. The lead reviewed the Report. The wave 1 combined check (all 12 branches on one tree, by hand) passed the whole-repo typecheck and every package suite: web 1916, server 2279, mobile 2222, xmpp-core 245, runner 63, runner-tunnel 71, devtools 796 after the T-0799 fix, chat-core 174, protocol 174.
+- Worker: Sonnet 5.5. X3-X7 in 4 commits. The `on()` listeners stay synchronous and also publish to the PubSub; `XmppCoreEffect` and `createXmppCoreEffect` are exported; 245 tests pass 3 of 3 runs. **The lead ran the ejabberd integration tests: 4 of 4 pass.** Julio checks messaging and reconnect live before the next deploy. Follow-up: the Scope-per-connection redesign (§3.1).

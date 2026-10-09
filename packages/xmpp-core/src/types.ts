@@ -1,4 +1,7 @@
 import type { ForwardOrigin, Payload } from '@zilar/protocol';
+import type { Effect } from 'effect';
+import type { NotOnline, XmppCoreError } from './errors';
+import type { EventStreams } from './events';
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
 
@@ -321,4 +324,71 @@ export interface XmppCore {
    * auto-reconnect when this fires.
    */
   on(event: 'replaced', cb: () => void): () => void;
+}
+
+/**
+ * What the Effect core fails with when a send is rejected: `NotOnline`, or the
+ * error the library's `send` rejected with (kept as thrown).
+ */
+export type SendError = NotOnline | Error;
+
+/**
+ * The same chat API as `XmppCore`, as Effects and Streams. Every method does
+ * what its `XmppCore` namesake does; the Promise form is this API run with
+ * `Effect.runPromise`.
+ */
+export interface XmppCoreEffect {
+  status(): ConnectionStatus;
+  /** My bare JID once online. */
+  me(): string | undefined;
+  /** Present occupants of a room, tracked from that room's MUC presence. */
+  occupants(roomJid: string): Occupant[];
+  /**
+   * Succeeds when the client is online. Fails with `ConnectTimeout`,
+   * `Disconnected`, or the error that stopped the attempt for good (a
+   * conflict or a bad login), as thrown by the library.
+   */
+  connect(): Effect.Effect<void, Error>;
+  disconnect(): Effect.Effect<void>;
+  joinRoom(roomJid: string, nick: string): Effect.Effect<void, XmppCoreError>;
+  leaveRoom(roomJid: string): Effect.Effect<void>;
+  sendMessage(
+    to: string,
+    kind: ChatKind,
+    text: string,
+    opts?: SendMessageOptions,
+  ): Effect.Effect<{ id: string }, SendError>;
+  sendReactions(
+    chatJid: string,
+    kind: ChatKind,
+    targetId: string,
+    emojis: string[],
+  ): Effect.Effect<void, SendError>;
+  sendCorrection(
+    chatJid: string,
+    kind: ChatKind,
+    originalId: string,
+    text: string,
+    opts?: SendCorrectionOptions,
+  ): Effect.Effect<{ id: string }, SendError>;
+  sendRetraction(chatJid: string, kind: ChatKind, targetId: string): Effect.Effect<void, SendError>;
+  loadHistory(
+    chatJid: string,
+    kind: ChatKind,
+    opts?: LoadHistoryOptions,
+  ): Effect.Effect<HistoryPage, XmppCoreError>;
+  requestUploadSlot(request: UploadRequest): Effect.Effect<UploadSlot, XmppCoreError>;
+  setPushEnabled(options: {
+    pushJid: string;
+    node: string;
+    enable: boolean;
+  }): Effect.Effect<void, XmppCoreError>;
+  /** Fire and forget: does nothing offline; a failed send becomes an `error` event. */
+  sendTyping(to: string, kind: ChatKind, state: 'composing' | 'paused'): Effect.Effect<void>;
+  markDisplayed(chatJid: string, kind: ChatKind, messageId: string): Effect.Effect<void>;
+  /**
+   * One `Stream` per event kind, with the payloads of `XmppCore.on`. A
+   * subscriber sees the events published after it started running the stream.
+   */
+  events: EventStreams;
 }
