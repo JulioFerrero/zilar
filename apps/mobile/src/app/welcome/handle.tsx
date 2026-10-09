@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useColorScheme } from 'nativewind';
 import { useEffect, useState } from 'react';
@@ -13,6 +14,7 @@ import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { asColorScheme } from '@/lib/color-scheme';
 import { CHAT_BACKGROUND } from '@/lib/colors';
+import { useAction } from '@/lib/effect/use-action';
 
 import { useProfileApi } from '@/components/settings/use-profile-api';
 import {
@@ -23,6 +25,14 @@ import {
   suggestHandleFor,
   type HandleAvailability,
 } from '@/components/settings/profile-logic';
+
+/**
+ * Lifts a *-api.ts call into an Effect that fails with the thrown error
+ * itself: the handle helpers read its class and code.
+ */
+function fromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
+  return Effect.tryPromise({ try: call, catch: (cause) => cause });
+}
 
 export default function HandleRoute() {
   return (
@@ -58,44 +68,51 @@ function HandleStep() {
     }
   }
 
-  // Debounced live availability for the typed handle. The effect only
-  // schedules the check; the timeout callback applies the result once.
+  // Debounced live availability for the typed handle. The check waits before
+  // it applies the result once; a newer check, an emptied field or an
+  // unmount interrupts it, so a stale answer never replaces the line.
+  const [, checkAvailability, checkControls] = useAction(
+    (value: string) =>
+      Effect.sleep(300).pipe(
+        Effect.andThen(fromThrown(() => api.checkHandle(value))),
+        Effect.match({
+          onSuccess: (result) =>
+            handleAvailabilityFor(value, {
+              ok: true,
+              available: result.available,
+              reason: result.reason,
+            }),
+          onFailure: (checkError) =>
+            handleAvailabilityFor(value, {
+              ok: false,
+              rateLimited: isHandleRateLimited(checkError),
+            }),
+        }),
+        Effect.tap((next) => Effect.sync(() => setAvailability(next))),
+      ),
+    { mode: 'replace' },
+  );
+
   useEffect(() => {
     if (trimmed === '') {
       return;
     }
-    let active = true;
-    const value = trimmed;
-    const pending = setTimeout(() => {
-      void api.checkHandle(value).then(
-        (result) => {
-          if (active) {
-            setAvailability(
-              handleAvailabilityFor(value, {
-                ok: true,
-                available: result.available,
-                reason: result.reason,
-              }),
-            );
-          }
-        },
-        (checkError: unknown) => {
-          if (!active) return;
-          if (isHandleRateLimited(checkError)) {
-            setAvailability(handleAvailabilityFor(value, { ok: false, rateLimited: true }));
-            return;
-          }
-          setAvailability(handleAvailabilityFor(value, { ok: false, rateLimited: false }));
-        },
-      );
-    }, 300);
-    return () => {
-      active = false;
-      clearTimeout(pending);
-    };
-  }, [api, trimmed]);
+    checkAvailability(trimmed);
+    return checkControls.interrupt;
+  }, [api, trimmed, checkAvailability, checkControls]);
 
   const target = safeTarget(params.from);
+  const [, claim] = useAction((value: string) =>
+    fromThrown(() => api.claimHandle(value)).pipe(
+      Effect.tap(() => Effect.sync(() => router.replace(target as Href))),
+      Effect.tapError((submitError) =>
+        Effect.sync(() => {
+          setBusy(false);
+          setError(friendlyClaimError(submitError));
+        }),
+      ),
+    ),
+  );
   const submit = (): void => {
     if (trimmed === '') {
       setError('Choose a username');
@@ -103,15 +120,7 @@ function HandleStep() {
     }
     setBusy(true);
     setError(undefined);
-    void api
-      .claimHandle(trimmed)
-      .then(() => {
-        router.replace(target as Href);
-      })
-      .catch((submitError: unknown) => {
-        setBusy(false);
-        setError(friendlyClaimError(submitError));
-      });
+    claim(trimmed);
   };
 
   const skip = (): void => {

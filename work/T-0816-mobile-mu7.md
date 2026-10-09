@@ -1,7 +1,7 @@
 ---
 id: T-0816
 title: "MU7: mobile routes: explore, welcome/handle, at, u, join, invite on Effect"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0816-mobile-mu7
 model: auto
@@ -59,4 +59,20 @@ Run `pnpm exec prettier --write` on your changed files before committing. Do not
 
 ## Report (written by the worker when done)
 
+- **effect:map kinds:** `explore.tsx`, `at/[handle].tsx`, `invite/[code].tsx`, `join/[token].tsx`, `u/[handle].tsx`, `welcome/handle.tsx` are all `effect`, Tier B false (no async, await, `.then`, `.catch`, try/catch or timer left).
+- **Tests:** before 0 (no tests existed). Added 6 test files in `apps/mobile/src/components/screens/`, 81 tests (explore 14, at-handle 14, invite-code 4, join-token 16, u-handle 19, welcome-handle 14). They were committed first as "T-0816: tests before" and passed on the old code; they pass after the conversion (3 runs each, no flakes). Existing tests were not touched. The `at-handle` "Opening…" case was changed after the first commit to hold the lookup with a deferred promise (it relied on timer timing); it passes on both old and new code.
+- **Checks run:** the six test files together (81 passed), `pnpm --filter @zilar/mobile typecheck` (clean), `oxlint` on the changed files (clean), prettier (clean). `pnpm gate` was not run (wave mode).
+- **How it was converted:** a `fromThrown(call)` helper in each file (`Effect.tryPromise` with `catch: (cause) => cause`) keeps the thrown error as it is, because the existing describe helpers (`describeDirectoryError`, `handleRouteViewFor`, `friendlyClaimError`, `addContactSendFailure`, `joinPreviewFailure`) check `instanceof DirectoryApiError` / `ContactsApiError` / `ProfileApiError` and `status`/`code`. `fromApi` would have turned those into `ApiFailure` and changed the texts. Debounced and one-shot loads are `useAction` with `mode: 'replace'` run from a `useEffect`, with `controls.interrupt` as the cleanup (replaces `active` flags and `clearTimeout`); `Effect.sleep` replaces `setTimeout`. Joins, claims, paging and profile actions are `useAction` in the default `ignore` mode. `invite/[code]` uses `useQuery`.
+- **Behaviour differences:**
+  - `u/[handle]`: the load now uses `replace`, so a slower old lookup (Retry or refocus while loading) no longer overwrites a newer one. Before, the last answer to arrive won.
+  - `u/[handle]`: the profile action's busy flag is the action's waiting state, not a ref plus a `useState`. A press while an action runs is dropped as before; the error clears only when the action actually starts (before, only when it passed the guard too).
+  - `join/[token]`, `at/[handle]`, `explore` joins and `u/[handle]` actions: leaving the screen while a join, claim or action is in flight now interrupts it (before, the promise ran on and could still navigate or set state). The request itself still goes out.
+  - Otherwise none: same texts, same order of state updates, same 300 ms and 0 ms delays.
+- **Unsure:** the `useAction` fiber runs `setState` from `Effect.sync` after unmount only if the fiber is not interrupted; React ignores that. I checked behaviour in jsdom with mocked native components only; the lead's `pnpm phone:smoke` and Julio's invite check on the phone cover the real device. In `join/[token]` I kept `previewJoinLink` in the effect deps as before.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved (wave 2). Worker: Sonnet 5.5. The lead reviewed the Report.
+- **Combined check:** all 25 wave 2 branches together pass lint, typecheck and the full mobile suite (`lead batch check`, report 20261009T172300Z). The remaining failures were server and web tests that pass on main, caused by load.
+- **This task:** 81 new screen tests. Leaving a screen mid-join skips only that screen's follow-up; the request still goes out.
+- **Phone:** the wave branch is smoked on the emulator after the merge.

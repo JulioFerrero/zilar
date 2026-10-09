@@ -1,3 +1,4 @@
+import { Effect } from 'effect';
 import { Redirect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColorScheme } from 'nativewind';
@@ -18,8 +19,17 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { asColorScheme } from '@/lib/color-scheme';
 import { CHAT_BACKGROUND } from '@/lib/colors';
-import { extractJoinToken } from '@/lib/invite-links-api';
+import { useAction } from '@/lib/effect/use-action';
+import { extractJoinToken, type JoinPreview } from '@/lib/invite-links-api';
 import { useChatStore, useChatStoreApi } from '@/store/chat-store-provider';
+
+/**
+ * Lifts a store call into an Effect that fails with the thrown error itself:
+ * the join helpers read its status and code.
+ */
+function fromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
+  return Effect.tryPromise({ try: call, catch: (cause) => cause });
+}
 
 /**
  * Join-by-link screen (T-0136): `zilar://join/<token>` (custom scheme,
@@ -108,37 +118,33 @@ function Join({ token }: { token: string | undefined }) {
   const [busy, setBusy] = useState(false);
   const [retries, setRetries] = useState(0);
 
-  useEffect(() => {
-    if (token === undefined) {
-      return;
-    }
-    // The effect only synchronizes with the token and the retry count (the
-    // lint rule flags synchronous setState inside effects); the fetch helper
-    // resolves the next view, applied once.
-    let active = true;
-    void loadPreview(token).then((next) => {
-      if (active) {
-        setView(next);
-      }
-    });
-    return () => {
-      active = false;
-    };
-    async function loadPreview(value: string): Promise<JoinLinkView> {
-      try {
-        const preview = await previewJoinLink(value);
-        return joinLinkViewFor({ preview, failed: false, rateLimited: false });
-      } catch (error: unknown) {
+  // The load resolves the next view and applies it once; a newer load, a
+  // change of the token or an unmount interrupts it, so a stale answer never
+  // replaces the view.
+  const [, loadPreview, loadControls] = useAction(
+    (value: string) =>
+      fromThrown(() => previewJoinLink(value)).pipe(
         // An unreachable server is a retryable connection error, not a dead
         // link (nit 6): only invalid, expired, revoked and full links read
         // the same neutral message. The mapping takes status/code only, so
         // the token never enters the view.
-        const failure = joinPreviewFailure(error);
-        return joinLinkViewFor({ failed: true, ...failure });
-      }
+        Effect.match({
+          onSuccess: (preview) => joinLinkViewFor({ preview, failed: false, rateLimited: false }),
+          onFailure: (error) => joinLinkViewFor({ failed: true, ...joinPreviewFailure(error) }),
+        }),
+        Effect.tap((next) => Effect.sync(() => setView(next))),
+      ),
+    { mode: 'replace' },
+  );
+
+  useEffect(() => {
+    if (token === undefined) {
+      return;
     }
+    loadPreview(token);
+    return loadControls.interrupt;
     // `retries` re-runs the load after the offline card's Try again.
-  }, [token, previewJoinLink, retries]);
+  }, [token, previewJoinLink, retries, loadPreview, loadControls]);
 
   const cancel = () => {
     router.replace('/');
@@ -147,31 +153,6 @@ function Join({ token }: { token: string | undefined }) {
   const retry = () => {
     setView({ state: 'checking' });
     setRetries((count) => count + 1);
-  };
-
-  const join = () => {
-    if (busy || token === undefined || view.state !== 'ready' || view.preview === undefined) {
-      return;
-    }
-    const preview = view.preview;
-    // Already a member: just open the group, no use consumed (server-side).
-    if (preview.alreadyMember) {
-      openGroup(preview.groupId);
-      return;
-    }
-    setBusy(true);
-    joinByLink(token).then(
-      (result) => {
-        openGroup(result.groupId);
-      },
-      (error: { status?: number; code?: string }) => {
-        setBusy(false);
-        // Invalid, expired, revoked and full links all read the same: the
-        // failure never reveals why. Only an unreachable server keeps the
-        // preview with a retry error (raw server text never renders).
-        setView(joinPressFailure(error, preview));
-      },
-    );
   };
 
   // Opens the group's General topic (same mapping as the topics screen),
@@ -196,6 +177,35 @@ function Join({ token }: { token: string | undefined }) {
       return;
     }
     router.replace('/');
+  };
+
+  const [, joinLink] = useAction((input: { token: string; preview: JoinPreview }) =>
+    fromThrown(() => joinByLink(input.token)).pipe(
+      Effect.tap((result) => Effect.sync(() => openGroup(result.groupId))),
+      Effect.tapError((error) =>
+        Effect.sync(() => {
+          setBusy(false);
+          // Invalid, expired, revoked and full links all read the same: the
+          // failure never reveals why. Only an unreachable server keeps the
+          // preview with a retry error (raw server text never renders).
+          setView(joinPressFailure(error, input.preview));
+        }),
+      ),
+    ),
+  );
+
+  const join = () => {
+    if (busy || token === undefined || view.state !== 'ready' || view.preview === undefined) {
+      return;
+    }
+    const preview = view.preview;
+    // Already a member: just open the group, no use consumed (server-side).
+    if (preview.alreadyMember) {
+      openGroup(preview.groupId);
+      return;
+    }
+    setBusy(true);
+    joinLink({ token, preview });
   };
 
   return (
