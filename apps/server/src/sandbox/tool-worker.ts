@@ -1,4 +1,5 @@
 import { parentPort, workerData } from 'node:worker_threads';
+import { Cause, Duration, Effect } from 'effect';
 import { getQuickJS, type QuickJSContext, type QuickJSHandle } from 'quickjs-emscripten';
 import type { FetchResponse } from './host-fetch';
 import { MAX_SOURCE_BYTES, resolveLimits, withFetchPrefix, type SandboxLimits } from './limits';
@@ -53,12 +54,15 @@ function logToParent(text: string): void {
   parentPort?.postMessage({ type: 'log', text });
 }
 
-function waitForFetchResponse(id: number, fetchTimeoutMs: number): Promise<FetchResponse> {
-  return new Promise<FetchResponse>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      parentPort?.off('message', onMessage);
-      reject(new Error('fetch timeout'));
-    }, fetchTimeoutMs + 1000);
+type Deferred = ReturnType<QuickJSContext['newPromise']>;
+
+// The first matching `fetch-result` wins. The timeout is an Effect timer: when
+// it fires, the callback is interrupted and its finalizer removes the listener.
+function waitForFetchResponse(
+  id: number,
+  fetchTimeoutMs: number,
+): Effect.Effect<FetchResponse, Error> {
+  return Effect.callback<FetchResponse, Error>((resume) => {
     const onMessage = (message: unknown): void => {
       if (typeof message !== 'object' || message === null) {
         return;
@@ -67,23 +71,49 @@ function waitForFetchResponse(id: number, fetchTimeoutMs: number): Promise<Fetch
       if (record.type !== 'fetch-result' || record.id !== id) {
         return;
       }
-      clearTimeout(timer);
       parentPort?.off('message', onMessage);
       if (record.ok === true) {
         const body = record.body;
-        resolve({
-          status: typeof record.status === 'number' ? record.status : 0,
-          body: body instanceof Uint8Array ? body : new Uint8Array(0),
-        });
+        resume(
+          Effect.succeed({
+            status: typeof record.status === 'number' ? record.status : 0,
+            body: body instanceof Uint8Array ? body : new Uint8Array(0),
+          }),
+        );
         return;
       }
-      reject(new Error(typeof record.message === 'string' ? record.message : 'fetch failed'));
+      resume(
+        Effect.fail(
+          new Error(typeof record.message === 'string' ? record.message : 'fetch failed'),
+        ),
+      );
     };
     parentPort?.on('message', onMessage);
-  });
+    return Effect.sync(() => {
+      parentPort?.off('message', onMessage);
+    });
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: Duration.millis(fetchTimeoutMs + 1000),
+      orElse: () => Effect.fail(new Error('fetch timeout')),
+    }),
+  );
 }
 
-async function run(): Promise<void> {
+// One macrotask turn, so fetch results and timers can run between job pumps.
+const nextImmediate: Effect.Effect<void> = Effect.callback<void>((resume) => {
+  const handle = setImmediate(() => {
+    resume(Effect.void);
+  });
+  return Effect.sync(() => {
+    clearImmediate(handle);
+  });
+});
+
+const disposeQuietly = (dispose: () => void): Effect.Effect<boolean> =>
+  Effect.match(Effect.try(dispose), { onFailure: () => false, onSuccess: () => true });
+
+const run = Effect.gen(function* () {
   const params = workerData as WorkerParams;
   const limits = resolveLimits(params.limits);
   const startedAt = Date.now();
@@ -113,7 +143,7 @@ async function run(): Promise<void> {
     return;
   }
 
-  const QuickJS = await getQuickJS();
+  const QuickJS = yield* Effect.promise(() => getQuickJS());
   const runtime = QuickJS.newRuntime();
   const wallDeadline = startedAt + limits.wallMs;
   let fetchCount = 0;
@@ -199,30 +229,32 @@ async function run(): Promise<void> {
     settleVm((handle) => deferred.reject(handle), track(context.newString(text)));
   };
 
-  try {
+  const execute = Effect.gen(function* () {
     let fetchId = 0;
 
-    const fetchImpl = (urlHandle: QuickJSHandle, initHandle?: QuickJSHandle): QuickJSHandle => {
-      const deferred = context.newPromise();
-      let urlText = '';
-      try {
-        urlText = context.getString(urlHandle);
-      } catch {
-        rejectWith(deferred, 'fetch_denied: invalid url');
-        return deferred.handle;
-      }
-      void (async () => {
-        try {
-          if (fetchCount >= limits.maxFetches) {
-            rejectWith(deferred, 'fetch_denied: too many fetches');
-            return;
-          }
-          fetchCount += 1;
-          let method = 'GET';
-          let headers: Record<string, string> = {};
-          let bodyPresent = false;
-          if (initHandle !== undefined) {
-            try {
+    // Everything after the url check, as one Effect. The caller starts it with
+    // `runPromise`, which runs the fiber up to its first wait synchronously, so
+    // the early rejection and the 'fetch' message still happen before
+    // `fetchImpl` returns. A failure here becomes a rejection of the tool's
+    // fetch promise; a throw from `rejectWith` itself rejects the run, which
+    // crashes the worker exactly as the old unhandled rejection did.
+    const fetchEffect = (
+      deferred: Deferred,
+      urlText: string,
+      initHandle: QuickJSHandle | undefined,
+    ): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        if (fetchCount >= limits.maxFetches) {
+          rejectWith(deferred, 'fetch_denied: too many fetches');
+          return;
+        }
+        fetchCount += 1;
+        let method = 'GET';
+        let headers: Record<string, string> = {};
+        let bodyPresent = false;
+        if (initHandle !== undefined) {
+          yield* Effect.match(
+            Effect.try(() => {
               if (context.typeof(initHandle) !== 'undefined') {
                 const dumpedInit: unknown = context.dump(initHandle);
                 if (typeof dumpedInit === 'object' && dumpedInit !== null) {
@@ -243,59 +275,79 @@ async function run(): Promise<void> {
                   }
                 }
               }
-            } catch {
-              headers = {};
-            }
-          }
-          const id = fetchId++;
-          const payload: WorkerFetchPayload = { id, url: urlText, method, headers, bodyPresent };
-          parentPort?.postMessage({ type: 'fetch', ...payload });
-          const response = await waitForFetchResponse(id, limits.fetchTimeoutMs);
-          const bodyBytes = response.body;
-          const bodyText = Buffer.from(bodyBytes).toString('utf8');
-          const responseHandle = track(context.newObject());
-          context.setProp(
-            responseHandle,
-            'ok',
-            track(response.status >= 200 && response.status < 300 ? context.true : context.false),
-          );
-          context.setProp(responseHandle, 'status', track(context.newNumber(response.status)));
-          const textFn = track(
-            context.newFunction('text', () => {
-              const out = context.newPromise();
-              out.resolve(track(context.newString(bodyText)));
-              return out.handle;
             }),
+            {
+              onFailure: () => {
+                headers = {};
+              },
+              onSuccess: () => undefined,
+            },
           );
-          context.setProp(responseHandle, 'text', textFn);
-          const jsonFn = track(
-            context.newFunction('json', () => {
-              const out = context.newPromise();
-              enterVm();
-              try {
-                context.setProp(context.global, '__zilar_body', track(context.newString(bodyText)));
-                const parsed = context.evalCode('JSON.parse(__zilar_body)', 'tool.js');
-                if (parsed.error) {
-                  parsed.error.dispose();
-                  out.reject(track(context.newString('invalid json')));
-                } else {
-                  const value = parsed.value;
-                  track(value);
-                  out.resolve(value);
-                }
-              } finally {
-                exitVm();
-              }
-              return out.handle;
-            }),
-          );
-          context.setProp(responseHandle, 'json', jsonFn);
-          settleVm((handle) => deferred.resolve(handle), responseHandle);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : 'fetch failed';
-          rejectWith(deferred, withFetchPrefix(message));
         }
-      })();
+        const id = fetchId++;
+        const payload: WorkerFetchPayload = { id, url: urlText, method, headers, bodyPresent };
+        parentPort?.postMessage({ type: 'fetch', ...payload });
+        const response = yield* waitForFetchResponse(id, limits.fetchTimeoutMs);
+        const bodyBytes = response.body;
+        const bodyText = Buffer.from(bodyBytes).toString('utf8');
+        const responseHandle = track(context.newObject());
+        context.setProp(
+          responseHandle,
+          'ok',
+          track(response.status >= 200 && response.status < 300 ? context.true : context.false),
+        );
+        context.setProp(responseHandle, 'status', track(context.newNumber(response.status)));
+        const textFn = track(
+          context.newFunction('text', () => {
+            const out = context.newPromise();
+            out.resolve(track(context.newString(bodyText)));
+            return out.handle;
+          }),
+        );
+        context.setProp(responseHandle, 'text', textFn);
+        const jsonFn = track(
+          context.newFunction('json', () => {
+            const out = context.newPromise();
+            enterVm();
+            try {
+              context.setProp(context.global, '__zilar_body', track(context.newString(bodyText)));
+              const parsed = context.evalCode('JSON.parse(__zilar_body)', 'tool.js');
+              if (parsed.error) {
+                parsed.error.dispose();
+                out.reject(track(context.newString('invalid json')));
+              } else {
+                const value = parsed.value;
+                track(value);
+                out.resolve(value);
+              }
+            } finally {
+              exitVm();
+            }
+            return out.handle;
+          }),
+        );
+        context.setProp(responseHandle, 'json', jsonFn);
+        settleVm((handle) => deferred.resolve(handle), responseHandle);
+      }).pipe(
+        Effect.catchCause((cause) => {
+          const error = Cause.squash(cause);
+          const message = error instanceof Error ? error.message : 'fetch failed';
+          return Effect.sync(() => {
+            rejectWith(deferred, withFetchPrefix(message));
+          });
+        }),
+      );
+
+    const fetchImpl = (urlHandle: QuickJSHandle, initHandle?: QuickJSHandle): QuickJSHandle => {
+      const deferred = context.newPromise();
+      let urlText = '';
+      try {
+        urlText = context.getString(urlHandle);
+      } catch {
+        rejectWith(deferred, 'fetch_denied: invalid url');
+        return deferred.handle;
+      }
+      void Effect.runPromise(fetchEffect(deferred, urlText, initHandle));
       return deferred.handle;
     };
 
@@ -416,13 +468,14 @@ async function run(): Promise<void> {
 
     const asPromise = context.resolvePromise(returned);
     let settled = false;
-    asPromise.then(
-      () => {
-        settled = true;
-      },
-      () => {
-        settled = true;
-      },
+    Effect.runFork(
+      Effect.exit(Effect.promise(() => asPromise)).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            settled = true;
+          }),
+        ),
+      ),
     );
 
     while (!settled) {
@@ -449,10 +502,10 @@ async function run(): Promise<void> {
         });
         return;
       }
-      await new Promise((resolve) => setImmediate(resolve));
+      yield* nextImmediate;
     }
 
-    const finalResult = await asPromise;
+    const finalResult = yield* Effect.promise(() => asPromise);
     if (finalResult.error) {
       const dumped = dumpVmError(context, finalResult.error);
       finalResult.error.dispose();
@@ -524,36 +577,40 @@ async function run(): Promise<void> {
       return;
     }
     finish({ type: 'result', outputJson, fetchCount, durationMs: Date.now() - startedAt });
-  } catch {
-    parentPort?.postMessage({
-      type: 'error',
-      kind: 'runtime',
-      message: 'tool failed',
-      fetchCount,
-      durationMs: Date.now() - startedAt,
-    });
-  } finally {
+  });
+
+  // A failed dispose stops the handle loop; the context and runtime are still
+  // disposed. The runtime may be out of memory; the worker exits anyway.
+  const disposeVm = Effect.gen(function* () {
     for (let index = handles.length - 1; index >= 0; index -= 1) {
       const handle = handles[index] as QuickJSHandle;
-      try {
+      const disposed = yield* disposeQuietly(() => {
         if (handle.alive) {
           handle.dispose();
         }
-      } catch {
+      });
+      if (!disposed) {
         break;
       }
     }
-    try {
-      context.dispose();
-    } catch {
-      // The runtime may be out of memory; the worker exits anyway.
-    }
-    try {
-      runtime.dispose();
-    } catch {
-      // Same as above.
-    }
-  }
-}
+    yield* disposeQuietly(() => context.dispose());
+    yield* disposeQuietly(() => runtime.dispose());
+  });
 
-void run();
+  yield* execute.pipe(
+    Effect.catchCause(() =>
+      Effect.sync(() => {
+        parentPort?.postMessage({
+          type: 'error',
+          kind: 'runtime',
+          message: 'tool failed',
+          fetchCount,
+          durationMs: Date.now() - startedAt,
+        });
+      }),
+    ),
+    Effect.ensuring(disposeVm),
+  );
+});
+
+void Effect.runPromise(run);
