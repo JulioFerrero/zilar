@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | [T-0810](T-0810-mobile-mu1.md) | MU1: mobile auth on Effect | in-progress | sonnet-5.5 | | wave 2 |
-| [T-0813](T-0813-mobile-mu4.md) | MU4: mobile lib native on Effect | in-progress | haiku-5.5 | | wave 2 |
 | [T-0814](T-0814-mobile-mu5.md) | MU5: mobile whistle module on Effect | in-progress | haiku-5.5 | | wave 2 |
 | [T-0815](T-0815-mobile-mu6.md) | MU6: mobile tabs on Effect | in-progress | haiku-5.5 | | wave 2 |
 | [T-0816](T-0816-mobile-mu7.md) | MU7: mobile routes on Effect | in-progress | sonnet-5.5 | | wave 2 |
@@ -866,3 +865,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0837](T-0837-gateway-s3-s4.md) | S3 + S4: AI gateway parts 3 and 4 on Effect | 2026-10-09 |
 | [T-0811](T-0811-mobile-mu2.md) | MU2: mobile on Effect | 2026-10-09 |
 | [T-0812](T-0812-mobile-mu3.md) | MU3: mobile on Effect | 2026-10-09 |
+| [T-0813](T-0813-mobile-mu4.md) | MU4: mobile on Effect | 2026-10-09 |
