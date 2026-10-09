@@ -24,7 +24,6 @@
     "better-auth": "^1.7.6",
     "drizzle-orm": "^0.45.3",
     "effect": "^4.0.2",
-    "hono": "^4.13.9",
     "jose": "^6.2.12",
     "nodemailer": "^10.0.12",
     "pino": "^10.3.1",

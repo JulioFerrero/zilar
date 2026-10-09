@@ -1,7 +1,7 @@
 ---
 id: T-0742
 title: "B1.9: drop the hono dependency from apps/server (no import left after T-0740)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0742-drop-hono-dep
 model: auto
@@ -46,4 +46,26 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Done:** removed the `"hono": "^4.13.9"` line from `apps/server/package.json` (dependencies) and ran `pnpm install`.
+
+**Files changed (all in Allowed files):**
+- `apps/server/package.json`: 1 line deleted (`hono`).
+- `pnpm-lock.yaml`: 9 lines deleted, all in the hono entries (importer specifier and version, the `hono@4.13.9` resolution, engines, and blank separators). Nothing else changed.
+- `work/T-0742-drop-hono-dep.md`: status and this Report.
+
+**Commands and results:**
+- Pre-check `git grep -n "from 'hono\|from \"hono\|require('hono" -- apps packages`: no output, so no import remains.
+- `pnpm install`: exit 0.
+- `pnpm exec prettier --write apps/server/package.json`: unchanged, exit 0.
+- `git grep -n '"hono"' -- '*package.json'`: no output, exit 1 (acceptance met).
+- `pnpm gate`: exit 0. Summary lines:
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+
+**Problems / deviations:** none. Code comments that mention Hono were left as the spec says.
+
+**Open questions:** none.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 1.5 min). The `hono` line is removed from `apps/server/package.json`, and the lockfile drops the whole package, so no other dependency used it. The gate passed. **With this, Hono is gone from Zilar.**
