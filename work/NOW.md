@@ -2,6 +2,25 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 02:05, Julio asleep:**
+- **Merged since 01:50:**
+  - T-0682 to T-0688: the groups, topics and approvals files, and `setup/routes.ts` deleted;
+  - T-0684: round 2 moved the gateway approval transaction onto effect/sql.
+- **No domain module uses drizzle any more.** What is still on drizzle:
+  - `app.ts` (the health check);
+  - `auth/auth-schema.ts` and `auth/cli-config.ts`;
+  - `db/client.ts`, `db/schema.ts` and `db/migrate.ts`;
+  - the `effect/sql.ts` snapshot helper;
+  - `test-support.ts`;
+  - 56 test files.
+- **Hono is left in:** `app.ts`, `effect/http.ts` and `git/*`.
+- **Running:**
+  - T-0689: the B1 edge-flip plan (DeepSeek, doc only);
+  - T-0690: the better-auth adapter over effect/sql (DeepSeek, built and tested, not switched);
+  - T-0691: the last drizzle removal plan (DeepSeek, doc only);
+  - T-0692: the retired-handle test (Haiku).
+- **Next:** cut T-0689 and T-0691 into small tasks and launch them.
+
 **2026-10-09 01:50, Julio asleep:**
 - **Merged since 01:22:**
   - T-0669 to T-0681 (except T-0679 and T-0680, listed separately below);
