@@ -1,7 +1,7 @@
 ---
 id: T-0809
 title: "WU18: web Composer on Effect (send, attachment upload, voice recording tick, typing timer); sending identical"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0809-web-composer
 model: auto
@@ -52,4 +52,23 @@ Run the tests 3 times when the code has timers or concurrency. Run `pnpm exec pr
 
 ## Report (written by the worker when done)
 
+- **effect:map:** `apps/web/src/components/Composer.tsx` was `needs-effect` (H1 H2 H3 W4); now `effect`. One signal is left: H2 (`fetch(` inside `Effect.tryPromise` in `sendGif`), so it is Tier B, like the other wrapped edges.
+- **Tests:** `src/components/Composer` (2 files): 44 passed before, 44 passed after. After: 3 runs pass 3/3. An earlier extra run, with the machine at load average ~34, failed `Composer.voice.test.tsx > clicks to record and sends through the Send button` once (the 400 ms hold timer elapsed between press and release, so release sent instead of locking; the old `setTimeout` has the same race). No new tests. Package typecheck (`pnpm --filter @zilar/web typecheck`): clean. `pnpm gate` not run (wave mode).
+- **Sites:**
+  - Recording tick (`setInterval` 100 ms): `Effect.repeat(tick, Schedule.spaced(100))` delayed by 100 ms, forked in the `[recording]` effect, interrupted in its cleanup.
+  - Hold timer (`setTimeout` 400 ms, `press.holdTimer`): forked `Effect.sleep(HOLD_MS)` that sets `press.hold`; `holdTimer` is now a `Fiber`; every `clearTimeout` became `stopTimer` (fiber interrupt).
+  - The "typing timer" named in the spec does not exist in Composer: typing is throttled with `Date.now()` and `lastTypingRef`, left as is.
+  - GIF `fetch` + `blob()` (`sendGif`): `Effect.tryPromise` with the abort `signal`, same request (`credentials: 'same-origin'`); `!ok` and empty blob fail with the same `ComposerFailure` and the same text "Could not load that GIF. Try another."; the success step builds the file and calls `store.sendAttachment` as before.
+  - `beginRecording`: `VoiceRecorder.start()` is called inside `Effect.tryPromise` run by `Effect.runFork`, which evaluates synchronously, so the call still happens in the click (existing test asserts `start` is called right after pointer-down). The success and failure handlers are the old code moved into `onRecorderStarted` / `onRecorderFailed`.
+  - `finishRecording`: `recorder.stop()`, `computeWaveform` and `store.sendVoice` are an `Effect.gen` with the same checks, the same order and the same texts; `onCancelReply` runs last on success only.
+  - `setPointerCapture` try/catch: `Effect.runSync(Effect.ignore(Effect.try(...)))`.
+- **Behaviour differences:** none intended. Small notes: `beginRecording` and `finishRecording` now return `void` (they are local and their callers used `void`); a throw from `store.sendAttachment` (GIF) or `onCancelReply` (voice) was an unhandled rejection before and is now a fiber defect (still unhandled, nothing shown to the user); continuations resume through the Effect scheduler instead of a bare `await`, so they land a few microtasks later (the tests flush with a macrotask and pass).
+- **Unsure / deviations:**
+  - The spec says T-0794 is merged and lists `*Effect` lib exports. On this branch (based on main at 545e2314) T-0794 is only on `task/T-0794-web-lib-ports`, so `voice.ts` and `attachments.ts` have no `*Effect` exports. I wrapped the Promise APIs (`VoiceRecorder.start`, `stop`, `computeWaveform`) with `Effect.tryPromise`; this keeps working after T-0794 merges. Switching to the `*Effect` versions later would be a small follow-up.
+  - I used one `sed -i` to drop `void ` before the `beginRecording`/`finishRecording` calls (mechanical rename, 7 lines); everything else was done with the edit tool.
+  - `docs/EFFECT_BRIEF.md` was read read-only from the main checkout (not in this worktree).
+
 ## Review (written by Claude)
+
+**2026-10-09, lead (wave 1):** approved. The lead reviewed the Report. The wave 1 combined check (all 12 branches on one tree, by hand) passed the whole-repo typecheck and every package suite: web 1916, server 2279, mobile 2222, xmpp-core 245, runner 63, runner-tunnel 71, devtools 796 after the T-0799 fix, chat-core 174, protocol 174.
+- Worker: Sonnet 5.5. Composer is an Effect file; recording starts inside the click; 44 tests pass 3 of 3 runs. Julio checks sending live before the next deploy.
