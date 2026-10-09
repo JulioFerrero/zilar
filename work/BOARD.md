@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0739](T-0739-server-image-pglite-dep.md) | HOTFIX: server image crashes at start (pglite devDependency); CI image smoke step | in-progress | haiku-5.5 | | |
 
 ## Follow-ups
 
@@ -769,3 +768,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0737](T-0737-sql-adapter-pg-timestamps.md) | D2 prep: auth adapter timestamps correct on real pg | 2026-10-09 |
 | [T-0738](T-0738-auth-switch-to-sql-adapter.md) | D2 switch: login on the effect/sql adapter | 2026-10-09 |
 | [T-0740](T-0740-git-proxy-effect.md) | A12: git proxy off Hono, Effect mount | 2026-10-09 |
+| [T-0739](T-0739-server-image-pglite-dep.md) | HOTFIX: server image starts (pglite dependency) + CI image smoke | 2026-10-09 |

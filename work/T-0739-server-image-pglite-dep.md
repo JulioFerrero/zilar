@@ -1,7 +1,7 @@
 ---
 id: T-0739
 title: "HOTFIX: the server image crashes at start (ERR_MODULE_NOT_FOUND @electric-sql/pglite, a devDependency imported by effect/sql.ts); move it to dependencies and add an image start smoke step in images.yml that fails before any push"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0739-server-image-pglite-dep
 model: auto
@@ -59,4 +59,62 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What changed
+- `apps/server/package.json`: `@electric-sql/pglite` `^0.5.8` moved from devDependencies to dependencies (placed after `@effect/sql-pglite`).
+- `pnpm-lock.yaml`: only the move (the importer entry moved from devDependencies to dependencies; same version 0.5.8). `git diff` shows 4 lines changed in the lockfile, nothing else.
+- `.github/workflows/images.yml`: one new step, "Smoke-start the server image (before any push)", with a comment above it citing this incident. It runs only for `matrix.name == 'zilar-server'` and sits before the no-push build and both push steps. It builds `linux/amd64` as `zilar-server:smoke`, runs it for at most 60 s with `NODE_ENV=production`, `DATABASE_URL=postgres://smoke:smoke@127.0.0.1:1/smoke`, and placeholder `BETTER_AUTH_SECRET`, `EJABBERD_ADMIN_JID`, `EJABBERD_ADMIN_PASSWORD` and `ZILAR_XMPP_JWT_SECRET` (the config-required values in `apps/server/src/config.ts` and `apps/server/src/xmpp/config.ts`). It fails the job if the output matches `ERR_MODULE_NOT_FOUND|Cannot find package|Cannot find module`. No other step was changed.
+- This file (Report and status) is the only other change.
+
+### Deviations from the spec
+- The build is a plain `docker build --platform linux/amd64 ... -t zilar-server:smoke .` inside the single `run:` step, not a `docker/build-push-action` step with `load: true`. The spec said "one step", and a plain build loads the image into the runner's daemon by default.
+- The run uses `timeout 60` (GNU coreutils, present on `ubuntu-latest`). macOS has no `timeout`, so my local run used `perl -e 'alarm 60; exec @ARGV' docker run ...` instead. I could not run the GitHub workflow itself here.
+- The step fails only on the grep, as the spec says. A non-module config error would therefore pass the step. A 124 exit (still running after 60 s) also passes.
+- Cost: the smoke build is uncached, so the `zilar-server` leg builds the image one extra time per run.
+
+### Local proof (commands run from the worktree root)
+1. `docker build -f apps/server/Dockerfile -t zilar-server:smoke .` (fixed package.json and lockfile): built OK (`naming to docker.io/library/zilar-server:smoke done`).
+2. Smoke run of the fixed image (`docker run --rm --name zilar-server-smoke -e NODE_ENV=production -e DATABASE_URL=postgres://smoke:smoke@127.0.0.1:1/smoke ...` plus the placeholder secrets, under a 60 s alarm). Last lines:
+   ```
+     query: 'CREATE SCHEMA IF NOT EXISTS "drizzle"',
+     params: [],
+     cause: Error: connect ECONNREFUSED 127.0.0.1:1
+     ...
+     code: 'ECONNREFUSED', syscall: 'connect', address: '127.0.0.1', port: 1
+   }
+   Node.js v24.11.1
+   ```
+   Exit 1 from the connection error. Grep count for `ERR_MODULE_NOT_FOUND|Cannot find package|Cannot find module`: 0. The server got past module loading and config parsing and stopped only at the unreachable database, which the spec counts as a pass.
+3. Old image: `git stash push -- apps/server/package.json pnpm-lock.yaml`, then `docker build -f apps/server/Dockerfile -t zilar-server:smoke-old .` (old files, built OK), then the same smoke run on `zilar-server:smoke-old`. Last lines:
+   ```
+   Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@electric-sql/pglite' imported from /app/src/effect/sql.ts
+     code: 'ERR_MODULE_NOT_FOUND'
+   ```
+   Exit 1. Grep count: 3. The smoke grep catches the old image.
+4. `git stash pop` restored both files (`git stash list` is empty). The smoke containers were removed (`--rm`, and `docker rm -f zilar-server-smoke` after each run). Local images `zilar-server:smoke` and `zilar-server:smoke-old` remain on this machine; nothing was pushed or logged in.
+
+### Checks
+- `pnpm install`: done (lockfile updated, the usual peer-dependency warning for apps/mobile is pre-existing).
+- `pnpm exec prettier --write apps/server/package.json .github/workflows/images.yml`: both unchanged after the final edit.
+- The workflow YAML parses (checked with the `yaml` package in node_modules): 1 smoke step, `if: matrix.name == 'zilar-server'`, placed before the no-push build.
+- `pnpm gate` (run from the worktree root, after the edits above):
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (13.0s)
+  PASS  lint  (1.1s)
+  PASS  typecheck  (4.0s)
+  SKIP tests @zilar/server (no nearby test files)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Open questions
+- None blocking. Please confirm that a plain `docker build` in the `run:` step is acceptable for the "load: true" wording, and that a non-module startup error passing the step is acceptable for a hotfix.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5, in one round (about 5.3 min). The lead reviewed the diff directly.
+- **The fix:** `@electric-sql/pglite` moved to `dependencies`; the lockfile changes only that entry.
+- **The CI step:** "Smoke-start the server image" runs for `zilar-server` before both push steps and in PR builds. It uses an unreachable DB and fails on module errors.
+- **Local proof:** the fixed image fails only with `ECONNREFUSED`, while the old image shows `ERR_MODULE_NOT_FOUND` and the grep catches it.
+- **Before redeploying:** the lead verifies the CI-built image against a scratch Postgres.

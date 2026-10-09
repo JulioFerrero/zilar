@@ -112,6 +112,37 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Why this step exists (T-0739): on 2026-10-09 the server image crash-looped
+      # at start (ERR_MODULE_NOT_FOUND for @electric-sql/pglite, a devDependency),
+      # CI never ran the built image, and the broken image was pushed as latest.
+      # Start the server image here, before any push. The database is unreachable
+      # on purpose (port 1): the check is only that the modules load and the config
+      # parses. A connection error passes; a module error fails the job.
+      - name: Smoke-start the server image (before any push)
+        if: matrix.name == 'zilar-server'
+        env:
+          SMOKE_DATABASE_URL: postgres://smoke:smoke@127.0.0.1:1/smoke
+          SMOKE_AUTH_SECRET: smoke-only-placeholder-not-a-real-secret
+          SMOKE_XMPP_SECRET: smoke-only-placeholder-not-a-real-secret
+        run: |
+          docker build --platform linux/amd64 -f apps/server/Dockerfile -t zilar-server:smoke .
+          status=0
+          out="$(timeout 60 docker run --rm --name zilar-server-smoke \
+            -e NODE_ENV=production \
+            -e DATABASE_URL="$SMOKE_DATABASE_URL" \
+            -e BETTER_AUTH_SECRET="$SMOKE_AUTH_SECRET" \
+            -e EJABBERD_ADMIN_JID=admin@zilar.localhost \
+            -e EJABBERD_ADMIN_PASSWORD=smoke-only-placeholder \
+            -e ZILAR_XMPP_JWT_SECRET="$SMOKE_XMPP_SECRET" \
+            zilar-server:smoke 2>&1)" || status=$?
+          docker rm -f zilar-server-smoke >/dev/null 2>&1 || true
+          printf '%s\n' "$out" | tail -n 40
+          echo "Smoke run exit status: ${status} (124 means still running after 60 seconds)."
+          if printf '%s\n' "$out" | grep -E 'ERR_MODULE_NOT_FOUND|Cannot find package|Cannot find module'; then
+            echo "::error::The server image cannot load its modules; it must not be pushed."
+            exit 1
+          fi
+
       - name: Build ${{ matrix.name }} (no push)
         if: "!startsWith(github.ref, 'refs/tags/v') && github.event_name != 'workflow_run'"
         uses: docker/build-push-action@v7

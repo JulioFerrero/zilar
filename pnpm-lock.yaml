@@ -240,6 +240,9 @@ importers:
       '@effect/sql-pglite':
         specifier: 4.0.2
         version: 4.0.2(effect@4.0.2)
+      '@electric-sql/pglite':
+        specifier: ^0.5.8
+        version: 0.5.8
       '@types/web-push':
         specifier: ^3.6.4
         version: 3.6.4
@@ -286,9 +289,6 @@ importers:
         specifier: ^3.6.7
         version: 3.6.7
     devDependencies:
-      '@electric-sql/pglite':
-        specifier: ^0.5.8
-        version: 0.5.8
       '@types/nodemailer':
         specifier: ^8.0.2
         version: 8.0.2
