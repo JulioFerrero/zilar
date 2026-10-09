@@ -1,7 +1,7 @@
 ---
 id: T-0776
 title: "WU8: web machines on Effect — routes/MachinesPage, components/machines/AddMachineDialog, components/machines/ApprovedMachineCard use useAction/useQuery/fromApi (per-row actions per row, pairing poll/countdown as Effects); no async, try or timers in the components; same text and behaviour; a new ApprovedMachineCard test"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0776-web-machines
 model: auto
@@ -64,4 +64,41 @@ Run `pnpm effect:map` and list the three kinds in the Report.
 
 ## Report (written by the worker when done)
 
+**Result:** the three files now use Effect (`useAction`, `useQuery`, `fromApi`); no `async`, `await`, `.then(`, `try`/`catch`, `setTimeout` or `setInterval` remains in them (grep checked). The new `ApprovedMachineCard.test.tsx` is added. No existing test was edited.
+
+**Files changed**
+- `apps/web/src/routes/MachinesPage.tsx`: effect:map kind `effect`
+- `apps/web/src/components/machines/AddMachineDialog.tsx`: kind `effect`
+- `apps/web/src/components/machines/ApprovedMachineCard.tsx`: kind `plain` (see the first unsure point)
+- `apps/web/src/components/machines/ApprovedMachineCard.test.tsx`: new, 6 tests
+- `work/T-0776-web-machines.md`: this Report and `status: review`
+
+**Tests**
+- Before: `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/routes/MachinesPage src/components/machines`: 3 files, 21 passed.
+- After, same command: 4 files, 27 passed (the 21 old tests unchanged, plus 6 new).
+
+**Gate** (`pnpm gate` from the worktree root): `gate: 4 changed file(s) against main`, then `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS effect`, `PASS tests @zilar/web`, `scope: every changed file is inside the Allowed files`, `GATE PASS`. Before it: `tsc --noEmit` and `oxlint` on the changed files were clean.
+
+**Design**
+- MachinesPage: the machine list is a `useQuery` (its success writes the list state). Each row is a small component with its own `useAction`s: `PendingRow` (approve, deny), `ApprovedRow` (rename, revoke), `RevokedRow` (delete). So rows run at once while a double click on one row waits. Confirm state stays page-level with one id, as before. The AI list is a `useQuery` for the first load, plus a page-level `useAction` in replace mode for the refresh after a revoke. The refresh must be on the page because a revoke unmounts the row. A failed refresh keeps the list.
+- AddMachineDialog: the code is a `useQuery` with `refresh` for "Try again" and "New code". The countdown is a second `useQuery`, keyed on the code's `expiresAt`. Its Effect `countDown` sleeps 1000 ms, then reports the time left. At 0 or less it reports 0 and ends, which is what shows "Code expired". The run stops at expiry, when a new code replaces it (the deps change drops the old run), and when the dialog closes or unmounts (the hook interrupts it). The Escape test passes; the interruption itself is not tested separately. The first tick is after one second, as with the old interval. The copy flash is a `useAction` in replace mode: copy, `Effect.sleep(1500)`, then clear.
+- Failure text: `failureText` maps the `ApiFailure` back to `machineErrorMessage`, so every API message is the same string. A non-API throw shows the component's fallback sentence.
+
+**Behaviour changes**
+1. Rename: the field closes at once on Enter or blur. Before, it closed after the request. The optimistic name and the rollback on failure are unchanged. The card no longer awaits.
+2. A throw that is not an `ApiError` shows the component's fallback sentence, not the thrown message (AGENTS allows this).
+3. Double click on Confirm Revoke, Deny or Delete while the call runs now sends once. Before, it sent twice. The rename pencil and Approve were already disabled while running.
+4. A second Copy click restarts the 1.5 s "Copied" flash. Before, the first timer could end it early.
+5. `ApprovedMachineCard.onRename` is typed `(name: string) => void`, not `Promise<void> | void`.
+
+**Unsure / for the lead**
+- The spec asked ApprovedMachineCard to use the hooks and to import Effect. Its actions come in as props (`renaming`, `revoking`, `onRename`, ...), and the card must keep its props, so its actions stay in the page's row. The card now has no async work and imports nothing from Effect, so it is kind `plain`. The new test renders it with plain props and `vi.fn` callbacks; it does not mock the API, because the card makes no API call.
+- `failureText` is now in both MachinesPage.tsx and AddMachineDialog.tsx. `errors.ts` is not in Allowed files, so a later task should move it there.
+
 ## Review (written by Claude)
+
+**2026-10-09, lead:** approved. Worker: Haiku 5.5. The lead reviewed the Report.
+- **The files:** MachinesPage and AddMachineDialog are Effect files; ApprovedMachineCard is plain, which is correct because its actions live in the page's row component.
+- **The countdown:** an Effect, interrupted on expiry, on a new code or on close.
+- **Behaviour changes accepted:** the rename field closes at once, fixed fallbacks, a double click sends once, and Copy restarts the flash.
+- **Results:** tests go from 21 to 27, and the gate passed.

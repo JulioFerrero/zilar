@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { useNavigate } from 'react-router';
 import { ChevronDown, Plus, Server } from 'lucide-react';
 import {
+  ApiError,
   approveMachine,
   deleteMachine,
   denyMachine,
@@ -11,6 +14,16 @@ import {
   revokeMachine,
 } from '@/lib/api';
 import type { Machine, PublicAi } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import {
+  failureOf,
+  isWaiting,
+  useAction,
+  type ActionControls,
+  type ActionState,
+} from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { Button } from '@/components/ais/AiPageShell';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { StateMessage } from '@/components/ui/state-message';
@@ -23,230 +36,57 @@ import { machineErrorMessage } from '@/components/machines/errors';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
-interface PendingActionState {
-  approve: string | null;
-  deny: string | null;
-  revoke: string | null;
-  rename: string | null;
-  delete: string | null;
-}
-
-const EMPTY_PENDING: PendingActionState = {
-  approve: null,
-  deny: null,
-  revoke: null,
-  rename: null,
-  delete: null,
-};
-
 interface ConfirmingState {
   deny: string | null;
   revoke: string | null;
   delete: string | null;
 }
 
+type ConfirmKind = keyof ConfirmingState;
+
 const EMPTY_CONFIRMING: ConfirmingState = { deny: null, revoke: null, delete: null };
 
 /** Settings → Machines. List, add, approve/deny, rename, revoke, delete. */
 export function MachinesPage() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState<PageStatus>('loading');
   const [machines, setMachines] = useState<Machine[]>([]);
-  const [errorMessage, setErrorMessage] = useState('');
   const [adding, setAdding] = useState(false);
   const [confirming, setConfirming] = useState<ConfirmingState>(EMPTY_CONFIRMING);
-  const [pending, setPending] = useState<PendingActionState>(EMPTY_PENDING);
-  const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
   const [showRevoked, setShowRevoked] = useState(false);
   // T-0091: the owner's AIs, used to label each approved machine card with
   // the AIs whose home machine it is. `null` means the load failed: the
   // card hides its "AIs: …" line and the rest of the page keeps working.
   const [ais, setAis] = useState<PublicAi[] | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const list = await listMachines();
-      setMachines(list);
-      setStatus('ready');
-      setErrorMessage('');
-    } catch (error) {
-      setErrorMessage(machineErrorMessage(error, 'Could not load your machines.'));
-      setStatus('error');
-    }
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    listMachines()
-      .then((list) => {
-        if (active) {
-          setMachines(list);
-          setStatus('ready');
-          setErrorMessage('');
-        }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setErrorMessage(machineErrorMessage(error, 'Could not load your machines.'));
-          setStatus('error');
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const [loadState, reload] = useQuery(
+    () =>
+      fromApi(() => listMachines()).pipe(
+        Effect.tap((list) => Effect.sync(() => setMachines(list))),
+      ),
+    [],
+  );
 
   // T-0091: load the owner's AIs so the approved machine card can list
   // "AIs: A, B". The load is independent of the machines load: a failure
-  // here just hides the line on each card, never blocks the page.
-  useEffect(() => {
-    let active = true;
-    listAis()
-      .then((list) => {
-        if (active) {
-          setAis(list);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setAis(null);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  // here just hides the line on each card, never blocks the page. A refresh
+  // that fails keeps the list it had.
+  const loadAis = fromApi(() => listAis()).pipe(
+    Effect.tap((list) => Effect.sync(() => setAis(list))),
+    Effect.catchTag('ApiFailure', () => Effect.void),
+  );
+  useQuery(() => loadAis, []);
+  const [, refreshAis] = useAction<void, void, never>(() => loadAis, { mode: 'replace' });
 
-  const retry = (): void => {
-    setStatus('loading');
-    void load();
+  const replaceMachine = (id: string, next: Machine): void => {
+    setMachines((previous) => previous.map((m) => (m.id === id ? next : m)));
   };
 
-  const setActionError = (key: string, message: string): void => {
-    setActionErrors((previous) => ({ ...previous, [key]: message }));
+  const removeMachine = (id: string): void => {
+    setMachines((previous) => previous.filter((m) => m.id !== id));
   };
 
-  const clearActionError = (key: string): void => {
-    setActionErrors((previous) => {
-      if (!(key in previous)) {
-        return previous;
-      }
-      const { [key]: _removed, ...rest } = previous;
-      void _removed;
-      return rest;
-    });
-  };
-
-  const approve = async (id: string): Promise<void> => {
-    setPending((p) => ({ ...p, approve: id }));
-    clearActionError(`approve:${id}`);
-    try {
-      const updated = await approveMachine(id);
-      setMachines((previous) => previous.map((m) => (m.id === id ? updated : m)));
-    } catch (error) {
-      setActionError(`approve:${id}`, machineErrorMessage(error, 'Could not approve the machine.'));
-    } finally {
-      setPending((p) => ({ ...p, approve: null }));
-    }
-  };
-
-  const askDeny = (id: string): void => {
-    setConfirming((c) => ({ ...c, deny: id }));
-    clearActionError(`deny:${id}`);
-  };
-  const cancelDeny = (id: string): void => {
-    setConfirming((c) => ({ ...c, deny: null }));
-    clearActionError(`deny:${id}`);
-  };
-  const confirmDeny = async (id: string): Promise<void> => {
-    setPending((p) => ({ ...p, deny: id }));
-    clearActionError(`deny:${id}`);
-    try {
-      await denyMachine(id);
-      setMachines((previous) => previous.filter((m) => m.id !== id));
-      setConfirming((c) => ({ ...c, deny: null }));
-    } catch (error) {
-      setActionError(`deny:${id}`, machineErrorMessage(error, 'Could not deny the machine.'));
-    } finally {
-      setPending((p) => ({ ...p, deny: null }));
-    }
-  };
-
-  const askRevoke = (id: string): void => {
-    setConfirming((c) => ({ ...c, revoke: id }));
-    clearActionError(`revoke:${id}`);
-  };
-  const cancelRevoke = (id: string): void => {
-    setConfirming((c) => ({ ...c, revoke: null }));
-    clearActionError(`revoke:${id}`);
-  };
-  const confirmRevoke = async (id: string): Promise<void> => {
-    setPending((p) => ({ ...p, revoke: id }));
-    clearActionError(`revoke:${id}`);
-    try {
-      const updated = await revokeMachine(id);
-      setMachines((previous) => previous.map((m) => (m.id === id ? updated : m)));
-      setConfirming((c) => ({ ...c, revoke: null }));
-      // T-0091: the server clears `ais.machineId` for the revoked machine
-      // in the same transaction, so refresh the AI list to keep the card
-      // labels in step. Best-effort: a failure here just leaves the
-      // previous names until the next load.
-      listAis()
-        .then((list) => {
-          setAis(list);
-        })
-        .catch(() => {
-          // Keep the existing list; the card will refresh on the next
-          // load or a future change.
-        });
-    } catch (error) {
-      setActionError(`revoke:${id}`, machineErrorMessage(error, 'Could not revoke the machine.'));
-    } finally {
-      setPending((p) => ({ ...p, revoke: null }));
-    }
-  };
-
-  const rename = async (id: string, name: string): Promise<void> => {
-    setPending((p) => ({ ...p, rename: id }));
-    clearActionError(`rename:${id}`);
-    const previous = machines.find((m) => m.id === id);
-    // Optimistic: update the local list so the inline edit feels instant.
-    if (previous !== undefined) {
-      setMachines((list) => list.map((m) => (m.id === id ? { ...m, name } : m)));
-    }
-    try {
-      const updated = await renameMachine(id, name);
-      setMachines((list) => list.map((m) => (m.id === id ? updated : m)));
-    } catch (error) {
-      if (previous !== undefined) {
-        setMachines((list) => list.map((m) => (m.id === id ? previous : m)));
-      }
-      setActionError(`rename:${id}`, machineErrorMessage(error, 'Could not rename the machine.'));
-    } finally {
-      setPending((p) => ({ ...p, rename: null }));
-    }
-  };
-
-  const askDelete = (id: string): void => {
-    setConfirming((c) => ({ ...c, delete: id }));
-    clearActionError(`delete:${id}`);
-  };
-  const cancelDelete = (id: string): void => {
-    setConfirming((c) => ({ ...c, delete: null }));
-    clearActionError(`delete:${id}`);
-  };
-  const confirmDelete = async (id: string): Promise<void> => {
-    setPending((p) => ({ ...p, delete: id }));
-    clearActionError(`delete:${id}`);
-    try {
-      await deleteMachine(id);
-      setMachines((previous) => previous.filter((m) => m.id !== id));
-      setConfirming((c) => ({ ...c, delete: null }));
-    } catch (error) {
-      setActionError(`delete:${id}`, machineErrorMessage(error, 'Could not delete the machine.'));
-    } finally {
-      setPending((p) => ({ ...p, delete: null }));
-    }
+  const setConfirm = (kind: ConfirmKind, id: string | null): void => {
+    setConfirming((c) => ({ ...c, [kind]: id }));
   };
 
   const pendingMachines = machines.filter((m) => m.status === 'pending');
@@ -272,6 +112,15 @@ export function MachinesPage() {
     return map;
   }, [ais]);
 
+  const loading = isWaiting(loadState) || AsyncResult.isInitial(loadState);
+  const status: PageStatus = loading
+    ? 'loading'
+    : AsyncResult.isFailure(loadState)
+      ? 'error'
+      : 'ready';
+  const loadError =
+    status === 'error' ? failureText(failureOf(loadState), 'Could not load your machines.') : '';
+
   return (
     <SettingsShell
       title="Machines"
@@ -284,8 +133,8 @@ export function MachinesPage() {
         {status === 'error' && (
           <StateMessage
             kind="error"
-            title={errorMessage}
-            action={{ label: 'Retry', onClick: retry }}
+            title={loadError}
+            action={{ label: 'Retry', onClick: reload }}
           />
         )}
 
@@ -318,20 +167,12 @@ export function MachinesPage() {
                     <ul className="flex flex-col gap-2">
                       {pendingMachines.map((machine) => (
                         <li key={machine.id}>
-                          <PendingMachineCard
+                          <PendingRow
                             machine={machine}
-                            approving={pending.approve === machine.id}
-                            denying={pending.deny === machine.id}
                             confirmingDeny={confirming.deny === machine.id}
-                            actionError={
-                              actionErrors[`deny:${machine.id}`] ??
-                              actionErrors[`approve:${machine.id}`] ??
-                              ''
-                            }
-                            onApprove={() => void approve(machine.id)}
-                            onAskDeny={() => askDeny(machine.id)}
-                            onCancelDeny={() => cancelDeny(machine.id)}
-                            onConfirmDeny={() => void confirmDeny(machine.id)}
+                            onConfirm={(id) => setConfirm('deny', id)}
+                            onUpdate={replaceMachine}
+                            onRemove={removeMachine}
                           />
                         </li>
                       ))}
@@ -358,21 +199,13 @@ export function MachinesPage() {
                     <ul className="flex flex-col gap-2">
                       {approvedMachines.map((machine) => (
                         <li key={machine.id}>
-                          <ApprovedMachineCard
+                          <ApprovedRow
                             machine={machine}
-                            renaming={pending.rename === machine.id}
-                            revoking={pending.revoke === machine.id}
                             confirmingRevoke={confirming.revoke === machine.id}
-                            actionError={
-                              actionErrors[`rename:${machine.id}`] ??
-                              actionErrors[`revoke:${machine.id}`] ??
-                              ''
-                            }
                             aiNames={ais === null ? null : (aisByMachineId.get(machine.id) ?? [])}
-                            onRename={(name) => rename(machine.id, name)}
-                            onAskRevoke={() => askRevoke(machine.id)}
-                            onCancelRevoke={() => cancelRevoke(machine.id)}
-                            onConfirmRevoke={() => void confirmRevoke(machine.id)}
+                            onConfirm={(id) => setConfirm('revoke', id)}
+                            onUpdate={replaceMachine}
+                            onAisChanged={() => refreshAis()}
                           />
                         </li>
                       ))}
@@ -414,14 +247,11 @@ export function MachinesPage() {
                       <ul className="flex flex-col gap-2">
                         {revokedMachines.map((machine) => (
                           <li key={machine.id}>
-                            <RevokedMachineCard
+                            <RevokedRow
                               machine={machine}
-                              deleting={pending.delete === machine.id}
                               confirmingDelete={confirming.delete === machine.id}
-                              actionError={actionErrors[`delete:${machine.id}`] ?? ''}
-                              onAskDelete={() => askDelete(machine.id)}
-                              onCancelDelete={() => cancelDelete(machine.id)}
-                              onConfirmDelete={() => void confirmDelete(machine.id)}
+                              onConfirm={(id) => setConfirm('delete', id)}
+                              onRemove={removeMachine}
                             />
                           </li>
                         ))}
@@ -437,5 +267,207 @@ export function MachinesPage() {
 
       {adding && <AddMachineDialog onClose={() => setAdding(false)} />}
     </SettingsShell>
+  );
+}
+
+interface PendingRowProps {
+  machine: Machine;
+  confirmingDeny: boolean;
+  onConfirm: (id: string | null) => void;
+  onUpdate: (id: string, next: Machine) => void;
+  onRemove: (id: string) => void;
+}
+
+/**
+ * One pending machine with its own Approve and Deny actions, so two rows can
+ * run at once while a second click on the same row waits for the first.
+ */
+function PendingRow({ machine, confirmingDeny, onConfirm, onUpdate, onRemove }: PendingRowProps) {
+  const [approveState, approve] = useAction((id: string) =>
+    fromApi(() => approveMachine(id)).pipe(
+      Effect.tap((updated) => Effect.sync(() => onUpdate(id, updated))),
+    ),
+  );
+  const [denyState, deny, denyControls] = useAction((id: string) =>
+    fromApi(() => denyMachine(id)).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          onRemove(id);
+          onConfirm(null);
+        }),
+      ),
+    ),
+  );
+
+  const denyFailure = shownFailure(denyState);
+  const approveFailure = shownFailure(approveState);
+  const actionError =
+    denyFailure !== undefined
+      ? failureText(denyFailure, 'Could not deny the machine.')
+      : approveFailure !== undefined
+        ? failureText(approveFailure, 'Could not approve the machine.')
+        : '';
+
+  return (
+    <PendingMachineCard
+      machine={machine}
+      approving={isWaiting(approveState)}
+      denying={isWaiting(denyState)}
+      confirmingDeny={confirmingDeny}
+      actionError={actionError}
+      onApprove={() => approve(machine.id)}
+      onAskDeny={() => {
+        clearFailure(denyState, denyControls);
+        onConfirm(machine.id);
+      }}
+      onCancelDeny={() => {
+        clearFailure(denyState, denyControls);
+        onConfirm(null);
+      }}
+      onConfirmDeny={() => deny(machine.id)}
+    />
+  );
+}
+
+interface ApprovedRowProps {
+  machine: Machine;
+  confirmingRevoke: boolean;
+  aiNames: string[] | null;
+  onConfirm: (id: string | null) => void;
+  onUpdate: (id: string, next: Machine) => void;
+  onAisChanged: () => void;
+}
+
+/**
+ * One approved machine with its own rename and revoke actions. A revoke moves
+ * the machine out of this section, so the AI list refresh runs on the page
+ * (through `onAisChanged`), which stays mounted.
+ */
+function ApprovedRow({
+  machine,
+  confirmingRevoke,
+  aiNames,
+  onConfirm,
+  onUpdate,
+  onAisChanged,
+}: ApprovedRowProps) {
+  const [renameState, rename] = useAction((name: string) =>
+    // Optimistic: the new name shows at once and goes back if the server refuses.
+    Effect.sync(() => onUpdate(machine.id, { ...machine, name })).pipe(
+      Effect.andThen(fromApi(() => renameMachine(machine.id, name))),
+      Effect.tap((updated) => Effect.sync(() => onUpdate(machine.id, updated))),
+      Effect.tapError(() => Effect.sync(() => onUpdate(machine.id, machine))),
+    ),
+  );
+  const [revokeState, revoke, revokeControls] = useAction((id: string) =>
+    fromApi(() => revokeMachine(id)).pipe(
+      Effect.tap((updated) =>
+        Effect.sync(() => {
+          onAisChanged();
+          onConfirm(null);
+          onUpdate(id, updated);
+        }),
+      ),
+    ),
+  );
+
+  const renameFailure = shownFailure(renameState);
+  const revokeFailure = shownFailure(revokeState);
+  const actionError =
+    renameFailure !== undefined
+      ? failureText(renameFailure, 'Could not rename the machine.')
+      : revokeFailure !== undefined
+        ? failureText(revokeFailure, 'Could not revoke the machine.')
+        : '';
+
+  return (
+    <ApprovedMachineCard
+      machine={machine}
+      renaming={isWaiting(renameState)}
+      revoking={isWaiting(revokeState)}
+      confirmingRevoke={confirmingRevoke}
+      actionError={actionError}
+      aiNames={aiNames}
+      onRename={(name) => rename(name)}
+      onAskRevoke={() => {
+        clearFailure(revokeState, revokeControls);
+        onConfirm(machine.id);
+      }}
+      onCancelRevoke={() => {
+        clearFailure(revokeState, revokeControls);
+        onConfirm(null);
+      }}
+      onConfirmRevoke={() => revoke(machine.id)}
+    />
+  );
+}
+
+interface RevokedRowProps {
+  machine: Machine;
+  confirmingDelete: boolean;
+  onConfirm: (id: string | null) => void;
+  onRemove: (id: string) => void;
+}
+
+/** One revoked machine with its own delete action. */
+function RevokedRow({ machine, confirmingDelete, onConfirm, onRemove }: RevokedRowProps) {
+  const [deleteState, deleteMachineRow, deleteControls] = useAction((id: string) =>
+    fromApi(() => deleteMachine(id)).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          onRemove(id);
+          onConfirm(null);
+        }),
+      ),
+    ),
+  );
+
+  const deleteFailure = shownFailure(deleteState);
+  const actionError =
+    deleteFailure !== undefined ? failureText(deleteFailure, 'Could not delete the machine.') : '';
+
+  return (
+    <RevokedMachineCard
+      machine={machine}
+      deleting={isWaiting(deleteState)}
+      confirmingDelete={confirmingDelete}
+      actionError={actionError}
+      onAskDelete={() => {
+        clearFailure(deleteState, deleteControls);
+        onConfirm(machine.id);
+      }}
+      onCancelDelete={() => {
+        clearFailure(deleteState, deleteControls);
+        onConfirm(null);
+      }}
+      onConfirmDelete={() => deleteMachineRow(machine.id)}
+    />
+  );
+}
+
+/** The last typed failure of a call, hidden while a new call runs. */
+function shownFailure<A>(state: ActionState<A, ApiFailure>): ApiFailure | undefined {
+  return isWaiting(state) ? undefined : failureOf(state);
+}
+
+/** Clears the failure an earlier call left; a call that is still running is not interrupted. */
+function clearFailure<A>(state: ActionState<A, ApiFailure>, controls: ActionControls): void {
+  if (!isWaiting(state)) {
+    controls.reset();
+  }
+}
+
+/**
+ * The text machineErrorMessage gives for an API answer. fromApi keeps an
+ * ApiError's code, status and message; any other throw became the generic
+ * unknown_error, which shows the fallback sentence instead.
+ */
+function failureText(failure: ApiFailure | undefined, fallback: string): string {
+  if (failure === undefined || failure.code === 'unknown_error') {
+    return fallback;
+  }
+  return machineErrorMessage(
+    new ApiError(failure.status, failure.code, failure.message, failure.detail),
+    fallback,
   );
 }
