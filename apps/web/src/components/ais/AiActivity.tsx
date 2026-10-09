@@ -1,6 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import { Effect } from 'effect';
 import { RefreshCw } from 'lucide-react';
 import { listAudit, type AuditScope, type PublicAuditEntry } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useDelayed } from '@/lib/useDelayed';
@@ -80,6 +85,12 @@ interface LoadState {
   message: string;
 }
 
+// A failure without a server status did not come from api.ts: it shows the
+// component's fixed sentence, never the thrown text (AGENTS.md).
+function auditFailureText(failure: ApiFailure, fallback: string): string {
+  return failure.status === 0 ? fallback : failure.message;
+}
+
 function serialiseScope(scope: AuditScope): string {
   return 'aiId' in scope ? `ai:${scope.aiId}` : `group:${scope.groupId}`;
 }
@@ -97,80 +108,66 @@ export function ActivitySection({ scope }: { scope: AuditScope }) {
     next: null,
     message: '',
   });
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [refreshTick, setRefreshTick] = useState(0);
-
   const scopeKey = serialiseScope(scope);
-  // A ref tracks the latest scope so the effect body can spread it without
-  // re-running on every render: callers pass a fresh `{ aiId }` / `{ groupId
-  // }` literal each render, and including `scope` in the deps would loop.
-  const scopeRef = useRef<AuditScope>(scope);
-  useEffect(() => {
-    scopeRef.current = scope;
+  // The first page is read once per scope key; Refresh and Retry call `reload`.
+  // Callers pass a fresh `{ aiId }` / `{ groupId }` literal each render, so the
+  // key, not the object, decides when to read again. A finished read replaces
+  // the list; while a Refresh runs, the rows on screen stay.
+  const [, reload] = useQuery(
+    () =>
+      fromApi(() => listAudit({ ...scope, limit: PAGE_LIMIT })).pipe(
+        Effect.tap((page) =>
+          Effect.sync(() =>
+            setState({ status: 'ready', entries: page.entries, next: page.next, message: '' }),
+          ),
+        ),
+        Effect.tapError((failure) =>
+          Effect.sync(() =>
+            setState({
+              status: 'error',
+              entries: [],
+              next: null,
+              message: auditFailureText(failure, 'Could not load activity.'),
+            }),
+          ),
+        ),
+      ),
+    [scopeKey],
+  );
+
+  // One load-more at a time: a second click while a page loads is dropped.
+  const [moreState, loadMore] = useAction<void, void, never>(() => {
+    const next = state.next;
+    if (next === null) {
+      return Effect.void;
+    }
+    return fromApi(() => listAudit({ ...scope, limit: PAGE_LIMIT, before: next })).pipe(
+      Effect.tap((more) =>
+        Effect.sync(() =>
+          setState((current) => {
+            const seen = new Set(current.entries.map((entry) => entry.id));
+            const merged = [...current.entries];
+            for (const entry of more.entries) {
+              if (!seen.has(entry.id)) {
+                merged.push(entry);
+                seen.add(entry.id);
+              }
+            }
+            return { ...current, entries: merged, next: more.next, message: '' };
+          }),
+        ),
+      ),
+      Effect.catchTag('ApiFailure', (failure) =>
+        Effect.sync(() =>
+          setState((current) => ({
+            ...current,
+            message: auditFailureText(failure, 'Could not load more activity.'),
+          })),
+        ),
+      ),
+    );
   });
-
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      try {
-        const page = await listAudit({ ...scopeRef.current, limit: PAGE_LIMIT });
-        if (!active) {
-          return;
-        }
-        setState({
-          status: 'ready',
-          entries: page.entries,
-          next: page.next,
-          message: '',
-        });
-      } catch (error) {
-        if (!active) {
-          return;
-        }
-        setState({
-          status: 'error',
-          entries: [],
-          next: null,
-          message: error instanceof Error ? error.message : 'Could not load activity.',
-        });
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [scopeKey, refreshTick]);
-
-  const loadMore = async (): Promise<void> => {
-    if (state.next === null || loadingMore) {
-      return;
-    }
-    setLoadingMore(true);
-    try {
-      const page = await listAudit({ ...scope, limit: PAGE_LIMIT, before: state.next });
-      setState((current) => {
-        const seen = new Set(current.entries.map((entry) => entry.id));
-        const merged = [...current.entries];
-        for (const entry of page.entries) {
-          if (!seen.has(entry.id)) {
-            merged.push(entry);
-            seen.add(entry.id);
-          }
-        }
-        return { ...current, entries: merged, next: page.next, message: '' };
-      });
-    } catch (error) {
-      setState((current) => ({
-        ...current,
-        message: error instanceof Error ? error.message : 'Could not load more activity.',
-      }));
-    } finally {
-      setLoadingMore(false);
-    }
-  };
-
-  const refresh = (): void => {
-    setRefreshTick((tick) => tick + 1);
-  };
+  const loadingMore = isWaiting(moreState);
 
   return (
     <section aria-label="Activity" className="flex flex-col gap-2 border-t border-divider pt-4">
@@ -182,7 +179,7 @@ export function ActivitySection({ scope }: { scope: AuditScope }) {
             variant="ghost"
             size="icon-sm"
             aria-label="Refresh activity"
-            onClick={refresh}
+            onClick={reload}
             className="rounded-full text-muted-foreground"
           >
             <RefreshCw className="size-4" aria-hidden="true" />
@@ -195,12 +192,7 @@ export function ActivitySection({ scope }: { scope: AuditScope }) {
       {state.status === 'error' && state.entries.length === 0 && (
         <div className="flex flex-col gap-2">
           <FieldError>{state.message}</FieldError>
-          <Button
-            type="button"
-            size="lg"
-            className="self-start rounded-full px-5"
-            onClick={refresh}
-          >
+          <Button type="button" size="lg" className="self-start rounded-full px-5" onClick={reload}>
             Retry
           </Button>
         </div>
@@ -218,7 +210,7 @@ export function ActivitySection({ scope }: { scope: AuditScope }) {
           size="lg"
           className="self-start rounded-full px-5"
           disabled={loadingMore}
-          onClick={() => void loadMore()}
+          onClick={() => loadMore()}
         >
           {loadingMore ? 'Loading…' : 'Load more'}
         </Button>

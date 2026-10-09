@@ -1,6 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { Brain, Trash2 } from 'lucide-react';
-import { ApiError, clearAiMemory, forgetAiMemoryFact, getAiMemory, type AiMemory } from '@/lib/api';
+import { clearAiMemory, forgetAiMemoryFact, getAiMemory, type AiMemory } from '@/lib/api';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { ApiFailure } from '@/lib/effect/errors';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -10,6 +16,8 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 const LINE_PREFIX = /^#\d+(?:-\d+)? /;
 
 type LoadStatus = 'loading' | 'ready' | 'error';
+
+const isNotFound = (failure: ApiFailure): boolean => failure.status === 404;
 
 /**
  * T-0443: the AI's memory in this DM. It stays collapsed, and makes no
@@ -31,85 +39,73 @@ export function AiMemorySection({
   initiallyOpen?: boolean;
 }) {
   const [open, setOpen] = useState(initiallyOpen);
-  const [status, setStatus] = useState<LoadStatus>('loading');
-  const [memory, setMemory] = useState<AiMemory | null>(null);
   const [forgetError, setForgetError] = useState('');
   const [forgettingId, setForgettingId] = useState<string | null>(null);
   const [clearError, setClearError] = useState('');
   const [confirmingClear, setConfirmingClear] = useState(false);
-  const [reloadTick, setReloadTick] = useState(0);
+  // Facts forgotten since the last read: they stay hidden until the next read.
+  const [forgottenIds, setForgottenIds] = useState<ReadonlySet<string>>(() => new Set());
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    let active = true;
-    getAiMemory(chat, aiId)
-      .then((loaded) => {
-        if (!active) {
-          return;
-        }
-        setMemory(loaded);
-        setStatus('ready');
-      })
-      .catch(() => {
-        if (!active) {
-          return;
-        }
-        setStatus('error');
-      });
-    return () => {
-      active = false;
-    };
-  }, [open, chat, aiId, reloadTick]);
+  // The memory is read only while the section is open. A closed section holds
+  // the read back with Effect.never; opening it builds the real read.
+  const [loaded, reload] = useQuery(
+    (): Effect.Effect<AiMemory, ApiFailure> =>
+      open ? fromApi(() => getAiMemory(chat, aiId)) : Effect.never,
+    [open, chat, aiId],
+  );
+  const loadedMemory = AsyncResult.isSuccess(loaded) && !isWaiting(loaded) ? loaded.value : null;
+  const loadFailure = isWaiting(loaded) ? undefined : failureOf(loaded);
+  const status: LoadStatus =
+    loadedMemory !== null ? 'ready' : loadFailure !== undefined ? 'error' : 'loading';
+  const memory =
+    loadedMemory === null
+      ? null
+      : {
+          ...loadedMemory,
+          facts: loadedMemory.facts.filter((fact) => !forgottenIds.has(fact.id)),
+        };
 
-  // The loading state is set from the event that starts a load (open, retry
-  // or the reload after a clear), not synchronously inside the effect.
+  // Clears the local state of the last read: a retry, a show or the read after a clear.
+  const resetLocal = (): void => {
+    setForgottenIds(new Set());
+    setForgetError('');
+    setClearError('');
+  };
+
   const startLoad = (): void => {
-    setStatus('loading');
-    setForgetError('');
-    setClearError('');
-    setReloadTick((tick) => tick + 1);
+    resetLocal();
+    reload();
   };
 
-  const forget = async (factId: string): Promise<void> => {
-    // Ignore further clicks while a forget is in flight: the row's button is
-    // disabled while it is the one being forgotten, and this guard stops a
-    // second request for any fact.
-    if (forgettingId !== null) {
-      return;
-    }
-    setForgetError('');
-    setForgettingId(factId);
-    try {
-      await forgetAiMemoryFact(chat, aiId, factId);
-    } catch (error) {
-      // A 404 means the fact is already gone, so the outcome the owner asked
-      // for holds; drop the row instead of showing a false error.
-      if (!(error instanceof ApiError && error.status === 404)) {
-        setForgetError('Could not forget that fact');
-        setForgettingId(null);
-        return;
-      }
-    }
-    setMemory((current) =>
-      current === null
-        ? current
-        : { ...current, facts: current.facts.filter((fact) => fact.id !== factId) },
-    );
-    setForgettingId(null);
-  };
+  // Ignore further clicks while a forget is in flight (mode 'ignore'), so one
+  // request runs at a time. A 404 means the fact is already gone, so the
+  // outcome the owner asked for holds: the row drops without a false error.
+  const [, forget] = useAction((factId: string) =>
+    Effect.sync(() => {
+      setForgetError('');
+      setForgettingId(factId);
+    }).pipe(
+      Effect.andThen(
+        fromApi(() => forgetAiMemoryFact(chat, aiId, factId)).pipe(
+          Effect.catchIf(isNotFound, () => Effect.void),
+          Effect.tap(() => Effect.sync(() => setForgottenIds((ids) => new Set(ids).add(factId)))),
+          Effect.tapError(() => Effect.sync(() => setForgetError('Could not forget that fact'))),
+        ),
+      ),
+      Effect.ensuring(Effect.sync(() => setForgettingId(null))),
+    ),
+  );
 
-  const confirmClear = async (): Promise<void> => {
-    setConfirmingClear(false);
-    setClearError('');
-    try {
-      await clearAiMemory(chat, aiId);
-      startLoad();
-    } catch {
-      setClearError('Could not clear the memory');
-    }
-  };
+  const [, clear] = useAction<void, void, ApiFailure>(() =>
+    Effect.sync(() => {
+      setConfirmingClear(false);
+      setClearError('');
+    }).pipe(
+      Effect.andThen(fromApi(() => clearAiMemory(chat, aiId))),
+      Effect.tap(() => Effect.sync(() => startLoad())),
+      Effect.tapError(() => Effect.sync(() => setClearError('Could not clear the memory'))),
+    ),
+  );
 
   return (
     <section aria-label="Memory" className="flex flex-col gap-2 border-t border-divider pt-4">
@@ -140,7 +136,7 @@ export function AiMemorySection({
             className="rounded-full px-4"
             onClick={() => {
               setOpen(true);
-              startLoad();
+              resetLocal();
             }}
           >
             <Brain className="size-4" aria-hidden="true" />
@@ -188,7 +184,7 @@ export function AiMemorySection({
                         aria-label="Forget this fact"
                         className="rounded-full text-muted-foreground"
                         disabled={forgettingId === fact.id}
-                        onClick={() => void forget(fact.id)}
+                        onClick={() => forget(fact.id)}
                       >
                         <Trash2 className="size-4" aria-hidden="true" />
                       </Button>
@@ -248,7 +244,7 @@ export function AiMemorySection({
           title="Clear memory?"
           body={`${aiName} forgets the pinned facts and the summaries of this chat. The messages stay, and it still reads the recent ones.`}
           confirmLabel="Clear"
-          onConfirm={() => void confirmClear()}
+          onConfirm={() => clear()}
           onCancel={() => setConfirmingClear(false)}
         />
       )}
