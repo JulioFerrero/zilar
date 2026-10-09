@@ -1,18 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  aiDelegations,
-  ais,
-  groupAis,
-  groupMembers,
-  groups,
-  providerConnections,
-  topicAis,
-  topics,
-  user,
-} from '../../db/schema';
-import { createTestContext, TEST_XMPP_DOMAIN, type TestContext } from '../../test-support';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { createTestContext, TEST_XMPP_DOMAIN, testSql, type TestContext } from '../../test-support';
 import {
   CONTEXT_SUMMARY_MAX,
   DELEGATION_ITEM_MAX,
@@ -27,11 +17,32 @@ import {
   getDelegationForAi,
 } from './service';
 
+interface DelegationRow {
+  objective: string;
+  contextSummary: string | null;
+  acceptance: string[];
+  constraints: string[];
+  artifacts: string[];
+  returnFormat: string | null;
+  budgetCurrency: string | null;
+  budgetMax: string | null;
+  status: string;
+}
+
+interface BudgetRow {
+  budgetCurrency: string | null;
+  budgetMax: string | null;
+}
+
 async function seedOwner(context: TestContext): Promise<string> {
   const ownerId = randomUUID();
-  await context.db
-    .insert(user)
-    .values({ id: ownerId, name: 'Owner', email: `${ownerId}@example.com` });
+  const email = `${ownerId}@example.com`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "user" (id, name, email) VALUES (${ownerId}, ${'Owner'}, ${email})`;
+    }),
+  );
   return ownerId;
 }
 
@@ -48,41 +59,29 @@ async function seedAi(
   options: SeedAiOptions = {},
 ): Promise<string> {
   const connectionId = randomUUID();
-  await context.db.insert(providerConnections).values({
-    id: connectionId,
-    owner: ownerId,
-    provider: 'openai',
-    encryptedKey: 'CHANGE_ME',
-    label: null,
-  });
   const aiId = randomUUID();
   const localpart = `ai-${aiId}`;
-  await context.db.insert(ais).values({
-    id: aiId,
-    owner: ownerId,
-    name,
-    template: 'dev',
-    persona: 'Persona',
-    providerConnectionId: connectionId,
-    model: 'gpt-4o-mini',
-    localpart,
-    jid: `${localpart}@${TEST_XMPP_DOMAIN}`,
-    status: options.status ?? 'active',
-    canDelegate: options.canDelegate ?? false,
-    acceptsDelegation: options.acceptsDelegation ?? false,
-  });
+  const jid = `${localpart}@${TEST_XMPP_DOMAIN}`;
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label) VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${'CHANGE_ME'}, NULL)`;
+      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status, can_delegate, accepts_delegation) VALUES (${aiId}, ${ownerId}, ${name}, ${'dev'}, ${'Persona'}, ${connectionId}, ${'gpt-4o-mini'}, ${localpart}, ${jid}, ${options.status ?? 'active'}, ${options.canDelegate ?? false}, ${options.acceptsDelegation ?? false})`;
+    }),
+  );
   return aiId;
 }
 
 async function seedGroup(context: TestContext, ownerId: string): Promise<string> {
   const groupId = randomUUID();
-  await context.db.insert(groups).values({
-    id: groupId,
-    roomLocalpart: randomUUID(),
-    title: 'Room',
-    createdBy: ownerId,
-  });
-  await context.db.insert(groupMembers).values({ groupId, userId: ownerId, role: 'owner' });
+  const roomLocalpart = randomUUID();
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${roomLocalpart}, ${'Room'}, ${ownerId})`;
+      yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${ownerId}, ${'owner'})`;
+    }),
+  );
   return groupId;
 }
 
@@ -93,18 +92,13 @@ async function seedTopic(
   isGeneral: boolean,
 ): Promise<string> {
   const topicId = randomUUID();
-  await context.db.insert(topics).values({
-    id: topicId,
-    groupId,
-    name: isGeneral ? 'General' : 'Work',
-    glyph: 'G',
-    roomLocalpart: randomUUID(),
-    visibility: 'public',
-    kind: 'chat',
-    status: 'open',
-    isGeneral,
-    createdBy: ownerId,
-  });
+  const roomLocalpart = randomUUID();
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${topicId}, ${groupId}, ${isGeneral ? 'General' : 'Work'}, ${'G'}, ${roomLocalpart}, ${'public'}, ${'chat'}, ${'open'}, ${isGeneral}, ${ownerId})`;
+    }),
+  );
   return topicId;
 }
 
@@ -114,7 +108,12 @@ async function addGroupAi(
   aiId: string,
   addedBy: string,
 ): Promise<void> {
-  await context.db.insert(groupAis).values({ groupId, aiId, addedBy });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${addedBy})`;
+    }),
+  );
 }
 
 async function addTopicAi(
@@ -123,7 +122,12 @@ async function addTopicAi(
   aiId: string,
   addedBy: string,
 ): Promise<void> {
-  await context.db.insert(topicAis).values({ topicId, aiId, addedBy });
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO topic_ais (topic_id, ai_id, added_by) VALUES (${topicId}, ${aiId}, ${addedBy})`;
+    }),
+  );
 }
 
 describe('delegation service', () => {
@@ -309,11 +313,12 @@ describe('delegation service', () => {
       if (!result.ok) throw new Error(`unexpected failure: ${result.reason}`);
       expect(result.delegation).toMatchObject({ toAiId: worker, status: 'working' });
 
-      const [row] = await context.db
-        .select()
-        .from(aiDelegations)
-        .where(eq(aiDelegations.id, result.delegation.id))
-        .limit(1);
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<DelegationRow>`SELECT objective, context_summary, acceptance, constraints, artifacts, return_format, budget_currency, budget_max, status FROM ai_delegations WHERE id = ${result.delegation.id} LIMIT 1`;
+        }),
+      );
       if (!row) throw new Error('delegation row missing');
       expect(row.objective).toHaveLength(OBJECTIVE_MAX);
       expect(row.contextSummary).toHaveLength(CONTEXT_SUMMARY_MAX);
@@ -337,11 +342,12 @@ describe('delegation service', () => {
         budget: { currency: 'USD', max: -1 },
       });
       if (!result.ok) throw new Error(`unexpected failure: ${result.reason}`);
-      const [row] = await context.db
-        .select()
-        .from(aiDelegations)
-        .where(eq(aiDelegations.id, result.delegation.id))
-        .limit(1);
+      const [row] = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<BudgetRow>`SELECT budget_currency, budget_max FROM ai_delegations WHERE id = ${result.delegation.id} LIMIT 1`;
+        }),
+      );
       if (!row) throw new Error('delegation row missing');
       expect(row.budgetCurrency).toBeNull();
       expect(row.budgetMax).toBeNull();
