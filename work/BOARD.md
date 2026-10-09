@@ -10,6 +10,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0738](T-0738-auth-switch-to-sql-adapter.md) | D2 switch: login on the effect/sql adapter (Julio OK 10-09) | in-progress | haiku-5.5 | T-0737 | |
+| [T-0739](T-0739-server-image-pglite-dep.md) | HOTFIX: server image crashes at start (pglite devDependency); CI image smoke step | in-progress | haiku-5.5 | | |
 
 ## Follow-ups
 
