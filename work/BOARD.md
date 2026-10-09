@@ -13,6 +13,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0776](T-0776-web-machines.md) | WU8: machines pages on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
 | [T-0778](T-0778-web-ai-panel.md) | WU11 + WU12: web AI components on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
 | [T-0779](T-0779-web-tools-sections.md) | WU13: web tools sections on Effect | in-progress | haiku-5.5 | | effect-100-plan Phase 3 |
+| [T-0780](T-0780-xmpp-request-tests.md) | xmpp-core request path tests | in-progress | haiku-5.5 | T-0777 | T-0777 follow-up |
 
 ## Follow-ups
 
