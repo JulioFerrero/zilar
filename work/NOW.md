@@ -2,6 +2,19 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-09 ~07:55 UTC, after Julio's answers:**
+- **Deploy incident:**
+  - At 07:35 UTC the lead restarted the live service on `latest` (`34b73d1c`). The server crash-looped with `ERR_MODULE_NOT_FOUND @electric-sql/pglite`: a devDependency imported by `effect/sql.ts` since T-0496, so no server image since 10-08 can start.
+  - The site was down for about 12 minutes. The lead rolled it back by setting the service variable `IMAGE_TAG=sha-eeaddee30d85` and restarting.
+  - Live is on `eeaddee3` again (health ok, web 200, `/api/me` 401).
+  - The crash happens at import, before the migrations, so the live DB is untouched.
+  - **Fix: T-0739** (running) moves the package to dependencies and adds a CI step that starts the server image before any push.
+  - **Before the next deploy:** the lead runs the fixed image against a scratch Postgres, then deletes `IMAGE_TAG` and redeploys.
+- **D2: yes.** T-0738 merged at 09:50 local. Login is on the effect/sql adapter, and a gated real-pg OTP sign-in test passes. It is not live yet; it goes out with the next deploy.
+- **D3: plan first.** The draft spec is `docs/audit/d3-migrator-draft-T-0741.md`, not launched. It adds the partial-adoption case (live has 41 drizzle rows, and the repo has 46 migration files) and a dry run on a copy of the live DB.
+- **A12: convert to Effect.** T-0740 is running: `git/api.ts` becomes an Effect mount, `git/routes.ts` is deleted, and Hono is gone from `src`. It is still not mounted, because the edge has no wildcard routes.
+- **Deploy:** Julio said "you deploy". The deploy is blocked on T-0739; see the incident above.
+
 **2026-10-09 07:00, morning summary for Julio:**
 - **Overnight:** about 70 tasks merged. Haiku 5.5 did about 40 of them, and the lead checked each diff. Every merge passed the gate.
 - **Effect 4 status:**
