@@ -14,24 +14,23 @@
 
 import { Effect, Layer, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { HttpServerRequest } from 'effect/http';
+import { HttpServerRequest } from 'effect/http';
+import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
 import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiSchema,
-} from 'effect/http-api';
+  RevertToolPayload,
+  RunToolPayload,
+  ToolsSchemaErrors,
+  ToolsServerGroup,
+} from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import {
-  SchemaErrors,
-  Session,
+  failureResponse,
   handler,
   mountApi,
-  schemaErrorLayer,
+  requestIdOf,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
@@ -66,178 +65,27 @@ export const TOOL_RUN_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 // adapter): anything larger is 400 `invalid_request` before any run.
 export const MAX_TOOL_RUN_INPUT_BYTES = 16 * 1024;
 
-// Replaces `revertBodySchema` (zod strict): excess keys fail the decode.
-const RevertBody = Schema.Struct({
-  version: Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))),
-  message: Schema.optional(
-    Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(200))),
-  ),
-});
-
-// Replaces `runBodySchema` (zod strict): excess keys fail the decode. The
-// 16 KiB `input` check runs manually after the decode (see below), so its
-// failure answers the same `Invalid run body` text.
-const RunBody = Schema.Struct({
-  input: Schema.optional(Schema.Unknown),
-  version: Schema.optional(
-    Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))),
-  ),
-});
-
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 
-const ToolScope = Schema.Literals(['personal', 'group']);
-const ToolLastRunStatus = Schema.NullOr(Schema.Literals(['ok', 'error']));
-
-// The list shape is the full `PublicTool` plus scope, dates as the ISO
-// strings `c.json` used to write. Every field of the service return type is
-// listed, so no field is silently stripped by the success encoding.
-const ToolListItem = Schema.Struct({
-  id: Schema.String,
-  aiId: Schema.String,
-  groupId: Schema.NullOr(Schema.String),
-  topicId: Schema.NullOr(Schema.String),
-  name: Schema.String,
-  description: Schema.String,
-  currentVersion: Schema.Number,
-  hosts: Schema.Array(Schema.String),
-  approvedHosts: Schema.Array(Schema.String),
-  lastRunStatus: ToolLastRunStatus,
-  updatedAt: Schema.String,
-  scope: ToolScope,
-});
-
-const ToolList = Schema.Array(ToolListItem);
-
-// The detail shape is the list shape plus the current source.
-const ToolDetailView = Schema.Struct({
-  ...ToolListItem.fields,
-  source: Schema.String,
-});
-
-// The versions shape is every field of `PublicToolVersion`, without source.
-const ToolVersionItem = Schema.Struct({
-  id: Schema.String,
-  toolId: Schema.String,
-  version: Schema.Number,
-  message: Schema.String,
-  hosts: Schema.Array(Schema.String),
-  createdBy: Schema.String,
-  createdAt: Schema.String,
-});
-
-const ToolVersionList = Schema.Array(ToolVersionItem);
-
-// One version with source: every field of `ToolVersionDetail`.
-const ToolVersionView = Schema.Struct({
-  ...ToolVersionItem.fields,
-  source: Schema.String,
-});
-
-// Every field of `PublicToolRun`; the output text is the stored (truncated)
-// column, never the live run output.
-const ToolRunItem = Schema.Struct({
-  id: Schema.String,
-  toolId: Schema.String,
-  version: Schema.Number,
-  trigger: Schema.Literals(['manual', 'routine', 'ai']),
-  status: Schema.Literals(['ok', 'error']),
-  errorKind: Schema.NullOr(Schema.String),
-  durationMs: Schema.Number,
-  fetchCount: Schema.Number,
-  outputText: Schema.NullOr(Schema.String),
-  createdAt: Schema.String,
-});
-
-const ToolRunList = Schema.Array(ToolRunItem);
-
-// The revert answer: the new version plus the tool name.
-const RevertView = Schema.Struct({
-  id: Schema.String,
-  toolId: Schema.String,
-  version: Schema.Number,
-  message: Schema.String,
-  hosts: Schema.Array(Schema.String),
-  createdBy: Schema.String,
-  createdAt: Schema.String,
-  toolName: Schema.String,
-});
-
-// The run answer: the old `toRunWire` shape. `data` stays optional so an
-// output without data encodes exactly like `c.json` wrote it.
-const RunOutput = Schema.Struct({
-  text: Schema.String,
-  data: Schema.optional(Schema.Unknown),
-});
-
-const RunResultView = Schema.Union([
-  Schema.Struct({
-    ok: Schema.Literal(true),
-    output: RunOutput,
-    logs: Schema.String,
-    durationMs: Schema.Number,
-    fetchCount: Schema.Number,
-  }),
-  Schema.Struct({
-    ok: Schema.Literal(false),
-    error: Schema.Struct({ kind: Schema.String, message: Schema.String }),
-    logs: Schema.String,
-    durationMs: Schema.Number,
-    fetchCount: Schema.Number,
-  }),
-]);
-const ToolIdParams = Schema.Struct({ id: Schema.String });
-const ToolVersionParams = Schema.Struct({ id: Schema.String, n: Schema.String });
-
-const ToolsGroup = HttpApiGroup.make('tools')
-  .add(
-    HttpApiEndpoint.get('listForAi', '/ais/:id/tools', {
-      params: ToolIdParams,
-      success: ToolList,
+// A params decode failure renders as 400 `invalid_request` through the shared
+// envelope.
+function schemaErrorLayer(logger: Logger): Layer.Layer<ToolsSchemaErrors> {
+  return HttpApiMiddleware.layerSchemaErrorTransform(ToolsSchemaErrors, (error) =>
+    Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      return failureResponse(
+        logger,
+        requestIdOf(request),
+        new HttpError(400, 'invalid_request', error.cause.message),
+      );
     }),
-    HttpApiEndpoint.get('listForGroup', '/groups/:id/tools', {
-      params: ToolIdParams,
-      success: ToolList,
-    }),
-    HttpApiEndpoint.get('listForTopic', '/topics/:id/tools', {
-      params: ToolIdParams,
-      success: ToolList,
-    }),
-    HttpApiEndpoint.get('detail', '/tools/:id', {
-      params: ToolIdParams,
-      success: ToolDetailView,
-    }),
-    HttpApiEndpoint.get('versions', '/tools/:id/versions', {
-      params: ToolIdParams,
-      success: ToolVersionList,
-    }),
-    HttpApiEndpoint.get('version', '/tools/:id/versions/:n', {
-      params: ToolVersionParams,
-      success: ToolVersionView,
-    }),
-    HttpApiEndpoint.get('runs', '/tools/:id/runs', {
-      params: ToolIdParams,
-      success: ToolRunList,
-    }),
-    HttpApiEndpoint.post('revert', '/tools/:id/revert', {
-      params: ToolIdParams,
-      success: RevertView,
-    }),
-    HttpApiEndpoint.delete('remove', '/tools/:id', {
-      params: ToolIdParams,
-      success: HttpApiSchema.NoContent,
-    }),
-    HttpApiEndpoint.post('run', '/tools/:id/run', {
-      params: ToolIdParams,
-      success: RunResultView,
-    }),
-  )
-  .middleware(Session)
-  .middleware(SchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
+  );
+}
 
-const ToolsApi = HttpApi.make('tools').add(ToolsGroup);
+// The server group declares no payload on `revert` and `run`: their bodies
+// are decoded by hand in the handlers (see the header). The derived clients
+// use `ToolsGroup`.
+const ToolsApi = HttpApi.make('tools').add(ToolsServerGroup);
 
 export interface ToolsApiDependencies {
   auth: Auth;
@@ -416,7 +264,10 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             if (!body.parsed) {
               throw new HttpError(400, 'invalid_request', 'Invalid JSON body');
             }
-            const decoded = Schema.decodeUnknownOption(RevertBody, STRICT_DECODE)(body.value);
+            const decoded = Schema.decodeUnknownOption(
+              RevertToolPayload,
+              STRICT_DECODE,
+            )(body.value);
             if (Option.isNone(decoded)) {
               throw new HttpError(400, 'invalid_request', 'Invalid revert body');
             }
@@ -505,7 +356,7 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             if (!body.parsed) {
               throw new HttpError(400, 'invalid_request', 'Invalid JSON body');
             }
-            const decoded = Schema.decodeUnknownOption(RunBody, STRICT_DECODE)(body.value);
+            const decoded = Schema.decodeUnknownOption(RunToolPayload, STRICT_DECODE)(body.value);
             if (Option.isNone(decoded) || !runInputWithinLimit(decoded.value.input)) {
               throw new HttpError(400, 'invalid_request', 'Invalid run body');
             }

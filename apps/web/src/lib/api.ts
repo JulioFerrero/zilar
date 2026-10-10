@@ -1,4 +1,4 @@
-import { Effect, Exit, Schema } from 'effect';
+import { Exit, Schema } from 'effect';
 import { ApiError, apiErrorFromBody, type Pin, type PinKind } from '@zilar/api-contract';
 import {
   HANDLE_CHECK_MAX,
@@ -46,6 +46,19 @@ import { struct } from '@zilar/protocol';
 import { callApi, callApiAbortable } from '@/lib/effect/api-client';
 import { isMockApiEnabled } from '@/mock/gate';
 import { loadMockRequest } from '@/mock/load';
+import { ApprovalRule, PublicApproval, isProviderId } from '@zilar/api-contract';
+import type {
+  AiLimits,
+  AiMemoryFact,
+  AiTemplate,
+  AiUsage,
+  ApprovalDecision,
+  ApprovalStatus,
+  ConnectionView,
+  PublicAi as ContractAi,
+  PublicAuditEntry,
+  ToolListItem,
+} from '@zilar/api-contract';
 
 /** Base path for the server API. The Vite dev server proxies it same-origin. */
 export const API_BASE = '/api';
@@ -538,26 +551,11 @@ export function removeGroupMember(groupId: string, userId: string): Promise<Grou
   return callApi((client) => client.groups.removeMember({ params: { id: groupId, userId } }));
 }
 
-export const topicToolSchema = struct({
-  id: Schema.String,
-  aiId: Schema.String,
-  groupId: Schema.NullOr(Schema.String),
-  topicId: Schema.NullOr(Schema.String),
-  name: Schema.String,
-  description: Schema.String,
-  currentVersion: Schema.Number,
-  hosts: Schema.mutable(Schema.Array(Schema.String)),
-  lastRunStatus: Schema.NullOr(Schema.String),
-  updatedAt: Schema.String,
-});
+export type TopicTool = ToolListItem;
 
-export type TopicTool = typeof topicToolSchema.Type;
-
-export function listTopicTools(topicId: string): Promise<TopicTool[]> {
-  return request(
-    `/topics/${encodeURIComponent(topicId)}/tools`,
-    Schema.mutable(Schema.Array(topicToolSchema)),
-  );
+export async function listTopicTools(topicId: string): Promise<TopicTool[]> {
+  const rows = await callApi((client) => client.tools.listForTopic({ params: { id: topicId } }));
+  return [...rows];
 }
 
 // --- Group invite links (T-0115) -------------------------------------------
@@ -782,26 +780,15 @@ export async function unpinMessage(id: string): Promise<void> {
 // server answers the pinned facts and the cover lines; `canChange` is false
 // for a room member who may only view.
 
-const aiMemoryFactSchema = struct({
-  id: Schema.String,
-  text: Schema.String,
-});
+export interface AiMemory {
+  facts: AiMemoryFact[];
+  lines: string[];
+  canChange: boolean;
+}
 
-export const aiMemorySchema = struct({
-  facts: Schema.mutable(Schema.Array(aiMemoryFactSchema)),
-  lines: Schema.mutable(Schema.Array(Schema.String)),
-  canChange: Schema.Boolean,
-});
-
-export type AiMemory = typeof aiMemorySchema.Type;
-
-const okResponseSchema = struct({ ok: Schema.Literal(true) });
-
-export function getAiMemory(chat: string, aiId: string): Promise<AiMemory> {
-  const params = new URLSearchParams();
-  params.set('chat', chat);
-  params.set('ai', aiId);
-  return request(`/ai-memory?${params.toString()}`, aiMemorySchema);
+export async function getAiMemory(chat: string, aiId: string): Promise<AiMemory> {
+  const memory = await callApi((client) => client.aiMemory.view({ query: { chat, ai: aiId } }));
+  return { facts: [...memory.facts], lines: [...memory.lines], canChange: memory.canChange };
 }
 
 export async function forgetAiMemoryFact(
@@ -809,24 +796,13 @@ export async function forgetAiMemoryFact(
   aiId: string,
   factId: string,
 ): Promise<void> {
-  const params = new URLSearchParams();
-  params.set('chat', chat);
-  params.set('ai', aiId);
-  await request(
-    `/ai-memory/facts/${encodeURIComponent(factId)}?${params.toString()}`,
-    okResponseSchema,
-    {
-      method: 'DELETE',
-    },
+  await callApi((client) =>
+    client.aiMemory.deleteFact({ params: { id: factId }, query: { chat, ai: aiId } }),
   );
 }
 
 export async function clearAiMemory(chat: string, aiId: string): Promise<void> {
-  await request('/ai-memory/clear', okResponseSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat, ai: aiId }),
-  });
+  await callApi((client) => client.aiMemory.clear({ payload: { chat, ai: aiId } }));
 }
 
 // --- Media gallery (T-0434) --------------------------------------------------
@@ -891,64 +867,13 @@ export function listChatMedia(input: ListChatMediaInput): Promise<MediaPage> {
 // `ApiError` already carries the server's `code` and `status`, so callers can
 // branch without parsing the message again.
 
-const aiTemplateSchema = Schema.Literals(['dev', 'marketing', 'fun', 'custom']);
+export type { AiLimits, AiTemplate, AiUsage };
 
-export type AiTemplate = typeof aiTemplateSchema.Type;
+// The contract's AI with mutable fields, the shape the mock backend and the
+// fixtures build.
+export type PublicAi = { -readonly [K in keyof ContractAi]: ContractAi[K] };
 
-const aiLimitsSchema = struct({
-  perDayUsd: Schema.Number,
-  perMonthUsd: Schema.Number,
-});
-
-export type AiLimits = typeof aiLimitsSchema.Type;
-
-// T-0058: the AI's spend summary. Optional (not just nullable) so responses
-// from older servers still parse; absent means "unavailable" like null.
-const aiUsageSchema = struct({
-  todayUsd: Schema.Number,
-  windowUsd: Schema.Number,
-});
-
-export type AiUsage = typeof aiUsageSchema.Type;
-
-const publicAiSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-  template: aiTemplateSchema,
-  persona: Schema.String,
-  model: Schema.String,
-  jid: Schema.String,
-  // `stopped` is the owner kill switch (T-0080): the AI is paused, not
-  // deleted, and a resume brings it back.
-  status: Schema.Literals(['active', 'disabled', 'stopped']),
-  providerConnectionId: Schema.String,
-  limits: aiLimitsSchema,
-  usage: Schema.optional(Schema.NullOr(aiUsageSchema)),
-  // T-0091: the AI's home machine id, or null when it runs on the platform.
-  // Optional so a payload from a server that has not been upgraded yet
-  // still parses — the panel renders the same way when it is absent.
-  machineId: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0165: the AI's picture, when it has one. Optional so older payloads
-  // parse (treated as none).
-  avatarUrl: Schema.optional(Schema.String),
-  // T-0478: the owner's delegation opt-ins. Optional so older payloads parse
-  // (treated as off).
-  canDelegate: Schema.optional(Schema.Boolean),
-  acceptsDelegation: Schema.optional(Schema.Boolean),
-  createdAt: Schema.String,
-});
-
-export type PublicAi = typeof publicAiSchema.Type;
-
-const connectionSchema = struct({
-  id: Schema.String,
-  provider: Schema.String,
-  label: Schema.NullOr(Schema.String),
-  status: Schema.String,
-  createdAt: Schema.String,
-});
-
-export type Connection = typeof connectionSchema.Type;
+export type Connection = ConnectionView;
 
 export interface CreateAiInput {
   name: string;
@@ -970,40 +895,55 @@ export interface UpdateAiInput {
   acceptsDelegation?: boolean;
 }
 
-export function listAis(): Promise<PublicAi[]> {
-  return request('/ais', Schema.mutable(Schema.Array(publicAiSchema)));
+export async function listAis(): Promise<PublicAi[]> {
+  const rows = await callApi((client) => client.ais.list());
+  return [...rows];
 }
 
 export function getAi(id: string): Promise<PublicAi> {
-  return request(`/ais/${encodeURIComponent(id)}`, publicAiSchema);
+  return callApi((client) => client.ais.detail({ params: { id } }));
 }
 
+// The server trims these strings before its length checks; the contract
+// encodes the trimmed form, so they are trimmed here.
 export function createAi(input: CreateAiInput): Promise<PublicAi> {
-  const body = {
-    name: input.name,
-    template: input.template,
-    ...(input.persona === undefined ? {} : { persona: input.persona }),
-    providerConnectionId: input.providerConnectionId,
-    model: input.model,
-    limits: input.limits,
-  };
-  return request('/ais', publicAiSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  return callApi((client) =>
+    client.ais.create({
+      payload: {
+        name: input.name.trim(),
+        template: input.template,
+        ...(input.persona === undefined ? {} : { persona: input.persona.trim() }),
+        providerConnectionId: input.providerConnectionId.trim(),
+        model: input.model.trim(),
+        limits: input.limits,
+      },
+    }),
+  );
 }
 
 export function updateAi(id: string, input: UpdateAiInput): Promise<PublicAi> {
-  return request(`/ais/${encodeURIComponent(id)}`, publicAiSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) =>
+    client.ais.patch({
+      params: { id },
+      payload: {
+        ...(input.name === undefined ? {} : { name: input.name.trim() }),
+        ...(input.persona === undefined ? {} : { persona: input.persona.trim() }),
+        ...(input.limits === undefined ? {} : { limits: input.limits }),
+        ...(input.model === undefined ? {} : { model: input.model.trim() }),
+        ...(input.providerConnectionId === undefined
+          ? {}
+          : { providerConnectionId: input.providerConnectionId.trim() }),
+        ...(input.canDelegate === undefined ? {} : { canDelegate: input.canDelegate }),
+        ...(input.acceptsDelegation === undefined
+          ? {}
+          : { acceptsDelegation: input.acceptsDelegation }),
+      },
+    }),
+  );
 }
 
 export async function deleteAi(id: string): Promise<void> {
-  await request(`/ais/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
+  await callApi((client) => client.ais.remove({ params: { id } }));
 }
 
 // T-0080: the owner's kill switch. Both return the fresh public AI so the
@@ -1011,11 +951,11 @@ export async function deleteAi(id: string): Promise<void> {
 // server answers the same `not_active` 409 when the AI was already in the
 // other terminal state, which the panel treats as a refresh cue.
 export function stopAi(id: string): Promise<PublicAi> {
-  return request(`/ais/${encodeURIComponent(id)}/stop`, publicAiSchema, { method: 'POST' });
+  return callApi((client) => client.ais.stop({ params: { id } }));
 }
 
 export function resumeAi(id: string): Promise<PublicAi> {
-  return request(`/ais/${encodeURIComponent(id)}/resume`, publicAiSchema, { method: 'POST' });
+  return callApi((client) => client.ais.resume({ params: { id } }));
 }
 
 // T-0091: set or clear the AI's home machine. `null` clears the assignment
@@ -1023,15 +963,17 @@ export function resumeAi(id: string): Promise<PublicAi> {
 // answers the fresh public AI, so the panel re-renders against server
 // truth.
 export function setAiMachine(aiId: string, machineId: string | null): Promise<PublicAi> {
-  return request(`/ais/${encodeURIComponent(aiId)}/machine`, publicAiSchema, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ machineId: machineId }),
-  });
+  return callApi((client) =>
+    client.ais.assignMachine({
+      params: { id: aiId },
+      payload: { machineId: machineId === null ? null : machineId.trim() },
+    }),
+  );
 }
 
-export function listConnections(): Promise<Connection[]> {
-  return request('/connections', Schema.mutable(Schema.Array(connectionSchema)));
+export async function listConnections(): Promise<Connection[]> {
+  const rows = await callApi((client) => client.connections.list());
+  return [...rows];
 }
 
 // T-0074: `ConnectionsPage` used to call `fetch` directly with its own copy of
@@ -1046,33 +988,33 @@ export interface CreateConnectionInput {
 }
 
 export function createConnection(input: CreateConnectionInput): Promise<Connection> {
-  const body = {
-    provider: input.provider,
-    key: input.key,
-    ...(input.label === undefined ? {} : { label: input.label }),
-  };
-  return request('/connections', connectionSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const { provider } = input;
+  if (!isProviderId(provider)) {
+    return Promise.reject(new ApiError(400, 'invalid_request', 'Invalid connection request'));
+  }
+  // The server trims the key and the label; the contract encodes the trimmed form.
+  return callApi((client) =>
+    client.connections.create({
+      payload: {
+        provider,
+        key: input.key.trim(),
+        ...(input.label === undefined ? {} : { label: input.label.trim() }),
+      },
+    }),
+  );
 }
 
-const connectionTestResultSchema = struct({
-  ok: Schema.Boolean,
-  message: Schema.optional(Schema.String),
-});
-
-export type ConnectionTestResult = typeof connectionTestResultSchema.Type;
+export interface ConnectionTestResult {
+  ok: boolean;
+  message?: string;
+}
 
 export function testConnection(id: string): Promise<ConnectionTestResult> {
-  return request(`/connections/${encodeURIComponent(id)}/test`, connectionTestResultSchema, {
-    method: 'POST',
-  });
+  return callApi((client) => client.connections.test({ params: { id } }));
 }
 
 export async function deleteConnection(id: string): Promise<void> {
-  await request(`/connections/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
+  await callApi((client) => client.connections.remove({ params: { id } }));
 }
 
 // --- Machines (T-0070) ---------------------------------------------------
@@ -1176,68 +1118,21 @@ export async function deleteMachine(id: string): Promise<void> {
 // types line up with `ApprovalRequest.expires_at` and we don't have to think
 // about zod's string-to-Date coercion in tests.
 
-export type ApprovalStatus =
-  'pending' | 'approved_once' | 'approved_always' | 'denied' | 'consumed' | 'expired';
+export type { ApprovalDecision, ApprovalStatus, ApprovalRule, PublicApproval };
 
-export type ApprovalDecision = 'approve_once' | 'approve_always' | 'deny';
-
-const approvalWorstCaseSchema = Schema.NullOr(
-  struct({
-    currency: Schema.Literals(['EUR', 'USD']),
-    amount: Schema.Number,
-  }),
-);
-
-export const publicApprovalSchema = struct({
-  id: Schema.String,
-  aiId: Schema.String,
-  groupId: Schema.NullOr(Schema.String),
-  // T-0110: the topic the approval belongs to. Optional so older payloads
-  // parse (a missing topic reads like a group approval).
-  topicId: Schema.optional(Schema.NullOr(Schema.String)),
-  topicName: Schema.optional(Schema.NullOr(Schema.String)),
-  action: Schema.String,
-  summary: Schema.String,
-  details: Schema.NullOr(Schema.String),
-  argsHash: Schema.String,
-  worstCase: approvalWorstCaseSchema,
-  requestedBy: Schema.String,
-  status: Schema.Literals([
-    'pending',
-    'approved_once',
-    'approved_always',
-    'denied',
-    'consumed',
-    'expired',
-  ]),
-  decidedAt: Schema.NullOr(Schema.String),
-  note: Schema.NullOr(Schema.String),
-  expiresAt: Schema.String,
-  createdAt: Schema.String,
-  // T-0100: whether `approve_always` is a real choice for this action.
-  // Optional with a `false` default so a payload from a server that has not
-  // been upgraded yet still parses — the card just hides the third button.
-  alwaysEligible: Schema.Boolean.pipe(Schema.withDecodingDefaultTypeKey(Effect.succeed(false))),
-  // T-0134/T-0141: display names of the holders of the topic's approver
-  // role, resolved server-side in one batched query per list so the card
-  // never fetches the topic per approval (N+1). Optional with an empty
-  // default so payloads from an older server still parse — the card hides
-  // the approver line.
-  approverNames: Schema.mutable(Schema.Array(Schema.String)).pipe(
-    Schema.withDecodingDefaultTypeKey(Effect.succeed([])),
-  ),
-});
-
-export type PublicApproval = typeof publicApprovalSchema.Type;
+// Kept under their old names: the shared schemas decode a payload from an
+// older server (a missing topic, `alwaysEligible: false`, no `approverNames`).
+export const publicApprovalSchema = PublicApproval;
 
 export function getApproval(id: string): Promise<PublicApproval> {
-  return request(`/approvals/${encodeURIComponent(id)}`, publicApprovalSchema);
+  return callApi((client) => client.approvals.detail({ params: { id } }));
 }
 
 // T-0081: the inbox page lists everything pending. The server already filters
 // by pending, unexpired, decidable by the caller, newest first, max 100.
-export function listApprovals(): Promise<PublicApproval[]> {
-  return request('/approvals', Schema.mutable(Schema.Array(publicApprovalSchema)));
+export async function listApprovals(): Promise<PublicApproval[]> {
+  const rows = await callApi((client) => client.approvals.list());
+  return [...rows];
 }
 
 export function decideApproval(
@@ -1245,12 +1140,12 @@ export function decideApproval(
   decision: ApprovalDecision,
   note?: string,
 ): Promise<PublicApproval> {
-  const body = note === undefined ? { decision } : { decision, note };
-  return request(`/approvals/${encodeURIComponent(id)}/decision`, publicApprovalSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  return callApi((client) =>
+    client.approvals.decide({
+      params: { id },
+      payload: note === undefined ? { decision } : { decision, note },
+    }),
+  );
 }
 
 // --- Approval rules (T-0100) ------------------------------------------------
@@ -1259,36 +1154,20 @@ export function decideApproval(
 // approvals schemas. The two list routes 404 for a viewer who may not
 // manage the rules, and so does revoke; all three flow through `ApiError`.
 
-export const approvalRuleSchema = struct({
-  id: Schema.String,
-  action: Schema.String,
-  scope: Schema.Literals(['personal', 'group']),
-  groupId: Schema.NullOr(Schema.String),
-  // T-0110: the rule's topic scope. Optional so older payloads parse.
-  topicId: Schema.optional(Schema.NullOr(Schema.String)),
-  topicName: Schema.optional(Schema.NullOr(Schema.String)),
-  createdAt: Schema.String,
-  createdBy: Schema.String,
-});
+export const approvalRuleSchema = ApprovalRule;
 
-export type ApprovalRule = typeof approvalRuleSchema.Type;
-
-export function listAiApprovalRules(aiId: string): Promise<ApprovalRule[]> {
-  return request(
-    `/ais/${encodeURIComponent(aiId)}/approval-rules`,
-    Schema.mutable(Schema.Array(approvalRuleSchema)),
-  );
+export async function listAiApprovalRules(aiId: string): Promise<ApprovalRule[]> {
+  const rows = await callApi((client) => client.approvals.aiRules({ params: { id: aiId } }));
+  return [...rows];
 }
 
-export function listGroupApprovalRules(groupId: string): Promise<ApprovalRule[]> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/approval-rules`,
-    Schema.mutable(Schema.Array(approvalRuleSchema)),
-  );
+export async function listGroupApprovalRules(groupId: string): Promise<ApprovalRule[]> {
+  const rows = await callApi((client) => client.approvals.groupRules({ params: { id: groupId } }));
+  return [...rows];
 }
 
 export async function revokeApprovalRule(id: string): Promise<void> {
-  await request(`/approval-rules/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
+  await callApi((client) => client.approvals.revokeRule({ params: { id } }));
 }
 
 // --- Message search (T-0117) -----------------------------------------------
@@ -1845,33 +1724,7 @@ export function gifMediaUrl(mediaToken: string): string {
 // --- Audit log (T-0079, T-0084) --------------------------------------------
 // The wire contract lives in apps/server/src/audit/api.ts and service.ts.
 
-const auditCostSchema = Schema.NullOr(
-  struct({
-    currency: Schema.Literals(['EUR', 'USD']),
-    amount: Schema.Number,
-  }),
-);
-
-export const publicAuditEntrySchema = struct({
-  id: Schema.String,
-  at: Schema.String,
-  aiId: Schema.NullOr(Schema.String),
-  groupId: Schema.NullOr(Schema.String),
-  action: Schema.String,
-  subjectId: Schema.NullOr(Schema.String),
-  argsHash: Schema.NullOr(Schema.String),
-  cost: auditCostSchema,
-  result: Schema.Literals(['ok', 'denied', 'error']),
-  detail: Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown)),
-  actorUserId: Schema.NullOr(Schema.String),
-});
-
-export type PublicAuditEntry = typeof publicAuditEntrySchema.Type;
-
-const auditPageSchema = struct({
-  entries: Schema.mutable(Schema.Array(publicAuditEntrySchema)),
-  next: Schema.NullOr(Schema.String),
-});
+export type { PublicAuditEntry };
 
 export interface ListAuditPage {
   entries: PublicAuditEntry[];
@@ -1890,20 +1743,21 @@ export type ListAuditInput = AuditScope & {
   before?: string;
 };
 
-export function listAudit(input: ListAuditInput): Promise<ListAuditPage> {
-  const params = new URLSearchParams();
-  if ('aiId' in input && input.aiId !== undefined) {
-    params.set('aiId', input.aiId);
-  } else if ('groupId' in input && input.groupId !== undefined) {
-    params.set('groupId', input.groupId);
-  }
-  if (input.limit !== undefined) {
-    params.set('limit', String(input.limit));
-  }
-  if (input.before !== undefined && input.before !== '') {
-    params.set('before', input.before);
-  }
-  return request(`/audit?${params.toString()}`, auditPageSchema);
+export async function listAudit(input: ListAuditInput): Promise<ListAuditPage> {
+  const page = await callApi((client) =>
+    client.audit.list({
+      query: {
+        ...('aiId' in input && input.aiId !== undefined
+          ? { aiId: input.aiId }
+          : 'groupId' in input && input.groupId !== undefined
+            ? { groupId: input.groupId }
+            : {}),
+        ...(input.limit === undefined ? {} : { limit: input.limit }),
+        ...(input.before === undefined || input.before === '' ? {} : { before: input.before }),
+      },
+    }),
+  );
+  return { entries: [...page.entries], next: page.next };
 }
 
 // --- First-run setup (T-0161) ------------------------------------------------

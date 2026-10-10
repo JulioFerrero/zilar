@@ -20,6 +20,15 @@ export * from './topics';
 
 // Chain B (T-0893): add `export * from './<x>';` lines below.
 // ----------------------------------------------------------------------------
+export * from './middleware-chain-b';
+export * from './audit';
+export * from './ai-memory';
+export * from './connections';
+export * from './approvals';
+export * from './lenient-nullable-string';
+export * from './ais';
+export * from './tools';
+export * from './routines';
 // End of chain B.
 
 // Chain C (T-0894): add `export * from './<x>';` lines below.

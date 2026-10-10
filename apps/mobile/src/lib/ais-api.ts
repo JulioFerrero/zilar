@@ -1,18 +1,15 @@
-import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } from 'effect';
-import { struct } from '@zilar/protocol';
+import { ApiError, runApi, type PublicAi as ContractAi } from '@zilar/api-contract';
 
 import { API_URL } from './auth';
-import { errorFieldsOf } from './api-error-body';
+import { createApiClient } from './effect/api-client';
 
 /**
  * The AI management API (`/api/ais`), the mobile twin of the web client in
- * `apps/web/src/lib/api.ts`. The wire contract lives in
- * `apps/server/src/ais/api.ts` and `apps/server/src/ais/service.ts`.
- *
- * The boundary is validated with Effect Schema (T-0506 recipe): the request is
- * an Effect pipeline, cut back to a `Promise` at the edge with
- * `Effect.runPromise`. `AisApiError` keeps the server's `code` and `status`,
- * so screens can branch on the error without parsing the message again.
+ * `apps/web/src/lib/api.ts`. A Promise port over the client derived from the
+ * shared contract (`@zilar/api-contract`, `ais.ts`, T-0893).
+ * `AisApiError` is the shared `ApiError`, which keeps the server's `code` and
+ * `status`, so screens can branch on the error without parsing the message
+ * again.
  */
 
 export type AiTemplate = 'dev' | 'marketing' | 'fun' | 'custom';
@@ -36,9 +33,8 @@ export interface PublicAi {
   providerConnectionId: string;
   limits: AiLimits;
   // T-0091: the AI's home machine id, or null when it runs on the
-  // platform. Optional so older payloads stay valid; the parser maps a
-  // missing or non-string value to null. CamelCase like the rest of the
-  // public AI fields.
+  // platform. Optional so older payloads stay valid; a missing or non-string
+  // value maps to null. CamelCase like the rest of the public AI fields.
   machineId?: string | null | undefined;
   createdAt: string;
 }
@@ -80,98 +76,11 @@ export interface AisApi {
   resumeAi(id: string): Promise<PublicAi>;
 }
 
-export class AisApiError extends Error {
-  readonly status: number;
-  readonly code: string;
+/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
+export const AisApiError = ApiError;
+export type AisApiError = ApiError;
 
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = 'AisApiError';
-    this.status = status;
-    this.code = code;
-  }
-}
-
-const AiTemplateSchema = Schema.Literals(['dev', 'marketing', 'fun', 'custom']);
-
-const AiLimitsSchema = struct({
-  perDayUsd: Schema.Number,
-  perMonthUsd: Schema.Number,
-});
-
-// A lenient field: a missing or non-string `machineId` decodes to `null`
-// instead of failing the row (the platform, never a failure — an older server
-// may omit it), exactly like the old type guard.
-const LenientMachineIdSchema = Schema.Unknown.pipe(
-  Schema.withDecodingDefault(Effect.succeed(null)),
-  Schema.decodeTo(Schema.NullOr(Schema.String), {
-    decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : null)),
-    encode: SchemaGetter.transform((value) => value),
-  }),
-);
-
-// Tolerant of unknown fields (the server also sends `avatarUrl` on the
-// public AI, T-0165): only the fields mobile renders are required.
-const PublicAiSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-  template: AiTemplateSchema,
-  persona: Schema.String,
-  model: Schema.String,
-  jid: Schema.String,
-  status: Schema.Literals(['active', 'disabled', 'stopped']),
-  providerConnectionId: Schema.String,
-  limits: AiLimitsSchema,
-  machineId: LenientMachineIdSchema,
-  createdAt: Schema.String,
-});
-
-// A lenient field: a missing or non-string `label` decodes to `null` instead
-// of failing the row, exactly like the old type guard.
-const LenientLabelSchema = Schema.Unknown.pipe(
-  Schema.withDecodingDefault(Effect.succeed(null)),
-  Schema.decodeTo(Schema.NullOr(Schema.String), {
-    decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : null)),
-    encode: SchemaGetter.transform((value) => value),
-  }),
-);
-
-const ConnectionSchema = struct({
-  id: Schema.String,
-  provider: Schema.String,
-  label: LenientLabelSchema,
-  status: Schema.String,
-  createdAt: Schema.String,
-});
-
-// The lists are bare arrays (not envelopes); `Array` is made mutable to keep
-// the array types the API has always returned.
-const PublicAiListSchema = Schema.mutable(Schema.Array(PublicAiSchema));
-const ConnectionListSchema = Schema.mutable(Schema.Array(ConnectionSchema));
-
-function parsePublicAi(value: unknown): PublicAi | null {
-  const decoded = Schema.decodeUnknownExit(PublicAiSchema)(value);
-  return Exit.isSuccess(decoded) ? decoded.value : null;
-}
-
-function parsePublicAiList(value: unknown): PublicAi[] | null {
-  const decoded = Schema.decodeUnknownExit(PublicAiListSchema)(value);
-  return Exit.isSuccess(decoded) ? decoded.value : null;
-}
-
-function parseConnectionList(value: unknown): Connection[] | null {
-  const decoded = Schema.decodeUnknownExit(ConnectionListSchema)(value);
-  return Exit.isSuccess(decoded) ? decoded.value : null;
-}
-
-// delete answers 204 with no body; any 2xx body is accepted and ignored,
-// exactly like the old hand validator.
-function parseDelete(value: unknown): undefined | null {
-  const decoded = Schema.decodeUnknownExit(Schema.Unknown)(value);
-  return Exit.isSuccess(decoded) ? undefined : null;
-}
-
-/** The exact POST body the server's strict `CreateAiSchema` accepts. */
+/** The exact POST body the server's strict create decode accepts. */
 export function buildCreateBody(input: CreateAiInput): Record<string, unknown> {
   return {
     name: input.name,
@@ -183,53 +92,23 @@ export function buildCreateBody(input: CreateAiInput): Record<string, unknown> {
   };
 }
 
-// The internal failures, one per case. They carry no field beyond what the old
-// `AisApiError` already surfaced; the `Promise` edge maps each back to that
-// same error, status, code and message.
-class AisNetworkError extends Data.TaggedError('AisNetworkError') {}
-class AisRequestError extends Data.TaggedError('AisRequestError')<{
-  readonly status: number;
-  readonly code: string;
-  readonly message: string;
-}> {}
-class AisUnauthorized extends Data.TaggedError('AisUnauthorized') {}
-class AisInvalidResponse extends Data.TaggedError('AisInvalidResponse') {}
-
-const requestEffect = Effect.fnUntraced(function* (
-  apiUrl: string,
-  path: string,
-  token: string,
-  init: RequestInit,
-  fetchImpl: typeof fetch,
-): EffectType.fn.Return<unknown, AisNetworkError | AisRequestError> {
-  const response = yield* Effect.tryPromise({
-    try: (signal) =>
-      fetchImpl(`${apiUrl}${path}`, {
-        ...init,
-        signal,
-        headers: {
-          accept: 'application/json',
-          authorization: `Bearer ${token}`,
-          ...init.headers,
-        },
-      }),
-    catch: () => new AisNetworkError(),
-  });
-
-  const body: unknown = yield* Effect.promise(
-    () => response.json().catch(() => null) as Promise<unknown>,
-  );
-
-  if (!response.ok) {
-    const error = errorFieldsOf(body);
-    return yield* new AisRequestError({
-      status: response.status,
-      code: error.code ?? 'request_failed',
-      message: error.message ?? `Request failed (${response.status})`,
-    });
-  }
-  return body;
-});
+// Only the fields this app renders; the usage, avatar and delegation fields
+// of the wire payload are for the web. A missing `machineId` reads as `null`.
+function toPublicAi(ai: ContractAi): PublicAi {
+  return {
+    id: ai.id,
+    name: ai.name,
+    template: ai.template,
+    persona: ai.persona,
+    model: ai.model,
+    jid: ai.jid,
+    status: ai.status,
+    providerConnectionId: ai.providerConnectionId,
+    limits: { perDayUsd: ai.limits.perDayUsd, perMonthUsd: ai.limits.perMonthUsd },
+    machineId: ai.machineId ?? null,
+    createdAt: ai.createdAt,
+  };
+}
 
 /** The production `AisApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createAisApi(
@@ -237,98 +116,53 @@ export function createAisApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): AisApi {
-  const withTokenEffect = Effect.fnUntraced(function* (
-    path: string,
-    init: RequestInit,
-    parse: (value: unknown) => unknown,
-  ): EffectType.fn.Return<
-    unknown,
-    AisUnauthorized | AisNetworkError | AisRequestError | AisInvalidResponse
-  > {
-    const token = yield* Effect.promise(() => getToken());
-    if (token === undefined) {
-      return yield* new AisUnauthorized();
-    }
-    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
-    const parsed = parse(body);
-    if (parsed === null) {
-      return yield* new AisInvalidResponse();
-    }
-    return parsed;
-  });
-
-  const withToken = (
-    path: string,
-    init: RequestInit,
-    parse: (value: unknown) => unknown,
-  ): Promise<unknown> =>
-    Effect.runPromise(
-      withTokenEffect(path, init, parse).pipe(
-        Effect.catchTags({
-          AisUnauthorized: () => Effect.fail(new AisApiError(401, 'unauthorized', 'No session')),
-          AisNetworkError: () =>
-            Effect.fail(new AisApiError(0, 'network_error', 'Could not reach the server')),
-          AisRequestError: (error) =>
-            Effect.fail(new AisApiError(error.status, error.code, error.message)),
-          AisInvalidResponse: () =>
-            Effect.fail(
-              new AisApiError(200, 'invalid_response', 'The server sent an unexpected response'),
-            ),
-        }),
-      ),
-    );
-
+  const client = createApiClient({ getToken, fetchImpl, apiUrl });
   return {
     async listAis() {
-      const body = await withToken('/api/ais', { method: 'GET' }, parsePublicAiList);
-      return body as PublicAi[];
+      const rows = await runApi(client.ais.list());
+      return rows.map(toPublicAi);
     },
     async createAi(input) {
-      const body = await withToken(
-        '/api/ais',
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(buildCreateBody(input)),
-        },
-        parsePublicAi,
+      // The server trims these strings; the contract encodes the trimmed form.
+      const created = await runApi(
+        client.ais.create({
+          payload: {
+            name: input.name.trim(),
+            template: input.template,
+            ...(input.persona === undefined ? {} : { persona: input.persona.trim() }),
+            providerConnectionId: input.providerConnectionId.trim(),
+            model: input.model.trim(),
+            limits: input.limits,
+          },
+        }),
       );
-      return body as PublicAi;
+      return toPublicAi(created);
     },
     async updateAi(id, input) {
-      const body = await withToken(
-        `/api/ais/${encodeURIComponent(id)}`,
-        {
-          method: 'PATCH',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(input),
-        },
-        parsePublicAi,
+      const updated = await runApi(
+        client.ais.patch({
+          params: { id },
+          payload: {
+            ...(input.name === undefined ? {} : { name: input.name.trim() }),
+            ...(input.persona === undefined ? {} : { persona: input.persona.trim() }),
+            ...(input.limits === undefined ? {} : { limits: input.limits }),
+          },
+        }),
       );
-      return body as PublicAi;
+      return toPublicAi(updated);
     },
     async deleteAi(id) {
-      await withToken(`/api/ais/${encodeURIComponent(id)}`, { method: 'DELETE' }, parseDelete);
+      await runApi(client.ais.remove({ params: { id } }));
     },
     async listConnections() {
-      const body = await withToken('/api/connections', { method: 'GET' }, parseConnectionList);
-      return body as Connection[];
+      const rows = await runApi(client.connections.list());
+      return [...rows];
     },
     async stopAi(id) {
-      const body = await withToken(
-        `/api/ais/${encodeURIComponent(id)}/stop`,
-        { method: 'POST' },
-        parsePublicAi,
-      );
-      return body as PublicAi;
+      return toPublicAi(await runApi(client.ais.stop({ params: { id } })));
     },
     async resumeAi(id) {
-      const body = await withToken(
-        `/api/ais/${encodeURIComponent(id)}/resume`,
-        { method: 'POST' },
-        parsePublicAi,
-      );
-      return body as PublicAi;
+      return toPublicAi(await runApi(client.ais.resume({ params: { id } })));
     },
   };
 }

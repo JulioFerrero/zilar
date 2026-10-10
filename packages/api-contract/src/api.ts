@@ -32,11 +32,25 @@ const chainAGroups = [
 
 // Chain B (T-0893) imports: add `import { XGroup } from './x';` lines below.
 // ----------------------------------------------------------------------------
+import { AuditGroup } from './audit';
+import { AiMemoryGroup } from './ai-memory';
+import { ConnectionsGroup } from './connections';
+import { ApprovalsGroup } from './approvals';
+import { AisGroup } from './ais';
+import { ToolsGroup } from './tools';
+import { RoutinesGroup } from './routines';
 // End of chain B imports.
 
 // Chain B (T-0893) groups: add `XGroup,` lines inside the brackets.
 // ----------------------------------------------------------------------------
 const chainBGroups = [
+  AuditGroup,
+  AiMemoryGroup,
+  ConnectionsGroup,
+  ApprovalsGroup,
+  AisGroup,
+  ToolsGroup,
+  RoutinesGroup,
   // (chain B groups)
 ] as const;
 // ----------------------------------------------------------------------------

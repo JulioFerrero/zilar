@@ -3,17 +3,16 @@
 // order as the deleted router (`routes.ts`), mounted by the Effect edge
 // (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
-import { Effect, Layer, Schema } from 'effect';
+import { Effect, Layer } from 'effect';
 import { HttpServerRequest } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-  HttpApiSchema,
-} from 'effect/http-api';
+import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
 import { SqlClient } from 'effect/sql';
+import {
+  ApprovalsGroup,
+  ApprovalsSchemaErrors,
+  type ApprovalRule,
+  type PublicApproval,
+} from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { AuditRecorder } from '../audit/service';
@@ -21,14 +20,7 @@ import type { ServerDatabase } from '../db/client';
 import type { ApprovalRuleRow } from '../db/rows';
 import { HttpError } from '../errors';
 import type { EffectApiMount } from '../effect/http-core';
-import {
-  Session,
-  failureResponse,
-  handler,
-  mountApi,
-  requestIdOf,
-  sessionLayer,
-} from '../effect/http-core';
+import { failureResponse, handler, mountApi, requestIdOf, sessionLayer } from '../effect/http-core';
 import { runSql } from '../effect/sql';
 import { canSeeTopic, type TopicRow } from '../topics/access';
 import {
@@ -81,76 +73,23 @@ export interface ApprovalsApiDependencies {
   alwaysEligible?: AlwaysEligiblePredicate;
 }
 
-// Replaces `decisionSchema` (zod): strict, `note` bounded like the protocol
-// schema. The payload decode is strict (`PayloadParseOptions` below) so an
-// excess key fails like the old `.strict()`.
-const DecisionBody = Schema.Struct({
-  decision: Schema.Literals(['approve_once', 'approve_always', 'deny']),
-  note: Schema.optional(Schema.String.check(Schema.isMaxLength(500))),
-});
+// Dates travel as ISO strings (what `JSON.stringify` wrote before the
+// contract declared the views), so the handlers map the service rows.
+function toWireApproval(row: ReturnType<typeof toPublicApproval>): PublicApproval {
+  return {
+    ...row,
+    decidedAt: row.decidedAt === null ? null : row.decidedAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+  };
+}
 
-const ApprovalStatus = Schema.Literals([
-  'pending',
-  'approved_once',
-  'approved_always',
-  'denied',
-  'consumed',
-  'expired',
-]);
+function toWireRule(rule: PublicApprovalRule): ApprovalRule {
+  return { ...rule, createdAt: rule.createdAt.toISOString() };
+}
 
-const WorstCase = Schema.Struct({
-  currency: Schema.Literals(['EUR', 'USD']),
-  amount: Schema.Number,
-});
-
-// Every field of `PublicApproval` (`service.ts`), compared side by side:
-// id, aiId, groupId, topicId, topicName, action, summary, details,
-// argsHash, worstCase, requestedBy, status, decidedAt, note, expiresAt,
-// createdAt, alwaysEligible, approverNames.
-const PublicApprovalView = Schema.Struct({
-  id: Schema.String,
-  aiId: Schema.String,
-  groupId: Schema.NullOr(Schema.String),
-  topicId: Schema.NullOr(Schema.String),
-  topicName: Schema.NullOr(Schema.String),
-  action: Schema.String,
-  summary: Schema.String,
-  details: Schema.NullOr(Schema.String),
-  argsHash: Schema.String,
-  worstCase: Schema.NullOr(WorstCase),
-  requestedBy: Schema.String,
-  status: ApprovalStatus,
-  decidedAt: Schema.NullOr(Schema.Date),
-  note: Schema.NullOr(Schema.String),
-  expiresAt: Schema.Date,
-  createdAt: Schema.Date,
-  alwaysEligible: Schema.Boolean,
-  approverNames: Schema.Array(Schema.String),
-});
-
-// Every field of `PublicApprovalRule` (`rules.ts`): id, action, scope,
-// groupId, topicId, topicName, createdAt, createdBy.
-const PublicApprovalRuleView = Schema.Struct({
-  id: Schema.String,
-  action: Schema.String,
-  scope: Schema.Literals(['personal', 'group']),
-  groupId: Schema.NullOr(Schema.String),
-  topicId: Schema.NullOr(Schema.String),
-  topicName: Schema.NullOr(Schema.String),
-  createdAt: Schema.Date,
-  createdBy: Schema.String,
-});
-
-const ApprovalIdParams = Schema.Struct({ id: Schema.String });
-
-// Applied to the group so a payload decode failure renders like the old zod
-// path: a 400 `invalid_request` carrying the fixed decision text (the old
-// zod path answered the first issue's message; no test asserts the exact
-// text, only the status).
-class ApprovalsSchemaErrors extends HttpApiMiddleware.Service<ApprovalsSchemaErrors>()(
-  'zilar/effect/http/ApprovalsSchemaErrors',
-) {}
-
+// A payload decode failure renders like the old zod path: a 400
+// `invalid_request` carrying the fixed decision text.
 function schemaErrorLayer(logger: Logger): Layer.Layer<ApprovalsSchemaErrors> {
   return HttpApiMiddleware.layerSchemaErrorTransform(ApprovalsSchemaErrors, () =>
     Effect.gen(function* () {
@@ -163,38 +102,6 @@ function schemaErrorLayer(logger: Logger): Layer.Layer<ApprovalsSchemaErrors> {
     }),
   );
 }
-
-const ApprovalsGroup = HttpApiGroup.make('approvals')
-  .add(
-    HttpApiEndpoint.get('list', '/approvals', {
-      success: Schema.Array(PublicApprovalView),
-    }),
-    HttpApiEndpoint.get('detail', '/approvals/:id', {
-      params: ApprovalIdParams,
-      success: PublicApprovalView,
-    }),
-    HttpApiEndpoint.post('decide', '/approvals/:id/decision', {
-      params: ApprovalIdParams,
-      payload: DecisionBody,
-      success: PublicApprovalView,
-    }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
-    HttpApiEndpoint.get('aiRules', '/ais/:id/approval-rules', {
-      params: ApprovalIdParams,
-      success: Schema.Array(PublicApprovalRuleView),
-    }),
-    HttpApiEndpoint.get('groupRules', '/groups/:id/approval-rules', {
-      params: ApprovalIdParams,
-      success: Schema.Array(PublicApprovalRuleView),
-    }),
-    HttpApiEndpoint.delete('revokeRule', '/approval-rules/:id', {
-      params: ApprovalIdParams,
-      success: HttpApiSchema.NoContent,
-    }),
-  )
-  .middleware(Session)
-  .middleware(ApprovalsSchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
 
 const ApprovalsApi = HttpApi.make('approvals').add(ApprovalsGroup);
 
@@ -423,7 +330,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
                 visible.push({ ...rule, topicName: topic.name });
               }
             }
-            return visible;
+            return visible.map(toWireRule);
           }),
         ),
       )
@@ -454,7 +361,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
                 rules.push({ ...toPublicRule(rule), topicName: topic.name });
               }
             }
-            return rules;
+            return rules.map(toWireRule);
           }),
         ),
       )
@@ -614,8 +521,8 @@ function decoratePublic(
   row: ReturnType<typeof toPublicApproval>,
   alwaysEligible: AlwaysEligiblePredicate,
   isManager: boolean,
-): ReturnType<typeof toPublicApproval> {
-  return { ...row, alwaysEligible: isManager && alwaysEligible(row.action) };
+): PublicApproval {
+  return toWireApproval({ ...row, alwaysEligible: isManager && alwaysEligible(row.action) });
 }
 
 // The topic names for rows the viewer can see, keyed by topic id. A row

@@ -14,18 +14,8 @@ const auth: AuthState = {
 };
 
 function jsonResponse(status: number, body: unknown): Response {
-  if (status === 204) {
-    return {
-      ok: true,
-      status,
-      json: async () => body,
-    } as Response;
-  }
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response;
+  // A real `Response`: the derived contract client reads headers and bytes.
+  return new Response(status === 204 ? null : JSON.stringify(body), { status });
 }
 
 function errorResponse(status: number, code: string, message: string): Response {

@@ -3,16 +3,15 @@
 // calls and step order as the deleted router (`routes.ts`), mounted by the
 // Effect edge (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
-import { Effect, Layer, Schema } from 'effect';
+import { Effect, Layer } from 'effect';
 import { HttpServerRequest } from 'effect/http';
+import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
 import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-  HttpApiSchema,
-} from 'effect/http-api';
+  AisConfigured,
+  AisGroup,
+  AisSchemaErrors,
+  type PublicAi as WireAi,
+} from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { LitellmAdminClient } from '../ai/litellm-client';
 import type { AuditRecorder } from '../audit/service';
@@ -23,8 +22,6 @@ import type { KeyCipher } from '../connections/crypto';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
-  CurrentUser,
-  Session,
   failureResponse,
   handler,
   httpErrorResponse,
@@ -40,7 +37,6 @@ import {
   deleteAi,
   getOwnedAi,
   listAis,
-  MAX_MONTHLY_USD,
   resumeAi,
   stopAi,
   updateAi,
@@ -48,7 +44,6 @@ import {
   type AiLogger,
   type PublicAi,
 } from './service';
-import { AI_TEMPLATES } from './templates';
 import { getAiUsage } from './usage';
 
 export interface AisApiDependencies {
@@ -82,136 +77,12 @@ export type PublicAiWithUsage = PublicAi & { usage: AiUsageSummary | null };
 // whole list.
 export const USAGE_TIMEOUT_MS = 2_000;
 
-// Replaces `LimitsSchema` (zod): both bounds finite and positive, the day
-// inside the month, the month under the server ceiling.
-const LimitsBody = Schema.Struct({
-  perDayUsd: Schema.Number.check(
-    Schema.makeFilter((value) =>
-      Number.isFinite(value) && value > 0 ? undefined : 'perDayUsd must be positive',
-    ),
-  ),
-  perMonthUsd: Schema.Number.check(
-    Schema.makeFilter((value) =>
-      Number.isFinite(value) && value > 0 ? undefined : 'perMonthUsd must be positive',
-    ),
-  ),
-}).check(
-  Schema.makeFilter((value) =>
-    value.perDayUsd <= value.perMonthUsd
-      ? undefined
-      : 'perDayUsd must not be greater than perMonthUsd',
-  ),
-  Schema.makeFilter((value) =>
-    value.perMonthUsd <= MAX_MONTHLY_USD
-      ? undefined
-      : `perMonthUsd must be at most ${MAX_MONTHLY_USD}`,
-  ),
-);
-
-// Replaces the zod string trims (`z.string().trim().min(1).max(N)`): trimmed
-// before the length checks, exactly like the old schemas.
-const Name = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64));
-const Persona = Schema.Trim.check(Schema.isMaxLength(4000));
-const ConnectionId = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(128));
-const Model = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(256));
-const MachineId = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(128));
-const AiTemplateBody = Schema.Literals(AI_TEMPLATES);
-
-// Replaces `CreateAiSchema` (zod): strict, so an unknown key is a 400.
-const CreateAiBody = Schema.Struct({
-  name: Name,
-  template: AiTemplateBody,
-  persona: Schema.optional(Persona),
-  providerConnectionId: ConnectionId,
-  model: Model,
-  limits: LimitsBody,
-});
-
-// Replaces `UpdateAiSchema` (zod): strict, any subset, but a new provider
-// connection needs an explicit model.
-const UpdateAiBody = Schema.Struct({
-  name: Schema.optional(Name),
-  persona: Schema.optional(Persona),
-  limits: Schema.optional(LimitsBody),
-  model: Schema.optional(Model),
-  providerConnectionId: Schema.optional(ConnectionId),
-  // T-0474: the two delegation opt-ins (plan §8, decision 3). Owner only.
-  canDelegate: Schema.optional(Schema.Boolean),
-  acceptsDelegation: Schema.optional(Schema.Boolean),
-}).check(
-  Schema.makeFilter((value) =>
-    value.providerConnectionId === undefined || value.model !== undefined
-      ? undefined
-      : 'A new provider connection needs an explicit model',
-  ),
-);
-
-// Replaces `AssignMachineSchema` (zod): strict, `null` clears the assignment.
-const AssignMachineBody = Schema.Struct({
-  machineId: Schema.NullOr(MachineId),
-});
-
-const AiLimitsView = Schema.Struct({
-  perDayUsd: Schema.Number,
-  perMonthUsd: Schema.Number,
-});
-
-const AiUsageView = Schema.Struct({
-  todayUsd: Schema.Number,
-  windowUsd: Schema.Number,
-});
-
-// The success shape carries every `PublicAi` field plus the usage summary:
-// `id`, `name`, `template`, `persona`, `model`, `jid`, `status`,
-// `providerConnectionId`, `limits`, `machineId` (nullable), `canDelegate`,
-// `acceptsDelegation`, `avatarUrl` (optional, never null), `createdAt` (a Date
-// encoded as the same ISO string), and `usage` (`{ todayUsd, windowUsd } | null`).
-const AiView = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  template: AiTemplateBody,
-  persona: Schema.String,
-  model: Schema.String,
-  jid: Schema.String,
-  status: Schema.Literals(['active', 'disabled', 'stopped']),
-  providerConnectionId: Schema.String,
-  limits: AiLimitsView,
-  machineId: Schema.NullOr(Schema.String),
-  canDelegate: Schema.Boolean,
-  acceptsDelegation: Schema.Boolean,
-  avatarUrl: Schema.optional(Schema.String),
-  createdAt: Schema.Date,
-  usage: Schema.NullOr(AiUsageView),
-});
-
-// The write routes (create, patch, stop, resume, machine) answer the plain
-// public AI, exactly like the old router: no `usage` summary.
-const PublicAiView = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  template: AiTemplateBody,
-  persona: Schema.String,
-  model: Schema.String,
-  jid: Schema.String,
-  status: Schema.Literals(['active', 'disabled', 'stopped']),
-  providerConnectionId: Schema.String,
-  limits: AiLimitsView,
-  machineId: Schema.NullOr(Schema.String),
-  canDelegate: Schema.Boolean,
-  acceptsDelegation: Schema.Boolean,
-  avatarUrl: Schema.optional(Schema.String),
-  createdAt: Schema.Date,
-});
-
-const AiList = Schema.Array(AiView);
-
-const AiIdParams = Schema.Struct({ id: Schema.String });
-
-// Applied to the group so a payload decode failure renders like the old zod
-// path: a 400 `invalid_request` carrying the first schema message.
-class AisSchemaErrors extends HttpApiMiddleware.Service<AisSchemaErrors>()(
-  'zilar/effect/http/AisSchemaErrors',
-) {}
+// The service rows carry `createdAt` as a `Date`; the wire carries its ISO
+// string, which is what `JSON.stringify` wrote before the contract declared
+// the view.
+function toWire(ai: PublicAi | PublicAiWithUsage): WireAi {
+  return { ...ai, createdAt: ai.createdAt.toISOString() };
+}
 
 // The route `logger` only warns, but the error envelope logs defects with
 // `error`. Both read the same `(fields, message)` pair, so adapt one to the
@@ -243,9 +114,6 @@ function schemaErrorLayer(logger: Logger): Layer.Layer<AisSchemaErrors> {
 // CurrentUser` is satisfied by `Session`. The gate needs no decode, so it
 // also covers the no-payload writes (delete) for free; stop/resume/machine
 // need only the DB and skip it, as they did before.
-class AisConfigured extends HttpApiMiddleware.Service<AisConfigured, { requires: CurrentUser }>()(
-  'zilar/effect/http/AisConfigured',
-) {}
 
 function configuredLayer(deps: {
   litellm?: LitellmAdminClient;
@@ -267,51 +135,6 @@ function configuredLayer(deps: {
     ),
   );
 }
-
-const AisGroup = HttpApiGroup.make('ais')
-  .add(
-    HttpApiEndpoint.get('list', '/ais', {
-      success: AiList,
-    }),
-    HttpApiEndpoint.get('detail', '/ais/:id', {
-      params: AiIdParams,
-      success: AiView,
-    }),
-    HttpApiEndpoint.post('create', '/ais', {
-      payload: CreateAiBody,
-      success: PublicAiView.pipe(HttpApiSchema.status(201)),
-    })
-      .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
-      .middleware(AisConfigured),
-    HttpApiEndpoint.patch('patch', '/ais/:id', {
-      params: AiIdParams,
-      payload: UpdateAiBody,
-      success: PublicAiView,
-    })
-      .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
-      .middleware(AisConfigured),
-    HttpApiEndpoint.delete('remove', '/ais/:id', {
-      params: AiIdParams,
-      success: HttpApiSchema.NoContent,
-    }).middleware(AisConfigured),
-    HttpApiEndpoint.post('stop', '/ais/:id/stop', {
-      params: AiIdParams,
-      success: PublicAiView,
-    }),
-    HttpApiEndpoint.post('resume', '/ais/:id/resume', {
-      params: AiIdParams,
-      success: PublicAiView,
-    }),
-    HttpApiEndpoint.put('assignMachine', '/ais/:id/machine', {
-      params: AiIdParams,
-      payload: AssignMachineBody,
-      success: PublicAiView,
-    }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
-  )
-  .middleware(Session)
-  .middleware(AisSchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
 
 const AisApi = HttpApi.make('ais').add(AisGroup);
 
@@ -401,7 +224,8 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
           const withAvatarList = await withAvatars(ais);
           // Owner only, as today: every id here came from the owner's own listing.
           // The reads run in parallel so one slow AI never holds the whole list.
-          return Promise.all(withAvatarList.map((ai) => withUsage(ai)));
+          const rows = await Promise.all(withAvatarList.map((ai) => withUsage(ai)));
+          return rows.map(toWire);
         }),
       )
       .handle(
@@ -412,15 +236,15 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
             throw new HttpError(404, 'not_found', 'AI not found');
           }
           const [withAvatar] = await withAvatars([ai]);
-          return withUsage(withAvatar ?? ai);
+          return toWire(await withUsage(withAvatar ?? ai));
         }),
       )
       .handle(
         'create',
-        handler(effectLogger, (request, user) => {
+        handler(effectLogger, async (request, user) => {
           const configured = requireConfigured();
           const payload = request.payload;
-          return createAi(serviceDeps(configured), {
+          const created = await createAi(serviceDeps(configured), {
             ownerId: user.id,
             name: payload.name,
             template: payload.template,
@@ -429,14 +253,15 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
             model: payload.model,
             limits: { ...payload.limits } as AiLimits,
           });
+          return toWire(created);
         }),
       )
       .handle(
         'patch',
-        handler(effectLogger, (request, user) => {
+        handler(effectLogger, async (request, user) => {
           const configured = requireConfigured();
           const payload = request.payload;
-          return updateAi(serviceDeps(configured), {
+          const updated = await updateAi(serviceDeps(configured), {
             id: request.params.id,
             ownerId: user.id,
             ...(payload.name === undefined ? {} : { name: payload.name }),
@@ -451,6 +276,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
               ? {}
               : { acceptsDelegation: payload.acceptsDelegation }),
           });
+          return toWire(updated);
         }),
       )
       .handle(
@@ -495,7 +321,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
               detail: null,
             });
           }
-          return ai;
+          return toWire(ai);
         }),
       )
       .handle(
@@ -518,7 +344,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
               detail: null,
             });
           }
-          return ai;
+          return toWire(ai);
         }),
       )
       // T-0091: assign or clear the AI's home machine. The audit entry is
@@ -557,7 +383,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
               detail: { machineId: ai.machineId },
             });
           }
-          return ai;
+          return toWire(ai);
         }),
       ),
   );

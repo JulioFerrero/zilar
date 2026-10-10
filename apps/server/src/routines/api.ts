@@ -4,25 +4,20 @@
 // with its thin wrapper; mounted by the Effect edge
 // (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
-import { Effect, Layer, Schema } from 'effect';
+import { Effect, Layer } from 'effect';
 import { SqlClient } from 'effect/sql';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiSchema,
-} from 'effect/http-api';
+import { HttpServerRequest } from 'effect/http';
+import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
+import { RoutinesGroup, RoutinesSchemaErrors } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import {
-  SchemaErrors,
-  Session,
+  failureResponse,
   handler,
   mountApi,
-  schemaErrorLayer,
+  requestIdOf,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
@@ -41,78 +36,20 @@ import {
 } from './service';
 import { runSql } from '../effect/sql';
 
-const RoutineStatus = Schema.Literals(['active', 'paused', 'needs_approval']);
-const RoutinePausedReason = Schema.NullOr(Schema.Literals(['user', 'failures', 'hosts_changed']));
-const RoutineLastStatus = Schema.NullOr(Schema.Literals(['ok', 'error', 'skipped']));
-const RoutineScope = Schema.Literals(['personal', 'group']);
-
-// The list shape is the full `PublicRoutine`: every field, dates as the
-// ISO strings `c.json` used to write.
-const RoutineListItem = Schema.Struct({
-  id: Schema.String,
-  aiId: Schema.String,
-  groupId: Schema.NullOr(Schema.String),
-  topicId: Schema.NullOr(Schema.String),
-  toolId: Schema.String,
-  toolName: Schema.String,
-  title: Schema.String,
-  schedule: Schema.Unknown,
-  status: RoutineStatus,
-  pausedReason: RoutinePausedReason,
-  nextRunAt: Schema.String,
-  lastRunAt: Schema.NullOr(Schema.String),
-  lastStatus: RoutineLastStatus,
-  approvedHosts: Schema.Array(Schema.String),
-  scope: RoutineScope,
-});
-
-const RoutineList = Schema.Array(RoutineListItem);
-
-// The pause/resume shape is the old `toWire` view: no ai/group/topic/tool
-// ids, dates as ISO strings.
-const RoutineDetail = Schema.Struct({
-  id: Schema.String,
-  title: Schema.String,
-  toolName: Schema.String,
-  schedule: Schema.Unknown,
-  status: RoutineStatus,
-  pausedReason: RoutinePausedReason,
-  nextRunAt: Schema.String,
-  lastRunAt: Schema.NullOr(Schema.String),
-  lastStatus: RoutineLastStatus,
-  approvedHosts: Schema.Array(Schema.String),
-  scope: RoutineScope,
-});
-
-const RoutineIdParams = Schema.Struct({ id: Schema.String });
-
-const RoutinesGroup = HttpApiGroup.make('routines')
-  .add(
-    HttpApiEndpoint.get('listForAi', '/ais/:id/routines', {
-      params: RoutineIdParams,
-      success: RoutineList,
+// A params decode failure renders as 400 `invalid_request` through the shared
+// envelope.
+function schemaErrorLayer(logger: Logger): Layer.Layer<RoutinesSchemaErrors> {
+  return HttpApiMiddleware.layerSchemaErrorTransform(RoutinesSchemaErrors, (error) =>
+    Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      return failureResponse(
+        logger,
+        requestIdOf(request),
+        new HttpError(400, 'invalid_request', error.cause.message),
+      );
     }),
-    HttpApiEndpoint.get('listForGroup', '/groups/:id/routines', {
-      params: RoutineIdParams,
-      success: RoutineList,
-    }),
-    HttpApiEndpoint.post('pause', '/routines/:id/pause', {
-      params: RoutineIdParams,
-      success: RoutineDetail,
-    }),
-    HttpApiEndpoint.post('resume', '/routines/:id/resume', {
-      params: RoutineIdParams,
-      success: RoutineDetail,
-    }),
-    HttpApiEndpoint.delete('remove', '/routines/:id', {
-      params: RoutineIdParams,
-      success: HttpApiSchema.NoContent,
-    }),
-  )
-  .middleware(Session)
-  .middleware(SchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
+  );
+}
 
 const RoutinesApi = HttpApi.make('routines').add(RoutinesGroup);
 

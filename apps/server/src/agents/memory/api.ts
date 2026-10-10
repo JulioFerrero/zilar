@@ -5,26 +5,32 @@
 // to everyone who can see it and changeable by the AI's owner and the topic
 // managers. Text is never logged.
 
-import { Effect, Layer, Schema } from 'effect';
+import { Effect, Layer } from 'effect';
+import { HttpServerRequest } from 'effect/http';
 import { SqlClient } from 'effect/sql';
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
+import {
+  AiMemoryGroup,
+  AiMemorySchemaErrors,
+  AiMemoryWriteRateLimit,
+  CurrentUser,
+} from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../../auth/auth';
 import type { ServerConfig } from '../../config';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
 import { HttpError } from '../../errors';
-import { createRateLimiter } from '../../rate-limit';
-import { makeRateLimit } from '../../effect/rate-limit-middleware';
+import { createRateLimiter, type RateLimiter } from '../../rate-limit';
 import { resolvePinChat } from '../../pins/access';
 import { canManageTopic } from '../../topics/access';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import {
-  SchemaErrors,
-  Session,
+  failureResponse,
   handler,
+  httpErrorResponse,
   mountApi,
-  schemaErrorLayer,
+  requestIdOf,
   sessionLayer,
   type EffectApiMount,
 } from '../../effect/http-core';
@@ -124,53 +130,42 @@ export async function resolveMemoryChat(
   throw toMissingMemoryChat();
 }
 
-// The query and body replace `memoryQuerySchema` and `clearBodySchema` (zod).
-// 1..256 characters; the payload/query decode is strict (`onExcessProperty`
-// below) so an excess key fails like the old `.strict()`.
-const chatField = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
-const MemoryQuery = Schema.Struct({ chat: chatField, ai: chatField });
-const ClearBody = Schema.Struct({ chat: chatField, ai: chatField });
-
-const MemoryFact = Schema.Struct({ id: Schema.String, text: Schema.String });
-const MemoryView = Schema.Struct({
-  facts: Schema.Array(MemoryFact),
-  lines: Schema.Array(Schema.String),
-  canChange: Schema.Boolean,
-});
-const OkResult = Schema.Struct({ ok: Schema.Boolean });
+// A params, query or payload decode failure renders as 400 `invalid_request`
+// through the shared envelope.
+function schemaErrorLayer(logger: Logger): Layer.Layer<AiMemorySchemaErrors> {
+  return HttpApiMiddleware.layerSchemaErrorTransform(AiMemorySchemaErrors, (error) =>
+    Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      return failureResponse(
+        logger,
+        requestIdOf(request),
+        new HttpError(400, 'invalid_request', error.cause.message),
+      );
+    }),
+  );
+}
 
 // The write budget runs before the query or body is decoded, exactly like the
 // old routes' `requireWriteBudget` -> `safeParse` order: an invalid request
 // still spends budget. `requires: CurrentUser` is satisfied by `Session`.
-const AiMemoryWriteRateLimit = makeRateLimit(
-  'zilar/effect/http/AiMemoryWriteRateLimit',
-  'Too many memory changes, try again later',
-);
-
-const AiMemoryGroup = HttpApiGroup.make('aiMemory')
-  .add(
-    HttpApiEndpoint.get('view', '/ai-memory', {
-      query: MemoryQuery,
-      success: MemoryView,
-    }).annotate(HttpApi.QueryParseOptions, { onExcessProperty: 'error' }),
-    HttpApiEndpoint.delete('deleteFact', '/ai-memory/facts/:id', {
-      params: { id: Schema.String },
-      query: MemoryQuery,
-      success: OkResult,
-    })
-      .annotate(HttpApi.QueryParseOptions, { onExcessProperty: 'error' })
-      .middleware(AiMemoryWriteRateLimit.Middleware),
-    HttpApiEndpoint.post('clear', '/ai-memory/clear', {
-      payload: ClearBody,
-      success: OkResult,
-    })
-      .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
-      .middleware(AiMemoryWriteRateLimit.Middleware),
-  )
-  .middleware(Session)
-  .middleware(SchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
+function writeRateLimitLayer(limiter: RateLimiter): Layer.Layer<AiMemoryWriteRateLimit> {
+  return Layer.succeed(
+    AiMemoryWriteRateLimit,
+    AiMemoryWriteRateLimit.of(
+      Effect.fnUntraced(function* (httpEffect) {
+        const user = yield* CurrentUser;
+        if (!limiter.allow(user.id)) {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          return httpErrorResponse(
+            requestIdOf(request),
+            new HttpError(429, 'rate_limited', 'Too many memory changes, try again later'),
+          );
+        }
+        return yield* httpEffect;
+      }),
+    ),
+  );
+}
 
 const AiMemoryApi = HttpApi.make('aiMemory').add(AiMemoryGroup);
 
@@ -254,7 +249,7 @@ export function createAiMemoryApi(deps: AiMemoryApiDependencies): EffectApiMount
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayer(logger)),
-    Layer.provide(AiMemoryWriteRateLimit.layer(writeLimiter)),
+    Layer.provide(writeRateLimitLayer(writeLimiter)),
   );
 
   return mountApi(AiMemoryApi, apiLayer);

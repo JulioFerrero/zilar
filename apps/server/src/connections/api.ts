@@ -22,28 +22,28 @@
 // literals, shared with the service and the probe boundary.
 
 import { Effect, Layer, Option, Schema } from 'effect';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiSchema,
-} from 'effect/http-api';
+  CreateConnectionPayload,
+  ConnectionsServerGroup,
+  type ConnectionView,
+} from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
-import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { KeyCipher } from './crypto';
 import { redactKey, createProviderProbe, type ProviderProbe } from './probe';
-import { ProviderIdSchema, type ProviderId } from './providers';
+import type { ProviderId } from './providers';
 import {
   countAisUsingConnection,
   createConnection as createConnectionRow,
   deleteConnection as deleteConnectionRow,
   findOwnedConnection,
   listConnections,
+  type PublicConnection,
 } from './service';
 
 // Each key test calls the provider with the stored key, so cap tests per user.
@@ -73,61 +73,22 @@ export interface ConnectionsApiDependencies extends ConnectionsRoutesDependencie
   testLimiter?: RateLimiter;
 }
 
-// Replaces `CreateConnectionSchema` (zod strict): the key is trimmed because
-// pasted keys often carry a trailing newline. Excess keys fail the decode,
-// like the old `.strict()`.
-const CreateConnectionBody = Schema.Struct({
-  provider: ProviderIdSchema,
-  key: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(16384)),
-  label: Schema.optional(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
-});
-
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 
-// Every field of `PublicConnection` (`./service`): the encrypted key is not
-// one of them, so it can never reach a response.
-const ConnectionView = Schema.Struct({
-  id: Schema.String,
-  provider: ProviderIdSchema,
-  label: Schema.NullOr(Schema.String),
-  status: Schema.Literals(['active', 'revoked']),
-  createdAt: Schema.Date,
-});
-
-const ConnectionTestResult = Schema.Union([
-  Schema.Struct({ ok: Schema.Literal(true) }),
-  Schema.Struct({ ok: Schema.Literal(false), message: Schema.String }),
-]);
-
-const ConnectionIdParams = Schema.Struct({ id: Schema.String });
+// A connection on the wire: the encrypted key is not part of `PublicConnection`
+// (`./service`), so it can never reach a response; `createdAt` travels as its
+// ISO string.
+function toWire(connection: PublicConnection): ConnectionView {
+  return { ...connection, createdAt: connection.createdAt.toISOString() };
+}
 
 // Marks a body that is not JSON at all, so the handler can answer `Invalid
 // JSON body` instead of the schema-violation text (JSON never yields a symbol).
 const INVALID_JSON = Symbol('connections/invalid-json');
 
-const ConnectionsGroup = HttpApiGroup.make('connections')
-  .add(
-    HttpApiEndpoint.get('list', '/connections', {
-      success: Schema.Array(ConnectionView),
-    }),
-    // 201; the body is decoded by hand in the handler (see the header).
-    HttpApiEndpoint.post('create', '/connections', {
-      success: ConnectionView.pipe(HttpApiSchema.status(201)),
-    }),
-    HttpApiEndpoint.post('test', '/connections/:id/test', {
-      params: ConnectionIdParams,
-      success: ConnectionTestResult,
-    }),
-    HttpApiEndpoint.delete('remove', '/connections/:id', {
-      params: ConnectionIdParams,
-      success: HttpApiSchema.NoContent,
-    }),
-  )
-  .middleware(Session)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
-
-const ConnectionsApi = HttpApi.make('connections').add(ConnectionsGroup);
+// The server group declares no create payload: the body is decoded by hand in
+// the handler (see the header). The derived clients use `ConnectionsGroup`.
+const ConnectionsApi = HttpApi.make('connections').add(ConnectionsServerGroup);
 
 export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
@@ -171,7 +132,7 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
         'list',
         handler(defectLogger, (_request, user) => {
           requireCipher();
-          return listConnections(deps.db, user.id);
+          return listConnections(deps.db, user.id).then((rows) => rows.map(toWire));
         }),
       )
       .handle(
@@ -185,12 +146,12 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
             if (raw === INVALID_JSON) {
               throw new HttpError(400, 'invalid_request', 'Invalid JSON body');
             }
-            const decoded = Schema.decodeUnknownOption(CreateConnectionBody, STRICT_DECODE)(raw);
+            const decoded = Schema.decodeUnknownOption(CreateConnectionPayload, STRICT_DECODE)(raw);
             if (Option.isNone(decoded)) {
               throw new HttpError(400, 'invalid_request', 'Invalid connection request');
             }
             const body = decoded.value;
-            return yield* Effect.promise(() =>
+            const created = yield* Effect.promise(() =>
               createConnectionRow(deps.db, {
                 owner: user.id,
                 provider: body.provider,
@@ -198,6 +159,7 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
                 label: body.label ?? null,
               }),
             );
+            return toWire(created);
           }),
         ),
       )

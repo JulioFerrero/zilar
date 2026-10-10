@@ -5,11 +5,8 @@ import { renderApp } from '@/test/renderApp';
 import { ConnectionsPage } from './ConnectionsPage';
 
 function jsonResponse(status: number, body: unknown): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response;
+  // A real `Response`: the derived contract client reads headers and bytes.
+  return new Response(status === 204 ? null : JSON.stringify(body), { status });
 }
 
 const openaiConnection = {
@@ -155,7 +152,11 @@ describe('ConnectionsPage', () => {
   });
 
   it('navigates to the Connections page from the main menu', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, [])));
+    // Several requests are made; a `Response` body can be read only once.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse(200, [])),
+    );
 
     renderApp('/');
 

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
+import { MAX_MONTHLY_USD } from '@zilar/api-contract';
 import type { KeyCipher } from '../connections/crypto';
 import {
   decryptForGatewayUse,
@@ -23,9 +24,9 @@ import { defaultPersonaFor, type AiTemplate } from './templates';
 // The exported functions stay `async` so routes and tests keep their shape
 // during the transition.
 // The server ceiling on an AI's monthly budget. The plan's example is EUR 20 a
-// month; the cap is a product safety limit (a client can never widen it) and a
-// comment here so changing it is a deliberate act, not a magic number.
-export const MAX_MONTHLY_USD = 200;
+// month; the cap is a product safety limit (a client can never widen it). It
+// lives in the shared contract, which validates the limits.
+export { MAX_MONTHLY_USD };
 
 // LiteLLM's budget window for every AI key. `per_day_usd` is stored for the
 // daily ledger a later task builds; the gateway does not enforce a daily cap.

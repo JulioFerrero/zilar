@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { Effect, Exit, Schema, SchemaIssue } from 'effect';
 import { SqlClient } from 'effect/sql';
+import { MAX_AUDIT_LIST_LIMIT } from '@zilar/api-contract';
 import { ARGS_HASH_PATTERN, struct } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
@@ -193,7 +194,7 @@ export async function recordAudit(db: ServerDatabase, entry: AuditEntry, now: Da
   );
 }
 
-export const MAX_AUDIT_LIST_LIMIT = 200;
+export { MAX_AUDIT_LIST_LIMIT };
 export const DEFAULT_AUDIT_LIST_LIMIT = 50;
 
 const cursorSchema = Schema.String.pipe(

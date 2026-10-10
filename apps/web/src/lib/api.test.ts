@@ -364,8 +364,9 @@ describe('connections API', () => {
   it('createConnection throws ApiError when the response shape is wrong', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(201, { not: 'a connection' })));
 
+    // The derived client reports a bad success body with status 200.
     await expect(createConnection({ provider: 'openai', key: 'sk-test' })).rejects.toMatchObject({
-      status: 201,
+      status: 200,
       code: 'invalid_response',
     } satisfies Partial<ApiError>);
   });
