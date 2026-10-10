@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds, media gallery | in-progress | auto | T-0949 | mock wave 2 |
 | [T-1053](T-1053-server-jid-truncate-helpers.md) | Dedup S3: one server bareJid/ownBareJid and truncateChars | in-progress | auto | T-1051 | dedup-status §6 |
-| [T-1055](T-1055-server-pins-handler.md) | Dedup S2: pins/api.ts on the shared handler() | in-progress | auto | T-1051 | dedup-status §2 |
 
 ## Follow-ups
 
@@ -1090,3 +1089,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1052](T-1052-server-runsql-last-sites.md) | Dedup F1 (S1): the last service-level sqlRuntimeFor(db).runPromise calls use runSql | 2026-10-10 |
 | [T-1046](T-1046-mock-backend-stickers-gifs.md) | Mock backend F1: stickers (packs, panel, favorites, discover, files) and GIFs (search, trending) domains in @z | 2026-10-10 |
 | [T-1048](T-1048-mock-backend-group-general-topics.md) | Mock backend: every seeded group and channel gets its General topic in /chats, like the real server, so the mo | 2026-10-10 |
+| [T-1055](T-1055-server-pins-handler.md) | Dedup F2 (S2): pins/api.ts uses the shared handler() instead of three hand-written withErrorEnvelope blocks | 2026-10-10 |
