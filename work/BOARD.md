@@ -8,6 +8,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
+| [T-0891](T-0891-contract-prep-chains.md) | api-contract prep: one Session/CurrentUser, per-chain blocks, per-group smoke files | in-progress | sonnet-5.5 | | wave 5 prep, simplify plan phase 3 |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
