@@ -16,6 +16,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0969](T-0969-split-store-send.md) | Size split T33: client-core store/send.ts (883), byte-identical | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0970](T-0970-split-lead-batch.md) | Size split T22: devtools lead/batch.ts (913) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0971](T-0971-split-web-message-bubble.md) | Size split T25: web MessageBubble.tsx (846) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0972](T-0972-ai-reply-crucial-tests.md) | Crucial tests: AI reply failure mapping, redaction, tool-loop cap | in-progress | deepseek-flash | T-0960 | Julio's test rule |
 
 ## Follow-ups
 
