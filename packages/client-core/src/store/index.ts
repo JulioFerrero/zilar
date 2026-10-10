@@ -12,6 +12,7 @@ export * from './lifetime';
 // End of T2.
 
 // T3 (ledger): add `export * from './<x>';` lines below.
+export * from './ledger';
 // ----------------------------------------------------------------------------
 // End of T3.
 

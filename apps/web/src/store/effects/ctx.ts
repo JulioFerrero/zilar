@@ -1,20 +1,10 @@
 // What the effect modules share about one chat store: the state accessors, the
 // ports, the lifetime, the mutable bookkeeping the store keeps beside its
 // state, and the plain helpers (`k`) that stay in `realStore.ts`.
-import type {
-  Attachment,
-  ChatSummary,
-  EditAuthor,
-  EditsState,
-  MentionMember,
-  MessageStatus,
-  ReplyRef,
-  SendFailureReason,
-  UiMessage,
-  VoiceMeta,
-} from '@zilar/chat-core';
+import type { EditAuthor, MentionMember } from '@zilar/chat-core';
+import type { MessageLedger } from '@zilar/client-core/store';
 import type { Deferred } from 'effect';
-import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
+import type { XmppCore } from '@zilar/xmpp-core';
 import type { ChatEntry, GroupDetail, Me } from '@/lib/api';
 import type { MediaTokenShape } from '@/lib/attachments';
 import type { SetState } from '../atomStore';
@@ -22,62 +12,14 @@ import type { ChatStoreState } from '../store';
 import type { PortsShape } from './ports';
 import type { Lifetime } from './runtime';
 
-/** The plain helpers of `realStore.ts` that effect modules call. */
-export interface Kernel {
+/**
+ * The message ledger (`@zilar/client-core/store`) plus the plain helpers of
+ * `realStore.ts` that effect modules call. `removeFailedMessage` also drops
+ * the kept attachment bytes.
+ */
+export interface Kernel extends MessageLedger {
   rememberGroupIds(entries: ChatEntry[]): void;
   nick(me: Me): string;
-  listFor(state: ChatStoreState, chatId: string): UiMessage[];
-  sameMessage(left: string, right: string): boolean;
-  ingestHistoryReactions(messages: readonly ChatMessage[]): void;
-  ingestHistoryEdits(messages: readonly ChatMessage[]): void;
-  isReactionOnly(message: ChatMessage): boolean;
-  isEditStanza(message: ChatMessage): boolean;
-  toUiMessage(message: ChatMessage, meId: string): UiMessage;
-  resolvePendingEdits(chatId: string): void;
-  withEdits(message: UiMessage, chatId: string): UiMessage;
-  refreshEdits(chatId: string): void;
-  previewFor(message: UiMessage): UiMessage;
-  myJid(): string | undefined;
-  aliasRoot(id: string): string;
-  linkMessageIds(left: string, right: string): void;
-  linkLocalToServer(localId: string, serverId: string): void;
-  rememberOriginId(messageId: string, originId: string): void;
-  rememberAuthor(messageId: string, author: EditAuthor): void;
-  rememberBaseText(messageId: string, text: string): void;
-  authorFor(messageId: string): EditAuthor | undefined;
-  correctionTargetFor(messageId: string): string | undefined;
-  signatureFor(chatId: string, body: string, replyTo: ReplyRef | undefined): string;
-  stickerSignatureFor(
-    chatId: string,
-    body: string,
-    stickerId: string,
-    replyTo: ReplyRef | undefined,
-  ): string;
-  setChatMessage(chatId: string, message: UiMessage, clearUnread: boolean): void;
-  updateMessageStatus(chatId: string, messageId: string, status: MessageStatus): void;
-  updateMessageVoice(chatId: string, messageId: string, voice: VoiceMeta): void;
-  updateMessageAttachment(chatId: string, messageId: string, attachment: Attachment): void;
-  markSendFailed(chatId: string, messageId: string, reason: SendFailureReason): void;
-  markSendRetrying(chatId: string, messageId: string): void;
-  markStickerFailed(chatId: string, messageId: string): void;
-  markAttachmentFailed(chatId: string, messageId: string): void;
-  removeFailedMessage(chatId: string, messageId: string): void;
-  clearSendFailure(chatId: string, messageId: string): void;
-  isOwnSender(fromJid: string): boolean;
-  senderNameFor(message: ChatMessage): string;
-  ingestEdit(message: ChatMessage): void;
-  ingestReaction(message: ChatMessage): void;
-  applyReactionUpdate(
-    chatId: string,
-    targetId: string,
-    reactorJid: string,
-    emojis: string[],
-    order: number,
-  ): void;
-  wireTargetFor(messageId: string): string | undefined;
-  retractionTargetFor(chat: ChatSummary, messageId: string): string | undefined;
-  restoreMessage(chatId: string, snapshot: UiMessage): void;
-  restoreEdits(chatId: string, previous: EditsState | undefined): void;
 }
 
 /** One send attempt of a message; `settled` completes when the attempt is over. */

@@ -106,10 +106,11 @@ const isCurrentSendRun = (ctx: StoreCtx, messageId: string, run: SendRun): boole
   ctx.sendRuns.get(ctx.k.aliasRoot(messageId)) === run;
 
 // What a stanza send that succeeded changes: the ids are linked even when a
-// retry owns the message now.
-const linkSent = (ctx: StoreCtx, localId: string, serverId: string): void => {
+// retry owns the message now. In a group, a stanza id the echo already filed
+// stays the wire target (`linkAckToServer`).
+const linkSent = (ctx: StoreCtx, chat: ChatSummary, localId: string, serverId: string): void => {
   ctx.k.linkMessageIds(localId, serverId);
-  ctx.k.linkLocalToServer(localId, serverId);
+  ctx.k.linkAckToServer(chat, localId, serverId);
   ctx.k.rememberOriginId(localId, serverId);
 };
 
@@ -136,7 +137,7 @@ function runStickerSend(
     ).pipe(
       Effect.andThen((sent) =>
         Effect.sync(() => {
-          linkSent(ctx, localId, sent.id);
+          linkSent(ctx, chat, localId, sent.id);
           ctx.k.updateMessageStatus(chat.id, localId, 'sent');
         }),
       ),
@@ -206,7 +207,7 @@ function runAttachmentUpload(
           ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
         }),
       );
-      linkSent(ctx, localId, sent.id);
+      linkSent(ctx, chat, localId, sent.id);
       // A retried attempt may own this message now: only this run's own
       // success settles it, drops the timer and the kept bytes.
       if (!isCurrentSendRun(ctx, localId, run)) {
@@ -270,7 +271,7 @@ function runVoiceSend(
           ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
         }),
       );
-      linkSent(ctx, localId, sent.id);
+      linkSent(ctx, chat, localId, sent.id);
       // A retried attempt may own this message now: only this run's own
       // success settles it, drops the timer and the kept bytes.
       if (!isCurrentSendRun(ctx, localId, run)) {
@@ -354,7 +355,7 @@ function runForwardSend(
     ).pipe(
       Effect.andThen((sent) =>
         Effect.sync(() => {
-          linkSent(ctx, localId, sent.id);
+          linkSent(ctx, target, localId, sent.id);
           if (!isCurrentSendRun(ctx, localId, run)) {
             return;
           }
@@ -420,7 +421,7 @@ export function sendText(
     ).pipe(
       Effect.andThen((sent) =>
         Effect.sync(() => {
-          linkSent(ctx, localId, sent.id);
+          linkSent(ctx, chat, localId, sent.id);
           ctx.k.updateMessageStatus(chatId, localId, 'sent');
         }),
       ),
