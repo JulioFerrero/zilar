@@ -17,6 +17,11 @@ catalog:
 
 overrides:
   '@types/node': '^24'
+  # T-0909: better-auth's optional drizzle peers are auto-installed and then
+  # resolve PGlite, which put 25 MB of the test database in the production
+  # deploy. The server uses its own SQL adapter, not drizzle.
+  drizzle-orm: '-'
+  drizzle-kit: '-'
 
 onlyBuiltDependencies:
   - esbuild
