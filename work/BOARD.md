@@ -12,7 +12,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1020](T-1020-split-mobile-chats-tab.md) | Size split T72: mobile (tabs)/index.tsx (537) | in-progress | auto | T-0936 | size-plan |
 | [T-1021](T-1021-split-mobile-attachment-native.md) | Size split T75: mobile attachment-native.ts (528) | in-progress | auto | T-0936 | size-plan |
 | [T-1022](T-1022-split-mobile-topic-sheets.md) | Size split T100: mobile topic-sheets.tsx (442) | in-progress | auto | T-0936 | size-plan |
-| [T-1026](T-1026-split-site-scene.md) | Size split T80: site scene.ts (515) | in-progress | auto | T-0936 | size-plan |
 
 ## Follow-ups
 
@@ -1056,3 +1055,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1024](T-1024-split-server-media-indexer.md) | Size split T103: apps/server/src/media/indexer.ts (435 lines) into media/{extract,rows}.ts, the old path keeps | 2026-10-10 |
 | [T-1025](T-1025-split-server-agent-memory-store.md) | Size split T60: apps/server/src/agents/memory/store.ts (572 lines) into memory/{mirror,render,recall,facts,com | 2026-10-10 |
 | [T-1027](T-1027-split-devtools-xmpp-e2e.md) | Size split T94: packages/devtools/src/xmpp-e2e.ts (457 lines) into xmpp-e2e/{harness,connect,muc,mam,main}.ts; | 2026-10-10 |
+| [T-1026](T-1026-split-site-scene.md) | Size split T80: apps/site/src/scene.ts (515 lines) into scene/{config,textures,geometry,backdrop,mark,post,loo | 2026-10-10 |
