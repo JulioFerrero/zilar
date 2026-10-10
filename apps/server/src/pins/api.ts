@@ -6,10 +6,10 @@
 // The schemas, the group and its middleware tags live in the shared contract
 // (`@zilar/api-contract`, T-0864); this file keeps the handlers and layers.
 
-import { Effect, Layer } from 'effect';
+import { Layer } from 'effect';
 import { HttpServer, HttpRouter } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
-import { CurrentUser, PinsGroup, PinsWriteRateLimit } from '@zilar/api-contract';
+import { PinsGroup, PinsWriteRateLimit } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
@@ -17,10 +17,9 @@ import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {
-  requestIdOf,
+  handler,
   schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
 } from '../effect/http-core';
@@ -71,49 +70,25 @@ export function createPinsApi(deps: PinsApiDependencies): EffectApiMount {
   const groupLayer = HttpApiBuilder.group(PinsApi, 'pins', (handlers) =>
     handlers
       // The pinned messages of one chat, newest first.
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const pins = yield* Effect.promise(() =>
-              listPins(serviceDeps(), request.query.chat, user.id),
-            );
-            return { pins };
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'list',
+        handler(logger, async (request, user) => ({
+          pins: await listPins(serviceDeps(), request.query.chat, user.id),
+        })),
+      )
       // Pins one message (201, declared by the contract). The write budget
       // was already charged, before the payload decode.
-      .handle('create', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            return yield* Effect.promise(() =>
-              pinMessage(serviceDeps(), { ...request.payload, actorId: user.id }),
-            );
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'create',
+        handler(logger, (request, user) =>
+          pinMessage(serviceDeps(), { ...request.payload, actorId: user.id }),
+        ),
+      )
       // Unpins one message. The write budget was already charged.
-      .handle('remove', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            return yield* Effect.promise(() =>
-              unpinMessage(serviceDeps(), request.params.id, user.id),
-            );
-          }),
-          logger,
-          requestId,
-        );
-      }),
+      .handle(
+        'remove',
+        handler(logger, (request, user) => unpinMessage(serviceDeps(), request.params.id, user.id)),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(PinsApi).pipe(
@@ -129,10 +104,10 @@ export function createPinsApi(deps: PinsApiDependencies): EffectApiMount {
 
   // The edge keeps the request log (redacted path); the router's own logger prints
   // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
+  const { handler: effectHandler } = HttpRouter.toWebHandler(
     apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
     { disableLogger: true },
   );
 
-  return { handler, routes: PINS_API_ROUTES };
+  return { handler: effectHandler, routes: PINS_API_ROUTES };
 }

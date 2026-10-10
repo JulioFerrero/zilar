@@ -2,7 +2,17 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-**2026-10-10 23:05 local: every planned split is merged; mock wave 2 and the dedups running**
+**2026-10-10 22:55 local: mock uploads work; server dedup slices S1, S3 and S5 running**
+- **Merged since 22:34, with checks:**
+  - **mock:** T-1047, the mobile mock uploader. On the phone, a voice note and `tickets.pdf` send with no error;
+  - **dedups:** T-1049 (F8a; identical bodies, checked with diff), T-1050 (F8b timers; on the phone, scroll, GIF search and the mic work);
+  - **audit:** T-1051, `docs/audit/dedup-status.md`. The lead checked it by diff and corrected §6.4: the `firstIssueMessage` copies are not all identical.
+- **Running, 7 workers:**
+  - **mock:** T-1045 and T-1048 are in pre-review. T-1046's packet is clean, and its sticker and GIF phone smoke waits for those two;
+  - **dedups with no security flag:** T-1052 (S1, `runSql`), T-1053 (S3, `bareJid`/`truncateChars`), T-1054 (S5, `readCapped`).
+- **Waiting for a lead decision:** the security dedup slices S6 (crypto), S7-S9 (rate limits), S10-S11 (group access) and S15 (BOARD follow-up).
+
+**2026-10-10 22:34 local: every planned split is merged; mock wave 2 and the dedups running**
 - **Merged since 22:30:**
   - **mobile splits, with phone smokes:** T-1039 (message list: scroll loads older history), T-1040 (markdown; renders the same as main), T-1041 (channel screen, after a lead fix round that put the invite-link code back as it was on main);
   - **lint:** T-1042, the `max-lines` warning at 400. `pnpm lint` exits 0 with 33 warnings, all on deferred files;

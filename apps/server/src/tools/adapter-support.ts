@@ -99,13 +99,6 @@ export function hostsLine(hosts: readonly string[]): string {
   return hosts.length === 0 ? 'no sites' : hosts.join(', ');
 }
 
-export function truncateChars(value: string, max: number): string {
-  if (value.length <= max) {
-    return value;
-  }
-  return `${value.slice(0, max)}…`;
-}
-
 // Every adapter returns expected problems as a summary the model can act
 // on; only unexpected exceptions propagate to the gateway's generic
 // `failed`. Service error messages carry constraint text, never tool

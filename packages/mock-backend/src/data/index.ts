@@ -5,6 +5,7 @@ import type { MockAuditEntry } from '../domains/audit/seed';
 import type { DomainContext } from '../domains/domain';
 import { domains } from '../domains';
 import type { MockRoutine } from '../domains/routines/seed';
+import type { MockStickerPack } from '../domains/stickers/seed';
 import type { MockRun, MockTool } from '../domains/tools/seed';
 import { people, type MockMe, type MockPerson } from './people';
 
@@ -26,6 +27,10 @@ export interface MockSeed {
   readonly ais: readonly PublicAi[];
   readonly connections: readonly ConnectionView[];
   readonly machines: readonly Machine[];
+  /** T-1046: the two demo sticker packs, the panel order and its favorites. */
+  readonly stickerPacks: readonly MockStickerPack[];
+  readonly stickerPanel: readonly string[];
+  readonly stickerFavorites: readonly string[];
 }
 
 /**

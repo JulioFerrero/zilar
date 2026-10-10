@@ -6,7 +6,7 @@ import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { PinnedMessageRow } from '../db/rows';
 import { isUniqueViolation } from '../effect/error-utils';
-import { runSql, sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import {
@@ -126,7 +126,7 @@ export async function pinMessage(deps: PinsServiceDeps, input: PinMessageInput):
     );
   });
   try {
-    await sqlRuntimeFor(deps.db).runPromise(insert.pipe(Effect.mapError(mapPinError)));
+    await runSql(deps.db, insert.pipe(Effect.mapError(mapPinError)));
   } catch (error) {
     throw error instanceof HttpError ? error : mapPinError(error);
   }

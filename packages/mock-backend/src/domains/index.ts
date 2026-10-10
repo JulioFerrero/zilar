@@ -14,6 +14,7 @@ import { connectionsDomain } from './connections';
 import { contactsDomain } from './contacts';
 import { directoryDomain } from './directory';
 import type { Domain } from './domain';
+import { gifsDomain } from './gifs';
 import { groupsDomain } from './groups';
 import { inviteLinksDomain } from './invite-links';
 import { machinesDomain } from './machines';
@@ -24,6 +25,7 @@ import { publicGroupsDomain } from './public-groups';
 import { rolesDomain } from './roles';
 import { routinesDomain } from './routines';
 import { searchDomain } from './search';
+import { stickersDomain } from './stickers';
 import { toolsDomain } from './tools';
 import { topicsDomain } from './topics';
 import { xmppTokenDomain } from './xmpp-token';
@@ -39,6 +41,7 @@ export const domains: readonly Domain[] = [
   connectionsDomain,
   contactsDomain,
   directoryDomain,
+  gifsDomain,
   groupsDomain,
   inviteLinksDomain,
   machinesDomain,
@@ -49,6 +52,7 @@ export const domains: readonly Domain[] = [
   rolesDomain,
   routinesDomain,
   searchDomain,
+  stickersDomain,
   toolsDomain,
   topicsDomain,
   xmppTokenDomain,

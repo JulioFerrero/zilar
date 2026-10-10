@@ -384,13 +384,3 @@ function fetchPinned(
     });
   });
 }
-
-// Truncates model-facing text, appending `…` when cut. The audit path
-// never sees this text; summaries (the audited side) are built from host
-// names and counts only.
-export function truncateChars(value: string, max: number): string {
-  if (value.length <= max) {
-    return value;
-  }
-  return `${value.slice(0, max)}…`;
-}

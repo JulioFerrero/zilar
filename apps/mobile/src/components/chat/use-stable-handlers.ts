@@ -1,12 +1,5 @@
 import type { UiMessage } from '@zilar/chat-core';
-import { Effect, Fiber } from 'effect';
 import { useEffect, useMemo, useRef } from 'react';
-
-// A timer as an Effect fiber: `run` happens after `ms`. Cancelling the timer
-// interrupts its fiber (`Effect.runSync(Fiber.interrupt(timer))`), as
-// clearTimeout did.
-export const runLater = (ms: number, run: () => void): Fiber.Fiber<void> =>
-  Effect.runFork(Effect.sleep(ms).pipe(Effect.andThen(Effect.sync(run))));
 
 export type MessageHandler = (message: UiMessage) => void;
 

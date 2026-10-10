@@ -11,7 +11,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { runSql, sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 
 // The list endpoint caps server-side; nobody should keep 500 blocks, but
@@ -135,7 +135,7 @@ export async function blockUser(
       }),
     );
   });
-  const inserted = await sqlRuntimeFor(deps.db).runPromise(insert);
+  const inserted = await runSql(deps.db, insert);
   // Audited once, after the commit, by the call that actually inserted the
   // row; an idempotent re-block adds nothing. Ids only, never names.
   if (inserted) {

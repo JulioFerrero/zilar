@@ -1,7 +1,7 @@
 // T-0993: the `web.search` adapter, split out of `web-tools/adapters.ts` unchanged.
 import { Schema } from 'effect';
 import type { ActionAdapter, ArgsSchema } from '../actions/registry';
-import { truncateChars } from './guarded-fetch';
+import { truncateChars } from '../text';
 import {
   formatSearchResults,
   MAX_SEARCH_RESULTS,

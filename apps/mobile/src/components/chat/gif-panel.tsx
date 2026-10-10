@@ -5,6 +5,7 @@ import { ScrollView, View } from 'react-native';
 import { SearchField } from '@/components/ui/search-field';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
+import { interruptFiber } from '@/lib/effect/timers';
 import {
   GIF_ATTRIBUTION,
   GIF_SEARCH_DEBOUNCE_MS,
@@ -28,15 +29,13 @@ export { GifSheet } from './gif-panel-sheet';
 function runUntilCleanup(effect: Effect.Effect<void>): () => void {
   const fiber = Effect.runFork(effect);
   return () => {
-    Effect.runFork(Fiber.interrupt(fiber));
+    interruptFiber(fiber);
   };
 }
 
 /** Interrupts a debounce wait that is still pending (the old `clearTimeout`). */
 function cancelWait(fiber: Fiber.Fiber<void> | undefined): void {
-  if (fiber !== undefined) {
-    Effect.runFork(Fiber.interrupt(fiber));
-  }
+  interruptFiber(fiber);
 }
 
 export type GifPanelProps = {

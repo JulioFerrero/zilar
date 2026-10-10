@@ -11,11 +11,12 @@ import { LoadError } from '@/components/chat/load-error';
 import { MessageListRow, type ListEntry } from '@/components/chat/message-list-row';
 import { MessageListSkeleton } from '@/components/chat/skeleton';
 import { useMessageListScroll } from '@/components/chat/use-message-list-scroll';
-import { runLater, useStableHandler, useStableReact } from '@/components/chat/use-stable-handlers';
+import { useStableHandler, useStableReact } from '@/components/chat/use-stable-handlers';
 import type { VoicePlayerHost } from '@/components/chat/voice-player';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { StateMessage } from '@/components/ui/state-message';
 import { useBlockedJids, filterBlockedMessages } from '@/lib/blocked-users';
+import { runLater } from '@/lib/effect/timers';
 import { useChatStore } from '@/store/chat-store-provider';
 import { draftEntryKey, messagesListView } from '@/store/types';
 
