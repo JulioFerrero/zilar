@@ -14,7 +14,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0961](T-0961-split-server-groups-service.md) | Size split T5+T6: server groups/service.ts (1,583) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0962](T-0962-split-mobile-chat-screen.md) | Size split T15: mobile chat/[id].tsx (1,118) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0963](T-0963-split-server-actions-gateway.md) | Size split T18: server actions/gateway.ts (1,036) | in-progress | deepseek-flash | T-0936 | size-plan |
-| [T-0964](T-0964-split-server-approvals-service.md) | Size split T19: server approvals/service.ts (1,030) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0965](T-0965-split-lead-policy.md) | Size split T16: devtools lead/policy.ts (1,111), byte-identical | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0966](T-0966-split-server-tools-adapters.md) | Size split T21: server tools/adapters.ts (944) | in-progress | deepseek-flash | T-0936 | size-plan |
 
@@ -993,3 +992,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0955](T-0955-split-server-tools-service.md) | Size split T10: apps/server/src/tools/service.ts (1,200 lines) into tools/{queries,mutations,hosts,runner}.ts, | 2026-10-10 |
 | [T-0954](T-0954-split-web-composer.md) | Size split T13: apps/web/src/components/Composer.tsx (1,145 lines) into composer/{useVoiceRecorder,useComposer | 2026-10-10 |
 | [T-0958](T-0958-split-server-stickers-service.md) | Size split T8: apps/server/src/stickers/service.ts (1,388 lines) into stickers/{schemas,packs,panel,favorites, | 2026-10-10 |
+| [T-0964](T-0964-split-server-approvals-service.md) | Size split T19: apps/server/src/approvals/service.ts (1,030 lines) into approvals/{schemas,queries,access}.ts, | 2026-10-10 |
