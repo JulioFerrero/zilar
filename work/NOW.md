@@ -10,10 +10,11 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-0917 (T7b: mobile history and the overlap fix);
   - T-0919 (pins, prefs and folders in the core; Q4 pin texts);
   - T-0913 (four load flakes made deterministic).
+- **Also merged:** T-0920 (one `GroupDetail`, per-group cache), T-0921 (topic actions in core), T-0923 (channel and group actions in core).
 - **Running on DeepSeek:**
-  - T-0918 (T9: the mobile lifecycle, connect retry for Q3, sign-out kept);
-  - T-0920 (phase 2a: one `GroupDetail`, the per-group cache, `applyTopicRow`).
-- **Next:** T10 (the send pipeline) after T-0918, then the groups actions, one `ChatEntry` and the mock stores.
+  - T-0918 (T9: the mobile lifecycle). Approved, but the lead's phone smoke caught a regression: the folder chips are missing. The worker is fixing it, tests first.
+  - T-0924 (one `ChatEntry` schema, one `summariesFor`).
+- **Next:** T-0922 (T10, the send pipeline; spec ready) after T-0918, then state-name unification, the mock stores, and moving mobile screen-held group actions onto the store.
 - **Then Julio's single live test** (the list below), then a deploy after his OK.
 
 **2026-10-10 local, morning: workers back on OpenCode (Julio's call: Claude usage too high)**
