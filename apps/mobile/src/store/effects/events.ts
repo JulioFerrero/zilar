@@ -1,23 +1,14 @@
 import { Effect } from 'effect';
-import {
-  applyEdit,
-  canDeleteMessage,
-  canEditMessage,
-  emptyEdits,
-  mentionsForTrimmedText,
-  rebaseMentions,
-  sortFolders,
-  type EditAuthor,
-  type EditUpdate,
-} from '@zilar/chat-core';
+import { sortFolders } from '@zilar/chat-core';
+import { deleteForEveryone, editMessage, react } from '@zilar/client-core/store';
 
 import type { ChatFoldersApi } from '../../lib/chat-folders-api';
 import { applyChatPrefs, optimisticPrefRow } from '../../lib/chat-prefs';
 import type { PutChatPrefInput } from '../../lib/chat-prefs-api';
 import type { ChatStoreState } from '../types';
-import { failAfter, lift, recover, type StoreCtx } from './runtime';
+import { failAfter, lift, type StoreCtx } from './runtime';
 
-export const TYPING_CLEAR_MS = 5000;
+export { TYPING_CLEAR_MS } from '@zilar/client-core/store';
 export const CHAT_REFRESH_DEBOUNCE_MS = 500;
 
 export type EventActions = Pick<
@@ -38,8 +29,6 @@ export type EventActions = Pick<
 
 export interface Events {
   readonly actions: EventActions;
-  /** A peer's chat state: shows the typing line and clears it after `TYPING_CLEAR_MS`. */
-  handleTyping(event: { chatJid: string; fromJid: string; state: string; outgoing: boolean }): void;
   /** Refetches the chat list once the roster or invitation pushes go quiet. */
   scheduleChatsRefresh(): void;
   /** Ends the typing and refresh timers (`stop()`). */
@@ -47,61 +36,18 @@ export interface Events {
 }
 
 /**
- * Typing lines (one timer fiber per chat), the debounced chat-list refresh,
- * the reaction/edit/delete sends with their rollback, chat prefs and folders.
+ * The debounced chat-list refresh, chat prefs and folders. The typing lines
+ * and the reaction, edit and delete sends are the core's
+ * (`@zilar/client-core/store`); the actions here call them.
  */
 export function makeEvents(ctx: StoreCtx): Events {
-  const { ports, get, set, s, h, life } = ctx;
+  const { ports, get, set, s, life } = ctx;
   const { now } = ports;
 
-  // One clear-the-typing-line timer fiber per chat id, keyed in the session.
+  // The key of a chat's clear-the-typing-line fiber in the store scope, the
+  // one the core's `handleTyping` forks (`incoming.ts`).
   const typingKey = (chatId: string): string => `typing:${chatId}`;
   const REFRESH_KEY = 'chats-refresh';
-
-  function handleTyping(event: {
-    chatJid: string;
-    fromJid: string;
-    state: string;
-    outgoing: boolean;
-  }): void {
-    // A MUC reflects my own chat states back to me. When the sender cannot be
-    // resolved to a real JID, xmpp-core marks the reflection `outgoing` and
-    // keeps the full room JID, so the JID check alone is not enough.
-    if (event.outgoing || h.isOwnSender(event.fromJid)) {
-      return;
-    }
-    const chatId = event.chatJid;
-    ctx.forkSession(ctx.fx.ensureGroupMembers(chatId));
-    const name = h.senderNameFor({
-      chatJid: chatId,
-      fromJid: event.fromJid,
-      outgoing: false,
-    });
-    life.cancel(typingKey(chatId));
-    if (event.state === 'composing') {
-      set((state) => ({ typing: { ...state.typing, [chatId]: { names: [name] } } }));
-      life.forkKeyed(
-        typingKey(chatId),
-        Effect.sleep(TYPING_CLEAR_MS).pipe(
-          Effect.andThen(
-            Effect.sync(() => {
-              set((state) => {
-                const next = { ...state.typing };
-                delete next[chatId];
-                return { typing: next };
-              });
-            }),
-          ),
-        ),
-      );
-    } else {
-      set((state) => {
-        const next = { ...state.typing };
-        delete next[chatId];
-        return { typing: next };
-      });
-    }
-  }
 
   function scheduleChatsRefresh(): void {
     life.forkKeyed(
@@ -135,164 +81,15 @@ export function makeEvents(ctx: StoreCtx): Events {
   }
 
   const actions: EventActions = {
-    react: (chatId, messageId, emoji) => {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      const mine = h.myJid();
-      if (chat === undefined || mine === undefined) {
-        return;
-      }
-      // The local key is alias-resolved; the wire target must be the server
-      // id everyone else knows. An unacked message has none yet, so reacting
-      // would send a target nobody could match: do nothing until it has one.
-      const targetId = h.aliasRoot(messageId);
-      const wireTarget = h.wireTargetFor(messageId);
-      const currentCore = s.core;
-      if (wireTarget === undefined || currentCore === undefined) {
-        return;
-      }
-      const current = get().reactions[chatId]?.targets[targetId]?.[mine]?.emojis ?? [];
-      const next = current.includes(emoji)
-        ? current.filter((entry) => entry !== emoji)
-        : [...current, emoji];
-      const apply = (emojis: string[]): void => {
-        h.applyReactionUpdate(chatId, targetId, mine, emojis, now().getTime());
-      };
-      apply(next);
-      // The send failed: undo the optimistic toggle.
-      ctx.forkSession(
-        recover(
-          lift(() => currentCore.sendReactions(chatId, h.coreKind(chat), wireTarget, next)),
-          () => Effect.sync(() => apply(current)),
-        ),
-      );
-    },
+    react: (chatId, messageId, emoji) => react(ctx.coreCtx, chatId, messageId, emoji),
     startEdit: (chatId, messageId) => {
       set({ editTarget: { chatId, messageId }, actionError: undefined });
     },
     cancelEdit: () => {
       set({ editTarget: undefined });
     },
-    editMessage: (chatId, messageId, text) => {
-      const trimmed = text.trim();
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      const mine = h.myJid();
-      if (chat === undefined || mine === undefined || trimmed.length === 0) {
-        return;
-      }
-      const message = h.listFor(get(), chatId).find((item) => h.sameMessage(item.id, messageId));
-      if (message === undefined || !canEditMessage(message, get().currentUserId, now())) {
-        return;
-      }
-      // The UI already blocks a no-op edit; the store does too, so no stanza
-      // is ever sent for an unchanged text.
-      if (message.text === trimmed) {
-        return;
-      }
-      // XEP-0308 names the original by its sender-generated id.
-      const wireTarget = h.correctionTargetFor(messageId);
-      const currentCore = s.core;
-      if (wireTarget === undefined || currentCore === undefined) {
-        return;
-      }
-      const targetId = h.aliasRoot(messageId);
-      const author: EditAuthor = { jid: mine, resolved: true };
-      const priorMentions = rebaseMentions(message.text ?? '', text, message.mentions ?? []);
-      const mentions = mentionsForTrimmedText(text, trimmed, priorMentions);
-      const update: EditUpdate = {
-        kind: 'correction',
-        targetId,
-        author,
-        text: trimmed,
-        order: now().getTime(),
-      };
-      if (mentions.length > 0) {
-        update.mentions = mentions;
-      }
-      const previous = get().edits[chatId];
-      set({ actionError: undefined });
-      set((state) => ({
-        edits: {
-          ...state.edits,
-          [chatId]: applyEdit(state.edits[chatId] ?? emptyEdits(), update, author),
-        },
-      }));
-      h.refreshEdits(chatId);
-      ctx.forkSession(
-        recover(
-          lift(() =>
-            currentCore.sendCorrection(
-              chatId,
-              h.coreKind(chat),
-              wireTarget,
-              trimmed,
-              mentions.length === 0
-                ? undefined
-                : {
-                    mentions: mentions.map((mention) => ({
-                      jid: mention.jid,
-                      begin: mention.begin,
-                      end: mention.end,
-                    })),
-                  },
-            ),
-          ),
-          () =>
-            Effect.sync(() => {
-              h.restoreMessage(chatId, message);
-              h.restoreEdits(chatId, previous);
-              set({
-                actionError: { chatId, message: 'Could not save the edit. Try again.' },
-              });
-            }),
-        ),
-      );
-    },
-    deleteForEveryone: (chatId, messageId) => {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      const mine = h.myJid();
-      if (chat === undefined || mine === undefined) {
-        return;
-      }
-      const message = h.listFor(get(), chatId).find((item) => h.sameMessage(item.id, messageId));
-      if (message === undefined || !canDeleteMessage(message, get().currentUserId)) {
-        return;
-      }
-      const wireTarget = h.retractionTargetFor(chat, messageId);
-      const currentCore = s.core;
-      if (wireTarget === undefined || currentCore === undefined) {
-        return;
-      }
-      const targetId = h.aliasRoot(messageId);
-      const author: EditAuthor = { jid: mine, resolved: true };
-      const update: EditUpdate = {
-        kind: 'retraction',
-        targetId,
-        author,
-        order: now().getTime(),
-      };
-      const previous = get().edits[chatId];
-      set({ actionError: undefined });
-      set((state) => ({
-        edits: {
-          ...state.edits,
-          [chatId]: applyEdit(state.edits[chatId] ?? emptyEdits(), update, author),
-        },
-      }));
-      h.refreshEdits(chatId);
-      ctx.forkSession(
-        recover(
-          lift(() => currentCore.sendRetraction(chatId, h.coreKind(chat), wireTarget)),
-          () =>
-            Effect.sync(() => {
-              h.restoreMessage(chatId, message);
-              h.restoreEdits(chatId, previous);
-              set({
-                actionError: { chatId, message: 'Could not delete the message. Try again.' },
-              });
-            }),
-        ),
-      );
-    },
+    editMessage: (chatId, messageId, text) => editMessage(ctx.coreCtx, chatId, messageId, text),
+    deleteForEveryone: (chatId, messageId) => deleteForEveryone(ctx.coreCtx, chatId, messageId),
     dismissActionError: () => {
       set({ actionError: undefined });
     },
@@ -393,5 +190,5 @@ export function makeEvents(ctx: StoreCtx): Events {
       ),
   };
 
-  return { actions, handleTyping, scheduleChatsRefresh, clearTimers };
+  return { actions, scheduleChatsRefresh, clearTimers };
 }

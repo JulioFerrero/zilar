@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import type { ChatSummary, ReplyRef, UiMessage } from '@zilar/chat-core';
 import { mentionsForTrimmedText } from '@zilar/chat-core';
+import { sendTyping } from '@zilar/client-core/store';
 import { StickerSchema, isValid, type ForwardOrigin, type Payload } from '@zilar/protocol';
 
 import { attachmentDataFor, MAX_ATTACHMENT_BYTES } from '../../lib/attachments';
@@ -68,11 +69,11 @@ export function makeSend(ctx: StoreCtx): Send {
 
   // The server acknowledged a send: the optimistic id and the server id are
   // the same message from now on.
-  function acknowledge(chatId: string, localId: string, serverId: string): void {
+  function acknowledge(chat: ChatSummary, localId: string, serverId: string): void {
     h.linkMessageIds(localId, serverId);
-    h.linkLocalToServer(localId, serverId);
+    h.linkAckToServer(chat, localId, serverId);
     h.rememberOriginId(localId, serverId);
-    h.updateMessageStatus(chatId, localId, 'sent');
+    h.updateMessageStatus(chat.id, localId, 'sent');
   }
 
   const messageAliveIn =
@@ -164,7 +165,7 @@ export function makeSend(ctx: StoreCtx): Send {
           }
           pendingUploads.delete(localId);
           h.linkMessageIds(localId, sent.id);
-          h.linkLocalToServer(localId, sent.id);
+          h.linkAckToServer(chat, localId, sent.id);
           h.rememberOriginId(localId, sent.id);
           h.updateMessageStatus(chat.id, localId, 'sent');
         }),
@@ -248,7 +249,7 @@ export function makeSend(ctx: StoreCtx): Send {
           pendingVoices.delete(localId);
           pendingVoices.delete(h.aliasRoot(localId));
           h.linkMessageIds(localId, sent.id);
-          h.linkLocalToServer(localId, sent.id);
+          h.linkAckToServer(chat, localId, sent.id);
           h.rememberOriginId(localId, sent.id);
           h.updateMessageStatus(chat.id, localId, 'sent');
         }),
@@ -291,7 +292,7 @@ export function makeSend(ctx: StoreCtx): Send {
             payload,
             ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
           }),
-        ).pipe(Effect.flatMap((sent) => Effect.sync(() => acknowledge(chat.id, localId, sent.id)))),
+        ).pipe(Effect.flatMap((sent) => Effect.sync(() => acknowledge(chat, localId, sent.id)))),
         () => Effect.sync(() => h.markStickerFailed(chat.id, localId)),
       ),
     );
@@ -318,21 +319,14 @@ export function makeSend(ctx: StoreCtx): Send {
             ...(payload === undefined ? {} : { payload }),
             forward: origin,
           }),
-        ).pipe(
-          Effect.flatMap((sent) => Effect.sync(() => acknowledge(target.id, localId, sent.id))),
-        ),
+        ).pipe(Effect.flatMap((sent) => Effect.sync(() => acknowledge(target, localId, sent.id)))),
         () => Effect.sync(() => h.markStickerFailed(target.id, localId)),
       ),
     );
   }
 
   return {
-    sendTyping: (chatId) => {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      if (s.core !== undefined && chat !== undefined) {
-        s.core.sendTyping(chatId, h.coreKind(chat), 'composing');
-      }
-    },
+    sendTyping: (chatId) => sendTyping(ctx.coreCtx, chatId),
     sendText: (chatId, text, options) => {
       const trimmed = text.trim();
       const chat = get().chats.find((entry) => entry.id === chatId);
@@ -385,9 +379,7 @@ export function makeSend(ctx: StoreCtx): Send {
                         }),
                   },
             ),
-          ).pipe(
-            Effect.flatMap((sent) => Effect.sync(() => acknowledge(chatId, localId, sent.id))),
-          ),
+          ).pipe(Effect.flatMap((sent) => Effect.sync(() => acknowledge(chat, localId, sent.id)))),
           undefined,
         ),
       );

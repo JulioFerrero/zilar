@@ -200,7 +200,7 @@ export interface ChatStoreState {
   /** The message the composer is currently editing, or undefined when idle. */
   editTarget?: { chatId: string; messageId: string };
   /** A user-facing failure from a recent edit/delete (T-0085). */
-  actionError?: { chatId: string; message: string };
+  actionError?: { chatId: string; message: string } | undefined;
   /**
    * The hostnames attachment rendering auto-loads from (T-0150, the mobile
    * twin of web's `mediaTrustedHosts`): the XMPP service host, the XMPP

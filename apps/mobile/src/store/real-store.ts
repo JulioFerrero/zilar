@@ -1,25 +1,23 @@
 import type { ChatSummary, MentionMember, UiMessage } from '@zilar/chat-core';
 import { forwardedPayloadFor, forwardedUiFieldsFor } from '@zilar/chat-core';
 import {
-  advanceStatus,
   clearFailure,
   coreKind,
   createMessageLedger,
-  moveChatToTop,
-  rememberFinishedDraftMessage,
+  handleDisplayed,
+  handleMessage as handleCoreMessage,
+  handleOccupants,
+  handlePresence,
+  handleTyping,
+  recordRead,
   signatureFor,
   sortByRecency,
   sortMessages,
   stickerSignatureFor,
-  withoutDraft,
+  type CoreCtx,
 } from '@zilar/client-core/store';
 import { Effect } from 'effect';
-import {
-  type ChatMessage,
-  type Occupant,
-  type PresenceEvent,
-  type XmppCore,
-} from '@zilar/xmpp-core';
+import { type ChatMessage, type XmppCore } from '@zilar/xmpp-core';
 import { ForwardOriginSchema, isValid, type ForwardOrigin } from '@zilar/protocol';
 import { createAtomStore, type StoreApi } from './atomStore';
 
@@ -258,17 +256,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       return appState.current() === 'active';
     }
 
-    function recordRead(chatId: string, messageId: string | undefined): void {
-      if (messageId !== undefined) {
-        lastRead[chatId] = messageId;
-      }
-      set((state) => ({
-        chats: state.chats.map((chat) =>
-          chat.id === chatId && chat.unread > 0 ? { ...chat, unread: 0 } : chat,
-        ),
-      }));
-    }
-
     // Message ids and aliases, edits, reactions, mentions, sender names and
     // the message mutators (`@zilar/client-core/store`).
     const ledger = createMessageLedger({
@@ -283,16 +270,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     const {
       aliasRoot,
       authorFor,
-      applyReactionUpdate,
       correctionTargetFor,
-      ingestEdit,
       ingestHistoryEdits,
       ingestHistoryReactions,
-      ingestReaction,
       isEditStanza,
-      isOwnSender,
       isReactionOnly,
-      linkLocalToServer,
       linkMessageIds,
       listFor,
       myJid,
@@ -302,17 +284,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       rememberAuthor,
       rememberOriginId,
       resolvePendingEdits,
-      restoreEdits,
-      restoreMessage,
-      retractionTargetFor,
       sameMessage,
-      senderNameFor,
       toUiMessage,
       updateMessageAttachment,
       updateMessageStatus,
       updateMessageVoice,
       withEdits,
-      wireTargetFor,
     } = ledger;
 
     function clearAttachmentFailure(chatId: string, messageId: string): void {
@@ -507,21 +484,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
-    // The ack of a send names the sender-generated id. The send effects reach
-    // it through `h.linkLocalToServer`, which has no chat argument, so the
-    // chat is found by the message it holds; a group echo that already filed
-    // the room's stanza id keeps it (`linkAckToServer`).
-    function linkAck(localId: string, serverId: string): void {
-      const state = get();
-      for (const chat of state.chats) {
-        if (listFor(state, chat.id).some((item) => sameMessage(item.id, localId))) {
-          ledger.linkAckToServer(chat, localId, serverId);
-          return;
-        }
-      }
-      linkLocalToServer(localId, serverId);
-    }
-
     function setHistoryLoad(chatId: string, load: 'loading' | 'loaded' | 'error'): void {
       set((state) => ({ historyLoad: { ...state.historyLoad, [chatId]: load } }));
     }
@@ -543,180 +505,56 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       });
     }
 
-    function handleMessage(message: ChatMessage): void {
-      // A correction or a retraction is never a chat message: it edits another
-      // one, so it is ingested and returns before any rendering.
-      if (isEditStanza(message)) {
-        ingestEdit(message);
-        return;
-      }
-      // A reactions message that is only that (no body, no payload) must never
-      // render as a bubble or move the chat list preview. A message that also
-      // carries a body or payload is a normal message: its reactions are
-      // ingested and it is rendered as usual.
-      if (message.reactions !== undefined) {
-        ingestReaction(message);
-        if (isReactionOnly(message)) {
-          return;
-        }
-      }
-      const meId = get().currentUserId;
-      const chatId = message.chatJid;
-      const ui = toUiMessage(message, meId);
-
-      if (message.outgoing) {
-        // Reconcile our optimistic message with the server echo. Sticker
-        // echoes carry the sticker id in the payload, so they match the
-        // sticker-scoped signature (not the bare emoji body). Attachment
-        // echoes match the bare caption signature, exactly like web.
-        const reply =
-          message.replyTo === undefined ? undefined : { id: message.replyTo.id, senderName: '' };
-        const signature =
-          message.payload !== undefined && message.payload.type === 'sticker'
-            ? stickerSignatureFor(
-                chatId,
-                message.body ?? '',
-                message.payload.data.sticker_id,
-                reply,
-              )
-            : signatureFor(chatId, message.body ?? '', reply);
-        const queue = pendingOutgoing.get(signature);
-        const localId = queue?.shift();
-        if (queue !== undefined && queue.length === 0) {
-          pendingOutgoing.delete(signature);
-        }
-        if (localId !== undefined) {
-          linkMessageIds(localId, ui.id);
-          linkLocalToServer(localId, ui.id);
-          // The upload finished: drop the kept bytes and the local preview
-          // fields, so a later Retry is a no-op and the echo carries the
-          // served URL only. Voice keeps its recording the same way.
-          pendingUploads.delete(localId);
-          pendingUploads.delete(aliasRoot(localId));
-          pendingVoices.delete(localId);
-          pendingVoices.delete(aliasRoot(localId));
-        }
-        set((state) => {
-          const existing = listFor(state, chatId);
-          const previous = existing.find((item) => sameMessage(item.id, ui.id));
-          const reconciled: UiMessage =
-            previous === undefined
-              ? ui
-              : { ...ui, status: advanceStatus(previous.status, ui.status) };
-          const withoutLocal =
-            localId === undefined ? existing : existing.filter((item) => item.id !== localId);
-          return {
-            messagesByChat: {
-              ...state.messagesByChat,
-              [chatId]: sortMessages([
-                ...withoutLocal.filter((item) => item.id !== reconciled.id),
-                reconciled,
-              ]),
-            },
-            chats: moveChatToTop(
-              state.chats.map((chat) =>
-                chat.id === chatId ? { ...chat, lastMessage: reconciled } : chat,
-              ),
-              chatId,
-            ),
-          };
-        });
-        // The merged id may have been the target of an edit or reaction
-        // received under the optimistic id.
-        resolvePendingEdits(chatId);
-        refreshEdits(chatId);
-        refreshReactions(chatId);
-        return;
-      }
-
-      const active = get().activeChatId === chatId && isVisible();
-      // Only the AI's own message in its DM finishes the draft. A message from
-      // my own JID (e.g. my second device) must leave the draft running.
-      const fromAi = message.fromJid === chatId && !isOwnSender(message.fromJid);
-      const draft = get().drafts[chatId];
-      if (draft !== undefined && fromAi) {
-        polling.markTurnFinished(draft.turnId);
-        polling.clearDraftTimeout(chatId);
-      }
-      set((state) => ({
-        messagesByChat: {
-          ...state.messagesByChat,
-          [chatId]: sortMessages([
-            ...listFor(state, chatId).filter((item) => item.id !== ui.id),
-            ui,
-          ]),
+    // The core's view of this store (`@zilar/client-core/store`): the incoming
+    // handlers, the message actions and the reads run on it. Mobile saves no
+    // last-read map and has no app badge or push notifications to sync.
+    const coreCtx: CoreCtx = {
+      get,
+      set,
+      ports: { now, isVisible, storage: null },
+      rt: life.lifetime,
+      k: ledger,
+      fx: {
+        syncBadge: () => {},
+        dismissChatNotifications: () => {},
+        loadGroupMembers: (chatId) => {
+          ctx.forkSession(ctx.fx.ensureGroupMembers(chatId));
         },
-        chats: moveChatToTop(
-          state.chats.map((chat) =>
-            chat.id === chatId
-              ? { ...chat, lastMessage: ui, unread: active ? 0 : chat.unread + 1 }
-              : chat,
-          ),
-          chatId,
-        ),
-        // The final message replaces the draft in one update: the bubble never
-        // leaves the screen, so there is no gap and no duplicate.
-        drafts: draft !== undefined && fromAi ? withoutDraft(state.drafts, chatId) : state.drafts,
-        // Remember the turn so the bubble keeps revealing on the draft's key.
-        finishedDraftMessages:
-          draft !== undefined && fromAi
-            ? rememberFinishedDraftMessage(state.finishedDraftMessages, ui.id, draft.turnId)
-            : state.finishedDraftMessages,
-      }));
-      // A message that just loaded may be the target of a correction or a
-      // retraction read earlier, from an older history page.
-      resolvePendingEdits(chatId);
-      refreshEdits(chatId);
-      if (active && core !== undefined) {
-        const chat = get().chats.find((entry) => entry.id === chatId);
-        if (chat !== undefined) {
-          recordRead(chatId, ui.id);
-          core.markDisplayed(chatId, coreKind(chat), ui.id);
-        }
+        finishDraftTurn: (chatId, turnId) => {
+          polling.markTurnFinished(turnId);
+          polling.clearDraftTimeout(chatId);
+        },
+        forgetRetryBytes: (messageId) => {
+          pendingUploads.delete(messageId);
+          pendingVoices.delete(messageId);
+        },
+      },
+      get core() {
+        return core;
+      },
+      set core(value) {
+        core = value;
+      },
+      get lastRead() {
+        return lastRead;
+      },
+      set lastRead(value) {
+        lastRead = value;
+      },
+      lastReadUserId: undefined,
+      pendingOutgoing,
+    };
+
+    function handleMessage(message: ChatMessage): void {
+      handleCoreMessage(coreCtx, message);
+      // The echo merged the optimistic id into the server id, which may have
+      // been the target of an edit or reaction filed under the optimistic id.
+      // The core's echo does not re-apply them, so mobile does it here.
+      if (message.outgoing && !isEditStanza(message) && !isReactionOnly(message)) {
+        resolvePendingEdits(message.chatJid);
+        refreshEdits(message.chatJid);
+        refreshReactions(message.chatJid);
       }
-    }
-
-    function handleDisplayed(event: {
-      chatJid: string;
-      fromJid: string;
-      messageId: string;
-      outgoing: boolean;
-    }): void {
-      // A reflected marker of my own message means I displayed it, not that a
-      // peer read it. `outgoing` covers the unresolved full-room-JID case.
-      if (event.outgoing || isOwnSender(event.fromJid)) {
-        return;
-      }
-      updateMessageStatus(event.chatJid, event.messageId, 'read');
-    }
-
-    function handleOccupants(event: { roomJid: string; occupants: Occupant[] }): void {
-      const online = event.occupants.filter((occupant) => occupant.available).length;
-      set((state) => ({
-        chats: state.chats.map((chat) =>
-          chat.id === event.roomJid
-            ? {
-                ...chat,
-                onlineCount: online,
-                memberCount: Math.max(chat.memberCount ?? 0, event.occupants.length),
-              }
-            : chat,
-        ),
-      }));
-    }
-
-    function handlePresence(event: PresenceEvent): void {
-      set((state) => ({
-        chats: state.chats.map((chat) =>
-          chat.id === event.jid
-            ? {
-                ...chat,
-                online: event.available,
-                ...(event.available ? {} : { lastSeenAt: now() }),
-              }
-            : chat,
-        ),
-      }));
     }
 
     function nick(me: Me): string {
@@ -763,20 +601,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         withEdits,
         previewFor,
         refreshEdits,
-        recordRead,
+        recordRead: (chatId, messageId) => recordRead(coreCtx, chatId, messageId),
         sameMessage,
         listFor,
         setHistoryLoad,
         clearSupersededMarker,
         groupIdForChat,
-        isOwnSender,
-        senderNameFor,
-        wireTargetFor,
-        correctionTargetFor,
-        retractionTargetFor,
-        applyReactionUpdate,
-        restoreMessage,
-        restoreEdits,
         rememberTopicRoles,
         rememberMembers,
         myJid,
@@ -784,7 +614,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         rememberAuthor,
         rememberOriginId,
         linkMessageIds,
-        linkLocalToServer: linkAck,
+        linkAckToServer: ledger.linkAckToServer,
         updateMessageStatus,
         signatureFor,
         stickerSignatureFor,
@@ -805,10 +635,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         startTopicsPolling: () => polling.startTopicsPolling(),
         teardown,
         handleMessage,
-        handleTyping: (event) => events.handleTyping(event),
-        handleDisplayed,
-        handleOccupants,
-        handlePresence,
+        handleTyping: (event) => handleTyping(coreCtx, event),
+        handleDisplayed: (event) => handleDisplayed(coreCtx, event),
+        handleOccupants: (event) => handleOccupants(coreCtx, event),
+        handlePresence: (event) => handlePresence(coreCtx, event),
         handleInvited,
         handleRoster,
       },
@@ -830,6 +660,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         startPinsPolling: (chatId) => polling.startPinsPolling(chatId),
         restartBoot: () => lifecycle.restartBoot(),
       },
+      coreCtx,
       ...makeRunners(ports, life),
     };
     const lifecycle = makeLifecycle(ctx);

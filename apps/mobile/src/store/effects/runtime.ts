@@ -1,13 +1,6 @@
-import { makeLifetime } from '@zilar/client-core/store';
+import { makeLifetime, type CoreCtx, type Lifetime } from '@zilar/client-core/store';
 import { Context, Effect, Exit, Fiber, Scope } from 'effect';
-import type {
-  ChatSummary,
-  EditAuthor,
-  EditsState,
-  MessageStatus,
-  ReplyRef,
-  UiMessage,
-} from '@zilar/chat-core';
+import type { ChatSummary, EditAuthor, MessageStatus, ReplyRef, UiMessage } from '@zilar/chat-core';
 import type { Attachment, ForwardOrigin, Payload } from '@zilar/protocol';
 import type { ChatMessage, Occupant, PresenceEvent, XmppCore } from '@zilar/xmpp-core';
 
@@ -84,6 +77,8 @@ export function closeScope(scope: Scope.Closeable): void {
  * scope interrupts every fiber forked into it.
  */
 export interface Life {
+  /** The core lifetime underneath: the `rt` of the core modules (`CoreCtx`). */
+  readonly lifetime: Lifetime<never>;
   session(): Scope.Closeable;
   generation(): Scope.Closeable;
   /** Ends the current generation and opens the next one. */
@@ -108,6 +103,7 @@ export function makeLife(): Life {
     generation = lifetime.beginSession();
   };
   return {
+    lifetime,
     session: () => lifetime.storeScope(),
     generation: () => generation.scope,
     restartGeneration,
@@ -190,30 +186,12 @@ export interface StoreHelpers {
   rememberTopicRoles(topic: Topic): void;
   rememberMembers(chatId: string, detail: GroupDetail): void;
   myJid(): string | undefined;
-  isOwnSender(fromJid: string): boolean;
-  senderNameFor(message: {
-    chatJid: string;
-    fromJid: string;
-    outgoing: boolean;
-    fromNick?: string;
-  }): string;
-  wireTargetFor(messageId: string): string | undefined;
-  correctionTargetFor(messageId: string): string | undefined;
-  retractionTargetFor(chat: ChatSummary, messageId: string): string | undefined;
-  applyReactionUpdate(
-    chatId: string,
-    targetId: string,
-    reactorJid: string,
-    emojis: string[],
-    order: number,
-  ): void;
-  restoreMessage(chatId: string, snapshot: UiMessage): void;
-  restoreEdits(chatId: string, previous: EditsState | undefined): void;
   aliasRoot(id: string): string;
   rememberAuthor(messageId: string, author: EditAuthor): void;
   rememberOriginId(messageId: string, originId: string): void;
   linkMessageIds(left: string, right: string): void;
-  linkLocalToServer(localId: string, serverId: string): void;
+  /** Links a send's ack id to its optimistic id (the ledger's `linkAckToServer`). */
+  linkAckToServer(chat: ChatSummary, localId: string, serverId: string): void;
   updateMessageStatus(chatId: string, messageId: string, status: MessageStatus): void;
   signatureFor(chatId: string, body: string, replyTo: ReplyRef | undefined): string;
   stickerSignatureFor(
@@ -280,6 +258,11 @@ export interface StoreCtx {
   readonly life: Life;
   readonly h: StoreHelpers;
   readonly fx: StoreFx;
+  /**
+   * The same store as the core modules see it (`@zilar/client-core/store`):
+   * the incoming handlers, the message actions and the reads run on it.
+   */
+  readonly coreCtx: CoreCtx;
   /** Starts `effect` at once as a fiber of `scope` (default: the current generation). */
   fork<A, E>(effect: Effect.Effect<A, E, Ports>, scope?: Scope.Scope): Fiber.Fiber<A, E>;
   /**
