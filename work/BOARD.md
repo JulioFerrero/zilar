@@ -12,6 +12,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1039](T-1039-split-mobile-message-list.md) | Size split T114: mobile message-list.tsx (418) | in-progress | auto | T-0936 | size-plan |
 | [T-1040](T-1040-split-mobile-markdown.md) | Size split T115: mobile markdown.ts (410) | in-progress | auto | T-0936 | size-plan |
 | [T-1041](T-1041-split-mobile-channel-screen.md) | Size split T117: mobile channel-screen.tsx (408) | in-progress | auto | T-0936 | size-plan |
+| [T-1042](T-1042-max-lines-lint-warning.md) | Lint: max-lines warning at 400 | in-progress | auto | T-0936 | size-plan §3 |
+| [T-1043](T-1043-server-shared-error-helpers.md) | Dedup F6a: shared errorName/errorClassName/isUniqueViolation | in-progress | auto | T-0936 | size-plan F6 |
 
 ## Follow-ups
 
