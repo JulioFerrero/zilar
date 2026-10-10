@@ -145,7 +145,6 @@ The details, prerequisites and every script are below in [Development](#developm
 | `packages/protocol` | Versioned message payload schemas (`zod`) |
 | `packages/xmpp-core`, `chat-core` | XMPP client and the shared chat logic both apps use |
 | `packages/runner-tunnel` | The WebSocket tunnel between server and runners |
-| `packages/agent-drivers` | Interface and drivers for the AI engine inside a desk |
 | `packages/devtools` | The `lead` CLI that runs the AI worker team |
 | `infra` | Docker Compose: Postgres, ejabberd, LiteLLM |
 
