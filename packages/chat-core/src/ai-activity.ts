@@ -1,13 +1,10 @@
-import type { PublicAuditEntry } from '@/lib/audit-api';
+/** The parts of an audit entry the activity sentence depends on. */
+export interface AuditEntryLike {
+  action: string;
+  detail: Readonly<Record<string, unknown>> | null;
+}
 
-/**
- * Pure activity descriptions and relative times for the AI activity section
- * (T-0213). Copied from web `apps/web/src/components/ais/AiActivity.tsx`
- * (`describeAuditEntry`, `readDecision`, `humaniseAction`,
- * `formatRelativeAudit`) so the phone shows exactly web's sentences.
- */
-
-export function describeAuditEntry(entry: PublicAuditEntry): string {
+export function describeAuditEntry(entry: AuditEntryLike): string {
   const decision = readDecision(entry.detail);
   switch (entry.action) {
     case 'approval.decided':
@@ -27,7 +24,7 @@ export function describeAuditEntry(entry: PublicAuditEntry): string {
   }
 }
 
-function readDecision(detail: PublicAuditEntry['detail']): string | null {
+function readDecision(detail: AuditEntryLike['detail']): string | null {
   if (detail === null) {
     return null;
   }

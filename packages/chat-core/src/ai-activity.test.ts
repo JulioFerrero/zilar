@@ -1,22 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PublicAuditEntry } from '@/lib/audit-api';
-import { describeAuditEntry, formatRelativeAudit } from './activity-format';
+import { describeAuditEntry, formatRelativeAudit, type AuditEntryLike } from './ai-activity';
 
-function entry(action: string, detail: Record<string, unknown> | null): PublicAuditEntry {
-  return {
-    id: `audit-${action}`,
-    at: '2026-10-03T10:00:00.000Z',
-    aiId: 'ai-1',
-    groupId: null,
-    action,
-    subjectId: null,
-    argsHash: null,
-    cost: null,
-    result: 'ok',
-    detail,
-    actorUserId: null,
-  };
+function entry(action: string, detail: Record<string, unknown> | null): AuditEntryLike {
+  return { action, detail };
 }
 
 describe('describeAuditEntry', () => {

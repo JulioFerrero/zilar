@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Effect } from 'effect';
 import { RefreshCw } from 'lucide-react';
+import { describeAuditEntry, formatRelativeAudit } from '@zilar/chat-core';
 import { listAudit, type AuditScope, type PublicAuditEntry } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
@@ -12,46 +13,9 @@ import { useDelayed } from '@/lib/useDelayed';
 import { Button } from '@/components/ui/button';
 import { FieldError } from './AiPageShell';
 
+export { describeAuditEntry, formatRelativeAudit };
+
 const PAGE_LIMIT = 20;
-
-export function describeAuditEntry(entry: PublicAuditEntry): string {
-  const decision = readDecision(entry.detail);
-  switch (entry.action) {
-    case 'approval.decided':
-      if (decision === 'approve_once' || decision === 'approve_always') {
-        return 'A request was approved';
-      }
-      if (decision === 'deny') {
-        return 'A request was denied';
-      }
-      return 'A request was decided';
-    case 'ai.stopped':
-      return 'Stopped';
-    case 'ai.resumed':
-      return 'Resumed';
-    default:
-      return humaniseAction(entry.action);
-  }
-}
-
-function readDecision(detail: PublicAuditEntry['detail']): string | null {
-  if (detail === null) {
-    return null;
-  }
-  const value = detail['decision'];
-  return typeof value === 'string' ? value : null;
-}
-
-function humaniseAction(action: string): string {
-  if (action === '') {
-    return 'Activity';
-  }
-  const parts = action.split('.');
-  const head = parts[0] ?? '';
-  const tail = parts.slice(1);
-  const capitalised = head === '' ? '' : head.charAt(0).toUpperCase() + head.slice(1);
-  return [capitalised, ...tail].join(' ');
-}
 
 const RELATIVE_FORMATTER = new Intl.DateTimeFormat('en', {
   month: 'long',
@@ -59,22 +23,6 @@ const RELATIVE_FORMATTER = new Intl.DateTimeFormat('en', {
   hour: 'numeric',
   minute: '2-digit',
 });
-
-export function formatRelativeAudit(at: Date, now: Date): string {
-  const minutes = Math.max(0, Math.floor((now.getTime() - at.getTime()) / 60_000));
-  if (minutes < 1) {
-    return 'just now';
-  }
-  if (minutes < 60) {
-    return `${minutes} min ago`;
-  }
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
-  }
-  const days = Math.floor(hours / 24);
-  return `${days} ${days === 1 ? 'day' : 'days'} ago`;
-}
 
 type LoadStatus = 'loading' | 'ready' | 'error';
 

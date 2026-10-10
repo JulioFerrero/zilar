@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0876](T-0876-chat-core-prefs-routines-ai.md) | chat-core gets chat prefs, routines formatting and the AI form logic (limits, templates,… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0877](T-0877-chat-core-store-ledger.md) | chat-core gets the store message-ledger helpers both stores copy: forwarding payloads, r… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0878](T-0878-client-core-react-glue.md) | packages/client-core: the shared React + Effect glue (useAction, useQuery, atomStore, ap… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0879](T-0879-web-selectors-rest.md) | Web: ChatView and the remaining useChatStore() call sites use useChatSelector; GroupHead… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
@@ -919,3 +918,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0873](T-0873-sweep-voice-auth.md) | Server sweep: voice-transcription, gifs, auth, contact-requests onto the shared HTTP helpers (runSql, SchemaEr | 2026-10-10 |
 | [T-0874](T-0874-protocol-jid-handles.md) | JID helpers and handle rules in @zilar/protocol, used by web, mobile, chat-core and the non-api server files | 2026-10-10 |
 | [T-0875](T-0875-chat-core-format-media.md) | chat-core gets the duplicated format, attachment, media-trust, sticker-size and smooth-text helpers; web and m | 2026-10-10 |
+| [T-0876](T-0876-chat-core-prefs-routines-ai.md) | chat-core gets chat prefs, routines formatting and the AI form logic (limits, templates, models, errors, activ | 2026-10-10 |

@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { RefreshCw } from 'lucide-react-native';
 import { Effect, Fiber } from 'effect';
 
+import { describeAuditEntry, formatRelativeAudit } from '@zilar/chat-core';
 import { useColorScheme } from 'nativewind';
 
 import { Button } from '@/components/ui/button';
@@ -11,7 +12,6 @@ import { Text } from '@/components/ui/text';
 import type { AuditApi, PublicAuditEntry } from '@/lib/audit-api';
 import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
-import { describeAuditEntry, formatRelativeAudit } from './activity-format';
 
 /** Fixed user-facing line when the first activity page fails to load. */
 export const ACTIVITY_LOAD_FAILED_MESSAGE = 'Could not load activity.';

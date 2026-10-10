@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeRoutineSchedule, pausedReasonText, truncateOutput } from '@/lib/routines';
+import { describeRoutineSchedule, pausedReasonText, truncateOutput } from './routines';
 
 describe('describeRoutineSchedule (T-0107)', () => {
   it('words an hourly interval', () => {

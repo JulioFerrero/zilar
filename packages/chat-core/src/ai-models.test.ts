@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultModelFor, modelSuggestionsFor } from './models';
+import { defaultModelFor, modelSuggestionsFor } from './ai-models';
 
 const PROVIDERS = ['openai', 'anthropic', 'google', 'deepseek', 'xai', 'openrouter'] as const;
 

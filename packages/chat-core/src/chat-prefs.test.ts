@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { ChatSummary } from '@zilar/chat-core';
 import {
   applyChatPrefs,
   effectivePrefFor,
   isMuted,
   mutedUntilFor,
   sortPinnedFirst,
-} from '@/lib/chatPrefs';
-import type { ChatPref } from '@/lib/api';
+  type ChatPrefRow,
+} from './chat-prefs';
+import type { ChatSummary } from './types';
 
 function chat(id: string, overrides: Partial<ChatSummary> = {}): ChatSummary {
   return {
@@ -22,13 +22,12 @@ function chat(id: string, overrides: Partial<ChatSummary> = {}): ChatSummary {
   };
 }
 
-function pref(chatJid: string, overrides: Partial<ChatPref> = {}): ChatPref {
+function pref(chatJid: string, overrides: Partial<ChatPrefRow> = {}): ChatPrefRow {
   return {
     chatJid,
     mutedUntil: null,
     archived: false,
     pinnedAt: null,
-    updatedAt: '2026-09-30T00:00:00.000Z',
     ...overrides,
   };
 }
