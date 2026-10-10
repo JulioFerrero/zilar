@@ -52,6 +52,7 @@ This page is the short version for conversion workers. Read it, your task file a
 - **Run only your own tests:** your files' test files and the nearest folder, with `--reporter=dot`. Run them 3 times if the code has timers or concurrency.
 - **Do not run** the whole suite or `pnpm gate`: the lead runs one combined check for the whole wave and sends you every failure.
 - **Never use `git stash`:** the stash list is shared by every worktree of the repo, so a pop can take another worker's changes (this happened on 2026-10-09). For a "before" run, use `git diff > <scratch file>` and `git checkout -- <files>`, then `git apply` it back, or compare with the base in a separate checkout.
+- **Scratch files go in your own subfolder:** use `<scratchpad>/<your task id>/`, never a shared file name. Parallel workers share the scratchpad, and on 2026-10-10 one worker's script ran in another worker's tree. Every git command names your worktree explicitly (`cd <your worktree> && ...` or `git -C <your worktree>`).
 - **Before you commit:** run `pnpm exec prettier --write <your files>`, `pnpm exec oxlint <your files>` (it must be clean; the React rules forbid, for example, reading `ref.current` during render) and the package typecheck (`pnpm --filter <pkg> typecheck`).
 - **Existing tests:** do not edit them unless the task allows it. A task that says "tests first" commits them on the old code before converting.
 
