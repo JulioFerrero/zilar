@@ -18,7 +18,7 @@ interface TranscriptResult {
 }
 
 export function handleVoiceTranscription(
-  _data: MockData,
+  data: MockData,
   request: MockHttpRequest,
 ): Response | undefined {
   const [head, first] = request.segments;
@@ -26,7 +26,7 @@ export function handleVoiceTranscription(
     return undefined;
   }
   if (first === 'transcription' && request.method === 'GET') {
-    const status: EnabledStatus = { enabled: true };
+    const status: EnabledStatus = { enabled: data.integrations.voiceConfigured };
     return jsonResponse(status);
   }
   if (first === 'transcript' && request.method === 'POST') {

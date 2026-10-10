@@ -1,7 +1,6 @@
 // Integrations routes (T-1078): the owner's Telegram bot, sign-in email sender
-// and voice-transcription endpoint, mirroring the mobile mock
-// (`apps/mobile/src/components/integrations/integrations-mock.ts`) on the
-// shared backend. The contract routes are `GET /settings/integrations`,
+// and voice-transcription endpoint, on the shared backend. The contract routes
+// are `GET /settings/integrations`,
 // `PUT`/`DELETE /settings/integrations/telegram` and
 // `PUT /settings/integrations/email`; the voice-transcription settings route
 // is not in the contract yet (`apps/server/src/voice-transcription/`).
