@@ -562,3 +562,12 @@ and ≈18,350 changed lines across the split.
 - **Q3.** Priority: is a first cut that covers chats/topics/groups/AIs/approvals
   enough to start, with stickers/voice/search/settings in a second wave? The
   split above does everything; this only affects ordering.
+
+### Julio's answers (2026-10-10)
+
+- **Q1: a fake session.** In mobile mock mode the backend hands out a fake session token, and the provider starts the real store with nobody logged in. Dev builds only, never production (risk R6's build conditions).
+- **Q2: the ids may change.** One unified JID-keyed seed. The old mock deep links (`c-ana`, `dev-team`) and the `?mock=` scenarios are rebuilt on it, not kept as they are.
+- **Q3: chats first.**
+  - The first wave covers chats, messages, topics, groups, AIs and approvals: A, B, D, E, F2, then the cutovers G and H, with the dispatcher's fallback serving the rest from the old mock code.
+  - The second wave covers C (prefs, folders, pins, media, backgrounds) and F (stickers, GIFs, voice, profile).
+  - Then the deletion sweep.
