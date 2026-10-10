@@ -5,7 +5,6 @@ import {
   type ReplyRef,
   type UiMessage,
 } from '@zilar/chat-core';
-import type { Money } from '@zilar/protocol';
 
 export function formatLastSeen(date: Date, now: Date): string {
   const minutes = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 60_000));
@@ -26,11 +25,7 @@ export function formatLastSeen(date: Date, now: Date): string {
   return new Intl.DateTimeFormat('en', { month: 'long', day: 'numeric' }).format(date);
 }
 
-export function formatMoney(money: Money): string {
-  return new Intl.NumberFormat('en', { style: 'currency', currency: money.currency }).format(
-    money.amount,
-  );
-}
+export { formatMoney } from '@zilar/chat-core';
 
 /** Header subtitle, see `ui-style.md` §4. */
 export function chatSubtitle(chat: ChatSummary, now: Date): string {

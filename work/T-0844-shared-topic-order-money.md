@@ -1,7 +1,7 @@
 ---
 id: T-0844
 title: "One topic order and one money format in chat-core, used by web and mobile; mobile search debounce 250 ms like web"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0844-shared-topic-order-money
 model: auto
@@ -37,7 +37,7 @@ Line numbers come from the audit and may have moved: re-read every cited line be
 `AGENTS.md`, `docs/EFFECT_BRIEF.md`, the audit section cited above, and the files listed.
 
 ### Allowed files
-`packages/chat-core/src/**`, `apps/web/src/store/store.ts`, `apps/web/src/lib/format.ts`, `apps/web/src/lib/format.test.ts`, `apps/web/src/store/*.test.ts`, `apps/mobile/src/lib/topics.ts`, `apps/mobile/src/lib/topics.test.ts`, `apps/mobile/src/lib/chat.ts`, `apps/mobile/src/lib/chat.test.ts`, `apps/mobile/src/components/chat/message-search.ts`, `apps/mobile/src/components/chat/message-search.test.ts`, `apps/mobile/src/components/chat/use-message-search.test.ts`, `work/T-0844-shared-topic-order-money.md`.
+`packages/chat-core/src/**`, `apps/mobile/src/components/chat/approval-card.test.tsx` (lead, after the combined check), `apps/web/src/store/store.ts`, `apps/web/src/lib/format.ts`, `apps/web/src/lib/format.test.ts`, `apps/web/src/store/*.test.ts`, `apps/mobile/src/lib/topics.ts`, `apps/mobile/src/lib/topics.test.ts`, `apps/mobile/src/lib/chat.ts`, `apps/mobile/src/lib/chat.test.ts`, `apps/mobile/src/components/chat/message-search.ts`, `apps/mobile/src/components/chat/message-search.test.ts`, `apps/mobile/src/components/chat/use-message-search.test.ts`, `work/T-0844-shared-topic-order-money.md`.
 
 ### Checks (wave mode)
 ```bash
@@ -61,4 +61,26 @@ Run the tests 3 times after the last commit.
 
 ## Report (written by the worker when done)
 
+Changed:
+- New `packages/chat-core/src/topics.ts` (`sortTopics`, web logic copied: pinned first, then General, then recency, title tie-break) and `money.ts` (`formatMoney`, `Intl.NumberFormat` currency), exported from `index.ts`, with `topics.test.ts` (3 tests) and `money.test.ts` (2 tests).
+- Web: `store.ts` imports `sortTopics` from chat-core (local copy and `topicTime` deleted); `lib/format.ts` re-exports `formatMoney` from chat-core, so other imports are unchanged.
+- Mobile: `lib/topics.ts` imports and re-exports chat-core `sortTopics` (own copy deleted); `lib/chat.ts` re-exports `formatMoney`; `MESSAGE_SEARCH_DEBOUNCE_MS` is 250.
+- Mobile test updated: `use-message-search.test.ts` debounce expectation 300 -> 250. The existing mobile `sortTopics` test (General first, newest first) still passes unchanged. No mobile test pinned the old "EUR 0.02" string.
+- Hermes: could not confirm `Intl.NumberFormat` currency support from the repo (mobile already uses `Intl.DateTimeFormat`, `apps/mobile/src/lib/format.ts:52`). So `formatMoney` falls back to `EUR 0.02` when `Intl.NumberFormat` throws (tested).
+- Audit lines were accurate (store.ts 552, chat.ts 29, topics.ts 136, search debounce).
+
+Results (3 of 3 runs identical): chat-core 179 passed (was 174, +5 new); web `src/lib/format src/store` 222 passed; mobile 4 filters 133 passed. Web and mobile typecheck clean; oxlint clean on changed files; prettier applied. `pnpm gate` not run (wave mode).
+
+Behaviour differences: mobile topics now list pinned first (newer pins first); mobile approval cost shows "€0.02"; mobile search debounce 250 ms.
+
+Fix round 1: `topics.test.ts` helper cast now uses `TopicInfo` (chat-core typecheck clean). Visible mobile change: `approval-card.test.tsx` expectation updated from "Max cost: EUR 0.02" to "Max cost: €0.02" (8 passed); mobile typecheck clean.
+
+Unsure: Hermes currency formatting is covered only by the fallback.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved after fix round 1.**
+- **Shared code:** chat-core owns the topic order and the money format, and mobile now formats money the web way (the approval card shows "€0.02"). The 250 ms search debounce matches web.
+- **Fix round:** fixed a chat-core test typing error (exactOptionalPropertyTypes) and updated one mobile test expectation.
+- **Checks:** the combined wave 3 check is clean.
+- **Live check for Julio:** topic order and money text are the same on web and mobile.

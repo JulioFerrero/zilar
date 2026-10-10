@@ -25,7 +25,4 @@ export function chatSubtitle(chat: ChatSummary, now: Date): string {
     : 'last seen recently';
 }
 
-/** `EUR 0.02`, for the approval card. */
-export function formatMoney(money: { currency: string; amount: number }): string {
-  return `${money.currency} ${money.amount.toFixed(2)}`;
-}
+export { formatMoney } from '@zilar/chat-core';

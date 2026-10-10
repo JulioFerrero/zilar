@@ -1,5 +1,6 @@
 import {
   parseUrl,
+  sortTopics,
   type ChatSummary,
   type TopicInfo,
   type TopicKind,
@@ -132,19 +133,7 @@ export function isLegacyGroupChat(chat: ChatSummary): boolean {
   return chat.kind === 'group' && chat.topic === undefined;
 }
 
-/** Every topic of one group, General first, then by newest message. */
-export function sortTopics(chats: readonly ChatSummary[]): ChatSummary[] {
-  return [...chats].sort((left, right) => {
-    const leftGeneral = left.topic?.isGeneral === true;
-    const rightGeneral = right.topic?.isGeneral === true;
-    if (leftGeneral !== rightGeneral) {
-      return leftGeneral ? -1 : 1;
-    }
-    const leftTime = left.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY;
-    const rightTime = right.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY;
-    return rightTime - leftTime || left.title.localeCompare(right.title);
-  });
-}
+export { sortTopics };
 
 /** The topics of one group from the full chat list (legacy rows excluded). */
 export function topicsOfGroup(chats: readonly ChatSummary[], groupId: string): ChatSummary[] {

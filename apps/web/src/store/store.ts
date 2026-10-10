@@ -7,7 +7,7 @@ import type {
   UiMention,
   UiMessage,
 } from '@zilar/chat-core';
-import { folderMatches, folderUnreadTotal } from '@zilar/chat-core';
+import { folderMatches, folderUnreadTotal, sortTopics } from '@zilar/chat-core';
 import type { ChatFolder } from '@zilar/chat-core';
 import type {
   ChatBackgroundChoice,
@@ -542,31 +542,6 @@ function sortGroupsPinnedFirst(groups: ChatGroup[]): ChatGroup[] {
   return [...groups].sort((left, right) => {
     const time = groupPinTime(right) - groupPinTime(left);
     return time !== 0 ? time : left.title.localeCompare(right.title);
-  });
-}
-
-function topicTime(chat: ChatSummary): number {
-  return chat.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY;
-}
-
-function sortTopics(topics: ChatSummary[]): ChatSummary[] {
-  return [...topics].sort((left, right) => {
-    const leftPinned = left.pinnedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
-    const rightPinned = right.pinnedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
-    // Pinned topics float above the rest (newer pins first); General stays
-    // first among the unpinned, then the rest by recency.
-    if (leftPinned !== rightPinned) {
-      return rightPinned - leftPinned;
-    }
-    if (leftPinned !== Number.NEGATIVE_INFINITY) {
-      return left.title.localeCompare(right.title);
-    }
-    const leftGeneral = left.topic?.isGeneral === true;
-    const rightGeneral = right.topic?.isGeneral === true;
-    if (leftGeneral !== rightGeneral) {
-      return leftGeneral ? -1 : 1;
-    }
-    return topicTime(right) - topicTime(left) || left.title.localeCompare(right.title);
   });
 }
 

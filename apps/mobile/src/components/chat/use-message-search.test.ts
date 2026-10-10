@@ -356,8 +356,8 @@ describe('MessageSearchController', () => {
     expect(changes).toBeGreaterThan(0);
   });
 
-  it('waits MESSAGE_SEARCH_DEBOUNCE_MS of about 300 ms', () => {
-    expect(MESSAGE_SEARCH_DEBOUNCE_MS).toBe(300);
+  it('waits MESSAGE_SEARCH_DEBOUNCE_MS of 250 ms like web', () => {
+    expect(MESSAGE_SEARCH_DEBOUNCE_MS).toBe(250);
   });
 
   it('does not log the query: the API receives it only as a request param', async () => {

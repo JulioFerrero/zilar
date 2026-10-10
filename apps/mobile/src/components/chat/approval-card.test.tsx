@@ -177,7 +177,7 @@ describe('ApprovalCard', () => {
 
     expect(container.textContent).toContain('Rotate the staging API token');
     expect(container.textContent).toContain('The staging token leaked in a CI log.');
-    expect(container.textContent).toContain('Max cost: EUR 0.02');
+    expect(container.textContent).toContain('Max cost: €0.02');
     expect(button('Approve')).not.toBeNull();
     expect(button('Deny')).not.toBeNull();
   });
