@@ -36,8 +36,9 @@ import type { MuteDurationId } from '@/lib/chatPrefs';
 
 // The in-memory mock store lives in `mockStore.ts`; re-exported so every
 // existing import of `createChatStore` keeps working.
-export { createChatStore } from './mockStore';
-export type { ChatStoreSeed } from './mockStore';
+// A production build swaps `@/store/mockStore` for a stub (see vite.config.ts).
+export { createChatStore } from '@/store/mockStore';
+export type { ChatStoreSeed } from '@/store/mockStore';
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
 

@@ -2,7 +2,7 @@ import { Effect, Exit, Schema } from 'effect';
 import { FOLDER_ICONS, type FolderChatType, type FolderIcon } from '@zilar/chat-core';
 import { struct } from '@zilar/protocol';
 import { isMockApiEnabled } from '@/mock/gate';
-import { mockRequest } from '@/mock/api';
+import { loadMockRequest } from '@/mock/load';
 
 /** Base path for the server API. The Vite dev server proxies it same-origin. */
 export const API_BASE = '/api';
@@ -243,7 +243,7 @@ async function request<T>(
   let response: Response;
   if (isMockApiEnabled()) {
     // Standalone mock mode: answer locally, never touch the network (T-0069).
-    response = await mockRequest(path, init);
+    response = await (await loadMockRequest())(path, init);
   } else {
     try {
       const headers = new Headers(init.headers);
@@ -1617,7 +1617,7 @@ async function searchRequest<T>(
 ): Promise<T> {
   let response: Response;
   if (isMockApiEnabled()) {
-    response = await mockRequest(`/search?${params.toString()}`, { method: 'GET' });
+    response = await (await loadMockRequest())(`/search?${params.toString()}`, { method: 'GET' });
   } else {
     if (signal?.aborted === true) {
       throw new DOMException('Aborted', 'AbortError');
@@ -1893,7 +1893,9 @@ export async function uploadStickerFile(
   }
   let response: Response;
   if (isMockApiEnabled()) {
-    response = await mockRequest(`/sticker-packs/${encodeURIComponent(packId)}/stickers`, {
+    response = await (
+      await loadMockRequest()
+    )(`/sticker-packs/${encodeURIComponent(packId)}/stickers`, {
       method: 'POST',
       headers,
       body: blob as unknown as string,
@@ -2126,7 +2128,9 @@ async function gifRequest(
 ): Promise<GifPage> {
   let response: Response;
   if (isMockApiEnabled()) {
-    response = await mockRequest(`/gifs/${endpoint}?${params.toString()}`, { method: 'GET' });
+    response = await (
+      await loadMockRequest()
+    )(`/gifs/${endpoint}?${params.toString()}`, { method: 'GET' });
   } else {
     if (signal?.aborted === true) {
       throw new DOMException('Aborted', 'AbortError');
@@ -2579,7 +2583,9 @@ export function uploadAvatar(
 async function uploadAvatarBytes(path: string, blob: Blob): Promise<{ url: string }> {
   let response: Response;
   if (isMockApiEnabled()) {
-    response = await mockRequest(path, {
+    response = await (
+      await loadMockRequest()
+    )(path, {
       method: 'PUT',
       headers: { 'Content-Type': blob.type },
       body: blob as unknown as string,
@@ -2649,7 +2655,9 @@ const backgroundListSchema = struct({
 export async function uploadBackground(blob: Blob): Promise<BackgroundImage> {
   let response: Response;
   if (isMockApiEnabled()) {
-    response = await mockRequest('/backgrounds', {
+    response = await (
+      await loadMockRequest()
+    )('/backgrounds', {
       method: 'POST',
       headers: { 'Content-Type': blob.type },
       body: blob as unknown as string,

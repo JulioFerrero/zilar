@@ -7,7 +7,7 @@ import { Result, Schema } from 'effect';
 import { struct } from '@zilar/protocol';
 import { ApiError } from '@/lib/api';
 import { isMockApiEnabled } from '@/mock/gate';
-import { mockRequest } from '@/mock/api';
+import { loadMockRequest } from '@/mock/load';
 
 // --- Tools ---------------------------------------------------------------
 
@@ -107,7 +107,7 @@ async function request<T>(
   let response: Response;
   if (isMockApiEnabled()) {
     // Standalone mock mode: answer locally, never touch the network (T-0069).
-    response = await mockRequest(path, init);
+    response = await (await loadMockRequest())(path, init);
   } else {
     try {
       const headers = new Headers(init.headers);

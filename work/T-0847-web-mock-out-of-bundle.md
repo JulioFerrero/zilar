@@ -1,7 +1,7 @@
 ---
 id: T-0847
 title: "Web: the mock backend and mock store leave the production bundle (build-time gate plus dynamic imports)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0847-web-mock-out-of-bundle
 model: auto
@@ -64,3 +64,30 @@ Run the tests 3 times after the last commit.
 ## Report (written by the worker when done)
 
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.**
+- **What changed:** the mock backend now loads through a dynamic import behind the same gate as `gate.ts`, and a production build swaps the mock store for a stub. The main chunk drops 1,437 → 1,323 kB (gzip 416 → 387 kB), and the fixture text is gone from the bundle.
+- **Checks:** the combined check is clean.
+- **Not this task:** the `Composer.voice` flake fails on base too; it is a follow-up.
+- **Still open:** StickerPanel and AuthProvider still import `mock/helpers` and `mock/ids`; they go to T-0882.
+- **Incident:** an early `git stash` swapped changes with T-0846. Both trees were checked clean, and the brief now forbids `git stash`.
+
+### Report
+
+**What changed** (commit 11f926ff)
+- `apps/web/src/mock/load.ts` (new): `loadMockRequest()` has the inline fold-able check (`DEV || MODE === 'test' || VITE_MOCK === '1'`, same conditions as `gate.ts`) and reaches `mock/api` only via `await import()`. `lib/api.ts` (6 sites) and `lib/tools.ts` (1 site) use `await (await loadMockRequest())(...)`; signatures unchanged.
+- `apps/web/src/mock/storeStub.ts` (new) plus an alias in `vite.config.ts`: a production build without `VITE_MOCK=1` resolves `@/store/mockStore` to the stub. The store must stay synchronous (33 test files, `ChatStoreProvider`), so a dynamic import was not an option. `store.ts` now re-exports from `@/store/mockStore` (the alias target). Dev and tests keep the real module.
+- The INEFFECTIVE_DYNAMIC_IMPORT warning for `lib/api` is gone from the build output.
+- Not changed: `StickerPanel.tsx` (`mock/helpers`) and `AuthProvider.tsx` (`mock/ids`): both are small, and "Acme Announcements" is gone without touching them.
+
+**Measured** (`pnpm --filter @zilar/web build`)
+- Main chunk before: 1,437.39 kB, gzip 416.18 kB. After: 1,322.72 kB, gzip 387.10 kB (-114.7 kB, -8.0%; gzip -29.1 kB).
+- `grep -c "Acme Announcements" dist/assets/*.js`: before 1, after 0 (only one JS chunk).
+
+**Checks**
+- typecheck: clean. oxlint and prettier on changed files: clean. build: ok.
+- Tests (full web suite, 1943 tests): `Composer.voice.test.tsx` fails 1-3 tests per run in 4 runs after the change (3 of 3 runs are NOT green). The same file fails 3 of 11 on the clean base commit (checked without my changes), so it is not caused by this task. `TopicPanel.test.tsx` failed once in the first full run, then passed in the later runs (flaky under load). No test was changed.
+
+**Behaviour differences**: none intended. Not live-checked in a browser (`?mock=1` in dev takes the unchanged dev path).
+
+**Unsure**: Composer.voice failure is pre-existing ("Unable to find a label with the text of: Send voice message"). Also: an early `git stash`/`pop` of mine collided with another worktree's stash (stashes are shared across worktrees); I popped a foreign mobile change, saved it as a patch in my scratchpad (`foreign-mobile.patch`), and reverted it here. If another task lost its stash, that is the cause.
