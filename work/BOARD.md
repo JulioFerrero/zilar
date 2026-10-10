@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0896](T-0896-store-core-design.md) | Store core design: verified plan and task split (simplify 4.3) | in-progress | opus-5.5 | | wave 6, doc only |
 | [T-0897](T-0897-contract-tidy.md) | api-contract tidy: one middleware file, one schema-error layer, handleRaw payloads, no duplicate groups | in-progress | sonnet-5.5 | | wave 6 |
 | [T-0898](T-0898-source-pinning-tests.md) | Mobile source-pinning tests become render tests or a lint rule (5.6) | in-progress | sonnet-5.5 | | wave 6 |
 | [T-0899](T-0899-test-wait-helpers.md) | One flush/waitFor/jsonResponse per package, fake timers, one-tick guard (5.5) | in-progress | sonnet-5.5 | | wave 6 |
@@ -929,3 +928,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0894](T-0894-contract-chain-c-people.md) | api-contract chain C: move the contacts, contact-requests, directory, blocks, search, chats, drafts, handles g | 2026-10-10 |
 | [T-0893](T-0893-contract-chain-b-ais.md) | api-contract chain B: move the ais, agents/memory, connections, approvals, audit, tools, routines groups into  | 2026-10-10 |
 | [T-0895](T-0895-contract-chain-d-media.md) | api-contract chain D: move the stickers, gifs, machines, integrations, push, backgrounds, voice, media, auth g | 2026-10-10 |
+| [T-0896](T-0896-store-core-design.md) | Store core design: docs/STORE_CORE_PLAN.md, 10-task split, lead decisions Q1-Q4 | 2026-10-10 |
