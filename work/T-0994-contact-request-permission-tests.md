@@ -1,7 +1,7 @@
 ---
 id: T-0994
 title: "Contact requests: a few permission tests (who may accept, decline, cancel; blocks; limits)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0994-contact-request-permission-tests
 model: auto
@@ -50,4 +50,56 @@ The Checks pass with 5 tests, and the Report pastes the vitest summary line.
 
 ## Report (written by the worker when done)
 
+Status: done.
+
+### What I did
+Added `apps/server/src/contact-requests/contact-requests.test.ts` with exactly the 5 tests from the spec, calling the service functions directly against a `createTestContext` PGlite database. No source file was changed.
+
+- Users are seeded with `seedUser`; each gets a live `handles` row (a local `seedHandle` helper) so `createContactRequest` can resolve the handle. The service deps are `{ db: context.db }`.
+- Tests 1–3: a pending A→B request; A and a third user C get the same 404 shape `notFound()` builds (status 404, code `not_found`, message `Not found`); the correct side returns `accepted` / `declined` / `cancelled`.
+- Test 4: a `user_blocks` row (A blocked B) makes A's request to B reject with 409 `blocked`.
+- Test 5: 20 seeded pending rows from A, then a 21st `createContactRequest` rejects with 429 `too_many_requests` (`MAX_PENDING_OUTGOING` imported from the service, not hard-coded).
+
+### Files changed
+- `apps/server/src/contact-requests/contact-requests.test.ts` (new)
+- `work/T-0994-contact-request-permission-tests.md` (Report + status)
+
+### Commands run (real results)
+`pnpm install` — done, no lockfile change.
+
+```
+pnpm --filter @zilar/server exec vitest run --maxWorkers=2 --reporter=dot src/contact-requests/contact-requests.test.ts
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Duration  4.79s
+```
+
+`pnpm gate` (from repo root):
+
+```
+gate: 2 changed file(s) against main
+PASS  install (frozen)  (1.2s)
+PASS  format  (1.2s)
+PASS  lint  (1.0s)
+PASS  typecheck  (3.6s)
+SKIP effect (no source files changed)
+PASS  tests @zilar/server  (5.9s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Problems / deviations
+None. The code behaved as the spec describes; nothing needed fixing.
+
+### Open questions
+None.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved. The pre-review is clean, with no nits.**
+- **The tests:** five tests in `contact-requests/contact-requests.test.ts`:
+  - only the recipient accepts and declines, and only the sender cancels; everyone else gets the same 404;
+  - a request to someone the sender blocked gets 409 `blocked`;
+  - the 21st pending request gets 429 `too_many_requests`.
+- **No source change.** The permissions gap the lead found in T-0983 is closed.
+- **Check:** `Tests 5 passed (5)`, and the gate passed.
