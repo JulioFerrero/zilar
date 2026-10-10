@@ -15,8 +15,8 @@ import { Text } from '@/components/ui/text';
 import type { AttachmentPicker, GifDownloader, PickedFile } from '@/lib/attachment-ports';
 import { well } from '@/lib/depth';
 import type { CaretSelection } from '@/lib/emoji-data';
-import type { GifItem } from '@/lib/gifs';
-import type { StickerPack } from '@/lib/stickers';
+import type { GifsApi } from '@/lib/gifs-api';
+import type { StickersApi } from '@/lib/stickers-api';
 import type { ReplyRef } from '@/lib/types';
 import type { MentionMember, UiMention } from '@zilar/chat-core';
 import type {
@@ -36,12 +36,12 @@ type ComposerProps = {
   onSendAttachment?: ((file: PickedFile, options?: SendAttachmentOptions) => void) | undefined;
   /** Sends a finished voice recording (T-0154). */
   onSendVoice?: ((recording: SendVoiceRecording, options?: SendTextOptions) => void) | undefined;
-  /** Demo packs in mock mode, so the panel works without a server. */
-  demoPacks?: StickerPack[];
+  /** The sticker panel's API client; mock mode injects the shared backend. */
+  stickersApi?: StickersApi | undefined;
   /** Demo attachments in mock mode, so the flow works without a server. */
   demoAttachments?: Attachment[] | undefined;
-  /** Demo GIFs in mock mode, so the GIF flow works without a server. */
-  demoGifs?: GifItem[] | undefined;
+  /** The GIF panel's API client; mock mode injects the shared backend. */
+  gifsApi?: GifsApi | undefined;
   replyTo?: ReplyRef;
   onCancelReply: () => void;
   onTyping?: () => void;
@@ -69,9 +69,9 @@ export function Composer({
   title,
   mentionMembers,
   chatKey,
-  demoPacks,
+  stickersApi,
   demoAttachments,
-  demoGifs,
+  gifsApi,
   picker: pickerProp,
   gifDownloader: gifDownloaderProp,
 }: ComposerProps) {
@@ -126,8 +126,8 @@ export function Composer({
     setText,
     selection,
     setSelection,
-    demoPacks,
-    demoGifs,
+    stickersApi,
+    gifsApi,
     onSendSticker,
     trackEmojiChange: mentions.trackEmojiChange,
   });
@@ -241,7 +241,7 @@ export function Composer({
         onSelectPack={sheet.setActivePackId}
         onPickSticker={sheet.pickSticker}
         onRetryStickers={sheet.loadPanel}
-        mockGifItems={sheet.demoGifItems}
+        gifsApi={gifsApi}
         onPickGif={media.pickGif}
         onClose={sheet.closeSheet}
       />

@@ -1,7 +1,7 @@
 ---
 id: T-1085
 title: "Mock H2-8 (mobile): the composer's sticker and GIF tabs load from @zilar/mock-backend through injected APIs instead of demo props; delete mock/stickers.ts and mock/gifs.ts"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1085-mobile-composer-stickers-gifs-on-backend
 model: auto
@@ -72,4 +72,100 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Replaced the composer's three demo-prop sources so the sticker and GIF tabs load
+from `@zilar/mock-backend` through injected APIs in mock mode, exactly like real
+mode, then deleted the two now-dead mock files.
+
+- `chat-composer-dock.tsx`: dropped `demoPacks`/`demoGifs`. It now calls
+  `useStickersApi()` once and passes `stickersApi` (the mock-backed adapter in
+  mock mode, the real one otherwise) and derives `gifsApi` from the hook's
+  `mock` flag: `createGifsApi(mockToken, mockFetch, API_URL)` behind the
+  `__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK` literal guard (the machines
+  pattern, `createMockGifs()`), else `undefined`. `demoAttachments` is unchanged
+  (`mock/attachments.ts` stays).
+- `composer.tsx`, `channel-composer-bar.tsx`: renamed the props to
+  `stickersApi?: StickersApi` / `gifsApi?: GifsApi` and plumbed them through.
+- `composer-sheet.ts`: `loadStickerPacks(stickersApi)` and
+  `probeGifsAvailability(gifsApi)`; dropped `demoGifItems`, the second
+  `mockDemoGifs()` call and its import. `loadPanel` no longer short-circuits on
+  demo packs. `composer.tsx` now passes `gifsApi` to `EmojiSheet` (instead of
+  `mockGifItems`).
+- `emoji-sheet.tsx`: removed the now-dead `mockGifItems` prop; `GifPanel` gets
+  `api={gifsApi}` only.
+- Deleted `apps/mobile/src/mock/stickers.ts` and `apps/mobile/src/mock/gifs.ts`.
+
+`gif-panel.tsx` was left unchanged: the spec makes removing `mockItems`
+conditional on "nothing else passes them", and `gif-panel-sheet.tsx` (an exported
+but unimported `GifSheet`, **not** in the Allowed files) still destructures and
+forwards `mockItems`. Removing it would break that file's typecheck, so I kept it.
+`mockItems` is now only reachable through that dead wrapper; the live composer
+path never passes it.
+
+### Probe (throwaway, not committed)
+
+`createMockBackend({ delayMs: 0 }).http(path, init)`, run once and then deleted
+(`packages/mock-backend/probe-t1085.test.ts`):
+`GET /api/gifs/trending` → 200 (6 rows), `GET /api/gifs/search?q=a` → 200
+(matching rows), `GET /api/sticker-packs` → 200 with packs "Cats" and "Moods".
+One test passed.
+
+### Greps for the deleted files
+
+- `grep -rn "mock/stickers\|mock/gifs" apps/mobile` (excluding `node_modules`) →
+  no matches (exit 1).
+- `grep -rn "mockDemoGifs\|mockDemoStickerPacks" apps/mobile` → no matches; the
+  only remaining hits repo-wide are `packages/mock-backend/src/domains/gifs/seed.ts`
+  and `routes.ts`, which define the backend's own `mockGifItems` seed (unrelated).
+- `grep -rn "demoPacks\|demoGifs\|mockGifItems\|demoGifItems" apps/mobile/src` →
+  no matches.
+
+### Files changed
+
+`chat-composer-dock.tsx`, `composer.tsx`, `channel-composer-bar.tsx`,
+`composer-sheet.ts`, `emoji-sheet.tsx`; deleted `mock/stickers.ts`,
+`mock/gifs.ts`; this task file.
+
+### Commands run
+
+- `pnpm install` — done, up to date.
+- Single probe test above.
+- `pnpm gate` from the repo root:
+  ```
+  gate: 8 changed file(s) against main
+  PASS  install (frozen)  (1.1s)
+  PASS  format  (1.2s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (3.3s)
+  PASS  effect  (0.7s)
+  SKIP tests @zilar/mobile (no nearby test files)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+No tests were added (spec says none), and no test files were run apart from the
+throwaway probe.
+
+### Deviations / open questions
+
+- Gating `gifsApi` on `useStickersApi().mock` (rather than re-deriving the
+  `?mock=`/env gate): the two share the identical gate and no `useGifsApi` hook
+  exists, so this keeps stickers and GIFs in agreement and avoids duplicating the
+  gate. A dev build pointed at a real server therefore uses the real GIF client,
+  the same as stickers.
+- `gif-panel.tsx`'s `mockItems` is left in place for the typecheck reason above.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-11: approved. The pre-review is clean, with 1 follow-up.**
+- **The change:**
+  - the composer chain passes `stickersApi` (from `useStickersApi`) and `gifsApi` (`createGifsApi(mockToken, mockFetch, API_URL)` in mock mode) instead of `demoPacks` and `demoGifs`;
+  - `composer-sheet.ts` loads like real mode;
+  - `mock/stickers.ts` and `mock/gifs.ts` are deleted, and `demoAttachments` stays.
+- **The lead's phone smoke** (mock, Marta's chat):
+  - the emoji sheet's Stickers tab lists Recent, Cats and Moods from the backend;
+  - the GIFs tab shows a results grid with Search GIFs and "Powered by Giphy". The images are blank, which is audit §3 and a later slice;
+  - tapping the first Cats sticker sends it, and it shows as 🐱 with a tick.
+- **The follow-up:** `mockItems` in `GifPanel` and `GifSheet` (`gif-panel-sheet.tsx`, outside this task's files) is now unused.
+- **Check:** the gate passed.

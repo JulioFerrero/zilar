@@ -51,7 +51,6 @@ type EmojiSheetProps = {
   onPickSticker: (sticker: StickerChoice) => void;
   onRetryStickers: () => void;
   /** GIFs tab. */
-  mockGifItems?: GifItem[] | undefined;
   gifsApi?: GifsApi | undefined;
   onPickGif: (gif: GifItem) => void;
   onClose: () => void;
@@ -82,7 +81,6 @@ export function EmojiSheet({
   onSelectPack,
   onPickSticker,
   onRetryStickers,
-  mockGifItems,
   gifsApi,
   onPickGif,
   onClose,
@@ -154,7 +152,7 @@ export function EmojiSheet({
                 onRetry={onRetryStickers}
               />
             ) : (
-              <GifPanel open={open} mockItems={mockGifItems} api={gifsApi} onPick={onPickGif} />
+              <GifPanel open={open} api={gifsApi} onPick={onPickGif} />
             )}
           </View>
         </Pressable>

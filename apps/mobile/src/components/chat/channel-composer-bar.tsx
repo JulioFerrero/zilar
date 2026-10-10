@@ -9,8 +9,8 @@ import { mutedUntilFor } from '@/lib/chat-prefs';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import type { ChatSummary, ReplyRef } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
-import type { StickerPack } from '@/lib/stickers';
-import type { GifItem } from '@/lib/gifs';
+import type { GifsApi } from '@/lib/gifs-api';
+import type { StickersApi } from '@/lib/stickers-api';
 import type {
   SendAttachmentOptions,
   SendStickerChoice,
@@ -40,12 +40,12 @@ type ChannelComposerProps = {
   onSendAttachment?: ((file: PickedFile, options?: SendAttachmentOptions) => void) | undefined;
   /** Sends a finished voice recording (T-0154, forwarded to the composer). */
   onSendVoice?: ((recording: SendVoiceRecording, options?: SendTextOptions) => void) | undefined;
-  /** Demo packs in mock mode (forwarded to the composer). */
-  demoPacks?: StickerPack[];
+  /** The sticker panel's API client (forwarded to the composer). */
+  stickersApi?: StickersApi | undefined;
   /** Demo attachments in mock mode, so the flow works without a server. */
   demoAttachments?: Attachment[] | undefined;
-  /** Demo GIFs in mock mode (forwarded to the composer). */
-  demoGifs?: GifItem[] | undefined;
+  /** The GIF panel's API client (forwarded to the composer). */
+  gifsApi?: GifsApi | undefined;
 };
 
 /**
@@ -71,9 +71,9 @@ export function ChannelComposerBar({
   onSendSticker,
   onSendAttachment,
   onSendVoice,
-  demoPacks,
+  stickersApi,
   demoAttachments,
-  demoGifs,
+  gifsApi,
 }: ChannelComposerProps) {
   const insets = useSafeAreaInsets();
   const currentUserId = useChatStore((state) => state.currentUserId);
@@ -103,9 +103,9 @@ export function ChannelComposerBar({
         onSendSticker={onSendSticker}
         onSendAttachment={onSendAttachment}
         onSendVoice={onSendVoice}
-        demoPacks={demoPacks}
+        stickersApi={stickersApi}
         demoAttachments={demoAttachments}
-        demoGifs={demoGifs}
+        gifsApi={gifsApi}
         replyTo={replyTo}
         onCancelReply={onCancelReply}
         onTyping={onTyping}
