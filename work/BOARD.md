@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0996](T-0996-split-mobile-stickers-screen.md) | Size split T44: mobile settings/stickers.tsx (691) | in-progress | auto | T-0936 | size-plan |
 | [T-0997](T-0997-split-mobile-voice-message.md) | Size split T51: mobile voice-message.tsx (631) | in-progress | auto | T-0936 | size-plan |
 | [T-0998](T-0998-split-web-chat-background-dialog.md) | Size split T66: web ChatBackgroundDialog.tsx (555) | in-progress | auto | T-0936 | size-plan |
 | [T-0999](T-0999-split-web-notifications-page.md) | Size split T67: web NotificationsPage.tsx (551) | in-progress | auto | T-0936 | size-plan |
@@ -1029,3 +1028,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0994](T-0994-contact-request-permission-tests.md) | Contact requests: a few permission tests (who may accept, decline, cancel; blocks; limits) | 2026-10-10 |
 | [T-1001](T-1001-split-server-telegram-import.md) | Size split T59: apps/server/src/stickers/telegram-import.ts (573 lines) into stickers/telegram/{pack-input,err | 2026-10-10 |
 | [T-0995](T-0995-split-mobile-machines.md) | Size split T41: apps/mobile/src/app/settings/machines.tsx (717 lines) into components/machines/{mutations,use- | 2026-10-10 |
+| [T-0996](T-0996-split-mobile-stickers-screen.md) | Size split T44: apps/mobile/src/app/settings/stickers.tsx (691 lines) into components/stickers/{tile-size,use- | 2026-10-10 |
