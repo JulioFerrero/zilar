@@ -19,18 +19,32 @@ export function allowedTokens(taskText: string): string[] {
 }
 
 function escapeRegex(text: string): string {
-  return text.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  return text.replace(/[.+^${}()|[\]\\?]/g, '\\$&');
+}
+
+// `**/` matches zero or more folders (as in glob tools and git pathspecs), so
+// `a/**/b.ts` matches `a/b.ts` and `a/x/y/b.ts`. A trailing `**` matches any
+// rest of the path.
+function globToRegexSource(glob: string): string {
+  return glob
+    .split(/(\*\*\/|\*\*)/)
+    .map((piece) => {
+      if (piece === '**/') {
+        return '(?:.*/)?';
+      }
+      if (piece === '**') {
+        return '.*';
+      }
+      return escapeRegex(piece).replace(/\*/g, '[^/]*');
+    })
+    .join('');
 }
 
 // `a/b/**` matches everything below a/b; `a/*.ts` stays inside one folder; a
 // bare path matches itself and anything below it (a folder name).
 export function tokenMatcher(token: string): RegExp {
   const cleaned = token.replace(/^\.\//, '').replace(/\/$/, '');
-  const pattern = cleaned
-    .split('**')
-    .map((part) => escapeRegex(part).replace(/\*/g, '[^/]*'))
-    .join('.*');
-  return new RegExp(`^${pattern}(/.*)?$`);
+  return new RegExp(`^${globToRegexSource(cleaned)}(/.*)?$`);
 }
 
 export interface ScopeReport {

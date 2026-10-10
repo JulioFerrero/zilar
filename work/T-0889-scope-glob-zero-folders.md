@@ -1,7 +1,7 @@
 ---
 id: T-0889
 title: "Gate scope check: `a/**/x` also matches files directly in `a/` (zero folders), as in every glob tool"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0889-scope-glob-zero-folders
 model: auto
@@ -54,4 +54,14 @@ pnpm exec oxlint <your changed files>
 
 ## Report (written by the worker when done)
 
+- `scope.ts`: `tokenMatcher` now builds the regex through `globToRegexSource`. `**/` becomes `(?:.*/)?` (zero or more folders), a trailing or bare `**` becomes `.*`, `*` stays `[^/]*`.
+- `escapeRegex` also escapes `?`.
+- `gate.test.ts`: 4 new `it` blocks in `tokenMatcher`: zero-folder `**/`, leading `**/`, the three existing behaviours, brackets and `?` as literals.
+- Checks: `vitest run src/gate src/lead`: 31 files, 731 passed, 0 failed. Before-count not measured; the 4 new tests are the only addition, so about 727 before.
+- `tsc --noEmit` (devtools typecheck): clean. `oxlint` on the two changed files: exit 0, no output.
+- Did not run `pnpm gate` (per instructions).
+- Installed deps with `pnpm install` in the worktree (node_modules was missing).
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.** `**/` now matches zero or more folders, and `?` is escaped. New tests cover the zero-folder case, a leading `**/` and bracket paths, and the old behaviours are kept. The `src/gate` and `src/lead` tests pass, 731 tests.

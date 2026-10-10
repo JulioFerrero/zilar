@@ -49,6 +49,36 @@ describe('tokenMatcher', () => {
     expect(tokenMatcher('a/b/*.ts').test('a/b/c/d.ts')).toBe(false);
     expect(tokenMatcher('a/b/c.ts').test('a/b/c.tsx')).toBe(false);
   });
+
+  it('lets `**/` match zero folders', () => {
+    const matcher = tokenMatcher('apps/web/src/**/*.test.tsx');
+    expect(matcher.test('apps/web/src/App.test.tsx')).toBe(true);
+    expect(matcher.test('apps/web/src/a/b/C.test.tsx')).toBe(true);
+    expect(matcher.test('apps/web/src/App.tsx')).toBe(false);
+    expect(tokenMatcher('a/**/b.ts').test('a/b.ts')).toBe(true);
+    expect(tokenMatcher('a/**/b.ts').test('a/x/y/b.ts')).toBe(true);
+    expect(tokenMatcher('a/**/b.ts').test('ab.ts')).toBe(false);
+  });
+
+  it('matches a leading `**/` from the root or below', () => {
+    expect(tokenMatcher('**/b.ts').test('b.ts')).toBe(true);
+    expect(tokenMatcher('**/b.ts').test('x/y/b.ts')).toBe(true);
+    expect(tokenMatcher('**/b.ts').test('x/b.tsx')).toBe(false);
+  });
+
+  it('keeps `a/*.ts` inside one folder and `a/b/**` below it', () => {
+    expect(tokenMatcher('a/*.ts').test('a/c.ts')).toBe(true);
+    expect(tokenMatcher('a/*.ts').test('a/x/c.ts')).toBe(false);
+    expect(tokenMatcher('a/b/**').test('a/b/x/y.ts')).toBe(true);
+    expect(tokenMatcher('a/b/**').test('a/c.ts')).toBe(false);
+  });
+
+  it('treats brackets and question marks in paths as literal text', () => {
+    expect(tokenMatcher('apps/mobile/src/app/chat/[id].tsx').test('apps/mobile/src/app/chat/[id].tsx')).toBe(true);
+    expect(tokenMatcher('apps/mobile/src/app/chat/[id].tsx').test('apps/mobile/src/app/chat/i.tsx')).toBe(false);
+    expect(tokenMatcher('a/what?.ts').test('a/what?.ts')).toBe(true);
+    expect(tokenMatcher('a/what?.ts').test('a/whats.ts')).toBe(false);
+  });
 });
 
 describe('scopeReport', () => {
