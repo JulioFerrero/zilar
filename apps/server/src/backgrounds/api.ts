@@ -6,27 +6,15 @@
 // route answers raw bytes with `HttpServerResponse.uint8Array`, which
 // `HttpApiBuilder` returns untouched, headers included.
 
-import { Effect, Layer, Schema, Stream } from 'effect';
+import { Effect, Layer, Stream } from 'effect';
 import { HttpServerResponse } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiSchema,
-} from 'effect/http-api';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { BackgroundsGroup, BackgroundsUploadRateLimit } from '@zilar/api-contract';
 import type { Logger } from 'pino';
+import { contractSchemaErrorLayer } from '../auth/schema-errors';
+import { rateLimitLayer } from '../auth/rate-limit-layer';
 import { HttpError } from '../errors';
-import {
-  SchemaErrors,
-  Session,
-  handler,
-  mountApi,
-  schemaErrorLayer,
-  sessionLayer,
-  type EffectApiMount,
-} from '../effect/http-core';
-import { makeRateLimit } from '../effect/rate-limit-middleware';
+import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { BackgroundsRoutesDependencies } from './routes';
 import {
@@ -61,60 +49,9 @@ function serviceDeps(deps: BackgroundsApiDependencies): BackgroundsServiceDeps {
   return { db: deps.db, storageDir: deps.storageDir };
 }
 
-// The upload result: every field of `BackgroundUploadResult`, side by side
-// (`id`, `url`, `width`, `height`) — item 8.
-const BackgroundUploadView = Schema.Struct({
-  id: Schema.String,
-  url: Schema.String,
-  width: Schema.Number,
-  height: Schema.Number,
-}).pipe(HttpApiSchema.status(201));
-
-// The list item: every field of `BackgroundView` (`id`, `url`,
-// `width|null`, `height|null`, `createdAt`) — item 8.
-const BackgroundListItem = Schema.Struct({
-  id: Schema.String,
-  url: Schema.String,
-  width: Schema.NullOr(Schema.Number),
-  height: Schema.NullOr(Schema.Number),
-  createdAt: Schema.String,
-});
-
-const BackgroundList = Schema.Struct({ backgrounds: Schema.Array(BackgroundListItem) });
-
-const BackgroundIdParams = Schema.Struct({ id: Schema.String });
-
-// The upload budget runs before the body is read, exactly like the old
-// route's `uploadLimiter.allow` -> declared-length -> `readCapped` order.
-const BackgroundsUploadRateLimit = makeRateLimit(
-  'zilar/effect/http/BackgroundsUploadRateLimit',
-  'Too many background uploads, try again later',
-);
-
-const BackgroundsGroup = HttpApiGroup.make('backgrounds')
-  .add(
-    // No payload schema: the handler reads the raw body stream itself.
-    HttpApiEndpoint.post('upload', '/backgrounds', {
-      success: BackgroundUploadView,
-    }).middleware(BackgroundsUploadRateLimit.Middleware),
-    HttpApiEndpoint.get('list', '/backgrounds', {
-      success: BackgroundList,
-    }),
-    // The handler answers the raw bytes itself (status 200, file headers).
-    HttpApiEndpoint.get('getFile', '/backgrounds/:id', {
-      params: BackgroundIdParams,
-      success: HttpApiSchema.Empty(200),
-    }),
-    HttpApiEndpoint.delete('remove', '/backgrounds/:id', {
-      params: BackgroundIdParams,
-      success: HttpApiSchema.NoContent,
-    }),
-  )
-  .middleware(Session)
-  .middleware(SchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
-
+// The group and the reply schemas live in the shared contract
+// (`@zilar/api-contract`, `backgrounds.ts`, T-0895). The upload declares no
+// payload: the handler reads the raw body stream itself.
 const BackgroundsApi = HttpApi.make('backgrounds').add(BackgroundsGroup);
 
 export function createBackgroundsApi(deps: BackgroundsApiDependencies): EffectApiMount {
@@ -215,8 +152,16 @@ export function createBackgroundsApi(deps: BackgroundsApiDependencies): EffectAp
   const apiLayer = HttpApiBuilder.layer(BackgroundsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
-    Layer.provide(BackgroundsUploadRateLimit.layer(uploadLimiter)),
+    Layer.provide(contractSchemaErrorLayer(logger)),
+    // The upload budget runs before the body is read, exactly like the old
+    // route's `uploadLimiter.allow` -> declared-length -> `readCapped` order.
+    Layer.provide(
+      rateLimitLayer(
+        BackgroundsUploadRateLimit,
+        'Too many background uploads, try again later',
+        uploadLimiter,
+      ),
+    ),
   );
 
   return mountApi(BackgroundsApi, apiLayer);

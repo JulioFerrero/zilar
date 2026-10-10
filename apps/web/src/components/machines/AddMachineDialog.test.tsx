@@ -3,11 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { AddMachineDialog } from './AddMachineDialog';
 
 function jsonResponse(status: number, body: unknown): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response;
+  return new Response(JSON.stringify(body), { status });
 }
 
 function createFetch(responses: Array<{ match: RegExp; respond: () => Response }>) {
@@ -77,11 +73,9 @@ describe('AddMachineDialog', () => {
       'fetch',
       vi.fn(
         async () =>
-          ({
-            ok: true,
+          new Response(JSON.stringify({ code: 'K7QX-M2PA', expiresAt: expiry }), {
             status: 201,
-            json: async () => ({ code: 'K7QX-M2PA', expiresAt: expiry }),
-          }) as Response,
+          }),
       ),
     );
 

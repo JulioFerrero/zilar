@@ -84,12 +84,28 @@ const chainCGroups = [
 
 // Chain D (T-0895) imports: add `import { XGroup } from './x';` lines below.
 // ----------------------------------------------------------------------------
+import { AuthGroup, AuthInvitesPublicGroup } from './auth';
+import { BackgroundsGroup } from './backgrounds';
+import { GifsGroup } from './gifs';
+import { IntegrationsGroup } from './integrations';
+import { MachinesGroup } from './machines';
+import { MediaGroup } from './media';
+import { PushGroup } from './push';
+import { StickersGroup } from './stickers';
 // End of chain D imports.
 
 // Chain D (T-0895) groups: add `XGroup,` lines inside the brackets.
 // ----------------------------------------------------------------------------
 const chainDGroups = [
-  // (chain D groups)
+  AuthGroup,
+  AuthInvitesPublicGroup,
+  BackgroundsGroup,
+  GifsGroup,
+  IntegrationsGroup,
+  MachinesGroup,
+  MediaGroup,
+  PushGroup,
+  StickersGroup,
 ] as const;
 // ----------------------------------------------------------------------------
 // End of chain D.

@@ -11,7 +11,8 @@
 
 import { Effect, Exit, Layer, Schema, SchemaIssue } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { AuthGroup, AuthInvitesPublicGroup, UpdateMePayload } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerConfig } from '../config';
@@ -19,12 +20,9 @@ import { refreshRosterNicknames } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import {
-  SchemaErrors,
-  Session,
   handler,
   mountApi,
   requestIdOf,
-  schemaErrorLayer,
   sessionLayer,
   withErrorEnvelope,
   type EffectApiMount,
@@ -33,6 +31,7 @@ import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { findXmppAccount } from '../xmpp/provisioning';
 import type { Auth } from './auth';
+import { contractSchemaErrorLayer } from './schema-errors';
 import { createInvite, findInviteByCode, findUsableInvite, revokeInvite } from './invites';
 
 export interface AuthApiDependencies {
@@ -42,9 +41,6 @@ export interface AuthApiDependencies {
   adminClient: EjabberdAdminClient;
   logger: Logger;
 }
-
-const CONTROL_CHAR_MAX = 0x1f;
-const CONTROL_CHAR_DEL = 0x7f;
 
 interface HandleLookupRow {
   handle: string;
@@ -58,28 +54,10 @@ interface SessionUserLookupRow {
   createdAt: Date;
 }
 
-function isControlCharacter(character: string): boolean {
-  const code = character.codePointAt(0) ?? 0;
-  return code <= CONTROL_CHAR_MAX || code === CONTROL_CHAR_DEL;
-}
-
-// Replaces `displayNameSchema` (zod): trimmed, 1..64 characters, with the
-// same three messages. `isMinLength`/`isMaxLength` carry them as `message`
-// annotations, and the control-character filter returns its own string.
-const DisplayName = Schema.Trim.pipe(
-  Schema.check(
-    Schema.isMinLength(1, { message: 'name must not be empty' }),
-    Schema.isMaxLength(64, { message: 'name must be at most 64 characters' }),
-    Schema.makeFilter((value: string) =>
-      [...value].every((character) => !isControlCharacter(character))
-        ? undefined
-        : 'name must not contain control characters',
-    ),
-  ),
-);
-
-// Replaces `updateMeSchema` (zod), non-strict: unknown keys are stripped.
-const UpdateMeBody = Schema.Struct({ name: DisplayName });
+// The name rules (trimmed, 1..64 characters, no control characters, with the
+// three messages) live in the contract as `UpdateMePayload`, non-strict:
+// unknown keys are stripped.
+const UpdateMeBody = UpdateMePayload;
 
 // The first decode message, like the old `parsed.error.issues[0]?.message`.
 // Walks the issue tree depth-first: a filter that returned a string carries
@@ -134,69 +112,17 @@ function updateMeMessage(body: unknown): string {
   return 'Invalid name';
 }
 
-const MeView = Schema.Struct({
-  id: Schema.String,
-  email: Schema.String,
-  name: Schema.String,
-  image: Schema.NullOr(Schema.String),
-  avatarUrl: Schema.optional(Schema.String),
-  handle: Schema.NullOr(Schema.String),
-  createdAt: Schema.String,
-  jid: Schema.NullOr(Schema.String),
-});
-
-const PatchMeView = Schema.Struct({
-  id: Schema.String,
-  email: Schema.String,
-  name: Schema.String,
-  image: Schema.NullOr(Schema.String),
-});
-
-const InviteView = Schema.Struct({
-  code: Schema.String,
-  url: Schema.String,
-  expiresAt: Schema.Date,
-});
-
-const InviteCheckView = Schema.Struct({ valid: Schema.Boolean });
-
-const InviteParams = Schema.Struct({ code: Schema.String });
-
-const RevokedView = Schema.Struct({ revoked: Schema.Boolean });
-// GET /invites/:code stays public: a would-be sign-up needs to know if a
-// code works. Every other route requires a session.
+// The groups and the reply schemas live in the shared contract
+// (`@zilar/api-contract`, `auth.ts`, T-0895). GET /invites/:code stays public:
+// a would-be sign-up needs to know if a code works. Every other route requires
+// a session.
 //
-// PATCH /me declares its payload (`UpdateMeBody`) so a derived client is
-// typed, but it is served with `handleRaw`: the framework does not decode the
-// body. The name rules run by hand (see the header) because the framework's
-// decode would change the texts of a malformed or empty body (400 "Expected a
-// valid JSON body" instead of "Invalid name") and reject a request without a
-// JSON content-type with 415.
-const AuthGroup = HttpApiGroup.make('auth')
-  .add(
-    HttpApiEndpoint.get('me', '/me', { success: MeView }),
-    HttpApiEndpoint.patch('patchMe', '/me', { payload: UpdateMeBody, success: PatchMeView }),
-    HttpApiEndpoint.post('createInvite', '/invites', { success: InviteView }),
-    HttpApiEndpoint.delete('revokeInvite', '/invites/:code', {
-      params: InviteParams,
-      success: RevokedView,
-    }),
-  )
-  .middleware(Session)
-  .middleware(SchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
-
-const AuthInvitesPublicGroup = HttpApiGroup.make('authInvitesPublic')
-  .add(
-    HttpApiEndpoint.get('checkInvite', '/invites/:code', {
-      params: InviteParams,
-      success: InviteCheckView,
-    }),
-  )
-  .middleware(SchemaErrors)
-  .prefix('/api');
-
+// PATCH /me declares its payload so a derived client is typed, but it is
+// served with `handleRaw`: the framework does not decode the body. The name
+// rules run by hand (see the header) because the framework's decode would
+// change the texts of a malformed or empty body (400 "Expected a valid JSON
+// body" instead of "Invalid name") and reject a request without a JSON
+// content-type with 415.
 const AuthApi = HttpApi.make('auth').add(AuthGroup, AuthInvitesPublicGroup);
 
 export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
@@ -229,7 +155,7 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
           return {
             code: invite.code,
             url: `${deps.config.PUBLIC_URL}/invite/${invite.code}`,
-            expiresAt: invite.expiresAt,
+            expiresAt: invite.expiresAt.toISOString(),
           };
         }),
       )
@@ -312,7 +238,7 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(AuthApi).pipe(
     Layer.provide(Layer.merge(groupLayer, publicGroupLayer)),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
+    Layer.provide(contractSchemaErrorLayer(logger)),
   );
 
   return mountApi(AuthApi, apiLayer);

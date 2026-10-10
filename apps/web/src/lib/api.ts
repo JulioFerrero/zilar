@@ -80,21 +80,10 @@ function decodeResponse<T>(
   return Exit.isSuccess(result) ? { ok: true, value: result.value } : { ok: false };
 }
 
-const meSchema = struct({
-  id: Schema.String,
-  email: Schema.String,
-  name: Schema.String,
-  image: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0163: the caller's own `@username`. Optional (not just nullable) so
-  // payloads from an older server still parse — absent reads like null.
-  handle: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0165: the caller's own picture, when set. Optional so older payloads
-  // parse (treated as none).
-  avatarUrl: Schema.optional(Schema.String),
-  jid: Schema.optional(Schema.NullOr(Schema.String)),
-});
-
-export type Me = typeof meSchema.Type;
+// The profile and invite schemas live in `@zilar/api-contract` (`auth.ts`,
+// T-0895); their later fields (`handle`, `avatarUrl`, `jid`) are optional so
+// payloads from an older server still parse.
+export type Me = AuthMe;
 
 export type { Contact };
 
@@ -178,13 +167,7 @@ const chatsSchema = struct({ chats: Schema.mutable(Schema.Array(chatEntrySchema)
 // older servers omitted stay optional there, so older payloads still parse.
 export type { GroupAi, GroupDetail, GroupMember, ListenerEagerness };
 
-const inviteSchema = struct({
-  code: Schema.String,
-  url: Schema.String,
-  expiresAt: Schema.optional(Schema.String),
-});
-
-export type Invite = typeof inviteSchema.Type;
+export type Invite = AuthInvite;
 
 const xmppTokenSchema = struct({
   jid: Schema.String,
@@ -239,15 +222,12 @@ async function request<T>(
 }
 
 export function getMe(): Promise<Me> {
-  return request('/me', meSchema);
+  return callApi((client) => client.auth.me());
 }
 
+// The contract encodes the trimmed name (the server trimmed it anyway).
 export function updateMe(name: string): Promise<Me> {
-  return request('/me', meSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
+  return callApi((client) => client.auth.patchMe({ payload: { name: name.trim() } }));
 }
 
 export async function getChats(): Promise<ChatEntry[]> {
@@ -301,11 +281,11 @@ export function removeGroupAi(groupId: string, aiId: string): Promise<GroupDetai
 }
 
 export function createInvite(): Promise<Invite> {
-  return request('/invites', inviteSchema, { method: 'POST' });
+  return callApi((client) => client.auth.createInvite());
 }
 
 export function getInvite(code: string): Promise<{ valid: boolean }> {
-  return request(`/invites/${encodeURIComponent(code)}`, struct({ valid: Schema.Boolean }));
+  return callApi((client) => client.authInvitesPublic.checkInvite({ params: { code } }));
 }
 
 export function getXmppToken(): Promise<XmppToken> {
@@ -811,36 +791,11 @@ export async function clearAiMemory(chat: string, aiId: string): Promise<void> {
 // tab; `before` is the `next` cursor of the previous page (microseconds as a
 // string). Items arrive newest first.
 
-export const mediaTabSchema = Schema.Literals(['media', 'files', 'links', 'voice']);
-
-export type MediaTab = typeof mediaTabSchema.Type;
-
-export const mediaItemSchema = struct({
-  messageId: Schema.String,
-  chat: Schema.String,
-  at: Schema.String,
-  senderName: Schema.String,
-  kind: Schema.Literals(['image', 'file', 'gif', 'voice', 'link']),
-  url: Schema.optional(Schema.String),
-  name: Schema.optional(Schema.String),
-  size: Schema.optional(Schema.Number),
-  mime: Schema.optional(Schema.String),
-  width: Schema.optional(Schema.Number),
-  height: Schema.optional(Schema.Number),
-  durationMs: Schema.optional(Schema.Number),
-  waveform: Schema.optional(Schema.mutable(Schema.Array(Schema.Number))),
-  linkUrl: Schema.optional(Schema.String),
-  linkHost: Schema.optional(Schema.String),
-});
-
-export type MediaItem = typeof mediaItemSchema.Type;
-
-export const mediaPageSchema = struct({
-  items: Schema.mutable(Schema.Array(mediaItemSchema)),
-  next: Schema.NullOr(Schema.String),
-});
-
-export type MediaPage = typeof mediaPageSchema.Type;
+// The reply schemas live in `@zilar/api-contract` (`media.ts`, T-0895). The
+// contract declares no query (the server decodes it by hand, after its archive
+// check and limiter), so the call keeps building its own query string and
+// decodes with the contract page schema.
+export type { MediaItem, MediaPage, MediaTab };
 
 export interface ListChatMediaInput {
   chat: string;
@@ -859,7 +814,7 @@ export function listChatMedia(input: ListChatMediaInput): Promise<MediaPage> {
   if (input.limit !== undefined) {
     params.set('limit', String(input.limit));
   }
-  return request(`/media?${params.toString()}`, mediaPageSchema);
+  return request(`/media?${params.toString()}`, MediaPageSchema);
 }
 
 // --- AIs (T-0032) --------------------------------------------------------
@@ -1017,91 +972,72 @@ export async function deleteConnection(id: string): Promise<void> {
   await callApi((client) => client.connections.remove({ params: { id } }));
 }
 
+// Chain D (T-0895): the contract types its groups share, in one import so the
+// other chains' edits to the top of this file stay apart.
+import {
+  BackgroundImage as BackgroundImageSchema,
+  GifResultPage,
+  Machine,
+  MediaPage as MediaPageSchema,
+  PushSettings as PushSettingsSchema,
+  RegisteredDevice as RegisteredDeviceSchema,
+  Sticker as StickerSchema,
+  StickerDiscoverPage as StickerDiscoverPageSchema,
+  StickerOk as StickerOkSchema,
+  TelegramImportResult as TelegramImportResultSchema,
+  type AuthInvite,
+  type AuthMe,
+  type BackgroundImage,
+  type BackgroundListItem,
+  type GifResult,
+  type IntegrationsStatus,
+  type MachineStatus,
+  type MediaItem,
+  type MediaPage,
+  type MediaTab,
+  type PairingCode,
+  type PushConfig,
+  type Sticker,
+  type StickerPack as ContractStickerPack,
+  type TelegramImportResult as ContractTelegramImportResult,
+  type PushDevice,
+  type RegisteredDevice,
+} from '@zilar/api-contract';
+
 // --- Machines (T-0070) ---------------------------------------------------
 // The wire contract lives in apps/server/src/machines/api.ts and
 // service.ts. `ApiError` carries the server's `code` and `status`, so callers
 // can branch without parsing the message again. `online` is optional so the
 // schema works before T-0071 (the runner hub) lands.
 
-export type MachineStatus = 'pending' | 'approved' | 'revoked';
-
-export interface Machine {
-  id: string;
-  name: string;
-  status: MachineStatus;
-  os: string;
-  osVersion: string;
-  arch: string;
-  cpu: string;
-  cores: number;
-  ramGb: number;
-  diskFreeGb: number;
-  drivers: string[];
-  fingerprint: string;
-  createdAt: string;
-  approvedAt: string | null;
-  lastSeenAt: string | null;
-  /** Added by T-0071 (the runner hub). Absent before then; default to false. */
-  online?: boolean | undefined;
-}
-
-const machineStatusSchema = Schema.Literals(['pending', 'approved', 'revoked']);
-
-export const machineSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-  status: machineStatusSchema,
-  os: Schema.String,
-  osVersion: Schema.String,
-  arch: Schema.String,
-  cpu: Schema.String,
-  cores: Schema.Number,
-  ramGb: Schema.Number,
-  diskFreeGb: Schema.Number,
-  drivers: Schema.mutable(Schema.Array(Schema.String)),
-  fingerprint: Schema.String,
-  createdAt: Schema.String,
-  approvedAt: Schema.NullOr(Schema.String),
-  lastSeenAt: Schema.NullOr(Schema.String),
-  online: Schema.optional(Schema.Boolean),
-});
-
-export interface PairingCode {
-  code: string;
-  expiresAt: string;
-}
-
-const pairingCodeSchema = struct({
-  code: Schema.String,
-  expiresAt: Schema.String,
-});
+// The schemas and endpoints live in `@zilar/api-contract` (`machines.ts`,
+// T-0895). `renameMachine` stays on `request()`: the server reads that body by
+// hand (its own 400 texts), so the contract declares no payload for it.
+export type { Machine, MachineStatus, PairingCode };
+export { Machine as machineSchema };
 
 export function listMachines(): Promise<Machine[]> {
-  return request('/machines', Schema.mutable(Schema.Array(machineSchema)));
+  return callApi((client) => client.machines.list()).then((rows) => [...rows]);
 }
 
 export function createPairingCode(): Promise<PairingCode> {
-  return request('/machines/pairing-codes', pairingCodeSchema, { method: 'POST' });
+  return callApi((client) => client.machines.createPairingCode());
 }
 
 export function approveMachine(id: string): Promise<Machine> {
-  return request(`/machines/${encodeURIComponent(id)}/approve`, machineSchema, {
-    method: 'POST',
-  });
+  return callApi((client) => client.machines.approve({ params: { id } }));
 }
 
 export async function denyMachine(id: string): Promise<void> {
-  await request(`/machines/${encodeURIComponent(id)}/deny`, Schema.Null, { method: 'POST' });
+  await callApi((client) => client.machines.deny({ params: { id } }));
 }
 
 export function revokeMachine(id: string): Promise<Machine> {
-  return request(`/machines/${encodeURIComponent(id)}/revoke`, machineSchema, {
-    method: 'POST',
-  });
+  return callApi((client) => client.machines.revoke({ params: { id } }));
 }
 
 export function renameMachine(id: string, name: string): Promise<Machine> {
-  return request(`/machines/${encodeURIComponent(id)}`, machineSchema, {
+  return request(`/machines/${encodeURIComponent(id)}`, Machine, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
@@ -1109,7 +1045,7 @@ export function renameMachine(id: string, name: string): Promise<Machine> {
 }
 
 export async function deleteMachine(id: string): Promise<void> {
-  await request(`/machines/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
+  await callApi((client) => client.machines.remove({ params: { id } }));
 }
 
 // --- Approvals (T-0076) ---------------------------------------------------
@@ -1208,53 +1144,36 @@ export function searchMessages(
 // User-made packs: the panel lists mine in order (with stickers), discover
 // lists `server`-visible packs, and files are served same-origin so the
 // renderer can auto-load them without leaking the viewer's IP.
-export const stickerSchema = struct({
-  id: Schema.String,
-  packId: Schema.String,
-  emoji: Schema.NullOr(Schema.String),
-  mime: Schema.Literals(['image/webp', 'image/png']),
-  width: Schema.Number,
-  height: Schema.Number,
-  bytes: Schema.Number,
-  url: Schema.String,
-});
+// The schemas and endpoints live in `@zilar/api-contract` (`stickers.ts`,
+// T-0895). `discoverStickerPacks`, `removeStickerFavorite` and
+// `importTelegramStickers` stay on `request()` (the server decodes their query
+// or body by hand, so the contract declares none), and `uploadStickerFile`
+// posts raw image bytes; they decode with the contract's reply schemas.
+export type { Sticker };
 
-export type Sticker = typeof stickerSchema.Type;
+// The pack keeps a mutable `stickers` array, the shape its editor takes.
+export type StickerPack = Omit<ContractStickerPack, 'stickers'> & { stickers: Sticker[] };
 
-export const stickerPackSchema = struct({
-  id: Schema.String,
-  ownerId: Schema.String,
-  title: Schema.String,
-  visibility: Schema.Literals(['private', 'server']),
-  // Set by the Telegram importer (`telegram:<name>`); absent otherwise.
-  importedFrom: Schema.optional(Schema.String),
-  stickers: Schema.mutable(Schema.Array(stickerSchema)),
-  createdAt: Schema.String,
-  updatedAt: Schema.String,
-});
-
-export type StickerPack = typeof stickerPackSchema.Type;
-
-const stickerPacksSchema = struct({ packs: Schema.mutable(Schema.Array(stickerPackSchema)) });
-
-const discoverPacksSchema = struct({
-  packs: Schema.mutable(Schema.Array(stickerPackSchema)),
-  next: Schema.NullOr(Schema.String),
-});
-
-export function listStickerPacks(): Promise<StickerPack[]> {
-  return request('/sticker-packs', stickerPacksSchema).then((body) => body.packs);
+function toStickerPack(pack: ContractStickerPack): StickerPack {
+  return { ...pack, stickers: [...pack.stickers] };
 }
 
+export function listStickerPacks(): Promise<StickerPack[]> {
+  return callApi((client) => client.stickers.listPacks()).then((body) =>
+    body.packs.map(toStickerPack),
+  );
+}
+
+// The contract encodes the trimmed title (the server trimmed it anyway).
 export function createStickerPack(input: {
   title: string;
   visibility?: 'private' | 'server';
 }): Promise<StickerPack> {
-  return request('/sticker-packs', stickerPackSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) =>
+    client.stickers.createPack({
+      payload: omitUndefined({ ...input, title: input.title.trim() }),
+    }),
+  ).then(toStickerPack);
 }
 
 export function discoverStickerPacks(
@@ -1265,19 +1184,18 @@ export function discoverStickerPacks(
     params.set('q', query.trim());
   }
   const suffix = params.size === 0 ? '' : `?${params.toString()}`;
-  return request(`/sticker-packs/discover${suffix}`, discoverPacksSchema);
+  return request(`/sticker-packs/discover${suffix}`, StickerDiscoverPageSchema).then((page) => ({
+    packs: page.packs.map(toStickerPack),
+    next: page.next,
+  }));
 }
 
 export async function addStickerPanelPack(packId: string): Promise<void> {
-  await request(`/sticker-panel/${encodeURIComponent(packId)}`, struct({ ok: Schema.Boolean }), {
-    method: 'PUT',
-  });
+  await callApi((client) => client.stickers.addPanelPack({ params: { packId } }));
 }
 
 export async function removeStickerPanelPack(packId: string): Promise<void> {
-  await request(`/sticker-panel/${encodeURIComponent(packId)}`, struct({ ok: Schema.Boolean }), {
-    method: 'DELETE',
-  });
+  await callApi((client) => client.stickers.removePanelPack({ params: { packId } }));
 }
 
 // --- Push notifications (T-0119) -------------------------------------------
@@ -1287,37 +1205,14 @@ export async function removeStickerPanelPack(packId: string): Promise<void> {
 // user's session). The device list carries labels and dates only — never
 // the endpoint URL or keys.
 
-const pushConfigSchema = struct({
-  vapidPublicKey: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
-  pushJid: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
-});
-
-export type PushConfig = typeof pushConfigSchema.Type;
-
-const registeredDeviceSchema = struct({
-  id: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
-  node: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
-  jid: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
-});
-
-export type RegisteredDevice = typeof registeredDeviceSchema.Type;
-
-const pushDeviceSchema = struct({
-  id: Schema.String,
-  userAgent: Schema.NullOr(Schema.String),
-  createdAt: Schema.String,
-  lastUsedAt: Schema.NullOr(Schema.String),
-  inactive: Schema.Boolean,
-});
-
-export type PushDevice = typeof pushDeviceSchema.Type;
-
-const pushDevicesSchema = struct({ devices: Schema.mutable(Schema.Array(pushDeviceSchema)) });
-
-const pushSettingsSchema = struct({ showPreviews: Schema.Boolean });
+// The contract (`@zilar/api-contract`, `push.ts`, T-0895) types the replies and
+// the four body-less calls. The server decodes the other three bodies by hand
+// (their step order and error codes are part of the wire), so the contract
+// declares no payload for them and they stay on `request()` below.
+export type { PushConfig, PushDevice, RegisteredDevice };
 
 export function getPushConfig(): Promise<PushConfig> {
-  return request('/push/config', pushConfigSchema);
+  return callApi((client) => client.push.config());
 }
 
 export interface RegisterPushDeviceInput {
@@ -1327,7 +1222,7 @@ export interface RegisterPushDeviceInput {
 }
 
 export function registerPushDevice(input: RegisterPushDeviceInput): Promise<RegisteredDevice> {
-  return request('/push/subscriptions', registeredDeviceSchema, {
+  return request('/push/subscriptions', RegisteredDeviceSchema, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -1339,23 +1234,19 @@ export function registerPushDevice(input: RegisterPushDeviceInput): Promise<Regi
 }
 
 export function listPushDevices(): Promise<PushDevice[]> {
-  return request('/push/subscriptions', pushDevicesSchema).then((body) => body.devices);
+  return callApi((client) => client.push.list()).then((body) => [...body.devices]);
 }
 
 export function removePushDevice(id: string): Promise<void> {
-  return request(
-    `/push/subscriptions/${encodeURIComponent(id)}`,
-    struct({ removed: Schema.Boolean }),
-    { method: 'DELETE' },
-  ).then(() => undefined);
+  return callApi((client) => client.push.remove({ params: { id } })).then(() => undefined);
 }
 
 export function getPushSettings(): Promise<{ showPreviews: boolean }> {
-  return request('/push/settings', pushSettingsSchema);
+  return callApi((client) => client.push.settings());
 }
 
 export function setPushSettings(showPreviews: boolean): Promise<{ showPreviews: boolean }> {
-  return request('/push/settings', pushSettingsSchema, {
+  return request('/push/settings', PushSettingsSchema, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ showPreviews }),
@@ -1372,40 +1263,30 @@ export function sendTestPushNotification(subscriptionId: string): Promise<void> 
 
 /** Reorders the caller's whole panel atomically (exact id permutation). */
 export async function reorderStickerPanelPacks(order: string[]): Promise<void> {
-  await request('/sticker-panel', struct({ ok: Schema.Boolean }), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ order }),
-  });
+  await callApi((client) => client.stickers.reorderPanel({ payload: { order } }));
 }
 
 export function patchStickerPack(
   packId: string,
   input: { title?: string; visibility?: 'private' | 'server'; order?: string[] },
 ): Promise<StickerPack> {
-  return request(`/sticker-packs/${encodeURIComponent(packId)}`, stickerPackSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) =>
+    client.stickers.patchPack({
+      params: { id: packId },
+      payload: omitUndefined({
+        ...input,
+        ...(input.title === undefined ? {} : { title: input.title.trim() }),
+      }),
+    }),
+  ).then(toStickerPack);
 }
 
 export function deleteStickerPack(packId: string): Promise<{ warning: string }> {
-  return request(
-    `/sticker-packs/${encodeURIComponent(packId)}`,
-    struct({ warning: Schema.String }),
-    {
-      method: 'DELETE',
-    },
-  );
+  return callApi((client) => client.stickers.deletePack({ params: { id: packId } }));
 }
 
 export function deletePackSticker(packId: string, stickerId: string): Promise<{ ok: boolean }> {
-  return request(
-    `/sticker-packs/${encodeURIComponent(packId)}/stickers/${encodeURIComponent(stickerId)}`,
-    struct({ ok: Schema.Boolean }),
-    { method: 'DELETE' },
-  );
+  return callApi((client) => client.stickers.deleteSticker({ params: { id: packId, stickerId } }));
 }
 
 /**
@@ -1449,7 +1330,7 @@ export async function uploadStickerFile(
   if (!response.ok) {
     throw apiErrorFromBody(response.status, raw);
   }
-  const parsed = decodeResponse(stickerSchema, raw);
+  const parsed = decodeResponse(StickerSchema, raw);
   if (!parsed.ok) {
     throw new ApiError(
       response.status,
@@ -1463,25 +1344,17 @@ export async function uploadStickerFile(
 // --- Sticker favorites (T-0121) --------------------------------------------
 // One user's starred stickers, at most 200, oldest first.
 
-const stickerFavoritesSchema = struct({
-  favorites: Schema.mutable(Schema.Array(stickerSchema)),
-});
-
 export function listStickerFavorites(): Promise<Sticker[]> {
-  return request('/sticker-favorites', stickerFavoritesSchema).then((body) => body.favorites);
+  return callApi((client) => client.stickers.listFavorites()).then((body) => [...body.favorites]);
 }
 
 export function addStickerFavorite(stickerId: string): Promise<Sticker> {
-  return request('/sticker-favorites', stickerSchema, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sticker_id: stickerId }),
-  });
+  return callApi((client) => client.stickers.addFavorite({ payload: { sticker_id: stickerId } }));
 }
 
 export async function removeStickerFavorite(stickerId: string): Promise<void> {
   const params = new URLSearchParams({ sticker_id: stickerId });
-  await request(`/sticker-favorites?${params.toString()}`, struct({ ok: Schema.Boolean }), {
+  await request(`/sticker-favorites?${params.toString()}`, StickerOkSchema, {
     method: 'DELETE',
   });
 }
@@ -1494,22 +1367,16 @@ export async function removeStickerFavorite(stickerId: string): Promise<void> {
 // fills the gaps. Imported packs are personal-use only (`importedFrom` is
 // set, visibility stays private, the UI says so).
 
-export const telegramImportResultSchema = struct({
-  pack: stickerPackSchema,
-  imported: Schema.Number,
-  skippedAnimated: Schema.Number,
-  skippedInvalid: Schema.Number,
-  partial: Schema.optional(Schema.Boolean),
-});
-
-export type TelegramImportResult = typeof telegramImportResultSchema.Type;
+export type TelegramImportResult = Omit<ContractTelegramImportResult, 'pack'> & {
+  pack: StickerPack;
+};
 
 export function importTelegramStickers(input: string): Promise<TelegramImportResult> {
-  return request('/sticker-packs/import/telegram', telegramImportResultSchema, {
+  return request('/sticker-packs/import/telegram', TelegramImportResultSchema, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ input }),
-  });
+  }).then((result) => ({ ...result, pack: toStickerPack(result.pack) }));
 }
 
 // --- Integrations settings (T-0162 + Email follow-up) ----------------------
@@ -1518,48 +1385,24 @@ export function importTelegramStickers(input: string): Promise<TelegramImportRes
 // never returned by the server, not even masked — only `configured` and
 // `source` say whether one is set.
 
-const integrationsTelegramSchema = struct({
-  configured: Schema.Boolean,
-  source: Schema.NullOr(Schema.Literals(['env', 'stored'])),
-});
-
-const integrationsEmailSchema = struct({
-  configured: Schema.Boolean,
-  source: Schema.NullOr(Schema.Literals(['env', 'stored'])),
-  from: Schema.NullOr(Schema.String),
-});
-
-const integrationsStatusSchema = struct({
-  telegram: integrationsTelegramSchema,
-  email: integrationsEmailSchema,
-  voiceTranscription: Schema.optional(
-    struct({
-      configured: Schema.Boolean,
-      baseUrl: Schema.NullOr(Schema.String),
-      model: Schema.NullOr(Schema.String),
-    }),
-  ),
-  canManage: Schema.Boolean,
-});
-
-export type IntegrationsStatus = typeof integrationsStatusSchema.Type;
+// The schemas and endpoints live in `@zilar/api-contract` (`integrations.ts`,
+// T-0895); these are thin wrappers over the derived client. The contract
+// encodes the trimmed form, so the secrets are trimmed before sending (the
+// server trimmed them anyway).
+export type { IntegrationsStatus };
 
 export function getIntegrationsStatus(): Promise<IntegrationsStatus> {
-  return request('/settings/integrations', integrationsStatusSchema);
+  return callApi((client) => client.integrations.status());
 }
 
 export async function saveTelegramBotToken(botToken: string): Promise<void> {
-  await request('/settings/integrations/telegram', struct({ ok: Schema.Boolean }), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ botToken }),
-  });
+  await callApi((client) =>
+    client.integrations.setTelegram({ payload: { botToken: botToken.trim() } }),
+  );
 }
 
 export async function removeTelegramBotToken(): Promise<void> {
-  await request('/settings/integrations/telegram', struct({ ok: Schema.Boolean }), {
-    method: 'DELETE',
-  });
+  await callApi((client) => client.integrations.removeTelegram());
 }
 
 export interface SaveEmailSettingsInput {
@@ -1568,15 +1411,15 @@ export interface SaveEmailSettingsInput {
 }
 
 export async function saveEmailSettings(input: SaveEmailSettingsInput): Promise<void> {
-  const body =
-    input.resendApiKey === undefined
-      ? { from: input.from }
-      : { from: input.from, resendApiKey: input.resendApiKey };
-  await request('/settings/integrations/email', struct({ ok: Schema.Boolean }), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const from = input.from.trim();
+  await callApi((client) =>
+    client.integrations.setEmail({
+      payload:
+        input.resendApiKey === undefined
+          ? { from }
+          : { from, resendApiKey: input.resendApiKey.trim() },
+    }),
+  );
 }
 
 // --- Voice transcripts (T-0170) --------------------------------------------
@@ -1632,22 +1475,11 @@ export async function removeVoiceTranscriptionSettings(): Promise<void> {
 // (`/api/gifs/media/:token`). An unconfigured provider answers 501
 // `gifs_unavailable` and the panel hides the tab.
 
-export const gifResultSchema = struct({
-  id: Schema.String,
-  title: Schema.String,
-  mediaToken: Schema.String,
-  kind: Schema.Literals(['image', 'video']),
-  width: Schema.Number,
-  height: Schema.Number,
-  sizeBytes: Schema.optional(Schema.Number),
-});
-
-export type GifResult = typeof gifResultSchema.Type;
-
-const gifPageSchema = struct({
-  items: Schema.mutable(Schema.Array(gifResultSchema)),
-  nextPos: Schema.optional(Schema.String),
-});
+// The reply schemas live in `@zilar/api-contract` (`gifs.ts`, T-0895). The
+// contract declares no query (the server decodes it by hand, after its
+// provider check and limiter), so the calls below keep their own request and
+// abort handling and decode with the contract page schema.
+export type { GifResult };
 
 export interface GifPage {
   items: GifResult[];
@@ -1688,7 +1520,7 @@ async function gifRequest(
   if (!response.ok) {
     throw apiErrorFromBody(response.status, raw);
   }
-  const parsed = decodeResponse(gifPageSchema, raw);
+  const parsed = decodeResponse(GifResultPage, raw);
   if (!parsed.ok) {
     throw new ApiError(
       response.status,
@@ -1696,7 +1528,8 @@ async function gifRequest(
       'The server sent an unexpected response',
     );
   }
-  return parsed.value;
+  const { items, nextPos } = parsed.value;
+  return { items: [...items], ...(nextPos === undefined ? {} : { nextPos }) };
 }
 
 export function searchGifs(query: string, pos?: string, signal?: AbortSignal): Promise<GifPage> {
@@ -2020,28 +1853,9 @@ export async function removeAvatar(kind: 'user' | 'ai' | 'group', ownerId: strin
 // Personal wallpapers for the chat background dialog. The client resizes and
 // re-encodes before upload (`lib/background-image.ts`); the server validates
 // by magic bytes (WebP/PNG, 64-2048 px, at most 1 MiB, at most 20 per user).
-const backgroundImageSchema = struct({
-  id: Schema.String,
-  url: Schema.String,
-  width: Schema.Number,
-  height: Schema.Number,
-});
-
-export type BackgroundImage = typeof backgroundImageSchema.Type;
-
-const backgroundListItemSchema = struct({
-  id: Schema.String,
-  url: Schema.String,
-  width: Schema.NullOr(Schema.Number),
-  height: Schema.NullOr(Schema.Number),
-  createdAt: Schema.String,
-});
-
-export type BackgroundListItem = typeof backgroundListItemSchema.Type;
-
-const backgroundListSchema = struct({
-  backgrounds: Schema.mutable(Schema.Array(backgroundListItemSchema)),
-});
+// The schemas live in `@zilar/api-contract` (`backgrounds.ts`, T-0895). The
+// upload stays outside the derived client: it posts raw image bytes.
+export type { BackgroundImage, BackgroundListItem };
 
 // The POST twin of `uploadAvatarBytes`: a raw-body fetch with a mock branch,
 // `apiErrorFromBody` on failure and an Effect Schema parse of the reply.
@@ -2071,7 +1885,7 @@ export async function uploadBackground(blob: Blob): Promise<BackgroundImage> {
   if (!response.ok) {
     throw apiErrorFromBody(response.status, raw);
   }
-  const parsed = decodeResponse(backgroundImageSchema, raw);
+  const parsed = decodeResponse(BackgroundImageSchema, raw);
   if (!parsed.ok) {
     throw new ApiError(
       response.status,
@@ -2083,9 +1897,9 @@ export async function uploadBackground(blob: Blob): Promise<BackgroundImage> {
 }
 
 export function listBackgrounds(): Promise<BackgroundListItem[]> {
-  return request('/backgrounds', backgroundListSchema).then((body) => body.backgrounds);
+  return callApi((client) => client.backgrounds.list()).then((body) => [...body.backgrounds]);
 }
 
 export async function deleteBackground(id: string): Promise<void> {
-  await request(`/backgrounds/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
+  await callApi((client) => client.backgrounds.remove({ params: { id } }));
 }

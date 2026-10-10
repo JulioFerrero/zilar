@@ -45,4 +45,13 @@ export * from './search';
 
 // Chain D (T-0895): add `export * from './<x>';` lines below.
 // ----------------------------------------------------------------------------
+export * from './auth';
+export * from './backgrounds';
+export * from './chain-d-middleware';
+export * from './gifs';
+export * from './integrations';
+export * from './machines';
+export * from './media';
+export * from './push';
+export * from './stickers';
 // End of chain D.

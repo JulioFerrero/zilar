@@ -50,20 +50,14 @@ describe('ChatList install and notifications entries', () => {
     resetIsServerOwnerCache();
     const fetchMock = vi.fn(async (url: string) =>
       url.endsWith('/settings/integrations')
-        ? ({
-            ok: true,
-            status: 200,
-            json: async () => ({
+        ? new Response(
+            JSON.stringify({
               telegram: { configured: true, source: 'stored' },
               email: { configured: false, source: null, from: null },
               canManage: true,
             }),
-          } as Response)
-        : ({
-            ok: true,
-            status: 200,
-            json: async () => ({}),
-          } as Response),
+          )
+        : new Response(JSON.stringify({})),
     );
     vi.stubGlobal('fetch', fetchMock);
     renderApp('/');
@@ -78,11 +72,9 @@ describe('ChatList install and notifications entries', () => {
       'fetch',
       vi.fn(
         async () =>
-          ({
-            ok: false,
+          new Response(JSON.stringify({ error: { code: 'not_found', message: 'Not found' } }), {
             status: 404,
-            json: async () => ({ error: { code: 'not_found', message: 'Not found' } }),
-          }) as Response,
+          }),
       ),
     );
     renderApp('/');

@@ -5,6 +5,12 @@ import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
 import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
+import {
+  STICKER_PACK_TITLE_MAX,
+  STICKER_PACK_TITLE_MIN,
+  STICKER_PANEL_MAX,
+  STICKERS_MAX_PER_PACK,
+} from '@zilar/api-contract';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { StickerPackRow, StickerRow } from '../db/rows';
@@ -19,9 +25,10 @@ import {
 } from './telegram-import';
 
 export const STICKER_PACKS_MAX_PER_USER = 100;
-export const STICKERS_MAX_PER_PACK = 120;
-export const STICKER_PACK_TITLE_MIN = 1;
-export const STICKER_PACK_TITLE_MAX = 60;
+// The pack, title and panel limits are part of the wire contract
+// (`@zilar/api-contract`, `stickers.ts`, T-0895), so the schemas there and this
+// service share one value.
+export { STICKER_PACK_TITLE_MAX, STICKER_PACK_TITLE_MIN, STICKER_PANEL_MAX, STICKERS_MAX_PER_PACK };
 export const STICKER_EMOJI_MAX = 8;
 export const DISCOVER_PAGE_SIZE = 30;
 
@@ -567,9 +574,9 @@ export async function discoverPacks(
   return { packs: views, next };
 }
 
-// At most 200 packs per panel: the reorder endpoint validates an exact
-// permutation capped at the same number, so adds must never push past it.
-export const STICKER_PANEL_MAX = 200;
+// At most `STICKER_PANEL_MAX` (200) packs per panel: the reorder endpoint
+// validates an exact permutation capped at the same number, so adds must never
+// push past it.
 
 export async function addPanelPack(
   deps: StickersServiceDeps,

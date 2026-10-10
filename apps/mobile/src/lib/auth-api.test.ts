@@ -33,7 +33,7 @@ describe('fetchMe', () => {
     ) as unknown as typeof fetch;
 
     await expect(fetchMe('http://server.test', 'bad', fetchImpl)).rejects.toMatchObject({
-      name: 'AuthApiError',
+      name: 'ApiError',
       status: 401,
       code: 'unauthorized',
     });

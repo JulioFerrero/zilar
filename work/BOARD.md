@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0895](T-0895-contract-chain-d-media.md) | api-contract chain D: JSON parts of stickers, gifs, machines, integrations, push, backgrounds, media, auth | review | sonnet-5.5 | T-0891 | wave 5, phase 3 |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
@@ -924,3 +923,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0892](T-0892-contract-chain-a-groups.md) | api-contract chain A: move the groups, invite-links, roles, chat-folders, chat-prefs, topics groups into packa | 2026-10-10 |
 | [T-0894](T-0894-contract-chain-c-people.md) | api-contract chain C: move the contacts, contact-requests, directory, blocks, search, chats, drafts, handles g | 2026-10-10 |
 | [T-0893](T-0893-contract-chain-b-ais.md) | api-contract chain B: move the ais, agents/memory, connections, approvals, audit, tools, routines groups into  | 2026-10-10 |
+| [T-0895](T-0895-contract-chain-d-media.md) | api-contract chain D: move the stickers, gifs, machines, integrations, push, backgrounds, voice, media, auth g | 2026-10-10 |

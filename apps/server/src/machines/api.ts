@@ -11,20 +11,15 @@
 //   handler.
 
 import { Effect, Layer, Option, Schema } from 'effect';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiSchema,
-} from 'effect/http-api';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { MachinesGroup, MachinesPairingCodeRateLimit, type Machine } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
+import { rateLimitLayer } from '../auth/rate-limit-layer';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
-  Session,
   handler,
   mountApi,
   requestIdOf,
@@ -33,7 +28,6 @@ import {
   withErrorEnvelope,
   type EffectApiMount,
 } from '../effect/http-core';
-import { makeRateLimit } from '../effect/rate-limit-middleware';
 import { createRateLimiter } from '../rate-limit';
 import { hashPairingCode, normalizePairingCode } from './codes';
 import { createDbMachineRegistry, type DbMachineRegistry } from './registry';
@@ -47,6 +41,7 @@ import {
   insertPendingMachine,
   listMachines,
   MachineServiceError,
+  type PublicMachine,
   renameMachine,
   revokeMachine,
   toPublicMachine,
@@ -156,89 +151,24 @@ const PairBody = Schema.Struct({
 
 const RenameBody = Schema.Struct({ name: MachineName });
 
-const MachineIdParams = Schema.Struct({ id: Schema.String });
-
-// Every field of `PublicMachine` (`service.ts`), compared side by side: id,
-// name, status, os, osVersion, arch, cpu, cores, ramGb, diskFreeGb, drivers,
-// fingerprint, online, createdAt, approvedAt, lastSeenAt. Dates encode to the
-// ISO strings JSON.stringify produced on the old route.
-const PublicMachineView = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  status: Schema.Literals(['pending', 'approved', 'revoked']),
-  os: Schema.String,
-  osVersion: Schema.String,
-  arch: Schema.String,
-  cpu: Schema.String,
-  cores: Schema.Number,
-  ramGb: Schema.Number,
-  diskFreeGb: Schema.Number,
-  drivers: Schema.Array(Schema.String),
-  fingerprint: Schema.String,
-  online: Schema.Boolean,
-  createdAt: Schema.Date,
-  approvedAt: Schema.NullOr(Schema.Date),
-  lastSeenAt: Schema.NullOr(Schema.Date),
-});
-
-const CreatedPairingCode = Schema.Struct({ code: Schema.String, expiresAt: Schema.String });
-
-const PairResult = Schema.Struct({
-  machineId: Schema.String,
-  status: Schema.Literals(['pending']),
-});
-
-// Pairing codes are minted sparingly; the budget is spent right after the
-// session, before any query.
-const PairingCodeRateLimit = makeRateLimit(
-  'zilar/effect/http/MachinesPairingCodeRateLimit',
-  'Too many pairing codes, try again later',
-);
-
-// `rename` and `pair` read the body by hand (their own 400 texts, and `pair`
-// answers every failure with the same `invalid_code`), so the body schemas
-// `RenameBody` and `PairBody` are not declared on the endpoints: a declared
-// payload would be decoded by the framework first and change the error order.
-const MachinesGroup = HttpApiGroup.make('machines')
-  .add(
-    HttpApiEndpoint.post('createPairingCode', '/machines/pairing-codes', {
-      success: CreatedPairingCode.pipe(HttpApiSchema.status(201)),
-    })
-      // The later middleware is the outer one, so `Session` runs first.
-      .middleware(PairingCodeRateLimit.Middleware)
-      .middleware(Session),
-    HttpApiEndpoint.get('list', '/machines', {
-      success: Schema.Array(PublicMachineView),
-    }).middleware(Session),
-    HttpApiEndpoint.post('approve', '/machines/:id/approve', {
-      params: MachineIdParams,
-      success: PublicMachineView,
-    }).middleware(Session),
-    HttpApiEndpoint.post('deny', '/machines/:id/deny', {
-      params: MachineIdParams,
-      success: HttpApiSchema.NoContent,
-    }).middleware(Session),
-    HttpApiEndpoint.post('revoke', '/machines/:id/revoke', {
-      params: MachineIdParams,
-      success: PublicMachineView,
-    }).middleware(Session),
-    HttpApiEndpoint.patch('rename', '/machines/:id', {
-      params: MachineIdParams,
-      success: PublicMachineView,
-    }).middleware(Session),
-    HttpApiEndpoint.delete('remove', '/machines/:id', {
-      params: MachineIdParams,
-      success: HttpApiSchema.NoContent,
-    }).middleware(Session),
-    // Public: the pairing code plus signature are the credential.
-    HttpApiEndpoint.post('pair', '/runner/pair', {
-      success: PairResult.pipe(HttpApiSchema.status(201)),
-    }),
-  )
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
-
+// The group and the reply schemas live in the shared contract
+// (`@zilar/api-contract`, `machines.ts`, T-0895). `rename` and `pair` read the
+// body by hand (their own 400 texts, and `pair` answers every failure with the
+// same `invalid_code`), so the body schemas `RenameBody` and `PairBody` stay
+// here: a declared payload would be decoded by the framework first and change
+// the error order.
 const MachinesApi = HttpApi.make('machines').add(MachinesGroup);
+
+// The wire form of a `PublicMachine`: the dates as the ISO strings
+// `JSON.stringify` produced on the old route.
+function toMachineView(machine: PublicMachine): Machine {
+  return {
+    ...machine,
+    createdAt: machine.createdAt.toISOString(),
+    approvedAt: machine.approvedAt?.toISOString() ?? null,
+    lastSeenAt: machine.lastSeenAt?.toISOString() ?? null,
+  };
+}
 
 function invalidCode(): HttpError {
   return new HttpError(400, 'invalid_code', 'Invalid or expired pairing code');
@@ -329,7 +259,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
         'list',
         handler(logger, async (_request, user) => {
           const rows = await listMachines(deps.db, user.id);
-          return rows.map((row) => toPublicMachine(row, isMachineOnline));
+          return rows.map((row) => toMachineView(toPublicMachine(row, isMachineOnline)));
         }),
       )
       .handle(
@@ -350,7 +280,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
           machineRegistry.notifyApproved(id, approved.publicKey);
           logger.info({ machineId: id }, 'machine approved');
           await recordAudit({ actorUserId: user.id, action: 'machine.approved', subjectId: id });
-          return toPublicMachine(approved);
+          return toMachineView(toPublicMachine(approved));
         }),
       )
       .handle(
@@ -390,7 +320,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
           machineRegistry.notifyRevoked(id);
           logger.info({ machineId: id }, 'machine revoked');
           await recordAudit({ actorUserId: user.id, action: 'machine.revoked', subjectId: id });
-          return toPublicMachine(revoked);
+          return toMachineView(toPublicMachine(revoked));
         }),
       )
       .handle(
@@ -418,7 +348,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
             if (!renamed) {
               throw new HttpError(404, 'not_found', 'Machine not found');
             }
-            return toPublicMachine(renamed);
+            return toMachineView(toPublicMachine(renamed));
           }),
         ),
       )
@@ -526,7 +456,15 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
   const apiLayer = HttpApiBuilder.layer(MachinesApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(PairingCodeRateLimit.layer(createCodeLimiter)),
+    // Pairing codes are minted sparingly; the budget is spent right after the
+    // session, before any query.
+    Layer.provide(
+      rateLimitLayer(
+        MachinesPairingCodeRateLimit,
+        'Too many pairing codes, try again later',
+        createCodeLimiter,
+      ),
+    ),
   );
 
   return mountApi(MachinesApi, apiLayer);

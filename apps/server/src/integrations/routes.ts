@@ -32,13 +32,6 @@ export const INTEGRATIONS_TELEGRAM_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 export const INTEGRATIONS_EMAIL_RATE_LIMIT_MAX = 5;
 export const INTEGRATIONS_EMAIL_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
-export function isMailbox(value: string): boolean {
-  const trimmed = value.trim();
-  const angle = trimmed.match(/^(.*)<([^<>]+)>$/);
-  const address = (angle?.[2] ?? trimmed).trim();
-  return /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(address);
-}
-
 export interface IntegrationsRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;

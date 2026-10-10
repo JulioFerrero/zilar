@@ -13,23 +13,17 @@
 import { Effect, Layer, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { HttpServerRequest } from 'effect/http';
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { MediaGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
+import { contractSchemaErrorLayer } from '../auth/schema-errors';
 import { isDmBlocked } from '../blocks/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import type { MediaItemRow } from '../db/rows';
 import { runSql } from '../effect/sql';
-import {
-  SchemaErrors,
-  Session,
-  handler,
-  mountApi,
-  schemaErrorLayer,
-  sessionLayer,
-  type EffectApiMount,
-} from '../effect/http-core';
+import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {
@@ -106,32 +100,9 @@ function queryRecord(request: HttpServerRequest.HttpServerRequest): Record<strin
   return record;
 }
 
-// Every optional `MediaItem` field is `Schema.optional(...)`, never `NullOr`,
-// so an absent field stays absent in the JSON (the handler returns a raw
-// response built by `toMediaItem`, like the old `c.json`).
-const MediaItemView = Schema.Struct({
-  messageId: Schema.String,
-  chat: Schema.String,
-  at: Schema.String,
-  senderName: Schema.String,
-  kind: Schema.Literals(['image', 'file', 'gif', 'voice', 'link']),
-  url: Schema.optional(Schema.String),
-  name: Schema.optional(Schema.String),
-  size: Schema.optional(Schema.Number),
-  mime: Schema.optional(Schema.String),
-  width: Schema.optional(Schema.Number),
-  height: Schema.optional(Schema.Number),
-  durationMs: Schema.optional(Schema.Number),
-  waveform: Schema.optional(Schema.Array(Schema.Number)),
-  linkUrl: Schema.optional(Schema.String),
-  linkHost: Schema.optional(Schema.String),
-});
-
-const MediaPage = Schema.Struct({
-  items: Schema.Array(MediaItemView),
-  next: Schema.NullOr(Schema.String),
-});
-
+// The reply schemas live in the shared contract (`@zilar/api-contract`,
+// `media.ts`, T-0895). Every optional field is absent, never `null` (the
+// handler returns a raw response built by `toMediaItem`, like the old `c.json`).
 export interface MediaItem {
   messageId: string;
   chat: string;
@@ -210,20 +181,6 @@ function toMediaItem(row: MediaItemRow, senderName: string): MediaItem {
 function errorName(error: unknown): string {
   return error instanceof Error ? error.constructor.name : typeof error;
 }
-
-const MediaGroup = HttpApiGroup.make('media')
-  .add(
-    HttpApiEndpoint.get('gallery', '/media', {
-      success: MediaPage,
-    }),
-  )
-  .middleware(Session)
-  // The framework never decodes a body or params here, so this layer only
-  // guards against a future endpoint adding one; the query decode runs
-  // manually in the handler with its fixed text.
-  .middleware(SchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
 
 const MediaApi = HttpApi.make('media').add(MediaGroup);
 
@@ -349,7 +306,7 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(MediaApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
+    Layer.provide(contractSchemaErrorLayer(logger)),
   );
 
   return mountApi(MediaApi, apiLayer);

@@ -28,17 +28,16 @@
 
 import { Effect, Layer, Option, Schema, Stream } from 'effect';
 import { HttpServerRequest, HttpServerResponse } from 'effect/http';
+import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
 import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-  HttpApiSchema,
-} from 'effect/http-api';
+  AddStickerFavoritePayload,
+  StickersGroup,
+  StickersSchemaErrors,
+  StickersUploadRateLimit,
+} from '@zilar/api-contract';
 import type { Logger } from 'pino';
+import { rateLimitLayer } from '../auth/rate-limit-layer';
 import {
-  Session,
   failureResponse,
   handler,
   mountApi,
@@ -46,7 +45,6 @@ import {
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
-import { makeRateLimit } from '../effect/rate-limit-middleware';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { StickersRoutesDependencies } from './routes';
@@ -74,8 +72,6 @@ import {
   reorderPanelPacks,
   STICKER_PANEL_MAX,
   STICKERS_MAX_PER_PACK,
-  STICKER_PACK_TITLE_MAX,
-  STICKER_PACK_TITLE_MIN,
   uploadSticker,
   type StickersServiceDeps,
   type TelegramImportDeps,
@@ -91,39 +87,10 @@ export interface StickersApiDependencies extends StickersRoutesDependencies {
   logger: Logger;
 }
 
-const StickerVisibility = Schema.Literals(['private', 'server']);
-
-// Strict, trimmed title 1..60, optional visibility. Strictness comes from
-// the endpoint's `PayloadParseOptions` below.
-const CreatePackBody = Schema.Struct({
-  title: Schema.Trim.pipe(
-    Schema.check(
-      Schema.isMinLength(STICKER_PACK_TITLE_MIN),
-      Schema.isMaxLength(STICKER_PACK_TITLE_MAX),
-    ),
-  ),
-  visibility: Schema.optional(StickerVisibility),
-});
-
-// All optional and strict, plus the "Nothing to update" refine (a
-// `makeFilter`, because Effect 4.0.2 drops `{ message }` on length checks).
-const PatchPackBody = Schema.Struct({
-  title: Schema.optional(
-    Schema.Trim.pipe(
-      Schema.check(Schema.isMinLength(STICKER_PACK_TITLE_MIN), Schema.isMaxLength(60)),
-    ),
-  ),
-  visibility: Schema.optional(StickerVisibility),
-  order: Schema.optional(
-    Schema.Array(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128))).check(
-      Schema.isMaxLength(STICKERS_MAX_PER_PACK),
-    ),
-  ),
-}).pipe(
-  Schema.check(
-    Schema.makeFilter((value) => (Object.keys(value).length > 0 ? undefined : 'Nothing to update')),
-  ),
-);
+// The group, the payload schemas (create, patch, reorder, favorite) and the
+// reply schemas live in the shared contract (`@zilar/api-contract`,
+// `stickers.ts`, T-0895). The schemas below are the ones this module still
+// decodes by hand.
 
 // Optional `q` <= 60, `cursor` <= 128. The route decodes the query manually
 // with this Schema (the endpoint declares no query) so an invalid query
@@ -142,17 +109,9 @@ const TelegramImportBody = Schema.Struct({
 
 const STRICT_PAYLOAD = { onExcessProperty: 'error' } as const;
 
-// Strict, ids 1..128, at most 200.
-const ReorderPanelBody = Schema.Struct({
-  order: Schema.Array(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128))).check(
-    Schema.isMaxLength(STICKER_PANEL_MAX),
-  ),
-});
-
-// Strict, `sticker_id: uuid`.
-const FavoriteBody = Schema.Struct({
-  sticker_id: Schema.String.pipe(Schema.check(Schema.isUUID())),
-});
+// Strict, `sticker_id: uuid`; the favorite-delete route decodes it from the
+// query string by hand.
+const FavoriteBody = AddStickerFavoritePayload;
 
 // Mirrors `c.req.json().catch(() => null)`: an unparseable or empty body is
 // `null`, which the per-route message treats as an invalid body.
@@ -188,10 +147,6 @@ function favoriteQueryRecord(request: HttpServerRequest.HttpServerRequest): Reco
 // read (and cached) by the failed payload decode. The discover and
 // favorite-delete routes decode manually in their handlers, so they never
 // reach this layer.
-class StickersSchemaErrors extends HttpApiMiddleware.Service<StickersSchemaErrors>()(
-  'zilar/effect/http/StickersSchemaErrors',
-) {}
-
 function schemaErrorLayer(logger: Logger): Layer.Layer<StickersSchemaErrors> {
   return HttpApiMiddleware.layerSchemaErrorTransform(StickersSchemaErrors, () =>
     Effect.gen(function* () {
@@ -251,138 +206,6 @@ function spendTelegramImportBudget(
     throw new HttpError(429, 'rate_limited', 'Too many Telegram imports, try again later');
   }
 }
-
-// Every field of `StickerView`, so the success encoding never strips one.
-const StickerViewSchema = Schema.Struct({
-  id: Schema.String,
-  packId: Schema.String,
-  emoji: Schema.NullOr(Schema.String),
-  mime: Schema.Literals(['image/webp', 'image/png']),
-  width: Schema.Number,
-  height: Schema.Number,
-  bytes: Schema.Number,
-  url: Schema.String,
-});
-
-// Every field of `StickerPackView`; `importedFrom` is optional because the
-// service omits it when absent.
-const StickerPackViewSchema = Schema.Struct({
-  id: Schema.String,
-  ownerId: Schema.String,
-  title: Schema.String,
-  visibility: StickerVisibility,
-  importedFrom: Schema.optional(Schema.String),
-  stickers: Schema.Array(StickerViewSchema),
-  createdAt: Schema.String,
-  updatedAt: Schema.String,
-});
-
-// The create and upload routes answer 201 with the same bodies.
-const StickerPackCreated = StickerPackViewSchema.pipe(HttpApiSchema.status(201));
-const StickerCreated = StickerViewSchema.pipe(HttpApiSchema.status(201));
-
-const PackList = Schema.Struct({ packs: Schema.Array(StickerPackViewSchema) });
-
-const DeletePackResult = Schema.Struct({ warning: Schema.String });
-
-const DiscoverPage = Schema.Struct({
-  packs: Schema.Array(StickerPackViewSchema),
-  next: Schema.NullOr(Schema.String),
-});
-
-const OkResult = Schema.Struct({ ok: Schema.Literal(true) });
-
-// The Telegram import answer: `partial` is present only when true.
-const TelegramImportResult = Schema.Struct({
-  pack: StickerPackViewSchema,
-  imported: Schema.Number,
-  skippedAnimated: Schema.Number,
-  skippedInvalid: Schema.Number,
-  partial: Schema.optional(Schema.Literal(true)),
-});
-
-const FavoritesList = Schema.Struct({ favorites: Schema.Array(StickerViewSchema) });
-
-const PackIdParams = Schema.Struct({ id: Schema.String });
-const StickerParams = Schema.Struct({ id: Schema.String, stickerId: Schema.String });
-const StickerFileParams = Schema.Struct({ stickerId: Schema.String });
-const PanelPackParams = Schema.Struct({ packId: Schema.String });
-
-// The upload budget is the first step after the session, so it is a plain
-// endpoint middleware (the Telegram import budget is not: it runs after the
-// 501 token check and the input parse, so it stays in its handler).
-const StickersUploadRateLimit = makeRateLimit(
-  'zilar/effect/http/StickersUploadRateLimit',
-  'Too many sticker uploads, try again later',
-);
-
-const StickersGroup = HttpApiGroup.make('stickers')
-  .add(
-    HttpApiEndpoint.get('listPacks', '/sticker-packs', {
-      success: PackList,
-    }),
-    HttpApiEndpoint.post('createPack', '/sticker-packs', {
-      payload: CreatePackBody,
-      success: StickerPackCreated,
-    }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
-    HttpApiEndpoint.get('discover', '/sticker-packs/discover', {
-      success: DiscoverPage,
-    }),
-    HttpApiEndpoint.post('importTelegram', '/sticker-packs/import/telegram', {
-      success: TelegramImportResult,
-    }),
-    HttpApiEndpoint.patch('patchPack', '/sticker-packs/:id', {
-      params: PackIdParams,
-      payload: PatchPackBody,
-      success: StickerPackViewSchema,
-    }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
-    HttpApiEndpoint.delete('deletePack', '/sticker-packs/:id', {
-      params: PackIdParams,
-      success: DeletePackResult,
-    }),
-    HttpApiEndpoint.delete('deleteSticker', '/sticker-packs/:id/stickers/:stickerId', {
-      params: StickerParams,
-      success: OkResult,
-    }),
-    HttpApiEndpoint.put('reorderPanel', '/sticker-panel', {
-      payload: ReorderPanelBody,
-      success: OkResult,
-    }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
-    HttpApiEndpoint.put('addPanelPack', '/sticker-panel/:packId', {
-      params: PanelPackParams,
-      success: OkResult,
-    }),
-    HttpApiEndpoint.delete('removePanelPack', '/sticker-panel/:packId', {
-      params: PanelPackParams,
-      success: OkResult,
-    }),
-    HttpApiEndpoint.get('listFavorites', '/sticker-favorites', {
-      success: FavoritesList,
-    }),
-    HttpApiEndpoint.put('addFavorite', '/sticker-favorites', {
-      payload: FavoriteBody,
-      success: StickerViewSchema,
-    }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
-    HttpApiEndpoint.delete('removeFavorite', '/sticker-favorites', {
-      success: OkResult,
-    }),
-    // Binary routes (T-0602). The upload declares no payload schema, so the
-    // multipart/raw body is read in the handler; the file GET answers raw
-    // bytes with custom headers.
-    HttpApiEndpoint.post('uploadSticker', '/sticker-packs/:id/stickers', {
-      params: PackIdParams,
-      success: StickerCreated,
-    }).middleware(StickersUploadRateLimit.Middleware),
-    // The handler answers the raw bytes itself (status 200, file headers).
-    HttpApiEndpoint.get('serveFile', '/stickers/:stickerId/file', {
-      params: StickerFileParams,
-      success: HttpApiSchema.Empty(200),
-    }),
-  )
-  .middleware(Session)
-  .middleware(StickersSchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
 
 const StickersApi = HttpApi.make('stickers').add(StickersGroup);
 
@@ -724,7 +547,16 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayer(logger)),
-    Layer.provide(StickersUploadRateLimit.layer(uploadLimiter)),
+    // The upload budget is the first step after the session, so it is a plain
+    // endpoint middleware (the Telegram import budget is not: it runs after
+    // the 501 token check and the input parse, so it stays in its handler).
+    Layer.provide(
+      rateLimitLayer(
+        StickersUploadRateLimit,
+        'Too many sticker uploads, try again later',
+        uploadLimiter,
+      ),
+    ),
   );
 
   return mountApi(StickersApi, apiLayer);

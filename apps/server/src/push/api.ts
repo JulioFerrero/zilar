@@ -17,22 +17,16 @@
 
 import { randomUUID } from 'node:crypto';
 import { Effect, Layer, Option, Schema } from 'effect';
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { PushGroup } from '@zilar/api-contract';
 import { struct } from '@zilar/protocol';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
+import { contractSchemaErrorLayer } from '../auth/schema-errors';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
-import {
-  SchemaErrors,
-  Session,
-  handler,
-  mountApi,
-  schemaErrorLayer,
-  sessionLayer,
-  type EffectApiMount,
-} from '../effect/http-core';
+import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { syncPushSubscriptionsForUser } from '../topics/rooms';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -103,65 +97,6 @@ const TestBody = struct({
 });
 
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
-
-const PushConfigView = Schema.Struct({
-  vapidPublicKey: Schema.String,
-  pushJid: Schema.String,
-});
-
-const PushDeviceView = Schema.Struct({
-  id: Schema.String,
-  userAgent: Schema.NullOr(Schema.String),
-  createdAt: Schema.String,
-  lastUsedAt: Schema.NullOr(Schema.String),
-  inactive: Schema.Boolean,
-});
-
-const PushDeviceList = Schema.Struct({ devices: Schema.Array(PushDeviceView) });
-
-const PushRegistration = Schema.Struct({
-  id: Schema.String,
-  node: Schema.String,
-  jid: Schema.String,
-});
-
-const PushRemoved = Schema.Struct({ removed: Schema.Boolean });
-
-const PushSettingsView = Schema.Struct({ showPreviews: Schema.Boolean });
-
-const PushTestResult = Schema.Struct({ sent: Schema.Boolean });
-
-const PushDeviceParams = Schema.Struct({ id: Schema.String });
-
-const PushGroup = HttpApiGroup.make('push')
-  .add(
-    HttpApiEndpoint.get('config', '/push/config', {
-      success: PushConfigView,
-    }),
-    HttpApiEndpoint.post('subscribe', '/push/subscriptions', {
-      success: PushRegistration,
-    }),
-    HttpApiEndpoint.get('list', '/push/subscriptions', {
-      success: PushDeviceList,
-    }),
-    HttpApiEndpoint.delete('remove', '/push/subscriptions/:id', {
-      params: PushDeviceParams,
-      success: PushRemoved,
-    }),
-    HttpApiEndpoint.get('settings', '/push/settings', {
-      success: PushSettingsView,
-    }),
-    HttpApiEndpoint.put('updateSettings', '/push/settings', {
-      success: PushSettingsView,
-    }),
-    HttpApiEndpoint.post('test', '/push/test', {
-      success: PushTestResult,
-    }),
-  )
-  .middleware(Session)
-  .middleware(SchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
 
 const PushApi = HttpApi.make('push').add(PushGroup);
 
@@ -554,7 +489,7 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(PushApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
+    Layer.provide(contractSchemaErrorLayer(logger)),
   );
 
   return mountApi(PushApi, apiLayer);

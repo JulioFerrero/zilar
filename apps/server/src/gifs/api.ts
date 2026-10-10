@@ -16,17 +16,16 @@ import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { Layer, Option, Schema } from 'effect';
 import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { GifsGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
+import { contractSchemaErrorLayer } from '../auth/schema-errors';
 import type { ServerConfig } from '../config';
 import {
   REQUEST_ID_HEADER,
-  SchemaErrors,
-  Session,
   handler,
   reflectRoutes,
-  schemaErrorLayer,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
@@ -86,50 +85,9 @@ function queryRecord(request: HttpServerRequest.HttpServerRequest): Record<strin
   return record;
 }
 
-// Every field `shape` and `searchBody` produce, side by side with the old
-// Bodies as before: `id`, `title`, `mediaToken`, `kind`, `width`, `height`, the
-// optional `sizeBytes`, and the page's optional `nextPos`. An item with no
-// media URL is dropped before encoding, so it never reaches the schema.
-const GifResultItem = Schema.Struct({
-  id: Schema.String,
-  title: Schema.String,
-  mediaToken: Schema.String,
-  kind: Schema.Literals(['image', 'video']),
-  width: Schema.Number,
-  height: Schema.Number,
-  sizeBytes: Schema.optional(Schema.Number),
-});
-
-const GifResultPage = Schema.Struct({
-  items: Schema.Array(GifResultItem),
-  nextPos: Schema.optional(Schema.String),
-});
-
-// Path params decode as plain strings; the token is verified inside the
-// handler so a bad token answers 404 `not_found`, never a 400.
-const GifMediaParams = Schema.Struct({ token: Schema.String });
-
-const GifsGroup = HttpApiGroup.make('gifs')
-  .add(
-    HttpApiEndpoint.get('search', '/gifs/search', {
-      success: GifResultPage,
-    }),
-    HttpApiEndpoint.get('trending', '/gifs/trending', {
-      success: GifResultPage,
-    }),
-    // No success schema: the handler answers raw bytes with custom headers.
-    HttpApiEndpoint.get('media', '/gifs/media/:token', {
-      params: GifMediaParams,
-    }),
-  )
-  .middleware(Session)
-  // The framework never decodes a body or query here, so this layer only
-  // guards against a future endpoint adding one; the query decode runs
-  // manually in each handler with its fixed text.
-  .middleware(SchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
-
+// The group and the reply schemas live in the shared contract
+// (`@zilar/api-contract`, `gifs.ts`, T-0895). The queries are decoded by hand
+// in the handlers, so the contract declares none.
 const GifsApi = HttpApi.make('gifs').add(GifsGroup);
 
 async function resolvePublicAddress(host: string): Promise<string | undefined> {
@@ -388,7 +346,7 @@ export function createGifsApi(deps: GifsApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(GifsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
+    Layer.provide(contractSchemaErrorLayer(logger)),
   );
 
   // The edge keeps the request log (redacted path); the router's own logger prints

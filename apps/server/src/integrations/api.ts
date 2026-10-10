@@ -5,29 +5,26 @@
 // bot token, the Resend key); like before, no secret reaches a response, a
 // log line or an error text. Helpers stay in `routes.ts`.
 
-import { Effect, Layer, Schema } from 'effect';
+import { Effect, Layer } from 'effect';
 import { HttpServerRequest } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-} from 'effect/http-api';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { SqlClient } from 'effect/sql';
+import {
+  CurrentUser,
+  IntegrationsEmailRateLimit,
+  IntegrationsGroup,
+  IntegrationsTelegramRateLimit,
+} from '@zilar/api-contract';
 import { createResendMailer } from '../auth/mailer';
+import { contractSchemaErrorLayer } from '../auth/schema-errors';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
-  CurrentUser,
-  SchemaErrors,
-  Session,
   handler,
   httpErrorResponse,
   mountApi,
   requestIdOf,
-  schemaErrorLayer,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
@@ -44,7 +41,6 @@ import {
   deleteStoredTelegramToken,
   envMailConfigured,
   isInvalidToken,
-  isMailbox,
   isOwner,
   mailStatusFor,
   notFound,
@@ -58,78 +54,11 @@ import {
 const MAIL_SEND_FAILED =
   'The test email could not be sent. Check the Resend key and the sender address.';
 
-// Replaces `telegramBodySchema` (zod): trimmed before the length and
-// no-spaces checks, strict via the endpoint's `PayloadParseOptions`.
-const TelegramBody = Schema.Struct({
-  botToken: Schema.Trim.pipe(
-    Schema.check(
-      Schema.isMinLength(1),
-      Schema.isMaxLength(256),
-      Schema.makeFilter((value) =>
-        /\s/.test(value) ? 'botToken must not contain spaces' : undefined,
-      ),
-    ),
-  ),
-});
-
-// Replaces `emailBodySchema` (zod): `from` is a bare address or a display
-// name plus angle-addr; `resendApiKey` changes the key only when given.
-const EmailBody = Schema.Struct({
-  from: Schema.Trim.pipe(
-    Schema.check(
-      Schema.isMinLength(1),
-      Schema.isMaxLength(320),
-      Schema.makeFilter((value) =>
-        /[\r\n]/.test(value) ? 'from must be a valid sender address' : undefined,
-      ),
-      Schema.makeFilter((value) =>
-        isMailbox(value) ? undefined : 'from must be a valid sender address',
-      ),
-    ),
-  ),
-  resendApiKey: Schema.optional(
-    Schema.Trim.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
-  ),
-});
-
-const IntegrationSource = Schema.NullOr(Schema.Literals(['env', 'stored']));
-
-const TelegramStatus = Schema.Struct({
-  configured: Schema.Boolean,
-  source: IntegrationSource,
-});
-
-const EmailStatus = Schema.Struct({
-  configured: Schema.Boolean,
-  source: IntegrationSource,
-  from: Schema.NullOr(Schema.String),
-});
-
-const VoiceTranscriptionStatus = Schema.Struct({
-  configured: Schema.Boolean,
-  baseUrl: Schema.NullOr(Schema.String),
-  model: Schema.NullOr(Schema.String),
-});
-
-const IntegrationsView = Schema.Struct({
-  telegram: TelegramStatus,
-  email: EmailStatus,
-  voiceTranscription: VoiceTranscriptionStatus,
-  canManage: Schema.Boolean,
-});
-
-const OkResult = Schema.Struct({ ok: Schema.Boolean });
-
 // Runs the Telegram save budget before the payload is decoded, exactly like
 // the old route's `requireOwner` -> `allow` -> decode order: the owner check
 // runs first (a non-owner gets the same 404 as an unknown route without
 // spending budget), then the limiter, then the decode. `requires:
 // CurrentUser` is satisfied by `Session`.
-class IntegrationsTelegramRateLimit extends HttpApiMiddleware.Service<
-  IntegrationsTelegramRateLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/IntegrationsTelegramRateLimit') {}
-
 function telegramRateLimitLayer(
   limiter: RateLimiter,
   db: ServerDatabase,
@@ -160,11 +89,6 @@ function telegramRateLimitLayer(
 // Same order as the old email route: owner (404) -> env guard (409) ->
 // limiter (429) -> decode. The env guard lives here (before the decode)
 // because the middleware runs before the payload is parsed.
-class IntegrationsEmailRateLimit extends HttpApiMiddleware.Service<
-  IntegrationsEmailRateLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/IntegrationsEmailRateLimit') {}
-
 function emailRateLimitLayer(
   limiter: RateLimiter,
   db: ServerDatabase,
@@ -202,32 +126,6 @@ function emailRateLimitLayer(
     ),
   );
 }
-
-const IntegrationsGroup = HttpApiGroup.make('integrations')
-  .add(
-    HttpApiEndpoint.get('status', '/settings/integrations', {
-      success: IntegrationsView,
-    }),
-    HttpApiEndpoint.put('setTelegram', '/settings/integrations/telegram', {
-      payload: TelegramBody,
-      success: OkResult,
-    })
-      .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
-      .middleware(IntegrationsTelegramRateLimit),
-    HttpApiEndpoint.delete('removeTelegram', '/settings/integrations/telegram', {
-      success: OkResult,
-    }),
-    HttpApiEndpoint.put('setEmail', '/settings/integrations/email', {
-      payload: EmailBody,
-      success: OkResult,
-    })
-      .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
-      .middleware(IntegrationsEmailRateLimit),
-  )
-  .middleware(Session)
-  .middleware(SchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
 
 const IntegrationsApi = HttpApi.make('integrations').add(IntegrationsGroup);
 
@@ -384,7 +282,7 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(telegramRateLimitLayer(telegramLimiter, deps.db)),
     Layer.provide(emailRateLimitLayer(emailLimiter, deps.db, deps.config)),
-    Layer.provide(schemaErrorLayer(logger)),
+    Layer.provide(contractSchemaErrorLayer(logger)),
   );
 
   return mountApi(IntegrationsApi, apiLayer);

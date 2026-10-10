@@ -1,7 +1,8 @@
-import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } from 'effect';
+import { Exit, Schema } from 'effect';
+import { ApiError, runApi, type AuthMe } from '@zilar/api-contract';
 import { struct } from '@zilar/protocol';
 
-import { errorFieldsOf } from './api-error-body';
+import { createApiClient } from './effect/api-client';
 
 /** The signed-in profile, from `GET /api/me` (T-0015/T-0020). */
 export interface Me {
@@ -11,126 +12,23 @@ export interface Me {
   jid: string | null;
 }
 
-/** A failed API call, carrying the status and the server's error code. */
-export class AuthApiError extends Error {
-  readonly status: number;
-  readonly code: string;
+/**
+ * A failed API call, carrying the status and the server's error code: the
+ * shared `ApiError` under this module's old name, so `instanceof` sites keep
+ * working.
+ */
+export const AuthApiError = ApiError;
+export type AuthApiError = ApiError;
 
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = 'AuthApiError';
-    this.status = status;
-    this.code = code;
-  }
+// The routes come from the client derived from the shared contract
+// (`@zilar/api-contract`, `auth.ts`, T-0895). The profile here is the narrow
+// view the app needs; an absent `jid` reads as `null`.
+function toMe(profile: Pick<AuthMe, 'id' | 'email' | 'name' | 'jid'>): Me {
+  return { id: profile.id, email: profile.email, name: profile.name, jid: profile.jid ?? null };
 }
 
-// A lenient field: a missing or non-string `jid` decodes to `null` instead of
-// failing the profile, exactly like the old type guard.
-const LenientJidSchema = Schema.Unknown.pipe(
-  Schema.withDecodingDefault(Effect.succeed(null)),
-  Schema.decodeTo(Schema.NullOr(Schema.String), {
-    decode: SchemaGetter.transform((value) => (typeof value === 'string' ? value : null)),
-    encode: SchemaGetter.transform((value) => value),
-  }),
-);
-
-const MeSchema = struct({
-  id: Schema.String,
-  email: Schema.String,
-  name: Schema.String,
-  jid: LenientJidSchema,
-});
-
-function parseMe(value: unknown): Me | null {
-  const decoded = Schema.decodeUnknownExit(MeSchema)(value);
-  return Exit.isSuccess(decoded) ? decoded.value : null;
-}
-
-// The invite check answers a bare `{ valid: boolean }`; anything else,
-// including a non-object body, means "not valid".
-const InviteCheckSchema = struct({
-  valid: Schema.optional(Schema.Boolean),
-});
-
-// The internal failures, one per case. They carry no field beyond what the old
-// `AuthApiError` already surfaced; the `Promise` edge maps each back to that
-// same error, status, code and message.
-class AuthNetworkError extends Data.TaggedError('AuthNetworkError') {}
-class AuthRequestError extends Data.TaggedError('AuthRequestError')<{
-  readonly status: number;
-  readonly code: string;
-  readonly message: string;
-}> {}
-class AuthInvalidResponse extends Data.TaggedError('AuthInvalidResponse') {}
-
-const requestEffect = Effect.fnUntraced(function* (
-  apiUrl: string,
-  path: string,
-  token: string,
-  init: RequestInit,
-  fetchImpl: typeof fetch,
-): EffectType.fn.Return<unknown, AuthNetworkError | AuthRequestError> {
-  const response = yield* Effect.tryPromise({
-    try: (signal) =>
-      fetchImpl(`${apiUrl}${path}`, {
-        ...init,
-        signal,
-        headers: {
-          accept: 'application/json',
-          authorization: `Bearer ${token}`,
-          ...init.headers,
-        },
-      }),
-    catch: () => new AuthNetworkError(),
-  });
-
-  const body: unknown = yield* Effect.promise(
-    () => response.json().catch(() => null) as Promise<unknown>,
-  );
-
-  if (!response.ok) {
-    const error = errorFieldsOf(body);
-    return yield* new AuthRequestError({
-      status: response.status,
-      code: error.code ?? 'request_failed',
-      message: error.message ?? `Request failed (${response.status})`,
-    });
-  }
-  return body;
-});
-
-function runMeRequest(
-  apiUrl: string,
-  token: string,
-  init: RequestInit,
-  fetchImpl: typeof fetch,
-  path: string,
-): Promise<Me> {
-  const effect = Effect.fnUntraced(function* (): EffectType.fn.Return<
-    Me,
-    AuthNetworkError | AuthRequestError | AuthInvalidResponse
-  > {
-    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
-    const me = parseMe(body);
-    if (me === null) {
-      return yield* new AuthInvalidResponse();
-    }
-    return me;
-  });
-  return Effect.runPromise(
-    effect().pipe(
-      Effect.catchTags({
-        AuthNetworkError: () =>
-          Effect.fail(new AuthApiError(0, 'network_error', 'Could not reach the server')),
-        AuthRequestError: (error) =>
-          Effect.fail(new AuthApiError(error.status, error.code, error.message)),
-        AuthInvalidResponse: () =>
-          Effect.fail(
-            new AuthApiError(200, 'invalid_response', 'The server sent an unexpected response'),
-          ),
-      }),
-    ),
-  );
+function clientFor(apiUrl: string, token: string, fetchImpl: typeof fetch) {
+  return createApiClient({ getToken: async () => token, fetchImpl, apiUrl });
 }
 
 export async function fetchMe(
@@ -138,7 +36,7 @@ export async function fetchMe(
   token: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Me> {
-  return runMeRequest(apiUrl, token, { method: 'GET' }, fetchImpl, '/api/me');
+  return toMe(await runApi(clientFor(apiUrl, token, fetchImpl).auth.me()));
 }
 
 export async function updateMe(
@@ -147,51 +45,42 @@ export async function updateMe(
   name: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Me> {
-  return runMeRequest(
-    apiUrl,
-    token,
-    {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name }),
-    },
-    fetchImpl,
-    '/api/me',
+  // The contract encodes the trimmed name (the server trimmed it anyway). The
+  // reply is the updated user without `jid`, which reads as `null`.
+  const patched = await runApi(
+    clientFor(apiUrl, token, fetchImpl).auth.patchMe({ payload: { name: name.trim() } }),
   );
+  return toMe({ ...patched, jid: null });
 }
 
-/** Checks an invite link without leaking anything about its creator. */
+// The invite check answers a bare `{ valid: boolean }`; anything else,
+// including a non-object body, means "not valid".
+const InviteCheckSchema = struct({
+  valid: Schema.optional(Schema.Boolean),
+});
+
+/**
+ * Checks an invite link without leaking anything about its creator. The route
+ * is public: no token, and the `fetch` init stays bare, so it stays outside the
+ * bearer client.
+ */
 export async function checkInvite(
   apiUrl: string,
   code: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<boolean> {
-  const effect = Effect.fnUntraced(function* (): EffectType.fn.Return<boolean, AuthNetworkError> {
-    const response = yield* Effect.tryPromise({
-      // No `signal`: the test pins the exact `fetch` init for this call.
-      try: () =>
-        fetchImpl(`${apiUrl}/api/invites/${encodeURIComponent(code)}`, {
-          headers: { accept: 'application/json' },
-        }),
-      catch: () => new AuthNetworkError(),
+  let response: Response;
+  try {
+    response = await fetchImpl(`${apiUrl}/api/invites/${encodeURIComponent(code)}`, {
+      headers: { accept: 'application/json' },
     });
-    const body: unknown = yield* Effect.promise(
-      () => response.json().catch(() => null) as Promise<unknown>,
-    );
-    if (!response.ok) {
-      return false;
-    }
-    const decoded = Schema.decodeUnknownExit(InviteCheckSchema)(body);
-    if (!Exit.isSuccess(decoded)) {
-      return false;
-    }
-    return decoded.value.valid === true;
-  });
-  return Effect.runPromise(
-    effect().pipe(
-      Effect.catchTag('AuthNetworkError', () =>
-        Effect.fail(new AuthApiError(0, 'network_error', 'Could not reach the server')),
-      ),
-    ),
-  );
+  } catch {
+    throw new ApiError(0, 'network_error', 'Could not reach the server');
+  }
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    return false;
+  }
+  const decoded = Schema.decodeUnknownExit(InviteCheckSchema)(body);
+  return Exit.isSuccess(decoded) && decoded.value.valid === true;
 }

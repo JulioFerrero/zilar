@@ -3,11 +3,7 @@ import { fireEvent, screen } from '@testing-library/react';
 import { renderApp } from '@/test/renderApp';
 
 function jsonResponse(status: number, body: unknown): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response;
+  return new Response(JSON.stringify(body), { status });
 }
 
 const pushConfig = { vapidPublicKey: 'dGVzdA', pushJid: 'push.zilar.test' };
