@@ -6,6 +6,7 @@ import type { MockApprovalRule } from './domains/approval-rules/seed';
 import type { MockAuditEntry } from './domains/audit/seed';
 import type { MockInviteLink } from './domains/invite-links/seed';
 import type { MockRoutine } from './domains/routines/seed';
+import type { MockStickerPack } from './domains/stickers/seed';
 import type { MockRun, MockTool } from './domains/tools/seed';
 import { domains } from './domains';
 
@@ -38,6 +39,14 @@ export interface MockData {
   readonly ais: readonly PublicAi[];
   readonly connections: readonly ConnectionView[];
   readonly machines: readonly Machine[];
+
+  // T-1046: the sticker packs, the panel order, the favorite sticker ids and
+  // the sequence that mints new pack/sticker ids. The arrays are replaced, not
+  // mutated in place, so a `reset()` cannot leak a previous seed.
+  stickerPacks: MockStickerPack[];
+  stickerPanel: string[];
+  stickerFavorites: string[];
+  nextStickerSequence: number;
   /** Rename the viewer (`PATCH /me`); the only mutator task A needs. */
   renameMe(name: string): void;
 
