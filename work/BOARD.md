@@ -8,6 +8,11 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
+| [T-0896](T-0896-store-core-design.md) | Store core design: verified plan and task split (simplify 4.3) | in-progress | opus-5.5 | | wave 6, doc only |
+| [T-0897](T-0897-contract-tidy.md) | api-contract tidy: one middleware file, one schema-error layer, handleRaw payloads, no duplicate groups | in-progress | sonnet-5.5 | | wave 6 |
+| [T-0898](T-0898-source-pinning-tests.md) | Mobile source-pinning tests become render tests or a lint rule (5.6) | in-progress | sonnet-5.5 | | wave 6 |
+| [T-0899](T-0899-test-wait-helpers.md) | One flush/waitFor/jsonResponse per package, fake timers, one-tick guard (5.5) | in-progress | sonnet-5.5 | | wave 6 |
+| [T-0900](T-0900-deps-catalog.md) | effect ^4.0.2 everywhere and a pnpm catalog (6.5) | in-progress | haiku-5.5 | | wave 6 |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups

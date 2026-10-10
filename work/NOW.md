@@ -2,6 +2,13 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 06:00 local: wave 6 running (T-0896 to T-0900)**
+- **T-0896 (Opus):** the store core design, Phase 4.3. It writes `docs/STORE_CORE_PLAN.md` with the task split; no code changes.
+- **T-0897:** the contract tidy-up. Wave 5's per-chain leftovers are merged, and the hand-decoded endpoints get declared and served with `handleRaw`.
+- **T-0898:** brittle mobile source-pinning tests become render tests.
+- **T-0899:** shared wait helpers, fake timers in place of real sleeps, and a guard against one-tick waits.
+- **T-0900:** effect `^4.0.2` everywhere, plus a pnpm catalog.
+
 **2026-10-10 05:45 local: wave 5 merged (api-contract, T-0891 to T-0895, main `5f3e5f6f`); nothing deployed**
 - **What landed:** 28 JSON API groups now live in `packages/api-contract`. The server implements them, and web and mobile derive their clients from them.
   - **Mobile:** about 4,000 hand-written client lines removed.
