@@ -1,5 +1,6 @@
 import { Context, Layer } from 'effect';
 import { createXmppCore, type XmppCore, type XmppCoreOptions } from '@zilar/xmpp-core';
+import type { Visibility } from '@zilar/client-core/store';
 
 import { createChatApi, type ChatApi } from '../../lib/chat-api';
 import type { ChatPrefsApi } from '../../lib/chat-prefs-api';
@@ -75,6 +76,9 @@ export interface PortsShape {
   readonly now: () => Date;
   readonly appState: AppStateLike;
   readonly openDrafts: OpenDraftStream;
+  /** The core lifecycle's visibility port (T-0918): built from `AppState`. */
+  readonly isVisible: () => boolean;
+  readonly visibility: Visibility;
 }
 
 export class Ports extends Context.Service<Ports, PortsShape>()('zilar/mobile/store/Ports') {}
@@ -85,6 +89,20 @@ const alwaysActive: AppStateLike = {
   current: () => 'active',
   subscribe: () => () => {},
 };
+
+// The core visibility port over React Native's `AppState` (T-0918): a focus is
+// `AppState` becoming `active`, which is what a resume is on the phone.
+function visibilityFor(appState: AppStateLike): Visibility {
+  return {
+    isVisible: () => appState.current() === 'active',
+    onFocus: (handler) =>
+      appState.subscribe((state) => {
+        if (state === 'active') {
+          handler();
+        }
+      }),
+  };
+}
 
 // The voice pipeline (T-0154): conversion through `POST /api/voice` when the
 // recording is not already M4A, then the XEP-0363 upload. The app wires the
@@ -123,6 +141,8 @@ export function resolvePorts(deps: RealStoreDeps): PortsShape {
     voice: () => voicePortFor(deps),
     now: deps.now ?? ((): Date => new Date()),
     appState,
+    isVisible: () => appState.current() === 'active',
+    visibility: visibilityFor(appState),
     openDrafts:
       deps.openDrafts ??
       ((onEvent) =>
@@ -167,6 +187,8 @@ export const PortsTest = (overrides: Partial<PortsShape> = {}): Layer.Layer<Port
     voice: () => unavailable<VoicePort>('voice'),
     now: () => new Date(0),
     appState: alwaysActive,
+    isVisible: () => true,
+    visibility: visibilityFor(alwaysActive),
     openDrafts: () => () => {},
     ...overrides,
   });

@@ -1,6 +1,6 @@
 // The shared lifecycle: read-last-read, stop vs reset, start idempotency and
 // the resume gate (T-0915).
-import { Context, Effect } from 'effect';
+import { Context, Effect, Fiber } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 import type { StoreAppHooks } from './ctx';
 import { makeLifetime } from './lifetime';
@@ -134,6 +134,50 @@ describe('stop and reset (R10)', () => {
     expect(ctx.get().messagesByChat).toEqual({});
     expect(ctx.get().edits).toEqual({});
     expect(ctx.get().reactions).toEqual({});
+  });
+
+  it('reset also clears the finished-turn memory', () => {
+    const { ctx } = lifecycleCtx();
+    ctx.finishedTurns.add('t-1');
+    ctx.finishedTurnOrder.push('t-1');
+
+    reset(ctx);
+
+    expect(ctx.finishedTurns.size).toBe(0);
+    expect(ctx.finishedTurnOrder).toEqual([]);
+  });
+});
+
+describe('boot bookkeeping', () => {
+  it('clears the in-flight boot once it settles, so a resume can reconnect', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { ctx } = lifecycleCtx({
+      ports: {
+        api: {
+          getMe: async () => {
+            await gate;
+            return { id: 'u-me', name: 'Me' };
+          },
+          getChats: async () => [],
+          getContacts: async () => [],
+          getXmppToken: async () => ({ jid: 'me@x', token: 't', service: 's', domain: 'd' }),
+        },
+      },
+    });
+
+    Effect.runSync(startStore(ctx));
+    const boot = ctx.boot;
+    expect(boot).toBeDefined();
+    const fiber = boot?.fiber;
+    expect(fiber).toBeDefined();
+
+    release();
+    await Effect.runPromise(Fiber.await(fiber!));
+    // The boot settled: a resume must see no in-flight boot and reconnect.
+    expect(ctx.boot).toBeUndefined();
   });
 });
 

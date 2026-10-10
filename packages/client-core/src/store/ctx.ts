@@ -104,6 +104,9 @@ export interface StoreAppHooks extends CoreHooks {
   readonly saveChatList: () => void;
   /** Loads the default chat background (web prefs), fire and forget. */
   readonly refreshDefaultBackground: () => void;
+  /** Loads the app's chat folders into its state at boot (mobile), fire and
+   * forget. Web fetches folders outside the store, so it leaves this unset. */
+  readonly loadFolders?: () => void;
   /** Publishes the media hosts trusted from the latest XMPP token. */
   readonly setMediaTrustedHosts: (hosts: ReadonlySet<string> | undefined) => void;
   /** Clears the app's per-session state on `stop()` (web `sendRuns`, ...). */

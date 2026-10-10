@@ -4,16 +4,12 @@ import {
   clearFailure,
   coreKind,
   createMessageLedger,
-  handleDisplayed,
-  handleMessage as handleCoreMessage,
-  handleOccupants,
-  handlePresence,
-  handleTyping,
   recordRead,
   signatureFor,
   sortByRecency,
   sortMessages,
   stickerSignatureFor,
+  type CoreApi,
   type CoreCtx,
   type CorePorts,
 } from '@zilar/client-core/store';
@@ -33,7 +29,6 @@ import { makeHistory } from './effects/history';
 import { makeLifecycle } from './effects/lifecycle';
 import { makePins } from './effects/pins';
 import { makeSend } from './effects/send';
-import { makePolling } from './effects/polling';
 import { Ports, PortsLive, type RealStoreDeps } from './effects/ports';
 import { makeLife, makeRunners, type StoreCtx, type StoreState } from './effects/runtime';
 import type { MediaTokenShape } from '../lib/attachments';
@@ -121,7 +116,7 @@ const EMPTY_MESSAGES: UiMessage[] = [];
 export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStoreState> {
   // Every outside dependency comes from the `Ports` layer (injected or live).
   const ports = Effect.runSync(Ports.use(Effect.succeed).pipe(Effect.provide(PortsLive(deps))));
-  const { now, appState } = ports;
+  const { appState } = ports;
   // The trusted media hosts (T-0150): the service host, the XMPP domain and
   // `upload.<domain>`, from the latest XMPP token. Incoming image (and
   // GIF-video) attachments auto-load only from these hosts; anything else is
@@ -185,6 +180,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // True once the group rooms are joined; a MAM query for a group before that
     // fails, so a pending group history waits for it (T-0067).
     let groupsJoined = false;
+    // The open chat's pins poll (T-0135): `openChat` starts it and the chat
+    // screen's `stopPinsPoll` ends it, as the per-chat poll did on mobile.
+    let pinsPollEnabled = false;
 
     // The state the effect modules share. The members that code in this
     // closure still reads by their old names are bridged to those names.
@@ -200,6 +198,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       firstToken: undefined,
       boot: undefined,
       cursors,
+      finishedTurns: new Set<string>(),
+      finishedTurnOrder: [],
       loadingHistory,
       loadingOlder,
       groupIds,
@@ -485,12 +485,36 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // The core's view of this store (`@zilar/client-core/store`): the incoming
     // handlers, the message actions, the reads and history run on it. Mobile
     // saves no last-read map and has no app badge or push notifications to
-    // sync. History lives in a `HistoryCtx` in `effects/history.ts`, which
-    // maps the mobile `historyLoad` names to the core `historyState` names.
+    // sync. History and the lifecycle live in adapters (`effects/history.ts`,
+    // `effects/lifecycle.ts`), which map the mobile `historyLoad` names to the
+    // core `historyState` names.
+    const coreApi: CoreApi = {
+      getMe: () => ports.api.getMe(),
+      getChats: () => ports.api.getChats(),
+      getContacts: () => ports.api.getContacts(),
+      getXmppToken: () => ports.api.getXmppToken(),
+      // The chat prefs ride the boot (T-0135); a missing client reads none.
+      listChatPrefs: () => ports.chatPrefs?.listChatPrefs() ?? Promise.resolve([]),
+    };
+    const corePorts: CorePorts = {
+      now: ports.now,
+      isVisible,
+      // Mobile keeps no last-read map on disk (T-0915): in memory only.
+      storage: null,
+      api: coreApi,
+      rows: { summariesFor: (entry) => summariesFor(entry as ChatEntry) },
+      createXmpp: ports.createXmpp,
+      visibility: ports.visibility,
+      drafts: ports.openDrafts,
+      notifications: { syncBadge: () => {}, dismissChat: () => {} },
+      // Q3 (R7) is yes: mobile retries the connection like web, and a resume
+      // reconnects (R8). Both are mobile-only switches.
+      flags: { connectRetry: true, reconnectOnResume: true },
+    };
     const coreCtx: CoreCtx = {
       get,
       set,
-      ports: { now, isVisible, storage: null } as unknown as CorePorts,
+      ports: corePorts,
       rt: life.lifetime,
       k: ledger,
       fx: {
@@ -500,8 +524,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           ctx.forkSession(ctx.fx.ensureGroupMembers(chatId));
         },
         finishDraftTurn: (chatId, turnId) => {
-          polling.markTurnFinished(turnId);
-          polling.clearDraftTimeout(chatId);
+          lifecycle.finishDraftTurn(chatId, turnId);
         },
         forgetRetryBytes: (messageId) => {
           pendingUploads.delete(messageId);
@@ -532,16 +555,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       return me.jid?.split('@')[0] ?? 'me';
     }
 
-    // A group invitation or a roster push means the chat list changed on the
-    // server. Refetch it, join any new group rooms and load their preview.
-    function handleInvited(): void {
-      events.scheduleChatsRefresh();
-    }
-
-    function handleRoster(): void {
-      events.scheduleChatsRefresh();
-    }
-
     // The effect modules, built once the closure's helpers exist. `fx` bridges
     // the concerns that still live in this closure as Promise functions.
     const ctx: StoreCtx = {
@@ -555,8 +568,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         summariesFor,
         rememberGroupIds,
         nick,
-        flushPending: () => history.flushPending(),
-        isVisible,
         coreKind,
         isReactionOnly,
         isEditStanza,
@@ -596,16 +607,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         forwardOriginFor,
         forwardedPayloadFor,
         forwardedUiFieldsFor,
-        startDraftStream: () => polling.startDraftStream(),
-        startTopicsPolling: () => polling.startTopicsPolling(),
         teardown,
-        handleMessage: (message) => handleCoreMessage(coreCtx, message),
-        handleTyping: (event) => handleTyping(coreCtx, event),
-        handleDisplayed: (event) => handleDisplayed(coreCtx, event),
-        handleOccupants: (event) => handleOccupants(coreCtx, event),
-        handlePresence: (event) => handlePresence(coreCtx, event),
-        handleInvited,
-        handleRoster,
       },
       fx: {
         get loadPrefRows() {
@@ -622,14 +624,23 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         joinGroups: (current, me) => groups.joinGroups(current, me),
         ensureGroupDetail: (groupId, force) => groups.ensureGroupDetail(groupId, force),
         ensureGroupMembers: (chatId) => groups.ensureGroupMembers(chatId),
-        startPinsPolling: (chatId) => polling.startPinsPolling(chatId),
+        scheduleChatsRefresh: () => events.scheduleChatsRefresh(),
+        // The core's own pins poll (started at boot) refreshes the active chat;
+        // `openChat` starts it for the chat it opens, `stopPinsPoll` stops it.
+        startPinsPolling: () => {
+          pinsPollEnabled = true;
+        },
+        refreshActiveChatPins: (chatId) => {
+          if (pinsPollEnabled) {
+            ctx.forkSession(pins.loadPins(chatId, false));
+          }
+        },
         restartBoot: () => lifecycle.restartBoot(),
       },
       coreCtx,
       ...makeRunners(ports, life),
     };
     const lifecycle = makeLifecycle(ctx);
-    const polling = makePolling(ctx);
     const history = makeHistory(ctx);
     const send = makeSend(ctx);
     const groups = makeGroups(ctx);
@@ -688,7 +699,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // and every user scoped field of the state.
     function teardown(): void {
       events.clearTimers();
-      polling.clearDraftState();
+      pinsPollEnabled = false;
+      s.core = undefined;
       for (const chatId of Object.keys(cursors)) {
         delete cursors[chatId];
       }
@@ -707,6 +719,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       loadingTopicRoles.clear();
       set({
         ...initialUserState(),
+        status: 'offline',
+        mediaTrustedHosts: undefined,
         drafts: {},
         finishedDraftMessages: {},
         edits: {},
@@ -741,8 +755,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       groupDetailsRevision: 0,
       ...groups.actions,
       ...pins.actions,
+      // Stop the open chat's pins poll (the core's poll reads this switch).
       stopPinsPoll: () => {
-        polling.stopPinsPolling();
+        pinsPollEnabled = false;
       },
       setSearch: (value) => set({ search: value }),
       setActiveFolder: (folder) => set({ activeFolder: folder }),

@@ -39,7 +39,8 @@ export const CONNECT_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
 /** The boot in flight: a resume waits for it (R8). */
 export interface LifecycleBoot {
   readonly session: Fibers<never>;
-  readonly fiber: Fiber.Fiber<unknown, never>;
+  /** Set right after the fork; a boot that settles synchronously clears the record first. */
+  fiber: Fiber.Fiber<unknown, never> | undefined;
 }
 
 /** The lifecycle context: the history context plus the app hooks and the
@@ -101,7 +102,7 @@ export const startStore = (ctx: LifecycleCtx): Effect.Effect<void> =>
     ctx.started = true;
     const session = ctx.rt.beginSession();
     ctx.fx.prepareStart();
-    ctx.boot = { session, fiber: session.fork(boot(ctx, session)) };
+    beginBoot(ctx, session);
   });
 
 /** The chat list "retry": a fresh session boots again. */
@@ -110,8 +111,29 @@ export const retryBoot = (ctx: LifecycleCtx): Effect.Effect<void> =>
     ctx.connectRetryPending = false;
     const session = ctx.rt.beginSession();
     ctx.fx.setChatsLoad('loading');
-    ctx.boot = { session, fiber: session.fork(boot(ctx, session)) };
+    beginBoot(ctx, session);
   });
+
+// Forks the boot and clears `ctx.boot` when it settles (success or failure),
+// so a later resume sees no in-flight boot and can reconnect (R8). While the
+// boot runs, `ctx.boot` lets a resume await it instead of booting twice. The
+// record is set before the fork: a boot that settles synchronously (a test api
+// that throws) must not leave a stale record behind.
+const beginBoot = (ctx: LifecycleCtx, session: Fibers<never>): void => {
+  const record: LifecycleBoot = { session, fiber: undefined };
+  ctx.boot = record;
+  record.fiber = session.fork(
+    boot(ctx, session).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (ctx.boot === record) {
+            ctx.boot = undefined;
+          }
+        }),
+      ),
+    ),
+  );
+};
 
 /** Closes the store Scope: every fiber, listener and the connection go. The
  * message ledger stays (R10): `reset()` is what clears it. */
@@ -138,6 +160,7 @@ export function reset(ctx: LifecycleCtx): void {
     delete ctx.cursors[chatId];
   }
   ctx.lastRead = {};
+  clearFinishedTurns(ctx);
   ctx.set({
     messagesByChat: {},
     edits: {},
@@ -160,7 +183,7 @@ export const reconnect = (ctx: LifecycleCtx): Effect.Effect<void> =>
       return Effect.void;
     }
     const pending = ctx.boot;
-    if (pending !== undefined) {
+    if (pending !== undefined && pending.fiber !== undefined) {
       return Fiber.await(pending.fiber).pipe(
         Effect.andThen(
           Effect.suspend(() => {
@@ -242,6 +265,9 @@ const boot = (ctx: LifecycleCtx, session: Fibers<never>): Effect.Effect<void> =>
     // The global background default is a nice-to-have; load it without holding
     // up the chat list, and leave it null on failure.
     yield* Effect.sync(() => ctx.fx.refreshDefaultBackground());
+    // The app's chat folders load beside the rest of the boot (mobile chips);
+    // web has no store folders and leaves the hook unset.
+    yield* Effect.sync(() => ctx.fx.loadFolders?.());
     yield* startDraftStream(ctx, session);
     yield* startChatsPolling(ctx, session);
     yield* startPinsPolling(ctx, session);
