@@ -2,6 +2,20 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 13:00 local: store core through T8 plus phase 2 pins and prefs merged; nothing deployed**
+- **Merged since the morning:**
+  - T-0914 (T7a, mobile incoming, actions and reads);
+  - T-0916 (the core echo keeps a later edit, fixing a web bug that was on main);
+  - T-0915 (T8: polling and lifecycle in the core, web side; `start()` is idempotent);
+  - T-0917 (T7b: mobile history and the overlap fix);
+  - T-0919 (pins, prefs and folders in the core; Q4 pin texts);
+  - T-0913 (four load flakes made deterministic).
+- **Running on DeepSeek:**
+  - T-0918 (T9: the mobile lifecycle, connect retry for Q3, sign-out kept);
+  - T-0920 (phase 2a: one `GroupDetail`, the per-group cache, `applyTopicRow`).
+- **Next:** T10 (the send pipeline) after T-0918, then the groups actions, one `ChatEntry` and the mock stores.
+- **Then Julio's single live test** (the list below), then a deploy after his OK.
+
 **2026-10-10 local, morning: workers back on OpenCode (Julio's call: Claude usage too high)**
 - **The split:** every task now launches with `lead launch` (`model: auto`, which gives DeepSeek flash off-peak and the free Muse in DeepSeek's peak hours). The autopilot and the Muse pre-review are running again, and Claude is only the lead.
 - **Relaunched on DeepSeek:**
