@@ -72,11 +72,9 @@ Both panels are `#0a0a0a`, with a 1 px `#1f1f1f` border, 16 px radius and `overf
 
 - **Accent:** white by default. Blue (`#0070f3` or Uber `#276ef1`, with white text) is a planned user setting, so every accent use must go through the tokens.
 - **Chat background:** `--panel`, with a dot grid (`radial-gradient(#1c1c1c 1px, transparent 1px)`, 22 px).
-- **Avatars:** monochrome, not colored gradients.
-  - AIs: a light `#ededed` circle with dark initials.
-  - People and groups: `#262626` with light initials.
-  - Some contacts: `#1a1a1a` with a `#333` ring.
-  - Initials are 600 weight, up to 2 letters. Choose the shade deterministically from the id.
+- **Avatars without a picture:** a coloured dither from [dither-avatar](https://github.com/maartenkeizer/dither-avatar), seeded by the id, for people, groups and AIs alike (Julio, 2026-10-11, T-1075).
+  - The helpers are `ditherAvatarSvg` and `ditherAvatarDataUri` in `@zilar/chat-core`.
+  - This is the one deliberate colour exception to the monochrome UI. There are no initials and no monochrome shades any more.
 - **`AI` badge:** Geist Mono 10 px, `#a1a1a1` text, 1 px `#333` border, 5 px radius.
 
 ## 3. Typography
