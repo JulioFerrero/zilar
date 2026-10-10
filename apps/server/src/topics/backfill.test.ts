@@ -36,7 +36,8 @@ describe('general topics backfill', () => {
     // whose foreign keys need the topics table too). The T-0116 group-roles
     // tables (0027, which reference topics) are excluded too, as is the
     // T-0115 invite-links table (0026, unrelated to topics), and the T-0470
-    // ai_delegations table (0045, whose topic_id foreign key needs topics).
+    // ai_delegations table (0045, whose topic_id foreign key needs topics), and
+    // the T-0849 membership indexes (0046, which index topic_members).
     for (const file of fs.readdirSync(drizzleDir).sort()) {
       if (
         !file.endsWith('.sql') ||
@@ -47,7 +48,8 @@ describe('general topics backfill', () => {
         file.startsWith('0022_') ||
         file.startsWith('0023_') ||
         file.startsWith('0027_') ||
-        file.startsWith('0045_')
+        file.startsWith('0045_') ||
+        file.startsWith('0046_')
       ) {
         continue;
       }
