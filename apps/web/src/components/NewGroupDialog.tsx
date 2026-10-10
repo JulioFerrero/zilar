@@ -7,7 +7,7 @@ import { fromApi } from '@/lib/effect/api-effect';
 import { type ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Avatar } from './Avatar';
 import { HandleSuffix } from './HandleSuffix';
 import { Button } from './ui/button';
@@ -62,7 +62,7 @@ export function NewGroupDialog({
   channel?: boolean;
 }) {
   const storeApi = useChatStoreApi();
-  const { contacts } = useChatStore();
+  const contacts = useChatSelector((s) => s.contacts);
   const navigate = useNavigate();
   const [step, setStep] = useState<'members' | 'title'>('members');
   const [selected, setSelected] = useState<string[]>([]);

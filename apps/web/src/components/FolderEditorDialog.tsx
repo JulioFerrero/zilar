@@ -13,7 +13,7 @@ import { createChatFolder, deleteChatFolder, patchChatFolder, type ApiChatFolder
 import { fromApi } from '@/lib/effect/api-effect';
 import { type ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { folderIconComponent } from './folderIcon';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Dialog } from './ui/dialog';
@@ -51,7 +51,9 @@ export function FolderEditorDialog({
   folder: ApiChatFolder | null;
   onClose: () => void;
 }) {
-  const store = useChatStore();
+  const chats = useChatSelector((s) => s.chats);
+  const folders = useChatSelector((s) => s.folders);
+  const setFolders = useChatSelector((s) => s.setFolders);
 
   const [name, setName] = useState(folder?.name ?? '');
   const [icon, setIcon] = useState<FolderIcon>(folder?.icon ?? 'folder');
@@ -84,12 +86,10 @@ export function FolderEditorDialog({
       };
       if (folder === null) {
         const created = yield* fromApi(() => createChatFolder(body));
-        store.setFolders([...store.folders, created as ChatFolder]);
+        setFolders([...folders, created as ChatFolder]);
       } else {
         const updated = yield* fromApi(() => patchChatFolder(folder.id, body));
-        store.setFolders(
-          store.folders.map((item) => (item.id === folder.id ? (updated as ChatFolder) : item)),
-        );
+        setFolders(folders.map((item) => (item.id === folder.id ? (updated as ChatFolder) : item)));
       }
       onClose();
     });
@@ -100,7 +100,7 @@ export function FolderEditorDialog({
         Effect.tapError(() => Effect.sync(() => setConfirmingDelete(false))),
         Effect.mapError(() => new FolderDeleteFailed()),
       );
-      store.setFolders(store.folders.filter((item) => item.id !== id));
+      setFolders(folders.filter((item) => item.id !== id));
       onClose();
     });
 
@@ -234,7 +234,7 @@ export function FolderEditorDialog({
               id="include"
               label="Add chats"
               picked={includeChats}
-              chats={store.chats}
+              chats={chats}
               search={includeSearch}
               onSearch={setIncludeSearch}
               onToggle={(id) => setIncludeChats((list) => toggle(list, id))}
@@ -269,7 +269,7 @@ export function FolderEditorDialog({
               id="exclude"
               label="Exclude chats"
               picked={excludeChats}
-              chats={store.chats}
+              chats={chats}
               search={excludeSearch}
               onSearch={setExcludeSearch}
               onToggle={(id) => setExcludeChats((list) => toggle(list, id))}

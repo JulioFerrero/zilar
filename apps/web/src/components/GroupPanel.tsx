@@ -27,7 +27,7 @@ import type { ApiFailure } from '@/lib/effect/errors';
 import { runWeb } from '@/lib/effect/runtime';
 import { failureOf, isWaiting, useAction, type ActionState } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { HandleSuffix } from './HandleSuffix';
 import { ActivitySection } from './ais/AiActivity';
 import { AiMemoryDialog } from './ais/AiMemoryDialog';
@@ -145,10 +145,9 @@ function rolesViewOf(result: AsyncResult.AsyncResult<GroupRole[], PanelFailure>)
  */
 export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => void }) {
   const storeApi = useChatStoreApi();
-  const store = useChatStore();
 
-  const info = store.groupInfo(chat.id);
-  const me = store.currentUserId;
+  const info = useChatSelector((s) => s.groupInfo(chat.id));
+  const me = useChatSelector((s) => s.currentUserId);
   const meRole = info?.members.find((member) => member.userId === me)?.role;
   const isManager = meRole === 'owner' || meRole === 'admin';
   const memberCount =

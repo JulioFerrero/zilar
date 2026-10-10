@@ -1,6 +1,6 @@
 import { Data, Effect } from 'effect';
 import { Archive, Loader2, Menu as MenuIcon } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ChatListItem } from './ChatListItem';
 import { EmptyState } from './EmptyState';
@@ -121,6 +121,14 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   const [newTopicGroup, setNewTopicGroup] = useState<string | undefined>(undefined);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsedGroups());
   const [archivedOpen, setArchivedOpen] = useState<Set<string>>(() => readArchivedOpen());
+  const toggleCollapse = useCallback(
+    (groupId: string): void => setCollapsed((current) => toggleCollapsedGroup(current, groupId)),
+    [],
+  );
+  const toggleArchived = useCallback(
+    (groupId: string): void => setArchivedOpen((current) => toggleArchivedOpen(current, groupId)),
+    [],
+  );
   const isWide = useMediaQuery('(min-width: 900px)');
   const connection = useDelayed(statusLabel(storeStatus), CONNECTION_BANNER_DELAY_MS);
   // A retry keeps the list that is already painted: the store's `loading` flag
@@ -437,15 +445,11 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
                         topics={group.topics}
                         selectedId={activeChatId}
                         collapsed={collapsed.has(group.groupId)}
-                        onToggleCollapse={() =>
-                          setCollapsed((current) => toggleCollapsedGroup(current, group.groupId!))
-                        }
+                        onToggleCollapse={toggleCollapse}
                         archivedOpen={archivedOpen.has(group.groupId)}
-                        onToggleArchived={() =>
-                          setArchivedOpen((current) => toggleArchivedOpen(current, group.groupId!))
-                        }
+                        onToggleArchived={toggleArchived}
                         isWide={isWide}
-                        onOpenNewTopic={() => setNewTopicGroup(group.groupId)}
+                        onOpenNewTopic={setNewTopicGroup}
                       />
                     ),
                   )}

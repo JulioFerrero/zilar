@@ -15,7 +15,7 @@ import {
 import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { refreshBlockedJids } from '@/lib/blockedJids';
 import { Button } from '@/components/ui/button';
 import { Avatar } from './Avatar';
@@ -56,7 +56,8 @@ export function ContactProfileRow({
   onRelationChange: (profile: HandleProfile) => void;
 }) {
   const navigate = useNavigate();
-  const store = useChatStore();
+  const contacts = useChatSelector((s) => s.contacts);
+  const chats = useChatSelector((s) => s.chats);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [confirmingBlock, setConfirmingBlock] = useState(false);
@@ -132,11 +133,11 @@ export function ContactProfileRow({
   // jid) first, then a chat whose id matches that JID. No DM yet means no
   // Message button (only the status line shows).
   const dmChatId = (() => {
-    const contact = store.contacts.find((entry) => entry.userId === profile.userId);
+    const contact = contacts.find((entry) => entry.userId === profile.userId);
     if (contact === undefined) {
       return undefined;
     }
-    return store.chats.some((chat) => chat.id === contact.jid) ? contact.jid : undefined;
+    return chats.some((chat) => chat.id === contact.jid) ? contact.jid : undefined;
   })();
 
   const openChat = (): void => {

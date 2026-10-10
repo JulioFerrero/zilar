@@ -14,9 +14,10 @@ import { runWeb } from '@/lib/effect/runtime';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { chatSubtitle, typingLabel } from '@/lib/format';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const ARCHIVE_ERROR = 'Could not archive the topic.';
+const NO_NAMES: string[] = [];
 
 /** The topic could not be archived (the store rejected the patch). */
 class ArchiveFailed extends Data.TaggedError('ArchiveFailed') {}
@@ -35,13 +36,15 @@ export function ChatHeader({
   onOpenMedia?: () => void;
 }) {
   const navigate = useNavigate();
-  const store = useChatStore();
   const storeApi = useChatStoreApi();
   const isWide = useMediaQuery('(min-width: 900px)');
-  const names = store.typing[chat.id]?.names ?? [];
+  const typingNames = useChatSelector((s) => s.typing[chat.id]?.names);
+  const names = typingNames ?? NO_NAMES;
+  const hasDraft = useChatSelector((s) => s.drafts[chat.id] !== undefined);
+  const storedGroupTitle = useChatSelector((s) => s.groupInfo(chat.id)?.title);
   const typing = typingLabel(chat, names);
   // An AI draft in flight reads `writing…`, the D24 wording (ui-style.md §5).
-  const writing = chat.isAI && store.drafts[chat.id] !== undefined;
+  const writing = chat.isAI && hasDraft;
   const working = chat.isAI && chat.aiStatus === 'working';
   const subtitle = writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date()));
   const isTopic = chat.topic !== undefined;
@@ -65,7 +68,7 @@ export function ChatHeader({
       ),
     );
   };
-  const groupTitle = chat.groupTitle ?? store.groupInfo(chat.id)?.title;
+  const groupTitle = chat.groupTitle ?? storedGroupTitle;
   const openPanel = onOpenTopicPanel ?? onOpenAiPanel ?? onOpenGroupPanel;
   const panelLabel = isTopic
     ? `Open ${chat.title} topic info`
@@ -305,9 +308,8 @@ function TopicArchiveItem({
   archiving: boolean;
   onArchive: () => void;
 }) {
-  const store = useChatStore();
-  const me = store.currentUserId;
-  const info = store.groupInfo(chat.id);
+  const me = useChatSelector((s) => s.currentUserId);
+  const info = useChatSelector((s) => s.groupInfo(chat.id));
   const myRole = info?.members.find((member) => member.userId === me)?.role;
   // Archive needs a manager (creator or group owner/admin); the detail may
   // not have loaded yet, so the entry hides until the role is known. Never

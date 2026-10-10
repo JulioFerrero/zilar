@@ -1,6 +1,6 @@
 import type { SearchItem } from '@/lib/api';
 import { formatListTime } from '@zilar/chat-core';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 import { Avatar } from './Avatar';
 
@@ -65,8 +65,7 @@ export function MessageSearchResult({
   selected: boolean;
   onOpen: () => void;
 }) {
-  const store = useChatStore();
-  const chat = store.chats.find((entry) => entry.id === item.chatJid);
+  const chat = useChatSelector((s) => s.chats.find((entry) => entry.id === item.chatJid));
   return (
     <button
       type="button"

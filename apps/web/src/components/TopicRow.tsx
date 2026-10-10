@@ -1,6 +1,6 @@
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { ChevronDown, ChevronRight, Lock, MoreHorizontal, Pin, Plus, VolumeX } from 'lucide-react';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Link } from 'react-router';
 import { Avatar } from './Avatar';
 import { ChatActionsMenu } from './ChatActionsMenu';
@@ -10,11 +10,14 @@ import { markdownToPlain } from '@zilar/chat-core';
 import { useBlockedJids } from '@/lib/blockedJids';
 import { typingLabel } from '@/lib/format';
 import { previewMessage } from '@/lib/preview-message';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { MessageTicks } from './MessageTicks';
 import { AiBadge } from './AiBadge';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
+
+const NO_MESSAGES: UiMessage[] = [];
+const NO_NAMES: string[] = [];
 
 function rowPreview(
   chat: ChatSummary,
@@ -44,18 +47,15 @@ export function TopicRow({
   selected: boolean;
   isWide?: boolean;
 }) {
-  const store = useChatStore();
+  const currentUserId = useChatSelector((s) => s.currentUserId);
+  const messages = useChatSelector((s) => s.messagesByChat[chat.id]) ?? NO_MESSAGES;
+  const typingNames = useChatSelector((s) => s.typing[chat.id]?.names) ?? NO_NAMES;
+  const hasDraft = useChatSelector((s) => s.drafts[chat.id] !== undefined);
   const last = chat.lastMessage;
   const blockedJids = useBlockedJids();
-  const { prefix, body } = rowPreview(
-    chat,
-    store.currentUserId,
-    store.messages(chat.id),
-    blockedJids,
-  );
-  const own = last !== undefined && last.senderId === store.currentUserId;
-  const typing = typingLabel(chat, store.typing[chat.id]?.names ?? []);
-  const hasDraft = store.drafts[chat.id] !== undefined;
+  const { prefix, body } = rowPreview(chat, currentUserId, messages, blockedJids);
+  const own = last !== undefined && last.senderId === currentUserId;
+  const typing = typingLabel(chat, typingNames);
   const writing = chat.isAI && (hasDraft || typing !== undefined);
   const typingText = typing === undefined ? undefined : `${typing}…`;
   const isPrivate = chat.topic?.visibility === 'private';
@@ -174,7 +174,7 @@ export function TopicRow({
  * collapse (remembered per group in localStorage); collapsed shows only the
  * header. Archived topics hide under an "Archived (n)" toggle.
  */
-export function GroupHeaderRow({
+export const GroupHeaderRow = memo(function GroupHeaderRow({
   groupTitle,
   groupId,
   avatarUrl,
@@ -193,11 +193,11 @@ export function GroupHeaderRow({
   topics: ChatSummary[];
   selectedId: string | undefined;
   collapsed: boolean;
-  onToggleCollapse: () => void;
+  onToggleCollapse: (groupId: string) => void;
   archivedOpen: boolean;
-  onToggleArchived: () => void;
+  onToggleArchived: (groupId: string) => void;
   isWide?: boolean;
-  onOpenNewTopic?: () => void;
+  onOpenNewTopic?: (groupId: string) => void;
 }) {
   const active = topics.filter(
     (topic) => topic.topic?.archived !== true && topic.archived !== true,
@@ -227,7 +227,7 @@ export function GroupHeaderRow({
       >
         <button
           type="button"
-          onClick={onToggleCollapse}
+          onClick={() => onToggleCollapse(groupId)}
           aria-expanded={!collapsed}
           aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${groupTitle}, ${active.length} topics`}
           className="flex min-w-0 flex-1 items-center gap-3 rounded-[12px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
@@ -274,7 +274,7 @@ export function GroupHeaderRow({
             type="button"
             variant="ghost"
             size="icon-sm"
-            onClick={onOpenNewTopic}
+            onClick={() => onOpenNewTopic(groupId)}
             aria-label={`New topic in ${groupTitle}`}
             title={`New topic in ${groupTitle}`}
             className="shrink-0 rounded-full text-muted-foreground"
@@ -300,7 +300,7 @@ export function GroupHeaderRow({
               variant="ghost"
               size="sm"
               aria-expanded={archivedOpen}
-              onClick={onToggleArchived}
+              onClick={() => onToggleArchived(groupId)}
               className="w-full justify-start text-muted-foreground"
             >
               Archived ({archived.length})
@@ -320,4 +320,4 @@ export function GroupHeaderRow({
       )}
     </div>
   );
-}
+});

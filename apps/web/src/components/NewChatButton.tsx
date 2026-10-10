@@ -9,7 +9,7 @@ import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
 import { Menu, MenuItem } from './ui/menu';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 
 type Dialog = 'group' | 'channel' | 'message' | 'invite' | 'ai' | 'topic' | 'explore';
@@ -32,7 +32,9 @@ export function NewChatButton({
   const [topicGroupId, setTopicGroupId] = useState<string | undefined>(undefined);
   const isWide = useMediaQuery('(min-width: 900px)');
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const store = useChatStore();
+  const chats = useChatSelector((s) => s.chats);
+  const currentUserId = useChatSelector((s) => s.currentUserId);
+  const groupInfos = useChatSelector((s) => s.groupInfos);
 
   const toggleMenu = (): void => setMenuOpen((value) => !value);
 
@@ -66,16 +68,16 @@ export function NewChatButton({
   // when the group allows it. The menu entry is absent (not disabled) when
   // no group qualifies.
   const topicGroups = useMemo(() => {
-    const mine = store.currentUserId;
+    const mine = currentUserId;
     const seen = new Map<string, { chatId: string; title: string }>();
-    for (const chat of store.chats) {
+    for (const chat of chats) {
       if (chat.groupId === undefined) {
         continue;
       }
       if (seen.has(chat.groupId)) {
         continue;
       }
-      const info = store.groupInfo(chat.id);
+      const info = groupInfos[chat.id];
       const role = info?.members.find((member) => member.userId === mine)?.role;
       const mayCreate =
         role === 'owner' ||
@@ -97,7 +99,7 @@ export function NewChatButton({
       }
     }
     return [...seen.values()];
-  }, [store]);
+  }, [chats, currentUserId, groupInfos]);
 
   const openNewTopic = (): void => {
     setMenuOpen(false);

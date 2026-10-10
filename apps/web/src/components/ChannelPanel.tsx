@@ -22,7 +22,7 @@ import { fromApi } from '@/lib/effect/api-effect';
 import { type ApiFailure, toApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { ActivitySection } from './ais/AiActivity';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { PinsSection } from './PinsPanel';
@@ -89,11 +89,10 @@ function describeFailure(failure: ChannelFailure, fallback: string): string {
  */
 export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => void }) {
   const storeApi = useChatStoreApi();
-  const store = useChatStore();
   const navigate = useNavigate();
 
-  const info = store.groupInfo(chat.id);
-  const me = store.currentUserId;
+  const info = useChatSelector((s) => s.groupInfo(chat.id));
+  const me = useChatSelector((s) => s.currentUserId);
   const meRole = info?.members.find((member) => member.userId === me)?.role;
   const isManager = meRole === 'owner' || meRole === 'admin';
   const isOwner = meRole === 'owner';

@@ -8,7 +8,9 @@ import type { Pin as PinRow } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { scrollToMessage } from '@/lib/scrollToMessage';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
+
+const NO_PINS: PinRow[] = [];
 
 const KIND_LABEL: Record<PinRow['kind'], string> = {
   text: '',
@@ -29,10 +31,11 @@ const KIND_LABEL: Record<PinRow['kind'], string> = {
  * failures surface here with a dismiss key.
  */
 export function PinnedBanner({ chatId }: { chatId: string }) {
-  const store = useChatStore();
   const storeApi = useChatStoreApi();
-  const pins = store.pins(chatId);
-  const pinsError = store.pinsError?.chatId === chatId ? store.pinsError : undefined;
+  const pins = useChatSelector((s) => s.pinsByChat[chatId]) ?? NO_PINS;
+  const storedPinsError = useChatSelector((s) => s.pinsError);
+  const messages = useChatSelector((s) => s.messagesByChat[chatId]);
+  const pinsError = storedPinsError?.chatId === chatId ? storedPinsError : undefined;
   const [index, setIndex] = useState(0);
   const [jumpState, jumpTo, jumpControls] = useAction((messageId: string) =>
     fromApi(() => storeApi.getState().openAtMessage(chatId, messageId)).pipe(
@@ -71,7 +74,7 @@ export function PinnedBanner({ chatId }: { chatId: string }) {
     );
   }
   const current = pins[Math.min(index, pins.length - 1)] ?? pins[0]!;
-  const loaded = store.messages(chatId).find((item) => item.id === current.messageId);
+  const loaded = messages?.find((item) => item.id === current.messageId);
   const deleted = loaded?.deleted === true;
   const snapshot = deleted ? 'Message deleted' : current.text;
 

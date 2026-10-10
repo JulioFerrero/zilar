@@ -4,7 +4,7 @@ import type { ReplyRef } from '@zilar/chat-core';
 import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -23,7 +23,8 @@ export function ChannelComposerBar({
   replyTo?: ReplyRef;
   onCancelReply?: () => void;
 }) {
-  const store = useChatStore();
+  const info = useChatSelector((s) => s.groupInfo(chat.id));
+  const currentUserId = useChatSelector((s) => s.currentUserId);
   const storeApi = useChatStoreApi();
   // A second click while the mute waits is ignored (the hook's default mode).
   const [muteState, toggleMute] = useAction<void, void, ApiFailure>(() =>
@@ -38,9 +39,7 @@ export function ChannelComposerBar({
   // The role rides the chat row (`myRole`) for channels; the group detail
   // backs it up once loaded. Unknown = subscriber (read-only) until proven
   // otherwise — the safe default.
-  const info = store.groupInfo(chat.id);
-  const role =
-    chat.myRole ?? info?.members.find((member) => member.userId === store.currentUserId)?.role;
+  const role = chat.myRole ?? info?.members.find((member) => member.userId === currentUserId)?.role;
   const canPost = role === 'owner' || role === 'admin';
 
   if (canPost) {

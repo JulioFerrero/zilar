@@ -35,7 +35,7 @@ import { fromApi } from '@/lib/effect/api-effect';
 import { ApiFailure, isApiFailureCode, toApiFailure } from '@/lib/effect/errors';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 type PanelStatus = 'loading' | 'ready' | 'error';
 type GroupMemberRow = GroupDetail['members'][number];
@@ -97,13 +97,12 @@ function TopicPanelBody({
   onClose: () => void;
 }) {
   const storeApi = useChatStoreApi();
-  const store = useChatStore();
+  const info: GroupDetail | undefined = useChatSelector((s) => s.groupInfo(chat.id));
+  const me = useChatSelector((s) => s.currentUserId);
   const navigate = useNavigate();
 
   const topicId = topic.id;
-  const groupTitle = chat.groupTitle ?? store.groupInfo(chat.id)?.title ?? '';
-  const info: GroupDetail | undefined = store.groupInfo(chat.id);
-  const me = store.currentUserId;
+  const groupTitle = chat.groupTitle ?? info?.title ?? '';
   const meRole = info?.members.find((member) => member.userId === me)?.role;
   const isManager = meRole === 'owner' || meRole === 'admin';
 

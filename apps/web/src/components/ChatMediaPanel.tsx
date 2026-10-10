@@ -12,7 +12,7 @@ import { fromApi } from '@/lib/effect/api-effect';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { scrollToMessage } from '@/lib/scrollToMessage';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const TABS: { value: MediaTab; label: string }[] = [
   { value: 'media', label: 'Media' },
@@ -334,7 +334,7 @@ function MediaBody({
  * Opened from the chat menu for DMs, groups and topics.
  */
 export function ChatMediaPanel({ chatId, onClose }: { chatId: string; onClose: () => void }) {
-  const store = useChatStore();
+  const chat = useChatSelector((s) => s.chats.find((entry) => entry.id === chatId));
   const [tab, setTab] = useState<MediaTab>('media');
   const [jumpFailed, setJumpFailed] = useState(false);
 
@@ -353,7 +353,6 @@ export function ChatMediaPanel({ chatId, onClose }: { chatId: string; onClose: (
     setTab(value);
   };
 
-  const chat = store.chats.find((entry) => entry.id === chatId);
   const label = chat?.title ?? 'this chat';
 
   return (

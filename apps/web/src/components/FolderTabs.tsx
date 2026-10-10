@@ -2,22 +2,25 @@ import type { KeyboardEvent } from 'react';
 import { useRef } from 'react';
 import { LayoutGrid } from 'lucide-react';
 import { folderIconComponent } from './folderIcon';
-import { folderUnread } from '@/store/store';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { folderUnreadTotal } from '@zilar/chat-core';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 
 /** Folder chips for narrow screens: "All chats" plus one chip per folder. */
 export function FolderTabs() {
-  const store = useChatStore();
+  const folders = useChatSelector((s) => s.folders);
+  const chats = useChatSelector((s) => s.chats);
+  const activeFolder = useChatSelector((s) => s.activeFolder);
+  const setActiveFolder = useChatSelector((s) => s.setActiveFolder);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const tabs: { id: string; label: string; icon: typeof LayoutGrid | null; unread: number }[] = [
-    { id: 'all', label: 'All chats', icon: null, unread: folderUnread(store, 'all') },
-    ...store.folders.map((folder) => ({
+    { id: 'all', label: 'All chats', icon: null, unread: folderUnreadTotal('all', chats) },
+    ...folders.map((folder) => ({
       id: folder.id,
       label: folder.name,
       icon: folderIconComponent(folder.icon),
-      unread: folderUnread(store, folder.id),
+      unread: folderUnreadTotal(folder, chats),
     })),
   ];
 
@@ -41,7 +44,7 @@ export function FolderTabs() {
     if (tab === undefined) {
       return;
     }
-    store.setActiveFolder(tab.id);
+    setActiveFolder(tab.id);
     tabRefs.current[next]?.focus();
   };
 
@@ -52,7 +55,7 @@ export function FolderTabs() {
       className="scrollbar-thin flex shrink-0 gap-1.5 overflow-x-auto px-3 pt-1 pb-2"
     >
       {tabs.map((tab, index) => {
-        const active = store.activeFolder === tab.id;
+        const active = activeFolder === tab.id;
         const Icon = tab.icon;
         return (
           <button
@@ -64,7 +67,7 @@ export function FolderTabs() {
             role="tab"
             aria-selected={active}
             tabIndex={active ? 0 : -1}
-            onClick={() => store.setActiveFolder(tab.id)}
+            onClick={() => setActiveFolder(tab.id)}
             onKeyDown={(event) => moveFocus(event, index)}
             className={cn(
               'flex h-[30px] shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors',

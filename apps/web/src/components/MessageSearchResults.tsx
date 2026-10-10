@@ -6,7 +6,7 @@ import type { SearchItem } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { useAction } from '@/lib/effect/use-action';
 import { useMessageSearch } from '@/lib/useMessageSearch';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { scrollToMessage } from '@/lib/scrollToMessage';
 import { Avatar } from './Avatar';
 import { MessageSearchResult } from './MessageSearchResult';
@@ -68,7 +68,7 @@ export function MessageSearchResults({
   chatFilter?: string;
   onNotFound: (chatJid: string) => void;
 }) {
-  const store = useChatStore();
+  const chats = useChatSelector((s) => s.chats);
   const search = useMessageSearch(query, chatFilter);
   const [notFound, setNotFound] = useState(false);
 
@@ -149,7 +149,7 @@ export function MessageSearchResults({
 
   const groups = groupByChat(
     search.items,
-    store.chats.map((chat) => ({ id: chat.id, title: chat.title, avatarUrl: chat.avatarUrl })),
+    chats.map((chat) => ({ id: chat.id, title: chat.title, avatarUrl: chat.avatarUrl })),
   );
 
   // Enter on this list opens the top hit (Enter in the search input takes

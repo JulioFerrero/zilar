@@ -5,7 +5,7 @@ import {
   type UiMessage,
 } from '@zilar/chat-core';
 import { ArrowDown } from 'lucide-react';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DateSeparator } from './DateSeparator';
 import { MessageBubble } from './MessageBubble';
 import { MessageListSkeleton } from './Skeleton';
@@ -31,7 +31,7 @@ function useLatestCallback<A extends unknown[]>(
   return useCallback((...args: A) => latest.current?.(...args), []);
 }
 
-export function MessageList({
+export const MessageList = memo(function MessageList({
   chat,
   onReply,
   onForward,
@@ -343,4 +343,4 @@ export function MessageList({
       )}
     </div>
   );
-}
+});

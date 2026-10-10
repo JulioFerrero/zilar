@@ -44,7 +44,7 @@ import {
   VoiceRecorder,
   computeWaveform,
 } from '@/lib/voice';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const LINE_HEIGHT = 22;
 const MAX_LINES = 6;
@@ -96,7 +96,10 @@ export function Composer({
   /** Opens Settings → Stickers (the panel's "+" tab and Manage link). */
   onOpenStickersSettings?: (() => void) | undefined;
 }) {
-  const store = useChatStore();
+  const storeApi = useChatStoreApi();
+  const chat = useChatSelector((s) => s.chats.find((entry) => entry.id === chatId));
+  const meJid = useChatSelector((s) => s.me?.jid ?? undefined);
+  const storedActionError = useChatSelector((s) => s.actionError);
   const [value, setValue] = useState('');
   const [mentions, setMentions] = useState<UiMention[]>([]);
   const [picker, setPicker] = useState<{ start: number; query: string } | undefined>(undefined);
@@ -241,18 +244,19 @@ export function Composer({
   // after the controlled value has been committed to the textarea.
   const pendingCaretRef = useRef<number | undefined>(undefined);
   // The message being edited, in this chat only.
-  const editTarget = store.editTarget;
-  const editing =
-    editTarget !== undefined && editTarget.chatId === chatId
-      ? store.messages(chatId).find((message) => message.id === editTarget.messageId)
+  const editing = useChatSelector((s) => {
+    const target = s.editTarget;
+    return target !== undefined && target.chatId === chatId
+      ? s.messagesByChat[chatId]?.find((message) => message.id === target.messageId)
       : undefined;
+  });
   const editingId = editing?.id;
   const editingText = editing?.text;
   const editingMentions = editing?.mentions;
   const lastEditingIdRef = useRef<string | undefined>(undefined);
   const actionError =
-    store.actionError !== undefined && store.actionError.chatId === chatId
-      ? store.actionError.message
+    storedActionError !== undefined && storedActionError.chatId === chatId
+      ? storedActionError.message
       : undefined;
   // A mention picked in one chat must never be sent into another: when the chat
   // changes, drop the tracked mentions and any open picker during render. The
@@ -269,12 +273,14 @@ export function Composer({
     setStickerOpen(false);
   }
   const canSend = value.trim().length > 0 || attachment !== undefined;
-  const title = store.chats.find((chat) => chat.id === chatId)?.title;
+  const title = chat?.title;
   const placeholder = title === undefined ? 'Message' : `Message ${title}`;
-  const isGroup = store.chats.find((chat) => chat.id === chatId)?.kind === 'group';
-  const meJid = store.me?.jid ?? undefined;
+  const isGroup = chat?.kind === 'group';
   const members = isGroup
-    ? store.groupMembers(chatId).filter((member) => !isMentionOfMe(member.jid, meJid))
+    ? storeApi
+        .getState()
+        .groupMembers(chatId)
+        .filter((member) => !isMentionOfMe(member.jid, meJid))
     : [];
   const candidates =
     picker === undefined
@@ -325,7 +331,7 @@ export function Composer({
     const timestamp = Date.now();
     if (next.trim().length > 0 && timestamp - lastTypingRef.current > 2000) {
       lastTypingRef.current = timestamp;
-      store.sendTyping(chatId);
+      storeApi.getState().sendTyping(chatId);
     }
   };
 
@@ -450,11 +456,13 @@ export function Composer({
   // messages): optimistic bubble, failure shows the usual retry.
   const sendSticker = useCallback(
     (sticker: StickerChoice): void => {
-      store.sendSticker(chatId, sticker, replyTo === undefined ? undefined : { replyTo });
+      storeApi
+        .getState()
+        .sendSticker(chatId, sticker, replyTo === undefined ? undefined : { replyTo });
       setStickerOpen(false);
       onCancelReply();
     },
-    [chatId, onCancelReply, replyTo, store],
+    [chatId, onCancelReply, replyTo, storeApi],
   );
 
   // A GIF pick fetches the media through the proxy, then uploads it with the
@@ -489,7 +497,7 @@ export function Composer({
               const file = new File([blob], `gif-${gif.id.slice(0, 16)}.${extension}`, {
                 type: mime,
               });
-              store.sendAttachment(chatId, file, {
+              storeApi.getState().sendAttachment(chatId, file, {
                 ...(caption.length === 0 ? {} : { caption }),
                 ...(replyTo === undefined ? {} : { replyTo }),
               });
@@ -501,12 +509,12 @@ export function Composer({
         ),
       );
     },
-    [chatId, onCancelReply, replyTo, store, value],
+    [chatId, onCancelReply, replyTo, storeApi, value],
   );
 
   const send = (): void => {
     if (attachment !== undefined) {
-      store.sendAttachment(chatId, attachment.file, {
+      storeApi.getState().sendAttachment(chatId, attachment.file, {
         ...(value.trim().length === 0 ? {} : { caption: value.trim() }),
         ...(replyTo === undefined ? {} : { replyTo }),
       });
@@ -520,7 +528,7 @@ export function Composer({
     if (!canSend) {
       return;
     }
-    store.sendText(chatId, value, {
+    storeApi.getState().sendText(chatId, value, {
       ...(replyTo === undefined ? {} : { replyTo }),
       ...(mentions.length === 0 ? {} : { mentions }),
     });
@@ -537,20 +545,21 @@ export function Composer({
       return;
     }
     if (value.trim() === (editing.text ?? '')) {
-      store.cancelEdit();
+      storeApi.getState().cancelEdit();
       return;
     }
-    store.editMessage(chatId, editing.id, value);
-    store.cancelEdit();
+    storeApi.getState().editMessage(chatId, editing.id, value);
+    storeApi.getState().cancelEdit();
   };
 
   // ↑ in an empty composer edits my last editable message, as in most messengers.
   const editLastMessage = (): void => {
-    const last = [...store.messages(chatId)]
+    const state = storeApi.getState();
+    const last = [...state.messages(chatId)]
       .reverse()
-      .find((message) => canEditMessage(message, store.currentUserId, new Date()));
+      .find((message) => canEditMessage(message, state.currentUserId, new Date()));
     if (last !== undefined) {
-      store.startEdit(chatId, last.id);
+      state.startEdit(chatId, last.id);
     }
   };
 
@@ -634,7 +643,7 @@ export function Composer({
       event.preventDefault();
       // Keep the key from also closing the chat on a narrow layout.
       event.stopPropagation();
-      store.cancelEdit();
+      storeApi.getState().cancelEdit();
       return;
     }
     if (event.key === 'Escape' && replyTo !== undefined) {
@@ -809,11 +818,13 @@ export function Composer({
         });
         yield* Effect.try({
           try: () =>
-            store.sendVoice(
-              chatIdRef.current,
-              { blob: recorded.blob, durationMs: recorded.durationMs, waveform },
-              reply === undefined ? undefined : { replyTo: reply },
-            ),
+            storeApi
+              .getState()
+              .sendVoice(
+                chatIdRef.current,
+                { blob: recorded.blob, durationMs: recorded.durationMs, waveform },
+                reply === undefined ? undefined : { replyTo: reply },
+              ),
           catch: saveFailed,
         });
         onCancelReply();
@@ -963,7 +974,7 @@ export function Composer({
         />
       )}
       {editing !== undefined ? (
-        <EditBar text={editing.text ?? ''} onCancel={() => store.cancelEdit()} />
+        <EditBar text={editing.text ?? ''} onCancel={() => storeApi.getState().cancelEdit()} />
       ) : (
         replyTo !== undefined && (
           <Well className="mb-2 flex items-stretch overflow-hidden rounded-[10px]">

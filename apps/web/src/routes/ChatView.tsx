@@ -1,5 +1,5 @@
 import type { ChatSummary, ReplyRef, UiMessage } from '@zilar/chat-core';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { AiPanel } from '@/components/ais/AiPanel';
 import { ChannelComposerBar } from '@/components/ChannelComposerBar';
@@ -16,7 +16,7 @@ import { PinnedBanner } from '@/components/PinnedBanner';
 import { PinsPanel } from '@/components/PinsPanel';
 import { TaskStrip } from '@/components/TaskStrip';
 import { TopicPanel } from '@/components/TopicPanel';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { replyRef } from '@/lib/format';
 
 type OpenPanel = 'ai' | 'group' | 'topic';
@@ -40,7 +40,10 @@ function initialPanel(value: string | null, chat: ChatSummary): OpenPanel | unde
 
 export function ChatView({ chat }: { chat: ChatSummary }) {
   const storeApi = useChatStoreApi();
-  const store = useChatStore();
+  const currentUserId = useChatSelector((s) => s.currentUserId);
+  const editTarget = useChatSelector((s) => s.editTarget);
+  const topicNotice = useChatSelector((s) => s.topicNotice);
+  const storedPinsPanel = useChatSelector((s) => s.pinsPanel);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [panel, setPanel] = useState<OpenPanel | undefined>(() =>
@@ -72,7 +75,6 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
     setSelectionChatId(chat.id);
     setSelectedIds(null);
   }
-  const editTarget = store.editTarget;
   // Edit mode and reply are exclusive: starting an edit clears the reply. The
   // reset happens during render (React's "adjust state when a prop changes"),
   // like the composer's chat-switch reset.
@@ -88,20 +90,29 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
     storeApi.getState().openChat(chat.id);
   }, [storeApi, chat.id]);
 
-  const startReply = (message: UiMessage): void => {
-    storeApi.getState().cancelEdit();
-    setReplyTo(replyRef(message, store.currentUserId));
-  };
+  // The message list is memoised, so every callback and prop it gets here has a
+  // stable identity until the thing it depends on changes.
+  const startReply = useCallback(
+    (message: UiMessage): void => {
+      storeApi.getState().cancelEdit();
+      setReplyTo(replyRef(message, currentUserId));
+    },
+    [storeApi, currentUserId],
+  );
+
+  const forwardOne = useCallback((message: UiMessage): void => {
+    setForwarding([message]);
+  }, []);
 
   const cancelReply = (): void => {
     setReplyTo(undefined);
   };
 
-  const startSelect = (message: UiMessage): void => {
+  const startSelect = useCallback((message: UiMessage): void => {
     setSelectedIds([message.id]);
-  };
+  }, []);
 
-  const toggleSelect = (message: UiMessage): void => {
+  const toggleSelect = useCallback((message: UiMessage): void => {
     setSelectedIds((current) => {
       if (current === null) {
         return current;
@@ -110,19 +121,29 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
         ? current.filter((id) => id !== message.id)
         : [...current, message.id];
     });
-  };
+  }, []);
+
+  const selection = useMemo(
+    () => ({ ids: new Set(selectedIds ?? []), onToggle: toggleSelect, onStart: startSelect }),
+    [selectedIds, toggleSelect, startSelect],
+  );
 
   const forwardSelected = (): void => {
     if (selectedIds === null) {
       return;
     }
     const ids = new Set(selectedIds);
-    setForwarding(store.messages(chat.id).filter((message) => ids.has(message.id)));
+    setForwarding(
+      storeApi
+        .getState()
+        .messages(chat.id)
+        .filter((message) => ids.has(message.id)),
+    );
     setSelectedIds(null);
   };
 
-  const notice = store.topicNotice?.chatId === chat.id ? store.topicNotice : undefined;
-  const pinsPanel = store.pinsPanel?.chatId === chat.id ? store.pinsPanel : undefined;
+  const notice = topicNotice?.chatId === chat.id ? topicNotice : undefined;
+  const pinsPanel = storedPinsPanel?.chatId === chat.id ? storedPinsPanel : undefined;
 
   // Pins load when the chat opens (the store also refreshes them on focus
   // and every 60 s while the chat is open; there is no realtime channel yet).
@@ -164,12 +185,8 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
         key={chat.id}
         chat={chat}
         onReply={startReply}
-        onForward={(message) => setForwarding([message])}
-        selection={{
-          ids: new Set(selectedIds ?? []),
-          onToggle: toggleSelect,
-          onStart: startSelect,
-        }}
+        onForward={forwardOne}
+        selection={selection}
         selecting={selectedIds !== null}
       />
       {selectedIds !== null ? (
