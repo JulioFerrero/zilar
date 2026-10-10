@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1083](T-1083-web-mock-sticker-files-dev-middleware.md) | Web mock: dev-only vite middleware serves seed sticker files | in-progress | auto | T-1082 | audit slice 1 |
-| [T-1084](T-1084-mobile-mock-dead-files.md) | Mock cleanup: delete mobile drafts/time, trim web ids.ts | in-progress | auto | T-1082 | dead files |
 
 ## Follow-ups
 
@@ -1131,3 +1130,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1079](T-1079-mobile-stickers-on-mock-backend.md) | Mock H2-7 (mobile): sticker management runs on @zilar/mock-backend through mockFetch; delete stickers-mock.ts | 2026-10-10 |
 | [T-1082](T-1082-mock-sweep-status-2.md) | Audit: rewrite docs/audit/mock-sweep-status.md for main after T-1081, with what is left of the mock plan and a | 2026-10-10 |
 | [T-1081](T-1081-mobile-mock-sticker-owner.md) | Mobile mock: sticker screens know the mock viewer, so your own packs open for editing (viewerId from the share | 2026-10-10 |
+| [T-1084](T-1084-mobile-mock-dead-files.md) | Mock cleanup: delete mobile mock/drafts.ts and mock/time.ts (no importers); trim web mock/ids.ts to currentUse | 2026-10-10 |
