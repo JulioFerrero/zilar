@@ -10,6 +10,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1079](T-1079-mobile-stickers-on-mock-backend.md) | Mock H2-7: mobile stickers on the shared backend; delete stickers-mock.ts | in-progress | auto | T-1078 | probe first |
+| [T-1080](T-1080-mock-voice-follows-integrations.md) | Mock: voice transcription follows the integrations setting | in-progress | auto | T-1078 | T-1078 follow-up |
 
 ## Follow-ups
 
