@@ -8,6 +8,17 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 - **T-0898:** brittle mobile source-pinning tests become render tests.
 - **T-0899:** shared wait helpers, fake timers in place of real sleeps, and a guard against one-tick waits.
 - **T-0900:** effect `^4.0.2` everywhere, plus a pnpm catalog.
+- **T-0896 merged:** `docs/STORE_CORE_PLAN.md` splits Phase 4.3 into 10 tasks over 6 waves.
+- **Lead decisions while Julio slept (plan section 8):** each one makes mobile behave like web and can be reverted with a flag or a text change.
+  - **Q1:** received @mentions are highlighted on mobile.
+  - **Q2:** a mobile voice message, attachment or forward that fails shows "Not sent" within 60 s.
+  - **Q3:** mobile retries the chat connection after 2, 5, 15, 30 and 60 s.
+  - **Q4:** one set of pin error texts, and a stale error banner clears on the next send.
+- **Privacy finding, T-0901 running:** on mobile, sign-out keeps the previous user's chats, contacts and messages in the store, which lives across sign-ins. A second user on the same phone could briefly see them, or get the first user's messages merged into a DM with the same peer. The fix is tests first, and web is checked too.
+- **T-0902 running:** store core T1, the pilot.
+- **Live-check additions:**
+  - sign out, then sign in as another user on the same phone (T-0901);
+  - the Q1-Q4 behaviours once T5, T9 and T10 land.
 
 **2026-10-10 05:45 local: wave 5 merged (api-contract, T-0891 to T-0895, main `5f3e5f6f`); nothing deployed**
 - **What landed:** 28 JSON API groups now live in `packages/api-contract`. The server implements them, and web and mobile derive their clients from them.
