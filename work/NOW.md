@@ -14,6 +14,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - **Mobile:** about 4,000 hand-written client lines removed.
   - **Wire:** unchanged; no server route test was edited.
   - **Web bundle:** flat.
+- **CI:** green on T-0892 and T-0893. GitHub started no CI run for the T-0895 commit `5f3e5f6f`. The production images built fine on `b2ac002c`, which contains it, and the next code merge runs full CI on a tip that includes it.
 - **Checks:** the combined check of the four chains passed, and main is identical to the checked tree. The phone smoke passed with clean screenshots on chats, settings, explore, AIs, approvals, machines, connections and stickers.
 - **Bug caught:** Effect's JSON codec turns an explicit `undefined` on a nullable optional field into `null`, which would clear the field. The contract's `omitUndefined` fixes it, and body-shape tests pin it.
 - **Still hand-written, follow-ups for a later task:**
