@@ -2,6 +2,19 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 00:05 local: the sweep is under way, about 2,700 lines deleted**
+- **Merged:**
+  - **T-1060:** the dead mobile mock store and 4 old mocks are deleted (1,954 lines). On the phone, chats, a chat and a group work;
+  - **T-1061:** mobile approvals on the shared backend. On the phone, the backend card `apr-42`, Always (the rule shows) and Revoke all work;
+  - **T-1062:** 754 lines of web `mock/api.ts` are deleted (tools, chats, stickers, GIFs). The deleted routes were probed as unreachable, and the web chat list and sticker panel work as on main.
+- **Found:**
+  - mobile `mergeRulesFanOut` shows "Could not load the rules" when every AI that succeeded had no rules and one AI failed. This applies to real builds too (board);
+  - web mock sticker thumbnails are broken images on main too (board, with the mobile images item).
+- **Running, 3 workers:**
+  - **T-1063:** H2-1, mobile AIs, memory, audit and tools on the backend. It fixes the id mismatch behind "Could not load the rules";
+  - **T-1064:** H2-3, mobile machines, connections and directory. Contacts waits for backend domains;
+  - **T-1065:** W1b, the rest of the covered web routes.
+
 **2026-10-10 23:35 local: mock wave 2 complete; the sweep starts**
 - **Merged:**
   - **T-1045** (folders, backgrounds and media). On the phone, the media panel and the folder chips work;
