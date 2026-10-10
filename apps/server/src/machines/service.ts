@@ -462,7 +462,7 @@ function asStringArray(value: unknown): string[] {
 
 // `effect/sql` wraps driver failures in `SqlError` and exposes the structured
 // `UniqueViolation` reason; accept that or a plain `{ code: '23505' }` error
-// (Drizzle-wrapped driver errors and the recovery tests' doubles). Matched by
+// (plain driver errors and the recovery tests' doubles). Matched by
 // code/constraint, never by message text.
 function isUniqueViolation(error: unknown): boolean {
   if (error instanceof SqlError.SqlError) {

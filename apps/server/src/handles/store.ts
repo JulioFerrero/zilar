@@ -312,9 +312,9 @@ export async function claimHandle(
 
 // Whether `error` is a unique-constraint violation: either the structured
 // `effect/sql` `UniqueViolation` reason or a driver error carrying the
-// Postgres `23505` code. Drizzle wraps driver failures, so the code lives on
-// a nested `cause` (`groups/service.ts` still calls this from its drizzle
-// transaction). Walk the chain; the message check is a last-resort fallback
+// Postgres `23505` code. Driver failures can be wrapped, so the code may sit on
+// a nested `cause` (`groups/service.ts` calls this on its `effect/sql` insert).
+// Walk the chain; the message check is a last-resort fallback
 // for the wrapped shape only, never matched instead of a code.
 export function isUniqueViolation(error: unknown): boolean {
   if (error instanceof SqlError.SqlError) {

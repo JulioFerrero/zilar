@@ -12,8 +12,7 @@ const migrateProgram = Effect.gen(function* () {
 
   const { db, close } = createDb(config.DATABASE_URL);
 
-  // Dispose the `effect/sql` pool before closing the drizzle client it shares
-  // the database with.
+  // Dispose the `effect/sql` pool, which owns the connections, before closing.
   const release = Effect.promise(() => disposeSqlRuntime(db)).pipe(
     Effect.andThen(Effect.promise(() => close())),
   );

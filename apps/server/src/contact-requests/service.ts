@@ -350,7 +350,7 @@ export async function createContactRequest(
 // Whether `error` is a unique violation on one of the pending-request
 // indexes: either the structured `effect/sql` `UniqueViolation` reason (which
 // carries the constraint identifier) or a plain `{ code: '23505', constraint }`
-// object (Drizzle-wrapped driver errors and the recovery test's doubles).
+// object (plain driver errors and the recovery test's doubles).
 // Matched by code/constraint — never by message text.
 export function isPendingPairViolation(error: unknown): boolean {
   if (error instanceof SqlError.SqlError) {

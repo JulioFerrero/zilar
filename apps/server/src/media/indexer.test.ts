@@ -296,8 +296,7 @@ describe('indexChat', () => {
     atMicros: number;
   }
 
-  // at_micros is a bigint: the cast reads it back as a number, as the drizzle
-  // `mode: 'number'` column did.
+  // at_micros is a bigint: the cast reads it back as a number.
   async function rowsForChat() {
     return testSql(context)(
       Effect.gen(function* () {

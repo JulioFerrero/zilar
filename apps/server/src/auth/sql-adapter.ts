@@ -1,8 +1,6 @@
-// T-0690: a better-auth database adapter over `effect/sql`, replacing
-// `drizzleAdapter` once the production switch lands. It runs on the same
-// `SqlClient` the rest of the server uses (`sqlRuntimeFor(db)`), so it works
-// against Postgres and PGlite with no new dependency. The production switch
-// in `auth.ts` is a later task; this module is built and tested on its own.
+// T-0690: the better-auth database adapter over `effect/sql`, used by `auth.ts`.
+// It runs on the same `SqlClient` the rest of the server uses (`sqlRuntimeFor(db)`),
+// so it works against Postgres and PGlite with no new dependency.
 //
 // better-auth hands the custom adapter canonical camelCase field names and
 // expects canonical camelCase rows back. The SQL client camelCases result
@@ -174,8 +172,8 @@ type DeleteArgs = { model: string; where: CleanedWhere[] };
 
 // The auth tables' timestamps are `timestamp` (no time zone). The PGlite driver
 // writes a `Date` as its UTC wall clock but reads it back as local time; rebuild
-// the instant from the local components so the round trip preserves the value,
-// the way drizzle's `+0000` parse does. On a UTC host this is the identity.
+// the instant from the local components so the round trip preserves the value.
+// On a UTC host this is the identity.
 // Real pg needs no rebuild: its `timestamp` codec already maps the wall-clock
 // fields to the UTC fields of the `Date` (@effect/sql-pg 4.0.2,
 // dist/PgTypes.js:23-27), so `normalizeRow` leaves those rows unchanged.
@@ -227,7 +225,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
   async function create({ model, data }: CreateArgs): Promise<Row> {
     const row = toColumns(model, data);
     // `session.updated_at` and `account.updated_at` have no database default;
-    // drizzle fills them from `$onUpdate` on insert, so the adapter must too.
+    // The adapter fills them on insert.
     if (row.updated_at === undefined) {
       row.updated_at = new Date();
     }

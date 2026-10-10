@@ -150,7 +150,7 @@ const transcribeEffect = Effect.fnUntraced(function* (
 // `awaitSql` runs an effect/sql program on the database's registered runtime.
 // A SQL failure rejects the runtime promise with the original error, and
 // `Effect.promise` turns that rejection into a defect, so a DB failure rejects
-// the boundary promise unwrapped, exactly as the old drizzle `await` did.
+// the boundary promise unwrapped, exactly as a plain `await` would.
 const awaitSql = <A>(
   db: ServerDatabase,
   effect: EffectType.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,

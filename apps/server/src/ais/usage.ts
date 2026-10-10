@@ -39,8 +39,7 @@ function runSql<A>(
 }
 
 // `numeric` columns come back as strings from node-postgres (and PGlite), so
-// these stay `string` and the reads below keep the same `Number(...)`
-// conversion the drizzle version did.
+// these stay `string` and the reads below convert them with `Number(...)`.
 interface AiLimitRow {
   perDayUsd: string;
   perMonthUsd: string;

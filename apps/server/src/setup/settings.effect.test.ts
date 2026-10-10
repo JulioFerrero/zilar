@@ -1,5 +1,5 @@
 // The effect/sql versions of the setup settings helpers (T-0667). They run on
-// the same PGlite database the drizzle helpers use, through the runtime that
+// the same PGlite database the `setup/settings.ts` wrappers use, through the runtime that
 // `createTestContext` registers. No real mail provider or API key is used.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

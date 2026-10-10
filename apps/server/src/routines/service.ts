@@ -37,7 +37,7 @@ export type RoutineLastStatus = 'ok' | 'error' | 'skipped';
 export type { RoutineRow };
 
 // The tool columns `createRoutine` checks before inserting a routine; the
-// effect/sql row comes back camelCased like the drizzle row it replaced.
+// effect/sql row comes back camelCased.
 type RoutineToolRow = {
   id: string;
   aiId: string;

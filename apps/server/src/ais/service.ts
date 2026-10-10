@@ -468,8 +468,7 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
             input.acceptsDelegation !== undefined
           ) {
             // Every column here is NOT NULL, so a null means "keep the current
-            // value": COALESCE gives the same partial update the drizzle
-            // `set({...})` built before.
+            // value": COALESCE gives a partial update.
             yield* sql`UPDATE ais SET
               name = COALESCE(${input.name ?? null}, name),
               persona = COALESCE(${input.persona ?? null}, persona),

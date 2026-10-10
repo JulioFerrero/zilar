@@ -1,8 +1,6 @@
 // Contacts and the XMPP roster sync. Every query runs on the `effect/sql`
 // client registered for this database (see `../effect/sql`). The exported
-// functions stay `async` so routes and tests keep their shape during the
-// transition; calls into modules still on drizzle (`avatarIdsByOwner`,
-// `findInviteByCode`) stay drizzle and keep taking `db`.
+// functions stay `async` so routes and tests keep their shape.
 
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';

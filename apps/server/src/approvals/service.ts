@@ -175,7 +175,7 @@ export class ApprovalServiceError extends Error {
 // The raw shape the driver returns for one `approvals` row. The effect/sql
 // client camelCases the columns but may hand back `timestamptz` as an ISO
 // string rather than a `Date`; `toApprovalRow` normalises the three
-// timestamp columns so the rest of the module keeps the drizzle row type.
+// timestamp columns so the rest of the module keeps the `ApprovalRow` type.
 type ApprovalSqlRow = Omit<ApprovalRow, 'decidedAt' | 'expiresAt' | 'createdAt'> & {
   decidedAt: Date | string | null;
   expiresAt: Date | string;

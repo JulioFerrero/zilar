@@ -2,7 +2,7 @@
 // registered for this database (see `../effect/sql`). The exported functions
 // stay `async` so routes and tests keep their shape during the transition.
 //
-// Rows keep their drizzle shapes: `transformResultNames` camelCases the
+// Rows keep their camelCase shapes: `transformResultNames` camelCases the
 // `topics` and `group_members` columns into `TopicRow` and the row types here.
 
 import { Effect, Schema } from 'effect';

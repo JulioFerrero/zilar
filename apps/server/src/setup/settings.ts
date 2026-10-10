@@ -35,7 +35,7 @@ export function settingsCipherFor(
   return createSettingsCipher(masterKey);
 }
 
-// Drizzle-free wrappers over the `effect/sql` helpers below: every query runs
+// Wrappers over the `effect/sql` helpers below: every query runs
 // on the runtime registered for this database (see `../effect/sql`). They stay
 // `async` so routes, `index.ts` and existing tests keep their shape.
 function runSql<A, E>(
@@ -56,9 +56,8 @@ export function getMailSettings(
   return runSql(db, getMailSettingsEffect(cipher));
 }
 
-// The `effect/sql` helpers the wrappers above and `setup/api.ts` use. These
-// replaced the drizzle versions in T-0675; the setup transactions now run them
-// through `sql.withTransaction`.
+// The `effect/sql` helpers the wrappers above and `setup/api.ts` use. The setup
+// transactions run them through `sql.withTransaction`.
 
 interface InstanceSettingRow {
   key: string;

@@ -6,8 +6,7 @@
 //
 // Every query runs on the `effect/sql` client registered for this database
 // (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition; calls into modules still on
-// drizzle (`avatarIdsByOwner`) stay drizzle and keep taking `db`.
+// tests keep their shape.
 
 import { Effect } from 'effect';
 import { SqlClient, SqlError, type Statement } from 'effect/sql';

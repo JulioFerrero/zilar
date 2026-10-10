@@ -33,8 +33,8 @@ export function dmPairKey(ownBareJid: string, peerBareJid: string): string {
 }
 
 // The room-owning topic row, read through `effect/sql`. Selecting `*` and
-// letting the client camelCase the columns keeps the exact drizzle `TopicRow`
-// shape the access helpers below already took.
+// letting the client camelCase the columns keeps the `TopicRow` shape the
+// access helpers below already take.
 async function findTopicByRoomLocalpart(
   db: ServerDatabase,
   roomLocalpart: string,
