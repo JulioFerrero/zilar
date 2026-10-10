@@ -2,7 +2,8 @@
 // setTimeout and the matching itself is pure
 
 // The mock HTTP layer. `createMockHttp(data)` returns a handler shaped like
-// `fetch` minus the network: it answers `/me`, `/chats` and `/contacts` from the
+// `fetch` minus the network: it answers `/me`, `/chats`, `/contacts` and the
+// AI routes (`/ais`, `/ai-memory`, `/connections`, `/machines`) from the
 // in-memory seed, and returns `undefined` for every other path.
 //
 // The `undefined` contract matters for the app cutovers (plan tasks G and H):
@@ -11,8 +12,12 @@
 // this backend serves always answer a `Response`; anything else answers
 // `undefined`.
 import type { MockData } from './state';
+import { handleAiMemory } from './http/ai-memory';
+import { handleAis } from './http/ais';
 import { handleChats } from './http/chats';
+import { handleConnections } from './http/connections';
 import { handleContacts } from './http/contacts';
+import { handleMachines } from './http/machines';
 import { handleMe } from './http/me';
 import { DEFAULT_DELAY_MS, parseRequest, type MockRoute } from './http/shared';
 
@@ -20,7 +25,15 @@ export { DEFAULT_DELAY_MS };
 
 export type MockHttp = (path: string, init?: RequestInit) => Promise<Response | undefined>;
 
-const routes: readonly MockRoute[] = [handleMe, handleChats, handleContacts];
+const routes: readonly MockRoute[] = [
+  handleMe,
+  handleChats,
+  handleContacts,
+  handleAis,
+  handleAiMemory,
+  handleConnections,
+  handleMachines,
+];
 
 export function createMockHttp(
   data: MockData,

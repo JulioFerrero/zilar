@@ -1,8 +1,10 @@
-import type { ChatEntry } from '@zilar/api-contract';
+import type { ChatEntry, ConnectionView, Machine, PublicAi } from '@zilar/api-contract';
+import { mockAis, mockConnections, mockMachines } from './ais';
 import { chats } from './chats';
 import { messageSeeds } from './messages';
 import { defaultMe, people, type MockMe, type MockPerson } from './people';
 
+export type { MockAiMemory } from './ais';
 export type { MockMe, MockPerson } from './people';
 
 /** One stored message: `chatJid` is the record's key, `createdAt` an ISO string. */
@@ -20,6 +22,9 @@ export interface MockSeed {
   readonly people: readonly MockPerson[];
   readonly chats: readonly ChatEntry[];
   readonly messages: Readonly<Record<string, readonly MockMessage[]>>;
+  readonly ais: readonly PublicAi[];
+  readonly connections: readonly ConnectionView[];
+  readonly machines: readonly Machine[];
 }
 
 const MINUTE_MS = 60_000;
@@ -43,7 +48,15 @@ export function createSeed(now: () => Date = () => new Date()): MockSeed {
       text: seed.text,
     }));
   }
-  return { me: defaultMe(), people, chats, messages };
+  return {
+    me: defaultMe(),
+    people,
+    chats,
+    messages,
+    ais: mockAis,
+    connections: mockConnections,
+    machines: mockMachines,
+  };
 }
 
 export const defaultSeed: MockSeed = createSeed();

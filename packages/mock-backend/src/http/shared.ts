@@ -41,6 +41,24 @@ export function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+/** `204 No Content`, the success shape the contract's delete routes declare. */
+export function noContent(): Response {
+  return new Response(null, { status: 204 });
+}
+
+export function notFound(message: string): Response {
+  return jsonResponse({ error: { code: 'not_found', message } }, 404);
+}
+
+export function badRequest(code: string, message: string): Response {
+  return jsonResponse({ error: { code, message } }, 400);
+}
+
+/** `409` with a code the apps' error mapping already knows, like web's mock. */
+export function conflict(code: string, message: string): Response {
+  return jsonResponse({ error: { code, message } }, 409);
+}
+
 export function readJsonBody(init: RequestInit): Record<string, unknown> {
   if (typeof init.body !== 'string' || init.body === '') {
     return {};

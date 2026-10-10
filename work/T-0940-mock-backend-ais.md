@@ -1,7 +1,7 @@
 ---
 id: T-0940
 title: "Mock backend E1: the AI routes (ais, ai-memory, connections, machines) in @zilar/mock-backend (docs/audit/mock-plan.md task E, part 1)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0940-mock-backend-ais
 model: auto
@@ -55,4 +55,108 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Built the first half of task E: the AI route groups in `@zilar/mock-backend`,
+with the same bodies and mutations as web's mock (`apps/web/src/mock/api.ts`).
+
+- `src/data/ais.ts` (new): the AIs, provider connections, machines and AI-memory
+  seed. The AIs are keyed by the unified bare JIDs from `data/people.ts`
+  (`dev-1@ai.zilar.test`, `qa-1@ai.zilar.test`, `marketing@ai.zilar.test`), as
+  the spec named. Connections (`conn-openai`/`conn-anthropic`) and machines
+  (`mach-pending`/`mach-approved`/`mach-revoked`) mirror web's `seedState`.
+  Also holds `readAiLimits`/`isAiTemplate`/`seedAiMemory`.
+- `src/http/ais.ts` (new): `GET/POST /ais`, `GET/PATCH/DELETE /ais/:id`,
+  `POST /ais/:id/stop|resume`, `PUT /ais/:id/machine`.
+- `src/http/ai-memory.ts` (new): `GET /ai-memory`, `DELETE /ai-memory/facts/:id`,
+  `POST /ai-memory/clear`.
+- `src/http/connections.ts` (new): `GET/POST /connections`,
+  `POST /connections/:id/test`, `DELETE /connections/:id`.
+- `src/http/machines.ts` (new): `GET /machines`, `POST /machines/pairing-codes`,
+  `POST /machines/:id/approve|deny|revoke`, `PATCH/DELETE /machines/:id`.
+- `src/state.ts`: added the `ais`/`connections`/`machines` tables, per-domain
+  mutators and id sequences to `MockData`; a `reset()` rebuilds them from the
+  seed and never mutates a seed row.
+- `src/data/index.ts`: extended `MockSeed` and `createSeed` with the three
+  tables.
+- `src/http/shared.ts`: added `noContent`, `notFound`, `badRequest`, `conflict`.
+- `src/http.ts`: registered the four handlers in the routes array.
+
+Every file is under 400 lines (largest: `data/ais.ts` at 182).
+
+Not served, on purpose: `/ais/:id/approval-rules` (the approvals domain, task
+part 2) and the public `POST /runner/pair` (web's mock does not implement it
+either). Both answer `undefined`, so the app dispatcher's fallback still owns
+them.
+
+### Commands and results
+
+- `pnpm --filter @zilar/mock-backend typecheck`: pass (clean).
+- `pnpm gate` (from the repo root):
+  ```
+  gate: 10 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (1.0s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (2.1s)
+  PASS  effect  (0.9s)
+  SKIP tests @zilar/mock-backend (no nearby test files)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+- No unit tests added (the spec said none). I ran no package tests; gate skipped
+  them for this package.
+
+### Proof (throwaway script, deleted before commit)
+
+A throwaway `check-t0940.ts` imported `createMockBackend` and decoded each list
+with the contract schema (`Schema.decodeUnknownExit`), then created and deleted
+an AI. Real output:
+
+```
+GET /api/ais -> [
+  {"id":"ai-dev-1","name":"Dev-1","template":"dev","model":"gpt-4o",
+   "jid":"dev-1@ai.zilar.test","status":"active","providerConnectionId":"conn-openai",
+   "limits":{"perDayUsd":2,"perMonthUsd":20},"usage":null,"machineId":"mach-approved",
+   "createdAt":"2026-09-28T09:00:00.000Z"},
+  {"id":"ai-qa-1","name":"QA-1", ... same shape, machineId null ...},
+  {"id":"ai-marketing","name":"Marketing AI","template":"marketing",
+   "model":"claude-sonnet-5","jid":"marketing@ai.zilar.test",
+   "limits":{"perDayUsd":5,"perMonthUsd":50},"usage":{"todayUsd":1.7,"windowUsd":6},
+   "machineId":null, ...}
+]
+GET /api/ai-memory -> {"facts":[{"id":"fact-1","text":"Julio prefers short answers."},{"id":"fact-2","text":"The launch is on Friday."}],"lines":["#0-15 Summary: the team agreed on the launch plan and pricing.","#16 2026-10-01 Julio: Let us keep the pricing simple.","#17 2026-10-01 Dev-1: Agreed, two tiers only."],"canChange":true}
+GET /api/connections -> [{"id":"conn-openai","provider":"openai","label":"Work key","status":"active","createdAt":"2026-09-20T10:00:00.000Z"},{"id":"conn-anthropic","provider":"anthropic","label":"Personal key","status":"active","createdAt":"2026-09-21T10:00:00.000Z"}]
+GET /api/machines -> ["mach-pending:pending","mach-approved:approved","mach-revoked:revoked"]
+POST /api/ais -> 201 {"id":"ai-mock-1","name":"Researcher","template":"custom","persona":"","model":"gpt-4o","jid":"ai-ai-mock-1@zilar.test","status":"active","providerConnectionId":"conn-openai","limits":{"perDayUsd":1,"perMonthUsd":10},"machineId":null,"createdAt":"2026-10-10T14:08:55.980Z"}
+DELETE /api/ais/ai-mock-1 -> 204
+GET deleted AI -> 404
+```
+
+(The `GET /api/ais` block is abbreviated with `...` only where a value repeats
+the JSON above; the other lines are verbatim.)
+
+### Deviations / decisions
+
+- Seed AI ids are the unified `people.ts` ids (`ai-dev-1`, `ai-qa-1`,
+  `ai-marketing`), not web's `ai-mock-dev`/`ai-mock-marketing`, because the spec
+  pointed at the JID seed (`ids.ts:21-25`) and plan §2.5/Q2 move to one
+  JID-keyed seed.
+- The AI-memory clear route keys off the body's `chat`/`ai` (as the contract's
+  `clear` payload defines), while view/delete key off the query, matching web.
+- `GET /ais/:id/approval-rules` and `/runner/pair` are not implemented here
+  (see above).
+
+### Open questions
+
+None.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved. The pre-review is clean, with 3 nits.**
+- **Routes:** ais, ai-memory, connections and machines in `packages/mock-backend`. 775 lines added, with no file over 182, and only the package changed.
+- **Nits for the mock follow-ups:**
+  - `removeAiFact` relies on `this`;
+  - a bare `decodeURIComponent` throws on malformed segments;
+  - `cloneAi` shares `usage`, and machines share their `drivers` arrays.
+- **Check:** the gate passed.
