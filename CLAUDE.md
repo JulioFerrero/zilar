@@ -34,6 +34,7 @@ The full loop is `docs/LEAD_LOOP.md`; commands, devices and pitfalls are in `doc
 
 ## Hard rules
 
+- **Tests (Julio, 2026-10-10):** tests only for crucial code: auth and keys, permissions and money, and the message pipeline. There are no UI tests, no "tests first" rule and no coverage target. Specs ask for at most a few tests, and only in those areas. Cutting the old tests is T-0931 to T-0934.
 - Read a file before writing about it; list a folder before creating a file in it.
 - One command at a time; read its result before the next. Never chain a commit or merge behind a command that can fail.
 - No Python or `sed` to edit files. Edit and Write are for specs, docs and memory.

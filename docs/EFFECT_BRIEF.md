@@ -54,7 +54,8 @@ This page is the short version for conversion workers. Read it, your task file a
 - **Never use `git stash`:** the stash list is shared by every worktree of the repo, so a pop can take another worker's changes (this happened on 2026-10-09). For a "before" run, use `git diff > <scratch file>` and `git checkout -- <files>`, then `git apply` it back, or compare with the base in a separate checkout.
 - **Scratch files go in your own subfolder:** use `<scratchpad>/<your task id>/`, never a shared file name. Parallel workers share the scratchpad, and on 2026-10-10 one worker's script ran in another worker's tree. Every git command names your worktree explicitly (`cd <your worktree> && ...` or `git -C <your worktree>`).
 - **Before you commit:** run `pnpm exec prettier --write <your files>`, `pnpm exec oxlint <your files>` (it must be clean; the React rules forbid, for example, reading `ref.current` during render) and the package typecheck (`pnpm --filter <pkg> typecheck`).
-- **Existing tests:** do not edit them unless the task allows it. A task that says "tests first" commits them on the old code before converting.
+- **Which tests to write (Julio, 2026-10-10):** only for crucial code: auth and keys, permissions and money, and the message pipeline. Also write one when you fix a real bug there. There is no "tests first" rule and no coverage target, and UI code gets no tests.
+- **Existing tests:** do not edit them unless the task allows it. When your change breaks a test that is not crucial, delete it and list it in the Report.
 
 ## The Report
 
