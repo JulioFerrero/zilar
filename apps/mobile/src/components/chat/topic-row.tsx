@@ -1,6 +1,5 @@
 import { formatListTime, previewMessage } from '@zilar/chat-core';
 import { Lock, Pin, VolumeX } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { Pressable, View } from 'react-native';
 
 import { AiBadge } from '@/components/chat/ai-badge';
@@ -9,7 +8,6 @@ import { Ticks } from '@/components/chat/ticks';
 import { PulseDot } from '@/components/chat/typing-dots';
 import { Text } from '@/components/ui/text';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
-import { asColorScheme } from '@/lib/color-scheme';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { primaryKey, raisedPill } from '@/lib/depth';
 import { useBlockedJids } from '@/lib/blocked-users';
@@ -64,7 +62,6 @@ export function TopicRow({
   onPress: () => void;
   onLongPress: () => void;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const names = useChatStore((state) => state.typing[chat.id]?.names);
   const hasDraft = useChatStore((state) => state.drafts[chat.id] !== undefined);
   const messages = useChatStore((state) => state.messages(chat.id));
@@ -108,18 +105,18 @@ export function TopicRow({
                   accessibilityLabel="Private topic"
                   className="ml-1.5 shrink-0"
                 >
-                  <Lock size={14} color={MUTED_FOREGROUND[scheme]} />
+                  <Lock size={14} color={MUTED_FOREGROUND} />
                 </View>
               ) : null}
               {chat.isAI ? <AiBadge className="ml-1.5" /> : null}
               {chat.pinnedAt !== undefined ? (
                 <View className="ml-2" accessibilityRole="image" accessibilityLabel="Pinned chat">
-                  <Pin size={14} color={MUTED_FOREGROUND[scheme]} />
+                  <Pin size={14} color={MUTED_FOREGROUND} />
                 </View>
               ) : null}
               {chat.muted ? (
                 <View className="ml-2" accessibilityRole="image" accessibilityLabel="Muted chat">
-                  <VolumeX size={14} color={MUTED_FOREGROUND[scheme]} />
+                  <VolumeX size={14} color={MUTED_FOREGROUND} />
                 </View>
               ) : null}
             </View>
@@ -142,7 +139,7 @@ export function TopicRow({
             </View>
             {label !== undefined ? (
               <View className="mr-2 flex-1 flex-row items-center gap-1.5">
-                <PulseDot color={MUTED_FOREGROUND[scheme]} />
+                <PulseDot color={MUTED_FOREGROUND} />
                 <Text numberOfLines={1} className="text-[14px] text-muted-foreground">
                   {label}
                 </Text>
@@ -165,7 +162,7 @@ export function TopicRow({
             ) : showTicks && last ? (
               <Ticks
                 status={last.status as MessageStatus}
-                color={last.status === 'read' ? '#ededed' : MUTED_FOREGROUND[scheme]}
+                color={last.status === 'read' ? '#ededed' : MUTED_FOREGROUND}
               />
             ) : null}
           </View>

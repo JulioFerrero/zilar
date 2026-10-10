@@ -39,8 +39,6 @@ vi.mock('expo-router', () => ({
   useRouter: () => mocks.router,
 }));
 
-vi.mock('nativewind', () => ({ useColorScheme: () => ({ colorScheme: 'dark' }) }));
-
 vi.mock('lucide-react-native', () => ({
   Archive: 'svg',
   ChevronLeft: 'svg',

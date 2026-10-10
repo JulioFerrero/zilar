@@ -4,13 +4,11 @@ import { RefreshCw } from 'lucide-react-native';
 import { Effect, Fiber } from 'effect';
 
 import { describeAuditEntry, formatRelativeAudit } from '@zilar/chat-core';
-import { useColorScheme } from 'nativewind';
 
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import type { AuditApi, PublicAuditEntry } from '@/lib/audit-api';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 
 /** Fixed user-facing line when the first activity page fails to load. */
@@ -162,7 +160,6 @@ export function AiActivityContent({
  * Split out so tests can render it without mounting the loading effect.
  */
 export function AiActivityHeader({ ready, onRefresh }: { ready: boolean; onRefresh: () => void }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <View className="flex-row items-center justify-between">
       <Text className="px-2 text-[13px] font-semibold text-muted-foreground">Activity</Text>
@@ -174,7 +171,7 @@ export function AiActivityHeader({ ready, onRefresh }: { ready: boolean; onRefre
           accessibilityLabel="Refresh activity"
           onPress={onRefresh}
         >
-          <RefreshCw size={16} color={ICON[scheme]} />
+          <RefreshCw size={16} color={ICON} />
         </Button>
       ) : null}
     </View>

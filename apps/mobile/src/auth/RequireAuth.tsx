@@ -4,17 +4,14 @@ import { ActivityIndicator, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { ACCENT } from '@/lib/colors';
-import { asColorScheme } from '@/lib/color-scheme';
-import { useColorScheme } from 'nativewind';
 
 import { guardDecision } from './guard';
 import { useSession } from './session';
 
 export function LoadingScreen() {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <View className="flex-1 items-center justify-center bg-background">
-      <ActivityIndicator color={ACCENT[scheme]} />
+      <ActivityIndicator color={ACCENT} />
       <Text className="mt-3 text-[15px] text-muted-foreground">Loading…</Text>
     </View>
   );

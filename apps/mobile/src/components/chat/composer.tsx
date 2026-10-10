@@ -15,7 +15,6 @@ import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { createAttachmentPicker, createGifDownloader } from '@/lib/attachment-native';
 import type { AttachmentPicker, GifDownloader, PickedFile } from '@/lib/attachment-ports';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import {
@@ -58,7 +57,6 @@ import type {
   SendVoiceRecording,
 } from '@/store/types';
 import { useChatStore } from '@/store/chat-store-provider';
-import { useColorScheme } from 'nativewind';
 
 /**
  * A storage read or write, a server load, a picker or a download rejected.
@@ -120,7 +118,6 @@ function demoPickedFile(attachment: Attachment): PickedFile {
 }
 
 function ReplyBar({ reply, onCancel }: { reply: ReplyRef; onCancel: () => void }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <View className="mb-2 flex-row items-stretch overflow-hidden rounded-[10px]" style={well}>
       <View className="w-[3px] bg-[#333333]" />
@@ -140,7 +137,7 @@ function ReplyBar({ reply, onCancel }: { reply: ReplyRef; onCancel: () => void }
         onPress={onCancel}
         className="w-9 items-center justify-center active:bg-surface-raised"
       >
-        <X size={18} color={ICON[scheme]} />
+        <X size={18} color={ICON} />
       </Pressable>
     </View>
   );
@@ -192,7 +189,6 @@ export function Composer({
   picker: pickerProp,
   gifDownloader: gifDownloaderProp,
 }: ComposerProps) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const insets = useSafeAreaInsets();
   const { pressed, reduceMotion, setPressed } = useKeyPress();
   const editTarget = useChatStore((state) => state.editTarget);
@@ -250,7 +246,7 @@ export function Composer({
     setMentions(reset.state.mentions);
     setMentionQuery(reset.state.query);
   }
-  const iconColor = ICON[scheme];
+  const iconColor = ICON;
   const placeholder = title === undefined ? 'Message' : `Message ${title}`;
 
   // Attachments (T-0150): the paperclip opens the attach sheet. Picking is

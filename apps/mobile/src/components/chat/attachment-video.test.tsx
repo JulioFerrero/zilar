@@ -37,16 +37,8 @@ vi.mock('lucide-react-native', () => ({
   Video: 'Video',
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
-}));
-
 vi.mock('@/lib/colors', () => ({
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
+  ICON: '#d4d4d4',
 }));
 
 vi.mock('./attachment-message', () => ({

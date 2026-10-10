@@ -1,12 +1,10 @@
 import { ChevronRight } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
-import { useColorScheme } from 'nativewind';
 
 import { AiBadge } from '@/components/chat/ai-badge';
 import { Avatar } from '@/components/chat/avatar';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
-import { asColorScheme } from '@/lib/color-scheme';
 import { cn } from '@/lib/utils';
 
 import type { PublicAi } from '../../lib/ais-api';
@@ -24,7 +22,6 @@ export function AiRow({
   highlighted: boolean;
   onPress: () => void;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <Pressable
       accessibilityRole="button"
@@ -58,7 +55,7 @@ export function AiRow({
           {formatLimit(ai.limits.perDayUsd)}/day · {formatLimit(ai.limits.perMonthUsd)}/month
         </Text>
       </View>
-      <ChevronRight size={20} color={MUTED_FOREGROUND[scheme]} />
+      <ChevronRight size={20} color={MUTED_FOREGROUND} />
     </Pressable>
   );
 }

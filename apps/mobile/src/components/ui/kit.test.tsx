@@ -28,10 +28,6 @@ vi.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('lucide-react-native', () => ({
   Bell: 'Bell',
   ChevronRight: 'ChevronRight',
@@ -298,7 +294,7 @@ describe('ConfirmDialog', () => {
 describe('TextField', () => {
   it('uses the muted foreground colour for the placeholder by default', () => {
     const html = renderToStaticMarkup(createElement(TextField, { placeholder: 'Type here' }));
-    expect(html).toContain(MUTED_FOREGROUND.dark);
+    expect(html).toContain(MUTED_FOREGROUND);
   });
 
   it('keeps a caller placeholder colour', () => {
@@ -306,7 +302,7 @@ describe('TextField', () => {
       createElement(TextField, { placeholder: 'Type here', placeholderTextColor: '#123456' }),
     );
     expect(html).toContain('#123456');
-    expect(html).not.toContain(MUTED_FOREGROUND.dark);
+    expect(html).not.toContain(MUTED_FOREGROUND);
   });
 
   it('renders a label above the field and only the input without one', () => {
@@ -328,7 +324,7 @@ describe('TextField', () => {
 describe('SearchField', () => {
   it('uses the muted foreground colour for the placeholder by default', () => {
     const html = renderToStaticMarkup(createElement(SearchField, { placeholder: 'Search' }));
-    expect(html).toContain(MUTED_FOREGROUND.dark);
+    expect(html).toContain(MUTED_FOREGROUND);
   });
 
   it('renders a custom icon instead of Search', () => {

@@ -36,16 +36,8 @@ vi.mock('lucide-react-native', () => ({
   Paperclip: 'Paperclip',
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
-}));
-
 vi.mock('@/lib/colors', () => ({
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
+  ICON: '#d4d4d4',
 }));
 
 describe('attach sheet (T-0150)', () => {

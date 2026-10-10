@@ -13,7 +13,6 @@ import {
   UserRound,
   type LucideIcon,
 } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 
@@ -25,7 +24,6 @@ import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
 import { Text } from '@/components/ui/text';
 import { ACCENT, ICON, MUTED_FOREGROUND } from '@/lib/colors';
-import { asColorScheme } from '@/lib/color-scheme';
 import { fromApi } from '@/lib/effect/api-effect';
 import type { MyProfile } from '@/lib/profile-api';
 
@@ -57,9 +55,9 @@ const HUB_ICONS: Record<SettingsIconId, LucideIcon> = {
   folders: FolderOpen,
 };
 
-function hubIcon(icon: SettingsIconId, scheme: 'light' | 'dark') {
+function hubIcon(icon: SettingsIconId) {
   const Icon = HUB_ICONS[icon];
-  return <Icon size={18} color={ICON[scheme]} />;
+  return <Icon size={18} color={ICON} />;
 }
 
 function ProfileHeaderCard({
@@ -70,7 +68,6 @@ function ProfileHeaderCard({
   onPress: () => void;
 }) {
   const me = useAuthStore((state) => state.me);
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const name = profile?.name ?? me?.name ?? '';
   if (name === '') {
     return null;
@@ -92,7 +89,7 @@ function ProfileHeaderCard({
           {handle === null ? (me?.email ?? '') : `@${handle}`}
         </Text>
       </View>
-      <ChevronRight size={18} color={MUTED_FOREGROUND[scheme]} />
+      <ChevronRight size={18} color={MUTED_FOREGROUND} />
     </Pressable>
   );
 }
@@ -106,7 +103,6 @@ function GroupCard({
   pendingRequests: number;
   onOpen: (href: string) => void;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <View className="gap-2">
       <SectionLabel>{group.label}</SectionLabel>
@@ -114,7 +110,7 @@ function GroupCard({
         {group.rows.map((row) => (
           <ListRow
             key={row.id}
-            icon={<IconTile testID={row.iconTestId}>{hubIcon(row.icon, scheme)}</IconTile>}
+            icon={<IconTile testID={row.iconTestId}>{hubIcon(row.icon)}</IconTile>}
             title={row.title}
             subtitle={row.subtitle}
             {...(row.id === 'requests' ? { count: pendingRequests } : {})}
@@ -129,7 +125,6 @@ function GroupCard({
 
 function SettingsHub() {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const { api } = useProfileApi();
   const { api: contactsApi } = useContactsApi();
   const [profile, setProfile] = useState<MyProfile | null>(null);
@@ -185,7 +180,7 @@ function SettingsHub() {
       <View className="gap-6">
         {loading ? (
           <View className="items-center py-4">
-            <ActivityIndicator color={ACCENT[scheme]} />
+            <ActivityIndicator color={ACCENT} />
           </View>
         ) : (
           <ProfileHeaderCard profile={profile} onPress={() => router.push('/settings/profile')} />

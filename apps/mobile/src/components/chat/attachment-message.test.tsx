@@ -56,16 +56,8 @@ vi.mock('lucide-react-native', () => ({
   RotateCcw: 'RotateCcw',
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
-}));
-
 vi.mock('@/lib/colors', () => ({
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
+  ICON: '#d4d4d4',
 }));
 
 const TRUSTED = new Set(['upload.zilar.test', 'zilar.test']);

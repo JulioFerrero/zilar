@@ -42,10 +42,6 @@ vi.mock('expo-router', async () => {
 
 vi.mock('expo-clipboard', () => clipboard);
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', async () => {
   const React = await import('react');
   return {
@@ -226,12 +222,8 @@ vi.mock('@/components/machines/use-machines-api', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
-  ACCENT_FOREGROUND: { dark: '#0a0a0a', light: '#0a0a0a' },
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ACCENT_FOREGROUND: '#0a0a0a',
+  ICON: '#d4d4d4',
 }));
 
 const CREATED_AT = '2026-10-03T10:00:00.000Z';

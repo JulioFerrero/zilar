@@ -9,11 +9,9 @@ import {
   type PinchGestureHandlerEventPayload,
 } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useColorScheme } from 'nativewind';
 
 import { Text } from '@/components/ui/text';
 import { isTrustedMediaUrl, safeHttpUrl } from '@/lib/attachments';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import { imageGradient } from '@/lib/image-presets';
 import { raisedPill } from '@/lib/depth';
@@ -203,7 +201,6 @@ export function AttachmentFileRow({
   onOpen,
   opening = false,
 }: AttachmentFileProps) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const meta = failed
     ? 'Upload failed'
     : uploading
@@ -217,7 +214,7 @@ export function AttachmentFileRow({
     <View className="min-w-[210px] max-w-[320px]">
       <View className="flex-row items-center gap-2.5 rounded-[10px] px-2.5 py-2" style={raisedPill}>
         <View className="h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-surface">
-          <FileText size={20} color={ICON[scheme]} />
+          <FileText size={20} color={ICON} />
         </View>
         <View className="min-w-0 flex-1">
           <Text numberOfLines={1} className="text-[13px] font-semibold text-foreground">
@@ -237,7 +234,7 @@ export function AttachmentFileRow({
             onPress={onRetry}
             className="h-8 w-8 shrink-0 items-center justify-center rounded-[8px] active:bg-surface"
           >
-            <RotateCcw size={16} color={ICON[scheme]} />
+            <RotateCcw size={16} color={ICON} />
           </Pressable>
         ) : opening || uploading ? (
           <ActivityIndicator accessibilityLabel={opening ? 'Opening' : 'Uploading'} />
@@ -250,7 +247,7 @@ export function AttachmentFileRow({
             onPress={onOpen}
             className="h-8 w-8 shrink-0 items-center justify-center rounded-[8px] active:bg-surface"
           >
-            <ArrowUpRight size={16} color={ICON[scheme]} />
+            <ArrowUpRight size={16} color={ICON} />
           </Pressable>
         )}
       </View>

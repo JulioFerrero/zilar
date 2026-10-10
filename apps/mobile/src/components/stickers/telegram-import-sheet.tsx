@@ -1,6 +1,5 @@
 import { Effect } from 'effect';
 import { Clock, Info, X } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,7 +13,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT, ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import type { StickersApi, TelegramImportResult } from '@/lib/stickers-api';
 
@@ -52,7 +50,6 @@ export function TelegramImportSheet({
   /** Injected in tests so no network is touched. */
   importFn?: (input: string) => Promise<TelegramImportResult>;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -157,7 +154,7 @@ export function TelegramImportSheet({
                 onPress={close}
                 className="h-9 w-9 items-center justify-center rounded-lg active:bg-surface-raised disabled:opacity-60"
               >
-                <X size={20} color={ICON[scheme]} />
+                <X size={20} color={ICON} />
               </Pressable>
             </View>
 
@@ -204,7 +201,7 @@ export function TelegramImportSheet({
                   ) : null}
                   {result.partial ? (
                     <View className="flex-row items-center gap-1.5">
-                      <Clock size={14} color={MUTED_FOREGROUND[scheme]} />
+                      <Clock size={14} color={MUTED_FOREGROUND} />
                       <Text className="flex-1 text-[14px] text-muted-foreground">
                         The import ran out of time. Run it again to fill in the rest.
                       </Text>
@@ -250,7 +247,7 @@ export function TelegramImportSheet({
                     accessibilityLiveRegion="polite"
                     className="mt-3 flex-row items-center gap-2"
                   >
-                    <ActivityIndicator color={ACCENT[scheme]} />
+                    <ActivityIndicator color={ACCENT} />
                     <Text className="text-[13px] text-muted-foreground">
                       This can take up to 30 seconds.
                     </Text>
@@ -290,7 +287,7 @@ export function TelegramImportSheet({
                   accessibilityLabel="Pack link or name"
                 />
                 <View className="mt-2 flex-row items-start gap-1.5">
-                  <Info size={14} color={MUTED_FOREGROUND[scheme]} />
+                  <Info size={14} color={MUTED_FOREGROUND} />
                   <Text className="flex-1 text-[13px] text-muted-foreground">
                     Imported packs are for personal use. The pack stays private and cannot be shared
                     with the server. Its art belongs to its creators.
@@ -301,7 +298,7 @@ export function TelegramImportSheet({
                     accessibilityLiveRegion="polite"
                     className="mt-3 flex-row items-center gap-2"
                   >
-                    <ActivityIndicator color={ACCENT[scheme]} />
+                    <ActivityIndicator color={ACCENT} />
                     <Text className="text-[13px] text-muted-foreground">
                       This can take up to 30 seconds.
                     </Text>

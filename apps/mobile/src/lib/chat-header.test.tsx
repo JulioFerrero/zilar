@@ -47,10 +47,6 @@ vi.mock('../store/chat-store-provider', () => ({
   useChatStore: () => undefined,
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'light' }),
-}));
-
 vi.mock('lucide-react-native', () => ({
   ChevronLeft: 'ChevronLeft',
   Lock: 'Lock',

@@ -2,7 +2,6 @@ import { useRouter } from 'expo-router';
 import { Plus, Zap } from 'lucide-react-native';
 import { useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, View } from 'react-native';
-import { useColorScheme } from 'nativewind';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 
@@ -25,7 +24,6 @@ import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import type { AiLimits, AiTemplate, Connection, CreateAiInput } from '@/lib/ais-api';
 import { ACCENT } from '@/lib/colors';
-import { asColorScheme } from '@/lib/color-scheme';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 
@@ -56,7 +54,6 @@ export default function CreateAiScreen() {
 
 function CreateAiWizard() {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const { api } = useAisApi();
 
   const [form, setForm] = useState<WizardForm>(INITIAL_FORM);
@@ -165,7 +162,7 @@ function CreateAiWizard() {
     return (
       <AisScreenShell title="Create an AI" onBack={() => router.back()}>
         <View className="items-center gap-3 px-4 pt-12">
-          <Zap size={32} color={ACCENT[scheme]} />
+          <Zap size={32} color={ACCENT} />
           <Text accessibilityRole="alert" className="text-center text-[15px] text-danger">
             {loadError.message}
           </Text>
@@ -333,7 +330,6 @@ function ReviewStep({
   limits: AiLimits | null;
   connection: Connection | null;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const rows: Array<[string, string]> = [
     ['Name', form.name.trim()],
     ['Template', templateLabel(form.template)],
@@ -370,7 +366,7 @@ function ReviewStep({
         </Text>
       </View>
       <View className="flex-row items-center gap-1.5">
-        <Plus size={14} color={ACCENT[scheme]} />
+        <Plus size={14} color={ACCENT} />
         <Text className="flex-1 text-[13px] text-muted-foreground">
           Creating this AI provisions its chat account and issues a capped provider key.
         </Text>

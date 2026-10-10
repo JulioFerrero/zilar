@@ -39,10 +39,6 @@ vi.mock('@/components/ui/text', () => ({
   TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('@/components/chat/avatar', () => ({
   Avatar: 'Avatar',
 }));

@@ -21,10 +21,6 @@ vi.mock('expo-clipboard', () => ({
   setStringAsync: () => Promise.resolve(),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 // `Pressable` is a function so the test can read the `accessibilityState` prop
 // off the `Button` it backs: `renderToStaticMarkup` stringifies object props to
 // `[object Object]` on custom elements, so the value cannot be read otherwise.
@@ -87,15 +83,11 @@ vi.mock('@/components/machines/use-machines-api', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
-  ACCENT: { dark: '#ededed', light: '#ededed' },
-  ACCENT_FOREGROUND: { dark: '#0a0a0a', light: '#0a0a0a' },
+  ACCENT: '#ededed',
+  ACCENT_FOREGROUND: '#0a0a0a',
   DANGER: { dark: '#dc2626', light: '#dc2626' },
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ICON: '#d4d4d4',
+  MUTED_FOREGROUND: '#a1a1a1',
 }));
 
 const CREATED_AT = '2026-10-03T10:00:00.000Z';

@@ -22,8 +22,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('expo-router', () => ({ useRouter: () => mocks.router }));
 
-vi.mock('nativewind', () => ({ useColorScheme: () => ({ colorScheme: 'dark' }) }));
-
 vi.mock('react-native', () => ({
   KeyboardAvoidingView: 'div',
   Platform: { OS: 'ios' },

@@ -4,7 +4,6 @@ import { Ban, ChevronLeft, UserPlus } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { Button } from '@/components/ui/button';
@@ -14,7 +13,6 @@ import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import type { ContactRequestView } from '@/lib/contacts-api';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
@@ -45,7 +43,6 @@ export default function RequestsScreen() {
 
 function RequestsList() {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const { api, scenario } = useContactsApi();
 
   const [incoming, setIncoming] = useState<ContactRequestView[]>([]);
@@ -115,7 +112,7 @@ function RequestsList() {
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View className="flex-row items-center gap-1 px-2 py-2">
         <IconButton label="Back" onPress={() => router.back()}>
-          <ChevronLeft size={24} color={ICON[scheme]} />
+          <ChevronLeft size={24} color={ICON} />
         </IconButton>
         <View className="min-w-0 flex-1">
           <Text numberOfLines={1} className="text-[20px] font-semibold leading-6 text-foreground">
@@ -154,7 +151,7 @@ function RequestsList() {
 
           {status === 'ready' && pending === 0 ? (
             <View className="items-center gap-3 pt-16">
-              <UserPlus size={32} color={ICON[scheme]} />
+              <UserPlus size={32} color={ICON} />
               <Text className="px-4 text-center text-[15px] text-muted-foreground">
                 No pending requests.
               </Text>
@@ -198,7 +195,7 @@ function RequestsList() {
               <ListRow
                 icon={
                   <IconTile>
-                    <Ban size={18} color={ICON[scheme]} />
+                    <Ban size={18} color={ICON} />
                   </IconTile>
                 }
                 title="Blocked people"

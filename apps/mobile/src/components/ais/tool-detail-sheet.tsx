@@ -4,13 +4,11 @@ import { useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { asColorScheme } from '@/lib/color-scheme';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { fromApi } from '@/lib/effect/api-effect';
 import { type ActionState, failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
@@ -555,8 +553,6 @@ function ToolDetailLoader({
   onDeleted: (toolId: string) => void;
 }) {
   const insets = useSafeAreaInsets();
-  const { colorScheme } = useColorScheme();
-  const scheme = asColorScheme(colorScheme);
   const [loaded, setLoaded] = useState<LoadedDetail | null>(null);
   const [shownVersion, setShownVersion] = useState<number | null>(null);
   const [shownSource, setShownSource] = useState<string | null>(null);
@@ -773,7 +769,7 @@ function ToolDetailLoader({
           accessibilityLabel="Close tool"
           onPress={onClose}
         >
-          <X size={20} color={MUTED_FOREGROUND[scheme]} />
+          <X size={20} color={MUTED_FOREGROUND} />
         </Button>
       </View>
       <ScrollView

@@ -41,7 +41,6 @@ vi.mock('expo-router', async () => {
     useRouter: () => h.router,
   };
 });
-vi.mock('nativewind', () => ({ useColorScheme: () => ({ colorScheme: 'dark' }) }));
 vi.mock('lucide-react-native', () => ({ ChevronLeft: () => null }));
 vi.mock('react-native', async () => {
   const { createElement: el } = await import('react');

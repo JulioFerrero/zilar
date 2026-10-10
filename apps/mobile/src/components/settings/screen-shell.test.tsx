@@ -28,10 +28,6 @@ vi.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => insets,
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('lucide-react-native', () => ({
   ChevronLeft: 'ChevronLeft',
 }));

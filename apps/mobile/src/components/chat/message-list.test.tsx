@@ -94,10 +94,6 @@ vi.mock('react-native-svg', () => ({
   Path: 'Path',
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('@/store/chat-store-provider', () => {
   const first = new Date(Date.UTC(2026, 8, 28, 10, 0));
   const stored = [
@@ -223,11 +219,10 @@ vi.mock('expo-haptics', () => ({
   ImpactFeedbackStyle: { Light: 'light' },
 }));
 
-vi.mock('@/lib/color-scheme', () => ({ asColorScheme: () => 'dark' }));
 vi.mock('@/lib/colors', () => ({
-  BUBBLE_COLORS: { dark: { outgoingMeta: '#555', incomingMeta: '#555' } },
-  ICON: { dark: '#d4d4d4' },
-  ACCENT_FOREGROUND: { dark: '#0a0a0a' },
+  BUBBLE_COLORS: { outgoingMeta: '#555', incomingMeta: '#555' },
+  ICON: '#d4d4d4',
+  ACCENT_FOREGROUND: '#0a0a0a',
 }));
 vi.mock('@/lib/depth', () => ({
   WELL_BACKGROUND: '#0c0c0c',

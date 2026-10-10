@@ -20,7 +20,6 @@ const h = vi.hoisted(() => ({
 
 vi.mock('expo-router', () => ({ useLocalSearchParams: () => h.params }));
 vi.mock('expo-linear-gradient', () => ({ LinearGradient: () => null }));
-vi.mock('nativewind', () => ({ useColorScheme: () => ({ colorScheme: 'dark' }) }));
 vi.mock('react-native', async () => {
   const { createElement: el } = await import('react');
   return { View: ({ children }: { children?: ReactNode }) => el('div', null, children) };

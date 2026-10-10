@@ -15,10 +15,6 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('./avatar', () => ({
   Avatar: 'Avatar',
 }));
@@ -72,16 +68,12 @@ vi.mock('@/lib/utils', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
-  MUTED_FOREGROUND: { dark: '#8a8a8a', light: '#8a8a8a' },
+  MUTED_FOREGROUND: '#8a8a8a',
 }));
 
 vi.mock('@/lib/depth', () => ({
   primaryKey: {},
   raisedPill: {},
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
 }));
 
 vi.mock('@/lib/types', () => ({

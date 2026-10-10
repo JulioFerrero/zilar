@@ -1,8 +1,6 @@
 import { Check } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { View } from 'react-native';
 
-import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT_FOREGROUND } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
@@ -17,7 +15,6 @@ type CheckboxProps = {
  * icon on accent when checked, an empty bordered box otherwise.
  */
 export function Checkbox({ checked, disabled = false }: CheckboxProps) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <View
       className={cn(
@@ -26,7 +23,7 @@ export function Checkbox({ checked, disabled = false }: CheckboxProps) {
         disabled && 'opacity-50',
       )}
     >
-      {checked ? <Check size={14} strokeWidth={3} color={ACCENT_FOREGROUND[scheme]} /> : null}
+      {checked ? <Check size={14} strokeWidth={3} color={ACCENT_FOREGROUND} /> : null}
     </View>
   );
 }

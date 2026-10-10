@@ -7,12 +7,10 @@ import { TypingDots } from '@/components/chat/typing-dots';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { chatSubtitle } from '@/lib/chat';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { typingLabel } from '@/lib/format';
 import type { ChatSummary } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
-import { useColorScheme } from 'nativewind';
 
 type ChatHeaderProps = {
   chat: ChatSummary;
@@ -47,8 +45,7 @@ export function ChatHeader({
   onOpenInfo,
   onOpenGroup,
 }: ChatHeaderProps) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
-  const iconColor = ICON[scheme];
+  const iconColor = ICON;
   const names = useChatStore((state) => state.typing[chat.id]?.names);
   const hasDraft = useChatStore((state) => state.drafts[chat.id] !== undefined);
   const typing = typingLabel(chat, names ?? []);
@@ -70,7 +67,7 @@ export function ChatHeader({
         </Text>
         {chat.chatKind === 'channel' ? (
           <View accessibilityRole="image" accessibilityLabel="Channel">
-            <Megaphone size={14} color={MUTED_FOREGROUND[scheme]} />
+            <Megaphone size={14} color={MUTED_FOREGROUND} />
           </View>
         ) : null}
         {isTopic && chat.topic?.visibility === 'private' ? (
@@ -79,7 +76,7 @@ export function ChatHeader({
             accessibilityLabel="Private topic"
             className="shrink-0 flex-row items-center gap-1 rounded-full border border-divider px-1.5 py-0.5"
           >
-            <Lock size={10} color={MUTED_FOREGROUND[scheme]} />
+            <Lock size={10} color={MUTED_FOREGROUND} />
             <Text className="text-[10px] font-medium text-muted-foreground">Private</Text>
           </View>
         ) : null}
@@ -89,7 +86,7 @@ export function ChatHeader({
         <Text numberOfLines={1} className="shrink text-[12px] text-muted-foreground">
           {subtitle}
         </Text>
-        {working || writing ? <TypingDots color={MUTED_FOREGROUND[scheme]} /> : null}
+        {working || writing ? <TypingDots color={MUTED_FOREGROUND} /> : null}
       </View>
     </View>
   );

@@ -1,6 +1,5 @@
 import { Effect } from 'effect';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { useColorScheme } from 'nativewind';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,7 +11,6 @@ import { useAuthStore } from '@/auth/session';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { asColorScheme } from '@/lib/color-scheme';
 import { CHAT_BACKGROUND } from '@/lib/colors';
 import { useAction } from '@/lib/effect/use-action';
 
@@ -46,7 +44,6 @@ export default function HandleRoute() {
 function HandleStep() {
   const router = useRouter();
   const params = useLocalSearchParams<{ from?: string }>();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const me = useAuthStore((state) => state.me);
   const { api } = useProfileApi();
 
@@ -133,7 +130,7 @@ function HandleStep() {
   return (
     <View className="flex-1">
       <LinearGradient
-        colors={CHAT_BACKGROUND[scheme]}
+        colors={CHAT_BACKGROUND}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}

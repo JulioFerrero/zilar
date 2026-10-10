@@ -25,10 +25,6 @@ vi.mock('expo-image', () => ({
   Image: 'Image',
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
   TextClassContext: { Provider: 'TextClassContextProvider' },

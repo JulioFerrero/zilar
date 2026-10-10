@@ -14,10 +14,6 @@ vi.mock('expo-router', () => ({
   useRouter: () => ({ replace: () => {} }),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',
   Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },

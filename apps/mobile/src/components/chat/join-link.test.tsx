@@ -41,10 +41,6 @@ vi.mock('../../components/ui/text', () => ({
   TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 interface TestElement {
   type: unknown;
   props: { children?: unknown; style?: unknown; onPress?: () => void; [key: string]: unknown };

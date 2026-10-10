@@ -3,10 +3,8 @@ import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Attachment } from '@zilar/protocol';
-import { useColorScheme } from 'nativewind';
 
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import { well } from '@/lib/depth';
 
@@ -73,8 +71,7 @@ export function AttachSheet({
   onClose,
 }: AttachSheetProps) {
   const insets = useSafeAreaInsets();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
-  const iconColor = ICON[scheme];
+  const iconColor = ICON;
   if (!open) {
     return null;
   }

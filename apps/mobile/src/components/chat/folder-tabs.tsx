@@ -1,10 +1,8 @@
 import type { ChatFolder } from '@zilar/chat-core';
 import { MessagesSquare } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { FOREGROUND, MUTED_FOREGROUND } from '@/lib/colors';
 import { segment } from '@/lib/depth';
 import { cn } from '@/lib/utils';
@@ -26,7 +24,6 @@ type FolderTabsProps = {
  * the rest are muted; a chip shows its unread count only when it is above zero.
  */
 export function FolderTabs({ activeFolder, folders, counts, onSelect }: FolderTabsProps) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const chips = [
     { id: 'all', name: 'All chats', folder: undefined as ChatFolder | undefined },
     ...folders.map((folder) => ({ id: folder.id, name: folder.name, folder })),
@@ -49,7 +46,7 @@ export function FolderTabs({ activeFolder, folders, counts, onSelect }: FolderTa
         const selected = chip.id === activeFolder;
         const count = counts[chip.id] ?? 0;
         const Icon = chip.folder === undefined ? MessagesSquare : folderIcon(chip.folder.icon);
-        const iconColor = selected ? FOREGROUND[scheme] : MUTED_FOREGROUND[scheme];
+        const iconColor = selected ? FOREGROUND : MUTED_FOREGROUND;
         return (
           <Pressable
             key={chip.id}

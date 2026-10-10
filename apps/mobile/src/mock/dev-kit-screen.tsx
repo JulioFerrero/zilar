@@ -5,7 +5,6 @@
  * release builds too: no tab, no button, no router push.
  */
 import { Bell, FolderOpen, MessageCircle, Trash2, UserRound } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,7 +25,6 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 
 const noop = (): void => undefined;
@@ -40,7 +38,6 @@ export default function KitDevScreen() {
 }
 
 function KitCatalog() {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [bottomOpen, setBottomOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -88,13 +85,13 @@ function KitCatalog() {
           <SectionLabel>Icon button and tile</SectionLabel>
           <View className="flex-row items-center gap-3">
             <IconButton label="Notifications" onPress={noop}>
-              <Bell size={18} color={ICON[scheme]} />
+              <Bell size={18} color={ICON} />
             </IconButton>
             <IconTile>
-              <UserRound size={18} color={ICON[scheme]} />
+              <UserRound size={18} color={ICON} />
             </IconTile>
             <IconTile size={36} radius={12}>
-              <FolderOpen size={18} color={ICON[scheme]} />
+              <FolderOpen size={18} color={ICON} />
             </IconTile>
           </View>
         </View>
@@ -114,7 +111,7 @@ function KitCatalog() {
             <ListRow
               icon={
                 <IconTile>
-                  <Bell size={18} color={ICON[scheme]} />
+                  <Bell size={18} color={ICON} />
                 </IconTile>
               }
               title="Notifications"
@@ -124,7 +121,7 @@ function KitCatalog() {
             <ListRow
               icon={
                 <IconTile>
-                  <UserRound size={18} color={ICON[scheme]} />
+                  <UserRound size={18} color={ICON} />
                 </IconTile>
               }
               title="Requests"

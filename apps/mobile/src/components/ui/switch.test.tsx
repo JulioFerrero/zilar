@@ -22,10 +22,6 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('@/components/ui/text', () => ({
   Text: 'Text',
 }));
@@ -66,18 +62,18 @@ describe('Switch', () => {
   });
 
   it('keeps a light thumb and a grey track that brightens when on', () => {
-    const expectedTrack = { false: BORDER_STRONG, true: MUTED_FOREGROUND.dark };
+    const expectedTrack = { false: BORDER_STRONG, true: MUTED_FOREGROUND };
 
     renderToStaticMarkup(
       createElement(Switch, { label: 'Muted chats', value: false, onValueChange: noop }),
     );
-    expect(switchProps.at(-1)?.thumbColor).toBe(ACCENT.dark);
+    expect(switchProps.at(-1)?.thumbColor).toBe(ACCENT);
     expect(switchProps.at(-1)?.trackColor).toEqual(expectedTrack);
 
     renderToStaticMarkup(
       createElement(Switch, { label: 'Muted chats', value: true, onValueChange: noop }),
     );
-    expect(switchProps.at(-1)?.thumbColor).toBe(ACCENT.dark);
+    expect(switchProps.at(-1)?.thumbColor).toBe(ACCENT);
     expect(switchProps.at(-1)?.trackColor).toEqual(expectedTrack);
   });
 });

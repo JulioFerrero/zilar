@@ -20,10 +20,6 @@ import {
   type RoutinesSectionState,
 } from './routines-section';
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'light' }),
-}));
-
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   View: 'View',

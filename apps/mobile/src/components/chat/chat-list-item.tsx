@@ -9,7 +9,6 @@ import { Ticks } from '@/components/chat/ticks';
 import { PulseDot } from '@/components/chat/typing-dots';
 import { Text } from '@/components/ui/text';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
-import { asColorScheme } from '@/lib/color-scheme';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { primaryKey, raisedPill } from '@/lib/depth';
 import { useBlockedJids } from '@/lib/blocked-users';
@@ -17,7 +16,6 @@ import { previewParts, typingLabel } from '@/lib/format';
 import { type ChatSummary, type MessageStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
-import { useColorScheme } from 'nativewind';
 
 type ChatListItemProps = {
   chat: ChatSummary;
@@ -48,7 +46,6 @@ function UnreadBadge({ count, muted }: { count: number; muted: boolean }) {
 
 /** The 76 px chat row, restyled for D24 (ui-style.md §5). */
 export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const names = useChatStore((state) => state.typing[chat.id]?.names);
   const hasDraft = useChatStore((state) => state.drafts[chat.id] !== undefined);
   const last = chat.lastMessage;
@@ -87,12 +84,12 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
               {chat.isAI ? <AiBadge className="ml-1.5" /> : null}
               {chat.pinnedAt !== undefined ? (
                 <View className="ml-2" accessibilityRole="image" accessibilityLabel="Pinned chat">
-                  <Pin size={14} color={MUTED_FOREGROUND[scheme]} />
+                  <Pin size={14} color={MUTED_FOREGROUND} />
                 </View>
               ) : null}
               {chat.muted ? (
                 <View className="ml-2">
-                  <VolumeX size={16} color={MUTED_FOREGROUND[scheme]} />
+                  <VolumeX size={16} color={MUTED_FOREGROUND} />
                 </View>
               ) : null}
             </View>
@@ -105,7 +102,7 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
           <View className="mt-0.5 flex-row items-center justify-between">
             {label !== undefined ? (
               <View className="mr-2 flex-1 flex-row items-center gap-1.5">
-                <PulseDot color={MUTED_FOREGROUND[scheme]} />
+                <PulseDot color={MUTED_FOREGROUND} />
                 <Text numberOfLines={1} className="text-[14px] text-muted-foreground">
                   {label}
                 </Text>
@@ -128,7 +125,7 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
             ) : showTicks && last ? (
               <Ticks
                 status={last.status as MessageStatus}
-                color={last.status === 'read' ? '#ededed' : MUTED_FOREGROUND[scheme]}
+                color={last.status === 'read' ? '#ededed' : MUTED_FOREGROUND}
               />
             ) : null}
           </View>

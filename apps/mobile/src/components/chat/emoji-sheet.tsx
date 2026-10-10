@@ -1,10 +1,8 @@
 import { Film, Smile, Sticker as StickerIcon } from 'lucide-react-native';
 import { Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useColorScheme } from 'nativewind';
 
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import type { EmojiCategoryId } from '@/lib/emoji-data';
 import type { GifItem } from '@/lib/gifs';
@@ -90,8 +88,7 @@ export function EmojiSheet({
   onClose,
 }: EmojiSheetProps) {
   const insets = useSafeAreaInsets();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
-  const iconColor = ICON[scheme];
+  const iconColor = ICON;
   if (!open) {
     return null;
   }

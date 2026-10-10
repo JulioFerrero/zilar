@@ -44,10 +44,6 @@ vi.mock('expo-router', async () => {
   };
 });
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', async () => {
   const { createElement: h } = await import('react');
   return {
@@ -151,12 +147,8 @@ vi.mock('@/components/ui/text', async () => {
 });
 
 vi.mock('@/lib/colors', () => ({
-  ACCENT: { dark: '#fff', light: '#000' },
-  ICON: { dark: '#fff', light: '#000' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ACCENT: '#fff',
+  ICON: '#fff',
 }));
 
 vi.mock('@/lib/depth', () => ({

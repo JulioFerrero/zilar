@@ -19,10 +19,6 @@ vi.mock('expo-router', () => ({
   useRouter: () => ({ back: () => {}, push: () => {} }),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', () => ({
   RefreshControl: 'RefreshControl',
   ScrollView: 'ScrollView',
@@ -108,13 +104,9 @@ vi.mock('@/lib/session-token', () => ({
   getSessionToken: async () => 'tok',
 }));
 
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
-}));
-
 vi.mock('@/lib/colors', () => ({
-  ACCENT: { dark: '#ededed', light: '#ededed' },
-  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
+  ACCENT: '#ededed',
+  MUTED_FOREGROUND: '#a1a1a1',
 }));
 
 const api = {

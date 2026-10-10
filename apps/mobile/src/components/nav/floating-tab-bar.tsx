@@ -1,6 +1,5 @@
 import { initials } from '@zilar/chat-core';
 import { Bot, MessagesSquare, Settings } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { Image, Keyboard, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEffect, useState } from 'react';
@@ -8,7 +7,6 @@ import type { ReactNode } from 'react';
 import { TabTrigger, useTabTrigger } from 'expo-router/ui';
 
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { primaryKey, segment } from '@/lib/depth';
 
@@ -80,7 +78,6 @@ function TabIcon({
   imageFailed: boolean;
   onImageError: () => void;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   if (name === 'profile') {
     return (
       <TabProfileFace
@@ -96,7 +93,7 @@ function TabIcon({
     );
   }
   const Icon = name === 'ais' ? Bot : name === 'settings' ? Settings : MessagesSquare;
-  return <Icon size={20} color={ICON[scheme]} />;
+  return <Icon size={20} color={ICON} />;
 }
 
 /**
@@ -150,7 +147,6 @@ function FloatingTabButton({
   profile?: TabProfile | undefined;
 }) {
   const { trigger, triggerProps } = useTabTrigger({ name: tab.name });
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const selected = trigger?.isFocused ?? false;
   // The tab-bar avatar falls back to initials when the picture 404s (a
   // removed picture keeps its stale url until the next focus reload). The
@@ -180,10 +176,7 @@ function FloatingTabButton({
           imageFailed={avatarFailedFor(failedUrl, profile?.avatarUrl)}
           onImageError={() => setFailedUrl(profile?.avatarUrl)}
         />
-        <Text
-          className="text-[11px]"
-          style={{ color: selected ? '#ededed' : MUTED_FOREGROUND[scheme] }}
-        >
+        <Text className="text-[11px]" style={{ color: selected ? '#ededed' : MUTED_FOREGROUND }}>
           {tab.label}
         </Text>
       </View>

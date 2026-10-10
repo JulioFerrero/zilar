@@ -2,7 +2,6 @@ import { FOLDERS_MAX, type ChatFolder, type FolderIcon } from '@zilar/chat-core'
 import { Effect } from 'effect';
 import { useRouter } from 'expo-router';
 import { ChevronDown, ChevronUp, Plus } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { useState } from 'react';
 import { View } from 'react-native';
 
@@ -17,7 +16,6 @@ import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { asColorScheme, type ColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { useChatStore } from '@/store/chat-store-provider';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
@@ -44,7 +42,6 @@ function folderGlyph(icon: FolderIcon, color: string) {
 
 function FoldersSettings() {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const folders = useChatStore((state) => state.folders);
   const reorderFolders = useChatStore((state) => state.reorderFolders);
   const [error, setError] = useState('');
@@ -101,7 +98,6 @@ function FoldersSettings() {
             <FolderRow
               key={folder.id}
               folder={folder}
-              scheme={scheme}
               first={index === 0}
               last={index === folders.length - 1}
               busy={busy}
@@ -120,7 +116,7 @@ function FoldersSettings() {
         disabled={atLimit || busy}
         onPress={() => openFolder('new')}
       >
-        <Plus size={18} color={MUTED_FOREGROUND[scheme]} />
+        <Plus size={18} color={MUTED_FOREGROUND} />
         <Text className="text-[15px] font-medium text-foreground">New folder</Text>
       </Button>
 
@@ -141,7 +137,6 @@ function FoldersSettings() {
 
 function FolderRow({
   folder,
-  scheme,
   first,
   last,
   busy,
@@ -150,7 +145,6 @@ function FolderRow({
   onMoveDown,
 }: {
   folder: ChatFolder;
-  scheme: ColorScheme;
   first: boolean;
   last: boolean;
   busy: boolean;
@@ -166,7 +160,7 @@ function FolderRow({
         onPress={onMoveUp}
         className="h-8 w-8"
       >
-        <ChevronUp size={18} color={first || busy ? MUTED_FOREGROUND[scheme] : ICON[scheme]} />
+        <ChevronUp size={18} color={first || busy ? MUTED_FOREGROUND : ICON} />
       </IconButton>
       <IconButton
         label={`Move ${folder.name} down`}
@@ -174,13 +168,13 @@ function FolderRow({
         onPress={onMoveDown}
         className="h-8 w-8"
       >
-        <ChevronDown size={18} color={last || busy ? MUTED_FOREGROUND[scheme] : ICON[scheme]} />
+        <ChevronDown size={18} color={last || busy ? MUTED_FOREGROUND : ICON} />
       </IconButton>
       <ListRow
         className="min-w-0 flex-1 rounded-xl px-1 py-1"
         icon={
           <IconTile size={36} radius={12}>
-            {folderGlyph(folder.icon, ICON[scheme])}
+            {folderGlyph(folder.icon, ICON)}
           </IconTile>
         }
         title={folder.name}

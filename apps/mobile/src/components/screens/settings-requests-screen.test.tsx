@@ -18,10 +18,6 @@ vi.mock('expo-router', () => ({
   useRouter: () => ({ back: () => {}, push: () => {} }),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', () => ({
   ScrollView: 'ScrollView',
   View: 'View',
@@ -108,11 +104,7 @@ vi.mock('@/components/chat/avatar', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ICON: '#d4d4d4',
 }));
 
 const api = {

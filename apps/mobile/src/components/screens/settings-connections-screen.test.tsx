@@ -32,10 +32,6 @@ vi.mock('expo-router', async () => {
   };
 });
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', async () => {
   const { createElement } = await import('react');
   return {
@@ -192,11 +188,7 @@ vi.mock('@/lib/auth', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ICON: '#d4d4d4',
 }));
 
 const OPENAI: ProviderConnection = {

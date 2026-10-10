@@ -1,7 +1,6 @@
 import { Effect } from 'effect';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
-import { useColorScheme } from 'nativewind';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,7 +8,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { asColorScheme } from '@/lib/color-scheme';
 import { CHAT_BACKGROUND } from '@/lib/colors';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 
@@ -20,7 +18,6 @@ import { useAuthStore } from './session';
 export function NameForm() {
   const router = useRouter();
   const params = useLocalSearchParams<{ from?: string }>();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const me = useAuthStore((state) => state.me);
   const setName = useAuthStore((state) => state.setName);
   const [name, setNameInput] = useState(me?.name ?? '');
@@ -57,7 +54,7 @@ export function NameForm() {
   return (
     <View className="flex-1">
       <LinearGradient
-        colors={CHAT_BACKGROUND[scheme]}
+        colors={CHAT_BACKGROUND}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}

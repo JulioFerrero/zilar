@@ -25,10 +25,6 @@ vi.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ bottom: 0, top: 0, left: 0, right: 0 }),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('expo-router/ui', () => ({
   TabTrigger: 'TabTrigger',
   useTabTrigger: ({ name }: { name: string }) => ({

@@ -27,10 +27,6 @@ vi.mock('@/lib/depth', () => ({
   primaryKey: {},
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('expo-image', () => ({
   Image: 'Image',
 }));

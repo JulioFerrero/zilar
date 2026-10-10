@@ -3,7 +3,6 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { ShieldCheck } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
-import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { AisScreenShell } from '@/components/ais/screen-shell';
@@ -13,7 +12,6 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { createAisApi } from '@/lib/ais-api';
 import type { ApprovalDecision, ApprovalRule, PublicApproval } from '@/lib/approvals-api';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT, MUTED_FOREGROUND } from '@/lib/colors';
 import { fromApi } from '@/lib/effect/api-effect';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
@@ -54,7 +52,6 @@ export default function ApprovalsScreen() {
 
 function ApprovalsBody() {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const { api } = useApprovalsApi();
 
   const [rows, setRows] = useState<RowsById>({});
@@ -368,7 +365,7 @@ function ApprovalsBody() {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              tintColor={MUTED_FOREGROUND[scheme]}
+              tintColor={MUTED_FOREGROUND}
               onRefresh={() => {
                 setRefreshing(true);
                 runLoad(false);
@@ -419,11 +416,10 @@ function PendingTab({
   onDecide: (id: string, decision: ApprovalDecision) => Effect.Effect<void>;
   onRefresh: () => void;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   if (rows.length === 0) {
     return (
       <View className="items-center gap-3 py-10">
-        <ShieldCheck size={32} color={ACCENT[scheme]} aria-hidden />
+        <ShieldCheck size={32} color={ACCENT} aria-hidden />
         <Text className="px-4 text-center text-[15px] text-muted-foreground">
           Nothing is waiting for you.
         </Text>

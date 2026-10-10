@@ -37,10 +37,6 @@ vi.mock('expo-router', () => ({
   useLocalSearchParams: () => ({}),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('lucide-react-native', () => ({
   Archive: () => null,
   Search: () => null,
@@ -198,13 +194,9 @@ vi.mock('@/components/ui/text', async () => {
   };
 });
 
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
-}));
-
 vi.mock('@/lib/colors', () => ({
-  ICON: { dark: '#fff', light: '#000' },
-  MUTED_FOREGROUND: { dark: '#999', light: '#666' },
+  ICON: '#fff',
+  MUTED_FOREGROUND: '#999',
 }));
 
 vi.mock('@/lib/connection', () => ({

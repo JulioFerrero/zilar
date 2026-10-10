@@ -17,17 +17,12 @@ vi.mock('react-native', async () => {
   return { View: styled('View') };
 });
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('lucide-react-native', () => ({
   Forward: 'Forward',
 }));
 
 vi.mock('@/components/ui/text', () => ({ Text: 'Text' }));
-vi.mock('@/lib/color-scheme', () => ({ asColorScheme: () => 'dark' }));
-vi.mock('@/lib/colors', () => ({ MUTED_FOREGROUND: { dark: '#888' } }));
+vi.mock('@/lib/colors', () => ({ MUTED_FOREGROUND: '#888' }));
 
 function origin(overrides: Partial<ForwardOrigin> = {}): ForwardOrigin {
   return {

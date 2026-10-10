@@ -12,10 +12,8 @@ import {
 } from 'lucide-react-native';
 import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useColorScheme } from 'nativewind';
 
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import { EMOJI_BY_CATEGORY, EMOJI_CATEGORIES, type EmojiCategoryId } from '@/lib/emoji-data';
 
@@ -60,8 +58,7 @@ export function EmojiTab({
   onPick,
 }: EmojiTabProps) {
   useSafeAreaInsets();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
-  const iconColor = ICON[scheme];
+  const iconColor = ICON;
   if (!open) {
     return null;
   }

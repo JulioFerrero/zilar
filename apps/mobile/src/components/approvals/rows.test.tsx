@@ -21,10 +21,6 @@ vi.mock('react-native-reanimated', () => ({
   useReducedMotion: () => false,
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('lucide-react-native', () => ({
   ShieldAlert: 'ShieldAlert',
 }));

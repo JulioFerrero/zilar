@@ -11,9 +11,6 @@ import { StickersApiError, type TelegramImportResult } from '@/lib/stickers-api'
 // result (first `null`), special (second `null`). The error state stays real
 // with an observed setter so the empty-input and refusal flows assert the
 // sentence the sheet shows.
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
 
 const pressed: Record<string, Array<() => void>> = {};
 
@@ -68,13 +65,9 @@ vi.mock('@/lib/session-token', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
-  ACCENT: { dark: '#ededed', light: '#ededed' },
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ACCENT: '#ededed',
+  ICON: '#d4d4d4',
+  MUTED_FOREGROUND: '#a1a1a1',
 }));
 
 vi.mock('@/lib/depth', () => ({

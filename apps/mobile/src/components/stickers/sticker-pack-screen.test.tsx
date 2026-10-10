@@ -18,10 +18,6 @@ vi.mock('expo-router', () => ({
   useLocalSearchParams: () => forcedParams,
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   Image: 'Image',
@@ -118,16 +114,12 @@ vi.mock('@/lib/session-token', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
-  ACCENT: { dark: '#ededed', light: '#ededed' },
-  ACCENT_FOREGROUND: { dark: '#0a0a0a', light: '#0a0a0a' },
+  ACCENT: '#ededed',
+  ACCENT_FOREGROUND: '#0a0a0a',
   DANGER: '#ef4444',
-  FOREGROUND: { dark: '#ededed', light: '#ededed' },
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  FOREGROUND: '#ededed',
+  ICON: '#d4d4d4',
+  MUTED_FOREGROUND: '#a1a1a1',
 }));
 
 vi.mock('@/lib/depth', () => ({

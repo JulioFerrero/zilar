@@ -64,7 +64,7 @@ vi.mock('@/components/ui/text', async () => {
 });
 
 vi.mock('@/lib/colors', () => ({
-  ACCENT: { dark: '#ededed', light: '#ededed' },
+  ACCENT: '#ededed',
 }));
 
 vi.mock('react-native', async () => {

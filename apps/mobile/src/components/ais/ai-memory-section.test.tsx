@@ -27,10 +27,6 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'light' }),
-}));
-
 vi.mock('lucide-react-native', () => ({
   Brain: 'Brain',
   CircleAlert: 'CircleAlert',

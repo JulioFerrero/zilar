@@ -11,20 +11,12 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('lucide-react-native', () => ({
   Check: 'Check',
 }));
 
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
-}));
-
 vi.mock('@/lib/colors', () => ({
-  ACCENT_FOREGROUND: { dark: '#0a0a0a', light: '#0a0a0a' },
+  ACCENT_FOREGROUND: '#0a0a0a',
 }));
 
 vi.mock('@/lib/utils', () => ({

@@ -13,11 +13,10 @@ vi.mock('react-native', () => ({
   ScrollView: 'ScrollView',
   View: 'View',
 }));
-vi.mock('nativewind', () => ({ useColorScheme: () => ({ colorScheme: 'dark' }) }));
 vi.mock('@/components/ui/text', () => ({ Text: 'Text' }));
 vi.mock('@/lib/colors', () => ({
-  FOREGROUND: { dark: '#fff', light: '#000' },
-  MUTED_FOREGROUND: { dark: '#888', light: '#888' },
+  FOREGROUND: '#fff',
+  MUTED_FOREGROUND: '#888',
 }));
 
 function folder(id: string, name: string): ChatFolder {

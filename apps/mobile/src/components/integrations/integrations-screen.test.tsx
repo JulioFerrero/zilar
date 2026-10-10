@@ -24,10 +24,6 @@ vi.mock('expo-router', () => ({
   useRouter: () => ({ back: () => {}, push: () => {} }),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   Modal: 'Modal',
@@ -84,14 +80,10 @@ vi.mock('@/components/integrations/use-integrations-api', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
-  ACCENT: { dark: '#ededed', light: '#ededed' },
+  ACCENT: '#ededed',
   DANGER: { dark: '#dc2626', light: '#dc2626' },
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ICON: '#d4d4d4',
+  MUTED_FOREGROUND: '#a1a1a1',
 }));
 
 const READY_STATUS: IntegrationsStatus = {

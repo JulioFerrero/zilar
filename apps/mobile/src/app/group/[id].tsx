@@ -1,7 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Archive, ChevronLeft, Eye, Link2, Plus, Users } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, Share, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,7 +28,6 @@ import { IconButton } from '@/components/ui/icon-button';
 import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import { DirectoryApiError, type GroupVisibility } from '@/lib/directory-api';
 import { mutedUntilFor } from '@/lib/chat-prefs';
@@ -67,7 +65,6 @@ function GroupTopics() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
   const groupId = typeof params.id === 'string' ? params.id : '';
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const { pressed, reduceMotion, setPressed } = useKeyPress();
 
   const chats = useChatStore((state) => state.chats);
@@ -607,7 +604,7 @@ function GroupTopics() {
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View className="flex-row items-center gap-1 border-b border-divider bg-surface px-1 py-1">
         <IconButton label="Back" onPress={() => router.back()}>
-          <ChevronLeft size={24} color={ICON[scheme]} />
+          <ChevronLeft size={24} color={ICON} />
         </IconButton>
         <Avatar id={groupChatId} name={groupTitle} size={36} />
         <View className="ml-2.5 min-w-0 flex-1">
@@ -624,16 +621,16 @@ function GroupTopics() {
         </View>
         {canManageLinks ? (
           <IconButton label="Invite links" onPress={openLinks}>
-            <Link2 size={20} color={ICON[scheme]} />
+            <Link2 size={20} color={ICON} />
           </IconButton>
         ) : null}
         {canChangeVisibility ? (
           <IconButton label="Visibility" onPress={openVisibility}>
-            <Eye size={20} color={ICON[scheme]} />
+            <Eye size={20} color={ICON} />
           </IconButton>
         ) : null}
         <IconButton label="Members and roles" onPress={() => setRolesOpen(true)}>
-          <Users size={22} color={ICON[scheme]} />
+          <Users size={22} color={ICON} />
         </IconButton>
       </View>
 
@@ -687,7 +684,7 @@ function GroupTopics() {
               onPress={() => setArchivedOpen((value) => !value)}
               className="flex-row items-center justify-center gap-1.5 px-4 py-3 active:bg-surface-raised"
             >
-              <Archive size={16} color={ICON[scheme]} />
+              <Archive size={16} color={ICON} />
               <Text className="text-[14px] font-medium text-muted-foreground">
                 Archived ({listedArchived.length})
               </Text>

@@ -36,10 +36,6 @@ vi.mock('lucide-react-native', () => ({
   RefreshCw: 'RefreshCw',
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'light' }),
-}));
-
 const NOW = new Date('2026-10-03T10:00:00.000Z');
 
 function content(

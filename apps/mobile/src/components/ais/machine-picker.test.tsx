@@ -5,10 +5,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MachinePicker } from './machine-picker';
 import type { Machine } from '@/lib/machines-api';
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',
   View: 'View',

@@ -3,7 +3,6 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Eye, EyeOff, Lock, Mail, Mic, Send } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { View } from 'react-native';
-import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import {
@@ -19,7 +18,6 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import type {
   EmailIntegrationStatus,
@@ -61,7 +59,6 @@ export default function IntegrationsScreen() {
 
 function IntegrationsBody() {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const { api } = useIntegrationsApi();
 
   const [data, setData] = useState<IntegrationsStatus | null>(null);
@@ -119,7 +116,7 @@ function IntegrationsBody() {
 
         {status === 'forbidden' ? (
           <View className="items-center gap-3 px-6 pt-16">
-            <Lock size={32} color={ICON[scheme]} />
+            <Lock size={32} color={ICON} />
             <Text className="text-center text-[15px] text-muted-foreground">
               Only the server owner can change these settings.
             </Text>
@@ -191,7 +188,6 @@ function SecretField({
   editable: boolean;
   returnKeyType: 'next' | 'done';
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <View className="gap-1">
       <Text className="text-[14px] font-medium text-foreground">{label}</Text>
@@ -217,11 +213,7 @@ function SecretField({
           accessibilityLabel={show ? `Hide ${showLabel}` : `Show ${showLabel}`}
           onPress={onToggleShow}
         >
-          {show ? (
-            <EyeOff size={16} color={ICON[scheme]} />
-          ) : (
-            <Eye size={16} color={ICON[scheme]} />
-          )}
+          {show ? <EyeOff size={16} color={ICON} /> : <Eye size={16} color={ICON} />}
         </Button>
       </View>
     </View>
@@ -315,7 +307,6 @@ function EmailCard({
   email: EmailIntegrationStatus;
   onSaved: (next: IntegrationsStatus) => void;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const managedByEnv = email.source === 'env';
   const [from, setFrom] = useState(email.from ?? '');
   const [key, setKey] = useState('');
@@ -360,7 +351,7 @@ function EmailCard({
   return (
     <View className="gap-3 rounded-xl border border-border bg-surface p-4">
       <CardHeader
-        icon={<Mail size={20} color={ICON[scheme]} />}
+        icon={<Mail size={20} color={ICON} />}
         title="Email"
         pill={
           managedByEnv ? 'Managed by environment' : email.configured ? 'Connected' : 'Not set up'
@@ -441,7 +432,6 @@ function VoiceCard({
   voice: VoiceIntegrationStatus;
   onSaved: (next: IntegrationsStatus) => void;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const [baseUrl, setBaseUrl] = useState(voice.baseUrl ?? '');
   const [model, setModel] = useState(voice.model ?? 'whisper-1');
   const [key, setKey] = useState('');
@@ -521,7 +511,7 @@ function VoiceCard({
   return (
     <View className="gap-3 rounded-xl border border-border bg-surface p-4">
       <CardHeader
-        icon={<Mic size={20} color={ICON[scheme]} />}
+        icon={<Mic size={20} color={ICON} />}
         title="Voice transcription"
         pill={voice.configured ? 'Connected' : 'Not set up'}
       />
@@ -614,7 +604,6 @@ function TelegramCard({
   telegram: TelegramIntegrationStatus;
   onSaved: (next: IntegrationsStatus) => void;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const managedByEnv = telegram.source === 'env';
   const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
@@ -692,7 +681,7 @@ function TelegramCard({
   return (
     <View className="gap-3 rounded-xl border border-border bg-surface p-4">
       <CardHeader
-        icon={<Send size={20} color={ICON[scheme]} />}
+        icon={<Send size={20} color={ICON} />}
         title="Telegram bot"
         pill={
           managedByEnv ? 'Set by environment' : telegram.configured ? 'Connected' : 'Not set up'

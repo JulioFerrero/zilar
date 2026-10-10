@@ -3,16 +3,13 @@ import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
-import { asColorScheme } from '@/lib/color-scheme';
 import { well } from '@/lib/depth';
-import { useColorScheme } from 'nativewind';
 
 /**
  * The composer's edit bar (T-0085): names the action, shows the original
  * message text and closes with the × button. Mirrors the web `EditBar.tsx`.
  */
 export function EditBar({ text, onCancel }: { text: string; onCancel: () => void }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <View className="mb-2 flex-row items-stretch overflow-hidden rounded-[10px]" style={well}>
       <View className="w-[3px] bg-[#333333]" />
@@ -31,7 +28,7 @@ export function EditBar({ text, onCancel }: { text: string; onCancel: () => void
         onPress={onCancel}
         className="w-9 items-center justify-center active:bg-surface-raised"
       >
-        <X size={18} color={ICON[scheme]} />
+        <X size={18} color={ICON} />
       </Pressable>
     </View>
   );

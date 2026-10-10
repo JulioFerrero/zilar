@@ -16,10 +16,6 @@ vi.mock('expo-router', () => ({
   useRouter: () => ({ push: () => {} }),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', () => ({
   KeyboardAvoidingView: 'KeyboardAvoidingView',
   Modal: 'Modal',

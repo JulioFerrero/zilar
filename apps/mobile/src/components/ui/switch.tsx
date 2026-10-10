@@ -1,8 +1,6 @@
-import { useColorScheme } from 'nativewind';
 import { Switch as NativeSwitch, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT, MUTED_FOREGROUND } from '@/lib/colors';
 import { BORDER_STRONG } from '@/lib/depth';
 
@@ -21,7 +19,6 @@ export interface SwitchProps {
  * both states. The label names the control for screen readers even when hidden.
  */
 export function Switch({ label, value, onValueChange, disabled, hideLabel = false }: SwitchProps) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <View className="flex-row items-center gap-2">
       {hideLabel ? null : (
@@ -32,9 +29,9 @@ export function Switch({ label, value, onValueChange, disabled, hideLabel = fals
         value={value}
         disabled={disabled}
         onValueChange={onValueChange}
-        trackColor={{ false: BORDER_STRONG, true: MUTED_FOREGROUND[scheme] }}
+        trackColor={{ false: BORDER_STRONG, true: MUTED_FOREGROUND }}
         ios_backgroundColor={BORDER_STRONG}
-        thumbColor={ACCENT[scheme]}
+        thumbColor={ACCENT}
       />
     </View>
   );

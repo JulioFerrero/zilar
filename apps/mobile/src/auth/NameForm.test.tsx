@@ -24,8 +24,6 @@ vi.mock('expo-router', () => ({
   useRouter: () => ({ replace: mocks.replace }),
 }));
 
-vi.mock('nativewind', () => ({ useColorScheme: () => ({ colorScheme: 'dark' }) }));
-
 vi.mock('react-native', () => ({ View: 'div' }));
 
 vi.mock('react-native-safe-area-context', () => ({ SafeAreaView: 'div' }));

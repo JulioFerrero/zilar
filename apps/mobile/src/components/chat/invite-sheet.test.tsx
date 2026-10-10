@@ -15,12 +15,8 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark' as const,
-}));
-
 vi.mock('@/lib/colors', () => ({
-  ACCENT_FOREGROUND: { dark: '#0a0a0a', light: '#0a0a0a' },
+  ACCENT_FOREGROUND: '#0a0a0a',
 }));
 
 vi.mock('@/components/ui/text', () => ({
@@ -34,10 +30,6 @@ vi.mock('@/components/ui/text', () => ({
 
 vi.mock('@/components/ui/use-key-press', () => ({
   useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
-}));
-
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
 }));
 
 vi.mock('react-native-reanimated', () => ({

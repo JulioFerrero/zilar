@@ -18,7 +18,6 @@ import { lastVoiceNoteOf } from '@/lib/whistle-last-note';
 import { createWhistlePort, type WhistlePort, type WhistleStatus } from '@/lib/whistle-port';
 import type { WhistleTranscript } from '@/lib/whistle-port-types';
 import { useChatStore } from '@/store/chat-store-provider';
-import { useColorScheme } from 'nativewind';
 
 type Phase =
   | { kind: 'idle' }
@@ -44,7 +43,6 @@ export default function WhistleDevScreen() {
 }
 
 export function WhistleDevScreenBody(deps: WhistleScreenDeps = {}) {
-  const scheme = useColorScheme().colorScheme === 'light' ? 'light' : 'dark';
   const port = useRef(deps.port ?? createWhistlePort()).current;
   const [status, setStatus] = useState<WhistleStatus>('missing');
   const [available, setAvailable] = useState(false);
@@ -196,7 +194,7 @@ export function WhistleDevScreenBody(deps: WhistleScreenDeps = {}) {
             disabled={busy || !available}
             testID="whistle-download"
           >
-            <Download size={16} color={ACCENT[scheme]} />
+            <Download size={16} color={ACCENT} />
             <Text>Download model</Text>
           </Button>
           {phase.kind === 'downloading' ? (
@@ -217,7 +215,7 @@ export function WhistleDevScreenBody(deps: WhistleScreenDeps = {}) {
             disabled={busy || !available || status !== 'ready'}
             testID="whistle-record"
           >
-            <Mic size={16} color={ACCENT[scheme]} />
+            <Mic size={16} color={ACCENT} />
             <Text>Record 2 min and transcribe</Text>
           </Button>
           <Button
@@ -225,7 +223,7 @@ export function WhistleDevScreenBody(deps: WhistleScreenDeps = {}) {
             disabled={busy || !available || status !== 'ready' || lastNote === undefined}
             testID="whistle-last"
           >
-            <Play size={16} color={ACCENT[scheme]} />
+            <Play size={16} color={ACCENT} />
             <Text>
               {lastNote === undefined
                 ? 'Transcribe last voice note (none yet)'
@@ -238,7 +236,7 @@ export function WhistleDevScreenBody(deps: WhistleScreenDeps = {}) {
         phase.kind === 'transcribing' ||
         phase.kind === 'loading-model' ? (
           <View className="mt-5 flex-row items-center gap-2" testID="whistle-busy">
-            <ActivityIndicator color={ACCENT[scheme]} />
+            <ActivityIndicator color={ACCENT} />
             <Text className="text-[13px] text-muted-foreground">
               {phase.kind === 'recording'
                 ? 'Recording 2 min…'
@@ -261,7 +259,7 @@ export function WhistleDevScreenBody(deps: WhistleScreenDeps = {}) {
             testID="whistle-result"
           >
             <View className="flex-row items-center gap-2">
-              <AudioLines size={16} color={ACCENT[scheme]} />
+              <AudioLines size={16} color={ACCENT} />
               <Text className="text-[13px] font-semibold">
                 {result.language === '' ? 'Language not detected' : `Language ${result.language}`}
               </Text>

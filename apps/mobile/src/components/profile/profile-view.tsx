@@ -1,13 +1,11 @@
 import { initials } from '@zilar/chat-core';
 import { Image } from 'expo-image';
 import { Camera, Copy, Pencil, Settings } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 
 import { avatarImageSource } from '@/components/settings/profile-logic';
@@ -94,7 +92,6 @@ export function ProfileViewContent({
   onImageError: () => void;
   photoEdit?: PhotoEdit | undefined;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const source =
     profile.avatarUrl === undefined || imageFailed
       ? null
@@ -137,13 +134,13 @@ export function ProfileViewContent({
 
       <View className="flex-row gap-2">
         <ActionKey label="Set photo" onPress={onSetPhoto}>
-          <Camera size={20} color={ICON[scheme]} />
+          <Camera size={20} color={ICON} />
         </ActionKey>
         <ActionKey label="Edit info" onPress={onEditInfo}>
-          <Pencil size={20} color={ICON[scheme]} />
+          <Pencil size={20} color={ICON} />
         </ActionKey>
         <ActionKey label="Settings" onPress={onOpenSettings}>
-          <Settings size={20} color={ICON[scheme]} />
+          <Settings size={20} color={ICON} />
         </ActionKey>
       </View>
 
@@ -167,7 +164,7 @@ export function ProfileViewContent({
         ) : (
           <View className="flex-row items-center justify-between px-3 py-2.5">
             <View className="min-w-0 flex-1">
-              <Text className="text-[13px]" style={{ color: MUTED_FOREGROUND[scheme] }}>
+              <Text className="text-[13px]" style={{ color: MUTED_FOREGROUND }}>
                 Username
               </Text>
               <Text numberOfLines={1} className="mt-0.5 text-[15px] text-foreground">
@@ -182,13 +179,13 @@ export function ProfileViewContent({
                 accessibilityLabel="Copy username"
                 onPress={onCopyUsername}
               >
-                <Copy size={18} color={MUTED_FOREGROUND[scheme]} />
+                <Copy size={18} color={MUTED_FOREGROUND} />
               </Button>
             )}
           </View>
         )}
         <View className="border-t border-divider px-3 py-2.5">
-          <Text className="text-[13px]" style={{ color: MUTED_FOREGROUND[scheme] }}>
+          <Text className="text-[13px]" style={{ color: MUTED_FOREGROUND }}>
             Email, only you see it
           </Text>
           <Text numberOfLines={1} className="mt-0.5 text-[15px] text-foreground">

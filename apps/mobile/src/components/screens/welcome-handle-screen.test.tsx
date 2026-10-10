@@ -29,7 +29,6 @@ vi.mock('expo-router', () => ({
   useRouter: () => h.router,
 }));
 vi.mock('expo-linear-gradient', () => ({ LinearGradient: () => null }));
-vi.mock('nativewind', () => ({ useColorScheme: () => ({ colorScheme: 'dark' }) }));
 vi.mock('react-native', async () => {
   const { createElement: el } = await import('react');
   return { View: ({ children }: { children?: ReactNode }) => el('div', null, children) };

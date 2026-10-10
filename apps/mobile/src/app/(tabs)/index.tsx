@@ -1,7 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Effect } from 'effect';
 import { Archive, Search, X } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -21,7 +20,6 @@ import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { Text } from '@/components/ui/text';
 import { SearchField } from '@/components/ui/search-field';
 import { mutedUntilFor } from '@/lib/chat-prefs';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { connectionLabel } from '@/lib/connection';
 import { well } from '@/lib/depth';
@@ -56,7 +54,6 @@ function withKey(keys: ReadonlySet<string>, key: string, on: boolean): ReadonlyS
 function ChatsList() {
   const router = useRouter();
   const params = useLocalSearchParams<{ searchChat?: string }>();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const chats = useChatStore((state) => state.chats);
   const chatsLoad = useChatStore((state) => state.chatsLoad);
   const reloadChats = useChatStore((state) => state.reloadChats);
@@ -283,12 +280,12 @@ function ChatsList() {
         className="h-10 flex-row items-center gap-2 rounded-xl px-3"
         style={well}
       >
-        <Search size={16} color={MUTED_FOREGROUND[scheme]} />
+        <Search size={16} color={MUTED_FOREGROUND} />
         <Text
           numberOfLines={1}
           ellipsizeMode="tail"
           className="flex-1 text-[15px]"
-          style={{ color: MUTED_FOREGROUND[scheme] }}
+          style={{ color: MUTED_FOREGROUND }}
         >
           Search chats and @usernames
         </Text>
@@ -311,7 +308,7 @@ function ChatsList() {
               <Text numberOfLines={1} className="max-w-[240px] text-[12px] text-foreground">
                 {searchChatTitle === undefined ? 'This chat only' : `In ${searchChatTitle} only`}
               </Text>
-              <X size={12} color={MUTED_FOREGROUND[scheme]} />
+              <X size={12} color={MUTED_FOREGROUND} />
             </Pressable>
           </View>
         ) : null}
@@ -431,7 +428,7 @@ function ChatsList() {
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
-            tintColor={MUTED_FOREGROUND[scheme]}
+            tintColor={MUTED_FOREGROUND}
             onRefresh={() => {
               setRefreshing(true);
               reloadChats();
@@ -477,7 +474,7 @@ function ChatsList() {
             onPress={() => setArchivedOpen((value) => !value)}
             className="flex-row items-center justify-center gap-1.5 px-4 py-3 active:bg-surface-raised"
           >
-            <Archive size={16} color={ICON[scheme]} />
+            <Archive size={16} color={ICON} />
             <Text className="text-[14px] font-medium text-muted-foreground">
               Archived ({archived.length})
             </Text>

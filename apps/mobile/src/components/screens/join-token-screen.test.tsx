@@ -37,7 +37,6 @@ vi.mock('expo-router', async () => {
   };
 });
 vi.mock('expo-linear-gradient', () => ({ LinearGradient: () => null }));
-vi.mock('nativewind', () => ({ useColorScheme: () => ({ colorScheme: 'dark' }) }));
 vi.mock('react-native', async () => {
   const { createElement: el } = await import('react');
   return {

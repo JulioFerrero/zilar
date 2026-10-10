@@ -17,10 +17,6 @@ vi.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native-reanimated', () => ({
   useReducedMotion: () => false,
 }));
@@ -52,14 +48,10 @@ vi.mock('@/components/ui/bottom-sheet', () => ({
 // verify the real label/line wiring (T-0137 pre-review finding 3). The
 // module is types-only apart from pure functions, so it loads cleanly.
 
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
-}));
-
 vi.mock('@/lib/colors', () => ({
   DANGER: { dark: '#ef4444', light: '#ef4444' },
-  FOREGROUND: { dark: '#fafafa', light: '#fafafa' },
-  MUTED_FOREGROUND: { dark: '#8a8a8a', light: '#8a8a8a' },
+  FOREGROUND: '#fafafa',
+  MUTED_FOREGROUND: '#8a8a8a',
 }));
 
 function chat(visibility: 'public' | 'private'): ChatSummary {

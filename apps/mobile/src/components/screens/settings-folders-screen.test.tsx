@@ -15,10 +15,6 @@ vi.mock('expo-router', () => ({
   useRouter: () => ({ back: () => {}, push: () => {} }),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', () => ({
   View: 'View',
 }));
@@ -114,12 +110,8 @@ vi.mock('@/components/ui/text', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ICON: '#d4d4d4',
+  MUTED_FOREGROUND: '#a1a1a1',
 }));
 
 let store: { folders: ChatFolder[]; reorderFolders: (ids: string[]) => Promise<void> } = {

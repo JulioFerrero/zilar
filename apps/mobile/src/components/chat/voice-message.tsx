@@ -14,7 +14,6 @@ import {
 import { VoiceTranscribeConfirm } from './voice-transcribe-confirm';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
-import { asColorScheme } from '@/lib/color-scheme';
 import { BUBBLE_COLORS } from '@/lib/colors';
 import {
   ACCENT_FOREGROUND,
@@ -48,7 +47,6 @@ import {
 import { createWhistlePort, type WhistlePort } from '@/lib/whistle-port';
 import { useChatStore } from '@/store/chat-store-provider';
 import type { UiMessage } from '@/lib/types';
-import { useColorScheme } from 'nativewind';
 
 const BAR_COUNT = 24;
 // The bubble is at least this wide so the waveform can stretch to its end.
@@ -147,7 +145,6 @@ export function VoiceMessage({
   transcripts,
   onSaveTranscript,
 }: VoiceMessageProps) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const { pressed, reduceMotion, setPressed } = useKeyPress();
   const trustedHosts = useChatStore((state) => state.mediaTrustedHosts);
   const hosts = trustedHosts ?? new Set<string>();
@@ -421,9 +418,7 @@ export function VoiceMessage({
     );
   };
 
-  const metaColor = outgoing
-    ? BUBBLE_COLORS[scheme].outgoingMeta
-    : BUBBLE_COLORS[scheme].incomingMeta;
+  const metaColor = outgoing ? BUBBLE_COLORS.outgoingMeta : BUBBLE_COLORS.incomingMeta;
   // Played/unplayed bars follow the bubble they sit in (white outgoing).
   const playedColor = outgoing ? '#0a0a0a' : '#ededed';
   const idleColor = outgoing ? '#a3a3a3' : '#525252';

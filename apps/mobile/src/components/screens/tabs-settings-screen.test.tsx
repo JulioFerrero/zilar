@@ -43,10 +43,6 @@ vi.mock('lucide-react-native', () => ({
   UserRound: () => null,
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', async () => {
   const { createElement: h } = await import('react');
   return {
@@ -135,13 +131,9 @@ vi.mock('@/components/settings/use-profile-api', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
-  ACCENT: { dark: '#fff', light: '#000' },
-  ICON: { dark: '#fff', light: '#000' },
-  MUTED_FOREGROUND: { dark: '#999', light: '#666' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ACCENT: '#fff',
+  ICON: '#fff',
+  MUTED_FOREGROUND: '#999',
 }));
 
 let root: { render(node: ReactNode): void; unmount(): void } | undefined;

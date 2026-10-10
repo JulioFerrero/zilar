@@ -45,10 +45,6 @@ vi.mock('@/components/ui/bottom-sheet', () => ({
   }),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 // The sheet itself is a `Modal` over the store and the clipboard bridge, so
 // Node tests cover the permission rule and the error lines (never raw
 // server text): owner only like the web panel, handle taken names the

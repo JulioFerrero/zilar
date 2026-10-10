@@ -3,7 +3,6 @@ import { Effect } from 'effect';
 import { Plus, Zap } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
 import { View } from 'react-native';
-import { useColorScheme } from 'nativewind';
 
 import { RequireAisAuth } from '@/components/ais/require-ais-auth';
 import { AiActionsSheet } from '@/components/ais/ai-actions-sheet';
@@ -18,7 +17,6 @@ import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { ACCENT, ICON } from '@/lib/colors';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT_FOREGROUND } from '@/lib/depth';
 import { AisApiError, type PublicAi } from '@/lib/ais-api';
 
@@ -50,7 +48,6 @@ export default function AisScreen() {
 
 function AisList() {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const params = useLocalSearchParams<{ highlight?: string }>();
   const highlightId = typeof params.highlight === 'string' ? params.highlight : null;
   const { api } = useAisApi();
@@ -206,7 +203,7 @@ function AisList() {
         scroll
         right={
           <IconButton label="Create AI" onPress={() => router.push('/ais/new')}>
-            <Plus size={22} color={ICON[scheme]} />
+            <Plus size={22} color={ICON} />
           </IconButton>
         }
       >
@@ -225,7 +222,7 @@ function AisList() {
 
         {status === 'ready' && ais.length === 0 && (
           <View className="items-center gap-3 pt-16">
-            <Zap size={32} color={ACCENT[scheme]} />
+            <Zap size={32} color={ACCENT} />
             <Text className="px-4 text-center text-[15px] text-muted-foreground">
               You have no AIs yet. Create one to give it a chat account and a budget.
             </Text>
