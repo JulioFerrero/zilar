@@ -26,10 +26,6 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
 vi.mock('@/components/ui/use-key-press', () => ({
   useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
 }));
@@ -42,11 +38,6 @@ vi.mock('@/lib/depth', () => ({
 
 vi.mock('lucide-react-native', () => ({
   Ban: 'Ban',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('../chat/avatar', () => ({

@@ -105,11 +105,6 @@ vi.mock('@/components/ui/state-message', () => ({
   StateMessage: ({ title }: { title: string }) => createElement('StateMessage', null, title),
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
-}));
-
 vi.mock('@/lib/colors', () => ({
   ICON: '#d4d4d4',
   MUTED_FOREGROUND: '#a1a1a1',

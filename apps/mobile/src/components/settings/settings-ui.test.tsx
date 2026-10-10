@@ -17,17 +17,8 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
 vi.mock('expo-image', () => ({
   Image: 'Image',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 const AVATAR_BASE = {

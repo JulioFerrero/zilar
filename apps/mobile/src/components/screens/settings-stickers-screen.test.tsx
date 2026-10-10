@@ -34,10 +34,6 @@ vi.mock('react-native', () => ({
   useWindowDimensions: () => ({ width: 390, height: 844 }),
 }));
 
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
 vi.mock('lucide-react-native', () => ({
   ChevronDown: 'ChevronDown',
   ChevronUp: 'ChevronUp',
@@ -61,11 +57,6 @@ vi.mock('@/components/ui/button', () => ({
 
 vi.mock('@/auth/RequireAuth', () => ({
   RequireAuth: ({ children }: { children: ReactNode }) => children,
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/components/ui/confirm-dialog', () => ({

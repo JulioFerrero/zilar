@@ -21,10 +21,6 @@ vi.mock('react-native-reanimated', () => ({
   useReducedMotion: () => false,
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 vi.mock('./voice-transcribe-confirm', () => ({
   VoiceTranscribeConfirm: 'VoiceTranscribeConfirm',
 }));

@@ -37,10 +37,6 @@ vi.mock('react-native', async () => {
   };
 });
 
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
 const nodeRequire = createRequire(import.meta.url);
 const { createRoot } = nodeRequire('react-dom/client') as {
   createRoot: (container: Element) => { render(node: ReactNode): void; unmount(): void };

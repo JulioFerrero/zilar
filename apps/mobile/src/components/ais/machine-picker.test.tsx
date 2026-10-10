@@ -10,10 +10,6 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 const CREATED_AT = '2026-10-03T10:00:00.000Z';
 
 function machine(overrides: Partial<Machine> & { id: string }): Machine {

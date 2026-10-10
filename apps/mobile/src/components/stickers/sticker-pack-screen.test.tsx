@@ -43,10 +43,6 @@ vi.mock('react-native', () => ({
   useWindowDimensions: () => ({ width: 390, height: 844 }),
 }));
 
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
 vi.mock('lucide-react-native', () => ({
   Circle: 'Circle',
   CircleAlert: 'CircleAlert',
@@ -68,11 +64,6 @@ vi.mock('@/auth/RequireAuth', () => ({
 
 vi.mock('@/auth/session', () => ({
   useAuthStore: () => forcedMe,
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/components/ui/confirm-dialog', () => ({

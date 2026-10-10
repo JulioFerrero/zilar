@@ -36,10 +36,6 @@ vi.mock('@/components/ui/icon-button', () => ({
   IconButton: 'IconButton',
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 // The shells now import `floating-tab-bar` for the tab-screen padding helper,
 // so its heavier seams are stubbed here too (the `floating-tab-bar.test.tsx`
 // pattern) to keep this a Node-only render.

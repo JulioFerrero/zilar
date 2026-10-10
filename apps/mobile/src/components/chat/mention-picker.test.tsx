@@ -9,10 +9,6 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 vi.mock('@/components/chat/avatar', () => ({
   Avatar: 'Avatar',
 }));

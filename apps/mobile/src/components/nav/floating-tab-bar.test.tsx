@@ -39,10 +39,6 @@ vi.mock('lucide-react-native', () => ({
   Settings: 'Settings',
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 vi.mock('@/components/settings/profile-logic', () => ({
   avatarImageSource: (url: string, apiUrl: string, token: string | undefined) => ({
     uri: url.startsWith('/') ? `https://api.example${url}` : url,

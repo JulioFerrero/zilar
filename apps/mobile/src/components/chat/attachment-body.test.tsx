@@ -25,21 +25,9 @@ vi.mock('react-native-gesture-handler', () => ({
   PinchGestureHandler: 'PinchGestureHandler',
 }));
 
-vi.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
-
 vi.mock('expo-video', () => ({
   useVideoPlayer: () => ({ loop: false, muted: false }),
   VideoView: 'VideoView',
-}));
-
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
 }));
 
 vi.mock('@/lib/depth', () => ({

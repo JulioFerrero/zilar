@@ -22,10 +22,6 @@ vi.mock('react-native', () => ({
   Pressable: 'Pressable',
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 vi.mock('@/components/ui/button', () => ({
   Button: 'Button',
 }));

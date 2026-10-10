@@ -21,21 +21,12 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
 vi.mock('@/components/ui/use-key-press', () => ({
   useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
 }));
 
 vi.mock('react-native-safe-area-context', () => ({
   SafeAreaView: 'SafeAreaView',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('./OtpInput', () => ({

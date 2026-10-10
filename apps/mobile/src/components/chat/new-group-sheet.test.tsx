@@ -26,17 +26,8 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
 vi.mock('@/components/ui/use-key-press', () => ({
   useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/components/chat/avatar', () => ({
@@ -50,10 +41,6 @@ vi.mock('lucide-react-native', () => ({
 // The wrapper's guard path is covered against the real builders below;
 // the body renders whatever localError the wrapper hands it (the same
 // render output, guard sentence included).
-
-vi.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
 
 vi.mock('@/components/directory/use-directory-api', () => ({
   useDirectoryApi: () => ({ api: { checkGroupHandle: async () => ({ available: true }) } }),

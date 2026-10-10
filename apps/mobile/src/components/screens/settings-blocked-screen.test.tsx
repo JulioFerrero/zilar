@@ -84,11 +84,6 @@ vi.mock('@/components/ui/state-message', () => ({
   },
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
-}));
-
 vi.mock('@/components/chat/avatar', () => ({
   Avatar: 'Avatar',
 }));

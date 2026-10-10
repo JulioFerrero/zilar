@@ -37,10 +37,6 @@ vi.mock('react-native', () => ({
   View: ({ children }: Kids) => createElement('div', null, children),
 }));
 
-vi.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
-
 vi.mock('@/components/ui/text', () => ({
   Text: ({ children, role }: Kids & { role?: string }) => createElement('span', { role }, children),
 }));

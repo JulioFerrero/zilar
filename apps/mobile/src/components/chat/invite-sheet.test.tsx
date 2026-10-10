@@ -19,21 +19,12 @@ vi.mock('@/lib/colors', () => ({
   ACCENT_FOREGROUND: '#0a0a0a',
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
-}));
-
 // No `@/lib/depth` mock: `InviteSheetBody` no longer reads it (the icon
 // color comes from `@/lib/colors`), and mocking only part of what the real
 // kit `Button` needs would break the transitive `Button` import.
 
 vi.mock('@/components/ui/use-key-press', () => ({
   useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
-}));
-
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
 }));
 
 vi.mock('lucide-react-native', () => ({

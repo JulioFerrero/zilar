@@ -24,10 +24,6 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
-
 vi.mock('lucide-react-native', () => ({
   Bell: 'Bell',
   ChevronRight: 'ChevronRight',
@@ -36,10 +32,6 @@ vi.mock('lucide-react-native', () => ({
   Inbox: 'Inbox',
   Search: 'Search',
   X: 'X',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
 }));
 
 vi.mock('@/components/ui/button', () => ({

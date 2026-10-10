@@ -30,14 +30,6 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
-
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
 vi.mock('lucide-react-native', () => ({
   Check: 'Check',
   CircleAlert: 'CircleAlert',
@@ -50,11 +42,6 @@ vi.mock('@/components/chat/avatar', () => ({
 
 vi.mock('@/components/chat/role-chips', () => ({
   RoleChips: ({ roles }: { roles: { name: string }[] }) => roles.map((role) => role.name).join(' '),
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 // The sheet renders through the kit `BottomSheet` (T-0315); stub it as a

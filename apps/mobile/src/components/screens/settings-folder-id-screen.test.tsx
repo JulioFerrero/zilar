@@ -70,11 +70,6 @@ vi.mock('@/components/ui/switch', () => ({
   Switch: ({ label }: { label: string }) => createElement('Switch', null, label),
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
-}));
-
 vi.mock('@/lib/chat-folders-api', () => ({
   ChatFoldersApiError: class extends Error {
     readonly status: number;

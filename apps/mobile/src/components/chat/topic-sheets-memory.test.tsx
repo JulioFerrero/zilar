@@ -33,14 +33,6 @@ vi.mock('react-native', async () => {
   };
 });
 
-vi.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
-
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
 vi.mock('lucide-react-native', () => ({
   Brain: 'Brain',
   Check: 'Check',
@@ -51,11 +43,6 @@ vi.mock('lucide-react-native', () => ({
 
 vi.mock('@/components/chat/avatar', () => ({
   Avatar: 'Avatar',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 // The info sheet renders through the kit `BottomSheet` (T-0315); stub it

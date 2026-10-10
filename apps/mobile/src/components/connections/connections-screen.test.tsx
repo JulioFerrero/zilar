@@ -33,10 +33,6 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
 vi.mock('react-native-safe-area-context', () => ({
   SafeAreaView: 'SafeAreaView',
 }));
@@ -59,11 +55,6 @@ vi.mock('@/auth/RequireAuth', () => ({
 
 vi.mock('@/components/ui/icon-button', () => ({
   IconButton: 'IconButton',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/components/connections/use-connections-api', () => ({

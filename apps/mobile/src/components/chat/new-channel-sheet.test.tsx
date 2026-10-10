@@ -23,15 +23,6 @@ vi.mock('react-native', () => ({
   Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
 }));
 
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
-}));
-
 vi.mock('@/lib/depth', () => ({
   KEY_PRIMARY_PRESSED_SHADOW: {},
   pressStyle: () => ({}),
@@ -46,10 +37,6 @@ vi.mock('@/components/ui/bottom-sheet', () => ({
     type: 'BottomSheet',
     props: { children: [title, children] },
   }),
-}));
-
-vi.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
 describe('channel create guards (T-0228)', () => {

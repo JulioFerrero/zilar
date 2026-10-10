@@ -27,10 +27,6 @@ vi.mock('lucide-react-native', () => ({
   Trash2: 'Trash2',
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 function fakeRecorder(
   overrides: Partial<{
     startResult: { status: 'started' } | { status: 'error'; message: string };

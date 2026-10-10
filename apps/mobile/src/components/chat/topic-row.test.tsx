@@ -47,10 +47,6 @@ vi.mock('@/components/chat/typing-dots', () => ({
   PulseDot: 'PulseDot',
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 vi.mock('@/components/contacts/use-contacts-api', () => ({
   useContactsApi: () => ({ api: {}, scenario: null }),
 }));

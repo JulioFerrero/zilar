@@ -22,10 +22,6 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 const noop = (): void => undefined;
 
 describe('Switch', () => {

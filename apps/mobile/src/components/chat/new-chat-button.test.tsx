@@ -30,10 +30,6 @@ vi.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ bottom: 0, top: 0, left: 0, right: 0 }),
 }));
 
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
 vi.mock('lucide-react-native', () => ({
   Compass: 'Compass',
   Link: 'Link',
@@ -41,11 +37,6 @@ vi.mock('lucide-react-native', () => ({
   MessageSquarePlus: 'MessageSquarePlus',
   Plus: 'Plus',
   Users: 'Users',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/components/chat/join-link', () => ({

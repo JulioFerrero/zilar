@@ -41,10 +41,6 @@ vi.mock('react-native-gesture-handler/ReanimatedSwipeable', () => ({
   SwipeDirection: { LEFT: 'left', RIGHT: 'right' },
 }));
 
-vi.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
-
 vi.mock('react-native-svg', () => ({
   default: 'Svg',
   Path: 'Path',
