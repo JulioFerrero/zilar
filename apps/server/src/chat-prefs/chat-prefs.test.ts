@@ -445,6 +445,32 @@ describe('chat prefs', () => {
     expect((await putPref(alice.cookie, topic.chatJid, { archived: true })).status).toBe(200);
   });
 
+  it('404s the room of an archived topic and answers the same for a missing one', async () => {
+    const { alice, bob } = await setupPair();
+    const group = await createGroup(alice.cookie, 'Hiring', [bob.id]);
+    const created = await app.request(`${TEST_BASE_URL}/api/groups/${group.id}/topics`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: alice.cookie },
+      body: JSON.stringify({ name: 'Open', visibility: 'public' }),
+    });
+    expect(created.status).toBe(201);
+    const topic = (await created.json()) as { id: string; chatJid: string };
+    expect((await putPref(bob.cookie, topic.chatJid, { archived: true })).status).toBe(200);
+
+    const archived = await app.request(`${TEST_BASE_URL}/api/topics/${topic.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', cookie: alice.cookie },
+      body: JSON.stringify({ archived: true }),
+    });
+    expect(archived.status).toBe(200);
+    // Archived topics drop out of the room check, like an unknown room.
+    expect((await putPref(bob.cookie, topic.chatJid, { archived: true })).status).toBe(404);
+    expect(
+      (await putPref(bob.cookie, `nosuchroom@${topic.chatJid.split('@')[1]}`, { archived: true }))
+        .status,
+    ).toBe(404);
+  });
+
   it('keeps prefs per user: reads are own-rows only', async () => {
     const { alice, bob } = await setupPair();
     const chats = await (

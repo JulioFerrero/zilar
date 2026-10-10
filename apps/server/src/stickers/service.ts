@@ -551,19 +551,29 @@ export async function discoverPacks(
   );
   const page = packs.slice(0, limit);
   const next = packs.length > limit && page.length > 0 ? (page[page.length - 1]!.id ?? null) : null;
-  const views: StickerPackView[] = [];
-  for (const pack of page) {
+  // One query for the whole page. Rows keep their position order, and each
+  // pack keeps at most its first STICKERS_MAX_PER_PACK rows (the old per-pack
+  // LIMIT).
+  const stickersByPack = new Map<string, StickerRow[]>();
+  if (page.length > 0) {
+    const packIds = page.map((pack) => pack.id);
     const rows = await runSql(
       deps,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        return yield* sql<StickerRow>`SELECT * FROM stickers WHERE pack_id = ${pack.id}
-          ORDER BY position ASC
-          LIMIT ${STICKERS_MAX_PER_PACK}`;
+        return yield* sql<StickerRow>`SELECT * FROM stickers WHERE pack_id IN ${sql.in(packIds)}
+          ORDER BY position ASC`;
       }),
     );
-    views.push(toPackView(deps, pack, [...rows]));
+    for (const row of rows) {
+      const list = stickersByPack.get(row.packId) ?? [];
+      if (list.length < STICKERS_MAX_PER_PACK) {
+        list.push(row);
+      }
+      stickersByPack.set(row.packId, list);
+    }
   }
+  const views = page.map((pack) => toPackView(deps, pack, stickersByPack.get(pack.id) ?? []));
   return { packs: views, next };
 }
 

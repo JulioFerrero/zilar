@@ -357,6 +357,57 @@ describe('stickers routes', () => {
     expect(body.packs[0]!.id).toBe(json.id);
   });
 
+  it('discover lists each pack with its stickers in position order, capped per pack', async () => {
+    const ordered = await createPack(owner, { title: 'Ordered', visibility: 'server' });
+    const empty = await createPack(owner, { title: 'Empty', visibility: 'server' });
+    const capped = await createPack(owner, { title: 'Capped', visibility: 'server' });
+    const uuidAt = (group: number, index: number) =>
+      `${group}0000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
+    const sticker = (packId: string, id: string, position: number) => ({
+      id,
+      pack_id: packId,
+      position,
+      emoji: null,
+      mime: 'image/png',
+      width: 64,
+      height: 64,
+      bytes: 33,
+      storage_key: `${id}.png`,
+      source_id: null,
+    });
+    // Inserted out of position order; 121 rows so the 120 cap applies.
+    const orderedRows = [
+      sticker(ordered.json.id, uuidAt(5, 0), 2),
+      sticker(ordered.json.id, uuidAt(5, 1), 0),
+      sticker(ordered.json.id, uuidAt(5, 2), 1),
+    ];
+    const cappedRows = Array.from({ length: 121 }, (_, index) =>
+      sticker(capped.json.id, uuidAt(6, index), index),
+    );
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO stickers ${sql.insert([...orderedRows, ...cappedRows])}`;
+      }),
+    );
+
+    const response = await app.request(`${TEST_BASE_URL}/api/sticker-packs/discover`, {
+      headers: { cookie: stranger.cookie },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      packs: Array<{ id: string; stickers: Array<{ id: string }> }>;
+    };
+    const stickerIds = new Map(
+      body.packs.map((pack) => [pack.id, pack.stickers.map((item) => item.id)]),
+    );
+    expect(stickerIds.get(ordered.json.id)).toEqual([uuidAt(5, 1), uuidAt(5, 2), uuidAt(5, 0)]);
+    expect(stickerIds.get(empty.json.id)).toEqual([]);
+    expect(stickerIds.get(capped.json.id)).toEqual(
+      Array.from({ length: 120 }, (_, index) => uuidAt(6, index)),
+    );
+  });
+
   it('adds a server pack to the panel and removes it', async () => {
     const { json } = await createPack(owner, { title: 'Shared', visibility: 'server' });
     const add = await jsonRequest(app, 'PUT', `/api/sticker-panel/${json.id}`, stranger, {});
