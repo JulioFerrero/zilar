@@ -51,10 +51,8 @@ import { InviteLinksSection } from './InviteLinksSection';
 import { RoutinesSection } from './tools/RoutinesSection';
 import { ToolsSection } from './tools/ToolsSection';
 import { VisibilitySection } from './VisibilitySection';
-
-function roleLabel(role: 'owner' | 'admin' | 'member'): string | undefined {
-  return role === 'member' ? undefined : role;
-}
+import { GroupAiRowView } from './panels/GroupAiRowView';
+import { roleLabel } from './panels/role-label';
 
 /** A failed panel action; `message` is the sentence the panel shows. */
 class PanelFailure extends Data.TaggedError('PanelFailure')<{ readonly message: string }> {}
@@ -628,61 +626,29 @@ function GroupAiRow({
   };
 
   return (
-    <div className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover">
-      <Avatar id={ai.jid} name={ai.name} size={32} ai avatarUrl={ai.avatarUrl} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="truncate text-[14px]">{ai.name}</span>
-          <AiBadge />
-        </div>
-        <p className="truncate text-[12px] text-muted-foreground">Added by {ownerName}</p>
-      </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        aria-label={`What ${ai.name} remembers`}
-        className="shrink-0 text-muted-foreground"
-        onClick={onOpenMemory}
-      >
-        <Brain className="size-4" aria-hidden="true" />
-      </Button>
-      {canRemove &&
-        (confirming ? (
-          <div className="flex shrink-0 items-center gap-1">
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              aria-label={`Confirm removing ${ai.name}`}
-              disabled={busy}
-              onClick={startRemove}
-            >
-              {busy ? 'Removing…' : 'Remove'}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={() => setConfirming(false)}
-            >
-              Cancel
-            </Button>
-          </div>
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label={`Remove ${ai.name} from the group`}
-            className="shrink-0"
-            onClick={() => setConfirming(true)}
-          >
-            Remove
-          </Button>
-        ))}
-    </div>
+    <GroupAiRowView
+      ai={ai}
+      addedBy={ownerName}
+      extra={
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label={`What ${ai.name} remembers`}
+          className="shrink-0 text-muted-foreground"
+          onClick={onOpenMemory}
+        >
+          <Brain className="size-4" aria-hidden="true" />
+        </Button>
+      }
+      canRemove={canRemove}
+      confirming={confirming}
+      busy={busy}
+      removeLabel={`Remove ${ai.name} from the group`}
+      onAskRemove={() => setConfirming(true)}
+      onConfirmRemove={startRemove}
+      onCancel={() => setConfirming(false)}
+    />
   );
 }
 

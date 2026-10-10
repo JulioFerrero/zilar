@@ -1,5 +1,5 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { Data, Effect } from 'effect';
+import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { Megaphone, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -20,6 +20,7 @@ import {
 } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { type ApiFailure, toApiFailure } from '@/lib/effect/errors';
+import { StoreFailed } from '@/lib/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -35,14 +36,8 @@ import { Sheet } from './ui/sheet';
 import { StateMessage } from './ui/state-message';
 import { InviteLinksSection } from './InviteLinksSection';
 import { VisibilitySection } from './VisibilitySection';
-
-function roleLabel(role: 'owner' | 'admin' | 'member'): string | undefined {
-  return role === 'member' ? undefined : role;
-}
-
-// A chat store action's own failure: its message is the sentence the store
-// wrote (a plain Error), or the component's fallback for a non-Error throw.
-class StoreFailed extends Data.TaggedError('StoreFailed')<{ readonly message: string }> {}
+import { GroupAiRowView } from './panels/GroupAiRowView';
+import { roleLabel } from './panels/role-label';
 
 type ChannelFailure = ApiFailure | StoreFailed;
 
@@ -549,50 +544,16 @@ function GroupAiRow({
   const removing = isWaiting(removeState);
 
   return (
-    <div className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover">
-      <Avatar id={ai.jid} name={ai.name} size={32} ai avatarUrl={ai.avatarUrl} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="truncate text-[14px]">{ai.name}</span>
-          <AiBadge />
-        </div>
-        <p className="truncate text-[12px] text-muted-foreground">Added by {addedBy}</p>
-      </div>
-      {canRemove &&
-        (confirming ? (
-          <div className="flex shrink-0 items-center gap-1">
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              aria-label={`Confirm removing ${ai.name}`}
-              disabled={removing}
-              onClick={() => removeAi()}
-            >
-              {removing ? 'Removing…' : 'Remove'}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={removing}
-              onClick={() => onConfirm(undefined)}
-            >
-              Cancel
-            </Button>
-          </div>
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            aria-label={`Remove ${ai.name} from the channel`}
-            className="shrink-0"
-            onClick={() => onConfirm(ai.aiId)}
-          >
-            Remove
-          </Button>
-        ))}
-    </div>
+    <GroupAiRowView
+      ai={ai}
+      addedBy={addedBy}
+      canRemove={canRemove}
+      confirming={confirming}
+      busy={removing}
+      removeLabel={`Remove ${ai.name} from the channel`}
+      onAskRemove={() => onConfirm(ai.aiId)}
+      onConfirmRemove={() => removeAi()}
+      onCancel={() => onConfirm(undefined)}
+    />
   );
 }

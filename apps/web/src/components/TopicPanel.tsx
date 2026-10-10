@@ -1,10 +1,7 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
-import { Brain, Lock, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Avatar } from './Avatar';
-import { AiBadge } from './AiBadge';
 import { ConfirmDialog } from './ConfirmDialog';
 import { RoutinesSection } from './tools/RoutinesSection';
 import { ToolsSection } from './tools/ToolsSection';
@@ -12,6 +9,11 @@ import { FieldError } from './ais/AiPageShell';
 import { AiMemoryDialog } from './ais/AiMemoryDialog';
 import { PinsSection } from './PinsPanel';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
+import { TopicAisSection } from './panels/TopicAisSection';
+import { TopicDangerZone } from './panels/TopicDangerZone';
+import { TopicHeader } from './panels/TopicHeader';
+import { TopicMembersSection } from './panels/TopicMembersSection';
+import { failInline, textOf } from './panels/topic-failure';
 import { Button } from './ui/button';
 import { Sheet } from './ui/sheet';
 import { StateMessage } from './ui/state-message';
@@ -38,18 +40,6 @@ import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 type PanelStatus = 'loading' | 'ready' | 'error';
-type GroupMemberRow = GroupDetail['members'][number];
-
-function visibilityLabel(visibility: 'public' | 'private'): string {
-  return visibility === 'public' ? 'Public' : 'Private';
-}
-
-/**
- * The sentence shown for a failed call: the API's own message, or the fixed
- * fallback for anything else (AGENTS.md: user-facing errors are fixed sentences).
- */
-const textOf = (failure: ApiFailure, fallback: string): string =>
-  failure.code === 'unknown_error' ? fallback : failure.message;
 
 /**
  * A chat-store action. The store throws an ApiError (mapped as fromApi maps
@@ -65,11 +55,6 @@ const storeCall = <A,>(call: () => Promise<A>): Effect.Effect<A, ApiFailure> =>
         ? new ApiFailure({ status: 0, code: 'store_error', message: cause.message, detail: {} })
         : toApiFailure(cause),
   });
-
-/** Shows a failure as the panel's inline error, with its fixed fallback. */
-const failInline =
-  (setError: (message: string) => void, fallback: string) => (failure: ApiFailure) =>
-    Effect.sync(() => setError(textOf(failure, fallback)));
 
 /**
  * The topic info panel (T-0111): visibility, members (private list with
@@ -410,266 +395,60 @@ function TopicPanelBody({
     const ownerId = groupAis.find((item) => item.aiId === aiId)?.ownerId;
     return ownerId === me || isManager;
   };
+  const headerSuffix =
+    isPrivate && membersState.status === 'ready'
+      ? ` · ${membersState.members.length} members`
+      : !isPrivate && info !== undefined
+        ? ` · All ${info.members.length} members`
+        : '';
   const iAmMember = membersState.members.some((member) => member.userId === me);
   const visibilityBusy = isWaiting(visibilityState);
 
   return (
     <>
       <Sheet open onClose={onClose} ariaLabel={`${chat.title} topic info`}>
-        <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
-          <Avatar id={chat.id} name={chat.title} size={44} avatarUrl={chat.avatarUrl} />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[16px] font-semibold">
-              {groupTitle !== '' && (
-                <span className="font-normal text-muted-foreground">{groupTitle} › </span>
-              )}
-              {chat.title}
-            </div>
-            <p className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
-              {isPrivate && <Lock className="size-3" aria-hidden="true" />}
-              {visibilityLabel(topic.visibility)} topic
-              {isPrivate && membersState.status === 'ready'
-                ? ` · ${membersState.members.length} members`
-                : ''}
-              {!isPrivate && info !== undefined ? ` · All ${info.members.length} members` : ''}
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-lg"
-            aria-label="Close topic panel"
-            onClick={onClose}
-            className="shrink-0 rounded-full text-muted-foreground"
-          >
-            <X className="size-5" aria-hidden="true" />
-          </Button>
-        </header>
+        <TopicHeader
+          chat={chat}
+          visibility={topic.visibility}
+          groupTitle={groupTitle}
+          suffix={headerSuffix}
+          onClose={onClose}
+        />
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-          <section aria-label="Members" className="flex flex-col gap-1">
-            <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Members</h2>
-            {isPrivate ? (
-              <>
-                {membersState.status === 'loading' && (
-                  <StateMessage kind="loading" size="inline" title="Loading…" />
-                )}
-                {membersState.status === 'error' && (
-                  <div className="flex flex-col gap-2 px-2">
-                    <FieldError>{membersState.message}</FieldError>
-                    <Button
-                      type="button"
-                      size="lg"
-                      className="self-start rounded-full px-4"
-                      onClick={() => refreshMembers()}
-                    >
-                      Retry
-                    </Button>
-                  </div>
-                )}
-                {membersState.status === 'ready' && membersState.message !== '' && (
-                  <div className="flex items-center gap-2 px-2">
-                    <p className="flex-1 text-[12px] text-muted-foreground">
-                      {membersState.message}
-                    </p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => refreshMembers()}
-                    >
-                      Retry
-                    </Button>
-                  </div>
-                )}
-                {membersState.status === 'ready' &&
-                  membersState.members.map((member) => {
-                    const detail = groupMembers.find((item) => item.userId === member.userId);
-                    return (
-                      <div
-                        key={member.userId}
-                        className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
-                      >
-                        <Avatar
-                          id={member.userId}
-                          name={member.name}
-                          size={32}
-                          avatarUrl={detail?.avatarUrl}
-                        />
-                        <span className="min-w-0 flex-1 truncate text-[14px]">
-                          {member.name}
-                          {member.userId === me && (
-                            <span className="text-muted-foreground"> (you)</span>
-                          )}
-                        </span>
-                        {detail?.role !== undefined && detail.role !== 'member' && (
-                          <span className="font-mono rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
-                            {detail.role}
-                          </span>
-                        )}
-                        {isManager && member.userId !== me && (
-                          <RemoveMemberButton
-                            member={member}
-                            remove={removeMember}
-                            onError={setErrorMessage}
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                {isManager && addableMembers.length > 0 && (
-                  <div className="mt-1 flex flex-col gap-1 px-2">
-                    {memberPickerOpen ? (
-                      <>
-                        {addableMembers.map((member) => (
-                          <AddMemberButton
-                            key={member.userId}
-                            member={member}
-                            add={addMember}
-                            onError={setErrorMessage}
-                          />
-                        ))}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="self-start"
-                          onClick={() => setMemberPickerOpen(false)}
-                        >
-                          Cancel
-                        </Button>
-                      </>
-                    ) : (
-                      <Button
-                        type="button"
-                        size="lg"
-                        className="self-start rounded-full px-4"
-                        onClick={() => setMemberPickerOpen(true)}
-                      >
-                        Add people
-                      </Button>
-                    )}
-                  </div>
-                )}
-                {!isManager && iAmMember && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="lg"
-                    className="mx-2 self-start rounded-full px-4"
-                    disabled={isWaiting(leaveState)}
-                    onClick={() => runLeave()}
-                  >
-                    {isWaiting(leaveState) ? 'Leaving…' : 'Leave topic'}
-                  </Button>
-                )}
-              </>
-            ) : (
-              <p className="px-2 text-[13px] text-muted-foreground">
-                All {info?.members.length ?? chat.memberCount ?? 0} members of {groupTitle} can read
-                and write here.
-              </p>
-            )}
-          </section>
+          <TopicMembersSection
+            isPrivate={isPrivate}
+            state={membersState}
+            groupMembers={groupMembers}
+            addableMembers={addableMembers}
+            allMembersText={`All ${info?.members.length ?? chat.memberCount ?? 0} members of ${groupTitle} can read and write here.`}
+            me={me}
+            isManager={isManager}
+            iAmMember={iAmMember}
+            pickerOpen={memberPickerOpen}
+            leaving={isWaiting(leaveState)}
+            onPickerOpenChange={setMemberPickerOpen}
+            onRetry={() => refreshMembers()}
+            onLeave={() => runLeave()}
+            removeMember={removeMember}
+            addMember={addMember}
+            onError={setErrorMessage}
+          />
 
-          <section aria-label="AIs in this topic" className="flex flex-col gap-1">
-            <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">
-              AIs in this topic
-            </h2>
-            {aisState.status === 'loading' && (
-              <StateMessage kind="loading" size="inline" title="Loading…" />
-            )}
-            {aisState.status === 'error' && (
-              <div className="flex flex-col gap-2 px-2">
-                <FieldError>{aisState.message}</FieldError>
-                <Button
-                  type="button"
-                  size="lg"
-                  className="self-start rounded-full px-4"
-                  onClick={() => refreshAis()}
-                >
-                  Retry
-                </Button>
-              </div>
-            )}
-            {aisState.status === 'ready' &&
-              aisState.ais.length === 0 &&
-              aisState.message === '' && (
-                <p className="px-2 text-[13px] text-muted-foreground">No AIs in this topic yet.</p>
-              )}
-            {aisState.status === 'ready' && aisState.message !== '' && (
-              <div className="flex items-center gap-2 px-2">
-                <p className="flex-1 text-[12px] text-muted-foreground">{aisState.message}</p>
-                <Button type="button" variant="ghost" size="sm" onClick={() => refreshAis()}>
-                  Retry
-                </Button>
-              </div>
-            )}
-            {aisState.status === 'ready' &&
-              aisState.ais.map((ai) => {
-                // Topic AI rows carry no picture; the group detail knows it.
-                const picture = groupAis.find((item) => item.aiId === ai.id)?.avatarUrl;
-                return (
-                  <div
-                    key={ai.id}
-                    className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
-                  >
-                    <Avatar id={ai.id} name={ai.name} size={32} ai avatarUrl={picture} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-[14px]">{ai.name}</span>
-                        <AiBadge />
-                      </div>
-                      <p className="truncate text-[12px] text-muted-foreground">
-                        Added by {aiOwnerName(ai.id)}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`What ${ai.name} remembers`}
-                      className="shrink-0 text-muted-foreground"
-                      onClick={() => setMemoryAi({ id: ai.id, name: ai.name })}
-                    >
-                      <Brain className="size-4" aria-hidden="true" />
-                    </Button>
-                    {canRemoveAi(ai.id) && (
-                      <RemoveAiButton ai={ai} remove={removeAi} onError={setErrorMessage} />
-                    )}
-                  </div>
-                );
-              })}
-            {addableAis.length > 0 && (
-              <div className="mt-1 flex flex-col gap-1 px-2">
-                {aiPickerOpen ? (
-                  <>
-                    {addableAis.map((ai) => (
-                      <AddAiButton key={ai.id} ai={ai} add={addAi} onError={setErrorMessage} />
-                    ))}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="self-start"
-                      onClick={() => setAiPickerOpen(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    type="button"
-                    size="lg"
-                    className="self-start rounded-full px-4"
-                    onClick={() => setAiPickerOpen(true)}
-                  >
-                    Add my AI
-                  </Button>
-                )}
-              </div>
-            )}
-          </section>
+          <TopicAisSection
+            state={aisState}
+            addableAis={addableAis}
+            pictureOf={(aiId) => groupAis.find((item) => item.aiId === aiId)?.avatarUrl}
+            ownerNameOf={aiOwnerName}
+            canRemove={canRemoveAi}
+            pickerOpen={aiPickerOpen}
+            onPickerOpenChange={setAiPickerOpen}
+            onRetry={() => refreshAis()}
+            onOpenMemory={setMemoryAi}
+            removeAi={removeAi}
+            addAi={addAi}
+            onError={setErrorMessage}
+          />
 
           {memoryAi !== undefined && (
             <AiMemoryDialog
@@ -721,45 +500,15 @@ function TopicPanelBody({
           <PinsSection chatId={chat.id} onOpen={() => storeApi.getState().setPinsPanel(chat.id)} />
 
           {topic.isGeneral !== true && (
-            <section aria-label="Danger zone" className="flex flex-col gap-2 px-2">
-              {isManager && (
-                <>
-                  {topic.visibility === 'private' ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="lg"
-                      className="self-start rounded-full px-4"
-                      disabled={visibilityBusy}
-                      onClick={() => setConfirmingVisibility(true)}
-                    >
-                      Make public
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="lg"
-                      className="self-start rounded-full px-4"
-                      disabled={visibilityBusy}
-                      onClick={() => runVisibility()}
-                    >
-                      {visibilityBusy ? 'Saving…' : 'Make private'}
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="lg"
-                    className="self-start rounded-full px-4"
-                    disabled={isWaiting(archiveState)}
-                    onClick={() => setConfirmingArchive(true)}
-                  >
-                    Archive topic
-                  </Button>
-                </>
-              )}
-            </section>
+            <TopicDangerZone
+              isManager={isManager}
+              isPrivate={isPrivate}
+              visibilityBusy={visibilityBusy}
+              archiving={isWaiting(archiveState)}
+              onMakePublic={() => setConfirmingVisibility(true)}
+              onMakePrivate={() => runVisibility()}
+              onArchive={() => setConfirmingArchive(true)}
+            />
           )}
 
           {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
@@ -785,144 +534,6 @@ function TopicPanelBody({
         />
       )}
     </>
-  );
-}
-
-/**
- * Removes one member. The row owns its call, so two rows can run at once, and
- * a second click on the same row is ignored while it waits.
- */
-function RemoveMemberButton({
-  member,
-  remove,
-  onError,
-}: {
-  member: TopicMember;
-  remove: (userId: string) => Effect.Effect<void, ApiFailure>;
-  onError: (message: string) => void;
-}) {
-  const [state, run] = useAction<string, void, never>((userId) =>
-    remove(userId).pipe(
-      Effect.catchTag('ApiFailure', failInline(onError, 'Could not remove the member.')),
-    ),
-  );
-  const removing = isWaiting(state);
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      aria-label={`Remove ${member.name} from the topic`}
-      className="shrink-0"
-      disabled={removing}
-      onClick={() => {
-        onError('');
-        run(member.userId);
-      }}
-    >
-      {removing ? 'Removing…' : 'Remove'}
-    </Button>
-  );
-}
-
-/** Adds one group member from the picker; one call per row, as RemoveMemberButton. */
-function AddMemberButton({
-  member,
-  add,
-  onError,
-}: {
-  member: GroupMemberRow;
-  add: (userId: string) => Effect.Effect<void, ApiFailure>;
-  onError: (message: string) => void;
-}) {
-  const [state, run] = useAction<string, void, never>((userId) =>
-    add(userId).pipe(
-      Effect.catchTag('ApiFailure', failInline(onError, 'Could not add the member.')),
-    ),
-  );
-  const adding = isWaiting(state);
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      disabled={adding}
-      onClick={() => {
-        onError('');
-        run(member.userId);
-      }}
-      className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
-    >
-      <Avatar id={member.userId} name={member.name} size={28} avatarUrl={member.avatarUrl} />
-      <span className="min-w-0 flex-1 truncate">{member.name}</span>
-      {adding && <span className="text-[12px] text-muted-foreground">Adding…</span>}
-    </Button>
-  );
-}
-
-/** Removes one AI from the topic, with its own call. */
-function RemoveAiButton({
-  ai,
-  remove,
-  onError,
-}: {
-  ai: TopicAi;
-  remove: (aiId: string) => Effect.Effect<void, ApiFailure>;
-  onError: (message: string) => void;
-}) {
-  const [state, run] = useAction<string, void, never>((aiId) =>
-    remove(aiId).pipe(
-      Effect.catchTag('ApiFailure', failInline(onError, 'Could not remove the AI.')),
-    ),
-  );
-  const removing = isWaiting(state);
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      aria-label={`Remove ${ai.name} from the topic`}
-      className="shrink-0"
-      disabled={removing}
-      onClick={() => {
-        onError('');
-        run(ai.id);
-      }}
-    >
-      {removing ? 'Removing…' : 'Remove'}
-    </Button>
-  );
-}
-
-/** Adds one of my AIs from the picker, with its own call. */
-function AddAiButton({
-  ai,
-  add,
-  onError,
-}: {
-  ai: PublicAi;
-  add: (aiId: string) => Effect.Effect<void, ApiFailure>;
-  onError: (message: string) => void;
-}) {
-  const [state, run] = useAction<string, void, never>((aiId) =>
-    add(aiId).pipe(Effect.catchTag('ApiFailure', failInline(onError, 'Could not add the AI.'))),
-  );
-  const adding = isWaiting(state);
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      disabled={adding}
-      onClick={() => {
-        onError('');
-        run(ai.id);
-      }}
-      className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
-    >
-      <Avatar id={ai.jid} name={ai.name} size={28} ai avatarUrl={ai.avatarUrl} />
-      <span className="min-w-0 flex-1 truncate">{ai.name}</span>
-      <AiBadge />
-      {adding && <span className="text-[12px] text-muted-foreground">Adding…</span>}
-    </Button>
   );
 }
 

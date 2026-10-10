@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0883](T-0883-web-panels-dedupe.md) | Web panels: one roleLabel/GroupAiRow/pick-row and one set of shared tagged errors instea… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0884](T-0884-fake-xmpp-core-mobile-fakes.md) | One createFakeXmppCore() in xmpp-core/testing; mobile store tests use it and shared fake… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0885](T-0885-web-store-fakes.md) | Web store tests share one fakeApi/fakeXmpp harness (159-line copies today) | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0886](T-0886-gateway-test-split.md) | Split apps/server/src/agents/gateway.test.ts (7,242 lines, 100 s) into feature files aro… | todo | sonnet-5.5 |  | wave 4, simplify plan |
@@ -919,3 +918,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0880](T-0880-web-lazy-markdown.md) | Web: lazy-load the markdown stack (about 120 KB min) behind a plain-text fallback | 2026-10-10 |
 | [T-0881](T-0881-mobile-dark-only.md) | Mobile is dark-only: remove the dead light-theme branches (155 [scheme] lookups, 135 useColorScheme calls) | 2026-10-10 |
 | [T-0882](T-0882-mock-imports-rest.md) | The last static mock imports leave the production bundles (mobile chat screen, chats tab, composer; web Sticke | 2026-10-10 |
+| [T-0883](T-0883-web-panels-dedupe.md) | Web panels: one roleLabel/GroupAiRow/pick-row and one set of shared tagged errors instead of copies in GroupPa | 2026-10-10 |
