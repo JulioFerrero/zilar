@@ -2,6 +2,23 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 23:10 local: 6 more merged; T-1045 in its fix round; 3 new tasks running**
+- **Merged since 22:55:**
+  - **dedups, each read line by line:**
+    - T-1052 (S1, `runSql`; server tests passed);
+    - T-1053 (S3, `jid.ts`/`text.ts`; server tests passed);
+    - T-1054 (S5, `readCapped`; identical to main by diff);
+    - T-1055 (S2, the pins `handler`; the lead ran the authz sweep, 5 of 5);
+  - **mock, with phone smokes:**
+    - T-1048: the Acme channel screen opens, and invite create and revoke work, so T-1041's screen is now smoked too;
+    - T-1046: the sticker packs and GIF lists load. The images are still blank on mobile (board follow-up).
+- **Running:**
+  - **T-1045:** the lead sent a fix round: resolve the rebase conflict with T-1046 in `domains/index.ts`, and delete two mock tests that the no-tests rule forbids;
+  - **T-1056:** the real cause of the mobile "Always allowed" follow-up. `aiList` bypasses the mock switch, so it is a mock-only bug;
+  - **T-1057:** S4, one `firstIssueMessage`. Audit keeps its own copy, because it differs;
+  - **T-1058:** the `boot-check.mjs` split, moved unchanged.
+- **Waiting for Julio:** the security dedup slices (BOARD), and mobile markdown tables, which would be a new feature.
+
 **2026-10-10 22:55 local: mock uploads work; server dedup slices S1, S3 and S5 running**
 - **Merged since 22:34, with checks:**
   - **mock:** T-1047, the mobile mock uploader. On the phone, a voice note and `tickets.pdf` send with no error;
