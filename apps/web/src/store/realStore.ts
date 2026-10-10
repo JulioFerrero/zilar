@@ -1,6 +1,12 @@
 import type { MentionMember } from '@zilar/chat-core';
 import { sortFolders } from '@zilar/chat-core';
-import { createMessageLedger } from '@zilar/client-core/store';
+import {
+  createMessageLedger,
+  deleteForEveryone,
+  editMessage,
+  react,
+  sendTyping,
+} from '@zilar/client-core/store';
 import { type XmppCore } from '@zilar/xmpp-core';
 import { sortByRecency, summariesFor } from './effects/chatRows';
 import {
@@ -17,9 +23,10 @@ import {
   setPushPair,
   unpinMessage,
 } from './effects/pins';
+import { dismissNotificationsInBackground, syncBadgeInBackground } from './effects/badge';
 import type { SendRun, StoreCtx } from './effects/ctx';
 import { loadGroupMembersInBackground } from './effects/groupMembers';
-import { deleteForEveryone, editMessage, react, sendTyping } from './effects/messageActions';
+import { clearDraftTimeout, markTurnFinished } from './effects/polling';
 import {
   refreshChatPrefs,
   refreshDefaultBackground,
@@ -182,6 +189,20 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         removeFailedMessage,
         rememberGroupIds,
         nick,
+      },
+      // The web code the core modules call (`CoreHooks`).
+      fx: {
+        syncBadge: () => syncBadgeInBackground(ctx),
+        dismissChatNotifications: (chatId) => dismissNotificationsInBackground(ctx, chatId),
+        loadGroupMembers: (chatId) => loadGroupMembersInBackground(ctx, chatId),
+        finishDraftTurn: (chatId, turnId) => {
+          markTurnFinished(ctx, turnId);
+          clearDraftTimeout(ctx, chatId);
+        },
+        forgetRetryBytes: (messageId) => {
+          pendingVoices.delete(messageId);
+          pendingAttachments.delete(messageId);
+        },
       },
       get core() {
         return core;

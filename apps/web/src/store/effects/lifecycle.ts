@@ -4,6 +4,13 @@
 // attempt owns a Scope inside the session. Closing a Scope interrupts the
 // fibers forked in it and removes its listeners and its connection.
 import { Effect, Exit, Schema, Scope } from 'effect';
+import {
+  handleDisplayed,
+  handleMessage,
+  handleOccupants,
+  handlePresence,
+  handleTyping,
+} from '@zilar/client-core/store';
 import type { XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 import type { ChatPref, Me, XmppToken } from '@/lib/api';
 import { authClient } from '@/lib/auth';
@@ -18,13 +25,6 @@ import { CONNECT_RETRY_DELAYS_MS, LAST_READ_PREFIX } from './constants';
 import type { StoreCtx } from './ctx';
 import { joinGroups } from './groupMembers';
 import { flushPending, loadPreview, scheduleChatsRefresh } from './history';
-import {
-  handleDisplayed,
-  handleMessage,
-  handleOccupants,
-  handlePresence,
-  handleTyping,
-} from './incoming';
 import {
   clearFinishedTurns,
   startChatsPolling,

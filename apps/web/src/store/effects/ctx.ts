@@ -1,10 +1,11 @@
 // What the effect modules share about one chat store: the state accessors, the
 // ports, the lifetime, the mutable bookkeeping the store keeps beside its
-// state, and the plain helpers (`k`) that stay in `realStore.ts`.
+// state, and the plain helpers (`k`) that stay in `realStore.ts`. It extends
+// the core context (`@zilar/client-core/store`), so web modules and core
+// modules take the same value.
 import type { EditAuthor, MentionMember } from '@zilar/chat-core';
-import type { MessageLedger } from '@zilar/client-core/store';
+import type { CoreCtx, MessageLedger } from '@zilar/client-core/store';
 import type { Deferred } from 'effect';
-import type { XmppCore } from '@zilar/xmpp-core';
 import type { ChatEntry, GroupDetail, Me } from '@/lib/api';
 import type { MediaTokenShape } from '@/lib/attachments';
 import type { SetState } from '../atomStore';
@@ -27,23 +28,20 @@ export interface SendRun {
   readonly settled: Deferred.Deferred<void>;
 }
 
-export interface StoreCtx {
+/** The core context with web's state, ports and lifetime, plus web's bookkeeping. */
+export interface StoreCtx extends CoreCtx {
   readonly get: () => ChatStoreState;
   readonly set: SetState<ChatStoreState>;
   readonly ports: PortsShape;
   readonly rt: Lifetime;
   readonly k: Kernel;
 
-  /** The connected XMPP core of the current session. */
-  core: XmppCore | undefined;
   /** Group history (MUC MAM) only works once the rooms are joined. */
   groupsJoined: boolean;
   /** The latest chat opened before the core or the chats were ready. */
   pendingOpenChatId: string | undefined;
   /** The token the latest session connected with, for the media allow-list. */
   mediaToken: MediaTokenShape | undefined;
-  lastRead: Record<string, string>;
-  lastReadUserId: string | undefined;
   /** The user whose cached chat list was painted on start, if any. */
   cachedUserId: string | undefined;
   connectRetryAttempt: number;
@@ -71,8 +69,6 @@ export interface StoreCtx {
   readonly quietArchiveIds: Set<string>;
   /** The counter behind the optimistic `local-N` ids. */
   sequence: number;
-  /** Optimistic ids waiting for their server echo, by echo signature. */
-  readonly pendingOutgoing: Map<string, string[]>;
   /** An outgoing attachment's bytes, kept for a Retry after a failed upload. */
   readonly pendingAttachments: Map<string, File>;
   /** An outgoing voice recording's bytes, kept for a Retry after a failed send. */

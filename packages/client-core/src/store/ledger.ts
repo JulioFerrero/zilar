@@ -38,35 +38,12 @@ import {
   trustedMediaHosts,
   userLocalpartOf as sharedUserLocalpartOf,
 } from '@zilar/chat-core';
-import type { ForwardOrigin, Payload } from '@zilar/protocol';
 import { jidLocal } from '@zilar/protocol';
+import type { ChatMessage } from '@zilar/xmpp-core';
 import { advanceStatus, clearFailure, moveChatToTop, sortMessages } from './rows';
 
-/**
- * The fields of a received stanza the ledger reads. `ChatMessage` of
- * `@zilar/xmpp-core` satisfies it; the ledger does not import that package
- * because its sources need the `@xmpp/client` ambient types, which only the
- * apps' tsconfigs include.
- */
-export interface LedgerStanza {
-  id: string;
-  originId?: string;
-  chatJid: string;
-  fromJid: string;
-  fromResolved: boolean;
-  fromNick?: string;
-  occupantId?: string;
-  body?: string;
-  payload?: Payload;
-  forward?: ForwardOrigin;
-  replyTo?: { id: string };
-  reactions?: { targetId: string; emojis: string[] };
-  correction?: { targetId: string };
-  retraction?: { targetId: string };
-  mentions?: { jid: string; begin?: number; end?: number }[];
-  timestamp: Date;
-  outgoing: boolean;
-}
+/** A received stanza as the ledger reads it: `ChatMessage` without `kind`, which it never reads. */
+export type LedgerStanza = Omit<ChatMessage, 'kind'>;
 
 /**
  * A stored chat message: the shared `UiMessage` plus mobile's local-only

@@ -17,6 +17,11 @@ export * from './ledger';
 // End of T3.
 
 // T6 (ctx, ports, reads, incoming, actions, history): add `export * from './<x>';` lines below.
+export * from './ctx';
+export * from './ports';
+export * from './reads';
+export * from './incoming';
+export * from './actions';
 // ----------------------------------------------------------------------------
 // End of T6.
 

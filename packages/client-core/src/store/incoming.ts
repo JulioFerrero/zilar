@@ -7,23 +7,23 @@
 import { Effect } from 'effect';
 import type { UiMessage } from '@zilar/chat-core';
 import type { ChatMessage, Occupant, PresenceEvent } from '@zilar/xmpp-core';
-import { syncBadgeInBackground } from './badge';
+import type { CoreCtx } from './ctx';
+import { recordRead } from './reads';
 import {
   advanceStatus,
   coreKind,
   moveChatToTop,
   rememberFinishedDraftMessage,
   sortMessages,
-} from './chatRows';
-import { TYPING_CLEAR_MS } from './constants';
-import type { StoreCtx } from './ctx';
-import { loadGroupMembersInBackground } from './groupMembers';
-import { clearDraftTimeout, markTurnFinished, withoutDraft } from './polling';
-import { recordRead } from './reads';
+  withoutDraft,
+} from './rows';
+
+/** A typing line clears this long after the last composing event. */
+export const TYPING_CLEAR_MS = 5000;
 
 const typingKey = (chatId: string): string => `typing:${chatId}`;
 
-const clearTyping = (ctx: StoreCtx, chatId: string): void => {
+const clearTyping = (ctx: CoreCtx, chatId: string): void => {
   ctx.set((state) => {
     const next = { ...state.typing };
     delete next[chatId];
@@ -34,7 +34,7 @@ const clearTyping = (ctx: StoreCtx, chatId: string): void => {
 // Reconciles our optimistic message with the server echo. Sticker echoes carry
 // the sticker id in the payload, so they match the sticker-scoped signature
 // (not the bare emoji body).
-function handleOutgoingEcho(ctx: StoreCtx, message: ChatMessage, ui: UiMessage): void {
+function handleOutgoingEcho(ctx: CoreCtx, message: ChatMessage, ui: UiMessage): void {
   const { k } = ctx;
   const chatId = message.chatJid;
   const replyRef =
@@ -59,10 +59,8 @@ function handleOutgoingEcho(ctx: StoreCtx, message: ChatMessage, ui: UiMessage):
     k.clearSendFailure(chatId, ui.id);
     k.updateMessageStatus(chatId, ui.id, 'sent');
     const root = k.aliasRoot(localId);
-    ctx.pendingVoices.delete(localId);
-    ctx.pendingVoices.delete(root);
-    ctx.pendingAttachments.delete(localId);
-    ctx.pendingAttachments.delete(root);
+    ctx.fx.forgetRetryBytes(localId);
+    ctx.fx.forgetRetryBytes(root);
   }
   ctx.set((state) => {
     const existing = k.listFor(state, chatId);
@@ -89,7 +87,7 @@ function handleOutgoingEcho(ctx: StoreCtx, message: ChatMessage, ui: UiMessage):
   });
 }
 
-export function handleMessage(ctx: StoreCtx, message: ChatMessage): void {
+export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
   const { k } = ctx;
   // A correction or a retraction is never a chat message: it edits another
   // one, so it is ingested and returns before any rendering.
@@ -123,8 +121,7 @@ export function handleMessage(ctx: StoreCtx, message: ChatMessage): void {
   const fromAi = message.fromJid === chatId && !k.isOwnSender(message.fromJid);
   const draft = ctx.get().drafts[chatId];
   if (draft !== undefined && fromAi) {
-    markTurnFinished(ctx, draft.turnId);
-    clearDraftTimeout(ctx, chatId);
+    ctx.fx.finishDraftTurn(chatId, draft.turnId);
   }
   ctx.set((state) => ({
     messagesByChat: {
@@ -153,7 +150,7 @@ export function handleMessage(ctx: StoreCtx, message: ChatMessage): void {
   k.resolvePendingEdits(chatId);
   k.refreshEdits(chatId);
   if (!isRead) {
-    syncBadgeInBackground(ctx);
+    ctx.fx.syncBadge();
   }
   if (isRead && ctx.core !== undefined) {
     const chat = ctx.get().chats.find((entry) => entry.id === chatId);
@@ -165,7 +162,7 @@ export function handleMessage(ctx: StoreCtx, message: ChatMessage): void {
 }
 
 export function handleTyping(
-  ctx: StoreCtx,
+  ctx: CoreCtx,
   event: { chatJid: string; fromJid: string; state: string; outgoing: boolean },
 ): void {
   // A MUC reflects my own chat states back to me. When the sender cannot be
@@ -175,7 +172,7 @@ export function handleTyping(
     return;
   }
   const chatId = event.chatJid;
-  loadGroupMembersInBackground(ctx, chatId);
+  ctx.fx.loadGroupMembers(chatId);
   const name = ctx.k.senderNameFor({
     chatJid: chatId,
     fromJid: event.fromJid,
@@ -197,7 +194,7 @@ export function handleTyping(
 }
 
 export function handleDisplayed(
-  ctx: StoreCtx,
+  ctx: CoreCtx,
   event: { chatJid: string; fromJid: string; messageId: string; outgoing: boolean },
 ): void {
   // A reflected marker of my own message means I displayed it, not that a peer
@@ -209,7 +206,7 @@ export function handleDisplayed(
 }
 
 export function handleOccupants(
-  ctx: StoreCtx,
+  ctx: CoreCtx,
   event: { roomJid: string; occupants: Occupant[] },
 ): void {
   const online = event.occupants.filter((occupant) => occupant.available).length;
@@ -226,7 +223,7 @@ export function handleOccupants(
   }));
 }
 
-export function handlePresence(ctx: StoreCtx, event: PresenceEvent): void {
+export function handlePresence(ctx: CoreCtx, event: PresenceEvent): void {
   ctx.set((state) => ({
     chats: state.chats.map((chat) =>
       chat.id === event.jid

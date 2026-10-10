@@ -1,9 +1,8 @@
 // Timing and size constants of the web chat store. `realStore.ts` re-exports
 // the ones its callers and tests import.
-export const LAST_READ_PREFIX = 'zilar:lastRead:';
+export { LAST_READ_PREFIX, TYPING_CLEAR_MS } from '@zilar/client-core/store';
 export const PREVIEW_HISTORY_MAX = 1;
 export const PAGE_HISTORY_MAX = 50;
-export const TYPING_CLEAR_MS = 5000;
 export const CHAT_REFRESH_DEBOUNCE_MS = 500;
 // Refetch `/api/chats` every 60 s while the tab is visible (T-0111), so a
 // topic created, made private, or where I was removed appears or disappears

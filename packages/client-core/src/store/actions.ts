@@ -12,15 +12,14 @@ import {
   type EditAuthor,
   type EditUpdate,
 } from '@zilar/chat-core';
-import { coreKind } from './chatRows';
-import type { StoreCtx } from './ctx';
-import { fromPromise } from './util';
+import { fromPromise, type CoreCtx } from './ctx';
+import { coreKind } from './rows';
 
 /**
  * Toggles my reaction of `emoji` on a message and sends my complete set
  * (XEP-0444). Optimistic; it reverts when the send fails.
  */
-export function react(ctx: StoreCtx, chatId: string, messageId: string, emoji: string): void {
+export function react(ctx: CoreCtx, chatId: string, messageId: string, emoji: string): void {
   const { k } = ctx;
   const chat = ctx.get().chats.find((entry) => entry.id === chatId);
   const mine = k.myJid();
@@ -52,7 +51,7 @@ export function react(ctx: StoreCtx, chatId: string, messageId: string, emoji: s
   );
 }
 
-export function editMessage(ctx: StoreCtx, chatId: string, messageId: string, text: string): void {
+export function editMessage(ctx: CoreCtx, chatId: string, messageId: string, text: string): void {
   const { k } = ctx;
   const trimmed = text.trim();
   const chat = ctx.get().chats.find((entry) => entry.id === chatId);
@@ -127,7 +126,7 @@ export function editMessage(ctx: StoreCtx, chatId: string, messageId: string, te
   );
 }
 
-export function deleteForEveryone(ctx: StoreCtx, chatId: string, messageId: string): void {
+export function deleteForEveryone(ctx: CoreCtx, chatId: string, messageId: string): void {
   const { k } = ctx;
   const chat = ctx.get().chats.find((entry) => entry.id === chatId);
   const mine = k.myJid();
@@ -173,7 +172,7 @@ export function deleteForEveryone(ctx: StoreCtx, chatId: string, messageId: stri
   );
 }
 
-export function sendTyping(ctx: StoreCtx, chatId: string): void {
+export function sendTyping(ctx: CoreCtx, chatId: string): void {
   const chat = ctx.get().chats.find((entry) => entry.id === chatId);
   if (ctx.core !== undefined && chat !== undefined) {
     ctx.core.sendTyping(chatId, coreKind(chat), 'composing');
