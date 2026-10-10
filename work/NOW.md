@@ -2,6 +2,21 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 01:10 local: about 6,600 mock lines deleted tonight; the last mobile switches and web slices running**
+- **Merged since 00:30:**
+  - **T-1066:** 7 replaced mobile mocks deleted (1,176 lines). On the phone, AIs, Dev-1 and Machines work;
+  - **T-1065:** 723 lines of web `mock/api.ts` deleted. In the browser, pins, folders, mute and the background work;
+  - **T-1067:** backend contact-requests, blocks, `handles/check` and `PUT /me/handle`. Every route decoded, and the seeds are as empty as web's;
+  - **T-1068:** 649 lines of web `mock/api.ts` deleted. In the browser, Dev team › General and topic info work;
+  - **T-1069:** mobile contacts and directory on the backend. On the phone, Explore, a profile by handle, sending a request and the Requests list work.
+- **Web `mock/api.ts`:** 4,297 lines at the start of tonight, about 2,175 now.
+- **Running:**
+  - **T-1070:** mobile search on the backend, then delete `contacts-mock`, `mock/directory` and the `mock/index` chain, about 1,600 lines;
+  - **T-1071:** W4, the web `/topics/:id`, roles, audit, approvals, connections and machines routes.
+- **Next:**
+  - W10, the web routes T-1067 now covers;
+  - the backend avatars, push and voice domains, then mobile profile and stickers, and their deletions.
+
 **2026-10-11 00:30 local: 6 mobile hooks on the shared backend; next deletion and backend routes running**
 - **Merged:**
   - **T-1063:** H2-1, mobile AIs, memory, audit and tools on the backend. On the phone, the AIs tab, Dev-1's page (memory, tools, routines, activity) and Approvals with no "Could not load" all work;
