@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1011](T-1011-split-mobile-media-sheet.md) | Size split T87: mobile media-sheet.tsx (491) | in-progress | auto | T-0936 | size-plan |
 | [T-1012](T-1012-split-mobile-voice-recorder.md) | Size split T93: mobile voice-recorder.tsx (470) | in-progress | auto | T-0936 | size-plan |
 | [T-1013](T-1013-split-mobile-gif-panel.md) | Size split T95: mobile gif-panel.tsx (461) | in-progress | auto | T-0936 | size-plan |
 | [T-1015](T-1015-split-web-task-strip.md) | Size split T99: web TaskStrip.tsx (442) | in-progress | auto | T-0936 | size-plan |
@@ -1048,3 +1047,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1006](T-1006-split-mobile-connections.md) | Size split T79: apps/mobile/src/app/settings/connections.tsx (519 lines) into components/connections/{use-conn | 2026-10-10 |
 | [T-1003](T-1003-push-candidate-tests.md) | Push: a few tests for who gets a notification (hidden private topic, muted chat, own message, retraction) | 2026-10-10 |
 | [T-1014](T-1014-split-web-machines-page.md) | Size split T91: apps/web/src/routes/MachinesPage.tsx (473 lines) into components/machines/{machineRowOps,Pendi | 2026-10-10 |
+| [T-1011](T-1011-split-mobile-media-sheet.md) | Size split T87: apps/mobile/src/components/chat/media-sheet.tsx (491 lines) into chat/{media-rows,media-sheet- | 2026-10-10 |
