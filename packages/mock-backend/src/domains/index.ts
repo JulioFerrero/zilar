@@ -12,12 +12,15 @@ import { chatsDomain } from './chats';
 import { connectionsDomain } from './connections';
 import { contactsDomain } from './contacts';
 import type { Domain } from './domain';
+import { groupsDomain } from './groups';
 import { machinesDomain } from './machines';
 import { meDomain } from './me';
 import { messagesDomain } from './messages';
+import { rolesDomain } from './roles';
 import { routinesDomain } from './routines';
 import { searchDomain } from './search';
 import { toolsDomain } from './tools';
+import { topicsDomain } from './topics';
 
 export const domains: readonly Domain[] = [
   aiMemoryDomain,
@@ -28,10 +31,13 @@ export const domains: readonly Domain[] = [
   chatsDomain,
   connectionsDomain,
   contactsDomain,
+  groupsDomain,
   machinesDomain,
   meDomain,
   messagesDomain,
+  rolesDomain,
   routinesDomain,
   searchDomain,
   toolsDomain,
+  topicsDomain,
 ];

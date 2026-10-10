@@ -1,5 +1,6 @@
 import type { ChatEntry } from '@zilar/api-contract';
 import type { MockSeed } from '../../data';
+import { seedTopicViews } from '../topics/seed';
 
 // The `/api/chats` seed: DMs (contacts and the viewer's AIs) and groups (a
 // channel is a group with `chatKind: 'channel'`), newest first like the old web
@@ -30,6 +31,7 @@ export const chats: readonly ChatEntry[] = [
     role: 'owner',
     visibility: 'private',
     handle: null,
+    topics: seedTopicViews(),
   },
   {
     kind: 'group',
