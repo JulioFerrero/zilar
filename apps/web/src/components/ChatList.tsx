@@ -1,34 +1,28 @@
-import { Data, Effect } from 'effect';
-import { Archive, Loader2, Menu as MenuIcon } from 'lucide-react';
+import { Effect } from 'effect';
 import { useCallback, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
-import { ChatListItem } from './ChatListItem';
-import { EmptyState } from './EmptyState';
+import { ChatListBody } from './chatList/ChatListBody';
+import { ChatListMenu } from './chatList/ChatListMenu';
+import {
+  APPROVAL_BADGE_CAP,
+  CONNECTION_BANNER_DELAY_MS,
+  createRowsSelector,
+  InstallFailed,
+  statusLabel,
+} from './chatList/rowsSelector';
 import { ExplorePage } from './ExplorePage';
 import { FolderTabs } from './FolderTabs';
 import { InviteDialog } from './InviteDialog';
-import { MessageSearchResults } from './MessageSearchResults';
 import { NewChatButton } from './NewChatButton';
 import { NewTopicDialog } from './NewTopicDialog';
-import { PeopleSearchResult } from './PeopleSearchResult';
 import { SearchBar } from './SearchBar';
-import { ChatListSkeleton } from './Skeleton';
-import { GroupHeaderRow } from './TopicRow';
-import { TopicKeyboardNav } from './TopicKeyboardNav';
 import { useDelayed } from '@/lib/useDelayed';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { usePendingApprovalCount } from '@/lib/usePendingApprovalCount';
 import { useContactRequestCount } from '@/lib/useContactRequestCount';
-import { Button } from './ui/button';
-import { IconButton } from './ui/icon-button';
-import { StateMessage } from './ui/state-message';
-import { Menu, MenuItem } from './ui/menu';
 import { useInstallPrompt } from '@/lib/push';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
-import { groupChats, visibleChats, type ChatStoreState } from '@/store/store';
-import { cn } from '@/lib/utils';
 import {
   readArchivedOpen,
   readCollapsedGroups,
@@ -36,78 +30,10 @@ import {
   toggleCollapsedGroup,
 } from '@/lib/topicsUi';
 
-// A normal (re)connect takes well under this; only a slow one gets a banner.
-const CONNECTION_BANNER_DELAY_MS = 1500;
-
-// The menu badge caps at 9+; any number bigger than that just reads "9+".
-const APPROVAL_BADGE_CAP = 9;
-
-/** The install prompt failed or was refused; the menu then offers a retry. */
-class InstallFailed extends Data.TaggedError('InstallFailed') {}
-
-interface ChatRows {
-  chats: ReturnType<typeof visibleChats>;
-  groups: ReturnType<typeof groupChats>;
-  archived: ReturnType<ChatStoreState['archivedChats']>;
-}
-
-/**
- * Derives the sidebar rows. The result is cached on the slices that feed it,
- * so a typing or presence update returns the same object and does not re-render.
- */
-function createRowsSelector(): (state: ChatStoreState) => ChatRows {
-  let last:
-    | {
-        chats: ChatStoreState['chats'];
-        search: string;
-        activeFolder: ChatStoreState['activeFolder'];
-        folders: ChatStoreState['folders'];
-        rows: ChatRows;
-      }
-    | undefined;
-  return (state) => {
-    if (
-      last !== undefined &&
-      last.chats === state.chats &&
-      last.search === state.search &&
-      last.activeFolder === state.activeFolder &&
-      last.folders === state.folders
-    ) {
-      return last.rows;
-    }
-    const rows = {
-      chats: visibleChats(state),
-      groups: groupChats(state),
-      archived: state.archivedChats(),
-    };
-    last = {
-      chats: state.chats,
-      search: state.search,
-      activeFolder: state.activeFolder,
-      folders: state.folders,
-      rows,
-    };
-    return rows;
-  };
-}
-
-function statusLabel(status: string): string | undefined {
-  switch (status) {
-    case 'connecting':
-    case 'reconnecting':
-      return 'Connecting…';
-    case 'offline':
-      return 'Waiting for network…';
-    default:
-      return undefined;
-  }
-}
-
 export function ChatList({ activeChatId }: { activeChatId: string | undefined }) {
   const storeApi = useChatStoreApi();
-  const navigate = useNavigate();
   const selectRows = useMemo(() => createRowsSelector(), []);
-  const { chats, groups, archived } = useChatSelector(selectRows);
+  const rows = useChatSelector(selectRows);
   const storeChatCount = useChatSelector((s) => s.chats.length);
   const storeStatus = useChatSelector((s) => s.status);
   const chatsState = useChatSelector((s) => s.chatsState);
@@ -179,6 +105,8 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   );
   // The retry label shows after a failed prompt, and hides while a new prompt runs.
   const installFailed = !isWaiting(installState) && failureOf(installState) !== undefined;
+  const installing = isWaiting(installState);
+  const install = (): void => runInstall(promptInstall());
   const approvalsBadge =
     pendingApprovals !== null && pendingApprovals > 0
       ? pendingApprovals > APPROVAL_BADGE_CAP
@@ -187,166 +115,21 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
       : null;
 
   const menu = (
-    <div className="relative">
-      <IconButton
-        aria-label="Open menu"
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        size={isWide ? 36 : 40}
-        radius={isWide ? 10 : 12}
-        onClick={() => setMenuOpen((value) => !value)}
-      >
-        <MenuIcon className="size-[18px]" aria-hidden="true" />
-      </IconButton>
-      {menuOpen && (
-        <Menu
-          open={menuOpen}
-          onClose={() => setMenuOpen(false)}
-          label="Main menu"
-          closeLabel="Close menu"
-          className="top-full right-0 mt-1 wide:left-0 wide:right-auto"
-        >
-          <MenuItem
-            onSelect={() => {
-              setMenuOpen(false);
-              setInviteOpen(true);
-            }}
-          >
-            Invite a friend
-          </MenuItem>
-          <MenuItem
-            onSelect={() => {
-              setMenuOpen(false);
-              navigate('/settings/requests');
-            }}
-          >
-            <span className="flex-1">Requests</span>
-            {incomingRequests !== null && incomingRequests > 0 && (
-              <span
-                aria-label={`${incomingRequests} incoming contact requests`}
-                className="shrink-0 rounded-full bg-badge-muted px-1.5 text-[11px] font-semibold text-foreground"
-              >
-                {incomingRequests > 9 ? '9+' : String(incomingRequests)}
-              </span>
-            )}
-          </MenuItem>
-          <MenuItem
-            onSelect={() => {
-              setMenuOpen(false);
-              navigate('/settings/folders');
-            }}
-          >
-            Chat folders
-          </MenuItem>
-          <MenuItem
-            onSelect={() => {
-              setMenuOpen(false);
-              navigate('/settings/blocked');
-            }}
-          >
-            Blocked people
-          </MenuItem>
-          <MenuItem
-            onSelect={() => {
-              setMenuOpen(false);
-              setExploreOpen(true);
-            }}
-          >
-            Explore groups
-          </MenuItem>
-          <MenuItem
-            onSelect={() => {
-              setMenuOpen(false);
-              navigate('/settings/profile');
-            }}
-          >
-            Profile
-          </MenuItem>
-          <MenuItem
-            onSelect={() => {
-              setMenuOpen(false);
-              navigate('/settings/connections');
-            }}
-          >
-            Connections
-          </MenuItem>
-          <MenuItem
-            onSelect={() => {
-              setMenuOpen(false);
-              navigate('/settings/machines');
-            }}
-          >
-            Machines
-          </MenuItem>
-          <MenuItem
-            onSelect={() => {
-              setMenuOpen(false);
-              navigate('/settings/approvals');
-            }}
-          >
-            <span className="flex-1">Approvals</span>
-            {approvalsBadge !== null && (
-              <span
-                aria-label={`${approvalsBadge} pending approvals`}
-                className="shrink-0 rounded-full bg-badge-muted px-1.5 text-[11px] font-semibold text-foreground"
-              >
-                {approvalsBadge}
-              </span>
-            )}
-          </MenuItem>
-          <MenuItem
-            onSelect={() => {
-              setMenuOpen(false);
-              navigate('/settings/ais');
-            }}
-          >
-            My AIs
-          </MenuItem>
-          <MenuItem
-            onSelect={() => {
-              setMenuOpen(false);
-              navigate('/settings/notifications');
-            }}
-          >
-            Notifications
-          </MenuItem>
-          {installEvent !== null && (
-            <MenuItem
-              onSelect={() => {
-                setMenuOpen(false);
-                // A click while a prompt waits is dropped before prompt() runs.
-                if (!isWaiting(installState)) {
-                  runInstall(promptInstall());
-                }
-              }}
-            >
-              {installFailed ? 'Install failed — try again' : 'Install app'}
-            </MenuItem>
-          )}
-          <MenuItem
-            onSelect={() => {
-              setMenuOpen(false);
-              navigate('/settings/stickers');
-            }}
-          >
-            Stickers
-          </MenuItem>
-          {isServerOwner && (
-            <MenuItem
-              onSelect={() => {
-                setMenuOpen(false);
-                navigate('/settings/integrations');
-              }}
-            >
-              Integrations
-            </MenuItem>
-          )}
-          <MenuItem destructive onSelect={signOut}>
-            Sign out
-          </MenuItem>
-        </Menu>
-      )}
-    </div>
+    <ChatListMenu
+      open={menuOpen}
+      onOpenChange={setMenuOpen}
+      isWide={isWide}
+      onInvite={() => setInviteOpen(true)}
+      onExplore={() => setExploreOpen(true)}
+      onSignOut={signOut}
+      isServerOwner={isServerOwner}
+      incomingRequests={incomingRequests}
+      approvalsBadge={approvalsBadge}
+      installEvent={installEvent}
+      installFailed={installFailed}
+      installing={installing}
+      onInstall={install}
+    />
   );
 
   return (
@@ -373,131 +156,26 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
         </div>
       )}
       {!isWide && <FolderTabs />}
-      <nav
-        aria-label="Chats"
-        className={cn(
-          'scrollbar-thin flex min-h-0 flex-1 flex-col overflow-y-auto',
-          isWide ? 'gap-0.5 px-2' : 'gap-0',
-        )}
-      >
-        {chatsState === 'loading' && !hasAnyChats ? (
-          <ChatListSkeleton />
-        ) : chatsState === 'error' && !hasAnyChats ? (
-          <div className="flex h-full flex-col items-center justify-center p-8">
-            <StateMessage
-              kind="error"
-              title="Couldn't load chats"
-              action={{ label: 'Retry', onClick: retryChats }}
-            />
-          </div>
-        ) : (
-          <>
-            {(chatsState === 'error' || retrying) && (
-              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
-                <p className="text-[13px] text-muted-foreground">
-                  {retrying ? 'Retrying…' : "Couldn't load chats"}
-                </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="rounded-full"
-                  disabled={retrying}
-                  aria-busy={retrying || undefined}
-                  onClick={retryChats}
-                >
-                  {retrying && (
-                    <Loader2
-                      className="size-3.5 animate-spin motion-reduce:animate-none"
-                      aria-hidden="true"
-                    />
-                  )}
-                  {retrying ? 'Retrying…' : 'Retry'}
-                </Button>
-              </div>
-            )}
-            {/* People hits come first: `@handle` shows one row for that
-                person, above the chat-name matches and the message hits. */}
-            {search.trim().startsWith('@') && <PeopleSearchResult query={search} />}
-            {chats.length === 0 && archived.length === 0 ? (
-              <EmptyState
-                variant="no-chats"
-                onInvite={() => setInviteOpen(true)}
-                onExplore={() => setExploreOpen(true)}
-              />
-            ) : (
-              <>
-                <TopicKeyboardNav>
-                  {groups.map((group) =>
-                    group.groupId === undefined ? (
-                      <ChatListItem
-                        key={group.key}
-                        chat={group.topics[0]!}
-                        selected={group.topics[0]!.id === activeChatId}
-                        isWide={isWide}
-                      />
-                    ) : (
-                      <GroupHeaderRow
-                        key={group.key}
-                        groupTitle={group.title}
-                        groupId={group.groupId}
-                        avatarUrl={group.avatarUrl}
-                        topics={group.topics}
-                        selectedId={activeChatId}
-                        collapsed={collapsed.has(group.groupId)}
-                        onToggleCollapse={toggleCollapse}
-                        archivedOpen={archivedOpen.has(group.groupId)}
-                        onToggleArchived={toggleArchived}
-                        isWide={isWide}
-                        onOpenNewTopic={setNewTopicGroup}
-                      />
-                    ),
-                  )}
-                </TopicKeyboardNav>
-                {/* Per-user archived chats (T-0113): topics hide inside their
-                    group's own Archived toggle instead; this row covers DMs,
-                    AI chats and legacy groups. */}
-                {archived.length > 0 && (
-                  <>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-expanded={showArchived}
-                      onClick={() => setShowArchived((value) => !value)}
-                      className={cn(
-                        'w-full justify-start gap-2 text-[13px] font-normal text-muted-foreground hover:text-foreground',
-                        isWide && 'rounded-[12px]',
-                      )}
-                    >
-                      <Archive className="size-4" aria-hidden="true" />
-                      <span className="flex-1">Archived ({archived.length})</span>
-                    </Button>
-                    {showArchived &&
-                      archived.map((chat) => (
-                        <ChatListItem
-                          key={chat.id}
-                          chat={chat}
-                          selected={chat.id === activeChatId}
-                          isWide={isWide}
-                        />
-                      ))}
-                  </>
-                )}
-              </>
-            )}
-            {/* Message hits come after the chat-name matches. `searchChat`
-                scopes "Search only in this chat" from a chat header. */}
-            {search.trim().length >= 2 && (
-              <MessageSearchResults
-                query={search}
-                {...(searchChat === undefined ? {} : { chatFilter: searchChat })}
-                onNotFound={() => {}}
-              />
-            )}
-          </>
-        )}
-      </nav>
+      <ChatListBody
+        rows={rows}
+        chatsState={chatsState}
+        hasAnyChats={hasAnyChats}
+        retrying={retrying}
+        retryChats={retryChats}
+        search={search}
+        searchChat={searchChat}
+        activeChatId={activeChatId}
+        isWide={isWide}
+        collapsed={collapsed}
+        onToggleCollapse={toggleCollapse}
+        archivedOpen={archivedOpen}
+        onToggleArchived={toggleArchived}
+        showArchived={showArchived}
+        onToggleShowArchived={() => setShowArchived((value) => !value)}
+        onInvite={() => setInviteOpen(true)}
+        onExplore={() => setExploreOpen(true)}
+        onOpenNewTopic={setNewTopicGroup}
+      />
       <NewChatButton onExplore={() => setExploreOpen(true)} />
       {inviteOpen && <InviteDialog onClose={() => setInviteOpen(false)} />}
       {exploreOpen && <ExplorePage onClose={() => setExploreOpen(false)} />}
