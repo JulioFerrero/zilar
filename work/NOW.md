@@ -23,8 +23,17 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - Branches that had merged other unmerged branches could not be rebased, because their original commits clash with the squashed copies on main.
   - Each branch was merged with main and collapsed into one commit with an identical tree (backup refs `backup/T-XXXX-premerge`).
   - Then `lead merge --skip-gate` ran for each, since the combined check had already passed.
+- **Main CI:** green at `b9aa5d98` (the wave 4 tip): build, typecheck, format, lint, and the server 1/3, 2/3, 3/3 and rest test jobs.
+- **Wave 5 (Phase 3, api-contract), running:**
+  - **Prep merged:** T-0891, through the full gate. There is one `Session`/`CurrentUser`, the pins bridge is gone, and each chain has its own area in the contract lists.
+  - **Four Sonnet chains:**
+    - T-0892: groups, invite-links, roles, chat-folders, chat-prefs, topics;
+    - T-0893: ais, memory, connections, approvals, audit, tools, routines;
+    - T-0894: contacts, contact-requests, directory, blocks, search, chats, drafts, handles;
+    - T-0895: the JSON parts of stickers, gifs, machines, integrations, push, backgrounds, voice, media and auth.
+  - **Effect:** web and mobile derive their clients from the contract, so the hand-written schemas and fetch code go away.
+  - **Recipe:** `docs/API_CONTRACT_RECIPE.md`.
 - **Next:**
-  - Phase 3 group moves into `packages/api-contract`, using T-0864's recipe.
   - Phase 4: the client-core store core.
   - Follow-ups listed in the task Reviews, for example a mobile bearer session cache, server JID sites, the topics/access `runSql` copy, the `makeRateLimit` `Pick` type and the image size.
 - **Live-check list for Julio's single test** (it grows with each wave):
