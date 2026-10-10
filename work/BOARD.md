@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0974](T-0974-split-mobile-group-screen.md) | Size split T26: mobile group/[id].tsx (835) | in-progress | deepseek-flash | T-0936 | size-plan |
-| [T-0977](T-0977-split-web-topic-panel.md) | Size split T32: web TopicPanel.tsx (780) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0979](T-0979-split-mobile-tool-detail-sheet.md) | Size split T28: mobile tool-detail-sheet.tsx (808) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0980](T-0980-split-mobile-sticker-pack.md) | Size split T24: mobile settings/sticker-pack.tsx (859) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0981](T-0981-split-web-pack-editor.md) | Size split T31: web PackEditor.tsx (783) | in-progress | deepseek-flash | T-0936 | size-plan |
@@ -1011,3 +1010,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0975](T-0975-split-lead-watch.md) | Size split T27: packages/devtools/src/lead/watch.ts (818 lines) into lead/watch/{live-step,changed-files,forma | 2026-10-10 |
 | [T-0976](T-0976-split-server-tools-api.md) | Size split T29: apps/server/src/tools/api.ts (799 lines) into tools/{routes,wire,access}.ts, the old path a ba | 2026-10-10 |
 | [T-0978](T-0978-split-server-roles-service.md) | Size split T36: apps/server/src/roles/service.ts (763 lines) into roles/{schemas,access,queries,sync}.ts, the  | 2026-10-10 |
+| [T-0977](T-0977-split-web-topic-panel.md) | Size split T32: apps/web/src/components/TopicPanel.tsx (780 lines) into components/panels/{topicPanelOps,Topic | 2026-10-10 |
