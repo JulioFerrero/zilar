@@ -12,7 +12,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0936](T-0936-size-dup-audit.md) | Audit: 400-line limit and duplicated code | in-progress | deepseek-flash | — | Julio 10-10 |
 | [T-0943](T-0943-mock-backend-groups-topics.md) | Mock backend D1: groups, members, topics, roles | in-progress | deepseek-flash | T-0942 | mock-plan D |
 | [T-0944](T-0944-mock-backend-channels-invites.md) | Mock backend D2: invite links, join, directory | in-progress | deepseek-flash | T-0942 | mock-plan D |
-| [T-0945](T-0945-mock-backend-xmpp.md) | Mock backend F2: fake XMPP core | in-progress | deepseek-flash | T-0942 | mock-plan F2 |
 
 ## Follow-ups
 
@@ -972,3 +971,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0941](T-0941-mock-backend-approvals-tools.md) | Mock backend E2: approvals, approval rules, audit, tools and routines routes in @zilar/mock-backend (docs/audi | 2026-10-10 |
 | [T-0939](T-0939-mock-backend-messages-search.md) | Mock backend B: the full message seed and the /search route in @zilar/mock-backend (docs/audit/mock-plan.md ta | 2026-10-10 |
 | [T-0942](T-0942-mock-backend-domains.md) | Mock backend: one module per domain (seed, state and routes together) and alphabetical registries, so parallel | 2026-10-10 |
+| [T-0945](T-0945-mock-backend-xmpp.md) | Mock backend F2: a fake XMPP core on createFakeXmppCore that serves the seed's history, echoes sends, and emit | 2026-10-10 |

@@ -23,6 +23,8 @@ export interface MockData {
   readonly people: readonly MockPerson[];
   readonly chats: readonly ChatEntry[];
   readonly messages: Readonly<Record<string, readonly MockMessage[]>>;
+  /** Append a stanza to a chat's thread (the fake XMPP core writes here). */
+  appendMessage(chatJid: string, message: MockMessage): void;
   readonly approvals: MockApproval[];
   readonly approvalRules: MockApprovalRule[];
   readonly audit: readonly MockAuditEntry[];

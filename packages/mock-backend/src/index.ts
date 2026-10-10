@@ -4,9 +4,11 @@
 //
 // The package is deliberately plain: no React and no Effect in its own code, so
 // Metro can resolve it from the mobile app without the `clientCoreDir` rewrite.
+import type { XmppCore } from '@zilar/xmpp-core';
 import { createSeed, type MockSeed } from './data';
 import { createMockHttp, DEFAULT_DELAY_MS, type MockHttp } from './http';
 import { createMockData, type MockData } from './state';
+import { createMockXmppCore, type MockXmppCoreOptions } from './xmpp';
 
 export { createSeed, defaultSeed } from './data';
 export type { MockMe, MockMessage, MockPerson, MockSeed } from './data';
@@ -20,6 +22,8 @@ export { createMockHttp } from './http';
 export type { MockHttp } from './http';
 export { createMockData } from './state';
 export type { MockData } from './state';
+export { createMockXmppCore, DEFAULT_REPLY_DELAY_MS } from './xmpp';
+export type { MockXmppCoreOptions } from './xmpp';
 
 export interface MockBackendOptions {
   /** Override the seed (tests); defaults to a fresh `createSeed()`. */
@@ -33,6 +37,8 @@ export interface MockBackendOptions {
 export interface MockBackend {
   /** The `fetch`-shaped handler; `undefined` means "not served here yet". */
   readonly http: MockHttp;
+  /** The `XmppCore` factory; `options` is an `XmppCoreOptions` plus `replyDelayMs`. */
+  readonly xmpp: (options: MockXmppCoreOptions) => XmppCore;
   /** The live in-memory tables (read-only view), for tests and future routes. */
   readonly data: MockData;
   reset(): void;
@@ -46,6 +52,7 @@ export function createMockBackend(options: MockBackendOptions = {}): MockBackend
   let handler = createMockHttp(data, () => delayMs);
   return {
     http: (path, init) => handler(path, init),
+    xmpp: (xmppOptions) => createMockXmppCore(data, xmppOptions),
     get data(): MockData {
       return data;
     },
