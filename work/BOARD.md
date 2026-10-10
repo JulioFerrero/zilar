@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1064](T-1064-mobile-machines-connections-directory-on-mock-backend.md) | Mock H2-3: mobile machines, connections, directory on the shared backend | in-progress | auto | T-1061 | contacts waits |
 | [T-1065](T-1065-web-mock-delete-covered-routes-2.md) | Mock sweep W1b: delete the rest of the covered web mock/api.ts routes | in-progress | auto | T-1062 | probe first |
 
 ## Follow-ups
@@ -1107,3 +1106,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1061](T-1061-mobile-approvals-on-mock-backend.md) | Mock H2-2 (mobile): approvals run on @zilar/mock-backend through mockFetch; one shared mockToken in mock/gate. | 2026-10-10 |
 | [T-1062](T-1062-web-mock-delete-covered-routes-1.md) | Mock sweep W1+W2 (web): delete the mock/api.ts routes the shared backend already answers (tools, chats, sticke | 2026-10-10 |
 | [T-1063](T-1063-mobile-ais-on-mock-backend.md) | Mock H2-1 (mobile): AIs, AI memory, audit and tools run on @zilar/mock-backend through mockFetch | 2026-10-10 |
+| [T-1064](T-1064-mobile-machines-connections-directory-on-mock-backend.md) | Mock H2-3 (mobile): machines, connections and directory run on @zilar/mock-backend through mockFetch (contacts | 2026-10-10 |
