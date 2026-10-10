@@ -557,6 +557,21 @@ importers:
         specifier: 'catalog:'
         version: 4.23.15
 
+  packages/mock-backend:
+    dependencies:
+      '@zilar/api-contract':
+        specifier: workspace:*
+        version: link:../api-contract
+      '@zilar/chat-core':
+        specifier: workspace:*
+        version: link:../chat-core
+      '@zilar/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@zilar/xmpp-core':
+        specifier: workspace:*
+        version: link:../xmpp-core
+
   packages/protocol:
     dependencies:
       effect:

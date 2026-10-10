@@ -1,0 +1,19 @@
+{
+  "name": "@zilar/mock-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@zilar/api-contract": "workspace:*",
+    "@zilar/chat-core": "workspace:*",
+    "@zilar/protocol": "workspace:*",
+    "@zilar/xmpp-core": "workspace:*"
+  }
+}
