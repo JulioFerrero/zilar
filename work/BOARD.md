@@ -10,6 +10,12 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0971](T-0971-split-web-message-bubble.md) | Size split T25: web MessageBubble.tsx (846) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0973](T-0973-split-web-ai-panel.md) | Size split T23: web AiPanel.tsx (870) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0974](T-0974-split-mobile-group-screen.md) | Size split T26: mobile group/[id].tsx (835) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0975](T-0975-split-lead-watch.md) | Size split T27: devtools lead/watch.ts (818) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0976](T-0976-split-server-tools-api.md) | Size split T29: server tools/api.ts (799) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0977](T-0977-split-web-topic-panel.md) | Size split T32: web TopicPanel.tsx (780) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0978](T-0978-split-server-roles-service.md) | Size split T36: server roles/service.ts (763) | in-progress | deepseek-flash | T-0936 | size-plan |
 
 ## Follow-ups
 
