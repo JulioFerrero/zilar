@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1003](T-1003-push-candidate-tests.md) | Push: 5 tests for who gets a notification | in-progress | auto | T-1002 | minimal-tests |
-| [T-1004](T-1004-split-mobile-approvals.md) | Size split T74: mobile settings/approvals.tsx (529) | in-progress | auto | T-0936 | size-plan |
 | [T-1005](T-1005-split-mobile-profile.md) | Size split T78: mobile settings/profile.tsx (521) | in-progress | auto | T-0936 | size-plan |
 | [T-1006](T-1006-split-mobile-connections.md) | Size split T79: mobile settings/connections.tsx (519) | in-progress | auto | T-0936 | size-plan |
 
@@ -1037,3 +1036,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1008](T-1008-split-web-tool-detail-panel.md) | Size split T83: apps/web/src/components/tools/ToolDetailPanel.tsx (513 lines) into tools/{toolDetailOps,ToolSo | 2026-10-10 |
 | [T-1010](T-1010-split-server-xmpp-admin-client.md) | Size split T71: apps/server/src/xmpp/admin-client.ts (539 lines) into xmpp/admin/{schemas,types,errors,client} | 2026-10-10 |
 | [T-1009](T-1009-split-web-chat-list.md) | Size split T84: apps/web/src/components/ChatList.tsx (509 lines) into components/chatList/{rowsSelector,ChatLi | 2026-10-10 |
+| [T-1004](T-1004-split-mobile-approvals.md) | Size split T74: apps/mobile/src/app/settings/approvals.tsx (529 lines) into components/approvals/{use-approval | 2026-10-10 |
