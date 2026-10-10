@@ -12,10 +12,10 @@ export const PREVIEW_HISTORY_MAX = 1;
 export const PAGE_HISTORY_MAX = 50;
 // Message search jumps at most this many history pages back looking for the
 // hit before giving up with "Message not found".
-const MESSAGE_JUMP_MAX_PAGES = 20;
+export const MESSAGE_JUMP_MAX_PAGES = 20;
 // Upper bound for one stalled history wait inside `openAtMessage`: after this
 // the jump gives up with "Message not found" instead of hanging.
-const MESSAGE_JUMP_WAIT_MS = 10_000;
+export const MESSAGE_JUMP_WAIT_MS = 10_000;
 const HISTORY_POLL_MS = 25;
 
 /** Where a chat's first history page is. */

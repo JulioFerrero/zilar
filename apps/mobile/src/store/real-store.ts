@@ -483,30 +483,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
-    function setHistoryLoad(chatId: string, load: 'loading' | 'loaded' | 'error'): void {
-      set((state) => ({ historyLoad: { ...state.historyLoad, [chatId]: load } }));
-    }
-
-    // Drops the `loading` marker of a pending chat that was superseded before it
-    // ever loaded, so no ownerless entry stays behind. Settled entries and
-    // in-flight loads are left alone.
-    function clearSupersededMarker(chatId: string): void {
-      if (loadingHistory.has(chatId)) {
-        return;
-      }
-      set((state) => {
-        if (state.historyLoad[chatId] !== 'loading') {
-          return state;
-        }
-        const next = { ...state.historyLoad };
-        delete next[chatId];
-        return { historyLoad: next };
-      });
-    }
-
     // The core's view of this store (`@zilar/client-core/store`): the incoming
-    // handlers, the message actions and the reads run on it. Mobile saves no
-    // last-read map and has no app badge or push notifications to sync.
+    // handlers, the message actions, the reads and history run on it. Mobile
+    // saves no last-read map and has no app badge or push notifications to
+    // sync. History lives in a `HistoryCtx` in `effects/history.ts`, which
+    // maps the mobile `historyLoad` names to the core `historyState` names.
     const coreCtx: CoreCtx = {
       get,
       set,
@@ -591,8 +572,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         recordRead: (chatId, messageId) => recordRead(coreCtx, chatId, messageId),
         sameMessage,
         listFor,
-        setHistoryLoad,
-        clearSupersededMarker,
         groupIdForChat,
         rememberTopicRoles,
         rememberMembers,

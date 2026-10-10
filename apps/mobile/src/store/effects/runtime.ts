@@ -180,8 +180,6 @@ export interface StoreHelpers {
   recordRead(chatId: string, messageId: string | undefined): void;
   sameMessage(left: string, right: string): boolean;
   listFor(state: ChatStoreState, chatId: string): UiMessage[];
-  setHistoryLoad(chatId: string, load: 'loading' | 'loaded' | 'error'): void;
-  clearSupersededMarker(chatId: string): void;
   groupIdForChat(chatId: string): string | undefined;
   rememberTopicRoles(topic: Topic): void;
   rememberMembers(chatId: string, detail: GroupDetail): void;
