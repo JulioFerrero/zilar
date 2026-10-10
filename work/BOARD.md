@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | [T-0913](T-0913-load-flakes.md) | Four timing tests that fail combined checks under load become deterministic | in-progress | sonnet-5.5 | | test stability |
-| [T-0912](T-0912-store-core-t6b-history.md) | Store core T6b: web history in core, loadOlder overlap fix | in-progress | opus-5.5 | T-0907 | phase 4.3 |
 | [T-0914](T-0914-store-core-t7a-mobile-incoming.md) | Store core T7a: mobile on core incoming, actions, reads | in-progress | opus-5.5 | T-0905, T-0906, T-0907 | phase 4.3 |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
@@ -943,3 +942,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0909](T-0909-pglite-dev-only.md) | PGlite out of the production install: lazy or type-only imports, so @electric-sql/pglite and @effect/sql-pglit | 2026-10-10 |
 | [T-0907](T-0907-store-core-t6-incoming-history.md) | Store core T6: incoming events, message actions, reads and history in packages/client-core, the web store on t | 2026-10-10 |
 | [T-0911](T-0911-test-sleeps-followup.md) | Test follow-up from T-0899: the remaining real sleeps and 10 ms settles in web and mobile tests use fake timer | 2026-10-10 |
+| [T-0912](T-0912-store-core-t6b-history.md) | Store core T6b: web history (first page, older pages, open at message) in packages/client-core, tests first, w | 2026-10-10 |

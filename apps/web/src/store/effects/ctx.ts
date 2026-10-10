@@ -4,7 +4,7 @@
 // the core context (`@zilar/client-core/store`), so web modules and core
 // modules take the same value.
 import type { EditAuthor, MentionMember } from '@zilar/chat-core';
-import type { CoreCtx, MessageLedger } from '@zilar/client-core/store';
+import type { HistoryCtx, MessageLedger } from '@zilar/client-core/store';
 import type { Deferred } from 'effect';
 import type { ChatEntry, GroupDetail, Me } from '@/lib/api';
 import type { MediaTokenShape } from '@/lib/attachments';
@@ -28,18 +28,17 @@ export interface SendRun {
   readonly settled: Deferred.Deferred<void>;
 }
 
-/** The core context with web's state, ports and lifetime, plus web's bookkeeping. */
-export interface StoreCtx extends CoreCtx {
+/**
+ * The core context (with history's bookkeeping) with web's state, ports and
+ * lifetime, plus web's bookkeeping.
+ */
+export interface StoreCtx extends HistoryCtx {
   readonly get: () => ChatStoreState;
   readonly set: SetState<ChatStoreState>;
   readonly ports: PortsShape;
   readonly rt: Lifetime;
   readonly k: Kernel;
 
-  /** Group history (MUC MAM) only works once the rooms are joined. */
-  groupsJoined: boolean;
-  /** The latest chat opened before the core or the chats were ready. */
-  pendingOpenChatId: string | undefined;
   /** The token the latest session connected with, for the media allow-list. */
   mediaToken: MediaTokenShape | undefined;
   /** The user whose cached chat list was painted on start, if any. */
@@ -59,12 +58,6 @@ export interface StoreCtx extends CoreCtx {
   /** Turn ids whose draft is done, so a late `draft` is ignored (capped, oldest first). */
   readonly finishedTurns: Set<string>;
   readonly finishedTurnOrder: string[];
-  /** The oldest loaded message id per chat: where the next older page starts. */
-  readonly cursors: Record<string, string | undefined>;
-  /** First-page history loads in flight, by chat id. */
-  readonly loadingHistory: Set<string>;
-  /** Older-page loads in flight, by chat id. */
-  readonly loadingOlder: Set<string>;
   /** Open chat ids whose next disappearance moves silently (a self-archive). */
   readonly quietArchiveIds: Set<string>;
   /** The counter behind the optimistic `local-N` ids. */

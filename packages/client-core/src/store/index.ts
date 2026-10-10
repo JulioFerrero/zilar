@@ -22,6 +22,7 @@ export * from './ports';
 export * from './reads';
 export * from './incoming';
 export * from './actions';
+export * from './history';
 // ----------------------------------------------------------------------------
 // End of T6.
 
