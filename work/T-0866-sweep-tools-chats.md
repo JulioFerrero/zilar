@@ -1,7 +1,7 @@
 ---
 id: T-0866
 title: "Server sweep: tools, chats, contacts, drafts, xmpp onto the shared HTTP helpers (runSql, SchemaErrors, makeRateLimit, handler, mountApi) with truthful success statuses"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0866-sweep-tools-chats
 model: auto
@@ -69,4 +69,18 @@ Run the tests 3 times after the last commit. The machine is shared, so note `upt
 
 ## Report (written by the worker when done)
 
+- One commit per module: contacts `9b3749e3`, chats `ac4be06d`, drafts `53a97a45`, xmpp `f92bb635`, tools `f7f7301f`.
+- Lines (git numstat, added/removed): contacts +12/-43, chats +10/-30, drafts +12/-31, xmpp +22/-74, tools +78/-162. Total +134/-340 (net -206). The `routes.expected.ts` files are included in the added counts.
+- Recipe applied: shared `runSql` (also in `contacts/service.ts`, `xmpp/provisioning.ts`, `tools/service.ts`, `tools/adapters.ts`, `tools/api.ts`), `handler(logger, ...)`, `mountApi`, `<module>/routes.expected.ts` for all five. `routes-manifest.test.ts` not edited.
+- xmpp: `XmppTokenRateLimit` is now `makeRateLimit('zilar/effect/http/XmppTokenRateLimit', 'Too many token requests')`, same tag and message.
+- tools: local `ToolsSchemaErrors` replaced by the shared `SchemaErrors`. The run limiter stays inside the `run` handler (it runs after decode and the access check, so it is not a plain limit).
+- `SchemaErrors` was not added to contacts, chats, drafts and xmpp: they have no params or payload to decode.
+- Truthful status: `tools/api.ts` `remove` declared `Schema.Void` and sent 204 (cited lines :258 and :565 were right). Now `HttpApiSchema.NoContent` and the handler returns nothing, as in roles. The 204 tests (`tools/routes.test.ts:496,584,589`) pass unchanged.
+- Not done: no payload schema declared for `revert` and `run`. Declaring one makes the framework decode before the handler, which would change the error order (400 before the 404 access check) and the messages (`Invalid JSON body`, `Invalid revert body`, `Invalid run body`). Kept the hand decode so the wire stays identical. Lead decides if a later task should change this.
+- Checks: `vitest run` on src/tools, chats, contacts, drafts, xmpp, authz-sweep.test.ts, routes-manifest.test.ts: 14 files, 185 tests passed, 3 of 3 runs after the last commit (run 1 295 s, load ~70; runs 2 and 3 at load ~60). Server typecheck clean. oxlint clean on the changed folders.
+- Behaviour differences: none observed.
+- Unsure: ran with 120 s timeouts because the machine load was 60 to 117, not with the spec's 30 s.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.** The five modules (tools, chats, contacts, drafts, xmpp) are on the shared helpers, with each `routes.expected.ts` in place, for a net −206 lines. The tools remove now declares 204. Hand decodes stay where declaring the payload would move a 400 ahead of the 404 access check, which keeps the wire identical; that is accepted. The combined wave 4 check passes.

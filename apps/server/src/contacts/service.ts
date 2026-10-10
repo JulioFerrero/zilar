@@ -3,9 +3,9 @@
 // functions stay `async` so routes and tests keep their shape.
 
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
@@ -35,13 +35,6 @@ export interface AddContactPairInput {
   userId: string;
   contactUserId: string;
   source: ContactSource;
-}
-
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // Creates both directions of a contact relationship. Idempotent, so calling it

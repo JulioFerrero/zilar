@@ -13,30 +13,29 @@
 // messages. Tool run output and input never appear in a log line, as before.
 
 import { Effect, Layer, Option, Schema } from 'effect';
-import { SqlClient, type SqlError } from 'effect/sql';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
+import { SqlClient } from 'effect/sql';
+import type { HttpServerRequest } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
   HttpApiEndpoint,
   HttpApiGroup,
-  HttpApiMiddleware,
+  HttpApiSchema,
 } from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import {
-  CurrentUser,
+  SchemaErrors,
   Session,
-  failureResponse,
-  requestIdOf,
+  handler,
+  mountApi,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { canSeeTopic, getTopic, type TopicRow } from '../topics/access';
@@ -58,15 +57,6 @@ import {
   type ToolDetail,
   type ToolVersionDetail,
 } from './service';
-
-// Every read runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported surface stays the same.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
 
 // Manual runs are capped per user per minute.
 export const TOOL_RUN_RATE_LIMIT_MAX = 5;
@@ -199,26 +189,6 @@ const RunResultView = Schema.Union([
 const ToolIdParams = Schema.Struct({ id: Schema.String });
 const ToolVersionParams = Schema.Struct({ id: Schema.String, n: Schema.String });
 
-// A params decode failure renders like the old path: a 400
-// `invalid_request`. Params are plain strings so this never fires; the
-// layer exists so the group middleware reads like the other modules.
-class ToolsSchemaErrors extends HttpApiMiddleware.Service<ToolsSchemaErrors>()(
-  'zilar/effect/http/ToolsSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<ToolsSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(ToolsSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid request'),
-      );
-    }),
-  );
-}
-
 const ToolsGroup = HttpApiGroup.make('tools')
   .add(
     HttpApiEndpoint.get('listForAi', '/ais/:id/tools', {
@@ -255,7 +225,7 @@ const ToolsGroup = HttpApiGroup.make('tools')
     }),
     HttpApiEndpoint.delete('remove', '/tools/:id', {
       params: ToolIdParams,
-      success: Schema.Void,
+      success: HttpApiSchema.NoContent,
     }),
     HttpApiEndpoint.post('run', '/tools/:id/run', {
       params: ToolIdParams,
@@ -263,7 +233,7 @@ const ToolsGroup = HttpApiGroup.make('tools')
     }),
   )
   .middleware(Session)
-  .middleware(ToolsSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
@@ -282,19 +252,6 @@ export interface ToolsApiDependencies {
   runLimiter?: RateLimiter;
 }
 
-export const TOOLS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/ais/:id/tools' },
-  { method: 'GET', path: '/api/groups/:id/tools' },
-  { method: 'GET', path: '/api/topics/:id/tools' },
-  { method: 'GET', path: '/api/tools/:id' },
-  { method: 'GET', path: '/api/tools/:id/versions' },
-  { method: 'GET', path: '/api/tools/:id/versions/:n' },
-  { method: 'GET', path: '/api/tools/:id/runs' },
-  { method: 'POST', path: '/api/tools/:id/revert' },
-  { method: 'DELETE', path: '/api/tools/:id' },
-  { method: 'POST', path: '/api/tools/:id/run' },
-];
-
 export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
@@ -308,11 +265,10 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
 
   const groupLayer = HttpApiBuilder.group(ToolsApi, 'tools', (handlers) =>
     handlers
-      .handle('listForAi', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'listForAi',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const ai = yield* Effect.promise(() =>
               findOwnedAiRow(deps.db, request.params.id, user.id),
             );
@@ -336,15 +292,12 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             }
             return visible.map(toListWire);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('listForGroup', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'listForGroup',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const groupId = request.params.id;
             const membership = yield* Effect.promise(() =>
               findMembership(deps.db, groupId, user.id),
@@ -357,17 +310,14 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             const tools = yield* Effect.promise(() => listToolsForGroup(deps.db, groupId, user.id));
             return tools.map(toListWire);
           }),
-          logger,
-          requestId,
-        );
-      })
+        ),
+      )
       // T-0110: the tools of one topic. Anyone who can see the topic reads;
       // anyone else gets the same 404 as a missing id.
-      .handle('listForTopic', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'listForTopic',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const topicId = request.params.id;
             const topic = yield* Effect.promise(() => getTopic(deps.db, topicId));
             if (
@@ -412,71 +362,56 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             }
             return result.map(toListWire);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('detail', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'detail',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const tool = yield* Effect.promise(() =>
               requireReadableTool(deps.db, request.params.id, user.id),
             );
             return toDetailWire(tool);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('versions', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'versions',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const versions = yield* Effect.promise(() =>
               requireReadableVersions(deps.db, request.params.id, user.id),
             );
             return versions.map(toVersionListWire);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('version', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'version',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const version = yield* Effect.promise(() =>
               requireReadableVersion(deps.db, request.params.id, request.params.n, user.id),
             );
             return toVersionDetailWire(version);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('runs', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'runs',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const runs = yield* Effect.promise(() =>
               requireReadableRuns(deps.db, request.params.id, user.id),
             );
             return runs.map(toRunListWire);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('revert', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'revert',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const body = yield* readJsonBody(request.request);
             if (!body.parsed) {
               throw new HttpError(400, 'invalid_request', 'Invalid JSON body');
@@ -523,15 +458,12 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             }
             return toRevertWire(tool, version);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('remove', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'remove',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const toolId = request.params.id;
             // `toolAccess` hides soft-deleted rows (they read as missing), but the
             // delete must be idempotent: a manager re-deleting sees 204, like the
@@ -562,17 +494,13 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
                 }),
               );
             }
-            return HttpServerResponse.empty({ status: 204 });
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('run', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'run',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const body = yield* readJsonBody(request.request);
             if (!body.parsed) {
               throw new HttpError(400, 'invalid_request', 'Invalid JSON body');
@@ -629,10 +557,8 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             }
             return toRunWire(result);
           }),
-          logger,
-          requestId,
-        );
-      }),
+        ),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(ToolsApi).pipe(
@@ -641,14 +567,7 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: TOOLS_API_ROUTES };
+  return mountApi(ToolsApi, apiLayer);
 }
 
 function toListWire(tool: PublicTool & { scope: 'personal' | 'group' }) {

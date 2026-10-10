@@ -4,7 +4,7 @@ import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { AiToolRow, AiToolRunRow, AiToolVersionRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { deleteRoutinesForTool } from '../routines/service';
 import { parseToolVersionInput, toolHostsSchema } from './schemas';
 import type { ToolRunner, ToolRunResult } from './types';
@@ -119,16 +119,6 @@ interface AppendVersionResult {
   /** True when source and hosts matched the current version, so no new row
    *  was written. */
   unchanged: boolean;
-}
-
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition.
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // Creates the tool with version 1 when the name is new in that topic, or

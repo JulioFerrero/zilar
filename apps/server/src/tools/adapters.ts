@@ -12,12 +12,12 @@
 // not carry the human who asked yet, so the owner is the only stable
 // attribution available.
 import { Effect, Schema } from 'effect';
-import { SqlClient, type SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import { struct } from '@zilar/protocol';
 import type { ActionAdapter, ActionContext } from '../actions/registry';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {
   createRoutine,
@@ -132,13 +132,6 @@ function createAdapterState(deps: BuildToolAdaptersDeps): AdapterState {
 
 // Every read runs on the `effect/sql` client registered for this database
 // (see `../effect/sql`). The exported surface stays the same.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
-
 // The AI's owner id. The gateway already denied stopped AIs before
 // `execute`, so a missing row is unexpected and throws (the gateway's
 // generic `failed`, never a leak).

@@ -4,30 +4,15 @@
 // Its services run on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-} from 'effect/http-api';
+import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { syncRoster } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import {
-  CurrentUser,
-  Session,
-  httpErrorResponse,
-  requestIdOf,
-  sessionLayer,
-  withErrorEnvelope,
-  type EffectApiMount,
-  type EffectApiRoute,
-} from '../effect/http-core';
+import { createRateLimiter } from '../rate-limit';
+import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import { makeRateLimit } from '../effect/rate-limit-middleware';
 import type { EjabberdAdminClient } from './admin-client';
 import type { XmppConfig } from './config';
 import { ensureXmppAccount } from './provisioning';
@@ -62,34 +47,15 @@ const TokenResult = Schema.Struct({
 // The token budget runs before provisioning, exactly like the old route's
 // `limiter.allow` -> `ensureXmppAccount` order. `requires: CurrentUser` is
 // satisfied by `Session`.
-class XmppTokenRateLimit extends HttpApiMiddleware.Service<
-  XmppTokenRateLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/XmppTokenRateLimit') {}
-
-function tokenRateLimitLayer(limiter: RateLimiter): Layer.Layer<XmppTokenRateLimit> {
-  return Layer.succeed(
-    XmppTokenRateLimit,
-    XmppTokenRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many token requests'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
+const TokenRateLimit = makeRateLimit(
+  'zilar/effect/http/XmppTokenRateLimit',
+  'Too many token requests',
+);
 
 const XmppGroup = HttpApiGroup.make('xmpp')
   .add(
     HttpApiEndpoint.post('token', '/xmpp/token', { success: TokenResult }).middleware(
-      XmppTokenRateLimit,
+      TokenRateLimit.Middleware,
     ),
   )
   .middleware(Session)
@@ -97,10 +63,6 @@ const XmppGroup = HttpApiGroup.make('xmpp')
   .prefix('/api');
 
 const XmppApi = HttpApi.make('xmpp').add(XmppGroup);
-
-export const XMPP_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'POST', path: '/api/xmpp/token' },
-];
 
 export function createXmppApi(deps: XmppApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
@@ -112,12 +74,11 @@ export function createXmppApi(deps: XmppApiDependencies): EffectApiMount {
   });
 
   const groupLayer = HttpApiBuilder.group(XmppApi, 'xmpp', (handlers) =>
-    handlers.handle('token', (request) => {
-      const requestId = requestIdOf(request.request);
-      return withErrorEnvelope(
+    handlers.handle(
+      'token',
+      // The token budget was already charged by `TokenRateLimit`.
+      handler(logger, (_request, user) =>
         Effect.gen(function* () {
-          // The token budget was already charged by `XmppTokenRateLimit`.
-          const user = yield* CurrentUser;
           const { jid, provisioned } = yield* Effect.promise(() =>
             ensureXmppAccount(deps.db, deps.adminClient, user.id, deps.xmppConfig.domain, {
               requesterId: user.id,
@@ -155,24 +116,15 @@ export function createXmppApi(deps: XmppApiDependencies): EffectApiMount {
             mucDomain: deps.xmppConfig.mucDomain,
           };
         }),
-        logger,
-        requestId,
-      );
-    }),
+      ),
+    ),
   );
 
   const apiLayer = HttpApiBuilder.layer(XmppApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(tokenRateLimitLayer(limiter)),
+    Layer.provide(TokenRateLimit.layer(limiter)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: XMPP_API_ROUTES };
+  return mountApi(XmppApi, apiLayer);
 }
