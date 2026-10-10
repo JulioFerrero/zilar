@@ -12,6 +12,11 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0974](T-0974-split-mobile-group-screen.md) | Size split T26: mobile group/[id].tsx (835) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0977](T-0977-split-web-topic-panel.md) | Size split T32: web TopicPanel.tsx (780) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0979](T-0979-split-mobile-tool-detail-sheet.md) | Size split T28: mobile tool-detail-sheet.tsx (808) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0980](T-0980-split-mobile-sticker-pack.md) | Size split T24: mobile settings/sticker-pack.tsx (859) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0981](T-0981-split-web-pack-editor.md) | Size split T31: web PackEditor.tsx (783) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0982](T-0982-split-web-stickers-page.md) | Size split T35: web StickersPage.tsx (765) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0983](T-0983-split-server-contact-requests.md) | Size split T40: server contact-requests/service.ts (730) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0984](T-0984-split-server-routines-service.md) | Size split T47: server routines/service.ts (657) | in-progress | deepseek-flash | T-0936 | size-plan |
 
 ## Follow-ups
 
