@@ -4,6 +4,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 
 **2026-10-10 06:25 local: wave 6 merged (T-0896 to T-0902), main `6fb2c224`; nothing deployed**
 - **Checks:** the combined check of the six code tasks passed, and main equals the checked tree. The phone smoke (chats, settings, machines) is clean.
+- **Main CI:** green at `6fb2c224`, which also covers T-0895 from wave 5.
 - **Merged:**
   - T-0900: the dependency catalog, so one `effect` version resolves;
   - T-0899: shared test wait helpers and a one-tick guard, test-only, −917 lines;
