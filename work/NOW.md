@@ -2,20 +2,27 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-**2026-10-10 00:50 local: simplify plan waves 3 and 4 running; Julio asleep; nothing deployed**
+**2026-10-10 03:55 local: wave 3 merged (25 tasks, `e42dd220`); wave 4 integrating; nothing deployed**
 - **The plan:** `docs/audit/simplify-plan.md`. Julio chose "everything, test once" on 2026-10-09: the whole plan lands on main, then he does one live test before any deploy.
-- **Wave 3 (T-0843 to T-0865, 23 tasks):** 21 are done.
-  - **In the combined check:** 20 branches, rebased on main.
-  - **Still finishing:** T-0853 (test runs), T-0856 (test runs) and T-0864 (fix round: Dockerfiles).
+- **Wave 3, merged:** T-0843 to T-0865, plus T-0888 (the voice test is deterministic) and T-0889 (the scope glob). The combined check was green on all 25.
   - **Headline numbers:**
     - web entry chunk 1,437 → 740 kB;
     - mobile assets 4.5 → 0.5 MB;
     - server image runs bundled JS (start CPU 1.75 → 1.1 s, about 50 MB less RAM);
     - list endpoints lose their N+1 queries;
     - about 4 MB of dead drizzle snapshots and 357 dead lines removed.
-- **Wave 4:**
-  - **Running (12 Claude workers):** T-0874 to T-0885, client-side. They move duplicated web/mobile code into `chat-core`, `protocol` and the new `packages/client-core`, and also cover web selectors part 2, lazy markdown, mobile dark-only, the last mock imports, the web panels and shared test fakes.
-  - **Written, waiting for the combined check:** T-0866 to T-0873, eight server sweeps onto T-0863's helpers with truthful statuses, plus T-0886 (gateway test split) and T-0887 (slow loop tests).
+  - **Main CI at `e42dd220`:**
+    - build, typecheck and all 4 test shards pass;
+    - "Format and lint" fails on prettier for `packages/devtools/src/gate/gate.test.ts`;
+    - T-0890 (running) fixes it, and makes `lead batch check` run `prettier --check` as CI does.
+  - **Lead check still open:** a visual phone pass on main. The automated phone smoke passed with no crashes, but the emulator was too starved by host load to give usable screenshots.
+- **Wave 4 (T-0866 to T-0887, 22 tasks):** all are done and at review.
+  - **Server:** 8 sweeps onto T-0863's helpers with truthful statuses (about −1,800 lines).
+  - **Shared code:** chat-core, protocol and the new `packages/client-core`.
+  - **Web:** selectors part 2 and lazy markdown (startup JS −46 kB gzip).
+  - **Mobile:** dark-only (−287 source lines).
+  - **Tests:** shared fakes, the gateway test split into 8 files, and lighter loop tests.
+  - **Now:** each branch is merging main. I resolved the conflicts in task files, and 12 workers are resolving code conflicts. Next come the Reviews, one combined check, a batch merge and the phone pass.
 - **Live-check list for Julio's single test** (it grows with each wave):
   - sign in and out and back in, on web and mobile (session cookie cache, T-0858);
   - AI DMs on mobile show as AI (T-0843);
