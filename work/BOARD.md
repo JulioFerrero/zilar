@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0962](T-0962-split-mobile-chat-screen.md) | Size split T15: mobile chat/[id].tsx (1,118) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0969](T-0969-split-store-send.md) | Size split T33: client-core store/send.ts (883), byte-identical | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0970](T-0970-split-lead-batch.md) | Size split T22: devtools lead/batch.ts (913) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0971](T-0971-split-web-message-bubble.md) | Size split T25: web MessageBubble.tsx (846) | in-progress | deepseek-flash | T-0936 | size-plan |
@@ -999,3 +998,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0967](T-0967-split-web-group-panel.md) | Size split T20: apps/web/src/components/GroupPanel.tsx (995 lines) into components/panels/{groupPanelOps,Group | 2026-10-10 |
 | [T-0968](T-0968-web-mock-mode-sticky.md) | Web mock mode stays on for the tab: decide once at page load and remember ?mock=1 in sessionStorage (dev build | 2026-10-10 |
 | [T-0966](T-0966-split-server-tools-adapters.md) | Size split T21: apps/server/src/tools/adapters.ts (944 lines) into tools/{tool-adapters,tool-arg-schemas,routi | 2026-10-10 |
+| [T-0962](T-0962-split-mobile-chat-screen.md) | Size split T15: apps/mobile/src/app/chat/[id].tsx (1,118 lines) into components/chat/{use-chat-screen,chat-hea | 2026-10-10 |
