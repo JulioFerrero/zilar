@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0960](T-0960-split-server-agents-reply.md) | Size split T3+T4: server agents/reply.ts (1,585) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0962](T-0962-split-mobile-chat-screen.md) | Size split T15: mobile chat/[id].tsx (1,118) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0963](T-0963-split-server-actions-gateway.md) | Size split T18: server actions/gateway.ts (1,036) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0965](T-0965-split-lead-policy.md) | Size split T16: devtools lead/policy.ts (1,111), byte-identical | in-progress | deepseek-flash | T-0936 | size-plan |
@@ -994,3 +993,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0964](T-0964-split-server-approvals-service.md) | Size split T19: apps/server/src/approvals/service.ts (1,030 lines) into approvals/{schemas,queries,access}.ts, | 2026-10-10 |
 | [T-0959](T-0959-split-web-api.md) | Size split T1+T2: apps/web/src/lib/api.ts (1,792 lines) into lib/api/{http,chats,groups,topics,media,settings, | 2026-10-10 |
 | [T-0961](T-0961-split-server-groups-service.md) | Size split T5+T6: apps/server/src/groups/service.ts (1,583 lines) into groups/{schemas,members,ais,queries}.ts | 2026-10-10 |
+| [T-0960](T-0960-split-server-agents-reply.md) | Size split T3+T4: apps/server/src/agents/reply.ts (1,585 lines) into agents/{tool-loop,dm-turn,group-turn}.ts, | 2026-10-10 |
