@@ -9,6 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-1075](T-1075-dither-avatars.md) | Dither avatars (colour, everyone) for avatars without a picture, web + mobile | in-progress | auto | - | Julio's pick 10-11 |
 
 ## Follow-ups
 
