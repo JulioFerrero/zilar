@@ -28,12 +28,14 @@ import { mediaDomain } from './media';
 import { messagesDomain } from './messages';
 import { pinsDomain } from './pins';
 import { publicGroupsDomain } from './public-groups';
+import { pushDomain } from './push';
 import { rolesDomain } from './roles';
 import { routinesDomain } from './routines';
 import { searchDomain } from './search';
 import { stickersDomain } from './stickers';
 import { toolsDomain } from './tools';
 import { topicsDomain } from './topics';
+import { voiceTranscriptionDomain } from './voice-transcription';
 import { xmppTokenDomain } from './xmpp-token';
 
 export const domains: readonly Domain[] = [
@@ -61,11 +63,13 @@ export const domains: readonly Domain[] = [
   messagesDomain,
   pinsDomain,
   publicGroupsDomain,
+  pushDomain,
   rolesDomain,
   routinesDomain,
   searchDomain,
   stickersDomain,
   toolsDomain,
   topicsDomain,
+  voiceTranscriptionDomain,
   xmppTokenDomain,
 ];

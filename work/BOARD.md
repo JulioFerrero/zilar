@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1073](T-1073-mock-backend-push-voice.md) | Mock backend F4: push and voice transcription domains | in-progress | auto | T-1059 | the last web fallbacks except avatars |
 
 ## Follow-ups
 
@@ -1115,3 +1114,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1070](T-1070-mobile-search-on-mock-backend-and-delete-dead-mocks.md) | Mock H2-4b + sweep (mobile): chat search runs on @zilar/mock-backend; delete contacts-mock, mock/directory and | 2026-10-10 |
 | [T-1071](T-1071-web-mock-delete-covered-routes-4.md) | Mock sweep W4 (web): delete the mock/api.ts /topics/:id, roles, audit, approvals, approval-rules, connections  | 2026-10-10 |
 | [T-1072](T-1072-web-mock-delete-covered-routes-5.md) | Mock sweep W10 (web): delete the mock/api.ts me, me/handle, users/by-handle, contact-requests, blocks and hand | 2026-10-10 |
+| [T-1073](T-1073-mock-backend-push-voice.md) | Mock backend F4: push (config, subscriptions, settings, test) and voice transcription domains in @zilar/mock-b | 2026-10-10 |
