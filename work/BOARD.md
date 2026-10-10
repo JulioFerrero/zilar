@@ -12,7 +12,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1020](T-1020-split-mobile-chats-tab.md) | Size split T72: mobile (tabs)/index.tsx (537) | in-progress | auto | T-0936 | size-plan |
 | [T-1021](T-1021-split-mobile-attachment-native.md) | Size split T75: mobile attachment-native.ts (528) | in-progress | auto | T-0936 | size-plan |
 | [T-1022](T-1022-split-mobile-topic-sheets.md) | Size split T100: mobile topic-sheets.tsx (442) | in-progress | auto | T-0936 | size-plan |
-| [T-1024](T-1024-split-server-media-indexer.md) | Size split T103: server media/indexer.ts (435) | in-progress | auto | T-0936 | size-plan |
 | [T-1025](T-1025-split-server-agent-memory-store.md) | Size split T60: server agents/memory/store.ts (572) | in-progress | auto | T-0936 | size-plan |
 | [T-1026](T-1026-split-site-scene.md) | Size split T80: site scene.ts (515) | in-progress | auto | T-0936 | size-plan |
 | [T-1027](T-1027-split-devtools-xmpp-e2e.md) | Size split T94: devtools xmpp-e2e.ts (457) | in-progress | auto | T-0936 | size-plan |
@@ -1056,3 +1055,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1019](T-1019-split-server-chat-prefs.md) | Size split T98: apps/server/src/chat-prefs/service.ts (445 lines) into chat-prefs/{access,backgrounds}.ts, the | 2026-10-10 |
 | [T-1015](T-1015-split-web-task-strip.md) | Size split T99: apps/web/src/components/TaskStrip.tsx (442 lines) into components/topic/{stripModel,StatusMenu | 2026-10-10 |
 | [T-1023](T-1023-split-server-topic-rooms.md) | Size split T77: apps/server/src/topics/rooms.ts (522 lines) into topics/{room-members,room-sync,room-push}.ts, | 2026-10-10 |
+| [T-1024](T-1024-split-server-media-indexer.md) | Size split T103: apps/server/src/media/indexer.ts (435 lines) into media/{extract,rows}.ts, the old path keeps | 2026-10-10 |
