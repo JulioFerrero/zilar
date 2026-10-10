@@ -93,6 +93,17 @@ describe('Lifetime (core)', () => {
     expect(catchError).not.toHaveBeenCalled();
   });
 
+  it('exposes the store Scope, which closes with the store and reopens fresh', () => {
+    const rt = lifetime();
+    const first = rt.storeScope();
+    expect(rt.storeScope()).toBe(first);
+    rt.closeStore();
+    expect(first.state._tag).toBe('Closed');
+    expect(rt.storeScope()).not.toBe(first);
+    expect(rt.storeScope().state._tag).not.toBe('Closed');
+    rt.closeStore();
+  });
+
   it('a failing task is logged and does not stop the others', async () => {
     const rt = lifetime();
     const ran = vi.fn();

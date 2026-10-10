@@ -41,6 +41,8 @@ export interface Lifetime<R> {
   /** Runs `finalizer` when the store Scope closes. */
   readonly onStoreClose: (finalizer: Effect.Effect<unknown>) => void;
   readonly isStoreOpen: () => boolean;
+  /** The store Scope itself (opened on first use), for code that forks into a raw Scope. */
+  readonly storeScope: () => Scope.Closeable;
   /** The current session, or undefined before `start()` and after `stop()`. */
   readonly session: () => Fibers<R> | undefined;
   /** Closes the current session and opens a new one inside the store Scope. */
@@ -100,6 +102,7 @@ export function makeLifetime<R>(services: Context.Context<R>): Lifetime<R> {
     has: (key) => store?.has(key) ?? false,
     onStoreClose: (finalizer) => ensureStore().onClose(finalizer),
     isStoreOpen: () => store !== undefined,
+    storeScope: () => ensureStore().scope,
     session: () => session,
     beginSession: () => {
       if (session !== undefined) {

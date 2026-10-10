@@ -1,7 +1,7 @@
 ---
 id: T-0905
 title: "Store core T4: the mobile store on the core lifetime (makeLife and makeRunners as adapters, keyed fibers for typing, refresh and draft timers)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0905-store-core-t4-mobile-lifetime
 model: auto
@@ -61,4 +61,22 @@ Run the mobile `src/store` tests 3 times, because they use timers. The guards ar
 
 ## Report (written by the worker when done)
 
+- **Lines (mobile, 3 files):** +100 / -115. Core: `lifetime.ts` +3, `lifetime.test.ts` +11 (one new case, no existing case edited).
+- **runtime.ts:** `makeLife()` is now an adapter over `makeLifetime(Context.empty())`: `session()` = the store Scope, `generation()` = the current core session's scope, `restartGeneration()` = `beginSession()`, `endSession()` = `closeStore()` then `beginSession()`. `Life` gained `forkKeyed`, `forkGenerationKeyed`, `cancel`, `cancelGeneration`. `makeRunners` is unchanged: it still forks into any Scope with `Ports` provided (the tests fork into a raw scope).
+- **Core addition:** `Lifetime.storeScope()` (the lifetime had no way to hand out the store Scope, which `life.session()` must return).
+- **events.ts:** typing timers are `forkKeyed('typing:<chat>')`, the refresh debounce `forkKeyed('chats-refresh')`; the Map, the timer variable and the self-deletes are gone. `clearTimers` cancels those keys (typing keys from `get().typing`); `endSession()` already ends them first.
+- **polling.ts:** draft timeouts are `forkKeyed('draft:<chat>')`; `clearDraftState` cancels keys from `get().drafts`.
+- **Poll Scope mapping:** keyed fibers of the current core session (generation): `poll:topics` and `poll:pins`. The AppState resume listener is acquired with `acquireRelease` inside the keyed fiber, so a replaced poll, a restart and `stop()` all unsubscribe it. `stopPinsPolling` is `cancelGeneration('poll:pins')`.
+- **Tests:** `src/store/effects` 22 passed; `src/store` 3 runs, each 31 files / 308 passed, 1 skipped; client-core `src/store` 19 passed. Typecheck, prettier and oxlint clean. No `pnpm gate` (wave mode).
+- **Phone smoke:** SMOKE PASS for `/` and `/settings`; both screenshots checked (chat list and settings render normally).
+- **Behaviour differences:** none intended. A failed forked task is now logged by the core guard. Not tested on a device: AI draft streaming and resume after backgrounding (live check for Julio).
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.**
+- **The change:** mobile `makeLife` and `makeRunners` are adapters over the core `makeLifetime`. Typing, chat refresh, draft timeouts and the two polls are keyed fibers (`typing:<chat>`, `chats-refresh`, `draft:<chat>`, `poll:topics`, `poll:pins`). The hand-kept maps are gone.
+- **Core additions:** `Lifetime.storeScope()`, with one new core test.
+- **Behaviour:** one change, intended: a failed fork is now logged by the core guard, as on web.
+- **Tests:** the mobile store tests pass 3 runs unedited, and the phone smoke is clean.
+- **Check:** the combined check passes.
+- **Live check for Julio:** AI draft streaming, and resume after backgrounding the app, on the phone.

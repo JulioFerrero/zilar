@@ -1,4 +1,5 @@
-import { Effect, Exit, Fiber, Scope } from 'effect';
+import { makeLifetime } from '@zilar/client-core/store';
+import { Context, Effect, Exit, Fiber, Scope } from 'effect';
 import type {
   ChatSummary,
   EditAuthor,
@@ -89,26 +90,35 @@ export interface Life {
   restartGeneration(): void;
   /** Ends the session (and the generation with it) and opens fresh scopes. */
   endSession(): void;
+  /** Starts `task` now under `key` in the session; a task with the same key is interrupted first. */
+  forkKeyed(key: string, task: Effect.Effect<unknown>): Fiber.Fiber<unknown, never>;
+  /** Like `forkKeyed`, but in the generation: a restart ends it. */
+  forkGenerationKeyed(key: string, task: Effect.Effect<unknown>): Fiber.Fiber<unknown, never>;
+  /** Interrupts the session task with this key, if any. */
+  cancel(key: string): void;
+  /** Interrupts the generation task with this key, if any. */
+  cancelGeneration(key: string): void;
 }
 
+/** An adapter over the core lifetime: the session is its store Scope, the generation its session. */
 export function makeLife(): Life {
-  let session = Scope.makeUnsafe();
-  let generation = Scope.makeUnsafe();
+  const lifetime = makeLifetime(Context.empty());
+  let generation = lifetime.beginSession();
   const restartGeneration = (): void => {
-    const old = generation;
-    generation = Scope.makeUnsafe();
-    closeScope(old);
+    generation = lifetime.beginSession();
   };
   return {
-    session: () => session,
-    generation: () => generation,
+    session: () => lifetime.storeScope(),
+    generation: () => generation.scope,
     restartGeneration,
     endSession: () => {
-      const old = session;
-      session = Scope.makeUnsafe();
+      lifetime.closeStore();
       restartGeneration();
-      closeScope(old);
     },
+    forkKeyed: lifetime.forkKeyed,
+    forkGenerationKeyed: (key, task) => generation.forkKeyed(key, task),
+    cancel: lifetime.cancel,
+    cancelGeneration: (key) => generation.cancel(key),
   };
 }
 

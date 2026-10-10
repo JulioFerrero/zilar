@@ -1,8 +1,8 @@
 import { FINISHED_TURNS_MAX, withoutDraft } from '@zilar/client-core/store';
-import { Effect, Fiber, Schedule, Scope } from 'effect';
+import { Effect, Schedule } from 'effect';
 
 import type { DraftEndEvent, DraftHubEvent } from '../../lib/drafts';
-import { closeScope, onClose, type StoreCtx } from './runtime';
+import { onClose, type StoreCtx } from './runtime';
 
 /** Refetch `/api/chats` every 60 s while the app is active (T-0112). */
 export const TOPIC_REFRESH_INTERVAL_MS = 60_000;
@@ -54,77 +54,78 @@ export function makePolling(ctx: StoreCtx): Polling {
       Schedule.spaced(interval),
     ).pipe(Effect.delay(interval), Effect.asVoid);
 
-  let topicsScope: Scope.Closeable | undefined;
-  let pinsScope: Scope.Closeable | undefined;
+  // Each poll is one keyed fiber of the generation: the resume listener is
+  // acquired inside it and released when the fiber ends, so a replaced poll, a
+  // restart and `stop()` all drop the listener with the loop.
+  const TOPICS_POLL_KEY = 'poll:topics';
+  const PINS_POLL_KEY = 'poll:pins';
+
+  const withAppStateListener = (
+    listener: (state: string) => void,
+    loop: Effect.Effect<void>,
+  ): Effect.Effect<void> =>
+    Effect.scoped(
+      Effect.acquireRelease(
+        Effect.sync(() => ports.appState.subscribe(listener)),
+        (unsubscribe) => Effect.sync(unsubscribe),
+      ).pipe(Effect.andThen(loop)),
+    );
 
   function startTopicsPolling(): void {
-    if (topicsScope !== undefined) {
-      closeScope(topicsScope);
-    }
     const generation = life.generation();
-    const scope = Scope.forkUnsafe(generation);
-    topicsScope = scope;
     const refresh = (): void => {
       ctx.fork(fx.refreshChats, generation);
     };
-    ctx.fork(
-      everyDelayed(() => {
-        if (!h.isVisible()) {
-          return;
-        }
-        refresh();
-      }, TOPIC_REFRESH_INTERVAL_MS),
-      scope,
-    );
-    onClose(
-      scope,
-      ports.appState.subscribe((state) => {
-        if (state === 'active') {
+    life.forkGenerationKeyed(
+      TOPICS_POLL_KEY,
+      withAppStateListener(
+        (state) => {
+          if (state === 'active') {
+            refresh();
+          }
+        },
+        everyDelayed(() => {
+          if (!h.isVisible()) {
+            return;
+          }
           refresh();
-        }
-      }),
+        }, TOPIC_REFRESH_INTERVAL_MS),
+      ),
     );
   }
 
   function stopPinsPolling(): void {
-    if (pinsScope !== undefined) {
-      closeScope(pinsScope);
-      pinsScope = undefined;
-    }
+    life.cancelGeneration(PINS_POLL_KEY);
   }
 
   function startPinsPolling(chatId: string): void {
-    stopPinsPolling();
     const generation = life.generation();
-    const scope = Scope.forkUnsafe(generation);
-    pinsScope = scope;
-    ctx.fork(
-      everyDelayed(() => {
-        if (get().activeChatId !== chatId) {
-          return;
-        }
-        if (!h.isVisible()) {
-          return;
-        }
-        ctx.fork(fx.loadPins(chatId, false), generation);
-      }, PINS_REFRESH_INTERVAL_MS),
-      scope,
-    );
-    onClose(
-      scope,
-      ports.appState.subscribe((state) => {
-        if (state === 'active' && get().activeChatId === chatId) {
+    life.forkGenerationKeyed(
+      PINS_POLL_KEY,
+      withAppStateListener(
+        (state) => {
+          if (state === 'active' && get().activeChatId === chatId) {
+            ctx.fork(fx.loadPins(chatId, false), generation);
+          }
+        },
+        everyDelayed(() => {
+          if (get().activeChatId !== chatId) {
+            return;
+          }
+          if (!h.isVisible()) {
+            return;
+          }
           ctx.fork(fx.loadPins(chatId, false), generation);
-        }
-      }),
+        }, PINS_REFRESH_INTERVAL_MS),
+      ),
     );
   }
 
   // Turn ids whose draft is done, so a late `draft` is ignored.
   const finishedTurns = new Set<string>();
   const finishedTurnOrder: string[] = [];
-  // Idle/fallback removal of a draft, one timer fiber per chat id.
-  const draftTimeouts = new Map<string, Fiber.Fiber<void>>();
+  // Idle/fallback removal of a draft, one keyed timer fiber per chat id.
+  const draftKey = (chatId: string): string => `draft:${chatId}`;
   let draftStreamOpen = false;
 
   function markTurnFinished(turnId: string): void {
@@ -142,18 +143,13 @@ export function makePolling(ctx: StoreCtx): Polling {
   }
 
   function clearDraftTimeout(chatId: string): void {
-    const timer = draftTimeouts.get(chatId);
-    if (timer !== undefined) {
-      Effect.runFork(Fiber.interrupt(timer));
-      draftTimeouts.delete(chatId);
-    }
+    life.cancel(draftKey(chatId));
   }
 
   function clearDraftState(): void {
-    for (const timer of draftTimeouts.values()) {
-      Effect.runFork(Fiber.interrupt(timer));
+    for (const chatId of Object.keys(get().drafts)) {
+      life.cancel(draftKey(chatId));
     }
-    draftTimeouts.clear();
     finishedTurns.clear();
     finishedTurnOrder.length = 0;
   }
@@ -162,12 +158,11 @@ export function makePolling(ctx: StoreCtx): Polling {
   // removes the draft only when the same turn is still shown, so a newer
   // turn's draft is never dropped by an older turn's timer.
   function armDraftRemoval(chatJid: string, turnId: string, delay: number): void {
-    clearDraftTimeout(chatJid);
-    const timer = ctx.fork(
+    life.forkKeyed(
+      draftKey(chatJid),
       Effect.sleep(delay).pipe(
         Effect.andThen(
           Effect.sync(() => {
-            draftTimeouts.delete(chatJid);
             // Not marked finished here: an idle turn (e.g. a slow tool call) may
             // resume, and its next draft must show again. `end` marks it itself.
             set((state) => {
@@ -180,9 +175,7 @@ export function makePolling(ctx: StoreCtx): Polling {
           }),
         ),
       ),
-      life.session(),
     );
-    draftTimeouts.set(chatJid, timer);
   }
 
   // A draft disappears only once its final message is there, so the two never

@@ -1,4 +1,4 @@
-import { Effect, Fiber } from 'effect';
+import { Effect } from 'effect';
 import {
   applyEdit,
   canDeleteMessage,
@@ -51,20 +51,12 @@ export interface Events {
  * the reaction/edit/delete sends with their rollback, chat prefs and folders.
  */
 export function makeEvents(ctx: StoreCtx): Events {
-  const { ports, get, set, s, h } = ctx;
+  const { ports, get, set, s, h, life } = ctx;
   const { now } = ports;
 
-  // One clear-the-typing-line timer fiber per chat id.
-  const typingTimers = new Map<string, Fiber.Fiber<void>>();
-  let refreshTimer: Fiber.Fiber<void> | undefined;
-
-  function clearTypingTimer(chatId: string): void {
-    const timer = typingTimers.get(chatId);
-    if (timer !== undefined) {
-      Effect.runFork(Fiber.interrupt(timer));
-      typingTimers.delete(chatId);
-    }
-  }
+  // One clear-the-typing-line timer fiber per chat id, keyed in the session.
+  const typingKey = (chatId: string): string => `typing:${chatId}`;
+  const REFRESH_KEY = 'chats-refresh';
 
   function handleTyping(event: {
     chatJid: string;
@@ -85,23 +77,20 @@ export function makeEvents(ctx: StoreCtx): Events {
       fromJid: event.fromJid,
       outgoing: false,
     });
-    clearTypingTimer(chatId);
+    life.cancel(typingKey(chatId));
     if (event.state === 'composing') {
       set((state) => ({ typing: { ...state.typing, [chatId]: { names: [name] } } }));
-      typingTimers.set(
-        chatId,
-        ctx.forkSession(
-          Effect.sleep(TYPING_CLEAR_MS).pipe(
-            Effect.andThen(
-              Effect.sync(() => {
-                set((state) => {
-                  const next = { ...state.typing };
-                  delete next[chatId];
-                  return { typing: next };
-                });
-                typingTimers.delete(chatId);
-              }),
-            ),
+      life.forkKeyed(
+        typingKey(chatId),
+        Effect.sleep(TYPING_CLEAR_MS).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              set((state) => {
+                const next = { ...state.typing };
+                delete next[chatId];
+                return { typing: next };
+              });
+            }),
           ),
         ),
       );
@@ -115,14 +104,11 @@ export function makeEvents(ctx: StoreCtx): Events {
   }
 
   function scheduleChatsRefresh(): void {
-    if (refreshTimer !== undefined) {
-      Effect.runFork(Fiber.interrupt(refreshTimer));
-    }
-    refreshTimer = ctx.forkSession(
+    life.forkKeyed(
+      REFRESH_KEY,
       Effect.sleep(CHAT_REFRESH_DEBOUNCE_MS).pipe(
         Effect.andThen(
           Effect.sync(() => {
-            refreshTimer = undefined;
             // The refresh is its own fiber: a newer push re-arms the debounce
             // without cancelling a refresh already in flight.
             ctx.forkSession(ctx.fx.refreshChats);
@@ -133,13 +119,9 @@ export function makeEvents(ctx: StoreCtx): Events {
   }
 
   function clearTimers(): void {
-    for (const timer of typingTimers.values()) {
-      Effect.runFork(Fiber.interrupt(timer));
-    }
-    typingTimers.clear();
-    if (refreshTimer !== undefined) {
-      Effect.runFork(Fiber.interrupt(refreshTimer));
-      refreshTimer = undefined;
+    life.cancel(REFRESH_KEY);
+    for (const chatId of Object.keys(get().typing)) {
+      life.cancel(typingKey(chatId));
     }
   }
 
