@@ -10,6 +10,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0936](T-0936-size-dup-audit.md) | Audit: 400-line limit and duplicated code | in-progress | deepseek-flash | — | Julio 10-10 |
+| [T-0937](T-0937-mock-backend-scaffold.md) | Mock backend A: @zilar/mock-backend scaffold, seed, /me /chats /contacts | in-progress | deepseek-flash | — | mock-plan A |
+| [T-0938](T-0938-code-map-page.md) | Code map page replaces the Effect map on GitHub Pages | in-progress | deepseek-flash | — | Julio 10-10 |
 
 ## Follow-ups
 
