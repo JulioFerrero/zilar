@@ -1,7 +1,7 @@
 ---
 id: T-0928
 title: "Server tests: ais/, audit/, chat-prefs/, groups/, roles/, routines/ and topics/ use the shared seed module from T-0925 (simplify plan 5.4, F-F4, part 3)"
-status: todo
+status: blocked
 milestone: M5
 branch: task/T-0928-server-test-seeds-3
 model: auto
@@ -11,6 +11,8 @@ estimate: 0.5 day
 ---
 
 # T-0928: Shared server test seeds, part 3
+
+**Cancelled (lead, 2026-10-10):** under Julio's minimal-test rule, T-0931 deletes most of these test files. Not to be launched.
 
 ## Spec (written by Claude, do not edit)
 

@@ -1,7 +1,7 @@
 ---
 id: T-0927
 title: "Server tests: actions/ and agents/ use the shared seed module from T-0925 (simplify plan 5.4, F-F4, part 2)"
-status: todo
+status: blocked
 milestone: M5
 branch: task/T-0927-server-test-seeds-2
 model: auto
@@ -11,6 +11,8 @@ estimate: 0.5 day
 ---
 
 # T-0927: Shared server test seeds, part 2
+
+**Cancelled (lead, 2026-10-10):** under Julio's minimal-test rule, T-0931 deletes most of these test files. Not to be launched.
 
 ## Spec (written by Claude, do not edit)
 
