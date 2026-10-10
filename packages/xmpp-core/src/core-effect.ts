@@ -1201,7 +1201,6 @@ export function createCoreEffect(
     setPushEnabled: setPushEnabledEffect,
     sendTyping: sendTypingEffect,
     markDisplayed: markDisplayedEffect,
-    events: events.streams,
     on: (event: EventName, listener: StoredListener) => events.on(event, listener),
   };
 }

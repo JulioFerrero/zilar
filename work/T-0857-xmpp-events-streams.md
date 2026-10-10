@@ -1,7 +1,7 @@
 ---
 id: T-0857
 title: "xmpp-core: delete the unused events.* Streams (10 unbounded PubSubs per connection) — Julio approved"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0857-xmpp-events-streams
 model: auto
@@ -57,3 +57,15 @@ Run the tests 3 times after the last commit.
 ## Report (written by the worker when done)
 
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.**
+- **What changed:** the unused `events.*` Streams and their 10 PubSubs per connection are gone (−57 lines). `on()` is unchanged.
+- **Lead check:** I ran the 4 xmpp-core integration tests on this branch against local ejabberd (`ZILAR_XMPP_INTEGRATION=1`, with `infra/.env` linked for the run and removed afterwards), and all 4 passed: messaging and reconnect, edits, invites and roster, and stream management.
+- **Checks:** the combined check is clean.
+
+- Grep over apps/ and packages/: nothing outside xmpp-core read `.events` or its Streams (only core-effect.test.ts did). Audit facts held.
+- Removed: `EventStreams` type and export, `streams` on the hub, 10 PubSubs, `Stream.fromPubSub` wiring, the `publishUnsafe` call, `XmppCoreEffect.events`. `on()` and `emit()` unchanged (synchronous, same order).
+- Tests: the two Stream tests became `on()`-only tests (same scenarios), so the count stays 245 passed | 4 skipped before and after, 3 of 3 runs.
+- Lines: 9 added, 57 removed across 5 files (events.ts, types.ts, core-effect.ts, core-effect.test.ts, index.ts). index.ts was not in the Allowed list but is under `packages/xmpp-core/src/**`.
+- Typecheck xmpp-core, web, mobile, server clean; oxlint and prettier clean.
+- Behaviour differences: none. No README or docs mentioned the Streams.

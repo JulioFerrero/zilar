@@ -1,4 +1,3 @@
-import { Effect, PubSub, Stream } from 'effect';
 import type {
   ChatMessage,
   ConnectionStatus,
@@ -26,52 +25,16 @@ export type EventPayload = {
 export type EventName = keyof EventPayload;
 export type StoredListener = (payload: never) => void;
 
-export type EventStreams = { readonly [K in EventName]: Stream.Stream<EventPayload[K]> };
-
 export type EventHub = {
-  /** Calls the `on` listeners synchronously, then publishes to the PubSub of this event kind. */
+  /** Calls the `on` listeners synchronously, in subscription order. */
   emit<K extends EventName>(event: K, payload: EventPayload[K]): void;
   /** Callback form; the returned function unsubscribes. */
   on(event: EventName, listener: StoredListener): () => void;
-  /** One `Stream` per event kind; each subscriber sees events published after it subscribed. */
-  streams: EventStreams;
 };
 
-function makePubSubs(): { [K in EventName]: PubSub.PubSub<EventPayload[K]> } {
-  return {
-    status: Effect.runSync(PubSub.unbounded<EventPayload['status']>()),
-    message: Effect.runSync(PubSub.unbounded<EventPayload['message']>()),
-    typing: Effect.runSync(PubSub.unbounded<EventPayload['typing']>()),
-    displayed: Effect.runSync(PubSub.unbounded<EventPayload['displayed']>()),
-    occupants: Effect.runSync(PubSub.unbounded<EventPayload['occupants']>()),
-    presence: Effect.runSync(PubSub.unbounded<EventPayload['presence']>()),
-    invited: Effect.runSync(PubSub.unbounded<EventPayload['invited']>()),
-    roster: Effect.runSync(PubSub.unbounded<EventPayload['roster']>()),
-    error: Effect.runSync(PubSub.unbounded<EventPayload['error']>()),
-    replaced: Effect.runSync(PubSub.unbounded<EventPayload['replaced']>()),
-  };
-}
-
 export function makeEventHub(): EventHub {
-  const pubsubs = makePubSubs();
-  const streams: EventStreams = {
-    status: Stream.fromPubSub(pubsubs.status),
-    message: Stream.fromPubSub(pubsubs.message),
-    typing: Stream.fromPubSub(pubsubs.typing),
-    displayed: Stream.fromPubSub(pubsubs.displayed),
-    occupants: Stream.fromPubSub(pubsubs.occupants),
-    presence: Stream.fromPubSub(pubsubs.presence),
-    invited: Stream.fromPubSub(pubsubs.invited),
-    roster: Stream.fromPubSub(pubsubs.roster),
-    error: Stream.fromPubSub(pubsubs.error),
-    replaced: Stream.fromPubSub(pubsubs.replaced),
-  };
-
-  // `on` callbacks run synchronously inside `emit`, in subscription order,
-  // exactly as before: a consumer fiber on the PubSub would deliver a tick
-  // later, and a callback that throws would kill the fiber and silence every
-  // later event, where today the throw reaches the stanza handler. The
-  // PubSubs feed the `Stream` accessors.
+  // `on` callbacks run synchronously inside `emit`, in subscription order:
+  // a callback that throws reaches the stanza handler.
   const listeners = new Map<EventName, Set<StoredListener>>();
 
   return {
@@ -82,7 +45,6 @@ export function makeEventHub(): EventHub {
           (listener as (value: typeof payload) => void)(payload);
         }
       }
-      PubSub.publishUnsafe(pubsubs[event] as PubSub.PubSub<typeof payload>, payload);
     },
     on: (event, listener) => {
       let set = listeners.get(event);
@@ -95,6 +57,5 @@ export function makeEventHub(): EventHub {
         set.delete(listener);
       };
     },
-    streams,
   };
 }

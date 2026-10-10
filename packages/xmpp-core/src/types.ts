@@ -1,7 +1,6 @@
 import type { ForwardOrigin, Payload } from '@zilar/protocol';
 import type { Effect } from 'effect';
 import type { NotOnline, XmppCoreError } from './errors';
-import type { EventStreams } from './events';
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
 
@@ -386,9 +385,4 @@ export interface XmppCoreEffect {
   /** Fire and forget: does nothing offline; a failed send becomes an `error` event. */
   sendTyping(to: string, kind: ChatKind, state: 'composing' | 'paused'): Effect.Effect<void>;
   markDisplayed(chatJid: string, kind: ChatKind, messageId: string): Effect.Effect<void>;
-  /**
-   * One `Stream` per event kind, with the payloads of `XmppCore.on`. A
-   * subscriber sees the events published after it started running the stream.
-   */
-  events: EventStreams;
 }

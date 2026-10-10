@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Effect, Fiber, Stream } from 'effect';
+import { Effect } from 'effect';
 import { xml, type XmppClient, type XmppElement, type XmppJid } from '@xmpp/client';
 import { createCoreEffect, type CoreEffect } from './core-effect';
 import { NotOnline } from './errors';
@@ -116,12 +116,13 @@ describe('createXmppCoreEffect', () => {
 });
 
 describe('XmppCoreEffect events', () => {
-  it('delivers an incoming message to the message Stream', async () => {
+  it('delivers an incoming message to on() callbacks', async () => {
     const fake = createFakeClient();
     const core = makeCore(fake);
     await connectOnline(core, fake);
+    const messages: ChatMessage[] = [];
+    core.on('message', (message) => messages.push(message));
 
-    const received = Effect.runFork(core.events.message.pipe(Stream.take(1), Stream.runCollect));
     fake.emitStanza(
       xml(
         'message',
@@ -130,21 +131,18 @@ describe('XmppCoreEffect events', () => {
       ),
     );
 
-    const messages: ChatMessage[] = [...(await Effect.runPromise(Fiber.join(received)))];
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({ body: 'hello', fromJid: 'alice@zilar.localhost' });
   });
 
-  it('delivers the status changes to the status Stream and to on() callbacks alike', async () => {
+  it('delivers the status changes to on() callbacks', async () => {
     const fake = createFakeClient();
     const core = makeCore(fake);
     const viaCallback: ConnectionStatus[] = [];
     core.on('status', (status) => viaCallback.push(status));
 
-    const viaStream = Effect.runFork(core.events.status.pipe(Stream.take(2), Stream.runCollect));
     await connectOnline(core, fake);
 
-    expect([...(await Effect.runPromise(Fiber.join(viaStream)))]).toEqual(['connecting', 'online']);
     expect(viaCallback).toEqual(['connecting', 'online']);
   });
 
