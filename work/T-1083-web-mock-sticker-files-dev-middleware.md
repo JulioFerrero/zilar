@@ -16,7 +16,7 @@ estimate: 0.25 day
 
 ### Why
 This is slice 1 of `docs/audit/mock-sweep-status.md` §3.1 and §4 (T-1082). The lead re-read main (2026-10-11):
-- **The url:** sticker rows carry the relative url `/api/stickers/<id>/file`, from `mockStickerFileUrl` in `packages/mock-backend/src/domains/stickers/seed.ts:92`.
+- **The url:** sticker rows carry the relative url `/api/stickers/:stickerId/file`, from `mockStickerFileUrl` in `packages/mock-backend/src/domains/stickers/seed.ts:92`.
 - **The `<img>`:** `apps/web/src/components/sticker/StickerThumb.tsx:27-35` renders `<img src={sticker.url}>`. The browser fetches it itself, so it never reaches `dispatch` (`apps/web/src/mock/backend.ts`).
 - **The 404:** the vite dev server proxies `/api` to `process.env.ZILAR_API_URL ?? 'http://localhost:3000'` (`apps/web/vite.config.ts:13-20`). Mock mode runs no server there, so the image fails and the tile is blank.
 - **The backend can already answer:** its route `GET /stickers/:id/file` returns the seed's SVG art with `Content-Type: image/svg+xml` (`packages/mock-backend/src/domains/stickers/routes.ts:30-31`, `:115-121`), and web `<img>` renders SVG.
@@ -25,7 +25,7 @@ This is slice 1 of `docs/audit/mock-sweep-status.md` §3.1 and §4 (T-1082). The
 ### What to build
 1. **A small vite plugin** in a new `apps/web/src/mock/dev-sticker-files.ts`, registered in `apps/web/vite.config.ts`. It has `apply: 'serve'`, so it is never part of `vite build`.
    - In `configureServer`, load `@zilar/mock-backend` through `server.ssrLoadModule`, so vite compiles the TypeScript workspace package. Create one `createMockBackend({ delayMs: 0 })`.
-   - Add a middleware that runs **before** the `/api` proxy. For `GET /api/stickers/<id>/file`, call `backend.http('/api/stickers/<id>/file', { method: 'GET' })`.
+   - Add a middleware that runs **before** the `/api` proxy. For `GET /api/stickers/:stickerId/file`, call `backend.http` with that same path and `{ method: 'GET' }`.
      - A `200` answer is piped back with its status, `Content-Type` and body.
      - Any other path, method or status calls `next()`, so the request goes to the proxy as today. A real server's sticker ids are not in the seed, so dev against a real server is unchanged.
    - Keep the plugin under 80 lines, with a comment saying it is dev-only, mock-seed-only and production-free.
