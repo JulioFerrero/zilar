@@ -1,7 +1,7 @@
 ---
 id: T-1054
 title: "Dedup F6 (S5): one readCapped (apps/server/src/http/read-capped.ts) for the sticker, background, voice and avatar uploads"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1054-server-read-capped
 model: auto
@@ -48,4 +48,47 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added `apps/server/src/http/read-capped.ts` with the single shared `readCapped<E, R>(stream, cap)`, copying the exact body and signature and the doc comment from `voice/api.ts:136-138`. I also added a short 3-line module header (matching `http/client-ip.ts` style) naming the four callers.
+- Deleted the private `readCapped` copy from each of the four handlers and imported it from `../http/read-capped`.
+- Removed the now-unused `Stream` import in all four files (`Effect, Stream` -> `Effect` in stickers; `Effect, Layer, Stream` -> `Effect, Layer` in backgrounds and voice; `Effect, Layer, Option, Schema, Stream` -> `Effect, Layer, Option, Schema` in avatars). No other imports changed.
+- Left every cap, call site and `.pipe(...)` after the call untouched; caps are `STICKER_MAX_BYTES`, `BACKGROUND_MAX_BYTES`, `maxBytes` (voice) and `AVATAR_MAX_BYTES`. `stickers/telegram/transport.ts` untouched.
+
+### Files changed
+- `apps/server/src/http/read-capped.ts` (new)
+- `apps/server/src/stickers/api-upload.ts`
+- `apps/server/src/backgrounds/api.ts`
+- `apps/server/src/voice/api.ts`
+- `apps/server/src/avatars/api.ts`
+- `work/T-1054-server-read-capped.md`
+
+### Commands and results
+- `pnpm install`: Done in 25s (1 deprecated subdep `uuid@7.0.3`, one peer warning `@types/react-dom`, pre-existing).
+- `grep -rn "function readCapped" apps/server/src`: matches only `apps/server/src/http/read-capped.ts:11`.
+- `grep -rn "Stream" <the four files>`: only comment text ("Streams the stored file..."); no `Stream` import or usage remains.
+- `pnpm gate` (from repo root): summary lines verbatim:
+  ```
+  gate: 6 changed file(s) against main
+  PASS  install (frozen)  (1.9s)
+  PASS  format  (0.8s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (3.6s)
+  PASS  effect  (1.1s)
+  SKIP tests @zilar/server (no nearby test files)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The 6 changed files are the 5 source files above plus the task file, all inside Allowed files. I ran no standalone test files (`pnpm --filter ...`) because the change moves a pure helper with no adjacent test file.
+
+### Deviations / notes
+- Spec said "the exact body and signature, with the doc comment from `voice/api.ts:135-138`". I kept the function body and signature byte-identical and the 3-line doc comment verbatim; the only extra text is the module header comment above the import, matching the existing `http/client-ip.ts` convention.
+
+### Open questions
+None.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved. The pre-review is clean, with no nits.**
+- **The change:** a new `apps/server/src/http/read-capped.ts` holds `readCapped`. The four upload files (stickers, backgrounds, voice, avatars) import it, and each drops its own 33-line copy and the now-unused `Stream` import. The diff is 90 lines added and 153 removed.
+- **Same behaviour:** the lead diffed the new body against main's `voice/api.ts` copy, and they are identical. Before the spec, the lead had also diffed the four copies, and they matched. `grep` now finds one `function readCapped`.
+- **Check:** the gate passed. No tests are near these files.

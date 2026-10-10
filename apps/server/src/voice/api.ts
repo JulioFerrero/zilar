@@ -14,11 +14,12 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Effect, Layer, Stream } from 'effect';
+import { Effect, Layer } from 'effect';
 import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import type { Logger } from 'pino';
 import { HttpError } from '../errors';
+import { readCapped } from '../http/read-capped';
 import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { NotAudioError, createFfmpegEngine } from './engine';
 import { VOICE_MAX_BYTES, VOICE_MAX_DURATION_MS, type VoiceRoutesDependencies } from './routes';
@@ -131,41 +132,4 @@ export function createVoiceApi(deps: VoiceApiDependencies): EffectApiMount {
   );
 
   return mountApi(VoiceApi, apiLayer);
-}
-
-// Reads the body stream chunk by chunk and stops as soon as the cap is passed,
-// so a large upload never has to fit in memory. `undefined` means the cap was
-// exceeded; the over-cap chunk itself is not collected.
-function readCapped<E, R>(
-  stream: Stream.Stream<Uint8Array, E, R>,
-  cap: number,
-): Effect.Effect<Uint8Array | undefined, E, R> {
-  return Effect.gen(function* () {
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    let exceeded = false;
-    yield* Stream.runForEachWhile(stream, (chunk) =>
-      Effect.sync(() => {
-        total += chunk.byteLength;
-        if (total > cap) {
-          exceeded = true;
-          return false;
-        }
-        chunks.push(chunk);
-        return true;
-      }),
-    );
-
-    if (exceeded) {
-      return undefined;
-    }
-
-    const merged = new Uint8Array(total);
-    let offset = 0;
-    for (const chunk of chunks) {
-      merged.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    return merged;
-  });
 }
