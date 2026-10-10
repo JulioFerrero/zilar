@@ -1,7 +1,7 @@
 ---
 id: T-0886
 title: "Split apps/server/src/agents/gateway.test.ts (7,242 lines, 100 s) into feature files around one extracted harness"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0886-gateway-test-split
 model: auto
@@ -54,4 +54,21 @@ Run the tests 3 times after the last commit. The machine is shared, so note `upt
 
 ## Report (written by the worker when done)
 
+Wave mode: `pnpm gate` not run (per lead instruction).
+
+**What changed**
+- `gateway.test.ts` (7,242 lines, 168 tests) deleted and replaced by `gateway.test-harness.ts` (harness, `FakeCore`, shared `FakeLitellm`, `createGatewayHelpers` with `harness`/`completionFetch`/`bodyOf`/`coreFor`) and 8 files `gateway.<feature>.test.ts`. Test bodies were moved by line range, unchanged (prettier only).
+- Each file keeps the local `context`/`gateway` vars and hooks, so bodies still assign and read `gateway` as before.
+- `ais/service|routes|usage.test.ts` drop their local `FakeLitellm` and import the shared one (a superset). Differences kept as options: `idSuffix` (`-do-not-leak`) and `keyInfoMaxBudget` (routes uses `null`, others 20) via a small `fakeLitellm()` helper in routes. In routes, `addedModels/deletedModels/failAddModel/failDeleteModel` were renamed to `added/deleted/failAdd/failDelete`. `failAdd` now rejects with `LitellmApiError` in service tests too (message still contains `gateway down`).
+- Spec line ranges matched the file closely; the 21 describes are nested in one top-level `agent gateway` describe.
+
+**Per-file tests (3 of 3 runs, 527 passed, 3 skipped elsewhere, 0 failed)**
+Load average was 60-70 on the shared machine, so durations are inflated (run 2 / run 3, seconds): lifecycle 26 (174/200), spend 18 (148/166), tools 16 (143/158), actions 14 (87/150), groups 35 (217/262), safety 16 (139/156), topics 9 (62/129), listener 34 (218/278). Gateway total 168 = old 168. ais: routes 49, service 26, usage 13.
+
+**Lines**: gateway.test.ts -7,242; new gateway files +7,716 (harness incl. merged FakeLitellm ~ 750). ais tests: +57 / -292 (net -235).
+
+**Checks**: vitest src/agents src/ais x3 pass, `@zilar/server typecheck` clean, oxlint clean.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.** `gateway.test.ts` (7,242 lines) is split into 8 feature files around one harness, still with exactly 168 tests, so vitest can run them in parallel. The `ais` tests share one `FakeLitellm` (−235 lines). The combined wave 4 check passes.

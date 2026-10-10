@@ -2,15 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type {
-  AddModelInput,
-  GenerateVirtualKeyInput,
-  LitellmAdminClient,
-  ModelListing,
-  UpdateVirtualKeyInput,
-  VirtualKey,
-  VirtualKeyInfo,
-} from '../ai/litellm-client';
 import { createKeyCipher } from '../connections/crypto';
 import { createTestContext, testSql, TEST_XMPP_DOMAIN, type TestContext } from '../test-support';
 import {
@@ -24,77 +15,10 @@ import {
   updateAi,
   type AiServiceDeps,
 } from './service';
+import { FakeLitellm } from '../agents/gateway.test-harness';
 
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
 const PROVIDER_KEY = 'sk-provider-key-do-not-leak';
-
-class FakeLitellm implements LitellmAdminClient {
-  readonly added: AddModelInput[] = [];
-  /** The ids `addModel` handed out, in order. */
-  readonly createdIds: string[] = [];
-  readonly updated: UpdateVirtualKeyInput[] = [];
-  readonly deleted: string[] = [];
-  readonly revoked: string[] = [];
-  /** Every model/key call in order, so tests can assert the swap ordering. */
-  readonly order: string[] = [];
-  /** Models `listModels` returns, so tests can plant a stray `ai-<id>`. */
-  listed: ModelListing[] = [];
-  failAdd = false;
-  failUpdate = false;
-  private modelCounter = 0;
-
-  addModel(input: AddModelInput): Promise<string> {
-    this.added.push(input);
-    this.order.push('addModel');
-    if (this.failAdd) {
-      return Promise.reject(new Error('gateway down'));
-    }
-    this.modelCounter += 1;
-    const id = `model-${this.modelCounter}`;
-    this.createdIds.push(id);
-    return Promise.resolve(id);
-  }
-
-  deleteModel(modelId: string): Promise<void> {
-    this.deleted.push(modelId);
-    this.order.push('deleteModel');
-    return Promise.resolve();
-  }
-
-  listModels(): Promise<ModelListing[]> {
-    return Promise.resolve([...this.listed]);
-  }
-
-  generateKey(_input: GenerateVirtualKeyInput): Promise<VirtualKey> {
-    throw new Error('generateKey is not used by ensureAiModel');
-  }
-
-  getKeyInfo(_key: string): Promise<VirtualKeyInfo> {
-    throw new Error('getKeyInfo is not used by ensureAiModel');
-  }
-
-  updateKey(input: UpdateVirtualKeyInput): Promise<VirtualKeyInfo> {
-    this.updated.push(input);
-    this.order.push('updateKey');
-    if (this.failUpdate) {
-      return Promise.reject(new Error('gateway down'));
-    }
-    return Promise.resolve({
-      keyAlias: null,
-      maxBudget: null,
-      spend: 0,
-      tpmLimit: null,
-      rpmLimit: null,
-      blocked: null,
-      models: input.models ?? [],
-    });
-  }
-
-  revokeKey(key: string): Promise<void> {
-    this.revoked.push(key);
-    return Promise.resolve();
-  }
-}
 
 function depsFor(context: TestContext, litellm: FakeLitellm): AiServiceDeps {
   return {

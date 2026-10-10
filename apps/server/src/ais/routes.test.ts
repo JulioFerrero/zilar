@@ -2,16 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import {
-  LitellmApiError,
-  type AddModelInput,
-  type GenerateVirtualKeyInput,
-  type LitellmAdminClient,
-  type ModelListing,
-  type UpdateVirtualKeyInput,
-  type VirtualKey,
-  type VirtualKeyInfo,
-} from '../ai/litellm-client';
+import { type LitellmAdminClient } from '../ai/litellm-client';
 import { createApp } from '../app';
 import { createAuditRecorder, type AuditRecorder } from '../audit/service';
 import type { ProbeOutcome, ProviderProbe } from '../connections/probe';
@@ -29,6 +20,12 @@ import {
 import { localpartFor } from '../xmpp/provisioning';
 import { aiLocalpart } from './service';
 import { DEFAULT_PERSONAS } from './templates';
+import { FakeLitellm } from '../agents/gateway.test-harness';
+
+// Ids carry `-do-not-leak` so the leak checks can grep for them.
+function fakeLitellm(): FakeLitellm {
+  return new FakeLitellm({ idSuffix: '-do-not-leak', keyInfoMaxBudget: null });
+}
 
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
 const PROVIDER_KEY = 'sk-provider-key-do-not-leak';
@@ -63,112 +60,6 @@ class AiAdminClient extends FakeAdminClient {
       return Promise.reject(new Error('ejabberd is down'));
     }
     return super.registerUser(localpart);
-  }
-}
-
-class FakeLitellm implements LitellmAdminClient {
-  readonly generated: GenerateVirtualKeyInput[] = [];
-  readonly updated: UpdateVirtualKeyInput[] = [];
-  readonly revoked: string[] = [];
-  readonly addedModels: AddModelInput[] = [];
-  readonly deletedModels: string[] = [];
-  /** Every gateway call in order, so tests can assert create/delete ordering. */
-  readonly order: string[] = [];
-  /** Key spend `getKeyInfo` answers, by token id. Unset keys spend 0. */
-  readonly spendByKey = new Map<string, number>();
-  failKeyInfo = false;
-  hangKeyInfo = false;
-  failGenerate = false;
-  failUpdate = false;
-  failRevoke = false;
-  failAddModel = false;
-  failDeleteModel = false;
-  private counter = 0;
-  private modelCounter = 0;
-
-  addModel(input: AddModelInput): Promise<string> {
-    this.addedModels.push(input);
-    this.order.push('addModel');
-    if (this.failAddModel) {
-      // Shaped like the real client's errors: redacted before throwing, so a
-      // gateway that echoes keys back never reaches the service log.
-      return Promise.reject(new LitellmApiError('model/new', 400, 'gateway down [redacted]'));
-    }
-    this.modelCounter += 1;
-    return Promise.resolve(`model-${this.modelCounter}-do-not-leak`);
-  }
-
-  deleteModel(modelId: string): Promise<void> {
-    this.order.push('deleteModel');
-    if (this.failDeleteModel) {
-      return Promise.reject(new Error('gateway down'));
-    }
-    this.deletedModels.push(modelId);
-    return Promise.resolve();
-  }
-
-  listModels(): Promise<ModelListing[]> {
-    return Promise.resolve([]);
-  }
-
-  generateKey(input: GenerateVirtualKeyInput): Promise<VirtualKey> {
-    this.generated.push(input);
-    this.order.push('generateKey');
-    if (this.failGenerate) {
-      return Promise.reject(new Error('gateway down, master was sk-master-must-not-leak'));
-    }
-    this.counter += 1;
-    return Promise.resolve({
-      id: `tok-${this.counter}-do-not-leak`,
-      key: `sk-virtual-${this.counter}-do-not-leak`,
-      keyAlias: input.keyAlias ?? null,
-      maxBudget: input.maxBudget ?? null,
-      spend: 0,
-      models: input.models,
-    });
-  }
-
-  getKeyInfo(key: string): Promise<VirtualKeyInfo> {
-    if (this.hangKeyInfo) {
-      return new Promise<VirtualKeyInfo>(() => undefined);
-    }
-    if (this.failKeyInfo) {
-      return Promise.reject(new Error('LiteLLM is down'));
-    }
-    return Promise.resolve({
-      keyAlias: null,
-      maxBudget: null,
-      spend: this.spendByKey.get(key) ?? 0,
-      tpmLimit: null,
-      rpmLimit: null,
-      blocked: null,
-      models: [],
-    });
-  }
-
-  updateKey(input: UpdateVirtualKeyInput): Promise<VirtualKeyInfo> {
-    this.updated.push(input);
-    this.order.push('updateKey');
-    if (this.failUpdate) {
-      return Promise.reject(new Error('gateway down'));
-    }
-    return Promise.resolve({
-      keyAlias: null,
-      maxBudget: input.maxBudget ?? null,
-      spend: 0,
-      tpmLimit: null,
-      rpmLimit: null,
-      blocked: null,
-      models: [],
-    });
-  }
-
-  revokeKey(key: string): Promise<void> {
-    this.revoked.push(key);
-    if (this.failRevoke) {
-      return Promise.reject(new Error('gateway down'));
-    }
-    return Promise.resolve();
   }
 }
 
@@ -228,7 +119,7 @@ describe('AI routes', () => {
       connections: { cipher: createKeyCipher(MASTER_KEY), probe: new FakeProbe() },
       ais: {
         cipher: createKeyCipher(MASTER_KEY),
-        litellm: options.litellm ?? new FakeLitellm(),
+        litellm: options.litellm ?? fakeLitellm(),
         ...(options.logger === undefined ? {} : { logger: options.logger }),
       },
     });
@@ -275,7 +166,7 @@ describe('AI routes', () => {
   }
 
   it('creates, lists, gets, patches and deletes without ever returning a key', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const app = mount({ litellm });
     const user = await bootstrapUser(context, app, `happy${testCounter}@example.com`);
     const connectionId = await addConnection(user.id);
@@ -305,7 +196,7 @@ describe('AI routes', () => {
     // The private model is registered with the decrypted owner key before the
     // key is issued, and the key may call only that model. The key is sealed at
     // rest.
-    expect(litellm.addedModels).toEqual([
+    expect(litellm.added).toEqual([
       {
         modelName: `ai-${ai['id'] as string}`,
         litellmModel: 'openai/gpt-4o-mini',
@@ -413,7 +304,7 @@ describe('AI routes', () => {
     });
     expect(removed.status).toBe(204);
     expect(litellm.revoked).toEqual([keyRows[0]!.litellmKeyId]);
-    expect(litellm.deletedModels).toEqual([keyRows[0]!.litellmModelId]);
+    expect(litellm.deleted).toEqual([keyRows[0]!.litellmModelId]);
     expect(context.adminClient.unregistered).toContain(localpart);
     expect(
       await testSql(context)(
@@ -452,7 +343,7 @@ describe('AI routes', () => {
   });
 
   it('lets the owner set the delegation flags; another user gets 404 and the flags default off', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const app = mount({ litellm });
     const owner = await bootstrapUser(context, app, `deleg${testCounter}@example.com`);
     const other = await bootstrapUser(context, app, `deleg-other${testCounter}@example.com`);
@@ -650,7 +541,7 @@ describe('AI routes', () => {
   });
 
   it('rolls back everything when the AI XMPP account cannot be registered', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const adminClient = new AiAdminClient();
     adminClient.failRegisterFor = (localpart) => localpart.startsWith('ai-');
     const app = mount({ litellm, adminClient });
@@ -685,7 +576,7 @@ describe('AI routes', () => {
   });
 
   it('rolls back the account and rows when the roster cannot be written', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const adminClient = new AiAdminClient();
     adminClient.failRoster = true;
     const app = mount({ litellm, adminClient });
@@ -709,7 +600,7 @@ describe('AI routes', () => {
   });
 
   it('rolls back the XMPP account and rows when the virtual key cannot be issued', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     litellm.failGenerate = true;
     const logger = captureLogger();
     const app = mount({ litellm, logger });
@@ -742,8 +633,8 @@ describe('AI routes', () => {
     expect(context.adminClient.removedRosterItems).toHaveLength(2);
     expect(litellm.revoked).toHaveLength(0);
     // The model registered before the key is rolled back too.
-    expect(litellm.addedModels).toHaveLength(1);
-    expect(litellm.deletedModels).toEqual(['model-1-do-not-leak']);
+    expect(litellm.added).toHaveLength(1);
+    expect(litellm.deleted).toEqual(['model-1-do-not-leak']);
     // The rollback logged the failure but never a key.
     const logged = loggedText(logger.calls);
     expect(logged).not.toContain('sk-virtual');
@@ -752,8 +643,8 @@ describe('AI routes', () => {
   });
 
   it('rolls back the XMPP account and rows when the model cannot be registered', async () => {
-    const litellm = new FakeLitellm();
-    litellm.failAddModel = true;
+    const litellm = fakeLitellm();
+    litellm.failAdd = true;
     const logger = captureLogger();
     const app = mount({ litellm, logger });
     const user = await bootstrapUser(context, app, `modelfail${testCounter}@example.com`);
@@ -786,8 +677,8 @@ describe('AI routes', () => {
       ),
     ).toHaveLength(0);
     expect(litellm.generated).toHaveLength(0);
-    expect(litellm.addedModels).toHaveLength(1);
-    expect(litellm.deletedModels).toHaveLength(0);
+    expect(litellm.added).toHaveLength(1);
+    expect(litellm.deleted).toHaveLength(0);
     expect(context.adminClient.unregistered).toHaveLength(1);
     expect(context.adminClient.removedRosterItems).toHaveLength(2);
     const logged = loggedText(logger.calls);
@@ -796,7 +687,7 @@ describe('AI routes', () => {
   });
 
   it('returns 502 and keeps the AI when the gateway is down during delete', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const app = mount({ litellm });
     const user = await bootstrapUser(context, app, `delfail${testCounter}@example.com`);
     const connectionId = await addConnection(user.id);
@@ -831,11 +722,11 @@ describe('AI routes', () => {
       ),
     ).toHaveLength(1);
     expect(context.adminClient.unregistered).toHaveLength(0);
-    expect(litellm.deletedModels).toHaveLength(0);
+    expect(litellm.deleted).toHaveLength(0);
   });
 
   it('can retry a delete that failed part way, revoking the key exactly once', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const app = mount({ litellm });
     const user = await bootstrapUser(context, app, `retrydel${testCounter}@example.com`);
     const connectionId = await addConnection(user.id);
@@ -883,7 +774,7 @@ describe('AI routes', () => {
     });
     expect(retried.status).toBe(204);
     expect(litellm.revoked).toEqual([keyRows[0]!.litellmKeyId]);
-    expect(litellm.deletedModels).toEqual([keyRows[0]!.litellmModelId]);
+    expect(litellm.deleted).toEqual([keyRows[0]!.litellmModelId]);
     expect(context.adminClient.unregistered).toContain(localpart);
     expect(
       await testSql(context)(
@@ -896,7 +787,7 @@ describe('AI routes', () => {
   });
 
   it('can retry a delete that failed at the model, deleting the model exactly once', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const app = mount({ litellm });
     const user = await bootstrapUser(context, app, `retrymodel${testCounter}@example.com`);
     const connectionId = await addConnection(user.id);
@@ -912,7 +803,7 @@ describe('AI routes', () => {
 
     // First attempt: the key is revoked (and its id cleared), the model delete
     // fails and the key row survives so the retry can finish the job.
-    litellm.failDeleteModel = true;
+    litellm.failDelete = true;
     const failed = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
       method: 'DELETE',
       headers: { cookie: user.cookie },
@@ -939,14 +830,14 @@ describe('AI routes', () => {
 
     // Retry: the model is deleted, the row goes, and the key is not revoked
     // a second time.
-    litellm.failDeleteModel = false;
+    litellm.failDelete = false;
     const retried = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
       method: 'DELETE',
       headers: { cookie: user.cookie },
     });
     expect(retried.status).toBe(204);
     expect(litellm.revoked).toEqual([keyRows[0]!.litellmKeyId]);
-    expect(litellm.deletedModels).toEqual([modelId]);
+    expect(litellm.deleted).toEqual([modelId]);
     expect(
       await testSql(context)(
         Effect.gen(function* () {
@@ -966,7 +857,7 @@ describe('AI routes', () => {
   });
 
   it('skips the model delete for an old AI that has no model id', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const app = mount({ litellm });
     const user = await bootstrapUser(context, app, `oldai${testCounter}@example.com`);
     const connectionId = await addConnection(user.id);
@@ -984,12 +875,12 @@ describe('AI routes', () => {
       headers: { cookie: user.cookie },
     });
     expect(removed.status).toBe(204);
-    expect(litellm.deletedModels).toHaveLength(0);
+    expect(litellm.deleted).toHaveLength(0);
     expect(litellm.revoked).toHaveLength(1);
   });
 
   it('can delete a disabled AI left behind by a crash, with no key and no account', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const app = mount({ litellm });
     const user = await bootstrapUser(context, app, `crash${testCounter}@example.com`);
     const aiId = randomUUID();
@@ -1035,7 +926,7 @@ describe('AI routes', () => {
   });
 
   it('updates the virtual key cap on a limits patch', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const app = mount({ litellm });
     const user = await bootstrapUser(context, app, `patchlimits${testCounter}@example.com`);
     const connectionId = await addConnection(user.id);
@@ -1155,7 +1046,7 @@ describe('AI routes', () => {
   });
 
   it('switches the model, replacing the LiteLLM model behind the same name', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const app = mount({ litellm });
     const user = await bootstrapUser(context, app, `modelswitch${testCounter}@example.com`);
     const connectionId = await addConnection(user.id);
@@ -1169,7 +1060,7 @@ describe('AI routes', () => {
     );
     const oldModelId = keyRows[0]!.litellmModelId;
     const keyId = keyRows[0]!.litellmKeyId;
-    const callsBefore = litellm.addedModels.length + litellm.updated.length;
+    const callsBefore = litellm.added.length + litellm.updated.length;
     litellm.order.length = 0;
 
     const response = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
@@ -1185,9 +1076,9 @@ describe('AI routes', () => {
 
     // Delete old → add new → re-assert the allowlist, all under `ai-<id>`.
     expect(litellm.order).toEqual(['deleteModel', 'addModel', 'updateKey']);
-    expect(litellm.deletedModels).toEqual([oldModelId]);
+    expect(litellm.deleted).toEqual([oldModelId]);
     expect(callsBefore).toBeGreaterThan(0);
-    expect(litellm.addedModels.at(-1)).toMatchObject({
+    expect(litellm.added.at(-1)).toMatchObject({
       modelName: `ai-${id}`,
       litellmModel: 'openai/gpt-4o',
       apiKey: PROVIDER_KEY,
@@ -1217,7 +1108,7 @@ describe('AI routes', () => {
   });
 
   it('switches the provider connection together with the model', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const app = mount({ litellm });
     const user = await bootstrapUser(context, app, `modelmove${testCounter}@example.com`);
     const openaiConnection = await addConnection(user.id, { provider: 'openai' });
@@ -1236,7 +1127,7 @@ describe('AI routes', () => {
       model: 'claude-sonnet-5',
       providerConnectionId: anthropicConnection,
     });
-    expect(litellm.addedModels.at(-1)).toMatchObject({
+    expect(litellm.added.at(-1)).toMatchObject({
       modelName: `ai-${id}`,
       litellmModel: 'anthropic/claude-sonnet-5',
     });
@@ -1256,7 +1147,7 @@ describe('AI routes', () => {
   });
 
   it('rejects a new connection without a model, a foreign connection and a bad model', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const app = mount({ litellm });
     const alice = await bootstrapUser(context, app, `modelowner${testCounter}@example.com`);
     const bob = await bootstrapUser(context, app, `modelthief${testCounter}@example.com`);
@@ -1265,8 +1156,7 @@ describe('AI routes', () => {
     const githubConnection = await addConnection(alice.id, { provider: 'github' });
     const created = await postAi(app, alice.cookie, createBody(connectionId));
     const id = ((await created.json()) as { id: string }).id;
-    const callsBefore =
-      litellm.addedModels.length + litellm.updated.length + litellm.deletedModels.length;
+    const callsBefore = litellm.added.length + litellm.updated.length + litellm.deleted.length;
 
     async function patch(body: unknown) {
       return app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
@@ -1300,7 +1190,7 @@ describe('AI routes', () => {
     expect(unknown.status).toBe(400);
 
     // None of the failures touched LiteLLM or the row.
-    expect(litellm.addedModels.length + litellm.updated.length + litellm.deletedModels.length).toBe(
+    expect(litellm.added.length + litellm.updated.length + litellm.deleted.length).toBe(
       callsBefore,
     );
     const [aiRow] = await testSql(context)(
@@ -1316,14 +1206,13 @@ describe('AI routes', () => {
   });
 
   it('leaves LiteLLM alone when the model is unchanged', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const app = mount({ litellm });
     const user = await bootstrapUser(context, app, `modelnoop${testCounter}@example.com`);
     const connectionId = await addConnection(user.id);
     const created = await postAi(app, user.cookie, createBody(connectionId));
     const id = ((await created.json()) as { id: string }).id;
-    const callsBefore =
-      litellm.addedModels.length + litellm.updated.length + litellm.deletedModels.length;
+    const callsBefore = litellm.added.length + litellm.updated.length + litellm.deleted.length;
 
     const response = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
       method: 'PATCH',
@@ -1332,13 +1221,13 @@ describe('AI routes', () => {
     });
     expect(response.status).toBe(200);
     expect(((await response.json()) as { name: string }).name).toBe('Same-1');
-    expect(litellm.addedModels.length + litellm.updated.length + litellm.deletedModels.length).toBe(
+    expect(litellm.added.length + litellm.updated.length + litellm.deleted.length).toBe(
       callsBefore,
     );
   });
 
   it('answers usage on the list and the detail, owner only', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const app = mount({ litellm });
     const alice = await bootstrapUser(context, app, `usage${testCounter}@example.com`);
     const bob = await bootstrapUser(context, app, `usagebob${testCounter}@example.com`);
@@ -1385,7 +1274,7 @@ describe('AI routes', () => {
   });
 
   it('answers usage null when the spend lookup fails', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     litellm.failKeyInfo = true;
     const app = mount({ litellm });
     const user = await bootstrapUser(context, app, `usagefail${testCounter}@example.com`);
@@ -1407,7 +1296,7 @@ describe('AI routes', () => {
   });
 
   it('answers usage null when the spend lookup hangs past the timeout', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     litellm.hangKeyInfo = true;
     const app = mount({ litellm });
     const user = await bootstrapUser(context, app, `usagetimeout${testCounter}@example.com`);
@@ -1429,7 +1318,7 @@ describe('AI routes', () => {
   });
 
   it('answers 502 and keeps a working AI when the model swap fails halfway', async () => {
-    const litellm = new FakeLitellm();
+    const litellm = fakeLitellm();
     const logger = captureLogger();
     const app = mount({ litellm, logger });
     const user = await bootstrapUser(context, app, `modelswapfail${testCounter}@example.com`);
@@ -1445,7 +1334,7 @@ describe('AI routes', () => {
       }),
     );
     const oldModelId = keyRows[0]!.litellmModelId;
-    litellm.failAddModel = true;
+    litellm.failAdd = true;
 
     const response = await app.request(`${TEST_BASE_URL}/api/ais/${id}`, {
       method: 'PATCH',
@@ -1460,7 +1349,7 @@ describe('AI routes', () => {
     // The old model entry was deleted, so the stale id is cleared but the AI
     // row still points at the old model and connection: the next gateway turn
     // re-registers it.
-    expect(litellm.deletedModels).toEqual([oldModelId]);
+    expect(litellm.deleted).toEqual([oldModelId]);
     const [aiRow] = await testSql(context)(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
@@ -1515,7 +1404,7 @@ describe('AI stop / resume routes', () => {
       connections: { cipher: createKeyCipher(MASTER_KEY), probe: new FakeProbe() },
       ais: {
         cipher: createKeyCipher(MASTER_KEY),
-        litellm: options.litellm ?? new FakeLitellm(),
+        litellm: options.litellm ?? fakeLitellm(),
       },
       ...(options.audit === undefined ? {} : { audit: options.audit }),
     });
@@ -1726,7 +1615,7 @@ describe('AI stop / resume audit entries', () => {
       connections: { cipher: createKeyCipher(MASTER_KEY), probe: new FakeProbe() },
       ais: {
         cipher: createKeyCipher(MASTER_KEY),
-        litellm: new FakeLitellm(),
+        litellm: fakeLitellm(),
       },
       audit: createAuditRecorder({ db: context.db, logger: context.logger }),
     });
@@ -1943,7 +1832,7 @@ describe('AI stop / resume audit entries', () => {
       connections: { cipher: createKeyCipher(MASTER_KEY), probe: new FakeProbe() },
       ais: {
         cipher: createKeyCipher(MASTER_KEY),
-        litellm: new FakeLitellm(),
+        litellm: fakeLitellm(),
       },
       audit: failingRecorder,
     });
@@ -2017,7 +1906,7 @@ describe('AI home machine assignment (T-0091)', () => {
       connections: { cipher: createKeyCipher(MASTER_KEY), probe: new FakeProbe() },
       ais: {
         cipher: createKeyCipher(MASTER_KEY),
-        litellm: options.litellm ?? new FakeLitellm(),
+        litellm: options.litellm ?? fakeLitellm(),
       },
       ...(options.audit === undefined ? {} : { audit: options.audit }),
     });
