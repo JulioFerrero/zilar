@@ -42,7 +42,8 @@ The lead located the mobile code on main on 2026-10-10:
    - `real-store.ts` start and stop use the core `startStore` and `stopStore`, then `reset`, so sign-out still clears everything;
    - mobile sets `flags.connectRetry: true` and `flags.reconnectOnResume: true`.
 3. **T-0915's nit:** make the core `reset()` also clear the finished-turn set (`packages/client-core/src/store/lifecycle.ts:135`), with a core test.
-4. **Unchanged:** the only behaviour change is the connect retry (R7, Q3). No existing test is edited.
+4. **T-0919's follow-up:** mobile `real-store.ts` passes the core ports with an `as unknown as CorePorts` cast. Supply the full ports object, which this task builds anyway, and delete the cast.
+5. **Unchanged:** the only behaviour change is the connect retry (R7, Q3). No existing test is edited.
 
 ### Read first
 `AGENTS.md`, `docs/EFFECT_BRIEF.md` (never use `git stash`; use the `@/test/wait` helpers, never a raw `setTimeout(resolve, 0)`), `docs/STORE_CORE_PLAN.md` sections 2.3, 3, 6 (T9) and 8, the Reports of `work/T-0901-*.md`, `work/T-0915-*.md` and `work/T-0917-*.md`, `packages/client-core/src/store/{lifecycle,polling,ports,ctx}.ts`, and the mobile store.
