@@ -2,19 +2,20 @@ import { useGlobalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 
 import { createAiMemoryApi, type AiMemoryApi } from '@/lib/ai-memory-api';
+import { API_URL } from '@/lib/auth';
 import { getSessionToken } from '@/lib/session-token';
-import { ENV_MOCK, mockParamAllowed } from '@/mock/gate';
+import { ENV_MOCK, mockParamAllowed, mockToken } from '@/mock/gate';
 
 /**
- * Loads the mock behind a literal build-time condition: Metro folds it to
- * `false` in a release build, so the mock module stays out of the bundle.
+ * Builds the mock-mode `AiMemoryApi` on the shared mock backend, behind a
+ * literal build-time condition: Metro folds it to `false` in a release build,
+ * so the mock module stays out of the bundle.
  */
 function createMockAiMemory(): AiMemoryApi {
   if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return (
-      require('@/mock/ai-memory') as typeof import('@/mock/ai-memory')
-    ).createMockAiMemoryApi();
+    const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
+    return createAiMemoryApi(mockToken, mockFetch, API_URL);
   }
   throw new Error('The mock API is not part of this build');
 }
@@ -48,8 +49,8 @@ export interface AiMemoryApiHandle {
 
 /**
  * Picks the real API or the mock one from the route's `?mock=` param or the
- * bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env. The mock serves the seeded memory,
- * so the AI edit screen shows the section without a server.
+ * bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env. The mock runs on the shared backend
+ * through `mockFetch`, so the AI edit screen shows the section without a server.
  */
 export function useAiMemoryApi(): AiMemoryApiHandle {
   const params = useGlobalSearchParams();
