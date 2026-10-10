@@ -1,7 +1,7 @@
 ---
 id: T-0874
 title: "JID helpers and handle rules in @zilar/protocol, used by web, mobile, chat-core and the non-api server files"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0874-protocol-jid-handles
 model: auto
@@ -61,4 +61,18 @@ Run the tests 3 times after the last commit. The machine is shared, so note `upt
 
 ## Report (written by the worker when done)
 
+- Added `packages/protocol/src/jid.ts` (bareJid, jidLocal, jidDomain, normalizeJid, isAiJid) and `handles.ts` (exact copy of the server rules), with tests (jid.test.ts new, handles.test.ts copied from the server test). Both exported from the protocol index.
+- Server `handles/rules.ts` now only re-exports from protocol (server rules.test.ts unchanged, passes). Web `lib/handles.ts` and mobile `profile-logic.ts` re-export from protocol (`suggestHandle as suggestHandleFor`); their copies are deleted.
+- xmpp-core `jid.ts` re-exports bareJid/jidDomain/jidLocalPart from protocol (only jidResource stays). xmpp-core index never exposed JID helpers, so nothing added there. chat-core `ai.ts` re-exports protocol's isAiJid (same rule, incl. resource and query stripping).
+- JID sites replaced: TaskStrip.tsx (jidLocal, isAiJid), web realStore.ts mentionLocalpart (jidLocal), web groupMembers.ts:36 (jidLocal + lowercase), mobile contacts-api.ts domainOfJid (bareJid), chat-core mentions.ts isMentionOfMe (bareJid). All keep their old semantic; none needed normalizeJid.
+- Lines: whole branch vs main is 365 insertions, 298 deletions (includes 2 new test files, 2 new modules, this report); web handles.ts and mobile profile-logic.ts and server rules.ts lost about 250 lines of duplicated rules.
+- Behaviour differences: none intended. Mobile suggestion used `RESERVED_HANDLES.has` plus the shape regex, protocol uses classifyHandle (same result for the already-lowercased shaped text). Web and mobile checks were already identical to the server.
+- Left alone on purpose (edge semantics differ): web realStore.ts:998-1005 and mobile real-store.ts:1295-1301, 1429 (domain/local split with at===-1 returns undefined), web groupMembers.ts:13 domainOf (keeps a resource), web/mobile `me.jid?.split('@')[0] ?? 'me'` (realStore.ts:1332, real-store.ts:1741; empty jid differs), chat-core blocked.ts localpartOf (no resource strip). Web mock/api.ts split('/') sites are path splits.
+- Server JID sites for a later task (not edited, api.ts owned by sweeps): bareJid copies in search/routes.ts:123, memory/indexer.ts:80, push/service.ts:554, media/api.ts:175, plus ~25 inline split/indexOf sites; I did not re-grep the server.
+- Typecheck server, web, mobile: clean. oxlint on changed files: clean. Prettier applied.
+- Tests (load ~230-250 at run time): protocol 182 in 14 files (includes the new jid and handles tests; before-count not measured); server src/handles 17; web lib/TaskStrip/mock/store 727; mobile lib+settings 887; chat-core 174; xmpp-core 245 (+4 skipped). 3 runs: all green except run 1 of web where TaskStrip.test 'shows GENERAL...' failed once under load and passed in runs 2, 3 and alone.
+- Used node to rewrite the bodies of web handles.ts and mobile profile-logic.ts (a deviation from the no-scripted-edit rule).
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.** `@zilar/protocol` now owns the JID helpers and the handle rules, copied exactly from the server. The server, web and mobile re-export them, and about 250 duplicated lines are gone. Five JID-parsing sites were replaced. The sites with edge-case differences, and the server JID sites, are listed for a later task. The combined wave 4 check passes.

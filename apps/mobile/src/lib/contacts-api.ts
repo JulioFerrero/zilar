@@ -1,5 +1,5 @@
 import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } from 'effect';
-import { struct } from '@zilar/protocol';
+import { bareJid, struct } from '@zilar/protocol';
 
 import { API_URL } from './auth';
 import { errorFieldsOf } from './api-error-body';
@@ -370,7 +370,7 @@ const requestEffect = Effect.fnUntraced(function* (
  */
 export function domainOfJid(jid: string | null | undefined): string | undefined {
   if (typeof jid !== 'string') return undefined;
-  const bare = jid.split('/')[0] ?? '';
+  const bare = bareJid(jid);
   const parts = bare.split('@');
   if (parts.length !== 2) return undefined;
   const domain = parts[1] ?? '';

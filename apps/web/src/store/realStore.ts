@@ -26,6 +26,7 @@ import {
   sortFolders,
   summarize,
 } from '@zilar/chat-core';
+import { jidLocal } from '@zilar/protocol';
 import { type ChatMessage, type XmppCore } from '@zilar/xmpp-core';
 import {
   advanceStatus,
@@ -200,9 +201,7 @@ function sanitizeIncomingVoice(voice: VoiceMeta, token: MediaTokenShape | undefi
 }
 
 function mentionLocalpart(jid: string): string {
-  const bare = jid.split('/')[0] ?? jid;
-  const at = bare.indexOf('@');
-  return at === -1 ? bare : bare.slice(0, at);
+  return jidLocal(jid);
 }
 
 export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStoreState> {

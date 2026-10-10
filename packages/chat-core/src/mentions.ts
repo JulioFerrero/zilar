@@ -1,3 +1,4 @@
+import { bareJid } from '@zilar/protocol';
 import type { MentionMember, UiMention } from './types';
 
 // Offsets in this module are UTF-16 code units (JS string indices): the
@@ -208,7 +209,7 @@ export function isMentionOfMe(jid: string, meJid: string | undefined): boolean {
   if (meJid === undefined) {
     return false;
   }
-  return (jid.split('/')[0] ?? jid).split('?')[0] === meJid;
+  return bareJid(jid).split('?')[0] === meJid;
 }
 
 /**

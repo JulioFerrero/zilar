@@ -3,6 +3,7 @@
 // lifecycle use these without pulling in the group actions.
 import { Effect } from 'effect';
 import type { MentionMember } from '@zilar/chat-core';
+import { jidLocal } from '@zilar/protocol';
 import type { XmppCore } from '@zilar/xmpp-core';
 import type { GroupDetail, Me } from '@/lib/api';
 import type { StoreCtx } from './ctx';
@@ -33,7 +34,7 @@ export function applyGroupDetail(
     });
   }
   for (const ai of detail.ais) {
-    const localpart = (ai.jid.split('@')[0] ?? ai.jid).toLowerCase();
+    const localpart = jidLocal(ai.jid).toLowerCase();
     members.set(localpart, { jid: ai.jid, name: ai.name });
   }
   ctx.groupMembers.set(chatId, members);
