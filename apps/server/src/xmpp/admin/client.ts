@@ -2,13 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { Exit, Schema } from 'effect';
 import { JidSchema, isValid } from '@zilar/protocol';
 import type { XmppConfig } from '../config';
-import {
-  EjabberdApiError,
-  errorText,
-  firstIssueMessage,
-  isErrorBody,
-  mentionsAlreadyExists,
-} from './errors';
+import { firstIssueMessage } from '../../effect/schema-issues';
+import { EjabberdApiError, errorText, isErrorBody, mentionsAlreadyExists } from './errors';
 import {
   CheckAccountResultSchema,
   InvitationTargetsSchema,
