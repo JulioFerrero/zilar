@@ -1,7 +1,7 @@
 ---
 id: T-1082
 title: "Audit: rewrite docs/audit/mock-sweep-status.md for main after T-1081, with what is left of the mock plan and a fix plan for blank sticker, GIF and attachment images"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1082-mock-sweep-status-2
 model: auto
@@ -67,4 +67,80 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Rewrote `docs/audit/mock-sweep-status.md` (283 lines before, 230 now) for the
+branch base as of 2026-10-11, with the 5 required sections and every claim
+carrying a `file:line`. Doc only; no code changed and no app was run.
+
+- §1 lists the 6 remaining web and 10 remaining mobile `mock/` files with line
+  count, importers, what each provides and whether the shared backend could serve
+  it.
+- §2 lists the per-screen local-mock reads left on each app.
+- §3 traces the blank stickers/GIFs/attachments from url to element, the reason
+  each fails, and one or two fixes per item, naming touched files and whether a
+  production path changes (the same-origin sticker check and
+  `isTrustedMediaUrl` stay in production).
+- §4 lists 4 ordered slices, each ≤ ~800 changed lines, with full-repo-path
+  Allowed files.
+- §5 lists the now-wrong lines in `docs/audit/mock-plan.md` (not edited).
+
+### Files changed
+
+- `docs/audit/mock-sweep-status.md` (rewritten).
+- `work/T-1082-mock-sweep-status-2.md` (report and status only).
+
+### Commands
+
+- `pnpm install` — done, 15 workspace projects, 11.8s.
+- `pnpm gate` (repo root) — summary lines:
+  - `gate: 2 changed file(s) against main`
+  - `PASS  install (frozen)  (2.2s)`
+  - `PASS  format  (1.5s)`
+  - `PASS  lint  (0.9s)`
+  - `PASS  typecheck  (1.4s)`
+  - `SKIP effect (no source files changed)`
+  - `scope: every changed file is inside the Allowed files`
+  - `GATE PASS`
+  No test file was run separately: no package code changed, so no nearest test
+  existed.
+
+### Deviations from the spec
+
+- The task's importer list for mobile `mock/{gifs,stickers,attachments}` is not
+  what `grep -rn` returns on this base. `lib/gifs-api.ts`, `lib/gif-downloader.ts`,
+  `lib/stickers-api.ts`, `lib/stickers-storage.ts`, `lib/attachment-*.ts` and
+  `lib/voice-playback.ts` import `./gifs` etc., which resolve inside
+  `apps/mobile/src/lib/`, not `mock/`; and `app/settings/sticker-pack.tsx:16`
+  imports `./stickers` = `app/settings/stickers.ts`. The only importers of the
+  mock demo files are `components/chat/composer-sheet.ts:23` and
+  `components/chat/chat-composer-dock.tsx:9-11`. I documented the actual grep
+  result and flagged the correction in the doc (§1 note).
+- Also found dead code the spec did not mention: `apps/mobile/src/mock/drafts.ts`
+  (62 lines), `apps/mobile/src/mock/load.ts` (26 lines) and all of
+  `apps/web/src/mock/ids.ts` except `currentUserId` have no importers.
+- §3.2 records that web GIF placeholders are inline `data:` SVG in `<img>` and
+  are **not** blank today, unlike stickers; the BOARD's "GIF blank" applies to
+  mobile (SVG in native `Image`/`expo-image`).
+
+### Blocked / needs a decision
+
+None.
+
+### Open questions
+
+- §3.5 proposes two attachment fixes (a shared-backend `files` domain vs. the
+  mobile local uri). If the lead has a preference, the slice list in §4 can be
+  narrowed accordingly.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-11: approved. The pre-review is clean, with no nits.**
+- **The change:** `docs/audit/mock-sweep-status.md` is rewritten for main (230 lines).
+  - **§1:** the 6 web and 10 mobile mock files, with their importers;
+  - **§2:** the remaining local-mock behaviour: the web GIF tab, the web session, and the mobile composer demo packs, GIFs and attachments;
+  - **§3:** the load path and the cause of each blank image;
+  - **§4:** four slices: the web dev middleware, raster seed art, a mock-gated mobile image allowance, and attachment bytes;
+  - **§5:** the stale lines in `mock-plan.md`.
+- **The lead read §2-§4.** Before speccing any slice, the lead re-checks its `file:line` citations on main.
+- **Check:** the gate passed.
