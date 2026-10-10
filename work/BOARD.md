@@ -13,7 +13,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1046](T-1046-mock-backend-stickers-gifs.md) | Mock backend F1: stickers, GIFs | in-progress | auto | T-0949 | mock wave 2 |
 | [T-1047](T-1047-mobile-mock-uploader.md) | Mobile mock: no-network uploader so voice and attachments send | in-progress | auto | T-0949 | mock wave 2 |
 | [T-1048](T-1048-mock-backend-group-general-topics.md) | Mock backend: General topic for every seeded group | in-progress | auto | T-0949 | mock wave 2 |
-| [T-1049](T-1049-dedup-trim-trailing-punctuation.md) | Dedup F8a: chat-core trimTrailingPunctuation in mobile markdown | in-progress | auto | T-1040 | size-plan F8 |
 | [T-1050](T-1050-mobile-effect-timers.md) | Dedup F8b: mobile lib/effect/timers.ts | in-progress | auto | T-1039 | size-plan F8 |
 | [T-1051](T-1051-audit-dedup-status.md) | Audit: what is left of dedups F1-F7 | in-progress | auto | T-0936 | size-plan §4.1 |
 
@@ -1084,3 +1083,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1043](T-1043-server-shared-error-helpers.md) | Dedup F6a: one server errorName/errorClassName and one isUniqueViolation in effect/error-utils.ts, replacing 1 | 2026-10-10 |
 | [T-1041](T-1041-split-mobile-channel-screen.md) | Size split T117: apps/mobile/src/components/chat/channel-screen.tsx (408 lines) into chat/{channel-members,use | 2026-10-10 |
 | [T-1044](T-1044-mock-backend-prefs-pins.md) | Mock backend C1: chat-prefs (pin, mute, archive), chat-background and pins domains in @zilar/mock-backend | 2026-10-10 |
+| [T-1049](T-1049-dedup-trim-trailing-punctuation.md) | Dedup F8a: mobile markdown uses @zilar/chat-core's trimTrailingPunctuation instead of its own copy | 2026-10-10 |
