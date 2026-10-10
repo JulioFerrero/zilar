@@ -90,7 +90,7 @@ export interface LedgerState {
   readonly edits: Record<string, EditsState>;
   readonly reactions: Record<string, ReactionsState>;
   readonly contacts: readonly LedgerContact[];
-  readonly me: { readonly jid?: string | null | undefined } | null | undefined;
+  readonly me?: { readonly jid?: string | null | undefined } | null | undefined;
 }
 
 /** The part of a store's state the ledger writes. */
@@ -1137,7 +1137,17 @@ export function createMessageLedger(deps: MessageLedgerDeps) {
     }));
   }
 
+  // Forgets every id the ledger knows, for a store whose sign-out resets it.
+  function reset(): void {
+    messageAliases.clear();
+    messageServerIds.clear();
+    messageOriginIds.clear();
+    messageAuthors.clear();
+    messageBaseTexts.clear();
+  }
+
   return {
+    reset,
     /** Read by the store's sign-out, which clears them. */
     messageAuthors,
     messageOriginIds,
@@ -1152,6 +1162,7 @@ export function createMessageLedger(deps: MessageLedgerDeps) {
     resolvePendingEdits,
     withEdits,
     refreshEdits,
+    refreshReactions,
     previewFor,
     myJid,
     aliasRoot,

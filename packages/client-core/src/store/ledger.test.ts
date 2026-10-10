@@ -346,3 +346,22 @@ describe('the message ledger: linkAckToServer', () => {
     expect(h.ledger.wireTargetFor('local-1')).toBe('origin-1');
   });
 });
+
+describe('the message ledger: reset', () => {
+  it('forgets aliases, server ids, authors, origin ids and base texts', () => {
+    const h = harness();
+    h.ledger.linkMessageIds('local-1', 'stanza-1');
+    h.ledger.linkLocalToServer('local-1', 'stanza-1');
+    h.ledger.rememberAuthor('local-1', { jid: ME, resolved: true });
+    h.ledger.rememberOriginId('local-1', 'origin-1');
+    h.ledger.rememberBaseText('local-1', 'hello');
+
+    h.ledger.reset();
+
+    expect(h.ledger.aliasRoot('stanza-1')).toBe('stanza-1');
+    expect(h.ledger.wireTargetFor('local-1')).toBeUndefined();
+    expect(h.ledger.authorFor('local-1')).toBeUndefined();
+    expect(h.ledger.correctionTargetFor('local-1')).toBeUndefined();
+    expect(h.ledger.messageBaseTexts.size).toBe(0);
+  });
+});
