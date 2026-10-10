@@ -2,6 +2,17 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 22:30 local (UTC+2): wave 4 merged; wave 5 running**
+- **Merged:**
+  - **web, checked in Chrome:** T-0989 (StickerPanel: star, unstar and send a sticker), T-0990 (ChannelPanel: promote and demote);
+  - **mobile, with phone smokes:** T-0986 (composer: send), T-0987 (bubble: long-press, react), T-0988 (integrations: save, remove with confirm);
+  - **server:** T-0991 (invite links, 21 tests), T-0992 (stickers API, upload caps checked), T-0993 (web-tools, rate limit checked);
+  - **tests:** T-0994 (5 contact-request permission tests; the gap is closed).
+- **Running, 8 workers, 3 of them mobile:** T-0995 (machines), T-0996 (mobile stickers), T-0997 (voice message), T-0998 (chat background), T-0999 (notifications), T-1000 (web integrations), T-1001 (Telegram import), T-1002 (push service).
+- **Found:**
+  - **The browser tool drops a click.** In Chrome, the first click after a page load is often dropped; it happened on every branch and with every component, so it is most likely the browser tool, not the app. To check by hand on main.
+  - **No push tests.** No test covers who gets a push notification, which is message-pipeline code; a small test task is to be specced.
+
 **2026-10-10 20:15 local (UTC+2): 15 more splits merged; wave 4 running**
 - **Merged:**
   - **web, each checked in Chrome at `?mock=1`:** T-0971 (MessageBubble), T-0973 (AiPanel), T-0977 (TopicPanel), T-0981 (PackEditor), T-0982 (StickersPage);
