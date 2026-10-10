@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0949](T-0949-mobile-mock-cutover-store.md) | Mock cutover H1: mobile mock mode on the real store, fake session | in-progress | deepseek-flash | T-0946 | mock-plan H |
-| [T-0953](T-0953-split-store-ledger.md) | Size split T11+T12: client-core store ledger.ts (1,176) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0954](T-0954-split-web-composer.md) | Size split T13: web Composer.tsx (1,145) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0955](T-0955-split-server-tools-service.md) | Size split T10: server tools/service.ts (1,200) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0958](T-0958-split-server-stickers-service.md) | Size split T8: server stickers/service.ts (1,388) | in-progress | deepseek-flash | T-0936 | size-plan |
@@ -985,3 +984,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0957](T-0957-split-server-topics-service.md) | Size split T14: apps/server/src/topics/service.ts (1,127 lines) into topics/{schemas,members,roles,ais,queries | 2026-10-10 |
 | [T-0951](T-0951-split-xmpp-core-effect.md) | Size split T9: packages/xmpp-core/src/core-effect.ts (1,206 lines) into core-effect/{config,lifecycle,presence | 2026-10-10 |
 | [T-0956](T-0956-split-server-ais-service.md) | Size split T7: apps/server/src/ais/service.ts (1,390 lines) into ais/{queries,provisioning,persona,status}.ts, | 2026-10-10 |
+| [T-0953](T-0953-split-store-ledger.md) | Size split T11+T12: packages/client-core/src/store/ledger.ts (1,176 lines) into ledger-{types,signatures,ids,e | 2026-10-10 |
