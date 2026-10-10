@@ -2,6 +2,13 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 local, morning: workers back on OpenCode (Julio's call: Claude usage too high)**
+- **The split:** every task now launches with `lead launch` (`model: auto`, which gives DeepSeek flash off-peak and the free Muse in DeepSeek's peak hours). The autopilot and the Muse pre-review are running again, and Claude is only the lead.
+- **Relaunched on DeepSeek:**
+  - T-0913 (load flakes), with the stopped worker's partial patch at `~/.zilar-lead/T-0913-partial.patch`;
+  - T-0915 (store core T8, lifecycle).
+- **T-0914 (T7a):** its code was finished by its Claude worker; the lead runs the phone smoke, then the combined check.
+
 **2026-10-10 08:20 local: T-0908, T-0909 and T-0910 merged; nothing deployed**
 - **T-0908:** one `runSql` (−219 lines).
 - **T-0909:** `drizzle-orm` and `drizzle-kit` are overridden away, so the deployed server folder goes from 321 to 230 MB with no PGlite.
