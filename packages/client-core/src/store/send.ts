@@ -26,7 +26,7 @@ import { ForwardOriginSchema, StickerSchema, isValid } from '@zilar/protocol';
 import type { CoreCtx } from './ctx';
 import { fromPromise } from './ctx';
 import { clearFailure, coreKind } from './rows';
-import type { CorePorts, SendPorts, VoiceInput } from './ports';
+import type { CorePorts, OutgoingBytesData, SendPorts, VoiceInput } from './ports';
 import { sendFailureReasonFor } from './send-failure';
 
 /** A send that neither succeeds nor fails within this long is marked failed
@@ -51,6 +51,9 @@ export interface SendCtx extends CoreCtx {
   readonly pendingAttachments: Map<string, unknown>;
   /** An outgoing voice recording's bytes, kept for a Retry after a failed send. */
   readonly pendingVoices: Map<string, unknown>;
+  /** Whether a plain text send (no reply, no mentions) passes no options at all
+   * (`undefined`, mobile) instead of an empty object (`{}`, web, the default). */
+  readonly omitEmptyTextOptions?: boolean | undefined;
 }
 
 export interface SendTextOptions {
@@ -104,6 +107,51 @@ function clearActionError(ctx: SendCtx, chatId: string): void {
   }));
 }
 
+// The upload progress of one message (T-0150, moved from mobile's store in T10):
+// web has no progress UI and ignores the port's `onProgress`, so this only ever
+// writes on mobile. `clear` is a no-op when the message carries no progress.
+function setUploadProgress(
+  ctx: SendCtx,
+  chatId: string,
+  messageId: string,
+  progress: number,
+): void {
+  ctx.set((state) => ({
+    messagesByChat: {
+      ...state.messagesByChat,
+      [chatId]: ctx.k
+        .listFor(state, chatId)
+        .map((item) =>
+          ctx.k.sameMessage(item.id, messageId)
+            ? { ...item, uploadProgress: Math.min(1, Math.max(0, progress)) }
+            : item,
+        ),
+    },
+  }));
+}
+
+function clearUploadProgress(ctx: SendCtx, chatId: string, messageId: string): void {
+  const current = ctx.k
+    .listFor(ctx.get(), chatId)
+    .find((item) => ctx.k.sameMessage(item.id, messageId));
+  if (current?.uploadProgress === undefined) {
+    return;
+  }
+  ctx.set((state) => ({
+    messagesByChat: {
+      ...state.messagesByChat,
+      [chatId]: ctx.k.listFor(state, chatId).map((item) => {
+        if (!ctx.k.sameMessage(item.id, messageId)) {
+          return item;
+        }
+        const next = { ...item };
+        delete next.uploadProgress;
+        return next;
+      }),
+    },
+  }));
+}
+
 // One send attempt's deadline (T-0168): when it passes while the message is
 // still `sending`, the send is marked `failed` with `timed_out` and the
 // pipeline's late result is ignored. A new attempt for the same message
@@ -147,6 +195,23 @@ function settleSendTimeout(ctx: SendCtx, messageId: string, run: SendRun): void 
 // attempt owns.
 const isCurrentSendRun = (ctx: SendCtx, messageId: string, run: SendRun): boolean =>
   ctx.sendRuns.get(ctx.k.aliasRoot(messageId)) === run;
+
+// Whether the optimistic bubble is still in the store. A cancel removes it, so
+// a pipeline that finds it gone must stop before it puts anything on the wire
+// (and not resurrect it).
+const messageAlive = (ctx: SendCtx, chatId: string, localId: string): boolean =>
+  ctx.k.listFor(ctx.get(), chatId).some((item) => ctx.k.sameMessage(item.id, localId));
+
+// Drops a message's 60 s watcher and run token: its send was cancelled or
+// deleted, so the deadline must not fire and a late pipeline result must not
+// touch the bubble.
+export function disarmSend(ctx: SendCtx, messageId: string): void {
+  const root = ctx.k.aliasRoot(messageId);
+  if (ctx.sendRuns.has(root)) {
+    ctx.rt.cancel(timeoutKey(root));
+    ctx.sendRuns.delete(root);
+  }
+}
 
 // What a stanza send that succeeded changes: the ids are linked even when a
 // retry owns the message now. In a group, a stanza id the echo already filed
@@ -218,6 +283,7 @@ function runAttachmentUpload(
   chat: ChatSummary,
   localId: string,
   file: unknown,
+  info: OutgoingBytesData,
   caption: string,
   replyTo: ReplyRef | undefined,
 ): void {
@@ -231,9 +297,19 @@ function runAttachmentUpload(
   ctx.rt.fork(
     Effect.gen(function* () {
       const { bytes } = ctx.ports;
-      const info = bytes.describe(file);
       const measured = info.kind === 'image' ? yield* bytes.measure(file) : undefined;
-      const url = yield* bytes.upload(current, file, () => {}, localId);
+      const url = yield* bytes.upload(
+        current,
+        file,
+        (fraction) => setUploadProgress(ctx, chat.id, localId, fraction),
+        localId,
+      );
+      // A cancel removed the bubble while the slot request or the PUT was in
+      // flight: the bytes may be up, but nothing must be sent.
+      if (!messageAlive(ctx, chat.id, localId)) {
+        settleSendTimeout(ctx, localId, run);
+        return;
+      }
       const data: Attachment = {
         kind: info.kind,
         url,
@@ -243,6 +319,7 @@ function runAttachmentUpload(
         ...(measured === undefined ? {} : { width: measured.width, height: measured.height }),
       };
       ctx.k.updateMessageAttachment(chat.id, localId, data);
+      clearUploadProgress(ctx, chat.id, localId);
       const sent = yield* fromPromise(() =>
         current.sendMessage(chat.id, coreKind(chat), caption, {
           payload: { v: 0, type: 'attachment', data },
@@ -260,13 +337,14 @@ function runAttachmentUpload(
       ctx.pendingAttachments.delete(localId);
     }).pipe(
       Effect.catchCause((cause) =>
-        Effect.sync(() =>
+        Effect.sync(() => {
+          clearUploadProgress(ctx, chat.id, localId);
           // Keep the local bytes so the bubble can offer a Retry. Pre-timeout
           // code read only the `failed` flag; keep it in sync.
           settleFailure(ctx, chat.id, localId, run, cause, () =>
             ctx.k.markAttachmentFailed(chat.id, localId),
-          ),
-        ),
+          );
+        }),
       ),
     ),
   );
@@ -297,7 +375,22 @@ function runVoiceSend(
   ctx.rt.fork(
     Effect.gen(function* () {
       const converted = yield* ctx.ports.voice.convert(input);
-      const url = yield* ctx.ports.voice.upload(current, converted.audio, () => {}, localId);
+      // A cancel during `convert` (or the upload below) removed the bubble: the
+      // pipeline stops before it converts further, uploads or sends.
+      if (!messageAlive(ctx, chat.id, localId)) {
+        settleSendTimeout(ctx, localId, run);
+        return;
+      }
+      const url = yield* ctx.ports.voice.upload(
+        current,
+        converted.audio,
+        (fraction) => setUploadProgress(ctx, chat.id, localId, fraction),
+        localId,
+      );
+      if (!messageAlive(ctx, chat.id, localId)) {
+        settleSendTimeout(ctx, localId, run);
+        return;
+      }
       const voice: VoiceMeta = {
         duration_ms: converted.durationMs,
         mime: 'audio/mp4',
@@ -305,6 +398,7 @@ function runVoiceSend(
         url,
       };
       ctx.k.updateMessageVoice(chat.id, localId, voice);
+      clearUploadProgress(ctx, chat.id, localId);
       const sent = yield* fromPromise(() =>
         current.sendMessage(chat.id, coreKind(chat), '', {
           payload: { v: 0, type: 'voice', data: voice },
@@ -325,7 +419,10 @@ function runVoiceSend(
       // The optimistic bubble keeps its local audio; the failure shows
       // "Not sent" with Retry and Delete instead of a clock.
       Effect.catchCause((cause) =>
-        Effect.sync(() => settleFailure(ctx, chat.id, localId, run, cause)),
+        Effect.sync(() => {
+          clearUploadProgress(ctx, chat.id, localId);
+          settleFailure(ctx, chat.id, localId, run, cause);
+        }),
       ),
     ),
   );
@@ -444,21 +541,25 @@ export function sendText(
   if (current === undefined) {
     return;
   }
+  // The core passes `{}` for a plain text (web's pinned shape); mobile sets
+  // `omitEmptyTextOptions` so its plain texts stay `undefined`.
+  const sendOptions =
+    replyTo === undefined && mentions.length === 0 && ctx.omitEmptyTextOptions === true
+      ? undefined
+      : {
+          ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
+          ...(mentions.length === 0
+            ? {}
+            : {
+                mentions: mentions.map((mention) => ({
+                  jid: mention.jid,
+                  begin: mention.begin,
+                  end: mention.end,
+                })),
+              }),
+        };
   return void ctx.rt.fork(
-    fromPromise(() =>
-      current.sendMessage(chatId, coreKind(chat), trimmed, {
-        ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
-        ...(mentions.length === 0
-          ? {}
-          : {
-              mentions: mentions.map((mention) => ({
-                jid: mention.jid,
-                begin: mention.begin,
-                end: mention.end,
-              })),
-            }),
-      }),
-    ).pipe(
+    fromPromise(() => current.sendMessage(chatId, coreKind(chat), trimmed, sendOptions)).pipe(
       Effect.andThen((sent) =>
         Effect.sync(() => {
           linkSent(ctx, chat, localId, sent.id);
@@ -548,11 +649,7 @@ export function deleteFailedMessage(ctx: SendCtx, chatId: string, messageId: str
     ctx.pendingVoices.delete(ctx.k.aliasRoot(messageId));
     ctx.pendingVoices.delete(messageId);
   }
-  const root = ctx.k.aliasRoot(messageId);
-  if (ctx.sendRuns.has(root)) {
-    ctx.rt.cancel(timeoutKey(root));
-    ctx.sendRuns.delete(root);
-  }
+  disarmSend(ctx, messageId);
   ctx.k.removeFailedMessage(chatId, messageId);
 }
 
@@ -595,7 +692,7 @@ export function sendAttachment(
   if (caption.length > 0) {
     ctx.k.rememberBaseText(localId, caption);
   }
-  runAttachmentUpload(ctx, chat, localId, file, caption, replyTo);
+  runAttachmentUpload(ctx, chat, localId, file, info, caption, replyTo);
 }
 
 export function sendSticker(
@@ -774,5 +871,13 @@ export function retryAttachment(ctx: SendCtx, chatId: string, messageId: string)
     return;
   }
   ctx.k.markSendRetrying(chatId, messageId);
-  runAttachmentUpload(ctx, chat, messageId, file, message.text ?? '', message.replyTo);
+  runAttachmentUpload(
+    ctx,
+    chat,
+    messageId,
+    file,
+    ctx.ports.bytes.describe(file),
+    message.text ?? '',
+    message.replyTo,
+  );
 }

@@ -2,6 +2,17 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 16:30 local: test cuts merged; size and mock audits running**
+- **Merged:** T-0931 (server), T-0932 (web), T-0933 (mobile), T-0934 (packages). Test code went from about 201k lines to 23k. Suites:
+  - server 646 → 197 s;
+  - web 216 → 5 s;
+  - mobile 198 → 19 s.
+- **Julio's next asks:**
+  - a 400-line limit per file, and reuse of code: audit T-0936 writes `docs/audit/size-plan.md` (clone scan, split plan, lint rule);
+  - keep mock mode but do better: audit T-0935 writes `docs/audit/mock-plan.md` (real stores on one shared fake backend).
+- **Running:** T-0929 (T10b, mobile send), T-0930 (test memory cap), T-0935, T-0936.
+- **Known flake:** `apps/server/src/sandbox/run-tool.test.ts` "truncates 100 KB of console.log output" failed once in CI (`05cfad9d`) and passed on the next run.
+
 **2026-10-10 15:30 local: minimal tests (Julio's call)**
 - **Julio's rule:** tests only for auth and keys, permissions and money, and the message pipeline; all UI tests deleted; no "tests first". It is in `CLAUDE.md`, `docs/EFFECT_BRIEF.md` and memory `minimal-tests`.
 - **Running:**

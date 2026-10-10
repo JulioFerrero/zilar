@@ -1,7 +1,7 @@
-import { makeLifetime, type CoreCtx, type Lifetime } from '@zilar/client-core/store';
+import { makeLifetime, type CoreCtx, type Lifetime, type SendRun } from '@zilar/client-core/store';
 import { Context, Effect, Exit, Fiber, Scope } from 'effect';
 import type { ChatSummary, EditAuthor, MessageStatus, ReplyRef, UiMessage } from '@zilar/chat-core';
-import type { Attachment, ForwardOrigin, Payload } from '@zilar/protocol';
+import type { Attachment } from '@zilar/protocol';
 import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
 
 import type { PickedFile } from '../../lib/attachment-ports';
@@ -149,6 +149,10 @@ export interface StoreState {
   readonly groupIds: Map<string, string>;
   /** Optimistic ids waiting for their server echo, by message signature. */
   readonly pendingOutgoing: Map<string, string[]>;
+  /** The counter behind the optimistic `local-N` ids (T10). */
+  sequence: number;
+  /** The current send attempt of a message, by its alias root (T10). */
+  readonly sendRuns: Map<string, SendRun>;
   /** The local bytes of an outgoing attachment, kept for a Retry. */
   readonly pendingUploads: Map<string, PickedFile>;
   /** A finished voice recording per optimistic message, kept for a Retry. */
@@ -216,11 +220,6 @@ export interface StoreHelpers {
     messageId: string,
     voice: { duration_ms: number; mime: string; waveform: number[]; url: string },
   ): void;
-  setUploadProgress(chatId: string, messageId: string, progress: number): void;
-  clearUploadProgress(chatId: string, messageId: string): void;
-  forwardOriginFor(message: UiMessage): ForwardOrigin | undefined;
-  forwardedPayloadFor(message: UiMessage): Payload | undefined;
-  forwardedUiFieldsFor(payload: Payload): Pick<UiMessage, 'voice' | 'attachment' | 'card'>;
   /** Ends what `stop()` clears besides the core scopes: timers, caches, per-session maps. */
   teardown(): void;
 }

@@ -1,6 +1,6 @@
-import { Context, Layer } from 'effect';
+import { Context, Effect, Layer } from 'effect';
 import { createXmppCore, type XmppCore, type XmppCoreOptions } from '@zilar/xmpp-core';
-import type { Visibility } from '@zilar/client-core/store';
+import type { OutgoingBytes, Visibility, VoiceOut } from '@zilar/client-core/store';
 
 import { createChatApi, type ChatApi } from '../../lib/chat-api';
 import type { ChatPrefsApi } from '../../lib/chat-prefs-api';
@@ -14,8 +14,15 @@ import { createRolesApi, type RolesApi } from '../../lib/roles-api';
 import { createGroupsApi, type GroupsApi } from '../../lib/groups-api';
 import { DRAFT_STREAM_PATH, subscribeToDrafts, type OpenDraftStream } from '../../lib/drafts';
 import { getSessionToken } from '../../lib/session-token';
-import type { AttachmentUploader } from '../../lib/attachment-ports';
-import { createVoicePort, VoiceError, type VoicePort } from '../../lib/voice';
+import type { AttachmentUploader, PickedFile } from '../../lib/attachment-ports';
+import { attachmentDataFor, classifyMobileFile } from '../../lib/attachments';
+import {
+  createVoicePort,
+  VoiceError,
+  type ConvertedVoice,
+  type RecordedVoice,
+  type VoicePort,
+} from '../../lib/voice';
 
 /** The slice of React Native's `AppState` the store listens to. */
 export interface AppStateLike {
@@ -71,8 +78,10 @@ export interface PortsShape {
   readonly createXmpp: (options: XmppCoreOptions) => XmppCore;
   readonly uploader: AttachmentUploader | undefined;
   readonly statSize: ((uri: string) => Promise<number | undefined>) | undefined;
-  /** The voice pipeline (T-0154); built per call, like the injected one is returned. */
-  readonly voice: () => VoicePort;
+  /** The core send pipeline's file port (T10): classify, measure, upload. */
+  readonly bytes: OutgoingBytes;
+  /** The core send pipeline's voice port (T10): convert, then upload. */
+  readonly voice: VoiceOut;
   readonly now: () => Date;
   readonly appState: AppStateLike;
   readonly openDrafts: OpenDraftStream;
@@ -121,6 +130,91 @@ function voicePortFor(deps: RealStoreDeps): VoicePort {
   return createVoicePort({ apiUrl: API_URL, getToken: getSessionToken, uploader });
 }
 
+// The image size a picked asset already carries, when it is a valid one.
+function pickedImageSize(file: PickedFile): { width: number; height: number } | undefined {
+  const { width, height } = file;
+  if (
+    width === undefined ||
+    height === undefined ||
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width < 1 ||
+    height < 1
+  ) {
+    return undefined;
+  }
+  return { width, height };
+}
+
+// The core `bytes` port (T10) over mobile's uploader and stat seams: classify
+// and describe the file, report the already-known image size, then take a
+// XEP-0363 slot and PUT the bytes. An unknown size is stat'd once, right before
+// the slot request (the slot API needs an exact count); a missing uploader or a
+// still-unknown size fails the send like any other upload failure.
+function bytesFor(deps: RealStoreDeps): OutgoingBytes {
+  const uploader = deps.uploader;
+  const statSize = deps.statSize;
+  return {
+    describe: (file) => {
+      const picked = file as PickedFile;
+      const kind = classifyMobileFile(picked);
+      const data = attachmentDataFor(picked, '');
+      return {
+        kind,
+        name: data.name,
+        size: data.size,
+        mime: data.mime,
+        ...(kind === 'image' ? { localUrl: picked.uri } : {}),
+      };
+    },
+    measure: (file) => Effect.succeed(pickedImageSize(file as PickedFile)),
+    upload: (core, file, onProgress, key) =>
+      Effect.tryPromise(async () => {
+        const picked = file as PickedFile;
+        if (uploader === undefined) {
+          throw new Error('no attachment uploader is available');
+        }
+        const contentType = picked.mimeType === '' ? 'application/octet-stream' : picked.mimeType;
+        const size =
+          picked.size !== undefined
+            ? picked.size
+            : statSize === undefined
+              ? undefined
+              : await statSize(picked.uri);
+        if (size === undefined) {
+          throw new Error('the file size could not be read');
+        }
+        const slot = await core.requestUploadSlot({
+          filename: attachmentDataFor(picked, '').name,
+          size,
+          contentType,
+        });
+        await uploader.upload(
+          picked,
+          { putUrl: slot.putUrl, headers: slot.headers },
+          onProgress,
+          key,
+        );
+        return slot.getUrl;
+      }),
+  };
+}
+
+// The core `voice` port (T10) over mobile's voice port: the recording's bytes
+// stay opaque to the core, so this unwraps them on convert and the converted
+// audio on upload.
+function voiceOutFor(deps: RealStoreDeps): VoiceOut {
+  const port = voicePortFor(deps);
+  return {
+    convert: (recording) =>
+      Effect.tryPromise(() => port.convert(recording.bytes as RecordedVoice)).pipe(
+        Effect.map((converted) => ({ durationMs: converted.durationMs, audio: converted })),
+      ),
+    upload: (core, audio, onProgress, key) =>
+      Effect.tryPromise(() => port.upload(core, audio as ConvertedVoice, onProgress, key)),
+  };
+}
+
 /** The ports a store gets: each injected dependency, else the real client. */
 export function resolvePorts(deps: RealStoreDeps): PortsShape {
   const appState = deps.appState ?? alwaysActive;
@@ -138,7 +232,8 @@ export function resolvePorts(deps: RealStoreDeps): PortsShape {
     createXmpp: deps.createXmpp ?? ((options: XmppCoreOptions) => createXmppCore(options)),
     uploader: deps.uploader,
     statSize: deps.statSize,
-    voice: () => voicePortFor(deps),
+    bytes: bytesFor(deps),
+    voice: voiceOutFor(deps),
     now: deps.now ?? ((): Date => new Date()),
     appState,
     isVisible: () => appState.current() === 'active',
@@ -184,7 +279,8 @@ export const PortsTest = (overrides: Partial<PortsShape> = {}): Layer.Layer<Port
     },
     uploader: undefined,
     statSize: undefined,
-    voice: () => unavailable<VoicePort>('voice'),
+    bytes: bytesFor({}),
+    voice: voiceOutFor({}),
     now: () => new Date(0),
     appState: alwaysActive,
     isVisible: () => true,
