@@ -376,24 +376,15 @@ export async function listTools(
         ORDER BY name ASC`;
     }),
   );
+  const extras = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* listViewExtras(sql, rows);
+    }),
+  );
   const result: PublicTool[] = [];
   for (const tool of rows) {
-    const current = await runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        const [row] = yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
-          WHERE tool_id = ${tool.id} AND version = ${tool.currentVersion} LIMIT 1`;
-        return row ?? null;
-      }),
-    );
-    const lastRunStatus = await runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* latestRunStatus(sql, tool.id);
-      }),
-    );
     result.push({
       id: tool.id,
       aiId: tool.aiId,
@@ -402,9 +393,9 @@ export async function listTools(
       name: tool.name,
       description: tool.description,
       currentVersion: tool.currentVersion,
-      hosts: current?.hosts ?? [],
+      hosts: extras.hosts.get(tool.id) ?? [],
       approvedHosts: [...(tool.approvedHosts ?? [])],
-      lastRunStatus,
+      lastRunStatus: extras.status.get(tool.id) ?? null,
       updatedAt: tool.updatedAt,
     });
   }
@@ -1064,6 +1055,41 @@ function latestRunStatus(
   });
 }
 
+// The list views of many tools in two queries, whatever the count: the
+// hosts of each tool's current version (no source) and the newest run's
+// status of each tool.
+function listViewExtras(
+  sql: SqlClient.SqlClient,
+  tools: readonly ToolRow[],
+): Effect.Effect<
+  { hosts: Map<string, string[]>; status: Map<string, 'ok' | 'error'> },
+  SqlError.SqlError
+> {
+  return Effect.gen(function* () {
+    const hosts = new Map<string, string[]>();
+    const status = new Map<string, 'ok' | 'error'>();
+    if (tools.length === 0) {
+      return { hosts, status };
+    }
+    const ids = tools.map((tool) => tool.id);
+    const versions = yield* sql<{ toolId: string; hosts: string[] }>`SELECT v.tool_id, v.hosts
+      FROM ai_tool_versions v
+      JOIN ai_tools t ON t.id = v.tool_id AND t.current_version = v.version
+      WHERE v.tool_id IN ${sql.in(ids)}`;
+    for (const row of versions) {
+      hosts.set(row.toolId, row.hosts);
+    }
+    const runs = yield* sql<{ toolId: string; status: 'ok' | 'error' }>`
+      SELECT DISTINCT ON (tool_id) tool_id, status FROM ai_tool_runs
+      WHERE tool_id IN ${sql.in(ids)}
+      ORDER BY tool_id, created_at DESC, id DESC`;
+    for (const row of runs) {
+      status.set(row.toolId, row.status);
+    }
+    return { hosts, status };
+  });
+}
+
 function hostsEqual(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) {
     return false;
@@ -1156,24 +1182,15 @@ export async function listToolsForAi(
         ORDER BY name ASC`;
     }),
   );
+  const extras = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* listViewExtras(sql, rows);
+    }),
+  );
   const result: Array<PublicTool & { scope: 'personal' | 'group' }> = [];
   for (const tool of rows) {
-    const current = await runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        const [row] = yield* sql<VersionRow>`SELECT * FROM ai_tool_versions
-          WHERE tool_id = ${tool.id} AND version = ${tool.currentVersion} LIMIT 1`;
-        return row ?? null;
-      }),
-    );
-    const lastRunStatus = await runSql(
-      db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* latestRunStatus(sql, tool.id);
-      }),
-    );
     result.push({
       id: tool.id,
       aiId: tool.aiId,
@@ -1182,9 +1199,9 @@ export async function listToolsForAi(
       name: tool.name,
       description: tool.description,
       currentVersion: tool.currentVersion,
-      hosts: current?.hosts ?? [],
+      hosts: extras.hosts.get(tool.id) ?? [],
       approvedHosts: [...(tool.approvedHosts ?? [])],
-      lastRunStatus,
+      lastRunStatus: extras.status.get(tool.id) ?? null,
       updatedAt: tool.updatedAt,
       scope: tool.groupId === null ? 'personal' : 'group',
     });

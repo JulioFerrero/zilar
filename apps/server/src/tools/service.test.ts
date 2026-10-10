@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { createAuditRecorder } from '../audit/service';
@@ -626,6 +626,44 @@ describe('tools service (T-0103)', () => {
       expect(versions?.[0]).not.toHaveProperty('source');
       const one = await getVersion(context.db, tool.id, 1);
       expect(one?.source).toBe('return { text: "gold 3000" };');
+    });
+
+    it('listing N tools runs a constant number of queries', async () => {
+      const countQueries = async (count: number): Promise<number> => {
+        for (let index = 0; index < count; index += 1) {
+          const { tool } = await saveToolVersion(
+            context.db,
+            {
+              aiId,
+              groupId: null,
+              topicId: null,
+              userId: ownerId,
+              ...baseInput({ name: `counted-${count}-${index}` }),
+            },
+            NOW,
+          );
+          await runToolVersion(
+            { db: context.db, runner: okRunner() },
+            { toolId: tool.id, trigger: 'manual' },
+            NOW,
+          );
+        }
+        const spy = vi.spyOn(context.db as unknown as { query: () => unknown }, 'query');
+        try {
+          const listed = await listTools(context.db, { aiId, groupId: null, topicId: null });
+          expect(listed.length).toBeGreaterThanOrEqual(count);
+          expect(listed.every((tool) => tool.lastRunStatus === 'ok')).toBe(true);
+          const forAi = await listToolsForAi(context.db, aiId);
+          expect(forAi.length).toBe(listed.length);
+          return spy.mock.calls.length;
+        } finally {
+          spy.mockRestore();
+        }
+      };
+      const few = await countQueries(2);
+      const many = await countQueries(5);
+      expect(few).toBeGreaterThan(0);
+      expect(many).toBe(few);
     });
 
     it('listToolsForAi annotates the scope', async () => {
