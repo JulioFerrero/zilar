@@ -68,8 +68,14 @@ function mockStoreDeps(): RealStoreDeps | null {
   if (process.env.NODE_ENV === 'test' || __DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { backend, mockFetch } = require('../mock/backend') as typeof import('../mock/backend');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createMockUploader } = require('../mock/uploader') as typeof import('../mock/uploader');
     return {
       ...sharedDeps(),
+      // The fake core's slot URL is a `data:` URL, so the real native PUT cannot
+      // work in mock mode (T-1047): this one reports progress and resolves
+      // without network, keeping sharedDeps' uploader for real builds.
+      uploader: createMockUploader(),
       api: createChatApi(mockToken, mockFetch, API_URL),
       topicsApi: createTopicsApi(mockToken, mockFetch, API_URL),
       inviteLinksApi: createInviteLinksApi(mockToken, mockFetch, API_URL),
