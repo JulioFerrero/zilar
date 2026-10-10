@@ -13,7 +13,7 @@ import {
 } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { MoreHorizontal } from 'lucide-react';
-import { memo, useRef, useState } from 'react';
+import { lazy, memo, Suspense, useRef, useState } from 'react';
 import { AiBadge } from './AiBadge';
 import { ApprovalCard } from './ApprovalCard';
 import { Avatar } from './Avatar';
@@ -23,7 +23,6 @@ import { ForwardedHeader } from './ForwardedHeader';
 import { GifMessage, isGifVideoAttachment } from './GifMessage';
 import { ImageMessage } from './ImageMessage';
 import { LinkText } from './LinkText';
-import { MarkdownText } from './MarkdownText';
 import { MessageActionsMenu } from './MessageActionsMenu';
 import { MessageTicks } from './MessageTicks';
 import { ProgressCard } from './ProgressCard';
@@ -38,6 +37,11 @@ import { runWeb } from '@/lib/effect/runtime';
 import { useSmoothText } from '@/lib/useSmoothText';
 import { cn } from '@/lib/utils';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
+
+/** The markdown stack loads on the first AI reply; the plain text shows meanwhile. */
+const MarkdownText = lazy(() =>
+  import('./MarkdownText').then((m) => ({ default: m.MarkdownText })),
+);
 
 /** Monochrome-friendly sender name colors (ui-style.md §5). */
 const SENDER_COLORS = ['#d4d4d4', '#a1a1a1', '#8a8a8a', '#ededed'] as const;
@@ -690,7 +694,9 @@ export const MessageBubble = memo(function MessageBubble({
 
                 {hasText && markdown && (
                   <div className={cn('md break-words', own ? 'px-3 py-2' : 'px-3 py-2.5')}>
-                    <MarkdownText text={text} />
+                    <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
+                      <MarkdownText text={text} />
+                    </Suspense>
                     <span className="md-tail">
                       {generating && <DraftCaret />}
                       <MessageMeta

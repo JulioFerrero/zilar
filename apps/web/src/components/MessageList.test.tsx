@@ -512,7 +512,7 @@ describe('MessageList Markdown drafts (T-0049)', () => {
 
     const before = document.querySelector('[data-draft-turn="tm"]');
     expect(before).not.toBeNull();
-    expect(before?.querySelector('strong')?.textContent).toBe('Hello');
+    await waitFor(() => expect(before?.querySelector('strong')?.textContent).toBe('Hello'));
     expect(before?.querySelector('[data-bubble-look="generating"]')).not.toBeNull();
 
     act(() => {

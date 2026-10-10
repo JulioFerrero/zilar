@@ -168,11 +168,11 @@ describe('AI reply Markdown (T-0049)', () => {
     });
   }
 
-  it('renders an incoming AI reply as Markdown', () => {
+  it('renders an incoming AI reply as Markdown', async () => {
     const { container } = renderAi('**bold** and `code` and [a link](https://x.com)');
 
     const list = screen.getByTestId('message-list');
-    expect(within(list).getByText('bold').tagName).toBe('STRONG');
+    expect((await within(list).findByText('bold')).tagName).toBe('STRONG');
     expect(within(list).getByText('code').tagName).toBe('CODE');
     expect(within(list).getByRole('link').getAttribute('href')).toBe('https://x.com');
     expect(container.querySelector('[data-bubble-look="incoming"]')).not.toBeNull();

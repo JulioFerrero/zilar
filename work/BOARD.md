@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0880](T-0880-web-lazy-markdown.md) | Web: lazy-load the markdown stack (about 120 KB min) behind a plain-text fallback | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0881](T-0881-mobile-dark-only.md) | Mobile is dark-only: remove the dead light-theme branches (155 [scheme] lookups, 135 use… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0882](T-0882-mock-imports-rest.md) | The last static mock imports leave the production bundles (mobile chat screen, chats tab… | in-progress | haiku-5.5 |  | wave 4, simplify plan |
 | [T-0883](T-0883-web-panels-dedupe.md) | Web panels: one roleLabel/GroupAiRow/pick-row and one set of shared tagged errors instea… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
@@ -919,3 +918,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0877](T-0877-chat-core-store-ledger.md) | chat-core gets the store message-ledger helpers both stores copy: forwarding payloads, reaction/mention equali | 2026-10-10 |
 | [T-0878](T-0878-client-core-react-glue.md) | packages/client-core: the shared React + Effect glue (useAction, useQuery, atomStore, api-effect) used by web  | 2026-10-10 |
 | [T-0879](T-0879-web-selectors-rest.md) | Web: ChatView and the remaining useChatStore() call sites use useChatSelector; GroupHeaderRow memoised | 2026-10-10 |
+| [T-0880](T-0880-web-lazy-markdown.md) | Web: lazy-load the markdown stack (about 120 KB min) behind a plain-text fallback | 2026-10-10 |

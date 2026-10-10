@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { MessageBubble } from '@/components/MessageBubble';
@@ -1243,7 +1243,7 @@ describe('createRealChatStore', () => {
 
     expect(screen.getByText('Dev-1')).toBeTruthy();
     expect(screen.getByText('AI')).toBeTruthy();
-    expect(container.querySelector('strong')?.textContent).toBe('done');
+    await waitFor(() => expect(container.querySelector('strong')?.textContent).toBe('done'));
   });
 
   it('passes outgoing mentions to the core', async () => {

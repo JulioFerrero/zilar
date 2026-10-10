@@ -1,7 +1,7 @@
 ---
 id: T-0880
 title: "Web: lazy-load the markdown stack (about 120 KB min) behind a plain-text fallback"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0880-web-lazy-markdown
 model: auto
@@ -51,4 +51,19 @@ Run the tests 3 times after the last commit. The machine is shared, so note `upt
 
 ## Report (written by the worker when done)
 
+- Merged T-0862 and T-0845 first, measured on top of them.
+- `MessageBubble.tsx`: `MarkdownText` is now `React.lazy` inside `Suspense`, fallback is the plain text in a `whitespace-pre-wrap` span. `MarkdownText.tsx` unchanged.
+- `markdownToPlain` comes from `@zilar/chat-core` (ChatListItem, TopicRow), already light and sync; untouched. Audit cite `MessageBubble :26` was right.
+- Build (load avg 90-160 on the shared machine): main entry `index` 741.18 kB raw / 209.3 kB gzip -> 586.82 kB / 162.9 kB. New lazy chunk `MarkdownText` 154.55 kB / 45.8 kB gzip. Total JS in index.html at startup: 1357211 B raw / 400817 B gzip -> 1202949 B / 354698 B (-154 KB raw, -46 KB gzip).
+- Tests changed to wait for lazy markdown (3 lines): `MessageContent.test.tsx` (renders an incoming AI reply as Markdown: async + findByText), `MessageList.test.tsx` (keeps the same bubble...: waitFor strong), `realStore.test.tsx` (names a group AI message...: waitFor strong, import waitFor).
+- Tests: before the change 1946 tests; after, targeted files (194 tests) pass 3 of 3. Full web suite under load 230 had 4-9 random timeouts per run in unrelated files (Composer.voice, ExplorePage, HandleGate, AlwaysAllowedList, App, AisPage, FolderRail, InviteDialog, fixtures); each passes alone, the one that failed twice (Composer.voice) passed 11/11 alone. Not caused by this change.
+- Typecheck and oxlint clean. Lines removed: 1 import line (MessageBubble) plus 3 replaced test lines; net +9 lines.
+- Behaviour difference: first markdown bubble shows raw text for a moment until the chunk loads.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.**
+- **What changed:** MarkdownText is lazy, with a plain-text fallback, so a bubble is never empty.
+- **Size:** startup JS goes 1,357 → 1,203 kB raw (401 → 355 kB gzip).
+- **Visible change:** the first AI markdown bubble shows raw text for a moment until the chunk loads.
+- **Check:** the combined wave 4 check passes.
