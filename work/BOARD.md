@@ -9,6 +9,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-1039](T-1039-split-mobile-message-list.md) | Size split T114: mobile message-list.tsx (418) | in-progress | auto | T-0936 | size-plan |
+| [T-1040](T-1040-split-mobile-markdown.md) | Size split T115: mobile markdown.ts (410) | in-progress | auto | T-0936 | size-plan |
+| [T-1041](T-1041-split-mobile-channel-screen.md) | Size split T117: mobile channel-screen.tsx (408) | in-progress | auto | T-0936 | size-plan |
 
 ## Follow-ups
 
