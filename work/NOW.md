@@ -2,6 +2,18 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 23:05 local: every planned split is merged; mock wave 2 and the dedups running**
+- **Merged since 22:30:**
+  - **mobile splits, with phone smokes:** T-1039 (message list: scroll loads older history), T-1040 (markdown; renders the same as main), T-1041 (channel screen, after a lead fix round that put the invite-link code back as it was on main);
+  - **lint:** T-1042, the `max-lines` warning at 400. `pnpm lint` exits 0 with 33 warnings, all on deferred files;
+  - **dedup:** T-1043 (shared server error helpers; the lead ran 48 tests);
+  - **mock:** T-1044 (prefs and pins). On the phone, Pin works and the pin bar shows.
+- **Running, 7 workers:**
+  - **mock:** T-1045 (folders, backgrounds and media), T-1046 (stickers and GIFs), T-1047 (mobile mock uploader, so voice and attachment sends work), T-1048 (a General topic for every seeded group, so the mock channel screen opens);
+  - **dedups:** T-1049 (F8a, chat-core `trimTrailingPunctuation`), T-1050 (F8b, mobile timers);
+  - **audit:** T-1051, what is left of F1 to F7. F1 is mostly done already.
+- **Board follow-ups added:** mobile markdown has no tables, and the mock channel and uploads.
+
 **2026-10-10 22:30 local: wave 9 merged; last splits, the lint rule and mock wave 2 running**
 - **Merged, 11 tasks:**
   - **server, by a line check against main:** T-1028 (routine execute), T-1029 (agent tools; the lead ran `reply.test.ts`), T-1033 (voice transcription API), T-1036 (routines API);

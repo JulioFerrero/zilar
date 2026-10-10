@@ -6,7 +6,7 @@
  * `markdown.ts` (T-1040) and re-exported there.
  */
 
-import { parseUrl } from '@zilar/chat-core';
+import { parseUrl, trimTrailingPunctuation } from '@zilar/chat-core';
 
 export type InlineNode =
   | { type: 'text'; value: string }
@@ -43,41 +43,6 @@ export function safeMarkdownUrl(url: string): string | undefined {
     return undefined;
   }
   return ALLOWED_PROTOCOLS.has(parsed.protocol) ? url : undefined;
-}
-
-const ALWAYS_STRIP = new Set(['.', ',', ';', ':', '!', '?', '…', '»', '"', "'"]);
-const BRACKETS: Record<string, string> = { '(': ')', '[': ']', '{': '}' };
-
-function countCharacter(value: string, character: string): number {
-  let total = 0;
-  for (const item of value) {
-    if (item === character) {
-      total += 1;
-    }
-  }
-  return total;
-}
-
-/** Mirrors `@zilar/chat-core`'s `trimTrailingPunctuation` for bare URLs. */
-function trimTrailingPunctuation(raw: string): string {
-  let url = raw;
-  while (url.length > 0) {
-    const last = url[url.length - 1];
-    if (last === undefined) {
-      break;
-    }
-    if (ALWAYS_STRIP.has(last)) {
-      url = url.slice(0, -1);
-      continue;
-    }
-    const opener = Object.entries(BRACKETS).find(([, closer]) => closer === last)?.[0];
-    if (opener !== undefined && countCharacter(url, last) > countCharacter(url, opener)) {
-      url = url.slice(0, -1);
-      continue;
-    }
-    break;
-  }
-  return url;
 }
 
 interface InlineRule {

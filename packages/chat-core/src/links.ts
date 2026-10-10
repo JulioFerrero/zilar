@@ -21,7 +21,7 @@ function countCharacter(value: string, character: string): number {
  * URL (`https://x.com/a).` becomes `https://x.com/a`). A closing bracket is
  * kept when the URL itself opened it.
  */
-function trimTrailingPunctuation(raw: string): string {
+export function trimTrailingPunctuation(raw: string): string {
   let url = raw;
   while (url.length > 0) {
     const last = url[url.length - 1];
