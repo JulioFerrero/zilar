@@ -11,8 +11,8 @@ import { useStickersApi } from './use-stickers-api';
  * screen (the `RequireAisAuth` pattern).
  */
 export function RequireStickersAuth({ children }: { children: ReactNode }) {
-  const { scenario } = useStickersApi();
-  if (scenario !== null) {
+  const { mock } = useStickersApi();
+  if (mock) {
     return <>{children}</>;
   }
   return <RequireAuth>{children}</RequireAuth>;

@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1079](T-1079-mobile-stickers-on-mock-backend.md) | Mock H2-7: mobile stickers on the shared backend; delete stickers-mock.ts | in-progress | auto | T-1078 | probe first |
 
 ## Follow-ups
 
@@ -1127,3 +1126,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1077](T-1077-mobile-profile-on-mock-backend.md) | Mock H2-6 (mobile): profile runs on @zilar/mock-backend through mockFetch; delete mock/profile.ts | 2026-10-10 |
 | [T-1078](T-1078-mock-backend-integrations-and-mobile-switch.md) | Mock backend F6 + H2-5: integrations domain in @zilar/mock-backend; mobile integrations run on it; delete inte | 2026-10-10 |
 | [T-1080](T-1080-mock-voice-follows-integrations.md) | Mock backend: GET /voice/transcription follows the integrations voice setting; seed voice as configured; fix s | 2026-10-10 |
+| [T-1079](T-1079-mobile-stickers-on-mock-backend.md) | Mock H2-7 (mobile): sticker management runs on @zilar/mock-backend through mockFetch; delete stickers-mock.ts | 2026-10-10 |
