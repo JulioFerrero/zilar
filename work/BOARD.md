@@ -14,6 +14,10 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 ## Follow-ups
 
+- **Mock: the Acme channel cannot be opened as a channel (found 2026-10-10, T-1041).** `packages/mock-backend/src/domains/chats/seed.ts:12-24` gives the channel no `topics`, so mobile `app/group/[id].tsx:189` calls `router.back()`, and the channel screen (info, admins, invite links) cannot be reached in mock mode.
+- **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile.
+- **Mock: sends that upload fail (voice and attachments).** Voice notes end with "Could not send" in mobile mock mode. Check the fake XMPP core (`packages/mock-backend/src/xmpp`) for an upload slot.
+
 - **Mobile approvals: "Always allowed" empties when nothing is pending (found 2026-10-10, T-1004 smoke; on main).** Rules load only for the AIs referenced by pending rows (`apps/mobile/src/components/approvals/use-approvals.ts`, was `approvals.tsx:209`), so once the last request is decided, the rule list shows "Nothing is always allowed here" even when rules exist. Load the rules for every owned AI instead.
 
 - **M5 plan (2026-09-29): see [`docs/ROADMAP_M5.md`](../docs/ROADMAP_M5.md)** for the order, the waves for tonight, what only Julio can provide, and the decisions the lead made in the specs.

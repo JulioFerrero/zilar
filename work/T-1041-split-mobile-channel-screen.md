@@ -154,10 +154,8 @@ GATE PASS
 
 ## Review (written by Claude)
 
-## Review (written by Claude)
-
 **Lead, 2026-10-10: approved after one lead fix round. The pre-review is clean, with 1 nit.**
-- **The split:** `channel-screen.tsx` (408 lines) is now 271 lines, plus `channel-members` (142) and `use-channel-invites` (139). One `ChannelMemberRow` serves the admins and subscribers rows.
+- **The split:** `channel-screen.tsx` (408 lines) is now 257 lines, plus `channel-members` (142) and `use-channel-invites` (147). One `ChannelMemberRow` serves the admins and subscribers rows.
 - **The fix round:** the first version rewrote the invite-link load, create and revoke code with `useAction`, `groupAction` and `rawCall`. The lead sent it back, and the hook now holds main's `reloadLinks`, `onCreate` and `onRevoke` bodies, with `callStore`, `catchTag`, `ensuring` and `runFork`.
 - **The lead's line check against main:**
   - the invite logic lines match;
