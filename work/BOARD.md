@@ -15,6 +15,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0976](T-0976-split-server-tools-api.md) | Size split T29: server tools/api.ts (799) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0977](T-0977-split-web-topic-panel.md) | Size split T32: web TopicPanel.tsx (780) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0978](T-0978-split-server-roles-service.md) | Size split T36: server roles/service.ts (763) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0979](T-0979-split-mobile-tool-detail-sheet.md) | Size split T28: mobile tool-detail-sheet.tsx (808) | in-progress | deepseek-flash | T-0936 | size-plan |
 
 ## Follow-ups
 
