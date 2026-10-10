@@ -23,9 +23,9 @@ export const people: readonly MockPerson[] = [
   { id: 'u-marta', name: 'Marta', jid: 'marta@zilar.test', kind: 'human' },
   { id: 'u-marco', name: 'Marco', jid: 'marco@zilar.test', kind: 'human' },
   { id: 'u-sofia', name: 'Sofía', jid: 'sofia@zilar.test', kind: 'human' },
-  { id: 'ai-dev-1', name: 'Dev-1', jid: 'dev-1@ai.zilar.test', kind: 'ai' },
-  { id: 'ai-qa-1', name: 'QA-1', jid: 'qa-1@ai.zilar.test', kind: 'ai' },
-  { id: 'ai-marketing', name: 'Marketing AI', jid: 'marketing@ai.zilar.test', kind: 'ai' },
+  { id: 'ai-dev-1', name: 'Dev-1', jid: 'ai-dev-1@zilar.test', kind: 'ai' },
+  { id: 'ai-qa-1', name: 'QA-1', jid: 'ai-qa-1@zilar.test', kind: 'ai' },
+  { id: 'ai-marketing', name: 'Marketing AI', jid: 'ai-marketing@zilar.test', kind: 'ai' },
 ];
 
 /** The `/api/me` body the seed owns; `GET`/`PATCH /me` serve this shape. */

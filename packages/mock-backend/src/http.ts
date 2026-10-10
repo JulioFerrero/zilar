@@ -26,11 +26,14 @@ export function createMockHttp(
   getDelayMs: () => number = () => DEFAULT_DELAY_MS,
 ): MockHttp {
   return async (path, init = {}) => {
-    await delay(getDelayMs());
     const request = parseRequest(path, init);
     for (const route of routes) {
       const response = route(data, request);
       if (response !== undefined) {
+        // A served route pays the simulated latency before answering; a path
+        // no route knows returns `undefined` at once, so the web dispatcher's
+        // fallback is not delayed twice.
+        await delay(getDelayMs());
         return response;
       }
     }

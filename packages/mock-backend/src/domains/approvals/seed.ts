@@ -46,7 +46,7 @@ export function seedApprovals(context: DomainContext): Partial<MockSeed> {
         details: 'Squash-merges the branch into main and deletes the branch.',
         argsHash: 'a'.repeat(64),
         worstCase: { currency: 'EUR', amount: 0.4 },
-        requestedBy: 'dev-1@ai.zilar.test',
+        requestedBy: 'ai-dev-1@zilar.test',
         status: 'pending',
         decidedAt: null,
         note: null,

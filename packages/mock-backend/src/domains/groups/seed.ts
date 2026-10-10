@@ -2,7 +2,7 @@
 // `mockGroupDetails` (`apps/web/src/mock/groups.ts`), keyed by the group ids the
 // `chats` seed already uses (`g-devteam` is `dev-team@rooms.zilar.test`).
 // Member handles and custom roles match the group panel; AIs use the unified
-// `@ai.zilar.test` JIDs of the `ais` domain.
+// `ai-<id>@zilar.test` JIDs of the `ais` domain.
 import type { GroupAi, GroupDetail, GroupMember } from '@zilar/api-contract';
 import type { MockSeed } from '../../data';
 
@@ -45,8 +45,8 @@ export const mockGroups: readonly GroupDetail[] = [
       member('u-marco', 'Marco', 'member', [], 'marco'),
     ],
     ais: [
-      ai('ai-dev-1', 'Dev-1', 'dev-1@ai.zilar.test'),
-      ai('ai-qa-1', 'QA-1', 'qa-1@ai.zilar.test'),
+      ai('ai-dev-1', 'Dev-1', 'ai-dev-1@zilar.test'),
+      ai('ai-qa-1', 'QA-1', 'ai-qa-1@zilar.test'),
     ],
   },
   {
@@ -86,7 +86,7 @@ export const mockGroups: readonly GroupDetail[] = [
     visibility: 'private',
     handle: null,
     members: [member('u-luis', 'Luis', 'owner'), member('u-you', 'You', 'admin')],
-    ais: [ai('ai-qa-1', 'QA-1', 'qa-1@ai.zilar.test')],
+    ais: [ai('ai-qa-1', 'QA-1', 'ai-qa-1@zilar.test')],
   },
   {
     id: 'g-gym',

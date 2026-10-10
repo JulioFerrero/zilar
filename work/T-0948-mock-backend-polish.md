@@ -1,7 +1,7 @@
 ---
 id: T-0948
 title: "Mock backend polish: real-format AI JIDs (ai-<id>@zilar.test) so AI markdown renders, read markers clear unread, and no double delay on fallback routes"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0948-mock-backend-polish
 model: auto
@@ -59,4 +59,75 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: review. Branch `task/T-0948-mock-backend-polish`. Items 1 and 3 are done
+and green; item 2 is dropped (see below). Only Allowed files are changed (gate
+confirms).
+
+### What I did
+
+**Item 1 — AI JIDs (done).** Every seeded AI JID is now `ai-<id>@zilar.test`:
+
+- `data/people.ts`: `ai-dev-1@zilar.test`, `ai-qa-1@zilar.test`, `ai-marketing@zilar.test`;
+- `domains/ais/seed.ts`: the same three `jid`s;
+- `domains/chats/seed.ts`: the two AI DMs (`ai-dev-1@…`, `ai-marketing@…`);
+- `domains/groups/seed.ts`: the three `ai(...)` JIDs + the header comment;
+- `domains/approvals/seed.ts`: `requestedBy: 'ai-dev-1@zilar.test'`;
+- `domains/messages/threads/shared.ts`: `JIDS.dev1/qa1/marketing`;
+- `domains/messages/threads/index.ts`: the two AI-DM thread keys;
+- `domains/messages/threads/dev-ai.ts`, `marketing-ai.ts`: the header comments.
+
+AI row ids (`ai-dev-1`, …) are unchanged. `grep -rn '@ai\.zilar\.test' packages/mock-backend/src` → no output.
+
+**Item 3 — double delay (done).** `packages/mock-backend/src/http.ts`: the
+150 ms `delay` moved from before matching to just before returning a matched
+`Response`. An unserved path returns `undefined` at once, so `mockRequest`
+(the web fallback) pays its own delay only once.
+
+**Item 2 — dropped (lead's decision).** Unread is client state, so no mock
+change can clear it: the store clears it in `handleMessage` only when the chat
+is active and visible, and the fake core's reply already triggers that. The
+badge the lead saw came from their automation tab counting as hidden (a reply
+in the open, visible chat already leaves none); the refocus fix is a store task.
+
+### Files changed
+
+`packages/mock-backend/src/{data/people.ts, domains/ais/seed.ts,
+domains/approvals/seed.ts, domains/chats/seed.ts, domains/groups/seed.ts,
+domains/messages/threads/{dev-ai.ts,index.ts,marketing-ai.ts,shared.ts},
+http.ts}` and `work/T-0948-mock-backend-polish.md`.
+
+### Commands and real results
+
+Grep (item 1): `grep -rn '@ai\.zilar\.test' packages/mock-backend/src` → no output.
+
+Throwaway probe `packages/mock-backend/src/probe.test.ts` (deleted before the
+gate), run with `pnpm --filter @zilar/mock-backend test --maxWorkers=2
+--reporter=dot src/probe.test.ts` (`Test Files 1 passed`), stdout:
+
+```text
+1. seeded Dev-1 sender: ai-dev-1@zilar.test -> isAiJid: true
+3. served /api/chats ~ 152.9 ms; unserved /api/sticker-packs ~ 1.1 ms
+```
+
+`pnpm gate` (repo root):
+
+```text
+gate: 11 changed file(s) against main
+PASS  install (frozen)  (1.0s)
+PASS  format  (1.0s)
+PASS  lint  (0.7s)
+PASS  typecheck  (0.6s)
+PASS  effect  (0.5s)
+SKIP tests @zilar/mock-backend (no nearby test files)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved. The pre-review is clean, with 1 nit and 2 follow-ups.**
+- **Item 1:** every seeded AI JID is `ai-<name>@zilar.test`, so `isAiJid` is true and AI markdown renders. No `@ai.zilar.test` is left in `packages/mock-backend`; the old ids remain in `apps/web/src/mock/ids.ts`, which the deletion sweep removes.
+- **Item 3:** only a matched route waits, so a fallback route pays one delay.
+- **Item 2 was dropped,** as agreed: unread is client state, and the visible-open case already clears it. The refocus case is T-0950, a store task.
+- **Check:** the gate passed.

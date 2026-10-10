@@ -1,4 +1,4 @@
-// The Marketing AI DM (`marketing@ai.zilar.test`), web's `c-marketingai`.
+// The Marketing AI DM (`ai-marketing@zilar.test`), web's `c-marketingai`.
 import { ago, JIDS, msg, type MockMessageSeed } from './shared';
 
 const { you: YOU, marketing: MARKETING } = JIDS;

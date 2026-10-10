@@ -43,7 +43,7 @@ export const chats: readonly ChatEntry[] = [
     visibility: 'private',
     handle: null,
   },
-  { kind: 'dm', chatJid: 'dev-1@ai.zilar.test', title: 'Dev AI', isAi: true },
+  { kind: 'dm', chatJid: 'ai-dev-1@zilar.test', title: 'Dev AI', isAi: true },
   { kind: 'dm', chatJid: 'marta@zilar.test', title: 'Marta', userId: 'u-marta', isAi: false },
   {
     kind: 'group',
@@ -66,7 +66,7 @@ export const chats: readonly ChatEntry[] = [
     handle: null,
   },
   { kind: 'dm', chatJid: 'luis@zilar.test', title: 'Luis', userId: 'u-luis', isAi: false },
-  { kind: 'dm', chatJid: 'marketing@ai.zilar.test', title: 'Marketing AI', isAi: true },
+  { kind: 'dm', chatJid: 'ai-marketing@zilar.test', title: 'Marketing AI', isAi: true },
   {
     kind: 'group',
     chatJid: 'gym@rooms.zilar.test',

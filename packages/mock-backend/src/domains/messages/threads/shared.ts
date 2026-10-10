@@ -34,9 +34,9 @@ export const JIDS = {
   marta: 'marta@zilar.test',
   marco: 'marco@zilar.test',
   sofia: 'sofia@zilar.test',
-  dev1: 'dev-1@ai.zilar.test',
-  qa1: 'qa-1@ai.zilar.test',
-  marketing: 'marketing@ai.zilar.test',
+  dev1: 'ai-dev-1@zilar.test',
+  qa1: 'ai-qa-1@zilar.test',
+  marketing: 'ai-marketing@zilar.test',
 } as const;
 
 /**

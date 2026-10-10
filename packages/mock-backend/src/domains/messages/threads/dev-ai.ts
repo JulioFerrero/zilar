@@ -1,4 +1,4 @@
-// The Dev AI DM (`dev-1@ai.zilar.test`), web's `c-devai`.
+// The Dev AI DM (`ai-dev-1@zilar.test`), web's `c-devai`.
 import { progressCard } from '../builders';
 import { ago, JIDS, msg, type MockMessageSeed } from './shared';
 
