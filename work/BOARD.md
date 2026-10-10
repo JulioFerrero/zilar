@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0936](T-0936-size-dup-audit.md) | Audit: 400-line limit and duplicated code | in-progress | deepseek-flash | — | Julio 10-10 |
-| [T-0947](T-0947-delete-web-mock-store.md) | Mock sweep O: delete web mockStore.ts (1,294 lines) | in-progress | deepseek-flash | T-0946 | mock-plan O |
 | [T-0948](T-0948-mock-backend-polish.md) | Mock polish: real AI JIDs (markdown), unread clears, single delay | in-progress | deepseek-flash | T-0946 | lead QA |
 | [T-0949](T-0949-mobile-mock-cutover-store.md) | Mock cutover H1: mobile mock mode on the real store, fake session | in-progress | deepseek-flash | T-0946 | mock-plan H |
 
@@ -976,3 +975,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0943](T-0943-mock-backend-groups-topics.md) | Mock backend D1: groups, members, topics and roles domains in @zilar/mock-backend, plus topic rows on the grou | 2026-10-10 |
 | [T-0944](T-0944-mock-backend-channels-invites.md) | Mock backend D2: invite links, join, directory and public-group lookup domains in @zilar/mock-backend (docs/au | 2026-10-10 |
 | [T-0946](T-0946-web-mock-cutover.md) | Mock cutover G (web): mock mode runs the real web store on @zilar/mock-backend | 2026-10-10 |
+| [T-0947](T-0947-delete-web-mock-store.md) | Mock sweep O: delete the web mock store (apps/web/src/store/mockStore.ts, 1,294 lines), its production stub an | 2026-10-10 |
