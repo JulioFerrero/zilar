@@ -6,9 +6,12 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 - **T-0908:** one `runSql` (−219 lines).
 - **T-0909:** `drizzle-orm` and `drizzle-kit` are overridden away, so the deployed server folder goes from 321 to 230 MB with no PGlite.
 - **T-0910:** lenient contract rows, and the mobile gifs, media and stickers clients derive from the contract.
-- **In check:** T-0907 (T6: incoming, actions and reads in the core) and T-0911 (test sleeps).
-- **Running:** T-0913 (four load flakes made deterministic).
-- **Next:** T-0912 (T6b history) after T-0907 merges, then T7 and T8.
+- **Merged after that:** T-0907 (T6: incoming, actions and reads in the core) and T-0911 (test sleeps).
+- **Running:**
+  - T-0912 (T6b: web history in the core, plus the `loadOlder` overlap fix, tests first);
+  - T-0914 (T7a: mobile on the core incoming, actions and reads);
+  - T-0913 (load flakes).
+- **Next:** T7b (mobile history) after T-0912, then T8 (polling, drafts and lifecycle in the core, web), T9 and T10.
 - **Live-check additions:**
   - the production image after deploy, where sign-in works without drizzle (T-0909);
   - stickers, GIFs and the media gallery on mobile (T-0910).
