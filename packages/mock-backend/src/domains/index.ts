@@ -8,6 +8,8 @@ import { aisDomain } from './ais';
 import { approvalRulesDomain } from './approval-rules';
 import { approvalsDomain } from './approvals';
 import { auditDomain } from './audit';
+import { backgroundsDomain } from './backgrounds';
+import { chatFoldersDomain } from './chat-folders';
 import { chatPrefsDomain } from './chat-prefs';
 import { chatsDomain } from './chats';
 import { connectionsDomain } from './connections';
@@ -19,6 +21,7 @@ import { groupsDomain } from './groups';
 import { inviteLinksDomain } from './invite-links';
 import { machinesDomain } from './machines';
 import { meDomain } from './me';
+import { mediaDomain } from './media';
 import { messagesDomain } from './messages';
 import { pinsDomain } from './pins';
 import { publicGroupsDomain } from './public-groups';
@@ -36,6 +39,8 @@ export const domains: readonly Domain[] = [
   approvalRulesDomain,
   approvalsDomain,
   auditDomain,
+  backgroundsDomain,
+  chatFoldersDomain,
   chatPrefsDomain,
   chatsDomain,
   connectionsDomain,
@@ -46,6 +51,7 @@ export const domains: readonly Domain[] = [
   inviteLinksDomain,
   machinesDomain,
   meDomain,
+  mediaDomain,
   messagesDomain,
   pinsDomain,
   publicGroupsDomain,

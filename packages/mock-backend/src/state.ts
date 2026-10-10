@@ -4,6 +4,8 @@ import type { MockAiMemory } from './domains/ai-memory/seed';
 import type { MockApproval } from './domains/approvals/seed';
 import type { MockApprovalRule } from './domains/approval-rules/seed';
 import type { MockAuditEntry } from './domains/audit/seed';
+import type { MockBackground } from './domains/backgrounds/seed';
+import type { MockChatFolder } from './domains/chat-folders/seed';
 import type { MockInviteLink } from './domains/invite-links/seed';
 import type { MockRoutine } from './domains/routines/seed';
 import type { MockStickerPack } from './domains/stickers/seed';
@@ -83,6 +85,13 @@ export interface MockData {
   readonly inviteTokens: Map<string, string>;
   readonly joinAttempts: Map<string, number>;
   nextInviteLinkSequence: number;
+
+  // T-1045: the caller's chat folders and uploaded background images. Both
+  // arrays are replaced on every write and the counters mint their row ids.
+  chatFolders: MockChatFolder[];
+  nextFolderSequence: number;
+  backgrounds: MockBackground[];
+  nextBackgroundSequence: number;
 }
 
 export function createMockData(seed: MockSeed): MockData {
