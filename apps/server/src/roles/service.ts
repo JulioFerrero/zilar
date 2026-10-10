@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { TopicRow } from '../db/rows';
 import { isUniqueViolation } from '../effect/error-utils';
-import { runSql, sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { syncTopicRoom } from '../topics/rooms';
 import { requireGroupManager, requireRoleInGroup } from './access';
@@ -81,7 +81,8 @@ export async function createRole(
   }
   const id = randomUUID();
   try {
-    await sqlRuntimeFor(deps.db).runPromise(
+    await runSql(
+      deps.db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         return yield* sql.withTransaction(

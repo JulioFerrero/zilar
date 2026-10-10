@@ -16,7 +16,7 @@
 import { Cause, Data, Duration, Effect, type Effect as EffectType } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { transcribeAudio, TranscriptionProviderError, type TranscriptionFetch } from './provider';
 import type { VoiceTranscriptionSettings } from './settings';
@@ -154,7 +154,7 @@ const transcribeEffect = Effect.fnUntraced(function* (
 const awaitSql = <A>(
   db: ServerDatabase,
   effect: EffectType.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): EffectType.Effect<A, never, never> => Effect.promise(() => sqlRuntimeFor(db).runPromise(effect));
+): EffectType.Effect<A, never, never> => Effect.promise(() => runSql(db, effect));
 
 const storeTranscriptEffect = Effect.fnUntraced(function* (
   db: ServerDatabase,
