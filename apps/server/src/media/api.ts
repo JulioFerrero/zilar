@@ -21,6 +21,7 @@ import { isDmBlocked } from '../blocks/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import type { MediaItemRow } from '../db/rows';
+import { errorClassName } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import {
   handler,
@@ -183,10 +184,6 @@ function toMediaItem(row: MediaItemRow, senderName: string): MediaItem {
   };
 }
 
-function errorName(error: unknown): string {
-  return error instanceof Error ? error.constructor.name : typeof error;
-}
-
 const MediaApi = HttpApi.make('media').add(MediaGroup);
 
 export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
@@ -262,7 +259,7 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
           );
           if (!indexed.ok) {
             deps.logger.warn(
-              { userId: user.id, err: errorName(indexed.defect) },
+              { userId: user.id, err: errorClassName(indexed.defect) },
               'media index failed',
             );
           }

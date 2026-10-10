@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { Effect, Option, Schema } from 'effect';
 import { RegisterPushDevicePayload } from '@zilar/api-contract';
+import { errorClassName, isUniqueViolation } from '../effect/error-utils';
 import { handler } from '../effect/http-core';
 import { HttpError } from '../errors';
 import type { RateLimiter } from '../rate-limit';
@@ -13,7 +14,6 @@ import { syncPushSubscriptionsForUser } from '../topics/rooms';
 import { createPushCipher } from './crypto';
 import { parseNode, randomNode } from './protocol';
 import { saveDevice } from './store';
-import { errorName, isUniqueViolation } from './api-util';
 import type { PushApiDependencies } from './api';
 
 export function createSubscribeHandler(
@@ -63,7 +63,7 @@ export function createSubscribeHandler(
             );
           } catch (error) {
             deps.logger.warn(
-              { userId: user.id, staleNodes: staleNodes.length, err: errorName(error) },
+              { userId: user.id, staleNodes: staleNodes.length, err: errorClassName(error) },
               'push room re-sync failed after node replacement; the old node drops as unknown-device',
             );
           }
@@ -129,7 +129,7 @@ export function createSubscribeHandler(
           Effect.catchDefect((defect) =>
             Effect.sync(() => {
               deps.logger.warn(
-                { userId: user.id, err: errorName(defect) },
+                { userId: user.id, err: errorClassName(defect) },
                 'push room sync failed after registration; membership changes re-sync later',
               );
             }),

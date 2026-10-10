@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
+import { errorClassName } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import type { EjabberdAdminClient, RoomAffiliation } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -8,7 +9,6 @@ import type { InviteLogger } from '../groups/service';
 import { userIdsWithDevices } from '../push/store';
 import { visibleTopics, type TopicRow } from './access';
 import type { PushUserSyncDeps, TopicRoomDeps } from './rooms';
-import { errorName } from './room-sync';
 
 // Push (T-0119): every desired member holding a push device is subscribed to
 // the room (MUC/Sub, XEP-0369), so the room's messages reach them as push
@@ -49,7 +49,7 @@ export async function syncPushSubscriptions(
       await deps.adminClient.subscribeRoom(topic.roomLocalpart, jid, nickFor(jid));
     } catch (error) {
       deps.logger.warn(
-        { err: errorName(error), roomLocalpart: topic.roomLocalpart },
+        { err: errorClassName(error), roomLocalpart: topic.roomLocalpart },
         'could not subscribe the room for push',
       );
     }
@@ -64,7 +64,7 @@ async function unsubscribeOne(deps: TopicRoomDeps, topic: TopicRow, jid: string)
     await deps.adminClient.unsubscribeRoom(topic.roomLocalpart, jid);
   } catch (error) {
     deps.logger.warn(
-      { err: errorName(error), roomLocalpart: topic.roomLocalpart },
+      { err: errorClassName(error), roomLocalpart: topic.roomLocalpart },
       'could not unsubscribe the room for push',
     );
   }
@@ -92,7 +92,7 @@ async function pushDeviceHolders(
     userIds = await userIdsWithDevices(deps.db);
   } catch (error) {
     deps.logger.warn(
-      { err: errorName(error), roomLocalpart: 'unknown' },
+      { err: errorClassName(error), roomLocalpart: 'unknown' },
       'could not read the push devices; skipping the push sync',
     );
     return undefined;
@@ -153,7 +153,7 @@ export async function syncPushSubscriptionsForUser(
       }
     } catch (error) {
       deps.logger.warn(
-        { err: errorName(error), roomLocalpart },
+        { err: errorClassName(error), roomLocalpart },
         'could not sync the room push subscription',
       );
     }
@@ -209,7 +209,7 @@ export async function reconcileRoomSubscriptionOptions(
       await deps.adminClient.changeRoomOption(row.roomLocalpart, 'allow_subscription', 'true');
     } catch (error) {
       deps.logger.warn(
-        { err: errorName(error), roomLocalpart: row.roomLocalpart },
+        { err: errorClassName(error), roomLocalpart: row.roomLocalpart },
         'could not enable room subscriptions for push',
       );
     }

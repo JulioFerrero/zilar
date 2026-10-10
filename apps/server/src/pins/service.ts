@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import type { CreatePinPayload, Pin, PinKind } from '@zilar/api-contract';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { PinnedMessageRow } from '../db/rows';
+import { isUniqueViolation } from '../effect/error-utils';
 import { runSql, sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -220,13 +221,4 @@ function mapPinError(error: unknown): HttpError {
     return new HttpError(409, 'pin_exists', 'That message is already pinned');
   }
   return new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  if (error instanceof SqlError.SqlError) {
-    return error.reason._tag === 'UniqueViolation';
-  }
-  return (
-    typeof error === 'object' && error !== null && (error as { code?: unknown }).code === '23505'
-  );
 }

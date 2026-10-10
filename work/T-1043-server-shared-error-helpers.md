@@ -1,7 +1,7 @@
 ---
 id: T-1043
 title: "Dedup F6a: one server errorName/errorClassName and one isUniqueViolation in effect/error-utils.ts, replacing 11 local copies"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1043-server-shared-error-helpers
 model: auto
@@ -76,4 +76,121 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Created `apps/server/src/effect/error-utils.ts` with three exports, each the exact
+body from its source: `errorName` (variant A, from `actions/support.ts:42`),
+`errorClassName` (variant B, from `push/api-util.ts:42`) and `isUniqueViolation`
+(the widest copy, from `handles/store.ts:273`, with its `effect/sql` `SqlError`
+import). Every duplicate was then removed and replaced by an import of the
+shared helper. All call sites keep their arguments and their use of the result.
+
+### Files changed (all under Allowed files)
+
+New: `apps/server/src/effect/error-utils.ts`.
+
+- `apps/server/src/actions/support.ts` — dropped the `errorName` body, imports it
+  from `../effect/error-utils` and re-exports it (`export { errorName };`), so
+  `actions/decisions.ts`, `actions/queries.ts` and `actions/recovery.ts` are
+  untouched.
+- `apps/server/src/routines/scheduler.ts` — dropped its copy, imports `errorName`
+  (used at both existing log sites).
+- `apps/server/src/files/api.ts`, `apps/server/src/media/api.ts`,
+  `apps/server/src/topics/room-sync.ts` — dropped their `errorName` copies, import
+  `errorClassName`, and every former `errorName(...)` call now calls
+  `errorClassName(...)`.
+- `apps/server/src/topics/room-push.ts` — now imports `errorClassName` from
+  `../effect/error-utils` instead of `errorName` from `./room-sync`; all sites
+  updated.
+- `apps/server/src/push/api-util.ts` — dropped both the `errorName` and
+  `isUniqueViolation` copies; keeps `STRICT_DECODE` and `createRequirePush`.
+- `apps/server/src/push/api-handlers.ts`, `apps/server/src/push/api-subscribe.ts`
+  — import `errorClassName` (and `isUniqueViolation` in api-subscribe) from
+  `../effect/error-utils`.
+- `apps/server/src/handles/store.ts` — dropped its copy, imports and re-exports
+  `isUniqueViolation` (`export { isUniqueViolation };`), so `groups/service.ts`
+  and `groups/visibility.ts` are untouched. Dropped the now-unused `SqlError`
+  import.
+- `apps/server/src/pins/service.ts`, `apps/server/src/roles/service.ts`,
+  `apps/server/src/topics/service.ts`, `apps/server/src/machines/pairing.ts` —
+  dropped their copies, import the shared `isUniqueViolation`; each also dropped
+  its now-unused `SqlError` import.
+
+Out of scope and untouched: `agents/gateway/contracts.ts` and its importers
+`agents/gateway/group-turn.ts` / `agents/gateway/tool-exec.ts`.
+
+### Call sites and the helper each now uses
+
+- `errorName` (variant A): `actions/support.ts` (re-export + its own log),
+  `routines/scheduler.ts` (2 sites). `actions/decisions.ts`, `actions/queries.ts`,
+  `actions/recovery.ts` keep importing it from `./support`.
+- `errorClassName` (variant B): `files/api.ts` (2 sites), `media/api.ts` (1),
+  `topics/room-sync.ts` (5), `topics/room-push.ts` (5), `push/api-handlers.ts` (1),
+  `push/api-subscribe.ts` (2).
+- `isUniqueViolation`: `handles/store.ts` (local + re-export for
+  `groups/service.ts` and `groups/visibility.ts`), `pins/service.ts`,
+  `roles/service.ts`, `topics/service.ts`, `machines/pairing.ts`,
+  `push/api-subscribe.ts`.
+
+### Which `isUniqueViolation` callers got the wider check
+
+The shared body is the widest: `SqlError` `UniqueViolation`, then a 5-deep
+`cause` walk matching code `23505` or a "duplicate key" / "UNIQUE constraint"
+message. Callers whose old copy was narrower and therefore catch more now:
+- `pins/service.ts` and `roles/service.ts` — were `SqlError` + top-level `23505`;
+  now also the cause walk and the message fallback.
+- `topics/service.ts` — was top-level `23505` only; now the full check.
+- `machines/pairing.ts` — was `SqlError` + cause walk for `23505` (no message
+  check); now also the message fallback.
+- `push/api-subscribe.ts` — was the api-util copy (cause walk + message, no
+  `SqlError` check); now also the `SqlError` check.
+`handles/store.ts` (and its importers `groups/service.ts`, `groups/visibility.ts`)
+keeps the exact behaviour it had.
+
+### Commands and real results
+
+- `pnpm install` — done, all 15 workspace projects (18.8s).
+- `pnpm --filter @zilar/server exec vitest run --maxWorkers=2 --reporter=dot src/roles/roles.test.ts src/invite-links/invite-links.test.ts src/push/candidates.test.ts`
+  — `Test Files 3 passed (3)`, `Tests 48 passed (48)`.
+- `pnpm gate` — summary:
+  ```
+  gate: 16 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (1.2s)
+  PASS  lint  (0.7s)
+  PASS  typecheck  (3.3s)
+  PASS  effect  (0.9s)
+  PASS  tests @zilar/server  (14.4s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Acceptance
+
+- `grep -rn "function errorName\|function isUniqueViolation" apps/server/src` lists
+  only `apps/server/src/effect/error-utils.ts` (both) and
+  `apps/server/src/agents/gateway/contracts.ts` (`errorName`, out of scope).
+
+### Deviations
+
+- Updated the now-stale header comment in `push/api-util.ts` (it described the
+  removed unique-violation walk and error-class namer). Comment only, no code
+  behaviour change.
+- The new file carries short header/summary comments; the three bodies are the
+  exact copies required. No other code changes.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved. The pre-review is clean, with no nits.**
+- **The change:** a new `apps/server/src/effect/error-utils.ts` holds three helpers, replacing 11 local copies.
+  - `errorName` is the `error.name` variant.
+  - `errorClassName` is the `constructor.name` variant.
+  - `isUniqueViolation` is the widest copy, from `handles/store.ts`.
+  - `grep` finds only these three and the out-of-scope `agents/gateway/contracts.ts` copy.
+- **The lead checked each caller keeps its old variant:**
+  - `actions/support.ts` (re-export) and `routines/scheduler.ts` use `errorName`;
+  - `files/api.ts`, `media/api.ts`, `topics/room-sync.ts`, `topics/room-push.ts`, `push/api-handlers.ts` and `push/api-subscribe.ts` use `errorClassName`.
+
+  Every log string stays the same.
+- **The deliberate widening:** pins, roles, topics, machine pairing and push now get the wider unique check. It matches the SqlError tag, or code `23505` / a duplicate message up to 5 causes deep. It can only catch more duplicates than before.
+- **Check:** the lead ran `roles.test.ts`, `invite-links.test.ts` and `candidates.test.ts` on the branch (3 files, 48 passed). The gate passed.

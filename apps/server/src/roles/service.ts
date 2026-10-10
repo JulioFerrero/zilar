@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { TopicRow } from '../db/rows';
+import { isUniqueViolation } from '../effect/error-utils';
 import { runSql, sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { syncTopicRoom } from '../topics/rooms';
@@ -32,15 +33,6 @@ function mapRoleError(error: unknown): HttpError {
     return new HttpError(409, 'role_exists', 'A role with that name already exists');
   }
   return new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  if (error instanceof SqlError.SqlError) {
-    return error.reason._tag === 'UniqueViolation';
-  }
-  return (
-    typeof error === 'object' && error !== null && (error as { code?: unknown }).code === '23505'
-  );
 }
 
 function auditEntry(

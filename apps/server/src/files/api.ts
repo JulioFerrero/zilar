@@ -23,6 +23,7 @@ import type { Auth } from '../auth/auth';
 import { isDmBlocked } from '../blocks/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
+import { errorClassName } from '../effect/error-utils';
 import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
@@ -78,10 +79,6 @@ function queryRecord(request: HttpServerRequest.HttpServerRequest): Record<strin
 
 function notFound(): HttpError {
   return new HttpError(404, 'not_found', 'File not found');
-}
-
-function errorName(error: unknown): string {
-  return error instanceof Error ? error.constructor.name : typeof error;
 }
 
 type FilesItemRow = {
@@ -244,7 +241,7 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
             );
             if (!indexed.ok) {
               deps.logger.warn(
-                { userId: user.id, err: errorName(indexed.defect) },
+                { userId: user.id, err: errorClassName(indexed.defect) },
                 'files index failed',
               );
             }
@@ -277,7 +274,7 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
           );
           if (!fetched.ok) {
             deps.logger.warn(
-              { userId: user.id, err: errorName(fetched.defect) },
+              { userId: user.id, err: errorClassName(fetched.defect) },
               'files fetch failed',
             );
             throw new HttpError(502, 'file_unavailable', 'The file could not be loaded');

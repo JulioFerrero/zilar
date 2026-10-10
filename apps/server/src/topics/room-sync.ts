@@ -1,4 +1,5 @@
 // effect-plain: moved unchanged from apps/server/src/topics/rooms.ts (size split)
+import { errorClassName } from '../effect/error-utils';
 import { HttpError } from '../errors';
 import type { RoomAffiliation } from '../xmpp/admin-client';
 import type { TopicRow } from './access';
@@ -25,7 +26,7 @@ export async function syncTopicRoom(
   try {
     wanted = await desiredMembers(deps.db, topic, deps.domain);
   } catch (error) {
-    deps.logger.warn({ err: errorName(error) }, 'could not read the topic members');
+    deps.logger.warn({ err: errorClassName(error) }, 'could not read the topic members');
     throw mapRoomError(error);
   }
 
@@ -34,7 +35,7 @@ export async function syncTopicRoom(
     current = await deps.adminClient.getAffiliations(topic.roomLocalpart);
   } catch (error) {
     deps.logger.warn(
-      { err: errorName(error), roomLocalpart: topic.roomLocalpart },
+      { err: errorClassName(error), roomLocalpart: topic.roomLocalpart },
       'could not read the topic room affiliations',
     );
     throw mapRoomError(error);
@@ -49,7 +50,7 @@ export async function syncTopicRoom(
         await deps.adminClient.setAffiliation(topic.roomLocalpart, jid, affiliation);
       } catch (error) {
         deps.logger.warn(
-          { err: errorName(error), roomLocalpart: topic.roomLocalpart },
+          { err: errorClassName(error), roomLocalpart: topic.roomLocalpart },
           'could not set the topic room affiliation',
         );
         throw mapRoomError(error);
@@ -63,7 +64,7 @@ export async function syncTopicRoom(
         await deps.adminClient.setAffiliation(topic.roomLocalpart, jid, 'none');
       } catch (error) {
         deps.logger.warn(
-          { err: errorName(error), roomLocalpart: topic.roomLocalpart },
+          { err: errorClassName(error), roomLocalpart: topic.roomLocalpart },
           'could not remove the topic room affiliation',
         );
         throw mapRoomError(error);
@@ -77,7 +78,7 @@ export async function syncTopicRoom(
       await deps.adminClient.sendDirectInvitation(topic.roomLocalpart, added);
     } catch (error) {
       deps.logger.warn(
-        { err: errorName(error), roomLocalpart: topic.roomLocalpart },
+        { err: errorClassName(error), roomLocalpart: topic.roomLocalpart },
         'could not send the topic invitations',
       );
     }
@@ -91,8 +92,4 @@ function mapRoomError(error: unknown): HttpError {
     return error;
   }
   return new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
-}
-
-export function errorName(error: unknown): string {
-  return error instanceof Error ? error.constructor.name : typeof error;
 }
