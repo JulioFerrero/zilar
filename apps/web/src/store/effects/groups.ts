@@ -4,10 +4,17 @@
 import { Effect } from 'effect';
 import {
   applyTopicRow as applyTopicRowCore,
+  changeGroup as changeGroupCore,
   changeTopic,
+  createGroupChannel as createGroupChannelAction,
+  createInvite as createInviteAction,
   createTopic as createTopicAction,
+  joinPublicGroup as joinPublicGroupAction,
+  leaveChannel as leaveChannelAction,
   leaveTopic as leaveTopicAction,
+  type ChangeGroupStore,
   type GroupActionStore,
+  type GroupTarget,
   type TopicRowStore,
 } from '@zilar/client-core/store';
 import {
@@ -27,7 +34,7 @@ import { sortByRecency, summariesFor } from './chatRows';
 import type { StoreCtx } from './ctx';
 import { applyGroupDetail, domainOf, ensureGroupMembers } from './groupMembers';
 import { openHistory, refreshChats, refreshChatsOrThrow } from './history';
-import { Ports } from './ports';
+import { Ports, type ApiClient } from './ports';
 import { fromPromise, prefsByJid } from './util';
 
 type CreateOptions = {
@@ -41,18 +48,27 @@ type CreateOptions = {
 const groupIdOf = (ctx: StoreCtx, chatId: string): string | undefined =>
   ctx.get().chats.find((entry) => entry.id === chatId)?.groupId ?? ctx.groupIds.get(chatId);
 
-// The group id and my XMPP domain, or the fixed "not available yet" failure.
-const resolveGroup = (
-  ctx: StoreCtx,
-  groupId: string | undefined,
-  notAvailable: string,
-): Effect.Effect<{ groupId: string; domain: string }, Error> => {
+// The group id and my XMPP domain, or undefined when either is unknown (the
+// shared actions turn that into the fixed "not available yet" failure).
+const groupTarget = (ctx: StoreCtx, groupId: string | undefined): GroupTarget | undefined => {
   const mine = ctx.k.myJid();
   if (groupId === undefined || mine === undefined) {
-    return Effect.fail(new Error(notAvailable));
+    return undefined;
   }
-  return Effect.succeed({ groupId, domain: domainOf(mine) });
+  return { groupId, domain: domainOf(mine) };
 };
+
+// The web half of the shared group change (settings, group AIs, channel role):
+// the detail is repainted from the server's answer, and the list is refreshed
+// through web's throwing refresh.
+const groupChangeStore = (
+  ctx: StoreCtx,
+  groupId: string | undefined,
+): ChangeGroupStore<GroupDetail, Ports> => ({
+  resolve: () => groupTarget(ctx, groupId),
+  applyDetail: (chatId, detail, domain) => applyGroupDetail(ctx, chatId, detail, domain),
+  refreshList: () => refreshChatsOrThrow(ctx),
+});
 
 /** The web half of the core topic-row refresh (R17): `/api/chats` and prefs. */
 const topicRowStore = (ctx: StoreCtx): TopicRowStore => ({
@@ -239,16 +255,15 @@ export const leaveTopic = (ctx: StoreCtx, chatId: string): Effect.Effect<void, u
     chatId,
   );
 
-// Creates a group or channel, repaints the chat list from the server (keeping
-// what is already painted), joins its room and opens it.
-const createAndOpen = (
+// Repaints the chat list from the server after a create (keeping what is
+// already painted) and answers the new group's chat JID (R15).
+const repaintCreatedGroup = (
   ctx: StoreCtx,
-  create: () => Promise<GroupDetail>,
-  notFound: string,
-): Effect.Effect<string, unknown, Ports> =>
+  api: ApiClient,
+  now: () => Date,
+  detail: GroupDetail,
+): Effect.Effect<string | undefined, unknown> =>
   Effect.gen(function* () {
-    const { api, now } = yield* Ports;
-    const detail = yield* fromPromise(create);
     const [entries, prefs] = yield* Effect.all(
       [
         fromPromise(() => api.getChats()),
@@ -281,20 +296,20 @@ const createAndOpen = (
       ),
       chatPrefs: prefsByJid(prefs),
     });
-    const created = entries.find((entry) => entry.kind === 'group' && entry.groupId === detail.id);
-    if (created === undefined) {
-      return yield* Effect.fail(new Error(notFound));
-    }
+    return entries.find((entry) => entry.kind === 'group' && entry.groupId === detail.id)?.chatJid;
+  });
+
+// Joins the new group's room, loads its members and opens the chat: web's half
+// of the create (R15).
+const openCreatedGroup = (ctx: StoreCtx, chatJid: string): Effect.Effect<void, unknown, Ports> =>
+  Effect.gen(function* () {
     const me = ctx.get().me;
     const current = ctx.core;
     if (current !== undefined && me !== undefined) {
-      yield* fromPromise(() => current.joinRoom(created.chatJid, ctx.k.nick(me))).pipe(
-        Effect.ignore,
-      );
+      yield* fromPromise(() => current.joinRoom(chatJid, ctx.k.nick(me))).pipe(Effect.ignore);
     }
-    ctx.rt.fork(ensureGroupMembers(ctx, created.chatJid));
-    yield* openHistory(ctx, created.chatJid);
-    return created.chatJid;
+    ctx.rt.fork(ensureGroupMembers(ctx, chatJid));
+    yield* openHistory(ctx, chatJid);
   });
 
 // T-0124: channels share the create/list/refresh flow with groups (the detail
@@ -309,20 +324,25 @@ export const createChannel = (
   options: { visibility?: 'private' | 'public'; handle?: string } | undefined,
 ): Effect.Effect<string, unknown, Ports> =>
   Effect.gen(function* () {
-    const { api } = yield* Ports;
-    return yield* createAndOpen(
-      ctx,
-      () =>
-        api.createGroup({
-          title,
-          memberIds,
-          kind: 'channel',
-          ...(description === undefined || description.trim() === ''
-            ? {}
-            : { description: description.trim() }),
-          ...(options?.visibility === undefined ? {} : { visibility: options.visibility }),
-          ...(options?.handle === undefined ? {} : { handle: options.handle }),
-        }),
+    const { api, now } = yield* Ports;
+    return yield* createGroupChannelAction<GroupDetail, Ports>(
+      {
+        create: () =>
+          api.createGroup({
+            title,
+            memberIds,
+            kind: 'channel',
+            ...(description === undefined || description.trim() === ''
+              ? {}
+              : { description: description.trim() }),
+            ...(options?.visibility === undefined ? {} : { visibility: options.visibility }),
+            ...(options?.handle === undefined ? {} : { handle: options.handle }),
+          }),
+        refreshAndLocate: (detail) => repaintCreatedGroup(ctx, api, now, detail),
+        open: (chatJid) => openCreatedGroup(ctx, chatJid),
+        requireRow: true,
+        result: (chatJid) => chatJid ?? '',
+      },
       'the new channel did not appear in the chat list',
     );
   });
@@ -337,18 +357,23 @@ export const createGroup = (
   options: CreateOptions | undefined,
 ): Effect.Effect<string, unknown, Ports> =>
   Effect.gen(function* () {
-    const { api } = yield* Ports;
-    return yield* createAndOpen(
-      ctx,
-      () =>
-        api.createGroup({
-          title,
-          memberIds,
-          ...(options?.kind === undefined ? {} : { kind: options.kind }),
-          ...(options?.description === undefined ? {} : { description: options.description }),
-          ...(options?.visibility === undefined ? {} : { visibility: options.visibility }),
-          ...(options?.handle === undefined ? {} : { handle: options.handle }),
-        }),
+    const { api, now } = yield* Ports;
+    return yield* createGroupChannelAction<GroupDetail, Ports>(
+      {
+        create: () =>
+          api.createGroup({
+            title,
+            memberIds,
+            ...(options?.kind === undefined ? {} : { kind: options.kind }),
+            ...(options?.description === undefined ? {} : { description: options.description }),
+            ...(options?.visibility === undefined ? {} : { visibility: options.visibility }),
+            ...(options?.handle === undefined ? {} : { handle: options.handle }),
+          }),
+        refreshAndLocate: (detail) => repaintCreatedGroup(ctx, api, now, detail),
+        open: (chatJid) => openCreatedGroup(ctx, chatJid),
+        requireRow: true,
+        result: (chatJid) => chatJid ?? '',
+      },
       'the new group did not appear in the chat list',
     );
   });
@@ -359,13 +384,16 @@ export const createGroup = (
 export const leaveChannel = (ctx: StoreCtx, chatId: string): Effect.Effect<void, unknown, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
-    const groupId = ctx.groupIds.get(chatId);
-    const me = ctx.get().me;
-    if (groupId === undefined || me === undefined) {
-      return yield* Effect.fail(new Error('This channel is not available yet.'));
-    }
-    yield* fromPromise(() => api.removeGroupMember(groupId, me.id));
-    yield* refreshChatsOrThrow(ctx);
+    yield* leaveChannelAction(
+      {
+        groupIdFor: (chatId) => ctx.groupIds.get(chatId),
+        currentUserId: () => ctx.get().me?.id,
+        removeMember: (groupId, userId) =>
+          fromPromise(() => api.removeGroupMember(groupId, userId)),
+      },
+      refreshChatsOrThrow(ctx),
+      chatId,
+    );
   });
 
 // T-0124: promote/demote through the role route (owner only). The detail
@@ -381,33 +409,13 @@ export const changeChannelRole = (
 ): Effect.Effect<void, unknown, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
-    const { groupId, domain } = yield* resolveGroup(
-      ctx,
-      ctx.groupIds.get(chatId),
+    yield* changeGroupCore<GroupDetail, Ports>(
+      groupChangeStore(ctx, ctx.groupIds.get(chatId)),
+      chatId,
       'This channel is not available yet.',
+      (groupId) => api.changeGroupMemberRole(groupId, userId, role),
+      true,
     );
-    const detail = yield* fromPromise(() => api.changeGroupMemberRole(groupId, userId, role));
-    applyGroupDetail(ctx, chatId, detail, domain);
-    yield* refreshChatsOrThrow(ctx);
-  });
-
-// A group call whose answer is the new detail: resolve the group of the chat,
-// call the route, repaint the detail, and optionally refresh the list.
-const changeGroup = (
-  ctx: StoreCtx,
-  chatId: string,
-  groupId: string | undefined,
-  notAvailable: string,
-  call: (groupId: string) => Promise<GroupDetail>,
-  refreshList: boolean,
-): Effect.Effect<void, unknown, Ports> =>
-  Effect.gen(function* () {
-    const resolved = yield* resolveGroup(ctx, groupId, notAvailable);
-    const detail = yield* fromPromise(() => call(resolved.groupId));
-    applyGroupDetail(ctx, chatId, detail, resolved.domain);
-    if (refreshList) {
-      yield* refreshChatsOrThrow(ctx);
-    }
   });
 
 export const setMembersCanCreateTopics = (
@@ -417,10 +425,9 @@ export const setMembersCanCreateTopics = (
 ): Effect.Effect<void, unknown, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
-    yield* changeGroup(
-      ctx,
+    yield* changeGroupCore<GroupDetail, Ports>(
+      groupChangeStore(ctx, groupIdOf(ctx, chatId)),
       chatId,
-      groupIdOf(ctx, chatId),
       'This group is not available yet.',
       (groupId) => api.setMembersCanCreateTopics(groupId, allowed),
       false,
@@ -436,10 +443,9 @@ export const setGroupBackground = (
 ): Effect.Effect<void, unknown, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
-    yield* changeGroup(
-      ctx,
+    yield* changeGroupCore<GroupDetail, Ports>(
+      groupChangeStore(ctx, groupIdOf(ctx, chatId)),
       chatId,
-      groupIdOf(ctx, chatId),
       'This group is not available yet.',
       (groupId) => api.setGroupBackground(groupId, background),
       false,
@@ -455,10 +461,9 @@ export const setGroupListener = (
 ): Effect.Effect<void, unknown, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
-    yield* changeGroup(
-      ctx,
+    yield* changeGroupCore<GroupDetail, Ports>(
+      groupChangeStore(ctx, groupIdOf(ctx, chatId)),
       chatId,
-      groupIdOf(ctx, chatId),
       'This group is not available yet.',
       (groupId) => api.setGroupListener(groupId, input),
       false,
@@ -475,10 +480,9 @@ export const setGroupVisibility = (
 ): Effect.Effect<void, unknown, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
-    yield* changeGroup(
-      ctx,
+    yield* changeGroupCore<GroupDetail, Ports>(
+      groupChangeStore(ctx, groupIdOf(ctx, chatId)),
       chatId,
-      groupIdOf(ctx, chatId),
       'This group is not available yet.',
       (groupId) => api.setGroupVisibility(groupId, input),
       true,
@@ -495,11 +499,14 @@ export const joinPublicGroup = (
 ): Effect.Effect<string | undefined, unknown, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
-    yield* fromPromise(() => api.joinPublicGroup(groupId));
-    yield* refreshChatsOrThrow(ctx);
-    return ctx
-      .get()
-      .chats.find((entry) => entry.groupId === groupId && entry.topic?.isGeneral !== false)?.id;
+    return yield* joinPublicGroupAction(
+      ctx,
+      {
+        join: (id) => api.joinPublicGroup(id),
+        refreshList: () => refreshChatsOrThrow(ctx),
+      },
+      groupId,
+    );
   });
 
 export const addGroupAi = (
@@ -509,10 +516,9 @@ export const addGroupAi = (
 ): Effect.Effect<void, unknown, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
-    yield* changeGroup(
-      ctx,
+    yield* changeGroupCore<GroupDetail, Ports>(
+      groupChangeStore(ctx, ctx.groupIds.get(chatId)),
       chatId,
-      ctx.groupIds.get(chatId),
       'This group is not available yet.',
       (groupId) => api.addGroupAi(groupId, aiId),
       false,
@@ -526,10 +532,9 @@ export const removeGroupAi = (
 ): Effect.Effect<void, unknown, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
-    yield* changeGroup(
-      ctx,
+    yield* changeGroupCore<GroupDetail, Ports>(
+      groupChangeStore(ctx, ctx.groupIds.get(chatId)),
       chatId,
-      ctx.groupIds.get(chatId),
       'This group is not available yet.',
       (groupId) => api.removeGroupAi(groupId, aiId),
       false,
@@ -539,6 +544,5 @@ export const removeGroupAi = (
 export const createInvite = (): Effect.Effect<string, unknown, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
-    const invite = yield* fromPromise(() => api.createInvite());
-    return invite.url;
+    return yield* createInviteAction(() => api.createInvite());
   });

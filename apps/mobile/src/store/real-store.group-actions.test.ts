@@ -2,6 +2,7 @@ import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ChatEntry, GroupDetail } from '../lib/chat-api';
+import type { GroupsApi } from '../lib/groups-api';
 import type {
   CreateTopicInput,
   PatchTopicInput,
@@ -105,21 +106,38 @@ function fakeTopics(overrides: Partial<TopicsApi> = {}): TopicsApi {
   } as unknown as TopicsApi;
 }
 
-function setup(overrides: Partial<RealStoreDeps> = {}, topics: Partial<TopicsApi> = {}) {
+function fakeGroups(overrides: Partial<GroupsApi> = {}): GroupsApi {
+  return {
+    createChannel: vi.fn(async () => ({ id: 'g2' })),
+    createGroup: vi.fn(async () => ({ id: 'g2' })),
+    listGroupMembers: vi.fn(async () => []),
+    changeGroupMemberRole: vi.fn(async () => {}),
+    removeGroupMember: vi.fn(async () => {}),
+    ...overrides,
+  } as unknown as GroupsApi;
+}
+
+function setup(
+  overrides: Partial<RealStoreDeps> = {},
+  topics: Partial<TopicsApi> = {},
+  groups: Partial<GroupsApi> = {},
+) {
   const api = fakeApi({
     getChats: vi.fn(async () => [groupEntry([topic(), bugTopic(), newTopic()])]),
     getGroup: vi.fn(async () => groupDetail()),
   });
   const topicsApi = fakeTopics(topics);
+  const groupsApi = fakeGroups(groups);
   const store = createRealChatStore({
     api,
     topicsApi,
+    groupsApi,
     appState: fakeAppState(),
     openDrafts: () => () => {},
     createXmpp: () => createFakeXmppCore(),
     ...overrides,
   });
-  return { store, api, topicsApi };
+  return { store, api, topicsApi, groupsApi };
 }
 
 describe('mobile store group actions (T-0921)', () => {
@@ -218,6 +236,107 @@ describe('mobile store group actions (T-0921)', () => {
     await expect(
       store.getState().setTopicRoles(BUG, { roleIds: ['r1'], approverRoleId: null }),
     ).rejects.toThrow('Could not save the roles.');
+    store.getState().stop();
+  });
+});
+
+describe('mobile store group and channel actions (T-0923)', () => {
+  it('creates a channel and returns its group id', async () => {
+    const createChannel = vi.fn(async () => ({ id: 'g2' }));
+    const { store, groupsApi } = setup({}, {}, { createChannel });
+    store.getState().start();
+    await flush();
+
+    const id = await store.getState().createChannel({ title: 'New channel' });
+
+    expect(groupsApi.createChannel).toHaveBeenCalledWith({ title: 'New channel' });
+    expect(id).toBe('g2');
+    store.getState().stop();
+  });
+
+  it('creates a group and returns its group id', async () => {
+    const createGroup = vi.fn(async () => ({ id: 'g2' }));
+    const { store, groupsApi } = setup({}, {}, { createGroup });
+    store.getState().start();
+    await flush();
+
+    const id = await store.getState().createGroup({ title: 'New group', memberIds: ['u-ana'] });
+
+    expect(groupsApi.createGroup).toHaveBeenCalledWith({
+      title: 'New group',
+      memberIds: ['u-ana'],
+    });
+    expect(id).toBe('g2');
+    store.getState().stop();
+  });
+
+  it('rejects a channel with an empty title', async () => {
+    const { store, groupsApi } = setup();
+    store.getState().start();
+    await flush();
+
+    await expect(store.getState().createChannel({ title: '   ' })).rejects.toThrow(
+      'Enter a channel name.',
+    );
+    expect(groupsApi.createChannel).not.toHaveBeenCalled();
+    store.getState().stop();
+  });
+
+  it('leaves a channel through the member route', async () => {
+    const removeGroupMember = vi.fn(async () => {});
+    const { store, groupsApi } = setup({}, {}, { removeGroupMember });
+    store.getState().start();
+    await flush();
+
+    await store.getState().leaveChannel(BUG);
+
+    expect(groupsApi.removeGroupMember).toHaveBeenCalledWith('g1', 'u-me');
+    store.getState().stop();
+  });
+
+  it('changes a channel role and reloads the detail', async () => {
+    const changeGroupMemberRole = vi.fn(async () => {});
+    const { store, groupsApi } = setup({}, {}, { changeGroupMemberRole });
+    store.getState().start();
+    await flush();
+
+    await store.getState().changeChannelRole(GENERAL, 'u-ana', 'admin');
+
+    expect(groupsApi.changeGroupMemberRole).toHaveBeenCalledWith('g1', 'u-ana', 'admin');
+    store.getState().stop();
+  });
+
+  it('archives a topic and lists its members and AIs', async () => {
+    const archiveTopic = vi.fn(
+      async (id: string) => topic({ id, archived: true }) as unknown as Topic,
+    );
+    const listTopicMembers = vi.fn(async () => []);
+    const listTopicAis = vi.fn(async () => []);
+    const { store } = setup({}, { archiveTopic, listTopicMembers, listTopicAis });
+    store.getState().start();
+    await flush();
+
+    await store.getState().archiveTopic(BUG);
+    await store.getState().listTopicMembers(BUG);
+    await store.getState().listTopicAis(BUG);
+
+    expect(archiveTopic).toHaveBeenCalledWith('t-bug');
+    expect(listTopicMembers).toHaveBeenCalledWith('t-bug');
+    expect(listTopicAis).toHaveBeenCalledWith('t-bug');
+    store.getState().stop();
+  });
+
+  it('shows the error a failed group action throws', async () => {
+    const createChannel = vi.fn(async () => {
+      throw new Error('Could not create the channel.');
+    });
+    const { store } = setup({}, {}, { createChannel });
+    store.getState().start();
+    await flush();
+
+    await expect(store.getState().createChannel({ title: 'New channel' })).rejects.toThrow(
+      'Could not create the channel.',
+    );
     store.getState().stop();
   });
 });

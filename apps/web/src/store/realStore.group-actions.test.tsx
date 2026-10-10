@@ -212,3 +212,146 @@ describe('web store group actions (T-0921)', () => {
     store.getState().stop();
   });
 });
+
+describe('web store group and channel actions (T-0923)', () => {
+  const NEW_GROUP = 'new-group@rooms.zilar.test';
+
+  function secondGroup(): ChatEntry {
+    return groupEntry({ groupId: 'g2', chatJid: NEW_GROUP, title: 'New', topics: [] });
+  }
+
+  it('creates a channel, joins its room and returns its JID', async () => {
+    const createGroup = vi.fn(async () => ({ ...groupDetail(), id: 'g2', title: 'New' }));
+    const { store, api, xmpp } = await setup({
+      createGroup,
+      getChats: vi.fn(async () => [groupEntry(), secondGroup()]),
+    });
+
+    const id = await store.getState().createChannel('New', ['u-ana'], undefined, undefined);
+    await flush();
+
+    expect(api.createGroup).toHaveBeenCalledWith({
+      title: 'New',
+      memberIds: ['u-ana'],
+      kind: 'channel',
+    });
+    expect(id).toBe(NEW_GROUP);
+    expect(xmpp.joined).toContain(NEW_GROUP);
+    store.getState().stop();
+  });
+
+  it('creates a group and returns its JID', async () => {
+    const createGroup = vi.fn(async () => ({ ...groupDetail(), id: 'g2', title: 'New' }));
+    const { store, api } = await setup({
+      createGroup,
+      getChats: vi.fn(async () => [groupEntry(), secondGroup()]),
+    });
+
+    const id = await store.getState().createGroup('New', ['u-ana'], undefined);
+
+    expect(api.createGroup).toHaveBeenCalledWith({ title: 'New', memberIds: ['u-ana'] });
+    expect(id).toBe(NEW_GROUP);
+    store.getState().stop();
+  });
+
+  it('fails when the created group did not appear in the list', async () => {
+    const createGroup = vi.fn(async () => ({ ...groupDetail(), id: 'g2', title: 'New' }));
+    const { store } = await setup({ createGroup });
+
+    await expect(store.getState().createGroup('New', [], undefined)).rejects.toThrow(
+      'the new group did not appear in the chat list',
+    );
+    store.getState().stop();
+  });
+
+  it('leaves a channel through the member route', async () => {
+    const removeGroupMember = vi.fn(async () => groupDetail());
+    const { store, api } = await setup({ removeGroupMember });
+
+    await store.getState().leaveChannel(GENERAL);
+
+    expect(api.removeGroupMember).toHaveBeenCalledWith('g1', 'u-me');
+    store.getState().stop();
+  });
+
+  it('changes a channel role', async () => {
+    const changeGroupMemberRole = vi.fn(async () => groupDetail());
+    const { store, api } = await setup({ changeGroupMemberRole });
+
+    await store.getState().changeChannelRole(GENERAL, 'u-ana', 'admin');
+
+    expect(api.changeGroupMemberRole).toHaveBeenCalledWith('g1', 'u-ana', 'admin');
+    store.getState().stop();
+  });
+
+  it('flips the four group settings', async () => {
+    const setMembersCanCreateTopics = vi.fn(async () => groupDetail());
+    const setGroupBackground = vi.fn(async () => groupDetail());
+    const setGroupListener = vi.fn(async () => groupDetail());
+    const setGroupVisibility = vi.fn(async () => groupDetail());
+    const { store, api } = await setup({
+      setMembersCanCreateTopics,
+      setGroupBackground,
+      setGroupListener,
+      setGroupVisibility,
+    });
+    const background = { backgroundPreset: null, backgroundImageId: null, backgroundDim: null };
+
+    await store.getState().setMembersCanCreateTopics(GENERAL, true);
+    await store.getState().setGroupBackground(GENERAL, background);
+    await store.getState().setGroupListener(GENERAL, { listenerEnabled: true });
+    await store.getState().setGroupVisibility(GENERAL, { visibility: 'public', handle: 'team' });
+
+    expect(api.setMembersCanCreateTopics).toHaveBeenCalledWith('g1', true);
+    expect(api.setGroupBackground).toHaveBeenCalledWith('g1', background);
+    expect(api.setGroupListener).toHaveBeenCalledWith('g1', { listenerEnabled: true });
+    expect(api.setGroupVisibility).toHaveBeenCalledWith('g1', {
+      visibility: 'public',
+      handle: 'team',
+    });
+    store.getState().stop();
+  });
+
+  it('adds and removes a group AI', async () => {
+    const addGroupAi = vi.fn(async () => groupDetail());
+    const removeGroupAi = vi.fn(async () => groupDetail());
+    const { store, api } = await setup({ addGroupAi, removeGroupAi });
+
+    await store.getState().addGroupAi(GENERAL, 'ai-1');
+    await store.getState().removeGroupAi(GENERAL, 'ai-1');
+
+    expect(api.addGroupAi).toHaveBeenCalledWith('g1', 'ai-1');
+    expect(api.removeGroupAi).toHaveBeenCalledWith('g1', 'ai-1');
+    store.getState().stop();
+  });
+
+  it('joins a public group and returns its General chat id', async () => {
+    const joinPublicGroup = vi.fn(async () => ({ groupId: 'g1', alreadyMember: false }));
+    const { store, api } = await setup({ joinPublicGroup });
+
+    const id = await store.getState().joinPublicGroup('g1');
+
+    expect(api.joinPublicGroup).toHaveBeenCalledWith('g1');
+    expect(id).toBe(GENERAL);
+    store.getState().stop();
+  });
+
+  it('creates an invite and returns its URL', async () => {
+    const { store } = await setup();
+
+    await expect(store.getState().createInvite()).resolves.toBe('http://x/invite/c');
+    store.getState().stop();
+  });
+
+  it('shows the error a failed group action throws', async () => {
+    const changeGroupMemberRole = vi.fn(async () => {
+      throw new Error('Could not change the role.');
+    });
+    const { store } = await setup({ changeGroupMemberRole });
+
+    await expect(store.getState().changeChannelRole(GENERAL, 'u-ana', 'admin')).rejects.toThrow(
+      'Could not change the role.',
+    );
+    store.getState().stop();
+  });
+});

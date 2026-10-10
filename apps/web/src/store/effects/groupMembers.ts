@@ -54,8 +54,8 @@ export function applyGroupDetail(
   }));
 }
 
-// The shared loading set also serves chat-keyed loads; a group load keys its
-// mark so a group id can never collide with a chat id (T-0920 follow-up).
+// The in-flight marks of the group-detail loads, keyed so a group id can never
+// collide with a chat id.
 const groupKey = (groupId: string): string => `group:${groupId}`;
 
 /**

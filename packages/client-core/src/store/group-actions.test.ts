@@ -2,8 +2,13 @@ import type { ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  changeGroup,
   changeTopic,
+  createGroupChannel,
+  createInvite,
   createTopic,
+  joinPublicGroup,
+  leaveChannel,
   leaveTopic,
   topicIdFor,
   type GroupActionStore,
@@ -14,7 +19,7 @@ import { testCtx } from './test-ctx';
 const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.runPromise(effect as Effect.Effect<A, E, never>);
 
-function groupRow(chatId: string, topicId: string): ChatSummary {
+function groupRow(chatId: string, topicId: string, isGeneral = false): ChatSummary {
   return {
     id: chatId,
     kind: 'group',
@@ -27,7 +32,7 @@ function groupRow(chatId: string, topicId: string): ChatSummary {
       kind: 'chat',
       status: 'open',
       visibility: 'public',
-      isGeneral: false,
+      isGeneral,
       archived: false,
       owner: null,
       linkUrl: null,
@@ -268,5 +273,203 @@ describe('leaveTopic (core)', () => {
     ).rejects.toThrow('This topic is not available yet.');
 
     expect(removeMember).not.toHaveBeenCalled();
+  });
+});
+
+describe('leaveChannel (core)', () => {
+  it('removes the caller through the route and refreshes the list', async () => {
+    const removeMember = vi.fn(() => Effect.void);
+    const refreshList = vi.fn(() => Effect.void);
+
+    await run(
+      leaveChannel(
+        { groupIdFor: () => 'g1', currentUserId: () => 'u-me', removeMember },
+        refreshList(),
+        GENERAL,
+      ),
+    );
+
+    expect(removeMember).toHaveBeenCalledWith('g1', 'u-me');
+    expect(refreshList).toHaveBeenCalled();
+  });
+
+  it('fails before removing when the group is unknown', async () => {
+    const removeMember = vi.fn(() => Effect.void);
+
+    await expect(
+      run(
+        leaveChannel(
+          { groupIdFor: () => undefined, currentUserId: () => 'u-me', removeMember },
+          Effect.void,
+          GENERAL,
+        ),
+      ),
+    ).rejects.toThrow('This channel is not available yet.');
+
+    expect(removeMember).not.toHaveBeenCalled();
+  });
+
+  it('fails before removing when no user is signed in', async () => {
+    const removeMember = vi.fn(() => Effect.void);
+
+    await expect(
+      run(
+        leaveChannel(
+          { groupIdFor: () => 'g1', currentUserId: () => undefined, removeMember },
+          Effect.void,
+          GENERAL,
+        ),
+      ),
+    ).rejects.toThrow('This channel is not available yet.');
+
+    expect(removeMember).not.toHaveBeenCalled();
+  });
+});
+
+describe('changeGroup (core)', () => {
+  it('resolves the group, applies the detail and refreshes the list', async () => {
+    const call = vi.fn(async () => ({ id: 'g1' }));
+    const applyDetail = vi.fn();
+    const refreshList = vi.fn(() => Effect.void);
+
+    await run(
+      changeGroup(
+        {
+          resolve: () => ({ groupId: 'g1', domain: 'zilar.test' }),
+          applyDetail,
+          refreshList,
+        },
+        GENERAL,
+        'This group is not available yet.',
+        call,
+        true,
+      ),
+    );
+
+    expect(call).toHaveBeenCalledWith('g1');
+    expect(applyDetail).toHaveBeenCalledWith(GENERAL, { id: 'g1' }, 'zilar.test');
+    expect(refreshList).toHaveBeenCalled();
+  });
+
+  it('reloads the detail instead of applying a response and skips the list', async () => {
+    const reloadDetail = vi.fn(() => Effect.void);
+    const refreshList = vi.fn(() => Effect.void);
+
+    await run(
+      changeGroup<void>(
+        {
+          resolve: () => ({ groupId: 'g1', domain: '' }),
+          applyDetail: () => {},
+          reloadDetail,
+          refreshList,
+        },
+        GENERAL,
+        'This channel is not available yet.',
+        async () => {},
+        false,
+      ),
+    );
+
+    expect(reloadDetail).toHaveBeenCalledWith('g1');
+    expect(refreshList).not.toHaveBeenCalled();
+  });
+
+  it('fails when the group cannot be resolved', async () => {
+    const call = vi.fn(async () => ({ id: 'g1' }));
+
+    await expect(
+      run(
+        changeGroup(
+          { resolve: () => undefined, applyDetail: () => {}, refreshList: () => Effect.void },
+          GENERAL,
+          'This group is not available yet.',
+          call,
+          false,
+        ),
+      ),
+    ).rejects.toThrow('This group is not available yet.');
+
+    expect(call).not.toHaveBeenCalled();
+  });
+});
+
+describe('createGroupChannel (core)', () => {
+  it('creates, locates the row, opens it and answers the result', async () => {
+    const open = vi.fn(() => Effect.void);
+
+    const id = await run(
+      createGroupChannel(
+        {
+          create: async () => ({ id: 'g2' }),
+          refreshAndLocate: () => Effect.succeed('g2@rooms.zilar.test'),
+          open,
+          requireRow: true,
+          result: (chatJid) => chatJid ?? '',
+        },
+        'the new group did not appear in the chat list',
+      ),
+    );
+
+    expect(open).toHaveBeenCalledWith('g2@rooms.zilar.test');
+    expect(id).toBe('g2@rooms.zilar.test');
+  });
+
+  it('answers the group id and opens nothing (mobile)', async () => {
+    const open = vi.fn(() => Effect.void);
+
+    const id = await run(
+      createGroupChannel(
+        {
+          create: async () => ({ id: 'g2' }),
+          refreshAndLocate: () => Effect.succeed(undefined),
+          open,
+          requireRow: false,
+          result: (_chatJid, detail) => detail.id,
+        },
+        'the new group did not appear in the chat list',
+      ),
+    );
+
+    expect(open).not.toHaveBeenCalled();
+    expect(id).toBe('g2');
+  });
+
+  it('fails when the new row is missing and requireRow is true (web)', async () => {
+    await expect(
+      run(
+        createGroupChannel(
+          {
+            create: async () => ({ id: 'g2' }),
+            refreshAndLocate: () => Effect.succeed(undefined),
+            requireRow: true,
+            result: (chatJid) => chatJid ?? '',
+          },
+          'the new group did not appear in the chat list',
+        ),
+      ),
+    ).rejects.toThrow('the new group did not appear in the chat list');
+  });
+});
+
+describe('joinPublicGroup (core)', () => {
+  it('joins and answers the General chat id', async () => {
+    const general = groupRow(GENERAL, 't-general', true);
+    const { ctx } = testCtx({ state: { chats: [general] } });
+    const join = vi.fn(async () => {});
+    const refreshList = vi.fn(() => Effect.void);
+
+    const id = await run(joinPublicGroup(ctx, { join, refreshList }, 'g1'));
+
+    expect(join).toHaveBeenCalledWith('g1');
+    expect(refreshList).toHaveBeenCalled();
+    expect(id).toBe(GENERAL);
+  });
+});
+
+describe('createInvite (core)', () => {
+  it('answers the invite url', async () => {
+    const create = vi.fn(async () => ({ url: 'https://x/invite/c' }));
+
+    expect(await run(createInvite(create))).toBe('https://x/invite/c');
   });
 });

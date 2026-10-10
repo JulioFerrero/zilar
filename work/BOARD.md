@@ -942,7 +942,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0911](T-0911-test-sleeps-followup.md) | Test follow-up from T-0899: the remaining real sleeps and 10 ms settles in web and mobile tests use fake timer | 2026-10-10 |
 | [T-0912](T-0912-store-core-t6b-history.md) | Store core T6b: web history (first page, older pages, open at message) in packages/client-core, tests first, w | 2026-10-10 |
 | [T-0914](T-0914-store-core-t7a-mobile-incoming.md) | Store core T7a: the mobile store on the core incoming events, message actions and reads (history stays for T7b | 2026-10-10 |
-| [T-0923](T-0923-store-core-group-actions-2.md) | Store core phase 2c: channel and group actions in core | in-progress | deepseek-flash | T-0921 | phase 4.3 |
 | [T-0918](T-0918-store-core-t9-mobile-lifecycle.md) | Store core T9: mobile on core polling and lifecycle, connect retry (Q3) | in-progress | deepseek-flash | T-0915, T-0917 | phase 4.3, live |
 | [T-0916](T-0916-core-echo-refresh.md) | Core echo re-applies pending edits and reactions: an edit made between the ack and the echo keeps its new text | 2026-10-10 |
 | [T-0915](T-0915-store-core-t8-lifecycle.md) | Store core T8: polling, drafts and lifecycle (boot, connect with retry, resume, stop/reset) in packages/client | 2026-10-10 |
@@ -951,3 +950,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0919](T-0919-store-core-pins-prefs-folders.md) | Store core phase 2: pins, chat prefs and folders in packages/client-core, both stores on them (one set of pin  | 2026-10-10 |
 | [T-0920](T-0920-store-core-group-detail.md) | Store core phase 2a: one GroupDetail type, a per-group detail cache and applyTopicRow in packages/client-core, | 2026-10-10 |
 | [T-0921](T-0921-store-core-group-actions.md) | Store core phase 2b: the group, topic and channel actions (create, patch, members, AIs, roles, leave, settings | 2026-10-10 |
+| [T-0923](T-0923-store-core-group-actions-2.md) | Store core phase 2c: the channel and group actions (create, leave, roles, settings, join, AIs, invite, archive | 2026-10-10 |

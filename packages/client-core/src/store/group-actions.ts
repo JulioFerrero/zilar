@@ -1,8 +1,10 @@
-// Group and topic actions shared by both stores (phase 2b): the topic routes
-// (create, patch, AI and member changes, roles) and the leave flow. Where the
-// two apps differ (web opens the new topic, mobile returns its group id; web
-// re-checks a gone topic, mobile does not) a small app adapter keeps each
-// app's behaviour while the sequence and the row repaint live in one place.
+// Group and topic actions shared by both stores: the topic routes (create,
+// patch, AI and member changes, roles) and the leave flow from phase 2b, and
+// the channel, group-detail and create/join/invite actions from phase 2c
+// (T-0923). Where the two apps differ (web opens the new topic, mobile returns
+// its group id; web re-checks a gone topic, mobile does not) a small app
+// adapter keeps each app's behaviour while the sequence and the repaint live
+// in one place.
 import { Cause, Effect, Exit } from 'effect';
 import { fromPromise, type CoreCtx } from './ctx';
 import { applyTopicRow, type TopicRowStore } from './groups';
@@ -151,5 +153,159 @@ export function leaveTopic<R = never>(
       }
     }
     return yield* Effect.fail(error);
+  });
+}
+
+/** The app half of `leaveChannel`: how to resolve the group and remove the caller. */
+export interface LeaveChannelStore<R = never> {
+  /** The group id of a chat row, from the store's own remembered map. */
+  groupIdFor(chatId: string): string | undefined;
+  /** The signed-in user's id, or undefined before sign-in. */
+  currentUserId(): string | undefined;
+  /** Removes the caller through the app's remove-member action. */
+  removeMember(groupId: string, userId: string): Effect.Effect<void, unknown, R>;
+}
+
+/**
+ * Leaves a channel through the app's member route: resolve the group and the
+ * caller, remove them, then refresh the chat list with the app's own rules.
+ */
+export function leaveChannel<R = never>(
+  store: LeaveChannelStore<R>,
+  refreshList: Effect.Effect<void, unknown, R>,
+  chatId: string,
+): Effect.Effect<void, unknown, R> {
+  return Effect.gen(function* () {
+    const groupId = store.groupIdFor(chatId);
+    const userId = store.currentUserId();
+    if (groupId === undefined || userId === undefined) {
+      return yield* Effect.fail(new Error('This channel is not available yet.'));
+    }
+    yield* store.removeMember(groupId, userId);
+    yield* refreshList;
+  });
+}
+
+/** The group of one chat and the domain its member jids use. */
+export interface GroupTarget {
+  readonly groupId: string;
+  readonly domain: string;
+}
+
+/** The app half of `changeGroup`. */
+export interface ChangeGroupStore<D, R = never> {
+  /** The group of a chat and the domain member jids use, or undefined. */
+  resolve(chatId: string): GroupTarget | undefined;
+  /** Repaints a group's detail from the server's answer. */
+  applyDetail(chatId: string, detail: D, domain: string): void;
+  /** Re-reads the group detail when the route answers nothing (mobile). */
+  reloadDetail?(groupId: string): Effect.Effect<void, unknown, R>;
+  /** Re-reads the chat list with the app's own rules. */
+  refreshList(): Effect.Effect<void, unknown, R>;
+}
+
+/**
+ * Runs a group route that repaints the group's detail: resolve the group, call
+ * the route, apply the answer (or re-read the detail), then optionally refresh
+ * the list. Web's settings and channel role, mobile's channel role.
+ */
+export function changeGroup<D, R = never>(
+  store: ChangeGroupStore<D, R>,
+  chatId: string,
+  notAvailable: string,
+  call: (groupId: string) => Promise<D>,
+  refresh: boolean,
+): Effect.Effect<void, unknown, R> {
+  return Effect.gen(function* () {
+    const target = store.resolve(chatId);
+    if (target === undefined) {
+      return yield* Effect.fail(new Error(notAvailable));
+    }
+    const detail = yield* fromPromise(() => call(target.groupId));
+    store.applyDetail(chatId, detail, target.domain);
+    if (store.reloadDetail !== undefined) {
+      yield* store.reloadDetail(target.groupId);
+    }
+    if (refresh) {
+      yield* store.refreshList();
+    }
+  });
+}
+
+/** The app half of `createGroupChannel`. */
+export interface CreateGroupChannelStore<D, R = never> {
+  /** Calls the app's create route with the app's own input rules. */
+  create(): Promise<D>;
+  /**
+   * Repaints the chat list after the create and answers the new chat's JID
+   * (web), or repaints quietly and answers undefined (mobile).
+   */
+  refreshAndLocate(detail: D): Effect.Effect<string | undefined, unknown, R>;
+  /** Joins the new chat's room and opens it (web); mobile has none. */
+  open?(chatJid: string): Effect.Effect<void, unknown, R>;
+  /** True to fail when the new row is missing from the list (web). */
+  requireRow: boolean;
+  /** The answer: the new chat JID (web) or the group id (mobile). */
+  result(chatJid: string | undefined, detail: D): string;
+}
+
+/**
+ * Creates a group or a channel: call the app's route, repaint the list, open
+ * the new chat and answer its id. Web opens the chat and answers its JID,
+ * mobile answers the group id and opens nothing (R15).
+ */
+export function createGroupChannel<D, R = never>(
+  store: CreateGroupChannelStore<D, R>,
+  notFound: string,
+): Effect.Effect<string, unknown, R> {
+  return Effect.gen(function* () {
+    const detail = yield* fromPromise(() => store.create());
+    const chatJid = yield* store.refreshAndLocate(detail);
+    if (chatJid === undefined && store.requireRow) {
+      return yield* Effect.fail(new Error(notFound));
+    }
+    if (chatJid !== undefined && store.open !== undefined) {
+      yield* store.open(chatJid);
+    }
+    return store.result(chatJid, detail);
+  });
+}
+
+/** The app half of `joinPublicGroup`. */
+export interface JoinPublicGroupStore<R = never> {
+  /** Joins the public group through the app's route. */
+  join(groupId: string): Promise<unknown>;
+  /** Re-reads the chat list with the app's own rules. */
+  refreshList(): Effect.Effect<void, unknown, R>;
+}
+
+/**
+ * Joins a public group, refreshes the list and answers the General chat id
+ * (undefined while the list has not caught up). Web-only today.
+ */
+export function joinPublicGroup<R = never>(
+  ctx: CoreCtx,
+  store: JoinPublicGroupStore<R>,
+  groupId: string,
+): Effect.Effect<string | undefined, unknown, R> {
+  return Effect.gen(function* () {
+    yield* fromPromise(() => store.join(groupId));
+    yield* store.refreshList();
+    return ctx
+      .get()
+      .chats.find((entry) => entry.groupId === groupId && entry.topic?.isGeneral !== false)?.id;
+  });
+}
+
+/**
+ * Creates a one-shot invite link and answers its URL. Web-only today: mobile
+ * creates its invites from the invite sheet's own client.
+ */
+export function createInvite(
+  create: () => Promise<{ readonly url: string }>,
+): Effect.Effect<string, unknown> {
+  return Effect.gen(function* () {
+    const invite = yield* fromPromise(() => create());
+    return invite.url;
   });
 }

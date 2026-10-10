@@ -1,10 +1,14 @@
 import { Effect } from 'effect';
 import {
   applyTopicRow as applyTopicRowCore,
+  changeGroup as changeGroupCore,
   changeTopic as changeTopicCore,
+  createGroupChannel as createGroupChannelCore,
   createTopic as createTopicCore,
   ensureGroupDetail as ensureGroupDetailCore,
+  leaveChannel as leaveChannelCore,
   leaveTopic as leaveTopicCore,
+  topicIdFor as topicIdForCore,
   type GroupActionStore,
   type GroupDetailStore,
   type TopicRowStore,
@@ -77,7 +81,6 @@ export interface Groups {
 export function makeGroups(ctx: StoreCtx): Groups {
   const { ports, get, set, s, h, fx } = ctx;
   const {
-    groupIds,
     groupDetails,
     loadingGroupDetails,
     groupRolesById,
@@ -252,19 +255,6 @@ export function makeGroups(ctx: StoreCtx): Groups {
     );
   };
 
-  // The topic id + group id of the topic that owns `chatId`. Fails for a
-  // chat that is not a topic yet (e.g. a legacy group row).
-  const topicIdFor = (chatId: string): Effect.Effect<{ topicId: string; groupId: string }, Error> =>
-    Effect.suspend(() => {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      const topicId = chat?.topic?.id;
-      const groupId = chat?.groupId ?? groupIds.get(chatId);
-      if (topicId === undefined || groupId === undefined) {
-        return Effect.fail(new Error('This topic is not available yet.'));
-      }
-      return Effect.succeed({ topicId, groupId });
-    });
-
   // A best-effort refresh of the chat list: its failure is dropped.
   const refreshQuietly: Effect.Effect<void, never, Ports> = Effect.suspend(() =>
     orElse(fx.refreshChats, undefined),
@@ -329,7 +319,7 @@ export function makeGroups(ctx: StoreCtx): Groups {
     archiveTopic: (chatId) =>
       ctx.run(
         Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
+          const { topicId } = yield* topicIdForCore(ctx.coreCtx, actionStore(), chatId);
           const topic = yield* lift(() => topics.archiveTopic(topicId));
           yield* orElse(applyTopicRow(topic), undefined);
           yield* refreshQuietly;
@@ -374,14 +364,14 @@ export function makeGroups(ctx: StoreCtx): Groups {
     listTopicMembers: (chatId) =>
       ctx.run(
         Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
+          const { topicId } = yield* topicIdForCore(ctx.coreCtx, actionStore(), chatId);
           return yield* lift(() => topics.listTopicMembers(topicId));
         }),
       ),
     listTopicAis: (chatId) =>
       ctx.run(
         Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
+          const { topicId } = yield* topicIdForCore(ctx.coreCtx, actionStore(), chatId);
           return yield* lift(() => topics.listTopicAis(topicId));
         }),
       ),
@@ -400,73 +390,82 @@ export function makeGroups(ctx: StoreCtx): Groups {
         }),
       ),
     // T-0144: channels share the chat-list flow with groups (the detail
-    // carries `kind`, the feed row paints the channel). Create refreshes
-    // the list and returns the new group id from the POST answer.
+    // carries `kind`, the feed row paints the channel). Create validates the
+    // input, refreshes the list and returns the new group id (R15).
     createChannel: (input) =>
       ctx.run(
-        Effect.gen(function* () {
-          const trimmed = input.title.trim();
-          if (trimmed === '') {
-            return yield* Effect.fail(new Error('Enter a channel name.'));
-          }
-          if (input.description !== undefined && input.description.length > 300) {
-            return yield* Effect.fail(new Error('The description must be at most 300 characters.'));
-          }
-          const created = yield* lift(() =>
-            groupsApi.createChannel({
-              title: trimmed,
-              ...(input.description === undefined || input.description.trim() === ''
-                ? {}
-                : { description: input.description.trim() }),
-              // T-0228: the public handle rides along trimmed; private creates
-              // send neither field.
-              ...(input.visibility === 'public' && input.handle !== undefined
-                ? { visibility: 'public' as const, handle: input.handle.trim() }
-                : {}),
-            }),
-          );
-          yield* refreshQuietly;
-          return created.id;
-        }),
+        createGroupChannelCore<{ id: string }, Ports>(
+          {
+            create: () => {
+              const trimmed = input.title.trim();
+              if (trimmed === '') {
+                throw new Error('Enter a channel name.');
+              }
+              if (input.description !== undefined && input.description.length > 300) {
+                throw new Error('The description must be at most 300 characters.');
+              }
+              return groupsApi.createChannel({
+                title: trimmed,
+                ...(input.description === undefined || input.description.trim() === ''
+                  ? {}
+                  : { description: input.description.trim() }),
+                // T-0228: the public handle rides along trimmed; private creates
+                // send neither field.
+                ...(input.visibility === 'public' && input.handle !== undefined
+                  ? { visibility: 'public' as const, handle: input.handle.trim() }
+                  : {}),
+              });
+            },
+            refreshAndLocate: () => refreshQuietly.pipe(Effect.as(undefined)),
+            requireRow: false,
+            result: (_chatJid, detail) => detail.id,
+          },
+          'the new channel did not appear in the chat list',
+        ),
       ),
-    // T-0214: creating a group mirrors the channel flow (trim the
-    // title, refresh the list, return the new group id from the POST
-    // answer). No `kind` goes over the wire: missing means group.
-    // T-0228: a public group carries the handle in the same step.
+    // T-0214: creating a group mirrors the channel flow (trim the title,
+    // refresh the list, return the new group id from the POST answer). No
+    // `kind` goes over the wire: missing means group. T-0228: a public group
+    // carries the handle in the same step.
     createGroup: (input) =>
       ctx.run(
-        Effect.gen(function* () {
-          const trimmed = input.title.trim();
-          if (trimmed === '') {
-            return yield* Effect.fail(new Error('Enter a group name.'));
-          }
-          const created = yield* lift(() =>
-            groupsApi.createGroup({
-              title: trimmed,
-              memberIds: input.memberIds,
-              ...(input.visibility === 'public' && input.handle !== undefined
-                ? { visibility: 'public' as const, handle: input.handle.trim() }
-                : {}),
-            }),
-          );
-          yield* refreshQuietly;
-          return created.id;
-        }),
+        createGroupChannelCore<{ id: string }, Ports>(
+          {
+            create: () => {
+              const trimmed = input.title.trim();
+              if (trimmed === '') {
+                throw new Error('Enter a group name.');
+              }
+              return groupsApi.createGroup({
+                title: trimmed,
+                memberIds: input.memberIds,
+                ...(input.visibility === 'public' && input.handle !== undefined
+                  ? { visibility: 'public' as const, handle: input.handle.trim() }
+                  : {}),
+              });
+            },
+            refreshAndLocate: () => refreshQuietly.pipe(Effect.as(undefined)),
+            requireRow: false,
+            result: (_chatJid, detail) => detail.id,
+          },
+          'the new group did not appear in the chat list',
+        ),
       ),
     // T-0144: leaving a channel removes the caller through the member
     // route, then refreshes the list (the row disappears); the caller
     // navigates away.
     leaveChannel: (chatId) =>
       ctx.run(
-        Effect.gen(function* () {
-          const groupId = h.groupIdForChat(chatId);
-          const me = get().me;
-          if (groupId === undefined || me?.id === undefined) {
-            return yield* Effect.fail(new Error('This channel is not available yet.'));
-          }
-          yield* lift(() => groupsApi.removeGroupMember(groupId, me.id));
-          yield* refreshQuietly;
-        }),
+        leaveChannelCore(
+          {
+            groupIdFor: (chatId) => h.groupIdForChat(chatId),
+            currentUserId: () => get().me?.id,
+            removeMember: (groupId, userId) =>
+              lift(() => groupsApi.removeGroupMember(groupId, userId)),
+          },
+          refreshQuietly,
+          chatId,
+        ),
       ),
     // T-0144: the members slice for the channel screen — the full audience
     // for managers, the owner/admins slice for subscribers (never the
@@ -480,16 +479,25 @@ export function makeGroups(ctx: StoreCtx): Groups {
     // admin rejects with 409 `channel_needs_admin`.
     changeChannelRole: (chatId, userId, role: ChannelMemberRole) =>
       ctx.run(
-        Effect.gen(function* () {
-          const groupId = h.groupIdForChat(chatId);
-          if (groupId === undefined) {
-            return yield* Effect.fail(new Error('This channel is not available yet.'));
-          }
-          yield* lift(() => groupsApi.changeGroupMemberRole(groupId, userId, role));
-          yield* ensureGroupDetail(groupId, true);
-          bumpRevision();
-          yield* refreshQuietly;
-        }),
+        changeGroupCore<void, Ports>(
+          {
+            resolve: (chatId) => {
+              const groupId = h.groupIdForChat(chatId);
+              return groupId === undefined ? undefined : { groupId, domain: '' };
+            },
+            applyDetail: () => {},
+            reloadDetail: (groupId) =>
+              Effect.gen(function* () {
+                yield* ensureGroupDetail(groupId, true);
+                bumpRevision();
+              }),
+            refreshList: () => refreshQuietly,
+          },
+          chatId,
+          'This channel is not available yet.',
+          (groupId) => groupsApi.changeGroupMemberRole(groupId, userId, role),
+          true,
+        ),
       ),
     groupRoles: (groupId) => {
       // Reading the revision subscribes the selector to roles loads, like
