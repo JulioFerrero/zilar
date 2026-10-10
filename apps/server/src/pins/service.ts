@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { Effect, Schema } from 'effect';
+import { Effect } from 'effect';
+import type { CreatePinPayload, Pin, PinKind } from '@zilar/api-contract';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
@@ -16,36 +17,17 @@ import {
 } from './access';
 
 export const PINS_MAX_PER_CHAT = 20;
-export const PIN_SENDER_NAME_MAX = 80;
-export const PIN_TEXT_MAX = 300;
-export const PIN_MESSAGE_ID_MAX = 256;
-
-export const pinKindSchema = Schema.Literals(['text', 'image', 'file', 'voice', 'card']);
-export type PinKind = typeof pinKindSchema.Type;
+export { PIN_MESSAGE_ID_MAX, PIN_SENDER_NAME_MAX, PIN_TEXT_MAX } from '@zilar/api-contract';
 
 export type PinRow = PinnedMessageRow;
 
-export interface PinView {
-  id: string;
-  chat: string;
-  messageId: string;
-  senderName: string;
-  text: string;
-  kind: PinKind;
-  pinnedBy: string;
-  pinnedAt: string;
-}
+/** The wire row, from the shared contract. */
+export type PinView = Pin;
 
 // The snapshot is display-only: the server trusts it for rendering, never
-// for authorization. Requests are validated at the Effect HTTP boundary in
-// `api.ts`; this is the shape the service accepts.
-export interface CreatePinBody {
-  chat: string;
-  messageId: string;
-  senderName: string;
-  text?: string | undefined;
-  kind?: PinKind | undefined;
-}
+// for authorization. Requests are validated at the Effect HTTP boundary
+// (the contract's `CreatePinPayload`); this is the shape the service accepts.
+export type CreatePinBody = CreatePinPayload;
 
 export interface PinsServiceDeps {
   db: ServerDatabase;

@@ -30,7 +30,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0885](T-0885-web-store-fakes.md) | Web store tests share one fakeApi/fakeXmpp harness (159-line copies today) | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0886](T-0886-gateway-test-split.md) | Split apps/server/src/agents/gateway.test.ts (7,242 lines, 100 s) into feature files aro… | todo | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0887](T-0887-slow-loop-tests.md) | Server: cut the loop-driven slow tests (600 real requests for a 429, 200 sticker uploads… | todo | haiku-5.5 |  | wave 4, simplify plan |
-| [T-0864](T-0864-api-contract-pilot.md) | packages/api-contract pilot: the pins group shared by server, web and mobile with derived… | in-progress | opus-5.5 | | wave 3, simplify plan |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
@@ -918,3 +917,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0863](T-0863-server-http-helpers.md) | Server HTTP helpers (runSql, SchemaErrors, makeRateLimit, handler, mountApi), blocks/roles/routines converted, routes.expected per module | 2026-10-10 |
 | [T-0865](T-0865-dead-files-exports.md) | Dead files and 58 unreferenced declarations removed (-357 lines) | 2026-10-10 |
 | [T-0889](T-0889-scope-glob-zero-folders.md) | Gate scope check: **/ matches zero folders | 2026-10-10 |
+| [T-0864](T-0864-api-contract-pilot.md) | packages/api-contract pilot: pins group shared by server, web, mobile with derived clients | 2026-10-10 |

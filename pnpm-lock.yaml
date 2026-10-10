@@ -52,6 +52,9 @@ importers:
       '@rn-primitives/slot':
         specifier: ^1.5.2
         version: 1.5.2(react-native-web@0.21.3(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.7)(@react-native/metro-config@0.86.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
+      '@zilar/api-contract':
+        specifier: workspace:*
+        version: link:../../packages/api-contract
       '@zilar/chat-core':
         specifier: workspace:*
         version: link:../../packages/chat-core
@@ -246,6 +249,9 @@ importers:
       '@xmpp/component':
         specifier: ^0.14.0
         version: 0.14.0
+      '@zilar/api-contract':
+        specifier: workspace:*
+        version: link:../../packages/api-contract
       '@zilar/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -332,6 +338,9 @@ importers:
       '@fontsource-variable/geist-mono':
         specifier: ^5.3.0
         version: 5.3.0
+      '@zilar/api-contract':
+        specifier: workspace:*
+        version: link:../../packages/api-contract
       '@zilar/chat-core':
         specifier: workspace:*
         version: link:../../packages/chat-core
@@ -420,6 +429,12 @@ importers:
       vite:
         specifier: ^8.3.1
         version: 8.3.1(@types/node@24.19.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.15)(yaml@2.9.1)
+
+  packages/api-contract:
+    dependencies:
+      effect:
+        specifier: ^4.0.2
+        version: 4.0.2
 
   packages/chat-core:
     dependencies:

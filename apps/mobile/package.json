@@ -18,6 +18,7 @@
     "@expo-google-fonts/geist-mono": "^0.4.3",
     "@rn-primitives/portal": "^1.5.3",
     "@rn-primitives/slot": "^1.5.2",
+    "@zilar/api-contract": "workspace:*",
     "@zilar/chat-core": "workspace:*",
     "@zilar/protocol": "workspace:*",
     "@zilar/ui-tokens": "workspace:*",

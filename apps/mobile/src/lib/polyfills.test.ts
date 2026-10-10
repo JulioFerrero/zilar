@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Effect } from 'effect';
+import { FetchHttpClient, HttpClient } from 'effect/http';
+import { makeZilarClient, runApi, withFetch } from '@zilar/api-contract';
 
 // polyfills.ts installs its shims at import time, so every test re-imports it
 // after it has set up the globals it needs.
@@ -74,5 +77,89 @@ describe('polyfill installation (T-0811)', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(order).toEqual(['sync', 'tick']);
+  });
+});
+
+describe('the UTF-8 TextDecoder polyfill (T-0864)', () => {
+  const native = new TextDecoder();
+  const samples: ReadonlyArray<ReadonlyArray<number>> = [
+    [],
+    [0x68, 0x69],
+    [0xef, 0xbb, 0xbf, 0x68, 0x69],
+    [0xc3, 0xa9, 0xe2, 0x9c, 0x85, 0xf0, 0x9f, 0x98, 0x80],
+    [0xff, 0x41, 0x80, 0x42],
+    [0xc3, 0x41],
+    [0xe2, 0x9c],
+    [0xe0, 0x80, 0x80],
+    [0xed, 0xa0, 0x80],
+    [0xf4, 0x90, 0x80, 0x80],
+    [0xf0, 0x9f, 0x98],
+    [0xc0, 0xaf, 0xc1, 0xbf],
+  ];
+
+  it('decodes like the native TextDecoder, replacing broken sequences', async () => {
+    const { Utf8TextDecoder } = await loadPolyfills();
+    const decoder = new Utf8TextDecoder();
+
+    for (const bytes of samples) {
+      const input = new Uint8Array(bytes);
+      expect(decoder.decode(input), bytes.join(',')).toBe(native.decode(input));
+    }
+  });
+
+  it('reads an ArrayBuffer, a view with an offset, and a long body', async () => {
+    const { Utf8TextDecoder } = await loadPolyfills();
+    const decoder = new Utf8TextDecoder('utf8');
+    const text = `${'Booked for 21:00 ✅ '.repeat(2000)}😀`;
+    const bytes = new TextEncoder().encode(text);
+
+    expect(decoder.decode(bytes.buffer)).toBe(text);
+    expect(decoder.decode(new DataView(bytes.buffer, 1, 4))).toBe(
+      native.decode(bytes.subarray(1, 5)),
+    );
+    expect(decoder.decode()).toBe('');
+    expect(() => new Utf8TextDecoder('latin1')).toThrow(RangeError);
+  });
+
+  it('installs itself only when the runtime has no TextDecoder', async () => {
+    const nativeDecoder = globalThis.TextDecoder;
+    await loadPolyfills();
+    expect(globalThis.TextDecoder).toBe(nativeDecoder);
+
+    vi.stubGlobal('TextDecoder', undefined);
+    const { Utf8TextDecoder } = await loadPolyfills();
+    expect(globalThis.TextDecoder).toBe(Utf8TextDecoder);
+  });
+
+  it('lets the contract client decode a response with only the polyfill', async () => {
+    vi.stubGlobal('TextDecoder', undefined);
+    const { Utf8TextDecoder } = await loadPolyfills();
+    expect(globalThis.TextDecoder).toBe(Utf8TextDecoder);
+    const decode = vi.spyOn(Utf8TextDecoder.prototype, 'decode');
+    const http = Effect.runSync(
+      Effect.provide(Effect.service(HttpClient.HttpClient), FetchHttpClient.layer),
+    );
+    const respond: typeof fetch = async () =>
+      new Response(JSON.stringify({ pins: [] }), { status: 200 });
+    const client = Effect.runSync(
+      makeZilarClient(http.pipe(withFetch(respond)), { baseUrl: 'http://zilar.test' }),
+    );
+
+    await expect(runApi(client.pins.list({ query: { chat: 'ana' } }))).resolves.toEqual({
+      pins: [],
+    });
+    const failed = async () =>
+      new Response(JSON.stringify({ error: { code: 'not_found', message: 'Gone ✅' } }), {
+        status: 404,
+      });
+    const failing = Effect.runSync(
+      makeZilarClient(http.pipe(withFetch(failed)), { baseUrl: 'http://zilar.test' }),
+    );
+    await expect(runApi(failing.pins.list({ query: { chat: 'ana' } }))).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
+      message: 'Gone ✅',
+    });
+    expect(decode).toHaveBeenCalled();
   });
 });

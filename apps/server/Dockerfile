@@ -22,6 +22,7 @@ WORKDIR /repo
 # Dependency manifests first so this layer is cached until they change.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY apps/server/package.json apps/server/
+COPY packages/api-contract/package.json packages/api-contract/
 COPY packages/protocol/package.json packages/protocol/
 COPY packages/xmpp-core/package.json packages/xmpp-core/
 COPY packages/runner-tunnel/package.json packages/runner-tunnel/
@@ -29,9 +30,10 @@ COPY packages/runner-tunnel/package.json packages/runner-tunnel/
 RUN pnpm install --frozen-lockfile
 
 # Now the sources the server imports (keep this list in sync with what
-# apps/server imports from the workspace: @zilar/protocol,
-# @zilar/runner-tunnel, @zilar/xmpp-core).
+# apps/server imports from the workspace: @zilar/api-contract,
+# @zilar/protocol, @zilar/runner-tunnel, @zilar/xmpp-core).
 COPY apps/server apps/server
+COPY packages/api-contract packages/api-contract
 COPY packages/protocol packages/protocol
 COPY packages/xmpp-core packages/xmpp-core
 COPY packages/runner-tunnel packages/runner-tunnel

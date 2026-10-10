@@ -18,6 +18,7 @@
     "@types/web-push": "^3.6.4",
     "@xmpp/client": "^0.14.0",
     "@xmpp/component": "^0.14.0",
+    "@zilar/api-contract": "workspace:*",
     "@zilar/protocol": "workspace:*",
     "@zilar/runner-tunnel": "workspace:*",
     "@zilar/xmpp-core": "workspace:*",

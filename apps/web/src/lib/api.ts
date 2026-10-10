@@ -1,26 +1,16 @@
 import { Effect, Exit, Schema } from 'effect';
+import { ApiError, apiErrorFromBody, type Pin, type PinKind } from '@zilar/api-contract';
 import { FOLDER_ICONS, type FolderChatType, type FolderIcon } from '@zilar/chat-core';
 import { struct } from '@zilar/protocol';
+import { callApi } from '@/lib/effect/api-client';
 import { isMockApiEnabled } from '@/mock/gate';
 import { loadMockRequest } from '@/mock/load';
 
 /** Base path for the server API. The Vite dev server proxies it same-origin. */
 export const API_BASE = '/api';
 
-export class ApiError extends Error {
-  readonly status: number;
-  readonly code: string;
-  /** Extra fields the server merged into the `error` body (e.g. `nextChangeAt`). */
-  readonly detail: Record<string, unknown>;
-
-  constructor(status: number, code: string, message: string, detail: Record<string, unknown> = {}) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.code = code;
-    this.detail = detail;
-  }
-}
+// One error class for every call, hand-written or derived from the contract.
+export { ApiError };
 
 type ResponseSchema<T> = Schema.Codec<T, unknown>;
 
@@ -35,12 +25,6 @@ function decodeResponse<T>(
   const result = Schema.decodeUnknownExit(schema)(raw);
   return Exit.isSuccess(result) ? { ok: true, value: result.value } : { ok: false };
 }
-
-const errorBodySchema = struct({
-  error: Schema.StructWithRest(Schema.Struct({ code: Schema.String, message: Schema.String }), [
-    Schema.Record(Schema.String, Schema.Unknown),
-  ]),
-});
 
 const meSchema = struct({
   id: Schema.String,
@@ -262,7 +246,7 @@ async function request<T>(
 
   const raw: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw toApiError(response.status, raw);
+    throw apiErrorFromBody(response.status, raw);
   }
 
   const parsed = decodeResponse(schema, raw);
@@ -274,19 +258,6 @@ async function request<T>(
     );
   }
   return parsed.value;
-}
-
-// Builds the ApiError for a failed response: `code`/`message` plus any
-// extra body fields on `detail` (e.g. `nextChangeAt`), minus the `requestId`
-// the server adds for tracing.
-function toApiError(status: number, raw: unknown): ApiError {
-  const parsed = decodeResponse(errorBodySchema, raw);
-  if (!parsed.ok) {
-    return new ApiError(status, 'request_failed', `Request failed (${status})`);
-  }
-  const { code, message, requestId: _requestId, ...detail } = parsed.value.error;
-  void _requestId;
-  return new ApiError(status, code, message, detail as Record<string, unknown>);
 }
 
 export function getMe(): Promise<Me> {
@@ -1001,30 +972,11 @@ export async function deleteChatFolder(id: string): Promise<void> {
 }
 
 // --- Pinned messages (T-0114) ------------------------------------------------
-// The wire contract lives in apps/server/src/pins/{routes,service,access}.
-// `chat` is a room bare JID for groups/topics, or a DM peer's bare JID (the
-// server keeps the canonical pair key, so both sides share one list). Pins
-// arrive newest first. The snapshot (`senderName`/`text`/`kind`) is display
-// only: the server trusts it for rendering, never for authorization.
+// The contract (schemas and endpoints) lives in `@zilar/api-contract`
+// (`pins.ts`, T-0864); these functions are thin wrappers over the derived
+// client. Pins arrive newest first.
 
-export const pinKindSchema = Schema.Literals(['text', 'image', 'file', 'voice', 'card']);
-
-export type PinKind = typeof pinKindSchema.Type;
-
-export const pinSchema = struct({
-  id: Schema.String,
-  chat: Schema.String,
-  messageId: Schema.String,
-  senderName: Schema.String,
-  text: Schema.String,
-  kind: pinKindSchema,
-  pinnedBy: Schema.String,
-  pinnedAt: Schema.String,
-});
-
-export type Pin = typeof pinSchema.Type;
-
-const pinsSchema = struct({ pins: Schema.mutable(Schema.Array(pinSchema)) });
+export type { Pin, PinKind };
 
 export interface PinMessageInput {
   chat: string;
@@ -1035,21 +987,19 @@ export interface PinMessageInput {
 }
 
 export function listPins(chat: string): Promise<Pin[]> {
-  const params = new URLSearchParams();
-  params.set('chat', chat);
-  return request(`/pins?${params.toString()}`, pinsSchema).then((body) => body.pins);
+  return callApi((client) => client.pins.list({ query: { chat } })).then((body) => [...body.pins]);
 }
 
+// The server trims `senderName`; the contract encodes the trimmed form, so
+// the client trims before sending.
 export function pinMessage(input: PinMessageInput): Promise<Pin> {
-  return request('/pins', pinSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) =>
+    client.pins.create({ payload: { ...input, senderName: input.senderName.trim() } }),
+  );
 }
 
 export async function unpinMessage(id: string): Promise<void> {
-  await request(`/pins/${encodeURIComponent(id)}`, pinSchema, { method: 'DELETE' });
+  await callApi((client) => client.pins.remove({ params: { id } }));
 }
 
 // --- AI memory (T-0443) ------------------------------------------------------
@@ -1634,7 +1584,7 @@ async function searchRequest<T>(
 
   const raw: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw toApiError(response.status, raw);
+    throw apiErrorFromBody(response.status, raw);
   }
   const parsed = decodeResponse(schema, raw);
   if (!parsed.ok) {
@@ -1907,7 +1857,7 @@ export async function uploadStickerFile(
   }
   const raw: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw toApiError(response.status, raw);
+    throw apiErrorFromBody(response.status, raw);
   }
   const parsed = decodeResponse(stickerSchema, raw);
   if (!parsed.ok) {
@@ -2146,7 +2096,7 @@ async function gifRequest(
   }
   const raw: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw toApiError(response.status, raw);
+    throw apiErrorFromBody(response.status, raw);
   }
   const parsed = decodeResponse(gifPageSchema, raw);
   if (!parsed.ok) {
@@ -2597,7 +2547,7 @@ async function uploadAvatarBytes(path: string, blob: Blob): Promise<{ url: strin
   }
   const raw: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw toApiError(response.status, raw);
+    throw apiErrorFromBody(response.status, raw);
   }
   const parsed = decodeResponse(avatarUrlSchema, raw);
   if (!parsed.ok) {
@@ -2644,7 +2594,7 @@ const backgroundListSchema = struct({
 });
 
 // The POST twin of `uploadAvatarBytes`: a raw-body fetch with a mock branch,
-// `toApiError` on failure and an Effect Schema parse of the reply.
+// `apiErrorFromBody` on failure and an Effect Schema parse of the reply.
 export async function uploadBackground(blob: Blob): Promise<BackgroundImage> {
   let response: Response;
   if (isMockApiEnabled()) {
@@ -2669,7 +2619,7 @@ export async function uploadBackground(blob: Blob): Promise<BackgroundImage> {
   }
   const raw: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw toApiError(response.status, raw);
+    throw apiErrorFromBody(response.status, raw);
   }
   const parsed = decodeResponse(backgroundImageSchema, raw);
   if (!parsed.ok) {
