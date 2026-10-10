@@ -26,7 +26,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
   - **GIFs:** `apps/mobile/src/lib/gifs-api.ts` `toGifItem` wraps every `data:` token in `/api/gifs/media/<token>`, and the token is SVG too.
 
   The fix needs raster (PNG) art, plus a mock path the native image can reach.
-  - **Web too (lead, T-1062 check, on main):** the sticker thumbnails are broken images. `<img src="/api/stickers/<id>/file">` goes to the vite dev server, which answers 404, and never reaches the mock dispatcher (`apps/web/src/mock/backend.ts`).
+  - **Web stickers: fixed by T-1083 (2026-10-11).** A dev-only vite plugin, `apps/web/src/mock/dev-sticker-files.ts`, serves the seed sticker files. Stickers uploaded during a session are not served. Web GIFs were never blank. The plan for the rest is `docs/audit/mock-sweep-status.md` §3-§4: raster art, a mock-only mobile image allowance, and attachment bytes.
 - **Mobile mock approvals have no rules (corrected 2026-10-10, T-1056).** "Always allowed" is always empty in mock mode, because `apps/mobile/src/mock/approvals.ts:119-121` returns `[]` and the "Always" decision records no rule. On real builds the rules load for every owned AI (`use-approvals.ts:117-160`). The fix belongs with the approvals domain of the shared mock backend (`docs/audit/mock-plan.md`).
 - **Mock: `GET /groups/:id/topics` returns `[]` for groups whose General exists only in `/chats` (T-1048 follow-up).**
 - **Mobile: about 9 more `Effect.runFork(Fiber.interrupt(...))` sites in `components/chat` could use `interruptFiber` (`lib/effect/timers.ts`, T-1050).** The `runSync` ones differ and stay.
