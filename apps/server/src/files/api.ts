@@ -15,7 +15,7 @@
 // body flows through as a web `ReadableStream` via `HttpServerResponse.raw`
 // and is never read into memory.
 import { Effect, Layer, Option, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpRouter, HttpServerResponse } from 'effect/http';
+import { HttpServerRequest, HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
@@ -23,16 +23,8 @@ import type { Auth } from '../auth/auth';
 import { isDmBlocked } from '../blocks/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import {
-  CurrentUser,
-  Session,
-  requestIdOf,
-  sessionLayer,
-  withErrorEnvelope,
-  type EffectApiMount,
-  type EffectApiRoute,
-} from '../effect/http-core';
-import { sqlRuntimeFor } from '../effect/sql';
+import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';
 import { allowedArchives, resolveChatFilter, type ArchivePool } from '../search/service';
@@ -102,7 +94,8 @@ async function findFileRow(
   chatJid: string,
   url: string,
 ): Promise<FilesItemRow | undefined> {
-  const [row] = await sqlRuntimeFor(db).runPromise(
+  const [row] = await runSql(
+    db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<FilesItemRow>`SELECT kind, mime, name FROM media_items
@@ -165,10 +158,6 @@ const FilesGroup = HttpApiGroup.make('files')
 
 const FilesApi = HttpApi.make('files').add(FilesGroup);
 
-export const FILES_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/files' },
-];
-
 export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
@@ -180,11 +169,10 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
   const fetchImpl = deps.fetchImpl ?? fetch;
 
   const groupLayer = HttpApiBuilder.group(FilesApi, 'files', (handlers) =>
-    handlers.handle('file', (request) => {
-      const requestId = requestIdOf(request.request);
-      return withErrorEnvelope(
+    handlers.handle(
+      'file',
+      handler(logger, (request, user) =>
         Effect.gen(function* () {
-          const user = yield* CurrentUser;
           if (deps.archive === undefined) {
             throw new HttpError(501, 'files_unavailable', 'Files are not configured');
           }
@@ -304,10 +292,8 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
           }
           throw new HttpError(502, 'file_unavailable', 'The file could not be loaded');
         }),
-        logger,
-        requestId,
-      );
-    }),
+      ),
+    ),
   );
 
   const apiLayer = HttpApiBuilder.layer(FilesApi).pipe(
@@ -315,12 +301,5 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
     Layer.provide(sessionLayer(deps.auth, logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: FILES_API_ROUTES };
+  return mountApi(FilesApi, apiLayer);
 }

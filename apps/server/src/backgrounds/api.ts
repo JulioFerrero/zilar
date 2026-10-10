@@ -7,27 +7,26 @@
 // `HttpApiBuilder` returns untouched, headers included.
 
 import { Effect, Layer, Schema, Stream } from 'effect';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
+import { HttpServerResponse } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
   HttpApiEndpoint,
   HttpApiGroup,
-  HttpApiMiddleware,
+  HttpApiSchema,
 } from 'effect/http-api';
 import type { Logger } from 'pino';
 import { HttpError } from '../errors';
 import {
-  CurrentUser,
+  SchemaErrors,
   Session,
-  failureResponse,
-  httpErrorResponse,
-  requestIdOf,
+  handler,
+  mountApi,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
+import { makeRateLimit } from '../effect/rate-limit-middleware';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { BackgroundsRoutesDependencies } from './routes';
 import {
@@ -69,7 +68,7 @@ const BackgroundUploadView = Schema.Struct({
   url: Schema.String,
   width: Schema.Number,
   height: Schema.Number,
-});
+}).pipe(HttpApiSchema.status(201));
 
 // The list item: every field of `BackgroundView` (`id`, `url`,
 // `width|null`, `height|null`, `createdAt`) — item 8.
@@ -85,106 +84,60 @@ const BackgroundList = Schema.Struct({ backgrounds: Schema.Array(BackgroundListI
 
 const BackgroundIdParams = Schema.Struct({ id: Schema.String });
 
-// A params decode failure renders like the old route's unknown-id answer: a
-// 404 `not_found`. Params are plain strings so this never fires; the layer
-// exists so the group middleware reads like the other modules.
-class BackgroundsSchemaErrors extends HttpApiMiddleware.Service<BackgroundsSchemaErrors>()(
-  'zilar/effect/http/BackgroundsSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<BackgroundsSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(BackgroundsSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(404, 'not_found', error.cause.message || 'Background not found'),
-      );
-    }),
-  );
-}
-
 // The upload budget runs before the body is read, exactly like the old
 // route's `uploadLimiter.allow` -> declared-length -> `readCapped` order.
-// `requires: CurrentUser` is satisfied by `Session`.
-class BackgroundsUploadRateLimit extends HttpApiMiddleware.Service<
-  BackgroundsUploadRateLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/BackgroundsUploadRateLimit') {}
-
-function uploadRateLimitLayer(
-  limiter: Pick<RateLimiter, 'allow'>,
-): Layer.Layer<BackgroundsUploadRateLimit> {
-  return Layer.succeed(
-    BackgroundsUploadRateLimit,
-    BackgroundsUploadRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many background uploads, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
+const BackgroundsUploadRateLimit = makeRateLimit(
+  'zilar/effect/http/BackgroundsUploadRateLimit',
+  'Too many background uploads, try again later',
+);
 
 const BackgroundsGroup = HttpApiGroup.make('backgrounds')
   .add(
     // No payload schema: the handler reads the raw body stream itself.
     HttpApiEndpoint.post('upload', '/backgrounds', {
       success: BackgroundUploadView,
-    }).middleware(BackgroundsUploadRateLimit),
+    }).middleware(BackgroundsUploadRateLimit.Middleware),
     HttpApiEndpoint.get('list', '/backgrounds', {
       success: BackgroundList,
     }),
+    // The handler answers the raw bytes itself (status 200, file headers).
     HttpApiEndpoint.get('getFile', '/backgrounds/:id', {
       params: BackgroundIdParams,
-      success: Schema.Void,
+      success: HttpApiSchema.Empty(200),
     }),
     HttpApiEndpoint.delete('remove', '/backgrounds/:id', {
       params: BackgroundIdParams,
-      success: Schema.Void,
+      success: HttpApiSchema.NoContent,
     }),
   )
   .middleware(Session)
-  .middleware(BackgroundsSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const BackgroundsApi = HttpApi.make('backgrounds').add(BackgroundsGroup);
 
-export const BACKGROUNDS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'POST', path: '/api/backgrounds' },
-  { method: 'GET', path: '/api/backgrounds' },
-  { method: 'GET', path: '/api/backgrounds/:id' },
-  { method: 'DELETE', path: '/api/backgrounds/:id' },
-];
-
 export function createBackgroundsApi(deps: BackgroundsApiDependencies): EffectApiMount {
   const logger = deps.logger;
-  const uploadLimiter =
-    deps.uploadLimiter ??
-    createRateLimiter({
-      max: BACKGROUND_UPLOAD_RATE_LIMIT_MAX,
-      windowMs: BACKGROUND_UPLOAD_RATE_LIMIT_WINDOW_MS,
-      now: deps.now ?? Date.now,
-    });
+  const injected = deps.uploadLimiter;
+  // An injected limiter only has to say `allow`; `makeRateLimit` wants the full shape.
+  const uploadLimiter: RateLimiter =
+    injected === undefined
+      ? createRateLimiter({
+          max: BACKGROUND_UPLOAD_RATE_LIMIT_MAX,
+          windowMs: BACKGROUND_UPLOAD_RATE_LIMIT_WINDOW_MS,
+          now: deps.now ?? Date.now,
+        })
+      : { allow: (key) => injected.allow(key), size: 0 };
 
   const groupLayer = HttpApiBuilder.group(BackgroundsApi, 'backgrounds', (handlers) =>
     handlers
       // Uploads one image. The limiter middleware already charged the
       // budget, before the declared-length check and the capped read.
-      .handle('upload', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'upload',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             // The type comes from the magic bytes, never from this header.
             const declared = Number(request.request.headers['content-length'] ?? '');
             if (Number.isFinite(declared) && declared > BACKGROUND_MAX_BYTES) {
@@ -204,96 +157,69 @@ export function createBackgroundsApi(deps: BackgroundsApiDependencies): EffectAp
                 'The background image is larger than 1 MiB',
               );
             }
-            const result = yield* Effect.promise(() =>
+            return yield* Effect.promise(() =>
               uploadBackground(serviceDeps(deps), user.id, capped),
             );
-            return HttpServerResponse.jsonUnsafe(result, { status: 201 });
           }),
-          logger,
-          requestId,
-        );
-      })
+        ),
+      )
       // The owner's images, newest first.
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const backgrounds = yield* Effect.promise(() => listBackgrounds(deps.db, user.id));
-            return { backgrounds };
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'list',
+        handler(logger, async (_request, user) => ({
+          backgrounds: await listBackgrounds(deps.db, user.id),
+        })),
+      )
       // Streams the stored file to its owner, or to a member of a group that
       // uses it as its background. A signed-in stranger and an unknown id
       // answer the same 404.
-      .handle('getFile', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const rawId = request.params.id;
-            const file = yield* Effect.promise(() =>
-              readBackgroundFile(serviceDeps(deps), decodePathId(rawId), user.id),
-            );
-            if (!file) {
-              throw new HttpError(404, 'not_found', 'Background not found');
-            }
-            return HttpServerResponse.uint8Array(file.bytes, {
-              status: 200,
-              headers: {
-                'content-type': file.mime,
-                'content-length': String(file.size),
-                'x-content-type-options': 'nosniff',
-                'content-security-policy': "default-src 'none'",
-                // The id never changes for a stored file, so immutable is safe.
-                'cache-control': 'private, max-age=31536000, immutable',
-                etag: `"${rawId}"`,
-              },
-            });
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'getFile',
+        handler(logger, async (request, user) => {
+          const rawId = request.params.id;
+          const file = await readBackgroundFile(serviceDeps(deps), decodePathId(rawId), user.id);
+          if (!file) {
+            throw new HttpError(404, 'not_found', 'Background not found');
+          }
+          return HttpServerResponse.uint8Array(file.bytes, {
+            status: 200,
+            headers: {
+              'content-type': file.mime,
+              'content-length': String(file.size),
+              'x-content-type-options': 'nosniff',
+              'content-security-policy': "default-src 'none'",
+              // The id never changes for a stored file, so immutable is safe.
+              'cache-control': 'private, max-age=31536000, immutable',
+              etag: `"${rawId}"`,
+            },
+          });
+        }),
+      )
       // Deletes one image owned by the caller. `false` is the same 404 as an
       // unknown id; success is an empty 204.
-      .handle('remove', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const deleted = yield* Effect.promise(() =>
-              deleteBackground(serviceDeps(deps), decodePathId(request.params.id), user.id),
-            );
-            if (!deleted) {
-              throw new HttpError(404, 'not_found', 'Background not found');
-            }
-            return HttpServerResponse.empty({ status: 204 });
-          }),
-          logger,
-          requestId,
-        );
-      }),
+      .handle(
+        'remove',
+        handler(logger, async (request, user) => {
+          const deleted = await deleteBackground(
+            serviceDeps(deps),
+            decodePathId(request.params.id),
+            user.id,
+          );
+          if (!deleted) {
+            throw new HttpError(404, 'not_found', 'Background not found');
+          }
+        }),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(BackgroundsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayer(logger)),
-    Layer.provide(uploadRateLimitLayer(uploadLimiter)),
+    Layer.provide(BackgroundsUploadRateLimit.layer(uploadLimiter)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: BACKGROUNDS_API_ROUTES };
+  return mountApi(BackgroundsApi, apiLayer);
 }
 
 // Reads the body stream chunk by chunk and stops as soon as the cap is

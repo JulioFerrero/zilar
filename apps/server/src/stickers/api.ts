@@ -27,27 +27,28 @@
 // `HttpServerResponse.uint8Array`, which `HttpApiBuilder` returns untouched.
 
 import { Effect, Layer, Option, Schema, Stream } from 'effect';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
+import { HttpServerRequest, HttpServerResponse } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
   HttpApiEndpoint,
   HttpApiGroup,
   HttpApiMiddleware,
+  HttpApiSchema,
 } from 'effect/http-api';
 import type { Logger } from 'pino';
 import {
-  CurrentUser,
   Session,
   failureResponse,
+  handler,
+  mountApi,
   requestIdOf,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
+import { makeRateLimit } from '../effect/rate-limit-middleware';
 import { HttpError } from '../errors';
-import { createRateLimiter } from '../rate-limit';
+import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { StickersRoutesDependencies } from './routes';
 import {
   STICKER_UPLOAD_RATE_LIMIT_MAX,
@@ -276,6 +277,10 @@ const StickerPackViewSchema = Schema.Struct({
   updatedAt: Schema.String,
 });
 
+// The create and upload routes answer 201 with the same bodies.
+const StickerPackCreated = StickerPackViewSchema.pipe(HttpApiSchema.status(201));
+const StickerCreated = StickerViewSchema.pipe(HttpApiSchema.status(201));
+
 const PackList = Schema.Struct({ packs: Schema.Array(StickerPackViewSchema) });
 
 const DeletePackResult = Schema.Struct({ warning: Schema.String });
@@ -303,6 +308,14 @@ const StickerParams = Schema.Struct({ id: Schema.String, stickerId: Schema.Strin
 const StickerFileParams = Schema.Struct({ stickerId: Schema.String });
 const PanelPackParams = Schema.Struct({ packId: Schema.String });
 
+// The upload budget is the first step after the session, so it is a plain
+// endpoint middleware (the Telegram import budget is not: it runs after the
+// 501 token check and the input parse, so it stays in its handler).
+const StickersUploadRateLimit = makeRateLimit(
+  'zilar/effect/http/StickersUploadRateLimit',
+  'Too many sticker uploads, try again later',
+);
+
 const StickersGroup = HttpApiGroup.make('stickers')
   .add(
     HttpApiEndpoint.get('listPacks', '/sticker-packs', {
@@ -310,7 +323,7 @@ const StickersGroup = HttpApiGroup.make('stickers')
     }),
     HttpApiEndpoint.post('createPack', '/sticker-packs', {
       payload: CreatePackBody,
-      success: StickerPackViewSchema,
+      success: StickerPackCreated,
     }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
     HttpApiEndpoint.get('discover', '/sticker-packs/discover', {
       success: DiscoverPage,
@@ -358,10 +371,12 @@ const StickersGroup = HttpApiGroup.make('stickers')
     // bytes with custom headers.
     HttpApiEndpoint.post('uploadSticker', '/sticker-packs/:id/stickers', {
       params: PackIdParams,
-      success: StickerViewSchema,
-    }),
+      success: StickerCreated,
+    }).middleware(StickersUploadRateLimit.Middleware),
+    // The handler answers the raw bytes itself (status 200, file headers).
     HttpApiEndpoint.get('serveFile', '/stickers/:stickerId/file', {
       params: StickerFileParams,
+      success: HttpApiSchema.Empty(200),
     }),
   )
   .middleware(Session)
@@ -370,24 +385,6 @@ const StickersGroup = HttpApiGroup.make('stickers')
   .prefix('/api');
 
 const StickersApi = HttpApi.make('stickers').add(StickersGroup);
-
-export const STICKERS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/sticker-packs' },
-  { method: 'POST', path: '/api/sticker-packs' },
-  { method: 'GET', path: '/api/sticker-packs/discover' },
-  { method: 'POST', path: '/api/sticker-packs/import/telegram' },
-  { method: 'PATCH', path: '/api/sticker-packs/:id' },
-  { method: 'DELETE', path: '/api/sticker-packs/:id' },
-  { method: 'DELETE', path: '/api/sticker-packs/:id/stickers/:stickerId' },
-  { method: 'PUT', path: '/api/sticker-panel' },
-  { method: 'PUT', path: '/api/sticker-panel/:packId' },
-  { method: 'DELETE', path: '/api/sticker-panel/:packId' },
-  { method: 'GET', path: '/api/sticker-favorites' },
-  { method: 'PUT', path: '/api/sticker-favorites' },
-  { method: 'DELETE', path: '/api/sticker-favorites' },
-  { method: 'POST', path: '/api/sticker-packs/:id/stickers' },
-  { method: 'GET', path: '/api/stickers/:stickerId/file' },
-];
 
 // A malformed percent escape is an unknown id (404), not a server error.
 // The Effect router hands out decoded params (like the old `c.req.param`), so
@@ -420,13 +417,16 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
     });
   // One limiter per api instance, built once (never per request), like the
   // old factory and the avatars api.
-  const uploadLimiter =
-    deps.uploadLimiter ??
-    createRateLimiter({
-      max: STICKER_UPLOAD_RATE_LIMIT_MAX,
-      windowMs: STICKER_UPLOAD_RATE_LIMIT_WINDOW_MS,
-      now,
-    });
+  const injectedUploadLimiter = deps.uploadLimiter;
+  // An injected limiter only has to say `allow`; `makeRateLimit` wants the full shape.
+  const uploadLimiter: RateLimiter =
+    injectedUploadLimiter === undefined
+      ? createRateLimiter({
+          max: STICKER_UPLOAD_RATE_LIMIT_MAX,
+          windowMs: STICKER_UPLOAD_RATE_LIMIT_WINDOW_MS,
+          now,
+        })
+      : { allow: (key) => injectedUploadLimiter.allow(key), size: 0 };
 
   function serviceDeps(): StickersServiceDeps {
     return {
@@ -445,68 +445,47 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
 
   const groupLayer = HttpApiBuilder.group(StickersApi, 'stickers', (handlers) =>
     handlers
-      .handle('listPacks', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const packs = yield* Effect.promise(() => listPanelPacks(serviceDeps(), user.id));
-            return { packs };
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('createPack', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const pack = yield* Effect.promise(() =>
-              createPack(serviceDeps(), user.id, { ...request.payload }),
-            );
-            return HttpServerResponse.jsonUnsafe(pack, { status: 201 });
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'listPacks',
+        handler(logger, async (_request, user) => ({
+          packs: await listPanelPacks(serviceDeps(), user.id),
+        })),
+      )
+      .handle(
+        'createPack',
+        handler(logger, (request, user) =>
+          createPack(serviceDeps(), user.id, { ...request.payload }),
+        ),
+      )
       // The query is decoded manually inside the handler (the endpoint
       // declares no query) so an invalid query answers the fixed 400 message,
       // like the media gallery's hand decode.
-      .handle('discover', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            yield* CurrentUser;
-            const record = discoverQueryRecord(request.request);
-            const decoded = Schema.decodeUnknownOption(DiscoverQuery)(record);
-            if (Option.isNone(decoded)) {
-              throw new HttpError(
-                400,
-                'invalid_request',
-                'q must be at most 60 characters and cursor at most 128',
-              );
-            }
-            const page = yield* Effect.promise(() =>
-              discoverPacks(serviceDeps(), decoded.value.q, decoded.value.cursor),
+      .handle(
+        'discover',
+        handler(logger, (request) => {
+          const decoded = Schema.decodeUnknownOption(DiscoverQuery)(
+            discoverQueryRecord(request.request),
+          );
+          if (Option.isNone(decoded)) {
+            throw new HttpError(
+              400,
+              'invalid_request',
+              'q must be at most 60 characters and cursor at most 128',
             );
-            return page;
-          }),
-          logger,
-          requestId,
-        );
-      })
+          }
+          return discoverPacks(serviceDeps(), decoded.value.q, decoded.value.cursor);
+        }),
+      )
       // The body is decoded manually inside the handler, after the 501
       // token check: the framework-level payload decode used to run before
       // any handler code, so a malformed body answered 400 instead of the
       // specified 501 `import_unavailable` (the old order is session ->
-      // token -> body -> pack-input parse -> limiter -> import).
-      .handle('importTelegram', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      // token -> body -> pack-input parse -> limiter -> import). For the same
+      // reason the endpoint cannot declare `TelegramImportBody` as its payload.
+      .handle(
+        'importTelegram',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const token = yield* Effect.promise(() => getBotToken());
             if (token === null) {
               throw new HttpError(501, 'import_unavailable', 'Telegram import is not configured');
@@ -543,155 +522,93 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
               ...(result.partial ? { partial: true as const } : {}),
             };
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('patchPack', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const packId = yield* Effect.sync(() => decodePathId(request.params.id));
-            const pack = yield* Effect.promise(() =>
-              patchPack(serviceDeps(), packId, user.id, { ...request.payload }),
-            );
-            return pack;
+        ),
+      )
+      .handle(
+        'patchPack',
+        handler(logger, (request, user) =>
+          patchPack(serviceDeps(), decodePathId(request.params.id), user.id, {
+            ...request.payload,
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('deletePack', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const packId = yield* Effect.sync(() => decodePathId(request.params.id));
-            return yield* Effect.promise(() => deletePack(serviceDeps(), packId, user.id));
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('deleteSticker', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const packId = yield* Effect.sync(() => decodePathId(request.params.id));
-            const stickerId = yield* Effect.sync(() => decodePathId(request.params.stickerId));
-            yield* Effect.promise(() => deleteSticker(serviceDeps(), packId, stickerId, user.id));
-            return { ok: true as const };
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('reorderPanel', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            yield* Effect.promise(() =>
-              reorderPanelPacks(serviceDeps(), user.id, { ...request.payload }),
-            );
-            return { ok: true as const };
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('addPanelPack', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const packId = yield* Effect.sync(() => decodePathId(request.params.packId));
-            yield* Effect.promise(() => addPanelPack(serviceDeps(), packId, user.id));
-            return { ok: true as const };
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('removePanelPack', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const packId = yield* Effect.sync(() => decodePathId(request.params.packId));
-            yield* Effect.promise(() => removePanelPack(serviceDeps(), packId, user.id));
-            return { ok: true as const };
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('listFavorites', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const favorites = yield* Effect.promise(() => listFavorites(serviceDeps(), user.id));
-            return { favorites };
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('addFavorite', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const favorite = yield* Effect.promise(() =>
-              addFavorite(serviceDeps(), user.id, request.payload.sticker_id),
-            );
-            return favorite;
-          }),
-          logger,
-          requestId,
-        );
-      })
+        ),
+      )
+      .handle(
+        'deletePack',
+        handler(logger, (request, user) =>
+          deletePack(serviceDeps(), decodePathId(request.params.id), user.id),
+        ),
+      )
+      .handle(
+        'deleteSticker',
+        handler(logger, async (request, user) => {
+          const packId = decodePathId(request.params.id);
+          const stickerId = decodePathId(request.params.stickerId);
+          await deleteSticker(serviceDeps(), packId, stickerId, user.id);
+          return { ok: true as const };
+        }),
+      )
+      .handle(
+        'reorderPanel',
+        handler(logger, async (request, user) => {
+          await reorderPanelPacks(serviceDeps(), user.id, { ...request.payload });
+          return { ok: true as const };
+        }),
+      )
+      .handle(
+        'addPanelPack',
+        handler(logger, async (request, user) => {
+          await addPanelPack(serviceDeps(), decodePathId(request.params.packId), user.id);
+          return { ok: true as const };
+        }),
+      )
+      .handle(
+        'removePanelPack',
+        handler(logger, async (request, user) => {
+          await removePanelPack(serviceDeps(), decodePathId(request.params.packId), user.id);
+          return { ok: true as const };
+        }),
+      )
+      .handle(
+        'listFavorites',
+        handler(logger, async (_request, user) => ({
+          favorites: await listFavorites(serviceDeps(), user.id),
+        })),
+      )
+      .handle(
+        'addFavorite',
+        handler(logger, (request, user) =>
+          addFavorite(serviceDeps(), user.id, request.payload.sticker_id),
+        ),
+      )
       // The id comes from the query string; the endpoint declares no body.
-      .handle('removeFavorite', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const record = favoriteQueryRecord(request.request);
-            const decoded = Schema.decodeUnknownOption(FavoriteBody, STRICT_PAYLOAD)(record);
-            if (Option.isNone(decoded)) {
-              throw new HttpError(
-                400,
-                'invalid_request',
-                'sticker_id must be a UUID, with no other keys',
-              );
-            }
-            yield* Effect.promise(() =>
-              removeFavorite(serviceDeps(), user.id, decoded.value.sticker_id),
+      .handle(
+        'removeFavorite',
+        handler(logger, async (request, user) => {
+          const decoded = Schema.decodeUnknownOption(
+            FavoriteBody,
+            STRICT_PAYLOAD,
+          )(favoriteQueryRecord(request.request));
+          if (Option.isNone(decoded)) {
+            throw new HttpError(
+              400,
+              'invalid_request',
+              'sticker_id must be a UUID, with no other keys',
             );
-            return { ok: true as const };
-          }),
-          logger,
-          requestId,
-        );
-      })
-      // The multipart/raw upload (part B, T-0602). Step order matches the old
-      // route: session -> limiter -> content-type branch -> upload. The
-      // multipart branch checks the declared length before parsing the form,
-      // so an over-cap body is rejected without buffering it; the raw branch
-      // streams through `readCapped`, which stops as soon as the cap is
-      // passed. The 201 body carries every `StickerView` field.
-      .handle('uploadSticker', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+          }
+          await removeFavorite(serviceDeps(), user.id, decoded.value.sticker_id);
+          return { ok: true as const };
+        }),
+      )
+      // The multipart/raw upload (part B, T-0602). The limiter middleware
+      // already charged the budget (session -> limiter -> content-type branch
+      // -> upload). The multipart branch checks the declared length before
+      // parsing the form, so an over-cap body is rejected without buffering
+      // it; the raw branch streams through `readCapped`, which stops as soon
+      // as the cap is passed. The 201 body carries every `StickerView` field.
+      .handle(
+        'uploadSticker',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            if (!uploadLimiter.allow(user.id)) {
-              throw new HttpError(429, 'rate_limited', 'Too many sticker uploads, try again later');
-            }
             const contentType = request.request.headers['content-type'] ?? '';
             let bytes: Uint8Array;
             let emoji: string | undefined;
@@ -759,7 +676,7 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
               }
             }
             const packId = yield* Effect.sync(() => decodePathId(request.params.id));
-            const sticker = yield* Effect.promise(() =>
+            return yield* Effect.promise(() =>
               uploadSticker(
                 serviceDeps(),
                 packId,
@@ -768,64 +685,49 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
                 emoji === undefined ? {} : { emoji },
               ),
             );
-            return HttpServerResponse.jsonUnsafe(sticker, { status: 201 });
           }),
-          logger,
-          requestId,
-        );
-      })
+        ),
+      )
       // Streams the stored file. The id is a random unguessable uuid and a
       // signed-in session is required, but the URL is a capability for
       // signed-in users. An unknown id and a malformed escape answer the same
       // 404; the strict headers match the old route byte for byte.
-      .handle('serveFile', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            yield* CurrentUser;
-            const stickerId = yield* Effect.sync(() => {
-              try {
-                return decodeURIComponent(request.params.stickerId);
-              } catch {
-                throw new HttpError(404, 'not_found', 'Sticker not found');
-              }
-            });
-            const file = yield* Effect.promise(() => readStickerFile(serviceDeps(), stickerId));
-            if (!file) {
-              throw new HttpError(404, 'not_found', 'Sticker not found');
-            }
-            return HttpServerResponse.uint8Array(file.bytes, {
-              status: 200,
-              headers: {
-                'content-type': file.mime,
-                'content-length': String(file.size),
-                'x-content-type-options': 'nosniff',
-                'content-disposition': 'inline',
-                'cache-control': 'public, max-age=31536000, immutable',
-                'content-security-policy': "default-src 'none'; sandbox",
-              },
-            });
-          }),
-          logger,
-          requestId,
-        );
-      }),
+      .handle(
+        'serveFile',
+        handler(logger, async (request) => {
+          let stickerId: string;
+          try {
+            stickerId = decodeURIComponent(request.params.stickerId);
+          } catch {
+            throw new HttpError(404, 'not_found', 'Sticker not found');
+          }
+          const file = await readStickerFile(serviceDeps(), stickerId);
+          if (!file) {
+            throw new HttpError(404, 'not_found', 'Sticker not found');
+          }
+          return HttpServerResponse.uint8Array(file.bytes, {
+            status: 200,
+            headers: {
+              'content-type': file.mime,
+              'content-length': String(file.size),
+              'x-content-type-options': 'nosniff',
+              'content-disposition': 'inline',
+              'cache-control': 'public, max-age=31536000, immutable',
+              'content-security-policy': "default-src 'none'; sandbox",
+            },
+          });
+        }),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(StickersApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayer(logger)),
+    Layer.provide(StickersUploadRateLimit.layer(uploadLimiter)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: STICKERS_API_ROUTES };
+  return mountApi(StickersApi, apiLayer);
 }
 
 // Reads the body stream chunk by chunk and stops as soon as the cap is passed,

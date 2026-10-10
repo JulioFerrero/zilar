@@ -4,11 +4,11 @@ import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
 import { Effect, Option, Schema } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { StickerPackRow, StickerRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql, sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { probeErrorCode, probeStickerBytes, STICKER_MAX_BYTES } from './image';
 import type { StickerImageInfo } from './image';
@@ -60,16 +60,6 @@ export interface StickersServiceDeps {
   /** Base path of the file route, e.g. `/api/stickers`. */
   fileBasePath?: string;
   audit?: AuditRecorder;
-}
-
-// Every function in this module runs on the `effect/sql` client registered for
-// this database (see `../effect/sql`). The exported functions stay `async` so
-// routes and tests keep their shape.
-function runSql<A>(
-  deps: StickersServiceDeps,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(deps.db).runPromise(effect);
 }
 
 // A pack or panel write answers 503 for any failure that is not the module's
@@ -266,7 +256,7 @@ async function requireVisiblePack(
   userId: string,
 ): Promise<StickerPackRow> {
   const [pack] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerPackRow>`SELECT * FROM sticker_packs WHERE id = ${packId} LIMIT 1`;
@@ -287,7 +277,7 @@ async function requireOwnedPack(
   userId: string,
 ): Promise<StickerPackRow> {
   const [pack] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerPackRow>`SELECT * FROM sticker_packs WHERE id = ${packId} LIMIT 1`;
@@ -307,7 +297,7 @@ export async function listPanelPacks(
   userId: string,
 ): Promise<StickerPackView[]> {
   const links = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<{ packId: string }>`SELECT pack_id FROM user_sticker_packs
@@ -320,7 +310,7 @@ export async function listPanelPacks(
   }
   const packIds = links.map((link) => link.packId);
   const packs = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerPackRow>`SELECT * FROM sticker_packs WHERE id IN ${sql.in(packIds)}`;
@@ -328,7 +318,7 @@ export async function listPanelPacks(
   );
   const byId = new Map(packs.map((pack) => [pack.id, pack]));
   const rows = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerRow>`SELECT * FROM stickers WHERE pack_id IN ${sql.in(packIds)}
@@ -391,7 +381,7 @@ export async function createPack(
     throw mapStickerError(error);
   }
   const [pack] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerPackRow>`SELECT * FROM sticker_packs WHERE id = ${id} LIMIT 1`;
@@ -466,7 +456,7 @@ export async function patchPack(
     }),
   );
   const [updated] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerPackRow>`SELECT * FROM sticker_packs WHERE id = ${packId} LIMIT 1`;
@@ -476,7 +466,7 @@ export async function patchPack(
     throw new HttpError(404, 'not_found', 'Sticker pack not found');
   }
   const rows = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerRow>`SELECT * FROM stickers WHERE pack_id = ${packId}
@@ -493,14 +483,14 @@ export async function deletePack(
 ): Promise<{ warning: string }> {
   await requireOwnedPack(deps, packId, userId);
   const rows = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerRow>`SELECT * FROM stickers WHERE pack_id = ${packId}`;
     }),
   );
   await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* sql`DELETE FROM sticker_packs WHERE id = ${packId}`;
@@ -530,7 +520,7 @@ export async function discoverPacks(
   const limit = DISCOVER_PAGE_SIZE;
   const trimmed = query?.trim() ?? '';
   const packs = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       // `%`, `_` and the escape char are wildcards in LIKE: escape them so
@@ -558,7 +548,7 @@ export async function discoverPacks(
   if (page.length > 0) {
     const packIds = page.map((pack) => pack.id);
     const rows = await runSql(
-      deps,
+      deps.db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         return yield* sql<StickerRow>`SELECT * FROM stickers WHERE pack_id IN ${sql.in(packIds)}
@@ -627,7 +617,7 @@ export async function removePanelPack(
   userId: string,
 ): Promise<void> {
   await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* sql`DELETE FROM user_sticker_packs WHERE user_id = ${userId} AND pack_id = ${packId}`;
@@ -726,7 +716,7 @@ export async function listFavorites(
   userId: string,
 ): Promise<StickerView[]> {
   const links = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<{ stickerId: string }>`SELECT sticker_id FROM sticker_favorites
@@ -742,7 +732,7 @@ export async function listFavorites(
   // result stays per-user scoped.
   const ids = links.map((link) => link.stickerId);
   const rows = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerRow>`SELECT * FROM stickers WHERE id IN ${sql.in(ids)}`;
@@ -765,7 +755,7 @@ export async function addFavorite(
   stickerId: string,
 ): Promise<StickerView> {
   const [row] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerRow>`SELECT * FROM stickers WHERE id = ${stickerId} LIMIT 1`;
@@ -826,7 +816,7 @@ export async function removeFavorite(
   // Idempotent: unstarring an absent favorite is still `{ ok: true }`, so
   // the answer reveals nothing about what the caller has starred.
   await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* sql`DELETE FROM sticker_favorites
@@ -914,7 +904,7 @@ export async function uploadSticker(
     // The file never landed: remove the orphan metadata row so the sticker
     // does not 404 forever, then fail like any other write error.
     await runSql(
-      deps,
+      deps.db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* sql`DELETE FROM stickers WHERE id = ${id}`;
@@ -925,7 +915,7 @@ export async function uploadSticker(
       : new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
   }
   const [row] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerRow>`SELECT * FROM stickers WHERE id = ${id} LIMIT 1`;
@@ -945,7 +935,7 @@ export async function deleteSticker(
 ): Promise<void> {
   await requireOwnedPack(deps, packId, userId);
   const [row] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerRow>`SELECT * FROM stickers
@@ -958,7 +948,7 @@ export async function deleteSticker(
     throw new HttpError(404, 'not_found', 'Sticker not found');
   }
   await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* sql`DELETE FROM stickers WHERE id = ${stickerId}`;
@@ -968,7 +958,7 @@ export async function deleteSticker(
   const storageDir = resolveStorageDir(deps.storageDir);
   await rm(join(storageDir, row.storageKey), { force: true }).catch(() => {});
   await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* sql`UPDATE sticker_packs SET updated_at = ${new Date().toISOString()}
@@ -988,7 +978,7 @@ export async function readStickerFile(
   stickerId: string,
 ): Promise<StickerFile | null> {
   const [row] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerRow>`SELECT * FROM stickers WHERE id = ${stickerId} LIMIT 1`;
@@ -1135,7 +1125,7 @@ export async function importTelegramPack(
   // below uses `ON CONFLICT DO NOTHING` on the per-pack unique index, so one
   // of them wins and the loser counts as skipped.
   const known = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<{ sourceId: string | null }>`SELECT source_id FROM stickers
@@ -1148,7 +1138,7 @@ export async function importTelegramPack(
   // The whole pack size — local uploads included, not just Telegram rows —
   // so a full pack queues nothing instead of 400ing on the first store.
   const [packCounter] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM stickers
@@ -1223,7 +1213,7 @@ export async function importTelegramPack(
   }
 
   const [pack] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerPackRow>`SELECT * FROM sticker_packs
@@ -1234,7 +1224,7 @@ export async function importTelegramPack(
     throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
   }
   const rows = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerRow>`SELECT * FROM stickers WHERE pack_id = ${resolvedPackId}
@@ -1372,7 +1362,7 @@ async function storeImportedSticker(
     await writeFile(join(storageDir, storageKey), bytes);
   } catch {
     await runSql(
-      deps,
+      deps.db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* sql`DELETE FROM stickers WHERE id = ${id}`;
@@ -1381,7 +1371,7 @@ async function storeImportedSticker(
     return 'skipped';
   }
   const [row] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<StickerRow>`SELECT * FROM stickers WHERE id = ${id} LIMIT 1`;

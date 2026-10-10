@@ -15,19 +15,11 @@
 // `checkAvatarWritePermission`), exactly like the old route.
 
 import { Effect, Layer, Option, Schema, Stream } from 'effect';
-import { HttpServer, HttpServerResponse, HttpRouter } from 'effect/http';
+import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import type { Logger } from 'pino';
 import { HttpError } from '../errors';
-import {
-  CurrentUser,
-  Session,
-  requestIdOf,
-  sessionLayer,
-  withErrorEnvelope,
-  type EffectApiMount,
-  type EffectApiRoute,
-} from '../effect/http-core';
+import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { createRateLimiter } from '../rate-limit';
 import type { AvatarsRoutesDependencies } from './routes';
 import {
@@ -78,12 +70,6 @@ const AvatarsGroup = HttpApiGroup.make('avatars')
 
 const AvatarsApi = HttpApi.make('avatars').add(AvatarsGroup);
 
-export const AVATARS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'PUT', path: '/api/avatars/:kind/:ownerId' },
-  { method: 'DELETE', path: '/api/avatars/:kind/:ownerId' },
-  { method: 'GET', path: '/api/avatars/:id' },
-];
-
 // A malformed percent escape is an unknown owner (404), not a server error.
 // The Effect router hands out decoded params, so
 // this second decode is idempotent on normal ids and keeps the old final id.
@@ -124,17 +110,17 @@ export function createAvatarsApi(deps: AvatarsApiDependencies): EffectApiMount {
 
   const groupLayer = HttpApiBuilder.group(AvatarsApi, 'avatars', (handlers) =>
     handlers
-      .handle('upload', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'upload',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const kind = decodeAvatarKind(request.params.kind);
             const ownerId = yield* Effect.sync(() => decodePathId(request.params.ownerId));
             // The permission check runs before the rate-limit budget is
             // spent, so a stranger probing ids cannot burn the owner's
             // budget — and an unknown owner, a wrong kind and a stranger all
-            // answer the same 404.
+            // answer the same 404. That order is why the limiter stays here
+            // and is not a `makeRateLimit` middleware (it would run first).
             yield* Effect.promise(() =>
               checkAvatarWritePermission(deps.db, kind, ownerId, user.id),
             );
@@ -156,58 +142,48 @@ export function createAvatarsApi(deps: AvatarsApiDependencies): EffectApiMount {
               uploadAvatar(serviceDeps(), kind, ownerId, user.id, capped),
             );
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('remove', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'remove',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const kind = decodeAvatarKind(request.params.kind);
             const ownerId = yield* Effect.sync(() => decodePathId(request.params.ownerId));
             yield* Effect.promise(() => deleteAvatar(serviceDeps(), kind, ownerId, user.id));
             return { ok: true as const };
           }),
-          logger,
-          requestId,
-        );
-      })
+        ),
+      )
       // Streams the stored file. The id is a random unguessable uuid and a
       // signed-in session is required — but the URL is a capability for
       // signed-in users, not a secret: anyone handed the exact URL who is
       // signed in can load it. Private-group pictures are therefore not
       // listed anywhere a stranger can enumerate (no directory, no member
       // list for non-admins), yet no per-viewer membership check runs here.
-      .handle('serve', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            yield* CurrentUser;
-            const avatarId = yield* Effect.sync(() => decodePathId(request.params.id));
-            const file = yield* Effect.promise(() => readAvatarFile(serviceDeps(), avatarId));
-            // An unknown id and a missing file answer the same 404.
-            if (!file) {
-              throw new HttpError(404, 'not_found', 'Avatar not found');
-            }
-            return HttpServerResponse.uint8Array(file.bytes, {
-              status: 200,
-              headers: {
-                'content-type': file.mime,
-                'content-length': String(file.size),
-                'x-content-type-options': 'nosniff',
-                'content-security-policy': "default-src 'none'",
-                // The id changes on every replacement, so immutable is safe.
-                'cache-control': 'private, max-age=31536000, immutable',
-                etag: `"${avatarId}"`,
-              },
-            });
-          }),
-          logger,
-          requestId,
-        );
-      }),
+      .handle(
+        'serve',
+        handler(logger, async (request) => {
+          const avatarId = decodePathId(request.params.id);
+          const file = await readAvatarFile(serviceDeps(), avatarId);
+          // An unknown id and a missing file answer the same 404.
+          if (!file) {
+            throw new HttpError(404, 'not_found', 'Avatar not found');
+          }
+          return HttpServerResponse.uint8Array(file.bytes, {
+            status: 200,
+            headers: {
+              'content-type': file.mime,
+              'content-length': String(file.size),
+              'x-content-type-options': 'nosniff',
+              'content-security-policy': "default-src 'none'",
+              // The id changes on every replacement, so immutable is safe.
+              'cache-control': 'private, max-age=31536000, immutable',
+              etag: `"${avatarId}"`,
+            },
+          });
+        }),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(AvatarsApi).pipe(
@@ -215,14 +191,7 @@ export function createAvatarsApi(deps: AvatarsApiDependencies): EffectApiMount {
     Layer.provide(sessionLayer(deps.auth, logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: AVATARS_API_ROUTES };
+  return mountApi(AvatarsApi, apiLayer);
 }
 
 // Reads the body stream chunk by chunk and stops as soon as the cap is passed,
