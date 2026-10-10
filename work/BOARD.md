@@ -13,7 +13,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0987](T-0987-split-mobile-message-bubble.md) | Size split T37: mobile message-bubble.tsx (758) | in-progress | auto | T-0936 | size-plan |
 | [T-0988](T-0988-split-mobile-integrations.md) | Size split T38: mobile settings/integrations.tsx (740) | in-progress | auto | T-0936 | size-plan |
 | [T-0992](T-0992-split-server-stickers-api.md) | Size split T56: server stickers/api.ts (595) | in-progress | auto | T-0936 | size-plan |
-| [T-0993](T-0993-split-server-web-tools-adapters.md) | Size split T55: server web-tools/adapters.ts (606) | in-progress | auto | T-0936 | size-plan |
 
 ## Follow-ups
 
@@ -1020,3 +1019,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0990](T-0990-split-web-channel-panel.md) | Size split T65: apps/web/src/components/ChannelPanel.tsx (559 lines) into components/panels/{channelPanelOps,C | 2026-10-10 |
 | [T-0989](T-0989-split-web-sticker-panel.md) | Size split T49: apps/web/src/components/StickerPanel.tsx (634 lines) into components/sticker/{StickerThumb,Fav | 2026-10-10 |
 | [T-0991](T-0991-split-server-invite-links.md) | Size split T50: apps/server/src/invite-links/service.ts (631 lines) into invite-links/{tokens,queries,join}.ts | 2026-10-10 |
+| [T-0993](T-0993-split-server-web-tools-adapters.md) | Size split T55: apps/server/src/web-tools/adapters.ts (606 lines) into web-tools/{shared,fetch-adapter,wikiped | 2026-10-10 |
