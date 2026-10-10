@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1015](T-1015-split-web-task-strip.md) | Size split T99: web TaskStrip.tsx (442) | in-progress | auto | T-0936 | size-plan |
 
 ## Follow-ups
 
@@ -1048,3 +1047,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1017](T-1017-split-server-push-api.md) | Size split T89: apps/server/src/push/api.ts (484 lines) into push/{api-handlers,api-subscribe,api-util}.ts, ap | 2026-10-10 |
 | [T-1018](T-1018-split-server-machines-service.md) | Size split T90: apps/server/src/machines/service.ts (476 lines) into machines/{pairing,machines,crypto,view}.t | 2026-10-10 |
 | [T-1019](T-1019-split-server-chat-prefs.md) | Size split T98: apps/server/src/chat-prefs/service.ts (445 lines) into chat-prefs/{access,backgrounds}.ts, the | 2026-10-10 |
+| [T-1015](T-1015-split-web-task-strip.md) | Size split T99: apps/web/src/components/TaskStrip.tsx (442 lines) into components/topic/{stripModel,StatusMenu | 2026-10-10 |
