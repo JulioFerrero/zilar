@@ -11,31 +11,24 @@
 // 429 limiter, then the 400 decode, then the 404 chat resolution — exactly
 // like the old `requireSession` -> 501 -> limiter -> `safeParse` sequence.
 import { Effect, Layer, Option, Schema } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
-import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-} from 'effect/http-api';
+import { SqlClient } from 'effect/sql';
+import type { HttpServerRequest } from 'effect/http';
+import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { isDmBlocked } from '../blocks/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import type { MediaItemRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import {
-  CurrentUser,
+  SchemaErrors,
   Session,
-  failureResponse,
-  requestIdOf,
+  handler,
+  mountApi,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
@@ -157,13 +150,6 @@ export interface MediaItem {
   linkHost?: string;
 }
 
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
-
 // The effect/sql gallery read returns the same columns in the same camelCase
 // shape as the row above. `at_micros` is int8, which the pg driver
 // hands back as a string, so it is `string | number` here and converted to a
@@ -225,23 +211,6 @@ function errorName(error: unknown): string {
   return error instanceof Error ? error.constructor.name : typeof error;
 }
 
-class MediaSchemaErrors extends HttpApiMiddleware.Service<MediaSchemaErrors>()(
-  'zilar/effect/http/MediaSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<MediaSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(MediaSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid request'),
-      );
-    }),
-  );
-}
-
 const MediaGroup = HttpApiGroup.make('media')
   .add(
     HttpApiEndpoint.get('gallery', '/media', {
@@ -252,15 +221,11 @@ const MediaGroup = HttpApiGroup.make('media')
   // The framework never decodes a body or params here, so this layer only
   // guards against a future endpoint adding one; the query decode runs
   // manually in the handler with its fixed text.
-  .middleware(MediaSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const MediaApi = HttpApi.make('media').add(MediaGroup);
-
-export const MEDIA_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/media' },
-];
 
 export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
   const logger = deps.logger;
@@ -274,11 +239,10 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
     });
 
   const groupLayer = HttpApiBuilder.group(MediaApi, 'media', (handlers) =>
-    handlers.handle('gallery', (request) => {
-      const requestId = requestIdOf(request.request);
-      return withErrorEnvelope(
+    handlers.handle(
+      'gallery',
+      handler(logger, (request, user) =>
         Effect.gen(function* () {
-          const user = yield* CurrentUser;
           if (deps.archive === undefined) {
             throw new HttpError(501, 'media_unavailable', 'Media gallery is not configured');
           }
@@ -378,10 +342,8 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
 
           return { items, next };
         }),
-        logger,
-        requestId,
-      );
-    }),
+      ),
+    ),
   );
 
   const apiLayer = HttpApiBuilder.layer(MediaApi).pipe(
@@ -390,12 +352,5 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: MEDIA_API_ROUTES };
+  return mountApi(MediaApi, apiLayer);
 }

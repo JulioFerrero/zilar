@@ -4,7 +4,7 @@
 // Its store runs on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
+import { HttpServerRequest, HttpServerResponse } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
@@ -18,16 +18,16 @@ import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { makeRateLimit } from '../effect/rate-limit-middleware';
 import {
-  CurrentUser,
   Session,
   failureResponse,
+  handler,
   httpErrorResponse,
+  mountApi,
   requestIdOf,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import {
   checkGroupHandleAvailability,
@@ -94,37 +94,18 @@ function schemaErrorLayer(logger: Logger): Layer.Layer<HandlesSchemaErrors> {
 
 // Runs the check budget before the query is decoded, exactly like the old
 // route's `checkLimiter.allow` -> `safeParse` order: an invalid query still
-// spends budget. `requires: CurrentUser` is satisfied by `Session`.
-class HandlesCheckRateLimit extends HttpApiMiddleware.Service<
-  HandlesCheckRateLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/HandlesCheckRateLimit') {}
-
-function checkRateLimitLayer(checkLimiter: RateLimiter): Layer.Layer<HandlesCheckRateLimit> {
-  return Layer.succeed(
-    HandlesCheckRateLimit,
-    HandlesCheckRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!checkLimiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many attempts, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
+// spends budget.
+const HandlesCheckRateLimit = makeRateLimit(
+  'zilar/effect/http/HandlesCheckRateLimit',
+  'Too many attempts, try again later',
+);
 
 const HandlesGroup = HttpApiGroup.make('handles')
   .add(
     HttpApiEndpoint.get('check', '/handles/check', {
       query: HandleCheckQuery,
       success: HandleCheckResult,
-    }).middleware(HandlesCheckRateLimit),
+    }).middleware(HandlesCheckRateLimit.Middleware),
     HttpApiEndpoint.put('claim', '/me/handle', {
       payload: HandleClaimBody,
       success: HandleClaimResult,
@@ -148,11 +129,6 @@ export interface HandlesApiDependencies {
   logger: Logger;
 }
 
-export const HANDLES_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/handles/check' },
-  { method: 'PUT', path: '/api/me/handle' },
-];
-
 export function createHandlesApi(deps: HandlesApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
   const db = deps.db;
@@ -175,32 +151,21 @@ export function createHandlesApi(deps: HandlesApiDependencies): EffectApiMount {
   const groupLayer = HttpApiBuilder.group(HandlesApi, 'handles', (handlers) =>
     handlers
       // Live availability for the typed handle: `{ available, reason? }`.
-      .handle('check', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            // The check budget was already charged by `HandlesCheckRateLimit`,
-            // before the query decode.
-            const user = yield* CurrentUser;
-            if (request.query.kind === 'group') {
-              return yield* Effect.promise(() =>
-                checkGroupHandleAvailability(db, request.query.handle),
-              );
-            }
-            return yield* Effect.promise(() =>
-              checkHandleAvailability(db, user.id, request.query.handle),
-            );
-          }),
-          logger,
-          requestId,
-        );
-      })
+      // The check budget was already charged by `HandlesCheckRateLimit`,
+      // before the query decode.
+      .handle(
+        'check',
+        handler(logger, (request, user) =>
+          request.query.kind === 'group'
+            ? checkGroupHandleAvailability(db, request.query.handle)
+            : checkHandleAvailability(db, user.id, request.query.handle),
+        ),
+      )
       // Claims (or changes) the caller's handle in one store transaction.
-      .handle('claim', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'claim',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             // Saving the exact current value is a no-op: answer without
             // spending the claim budget. The store re-checks inside its
             // transaction, so this is only a fast path.
@@ -210,7 +175,7 @@ export function createHandlesApi(deps: HandlesApiDependencies): EffectApiMount {
             }
             if (!claimLimiter.allow(user.id)) {
               return httpErrorResponse(
-                requestId,
+                requestIdOf(request.request),
                 new HttpError(429, 'rate_limited', 'Too many attempts, try again later'),
               );
             }
@@ -232,25 +197,16 @@ export function createHandlesApi(deps: HandlesApiDependencies): EffectApiMount {
             });
             return claimed;
           }),
-          logger,
-          requestId,
-        );
-      }),
+        ),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(HandlesApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayer(logger)),
-    Layer.provide(checkRateLimitLayer(checkLimiter)),
+    Layer.provide(HandlesCheckRateLimit.layer(checkLimiter)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: HANDLES_API_ROUTES };
+  return mountApi(HandlesApi, apiLayer);
 }

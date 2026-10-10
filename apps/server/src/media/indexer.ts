@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import { decodePayload, type Payload } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { correctionTarget, retractTarget, stanzaFrom } from '../search/routes';
 import type { ArchivePool, ArchiveRow } from '../search/service';
 
@@ -215,16 +215,6 @@ function extractMediaItemsUnsafe(row: ArchiveRow): ExtractedMediaItem[] {
     items.push({ kind: 'link', linkUrl: link.url, linkHost: link.host });
   }
   return items;
-}
-
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // The `media_items` row the indexer writes. Local to this file now that the

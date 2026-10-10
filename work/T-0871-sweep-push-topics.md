@@ -1,7 +1,7 @@
 ---
 id: T-0871
 title: "Server sweep: push, topics, handles, media onto the shared HTTP helpers (runSql, SchemaErrors, makeRateLimit, handler, mountApi) with truthful success statuses"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0871-sweep-push-topics
 model: auto
@@ -69,4 +69,32 @@ Run the tests 3 times after the last commit. The machine is shared, so note `upt
 
 ## Report (written by the worker when done)
 
+### Commits (one per module)
+- push `87a6167d`, handles `840530a8`, media `0580a30b`, topics `39331c9d`.
+
+### Lines removed (git numstat, added/removed)
+- push: api.ts +43/-109, service.ts +2/-13, store.ts +1/-11, plus a new routes.expected.ts.
+- handles: api.ts +28/-72, store.ts +1/-8, plus a new routes.expected.ts.
+- media: api.ts +15/-60, indexer.ts +1/-11, plus a new routes.expected.ts.
+- topics: api.ts +78/-177, rooms.ts +2/-12, service.ts +2/-11, plus a new routes.expected.ts. `topics/access.ts` is not touched (T-0851 edits it), so its local `runSql` copy stays.
+
+### Checks
+- `vitest run src/push src/topics src/handles src/media src/authz-sweep.test.ts src/routes-manifest.test.ts` with 120 s timeouts: 19 files passed, 1 skipped; 157 tests passed, 1 skipped; 3 of 3 runs after the last commit. No tests added or edited.
+- `pnpm --filter @zilar/server typecheck`, `oxlint` on the four folders and prettier: clean.
+- Machine load 50 to 90 during the runs (uptime), so a run took 2 to 6 minutes. `pnpm gate` not run (wave mode).
+
+### Truthful statuses
+- topics create (`POST /api/groups/:id/topics`): success is now `TopicView.pipe(HttpApiSchema.status(201))` and the handler returns the view instead of `jsonUnsafe(..., { status: 201 })`. The existing route tests (status and body) pass.
+
+### Behaviour differences
+- none observed. Topics create now goes through the success-schema encode like the other endpoints; the schema has the same fields as the view.
+
+### Unsure / notes
+- handles keeps its own `HandlesSchemaErrors`: the shared `SchemaErrors` cannot express it (a Query decode failure answers a 200 `{ available: false, reason: 'invalid' }`, the payload message is fixed text). Replacing it would change the wire.
+- push and media keep their limiter inside the handler (push: `requirePush()`, decode, then limiter; media: 501, limiter, decode, 404), so they use no `makeRateLimit`. They declare the shared `SchemaErrors`; the old local copies had a `|| 'Invalid request'` fallback for an empty message, the shared one has none. The framework only decodes the DELETE `:id` string param there, so it cannot fire.
+- push, media: bodies and queries are still decoded by hand to keep the error order; no payload schema declared.
+- Local `runSql` copies removed in push/service.ts, push/store.ts, handles/store.ts, media/api.ts, media/indexer.ts, topics/rooms.ts, topics/service.ts. Remaining: topics/access.ts (out of scope).
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.** Push, topics, handles and media are converted, and the topics create declares 201. Handles keeps its own schema-error layer, because a bad query answers 200 `{available:false}`. `topics/access.ts` was left alone, so its local `runSql` copy is a follow-up. The combined wave 4 check passes.

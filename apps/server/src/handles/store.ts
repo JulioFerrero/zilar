@@ -9,7 +9,7 @@
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { classifyHandle, normalizeHandle } from './rules';
 
@@ -34,13 +34,6 @@ interface RetiredHandleRecord {
   formerUserId: string | null;
   formerGroupId: string | null;
   reservedUntil: Date;
-}
-
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 export async function handleForUser(db: ServerDatabase, userId: string): Promise<string | null> {

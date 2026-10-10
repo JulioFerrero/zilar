@@ -4,32 +4,29 @@
 // (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
   HttpApiEndpoint,
   HttpApiGroup,
-  HttpApiMiddleware,
+  HttpApiSchema,
 } from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { HttpError } from '../errors';
+import { makeRateLimit } from '../effect/rate-limit-middleware';
 import {
-  CurrentUser,
+  SchemaErrors,
   Session,
-  failureResponse,
-  httpErrorResponse,
-  requestIdOf,
+  handler,
+  mountApi,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { createRateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   listTopicAis,
@@ -218,51 +215,13 @@ const TopicIdParams = Schema.Struct({ id: Schema.String });
 const TopicMemberParams = Schema.Struct({ id: Schema.String, userId: Schema.String });
 const TopicAiParams = Schema.Struct({ id: Schema.String, aiId: Schema.String });
 
-// Applied to the group so a payload decode failure renders like the old zod
-// path: a 400 `invalid_request` carrying the first schema message.
-class TopicsSchemaErrors extends HttpApiMiddleware.Service<TopicsSchemaErrors>()(
-  'zilar/effect/http/TopicsSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<TopicsSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(TopicsSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid request'),
-      );
-    }),
-  );
-}
-
 // T-0108: topic creation hits ejabberd, so it is capped per user. The budget
 // runs before the payload is decoded, exactly like the old route's
 // `createLimiter.allow` -> decode order.
-class TopicsCreateRateLimit extends HttpApiMiddleware.Service<
-  TopicsCreateRateLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/TopicsCreateRateLimit') {}
-
-function createRateLimitLayer(limiter: RateLimiter): Layer.Layer<TopicsCreateRateLimit> {
-  return Layer.succeed(
-    TopicsCreateRateLimit,
-    TopicsCreateRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many topics, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
+const TopicsCreateRateLimit = makeRateLimit(
+  'zilar/effect/http/TopicsCreateRateLimit',
+  'Too many topics, try again later',
+);
 
 const TopicsGroup = HttpApiGroup.make('topics')
   .add(
@@ -273,10 +232,11 @@ const TopicsGroup = HttpApiGroup.make('topics')
     HttpApiEndpoint.post('create', '/groups/:id/topics', {
       params: GroupIdParams,
       payload: CreateTopicBody,
-      success: TopicView,
+      // 201, as the route always answered.
+      success: TopicView.pipe(HttpApiSchema.status(201)),
     })
       .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
-      .middleware(TopicsCreateRateLimit),
+      .middleware(TopicsCreateRateLimit.Middleware),
     HttpApiEndpoint.get('detail', '/topics/:id', {
       params: TopicIdParams,
       success: TopicView,
@@ -323,7 +283,7 @@ const TopicsGroup = HttpApiGroup.make('topics')
     }),
   )
   .middleware(Session)
-  .middleware(TopicsSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
@@ -339,21 +299,6 @@ export interface TopicsApiDependencies {
   /** Injected in tests so the rate-limit window can advance without waiting. */
   now?: () => number;
 }
-
-export const TOPICS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/groups/:id/topics' },
-  { method: 'POST', path: '/api/groups/:id/topics' },
-  { method: 'GET', path: '/api/topics/:id' },
-  { method: 'PATCH', path: '/api/topics/:id' },
-  { method: 'POST', path: '/api/topics/:id/archive' },
-  { method: 'GET', path: '/api/topics/:id/members' },
-  { method: 'POST', path: '/api/topics/:id/members' },
-  { method: 'DELETE', path: '/api/topics/:id/members/:userId' },
-  { method: 'PUT', path: '/api/topics/:id/roles' },
-  { method: 'GET', path: '/api/topics/:id/ais' },
-  { method: 'POST', path: '/api/topics/:id/ais' },
-  { method: 'DELETE', path: '/api/topics/:id/ais/:aiId' },
-];
 
 export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
   const logger = deps.logger;
@@ -379,27 +324,23 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
       // A stranger (or a missing group) sees an empty list, never a 403/404
       // that would reveal the group exists. The group route itself already
       // answers 404 for non-members; this list only narrows to visible topics.
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'list',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const rows = yield* Effect.promise(() =>
               visibleTopics(deps.db, request.params.id, user.id),
             );
             return { topics: yield* Effect.promise(() => toTopicViews(deps.db, rows, mucDomain)) };
           }),
-          logger,
-          requestId,
-        );
-      })
+        ),
+      )
       // Creates a topic; the limiter middleware already charged the budget,
       // before the payload decode.
-      .handle('create', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'create',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const payload = request.payload;
             const topic = yield* Effect.promise(() =>
               createTopic(serviceDeps(), {
@@ -415,32 +356,25 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
                 ...(payload.linkLabel === undefined ? {} : { linkLabel: payload.linkLabel }),
               }),
             );
-            const view = yield* Effect.promise(() => toTopicView(deps.db, topic, mucDomain));
-            return HttpServerResponse.jsonUnsafe(view, { status: 201 });
+            return yield* Effect.promise(() => toTopicView(deps.db, topic, mucDomain));
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('detail', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'detail',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const topic = yield* Effect.promise(() =>
               requireVisibleTopic(deps.db, request.params.id, user.id),
             );
             return yield* Effect.promise(() => toTopicView(deps.db, topic, mucDomain));
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('patch', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'patch',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const payload = request.payload;
             const topic = yield* Effect.promise(() =>
               patchTopic(serviceDeps(), {
@@ -463,57 +397,45 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
             );
             return yield* Effect.promise(() => toTopicView(deps.db, topic, mucDomain));
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('archive', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'archive',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const topic = yield* Effect.promise(() =>
               archiveTopic(serviceDeps(), request.params.id, user.id),
             );
             return yield* Effect.promise(() => toTopicView(deps.db, topic, mucDomain));
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('members', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'members',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const members = yield* Effect.promise(() =>
               listTopicMembers(serviceDeps(), request.params.id, user.id),
             );
             return { members };
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('addMember', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'addMember',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const topic = yield* Effect.promise(() =>
               addTopicMember(serviceDeps(), request.params.id, user.id, request.payload.userId),
             );
             return yield* Effect.promise(() => toTopicView(deps.db, topic, mucDomain));
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('removeMember', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'removeMember',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const topic = yield* Effect.promise(() =>
               removeTopicMember(serviceDeps(), request.params.id, user.id, request.params.userId),
             );
@@ -524,18 +446,15 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
             }
             return yield* Effect.promise(() => toTopicView(deps.db, topic, mucDomain));
           }),
-          logger,
-          requestId,
-        );
-      })
+        ),
+      )
       // T-0116: attach roles to a private topic and pick its approver role.
       // The actor must be a topic manager who can see the topic; a stranger
       // gets the same 404 as a missing id.
-      .handle('setRoles', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'setRoles',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const topic = yield* Effect.promise(() =>
               setTopicRoles(serviceDeps(), {
                 topicId: request.params.id,
@@ -546,31 +465,25 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
             );
             return yield* Effect.promise(() => toTopicView(deps.db, topic, mucDomain));
           }),
-          logger,
-          requestId,
-        );
-      })
+        ),
+      )
       // T-0109: AIs in non-General topics.
-      .handle('listAis', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'listAis',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const topic = yield* Effect.promise(() =>
               requireVisibleTopic(deps.db, request.params.id, user.id),
             );
             const ais = yield* Effect.promise(() => listTopicAis(deps.db, topic.id));
             return { ais };
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('addAi', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'addAi',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const topic = yield* Effect.promise(() =>
               addTopicAi(serviceDeps(), {
                 topicId: request.params.id,
@@ -580,39 +493,27 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
             );
             return yield* Effect.promise(() => toTopicView(deps.db, topic, mucDomain));
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('removeAi', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'removeAi',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const topic = yield* Effect.promise(() =>
               removeTopicAi(serviceDeps(), request.params.id, user.id, request.params.aiId),
             );
             return yield* Effect.promise(() => toTopicView(deps.db, topic, mucDomain));
           }),
-          logger,
-          requestId,
-        );
-      }),
+        ),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(TopicsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(createRateLimitLayer(createLimiter)),
+    Layer.provide(TopicsCreateRateLimit.layer(createLimiter)),
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: TOPICS_API_ROUTES };
+  return mountApi(TopicsApi, apiLayer);
 }

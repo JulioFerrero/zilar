@@ -1,9 +1,9 @@
 import { Data, Duration, Effect, type Effect as EffectType } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import type { GroupRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { allowedArchives, type ArchivePool, type SearchOwner } from '../search/service';
 import { stanzaFrom } from '../search/routes';
 import { canSeeTopic, type TopicRow } from '../topics/access';
@@ -86,16 +86,6 @@ function dropped(device: PushDeviceRow, reason: DroppedReason): PushOutcome {
 // typed catch instead (see `newestMessageForUserEffect`).
 const awaitDb = <A>(promise: () => Promise<A>): EffectType.Effect<A, never, never> =>
   Effect.promise(promise);
-
-// Runs one `effect/sql` query on the runtime registered for this database
-// (see `../effect/sql`). The exported functions stay `async`: a DB failure
-// rejects the returned promise with the `SqlError`, which the caller maps.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
 
 // How many of the newest archived rows to scan for an acceptable message,
 // and how often to re-read before giving up (the publish IQ can win the race
