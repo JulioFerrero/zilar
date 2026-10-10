@@ -155,7 +155,6 @@ export interface StoreState {
   readonly loadingTopicRoles: Set<string>;
   /** Chat id -> (lowercased user id -> display name). */
   readonly groupMembers: Map<string, Map<string, string>>;
-  readonly loadingGroupMembers: Set<string>;
 }
 
 /** The plain helpers of `real-store.ts` the effect modules call. */

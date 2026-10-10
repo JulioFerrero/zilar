@@ -54,10 +54,14 @@ export function applyGroupDetail(
   }));
 }
 
+// The shared loading set also serves chat-keyed loads; a group load keys its
+// mark so a group id can never collide with a chat id (T-0920 follow-up).
+const groupKey = (groupId: string): string => `group:${groupId}`;
+
 /**
  * The web view of the core's per-group cache (T-0920): the detail map is the
  * chat-keyed `groupInfos`, so the cache is read by `detail.id`; the in-flight
- * marks share `loadingGroupMembers` (group ids never collide with chat ids).
+ * marks live in `loadingGroupMembers` under a group key.
  */
 function groupDetailStore(ctx: StoreCtx): GroupDetailStore<GroupDetail> {
   return {
@@ -69,12 +73,12 @@ function groupDetailStore(ctx: StoreCtx): GroupDetailStore<GroupDetail> {
       }
       return undefined;
     },
-    isLoading: (groupId) => ctx.loadingGroupMembers.has(groupId),
+    isLoading: (groupId) => ctx.loadingGroupMembers.has(groupKey(groupId)),
     begin: (groupId) => {
-      ctx.loadingGroupMembers.add(groupId);
+      ctx.loadingGroupMembers.add(groupKey(groupId));
     },
     finish: (groupId) => {
-      ctx.loadingGroupMembers.delete(groupId);
+      ctx.loadingGroupMembers.delete(groupKey(groupId));
     },
     publish: (_groupId, detail) => {
       const mine = ctx.k.myJid();

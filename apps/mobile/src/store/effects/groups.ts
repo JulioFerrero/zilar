@@ -1,7 +1,11 @@
 import { Effect } from 'effect';
 import {
   applyTopicRow as applyTopicRowCore,
+  changeTopic as changeTopicCore,
+  createTopic as createTopicCore,
   ensureGroupDetail as ensureGroupDetailCore,
+  leaveTopic as leaveTopicCore,
+  type GroupActionStore,
   type GroupDetailStore,
   type TopicRowStore,
 } from '@zilar/client-core/store';
@@ -228,6 +232,26 @@ export function makeGroups(ctx: StoreCtx): Groups {
   const applyTopicRow = (topic: Topic): Effect.Effect<void, unknown> =>
     applyTopicRowCore(ctx.coreCtx, topicRowStore(), topic);
 
+  // The mobile half of the shared topic actions: the group id of a chat and
+  // the topic-row store the shared repaint uses (R17).
+  const actionStore = (): GroupActionStore => ({
+    groupIdFor: (chatId) => h.groupIdForChat(chatId),
+    rows: topicRowStore(),
+  });
+
+  // Joins a topic's room, dropping a failure (the created row is painted).
+  const joinRoomQuietly = (rowId: string): Effect.Effect<void, never> => {
+    const core = s.core;
+    const me = get().me;
+    if (core === undefined || me === undefined) {
+      return Effect.void;
+    }
+    return orElse(
+      lift(() => core.joinRoom(rowId, h.nick(me))),
+      undefined,
+    );
+  };
+
   // The topic id + group id of the topic that owns `chatId`. Fails for a
   // chat that is not a topic yet (e.g. a legacy group row).
   const topicIdFor = (chatId: string): Effect.Effect<{ topicId: string; groupId: string }, Error> =>
@@ -246,6 +270,19 @@ export function makeGroups(ctx: StoreCtx): Groups {
     orElse(fx.refreshChats, undefined),
   );
 
+  // Removes the caller from a topic and refreshes the list on a failure (the
+  // last seat archives the topic, so the row disappears either way).
+  const removeTopicMemberEffect = (
+    chatId: string,
+    userId: string,
+  ): Effect.Effect<void, unknown, Ports> =>
+    failAfter(
+      changeTopicCore(ctx.coreCtx, actionStore(), chatId, (topicId) =>
+        topics.removeTopicMember(topicId, userId),
+      ),
+      () => refreshQuietly,
+    );
+
   const actions: GroupActions = {
     groupDetail: (groupId) => {
       // Reading the revision subscribes the selector to detail loads.
@@ -260,42 +297,34 @@ export function makeGroups(ctx: StoreCtx): Groups {
     },
     createTopic: (chatId, input) =>
       ctx.run(
-        Effect.gen(function* () {
-          const chat = get().chats.find((entry) => entry.id === chatId);
-          const groupId = chat?.groupId ?? groupIds.get(chatId);
-          if (groupId === undefined) {
-            return yield* Effect.fail(new Error('This group is not available yet.'));
-          }
-          const topic = yield* lift(() => topics.createTopic(groupId, input as CreateTopicInput));
-          h.rememberTopicRoles(topic);
-          // The topic exists on the server now: a failed follow-up re-read
-          // must not report "Could not create" (the sheet would invite a
-          // retry that makes a duplicate). Refresh best-effort and fall back
-          // to the created topic's own chat JID.
-          yield* orElse(applyTopicRow(topic), undefined);
-          const row = get().chats.find((entry) => entry.topic?.id === topic.id);
-          const rowId = row?.id ?? topic.chatJid;
-          const me = get().me;
-          const core = s.core;
-          if (core !== undefined && me !== undefined) {
-            yield* orElse(
-              lift(() => core.joinRoom(rowId, h.nick(me))),
-              undefined,
-            );
-          }
-          return rowId;
-        }),
+        createTopicCore<Topic>(
+          ctx.coreCtx,
+          {
+            groupIdFor: (chatId) => h.groupIdForChat(chatId),
+            rememberTopic: (topic) => h.rememberTopicRoles(topic),
+            requireRow: false,
+            fallbackRowId: (topic) => topic.chatJid,
+            // The topic exists on the server now: a failed follow-up re-read
+            // must not report "Could not create" (the sheet would invite a
+            // retry that makes a duplicate). Refresh best-effort.
+            apply: (topic) => orElse(applyTopicRow(topic), undefined),
+            joinRoom: (rowId) => joinRoomQuietly(rowId),
+          },
+          chatId,
+          (groupId) => topics.createTopic(groupId, input as CreateTopicInput),
+        ),
       ),
     patchTopic: (chatId, input) =>
       ctx.run(
-        Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
-          const topic = yield* lift(() => topics.patchTopic(topicId, input as PatchTopicInput));
+        changeTopicCore(
+          ctx.coreCtx,
+          actionStore(),
+          chatId,
+          (topicId) => topics.patchTopic(topicId, input as PatchTopicInput),
           // The patch response is the server truth: a private-to-public flip
           // cleared the roles there, so the cache is replaced, not merged.
-          h.rememberTopicRoles(topic);
-          yield* applyTopicRow(topic);
-        }),
+          (topic) => h.rememberTopicRoles(topic),
+        ),
       ),
     archiveTopic: (chatId) =>
       ctx.run(
@@ -308,52 +337,39 @@ export function makeGroups(ctx: StoreCtx): Groups {
       ),
     addTopicAi: (chatId, aiId) =>
       ctx.run(
-        Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
-          const topic = yield* lift(() => topics.addTopicAi(topicId, aiId));
-          yield* applyTopicRow(topic);
-        }),
+        changeTopicCore(ctx.coreCtx, actionStore(), chatId, (topicId) =>
+          topics.addTopicAi(topicId, aiId),
+        ),
       ),
     removeTopicAi: (chatId, aiId) =>
       ctx.run(
-        Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
-          const topic = yield* lift(() => topics.removeTopicAi(topicId, aiId));
-          yield* applyTopicRow(topic);
-        }),
+        changeTopicCore(ctx.coreCtx, actionStore(), chatId, (topicId) =>
+          topics.removeTopicAi(topicId, aiId),
+        ),
       ),
     addTopicMember: (chatId, userId) =>
       ctx.run(
-        Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
-          const topic = yield* lift(() => topics.addTopicMember(topicId, userId));
-          yield* applyTopicRow(topic);
-        }),
+        changeTopicCore(ctx.coreCtx, actionStore(), chatId, (topicId) =>
+          topics.addTopicMember(topicId, userId),
+        ),
       ),
-    removeTopicMember: (chatId, userId) =>
-      ctx.run(
-        Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
-          // Removing the last member archives the topic (server 404): it is
-          // gone from the visible list either way, so refresh like the
-          // removed-while-open flow.
-          yield* failAfter(
-            lift(() => topics.removeTopicMember(topicId, userId)).pipe(
-              Effect.flatMap((topic) => applyTopicRow(topic)),
-            ),
-            () => refreshQuietly,
-          );
-        }),
-      ),
+    removeTopicMember: (chatId, userId) => ctx.run(removeTopicMemberEffect(chatId, userId)),
     leaveTopic: (chatId) =>
       ctx.run(
-        Effect.gen(function* () {
-          const me = get().me;
-          if (me === undefined) {
-            return yield* Effect.fail(new Error('This topic is not available yet.'));
-          }
-          yield* lift(() => get().removeTopicMember(chatId, me.id));
-        }),
+        leaveTopicCore(
+          ctx.coreCtx,
+          {
+            groupIdFor: (chatId) => h.groupIdForChat(chatId),
+            currentUserId: () => get().me?.id,
+            removeMember: (chatId, userId) => removeTopicMemberEffect(chatId, userId),
+          },
+          {
+            isNotFound: () => false,
+            refreshTopicRow: () => Effect.succeed(false),
+            refreshChats: () => Effect.void,
+          },
+          chatId,
+        ),
       ),
     listTopicMembers: (chatId) =>
       ctx.run(
@@ -535,16 +551,15 @@ export function makeGroups(ctx: StoreCtx): Groups {
       ),
     setTopicRoles: (chatId, input) =>
       ctx.run(
-        Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
-          const topic = yield* lift(() =>
-            topics.setTopicRoles(topicId, input as SetTopicRolesInput),
-          );
+        changeTopicCore(
+          ctx.coreCtx,
+          actionStore(),
+          chatId,
+          (topicId) => topics.setTopicRoles(topicId, input as SetTopicRolesInput),
           // The refreshed row carries the server truth: going public cleared
           // the roles there, so no stale roles stay in the store.
-          h.rememberTopicRoles(topic);
-          yield* applyTopicRow(topic);
-        }),
+          (topic) => h.rememberTopicRoles(topic),
+        ),
       ),
     topicRoles: (chatId) => {
       // Reading the revision subscribes the selector to topic-roles loads,

@@ -176,7 +176,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     // missing client keeps `[]`.
     // chatId -> (lowercased userId -> display name)
     const groupMembers = new Map<string, Map<string, string>>();
-    const loadingGroupMembers = new Set<string>();
     const loadingOlder = new Set<string>();
     // First-page history loads currently in flight, by chat id (T-0067).
     const loadingHistory = new Set<string>();
@@ -214,7 +213,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       topicRolesById,
       loadingTopicRoles,
       groupMembers,
-      loadingGroupMembers,
       get groupsJoined() {
         return groupsJoined;
       },

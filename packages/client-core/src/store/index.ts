@@ -42,5 +42,7 @@ export * from './prefs';
 export * from './folders';
 // T-0920: group detail cache and topic rows.
 export * from './groups';
+// T-0921: the shared group and topic actions.
+export * from './group-actions';
 // ----------------------------------------------------------------------------
 // End of Phase 2.
