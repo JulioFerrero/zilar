@@ -1,21 +1,12 @@
 // Voice-transcription routes (T-0170): the enabled flag and the on-demand
-// transcript, mirroring web's mock (`apps/web/src/mock/api.ts:1407-1424`). The
+// transcript, using the shared response shapes from `@zilar/api-contract`. The
 // mock has an endpoint configured, so the control shows and one tap resolves to
 // a fixed sentence per URL. The real routes live on the server
 // (`apps/server/src/voice-transcription/api.ts`), group `voiceTranscription`.
 
+import type { EnabledStatus, TranscriptResult } from '@zilar/api-contract';
 import { errorResponse, jsonResponse, readJsonBody, type MockHttpRequest } from '../../http/shared';
 import type { MockData } from '../../state';
-
-/** The group's `EnabledStatus` schema (`{ enabled }`). */
-interface EnabledStatus {
-  enabled: boolean;
-}
-
-/** The group's `TranscriptResult` schema (`{ text }`). */
-interface TranscriptResult {
-  text: string;
-}
 
 export function handleVoiceTranscription(
   data: MockData,
