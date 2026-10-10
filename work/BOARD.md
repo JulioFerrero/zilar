@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1003](T-1003-push-candidate-tests.md) | Push: 5 tests for who gets a notification | in-progress | auto | T-1002 | minimal-tests |
-| [T-1006](T-1006-split-mobile-connections.md) | Size split T79: mobile settings/connections.tsx (519) | in-progress | auto | T-0936 | size-plan |
 
 ## Follow-ups
 
@@ -1037,3 +1036,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1009](T-1009-split-web-chat-list.md) | Size split T84: apps/web/src/components/ChatList.tsx (509 lines) into components/chatList/{rowsSelector,ChatLi | 2026-10-10 |
 | [T-1004](T-1004-split-mobile-approvals.md) | Size split T74: apps/mobile/src/app/settings/approvals.tsx (529 lines) into components/approvals/{use-approval | 2026-10-10 |
 | [T-1005](T-1005-split-mobile-profile.md) | Size split T78: apps/mobile/src/app/settings/profile.tsx (521 lines) into components/settings/{use-profile-set | 2026-10-10 |
+| [T-1006](T-1006-split-mobile-connections.md) | Size split T79: apps/mobile/src/app/settings/connections.tsx (519 lines) into components/connections/{use-conn | 2026-10-10 |
