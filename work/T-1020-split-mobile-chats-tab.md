@@ -150,6 +150,6 @@ No single test file was run: there are no test files in `apps/mobile/src/compone
   - the list shows chat rows (Dev AI, Marta) and the group row (Dev team, 7 topics);
   - search shows the Chats section (Dev AI, Dev team) and the Messages section with highlighted matches;
   - a long-press on Marta opens Pin, Mute and Archive.
-- **Seen on main too:** Pin shows "Could not save. Try again.", because the mock backend has no chat-prefs handler (wave 2).
+- **Pin shows "Could not save. Try again."** The lead did not run main. The failure comes from the mock: `packages/mock-backend/src` has no chat-prefs handler (wave 2), and the calls are unchanged (next point).
 - **The lead's line check:** the `saveChatPref` calls for pin, mute, unmute and archive are the same as on main; only the indentation changed.
 - **Check:** the gate passed.
