@@ -11,6 +11,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds, media gallery | in-progress | auto | T-0949 | mock wave 2 |
 | [T-1046](T-1046-mock-backend-stickers-gifs.md) | Mock backend F1: stickers, GIFs | in-progress | auto | T-0949 | mock wave 2 |
+| [T-1047](T-1047-mobile-mock-uploader.md) | Mobile mock: no-network uploader so voice and attachments send | in-progress | auto | T-0949 | mock wave 2 |
+| [T-1048](T-1048-mock-backend-group-general-topics.md) | Mock backend: General topic for every seeded group | in-progress | auto | T-0949 | mock wave 2 |
 
 ## Follow-ups
 
