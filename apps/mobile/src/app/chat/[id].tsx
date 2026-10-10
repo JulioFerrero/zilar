@@ -215,7 +215,8 @@ function Chat() {
     [],
   );
   // This `useMemo` sits above the `!chat` early return, like `demoPacks`:
-  // every hook runs on every render (see `lib/hooks-guard`).
+  // every hook runs on every render (enforced by the oxlint
+  // `react/rules-of-hooks` rule on `src/app`).
   const demoAttachments = useMemo(
     () =>
       process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_ZILAR_MOCK === '1'

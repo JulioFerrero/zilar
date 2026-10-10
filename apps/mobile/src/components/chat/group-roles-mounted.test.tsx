@@ -1,14 +1,31 @@
-import { createElement } from 'react';
+import { createElement, type ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { GroupRolesSheet } from '@/components/chat/group-roles-sheet';
 import { ROLE_GONE_MESSAGE, ROLE_LOAD_FAILED_MESSAGE } from '@/lib/roles';
 
+// Every pressable records its latest props by label, so a test presses the
+// button the sheet really renders (its own `onPress` wiring, not the prop).
+const pressables = vi.hoisted(() => new Map<string, { onPress?: () => void }>());
+
 vi.mock('react-native', () => ({
   Modal: 'Modal',
   Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
-  Pressable: 'Pressable',
+  Pressable: (props: {
+    accessibilityLabel?: string;
+    onPress?: () => void;
+    children?: ReactNode;
+  }) => {
+    if (props.accessibilityLabel !== undefined) {
+      pressables.set(props.accessibilityLabel, props);
+    }
+    return createElement(
+      'Pressable',
+      { accessibilityLabel: props.accessibilityLabel },
+      props.children,
+    );
+  },
   TextInput: 'TextInput',
   View: 'View',
 }));
@@ -96,15 +113,17 @@ async function mountRolesLoadError(error: unknown): Promise<{
     onClose: () => {},
   });
   const html = renderToStaticMarkup(element);
-  // The Retry `onPress` the sheet wires is the `onRetryRoles` prop itself:
-  // the sheet renders exactly one `Pressable` labelled "Retry loading
-  // roles" whose `onPress` is that prop (pinned by the source assertion
-  // below). Pressing it here drives the real wired handler — if the screen
-  // or the sheet ever stops passing it through, the press does not retry.
+  // Pressing the Retry the sheet rendered (found by its label) drives the real
+  // wired handler: if the sheet renders a dead button or drops the label, the
+  // press does not retry.
   return {
     html,
     pressRetry: () => {
-      onRetryRoles();
+      const retry = pressables.get('Retry loading roles');
+      if (retry?.onPress === undefined) {
+        throw new Error('The sheet rendered no Retry button with a handler');
+      }
+      retry.onPress();
     },
     retried: () => retried,
   };
@@ -129,36 +148,8 @@ describe('group screen mounted roles load error (T-0157 item 6)', () => {
     expect(html).toContain('Retry loading roles');
     expect(html).toContain('Retry');
     expect(retried()).toBe(false);
-    // Finding 3: actually press Retry — the pressable the sheet renders is
-    // labelled "Retry loading roles" and its `onPress` is the `onRetryRoles`
-    // prop (pinned by the source assertion below); pressing it here must
-    // run the retry. A dead or unwired button fails.
+    // Press the rendered Retry button: a dead or unwired one fails here.
     pressRetry();
     expect(retried()).toBe(true);
-  });
-
-  it('wires the Retry pressable to the retry prop (fails if the button is dead)', async () => {
-    // The sheet source must render the labelled Retry pressable with
-    // `onPress={onRetryRoles}`: if someone renders a dead button (or drops
-    // the label), this pin fails alongside the press test above.
-    const { readFileSync } = await import('node:fs');
-    const { dirname, join } = await import('node:path');
-    const { fileURLToPath } = await import('node:url');
-    const here = dirname(fileURLToPath(import.meta.url));
-    const sheet = readFileSync(join(here, 'group-roles-sheet.tsx'), 'utf8');
-    expect(sheet).toContain('accessibilityLabel="Retry loading roles"');
-    expect(sheet).toContain('onPress={onRetryRoles}');
-  });
-
-  it('fails if the mount mapping stops using describeRolesError load', async () => {
-    // Reads the screen source itself (the hooks-guard pattern): the mount
-    // effect must map through `describeRolesError(error, 'load')`. A
-    // hardcoded generic line (the T-0140 regression) breaks this pin.
-    const { readFileSync } = await import('node:fs');
-    const { dirname, join } = await import('node:path');
-    const { fileURLToPath } = await import('node:url');
-    const here = dirname(fileURLToPath(import.meta.url));
-    const screen = readFileSync(join(here, '..', '..', 'app', 'group', '[id].tsx'), 'utf8');
-    expect(screen).toContain("setRolesLoadError(describeRolesError(error, 'load'))");
   });
 });

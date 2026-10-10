@@ -1,13 +1,8 @@
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { AttachSheet, PreviewFallbackIcon, isImageName } from './attach-sheet';
-
-const here = dirname(fileURLToPath(import.meta.url));
 
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
@@ -83,8 +78,6 @@ describe('attach sheet (T-0150)', () => {
   });
 
   it('draws the sheet with lucide icons and no emoji', () => {
-    const source = readFileSync(join(here, 'attach-sheet.tsx'), 'utf8');
-    expect(source).not.toMatch(/\p{Extended_Pictographic}/u);
     const html = sheet({
       demoAttachments: [
         {
@@ -108,6 +101,7 @@ describe('attach sheet (T-0150)', () => {
     expect(html).toContain('<Image');
     expect(html).toContain('<Camera');
     expect(html).toContain('<FileText');
+    expect(html).not.toMatch(/\p{Extended_Pictographic}/u);
   });
 
   it('shows the image fallback icon for image names and the file icon otherwise', () => {

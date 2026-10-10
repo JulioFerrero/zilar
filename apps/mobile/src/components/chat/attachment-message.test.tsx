@@ -1,7 +1,4 @@
 import type { Attachment } from '@zilar/protocol';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -12,8 +9,6 @@ import {
   AttachmentViewer,
   isLoadableMediaUrl,
 } from './attachment-message';
-
-const here = dirname(fileURLToPath(import.meta.url));
 
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
@@ -149,6 +144,7 @@ describe('attachment rendering (T-0150)', () => {
     expect(html).toContain('2.3 MB');
     expect(html).toContain('application/pdf');
     expect(html).toContain('<FileText');
+    expect(html).not.toMatch(/\p{Extended_Pictographic}/u);
   });
 
   it('renders the file row with retry and open icon controls', () => {
@@ -164,11 +160,6 @@ describe('attachment rendering (T-0150)', () => {
       createElement(AttachmentFileRow, { attachment: file(), onOpen: () => {} }),
     );
     expect(openable).toContain('<ArrowUpRight');
-  });
-
-  it('draws the file row with a lucide icon and no emoji', () => {
-    const source = readFileSync(join(here, 'attachment-message.tsx'), 'utf8');
-    expect(source).not.toMatch(/\p{Extended_Pictographic}/u);
   });
 
   it('renders the untrusted file row without size or MIME', () => {

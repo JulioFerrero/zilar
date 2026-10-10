@@ -1,13 +1,8 @@
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { AttachmentVideo } from './attachment-video';
-
-const here = dirname(fileURLToPath(import.meta.url));
 
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
@@ -81,6 +76,7 @@ describe('attachment video (T-0150)', () => {
     expect(html).not.toContain('VideoView');
     expect(html).toContain('Not loaded: untrusted address');
     expect(html).toContain('<Video');
+    expect(html).not.toMatch(/\p{Extended_Pictographic}/u);
   });
 
   it('shows Retry on a failed video upload', () => {
@@ -138,10 +134,5 @@ describe('attachment video (T-0150)', () => {
     );
     expect(html).toContain('VideoView');
     expect(html).not.toContain('GIF');
-  });
-
-  it('draws the untrusted row with a lucide icon and no emoji', () => {
-    const source = readFileSync(join(here, 'attachment-video.tsx'), 'utf8');
-    expect(source).not.toMatch(/\p{Extended_Pictographic}/u);
   });
 });

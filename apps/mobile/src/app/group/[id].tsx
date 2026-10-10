@@ -160,7 +160,9 @@ function GroupTopics() {
   // Per-user archived topics hide like manager-archived ones (web parity):
   // both share one Archived toggle at the bottom, never two sections.
   // The effect-free `useState` below the memos above keeps every hook above
-  // the early return (see `lib/hooks-guard`).
+  // the early return (enforced by the oxlint `react/rules-of-hooks` rule on
+  // `src/app`; the keyed remount and roles load are covered by
+  // `components/chat/group-screen-sheets.test.tsx`).
   const [archivedOpen, setArchivedOpen] = useState(false);
   const { active: activeTopics, archived: archivedTopics } = useMemo(
     () => splitGroupTopics(topics),
