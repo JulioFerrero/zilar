@@ -2,6 +2,7 @@ import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
+import { bareJid, ownBareJid } from '../jid';
 import { Effect } from 'effect';
 import type { Logger } from 'pino';
 import {
@@ -117,11 +118,6 @@ function senderNameFor(
   return peerNames.get(row.barePeer) ?? 'Unknown';
 }
 
-// Bare JID, lowercased: the comparison key for sender direction.
-function bareJid(jid: string): string {
-  return jid.split('/')[0]?.toLowerCase() ?? '';
-}
-
 // The stanza's `from` attribute, parsed defensively like the other tag
 // readers: a missing or malformed attribute is null, never a throw.
 export function stanzaFrom(xml: string): string | null {
@@ -132,13 +128,6 @@ export function stanzaFrom(xml: string): string | null {
 
 function chatJidFor(row: Pick<ArchiveRow, 'owner' | 'kind' | 'barePeer'>): string {
   return row.kind === 'groupchat' ? row.owner : row.barePeer;
-}
-
-// The caller's own bare JID: the `from` a stanza carries when the caller
-// sent it. The localpart is authoritative (it scopes the archive query);
-// the domain comes from config.
-function ownBareJid(allowed: SearchOwner, domain: string): string {
-  return `${allowed.ownLocalpart}@${domain.toLowerCase()}`;
 }
 
 export interface ArchiveQueryInput {

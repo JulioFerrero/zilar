@@ -3,6 +3,7 @@ import { SqlClient } from 'effect/sql';
 import type { GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import type { SearchOwner } from '../search/service';
+import { bareJid, ownBareJid } from '../jid';
 import { stanzaFrom } from '../search/routes';
 import { canSeeTopic, type TopicRow } from '../topics/access';
 import { localpartFor } from '../xmpp/provisioning';
@@ -109,7 +110,7 @@ async function resolveDmCandidate(
   // The caller's own outgoing messages share the same archive scope; only
   // incoming ones notify.
   const from = stanzaFrom(row.xml);
-  if (from !== null && bareJidOf(from) === ownBareJid(allowed, deps.config.xmpp.domain)) {
+  if (from !== null && bareJid(from) === ownBareJid(allowed, deps.config.xmpp.domain)) {
     return { status: 'skip' };
   }
   const now = (deps.now ?? (() => new Date()))();
@@ -171,12 +172,4 @@ async function isMuted(
 
 function topicRoomGeneralJid(deps: PushServiceDeps, groupRoomLocalpart: string): string {
   return `${groupRoomLocalpart}@${deps.config.xmpp.mucDomain}`.toLowerCase();
-}
-
-function ownBareJid(allowed: SearchOwner, domain: string): string {
-  return `${allowed.ownLocalpart}@${domain.toLowerCase()}`;
-}
-
-function bareJidOf(jid: string): string {
-  return jid.split('/')[0]?.toLowerCase() ?? '';
 }

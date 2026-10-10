@@ -2,6 +2,7 @@
 // T-0966: the `tool.*` adapters, split out of `tools/adapters.ts` unchanged.
 import type { Schema } from 'effect';
 import type { ActionAdapter, ActionContext } from '../actions/registry';
+import { truncateChars } from '../text';
 import {
   MAX_SAVE_MODEL_TEXT_CHARS,
   MAX_TOOL_POST_CHARS,
@@ -11,7 +12,6 @@ import {
   plural,
   routinesInScope,
   serviceFailure,
-  truncateChars,
   type AdapterState,
 } from './adapter-support';
 import { describeSchedule } from './routine-adapters';

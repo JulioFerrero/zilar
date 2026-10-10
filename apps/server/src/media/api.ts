@@ -18,6 +18,7 @@ import { MediaGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { isDmBlocked } from '../blocks/service';
+import { bareJid } from '../jid';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import type { MediaItemRow } from '../db/rows';
@@ -131,12 +132,6 @@ export interface MediaItem {
 // shape as the row above. `at_micros` is int8, which the pg driver
 // hands back as a string, so it is `string | number` here and converted to a
 // number when mapping (the values fit in a double).
-
-// The part of a JID before `/`, lowercased: the comparison key for sender
-// direction, mirroring search's `bareJid`.
-function bareJid(jid: string): string {
-  return jid.split('/')[0]?.toLowerCase() ?? '';
-}
 
 // The nick is the part after `/` in a room stanza's `from`; an empty nick (or
 // no resource at all) answers "Unknown", like search's `senderNameFor`.

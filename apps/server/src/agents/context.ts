@@ -1,4 +1,7 @@
 import type { ChatMessage } from '@zilar/xmpp-core';
+import { bareJid } from '../jid';
+
+export { bareJid };
 
 export interface ChatCompletionMessage {
   role: 'system' | 'user' | 'assistant';
@@ -35,11 +38,6 @@ export interface DmContextInput {
   trigger: Pick<ChatMessage, 'id' | 'body'>;
   /** Pinned facts and memory block, in their own system message. */
   memory?: MemoryContext;
-}
-
-export function bareJid(jid: string): string {
-  const slash = jid.indexOf('/');
-  return (slash < 0 ? jid : jid.slice(0, slash)).toLowerCase();
 }
 
 // Canonical form for every JID comparison on the group path: bare and

@@ -6,6 +6,7 @@ import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
+import { truncateChars } from '../text';
 import { auditPaused, auditRun } from './audit';
 import type { ExecuteRoutineOptions, ExecuteRoutinePorts } from './execute';
 
@@ -38,13 +39,6 @@ export async function postResult(
     options.logger.warn({ routineId: row.id }, 'routine post threw');
     return false;
   }
-}
-
-function truncateChars(value: string, max: number): string {
-  if (value.length <= max) {
-    return value;
-  }
-  return `${value.slice(0, max)}…`;
 }
 
 export async function markSkipped(

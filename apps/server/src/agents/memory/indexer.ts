@@ -8,6 +8,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
+import { bareJid } from '../../jid';
 import { correctionTarget, retractTarget, stanzaFrom } from '../../search/routes';
 import { extractMediaItems, type ExtractedMediaItem } from '../../media/indexer';
 import type { ArchivePool, ArchiveRow } from '../../search/service';
@@ -73,11 +74,6 @@ function isSticker(row: ArchiveRow): boolean {
   }
   const result = decodePayload(unescapeXmlText(match[1] ?? ''));
   return result.ok && result.payload.type === 'sticker';
-}
-
-// Bare JID, lowercased: the comparison key for the AI's own messages.
-function bareJid(jid: string): string {
-  return jid.split('/')[0]?.toLowerCase() ?? '';
 }
 
 function cutText(text: string): string {

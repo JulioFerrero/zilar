@@ -1,7 +1,8 @@
 // T-0993: the `web.fetch` adapter, split out of `web-tools/adapters.ts` unchanged.
 import { Schema } from 'effect';
 import type { ActionAdapter, ArgsSchema } from '../actions/registry';
-import { guardedGet, truncateChars } from './guarded-fetch';
+import { guardedGet } from './guarded-fetch';
+import { truncateChars } from '../text';
 import { extractText } from './html';
 import {
   DEFAULT_FETCH_CHARS,
