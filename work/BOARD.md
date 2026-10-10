@@ -8,6 +8,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
+| [T-0888](T-0888-composer-voice-test-deterministic.md) | Composer.voice.test.tsx is deterministic: no real 500 ms waits, a controlled clock for the 400 ms hold | review | sonnet-5.5 | | wave 3 add-on |
+| [T-0889](T-0889-scope-glob-zero-folders.md) | Gate scope check: `**/` also matches zero folders | review | haiku-5.5 | | wave 3 add-on |
 | [T-0866](T-0866-sweep-tools-chats.md) | Server sweep: tools, chats, contacts, drafts, xmpp onto the shared HTTP helpers (runSql,… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
 | [T-0867](T-0867-sweep-media-files.md) | Server sweep: stickers, avatars, backgrounds, files onto the shared HTTP helpers (runSql… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
 | [T-0868](T-0868-sweep-approvals-routines.md) | Server sweep: approvals, audit, routines, directory onto the shared HTTP helpers (runSql… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
