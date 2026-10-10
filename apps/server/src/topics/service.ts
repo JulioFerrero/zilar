@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import { isUniqueViolation } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -366,12 +367,6 @@ function mapXmppError(error: unknown): HttpError {
     return new HttpError(409, 'topic_exists', 'A topic with that name already exists');
   }
   return new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === 'object' && error !== null && (error as { code?: unknown }).code === '23505'
-  );
 }
 
 async function destroyQuietly(

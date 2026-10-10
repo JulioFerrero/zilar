@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { MachinePairingCodeRow, MachineRow } from '../db/rows';
+import { isUniqueViolation } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import {
   generatePairingCode,
@@ -156,29 +157,4 @@ export async function insertPendingMachine(
     }
     throw error;
   }
-}
-
-// `effect/sql` wraps driver failures in `SqlError` and exposes the structured
-// `UniqueViolation` reason; accept that or a plain `{ code: '23505' }` error
-// (plain driver errors and the recovery tests' doubles). Matched by
-// code/constraint, never by message text.
-function isUniqueViolation(error: unknown): boolean {
-  if (error instanceof SqlError.SqlError) {
-    return error.reason._tag === 'UniqueViolation';
-  }
-  let current: unknown = error;
-  for (let depth = 0; depth < 5; depth += 1) {
-    if (typeof current !== 'object' || current === null) {
-      return false;
-    }
-    const record = current as { code?: unknown; cause?: unknown };
-    if (record.code === '23505') {
-      return true;
-    }
-    if (!('cause' in record)) {
-      return false;
-    }
-    current = record.cause;
-  }
-  return false;
 }

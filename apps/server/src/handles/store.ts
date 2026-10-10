@@ -7,8 +7,9 @@
 // tests keep their shape during the transition.
 
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
+import { isUniqueViolation } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { classifyHandle, normalizeHandle } from './rules';
@@ -264,38 +265,10 @@ export async function claimHandle(
   );
 }
 
-// Whether `error` is a unique-constraint violation: either the structured
-// `effect/sql` `UniqueViolation` reason or a driver error carrying the
-// Postgres `23505` code. Driver failures can be wrapped, so the code may sit on
-// a nested `cause` (`groups/service.ts` calls this on its `effect/sql` insert).
-// Walk the chain; the message check is a last-resort fallback
-// for the wrapped shape only, never matched instead of a code.
-export function isUniqueViolation(error: unknown): boolean {
-  if (error instanceof SqlError.SqlError) {
-    return error.reason._tag === 'UniqueViolation';
-  }
-  let current: unknown = error;
-  for (let depth = 0; depth < 5; depth += 1) {
-    if (typeof current !== 'object' || current === null) {
-      return false;
-    }
-    const record = current as { code?: unknown; message?: unknown; cause?: unknown };
-    if (record.code === '23505') {
-      return true;
-    }
-    if (
-      typeof record.message === 'string' &&
-      (/duplicate key/i.test(record.message) || /UNIQUE constraint/i.test(record.message))
-    ) {
-      return true;
-    }
-    if (!('cause' in record)) {
-      return false;
-    }
-    current = record.cause;
-  }
-  return false;
-}
+// Whether `error` is a unique-constraint violation: re-exported from
+// `../effect/error-utils` (T-1043) so `groups/service.ts` and
+// `groups/visibility.ts` keep importing it from here.
+export { isUniqueViolation };
 
 // Reaps expired retired rows opportunistically after a claim, so the table
 // does not grow forever. Best effort: a failure never fails the claim.

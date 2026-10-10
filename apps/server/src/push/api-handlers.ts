@@ -6,6 +6,7 @@
 import { Effect, Option, Schema } from 'effect';
 import { HttpApiBuilder, type HttpApi } from 'effect/http-api';
 import { PushGroup, PushSettingsPayload, PushTestPayload } from '@zilar/api-contract';
+import { errorClassName } from '../effect/error-utils';
 import { handler } from '../effect/http-core';
 import { HttpError } from '../errors';
 import type { RateLimiter } from '../rate-limit';
@@ -21,7 +22,7 @@ import {
   showPreviewsForUser,
   toPushDeviceView,
 } from './store';
-import { STRICT_DECODE, createRequirePush, errorName } from './api-util';
+import { STRICT_DECODE, createRequirePush } from './api-util';
 import { createSubscribeHandler } from './api-subscribe';
 import type { PushApiDependencies } from './api';
 
@@ -105,7 +106,7 @@ export function createPushGroupLayer(
                 Effect.catchDefect((defect) =>
                   Effect.sync(() => {
                     deps.logger.warn(
-                      { userId: user.id, err: errorName(defect) },
+                      { userId: user.id, err: errorClassName(defect) },
                       'push room sync failed after device removal; membership changes re-sync later',
                     );
                   }),

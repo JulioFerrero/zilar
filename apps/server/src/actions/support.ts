@@ -1,4 +1,5 @@
 // effect-plain: moved unchanged from apps/server/src/actions/gateway.ts (size split)
+import { errorName } from '../effect/error-utils';
 import type { ActionGatewayDependencies } from './gateway';
 import { summaryForOutcome } from './announce';
 import { stripModelTextCloseTag, truncateModelText } from './registry';
@@ -39,12 +40,7 @@ export function safeStringify(value: unknown): string | null {
   }
 }
 
-export function errorName(error: unknown): string {
-  if (error instanceof Error) {
-    return error.name;
-  }
-  return typeof error;
-}
+export { errorName };
 
 // Calls every entry in `calls` on the optional announcer. A missing announcer
 // is a no-op; a throw only logs the error class name. The gateway never lets
