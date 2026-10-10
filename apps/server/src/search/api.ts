@@ -5,7 +5,7 @@
 // owns the Effect query schema, the 501/429 guards and the adapter wiring.
 
 import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
+import { HttpServerRequest } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
@@ -20,12 +20,12 @@ import {
   CurrentUser,
   Session,
   failureResponse,
+  handler,
   httpErrorResponse,
+  mountApi,
   requestIdOf,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import {
   SEARCH_MAX_LIMIT,
@@ -142,10 +142,6 @@ const SearchGroup = HttpApiGroup.make('search')
 
 const SearchApi = HttpApi.make('search').add(SearchGroup);
 
-export const SEARCH_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/search' },
-];
-
 export function createSearchApi(deps: SearchRoutesDependencies): EffectApiMount {
   const logger = deps.logger;
   const limiter = createRateLimiter({
@@ -155,23 +151,18 @@ export function createSearchApi(deps: SearchRoutesDependencies): EffectApiMount 
   });
 
   const groupLayer = HttpApiBuilder.group(SearchApi, 'search', (handlers) =>
-    handlers.handle('search', (request) => {
-      const requestId = requestIdOf(request.request);
-      return withErrorEnvelope(
-        Effect.gen(function* () {
-          const user = yield* CurrentUser;
-          const query = request.query;
-          return yield* runSearchEffect(deps, user.id, {
-            q: query.q,
-            ...(query.chat === undefined ? {} : { chat: query.chat }),
-            ...(query.limit === undefined ? {} : { limit: query.limit }),
-            ...(query.before === undefined ? {} : { before: query.before }),
-          }).pipe(Effect.orDie);
-        }),
-        logger,
-        requestId,
-      );
-    }),
+    handlers.handle(
+      'search',
+      handler(logger, (request, user) => {
+        const query = request.query;
+        return runSearchEffect(deps, user.id, {
+          q: query.q,
+          ...(query.chat === undefined ? {} : { chat: query.chat }),
+          ...(query.limit === undefined ? {} : { limit: query.limit }),
+          ...(query.before === undefined ? {} : { before: query.before }),
+        }).pipe(Effect.orDie);
+      }),
+    ),
   );
 
   const apiLayer = HttpApiBuilder.layer(SearchApi).pipe(
@@ -181,12 +172,5 @@ export function createSearchApi(deps: SearchRoutesDependencies): EffectApiMount 
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: SEARCH_API_ROUTES };
+  return mountApi(SearchApi, apiLayer);
 }

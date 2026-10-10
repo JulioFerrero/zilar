@@ -4,7 +4,7 @@
 // Effect edge (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
+import { HttpServerRequest } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
@@ -26,12 +26,12 @@ import {
   CurrentUser,
   Session,
   failureResponse,
+  handler,
   httpErrorResponse,
+  mountApi,
   requestIdOf,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
@@ -279,7 +279,7 @@ const AisGroup = HttpApiGroup.make('ais')
     }),
     HttpApiEndpoint.post('create', '/ais', {
       payload: CreateAiBody,
-      success: PublicAiView,
+      success: PublicAiView.pipe(HttpApiSchema.status(201)),
     })
       .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
       .middleware(AisConfigured),
@@ -314,17 +314,6 @@ const AisGroup = HttpApiGroup.make('ais')
   .prefix('/api');
 
 const AisApi = HttpApi.make('ais').add(AisGroup);
-
-export const AIS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/ais' },
-  { method: 'GET', path: '/api/ais/:id' },
-  { method: 'POST', path: '/api/ais' },
-  { method: 'PATCH', path: '/api/ais/:id' },
-  { method: 'DELETE', path: '/api/ais/:id' },
-  { method: 'POST', path: '/api/ais/:id/stop' },
-  { method: 'POST', path: '/api/ais/:id/resume' },
-  { method: 'PUT', path: '/api/ais/:id/machine' },
-];
 
 export function createAisApi(deps: AisApiDependencies): EffectApiMount {
   const logger = deps.logger;
@@ -405,108 +394,72 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
 
   const groupLayer = HttpApiBuilder.group(AisApi, 'ais', (handlers) =>
     handlers
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const ais = yield* Effect.promise(() => listAis(deps.db, user.id));
-            const withAvatarList = yield* Effect.promise(() => withAvatars(ais));
-            // Owner only, as today: every id here came from the owner's own listing.
-            // The reads run in parallel so one slow AI never holds the whole list.
-            return yield* Effect.promise(() =>
-              Promise.all(withAvatarList.map((ai) => withUsage(ai))),
-            );
-          }),
-          effectLogger,
-          requestId,
-        );
-      })
-      .handle('detail', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const ai = yield* Effect.promise(() => getOwnedAi(deps.db, request.params.id, user.id));
-            if (!ai) {
-              throw new HttpError(404, 'not_found', 'AI not found');
-            }
-            const [withAvatar] = yield* Effect.promise(() => withAvatars([ai]));
-            return yield* Effect.promise(() => withUsage(withAvatar ?? ai));
-          }),
-          effectLogger,
-          requestId,
-        );
-      })
-      .handle('create', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const configured = requireConfigured();
-            const payload = request.payload;
-            const created = yield* Effect.promise(() =>
-              createAi(serviceDeps(configured), {
-                ownerId: user.id,
-                name: payload.name,
-                template: payload.template,
-                ...(payload.persona === undefined ? {} : { persona: payload.persona }),
-                providerConnectionId: payload.providerConnectionId,
-                model: payload.model,
-                limits: { ...payload.limits } as AiLimits,
-              }),
-            );
-            return HttpServerResponse.jsonUnsafe(created, { status: 201 });
-          }),
-          effectLogger,
-          requestId,
-        );
-      })
-      .handle('patch', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const configured = requireConfigured();
-            const payload = request.payload;
-            return yield* Effect.promise(() =>
-              updateAi(serviceDeps(configured), {
-                id: request.params.id,
-                ownerId: user.id,
-                ...(payload.name === undefined ? {} : { name: payload.name }),
-                ...(payload.persona === undefined ? {} : { persona: payload.persona }),
-                ...(payload.limits === undefined
-                  ? {}
-                  : { limits: { ...payload.limits } as AiLimits }),
-                ...(payload.model === undefined ? {} : { model: payload.model }),
-                ...(payload.providerConnectionId === undefined
-                  ? {}
-                  : { providerConnectionId: payload.providerConnectionId }),
-                ...(payload.canDelegate === undefined ? {} : { canDelegate: payload.canDelegate }),
-                ...(payload.acceptsDelegation === undefined
-                  ? {}
-                  : { acceptsDelegation: payload.acceptsDelegation }),
-              }),
-            );
-          }),
-          effectLogger,
-          requestId,
-        );
-      })
-      .handle('remove', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const configured = requireConfigured();
-            yield* Effect.promise(() =>
-              deleteAi(serviceDeps(configured), request.params.id, user.id),
-            );
-          }),
-          effectLogger,
-          requestId,
-        );
-      })
+      .handle(
+        'list',
+        handler(effectLogger, async (_request, user) => {
+          const ais = await listAis(deps.db, user.id);
+          const withAvatarList = await withAvatars(ais);
+          // Owner only, as today: every id here came from the owner's own listing.
+          // The reads run in parallel so one slow AI never holds the whole list.
+          return Promise.all(withAvatarList.map((ai) => withUsage(ai)));
+        }),
+      )
+      .handle(
+        'detail',
+        handler(effectLogger, async (request, user) => {
+          const ai = await getOwnedAi(deps.db, request.params.id, user.id);
+          if (!ai) {
+            throw new HttpError(404, 'not_found', 'AI not found');
+          }
+          const [withAvatar] = await withAvatars([ai]);
+          return withUsage(withAvatar ?? ai);
+        }),
+      )
+      .handle(
+        'create',
+        handler(effectLogger, (request, user) => {
+          const configured = requireConfigured();
+          const payload = request.payload;
+          return createAi(serviceDeps(configured), {
+            ownerId: user.id,
+            name: payload.name,
+            template: payload.template,
+            ...(payload.persona === undefined ? {} : { persona: payload.persona }),
+            providerConnectionId: payload.providerConnectionId,
+            model: payload.model,
+            limits: { ...payload.limits } as AiLimits,
+          });
+        }),
+      )
+      .handle(
+        'patch',
+        handler(effectLogger, (request, user) => {
+          const configured = requireConfigured();
+          const payload = request.payload;
+          return updateAi(serviceDeps(configured), {
+            id: request.params.id,
+            ownerId: user.id,
+            ...(payload.name === undefined ? {} : { name: payload.name }),
+            ...(payload.persona === undefined ? {} : { persona: payload.persona }),
+            ...(payload.limits === undefined ? {} : { limits: { ...payload.limits } as AiLimits }),
+            ...(payload.model === undefined ? {} : { model: payload.model }),
+            ...(payload.providerConnectionId === undefined
+              ? {}
+              : { providerConnectionId: payload.providerConnectionId }),
+            ...(payload.canDelegate === undefined ? {} : { canDelegate: payload.canDelegate }),
+            ...(payload.acceptsDelegation === undefined
+              ? {}
+              : { acceptsDelegation: payload.acceptsDelegation }),
+          });
+        }),
+      )
+      .handle(
+        'remove',
+        handler(effectLogger, (request, user) => {
+          const configured = requireConfigured();
+          return deleteAi(serviceDeps(configured), request.params.id, user.id);
+        }),
+      )
       // T-0080: the owner's kill switch. Stop disconnects the AI at once and
       // prevents the gateway from waking it back up; resume reconnects it. Both
       // answer the public AI, so the panel can re-render against the server
@@ -522,66 +475,52 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
       // free of audit code. The `try/catch` around `audit.record` is a defensive
       // backstop: the standard recorder swallows its own errors, but a custom or
       // buggy one must never turn a 200 into a 500 here.
-      .handle('stop', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const id = request.params.id;
-            const before = yield* Effect.promise(() => getOwnedAi(deps.db, id, user.id));
-            const ai = yield* Effect.promise(() => stopAi({ db: deps.db }, id, user.id));
-            if (before !== null && before.status !== ai.status) {
-              yield* Effect.promise(() =>
-                recordAudit({
-                  actorUserId: user.id,
-                  aiId: ai.id,
-                  groupId: null,
-                  action: 'ai.stopped',
-                  subjectId: ai.id,
-                  argsHash: null,
-                  costCurrency: null,
-                  costAmount: null,
-                  result: 'ok',
-                  detail: null,
-                }),
-              );
-            }
-            return ai;
-          }),
-          effectLogger,
-          requestId,
-        );
-      })
-      .handle('resume', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const id = request.params.id;
-            const before = yield* Effect.promise(() => getOwnedAi(deps.db, id, user.id));
-            const ai = yield* Effect.promise(() => resumeAi({ db: deps.db }, id, user.id));
-            if (before !== null && before.status !== ai.status) {
-              yield* Effect.promise(() =>
-                recordAudit({
-                  actorUserId: user.id,
-                  aiId: ai.id,
-                  groupId: null,
-                  action: 'ai.resumed',
-                  subjectId: ai.id,
-                  argsHash: null,
-                  costCurrency: null,
-                  costAmount: null,
-                  result: 'ok',
-                  detail: null,
-                }),
-              );
-            }
-            return ai;
-          }),
-          effectLogger,
-          requestId,
-        );
-      })
+      .handle(
+        'stop',
+        handler(effectLogger, async (request, user) => {
+          const id = request.params.id;
+          const before = await getOwnedAi(deps.db, id, user.id);
+          const ai = await stopAi({ db: deps.db }, id, user.id);
+          if (before !== null && before.status !== ai.status) {
+            await recordAudit({
+              actorUserId: user.id,
+              aiId: ai.id,
+              groupId: null,
+              action: 'ai.stopped',
+              subjectId: ai.id,
+              argsHash: null,
+              costCurrency: null,
+              costAmount: null,
+              result: 'ok',
+              detail: null,
+            });
+          }
+          return ai;
+        }),
+      )
+      .handle(
+        'resume',
+        handler(effectLogger, async (request, user) => {
+          const id = request.params.id;
+          const before = await getOwnedAi(deps.db, id, user.id);
+          const ai = await resumeAi({ db: deps.db }, id, user.id);
+          if (before !== null && before.status !== ai.status) {
+            await recordAudit({
+              actorUserId: user.id,
+              aiId: ai.id,
+              groupId: null,
+              action: 'ai.resumed',
+              subjectId: ai.id,
+              argsHash: null,
+              costCurrency: null,
+              costAmount: null,
+              result: 'ok',
+              detail: null,
+            });
+          }
+          return ai;
+        }),
+      )
       // T-0091: assign or clear the AI's home machine. The audit entry is
       // written only when the value actually changed, mirroring how `stop` /
       // `resume` skip the audit on an idempotent call: a recorder that swallows
@@ -590,46 +529,37 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
       // routes. `before.machineId` and `ai.machineId` are always either the
       // same string or one of them is `null`, so the inequality check is
       // straightforward.
-      .handle('assignMachine', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const id = request.params.id;
-            const machineId = request.payload.machineId;
-            const before = yield* Effect.promise(() => getOwnedAi(deps.db, id, user.id));
-            const ai = yield* Effect.promise(() =>
-              assignMachine(
-                { db: deps.db },
-                {
-                  aiId: id,
-                  ownerId: user.id,
-                  machineId,
-                },
-              ),
-            );
-            if (before !== null && before.machineId !== ai.machineId) {
-              yield* Effect.promise(() =>
-                recordAudit({
-                  actorUserId: user.id,
-                  aiId: ai.id,
-                  groupId: null,
-                  action: 'ai.machine_assigned',
-                  subjectId: ai.id,
-                  argsHash: null,
-                  costCurrency: null,
-                  costAmount: null,
-                  result: 'ok',
-                  detail: { machineId: ai.machineId },
-                }),
-              );
-            }
-            return ai;
-          }),
-          effectLogger,
-          requestId,
-        );
-      }),
+      .handle(
+        'assignMachine',
+        handler(effectLogger, async (request, user) => {
+          const id = request.params.id;
+          const machineId = request.payload.machineId;
+          const before = await getOwnedAi(deps.db, id, user.id);
+          const ai = await assignMachine(
+            { db: deps.db },
+            {
+              aiId: id,
+              ownerId: user.id,
+              machineId,
+            },
+          );
+          if (before !== null && before.machineId !== ai.machineId) {
+            await recordAudit({
+              actorUserId: user.id,
+              aiId: ai.id,
+              groupId: null,
+              action: 'ai.machine_assigned',
+              subjectId: ai.id,
+              argsHash: null,
+              costCurrency: null,
+              costAmount: null,
+              result: 'ok',
+              detail: { machineId: ai.machineId },
+            });
+          }
+          return ai;
+        }),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(AisApi).pipe(
@@ -644,12 +574,5 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
     ),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: AIS_API_ROUTES };
+  return mountApi(AisApi, apiLayer);
 }

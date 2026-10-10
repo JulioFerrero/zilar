@@ -22,7 +22,6 @@
 // literals, shared with the service and the probe boundary.
 
 import { Effect, Layer, Option, Schema } from 'effect';
-import { HttpServer, HttpServerResponse, HttpRouter } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
@@ -34,15 +33,7 @@ import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
-import {
-  CurrentUser,
-  Session,
-  requestIdOf,
-  sessionLayer,
-  withErrorEnvelope,
-  type EffectApiMount,
-  type EffectApiRoute,
-} from '../effect/http-core';
+import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { KeyCipher } from './crypto';
 import { redactKey, createProviderProbe, type ProviderProbe } from './probe';
@@ -119,8 +110,9 @@ const ConnectionsGroup = HttpApiGroup.make('connections')
     HttpApiEndpoint.get('list', '/connections', {
       success: Schema.Array(ConnectionView),
     }),
+    // 201; the body is decoded by hand in the handler (see the header).
     HttpApiEndpoint.post('create', '/connections', {
-      success: ConnectionView,
+      success: ConnectionView.pipe(HttpApiSchema.status(201)),
     }),
     HttpApiEndpoint.post('test', '/connections/:id/test', {
       params: ConnectionIdParams,
@@ -136,13 +128,6 @@ const ConnectionsGroup = HttpApiGroup.make('connections')
   .prefix('/api');
 
 const ConnectionsApi = HttpApi.make('connections').add(ConnectionsGroup);
-
-export const CONNECTIONS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/connections' },
-  { method: 'POST', path: '/api/connections' },
-  { method: 'POST', path: '/api/connections/:id/test' },
-  { method: 'DELETE', path: '/api/connections/:id' },
-];
 
 export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
@@ -182,23 +167,17 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
 
   const groupLayer = HttpApiBuilder.group(ConnectionsApi, 'connections', (handlers) =>
     handlers
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'list',
+        handler(defectLogger, (_request, user) => {
+          requireCipher();
+          return listConnections(deps.db, user.id);
+        }),
+      )
+      .handle(
+        'create',
+        handler(defectLogger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            requireCipher();
-            return yield* Effect.promise(() => listConnections(deps.db, user.id));
-          }),
-          defectLogger,
-          requestId,
-        );
-      })
-      .handle('create', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const keyCipher = requireCipher();
             const raw = yield* request.request.json.pipe(
               Effect.catchCause(() => Effect.succeed<unknown>(INVALID_JSON)),
@@ -211,7 +190,7 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
               throw new HttpError(400, 'invalid_request', 'Invalid connection request');
             }
             const body = decoded.value;
-            const connection = yield* Effect.promise(() =>
+            return yield* Effect.promise(() =>
               createConnectionRow(deps.db, {
                 owner: user.id,
                 provider: body.provider,
@@ -219,17 +198,13 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
                 label: body.label ?? null,
               }),
             );
-            return HttpServerResponse.jsonUnsafe(connection, { status: 201 });
           }),
-          defectLogger,
-          requestId,
-        );
-      })
-      .handle('test', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'test',
+        handler(defectLogger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const keyCipher = requireCipher();
             const connection = yield* Effect.promise(() =>
               findOwnedConnection(deps.db, request.params.id, user.id),
@@ -280,17 +255,14 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
             }
             return { ok: false as const, message: probed.outcome.message };
           }),
-          defectLogger,
-          requestId,
-        );
-      })
+        ),
+      )
       // Deletes a connection (204, no body). In use by an AI is a 409 with a
       // bare count, never the AI names.
-      .handle('remove', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'remove',
+        handler(defectLogger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             requireCipher();
             const connection = yield* Effect.promise(() =>
               findOwnedConnection(deps.db, request.params.id, user.id),
@@ -315,10 +287,8 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
               throw new HttpError(404, 'not_found', 'Connection not found');
             }
           }),
-          defectLogger,
-          requestId,
-        );
-      }),
+        ),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(ConnectionsApi).pipe(
@@ -326,12 +296,5 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
     Layer.provide(sessionLayer(deps.auth, defectLogger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: CONNECTIONS_API_ROUTES };
+  return mountApi(ConnectionsApi, apiLayer);
 }

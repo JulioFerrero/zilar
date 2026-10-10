@@ -7,7 +7,7 @@ import { decodePayload } from '@zilar/protocol';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
-import { sqlRuntimeFor } from '../../effect/sql';
+import { runSql } from '../../effect/sql';
 import { correctionTarget, retractTarget, stanzaFrom } from '../../search/routes';
 import { extractMediaItems, type ExtractedMediaItem } from '../../media/indexer';
 import type { ArchivePool, ArchiveRow } from '../../search/service';
@@ -157,13 +157,6 @@ function buildIndexQuery(input: {
 // Every statement in the indexer runs on the `effect/sql` client registered for
 // the chat's database (see `../../effect/sql`); `indexMemory` itself stays
 // `async` so its caller and tests keep their shape.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
-
 function targetSeq(
   aiId: string,
   chatKey: string,

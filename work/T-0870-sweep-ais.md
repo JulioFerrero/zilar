@@ -1,7 +1,7 @@
 ---
 id: T-0870
 title: "Server sweep: ais, agents/memory, connections, voice, search onto the shared HTTP helpers (runSql, SchemaErrors, makeRateLimit, handler, mountApi) with truthful success statuses"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0870-sweep-ais
 model: auto
@@ -70,4 +70,38 @@ Run the tests 3 times after the last commit. The machine is shared, so note `upt
 
 ## Report (written by the worker when done)
 
+### What changed (one commit per module, plus a service commit each)
+- search `2de8a3a2`, voice `fbeed1cc`, connections `5b488c5c`, agents/memory `40764067`, ais `9c7825a1`; then `0515d5d5` (memory), `62066f49` (connections), `820a1440` (search) swap the local `runSql` copies in the service files. `voice/routes.expected.ts` was committed inside the search commit by mistake (same content, still before the voice conversion).
+- All five `createXApi` end with `mountApi`; handlers use `handler(logger, ...)`; each module has `routes.expected.ts`; `routes-manifest.test.ts` is untouched (36 manifests still match).
+- Local `runSql` copies removed from: ais/service.ts, ais/usage.ts, agents/memory/store.ts, agents/memory/indexer.ts, connections/service.ts, search/service.ts.
+- Rate limits: memory uses `makeRateLimit('zilar/effect/http/AiMemoryWriteRateLimit', 'Too many memory changes, try again later')`. Search guards, ais `AisConfigured`: left as they are. Voice has no plain limit or guard in this file.
+- Success statuses: `ais` create and `connections` create now declare `HttpApiSchema.status(201)` and return the value (no `jsonUnsafe`). The 204 deletes already used `HttpApiSchema.NoContent`.
+
+### Lines removed (git numstat, +added/-removed, spec commit to HEAD)
+- search: api.ts +16/-32, service.ts +2/-9, routes.expected.ts +3
+- voice: api.ts +8/-28, routes.expected.ts +3
+- connections: api.ts +27/-64, service.ts +1/-8, routes.expected.ts +8
+- agents/memory: api.ts +77/-163, store.ts +1/-8, indexer.ts +1/-8, routes.expected.ts +7
+- ais: api.ts +148/-225, service.ts +1/-8, usage.ts +2/-9, routes.expected.ts +12
+- Total: +317/-562 (net -245).
+
+### Checks
+- Vitest (spec command, 120 s timeouts): 24 files passed, 4 skipped; 291 tests passed, 6 skipped. Runs after the last commit: 4 of 4 clean in the later runs; the very first run (load average about 70, 372 s) printed "1 error" and 268 tests (one file did not finish) and I did not capture its text; the next 4 runs at lower load were clean (222 s, 35 s, 35 s, 35 s). Not reproduced.
+- `pnpm --filter @zilar/server typecheck`: clean. oxlint on the changed files: clean. prettier applied.
+
+### Behaviour differences
+- none observed on the wire (existing route tests pass unchanged). Two notes:
+  - memory now uses the shared `SchemaErrors`, whose message is `error.cause.message` without the old `|| 'Invalid request'` fallback; an empty schema message is not reachable in practice.
+  - ais keeps its own `AisSchemaErrors` (fallback text `Invalid AI request`) and search keeps its own (fixed text `Invalid search query`) because their texts differ from the shared one.
+
+### Unsure / deviations
+- connections create: I did NOT declare the payload schema. A declared payload is decoded by the framework before the handler, which would put the 400 before `requireCipher` 503 and merge `Invalid JSON body` with `Invalid connection request`. The hand decode stays; only the 201 is declared. A derived client therefore has no request type for this endpoint.
+- Test machine load stayed at 50-75, so the first runs took 6 minutes.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.**
+- **Converted:** search, voice, connections, agents/memory and ais, for a net −245 lines. The local `runSql` copies are gone from 6 service files.
+- **Statuses:** the ais and connections creates declare 201.
+- **Not declared:** the connections create payload, so the 503 stays ahead of a 400. A derived client will need it declared later.
+- **Check:** the combined wave 4 check passes.

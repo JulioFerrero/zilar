@@ -6,35 +6,27 @@
 // managers. Text is never logged.
 
 import { Effect, Layer, Schema } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
-import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-} from 'effect/http-api';
+import { SqlClient } from 'effect/sql';
+import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { Auth } from '../../auth/auth';
 import type { ServerConfig } from '../../config';
 import type { ServerDatabase } from '../../db/client';
-import { sqlRuntimeFor } from '../../effect/sql';
+import { runSql } from '../../effect/sql';
 import { HttpError } from '../../errors';
-import { createRateLimiter, type RateLimiter } from '../../rate-limit';
+import { createRateLimiter } from '../../rate-limit';
+import { makeRateLimit } from '../../effect/rate-limit-middleware';
 import { resolvePinChat } from '../../pins/access';
 import { canManageTopic } from '../../topics/access';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import {
-  CurrentUser,
+  SchemaErrors,
   Session,
-  failureResponse,
-  httpErrorResponse,
-  requestIdOf,
+  handler,
+  mountApi,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../../effect/http-core';
 import { clearMemory, deleteFact, listFacts, renderMemoryBlock } from './store';
 
@@ -54,13 +46,6 @@ export interface ResolvedMemoryChat {
   aiId: string;
   chatKey: string;
   canChange: boolean;
-}
-
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 interface AiOwnerLookupRow {
@@ -157,48 +142,10 @@ const OkResult = Schema.Struct({ ok: Schema.Boolean });
 // The write budget runs before the query or body is decoded, exactly like the
 // old routes' `requireWriteBudget` -> `safeParse` order: an invalid request
 // still spends budget. `requires: CurrentUser` is satisfied by `Session`.
-class AiMemoryWriteRateLimit extends HttpApiMiddleware.Service<
-  AiMemoryWriteRateLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/AiMemoryWriteRateLimit') {}
-
-function writeRateLimitLayer(limiter: RateLimiter): Layer.Layer<AiMemoryWriteRateLimit> {
-  return Layer.succeed(
-    AiMemoryWriteRateLimit,
-    AiMemoryWriteRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many memory changes, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
-
-// Turns a query or payload decode failure into the module's old 400
-// `invalid_request` answer.
-class AiMemorySchemaErrors extends HttpApiMiddleware.Service<AiMemorySchemaErrors>()(
-  'zilar/effect/http/AiMemorySchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<AiMemorySchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(AiMemorySchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid request'),
-      );
-    }),
-  );
-}
+const AiMemoryWriteRateLimit = makeRateLimit(
+  'zilar/effect/http/AiMemoryWriteRateLimit',
+  'Too many memory changes, try again later',
+);
 
 const AiMemoryGroup = HttpApiGroup.make('aiMemory')
   .add(
@@ -212,26 +159,20 @@ const AiMemoryGroup = HttpApiGroup.make('aiMemory')
       success: OkResult,
     })
       .annotate(HttpApi.QueryParseOptions, { onExcessProperty: 'error' })
-      .middleware(AiMemoryWriteRateLimit),
+      .middleware(AiMemoryWriteRateLimit.Middleware),
     HttpApiEndpoint.post('clear', '/ai-memory/clear', {
       payload: ClearBody,
       success: OkResult,
     })
       .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
-      .middleware(AiMemoryWriteRateLimit),
+      .middleware(AiMemoryWriteRateLimit.Middleware),
   )
   .middleware(Session)
-  .middleware(AiMemorySchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const AiMemoryApi = HttpApi.make('aiMemory').add(AiMemoryGroup);
-
-export const AI_MEMORY_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/ai-memory' },
-  { method: 'DELETE', path: '/api/ai-memory/facts/:id' },
-  { method: 'POST', path: '/api/ai-memory/clear' },
-];
 
 export function createAiMemoryApi(deps: AiMemoryApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
@@ -246,102 +187,75 @@ export function createAiMemoryApi(deps: AiMemoryApiDependencies): EffectApiMount
     handlers
       // The facts and cover lines of one chat; everyone who can see the chat
       // may read them.
-      .handle('view', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const resolved = yield* Effect.promise(() =>
-              resolveMemoryChat(
-                deps.db,
-                deps.config,
-                user.id,
-                request.query.chat,
-                request.query.ai,
-              ),
-            );
-            const [facts, lines] = yield* Effect.promise(() =>
-              Promise.all([
-                listFacts(deps.db, resolved.aiId, resolved.chatKey),
-                renderMemoryBlock(deps.db, resolved.aiId, resolved.chatKey),
-              ]),
-            );
-            return { facts, lines, canChange: resolved.canChange };
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'view',
+        handler(logger, async (request, user) => {
+          const resolved = await resolveMemoryChat(
+            deps.db,
+            deps.config,
+            user.id,
+            request.query.chat,
+            request.query.ai,
+          );
+          const [facts, lines] = await Promise.all([
+            listFacts(deps.db, resolved.aiId, resolved.chatKey),
+            renderMemoryBlock(deps.db, resolved.aiId, resolved.chatKey),
+          ]);
+          return { facts, lines, canChange: resolved.canChange };
+        }),
+      )
       // Deletes one fact; only the AI owner or a room manager may.
-      .handle('deleteFact', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const resolved = yield* Effect.promise(() =>
-              resolveMemoryChat(
-                deps.db,
-                deps.config,
-                user.id,
-                request.query.chat,
-                request.query.ai,
-              ),
-            );
-            if (!resolved.canChange) {
-              throw toForbiddenChange();
-            }
-            const removed = yield* Effect.promise(() =>
-              deleteFact(deps.db, resolved.aiId, resolved.chatKey, request.params.id),
-            );
-            if (!removed) {
-              throw new HttpError(404, 'not_found', 'Fact not found');
-            }
-            return { ok: true };
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'deleteFact',
+        handler(logger, async (request, user) => {
+          const resolved = await resolveMemoryChat(
+            deps.db,
+            deps.config,
+            user.id,
+            request.query.chat,
+            request.query.ai,
+          );
+          if (!resolved.canChange) {
+            throw toForbiddenChange();
+          }
+          const removed = await deleteFact(
+            deps.db,
+            resolved.aiId,
+            resolved.chatKey,
+            request.params.id,
+          );
+          if (!removed) {
+            throw new HttpError(404, 'not_found', 'Fact not found');
+          }
+          return { ok: true };
+        }),
+      )
       // Clears the memory; only the AI owner or a room manager may.
-      .handle('clear', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const resolved = yield* Effect.promise(() =>
-              resolveMemoryChat(
-                deps.db,
-                deps.config,
-                user.id,
-                request.payload.chat,
-                request.payload.ai,
-              ),
-            );
-            if (!resolved.canChange) {
-              throw toForbiddenChange();
-            }
-            yield* Effect.promise(() => clearMemory(deps.db, resolved.aiId, resolved.chatKey));
-            return { ok: true };
-          }),
-          logger,
-          requestId,
-        );
-      }),
+      .handle(
+        'clear',
+        handler(logger, async (request, user) => {
+          const resolved = await resolveMemoryChat(
+            deps.db,
+            deps.config,
+            user.id,
+            request.payload.chat,
+            request.payload.ai,
+          );
+          if (!resolved.canChange) {
+            throw toForbiddenChange();
+          }
+          await clearMemory(deps.db, resolved.aiId, resolved.chatKey);
+          return { ok: true };
+        }),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(AiMemoryApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayer(logger)),
-    Layer.provide(writeRateLimitLayer(writeLimiter)),
+    Layer.provide(AiMemoryWriteRateLimit.layer(writeLimiter)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: AI_MEMORY_API_ROUTES };
+  return mountApi(AiMemoryApi, apiLayer);
 }

@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0870](T-0870-sweep-ais.md) | Server sweep: ais, agents/memory, connections, voice, search onto the shared HTTP helper… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
 | [T-0871](T-0871-sweep-push-topics.md) | Server sweep: push, topics, handles, media onto the shared HTTP helpers (runSql, SchemaE… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
 | [T-0872](T-0872-sweep-machines-setup.md) | Server sweep: machines, integrations, setup onto the shared HTTP helpers (runSql, Schema… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
 | [T-0873](T-0873-sweep-voice-auth.md) | Server sweep: voice-transcription, gifs, auth, contact-requests onto the shared HTTP hel… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
@@ -919,3 +918,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0867](T-0867-sweep-media-files.md) | Server sweep: stickers, avatars, backgrounds, files onto the shared HTTP helpers (runSql, SchemaErrors, makeRa | 2026-10-10 |
 | [T-0868](T-0868-sweep-approvals-routines.md) | Server sweep: approvals, audit, routines, directory onto the shared HTTP helpers (runSql, SchemaErrors, makeRa | 2026-10-10 |
 | [T-0869](T-0869-sweep-groups.md) | Server sweep: groups, invite-links, chat-folders, chat-prefs, roles onto the shared HTTP helpers (runSql, Sche | 2026-10-10 |
+| [T-0870](T-0870-sweep-ais.md) | Server sweep: ais, agents/memory, connections, voice, search onto the shared HTTP helpers (runSql, SchemaError | 2026-10-10 |

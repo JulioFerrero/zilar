@@ -1,8 +1,8 @@
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { LitellmAdminClient } from '../ai/litellm-client';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 
 export interface AiUsageLogger {
   warn: (fields: Record<string, unknown>, message: string) => void;
@@ -29,13 +29,6 @@ export interface AiUsage {
 // per UTC day, so the daily window always ends at 00:00 UTC.
 export function utcDayString(now: Date): string {
   return now.toISOString().slice(0, 10);
-}
-
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // `numeric` columns come back as strings from node-postgres (and PGlite), so

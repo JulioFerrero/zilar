@@ -9,7 +9,7 @@ import {
 } from '../connections/service';
 import { ROSTER_GROUP } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { ensureXmppAccount, jidFor, localpartFor } from '../xmpp/provisioning';
@@ -22,13 +22,6 @@ import { defaultPersonaFor, type AiTemplate } from './templates';
 // `effect/sql` client registered for this database (see `../effect/sql`).
 // The exported functions stay `async` so routes and tests keep their shape
 // during the transition.
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError | E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
-
 // The server ceiling on an AI's monthly budget. The plan's example is EUR 20 a
 // month; the cap is a product safety limit (a client can never widen it) and a
 // comment here so changing it is a deliberate act, not a magic number.

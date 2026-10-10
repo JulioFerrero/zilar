@@ -1,9 +1,9 @@
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import postgres from 'postgres';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { UNNAMED_CONTACT_NAME } from '../contacts/service';
 import { localpartFor } from '../xmpp/provisioning';
 import { visibleTopics } from '../topics/access';
@@ -56,13 +56,6 @@ export interface SearchOwner {
   rooms: string[];
   /** Display name per DM peer bare JID (never an e-mail). */
   peerNames: Map<string, string>;
-}
-
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 interface ContactArchiveRow {
