@@ -13,7 +13,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1004](T-1004-split-mobile-approvals.md) | Size split T74: mobile settings/approvals.tsx (529) | in-progress | auto | T-0936 | size-plan |
 | [T-1005](T-1005-split-mobile-profile.md) | Size split T78: mobile settings/profile.tsx (521) | in-progress | auto | T-0936 | size-plan |
 | [T-1006](T-1006-split-mobile-connections.md) | Size split T79: mobile settings/connections.tsx (519) | in-progress | auto | T-0936 | size-plan |
-| [T-1007](T-1007-split-web-avatar-uploader.md) | Size split T81: web AvatarUploader.tsx (514) | in-progress | auto | T-0936 | size-plan |
 | [T-1008](T-1008-split-web-tool-detail-panel.md) | Size split T83: web tools/ToolDetailPanel.tsx (513) | in-progress | auto | T-0936 | size-plan |
 | [T-1009](T-1009-split-web-chat-list.md) | Size split T84: web ChatList.tsx (509) | in-progress | auto | T-0936 | size-plan |
 | [T-1010](T-1010-split-server-xmpp-admin-client.md) | Size split T71: server xmpp/admin-client.ts (539) | in-progress | auto | T-0936 | size-plan |
@@ -1037,3 +1036,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0999](T-0999-split-web-notifications-page.md) | Size split T67: apps/web/src/routes/NotificationsPage.tsx (551 lines) into lib/push/{deviceStorage,pageActions | 2026-10-10 |
 | [T-1000](T-1000-split-web-integrations-page.md) | Size split T69: apps/web/src/routes/IntegrationsPage.tsx (548 lines) into components/settings/{integrationErro | 2026-10-10 |
 | [T-0997](T-0997-split-mobile-voice-message.md) | Size split T51: apps/mobile/src/components/chat/voice-message.tsx (631 lines) into chat/{voice-playback-source | 2026-10-10 |
+| [T-1007](T-1007-split-web-avatar-uploader.md) | Size split T81: apps/web/src/components/AvatarUploader.tsx (514 lines) into components/avatar/{avatarImageCode | 2026-10-10 |
