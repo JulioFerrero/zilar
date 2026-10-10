@@ -2,12 +2,11 @@ import { Effect } from 'effect';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { useAisApi } from '@/components/ais/use-ais-api';
 import { useApprovalsApi } from '@/components/chat/use-approvals-api';
-import { createAisApi } from '@/lib/ais-api';
 import type { ApprovalDecision, PublicApproval } from '@/lib/approvals-api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
-import { getSessionToken } from '@/lib/session-token';
 
 import {
   claimDecision,
@@ -38,6 +37,7 @@ const CLOCK_TICK_MS = 60_000;
  */
 export function useApprovals() {
   const { api } = useApprovalsApi();
+  const { api: aisApi } = useAisApi();
 
   const [rows, setRows] = useState<RowsById>({});
   const [status, setStatus] = useState<LoadStatus>('loading');
@@ -105,9 +105,11 @@ export function useApprovals() {
     { mode: 'replace' },
   );
 
-  // One AI-list fetch for display names; a failure leaves the names empty.
+  // One AI-list fetch for display names; a failure leaves the names empty. It
+  // goes through `useAisApi` so mock mode reads the mock AIs: the rules
+  // fan-out must know every AI the person owns, even with nothing pending.
   const aiList = Effect.tryPromise({
-    try: () => createAisApi(getSessionToken).listAis(),
+    try: () => aisApi.listAis(),
     catch: () => undefined,
   }).pipe(
     Effect.catch(() => Effect.succeed(undefined)),

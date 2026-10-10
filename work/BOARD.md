@@ -10,16 +10,21 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds, media gallery | in-progress | auto | T-0949 | mock wave 2 |
+| [T-1057](T-1057-server-schema-issues.md) | Dedup S4: one firstIssueMessage (audit keeps its own) | in-progress | auto | T-1051 | dedup-status §6.4 |
+| [T-1058](T-1058-split-mobile-boot-check.md) | Size split: mobile boot-check.mjs (805) into 4 files, moved unchanged | in-progress | auto | T-1042 | last new max-lines warning |
 
 ## Follow-ups
 
-- **Mock: the Acme channel cannot be opened as a channel (found 2026-10-10, T-1041).** `packages/mock-backend/src/domains/chats/seed.ts:12-24` gives the channel no `topics`, so mobile `app/group/[id].tsx:189` calls `router.back()`, and the channel screen (info, admins, invite links) cannot be reached in mock mode.
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile.
 - **Mock: attachments show "Not loaded: untrusted address" on mobile (found 2026-10-10, T-1047 smoke).** Sends work now (T-1047), but the fake slot's `getUrl` is a `data:` URL (`packages/mock-backend/src/xmpp/core.ts:229`), and the seeded `Stage.png` and `tickets.pdf` read the same.
+- **Mock: sticker and GIF images are blank on mobile (found 2026-10-10, T-1046 smoke).** The panels list packs and results, but no image draws:
+  - **stickers:** native `Image` fetches `/api/stickers/<id>/file` from `API_URL` over the network, which `mockFetch` never sees, and the art is SVG, which React Native's `Image` cannot draw;
+  - **GIFs:** `apps/mobile/src/lib/gifs-api.ts` `toGifItem` wraps every `data:` token in `/api/gifs/media/<token>`, and the token is SVG too.
+
+  The fix needs raster (PNG) art, plus a mock path the native image can reach.
+- **Mock: `GET /groups/:id/topics` returns `[]` for groups whose General exists only in `/chats` (T-1048 follow-up).**
 - **Mobile: about 9 more `Effect.runFork(Fiber.interrupt(...))` sites in `components/chat` could use `interruptFiber` (`lib/effect/timers.ts`, T-1050).** The `runSync` ones differ and stay.
 - **Dedup slices that need a lead decision (`docs/audit/dedup-status.md` §8):** S6 crypto envelope (keys), S7-S9 rate limiters, S10-S11 `groups/access.ts` (permissions), S15 web settings facade (keys). S4 (schema-issue walker) must keep audit's two extra cases.
-
-- **Mobile approvals: "Always allowed" empties when nothing is pending (found 2026-10-10, T-1004 smoke; on main).** Rules load only for the AIs referenced by pending rows (`apps/mobile/src/components/approvals/use-approvals.ts`, was `approvals.tsx:209`), so once the last request is decided, the rule list shows "Nothing is always allowed here" even when rules exist. Load the rules for every owned AI instead.
 
 - **M5 plan (2026-09-29): see [`docs/ROADMAP_M5.md`](../docs/ROADMAP_M5.md)** for the order, the waves for tonight, what only Julio can provide, and the decisions the lead made in the specs.
 - **AI-built tools and routines (Julio, 2026-09-29: server sandbox first).** T-0102 sandbox (QuickJS/WASM, allowlisted SSRF-safe fetch), T-0103 versioned tools store + routes, T-0104 scheduler/routines (pinned to approved hosts, auto-pause after failures), T-0105 tool/routine actions for the action gateway (routine.schedule needs a card and can never be always-allowed) + wiring the sandbox (`TOOLS_ENABLED`), T-0106 model side (prompt guide, more rounds per turn, "working on it" line, scripted-model e2e), T-0107 web Tools & Routines in the AI/group panel.
@@ -1090,3 +1095,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1048](T-1048-mock-backend-group-general-topics.md) | Mock backend: every seeded group and channel gets its General topic in /chats, like the real server, so the mo | 2026-10-10 |
 | [T-1055](T-1055-server-pins-handler.md) | Dedup F2 (S2): pins/api.ts uses the shared handler() instead of three hand-written withErrorEnvelope blocks | 2026-10-10 |
 | [T-1053](T-1053-server-jid-truncate-helpers.md) | Dedup F6 (S3): one server bareJid/ownBareJid (apps/server/src/jid.ts) and one truncateChars (apps/server/src/t | 2026-10-10 |
+| [T-1056](T-1056-mobile-approvals-ai-list-mock.md) | Mobile approvals: list AIs through useAisApi, so 'Always allowed' keeps its rules in mock mode when nothing is | 2026-10-10 |
