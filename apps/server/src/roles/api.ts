@@ -5,7 +5,6 @@
 // mount. Its service runs on effect/sql.
 
 import { Layer, Schema } from 'effect';
-import { HttpServerResponse } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
@@ -96,7 +95,7 @@ const RolesGroup = HttpApiGroup.make('roles')
     HttpApiEndpoint.post('create', '/groups/:id/roles', {
       params: GroupIdParams,
       payload: CreateRoleBody,
-      success: GroupRole,
+      success: GroupRole.pipe(HttpApiSchema.status(201)),
     }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
     HttpApiEndpoint.patch('rename', '/groups/:id/roles/:roleId', {
       params: RoleParams,
@@ -154,11 +153,8 @@ export function createRolesApi(deps: RolesApiDependencies): EffectApiMount {
       // Creates a role (owner/admin only); capped at `MAX_ROLES_PER_GROUP`.
       .handle(
         'create',
-        handler(logger, async (request, user) =>
-          HttpServerResponse.jsonUnsafe(
-            await createRole(serviceDeps(), request.params.id, user.id, request.payload.name),
-            { status: 201 },
-          ),
+        handler(logger, (request, user) =>
+          createRole(serviceDeps(), request.params.id, user.id, request.payload.name),
         ),
       )
       // Renames a role (owner/admin only).

@@ -3,14 +3,14 @@
 // and audit calls as the deleted router (`routes.ts`), mounted by the Effect
 // edge (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
-import { Effect, Layer, Option, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
+import { Layer, Option, Schema } from 'effect';
+import type { HttpServerRequest } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
   HttpApiEndpoint,
   HttpApiGroup,
-  HttpApiMiddleware,
+  HttpApiSchema,
 } from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
@@ -19,17 +19,16 @@ import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
-  CurrentUser,
+  SchemaErrors,
   Session,
-  failureResponse,
-  httpErrorResponse,
-  requestIdOf,
+  handler,
+  mountApi,
+  schemaErrorLayer,
   sessionLayer,
   socketAddressOf,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
+import { makeRateLimit } from '../effect/rate-limit-middleware';
 import { clientIpFrom } from '../http/client-ip';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -147,57 +146,19 @@ const GroupIdParams = Schema.Struct({ id: Schema.String });
 const InviteLinkParams = Schema.Struct({ id: Schema.String, linkId: Schema.String });
 const JoinTokenParams = Schema.Struct({ token: Schema.String });
 
-// Applied to the group so a payload decode failure renders like the old zod
-// path: a 400 `invalid_request` carrying the first schema message.
-class InviteLinksSchemaErrors extends HttpApiMiddleware.Service<InviteLinksSchemaErrors>()(
-  'zilar/effect/http/InviteLinksSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<InviteLinksSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(InviteLinksSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid request'),
-      );
-    }),
-  );
-}
-
 // The join preview limiter runs before the token is decoded, exactly like the
 // old route's `previewLimiter.allow` -> token check order.
-class InviteLinksPreviewRateLimit extends HttpApiMiddleware.Service<
-  InviteLinksPreviewRateLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/InviteLinksPreviewRateLimit') {}
-
-function previewRateLimitLayer(limiter: RateLimiter): Layer.Layer<InviteLinksPreviewRateLimit> {
-  return Layer.succeed(
-    InviteLinksPreviewRateLimit,
-    InviteLinksPreviewRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many join attempts, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
+const PreviewRateLimit = makeRateLimit(
+  'zilar/effect/http/InviteLinksPreviewRateLimit',
+  'Too many join attempts, try again later',
+);
 
 const InviteLinksGroup = HttpApiGroup.make('invite-links')
   .add(
     HttpApiEndpoint.post('createLink', '/groups/:id/invite-links', {
       params: GroupIdParams,
       payload: CreateLinkBody,
-      success: CreatedInviteLink,
+      success: CreatedInviteLink.pipe(HttpApiSchema.status(201)),
     }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
     HttpApiEndpoint.get('listLinks', '/groups/:id/invite-links', {
       params: GroupIdParams,
@@ -205,31 +166,23 @@ const InviteLinksGroup = HttpApiGroup.make('invite-links')
     }),
     HttpApiEndpoint.delete('revokeLink', '/groups/:id/invite-links/:linkId', {
       params: InviteLinkParams,
-      success: Schema.Void,
+      success: HttpApiSchema.NoContent,
     }),
     HttpApiEndpoint.get('preview', '/join/:token', {
       params: JoinTokenParams,
       success: JoinPreview,
-    }).middleware(InviteLinksPreviewRateLimit),
+    }).middleware(PreviewRateLimit.Middleware),
     HttpApiEndpoint.post('join', '/join/:token', {
       params: JoinTokenParams,
       success: JoinResult,
     }),
   )
   .middleware(Session)
-  .middleware(InviteLinksSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const InviteLinksApi = HttpApi.make('invite-links').add(InviteLinksGroup);
-
-export const INVITE_LINKS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'POST', path: '/api/groups/:id/invite-links' },
-  { method: 'GET', path: '/api/groups/:id/invite-links' },
-  { method: 'DELETE', path: '/api/groups/:id/invite-links/:linkId' },
-  { method: 'GET', path: '/api/join/:token' },
-  { method: 'POST', path: '/api/join/:token' },
-];
 
 export function createInviteLinksApi(deps: InviteLinksApiDependencies): EffectApiMount {
   const logger = deps.logger;
@@ -285,119 +238,74 @@ export function createInviteLinksApi(deps: InviteLinksApiDependencies): EffectAp
     handlers
       // Group owner/admin creates a link: the token is shown once here and
       // never stored.
-      .handle('createLink', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const link = yield* Effect.promise(() =>
-              createInviteLink(serviceDeps, webBaseUrl, {
-                groupId: request.params.id,
-                actorId: user.id,
-                ...(request.payload.label === undefined ? {} : { label: request.payload.label }),
-                ...(request.payload.expiresInHours === undefined
-                  ? {}
-                  : { expiresInHours: request.payload.expiresInHours }),
-                ...(request.payload.maxUses === undefined
-                  ? {}
-                  : { maxUses: request.payload.maxUses }),
-              }),
-            );
-            return HttpServerResponse.jsonUnsafe(link, { status: 201 });
+      .handle(
+        'createLink',
+        handler(logger, (request, user) =>
+          createInviteLink(serviceDeps, webBaseUrl, {
+            groupId: request.params.id,
+            actorId: user.id,
+            ...(request.payload.label === undefined ? {} : { label: request.payload.label }),
+            ...(request.payload.expiresInHours === undefined
+              ? {}
+              : { expiresInHours: request.payload.expiresInHours }),
+            ...(request.payload.maxUses === undefined ? {} : { maxUses: request.payload.maxUses }),
           }),
-          logger,
-          requestId,
-        );
-      })
+        ),
+      )
       // Group owner/admin lists links: the tokens are never returned.
-      .handle('listLinks', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const links = yield* Effect.promise(() =>
-              listInviteLinks(serviceDeps, request.params.id, user.id),
-            );
-            return { links };
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'listLinks',
+        handler(logger, async (request, user) => ({
+          links: await listInviteLinks(serviceDeps, request.params.id, user.id),
+        })),
+      )
       // Group owner/admin revokes a link. Idempotent: revoking twice still
       // answers 204.
-      .handle('revokeLink', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            yield* Effect.promise(() =>
-              revokeInviteLink(serviceDeps, request.params.id, user.id, request.params.linkId),
-            );
-            return HttpServerResponse.empty({ status: 204 });
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'revokeLink',
+        handler(logger, async (request, user) => {
+          await revokeInviteLink(serviceDeps, request.params.id, user.id, request.params.linkId);
+        }),
+      )
       // Join preview: group title and member count only. Unknown/expired/
       // revoked/exhausted links answer the same 404 `invalid_link`. The
       // limiter middleware already charged the budget, before the token check.
-      .handle('preview', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const token = Schema.decodeUnknownOption(InviteToken)(request.params.token);
-            if (Option.isNone(token)) {
-              throw toInvalidLink();
-            }
-            return yield* Effect.promise(() =>
-              previewInviteLink(serviceDeps, token.value, user.id),
-            );
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'preview',
+        handler(logger, async (request, user) => {
+          const token = Schema.decodeUnknownOption(InviteToken)(request.params.token);
+          if (Option.isNone(token)) {
+            throw toInvalidLink();
+          }
+          return await previewInviteLink(serviceDeps, token.value, user.id);
+        }),
+      )
       // Joins the caller as a `member`. The token check runs first, then the
       // per-user and per-IP budgets, so a malformed token costs nothing.
-      .handle('join', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const token = Schema.decodeUnknownOption(InviteToken)(request.params.token);
-            if (Option.isNone(token)) {
-              throw toInvalidLink();
-            }
-            if (!userJoinLimiter.allow(user.id)) {
-              throw new HttpError(429, 'rate_limited', 'Too many join attempts, try again later');
-            }
-            if (!ipJoinLimiter.allow(clientIp(request.request))) {
-              throw new HttpError(429, 'rate_limited', 'Too many join attempts, try again later');
-            }
-            return yield* Effect.promise(() => joinByInviteLink(serviceDeps, token.value, user.id));
-          }),
-          logger,
-          requestId,
-        );
-      }),
+      .handle(
+        'join',
+        handler(logger, async (request, user) => {
+          const token = Schema.decodeUnknownOption(InviteToken)(request.params.token);
+          if (Option.isNone(token)) {
+            throw toInvalidLink();
+          }
+          if (!userJoinLimiter.allow(user.id)) {
+            throw new HttpError(429, 'rate_limited', 'Too many join attempts, try again later');
+          }
+          if (!ipJoinLimiter.allow(clientIp(request.request))) {
+            throw new HttpError(429, 'rate_limited', 'Too many join attempts, try again later');
+          }
+          return await joinByInviteLink(serviceDeps, token.value, user.id);
+        }),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(InviteLinksApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(previewRateLimitLayer(previewLimiter)),
+    Layer.provide(PreviewRateLimit.layer(previewLimiter)),
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: INVITE_LINKS_API_ROUTES };
+  return mountApi(InviteLinksApi, apiLayer);
 }

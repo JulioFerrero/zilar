@@ -4,13 +4,12 @@
 // Its service runs on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
   HttpApiEndpoint,
   HttpApiGroup,
-  HttpApiMiddleware,
+  HttpApiSchema,
 } from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
@@ -20,16 +19,15 @@ import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
-  CurrentUser,
+  SchemaErrors,
   Session,
-  failureResponse,
-  httpErrorResponse,
-  requestIdOf,
+  handler,
+  mountApi,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
+import { makeRateLimit } from '../effect/rate-limit-middleware';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
@@ -178,85 +176,27 @@ const GroupIdParams = Schema.Struct({ id: Schema.String });
 const GroupMemberParams = Schema.Struct({ id: Schema.String, userId: Schema.String });
 const GroupAiParams = Schema.Struct({ id: Schema.String, aiId: Schema.String });
 
-// Applied to the group so a payload decode failure renders like the old zod
-// path: a 400 `invalid_request` carrying the first schema message.
-class GroupsSchemaErrors extends HttpApiMiddleware.Service<GroupsSchemaErrors>()(
-  'zilar/effect/http/GroupsSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<GroupsSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(GroupsSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid request'),
-      );
-    }),
-  );
-}
-
 // T-0124: role changes hit ejabberd (one affiliation write per call), so they
 // are capped per owner like topic creation is capped per user. The budget runs
 // before the payload is decoded, exactly like the old route's
-// `roleLimiter.allow` -> decode order. `requires: CurrentUser` is satisfied by
-// `Session`.
-class GroupsRoleRateLimit extends HttpApiMiddleware.Service<
-  GroupsRoleRateLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/GroupsRoleRateLimit') {}
-
-function roleRateLimitLayer(limiter: RateLimiter): Layer.Layer<GroupsRoleRateLimit> {
-  return Layer.succeed(
-    GroupsRoleRateLimit,
-    GroupsRoleRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many role changes, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
+// `roleLimiter.allow` -> decode order.
+const RoleRateLimit = makeRateLimit(
+  'zilar/effect/http/GroupsRoleRateLimit',
+  'Too many role changes, try again later',
+);
 
 // T-0164: the join budget runs before the path is decoded, exactly like the old
 // route's `joinLimiter.allow` -> `joinPublicGroup` order.
-class GroupsJoinRateLimit extends HttpApiMiddleware.Service<
-  GroupsJoinRateLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/GroupsJoinRateLimit') {}
-
-function joinRateLimitLayer(limiter: RateLimiter): Layer.Layer<GroupsJoinRateLimit> {
-  return Layer.succeed(
-    GroupsJoinRateLimit,
-    GroupsJoinRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many join attempts, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
+const JoinRateLimit = makeRateLimit(
+  'zilar/effect/http/GroupsJoinRateLimit',
+  'Too many join attempts, try again later',
+);
 
 const GroupsGroup = HttpApiGroup.make('groups')
   .add(
     HttpApiEndpoint.post('create', '/groups', {
       payload: CreateGroupBody,
-      success: GroupDetailView,
+      success: GroupDetailView.pipe(HttpApiSchema.status(201)),
     }),
     HttpApiEndpoint.get('detail', '/groups/:id', {
       params: GroupIdParams,
@@ -272,7 +212,7 @@ const GroupsGroup = HttpApiGroup.make('groups')
       success: GroupDetailView,
     })
       .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
-      .middleware(GroupsRoleRateLimit),
+      .middleware(RoleRateLimit.Middleware),
     HttpApiEndpoint.post('addMembers', '/groups/:id/members', {
       params: GroupIdParams,
       payload: AddMembersBody,
@@ -299,10 +239,10 @@ const GroupsGroup = HttpApiGroup.make('groups')
     HttpApiEndpoint.post('join', '/groups/:id/join', {
       params: GroupIdParams,
       success: JoinResult,
-    }).middleware(GroupsJoinRateLimit),
+    }).middleware(JoinRateLimit.Middleware),
   )
   .middleware(Session)
-  .middleware(GroupsSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
@@ -320,19 +260,6 @@ export interface GroupsApiDependencies {
   roleLimiter?: RateLimiter;
   joinLimiter?: RateLimiter;
 }
-
-export const GROUPS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'POST', path: '/api/groups' },
-  { method: 'GET', path: '/api/groups/:id' },
-  { method: 'GET', path: '/api/groups/:id/members' },
-  { method: 'PUT', path: '/api/groups/:id/members/:userId/role' },
-  { method: 'POST', path: '/api/groups/:id/members' },
-  { method: 'DELETE', path: '/api/groups/:id/members/:userId' },
-  { method: 'POST', path: '/api/groups/:id/ais' },
-  { method: 'DELETE', path: '/api/groups/:id/ais/:aiId' },
-  { method: 'PATCH', path: '/api/groups/:id' },
-  { method: 'POST', path: '/api/groups/:id/join' },
-];
 
 export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
   const logger = deps.logger;
@@ -387,278 +314,203 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
   const groupLayer = HttpApiBuilder.group(GroupsApi, 'groups', (handlers) =>
     handlers
       // Creates a group or channel, 201 with the stamped detail.
-      .handle('create', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const group = yield* Effect.promise(() =>
-              createGroup(deps.db, deps.adminClient, {
-                creatorId: user.id,
-                title: request.payload.title,
-                memberIds: [...request.payload.memberIds],
-                domain,
-                logger,
-                ...(request.payload.kind === undefined ? {} : { kind: request.payload.kind }),
-                ...(request.payload.description === undefined
-                  ? {}
-                  : { description: request.payload.description }),
-                ...(request.payload.visibility === undefined
-                  ? {}
-                  : { visibility: request.payload.visibility }),
-                ...(request.payload.handle === undefined ? {} : { handle: request.payload.handle }),
-              }),
-            );
-            return HttpServerResponse.jsonUnsafe(withListenerAvailability(group), { status: 201 });
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'create',
+        handler(logger, async (request, user) =>
+          withListenerAvailability(
+            await createGroup(deps.db, deps.adminClient, {
+              creatorId: user.id,
+              title: request.payload.title,
+              memberIds: [...request.payload.memberIds],
+              domain,
+              logger,
+              ...(request.payload.kind === undefined ? {} : { kind: request.payload.kind }),
+              ...(request.payload.description === undefined
+                ? {}
+                : { description: request.payload.description }),
+              ...(request.payload.visibility === undefined
+                ? {}
+                : { visibility: request.payload.visibility }),
+              ...(request.payload.handle === undefined ? {} : { handle: request.payload.handle }),
+            }),
+          ),
+        ),
+      )
       // The group detail. A non-member sees the same 404 as a missing group,
       // so group ids cannot be probed. A channel subscriber sees the detail
       // without the audience list.
-      .handle('detail', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const groupId = request.params.id;
-            const group = yield* Effect.promise(() =>
-              getGroupDetail(deps.db, groupId, listenerAvailable),
-            );
-            const membership = group
-              ? yield* Effect.promise(() => getMembership(deps.db, groupId, user.id))
-              : null;
-            if (!group || !membership) {
-              throw new HttpError(404, 'not_found', 'Group not found');
-            }
-            if (group.kind === 'channel' && membership.role === 'member') {
-              return { ...group, members: [] };
-            }
-            return group;
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'detail',
+        handler(logger, async (request, user) => {
+          const groupId = request.params.id;
+          const group = await getGroupDetail(deps.db, groupId, listenerAvailable);
+          const membership = group ? await getMembership(deps.db, groupId, user.id) : null;
+          if (!group || !membership) {
+            throw new HttpError(404, 'not_found', 'Group not found');
+          }
+          if (group.kind === 'channel' && membership.role === 'member') {
+            return { ...group, members: [] };
+          }
+          return group;
+        }),
+      )
       // The channel audience list (admins only); a stranger sees the same 404
       // as a missing group.
-      .handle('members', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const groupId = request.params.id;
-            const group = yield* Effect.promise(() => getGroupDetail(deps.db, groupId));
-            if (!group) {
-              throw new HttpError(404, 'not_found', 'Group not found');
-            }
-            const { members } = yield* Effect.promise(() =>
-              listMembersForViewer(deps.db, groupId, user.id),
-            );
-            return { members };
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'members',
+        handler(logger, async (request, user) => {
+          const groupId = request.params.id;
+          const group = await getGroupDetail(deps.db, groupId);
+          if (!group) {
+            throw new HttpError(404, 'not_found', 'Group not found');
+          }
+          const { members } = await listMembersForViewer(deps.db, groupId, user.id);
+          return { members };
+        }),
+      )
       // Promotes or demotes a member (owner only, channels only). The limiter
       // middleware already charged the budget, before the payload decode.
-      .handle('changeRole', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const group = yield* Effect.promise(() =>
-              changeMemberRole(deps.db, deps.adminClient, {
-                groupId: request.params.id,
-                actorId: user.id,
-                targetUserId: request.params.userId,
-                role: request.payload.role,
-                domain,
-                logger,
-                ...(deps.audit === undefined ? {} : { audit: deps.audit }),
-              }),
-            );
-            return withListenerAvailability(group);
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'changeRole',
+        handler(logger, async (request, user) =>
+          withListenerAvailability(
+            await changeMemberRole(deps.db, deps.adminClient, {
+              groupId: request.params.id,
+              actorId: user.id,
+              targetUserId: request.params.userId,
+              role: request.payload.role,
+              domain,
+              logger,
+              ...(deps.audit === undefined ? {} : { audit: deps.audit }),
+            }),
+          ),
+        ),
+      )
       // Adds members (owner/admin only).
-      .handle('addMembers', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const group = yield* Effect.promise(() =>
-              addGroupMembers(deps.db, deps.adminClient, {
-                groupId: request.params.id,
-                actorId: user.id,
-                userIds: [...request.payload.userIds],
-                domain,
-                logger,
-              }),
-            );
-            return withListenerAvailability(group);
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'addMembers',
+        handler(logger, async (request, user) =>
+          withListenerAvailability(
+            await addGroupMembers(deps.db, deps.adminClient, {
+              groupId: request.params.id,
+              actorId: user.id,
+              userIds: [...request.payload.userIds],
+              domain,
+              logger,
+            }),
+          ),
+        ),
+      )
       // Removes a member (owner/admin only).
-      .handle('removeMember', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const group = yield* Effect.promise(() =>
-              removeGroupMember(deps.db, deps.adminClient, {
-                groupId: request.params.id,
-                actorId: user.id,
-                targetUserId: request.params.userId,
-                domain,
-                logger,
-              }),
-            );
-            return withListenerAvailability(group);
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'removeMember',
+        handler(logger, async (request, user) =>
+          withListenerAvailability(
+            await removeGroupMember(deps.db, deps.adminClient, {
+              groupId: request.params.id,
+              actorId: user.id,
+              targetUserId: request.params.userId,
+              domain,
+              logger,
+            }),
+          ),
+        ),
+      )
       // Adds a group AI (owner/admin only).
-      .handle('addAi', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const group = yield* Effect.promise(() =>
-              addGroupAi(deps.db, deps.adminClient, {
-                groupId: request.params.id,
-                actorId: user.id,
-                aiId: request.payload.aiId,
-                domain,
-                logger,
-              }),
-            );
-            return withListenerAvailability(group);
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'addAi',
+        handler(logger, async (request, user) =>
+          withListenerAvailability(
+            await addGroupAi(deps.db, deps.adminClient, {
+              groupId: request.params.id,
+              actorId: user.id,
+              aiId: request.payload.aiId,
+              domain,
+              logger,
+            }),
+          ),
+        ),
+      )
       // Removes a group AI (owner/admin only).
-      .handle('removeAi', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const group = yield* Effect.promise(() =>
-              removeGroupAi(deps.db, deps.adminClient, {
-                groupId: request.params.id,
-                actorId: user.id,
-                aiId: request.params.aiId,
-                domain,
-                logger,
-              }),
-            );
-            return withListenerAvailability(group);
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'removeAi',
+        handler(logger, async (request, user) =>
+          withListenerAvailability(
+            await removeGroupAi(deps.db, deps.adminClient, {
+              groupId: request.params.id,
+              actorId: user.id,
+              aiId: request.params.aiId,
+              domain,
+              logger,
+            }),
+          ),
+        ),
+      )
       // Toggles member topic creation and the other group settings. The
       // visibility + handle branch runs first, one transaction, audited as
       // `group.visibility_changed` (ids only) once it commits.
-      .handle('patch', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const groupId = request.params.id;
-            const { visibility, handle } = request.payload;
-            const wantsVisibility = visibility !== undefined || handle !== undefined;
-            if (wantsVisibility) {
-              if (visibility === undefined) {
-                throw new HttpError(400, 'invalid_request', 'visibility is required with a handle');
-              }
-              const changed = yield* Effect.promise(() =>
-                setGroupVisibility(deps.db, {
-                  groupId,
-                  actorId: user.id,
-                  visibility,
-                  ...(handle === undefined ? {} : { handle }),
-                }),
-              );
-              auditVisibilityChange(groupId, user.id, changed.visibility);
+      .handle(
+        'patch',
+        handler(logger, async (request, user) => {
+          const groupId = request.params.id;
+          const { visibility, handle } = request.payload;
+          const wantsVisibility = visibility !== undefined || handle !== undefined;
+          if (wantsVisibility) {
+            if (visibility === undefined) {
+              throw new HttpError(400, 'invalid_request', 'visibility is required with a handle');
             }
-            const group = yield* Effect.promise(() =>
-              patchGroup(deps.db, {
-                groupId,
-                actorId: user.id,
-                membersCanCreateTopics: request.payload.membersCanCreateTopics,
-                ...(request.payload.background === undefined
-                  ? {}
-                  : { background: request.payload.background }),
-                ...(request.payload.listenerEnabled === undefined
-                  ? {}
-                  : { listenerEnabled: request.payload.listenerEnabled }),
-                ...(request.payload.listenerEagerness === undefined
-                  ? {}
-                  : { listenerEagerness: request.payload.listenerEagerness }),
-              }),
-            );
-            return withListenerAvailability(group);
-          }),
-          logger,
-          requestId,
-        );
-      })
+            const changed = await setGroupVisibility(deps.db, {
+              groupId,
+              actorId: user.id,
+              visibility,
+              ...(handle === undefined ? {} : { handle }),
+            });
+            auditVisibilityChange(groupId, user.id, changed.visibility);
+          }
+          const group = await patchGroup(deps.db, {
+            groupId,
+            actorId: user.id,
+            membersCanCreateTopics: request.payload.membersCanCreateTopics,
+            ...(request.payload.background === undefined
+              ? {}
+              : { background: request.payload.background }),
+            ...(request.payload.listenerEnabled === undefined
+              ? {}
+              : { listenerEnabled: request.payload.listenerEnabled }),
+            ...(request.payload.listenerEagerness === undefined
+              ? {}
+              : { listenerEagerness: request.payload.listenerEagerness }),
+          });
+          return withListenerAvailability(group);
+        }),
+      )
       // Open join for public groups and channels. The join budget was already
       // charged, before the path decode.
-      .handle('join', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            return yield* Effect.promise(() =>
-              joinPublicGroup(
-                {
-                  db: deps.db,
-                  adminClient: deps.adminClient,
-                  domain,
-                  logger,
-                  ...(deps.audit === undefined ? {} : { audit: deps.audit }),
-                },
-                request.params.id,
-                user.id,
-              ),
-            );
-          }),
-          logger,
-          requestId,
-        );
-      }),
+      .handle(
+        'join',
+        handler(logger, (request, user) =>
+          joinPublicGroup(
+            {
+              db: deps.db,
+              adminClient: deps.adminClient,
+              domain,
+              logger,
+              ...(deps.audit === undefined ? {} : { audit: deps.audit }),
+            },
+            request.params.id,
+            user.id,
+          ),
+        ),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(GroupsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(roleRateLimitLayer(roleLimiter)),
-    Layer.provide(joinRateLimitLayer(joinLimiter)),
+    Layer.provide(RoleRateLimit.layer(roleLimiter)),
+    Layer.provide(JoinRateLimit.layer(joinLimiter)),
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: GROUPS_API_ROUTES };
+  return mountApi(GroupsApi, apiLayer);
 }

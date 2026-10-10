@@ -1,7 +1,7 @@
 ---
 id: T-0869
 title: "Server sweep: groups, invite-links, chat-folders, chat-prefs, roles onto the shared HTTP helpers (runSql, SchemaErrors, makeRateLimit, handler, mountApi) with truthful success statuses"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0869-sweep-groups
 model: auto
@@ -72,4 +72,29 @@ Run the tests 3 times after the last commit. The machine is shared, so note `upt
 
 ## Report (written by the worker when done)
 
+Commits: roles `71c1c20b`, invite-links `426eadc9`, chat-folders `d06c353e`, chat-prefs `18ee5667`, groups `9a30e86d`.
+
+Lines (`git diff --numstat`, api.ts added/removed; routes.expected.ts is new):
+- roles: +3 / -7 (T-0863 had already converted it; only the 201 remained)
+- invite-links: +69 / -161 (+9 routes.expected.ts)
+- chat-folders: +93 / -165 (+9)
+- chat-prefs: +70 / -146 (+8)
+- groups: +193 / -341 (+14)
+
+Truthful statuses: declared `HttpApiSchema.status(201)` on groups create, invite-links create, chat-folders create, roles create; invite-links revoke is now `HttpApiSchema.NoContent` and the handler returns nothing (204). The handlers return the value, no `jsonUnsafe`/`HttpServerResponse.empty`. All cited lines matched (groups create, invite-links create/revoke, chat-folders create, roles create).
+
+Checks (the spec's command, 3 runs after the last commit): 9 files, 162 tests passed, 3 of 3 (load average 48 to 77, 120 s timeouts). `pnpm --filter @zilar/server typecheck` clean, oxlint clean on the five folders. Did not run `pnpm gate` (wave mode).
+
+Behaviour differences:
+- Schema error message: the five local layers used `error.cause.message || 'Invalid request'`; the shared `SchemaErrors` uses `error.cause.message`. Differs only if a decode error has an empty message (no test hits it).
+- None else. Wire statuses unchanged.
+
+Decisions to flag:
+- chat-folders and chat-prefs keep their write limit inside the handlers (not `makeRateLimit`). In the old code the limit runs after the payload decode (chat-prefs `putPref` even after the chat-access check), so a middleware would change the 400/404/429 order and spend budget on invalid bodies. I kept the order; `handler` returns the 429 response as before. chat-prefs got a small `tooManyChanges()` helper.
+- groups (role, join) and invite-links (preview) use `makeRateLimit` with the same tag strings and messages. invite-links join keeps its in-handler limiters (they run after the token check).
+- Wrote `routes.expected.ts` for the four modules; roles already had one. `routes-manifest.test.ts` untouched.
+- groups create now encodes through the declared success schema (Date to ISO string) like the other groups endpoints; the existing tests pass unchanged.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.** Groups, invite-links, chat-folders, chat-prefs and roles are converted, with about −430 lines in the `api.ts` files. The creates declare 201 and the invite revoke declares 204. The chat-folders and chat-prefs write limits stay in their handlers, because a middleware would change the 400/404/429 order; that is accepted. The groups create now encodes its Date as ISO, like the other groups endpoints, and the tests pass unchanged. The combined wave 4 check passes.

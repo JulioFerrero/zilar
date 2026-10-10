@@ -4,13 +4,12 @@
 // runs on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
   HttpApiEndpoint,
   HttpApiGroup,
-  HttpApiMiddleware,
+  HttpApiSchema,
 } from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
@@ -19,15 +18,15 @@ import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';
 import {
-  CurrentUser,
+  SchemaErrors,
   Session,
-  failureResponse,
+  handler,
   httpErrorResponse,
+  mountApi,
   requestIdOf,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import {
   createChatFolder,
@@ -111,25 +110,6 @@ const FolderListResult = Schema.Struct({ folders: Schema.Array(FolderView) });
 const FolderResult = Schema.Struct({ folder: FolderView });
 const DeleteResult = Schema.Struct({ deleted: Schema.Boolean });
 
-// Applied to the group so a payload decode failure renders like the old zod
-// path: a 400 `invalid_request` carrying the first schema message.
-class ChatFoldersSchemaErrors extends HttpApiMiddleware.Service<ChatFoldersSchemaErrors>()(
-  'zilar/effect/http/ChatFoldersSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<ChatFoldersSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(ChatFoldersSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid request'),
-      );
-    }),
-  );
-}
-
 const ChatFoldersGroup = HttpApiGroup.make('chatFolders')
   .add(
     HttpApiEndpoint.get('list', '/chat-folders', {
@@ -137,7 +117,7 @@ const ChatFoldersGroup = HttpApiGroup.make('chatFolders')
     }),
     HttpApiEndpoint.post('create', '/chat-folders', {
       payload: CreateFolderBody,
-      success: FolderResult,
+      success: FolderResult.pipe(HttpApiSchema.status(201)),
     }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
     HttpApiEndpoint.put('order', '/chat-folders/order', {
       payload: OrderFoldersBody,
@@ -154,7 +134,7 @@ const ChatFoldersGroup = HttpApiGroup.make('chatFolders')
     }),
   )
   .middleware(Session)
-  .middleware(ChatFoldersSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
@@ -168,14 +148,6 @@ export interface ChatFoldersApiDependencies {
   now?: () => number;
   logger: Logger;
 }
-
-export const CHAT_FOLDERS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/chat-folders' },
-  { method: 'POST', path: '/api/chat-folders' },
-  { method: 'PUT', path: '/api/chat-folders/order' },
-  { method: 'PATCH', path: '/api/chat-folders/:id' },
-  { method: 'DELETE', path: '/api/chat-folders/:id' },
-];
 
 export function createChatFoldersApi(deps: ChatFoldersApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
@@ -198,128 +170,91 @@ export function createChatFoldersApi(deps: ChatFoldersApiDependencies): EffectAp
 
   const groupLayer = HttpApiBuilder.group(ChatFoldersApi, 'chatFolders', (handlers) =>
     handlers
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            return {
-              folders: yield* Effect.promise(() =>
-                listChatFolders(deps.db, user.id, new Date(now())),
-              ),
-            };
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('create', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const limited = checkWriteLimit(user.id, requestId);
-            if (limited !== undefined) {
-              return limited;
-            }
-            const folder = yield* Effect.promise(() =>
-              createChatFolder(deps.db, {
-                userId: user.id,
-                name: request.payload.name,
-                icon: request.payload.icon,
-                includeTypes: [...request.payload.includeTypes],
-                includeChats: [...request.payload.includeChats],
-                excludeChats: [...request.payload.excludeChats],
-                excludeMuted: request.payload.excludeMuted,
-                excludeRead: request.payload.excludeRead,
-                now: new Date(now()),
-              }),
-            );
-            return HttpServerResponse.jsonUnsafe({ folder }, { status: 201 });
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('order', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const limited = checkWriteLimit(user.id, requestId);
-            if (limited !== undefined) {
-              return limited;
-            }
-            const folders = yield* Effect.promise(() =>
-              reorderChatFolders(deps.db, {
-                userId: user.id,
-                ids: [...request.payload.ids],
-                now: new Date(now()),
-              }),
-            );
-            return { folders };
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('update', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const limited = checkWriteLimit(user.id, requestId);
-            if (limited !== undefined) {
-              return limited;
-            }
-            const folder = yield* Effect.promise(() =>
-              updateChatFolder(deps.db, {
-                userId: user.id,
-                id: request.params.id,
-                ...(request.payload.name !== undefined ? { name: request.payload.name } : {}),
-                ...(request.payload.icon !== undefined ? { icon: request.payload.icon } : {}),
-                ...(request.payload.includeTypes !== undefined
-                  ? { includeTypes: [...request.payload.includeTypes] }
-                  : {}),
-                ...(request.payload.includeChats !== undefined
-                  ? { includeChats: [...request.payload.includeChats] }
-                  : {}),
-                ...(request.payload.excludeChats !== undefined
-                  ? { excludeChats: [...request.payload.excludeChats] }
-                  : {}),
-                ...(request.payload.excludeMuted !== undefined
-                  ? { excludeMuted: request.payload.excludeMuted }
-                  : {}),
-                ...(request.payload.excludeRead !== undefined
-                  ? { excludeRead: request.payload.excludeRead }
-                  : {}),
-                now: new Date(now()),
-              }),
-            );
-            return { folder };
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('remove', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const limited = checkWriteLimit(user.id, requestId);
-            if (limited !== undefined) {
-              return limited;
-            }
-            yield* Effect.promise(() =>
-              deleteChatFolder(deps.db, { userId: user.id, id: request.params.id }),
-            );
-            return { deleted: true };
-          }),
-          logger,
-          requestId,
-        );
-      }),
+      .handle(
+        'list',
+        handler(logger, async (_request, user) => ({
+          folders: await listChatFolders(deps.db, user.id, new Date(now())),
+        })),
+      )
+      .handle(
+        'create',
+        handler(logger, async (request, user) => {
+          const limited = checkWriteLimit(user.id, requestIdOf(request.request));
+          if (limited !== undefined) {
+            return limited;
+          }
+          const folder = await createChatFolder(deps.db, {
+            userId: user.id,
+            name: request.payload.name,
+            icon: request.payload.icon,
+            includeTypes: [...request.payload.includeTypes],
+            includeChats: [...request.payload.includeChats],
+            excludeChats: [...request.payload.excludeChats],
+            excludeMuted: request.payload.excludeMuted,
+            excludeRead: request.payload.excludeRead,
+            now: new Date(now()),
+          });
+          return { folder };
+        }),
+      )
+      .handle(
+        'order',
+        handler(logger, async (request, user) => {
+          const limited = checkWriteLimit(user.id, requestIdOf(request.request));
+          if (limited !== undefined) {
+            return limited;
+          }
+          const folders = await reorderChatFolders(deps.db, {
+            userId: user.id,
+            ids: [...request.payload.ids],
+            now: new Date(now()),
+          });
+          return { folders };
+        }),
+      )
+      .handle(
+        'update',
+        handler(logger, async (request, user) => {
+          const limited = checkWriteLimit(user.id, requestIdOf(request.request));
+          if (limited !== undefined) {
+            return limited;
+          }
+          const folder = await updateChatFolder(deps.db, {
+            userId: user.id,
+            id: request.params.id,
+            ...(request.payload.name !== undefined ? { name: request.payload.name } : {}),
+            ...(request.payload.icon !== undefined ? { icon: request.payload.icon } : {}),
+            ...(request.payload.includeTypes !== undefined
+              ? { includeTypes: [...request.payload.includeTypes] }
+              : {}),
+            ...(request.payload.includeChats !== undefined
+              ? { includeChats: [...request.payload.includeChats] }
+              : {}),
+            ...(request.payload.excludeChats !== undefined
+              ? { excludeChats: [...request.payload.excludeChats] }
+              : {}),
+            ...(request.payload.excludeMuted !== undefined
+              ? { excludeMuted: request.payload.excludeMuted }
+              : {}),
+            ...(request.payload.excludeRead !== undefined
+              ? { excludeRead: request.payload.excludeRead }
+              : {}),
+            now: new Date(now()),
+          });
+          return { folder };
+        }),
+      )
+      .handle(
+        'remove',
+        handler(logger, async (request, user) => {
+          const limited = checkWriteLimit(user.id, requestIdOf(request.request));
+          if (limited !== undefined) {
+            return limited;
+          }
+          await deleteChatFolder(deps.db, { userId: user.id, id: request.params.id });
+          return { deleted: true };
+        }),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(ChatFoldersApi).pipe(
@@ -328,12 +263,5 @@ export function createChatFoldersApi(deps: ChatFoldersApiDependencies): EffectAp
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: CHAT_FOLDERS_API_ROUTES };
+  return mountApi(ChatFoldersApi, apiLayer);
 }

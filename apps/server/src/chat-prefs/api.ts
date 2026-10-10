@@ -3,15 +3,8 @@
 // mounted by the Effect edge (`apps/server/src/effect/edge.ts`). Its service
 // runs on effect/sql.
 
-import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-} from 'effect/http-api';
+import { Layer, Schema } from 'effect';
+import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import type { Logger } from 'pino';
 import { IsoDateTimeSchema } from '@zilar/protocol';
 import type { Auth } from '../auth/auth';
@@ -20,15 +13,15 @@ import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';
 import {
-  CurrentUser,
+  SchemaErrors,
   Session,
-  failureResponse,
+  handler,
   httpErrorResponse,
+  mountApi,
   requestIdOf,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import {
   CHAT_BACKGROUND_PRESET_IDS,
@@ -129,23 +122,8 @@ function parseMutedUntil(value: string | null | undefined): Date | null | undefi
   return date;
 }
 
-// Applied to the group so a query or payload decode failure renders like the
-// old zod path: a 400 `invalid_request` carrying the first schema message.
-class ChatPrefsSchemaErrors extends HttpApiMiddleware.Service<ChatPrefsSchemaErrors>()(
-  'zilar/effect/http/ChatPrefsSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<ChatPrefsSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(ChatPrefsSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid request'),
-      );
-    }),
-  );
+function tooManyChanges(): HttpError {
+  return new HttpError(429, 'rate_limited', 'Too many preference changes, try again later');
 }
 
 const ChatPrefsGroup = HttpApiGroup.make('chatPrefs')
@@ -167,7 +145,7 @@ const ChatPrefsGroup = HttpApiGroup.make('chatPrefs')
     }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
   )
   .middleware(Session)
-  .middleware(ChatPrefsSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
@@ -182,13 +160,6 @@ export interface ChatPrefsApiDependencies {
   logger: Logger;
 }
 
-export const CHAT_PREFS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/chat-prefs' },
-  { method: 'PUT', path: '/api/chat-prefs/:chatJid' },
-  { method: 'GET', path: '/api/chat-background' },
-  { method: 'PUT', path: '/api/chat-background' },
-];
-
 export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
   const logger = deps.logger;
@@ -200,108 +171,68 @@ export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMou
 
   const groupLayer = HttpApiBuilder.group(ChatPrefsApi, 'chatPrefs', (handlers) =>
     handlers
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const [prefs, defaultBackground] = yield* Effect.promise(() =>
-              Promise.all([
-                listChatPrefs(deps.db, user.id),
-                getChatBackgroundDefault(deps.db, user.id),
-              ]),
-            );
-            return { prefs, defaultBackground };
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'list',
+        handler(logger, async (_request, user) => {
+          const [prefs, defaultBackground] = await Promise.all([
+            listChatPrefs(deps.db, user.id),
+            getChatBackgroundDefault(deps.db, user.id),
+          ]);
+          return { prefs, defaultBackground };
+        }),
+      )
       // Partial update of one pref row. The session runs first, then the body
       // is decoded, then access is checked, then the write budget is charged.
-      .handle('putPref', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const chatJid = yield* Effect.sync(() => decodePathJid(request.params.chatJid));
-            const { bare } = yield* Effect.promise(() =>
-              requireChatAccess(deps.db, {
-                chatJid,
-                userId: user.id,
-                domain: deps.config.xmpp.domain,
-                mucDomain: deps.config.xmpp.mucDomain,
-              }),
-            );
-            if (!writeLimiter.allow(user.id)) {
-              return httpErrorResponse(
-                requestId,
-                new HttpError(429, 'rate_limited', 'Too many preference changes, try again later'),
-              );
-            }
-            const mutedUntil = yield* Effect.sync(() =>
-              parseMutedUntil(request.payload.mutedUntil),
-            );
-            const pref = yield* Effect.promise(() =>
-              putChatPref(deps.db, {
-                userId: user.id,
-                bare,
-                mutedUntil,
-                archived: request.payload.archived,
-                pinned: request.payload.pinned,
-                backgroundPreset: request.payload.backgroundPreset,
-                backgroundImageId: request.payload.backgroundImageId,
-                backgroundDim: request.payload.backgroundDim,
-                now: new Date(now()),
-              }),
-            );
-            // A row back at all defaults is deleted, not kept: the client drops it.
-            return pref === null ? { prefs: null } : pref;
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('getBackground', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            return {
-              defaultBackground: yield* Effect.promise(() =>
-                getChatBackgroundDefault(deps.db, user.id),
-              ),
-            };
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('putBackground', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            if (!writeLimiter.allow(user.id)) {
-              return httpErrorResponse(
-                requestId,
-                new HttpError(429, 'rate_limited', 'Too many preference changes, try again later'),
-              );
-            }
-            const defaultBackground = yield* Effect.promise(() =>
-              putChatBackgroundDefault(deps.db, user.id, {
-                backgroundPreset: request.payload.backgroundPreset,
-                backgroundImageId: request.payload.backgroundImageId,
-                backgroundDim: request.payload.backgroundDim,
-                now: new Date(now()),
-              }),
-            );
-            return { defaultBackground };
-          }),
-          logger,
-          requestId,
-        );
-      }),
+      .handle(
+        'putPref',
+        handler(logger, async (request, user) => {
+          const chatJid = decodePathJid(request.params.chatJid);
+          const { bare } = await requireChatAccess(deps.db, {
+            chatJid,
+            userId: user.id,
+            domain: deps.config.xmpp.domain,
+            mucDomain: deps.config.xmpp.mucDomain,
+          });
+          if (!writeLimiter.allow(user.id)) {
+            return httpErrorResponse(requestIdOf(request.request), tooManyChanges());
+          }
+          const mutedUntil = parseMutedUntil(request.payload.mutedUntil);
+          const pref = await putChatPref(deps.db, {
+            userId: user.id,
+            bare,
+            mutedUntil,
+            archived: request.payload.archived,
+            pinned: request.payload.pinned,
+            backgroundPreset: request.payload.backgroundPreset,
+            backgroundImageId: request.payload.backgroundImageId,
+            backgroundDim: request.payload.backgroundDim,
+            now: new Date(now()),
+          });
+          // A row back at all defaults is deleted, not kept: the client drops it.
+          return pref === null ? { prefs: null } : pref;
+        }),
+      )
+      .handle(
+        'getBackground',
+        handler(logger, async (_request, user) => ({
+          defaultBackground: await getChatBackgroundDefault(deps.db, user.id),
+        })),
+      )
+      .handle(
+        'putBackground',
+        handler(logger, async (request, user) => {
+          if (!writeLimiter.allow(user.id)) {
+            return httpErrorResponse(requestIdOf(request.request), tooManyChanges());
+          }
+          const defaultBackground = await putChatBackgroundDefault(deps.db, user.id, {
+            backgroundPreset: request.payload.backgroundPreset,
+            backgroundImageId: request.payload.backgroundImageId,
+            backgroundDim: request.payload.backgroundDim,
+            now: new Date(now()),
+          });
+          return { defaultBackground };
+        }),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(ChatPrefsApi).pipe(
@@ -310,12 +241,5 @@ export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMou
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: CHAT_PREFS_API_ROUTES };
+  return mountApi(ChatPrefsApi, apiLayer);
 }
