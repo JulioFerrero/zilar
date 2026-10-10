@@ -1,7 +1,7 @@
 ---
 id: T-1076
 title: "Mock backend F5: avatars domain (PUT/DELETE /avatars/:kind/:ownerId) whose urls show without a server; /me carries the viewer's avatarUrl"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1076-mock-backend-avatars
 model: auto
@@ -66,4 +66,115 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Added the `avatars` domain to `@zilar/mock-backend`, mirroring the server's
+`apps/server/src/avatars/api.ts` for the parts a serverless mock can serve:
+
+- New `packages/mock-backend/src/domains/avatars/state.ts`: the live table is a
+  `Map<string, string>` from `${kind}:${ownerId}` to the stored url, exposed on
+  `MockData` via module augmentation (`avatarUrls`, `putAvatarUrl`,
+  `removeAvatarUrl`). It starts empty and there is no seed.
+- New `packages/mock-backend/src/domains/avatars/routes.ts`:
+  - `PUT /avatars/:kind/:ownerId` (kind `user`, `ai` or `group`; anything else
+    is 404 `not_found`). Body handling is synchronous, as `MockRoute` requires:
+    a `Blob` body becomes `URL.createObjectURL(body)` (web's upload path); a
+    `string`/`ArrayBuffer`/`Uint8Array` body becomes
+    `data:<content-type header or image/png>;base64,<bytes>`. A missing or
+    empty body answers 400 `avatar_empty`. The url is stored and answered as
+    `{ url }` (200).
+  - The viewer's own picture also writes `avatarUrl` on the `me` row
+    (`Object.assign`, like `PUT /me/handle` writes `handle`), so `GET /me`
+    carries it.
+  - `DELETE /avatars/:kind/:ownerId` removes the url and answers `{ ok: true }`;
+    for the viewer it clears `avatarUrl` (set to `undefined`, which
+    `JSON.stringify` drops).
+  - `GET /avatars/:id` always answers 404 `not_found`: every mock url is a
+    `data:` or `blob:` url.
+- New `packages/mock-backend/src/domains/avatars/index.ts`: `defineDomain`.
+- `packages/mock-backend/src/domains/index.ts`: one alphabetical import line
+  and one alphabetical array entry (`avatarsDomain`).
+
+No app file changed. Every new file is well under 400 lines.
+
+### Files changed
+
+- New: `packages/mock-backend/src/domains/avatars/{index,routes,state}.ts`
+- Modified: `packages/mock-backend/src/domains/index.ts` (two lines)
+- Modified: `work/T-1076-mock-backend-avatars.md`
+
+### Commands and real results
+
+- `pnpm install`: done (9.6s).
+- Throwaway proof (temporary test, deleted before the gate, kept out of the
+  repo): `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/mock/t1076-proof.test.ts`
+  → **1 passed**. Run from `@zilar/web` (as T-1067 did) because decoding each
+  response with its Effect schema needs `effect`, which the mock-backend
+  package deliberately does not depend on.
+- `pnpm gate` (repo root):
+
+```
+gate: 5 changed file(s) against main
+PASS  install (frozen)  (0.9s)
+PASS  format  (0.9s)
+PASS  lint  (0.7s)
+PASS  typecheck  (1.6s)
+PASS  effect  (0.4s)
+SKIP tests @zilar/mock-backend (no nearby test files)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+### Decoded proof (real output)
+
+`GET /me` decoded with the contract's `AuthMe`; the other bodies decoded with
+`{ url: string }`, `{ ok: true }` and `{ error: { code } }` schemas.
+
+```
+PROOF GET /me before -> {"id":"u-you","email":"you@zilar.test","name":"You","image":null,"handle":null,"jid":"you@zilar.test"}
+PROOF PUT /avatars/user/:id (Blob) -> 200 {"url":"blob:mock-avatar"}
+PROOF GET /me after upload -> {"id":"u-you","email":"you@zilar.test","name":"You","image":null,"avatarUrl":"blob:mock-avatar","handle":null,"jid":"you@zilar.test"}
+PROOF DELETE /avatars/user/:id -> 200 {"ok":true}
+PROOF GET /me after delete -> {"id":"u-you","email":"you@zilar.test","name":"You","image":null,"handle":null,"jid":"you@zilar.test"}
+PROOF PUT /avatars/ai/:id (bytes) -> {"url":"data:image/png;base64,iVBORw0KGgo="}
+PROOF GET /avatars/:id -> 404 {"error":{"code":"not_found"}}
+PROOF PUT /avatars/robot/:id -> 404 {"error":{"code":"not_found"}}
+PROOF PUT /avatars/group/:id (empty) -> 400 {"error":{"code":"avatar_empty"}}
+```
+
+The proof stubs `URL.createObjectURL` because jsdom's own implementation cannot
+read a `Blob`; a real browser (the lead's `?mock=1` check) can, and the route
+calls it (asserted `toHaveBeenCalledTimes(1)`).
+
+### Deviations and notes
+
+- The module augmentation lives in `state.ts`, not a separate `tables.ts`:
+  the Allowed files list `index.ts`, `routes.ts` and `state.ts` only.
+- `ownerId` is decoded with a bare `decodeURIComponent(ownerId)`, like the
+  `pins` and `backgrounds` mock routes, instead of the server's
+  try/catch-to-404. A malformed percent escape would therefore throw rather
+  than answer 404; the spec does not ask for the server's malformed-escape
+  handling, and a `try` in this package trips the gate's effect ratchet (W4).
+- `GET /avatars/:id` returns 404 for every id, so the stored `blob:`/`data:`
+  urls are the only way an image is served — which is the point (no server).
+
+### Blocked / needs a decision
+
+None.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-11: approved. The pre-review is clean, with 3 nits, all mock-only.**
+- **The change:** a new `avatars` domain in `@zilar/mock-backend`:
+  - **`PUT`:** a `Blob` becomes a `blob:` url, and bytes or a string become a `data:` url; an empty body answers 400 `avatar_empty`;
+  - **`DELETE`** answers `{ ok: true }`, and `GET /avatars/:id` answers 404;
+  - **the viewer's own avatar** sets or clears `avatarUrl` on `/me`.
+- **The lead's web check** (`?mock=1`, branch on port 5199):
+  - Settings › Profile › Add picture with a 128 px PNG opens the crop dialog;
+  - Save picture shows the picture, with Change picture and Remove;
+  - Remove brings back the fallback and Add picture. The branch predates T-1075, so the fallback is still the letter.
+- **The nits:**
+  - a malformed `%` escape in `ownerId` throws instead of answering 404;
+  - delete leaves `avatarUrl: undefined` on the row, which JSON drops;
+  - replaced `blob:` urls are not revoked.
+- **Check:** the gate passed.

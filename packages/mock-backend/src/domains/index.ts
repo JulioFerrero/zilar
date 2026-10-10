@@ -8,6 +8,7 @@ import { aisDomain } from './ais';
 import { approvalRulesDomain } from './approval-rules';
 import { approvalsDomain } from './approvals';
 import { auditDomain } from './audit';
+import { avatarsDomain } from './avatars';
 import { backgroundsDomain } from './backgrounds';
 import { blocksDomain } from './blocks';
 import { chatFoldersDomain } from './chat-folders';
@@ -44,6 +45,7 @@ export const domains: readonly Domain[] = [
   approvalRulesDomain,
   approvalsDomain,
   auditDomain,
+  avatarsDomain,
   backgroundsDomain,
   blocksDomain,
   chatFoldersDomain,
