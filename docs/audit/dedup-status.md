@@ -200,12 +200,18 @@ secret list). **Security: secrets — lead decision.**
 
 ### 6.4 Schema-issue walker ×4
 
-`firstIssueMessage` has **four identical copies**:
+`firstIssueMessage` has **four copies**:
 `auth/api.ts:74`, `routines/schemas.ts:121`, `audit/schema.ts:75`,
 `xmpp/admin/errors.ts:53`; plus the sibling `firstIssueReason` in
 `agents/tool-arg-issues.ts:14`. No `apps/server/src/effect/schema-issues.ts`
-exists (F8 lists it). **Identical?** The four `firstIssueMessage` bodies are the
-same switch; extract to `effect/schema-issues.ts` and re-export.
+exists (F8 lists it).
+
+**Identical?** Not all four (lead `diff`, 2026-10-10):
+- `xmpp/admin/errors.ts` is the same as `auth/api.ts`.
+- `routines/schemas.ts` differs only in a `{ }` block around `case 'AnyOf'`, so it behaves the same.
+- `audit/schema.ts` has two extra cases: `InvalidType` returns `SchemaIssue.defaultLeafHook(issue)`, and `MissingKey` returns `'Missing key'`. Its messages differ.
+
+Extract the shared switch to `effect/schema-issues.ts`, and either keep audit's two cases as an audit-only wrapper, or choose deliberately to change audit's messages.
 
 ### 6.5 `truncateChars` ×4 (+ a variant)
 
