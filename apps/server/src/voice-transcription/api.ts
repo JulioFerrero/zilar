@@ -5,32 +5,28 @@
 // database reads and writes run on effect/sql. The owner settings carry the
 // provider API key, which never appears in a response, log line or error text.
 
-import { Effect, Layer, Schema } from 'effect';
-import { HttpServerRequest } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-} from 'effect/http-api';
+import { Effect, Layer } from 'effect';
+import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
-  CurrentUser,
   SchemaErrors,
   Session,
   handler,
-  httpErrorResponse,
   mountApi,
-  requestIdOf,
   schemaErrorLayer,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
 import { runSql } from '../effect/sql';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { createRateLimiter } from '../rate-limit';
+import {
+  TranscriptConfigured,
+  VoiceSettingsOwnerLimit,
+  transcriptConfiguredLayer,
+  voiceSettingsOwnerLimitLayer,
+} from './middleware';
 import {
   defaultAudioFetcher,
   defaultTranscriber,
@@ -50,6 +46,13 @@ import {
   type VoiceTranscriptionRoutesDependencies,
 } from './routes';
 import {
+  EnabledStatus,
+  OkResult,
+  TranscriptBody,
+  TranscriptResult,
+  VoiceSettingsBody,
+} from './schemas';
+import {
   deleteVoiceTranscriptionSettings,
   getVoiceTranscriptionSettings,
   saveVoiceTranscriptionSettings,
@@ -57,100 +60,6 @@ import {
   type VoiceTranscriptionSettings,
 } from './settings';
 import { settingsCipherFor } from '../setup/settings';
-
-// Replaces `transcriptBodySchema` (zod): a non-empty URL of at most 2048
-// characters. Strict (`PayloadParseOptions` below) so an excess key fails like
-// the old `.strict()`.
-const TranscriptBody = Schema.Struct({
-  url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048)),
-});
-
-// Replaces `voiceSettingsBodySchema` (zod): trimmed before the length checks,
-// exactly like the old `.trim().min()/.max()`. Strict like the old `.strict()`.
-const VoiceSettingsBody = Schema.Struct({
-  baseUrl: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
-  apiKey: Schema.optional(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(512))),
-  model: Schema.optional(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
-});
-
-// Every field of the handler's return value, so no field is stripped by the
-// success encoder (recipe item 8): `{ enabled }`, `{ text }`, `{ ok: true }`.
-const EnabledStatus = Schema.Struct({ enabled: Schema.Boolean });
-const TranscriptResult = Schema.Struct({ text: Schema.String });
-const OkResult = Schema.Struct({ ok: Schema.Boolean });
-
-// The transcript route answers 501 when the owner never configured an
-// endpoint, before the payload is decoded (the old router's
-// session -> settings -> decode -> limiter order). Endpoint middleware runs
-// before the payload decode, the same pattern as `GroupsRoleRateLimit` in
-// `groups/api.ts`. `requires: CurrentUser` keeps the session 401 first.
-class TranscriptConfigured extends HttpApiMiddleware.Service<
-  TranscriptConfigured,
-  { requires: CurrentUser }
->()('zilar/effect/http/TranscriptConfigured') {}
-
-function transcriptConfiguredLayer(
-  settingsReader: () => Promise<VoiceTranscriptionSettings | null>,
-): Layer.Layer<TranscriptConfigured> {
-  return Layer.succeed(
-    TranscriptConfigured,
-    TranscriptConfigured.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        yield* CurrentUser;
-        if ((yield* Effect.promise(() => settingsReader())) === null) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(
-              501,
-              'transcription_not_configured',
-              'Voice transcription is not set up on this server',
-            ),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
-
-// The owner settings answer 404 for non-owners and 429 over budget before
-// the payload is decoded (the old router's session -> owner -> limiter ->
-// decode order). The handler drops both checks so the budget is charged
-// exactly once. `requires: CurrentUser` keeps the session 401 first.
-class VoiceSettingsOwnerLimit extends HttpApiMiddleware.Service<
-  VoiceSettingsOwnerLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/VoiceSettingsOwnerLimit') {}
-
-function voiceSettingsOwnerLimitLayer(
-  ownerOf: (userId: string) => Promise<boolean>,
-  limiter: RateLimiter,
-): Layer.Layer<VoiceSettingsOwnerLimit> {
-  return Layer.succeed(
-    VoiceSettingsOwnerLimit,
-    VoiceSettingsOwnerLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!(yield* Effect.promise(() => ownerOf(user.id)))) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(404, 'not_found', 'Not found'),
-          );
-        }
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many attempts, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
 
 const VoiceTranscriptionGroup = HttpApiGroup.make('voiceTranscription')
   .add(
