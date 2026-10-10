@@ -2,49 +2,25 @@ import { useMemo, useState } from 'react';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useNavigate } from 'react-router';
-import { ChevronDown, Plus, Server } from 'lucide-react';
-import {
-  ApiError,
-  approveMachine,
-  deleteMachine,
-  denyMachine,
-  listAis,
-  listMachines,
-  renameMachine,
-  revokeMachine,
-} from '@/lib/api';
+import { ChevronDown, Server } from 'lucide-react';
+import { listAis, listMachines } from '@/lib/api';
 import type { Machine, PublicAi } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
-import {
-  failureOf,
-  isWaiting,
-  useAction,
-  type ActionControls,
-  type ActionState,
-} from '@/lib/effect/use-action';
+import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { Button } from '@/components/ais/AiPageShell';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { StateMessage } from '@/components/ui/state-message';
 import { AddMachineDialog } from '@/components/machines/AddMachineDialog';
-import { ApprovedMachineCard } from '@/components/machines/ApprovedMachineCard';
+import { AddMachineButton } from '@/components/machines/AddMachineButton';
+import { ApprovedRow } from '@/components/machines/ApprovedRow';
 import { MachineListSkeleton } from '@/components/machines/MachineListSkeleton';
-import { PendingMachineCard } from '@/components/machines/PendingMachineCard';
-import { RevokedMachineCard } from '@/components/machines/RevokedMachineCard';
-import { machineErrorMessage } from '@/components/machines/errors';
+import { PendingRow } from '@/components/machines/PendingRow';
+import { RevokedRow } from '@/components/machines/RevokedRow';
+import type { ConfirmingState, ConfirmKind } from '@/components/machines/machineRowOps';
+import { EMPTY_CONFIRMING, failureText } from '@/components/machines/machineRowOps';
 
 type PageStatus = 'loading' | 'ready' | 'error';
-
-interface ConfirmingState {
-  deny: string | null;
-  revoke: string | null;
-  delete: string | null;
-}
-
-type ConfirmKind = keyof ConfirmingState;
-
-const EMPTY_CONFIRMING: ConfirmingState = { deny: null, revoke: null, delete: null };
 
 /** Settings → Machines. List, add, approve/deny, rename, revoke, delete. */
 export function MachinesPage() {
@@ -154,15 +130,7 @@ export function MachinesPage() {
                   <section aria-label="Waiting for approval" className="flex flex-col gap-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <h2 className="text-[16px] font-semibold">Waiting for approval</h2>
-                      <Button
-                        type="button"
-                        size="lg"
-                        className="rounded-full px-5"
-                        onClick={() => setAdding(true)}
-                      >
-                        <Plus aria-hidden="true" />
-                        Add machine
-                      </Button>
+                      <AddMachineButton onClick={() => setAdding(true)} />
                     </div>
                     <ul className="flex flex-col gap-2">
                       {pendingMachines.map((machine) => (
@@ -185,15 +153,7 @@ export function MachinesPage() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <h2 className="text-[16px] font-semibold">Your machines</h2>
                       {pendingMachines.length === 0 && (
-                        <Button
-                          type="button"
-                          size="lg"
-                          className="rounded-full px-5"
-                          onClick={() => setAdding(true)}
-                        >
-                          <Plus aria-hidden="true" />
-                          Add machine
-                        </Button>
+                        <AddMachineButton onClick={() => setAdding(true)} />
                       )}
                     </div>
                     <ul className="flex flex-col gap-2">
@@ -232,15 +192,7 @@ export function MachinesPage() {
                         Revoked ({revokedMachines.length})
                       </Button>
                       {pendingMachines.length === 0 && approvedMachines.length === 0 && (
-                        <Button
-                          type="button"
-                          size="lg"
-                          className="rounded-full px-5"
-                          onClick={() => setAdding(true)}
-                        >
-                          <Plus aria-hidden="true" />
-                          Add machine
-                        </Button>
+                        <AddMachineButton onClick={() => setAdding(true)} />
                       )}
                     </div>
                     {showRevoked && (
@@ -267,207 +219,5 @@ export function MachinesPage() {
 
       {adding && <AddMachineDialog onClose={() => setAdding(false)} />}
     </SettingsShell>
-  );
-}
-
-interface PendingRowProps {
-  machine: Machine;
-  confirmingDeny: boolean;
-  onConfirm: (id: string | null) => void;
-  onUpdate: (id: string, next: Machine) => void;
-  onRemove: (id: string) => void;
-}
-
-/**
- * One pending machine with its own Approve and Deny actions, so two rows can
- * run at once while a second click on the same row waits for the first.
- */
-function PendingRow({ machine, confirmingDeny, onConfirm, onUpdate, onRemove }: PendingRowProps) {
-  const [approveState, approve] = useAction((id: string) =>
-    fromApi(() => approveMachine(id)).pipe(
-      Effect.tap((updated) => Effect.sync(() => onUpdate(id, updated))),
-    ),
-  );
-  const [denyState, deny, denyControls] = useAction((id: string) =>
-    fromApi(() => denyMachine(id)).pipe(
-      Effect.tap(() =>
-        Effect.sync(() => {
-          onRemove(id);
-          onConfirm(null);
-        }),
-      ),
-    ),
-  );
-
-  const denyFailure = shownFailure(denyState);
-  const approveFailure = shownFailure(approveState);
-  const actionError =
-    denyFailure !== undefined
-      ? failureText(denyFailure, 'Could not deny the machine.')
-      : approveFailure !== undefined
-        ? failureText(approveFailure, 'Could not approve the machine.')
-        : '';
-
-  return (
-    <PendingMachineCard
-      machine={machine}
-      approving={isWaiting(approveState)}
-      denying={isWaiting(denyState)}
-      confirmingDeny={confirmingDeny}
-      actionError={actionError}
-      onApprove={() => approve(machine.id)}
-      onAskDeny={() => {
-        clearFailure(denyState, denyControls);
-        onConfirm(machine.id);
-      }}
-      onCancelDeny={() => {
-        clearFailure(denyState, denyControls);
-        onConfirm(null);
-      }}
-      onConfirmDeny={() => deny(machine.id)}
-    />
-  );
-}
-
-interface ApprovedRowProps {
-  machine: Machine;
-  confirmingRevoke: boolean;
-  aiNames: string[] | null;
-  onConfirm: (id: string | null) => void;
-  onUpdate: (id: string, next: Machine) => void;
-  onAisChanged: () => void;
-}
-
-/**
- * One approved machine with its own rename and revoke actions. A revoke moves
- * the machine out of this section, so the AI list refresh runs on the page
- * (through `onAisChanged`), which stays mounted.
- */
-function ApprovedRow({
-  machine,
-  confirmingRevoke,
-  aiNames,
-  onConfirm,
-  onUpdate,
-  onAisChanged,
-}: ApprovedRowProps) {
-  const [renameState, rename] = useAction((name: string) =>
-    // Optimistic: the new name shows at once and goes back if the server refuses.
-    Effect.sync(() => onUpdate(machine.id, { ...machine, name })).pipe(
-      Effect.andThen(fromApi(() => renameMachine(machine.id, name))),
-      Effect.tap((updated) => Effect.sync(() => onUpdate(machine.id, updated))),
-      Effect.tapError(() => Effect.sync(() => onUpdate(machine.id, machine))),
-    ),
-  );
-  const [revokeState, revoke, revokeControls] = useAction((id: string) =>
-    fromApi(() => revokeMachine(id)).pipe(
-      Effect.tap((updated) =>
-        Effect.sync(() => {
-          onAisChanged();
-          onConfirm(null);
-          onUpdate(id, updated);
-        }),
-      ),
-    ),
-  );
-
-  const renameFailure = shownFailure(renameState);
-  const revokeFailure = shownFailure(revokeState);
-  const actionError =
-    renameFailure !== undefined
-      ? failureText(renameFailure, 'Could not rename the machine.')
-      : revokeFailure !== undefined
-        ? failureText(revokeFailure, 'Could not revoke the machine.')
-        : '';
-
-  return (
-    <ApprovedMachineCard
-      machine={machine}
-      renaming={isWaiting(renameState)}
-      revoking={isWaiting(revokeState)}
-      confirmingRevoke={confirmingRevoke}
-      actionError={actionError}
-      aiNames={aiNames}
-      onRename={(name) => rename(name)}
-      onAskRevoke={() => {
-        clearFailure(revokeState, revokeControls);
-        onConfirm(machine.id);
-      }}
-      onCancelRevoke={() => {
-        clearFailure(revokeState, revokeControls);
-        onConfirm(null);
-      }}
-      onConfirmRevoke={() => revoke(machine.id)}
-    />
-  );
-}
-
-interface RevokedRowProps {
-  machine: Machine;
-  confirmingDelete: boolean;
-  onConfirm: (id: string | null) => void;
-  onRemove: (id: string) => void;
-}
-
-/** One revoked machine with its own delete action. */
-function RevokedRow({ machine, confirmingDelete, onConfirm, onRemove }: RevokedRowProps) {
-  const [deleteState, deleteMachineRow, deleteControls] = useAction((id: string) =>
-    fromApi(() => deleteMachine(id)).pipe(
-      Effect.tap(() =>
-        Effect.sync(() => {
-          onRemove(id);
-          onConfirm(null);
-        }),
-      ),
-    ),
-  );
-
-  const deleteFailure = shownFailure(deleteState);
-  const actionError =
-    deleteFailure !== undefined ? failureText(deleteFailure, 'Could not delete the machine.') : '';
-
-  return (
-    <RevokedMachineCard
-      machine={machine}
-      deleting={isWaiting(deleteState)}
-      confirmingDelete={confirmingDelete}
-      actionError={actionError}
-      onAskDelete={() => {
-        clearFailure(deleteState, deleteControls);
-        onConfirm(machine.id);
-      }}
-      onCancelDelete={() => {
-        clearFailure(deleteState, deleteControls);
-        onConfirm(null);
-      }}
-      onConfirmDelete={() => deleteMachineRow(machine.id)}
-    />
-  );
-}
-
-/** The last typed failure of a call, hidden while a new call runs. */
-function shownFailure<A>(state: ActionState<A, ApiFailure>): ApiFailure | undefined {
-  return isWaiting(state) ? undefined : failureOf(state);
-}
-
-/** Clears the failure an earlier call left; a call that is still running is not interrupted. */
-function clearFailure<A>(state: ActionState<A, ApiFailure>, controls: ActionControls): void {
-  if (!isWaiting(state)) {
-    controls.reset();
-  }
-}
-
-/**
- * The text machineErrorMessage gives for an API answer. fromApi keeps an
- * ApiError's code, status and message; any other throw became the generic
- * unknown_error, which shows the fallback sentence instead.
- */
-function failureText(failure: ApiFailure | undefined, fallback: string): string {
-  if (failure === undefined || failure.code === 'unknown_error') {
-    return fallback;
-  }
-  return machineErrorMessage(
-    new ApiError(failure.status, failure.code, failure.message, failure.detail),
-    fallback,
   );
 }
