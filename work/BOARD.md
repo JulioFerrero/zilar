@@ -8,6 +8,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
+| [T-0913](T-0913-load-flakes.md) | Four timing tests that fail combined checks under load become deterministic | in-progress | sonnet-5.5 | | test stability |
+| [T-0912](T-0912-store-core-t6b-history.md) | Store core T6b: web history in core, loadOlder overlap fix | todo | | T-0907 | phase 4.3 |
 | [T-0908](T-0908-one-run-sql.md) | One runSql: delete the 21 module-local copies | in-progress | haiku-5.5 | | follow-up |
 | [T-0909](T-0909-pglite-dev-only.md) | PGlite out of the production install | in-progress | sonnet-5.5 | | follow-up, image size |
 | [T-0910](T-0910-contract-lenient-rows.md) | Lenient row schemas; mobile gifs, media, stickers derive from the contract | in-progress | sonnet-5.5 | | follow-up |
