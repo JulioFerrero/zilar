@@ -2,6 +2,14 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 20:50 local: wave 5 merged; wave 6 running**
+- **Merged:**
+  - **mobile, with phone smokes:** T-0995 (machines: approve), T-0996 (stickers: reorder, discover), T-0997 (voice: transcript toggle);
+  - **web, Chrome or code read:** T-0998 (chat background preset), T-0999 (notifications toggle), T-1000 (integrations; read in code, because web mock shows only the not-admin message, on main too);
+  - **server:** T-1001 (Telegram import: token scrub at the same 2 sites), T-1002 (push service: import cycle checked at runtime).
+- **Running, 8 workers, 3 of them mobile:** T-1003 (push tests), T-1004 (approvals), T-1005 (profile), T-1006 (connections), T-1007 (avatar uploader), T-1008 (tool detail), T-1009 (chat list), T-1010 (XMPP admin client).
+- **Still deferred:** the stores (mock rebuild), `main.ts`, `app.ts`, `sandbox/tool-worker.ts`, `topics/access.ts`, `group-turn.ts`, the runner-tunnel files, `ai/litellm-client.ts`, `approvals/api.ts` and `search/routes.ts` (security or pipeline code), and `lead/autopilot.ts`.
+
 **2026-10-10 20:26 local: wave 4 merged; wave 5 running**
 - **Merged:**
   - **web, checked in Chrome:** T-0989 (StickerPanel: star, unstar and send a sticker), T-0990 (ChannelPanel: promote and demote);
