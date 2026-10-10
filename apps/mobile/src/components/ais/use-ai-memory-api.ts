@@ -3,8 +3,21 @@ import { useMemo } from 'react';
 
 import { createAiMemoryApi, type AiMemoryApi } from '@/lib/ai-memory-api';
 import { getSessionToken } from '@/lib/session-token';
-import { createMockAiMemoryApi } from '@/mock/ai-memory';
 import { ENV_MOCK, mockParamAllowed } from '@/mock/gate';
+
+/**
+ * Loads the mock behind a literal build-time condition: Metro folds it to
+ * `false` in a release build, so the mock module stays out of the bundle.
+ */
+function createMockAiMemory(): AiMemoryApi {
+  if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return (
+      require('@/mock/ai-memory') as typeof import('@/mock/ai-memory')
+    ).createMockAiMemoryApi();
+  }
+  throw new Error('The mock API is not part of this build');
+}
 
 /**
  * The AI memory API supports exactly one mock scenario (the seeded memory),
@@ -43,7 +56,7 @@ export function useAiMemoryApi(): AiMemoryApiHandle {
   const envMock = ENV_MOCK;
   const mock = aiMemoryMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
   const api = useMemo(
-    () => (mock ? createMockAiMemoryApi() : createAiMemoryApi(getSessionToken)),
+    () => (mock ? createMockAiMemory() : createAiMemoryApi(getSessionToken)),
     [mock],
   );
   return { api, mock };

@@ -32,7 +32,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0885](T-0885-web-store-fakes.md) | Web store tests share one fakeApi/fakeXmpp harness (159-line copies today) | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0886](T-0886-gateway-test-split.md) | Split apps/server/src/agents/gateway.test.ts (7,242 lines, 100 s) into feature files aro… | todo | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0887](T-0887-slow-loop-tests.md) | Server: cut the loop-driven slow tests (600 real requests for a 429, 200 sticker uploads… | todo | haiku-5.5 |  | wave 4, simplify plan |
-| [T-0848](T-0848-mobile-mock-out-of-bundle.md) | Mobile: the mock store, mock APIs and dev screens leave the release bundle | in-progress | sonnet-5.5 | | wave 3, simplify plan |
 | [T-0849](T-0849-membership-indexes.md) | One migration: indexes for lookups by user_id / ai_id on membership tables,… | in-progress | haiku-5.5 | | wave 3, simplify plan |
 | [T-0850](T-0850-tools-list-n-plus-1.md) | Tools list endpoints: batch the per-tool queries (no N+1), select only the columns the… | in-progress | sonnet-5.5 | | wave 3, simplify plan |
 | [T-0851](T-0851-topic-views-n-plus-1.md) | Topic list: batch toTopicViews (4 queries per topic today) into a few grouped queries | in-progress | sonnet-5.5 | | wave 3, simplify plan |
@@ -918,3 +917,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0845](T-0845-web-store-selectors.md) | Web store selector hook; MessageBubble, ChatListItem, MessageList and ChatList subscribe… | 2026-10-10 |
 | [T-0846](T-0846-mobile-message-list-perf.md) | Mobile message list: memoised bubbles, AI draft outside the list entries, then real… | 2026-10-10 |
 | [T-0847](T-0847-web-mock-out-of-bundle.md) | Web: the mock backend and mock store leave the production bundle (build-time gate plus… | 2026-10-10 |
+| [T-0848](T-0848-mobile-mock-out-of-bundle.md) | Mobile: the mock store, mock APIs and dev screens leave the release bundle | 2026-10-10 |

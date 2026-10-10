@@ -12,7 +12,6 @@ import { AppState } from 'react-native';
 import { useSession } from '@/auth/session';
 import { ENV_MOCK, ENV_NODE_ENV } from '@/mock/gate';
 
-import { createChatStore, isMockMode } from './chat-store';
 import { createRealChatStore, type AppStateLike } from './real-store';
 import { createChatPrefsApi } from '../lib/chat-prefs-api';
 import { createChatFoldersApi } from '../lib/chat-folders-api';
@@ -35,6 +34,26 @@ const rnAppState: AppStateLike = {
 };
 
 /**
+ * The mock store when the mock gate selects it, else null. The mock store (and
+ * the mock data it pulls in) is loaded behind a literal build-time condition,
+ * so Metro folds it to `false` in a release build and leaves it out of the
+ * bundle. A build with `EXPO_PUBLIC_ZILAR_MOCK` set keeps it.
+ */
+function createMockStore(
+  params: Record<string, string | string[] | undefined>,
+): StoreApi<ChatStoreState> | null {
+  if (process.env.NODE_ENV === 'test' || __DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createChatStore, isMockMode } =
+      require('./chat-store') as typeof import('./chat-store');
+    if (isMockMode(params, { dev: __DEV__, envMock: ENV_MOCK, nodeEnv: ENV_NODE_ENV })) {
+      return createChatStore();
+    }
+  }
+  return null;
+}
+
+/**
  * Creates the real store (or the mock one when the mock gate allows `?mock=1`)
  * and starts it once the session is authenticated. Stopping on sign-out tears
  * the XMPP connection down.
@@ -42,23 +61,19 @@ const rnAppState: AppStateLike = {
 export function ChatStoreProvider({ children }: { children: ReactNode }) {
   const params = useGlobalSearchParams();
   const { status } = useSession();
-  const [store] = useState<StoreApi<ChatStoreState>>(() =>
-    isMockMode(params, {
-      dev: __DEV__,
-      envMock: ENV_MOCK,
-      nodeEnv: ENV_NODE_ENV,
-    })
-      ? createChatStore()
-      : createRealChatStore({
-          appState: rnAppState,
-          chatPrefsApi: createChatPrefsApi(getSessionToken, fetch, API_URL),
-          chatFoldersApi: createChatFoldersApi(getSessionToken, fetch, API_URL),
-          pinsApi: createPinsApi(getSessionToken, fetch, API_URL),
-          uploader: createAttachmentUploader(),
-          // Unknown-size picks are re-statted right before the slot
-          // request (T-0157); the same reader the picker defaults to.
-          statSize: (uri) => createSizeReader().sizeOf(uri),
-        }),
+  const [store] = useState<StoreApi<ChatStoreState>>(
+    () =>
+      createMockStore(params) ??
+      createRealChatStore({
+        appState: rnAppState,
+        chatPrefsApi: createChatPrefsApi(getSessionToken, fetch, API_URL),
+        chatFoldersApi: createChatFoldersApi(getSessionToken, fetch, API_URL),
+        pinsApi: createPinsApi(getSessionToken, fetch, API_URL),
+        uploader: createAttachmentUploader(),
+        // Unknown-size picks are re-statted right before the slot
+        // request (T-0157); the same reader the picker defaults to.
+        statSize: (uri) => createSizeReader().sizeOf(uri),
+      }),
   );
 
   useEffect(() => {

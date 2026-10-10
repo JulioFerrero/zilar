@@ -3,8 +3,21 @@ import { useMemo } from 'react';
 
 import { createApprovalsApi, type ApprovalsApi } from '@/lib/approvals-api';
 import { getSessionToken } from '@/lib/session-token';
-import { createMockApprovalsApi } from '@/mock/approvals';
 import { ENV_MOCK, mockParamAllowed } from '@/mock/gate';
+
+/**
+ * Loads the mock behind a literal build-time condition: Metro folds it to
+ * `false` in a release build, so the mock module stays out of the bundle.
+ */
+function createMockApprovals(): ApprovalsApi {
+  if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return (
+      require('@/mock/approvals') as typeof import('@/mock/approvals')
+    ).createMockApprovalsApi();
+  }
+  throw new Error('The mock API is not part of this build');
+}
 
 /**
  * The approvals API supports exactly one mock scenario (the pending request
@@ -44,7 +57,7 @@ export function useApprovalsApi(): ApprovalsApiHandle {
   const envMock = ENV_MOCK;
   const mock = approvalsMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
   const api = useMemo(
-    () => (mock ? createMockApprovalsApi() : createApprovalsApi(getSessionToken)),
+    () => (mock ? createMockApprovals() : createApprovalsApi(getSessionToken)),
     [mock],
   );
   return { api, mock };

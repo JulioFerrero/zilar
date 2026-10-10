@@ -3,8 +3,19 @@ import { useMemo } from 'react';
 
 import { createAuditApi, type AuditApi } from '@/lib/audit-api';
 import { getSessionToken } from '@/lib/session-token';
-import { createMockAuditApi } from '@/mock/audit';
 import { ENV_MOCK, mockParamAllowed } from '@/mock/gate';
+
+/**
+ * Loads the mock behind a literal build-time condition: Metro folds it to
+ * `false` in a release build, so the mock module stays out of the bundle.
+ */
+function createMockAudit(): AuditApi {
+  if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return (require('@/mock/audit') as typeof import('@/mock/audit')).createMockAuditApi();
+  }
+  throw new Error('The mock API is not part of this build');
+}
 
 /**
  * The audit API supports exactly one mock scenario (the seeded AI activity),
@@ -42,9 +53,6 @@ export function useAuditApi(): AuditApiHandle {
   const params = useGlobalSearchParams();
   const envMock = ENV_MOCK;
   const mock = auditMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
-  const api = useMemo(
-    () => (mock ? createMockAuditApi() : createAuditApi(getSessionToken)),
-    [mock],
-  );
+  const api = useMemo(() => (mock ? createMockAudit() : createAuditApi(getSessionToken)), [mock]);
   return { api, mock };
 }

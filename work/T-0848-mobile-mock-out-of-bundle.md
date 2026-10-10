@@ -1,7 +1,7 @@
 ---
 id: T-0848
 title: "Mobile: the mock store, mock APIs and dev screens leave the release bundle"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0848-mobile-mock-out-of-bundle
 model: auto
@@ -58,4 +58,33 @@ Run the tests 3 times after the last commit.
 
 ## Report (written by the worker when done)
 
+### What changed
+- 13 `use-*-api.ts` hooks: the mock modules load by `require()` inside `if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK)`; release builds fold it to false and drop the modules. Scenario hooks use `import type` for the scenario types so no side-effect import is left. Env-flag builds keep the mock.
+- `chat-store-provider.tsx`: `createMockStore()` requires `./chat-store` (the 1,595-line mock store) only when `NODE_ENV === 'test' || __DEV__ || EXPO_PUBLIC_ZILAR_MOCK`, then asks `isMockMode`.
+- Dev screens: `dev/kit` is a thin route that requires `mock/dev-kit-screen.tsx` under `__DEV__`, else `<Redirect href="/" />`. `dev/whistle` is unchanged (fix round 1): it renders the real screen in all builds.
+
+### Measured (npx expo export --platform android, .hbc)
+- Before: 12,991,125 bytes. After: 12,818,688 bytes. Saved 172,437 bytes (1.3%).
+- Kit catalog string gone from the bundle; chat-store strings 4 -> 1.
+
+### Checks
+- Mobile suite: 2760 passed, 2 skipped (296 files), 3 of 3 runs after the last commit. (One earlier run under load had 4 timeouts in 2 files; they pass alone.)
+- typecheck clean; oxlint clean on changed files; prettier clean.
+
+### Behaviour differences
+- Release builds: `zilar://dev/kit` now redirects home. `dev/whistle` unchanged. Dev builds unchanged.
+- Otherwise none.
+
+### Not done / unsure
+- Some mock data still ships: `app/chat/[id].tsx`, `app/(tabs)/index.tsx` and `components/chat/composer.tsx` statically import `@/mock/stickers|attachments|gifs|search`, and `mock/search.ts` imports `./index` (chats, messages). They are outside Allowed files, so the saving is only 1.3%. Making them lazy needs those files in scope. `store/chat-store.ts` still holds its own `isMockMode`; not touched.
+- Hook bodies are not run in tests (screen tests mock the hooks), so the require path is verified by typecheck and the export only; the phone smoke should confirm.
+- I used `git stash` once for a before/after check before the lead note; my tree was intact afterwards. `stash@{0}` belongs to the T-0862 worktree and I left it.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved after fix round 1.**
+- **What changed:** the mock APIs and store load through `require()` behind `__DEV__ || EXPO_PUBLIC_ZILAR_MOCK`, and the kit catalog is dev-only.
+- **Fix round:** `zilar://dev/whistle` works in release again, as its header promises Julio.
+- **Size:** Android bundle −172 kB (1.3%).
+- **Still open:** the rest of the mock data comes in through static imports in 3 screens; that goes to T-0882.
+- **Checks:** the combined check is clean and the phone smoke passes.
