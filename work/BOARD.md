@@ -12,12 +12,17 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds, media gallery | in-progress | auto | T-0949 | mock wave 2 |
 | [T-1046](T-1046-mock-backend-stickers-gifs.md) | Mock backend F1: stickers, GIFs | in-progress | auto | T-0949 | mock wave 2 |
 | [T-1048](T-1048-mock-backend-group-general-topics.md) | Mock backend: General topic for every seeded group | in-progress | auto | T-0949 | mock wave 2 |
+| [T-1052](T-1052-server-runsql-last-sites.md) | Dedup S1: last service sqlRuntimeFor sites use runSql | in-progress | auto | T-1051 | dedup-status §1 |
+| [T-1053](T-1053-server-jid-truncate-helpers.md) | Dedup S3: one server bareJid/ownBareJid and truncateChars | in-progress | auto | T-1051 | dedup-status §6 |
+| [T-1054](T-1054-server-read-capped.md) | Dedup S5: one readCapped | in-progress | auto | T-1051 | dedup-status §6.6 |
 
 ## Follow-ups
 
 - **Mock: the Acme channel cannot be opened as a channel (found 2026-10-10, T-1041).** `packages/mock-backend/src/domains/chats/seed.ts:12-24` gives the channel no `topics`, so mobile `app/group/[id].tsx:189` calls `router.back()`, and the channel screen (info, admins, invite links) cannot be reached in mock mode.
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile.
-- **Mock: sends that upload fail (voice and attachments).** Voice notes end with "Could not send" in mobile mock mode. Check the fake XMPP core (`packages/mock-backend/src/xmpp`) for an upload slot.
+- **Mock: attachments show "Not loaded: untrusted address" on mobile (found 2026-10-10, T-1047 smoke).** Sends work now (T-1047), but the fake slot's `getUrl` is a `data:` URL (`packages/mock-backend/src/xmpp/core.ts:229`), and the seeded `Stage.png` and `tickets.pdf` read the same.
+- **Mobile: about 9 more `Effect.runFork(Fiber.interrupt(...))` sites in `components/chat` could use `interruptFiber` (`lib/effect/timers.ts`, T-1050).** The `runSync` ones differ and stay.
+- **Dedup slices that need a lead decision (`docs/audit/dedup-status.md` §8):** S6 crypto envelope (keys), S7-S9 rate limiters, S10-S11 `groups/access.ts` (permissions), S15 web settings facade (keys). S4 (schema-issue walker) must keep audit's two extra cases.
 
 - **Mobile approvals: "Always allowed" empties when nothing is pending (found 2026-10-10, T-1004 smoke; on main).** Rules load only for the AIs referenced by pending rows (`apps/mobile/src/components/approvals/use-approvals.ts`, was `approvals.tsx:209`), so once the last request is decided, the rule list shows "Nothing is always allowed here" even when rules exist. Load the rules for every owned AI instead.
 
