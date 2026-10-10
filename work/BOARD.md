@@ -10,6 +10,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1081](T-1081-mobile-mock-sticker-owner.md) | Mobile mock: own sticker packs editable (viewerId from the shared seed) | in-progress | auto | T-1079 | found in T-1079 smoke |
+| [T-1082](T-1082-mock-sweep-status-2.md) | Audit: mock sweep status round 2 + blank images fix plan | in-progress | auto | T-1080 | docs only |
 
 ## Follow-ups
 
