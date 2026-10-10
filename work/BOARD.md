@@ -12,7 +12,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds, media gallery | in-progress | auto | T-0949 | mock wave 2 |
 | [T-1046](T-1046-mock-backend-stickers-gifs.md) | Mock backend F1: stickers, GIFs | in-progress | auto | T-0949 | mock wave 2 |
 | [T-1048](T-1048-mock-backend-group-general-topics.md) | Mock backend: General topic for every seeded group | in-progress | auto | T-0949 | mock wave 2 |
-| [T-1050](T-1050-mobile-effect-timers.md) | Dedup F8b: mobile lib/effect/timers.ts | in-progress | auto | T-1039 | size-plan F8 |
 | [T-1051](T-1051-audit-dedup-status.md) | Audit: what is left of dedups F1-F7 | in-progress | auto | T-0936 | size-plan §4.1 |
 
 ## Follow-ups
@@ -1084,3 +1083,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1044](T-1044-mock-backend-prefs-pins.md) | Mock backend C1: chat-prefs (pin, mute, archive), chat-background and pins domains in @zilar/mock-backend | 2026-10-10 |
 | [T-1049](T-1049-dedup-trim-trailing-punctuation.md) | Dedup F8a: mobile markdown uses @zilar/chat-core's trimTrailingPunctuation instead of its own copy | 2026-10-10 |
 | [T-1047](T-1047-mobile-mock-uploader.md) | Mobile mock mode: a no-network mock uploader, so voice notes and attachments send instead of failing | 2026-10-10 |
+| [T-1050](T-1050-mobile-effect-timers.md) | Dedup F8b: one mobile lib/effect/timers.ts (runLater, interruptFiber) for the message list, GIF panel and voic | 2026-10-10 |

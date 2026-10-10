@@ -4,7 +4,7 @@ import type { FlatList } from 'react-native';
 
 import { startJumpScroll } from '@/components/chat/jump-scroll';
 import type { ListEntry } from '@/components/chat/message-list-row';
-import { runLater } from '@/components/chat/use-stable-handlers';
+import { runLater } from '@/lib/effect/timers';
 
 type JumpTarget = { chatId: string; messageId: string };
 

@@ -1,6 +1,8 @@
 import { Effect, Fiber } from 'effect';
 import { PanResponder } from 'react-native';
 
+import { interruptFiber } from '@/lib/effect/timers';
+
 /** Sliding the finger this far left (negative dx, in px) while holding cancels. */
 const CANCEL_SLIDE_PX = -90;
 
@@ -22,7 +24,7 @@ export function stopTicker(ref: TickerRef): void {
   const fiber = ref.current;
   if (fiber !== undefined) {
     ref.current = undefined;
-    Effect.runFork(Fiber.interrupt(fiber));
+    interruptFiber(fiber);
   }
 }
 
