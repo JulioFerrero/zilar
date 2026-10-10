@@ -10,9 +10,10 @@
 // branch. The request id Hono generated is forwarded as the `x-request-id`
 // header so both branches can carry it.
 
-import { Context, Effect, Layer } from 'effect';
-import { HttpServerRequest, HttpServerResponse } from 'effect/http';
-import { HttpApiMiddleware } from 'effect/http-api';
+import { CurrentUser, SchemaErrors, Session, type SessionUser } from '@zilar/api-contract';
+import { Effect, Layer, type Context } from 'effect';
+import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from 'effect/http';
+import { HttpApi, HttpApiMiddleware, type HttpApiError, type HttpApiGroup } from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { HttpError } from '../errors';
@@ -20,27 +21,11 @@ import { HttpError } from '../errors';
 export const REQUEST_ID_HEADER = 'x-request-id';
 export const SOCKET_ADDRESS_HEADER = 'x-zilar-socket-address';
 
-/** The slice of the signed-in user an Effect handler may read. */
-export interface SessionUser {
-  readonly id: string;
-}
-
-/** Provided by the session middleware; handlers read the current user id. */
-export class CurrentUser extends Context.Service<CurrentUser, SessionUser>()(
-  'zilar/effect/http/CurrentUser',
-) {}
-
-/**
- * Session middleware: every endpoint of a group that declares it requires a
- * signed-in user. An absent session short-circuits with the same body as
- * `requireSession`, before any query or body decoding runs.
- */
-export class Session extends HttpApiMiddleware.Service<
-  Session,
-  {
-    provides: CurrentUser;
-  }
->()('zilar/effect/http/Session') {}
+// The session middleware tags live in the shared contract (T-0891), so a group
+// moved there and a server module use the same classes. An absent session
+// short-circuits with the same body as `requireSession`, before any query or
+// body decoding runs.
+export { CurrentUser, SchemaErrors, Session, type SessionUser };
 
 export function sessionLayer(auth: Auth, logger: Logger): Layer.Layer<Session> {
   return Layer.succeed(
@@ -49,10 +34,16 @@ export function sessionLayer(auth: Auth, logger: Logger): Layer.Layer<Session> {
       Effect.fnUntraced(function* (httpEffect) {
         const request = yield* HttpServerRequest.HttpServerRequest;
         const requestId = requestIdOf(request);
+        // T-0858: only reads trust the session cache cookie. A write looks the
+        // session up without it, so a revoked session cannot write. The
+        // handler still sees the untouched request.
+        const lookupHeaders = isReadMethod(request.method)
+          ? new Headers(request.headers)
+          : headersWithoutSessionCache(request.headers);
         // A rejection from the auth store is a defect outside the handler
         // envelope; render it through the same 500 branch as `app.onError`.
         const session = yield* Effect.promise(() =>
-          auth.api.getSession({ headers: new Headers(request.headers) }),
+          auth.api.getSession({ headers: lookupHeaders }),
         ).pipe(
           Effect.catchDefect((defect) =>
             Effect.succeed(failureResponse(logger, requestId, defect)),
@@ -71,6 +62,74 @@ export function sessionLayer(auth: Auth, logger: Logger): Layer.Layer<Session> {
       }),
     ),
   );
+}
+
+/** A schema-error tag a group declares; its layer renders the decode failure. */
+export type SchemaErrorTag<Id> = Context.Service<
+  Id,
+  HttpApiMiddleware.HttpApiMiddleware<never, never, never>
+>;
+
+/**
+ * What a schema-error layer answers: a fixed message, or a function of the
+ * error and the request that returns the `HttpError` (400 `invalid_request` is
+ * the usual one) or a full response (the handles check answers 200).
+ */
+export type SchemaErrorRender =
+  | string
+  | ((
+      error: HttpApiError.HttpApiSchemaError,
+      request: HttpServerRequest.HttpServerRequest,
+    ) => Effect.Effect<HttpError | HttpServerResponse.HttpServerResponse>);
+
+/**
+ * The one schema-error layer: a params, query or payload decode failure
+ * renders as 400 `invalid_request` through the shared envelope. With no
+ * `render` the message is the schema's own text; a string is a fixed message.
+ * A group declares `SchemaErrors` with `.middleware(SchemaErrors)` and the
+ * module provides `schemaErrorLayer(logger)`; a group with its own tag
+ * provides `schemaErrorLayerFor(tag, logger, render?)`.
+ */
+export function schemaErrorLayer(logger: Logger): Layer.Layer<SchemaErrors> {
+  return schemaErrorLayerFor(SchemaErrors, logger);
+}
+
+export function schemaErrorLayerFor<Id>(
+  tag: SchemaErrorTag<Id>,
+  logger: Logger,
+  render?: SchemaErrorRender,
+): Layer.Layer<Id> {
+  return HttpApiMiddleware.layerSchemaErrorTransform(tag, (error) =>
+    Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const answer =
+        typeof render === 'function'
+          ? yield* render(error, request)
+          : new HttpError(400, 'invalid_request', render ?? error.cause.message);
+      return HttpServerResponse.isHttpServerResponse(answer)
+        ? answer
+        : failureResponse(logger, requestIdOf(request), answer);
+    }),
+  );
+}
+
+function isReadMethod(method: string): boolean {
+  return method === 'GET' || method === 'HEAD';
+}
+
+// Better Auth names the cache cookie `<prefix>session_data`, in chunks
+// (`session_data.0`) when large.
+function headersWithoutSessionCache(source: Record<string, string>): Headers {
+  const headers = new Headers(source);
+  const cookie = headers.get('cookie');
+  if (cookie !== null) {
+    const kept = cookie
+      .split(';')
+      .map((pair) => pair.trim())
+      .filter((pair) => pair !== '' && !pair.split('=')[0]?.includes('session_data'));
+    headers.set('cookie', kept.join('; '));
+  }
+  return headers;
 }
 
 export function requestIdOf(request: HttpServerRequest.HttpServerRequest): string {
@@ -138,6 +197,38 @@ export function withErrorEnvelope<A, R>(
   );
 }
 
+/**
+ * The endpoint handler every module repeats: reads the request id, the signed-in
+ * user, runs `body(request, user)` and renders every defect through the shared
+ * envelope. `body` may return a Promise (a rejection is a defect, like
+ * `Effect.promise`) or an Effect that cannot fail. Use it as
+ * `.handle('name', handler(logger, (request, user) => service(user.id, request.params.id)))`.
+ * The group must declare `Session`, which provides `CurrentUser`.
+ */
+export function handler<
+  Req extends { readonly request: HttpServerRequest.HttpServerRequest },
+  A,
+  R = never,
+>(
+  logger: Logger,
+  body: (request: Req, user: SessionUser) => Promise<A> | Effect.Effect<A, never, R>,
+): (
+  request: Req,
+) => Effect.Effect<A | HttpServerResponse.HttpServerResponse, never, R | CurrentUser> {
+  return (request) =>
+    withErrorEnvelope(
+      Effect.gen(function* () {
+        const user = yield* CurrentUser;
+        return yield* Effect.suspend(() => {
+          const out = body(request, user);
+          return Effect.isEffect(out) ? out : Effect.promise(() => out);
+        });
+      }),
+      logger,
+      requestIdOf(request.request),
+    );
+}
+
 export type EffectApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export interface EffectApiRoute {
@@ -151,4 +242,42 @@ export type EffectApiWebHandler = (request: Request) => Promise<Response>;
 export interface EffectApiMount {
   readonly handler: EffectApiWebHandler;
   readonly routes: ReadonlyArray<EffectApiRoute>;
+}
+
+/**
+ * The routes of an `HttpApi`, in the `{ method, path }` shape the edge routes
+ * by. The group's `.prefix('/api')` is already part of each endpoint path.
+ */
+export function reflectRoutes<Id extends string, Groups extends HttpApiGroup.Constraint>(
+  api: HttpApi.HttpApi<Id, Groups>,
+): ReadonlyArray<EffectApiRoute> {
+  const routes: Array<EffectApiRoute> = [];
+  HttpApi.reflect(api, {
+    onGroup: () => undefined,
+    onEndpoint: ({ endpoint }) => {
+      routes.push({ method: endpoint.method as EffectApiMethod, path: endpoint.path });
+    },
+  });
+  return routes;
+}
+
+/**
+ * The shared mount: serves the API layer as a web handler and lists its routes
+ * from the API itself, so a module keeps no hand-written route array. The
+ * edge keeps the request log (redacted path); the router's own logger prints
+ * full URLs, so it stays off. Failures are logged by the envelope instead.
+ */
+export function mountApi<Id extends string, Groups extends HttpApiGroup.Constraint>(
+  api: HttpApi.HttpApi<Id, Groups>,
+  apiLayer: Layer.Layer<
+    never,
+    never,
+    HttpRouter.HttpRouter | Layer.Success<typeof HttpServer.layerServices>
+  >,
+): EffectApiMount {
+  const { handler: webHandler } = HttpRouter.toWebHandler(
+    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
+    { disableLogger: true },
+  );
+  return { handler: webHandler, routes: reflectRoutes(api) };
 }

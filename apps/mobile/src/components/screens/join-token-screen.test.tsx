@@ -4,6 +4,7 @@ import { act, createElement, type ReactNode } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import JoinRoute from '@/app/join/[token]';
+import { waitForAct as waitFor } from '@/test/wait';
 
 // The join-by-link route is rendered with its native pieces mocked as DOM
 // elements; the real `JoinLinkBody` and the pure join helpers run.
@@ -37,7 +38,6 @@ vi.mock('expo-router', async () => {
   };
 });
 vi.mock('expo-linear-gradient', () => ({ LinearGradient: () => null }));
-vi.mock('nativewind', () => ({ useColorScheme: () => ({ colorScheme: 'dark' }) }));
 vi.mock('react-native', async () => {
   const { createElement: el } = await import('react');
   return {
@@ -110,23 +110,6 @@ const mount = async (): Promise<void> => {
   const root = createRoot(container);
   unmount = () => act(() => root.unmount());
   await act(async () => root.render(createElement(JoinRoute)));
-};
-
-const waitFor = async (check: () => void, timeout = 3000): Promise<void> => {
-  const started = Date.now();
-  for (;;) {
-    try {
-      check();
-      return;
-    } catch (error) {
-      if (Date.now() - started > timeout) {
-        throw error;
-      }
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      });
-    }
-  }
 };
 
 const labelled = (label: string): HTMLElement => {

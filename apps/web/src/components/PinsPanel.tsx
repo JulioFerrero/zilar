@@ -9,7 +9,9 @@ import type { Pin as PinRow } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { scrollToMessage } from '@/lib/scrollToMessage';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
+
+const NO_PINS: PinRow[] = [];
 
 const KIND_LABEL: Record<PinRow['kind'], string> = {
   text: '',
@@ -36,7 +38,9 @@ interface PinsPanelActions {
  * deleted" once the client has seen the retraction.
  */
 export function PinsPanel({ chatId, onClose }: { chatId: string; onClose: () => void }) {
-  const store = useChatStore();
+  const chat = useChatSelector((s) => s.chats.find((entry) => entry.id === chatId));
+  const pins = useChatSelector((s) => s.pinsByChat[chatId]) ?? NO_PINS;
+  const managers = useChatSelector((s) => s.canPin(chatId));
   const [jumpFailed, setJumpFailed] = useState(false);
   const [unpinFailed, setUnpinFailed] = useState(false);
   // The store drops a pin as soon as its unpin starts. Its row stays mounted
@@ -44,9 +48,6 @@ export function PinsPanel({ chatId, onClose }: { chatId: string; onClose: () => 
   // reports a failure after the pin has left the list.
   const [unpinning, setUnpinning] = useState<ReadonlyArray<PinRow>>([]);
 
-  const chat = store.chats.find((entry) => entry.id === chatId);
-  const pins = store.pins(chatId);
-  const managers = store.canPin(chatId);
   const settling = unpinning.filter((pin) => !pins.some((entry) => entry.id === pin.id));
 
   const actions: PinsPanelActions = {
@@ -146,7 +147,9 @@ function PinRowItem({
   managers: boolean;
   actions: PinsPanelActions;
 }) {
-  const store = useChatStore();
+  const loaded = useChatSelector((s) =>
+    s.messagesByChat[chatId]?.find((item) => item.id === pin.messageId),
+  );
   const storeApi = useChatStoreApi();
   const [, jumpTo] = useAction((target: PinRow) =>
     fromApi(() => storeApi.getState().openAtMessage(chatId, target.messageId)).pipe(
@@ -170,7 +173,6 @@ function PinRowItem({
   if (!listed) {
     return null;
   }
-  const loaded = store.messages(chatId).find((item) => item.id === pin.messageId);
   const deleted = loaded?.deleted === true;
   const snapshot = deleted ? 'Message deleted' : pin.text;
   const unpinBusy = isWaiting(unpinState);
@@ -221,8 +223,7 @@ function PinRowItem({
 
 /** A "Pinned messages" row for the chat/topic info panels (T-0114). */
 export function PinsSection({ chatId, onOpen }: { chatId: string; onOpen: () => void }) {
-  const store = useChatStore();
-  const count = store.pins(chatId).length;
+  const count = useChatSelector((s) => s.pinsByChat[chatId]?.length ?? 0);
   return (
     <section aria-label="Pinned messages" className="flex flex-col gap-1 px-2">
       <ListRow

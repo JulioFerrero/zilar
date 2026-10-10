@@ -16,7 +16,7 @@ import {
   type TestApp,
   type TestContext,
 } from '../test-support';
-import type { TopicRow, TopicView } from './access';
+import { toTopicView, toTopicViews, type TopicRow, type TopicView } from './access';
 
 interface TopicsBody {
   topics: TopicView[];
@@ -766,6 +766,69 @@ describe('topics', () => {
         body: (await response.json()) as { ais: Array<{ id: string; name: string }> },
       };
     }
+
+    it('lists many topics with the same views as one-by-one toTopicView', async () => {
+      const { owner, member, other, group } = await setup();
+      const { aiId } = await seedAi(owner.id, 'Zed AI');
+      const second = await seedAi(member.id, 'Alpha AI');
+      const roleA = randomUUID();
+      const roleB = randomUUID();
+      const names = ['Beta', 'alpha', 'Gamma', 'Delta', 'Eps'];
+      const topics: TopicView[] = [];
+      for (const name of names) {
+        const created = await createTopic(owner.cookie, group.id, {
+          name,
+          ...(name === 'Gamma' ? { owner: { kind: 'user', id: member.id } } : {}),
+          ...(name === 'Delta' || name === 'Eps'
+            ? { visibility: 'private', memberIds: [member.id] }
+            : {}),
+        });
+        expect(created.status).toBe(201);
+        topics.push(created.body);
+      }
+      const byName = (name: string) => topics.find((topic) => topic.name === name)!;
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_roles (id, group_id, name, created_by) VALUES (${roleA}, ${group.id}, 'Reviewers', ${owner.id})`;
+          yield* sql`INSERT INTO group_roles (id, group_id, name, created_by) VALUES (${roleB}, ${group.id}, 'Admins', ${owner.id})`;
+          yield* sql`INSERT INTO group_member_roles (role_id, user_id, assigned_by) VALUES (${roleA}, ${other.id}, ${owner.id})`;
+          yield* sql`INSERT INTO group_member_roles (role_id, user_id, assigned_by) VALUES (${roleA}, ${member.id}, ${owner.id})`;
+          yield* sql`INSERT INTO group_member_roles (role_id, user_id, assigned_by) VALUES (${roleB}, ${other.id}, ${owner.id})`;
+          yield* sql`INSERT INTO topic_role_access (topic_id, role_id) VALUES (${byName('Delta').id}, ${roleA})`;
+          yield* sql`INSERT INTO topic_role_access (topic_id, role_id) VALUES (${byName('Delta').id}, ${roleB})`;
+          yield* sql`INSERT INTO topic_role_access (topic_id, role_id) VALUES (${byName('Beta').id}, ${roleB})`;
+          yield* sql`UPDATE topics SET approver_role_id = ${roleA} WHERE id = ${byName('Beta').id}`;
+          yield* sql`INSERT INTO topic_ais (topic_id, ai_id, added_by) VALUES (${byName('Beta').id}, ${aiId}, ${owner.id})`;
+          yield* sql`INSERT INTO topic_ais (topic_id, ai_id, added_by) VALUES (${byName('Beta').id}, ${second.aiId}, ${owner.id})`;
+          yield* sql`INSERT INTO topic_ais (topic_id, ai_id, added_by) VALUES (${byName('Delta').id}, ${aiId}, ${owner.id})`;
+          yield* sql`UPDATE topics SET owner_user_id = NULL, owner_ai_id = ${aiId} WHERE id = ${byName('Eps').id}`;
+        }),
+      );
+      const rows = await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${group.id}`;
+        }),
+      );
+      const batched = await toTopicViews(context.db, [...rows], TEST_XMPP_MUC_DOMAIN);
+      const single: TopicView[] = [];
+      for (const row of rows) {
+        single.push(await toTopicView(context.db, row, TEST_XMPP_MUC_DOMAIN));
+      }
+      single.sort(
+        (a, b) =>
+          Number(b.isGeneral) - Number(a.isGeneral) ||
+          a.name.localeCompare(b.name) ||
+          a.id.localeCompare(b.id),
+      );
+      expect(batched).toHaveLength(names.length + 1);
+      expect(batched).toEqual(single);
+      expect(batched.find((view) => view.name === 'Beta')?.ais).toHaveLength(2);
+      expect(batched.find((view) => view.name === 'Delta')?.roles).toHaveLength(2);
+      expect(batched.find((view) => view.name === 'Eps')?.owner?.kind).toBe('ai');
+      expect(await toTopicViews(context.db, [], TEST_XMPP_MUC_DOMAIN)).toEqual([]);
+    });
 
     it('lets the AI owner who sees the topic add it, and lists it on the topic', async () => {
       const { owner, member, group } = await setup();

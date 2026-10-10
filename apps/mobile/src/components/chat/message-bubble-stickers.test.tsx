@@ -41,10 +41,6 @@ vi.mock('react-native-gesture-handler/ReanimatedSwipeable', () => ({
   SwipeDirection: { LEFT: 'left', RIGHT: 'right' },
 }));
 
-vi.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
-
 vi.mock('react-native-svg', () => ({
   default: 'Svg',
   Path: 'Path',
@@ -57,10 +53,6 @@ vi.mock('expo-clipboard', () => ({
 vi.mock('expo-haptics', () => ({
   impactAsync: async () => {},
   ImpactFeedbackStyle: { Light: 'light' },
-}));
-
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
 }));
 
 vi.mock('lucide-react-native', () => ({
@@ -141,10 +133,9 @@ vi.mock('@/components/chat/ticks', () => ({ Ticks: 'Ticks' }));
 vi.mock('@/components/chat/typing-dots', () => ({ PulseDot: 'PulseDot' }));
 vi.mock('@/components/chat/voice-message', () => ({ VoiceMessage: 'VoiceMessage' }));
 vi.mock('@/components/ui/text', () => ({ Text: 'Text' }));
-vi.mock('@/lib/color-scheme', () => ({ asColorScheme: () => 'dark' }));
 vi.mock('@/lib/colors', () => ({
-  BUBBLE_COLORS: { dark: { outgoingMeta: '#555', incomingMeta: '#555' } },
-  ICON: { dark: '#d4d4d4' },
+  BUBBLE_COLORS: { outgoingMeta: '#555', incomingMeta: '#555' },
+  ICON: '#d4d4d4',
 }));
 vi.mock('@/lib/depth', () => ({
   WELL_BACKGROUND: '#0c0c0c',

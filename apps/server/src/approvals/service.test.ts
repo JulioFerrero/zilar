@@ -3,9 +3,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { createTestContext, testSql, type TestContext } from '../test-support';
+import { seedAi, seedGroup, seedUser } from '../test-support/seed';
 import {
   ApprovalServiceError,
   canDecide,
+  canDecideMany,
   createApproval,
   decideApproval,
   expireStale,
@@ -34,115 +36,6 @@ function argsHash(seed: number | string): string {
 
 function futureExpiresAt(now: Date, offsetMs: number): Date {
   return new Date(now.getTime() + offsetMs);
-}
-
-async function seedUser(
-  context: TestContext,
-  overrides: { name?: string; email?: string } = {},
-): Promise<string> {
-  const id = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO "user" ${sql.insert({
-        id,
-        name: overrides.name ?? 'User',
-        email: overrides.email ?? `${id}@example.com`,
-      })}`;
-    }),
-  );
-  return id;
-}
-
-async function seedAi(
-  context: TestContext,
-  ownerId: string,
-  overrides: { name?: string } = {},
-): Promise<{ aiId: string; jid: string }> {
-  const connectionId = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO provider_connections ${sql.insert({
-        id: connectionId,
-        owner: ownerId,
-        provider: 'openai',
-        encrypted_key: 'sealed-placeholder',
-        label: null,
-      })}`;
-    }),
-  );
-  const aiId = randomUUID();
-  const localpart = `ai-${aiId}`;
-  const jid = `${localpart}@zilar.localhost`;
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO ais ${sql.insert({
-        id: aiId,
-        owner: ownerId,
-        name: overrides.name ?? 'Helper AI',
-        template: 'dev',
-        persona: 'A persona',
-        provider_connection_id: connectionId,
-        model: 'gpt-4o-mini',
-        localpart,
-        jid,
-        status: 'active',
-      })}`;
-      yield* sql`INSERT INTO ai_limits ${sql.insert({ ai_id: aiId, per_day_usd: '1.00', per_month_usd: '20.00' })}`;
-    }),
-  );
-  return { aiId, jid };
-}
-
-async function seedGroup(
-  context: TestContext,
-  ownerId: string,
-  members: Array<{ userId: string; role: 'admin' | 'member' | 'owner' }>,
-  aiIds: string[],
-): Promise<{ groupId: string; generalTopicId: string }> {
-  const groupId = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO groups ${sql.insert({
-        id: groupId,
-        room_localpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-        title: 'Trip',
-        created_by: ownerId,
-      })}`;
-      yield* sql`INSERT INTO group_members ${sql.insert(
-        members.map((entry) => ({
-          group_id: groupId,
-          user_id: entry.userId,
-          role: entry.role,
-        })),
-      )}`;
-      for (const aiId of aiIds) {
-        yield* sql`INSERT INTO group_ais ${sql.insert({ group_id: groupId, ai_id: aiId, added_by: ownerId })}`;
-      }
-    }),
-  );
-  const generalTopicId = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO topics ${sql.insert({
-        id: generalTopicId,
-        group_id: groupId,
-        name: 'General',
-        glyph: 'G',
-        room_localpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-        visibility: 'public',
-        kind: 'chat',
-        status: 'open',
-        is_general: true,
-        created_by: ownerId,
-      })}`;
-    }),
-  );
-  return { groupId, generalTopicId };
 }
 
 interface ApprovalStatusRow {
@@ -1154,6 +1047,80 @@ describe('approvals service', () => {
         now,
       );
       expect(await canDecide(context.db, row, strangerId)).toBe(false);
+    });
+
+    it('canDecideMany equals per-row canDecide for a mixed set of rows (T-0852)', async () => {
+      const ownerId = await seedUser(context, { name: 'AiOwner' });
+      const adminId = await seedUser(context, { name: 'Admin' });
+      const memberId = await seedUser(context, { name: 'Member' });
+      const approverId = await seedUser(context, { name: 'Approver' });
+      const outsiderId = await seedUser(context, { name: 'Outsider' });
+      const { aiId } = await seedAi(context, ownerId);
+      const { aiId: otherAiId } = await seedAi(context, outsiderId);
+      const { groupId, generalTopicId } = await seedGroup(
+        context,
+        adminId,
+        [
+          { userId: adminId, role: 'admin' },
+          { userId: ownerId, role: 'member' },
+          { userId: memberId, role: 'member' },
+          { userId: approverId, role: 'member' },
+        ],
+        [aiId],
+      );
+      const roleId = randomUUID();
+      const hiddenTopicId = randomUUID();
+      const approverTopicId = randomUUID();
+      const roomPart = () => `t${randomUUID().replaceAll('-', '').slice(0, 15)}`;
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_ais ${sql.insert({ group_id: groupId, ai_id: otherAiId, added_by: adminId })}`;
+          yield* sql`INSERT INTO group_roles (id, group_id, name, created_by) VALUES (${roleId}, ${groupId}, 'Approvers', ${adminId})`;
+          yield* sql`INSERT INTO group_member_roles (role_id, user_id, assigned_by) VALUES (${roleId}, ${approverId}, ${adminId})`;
+          // Private topic nobody but the member sees; the admin is blind to it.
+          yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${hiddenTopicId}, ${groupId}, 'Hidden', 'H', ${roomPart()}, 'private', 'chat', 'open', false, ${memberId})`;
+          yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by) VALUES (${hiddenTopicId}, ${memberId}, ${memberId})`;
+          // Private topic with an approver role; the holder reaches it through the role.
+          yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by, approver_role_id) VALUES (${approverTopicId}, ${groupId}, 'Gated', 'G', ${roomPart()}, 'private', 'chat', 'open', false, ${adminId}, ${roleId})`;
+          yield* sql`INSERT INTO topic_role_access (topic_id, role_id) VALUES (${approverTopicId}, ${roleId})`;
+        }),
+      );
+      const rows = [];
+      let seed = 900;
+      for (const scope of [
+        { aiId },
+        { aiId, groupId, topicId: generalTopicId },
+        { aiId, groupId, topicId: hiddenTopicId },
+        { aiId, groupId, topicId: approverTopicId },
+        { aiId: otherAiId, groupId, topicId: generalTopicId },
+      ]) {
+        seed += 1;
+        rows.push(
+          await createApproval(
+            context.db,
+            approvalInput({
+              ...scope,
+              hash: argsHash(seed),
+              expiresAt: futureExpiresAt(now, 60_000),
+            }),
+            now,
+          ),
+        );
+      }
+      for (const userId of [ownerId, adminId, memberId, approverId, outsiderId]) {
+        const many = await canDecideMany(context.db, rows, userId);
+        for (const row of rows) {
+          expect(many.get(row.id)).toBe(await canDecide(context.db, row, userId));
+        }
+      }
+      // Sanity: the set is mixed, not all one answer.
+      const adminMany = await canDecideMany(context.db, rows, adminId);
+      expect([...adminMany.values()]).toContain(true);
+      expect([...adminMany.values()]).toContain(false);
+      const approverMany = await canDecideMany(context.db, rows, approverId);
+      expect(approverMany.get(rows[3]?.id ?? '')).toBe(true);
+      expect(await canDecideMany(context.db, [], ownerId)).toEqual(new Map());
     });
 
     it('agrees with the decide route on an already-decided row', async () => {

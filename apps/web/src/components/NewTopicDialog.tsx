@@ -12,7 +12,7 @@ import { Checkbox } from './ui/checkbox';
 import { Dialog } from './ui/dialog';
 import { SegmentedControl } from './ui/segmented-control';
 import { TextInput } from './ui/text-input';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import type { GroupDetail, GroupRole, PublicAi, TopicKind, TopicVisibility } from '@/lib/api';
 import { listGroupRoles } from '@/lib/api';
 
@@ -63,7 +63,6 @@ export function NewTopicDialog({
   onClose: () => void;
 }) {
   const storeApi = useChatStoreApi();
-  const store = useChatStore();
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [kind, setKind] = useState<TopicKind>('chat');
@@ -74,12 +73,12 @@ export function NewTopicDialog({
   // `setTopicRoles` after the topic exists.
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [approverRoleId, setApproverRoleId] = useState<string | null>(null);
-  const chat = store.chats.find((entry) => entry.id === groupId);
+  const chat = useChatSelector((s) => s.chats.find((entry) => entry.id === groupId));
   // The group detail is keyed by the chat that loaded it (a topic row id or
   // the legacy group id); the loader runs for the id the dialog was opened
   // with, so that exact key is the one to read.
-  const detail: GroupDetail | undefined = store.groupInfo(groupId);
-  const me = store.currentUserId;
+  const detail: GroupDetail | undefined = useChatSelector((s) => s.groupInfo(groupId));
+  const me = useChatSelector((s) => s.currentUserId);
 
   useEffect(() => {
     storeApi.getState().refreshGroupInfo(groupId);

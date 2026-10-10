@@ -13,7 +13,7 @@ import {
 } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { MoreHorizontal } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { lazy, memo, Suspense, useRef, useState } from 'react';
 import { AiBadge } from './AiBadge';
 import { ApprovalCard } from './ApprovalCard';
 import { Avatar } from './Avatar';
@@ -23,7 +23,6 @@ import { ForwardedHeader } from './ForwardedHeader';
 import { GifMessage, isGifVideoAttachment } from './GifMessage';
 import { ImageMessage } from './ImageMessage';
 import { LinkText } from './LinkText';
-import { MarkdownText } from './MarkdownText';
 import { MessageActionsMenu } from './MessageActionsMenu';
 import { MessageTicks } from './MessageTicks';
 import { ProgressCard } from './ProgressCard';
@@ -37,7 +36,12 @@ import { copyText } from '@/lib/clipboard';
 import { runWeb } from '@/lib/effect/runtime';
 import { useSmoothText } from '@/lib/useSmoothText';
 import { cn } from '@/lib/utils';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
+
+/** The markdown stack loads on the first AI reply; the plain text shows meanwhile. */
+const MarkdownText = lazy(() =>
+  import('./MarkdownText').then((m) => ({ default: m.MarkdownText })),
+);
 
 /** Monochrome-friendly sender name colors (ui-style.md §5). */
 const SENDER_COLORS = ['#d4d4d4', '#a1a1a1', '#8a8a8a', '#ededed'] as const;
@@ -216,7 +220,7 @@ export interface MessageBubbleProps {
   revealTurnId?: string | undefined;
 }
 
-export function MessageBubble({
+export const MessageBubble = memo(function MessageBubble({
   message,
   chat,
   firstInGroup,
@@ -236,7 +240,10 @@ export function MessageBubble({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const storeApi = useChatStoreApi();
-  const store = useChatStore();
+  const mediaTrustedHosts = useChatSelector((s) => s.mediaTrustedHosts);
+  const chatId = chat.id;
+  const chatCanPin = useChatSelector((s) => s.canPin(chatId));
+  const pin = useChatSelector((s) => s.pinFor(chatId, message.id));
   const own = message.senderId === currentUserId;
   const deleted = message.deleted === true;
   const markdown = shouldRenderMarkdown(chat, message, currentUserId);
@@ -274,7 +281,7 @@ export function MessageBubble({
   // GIF-origin videos render inline only on a trusted media URL (the store
   // sanitizer renames untrusted `gif-` attachments first; the URL check here
   // is the second layer, so a hostile absolute URL never auto-loads).
-  const mediaHosts = store.mediaTrustedHosts ?? EMPTY_HOSTS;
+  const mediaHosts = mediaTrustedHosts ?? EMPTY_HOSTS;
   const gifVideo =
     message.attachment !== undefined &&
     message.attachment.kind === 'file' &&
@@ -306,8 +313,7 @@ export function MessageBubble({
     message.attachment === undefined &&
     canEditMessage(message, currentUserId, new Date());
   const canDelete = !generating && !deleted && canDeleteMessage(message, currentUserId);
-  const canPin = !generating && !deleted && store.canPin(chat.id);
-  const pin = store.pinFor(chat.id, message.id);
+  const canPin = !generating && !deleted && chatCanPin;
 
   // A retracted message keeps its place as a slim tombstone and has no actions.
   if (deleted) {
@@ -688,7 +694,9 @@ export function MessageBubble({
 
                 {hasText && markdown && (
                   <div className={cn('md break-words', own ? 'px-3 py-2' : 'px-3 py-2.5')}>
-                    <MarkdownText text={text} />
+                    <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
+                      <MarkdownText text={text} />
+                    </Suspense>
                     <span className="md-tail">
                       {generating && <DraftCaret />}
                       <MessageMeta
@@ -835,4 +843,4 @@ export function MessageBubble({
       </div>
     </div>
   );
-}
+});

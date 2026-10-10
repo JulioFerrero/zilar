@@ -9,8 +9,6 @@ export const VoiceTranscriptSchema = struct({
   source: Schema.Literals(['api', 'local']),
 });
 
-export type VoiceTranscript = typeof VoiceTranscriptSchema.Type;
-
 const UrlSchema = Schema.String.pipe(
   Schema.check(
     Schema.isMaxLength(8192),

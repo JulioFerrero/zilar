@@ -1,46 +1,18 @@
+import { describeAiFailure, type AiErrorInfo } from '@zilar/chat-core';
+
 import { AisApiError } from '../../lib/ais-api';
 
-export interface AisErrorInfo {
-  /** A clear message for the user; never a raw code or a stack trace. */
-  message: string;
-  /** True when the server has AI management switched off (503). */
-  unavailable: boolean;
-}
+export type AisErrorInfo = AiErrorInfo;
 
-// Maps the error codes in the T-0032/T-0037 contract to plain language.
-// `invalid_request` keeps the server's own message because it explains which
-// field is wrong. `not_active` (T-0095) is the kill switch telling the owner
-// the AI changed under them: the list is reloaded, so the row will already
-// match the server's truth.
+// The code table lives in @zilar/chat-core. `not_active` (T-0095) is the kill
+// switch telling the owner the AI changed under them: the list is reloaded, so
+// the row will already match the server's truth. Only the phone handles it.
 export function describeAisError(error: unknown, fallback: string): AisErrorInfo {
   if (error instanceof AisApiError) {
-    switch (error.code) {
-      case 'ais_unavailable':
-        return { message: "AI management isn't configured on this server.", unavailable: true };
-      case 'invalid_connection':
-      case 'connection_inactive':
-      case 'connection_not_llm':
-        return {
-          message: "That connection can't be used. Pick another one or re-add it.",
-          unavailable: false,
-        };
-      case 'not_found':
-        return { message: 'That AI no longer exists.', unavailable: false };
-      case 'ai_provisioning_failed':
-      case 'ai_update_failed':
-      case 'ai_teardown_failed':
-        return {
-          message: "The server couldn't finish. Nothing was left half-created; try again.",
-          unavailable: false,
-        };
-      case 'not_active':
-        return {
-          message: 'This AI changed state. Refreshing the list…',
-          unavailable: false,
-        };
-      default:
-        return { message: error.message, unavailable: error.status === 503 };
+    if (error.code === 'not_active') {
+      return { message: 'This AI changed state. Refreshing the list…', unavailable: false };
     }
+    return describeAiFailure(error);
   }
   return { message: error instanceof Error ? error.message : fallback, unavailable: false };
 }

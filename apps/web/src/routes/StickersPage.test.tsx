@@ -4,14 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { StickersPage } from './StickersPage';
 import { resetIsServerOwnerCache } from '@/lib/useIsServerOwner';
-
-function jsonResponse(status: number, body: unknown): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response;
-}
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const demoPack = {
   id: '123e4567-e89b-12d3-a456-426614174000',

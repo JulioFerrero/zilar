@@ -93,11 +93,6 @@ export function modelBadge(model: string, effort: string | undefined): ModelBadg
   return { name: stripped, effort, free, color: undefined };
 }
 
-export function badgeText(badge: ModelBadge): string {
-  const base = badge.effort !== undefined ? `${badge.name} · ${badge.effort}` : badge.name;
-  return badge.free ? `${base} free` : base;
-}
-
 export type WatchIconName =
   | 'brand'
   | 'clock'

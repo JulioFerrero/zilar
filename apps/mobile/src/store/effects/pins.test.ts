@@ -1,54 +1,27 @@
-import type { XmppCore } from '@zilar/xmpp-core';
+import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ChatApi } from '../../lib/chat-api';
 import type { PinsApi } from '../../lib/pins-api';
 import { createRealChatStore } from '../real-store';
+import { fakeApi } from '../test-support';
+import { flushTasks as flush } from '@/test/wait';
 
 const ANA = 'ana@zilar.test';
-const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
-
-function fakeApi(): ChatApi {
-  return {
-    getMe: vi.fn(async () => ({
-      id: 'u-me',
-      email: 'me@zilar.test',
-      name: 'Me',
-      jid: 'me@zilar.test',
-    })),
+function anaApi(): ChatApi {
+  return fakeApi({
     getChats: vi.fn(async () => [
       { kind: 'dm' as const, chatJid: ANA, title: 'Ana', userId: 'u-ana' },
     ]),
-    getContacts: vi.fn(async () => []),
-    getXmppToken: vi.fn(async () => ({
-      jid: 'me@zilar.test',
-      token: 'tok',
-      expiresAt: '2026-09-28T12:05:00Z',
-      service: 'ws://x',
-      domain: 'zilar.test',
-      mucDomain: 'rooms.zilar.test',
-    })),
-  } as unknown as ChatApi;
+  }) as unknown as ChatApi;
 }
-
-const fakeCore = (): XmppCore =>
-  ({
-    status: () => 'online' as const,
-    me: () => 'me@zilar.test',
-    connect: vi.fn(async () => {}),
-    disconnect: vi.fn(async () => {}),
-    joinRoom: vi.fn(async () => {}),
-    occupants: vi.fn(() => []),
-    loadHistory: vi.fn(async () => ({ messages: [], complete: true, first: undefined })),
-    on: () => () => {},
-  }) as unknown as XmppCore;
 
 describe('pins on the effect fibers', () => {
   it('a loud load failure sets pinsError and a later success clears it', async () => {
     const listPins = vi.fn().mockRejectedValueOnce(new Error('down')).mockResolvedValue([]);
     const store = createRealChatStore({
-      api: fakeApi(),
-      createXmpp: () => fakeCore(),
+      api: anaApi(),
+      createXmpp: () => createFakeXmppCore(),
       pinsApi: { listPins } as unknown as PinsApi,
     });
     store.getState().start();
@@ -76,8 +49,8 @@ describe('pins on the effect fibers', () => {
       pinnedAt: '2026-09-28T12:00:00.000Z',
     };
     const store = createRealChatStore({
-      api: fakeApi(),
-      createXmpp: () => fakeCore(),
+      api: anaApi(),
+      createXmpp: () => createFakeXmppCore(),
       pinsApi: {
         listPins: vi.fn(async () => [pin]),
         unpinMessage: vi.fn(async () => {
@@ -92,7 +65,7 @@ describe('pins on the effect fibers', () => {
 
     await expect(store.getState().unpinMessage(ANA, 'p1')).rejects.toThrow('nope');
     expect(store.getState().pins(ANA)).toHaveLength(1);
-    expect(store.getState().pinsError?.message).toBe('Could not unpin. Try again.');
+    expect(store.getState().pinsError?.message).toBe('Could not unpin the message. Try again.');
     store.getState().stop();
   });
 });

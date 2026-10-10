@@ -6,6 +6,7 @@ import {
   type RoomAffiliation,
 } from './admin-client';
 import type { XmppConfig } from './config';
+import { jsonResponse } from '../test-support/wait';
 
 const config: XmppConfig = {
   apiUrl: 'http://ejabberd.test/api',
@@ -18,13 +19,6 @@ const config: XmppConfig = {
 };
 
 type Call = { url: string; init: RequestInit };
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
 
 function createFetch(handler: (call: Call) => Response): { fetchImpl: FetchLike; calls: Call[] } {
   const calls: Call[] = [];

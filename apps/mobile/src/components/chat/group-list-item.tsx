@@ -1,13 +1,11 @@
 import { formatListTime, previewMessage } from '@zilar/chat-core';
 import { Megaphone, Pin } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
-import { useColorScheme } from 'nativewind';
 
 import { Avatar } from '@/components/chat/avatar';
 import { plainPreviewBody } from '@/components/chat/markdown-decision';
 import { Text } from '@/components/ui/text';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
-import { asColorScheme } from '@/lib/color-scheme';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { primaryKey, raisedPill } from '@/lib/depth';
 import { channelSubscriberLabel } from '@/lib/channels';
@@ -53,7 +51,6 @@ export function GroupListItem({
   onPress: () => void;
   onLongPress?: () => void;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const chats = useChatStore((state) => state.chats);
   const row = groupRowFor(groupId, topicsOfGroup(chats, groupId));
   const topics = row?.topics ?? [];
@@ -106,12 +103,12 @@ export function GroupListItem({
               </Text>
               {row.chatKind === 'channel' ? (
                 <View accessibilityRole="image" accessibilityLabel="Channel">
-                  <Megaphone size={14} color={MUTED_FOREGROUND[scheme]} />
+                  <Megaphone size={14} color={MUTED_FOREGROUND} />
                 </View>
               ) : null}
               {anyPinned ? (
                 <View accessibilityRole="image" accessibilityLabel="Pinned chat">
-                  <Pin size={14} color={MUTED_FOREGROUND[scheme]} />
+                  <Pin size={14} color={MUTED_FOREGROUND} />
                 </View>
               ) : null}
               <Text numberOfLines={1} className="shrink-0 text-[12px] text-subtle-foreground">

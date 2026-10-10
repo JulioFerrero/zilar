@@ -14,21 +14,23 @@
 // - keep the module's exported functions `async` and surface them through
 //   `ManagedRuntime.runPromise`, so routes and existing tests do not change.
 
-import { PGlite } from '@electric-sql/pglite';
-import { PgliteClient } from '@effect/sql-pglite';
+import type { PGlite } from '@electric-sql/pglite';
 import { PgClient } from '@effect/sql-pg';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Config, Effect, Layer, ManagedRuntime, Redacted } from 'effect';
+import { Effect, Layer, ManagedRuntime, Redacted } from 'effect';
 import { Migrator, SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 
 export const SQL_POOL_MAX = 10;
 export const SQL_MIGRATIONS_TABLE = 'effect_sql_migrations';
 
-// The committed migrations: `apps/server/drizzle`.
-export const migrationsFolder = fileURLToPath(new URL('../../drizzle', import.meta.url));
+// The committed migrations: `apps/server/drizzle`. From source this file sits
+// in `src/effect/`; the production bundle is `dist/index.mjs`, one level down.
+export const migrationsFolder = fileURLToPath(
+  new URL(import.meta.url.endsWith('.ts') ? '../../drizzle' : '../drizzle', import.meta.url),
+);
 
 export type SqlRuntime = ManagedRuntime.ManagedRuntime<SqlClient.SqlClient, SqlError.SqlError>;
 
@@ -38,24 +40,31 @@ export function snakeToCamel(name: string): string {
   return name.replace(/_([a-z0-9])/g, (_, char: string) => char.toUpperCase());
 }
 
+// A production key is the plain `{ kind: 'postgres', url }` record; anything else
+// is a test's raw PGlite handle. No `instanceof`, so production never loads PGlite.
 export function isPgliteDatabase(db: ServerDatabase): db is PGlite {
-  return db instanceof PGlite;
+  return !('kind' in db && db.kind === 'postgres');
+}
+
+// PGlite and its `effect/sql` driver are devDependencies, so they load on demand
+// and only on the test path.
+function pgliteLayer(client: PGlite): Layer.Layer<SqlClient.SqlClient, SqlError.SqlError> {
+  return Layer.unwrap(
+    Effect.promise(() => import('@effect/sql-pglite')).pipe(
+      Effect.map(({ PgliteClient }) =>
+        PgliteClient.layer({
+          liveClient: client,
+          transformResultNames: snakeToCamel,
+          transformJson: false,
+        }),
+      ),
+    ),
+  );
 }
 
 // `transformResultNames` camelCases column names to match the row types in
 // `db/rows.ts`, but a jsonb value is data: its keys must read back exactly as
 // they were written, so `transformJson: false` stops the driver renaming them too.
-//
-// Production: one pool of `SQL_POOL_MAX` from `DATABASE_URL`.
-export const SqlLive: Layer.Layer<SqlClient.SqlClient, Config.ConfigError | SqlError.SqlError> =
-  PgClient.layerConfig(
-    Config.all({
-      url: Config.Redacted('DATABASE_URL'),
-      maxConnections: Config.succeed(SQL_POOL_MAX),
-      transformResultNames: Config.succeed(snakeToCamel),
-      transformJson: Config.succeed(false),
-    }),
-  );
 
 // The layer behind a database key. Tests hand over their raw PGlite, production
 // a `DATABASE_URL`; either way modules read through this layer and no route or
@@ -65,11 +74,7 @@ export function sqlLayerFor(
   databaseUrl: string,
 ): Layer.Layer<SqlClient.SqlClient, SqlError.SqlError> {
   if (isPgliteDatabase(db)) {
-    return PgliteClient.layer({
-      liveClient: db,
-      transformResultNames: snakeToCamel,
-      transformJson: false,
-    });
+    return pgliteLayer(db);
   }
   return PgClient.layer({
     url: Redacted.make(databaseUrl),
@@ -99,6 +104,17 @@ export function sqlRuntimeFor(db: ServerDatabase): SqlRuntime {
   return runtime;
 }
 
+/**
+ * Runs an effect that needs the SQL client on the runtime registered for `db`.
+ * One shared copy for every module's service.
+ */
+export function runSql<A, E>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 // Disposes the runtime for one database and forgets it, so a later
 // `sqlRuntimeFor(db)` throws instead of handing back a closed pool. The entry
 // is removed first: a second dispose call is a no-op (idempotent), and no
@@ -119,6 +135,7 @@ export async function disposeSqlRuntime(db: ServerDatabase): Promise<void> {
 let migratedSnapshot: Promise<Blob> | undefined;
 
 async function snapshotOfMigratedDatabase(): Promise<Blob> {
+  const { PGlite } = await import('@electric-sql/pglite');
   const template = new PGlite();
   await migratePglite(template);
   const snapshot = await template.dumpDataDir('none');
@@ -128,6 +145,7 @@ async function snapshotOfMigratedDatabase(): Promise<Blob> {
 
 export async function freshMigratedPglite(): Promise<PGlite> {
   migratedSnapshot ??= snapshotOfMigratedDatabase();
+  const { PGlite } = await import('@electric-sql/pglite');
   return new PGlite({ loadDataDir: await migratedSnapshot });
 }
 
@@ -137,11 +155,7 @@ export const SqlTest: Layer.Layer<SqlClient.SqlClient, SqlError.SqlError> = Laye
       Effect.promise(() => freshMigratedPglite()),
       (pglite) => Effect.promise(() => pglite.close()),
     );
-    return PgliteClient.layer({
-      liveClient: client,
-      transformResultNames: snakeToCamel,
-      transformJson: false,
-    });
+    return pgliteLayer(client);
   }),
 );
 
@@ -271,15 +285,5 @@ export function migrateSql(
 export function migratePglite(
   pglite: PGlite,
 ): Promise<ReadonlyArray<readonly [id: number, name: string]>> {
-  return Effect.runPromise(
-    migrateSql().pipe(
-      Effect.provide(
-        PgliteClient.layer({
-          liveClient: pglite,
-          transformResultNames: snakeToCamel,
-          transformJson: false,
-        }),
-      ),
-    ),
-  );
+  return Effect.runPromise(migrateSql().pipe(Effect.provide(pgliteLayer(pglite))));
 }

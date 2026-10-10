@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, SqlError, type Statement } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
-import { sqlRuntimeFor } from '../../effect/sql';
+import { runSql } from '../../effect/sql';
 import {
   type Block,
   MEMORY_LINE_MAX,
@@ -52,13 +52,6 @@ interface MemoryRow {
 
 // A query runs through the runtime registered for this database, exactly like
 // the other converted modules; the exported functions stay `async`.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
-
 function blockKey(block: Block): string {
   return `${block.lo}-${block.hi}`;
 }

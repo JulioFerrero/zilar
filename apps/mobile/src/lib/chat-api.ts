@@ -1,7 +1,18 @@
 import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } from 'effect';
 import { struct } from '@zilar/protocol';
+import {
+  ApiError,
+  GroupBackground,
+  runApi,
+  type ChatEntry as ContractChatEntry,
+  type Contact as ContractContact,
+  type GroupAi as ContractGroupAi,
+  type GroupDetail as ContractGroupDetail,
+  type GroupMember as ContractGroupMember,
+} from '@zilar/api-contract';
 
 import { API_URL } from './auth';
+import { createApiClient } from './effect/api-client';
 import type { Me } from './auth-api';
 import { errorFieldsOf } from './api-error-body';
 import { parseTopic, type Topic } from './topics-api';
@@ -15,74 +26,23 @@ export type { Me };
  * pipeline, cut back to a `Promise` at the edge with `Effect.runPromise`.
  */
 
-export interface Contact {
-  userId: string;
-  name: string;
-  jid: string;
-  avatarUrl?: string;
-}
+export type Contact = ContractContact;
 
-export type ChatEntry =
-  | { kind: 'dm'; chatJid: string; title: string; userId: string; avatarUrl?: string }
-  | {
-      kind: 'group';
-      chatJid: string;
-      title: string;
-      groupId: string;
-      memberCount: number;
-      role: GroupRole;
-      // T-0144: `group` behaves as before; `channel` is the broadcast feed
-      // (its General topic is the feed). Optional so older servers still
-      // parse; the store maps the feed row from the General topic with the
-      // channel fields (chatKind, subscriberCount, description, myRole).
-      chatKind?: 'group' | 'channel';
-      // T-0144: the same count under the usual channel name, for channels only.
-      subscriberCount?: number;
-      // T-0144: the channel's short blurb. Optional so older payloads parse.
-      description?: string | null;
-      // T-0108: a group entry may carry its visible `topics` (archived
-      // excluded). Optional so older servers still parse; the store maps such
-      // a group to one row per topic (General keeps the old chat id).
-      // Validated `Topic` rows (T-0139), malformed wire rows dropped.
-      topics?: Topic[];
-    };
+// T-0924: the entry type comes from the API contract, the same union web
+// decodes. `parseChatEntry` (below) still decodes each entry on its own and
+// skips a bad one, so the mobile leniency (audit F5) is unchanged.
+export type ChatEntry = ContractChatEntry;
 
 export type GroupRole = 'owner' | 'admin' | 'member';
 
-export interface GroupMember {
-  userId: string;
-  name: string;
-  role: GroupRole;
-  // T-0227: the member's `@handle` while set (null on the wire when unset).
-  // Optional so payloads from an older server still parse.
-  handle?: string;
-  // T-0116: the custom group roles this member holds, shown as chips. Absent
-  // on payloads from an older server (treated as none).
-  roles: { id: string; name: string }[];
-}
-
-/** The group detail the new-topic sheet reads (people + roles + AIs). */
-export interface GroupDetail {
-  id: string;
-  title: string;
-  createdBy: string;
-  membersCanCreateTopics?: boolean;
-  // T-0144: `channel` is the broadcast feed (its General topic is the feed).
-  // Optional so older servers still parse (treated as a group).
-  kind?: 'group' | 'channel';
-  // T-0144: the channel's short blurb. Optional so older payloads parse.
-  description?: string | null;
-  members: GroupMember[];
-  ais: GroupAi[];
-}
-
-/** One AI in the group, so the sheet can offer the viewer's own unticked. */
-export interface GroupAi {
-  aiId: string;
-  jid: string;
-  name: string;
-  ownerId: string;
-}
+// T-0920: the group detail types come from the API contract, the same source
+// the web app reads, so mobile stops declaring its own. The contract's
+// `GroupMember.handle` is `string | null` (the wire sends null when unset);
+// mobile normalizes null to absent, so the member type narrows that one field
+// back to `string | undefined` (the Report lists the difference).
+export type GroupMember = Omit<ContractGroupMember, 'handle'> & { handle?: string };
+export type GroupDetail = Omit<ContractGroupDetail, 'members'> & { members: GroupMember[] };
+export type GroupAi = ContractGroupAi;
 
 export interface XmppToken {
   jid: string;
@@ -104,17 +64,9 @@ export interface ChatApi {
   getXmppToken(): Promise<XmppToken>;
 }
 
-export class ChatApiError extends Error {
-  readonly status: number;
-  readonly code: string;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = 'ChatApiError';
-    this.status = status;
-    this.code = code;
-  }
-}
+/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
+export const ChatApiError = ApiError;
+export type ChatApiError = ApiError;
 
 // A lenient nullable string: a missing or non-string value decodes to `null`
 // instead of failing the row (the viewer's own JID on `Me`, absent on older
@@ -145,13 +97,6 @@ const MeSchema = struct({
   jid: LenientNullStringSchema,
 });
 
-const ContactSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-  jid: Schema.String,
-  avatarUrl: LenientOptionalStringSchema,
-});
-
 const GroupRoleSchema = Schema.Literals(['owner', 'admin', 'member']);
 
 const DmEntrySchema = struct({
@@ -160,6 +105,8 @@ const DmEntrySchema = struct({
   title: Schema.String,
   userId: Schema.String,
   avatarUrl: LenientOptionalStringSchema,
+  // Set on the caller's AIs; absent or false for human contacts (as web).
+  isAi: Schema.optional(Schema.Boolean),
 });
 
 const GroupEntryRawSchema = struct({
@@ -174,6 +121,13 @@ const GroupEntryRawSchema = struct({
   chatKind: Schema.optional(Schema.Literals(['group', 'channel'])),
   subscriberCount: Schema.optional(Schema.Number),
   description: Schema.optional(Schema.NullOr(Schema.String)),
+  // T-0924: the fields web already carried onto its rows. Absent on older
+  // servers (still parses); a malformed one rejects the entry rather than
+  // rendering half of it, like the channel fields above.
+  visibility: Schema.optional(Schema.Literals(['private', 'public'])),
+  handle: Schema.optional(Schema.NullOr(Schema.String)),
+  avatarUrl: Schema.optional(Schema.String),
+  background: Schema.optional(GroupBackground),
   // T-0139: the server's `topics` on the entry. Absent on older servers
   // (still parses, as before); a non-array rejects the entry, while
   // malformed rows inside a valid array are dropped by `parseTopic`.
@@ -254,8 +208,6 @@ const ChatsListSchema = struct({
   chats: Schema.mutable(Schema.Array(Schema.Unknown)),
 });
 
-const ContactsListSchema = Schema.mutable(Schema.Array(ContactSchema));
-
 function parseMe(value: unknown): Me | null {
   const decoded = Schema.decodeUnknownExit(MeSchema)(value);
   return Exit.isSuccess(decoded) ? decoded.value : null;
@@ -294,6 +246,12 @@ function parseChatEntry(value: unknown): ChatEntry | null {
     ...(raw.chatKind === undefined ? {} : { chatKind: raw.chatKind }),
     ...(raw.subscriberCount === undefined ? {} : { subscriberCount: raw.subscriberCount }),
     ...(raw.description === undefined ? {} : { description: raw.description }),
+    // T-0924: carry the four fields web already kept, so both apps' rows
+    // match. Absent on older servers, so they stay absent here.
+    ...(raw.visibility === undefined ? {} : { visibility: raw.visibility }),
+    ...(raw.handle === undefined ? {} : { handle: raw.handle }),
+    ...(raw.avatarUrl === undefined ? {} : { avatarUrl: raw.avatarUrl }),
+    ...(raw.background === undefined ? {} : { background: raw.background }),
   };
 }
 
@@ -347,15 +305,6 @@ function parseChatsList(value: unknown): ChatEntry[] | null {
     chats.push(parsed);
   }
   return chats;
-}
-
-function parseContactsList(value: unknown): Contact[] | null {
-  const decoded = Schema.decodeUnknownExit(ContactsListSchema)(value);
-  if (!Exit.isSuccess(decoded)) return null;
-  return decoded.value.map((contact) => {
-    const { avatarUrl, ...rest } = contact;
-    return avatarUrl === undefined ? rest : { ...rest, avatarUrl };
-  });
 }
 
 function parseXmppToken(value: unknown): XmppToken | null {
@@ -417,6 +366,7 @@ export function createChatApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): ChatApi {
+  const client = createApiClient({ getToken, fetchImpl, apiUrl });
   const withTokenEffect = Effect.fnUntraced(function* (
     path: string,
     init: RequestInit,
@@ -463,13 +413,16 @@ export function createChatApi(
       return (await withToken('/api/me', { method: 'GET' }, parseMe)) as Me;
     },
     async getChats() {
-      const body = await withToken('/api/chats', { method: 'GET' }, parseChatsList);
-      return body as ChatEntry[];
+      // The contract passes the entries through as `unknown`; they are
+      // validated here, and one malformed entry fails the whole list.
+      const body = await runApi(client.chats.list());
+      const chats = parseChatsList(body);
+      if (chats === null) {
+        throw new ChatApiError(200, 'invalid_response', 'The server sent an unexpected response');
+      }
+      return chats;
     },
-    async getContacts() {
-      const body = await withToken('/api/contacts', { method: 'GET' }, parseContactsList);
-      return body as Contact[];
-    },
+    getContacts: () => runApi(client.contacts.list()).then((rows) => [...rows]),
     async getGroup(groupId) {
       return (await withToken(
         `/api/groups/${encodeURIComponent(groupId)}`,

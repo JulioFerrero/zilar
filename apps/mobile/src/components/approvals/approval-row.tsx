@@ -1,10 +1,8 @@
 import { ShieldAlert } from 'lucide-react-native';
 import { View } from 'react-native';
-import { useColorScheme } from 'nativewind';
 
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT } from '@/lib/colors';
 import type { PublicApproval } from '@/lib/approvals-api';
 
@@ -32,13 +30,12 @@ export function PendingApprovalRow({
   actionError: string;
   onDecide: (id: string, decision: ApprovalDecision) => void;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const cost = worstCaseText(approval.worstCase);
   return (
     <View className="gap-2 rounded-xl border border-divider bg-surface p-4">
       <View className="flex-row items-start justify-between gap-3">
         <View className="min-w-0 flex-1 flex-row items-center gap-2">
-          <ShieldAlert size={16} color={ACCENT[scheme]} aria-hidden />
+          <ShieldAlert size={16} color={ACCENT} aria-hidden />
           <Text numberOfLines={1} className="min-w-0 flex-1 text-[16px] font-semibold">
             {approval.action}
           </Text>

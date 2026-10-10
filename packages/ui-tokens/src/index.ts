@@ -43,8 +43,6 @@ export const radius = {
   xl: 'calc(var(--radius) + 4px)',
 } as const;
 
-export type RadiusKey = keyof typeof radius;
-
 /**
  * The chat dot grid both apps draw (ui-style.md §2): a 22 px cell with a
  * 1 px `#1c1c1c` dot on the panel black. Mobile reads it directly in
@@ -123,8 +121,6 @@ export const depth = {
   bubbleGenShadow:
     'inset 0 2px 6px rgba(0,0,0,0.9), inset 0 0 0 1px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.06)',
 } as const;
-
-export type DepthKey = keyof typeof depth;
 
 export interface PlatformDifference {
   /** The token name, matching the CSS variable or palette key where one exists. */

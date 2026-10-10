@@ -1,19 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createAiMemoryApi } from './ai-memory-api';
+import { jsonResponse } from '@/test/wait';
 
 const MEMORY = {
   facts: [{ id: 'fact-1', text: 'Julio prefers short answers.' }],
   lines: ['#0-15 Summary: the team agreed on the launch plan and pricing.'],
   canChange: true,
 };
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
 
 describe('ai memory schema', () => {
   it('drops unknown extra fields from the memory and its facts', async () => {

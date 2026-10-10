@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createGifsApi, parseGifItem } from './gifs-api';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const API = 'http://127.0.0.1:3188';
 
@@ -12,13 +13,6 @@ const ROW = {
   width: 200,
   height: 150,
 };
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
 
 describe('gifs schema', () => {
   it('drops an unknown extra field from an item row', () => {

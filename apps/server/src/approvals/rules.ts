@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { ApprovalRuleRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 
 // T-0099: standing approval rules. A rule grants a single AI the right to
 // run a single action in one chat (a group, or the personal chat with its
@@ -34,16 +34,6 @@ export interface PublicApprovalRule {
   topicName: string | null;
   createdAt: Date;
   createdBy: string;
-}
-
-// The top-level queries run on the `effect/sql` client registered for this
-// database (see `../effect/sql`). The exported functions stay `async` so
-// routes and tests keep their shape during the transition.
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // The atomic idempotent write that turns an "approve_always" decision

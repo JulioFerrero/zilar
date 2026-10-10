@@ -1,3 +1,5 @@
+import { bareJid } from '@zilar/protocol';
+import { commonPrefixLength } from './smooth-text';
 import type { MentionMember, UiMention } from './types';
 
 // Offsets in this module are UTF-16 code units (JS string indices): the
@@ -69,15 +71,6 @@ export function insertMention(
       end: query.start + token.length,
     },
   };
-}
-
-function commonPrefixLength(left: string, right: string): number {
-  const max = Math.min(left.length, right.length);
-  let index = 0;
-  while (index < max && left[index] === right[index]) {
-    index += 1;
-  }
-  return index;
 }
 
 function commonSuffixLength(left: string, right: string, prefix: number): number {
@@ -208,7 +201,7 @@ export function isMentionOfMe(jid: string, meJid: string | undefined): boolean {
   if (meJid === undefined) {
     return false;
   }
-  return (jid.split('/')[0] ?? jid).split('?')[0] === meJid;
+  return bareJid(jid).split('?')[0] === meJid;
 }
 
 /**

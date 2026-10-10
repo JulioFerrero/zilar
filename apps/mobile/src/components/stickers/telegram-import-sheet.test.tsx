@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { StickersApiError, type TelegramImportResult } from '@/lib/stickers-api';
+import { flushTasks as flush } from '@/test/wait';
 
 // The sheet is rendered with `renderToStaticMarkup` (effects never run), so
 // each case forces the sheet state through the `useState` mock, in hook
@@ -11,9 +12,6 @@ import { StickersApiError, type TelegramImportResult } from '@/lib/stickers-api'
 // result (first `null`), special (second `null`). The error state stays real
 // with an observed setter so the empty-input and refusal flows assert the
 // sentence the sheet shows.
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
 
 const pressed: Record<string, Array<() => void>> = {};
 
@@ -44,19 +42,10 @@ vi.mock('react-native', () => ({
   useWindowDimensions: () => ({ width: 390, height: 844 }),
 }));
 
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
 vi.mock('lucide-react-native', () => ({
   Clock: 'Clock',
   Info: 'Info',
   X: 'X',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/lib/auth', () => ({
@@ -68,13 +57,9 @@ vi.mock('@/lib/session-token', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
-  ACCENT: { dark: '#ededed', light: '#ededed' },
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ACCENT: '#ededed',
+  ICON: '#d4d4d4',
+  MUTED_FOREGROUND: '#a1a1a1',
 }));
 
 vi.mock('@/lib/depth', () => ({
@@ -220,13 +205,6 @@ function press(label: string): void {
   for (const handler of handlers) {
     handler();
   }
-}
-
-/** Flushes the sheet's promise chain so `observedError` settles. */
-async function flush(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe('TelegramImportSheet', () => {

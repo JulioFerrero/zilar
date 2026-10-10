@@ -1,273 +1,231 @@
-import { Effect, Fiber, Option, type Scope } from 'effect';
-import type { XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
-
-import { applyChatPrefs } from '../../lib/chat-prefs';
-import { trustedMediaHosts } from '../../lib/attachments';
-import type { ConnectionStatus } from '../types';
-import { Ports } from './ports';
+// The mobile bindings of the store lifecycle. `start`, `stop`, the chat list
+// retry and the resume now live in `@zilar/client-core/store` (T-0918); this
+// file builds the `LifecycleCtx` the core functions run on, maps the mobile
+// `historyLoad`/`'loaded'` names to the core's `historyState`/`'ready'`, and
+// keeps the mobile-only app hooks (the AppState resume, the mobile caches).
+import type { XmppCore } from '@zilar/xmpp-core';
+import { Effect } from 'effect';
 import {
-  detached,
-  lift,
-  onClose,
-  orElse,
-  recover,
-  type StoreCtx,
-  type StoreState,
-} from './runtime';
+  clearDraftTimeout,
+  markTurnFinished,
+  reconnect as coreReconnect,
+  reset,
+  retryBoot as coreRetryBoot,
+  startStore as coreStartStore,
+  stopStore as coreStopStore,
+  type HistoryLoad,
+  type HistoryPatch,
+  type HistoryState,
+  type LifecycleCtx,
+  type StoreAppHooks,
+} from '@zilar/client-core/store';
+
+import type { ChatEntry, Contact, Me } from '../../lib/chat-api';
+import type { ChatPref } from '../../lib/chat-prefs-api';
+import { applyChatPrefs } from '../../lib/chat-prefs';
+import type { ChatStoreState, LoadState } from '../types';
+import type { StoreCtx } from './runtime';
 
 export interface Lifecycle {
   start(): void;
   stop(): void;
-  /** `reloadChats` while no core exists: ends the generation and boots again. */
+  /** `reloadChats` while no core exists: ends the session and boots again. */
   restartBoot(): void;
-  /** A resume: reconnects a core that is not online, or waits for / starts the boot. */
-  readonly reconnect: Effect.Effect<void, never, Ports>;
+  /** The AI's final message arrived: remember its turn, stop the chat's timer. */
+  finishDraftTurn(chatId: string, turnId: string): void;
 }
 
+const toCoreLoad = (load: LoadState): HistoryLoad => (load === 'loaded' ? 'ready' : load);
+const toMobileLoad = (load: HistoryLoad): LoadState => (load === 'ready' ? 'loaded' : load);
+
 /**
- * Connect, background / resume and reconnect. The store lives in two scopes
- * (see `Life`): `start()` and `stop()` bound the session; a restart of the
- * boot (`reloadChats` before any core) ends the generation. Boot and
- * reconnect are fibers of the generation, so ending it interrupts them where
- * the old `generation` counter made them bail at their next check.
+ * Runs the mobile store on the core lifecycle. The core owns the store and
+ * session scopes (`life.lifetime`) and the connect retry; the adapter supplies
+ * the mobile state, the app hooks and the resume listener (AppState focus).
  */
 export function makeLifecycle(ctx: StoreCtx): Lifecycle {
-  const { ports, get, set, s, life, h, fx } = ctx;
+  const { get, set, s, life, h, coreCtx } = ctx;
 
-  // The listeners on a core live as long as the session.
-  function subscribeCore(current: XmppCore): void {
-    const unsubscribers = [
-      current.on('status', (status: ConnectionStatus) => {
-        set({ status });
-        if (status === 'online') {
-          h.flushPending();
-        }
-      }),
-      current.on('message', h.handleMessage),
-      current.on('typing', h.handleTyping),
-      current.on('displayed', h.handleDisplayed),
-      current.on('occupants', h.handleOccupants),
-      current.on('presence', h.handlePresence),
-      current.on('invited', h.handleInvited),
-      current.on('roster', h.handleRoster),
-    ];
-    onClose(life.session(), () => {
-      for (const unsubscribe of unsubscribers) {
-        unsubscribe();
-      }
-    });
-  }
-
-  // The token the core asks for: the one boot already fetched, once, then a
-  // fresh one each time. The trusted media hosts follow the latest token.
-  const tokenForCore = Effect.gen(function* () {
-    const { api } = yield* Ports;
-    if (s.firstToken !== undefined) {
-      const fresh = s.firstToken;
-      s.firstToken = undefined;
-      return fresh;
-    }
-    const fresh = yield* lift(() => api.getXmppToken());
-    s.mediaToken = { service: fresh.service, domain: fresh.domain };
-    s.mediaTrustedHosts = trustedMediaHosts(s.mediaToken);
-    set({ mediaTrustedHosts: s.mediaTrustedHosts });
-    return { jid: fresh.jid, token: fresh.token };
+  // The core's `HistoryState` over the mobile state: only the load-map name
+  // and its `'ready'`/`'loaded'` value differ (as `effects/history.ts`).
+  const asHistoryState = (state: ChatStoreState): HistoryState => ({
+    ...state,
+    historyState: Object.fromEntries(
+      Object.entries(state.historyLoad).map(([chatId, load]) => [chatId, toCoreLoad(load)]),
+    ),
   });
 
-  const boot: Effect.Effect<void, never, Ports> = Effect.gen(function* () {
-    const { api, now, createXmpp, ownedAis } = yield* Ports;
-    // The five loads start together. Prefs and folders are their own fibers,
-    // so a failing sibling does not cancel them (they never fail the boot).
-    const loaded = yield* Effect.all(
-      [
-        lift(() => api.getMe()),
-        lift(() => api.getChats()),
-        lift(() => api.getContacts()),
-        detached(fx.loadPrefRows),
-        detached(fx.loadFolders),
-      ],
-      { concurrency: 'unbounded' },
-    ).pipe(Effect.option);
-    if (Option.isNone(loaded)) {
-      set({ status: 'offline', chatsLoad: 'error' });
-      return;
+  const asMobilePatch = (patch: HistoryPatch): Partial<ChatStoreState> => {
+    if (patch.historyState === undefined) {
+      return patch;
     }
-    const [me, entries, contacts, prefs] = loaded.value;
-
-    s.lastRead = {};
-    h.rememberGroupIds(entries);
-    s.chatPrefRows = prefs;
-    set({
-      me,
-      currentUserId: me.id,
-      chats: applyChatPrefs(
-        entries.flatMap((entry) => h.summariesFor(entry)),
-        prefs,
-        now().getTime(),
+    const { historyState, ...rest } = patch;
+    return {
+      ...rest,
+      historyLoad: Object.fromEntries(
+        Object.entries(historyState).map(([chatId, load]) => [chatId, toMobileLoad(load)]),
       ),
-      contacts,
-      chatsLoad: 'loaded',
-      ownedAis: ownedAis ?? get().ownedAis,
-    });
-    h.startDraftStream();
-    h.flushPending();
-
-    const fetched = yield* lift(() => api.getXmppToken()).pipe(Effect.option);
-    if (Option.isNone(fetched)) {
-      set({ status: 'offline' });
-      return;
-    }
-    const token = fetched.value;
-    s.firstToken = { jid: token.jid, token: token.token };
-    // The trusted media hosts follow the XMPP token (web does the same):
-    // the upload service answers on these hosts in dev and production.
-    s.mediaToken = { service: token.service, domain: token.domain };
-    s.mediaTrustedHosts = trustedMediaHosts(s.mediaToken);
-    set({ mediaTrustedHosts: s.mediaTrustedHosts });
-
-    const options: XmppCoreOptions = {
-      service: token.service,
-      domain: token.domain,
-      getToken: () => ctx.run(tokenForCore),
     };
+  };
 
-    const current = createXmpp(options);
-    s.core = current;
-    subscribeCore(current);
-    const connected = yield* lift(() => current.connect()).pipe(Effect.option);
-    if (Option.isNone(connected)) {
-      set({ status: 'offline' });
-      return;
-    }
-    set({ status: 'online' });
-    h.flushPending();
-    yield* fx.joinGroups(current, me);
-    s.groupsJoined = true;
-    h.flushPending();
-    yield* Effect.all(
-      get().chats.map((chat) => fx.loadPreview(current, chat)),
-      { concurrency: 'unbounded' },
-    );
-    set((state) => ({ chats: h.sortByRecency(state.chats) }));
-  });
+  // The core's own handle on the XMPP core, separate from `s.core`. `s.core`
+  // keeps the last handle for the history previews and the adoption path
+  // (`effects/history.ts`), but a closed attempt clears this one, so a resume
+  // after a failed connect boots a fresh core instead of reconnecting one whose
+  // listeners are gone (PREREVIEW finding 1).
+  let lifecycleCore: XmppCore | undefined;
 
-  // One boot per generation: a second caller waits for it instead of starting
-  // another, because two boots would create two cores and double every XMPP
-  // subscription. A boot of an older generation was interrupted when that
-  // generation ended, so a newer generation starts a fresh one.
-  const runBoot = (scope: Scope.Scope): Effect.Effect<void, never, Ports> =>
-    Effect.gen(function* () {
-      if (s.boot === undefined || s.boot.scope !== scope) {
-        const record: NonNullable<StoreState['boot']> = { scope, fiber: undefined };
-        record.fiber = ctx.fork(
-          boot.pipe(
-            Effect.ensuring(
-              Effect.sync(() => {
-                if (s.boot === record) {
-                  s.boot = undefined;
-                }
-              }),
-            ),
-          ),
-          scope,
-        );
-        s.boot = record;
-      }
-      const running = s.boot.fiber;
-      if (running !== undefined) {
-        yield* Fiber.await(running);
-      }
-    });
+  // Late-bound: the app hooks below call back into the context that holds them.
+  let lifecycleCtx!: LifecycleCtx;
 
-  // A real device suspends the socket in the background, so on resume we must
-  // not assume it is alive: reconnect whenever the status is not `online`.
-  const reconnect: Effect.Effect<void, never, Ports> = Effect.gen(function* () {
-    if (!s.started) {
-      return;
-    }
-    if (s.boot !== undefined) {
-      const scope = life.generation();
-      const running = s.boot.fiber;
-      if (running !== undefined) {
-        yield* Fiber.await(running);
-      }
-      // The awaited boot failed before creating a core (offline token fetch):
-      // try again for this generation instead of silently dropping the resume.
-      if (s.core === undefined && s.started && scope === life.generation()) {
-        yield* runBoot(scope);
-      }
-      return;
-    }
-    const current = s.core;
-    if (current === undefined) {
-      yield* runBoot(life.generation());
-      return;
-    }
-    if (get().status === 'online') {
-      return;
-    }
-    yield* recover(
-      Effect.gen(function* () {
-        yield* lift(() => current.connect());
-        set({ status: 'online' });
-        h.flushPending();
-        const me = get().me;
-        if (me !== undefined) {
-          yield* fx.joinGroups(current, me);
-          s.groupsJoined = true;
-        }
-        h.flushPending();
-      }),
-      () => Effect.sync(() => set({ status: 'offline' })),
-    );
-  });
-
-  return {
-    reconnect,
-    restartBoot: () => {
-      life.restartGeneration();
-      ctx.fork(runBoot(life.generation()));
+  const appHooks: StoreAppHooks = {
+    syncBadge: () => {},
+    dismissChatNotifications: () => {},
+    loadGroupMembers: (chatId) => {
+      ctx.forkSession(ctx.fx.ensureGroupMembers(chatId));
     },
-    start: () => {
-      if (s.started) {
-        return;
-      }
-      s.started = true;
-      life.restartGeneration();
+    finishDraftTurn: (chatId, turnId) => {
+      markTurnFinished(lifecycleCtx, turnId);
+      clearDraftTimeout(lifecycleCtx, chatId);
+    },
+    forgetRetryBytes: () => {},
+    setStatus: (status) => {
+      set({ status });
+    },
+    prepareStart: () => {
       if (get().chats.length === 0) {
         set({ chatsLoad: 'loading' });
       }
-      onClose(
-        life.session(),
-        ports.appState.subscribe((state) => {
-          if (state !== 'active') {
-            return;
-          }
-          ctx.fork(reconnect);
-        }),
-      );
-      h.startTopicsPolling();
-      ctx.fork(runBoot(life.generation()));
+      const unsubscribe = ctx.ports.visibility.onFocus(() => {
+        life.lifetime.fork(coreReconnect(lifecycleCtx));
+      });
+      life.lifetime.onStoreClose(Effect.sync(unsubscribe));
+    },
+    setChatsLoad: (load) => {
+      set({ chatsLoad: load === 'ready' ? 'loaded' : load });
+    },
+    applyBoot: (input) => {
+      const prefs = input.prefs as ChatPref[];
+      s.chatPrefRows = prefs;
+      set({
+        me: input.me as Me,
+        currentUserId: input.me.id,
+        chats: applyChatPrefs(input.freshRows, prefs, ctx.ports.now().getTime()),
+        contacts: input.contacts as Contact[],
+        chatsLoad: 'loaded',
+      });
+    },
+    rememberGroupIds: (entries) => {
+      h.rememberGroupIds(entries as ChatEntry[]);
+    },
+    scheduleChatsRefresh: () => {
+      ctx.fx.scheduleChatsRefresh();
+    },
+    refreshChats: () => {
+      ctx.forkSession(ctx.fx.refreshChats);
+    },
+    refreshActiveChatPins: (chatId) => {
+      ctx.fx.refreshActiveChatPins(chatId);
+    },
+    joinGroups: (core, me) => ctx.run(ctx.fx.joinGroups(core, me as Me)),
+    saveChatList: () => {},
+    refreshDefaultBackground: () => {},
+    loadFolders: () => {
+      // The folders load beside the chat list, as they did before the move to
+      // the core lifecycle; a failure keeps the last list.
+      ctx.forkSession(ctx.fx.loadFolders);
+    },
+    setMediaTrustedHosts: (hosts) => {
+      s.mediaTrustedHosts = hosts ?? new Set();
+      set({ mediaTrustedHosts: s.mediaTrustedHosts });
+    },
+    applyStop: () => {
+      h.teardown();
+    },
+  };
+
+  lifecycleCtx = {
+    get: () => asHistoryState(get()),
+    set: (update) => {
+      set((state) => {
+        const previous = asHistoryState(state);
+        const patch = typeof update === 'function' ? update(previous) : update;
+        // `clearSupersededMarker` returns the state it was given to skip the
+        // write; keep the store's "same object" convention.
+        if (patch === previous) {
+          return state;
+        }
+        return asMobilePatch(patch);
+      });
+    },
+    ports: coreCtx.ports,
+    rt: life.lifetime,
+    k: coreCtx.k,
+    fx: appHooks,
+    get core() {
+      return lifecycleCore;
+    },
+    set core(value) {
+      // The core sees every assignment, including the `undefined` a closed
+      // attempt writes. `s.core` keeps the last handle (its adoption path and
+      // history previews use it best-effort); `teardown()` clears it on sign-out.
+      lifecycleCore = value;
+      if (value !== undefined) {
+        s.core = value;
+      }
+    },
+    get lastRead() {
+      return s.lastRead;
+    },
+    set lastRead(value) {
+      s.lastRead = value;
+    },
+    lastReadUserId: undefined,
+    pendingOutgoing: s.pendingOutgoing,
+    get groupsJoined() {
+      return s.groupsJoined;
+    },
+    set groupsJoined(value) {
+      s.groupsJoined = value;
+    },
+    get pendingOpenChatId() {
+      return s.pendingOpenChatId;
+    },
+    set pendingOpenChatId(value) {
+      s.pendingOpenChatId = value;
+    },
+    cursors: s.cursors,
+    loadingHistory: s.loadingHistory,
+    loadingOlder: s.loadingOlder,
+    finishedTurns: s.finishedTurns,
+    finishedTurnOrder: s.finishedTurnOrder,
+    started: false,
+    cachedUserId: undefined,
+    connectRetryAttempt: 0,
+    connectRetryPending: false,
+    get mediaToken() {
+      return s.mediaToken;
+    },
+    set mediaToken(value) {
+      s.mediaToken = value;
+    },
+    boot: undefined,
+  };
+
+  return {
+    start: () => {
+      Effect.runSync(coreStartStore(lifecycleCtx));
     },
     stop: () => {
-      s.started = false;
-      life.endSession();
-      h.teardown();
-      s.pendingOpenChatId = undefined;
-      s.groupsJoined = false;
-      s.mediaToken = undefined;
-      s.mediaTrustedHosts = new Set();
-      const current = s.core;
-      s.core = undefined;
-      if (current !== undefined) {
-        Effect.runFork(
-          orElse(
-            lift(() => current.disconnect()),
-            undefined,
-          ),
-        );
-      }
-      set({ status: 'offline', mediaTrustedHosts: undefined });
+      Effect.runSync(coreStopStore(lifecycleCtx));
+      reset(lifecycleCtx);
+    },
+    restartBoot: () => {
+      Effect.runSync(coreRetryBoot(lifecycleCtx));
+    },
+    finishDraftTurn: (chatId, turnId) => {
+      markTurnFinished(lifecycleCtx, turnId);
+      clearDraftTimeout(lifecycleCtx, chatId);
     },
   };
 }

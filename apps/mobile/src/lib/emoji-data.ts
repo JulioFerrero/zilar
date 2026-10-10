@@ -383,15 +383,7 @@ export function readRecentEmoji(raw: string | null | undefined): string[] {
 
 import { createMemoryRecentsBackend, type RecentsStorageBackend } from './stickers-storage';
 
-/** The device key for emoji recents (kept next to the sticker recents). */
-export const EMOJI_RECENTS_KEY = 'zilar:recentEmoji';
-
 let emojiBackend: RecentsStorageBackend = createMemoryRecentsBackend();
-
-/** Swaps the emoji recents backend (tests and the app's persisted store). */
-export function setEmojiRecentsBackend(next: RecentsStorageBackend): void {
-  emojiBackend = next;
-}
 
 /** The emoji recents storage the composer hands to the emoji panel. */
 export const EMOJI_RECENTS_STORAGE = {

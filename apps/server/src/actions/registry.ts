@@ -60,12 +60,6 @@ export function truncateModelText(value: string): string {
   return `${value.slice(0, ACTION_MODEL_TEXT_MAX_CHARS)}…`;
 }
 
-// The closing tag of the wrapper the agent gateway puts around `modelText`
-// (see `agents/gateway.ts`). Adapters must never emit it: the gateway
-// strips every occurrence before wrapping so a tool's output cannot break
-// out of the labelled block.
-export const MODEL_TEXT_WRAPPER_CLOSE = '</untrusted-tool-output>';
-
 // Removes every occurrence of the wrapper's closing tag from `modelText`
 // so a hostile tool output cannot close the labelled block early.
 //

@@ -14,9 +14,9 @@
 // path from a forbidden one.
 
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import type { createSettingsCipher } from '../setup/crypto';
 
 // The mail helpers (`getMailSettings`, `saveMailSettingsEffect`,
@@ -30,16 +30,6 @@ type Encrypter = Pick<ReturnType<typeof createSettingsCipher>, 'encrypt'>;
 
 interface StoredValueRow {
   value: string;
-}
-
-// Reads and writes run on the `effect/sql` client registered for this database
-// (see `../effect/sql`); the exported functions stay `async` so routes and
-// tests keep their shape.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 export async function getStoredTelegramToken(

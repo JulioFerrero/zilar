@@ -24,10 +24,6 @@ vi.mock('expo-router', () => ({
   useRouter: () => ({ back: () => {}, push: () => {} }),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   Modal: 'Modal',
@@ -35,10 +31,6 @@ vi.mock('react-native', () => ({
   Pressable: 'Pressable',
   TextInput: 'TextInput',
   View: 'View',
-}));
-
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
 }));
 
 vi.mock('@/components/ui/use-key-press', () => ({
@@ -69,11 +61,6 @@ vi.mock('@/components/settings/screen-shell', () => ({
   SettingsScreenShell: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
-}));
-
 vi.mock('@/components/ui/confirm-dialog', () => ({
   ConfirmDialog: ({ visible, title }: { visible: boolean; title: string }) =>
     visible ? createElement('Text', null, title) : null,
@@ -84,14 +71,10 @@ vi.mock('@/components/integrations/use-integrations-api', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
-  ACCENT: { dark: '#ededed', light: '#ededed' },
+  ACCENT: '#ededed',
   DANGER: { dark: '#dc2626', light: '#dc2626' },
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ICON: '#d4d4d4',
+  MUTED_FOREGROUND: '#a1a1a1',
 }));
 
 const READY_STATUS: IntegrationsStatus = {

@@ -11,31 +11,23 @@
 // 429 limiter, then the 400 decode, then the 404 chat resolution — exactly
 // like the old `requireSession` -> 501 -> limiter -> `safeParse` sequence.
 import { Effect, Layer, Option, Schema } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
-import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-} from 'effect/http-api';
+import { SqlClient } from 'effect/sql';
+import type { HttpServerRequest } from 'effect/http';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { MediaGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { isDmBlocked } from '../blocks/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import type { MediaItemRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import {
-  CurrentUser,
-  Session,
-  failureResponse,
-  requestIdOf,
+  handler,
+  mountApi,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
@@ -113,32 +105,9 @@ function queryRecord(request: HttpServerRequest.HttpServerRequest): Record<strin
   return record;
 }
 
-// Every optional `MediaItem` field is `Schema.optional(...)`, never `NullOr`,
-// so an absent field stays absent in the JSON (the handler returns a raw
-// response built by `toMediaItem`, like the old `c.json`).
-const MediaItemView = Schema.Struct({
-  messageId: Schema.String,
-  chat: Schema.String,
-  at: Schema.String,
-  senderName: Schema.String,
-  kind: Schema.Literals(['image', 'file', 'gif', 'voice', 'link']),
-  url: Schema.optional(Schema.String),
-  name: Schema.optional(Schema.String),
-  size: Schema.optional(Schema.Number),
-  mime: Schema.optional(Schema.String),
-  width: Schema.optional(Schema.Number),
-  height: Schema.optional(Schema.Number),
-  durationMs: Schema.optional(Schema.Number),
-  waveform: Schema.optional(Schema.Array(Schema.Number)),
-  linkUrl: Schema.optional(Schema.String),
-  linkHost: Schema.optional(Schema.String),
-});
-
-const MediaPage = Schema.Struct({
-  items: Schema.Array(MediaItemView),
-  next: Schema.NullOr(Schema.String),
-});
-
+// The reply schemas live in the shared contract (`@zilar/api-contract`,
+// `media.ts`, T-0895). Every optional field is absent, never `null` (the
+// handler returns a raw response built by `toMediaItem`, like the old `c.json`).
 export interface MediaItem {
   messageId: string;
   chat: string;
@@ -155,13 +124,6 @@ export interface MediaItem {
   waveform?: number[];
   linkUrl?: string;
   linkHost?: string;
-}
-
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // The effect/sql gallery read returns the same columns in the same camelCase
@@ -225,42 +187,7 @@ function errorName(error: unknown): string {
   return error instanceof Error ? error.constructor.name : typeof error;
 }
 
-class MediaSchemaErrors extends HttpApiMiddleware.Service<MediaSchemaErrors>()(
-  'zilar/effect/http/MediaSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<MediaSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(MediaSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid request'),
-      );
-    }),
-  );
-}
-
-const MediaGroup = HttpApiGroup.make('media')
-  .add(
-    HttpApiEndpoint.get('gallery', '/media', {
-      success: MediaPage,
-    }),
-  )
-  .middleware(Session)
-  // The framework never decodes a body or params here, so this layer only
-  // guards against a future endpoint adding one; the query decode runs
-  // manually in the handler with its fixed text.
-  .middleware(MediaSchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
-
 const MediaApi = HttpApi.make('media').add(MediaGroup);
-
-export const MEDIA_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/media' },
-];
 
 export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
   const logger = deps.logger;
@@ -274,11 +201,10 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
     });
 
   const groupLayer = HttpApiBuilder.group(MediaApi, 'media', (handlers) =>
-    handlers.handle('gallery', (request) => {
-      const requestId = requestIdOf(request.request);
-      return withErrorEnvelope(
+    handlers.handle(
+      'gallery',
+      handler(logger, (request, user) =>
         Effect.gen(function* () {
-          const user = yield* CurrentUser;
           if (deps.archive === undefined) {
             throw new HttpError(501, 'media_unavailable', 'Media gallery is not configured');
           }
@@ -378,10 +304,8 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
 
           return { items, next };
         }),
-        logger,
-        requestId,
-      );
-    }),
+      ),
+    ),
   );
 
   const apiLayer = HttpApiBuilder.layer(MediaApi).pipe(
@@ -390,12 +314,5 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: MEDIA_API_ROUTES };
+  return mountApi(MediaApi, apiLayer);
 }

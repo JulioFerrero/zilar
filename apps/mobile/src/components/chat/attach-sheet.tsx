@@ -3,13 +3,10 @@ import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Attachment } from '@zilar/protocol';
-import { useColorScheme } from 'nativewind';
 
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import { well } from '@/lib/depth';
-import type { PickedFile } from '@/lib/attachment-ports';
 
 export type AttachmentChoice = 'library' | 'camera' | 'file';
 
@@ -74,8 +71,7 @@ export function AttachSheet({
   onClose,
 }: AttachSheetProps) {
   const insets = useSafeAreaInsets();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
-  const iconColor = ICON[scheme];
+  const iconColor = ICON;
   if (!open) {
     return null;
   }
@@ -268,9 +264,6 @@ function formatPreviewSize(bytes: number): string {
   const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
   return `${rounded} ${units[unit]} · sending with your message`;
 }
-
-/** The picked file the sheet preview shows, for tests. */
-export type SheetPreview = Pick<PickedFile, 'uri' | 'name' | 'size'>;
 
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif']);
 

@@ -7,7 +7,7 @@ import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
-import { runSql } from './db';
+import { runSql } from '../effect/sql';
 import { type ExecuteRoutinePorts, executeRoutine } from './execute';
 import { nextRunAfter, parseRoutineSchedule } from './schedule';
 

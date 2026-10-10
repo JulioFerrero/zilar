@@ -1,8 +1,10 @@
-// A group's members: loading them once per chat, caching the detail, and
+// A group's members: loading the detail once per group, caching it, and
 // joining the group rooms after the connection is up. History and the
 // lifecycle use these without pulling in the group actions.
 import { Effect } from 'effect';
 import type { MentionMember } from '@zilar/chat-core';
+import { ensureGroupDetail, type GroupDetailStore } from '@zilar/client-core/store';
+import { jidLocal } from '@zilar/protocol';
 import type { XmppCore } from '@zilar/xmpp-core';
 import type { GroupDetail, Me } from '@/lib/api';
 import type { StoreCtx } from './ctx';
@@ -33,7 +35,7 @@ export function applyGroupDetail(
     });
   }
   for (const ai of detail.ais) {
-    const localpart = (ai.jid.split('@')[0] ?? ai.jid).toLowerCase();
+    const localpart = jidLocal(ai.jid).toLowerCase();
     members.set(localpart, { jid: ai.jid, name: ai.name });
   }
   ctx.groupMembers.set(chatId, members);
@@ -52,11 +54,54 @@ export function applyGroupDetail(
   }));
 }
 
+// The in-flight marks of the group-detail loads, keyed so a group id can never
+// collide with a chat id.
+const groupKey = (groupId: string): string => `group:${groupId}`;
+
 /**
- * Loads the members of a group once per chat, so a typing indicator or a
- * message from a member who is not a contact can still show a name. The
- * mention picker and the group panel read the same list. The AIs the group
- * holds (T-0054) ride along, keyed by their `ai-` localpart.
+ * The web view of the core's per-group cache (T-0920): the detail map is the
+ * chat-keyed `groupInfos`, so the cache is read by `detail.id`; the in-flight
+ * marks live in `loadingGroupMembers` under a group key.
+ */
+function groupDetailStore(ctx: StoreCtx): GroupDetailStore<GroupDetail> {
+  return {
+    cached: (groupId) => {
+      for (const detail of ctx.groupInfos.values()) {
+        if (detail.id === groupId) {
+          return detail;
+        }
+      }
+      return undefined;
+    },
+    isLoading: (groupId) => ctx.loadingGroupMembers.has(groupKey(groupId)),
+    begin: (groupId) => {
+      ctx.loadingGroupMembers.add(groupKey(groupId));
+    },
+    finish: (groupId) => {
+      ctx.loadingGroupMembers.delete(groupKey(groupId));
+    },
+    publish: (_groupId, detail) => {
+      const mine = ctx.k.myJid();
+      if (mine === undefined) {
+        return;
+      }
+      const domain = domainOf(mine);
+      // Every known row of the group is filled, so a caller that shared an
+      // in-flight load still finds the detail in its own chat-keyed entry.
+      for (const row of ctx.get().chats) {
+        if (row.groupId === detail.id) {
+          applyGroupDetail(ctx, row.id, detail, domain);
+        }
+      }
+    },
+  };
+}
+
+/**
+ * Loads the members of a group once per group, so a typing indicator or a
+ * message from a member who is not a contact can still show a name, and every
+ * topic row of the group shares one GET (R14). The mention picker and the
+ * group panel read the same list. The AIs the group holds (T-0054) ride along.
  */
 export const ensureGroupMembers = (
   ctx: StoreCtx,
@@ -64,9 +109,6 @@ export const ensureGroupMembers = (
   force = false,
 ): Effect.Effect<void, never, Ports> =>
   Effect.gen(function* () {
-    if (ctx.loadingGroupMembers.has(chatId)) {
-      return;
-    }
     if (!force && ctx.groupInfos.has(chatId)) {
       return;
     }
@@ -75,15 +117,13 @@ export const ensureGroupMembers = (
     if (groupId === undefined || mine === undefined) {
       return;
     }
-    const domain = domainOf(mine);
     const { api } = yield* Ports;
-    ctx.loadingGroupMembers.add(chatId);
-    yield* fromPromise(() => api.getGroup(groupId)).pipe(
-      Effect.andThen((detail) => Effect.sync(() => applyGroupDetail(ctx, chatId, detail, domain))),
-      // The name falls back to the occupant nick or "Someone".
-      Effect.catchCause(() => Effect.void),
-      Effect.ensuring(Effect.sync(() => ctx.loadingGroupMembers.delete(chatId))),
-    );
+    const detail = yield* ensureGroupDetail(api, groupDetailStore(ctx), groupId, force);
+    // A pure cache hit (or a load another caller started) does not repaint;
+    // fill this chat's entry, which the publish above may not have reached.
+    if (detail !== undefined && !ctx.groupInfos.has(chatId)) {
+      applyGroupDetail(ctx, chatId, detail, domainOf(mine));
+    }
   });
 
 /** Starts loading the members of a group chat without waiting for them. */

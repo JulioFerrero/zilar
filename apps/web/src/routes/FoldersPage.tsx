@@ -13,7 +13,7 @@ import { folderIconComponent } from '@/components/folderIcon';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 
@@ -26,7 +26,7 @@ const TYPE_LABELS: Record<FolderChatType, string> = {
 
 /** Settings → Chat folders: list, reorder, create, edit and delete (T-0238). */
 export function FoldersPage({ onBack }: { onBack: () => void }) {
-  const store = useChatStore();
+  const folders = useChatSelector((s) => s.folders);
   const storeApi = useChatStoreApi();
   // ChatShell also mounts this when the page opens from inside the app, but
   // a direct load (refresh, typed URL) needs the sync here too; mounting
@@ -38,7 +38,6 @@ export function FoldersPage({ onBack }: { onBack: () => void }) {
     folder: null,
   });
 
-  const folders = store.folders;
   const atLimit = folders.length >= FOLDERS_MAX;
   // One reorder at a time: a second one is dropped while the first waits.
   // On failure the previous order comes back; a success stores the server's order.

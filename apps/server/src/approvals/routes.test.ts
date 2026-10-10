@@ -14,6 +14,7 @@ import {
   type TestApp,
   type TestContext,
 } from '../test-support';
+import { seedAi } from '../test-support/seed';
 import {
   createApprovalsApi,
   type ApprovalsApiDependencies,
@@ -49,36 +50,6 @@ function argsHash(seed: number): string {
   buf[0] = seed & 0xff;
   buf[1] = (seed >> 8) & 0xff;
   return buf.toString('hex');
-}
-
-async function seedAi(
-  context: TestContext,
-  ownerId: string,
-  overrides: { name?: string } = {},
-): Promise<{ aiId: string; jid: string }> {
-  const connectionId = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label) VALUES (${connectionId}, ${ownerId}, 'openai', 'sealed-placeholder', NULL)`;
-    }),
-  );
-  const aiId = randomUUID();
-  const localpart = `ai-${aiId}`;
-  const jid = `${localpart}@zilar.localhost`;
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status) VALUES (${aiId}, ${ownerId}, ${overrides.name ?? 'Helper AI'}, 'dev', 'A persona', ${connectionId}, 'gpt-4o-mini', ${localpart}, ${jid}, 'active')`;
-    }),
-  );
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, '1.00', '20.00')`;
-    }),
-  );
-  return { aiId, jid };
 }
 
 interface ApprovalsHarness {

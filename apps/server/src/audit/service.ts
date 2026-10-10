@@ -1,9 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { Effect, Exit, Schema, SchemaIssue } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
+import { MAX_AUDIT_LIST_LIMIT } from '@zilar/api-contract';
 import { ARGS_HASH_PATTERN, struct } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 
 // `action` is dotted: `domain.verb`, lowercase + underscores. Same regex the
 // protocol's approval schema already enforces for similar dotted ids.
@@ -12,16 +13,6 @@ const ACTION_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 // A serialised `detail` blob stays under 2 KB so the audit log can never
 // quietly start storing secrets, free text or big payloads.
 const MAX_DETAIL_BYTES = 2 * 1024;
-
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
 
 // We accept the few cost currencies the rest of the platform stores.
 const costCurrencySchema = Schema.Literals(['EUR', 'USD']);
@@ -139,13 +130,6 @@ function decodeEntry(entry: AuditEntry): AuditEntry {
   throw new Error('Invalid audit entry: unknown');
 }
 
-export interface AuditRecorderDeps {
-  db: ServerDatabase;
-  logger?: AuditLogger;
-  /** Override `now` in tests. Defaults to the wall clock. */
-  now?: () => Date;
-}
-
 // Minimal slice of pino's Logger the recorder needs. Real call sites pass the
 // server's own logger; tests can pass a captor.
 export interface AuditLogger {
@@ -210,7 +194,7 @@ export async function recordAudit(db: ServerDatabase, entry: AuditEntry, now: Da
   );
 }
 
-export const MAX_AUDIT_LIST_LIMIT = 200;
+export { MAX_AUDIT_LIST_LIMIT };
 export const DEFAULT_AUDIT_LIST_LIMIT = 50;
 
 const cursorSchema = Schema.String.pipe(

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import type { KeyCipher } from './crypto';
 import type { ProviderId } from './providers';
 
@@ -35,13 +35,6 @@ export interface CreateConnectionInput {
 // Every query runs on the `effect/sql` client registered for this database
 // (see `../effect/sql`). The exported functions stay `async` so routes and
 // tests keep their shape during the transition.
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError | E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
-
 // `provider` is a validated ProviderId on every write, so the cast is safe. The
 // plaintext key is never part of this shape: callers that need it go through
 // `decryptForGatewayUse`.

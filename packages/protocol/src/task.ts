@@ -11,8 +11,6 @@ export const TaskStateSchema = Schema.Literals([
   'rejected',
 ]);
 
-export type TaskState = typeof TaskStateSchema.Type;
-
 export const TaskSchema = struct({
   id: IdSchema,
   room: JidSchema,
@@ -35,14 +33,10 @@ export const DecisionSchema = struct({
   source_message_id: Schema.optional(IdSchema),
 });
 
-export type Decision = typeof DecisionSchema.Type;
-
 export const BoardArtifactSchema = Schema.Struct({
   ...ArtifactRefSchema.fields,
   id: Schema.mutableKey(IdSchema),
 });
-
-export type BoardArtifact = typeof BoardArtifactSchema.Type;
 
 export const BoardUpdateSchema = Schema.Union([
   struct({ op: Schema.Literal('task.created'), room: JidSchema, task: TaskSchema }),
@@ -58,5 +52,3 @@ export const BoardUpdateSchema = Schema.Union([
     artifact: BoardArtifactSchema,
   }),
 ]);
-
-export type BoardUpdate = typeof BoardUpdateSchema.Type;

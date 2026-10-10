@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import { decodePayload, type Payload } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { correctionTarget, retractTarget, stanzaFrom } from '../search/routes';
 import type { ArchivePool, ArchiveRow } from '../search/service';
 
@@ -14,7 +14,6 @@ import type { ArchivePool, ArchiveRow } from '../search/service';
 // per chat so a room cannot grow unbounded.
 export const MEDIA_INDEX_MAX_ROWS = 5000;
 export const MEDIA_ITEMS_CAP_PER_CHAT = 20000;
-export const MEDIA_WINDOW_MONTHS = 12;
 const MEDIA_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 
 export type MediaKind = 'image' | 'file' | 'gif' | 'voice' | 'link';
@@ -216,16 +215,6 @@ function extractMediaItemsUnsafe(row: ArchiveRow): ExtractedMediaItem[] {
     items.push({ kind: 'link', linkUrl: link.url, linkHost: link.host });
   }
   return items;
-}
-
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // The `media_items` row the indexer writes. Local to this file now that the

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
+import { MAX_MONTHLY_USD } from '@zilar/api-contract';
 import type { KeyCipher } from '../connections/crypto';
 import {
   decryptForGatewayUse,
@@ -9,7 +10,7 @@ import {
 } from '../connections/service';
 import { ROSTER_GROUP } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { ensureXmppAccount, jidFor, localpartFor } from '../xmpp/provisioning';
@@ -22,17 +23,10 @@ import { defaultPersonaFor, type AiTemplate } from './templates';
 // `effect/sql` client registered for this database (see `../effect/sql`).
 // The exported functions stay `async` so routes and tests keep their shape
 // during the transition.
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError | E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
-
 // The server ceiling on an AI's monthly budget. The plan's example is EUR 20 a
-// month; the cap is a product safety limit (a client can never widen it) and a
-// comment here so changing it is a deliberate act, not a magic number.
-export const MAX_MONTHLY_USD = 200;
+// month; the cap is a product safety limit (a client can never widen it). It
+// lives in the shared contract, which validates the limits.
+export { MAX_MONTHLY_USD };
 
 // LiteLLM's budget window for every AI key. `per_day_usd` is stored for the
 // daily ledger a later task builds; the gateway does not enforce a daily cap.
@@ -468,8 +462,7 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
             input.acceptsDelegation !== undefined
           ) {
             // Every column here is NOT NULL, so a null means "keep the current
-            // value": COALESCE gives the same partial update the drizzle
-            // `set({...})` built before.
+            // value": COALESCE gives a partial update.
             yield* sql`UPDATE ais SET
               name = COALESCE(${input.name ?? null}, name),
               persona = COALESCE(${input.persona ?? null}, persona),

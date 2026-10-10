@@ -4,10 +4,10 @@
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { InviteRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 
 export const INVITE_CODE_BYTES = 16;
 export const DEFAULT_INVITE_MAX_USES = 1;
@@ -21,13 +21,6 @@ export interface CreateInviteOptions {
   createdBy?: string | null;
   maxUses?: number;
   expiresInDays?: number;
-}
-
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 export function generateInviteCode(): string {

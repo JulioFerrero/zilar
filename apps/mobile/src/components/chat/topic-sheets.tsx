@@ -8,14 +8,12 @@ import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { MUTE_DURATIONS, type MuteDurationId } from '@/lib/chat-prefs';
 import { MUTED_FOREGROUND, FOREGROUND } from '@/lib/colors';
 import { approverLine, approverOptions, topicAccessRows } from '@/lib/roles';
 import type { CustomGroupRole } from '@/lib/roles-api';
 import type { ApproverRole, TopicMember, TopicRole } from '@/lib/topics-api';
 import type { ChatSummary } from '@/lib/types';
-import { useColorScheme } from 'nativewind';
 
 export type TopicSheetAction = 'archive';
 export type TopicPrefAction =
@@ -49,7 +47,6 @@ export function TopicActionsSheet({
   onPref: (action: TopicPrefAction) => void;
   onClose: () => void;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const pinned = chat?.pinnedAt !== undefined;
   const archived = chat?.archived === true;
   const muted = chat?.muted === true;
@@ -70,7 +67,7 @@ export function TopicActionsSheet({
               {chat.title}
             </Text>
             {chat.topic?.visibility === 'private' ? (
-              <Lock size={16} color={MUTED_FOREGROUND[scheme]} />
+              <Lock size={16} color={MUTED_FOREGROUND} />
             ) : null}
           </View>
         ) : undefined
@@ -189,7 +186,6 @@ export function TopicInfoSheet({
    * rows show no memory button. */
   onOpenAiMemory?: (ai: { id: string; name: string }) => void;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const topic = chat?.topic;
   const [pickerOpen, setPickerOpen] = useState(false);
   const [approverOpen, setApproverOpen] = useState(false);
@@ -221,9 +217,7 @@ export function TopicInfoSheet({
                 {groupTitle} · {topic.visibility === 'private' ? 'Private' : 'Public'}
               </Text>
             </View>
-            {topic.visibility === 'private' ? (
-              <Lock size={16} color={MUTED_FOREGROUND[scheme]} />
-            ) : null}
+            {topic.visibility === 'private' ? <Lock size={16} color={MUTED_FOREGROUND} /> : null}
           </View>
 
           <View>
@@ -261,7 +255,7 @@ export function TopicInfoSheet({
                     onPress={() => onOpenAiMemory(ai)}
                     className="rounded-full p-2 active:bg-surface-raised"
                   >
-                    <Brain size={16} color={MUTED_FOREGROUND[scheme]} />
+                    <Brain size={16} color={MUTED_FOREGROUND} />
                   </Pressable>
                 ) : null}
               </View>
@@ -388,9 +382,7 @@ export function TopicInfoSheet({
                             <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px]">
                               {option.label}
                             </Text>
-                            {option.selected ? (
-                              <Check size={16} color={FOREGROUND[scheme]} />
-                            ) : null}
+                            {option.selected ? <Check size={16} color={FOREGROUND} /> : null}
                           </Pressable>
                         ))}
                       </View>

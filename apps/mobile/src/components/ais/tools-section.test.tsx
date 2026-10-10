@@ -19,10 +19,7 @@ import {
   withoutTool,
   type ToolsSectionState,
 } from './tools-section';
-
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'light' }),
-}));
+import { waitFor } from '@/test/wait';
 
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
@@ -35,10 +32,6 @@ vi.mock('react-native', () => ({
 vi.mock('lucide-react-native', () => ({
   CircleAlert: 'CircleAlert',
   Inbox: 'Inbox',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
 }));
 
 vi.mock('@/components/ui/button', () => ({
@@ -223,14 +216,6 @@ describe('closeDetailSheet', () => {
   });
 });
 
-const settle = async (check: () => boolean): Promise<void> => {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    if (check()) return;
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  }
-  throw new Error('the load did not settle');
-};
-
 describe('reload keeps the rows', () => {
   it('shows the rows while a reload is in flight, then the new rows', async () => {
     const first = await createMockToolsApi().listAiTools('ai-1');
@@ -253,7 +238,7 @@ describe('reload keeps the rows', () => {
 
     expect(sectionStateOf(registry.get(load), []).status).toBe('loading');
 
-    await settle(() => AsyncResult.isSuccess(registry.get(load)));
+    await waitFor(() => AsyncResult.isSuccess(registry.get(load)));
     expect(sectionStateOf(registry.get(load), [])).toEqual({
       status: 'ready',
       tools: first,
@@ -261,13 +246,13 @@ describe('reload keeps the rows', () => {
     });
 
     registry.refresh(load);
-    await settle(() => calls === 2);
+    await waitFor(() => calls === 2);
     const pending = registry.get(load);
     expect(AsyncResult.isWaiting(pending)).toBe(true);
     expect(sectionStateOf(pending, [])).toEqual({ status: 'ready', tools: first, message: '' });
 
     answerReload(second);
-    await settle(() => {
+    await waitFor(() => {
       const current = registry.get(load);
       return AsyncResult.isSuccess(current) && !AsyncResult.isWaiting(current);
     });

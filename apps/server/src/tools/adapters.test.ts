@@ -16,6 +16,7 @@ import {
   type TestApp,
   type TestContext,
 } from '../test-support';
+import { seedAi, seedGroup } from '../test-support/seed';
 import {
   buildToolAdapters,
   describeSchedule,
@@ -74,44 +75,6 @@ interface AuditRow {
   detail: unknown;
 }
 
-async function seedAi(context: TestContext, ownerId: string): Promise<string> {
-  const connectionId = randomUUID();
-  const aiId = randomUUID();
-  const localpart = `ai-${aiId}`;
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key) VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${'sealed-placeholder'})`;
-      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status) VALUES (${aiId}, ${ownerId}, ${'Helper AI'}, ${'dev'}, ${'A persona'}, ${connectionId}, ${'gpt-4o-mini'}, ${localpart}, ${`${localpart}@zilar.localhost`}, ${'active'})`;
-      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${'1.00'}, ${'20.00'})`;
-    }),
-  );
-  return aiId;
-}
-
-async function seedGroup(
-  context: TestContext,
-  ownerId: string,
-  aiIds: string[],
-): Promise<{ groupId: string; generalTopicId: string }> {
-  const groupId = randomUUID();
-  const groupRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
-  const generalTopicId = randomUUID();
-  const generalRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${groupRoom}, ${'Trip'}, ${ownerId})`;
-      yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${ownerId}, ${'owner'})`;
-      for (const aiId of aiIds) {
-        yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${ownerId})`;
-      }
-      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${generalTopicId}, ${groupId}, ${'General'}, ${'G'}, ${generalRoom}, ${'public'}, ${'chat'}, ${'open'}, ${true}, ${ownerId})`;
-    }),
-  );
-  return { groupId, generalTopicId };
-}
-
 async function seedTopic(
   context: TestContext,
   groupId: string,
@@ -157,7 +120,7 @@ describe('tool adapters (T-0105)', () => {
       `adapter-owner-${emailCounter}@example.com`,
     );
     ownerId = owner.id;
-    aiId = await seedAi(context, ownerId);
+    aiId = (await seedAi(context, ownerId)).aiId;
   });
 
   afterEach(async () => {
@@ -348,7 +311,12 @@ describe('tool adapters (T-0105)', () => {
 
   it('a tool of another chat or AI is invisible', async () => {
     const { adapters } = adaptersFor();
-    const { groupId, generalTopicId } = await seedGroup(context, ownerId, [aiId]);
+    const { groupId, generalTopicId } = await seedGroup(
+      context,
+      ownerId,
+      [{ userId: ownerId, role: 'owner' }],
+      [aiId],
+    );
     const otherTopicId = await seedTopic(context, groupId, ownerId, 'Other');
     const groupCtx = ctxFor({ groupId, topicId: generalTopicId });
     await run(adapters, 'tool.save', groupCtx, baseToolInput());
@@ -376,7 +344,7 @@ describe('tool adapters (T-0105)', () => {
       authApp,
       `other-owner-${emailCounter}@example.com`,
     );
-    const otherAiId = await seedAi(context, otherOwner.id);
+    const { aiId: otherAiId } = await seedAi(context, otherOwner.id);
     expect(
       (
         await run(adapters, 'tool.read', ctxFor({ aiId: otherAiId }), {
@@ -412,7 +380,12 @@ describe('tool adapters (T-0105)', () => {
 
   it('tool.list shows this topic only, with counts and hosts', async () => {
     const { adapters } = adaptersFor();
-    const { groupId, generalTopicId } = await seedGroup(context, ownerId, [aiId]);
+    const { groupId, generalTopicId } = await seedGroup(
+      context,
+      ownerId,
+      [{ userId: ownerId, role: 'owner' }],
+      [aiId],
+    );
     await run(adapters, 'tool.save', ctxFor(), baseToolInput());
     await run(
       adapters,
@@ -456,7 +429,12 @@ describe('tool adapters (T-0105)', () => {
   it('routine.pause and routine.delete act on this topic only', async () => {
     const runner = okRunner();
     const { adapters } = adaptersFor({ runner });
-    const { groupId, generalTopicId } = await seedGroup(context, ownerId, [aiId]);
+    const { groupId, generalTopicId } = await seedGroup(
+      context,
+      ownerId,
+      [{ userId: ownerId, role: 'owner' }],
+      [aiId],
+    );
     const groupCtx = ctxFor({ groupId, topicId: generalTopicId });
     await run(adapters, 'tool.save', groupCtx, baseToolInput());
     await approveHostsThroughGateway(adapters, groupCtx, 'morning-prices');

@@ -14,13 +14,13 @@
   },
   "dependencies": {
     "@types/react": "^19.3.0",
-    "effect": "^4.0.0",
+    "effect": "catalog:",
     "ink": "^8.0.0",
     "react": "^19.3.0"
   },
   "devDependencies": {
-    "@xmpp/client": "^0.14.0",
+    "@xmpp/client": "catalog:",
     "ink-testing-library": "^4.0.0",
-    "tsx": "^4.23.15"
+    "tsx": "catalog:"
   }
 }

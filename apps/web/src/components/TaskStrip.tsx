@@ -1,4 +1,5 @@
 import type { ChatSummary } from '@zilar/chat-core';
+import { isAiJid, jidLocal } from '@zilar/protocol';
 import { Effect, Option, Schema } from 'effect';
 import { ExternalLink } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -153,11 +154,11 @@ export function TaskStrip({ chat }: { chat: ChatSummary }) {
   // the mention JID's domain (users are `<id>@<domain>`, AIs
   // `ai-<id>@<domain>`), never by display name: two AIs can share a name.
   const ownerIdFor = (jid: string): string => {
-    const localpart = jid.split('@')[0] ?? jid;
+    const localpart = jidLocal(jid);
     return localpart.startsWith('ai-') ? localpart.slice('ai-'.length) : localpart;
   };
-  const members = candidates.filter((member) => !member.jid.startsWith('ai-'));
-  const aiCandidates = candidates.filter((member) => member.jid.startsWith('ai-'));
+  const members = candidates.filter((member) => !isAiJid(member.jid));
+  const aiCandidates = candidates.filter((member) => isAiJid(member.jid));
 
   const restore =
     (previous: ChatSummary): (() => void) =>

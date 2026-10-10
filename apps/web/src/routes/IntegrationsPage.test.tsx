@@ -1,14 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen } from '@testing-library/react';
 import { renderApp } from '@/test/renderApp';
-
-function jsonResponse(status: number, body: unknown): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response;
-}
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const baseStatus = {
   telegram: { configured: false, source: null },
@@ -36,7 +29,7 @@ describe('IntegrationsPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Integrations' })).toBeTruthy();
     expect(container.querySelector('.mx-auto.max-w-2xl')).not.toBeNull();
-    const cards = screen.getAllByRole('region');
+    const cards = await screen.findAllByRole('region');
     expect(cards.map((card) => card.getAttribute('aria-label'))).toEqual([
       'Email',
       'Telegram',

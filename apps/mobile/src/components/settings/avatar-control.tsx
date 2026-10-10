@@ -1,5 +1,4 @@
 import { Image } from 'expo-image';
-import { useColorScheme } from 'nativewind';
 import { useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
@@ -7,7 +6,6 @@ import { Avatar } from '@/components/chat/avatar';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { ACCENT } from '@/lib/colors';
-import { asColorScheme } from '@/lib/color-scheme';
 import { API_URL } from '@/lib/auth';
 
 import { avatarImageSource, avatarPhaseLabel, type AvatarPhase } from './profile-logic';
@@ -44,7 +42,6 @@ export function AvatarControl({
   onSavePicked,
   onRemove,
 }: AvatarControlProps) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const picked = phase.name === 'picked' || phase.name === 'uploading' ? phase : null;
   const progress = phase.name === 'uploading' ? phase.progress : null;
   const shown = picked?.uri ?? currentUrl ?? null;
@@ -116,7 +113,7 @@ export function AvatarControl({
       ) : null}
       {uploading && phase.name === 'uploading' ? (
         <View className="flex-row items-center gap-2">
-          <ActivityIndicator size="small" color={ACCENT[scheme]} />
+          <ActivityIndicator size="small" color={ACCENT} />
           <Text className="text-[14px] text-muted-foreground">
             {avatarPhaseLabel(phase, currentUrl !== undefined)}
           </Text>

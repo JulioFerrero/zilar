@@ -20,7 +20,7 @@ import { useQuery } from '@/lib/effect/use-query';
 import { prepareBackgroundImage } from '@/lib/background-image';
 import { chatBackgroundStyle, DEFAULT_BACKGROUND_DIM } from '@/lib/chatBackground';
 import { cn } from '@/lib/utils';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
 import { IconButton } from './ui/icon-button';
@@ -99,7 +99,15 @@ export function ChatBackgroundDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const store = useChatStore();
+  const chatKey = chat.id.toLowerCase();
+  const chatPref = useChatSelector((s) => s.chatPrefs[chatKey]);
+  const defaultBackground = useChatSelector((s) => s.defaultBackground);
+  const groupBackgroundStored = useChatSelector((s) => s.groupInfo(chat.id)?.background);
+  const setGroupBackground = useChatSelector((s) => s.setGroupBackground);
+  const setChatBackground = useChatSelector((s) => s.setChatBackground);
+  const setDefaultBackground = useChatSelector((s) => s.setDefaultBackground);
+  const setChatBackgroundImage = useChatSelector((s) => s.setChatBackgroundImage);
+  const setDefaultBackgroundImage = useChatSelector((s) => s.setDefaultBackgroundImage);
   const [scope, setScope] = useState<Scope>('chat');
   const [error, setError] = useState(false);
   // Images the caller uploaded or deleted since the list was loaded; the list
@@ -114,16 +122,14 @@ export function ChatBackgroundDialog({
   const [dimDraft, setDimDraft] = useState<{ imageId: string; value: number } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const chatKey = chat.id.toLowerCase();
-  const chatPref = store.chatPrefs[chatKey];
   const chatPreset = chatPref?.backgroundPreset ?? null;
   const chatImageId = chatPref?.backgroundImageId ?? null;
-  const defaultPreset = store.defaultBackground?.backgroundPreset ?? null;
-  const defaultImageId = store.defaultBackground?.backgroundImageId ?? null;
+  const defaultPreset = defaultBackground?.backgroundPreset ?? null;
+  const defaultImageId = defaultBackground?.backgroundImageId ?? null;
   // T-0466: a group dialog reads the group's shared background; otherwise the
   // scope picks between the chat's own pref and the caller's default.
   const isGroup = groupId !== undefined;
-  const groupBackground = isGroup ? store.groupInfo(chat.id)?.background : undefined;
+  const groupBackground = isGroup ? groupBackgroundStored : undefined;
   // "This chat" shows the chat's own preset (none when unset); "All chats"
   // shows the caller's default, falling back to slate.
   const selected: string | null = isGroup
@@ -140,7 +146,7 @@ export function ChatBackgroundDialog({
     ? (groupBackground?.backgroundDim ?? null)
     : scope === 'chat'
       ? (chatPref?.backgroundDim ?? null)
-      : (store.defaultBackground?.backgroundDim ?? null);
+      : (defaultBackground?.backgroundDim ?? null);
   // A live drag wins while it names the selected image; otherwise the stored
   // dim (or 40) shows.
   const dim =
@@ -158,30 +164,28 @@ export function ChatBackgroundDialog({
 
   const writePreset = (presetId: string | null): Promise<void> => {
     if (isGroup) {
-      return store.setGroupBackground(chat.id, {
+      return setGroupBackground(chat.id, {
         backgroundPreset: presetId,
         backgroundImageId: null,
         backgroundDim: null,
       });
     }
-    return scope === 'chat'
-      ? store.setChatBackground(chat.id, presetId)
-      : store.setDefaultBackground(presetId);
+    return scope === 'chat' ? setChatBackground(chat.id, presetId) : setDefaultBackground(presetId);
   };
 
   // `targetScope` is passed in rather than read from the render closure so a
   // timer scheduled under one scope can never write under another.
   const writeImage = (imageId: string, nextDim: number, targetScope: Scope): Promise<void> => {
     if (isGroup) {
-      return store.setGroupBackground(chat.id, {
+      return setGroupBackground(chat.id, {
         backgroundPreset: null,
         backgroundImageId: imageId,
         backgroundDim: nextDim,
       });
     }
     return targetScope === 'chat'
-      ? store.setChatBackgroundImage(chat.id, imageId, nextDim)
-      : store.setDefaultBackgroundImage(imageId, nextDim);
+      ? setChatBackgroundImage(chat.id, imageId, nextDim)
+      : setDefaultBackgroundImage(imageId, nextDim);
   };
 
   // The server clears a deleted image from any pref that referenced it; the
@@ -190,7 +194,7 @@ export function ChatBackgroundDialog({
     if (isGroup) {
       return groupBackground?.backgroundImageId === id
         ? writeSave(() =>
-            store.setGroupBackground(chat.id, {
+            setGroupBackground(chat.id, {
               backgroundPreset: null,
               backgroundImageId: null,
               backgroundDim: null,
@@ -199,9 +203,9 @@ export function ChatBackgroundDialog({
         : Effect.void;
     }
     const clearChat: Effect.Effect<void, SaveFailed> =
-      chatImageId === id ? writeSave(() => store.setChatBackground(chat.id, null)) : Effect.void;
+      chatImageId === id ? writeSave(() => setChatBackground(chat.id, null)) : Effect.void;
     const clearDefault: Effect.Effect<void, SaveFailed> =
-      defaultImageId === id ? writeSave(() => store.setDefaultBackground(null)) : Effect.void;
+      defaultImageId === id ? writeSave(() => setDefaultBackground(null)) : Effect.void;
     return clearChat.pipe(Effect.andThen(clearDefault));
   };
 

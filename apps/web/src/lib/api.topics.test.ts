@@ -24,15 +24,9 @@ import {
   topicSchema,
 } from '@/lib/api';
 import { isMockApiEnabled } from '@/mock/gate';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const mockEnabled = vi.mocked(isMockApiEnabled);
-
-function jsonResponse(status: number, body: unknown): Response {
-  if (status === 204) {
-    return new Response(null, { status });
-  }
-  return new Response(JSON.stringify(body), { status });
-}
 
 beforeEach(() => {
   mockEnabled.mockReturnValue(false);
@@ -82,7 +76,7 @@ describe('topics API (T-0111)', () => {
       groupId: 'g-1',
       memberCount: 4,
       role: 'member' as const,
-      topics: [topicFixture(), { ...topicFixture(), visibility: 'secret' }, 42],
+      topics: [topicFixture(), { ...topicFixture(), memberCount: 'many' }, 42],
     };
     const topics = chatEntryTopics(entry);
     expect(topics).toHaveLength(1);

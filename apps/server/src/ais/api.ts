@@ -3,16 +3,15 @@
 // calls and step order as the deleted router (`routes.ts`), mounted by the
 // Effect edge (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
-import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
+import { Effect, Layer } from 'effect';
+import { HttpServerRequest } from 'effect/http';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-  HttpApiSchema,
-} from 'effect/http-api';
+  AisConfigured,
+  AisGroup,
+  AisSchemaErrors,
+  type PublicAi as WireAi,
+} from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { LitellmAdminClient } from '../ai/litellm-client';
 import type { AuditRecorder } from '../audit/service';
@@ -23,15 +22,14 @@ import type { KeyCipher } from '../connections/crypto';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
-  CurrentUser,
-  Session,
-  failureResponse,
+  handler,
   httpErrorResponse,
+  mountApi,
   requestIdOf,
+  schemaErrorLayerFor,
   sessionLayer,
-  withErrorEnvelope,
+  type SchemaErrorRender,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
@@ -40,7 +38,6 @@ import {
   deleteAi,
   getOwnedAi,
   listAis,
-  MAX_MONTHLY_USD,
   resumeAi,
   stopAi,
   updateAi,
@@ -48,7 +45,6 @@ import {
   type AiLogger,
   type PublicAi,
 } from './service';
-import { AI_TEMPLATES } from './templates';
 import { getAiUsage } from './usage';
 
 export interface AisApiDependencies {
@@ -82,136 +78,12 @@ export type PublicAiWithUsage = PublicAi & { usage: AiUsageSummary | null };
 // whole list.
 export const USAGE_TIMEOUT_MS = 2_000;
 
-// Replaces `LimitsSchema` (zod): both bounds finite and positive, the day
-// inside the month, the month under the server ceiling.
-const LimitsBody = Schema.Struct({
-  perDayUsd: Schema.Number.check(
-    Schema.makeFilter((value) =>
-      Number.isFinite(value) && value > 0 ? undefined : 'perDayUsd must be positive',
-    ),
-  ),
-  perMonthUsd: Schema.Number.check(
-    Schema.makeFilter((value) =>
-      Number.isFinite(value) && value > 0 ? undefined : 'perMonthUsd must be positive',
-    ),
-  ),
-}).check(
-  Schema.makeFilter((value) =>
-    value.perDayUsd <= value.perMonthUsd
-      ? undefined
-      : 'perDayUsd must not be greater than perMonthUsd',
-  ),
-  Schema.makeFilter((value) =>
-    value.perMonthUsd <= MAX_MONTHLY_USD
-      ? undefined
-      : `perMonthUsd must be at most ${MAX_MONTHLY_USD}`,
-  ),
-);
-
-// Replaces the zod string trims (`z.string().trim().min(1).max(N)`): trimmed
-// before the length checks, exactly like the old schemas.
-const Name = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64));
-const Persona = Schema.Trim.check(Schema.isMaxLength(4000));
-const ConnectionId = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(128));
-const Model = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(256));
-const MachineId = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(128));
-const AiTemplateBody = Schema.Literals(AI_TEMPLATES);
-
-// Replaces `CreateAiSchema` (zod): strict, so an unknown key is a 400.
-const CreateAiBody = Schema.Struct({
-  name: Name,
-  template: AiTemplateBody,
-  persona: Schema.optional(Persona),
-  providerConnectionId: ConnectionId,
-  model: Model,
-  limits: LimitsBody,
-});
-
-// Replaces `UpdateAiSchema` (zod): strict, any subset, but a new provider
-// connection needs an explicit model.
-const UpdateAiBody = Schema.Struct({
-  name: Schema.optional(Name),
-  persona: Schema.optional(Persona),
-  limits: Schema.optional(LimitsBody),
-  model: Schema.optional(Model),
-  providerConnectionId: Schema.optional(ConnectionId),
-  // T-0474: the two delegation opt-ins (plan §8, decision 3). Owner only.
-  canDelegate: Schema.optional(Schema.Boolean),
-  acceptsDelegation: Schema.optional(Schema.Boolean),
-}).check(
-  Schema.makeFilter((value) =>
-    value.providerConnectionId === undefined || value.model !== undefined
-      ? undefined
-      : 'A new provider connection needs an explicit model',
-  ),
-);
-
-// Replaces `AssignMachineSchema` (zod): strict, `null` clears the assignment.
-const AssignMachineBody = Schema.Struct({
-  machineId: Schema.NullOr(MachineId),
-});
-
-const AiLimitsView = Schema.Struct({
-  perDayUsd: Schema.Number,
-  perMonthUsd: Schema.Number,
-});
-
-const AiUsageView = Schema.Struct({
-  todayUsd: Schema.Number,
-  windowUsd: Schema.Number,
-});
-
-// The success shape carries every `PublicAi` field plus the usage summary:
-// `id`, `name`, `template`, `persona`, `model`, `jid`, `status`,
-// `providerConnectionId`, `limits`, `machineId` (nullable), `canDelegate`,
-// `acceptsDelegation`, `avatarUrl` (optional, never null), `createdAt` (a Date
-// encoded as the same ISO string), and `usage` (`{ todayUsd, windowUsd } | null`).
-const AiView = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  template: AiTemplateBody,
-  persona: Schema.String,
-  model: Schema.String,
-  jid: Schema.String,
-  status: Schema.Literals(['active', 'disabled', 'stopped']),
-  providerConnectionId: Schema.String,
-  limits: AiLimitsView,
-  machineId: Schema.NullOr(Schema.String),
-  canDelegate: Schema.Boolean,
-  acceptsDelegation: Schema.Boolean,
-  avatarUrl: Schema.optional(Schema.String),
-  createdAt: Schema.Date,
-  usage: Schema.NullOr(AiUsageView),
-});
-
-// The write routes (create, patch, stop, resume, machine) answer the plain
-// public AI, exactly like the old router: no `usage` summary.
-const PublicAiView = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  template: AiTemplateBody,
-  persona: Schema.String,
-  model: Schema.String,
-  jid: Schema.String,
-  status: Schema.Literals(['active', 'disabled', 'stopped']),
-  providerConnectionId: Schema.String,
-  limits: AiLimitsView,
-  machineId: Schema.NullOr(Schema.String),
-  canDelegate: Schema.Boolean,
-  acceptsDelegation: Schema.Boolean,
-  avatarUrl: Schema.optional(Schema.String),
-  createdAt: Schema.Date,
-});
-
-const AiList = Schema.Array(AiView);
-
-const AiIdParams = Schema.Struct({ id: Schema.String });
-
-// Applied to the group so a payload decode failure renders like the old zod
-// path: a 400 `invalid_request` carrying the first schema message.
-class AisSchemaErrors extends HttpApiMiddleware.Service<AisSchemaErrors>()(
-  'zilar/effect/http/AisSchemaErrors',
-) {}
+// The service rows carry `createdAt` as a `Date`; the wire carries its ISO
+// string, which is what `JSON.stringify` wrote before the contract declared
+// the view.
+function toWire(ai: PublicAi | PublicAiWithUsage): WireAi {
+  return { ...ai, createdAt: ai.createdAt.toISOString() };
+}
 
 // The route `logger` only warns, but the error envelope logs defects with
 // `error`. Both read the same `(fields, message)` pair, so adapt one to the
@@ -224,18 +96,10 @@ function toLogger(logger: AiLogger): Logger {
   } as unknown as Logger;
 }
 
-function schemaErrorLayer(logger: Logger): Layer.Layer<AisSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(AisSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid AI request'),
-      );
-    }),
+const renderSchemaError: SchemaErrorRender = (error) =>
+  Effect.succeed(
+    new HttpError(400, 'invalid_request', error.cause.message || 'Invalid AI request'),
   );
-}
 
 // Runs the 503 availability gate before the payload is decoded, exactly like
 // the old routes' `requireConfigured()` -> `safeParse` order: a malformed
@@ -243,9 +107,6 @@ function schemaErrorLayer(logger: Logger): Layer.Layer<AisSchemaErrors> {
 // CurrentUser` is satisfied by `Session`. The gate needs no decode, so it
 // also covers the no-payload writes (delete) for free; stop/resume/machine
 // need only the DB and skip it, as they did before.
-class AisConfigured extends HttpApiMiddleware.Service<AisConfigured, { requires: CurrentUser }>()(
-  'zilar/effect/http/AisConfigured',
-) {}
 
 function configuredLayer(deps: {
   litellm?: LitellmAdminClient;
@@ -268,63 +129,7 @@ function configuredLayer(deps: {
   );
 }
 
-const AisGroup = HttpApiGroup.make('ais')
-  .add(
-    HttpApiEndpoint.get('list', '/ais', {
-      success: AiList,
-    }),
-    HttpApiEndpoint.get('detail', '/ais/:id', {
-      params: AiIdParams,
-      success: AiView,
-    }),
-    HttpApiEndpoint.post('create', '/ais', {
-      payload: CreateAiBody,
-      success: PublicAiView,
-    })
-      .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
-      .middleware(AisConfigured),
-    HttpApiEndpoint.patch('patch', '/ais/:id', {
-      params: AiIdParams,
-      payload: UpdateAiBody,
-      success: PublicAiView,
-    })
-      .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
-      .middleware(AisConfigured),
-    HttpApiEndpoint.delete('remove', '/ais/:id', {
-      params: AiIdParams,
-      success: HttpApiSchema.NoContent,
-    }).middleware(AisConfigured),
-    HttpApiEndpoint.post('stop', '/ais/:id/stop', {
-      params: AiIdParams,
-      success: PublicAiView,
-    }),
-    HttpApiEndpoint.post('resume', '/ais/:id/resume', {
-      params: AiIdParams,
-      success: PublicAiView,
-    }),
-    HttpApiEndpoint.put('assignMachine', '/ais/:id/machine', {
-      params: AiIdParams,
-      payload: AssignMachineBody,
-      success: PublicAiView,
-    }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
-  )
-  .middleware(Session)
-  .middleware(AisSchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
-
 const AisApi = HttpApi.make('ais').add(AisGroup);
-
-export const AIS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/ais' },
-  { method: 'GET', path: '/api/ais/:id' },
-  { method: 'POST', path: '/api/ais' },
-  { method: 'PATCH', path: '/api/ais/:id' },
-  { method: 'DELETE', path: '/api/ais/:id' },
-  { method: 'POST', path: '/api/ais/:id/stop' },
-  { method: 'POST', path: '/api/ais/:id/resume' },
-  { method: 'PUT', path: '/api/ais/:id/machine' },
-];
 
 export function createAisApi(deps: AisApiDependencies): EffectApiMount {
   const logger = deps.logger;
@@ -405,108 +210,75 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
 
   const groupLayer = HttpApiBuilder.group(AisApi, 'ais', (handlers) =>
     handlers
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const ais = yield* Effect.promise(() => listAis(deps.db, user.id));
-            const withAvatarList = yield* Effect.promise(() => withAvatars(ais));
-            // Owner only, as today: every id here came from the owner's own listing.
-            // The reads run in parallel so one slow AI never holds the whole list.
-            return yield* Effect.promise(() =>
-              Promise.all(withAvatarList.map((ai) => withUsage(ai))),
-            );
-          }),
-          effectLogger,
-          requestId,
-        );
-      })
-      .handle('detail', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const ai = yield* Effect.promise(() => getOwnedAi(deps.db, request.params.id, user.id));
-            if (!ai) {
-              throw new HttpError(404, 'not_found', 'AI not found');
-            }
-            const [withAvatar] = yield* Effect.promise(() => withAvatars([ai]));
-            return yield* Effect.promise(() => withUsage(withAvatar ?? ai));
-          }),
-          effectLogger,
-          requestId,
-        );
-      })
-      .handle('create', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const configured = requireConfigured();
-            const payload = request.payload;
-            const created = yield* Effect.promise(() =>
-              createAi(serviceDeps(configured), {
-                ownerId: user.id,
-                name: payload.name,
-                template: payload.template,
-                ...(payload.persona === undefined ? {} : { persona: payload.persona }),
-                providerConnectionId: payload.providerConnectionId,
-                model: payload.model,
-                limits: { ...payload.limits } as AiLimits,
-              }),
-            );
-            return HttpServerResponse.jsonUnsafe(created, { status: 201 });
-          }),
-          effectLogger,
-          requestId,
-        );
-      })
-      .handle('patch', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const configured = requireConfigured();
-            const payload = request.payload;
-            return yield* Effect.promise(() =>
-              updateAi(serviceDeps(configured), {
-                id: request.params.id,
-                ownerId: user.id,
-                ...(payload.name === undefined ? {} : { name: payload.name }),
-                ...(payload.persona === undefined ? {} : { persona: payload.persona }),
-                ...(payload.limits === undefined
-                  ? {}
-                  : { limits: { ...payload.limits } as AiLimits }),
-                ...(payload.model === undefined ? {} : { model: payload.model }),
-                ...(payload.providerConnectionId === undefined
-                  ? {}
-                  : { providerConnectionId: payload.providerConnectionId }),
-                ...(payload.canDelegate === undefined ? {} : { canDelegate: payload.canDelegate }),
-                ...(payload.acceptsDelegation === undefined
-                  ? {}
-                  : { acceptsDelegation: payload.acceptsDelegation }),
-              }),
-            );
-          }),
-          effectLogger,
-          requestId,
-        );
-      })
-      .handle('remove', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const configured = requireConfigured();
-            yield* Effect.promise(() =>
-              deleteAi(serviceDeps(configured), request.params.id, user.id),
-            );
-          }),
-          effectLogger,
-          requestId,
-        );
-      })
+      .handle(
+        'list',
+        handler(effectLogger, async (_request, user) => {
+          const ais = await listAis(deps.db, user.id);
+          const withAvatarList = await withAvatars(ais);
+          // Owner only, as today: every id here came from the owner's own listing.
+          // The reads run in parallel so one slow AI never holds the whole list.
+          const rows = await Promise.all(withAvatarList.map((ai) => withUsage(ai)));
+          return rows.map(toWire);
+        }),
+      )
+      .handle(
+        'detail',
+        handler(effectLogger, async (request, user) => {
+          const ai = await getOwnedAi(deps.db, request.params.id, user.id);
+          if (!ai) {
+            throw new HttpError(404, 'not_found', 'AI not found');
+          }
+          const [withAvatar] = await withAvatars([ai]);
+          return toWire(await withUsage(withAvatar ?? ai));
+        }),
+      )
+      .handle(
+        'create',
+        handler(effectLogger, async (request, user) => {
+          const configured = requireConfigured();
+          const payload = request.payload;
+          const created = await createAi(serviceDeps(configured), {
+            ownerId: user.id,
+            name: payload.name,
+            template: payload.template,
+            ...(payload.persona === undefined ? {} : { persona: payload.persona }),
+            providerConnectionId: payload.providerConnectionId,
+            model: payload.model,
+            limits: { ...payload.limits } as AiLimits,
+          });
+          return toWire(created);
+        }),
+      )
+      .handle(
+        'patch',
+        handler(effectLogger, async (request, user) => {
+          const configured = requireConfigured();
+          const payload = request.payload;
+          const updated = await updateAi(serviceDeps(configured), {
+            id: request.params.id,
+            ownerId: user.id,
+            ...(payload.name === undefined ? {} : { name: payload.name }),
+            ...(payload.persona === undefined ? {} : { persona: payload.persona }),
+            ...(payload.limits === undefined ? {} : { limits: { ...payload.limits } as AiLimits }),
+            ...(payload.model === undefined ? {} : { model: payload.model }),
+            ...(payload.providerConnectionId === undefined
+              ? {}
+              : { providerConnectionId: payload.providerConnectionId }),
+            ...(payload.canDelegate === undefined ? {} : { canDelegate: payload.canDelegate }),
+            ...(payload.acceptsDelegation === undefined
+              ? {}
+              : { acceptsDelegation: payload.acceptsDelegation }),
+          });
+          return toWire(updated);
+        }),
+      )
+      .handle(
+        'remove',
+        handler(effectLogger, (request, user) => {
+          const configured = requireConfigured();
+          return deleteAi(serviceDeps(configured), request.params.id, user.id);
+        }),
+      )
       // T-0080: the owner's kill switch. Stop disconnects the AI at once and
       // prevents the gateway from waking it back up; resume reconnects it. Both
       // answer the public AI, so the panel can re-render against the server
@@ -522,66 +294,52 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
       // free of audit code. The `try/catch` around `audit.record` is a defensive
       // backstop: the standard recorder swallows its own errors, but a custom or
       // buggy one must never turn a 200 into a 500 here.
-      .handle('stop', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const id = request.params.id;
-            const before = yield* Effect.promise(() => getOwnedAi(deps.db, id, user.id));
-            const ai = yield* Effect.promise(() => stopAi({ db: deps.db }, id, user.id));
-            if (before !== null && before.status !== ai.status) {
-              yield* Effect.promise(() =>
-                recordAudit({
-                  actorUserId: user.id,
-                  aiId: ai.id,
-                  groupId: null,
-                  action: 'ai.stopped',
-                  subjectId: ai.id,
-                  argsHash: null,
-                  costCurrency: null,
-                  costAmount: null,
-                  result: 'ok',
-                  detail: null,
-                }),
-              );
-            }
-            return ai;
-          }),
-          effectLogger,
-          requestId,
-        );
-      })
-      .handle('resume', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const id = request.params.id;
-            const before = yield* Effect.promise(() => getOwnedAi(deps.db, id, user.id));
-            const ai = yield* Effect.promise(() => resumeAi({ db: deps.db }, id, user.id));
-            if (before !== null && before.status !== ai.status) {
-              yield* Effect.promise(() =>
-                recordAudit({
-                  actorUserId: user.id,
-                  aiId: ai.id,
-                  groupId: null,
-                  action: 'ai.resumed',
-                  subjectId: ai.id,
-                  argsHash: null,
-                  costCurrency: null,
-                  costAmount: null,
-                  result: 'ok',
-                  detail: null,
-                }),
-              );
-            }
-            return ai;
-          }),
-          effectLogger,
-          requestId,
-        );
-      })
+      .handle(
+        'stop',
+        handler(effectLogger, async (request, user) => {
+          const id = request.params.id;
+          const before = await getOwnedAi(deps.db, id, user.id);
+          const ai = await stopAi({ db: deps.db }, id, user.id);
+          if (before !== null && before.status !== ai.status) {
+            await recordAudit({
+              actorUserId: user.id,
+              aiId: ai.id,
+              groupId: null,
+              action: 'ai.stopped',
+              subjectId: ai.id,
+              argsHash: null,
+              costCurrency: null,
+              costAmount: null,
+              result: 'ok',
+              detail: null,
+            });
+          }
+          return toWire(ai);
+        }),
+      )
+      .handle(
+        'resume',
+        handler(effectLogger, async (request, user) => {
+          const id = request.params.id;
+          const before = await getOwnedAi(deps.db, id, user.id);
+          const ai = await resumeAi({ db: deps.db }, id, user.id);
+          if (before !== null && before.status !== ai.status) {
+            await recordAudit({
+              actorUserId: user.id,
+              aiId: ai.id,
+              groupId: null,
+              action: 'ai.resumed',
+              subjectId: ai.id,
+              argsHash: null,
+              costCurrency: null,
+              costAmount: null,
+              result: 'ok',
+              detail: null,
+            });
+          }
+          return toWire(ai);
+        }),
+      )
       // T-0091: assign or clear the AI's home machine. The audit entry is
       // written only when the value actually changed, mirroring how `stop` /
       // `resume` skip the audit on an idempotent call: a recorder that swallows
@@ -590,52 +348,43 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
       // routes. `before.machineId` and `ai.machineId` are always either the
       // same string or one of them is `null`, so the inequality check is
       // straightforward.
-      .handle('assignMachine', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const id = request.params.id;
-            const machineId = request.payload.machineId;
-            const before = yield* Effect.promise(() => getOwnedAi(deps.db, id, user.id));
-            const ai = yield* Effect.promise(() =>
-              assignMachine(
-                { db: deps.db },
-                {
-                  aiId: id,
-                  ownerId: user.id,
-                  machineId,
-                },
-              ),
-            );
-            if (before !== null && before.machineId !== ai.machineId) {
-              yield* Effect.promise(() =>
-                recordAudit({
-                  actorUserId: user.id,
-                  aiId: ai.id,
-                  groupId: null,
-                  action: 'ai.machine_assigned',
-                  subjectId: ai.id,
-                  argsHash: null,
-                  costCurrency: null,
-                  costAmount: null,
-                  result: 'ok',
-                  detail: { machineId: ai.machineId },
-                }),
-              );
-            }
-            return ai;
-          }),
-          effectLogger,
-          requestId,
-        );
-      }),
+      .handle(
+        'assignMachine',
+        handler(effectLogger, async (request, user) => {
+          const id = request.params.id;
+          const machineId = request.payload.machineId;
+          const before = await getOwnedAi(deps.db, id, user.id);
+          const ai = await assignMachine(
+            { db: deps.db },
+            {
+              aiId: id,
+              ownerId: user.id,
+              machineId,
+            },
+          );
+          if (before !== null && before.machineId !== ai.machineId) {
+            await recordAudit({
+              actorUserId: user.id,
+              aiId: ai.id,
+              groupId: null,
+              action: 'ai.machine_assigned',
+              subjectId: ai.id,
+              argsHash: null,
+              costCurrency: null,
+              costAmount: null,
+              result: 'ok',
+              detail: { machineId: ai.machineId },
+            });
+          }
+          return toWire(ai);
+        }),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(AisApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, effectLogger)),
-    Layer.provide(schemaErrorLayer(effectLogger)),
+    Layer.provide(schemaErrorLayerFor(AisSchemaErrors, effectLogger, renderSchemaError)),
     Layer.provide(
       configuredLayer({
         ...(litellm === undefined ? {} : { litellm }),
@@ -644,12 +393,5 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
     ),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: AIS_API_ROUTES };
+  return mountApi(AisApi, apiLayer);
 }

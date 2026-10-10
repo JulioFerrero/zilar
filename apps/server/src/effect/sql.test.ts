@@ -60,6 +60,12 @@ async function newTempDir(): Promise<string> {
   return dir;
 }
 
+// How many migration files are committed; the tests below derive it from the folder.
+async function committedMigrationCount(): Promise<number> {
+  const files = (await readdir(migrationsFolder)).filter((name) => /^\d+_.+\.sql$/.test(name));
+  return files.length;
+}
+
 // A temp folder holding the first `count` committed migration files, in order.
 async function committedMigrationsUpTo(count: number): Promise<string> {
   const folder = await newTempDir();
@@ -147,10 +153,13 @@ describe('effect/sql', () => {
 
       const applied = await migrateWithSql(pglite);
 
-      expect(applied).toEqual([]);
+      // 0000-0045 are drizzle history and are skipped. 0046 is newer than
+      // drizzle's history, so it runs (file N is id N+1).
+      expect(applied).toEqual([[47, 'membership-indexes']]);
       expect(await countRows(pglite, 'pinned_messages')).toBe(0);
-      // The seed records the highest drizzle id and leaves drizzle's journal alone.
-      expect(await journalIds(pglite)).toEqual([46]);
+      // The seed records the highest drizzle id, then 0046 is journaled after it;
+      // drizzle's journal is left alone.
+      expect(await journalIds(pglite)).toEqual([46, 47]);
       expect(await countRows(pglite, 'drizzle.__drizzle_migrations')).toBe(46);
     } finally {
       await pglite.close();
@@ -165,25 +174,31 @@ describe('effect/sql', () => {
 
       const applied = await migrateWithSql(pglite);
 
-      expect(applied.map(([id]) => id)).toEqual([42, 43, 44, 45, 46]);
+      expect(applied.map(([id]) => id)).toEqual([42, 43, 44, 45, 46, 47]);
       // 0045 creates the ai_delegations table.
       const table = await pglite.query<{ table: string | null }>(
         "select to_regclass('public.ai_delegations') as table",
       );
       expect(table.rows[0]?.table).toBe('ai_delegations');
+      // 0046 creates the membership lookup indexes.
+      const index = await pglite.query<{ indexname: string | null }>(
+        "select indexname from pg_indexes where indexname = 'group_members_user_id_idx'",
+      );
+      expect(index.rows[0]?.indexname).toBe('group_members_user_id_idx');
     } finally {
       await pglite.close();
     }
   });
 
-  it('runs the committed drizzle SQL from empty and journals all 46 migrations', async () => {
+  it('runs the committed drizzle SQL from empty and journals every migration', async () => {
     const pglite = new PGlite();
+    const count = await committedMigrationCount();
     try {
       const applied = await migratePglite(pglite);
 
-      expect(applied.map(([id]) => id)).toEqual(Array.from({ length: 46 }, (_, i) => i + 1));
+      expect(applied.map(([id]) => id)).toEqual(Array.from({ length: count }, (_, i) => i + 1));
       expect(await countRows(pglite, 'pinned_messages')).toBe(0);
-      expect(await countRows(pglite, SQL_MIGRATIONS_TABLE)).toBe(46);
+      expect(await countRows(pglite, SQL_MIGRATIONS_TABLE)).toBe(count);
       // Nothing in this path touches drizzle's journal table.
       const journal = await pglite.query<{ table: string | null }>(
         "select to_regclass('drizzle.__drizzle_migrations') as table",
@@ -217,14 +232,15 @@ describe('effect/sql', () => {
     const pglite = new PGlite();
     try {
       await drizzleMigrated(pglite, 41);
-      expect(await migrateWithSql(pglite)).toHaveLength(5);
+      // Files 0041-0046 are not drizzle history yet: six migrations run.
+      expect(await migrateWithSql(pglite)).toHaveLength(6);
 
       expect(await migrateWithSql(pglite)).toEqual([]);
       const adopted = await pglite.query<{ total: number }>(
         `SELECT count(*)::int AS total FROM ${SQL_MIGRATIONS_TABLE} WHERE name = 'adopted-from-drizzle'`,
       );
       expect(adopted.rows[0]?.total).toBe(1);
-      expect(await journalIds(pglite)).toEqual([41, 42, 43, 44, 45, 46]);
+      expect(await journalIds(pglite)).toEqual([41, 42, 43, 44, 45, 46, 47]);
     } finally {
       await pglite.close();
     }

@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { PanResponder, Pressable, View, type GestureResponderHandlers } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { asColorScheme, type ColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import { ACCENT_FOREGROUND, primaryKey } from '@/lib/depth';
 import { VOICE_MAX_DURATION_MS } from '@/lib/voice';
@@ -15,7 +14,6 @@ import {
 } from '@/lib/voice-native';
 import type { ReplyRef } from '@/lib/types';
 import type { SendTextOptions, SendVoiceRecording } from '@/store/types';
-import { useColorScheme } from 'nativewind';
 
 /**
  * The recorder button's decision logic, extracted so tests drive the exact
@@ -268,7 +266,6 @@ export function VoiceRecorderButton({
   disabled = false,
   onRecordingChange,
 }: VoiceRecorderProps) {
-  const scheme: ColorScheme = asColorScheme(useColorScheme().colorScheme);
   const [recorder] = useState<VoiceRecorderPort>(() => recorderProp ?? createVoiceRecorder());
   const [recording, setRecording] = useState(false);
   useEffect(() => {
@@ -442,7 +439,7 @@ export function VoiceRecorderButton({
             >
               {willCancel ? 'Release to cancel' : '‹ Slide to cancel'}
             </Text>
-            <Trash2 size={18} color={willCancel ? '#f87171' : ICON[scheme]} />
+            <Trash2 size={18} color={willCancel ? '#f87171' : ICON} />
           </View>
         ) : null}
         <View
@@ -453,7 +450,7 @@ export function VoiceRecorderButton({
           style={recording ? [primaryKey, { transform: [{ scale: 1.25 }] }] : undefined}
           {...panHandlers}
         >
-          <Mic size={20} color={recording ? ACCENT_FOREGROUND : ICON[scheme]} />
+          <Mic size={20} color={recording ? ACCENT_FOREGROUND : ICON} />
         </View>
       </View>
       {error !== undefined ? (

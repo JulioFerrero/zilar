@@ -5,7 +5,7 @@ import { ChatList } from '@/components/ChatList';
 import { EmptyState } from '@/components/EmptyState';
 import { FolderRail } from '@/components/FolderRail';
 import { ChatView } from './ChatView';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { useChatFolders } from '@/lib/useChatFolders';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
@@ -20,11 +20,12 @@ function decodeParam(value: string | undefined): string | undefined {
 export function ChatShell() {
   const params = useParams<{ chatJid?: string }>();
   const chatId = decodeParam(params.chatJid);
-  const store = useChatStore();
+  const chat = useChatSelector((s) =>
+    chatId === undefined ? undefined : s.chats.find((item) => item.id === chatId),
+  );
   const navigate = useNavigate();
   const isWide = useMediaQuery('(min-width: 900px)');
   useChatFolders();
-  const chat = chatId === undefined ? undefined : store.chats.find((item) => item.id === chatId);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {

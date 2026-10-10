@@ -5,14 +5,7 @@ import { AuthProvider, type AuthState } from '@/auth/AuthProvider';
 import { AisPage } from '@/routes/AisPage';
 import { createChatStore } from '@/store/store';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
-
-function jsonResponse(status: number, body: unknown): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response;
-}
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const auth: AuthState = {
   status: 'authenticated',

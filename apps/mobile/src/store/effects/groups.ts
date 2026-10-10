@@ -1,9 +1,21 @@
-import { Deferred, Effect } from 'effect';
-import type { ChatSummary } from '@zilar/chat-core';
+import { Effect } from 'effect';
+import {
+  applyTopicRow as applyTopicRowCore,
+  changeGroup as changeGroupCore,
+  changeTopic as changeTopicCore,
+  createGroupChannel as createGroupChannelCore,
+  createTopic as createTopicCore,
+  ensureGroupDetail as ensureGroupDetailCore,
+  leaveChannel as leaveChannelCore,
+  leaveTopic as leaveTopicCore,
+  topicIdFor as topicIdForCore,
+  type GroupActionStore,
+  type GroupDetailStore,
+  type TopicRowStore,
+} from '@zilar/client-core/store';
 import type { XmppCore } from '@zilar/xmpp-core';
 
-import type { Me } from '../../lib/chat-api';
-import { applyChatPrefs } from '../../lib/chat-prefs';
+import type { ChatEntry, GroupDetail, Me } from '../../lib/chat-api';
 import type {
   CreateTopicInput,
   PatchTopicInput,
@@ -69,7 +81,6 @@ export interface Groups {
 export function makeGroups(ctx: StoreCtx): Groups {
   const { ports, get, set, s, h, fx } = ctx;
   const {
-    groupIds,
     groupDetails,
     loadingGroupDetails,
     groupRolesById,
@@ -77,41 +88,35 @@ export function makeGroups(ctx: StoreCtx): Groups {
     topicRolesById,
     loadingTopicRoles,
     groupMembers,
-    loadingGroupMembers,
   } = s;
   const { topics, inviteLinks, roles: rolesApi, groups: groupsApi } = ports;
 
   const bumpRevision = (): void =>
     set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
 
-  // Waiters (e.g. `ensureGroupMembers`) subscribe through
-  // `groupDetailSettled` so one in-flight GET serves them all.
-  const groupDetailWaiters = new Map<string, Set<Deferred.Deferred<void>>>();
-
-  // Resolves once the in-flight detail load for a group settles (success
-  // or failure), so waiters share the single GET instead of fetching.
-  const groupDetailSettled = (groupId: string): Effect.Effect<void> =>
-    Effect.suspend(() => {
-      const waiter = Deferred.makeUnsafe<void>();
-      let waiting = groupDetailWaiters.get(groupId);
-      if (waiting === undefined) {
-        waiting = new Set();
-        groupDetailWaiters.set(groupId, waiting);
+  // The mobile view of the core's per-group cache (T-0920): the detail map and
+  // the in-flight marks are the store's own (group-keyed); publishing fills the
+  // sender-name map of every row of the group and bumps the revision so
+  // `groupDetail` selectors re-fire.
+  const groupDetailStore = (): GroupDetailStore<GroupDetail> => ({
+    cached: (groupId) => groupDetails.get(groupId),
+    isLoading: (groupId) => loadingGroupDetails.has(groupId),
+    begin: (groupId) => {
+      loadingGroupDetails.add(groupId);
+    },
+    finish: (groupId) => {
+      loadingGroupDetails.delete(groupId);
+    },
+    publish: (groupId, detail) => {
+      groupDetails.set(groupId, detail);
+      for (const row of get().chats) {
+        if (row.groupId === detail.id) {
+          h.rememberMembers(row.id, detail);
+        }
       }
-      waiting.add(waiter);
-      return Deferred.await(waiter);
-    });
-
-  function notifyGroupDetailSettled(groupId: string): void {
-    const waiting = groupDetailWaiters.get(groupId);
-    if (waiting === undefined) {
-      return;
-    }
-    groupDetailWaiters.delete(groupId);
-    for (const waiter of waiting) {
-      Deferred.doneUnsafe(waiter, Effect.void);
-    }
-  }
+      bumpRevision();
+    },
+  });
 
   // Loads the group detail (people + roles + AIs) of a group once, so the
   // topics screen, the owner picker and the role checks can read it. The
@@ -119,35 +124,7 @@ export function makeGroups(ctx: StoreCtx): Groups {
   const ensureGroupDetail = (groupId: string, force = false): Effect.Effect<void, never, Ports> =>
     Effect.gen(function* () {
       const { api } = yield* Ports;
-      if (groupId === '') {
-        return;
-      }
-      if (loadingGroupDetails.has(groupId)) {
-        return;
-      }
-      if (!force && groupDetails.has(groupId)) {
-        return;
-      }
-      loadingGroupDetails.add(groupId);
-      // The sheet falls back to an empty member list and hides creation.
-      yield* orElse(
-        Effect.gen(function* () {
-          const detail = yield* lift(() => api.getGroup(groupId));
-          groupDetails.set(groupId, detail);
-          // Publishing a monotonically increasing revision notifies every
-          // `groupDetail(groupId)` subscriber, including screens mounted before
-          // the fetch resolved.
-          bumpRevision();
-        }),
-        undefined,
-      ).pipe(
-        Effect.ensuring(
-          Effect.sync(() => {
-            loadingGroupDetails.delete(groupId);
-            notifyGroupDetailSettled(groupId);
-          }),
-        ),
-      );
+      yield* ensureGroupDetailCore(api, groupDetailStore(), groupId, force);
     });
 
   // Loads the custom roles (T-0137) of a group once, so the group screen
@@ -200,43 +177,26 @@ export function makeGroups(ctx: StoreCtx): Groups {
       );
     });
 
-  // Loads the member names of a group once per chat, so a typing indicator
-  // or a message from a member who is not a contact can still show a name.
-  // T-0147: resolves through the shared group detail only — never its own
-  // `api.getGroup`. When no detail is cached or in flight, this starts the
-  // shared detail load itself (which fills the detail cache), so concurrent
-  // rows collapse into one GET however they arrive.
+  // Loads the member names of a group once per group, so a typing indicator or
+  // a message from a member who is not a contact can still show a name, and
+  // every topic row of the group shares one GET (R14). Resolves through the
+  // shared group detail only — never its own `api.getGroup`.
   const ensureGroupMembers = (chatId: string): Effect.Effect<void, never, Ports> =>
     Effect.gen(function* () {
-      if (groupMembers.has(chatId) || loadingGroupMembers.has(chatId)) {
+      if (groupMembers.has(chatId)) {
         return;
       }
       const groupId = h.groupIdForChat(chatId);
       if (groupId === undefined) {
         return;
       }
-      const cached = groupDetails.get(groupId);
-      if (cached !== undefined) {
-        h.rememberMembers(chatId, cached);
-        return;
+      const { api } = yield* Ports;
+      const detail = yield* ensureGroupDetailCore(api, groupDetailStore(), groupId, false);
+      // A pure cache hit (or a load another caller started) does not publish;
+      // fill this chat's sender-name map, which publish may not have reached.
+      if (detail !== undefined && !groupMembers.has(chatId)) {
+        h.rememberMembers(chatId, detail);
       }
-      loadingGroupMembers.add(chatId);
-      yield* Effect.gen(function* () {
-        // Starts the shared detail load when nothing is in flight (a no-op
-        // when someone else already started it), then waits for it: one GET
-        // serves every topic row of the group, and the fallback fills the
-        // detail cache instead of a side map.
-        yield* ensureGroupDetail(groupId);
-        let settled = groupDetails.get(groupId);
-        if (settled === undefined && loadingGroupDetails.has(groupId)) {
-          yield* groupDetailSettled(groupId);
-          settled = groupDetails.get(groupId);
-        }
-        if (settled === undefined) {
-          return;
-        }
-        h.rememberMembers(chatId, settled);
-      }).pipe(Effect.ensuring(Effect.sync(() => loadingGroupMembers.delete(chatId))));
     });
 
   const joinGroups = (current: XmppCore, me: Me): Effect.Effect<void, never, Ports> =>
@@ -260,55 +220,58 @@ export function makeGroups(ctx: StoreCtx): Groups {
       }
     });
 
-  // One topic row refreshed from the server (create/patch/member/AI):
-  // re-reads `/api/chats`, merges the row, and preserves its local state.
-  const applyTopicRow = (topic: Topic): Effect.Effect<void, unknown> =>
-    Effect.gen(function* () {
-      const entries = yield* lift(() => ports.api.getChats());
-      h.rememberGroupIds(entries);
-      const rows = entries.flatMap((entry) => h.summariesFor(entry));
-      const match = rows.find((row) => row.topic?.id === topic.id);
-      set((state) => {
-        if (match === undefined) {
-          return state;
-        }
-        const before = state.chats.find((chat) => chat.id === match.id);
-        const prefed = applyChatPrefs([match], s.chatPrefRows, ports.now().getTime())[0] ?? match;
-        const merged: ChatSummary =
-          before === undefined
-            ? prefed
-            : {
-                ...prefed,
-                ...(before.lastMessage === undefined ? {} : { lastMessage: before.lastMessage }),
-                unread: before.unread,
-                ...(before.online === undefined ? {} : { online: before.online }),
-                ...(before.onlineCount === undefined ? {} : { onlineCount: before.onlineCount }),
-              };
-        return {
-          chats: state.chats.some((chat) => chat.id === merged.id)
-            ? state.chats.map((chat) => (chat.id === merged.id ? merged : chat))
-            : h.sortByRecency([...state.chats, merged]),
-        };
-      });
-    });
+  // The mobile half of the core topic-row refresh (R17): `/api/chats` and the
+  // store's saved pref rows.
+  const topicRowStore = (): TopicRowStore => ({
+    getChats: () => ports.api.getChats(),
+    summariesFor: (entry) => h.summariesFor(entry as ChatEntry),
+    rememberGroupIds: (entries) => h.rememberGroupIds(entries as ChatEntry[]),
+    prefRows: () => s.chatPrefRows,
+    now: () => ports.now(),
+  });
 
-  // The topic id + group id of the topic that owns `chatId`. Fails for a
-  // chat that is not a topic yet (e.g. a legacy group row).
-  const topicIdFor = (chatId: string): Effect.Effect<{ topicId: string; groupId: string }, Error> =>
-    Effect.suspend(() => {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      const topicId = chat?.topic?.id;
-      const groupId = chat?.groupId ?? groupIds.get(chatId);
-      if (topicId === undefined || groupId === undefined) {
-        return Effect.fail(new Error('This topic is not available yet.'));
-      }
-      return Effect.succeed({ topicId, groupId });
-    });
+  // One topic row refreshed from the server (create/patch/member/AI): the core
+  // re-reads `/api/chats`, drops an archived topic and preserves local state.
+  const applyTopicRow = (topic: Topic): Effect.Effect<void, unknown> =>
+    applyTopicRowCore(ctx.coreCtx, topicRowStore(), topic);
+
+  // The mobile half of the shared topic actions: the group id of a chat and
+  // the topic-row store the shared repaint uses (R17).
+  const actionStore = (): GroupActionStore => ({
+    groupIdFor: (chatId) => h.groupIdForChat(chatId),
+    rows: topicRowStore(),
+  });
+
+  // Joins a topic's room, dropping a failure (the created row is painted).
+  const joinRoomQuietly = (rowId: string): Effect.Effect<void, never> => {
+    const core = s.core;
+    const me = get().me;
+    if (core === undefined || me === undefined) {
+      return Effect.void;
+    }
+    return orElse(
+      lift(() => core.joinRoom(rowId, h.nick(me))),
+      undefined,
+    );
+  };
 
   // A best-effort refresh of the chat list: its failure is dropped.
   const refreshQuietly: Effect.Effect<void, never, Ports> = Effect.suspend(() =>
     orElse(fx.refreshChats, undefined),
   );
+
+  // Removes the caller from a topic and refreshes the list on a failure (the
+  // last seat archives the topic, so the row disappears either way).
+  const removeTopicMemberEffect = (
+    chatId: string,
+    userId: string,
+  ): Effect.Effect<void, unknown, Ports> =>
+    failAfter(
+      changeTopicCore(ctx.coreCtx, actionStore(), chatId, (topicId) =>
+        topics.removeTopicMember(topicId, userId),
+      ),
+      () => refreshQuietly,
+    );
 
   const actions: GroupActions = {
     groupDetail: (groupId) => {
@@ -324,47 +287,39 @@ export function makeGroups(ctx: StoreCtx): Groups {
     },
     createTopic: (chatId, input) =>
       ctx.run(
-        Effect.gen(function* () {
-          const chat = get().chats.find((entry) => entry.id === chatId);
-          const groupId = chat?.groupId ?? groupIds.get(chatId);
-          if (groupId === undefined) {
-            return yield* Effect.fail(new Error('This group is not available yet.'));
-          }
-          const topic = yield* lift(() => topics.createTopic(groupId, input as CreateTopicInput));
-          h.rememberTopicRoles(topic);
-          // The topic exists on the server now: a failed follow-up re-read
-          // must not report "Could not create" (the sheet would invite a
-          // retry that makes a duplicate). Refresh best-effort and fall back
-          // to the created topic's own chat JID.
-          yield* orElse(applyTopicRow(topic), undefined);
-          const row = get().chats.find((entry) => entry.topic?.id === topic.id);
-          const rowId = row?.id ?? topic.chatJid;
-          const me = get().me;
-          const core = s.core;
-          if (core !== undefined && me !== undefined) {
-            yield* orElse(
-              lift(() => core.joinRoom(rowId, h.nick(me))),
-              undefined,
-            );
-          }
-          return rowId;
-        }),
+        createTopicCore<Topic>(
+          ctx.coreCtx,
+          {
+            groupIdFor: (chatId) => h.groupIdForChat(chatId),
+            rememberTopic: (topic) => h.rememberTopicRoles(topic),
+            requireRow: false,
+            fallbackRowId: (topic) => topic.chatJid,
+            // The topic exists on the server now: a failed follow-up re-read
+            // must not report "Could not create" (the sheet would invite a
+            // retry that makes a duplicate). Refresh best-effort.
+            apply: (topic) => orElse(applyTopicRow(topic), undefined),
+            joinRoom: (rowId) => joinRoomQuietly(rowId),
+          },
+          chatId,
+          (groupId) => topics.createTopic(groupId, input as CreateTopicInput),
+        ),
       ),
     patchTopic: (chatId, input) =>
       ctx.run(
-        Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
-          const topic = yield* lift(() => topics.patchTopic(topicId, input as PatchTopicInput));
+        changeTopicCore(
+          ctx.coreCtx,
+          actionStore(),
+          chatId,
+          (topicId) => topics.patchTopic(topicId, input as PatchTopicInput),
           // The patch response is the server truth: a private-to-public flip
           // cleared the roles there, so the cache is replaced, not merged.
-          h.rememberTopicRoles(topic);
-          yield* applyTopicRow(topic);
-        }),
+          (topic) => h.rememberTopicRoles(topic),
+        ),
       ),
     archiveTopic: (chatId) =>
       ctx.run(
         Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
+          const { topicId } = yield* topicIdForCore(ctx.coreCtx, actionStore(), chatId);
           const topic = yield* lift(() => topics.archiveTopic(topicId));
           yield* orElse(applyTopicRow(topic), undefined);
           yield* refreshQuietly;
@@ -372,64 +327,51 @@ export function makeGroups(ctx: StoreCtx): Groups {
       ),
     addTopicAi: (chatId, aiId) =>
       ctx.run(
-        Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
-          const topic = yield* lift(() => topics.addTopicAi(topicId, aiId));
-          yield* applyTopicRow(topic);
-        }),
+        changeTopicCore(ctx.coreCtx, actionStore(), chatId, (topicId) =>
+          topics.addTopicAi(topicId, aiId),
+        ),
       ),
     removeTopicAi: (chatId, aiId) =>
       ctx.run(
-        Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
-          const topic = yield* lift(() => topics.removeTopicAi(topicId, aiId));
-          yield* applyTopicRow(topic);
-        }),
+        changeTopicCore(ctx.coreCtx, actionStore(), chatId, (topicId) =>
+          topics.removeTopicAi(topicId, aiId),
+        ),
       ),
     addTopicMember: (chatId, userId) =>
       ctx.run(
-        Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
-          const topic = yield* lift(() => topics.addTopicMember(topicId, userId));
-          yield* applyTopicRow(topic);
-        }),
+        changeTopicCore(ctx.coreCtx, actionStore(), chatId, (topicId) =>
+          topics.addTopicMember(topicId, userId),
+        ),
       ),
-    removeTopicMember: (chatId, userId) =>
-      ctx.run(
-        Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
-          // Removing the last member archives the topic (server 404): it is
-          // gone from the visible list either way, so refresh like the
-          // removed-while-open flow.
-          yield* failAfter(
-            lift(() => topics.removeTopicMember(topicId, userId)).pipe(
-              Effect.flatMap((topic) => applyTopicRow(topic)),
-            ),
-            () => refreshQuietly,
-          );
-        }),
-      ),
+    removeTopicMember: (chatId, userId) => ctx.run(removeTopicMemberEffect(chatId, userId)),
     leaveTopic: (chatId) =>
       ctx.run(
-        Effect.gen(function* () {
-          const me = get().me;
-          if (me === undefined) {
-            return yield* Effect.fail(new Error('This topic is not available yet.'));
-          }
-          yield* lift(() => get().removeTopicMember(chatId, me.id));
-        }),
+        leaveTopicCore(
+          ctx.coreCtx,
+          {
+            groupIdFor: (chatId) => h.groupIdForChat(chatId),
+            currentUserId: () => get().me?.id,
+            removeMember: (chatId, userId) => removeTopicMemberEffect(chatId, userId),
+          },
+          {
+            isNotFound: () => false,
+            refreshTopicRow: () => Effect.succeed(false),
+            refreshChats: () => Effect.void,
+          },
+          chatId,
+        ),
       ),
     listTopicMembers: (chatId) =>
       ctx.run(
         Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
+          const { topicId } = yield* topicIdForCore(ctx.coreCtx, actionStore(), chatId);
           return yield* lift(() => topics.listTopicMembers(topicId));
         }),
       ),
     listTopicAis: (chatId) =>
       ctx.run(
         Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
+          const { topicId } = yield* topicIdForCore(ctx.coreCtx, actionStore(), chatId);
           return yield* lift(() => topics.listTopicAis(topicId));
         }),
       ),
@@ -448,73 +390,82 @@ export function makeGroups(ctx: StoreCtx): Groups {
         }),
       ),
     // T-0144: channels share the chat-list flow with groups (the detail
-    // carries `kind`, the feed row paints the channel). Create refreshes
-    // the list and returns the new group id from the POST answer.
+    // carries `kind`, the feed row paints the channel). Create validates the
+    // input, refreshes the list and returns the new group id (R15).
     createChannel: (input) =>
       ctx.run(
-        Effect.gen(function* () {
-          const trimmed = input.title.trim();
-          if (trimmed === '') {
-            return yield* Effect.fail(new Error('Enter a channel name.'));
-          }
-          if (input.description !== undefined && input.description.length > 300) {
-            return yield* Effect.fail(new Error('The description must be at most 300 characters.'));
-          }
-          const created = yield* lift(() =>
-            groupsApi.createChannel({
-              title: trimmed,
-              ...(input.description === undefined || input.description.trim() === ''
-                ? {}
-                : { description: input.description.trim() }),
-              // T-0228: the public handle rides along trimmed; private creates
-              // send neither field.
-              ...(input.visibility === 'public' && input.handle !== undefined
-                ? { visibility: 'public' as const, handle: input.handle.trim() }
-                : {}),
-            }),
-          );
-          yield* refreshQuietly;
-          return created.id;
-        }),
+        createGroupChannelCore<{ id: string }, Ports>(
+          {
+            create: () => {
+              const trimmed = input.title.trim();
+              if (trimmed === '') {
+                throw new Error('Enter a channel name.');
+              }
+              if (input.description !== undefined && input.description.length > 300) {
+                throw new Error('The description must be at most 300 characters.');
+              }
+              return groupsApi.createChannel({
+                title: trimmed,
+                ...(input.description === undefined || input.description.trim() === ''
+                  ? {}
+                  : { description: input.description.trim() }),
+                // T-0228: the public handle rides along trimmed; private creates
+                // send neither field.
+                ...(input.visibility === 'public' && input.handle !== undefined
+                  ? { visibility: 'public' as const, handle: input.handle.trim() }
+                  : {}),
+              });
+            },
+            refreshAndLocate: () => refreshQuietly.pipe(Effect.as(undefined)),
+            requireRow: false,
+            result: (_chatJid, detail) => detail.id,
+          },
+          'the new channel did not appear in the chat list',
+        ),
       ),
-    // T-0214: creating a group mirrors the channel flow (trim the
-    // title, refresh the list, return the new group id from the POST
-    // answer). No `kind` goes over the wire: missing means group.
-    // T-0228: a public group carries the handle in the same step.
+    // T-0214: creating a group mirrors the channel flow (trim the title,
+    // refresh the list, return the new group id from the POST answer). No
+    // `kind` goes over the wire: missing means group. T-0228: a public group
+    // carries the handle in the same step.
     createGroup: (input) =>
       ctx.run(
-        Effect.gen(function* () {
-          const trimmed = input.title.trim();
-          if (trimmed === '') {
-            return yield* Effect.fail(new Error('Enter a group name.'));
-          }
-          const created = yield* lift(() =>
-            groupsApi.createGroup({
-              title: trimmed,
-              memberIds: input.memberIds,
-              ...(input.visibility === 'public' && input.handle !== undefined
-                ? { visibility: 'public' as const, handle: input.handle.trim() }
-                : {}),
-            }),
-          );
-          yield* refreshQuietly;
-          return created.id;
-        }),
+        createGroupChannelCore<{ id: string }, Ports>(
+          {
+            create: () => {
+              const trimmed = input.title.trim();
+              if (trimmed === '') {
+                throw new Error('Enter a group name.');
+              }
+              return groupsApi.createGroup({
+                title: trimmed,
+                memberIds: input.memberIds,
+                ...(input.visibility === 'public' && input.handle !== undefined
+                  ? { visibility: 'public' as const, handle: input.handle.trim() }
+                  : {}),
+              });
+            },
+            refreshAndLocate: () => refreshQuietly.pipe(Effect.as(undefined)),
+            requireRow: false,
+            result: (_chatJid, detail) => detail.id,
+          },
+          'the new group did not appear in the chat list',
+        ),
       ),
     // T-0144: leaving a channel removes the caller through the member
     // route, then refreshes the list (the row disappears); the caller
     // navigates away.
     leaveChannel: (chatId) =>
       ctx.run(
-        Effect.gen(function* () {
-          const groupId = h.groupIdForChat(chatId);
-          const me = get().me;
-          if (groupId === undefined || me?.id === undefined) {
-            return yield* Effect.fail(new Error('This channel is not available yet.'));
-          }
-          yield* lift(() => groupsApi.removeGroupMember(groupId, me.id));
-          yield* refreshQuietly;
-        }),
+        leaveChannelCore(
+          {
+            groupIdFor: (chatId) => h.groupIdForChat(chatId),
+            currentUserId: () => get().me?.id,
+            removeMember: (groupId, userId) =>
+              lift(() => groupsApi.removeGroupMember(groupId, userId)),
+          },
+          refreshQuietly,
+          chatId,
+        ),
       ),
     // T-0144: the members slice for the channel screen — the full audience
     // for managers, the owner/admins slice for subscribers (never the
@@ -528,16 +479,25 @@ export function makeGroups(ctx: StoreCtx): Groups {
     // admin rejects with 409 `channel_needs_admin`.
     changeChannelRole: (chatId, userId, role: ChannelMemberRole) =>
       ctx.run(
-        Effect.gen(function* () {
-          const groupId = h.groupIdForChat(chatId);
-          if (groupId === undefined) {
-            return yield* Effect.fail(new Error('This channel is not available yet.'));
-          }
-          yield* lift(() => groupsApi.changeGroupMemberRole(groupId, userId, role));
-          yield* ensureGroupDetail(groupId, true);
-          bumpRevision();
-          yield* refreshQuietly;
-        }),
+        changeGroupCore<void, Ports>(
+          {
+            resolve: (chatId) => {
+              const groupId = h.groupIdForChat(chatId);
+              return groupId === undefined ? undefined : { groupId, domain: '' };
+            },
+            applyDetail: () => {},
+            reloadDetail: (groupId) =>
+              Effect.gen(function* () {
+                yield* ensureGroupDetail(groupId, true);
+                bumpRevision();
+              }),
+            refreshList: () => refreshQuietly,
+          },
+          chatId,
+          'This channel is not available yet.',
+          (groupId) => groupsApi.changeGroupMemberRole(groupId, userId, role),
+          true,
+        ),
       ),
     groupRoles: (groupId) => {
       // Reading the revision subscribes the selector to roles loads, like
@@ -599,16 +559,15 @@ export function makeGroups(ctx: StoreCtx): Groups {
       ),
     setTopicRoles: (chatId, input) =>
       ctx.run(
-        Effect.gen(function* () {
-          const { topicId } = yield* topicIdFor(chatId);
-          const topic = yield* lift(() =>
-            topics.setTopicRoles(topicId, input as SetTopicRolesInput),
-          );
+        changeTopicCore(
+          ctx.coreCtx,
+          actionStore(),
+          chatId,
+          (topicId) => topics.setTopicRoles(topicId, input as SetTopicRolesInput),
           // The refreshed row carries the server truth: going public cleared
           // the roles there, so no stale roles stay in the store.
-          h.rememberTopicRoles(topic);
-          yield* applyTopicRow(topic);
-        }),
+          (topic) => h.rememberTopicRoles(topic),
+        ),
       ),
     topicRoles: (chatId) => {
       // Reading the revision subscribes the selector to topic-roles loads,

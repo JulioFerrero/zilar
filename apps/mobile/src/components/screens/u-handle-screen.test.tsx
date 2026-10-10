@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import { ContactsApiError, type HandleProfile } from '@/lib/contacts-api';
 import HandleScreen from '@/app/u/[handle]';
+import { waitForAct as waitFor } from '@/test/wait';
 
 // The `@handle` profile route is rendered with its native pieces mocked as
 // DOM elements; the profile card is a stand-in with one button per callback.
@@ -41,7 +42,6 @@ vi.mock('expo-router', async () => {
     useRouter: () => h.router,
   };
 });
-vi.mock('nativewind', () => ({ useColorScheme: () => ({ colorScheme: 'dark' }) }));
 vi.mock('lucide-react-native', () => ({ ChevronLeft: () => null }));
 vi.mock('react-native', async () => {
   const { createElement: el } = await import('react');
@@ -186,23 +186,6 @@ const mount = async (): Promise<void> => {
   const root = createRoot(container);
   unmount = () => act(() => root.unmount());
   await act(async () => root.render(createElement(HandleScreen)));
-};
-
-const waitFor = async (check: () => void, timeout = 3000): Promise<void> => {
-  const started = Date.now();
-  for (;;) {
-    try {
-      check();
-      return;
-    } catch (error) {
-      if (Date.now() - started > timeout) {
-        throw error;
-      }
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      });
-    }
-  }
 };
 
 const labelled = (label: string): HTMLElement => {

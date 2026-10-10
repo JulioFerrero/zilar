@@ -1,11 +1,9 @@
 import type { LucideIcon } from 'lucide-react-native';
 import { CircleAlert, Inbox } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { ActivityIndicator, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { DANGER, MUTED_FOREGROUND } from '@/lib/colors';
 
 export interface StateMessageProps {
@@ -31,7 +29,6 @@ export function StateMessage({
   action,
   size = 'block',
 }: StateMessageProps) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const Icon = kind === 'loading' ? undefined : (icon ?? ICONS[kind]);
 
   if (size === 'inline') {
@@ -41,9 +38,9 @@ export function StateMessage({
         className="flex-row items-center gap-2 px-2 py-1.5"
       >
         {kind === 'loading' ? (
-          <ActivityIndicator size="small" color={MUTED_FOREGROUND[scheme]} />
+          <ActivityIndicator size="small" color={MUTED_FOREGROUND} />
         ) : (
-          Icon !== undefined && <Icon size={14} color={MUTED_FOREGROUND[scheme]} />
+          Icon !== undefined && <Icon size={14} color={MUTED_FOREGROUND} />
         )}
         <Text className="text-[13px] text-muted-foreground">{title}</Text>
       </View>
@@ -56,14 +53,10 @@ export function StateMessage({
       className="items-center gap-2 px-6 py-10"
     >
       {kind === 'loading' ? (
-        <ActivityIndicator
-          size="small"
-          color={MUTED_FOREGROUND[scheme]}
-          accessibilityLabel={title}
-        />
+        <ActivityIndicator size="small" color={MUTED_FOREGROUND} accessibilityLabel={title} />
       ) : (
         Icon !== undefined && (
-          <Icon size={20} color={kind === 'error' ? DANGER : MUTED_FOREGROUND[scheme]} />
+          <Icon size={20} color={kind === 'error' ? DANGER : MUTED_FOREGROUND} />
         )
       )}
       <Text className="text-center text-[14px] font-medium">{title}</Text>

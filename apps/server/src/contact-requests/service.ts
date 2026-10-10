@@ -11,7 +11,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { addContactPair, syncRoster } from '../contacts/service';
 import { normalizeHandle } from '../handles/rules';
@@ -63,15 +63,6 @@ export interface ContactRequestsDeps {
    * production.
    */
   onRecovery?: () => void | Promise<void>;
-}
-
-// Every query runs on the `effect/sql` client registered for this database.
-// The exported functions stay `async` so routes and tests keep their shape.
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // Resolves an exact, case-insensitive handle to its user row under the
@@ -350,7 +341,7 @@ export async function createContactRequest(
 // Whether `error` is a unique violation on one of the pending-request
 // indexes: either the structured `effect/sql` `UniqueViolation` reason (which
 // carries the constraint identifier) or a plain `{ code: '23505', constraint }`
-// object (Drizzle-wrapped driver errors and the recovery test's doubles).
+// object (plain driver errors and the recovery test's doubles).
 // Matched by code/constraint — never by message text.
 export function isPendingPairViolation(error: unknown): boolean {
   if (error instanceof SqlError.SqlError) {

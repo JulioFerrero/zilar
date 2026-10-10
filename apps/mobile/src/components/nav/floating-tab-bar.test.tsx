@@ -25,10 +25,6 @@ vi.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ bottom: 0, top: 0, left: 0, right: 0 }),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('expo-router/ui', () => ({
   TabTrigger: 'TabTrigger',
   useTabTrigger: ({ name }: { name: string }) => ({
@@ -41,10 +37,6 @@ vi.mock('lucide-react-native', () => ({
   Bot: 'Bot',
   MessagesSquare: 'MessagesSquare',
   Settings: 'Settings',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
 }));
 
 vi.mock('@/components/settings/profile-logic', () => ({

@@ -1,11 +1,9 @@
 import type { LucideIcon } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { Children, type ReactNode } from 'react';
 import { Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
@@ -109,7 +107,6 @@ export function ActionSheetItem({
   destructive = false,
   inset = false,
 }: ActionSheetItemProps) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <Pressable
       accessibilityRole="button"
@@ -118,7 +115,7 @@ export function ActionSheetItem({
       onPress={onPress}
       className="flex-row items-center gap-3 px-4 py-3.5 active:bg-list-hover disabled:opacity-50"
     >
-      {Icon === undefined ? null : <Icon size={18} color={MUTED_FOREGROUND[scheme]} />}
+      {Icon === undefined ? null : <Icon size={18} color={MUTED_FOREGROUND} />}
       <Text
         className={cn(
           'text-[16px]',

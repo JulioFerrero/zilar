@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { ChatFolder } from '@zilar/chat-core';
+import { flushTasks as flush } from '@/test/wait';
 
 // Settings → Chat folders. The list comes from the chat store, so the store
 // selector is stubbed. The body's only own state is the error text, forced
@@ -13,10 +14,6 @@ const NONE = Symbol('none');
 
 vi.mock('expo-router', () => ({
   useRouter: () => ({ back: () => {}, push: () => {} }),
-}));
-
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
 }));
 
 vi.mock('react-native', () => ({
@@ -108,18 +105,9 @@ vi.mock('@/components/ui/state-message', () => ({
   StateMessage: ({ title }: { title: string }) => createElement('StateMessage', null, title),
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
-}));
-
 vi.mock('@/lib/colors', () => ({
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ICON: '#d4d4d4',
+  MUTED_FOREGROUND: '#a1a1a1',
 }));
 
 let store: { folders: ChatFolder[]; reorderFolders: (ids: string[]) => Promise<void> } = {
@@ -188,8 +176,6 @@ async function renderScreen(input: { folders: ChatFolder[]; error?: string }): P
 }
 
 // Lets the press handler's promise chain and any Effect run finish.
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
 describe('FoldersSettingsScreen', () => {
   it('shows the empty state when there are no folders', async () => {
     const html = await renderScreen({ folders: [] });

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateRunnerKeypair, RunnerClient, type RunnerKeypair } from '@zilar/runner-tunnel';
 import type { ServerDatabase } from '../db/client';
 import { createTestContext, testSql, type TestContext } from '../test-support';
+import { waitFor } from '../test-support/wait';
 import {
   createHubKeyRegistry,
   startRunnerHub,
@@ -59,19 +60,6 @@ async function insertApprovedMachine(
     }),
   );
   return id;
-}
-
-async function waitFor(condition: () => boolean, timeoutMs: number, label: string): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    if (condition()) {
-      return;
-    }
-    if (Date.now() > deadline) {
-      throw new Error(`timed out waiting for ${label}`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
 }
 
 interface RunnerHandle {

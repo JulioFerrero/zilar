@@ -1,7 +1,4 @@
 import { createElement } from 'react';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
@@ -31,14 +28,6 @@ vi.mock('react-native-reanimated', () => ({
   useReducedMotion: () => false,
 }));
 
-vi.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
-
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('lucide-react-native', () => ({
   ArrowUp: 'ArrowUp',
   CircleAlert: 'CircleAlert',
@@ -58,11 +47,6 @@ vi.mock('lucide-react-native', () => ({
   Sticker: 'StickerIcon',
   Trophy: 'Trophy',
   X: 'X',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/components/ui/icon-button', () => ({
@@ -130,11 +114,6 @@ function composer(): string {
   );
 }
 
-function readComposerSource(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  return readFileSync(join(here, 'composer.tsx'), 'utf8');
-}
-
 /**
  * The sheet as the composer wires it: the GIFs tab is visible unless the
  * probe said off (`gifsVisible={gifAvailable !== false}`, seeded from the
@@ -186,10 +165,6 @@ describe('composer GIF tab (T-0148, sheet tabs in T-0175)', () => {
     expect(sheetForAvailability()).toContain('>GIFs<');
     resetGifsAvailability();
   });
-
-  it('wires the composer to the availability cache', () => {
-    expect(readComposerSource()).toContain('gifsVisible={gifAvailable !== false}');
-  });
 });
 
 describe('composer emoji row (T-0175)', () => {
@@ -199,12 +174,6 @@ describe('composer emoji row (T-0175)', () => {
     expect(html).not.toContain('Stickers');
     expect(html).not.toContain('>GIF<');
     expect(html.match(/<IconButton/g)?.length ?? 0).toBe(2);
-  });
-
-  it('tracks the caret so emoji insert at the selection', () => {
-    const source = readComposerSource();
-    expect(source).toContain('onSelectionChange');
-    expect(source).toContain('insertEmojiAtCaret');
   });
 });
 

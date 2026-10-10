@@ -17,6 +17,7 @@ import {
   TEST_BASE_URL,
   type TestContext,
 } from '../test-support';
+import { waitFor } from '../test-support/wait';
 import { createMachinesApi } from './api';
 import {
   assertRunnerHubConfig,
@@ -80,23 +81,6 @@ async function insertMachine(
     }),
   );
   return id;
-}
-
-async function waitFor(
-  condition: () => boolean | Promise<boolean>,
-  timeoutMs: number,
-  label: string,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    if (await condition()) {
-      return;
-    }
-    if (Date.now() > deadline) {
-      throw new Error(`timed out waiting for ${label}`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
 }
 
 describe('createHubKeyRegistry', () => {

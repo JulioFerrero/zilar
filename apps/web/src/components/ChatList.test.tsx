@@ -135,16 +135,32 @@ describe('ChatList', () => {
   });
 
   it('shows the connecting bar only when connecting takes a while', async () => {
-    renderApp('/', { status: 'connecting' });
-    // A fast connect never paints the bar.
-    expect(screen.queryByText('Connecting…')).toBeNull();
-    expect(await screen.findByText('Connecting…', {}, { timeout: 2500 })).toBeTruthy();
+    vi.useFakeTimers();
+    try {
+      renderApp('/', { status: 'connecting' });
+      // A fast connect never paints the bar.
+      expect(screen.queryByText('Connecting…')).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      expect(screen.getByText('Connecting…')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows the waiting-for-network bar when offline for a while', async () => {
-    renderApp('/', { status: 'offline' });
-    expect(screen.queryByText('Waiting for network…')).toBeNull();
-    expect(await screen.findByText('Waiting for network…', {}, { timeout: 2500 })).toBeTruthy();
+    vi.useFakeTimers();
+    try {
+      renderApp('/', { status: 'offline' });
+      expect(screen.queryByText('Waiting for network…')).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      expect(screen.getByText('Waiting for network…')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows skeletons and no empty state while chats load', () => {
@@ -254,11 +270,11 @@ describe('ChatList', () => {
     expect(screen.queryByRole('status', { name: 'Loading chats' })).toBeNull();
   });
 
-  it('navigates to the Machines page from the menu', () => {
+  it('navigates to the Machines page from the menu', async () => {
     renderApp('/');
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Machines' }));
-    expect(screen.getByText('Machines')).toBeTruthy();
+    expect(await screen.findByText('Machines')).toBeTruthy();
   });
 
   it('closes the main menu on Escape and returns focus to the trigger', () => {
@@ -274,11 +290,11 @@ describe('ChatList', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
-  it('navigates to the Chat folders page from the menu', () => {
+  it('navigates to the Chat folders page from the menu', async () => {
     renderApp('/');
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Chat folders' }));
-    expect(screen.getByText('Chat folders')).toBeTruthy();
+    expect(await screen.findByText('Chat folders')).toBeTruthy();
   });
 
   it('navigates to the Blocked people page from the menu', () => {

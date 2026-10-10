@@ -840,7 +840,7 @@ What we do instead:
 
 The interface is shaped like ACP, the Agent Client Protocol, which is the common standard across OpenCode, Goose, Codex, Claude, Cline and Gemini. That lets us swap engines per AI later.
 
-Implemented in `packages/agent-drivers` (T-0006). Live-tested against OpenCode v2.
+Implemented in `packages/agent-drivers` (T-0006), removed in T-0856 (no importers; it is in git history). Live-tested against OpenCode v2.
 
 ```ts
 export interface AgentDriver {

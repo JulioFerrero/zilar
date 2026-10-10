@@ -22,18 +22,6 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
-vi.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
-
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('lucide-react-native', () => ({
   CircleAlert: 'CircleAlert',
   Clock: 'Clock',
@@ -51,11 +39,6 @@ vi.mock('lucide-react-native', () => ({
   Sticker: 'StickerIcon',
   Trophy: 'Trophy',
   X: 'X',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/components/ui/use-key-press', () => ({
@@ -78,8 +61,8 @@ vi.mock('@/lib/session-token', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
-  ICON: { dark: '#fff', light: '#000' },
-  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
+  ICON: '#fff',
+  MUTED_FOREGROUND: '#a1a1a1',
 }));
 
 vi.mock('@/lib/gifs-api', async (importOriginal) => {

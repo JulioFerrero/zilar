@@ -4,6 +4,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { AuditEntry } from '../audit/service';
 import { createTestContext, testSql, type TestContext } from '../test-support';
+import { seedAi, seedUser } from '../test-support/seed';
 import { createApproval } from './service';
 import { startApprovalsSweeper, type SweeperLogger } from './sweeper';
 
@@ -16,53 +17,6 @@ function argsHash(seed: number): string {
 
 function captureLogger(): SweeperLogger {
   return { error: vi.fn() };
-}
-
-async function seedUser(context: TestContext): Promise<string> {
-  const id = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO "user" ${sql.insert({ id, name: 'User', email: `${id}@example.com` })}`;
-    }),
-  );
-  return id;
-}
-
-async function seedAi(context: TestContext, ownerId: string): Promise<string> {
-  const connectionId = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO provider_connections ${sql.insert({
-        id: connectionId,
-        owner: ownerId,
-        provider: 'openai',
-        encrypted_key: 'sealed-placeholder',
-        label: null,
-      })}`;
-    }),
-  );
-  const aiId = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO ais ${sql.insert({
-        id: aiId,
-        owner: ownerId,
-        name: 'Helper',
-        template: 'dev',
-        persona: 'A persona',
-        provider_connection_id: connectionId,
-        model: 'gpt-4o-mini',
-        localpart: `ai-${aiId}`,
-        jid: `ai-${aiId}@zilar.localhost`,
-        status: 'active',
-      })}`;
-      yield* sql`INSERT INTO ai_limits ${sql.insert({ ai_id: aiId, per_day_usd: '1.00', per_month_usd: '20.00' })}`;
-    }),
-  );
-  return aiId;
 }
 
 async function seedPastDueApproval(
@@ -152,7 +106,7 @@ describe('approvals sweeper effect loop', () => {
 
   it('lets an in-flight sweep finish after close(), then stops firing', async () => {
     const ownerId = await seedUser(context);
-    const aiId = await seedAi(context, ownerId);
+    const { aiId } = await seedAi(context, ownerId, { name: 'Helper' });
     await seedPastDueApproval(context, aiId, now);
 
     const parking = deferred();

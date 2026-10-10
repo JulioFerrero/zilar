@@ -41,13 +41,13 @@
 import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import type { RateLimiter } from '../rate-limit';
 import { classifyIp } from '../sandbox/ip-guard';
 import { settingsCipherFor } from '../setup/settings';
@@ -84,16 +84,6 @@ export type { AudioFetcher, FetchedAudio, Transcriber } from './pipeline';
 // `AudioUnavailableError` lives in `./pipeline` now (the Effect spike owns
 // the fetch leg); re-exported here so existing importers keep working.
 export { AudioUnavailableError } from './pipeline';
-
-// Every owner lookup runs on the `effect/sql` client registered for this
-// database (see `../effect/sql`); the exported functions stay `async` so the
-// routes and tests keep their shape during the transition.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
 
 // The server owner is the user with the earliest `createdAt`: there is no
 // global admin role, so the first account to exist owns the integrations.

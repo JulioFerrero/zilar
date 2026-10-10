@@ -16,21 +16,8 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
-
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('@/components/ui/use-key-press', () => ({
   useKeyPress: () => ({ pressed: false, reduceMotion: true, setPressed: () => {} }),
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/components/chat/avatar', () => ({
@@ -43,11 +30,9 @@ vi.mock('lucide-react-native', () => ({
   X: 'X',
 }));
 
-vi.mock('@/lib/color-scheme', () => ({ asColorScheme: () => 'dark' }));
-
 vi.mock('@/lib/colors', () => ({
-  MUTED_FOREGROUND: { dark: '#888888' },
-  ACCENT_FOREGROUND: { dark: '#0a0a0a' },
+  MUTED_FOREGROUND: '#888888',
+  ACCENT_FOREGROUND: '#0a0a0a',
 }));
 
 vi.mock('@/lib/depth', () => ({

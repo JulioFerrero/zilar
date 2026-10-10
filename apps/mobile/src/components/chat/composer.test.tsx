@@ -7,6 +7,7 @@ import type { PickResult, PickedFile } from '@/lib/attachment-ports';
 import type { GifItem } from '@/lib/gifs';
 import type { RecentStickerEntry, StickerChoice, StickerPack } from '@/lib/stickers';
 import { Composer } from './composer';
+import { waitForAct as waitFor } from '@/test/wait';
 
 // The mobile app has no React Native testing library. The primitives are
 // mocked with small DOM components and the two sheets are replaced by stubs
@@ -92,14 +93,6 @@ vi.mock('react-native', () => ({
       onChange: (event: { target: { value: string } }) => onChangeText(event.target.value),
     }),
   View: ({ children }: Kids) => createElement('div', null, children),
-}));
-
-vi.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
-
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
 }));
 
 vi.mock('lucide-react-native', () => ({
@@ -312,20 +305,6 @@ function type(container: Element, value: string): void {
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
 }
-
-const waitFor = async (check: () => void): Promise<void> => {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    try {
-      check();
-      return;
-    } catch {
-      await act(async () => {
-        await new Promise<void>((resolve) => setTimeout(resolve, 5));
-      });
-    }
-  }
-  check();
-};
 
 describe('Composer text', () => {
   it('shows the placeholder with the title and no send button until there is text', () => {

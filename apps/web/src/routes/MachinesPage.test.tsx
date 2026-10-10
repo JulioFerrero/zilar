@@ -1,25 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { AuthProvider, type AuthState } from '@/auth/AuthProvider';
 import { createChatStore } from '@/store/store';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { MachinesPage } from '@/routes/MachinesPage';
-
-function jsonResponse(status: number, body: unknown): Response {
-  if (status === 204) {
-    return {
-      ok: true,
-      status,
-      json: async () => body,
-    } as Response;
-  }
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response;
-}
+import { flushTasks, jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const auth: AuthState = {
   status: 'authenticated',
@@ -612,27 +598,30 @@ describe('MachinesPage', () => {
   });
 
   it('hides the AIs line when the AI list cannot be loaded', async () => {
-    vi.stubGlobal(
-      'fetch',
-      fetchRouter([
-        {
-          method: 'GET',
-          path: '/api/machines',
-          respond: () => jsonResponse(200, [approvedMachine]),
-        },
-        {
-          method: 'GET',
-          path: '/api/ais',
-          respond: () => jsonResponse(500, { error: { code: 'boom', message: 'server down' } }),
-        },
-      ]),
-    );
+    const fetchMock = fetchRouter([
+      {
+        method: 'GET',
+        path: '/api/machines',
+        respond: () => jsonResponse(200, [approvedMachine]),
+      },
+      {
+        method: 'GET',
+        path: '/api/ais',
+        respond: () => jsonResponse(500, { error: { code: 'boom', message: 'server down' } }),
+      },
+    ]);
+    vi.stubGlobal('fetch', fetchMock);
 
     renderMachinesPage();
 
     expect(await screen.findByText('julio-mbp')).toBeTruthy();
-    // Give the AI fetch a chance to land; the line must not appear.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // The AI fetch is answered with a 500: wait for the request, then let its response land.
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some((call) => String(call[0]) === '/api/ais')).toBe(true),
+    );
+    await act(async () => {
+      await flushTasks();
+    });
     expect(screen.queryByText(/^AIs: /)).toBeNull();
     expect(screen.queryByText('No AIs yet')).toBeNull();
   });

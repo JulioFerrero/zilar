@@ -2,6 +2,178 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 13:00 local: store core through T8 plus phase 2 pins and prefs merged; nothing deployed**
+- **Merged since the morning:**
+  - T-0914 (T7a, mobile incoming, actions and reads);
+  - T-0916 (the core echo keeps a later edit, fixing a web bug that was on main);
+  - T-0915 (T8: polling and lifecycle in the core, web side; `start()` is idempotent);
+  - T-0917 (T7b: mobile history and the overlap fix);
+  - T-0919 (pins, prefs and folders in the core; Q4 pin texts);
+  - T-0913 (four load flakes made deterministic).
+- **Also merged:** T-0920 (one `GroupDetail`, per-group cache), T-0921 (topic actions in core), T-0923 (channel and group actions in core).
+- **Also merged:**
+  - T-0918 (T9, the mobile lifecycle). The phone smoke caught missing folder chips; fixed tests first, and the re-smoke is OK.
+  - T-0924 (one `ChatEntry`, one `summariesFor`).
+- **Running on DeepSeek:**
+  - T-0922 (T10, the send pipeline, the last task of the split);
+  - T-0925 (shared server test seeds, part 1);
+  - T-0926 (mobile native mocks in one setup file).
+- **Next:**
+  - after T10: state-name unification (2.2), moving the group actions mobile keeps in screens onto the store, and the mock stores (4.4, optional);
+  - then server seeds part 2.
+- **Then Julio's single live test** (the list below), then a deploy after his OK.
+
+**2026-10-10 local, morning: workers back on OpenCode (Julio's call: Claude usage too high)**
+- **The split:** every task now launches with `lead launch` (`model: auto`, which gives DeepSeek flash off-peak and the free Muse in DeepSeek's peak hours). The autopilot and the Muse pre-review are running again, and Claude is only the lead.
+- **Relaunched on DeepSeek:**
+  - T-0913 (load flakes), with the stopped worker's partial patch at `~/.zilar-lead/T-0913-partial.patch`;
+  - T-0915 (store core T8, lifecycle).
+- **T-0914 (T7a):** its code was finished by its Claude worker; the lead runs the phone smoke, then the combined check.
+
+**2026-10-10 08:20 local: T-0908, T-0909 and T-0910 merged; nothing deployed**
+- **T-0908:** one `runSql` (−219 lines).
+- **T-0909:** `drizzle-orm` and `drizzle-kit` are overridden away, so the deployed server folder goes from 321 to 230 MB with no PGlite.
+- **T-0910:** lenient contract rows, and the mobile gifs, media and stickers clients derive from the contract.
+- **Merged after that:** T-0907 (T6: incoming, actions and reads in the core) and T-0911 (test sleeps).
+- **T-0912 merged:** web history is in the core. `loadOlder` during the first page no longer shows messages twice, and the fix landed tests first. Mobile has the same race, and T7b carries its fix.
+- **Running:**
+  - T-0915 (T8: polling, drafts and lifecycle in the core, web side; high risk, live check);
+  - T-0914 (T7a: mobile on the core incoming, actions and reads);
+  - T-0913 (load flakes).
+- **Next:** T7b (mobile history) after T-0912, then T8 (polling, drafts and lifecycle in the core, web), T9 and T10.
+- **Live-check additions:**
+  - the production image after deploy, where sign-in works without drizzle (T-0909);
+  - stickers, GIFs and the media gallery on mobile (T-0910).
+
+**2026-10-10 07:40 local: usage limit reached, handoff; nothing deployed**
+- **Merged on main:**
+  - T-0905 (T4, mobile on the core lifetime);
+  - T-0906 (T5, mobile on the core ledger: `real-store.ts` 1,805 → 957 lines, Q1 mentions, the mobile group echo race fix).
+- **Reviewed, waiting for a combined check, then merge (squash method):**
+  - T-0907 (T6: incoming, actions and reads in the core). It edits `ledger.ts`, so it brings main in first.
+  - T-0910 (lenient contract rows; mobile gifs, media and stickers derive from the contract).
+- **Done, needs a Review:** T-0908 (one `runSql`, −219 lines, server tests green).
+- **In flight when the limit hit:**
+  - T-0909 round 1 (a `pnpm-workspace.yaml` peer rule to drop PGlite from the prod deploy). Add `pnpm-workspace.yaml` to its Allowed list when you review.
+  - T-0911 (test sleeps). Check its worktree and branch for its state.
+- **Next:**
+  - T-0912 (T6b history plus the `loadOlder` overlap bug, tests first). Its spec is on main; branch it from main after T-0907 merges.
+  - Then T7 and T8 of `docs/STORE_CORE_PLAN.md`.
+- **Unowned flakes at high load:**
+  - `packages/devtools/src/lead/watch-app.test.tsx` (overlap guard);
+  - `packages/runner-tunnel/src/server.effect.test.ts` (heartbeat timing);
+  - `apps/server/src/sandbox/run-tool.test.ts` (timeouts).
+
+  They pass alone; candidates for a fake-timer fix.
+
+**2026-10-10 07:00 local: store core T2 and T3 merged (T-0903, T-0904, main `c29784ea`); nothing deployed**
+- **T-0903 (T2):** the lifetime is in `packages/client-core`, with web `runtime.ts` as an 18-line adapter.
+- **T-0904 (T3):** the message ledger is in the core, web `realStore.ts` went from 1,550 to 479 lines, and the group echo race is fixed on web, tests first.
+- **Running:**
+  - T-0905 (T4, mobile on the core lifetime) is in its check;
+  - T-0906 (T5, mobile on the core ledger, plus the mobile echo race fix and Q1 mentions);
+  - T-0907 (T6, web incoming, actions, reads and history in the core).
+
+**2026-10-10 06:25 local: wave 6 merged (T-0896 to T-0902), main `6fb2c224`; nothing deployed**
+- **Checks:** the combined check of the six code tasks passed, and main equals the checked tree. The phone smoke (chats, settings, machines) is clean.
+- **Main CI:** green at `6fb2c224`, which also covers T-0895 from wave 5.
+- **Merged:**
+  - T-0900: the dependency catalog, so one `effect` version resolves;
+  - T-0899: shared test wait helpers and a one-tick guard, test-only, −917 lines;
+  - T-0898: mobile source-pinning tests replaced by render tests, and the oxlint `rules-of-hooks` rule on `src/app`;
+  - T-0897: the contract tidy-up, −440 lines;
+  - T-0901: the mobile sign-out privacy fix;
+  - T-0902: store core T1.
+- **Store core, running:** T-0903 (T2, lifetime) and T-0904 (T3, ledger; web `realStore.ts` 1,550 → 479 lines), both bringing main in. T4 to T6 follow.
+- **Bug found by T-0904's new real-store test, already on main:** in a group, when my own echo arrives before the send resolves, the ack's origin id overwrites the room's stanza id. A reaction to that message then names the wrong id.
+  - **Who it affects:** Zilar clients still match it. Other XMPP clients may not, since XEP-0444 expects the stanza id in groups.
+  - **Fix:** T-0904 fixes it tests first. Mobile gets checked for the same race, and T5 carries any mobile fix.
+
+**2026-10-10 06:00 local: wave 6 running (T-0896 to T-0900)**
+- **T-0896 (Opus):** the store core design, Phase 4.3. It writes `docs/STORE_CORE_PLAN.md` with the task split; no code changes.
+- **T-0897:** the contract tidy-up. Wave 5's per-chain leftovers are merged, and the hand-decoded endpoints get declared and served with `handleRaw`.
+- **T-0898:** brittle mobile source-pinning tests become render tests.
+- **T-0899:** shared wait helpers, fake timers in place of real sleeps, and a guard against one-tick waits.
+- **T-0900:** effect `^4.0.2` everywhere, plus a pnpm catalog.
+- **T-0896 merged:** `docs/STORE_CORE_PLAN.md` splits Phase 4.3 into 10 tasks over 6 waves.
+- **Lead decisions while Julio slept (plan section 8):** each one makes mobile behave like web and can be reverted with a flag or a text change.
+  - **Q1:** received @mentions are highlighted on mobile.
+  - **Q2:** a mobile voice message, attachment or forward that fails shows "Not sent" within 60 s.
+  - **Q3:** mobile retries the chat connection after 2, 5, 15, 30 and 60 s.
+  - **Q4:** one set of pin error texts, and a stale error banner clears on the next send.
+- **Privacy finding, T-0901 running:** on mobile, sign-out keeps the previous user's chats, contacts and messages in the store, which lives across sign-ins. A second user on the same phone could briefly see them, or get the first user's messages merged into a DM with the same peer. The fix is tests first, and web is checked too.
+- **T-0902 running:** store core T1, the pilot.
+- **Live-check additions:**
+  - sign out, then sign in as another user on the same phone (T-0901);
+  - the Q1-Q4 behaviours once T5, T9 and T10 land.
+
+**2026-10-10 05:45 local: wave 5 merged (api-contract, T-0891 to T-0895, main `5f3e5f6f`); nothing deployed**
+- **What landed:** 28 JSON API groups now live in `packages/api-contract`. The server implements them, and web and mobile derive their clients from them.
+  - **Mobile:** about 4,000 hand-written client lines removed.
+  - **Wire:** unchanged; no server route test was edited.
+  - **Web bundle:** flat.
+- **CI:** green on T-0892 and T-0893. GitHub started no CI run for the T-0895 commit `5f3e5f6f`. The production images built fine on `b2ac002c`, which contains it, and the next code merge runs full CI on a tip that includes it.
+- **Checks:** the combined check of the four chains passed, and main is identical to the checked tree. The phone smoke passed with clean screenshots on chats, settings, explore, AIs, approvals, machines, connections and stickers.
+- **Bug caught:** Effect's JSON codec turns an explicit `undefined` on a nullable optional field into `null`, which would clear the field. The contract's `omitUndefined` fixes it, and body-shape tests pin it.
+- **Still hand-written, follow-ups for a later task:**
+  - **Binary, SSE and better-auth endpoints:** these stay outside the client on purpose.
+  - **Hand-decoded endpoints:** web still calls them with `request()`: push subscribe, machines rename and pair, gifs search, the media gallery, and sticker discover and import. They should be declared and served with `handleRaw`.
+  - **Duplicate groups:** connections and tools exist twice in the contract, as a client version and a server version.
+  - **Mobile clients:** stickers, gifs and media stay hand-written, because they drop malformed rows on purpose.
+  - **Schema-error tags:** each chain has its own; they should be folded into `http-core`.
+- **Live-check additions:** groups, topics, folders, roles, invite links, AIs, connections, approvals, tools, contacts, contact requests, blocking, search, explore, stickers, gifs, push settings, machines and integrations, on web and mobile.
+
+**2026-10-10 04:45 local: waves 3 and 4 merged (48 tasks, main `b9aa5d98`); nothing deployed**
+- **The plan:** `docs/audit/simplify-plan.md`. Julio chose "everything, test once" on 2026-10-09: the whole plan lands on main, then he does one live test before any deploy.
+- **Wave 3, merged:** T-0843 to T-0865, T-0888 (the voice test is deterministic), T-0889 (the scope glob) and T-0890 (main CI green again; `lead batch check` now runs `prettier --check` as CI does).
+  - **Headline numbers:**
+    - web entry chunk 1,437 → 740 kB;
+    - mobile assets 4.5 → 0.5 MB;
+    - server image runs bundled JS (start CPU 1.75 → 1.1 s, about 50 MB less RAM);
+    - list endpoints lose their N+1 queries;
+    - about 4 MB of dead drizzle snapshots and 357 dead lines removed.
+- **Wave 4, merged:** T-0866 to T-0887, with a green combined check and main identical to the checked tree.
+  - **Server:** 8 sweeps onto the shared HTTP helpers with truthful 201/204 statuses (about −1,800 lines).
+  - **Shared code:** protocol (JIDs and handles), chat-core (format, media, prefs, routines, AI forms, the store ledger) and the new `packages/client-core` (React and Effect glue).
+  - **Web:** every store read uses a narrow selector, and markdown is lazy (startup JS 401 → 355 kB gzip).
+  - **Mobile:** dark-only.
+  - **Tests:** shared fakes, the gateway test split into 8 files, and lighter loop tests.
+- **Phone:** main after wave 3 and the combined wave 4 tree both pass the phone smoke with clean screenshots: chats, settings, explore, AIs and whistle.
+  - **Nit:** the icons on the Whistle screen's white buttons are almost invisible; that is a follow-up.
+- **Merge method:**
+  - Branches that had merged other unmerged branches could not be rebased, because their original commits clash with the squashed copies on main.
+  - Each branch was merged with main and collapsed into one commit with an identical tree (backup refs `backup/T-XXXX-premerge`).
+  - Then `lead merge --skip-gate` ran for each, since the combined check had already passed.
+- **Main CI:** green at `b9aa5d98` (the wave 4 tip): build, typecheck, format, lint, and the server 1/3, 2/3, 3/3 and rest test jobs.
+- **Wave 5 (Phase 3, api-contract), running:**
+  - **Prep merged:** T-0891, through the full gate. There is one `Session`/`CurrentUser`, the pins bridge is gone, and each chain has its own area in the contract lists.
+  - **Four Sonnet chains:**
+    - T-0892: groups, invite-links, roles, chat-folders, chat-prefs, topics;
+    - T-0893: ais, memory, connections, approvals, audit, tools, routines;
+    - T-0894: contacts, contact-requests, directory, blocks, search, chats, drafts, handles;
+    - T-0895: the JSON parts of stickers, gifs, machines, integrations, push, backgrounds, voice, media and auth.
+  - **Effect:** web and mobile derive their clients from the contract, so the hand-written schemas and fetch code go away.
+  - **Recipe:** `docs/API_CONTRACT_RECIPE.md`.
+- **Next:**
+  - Phase 4: the client-core store core.
+  - Follow-ups listed in the task Reviews, for example a mobile bearer session cache, server JID sites, the topics/access `runSql` copy, the `makeRateLimit` `Pick` type and the image size.
+- **Live-check list for Julio's single test** (it grows with each wave):
+  - sign in and out and back in, on web and mobile (session cookie cache, T-0858);
+  - AI DMs on mobile show as AI (T-0843);
+  - topic order and money format are the same on web and mobile (T-0844);
+  - streaming an AI reply in a long chat, on web and mobile (T-0845, T-0846);
+  - pin and unpin on web and mobile (T-0864, the first contract-derived client);
+  - the settings pages load (T-0862 lazy routes);
+  - the server starts and stops from the bundled image (T-0861);
+  - forwarding, reactions and edits (T-0877);
+  - mobile looks the same everywhere (T-0881 dark-only).
+- **Incident:** two workers' `git stash` pops swapped each other's changes, since the stash list is shared across worktrees. Both recovered, and `docs/EFFECT_BRIEF.md` now forbids `git stash`.
+- **Docker Desktop:** restarted after the reboot; the local stack (postgres, ejabberd, litellm) is up.
+
+**2026-10-09 18:35 UTC: main green at `30e1c38a`; 100.0% Effect; nothing deployed**
+- **CI was red from 17:55 to 18:15 UTC:** a web test (`MessageSearchResults` "opens a hit on click") raced the Effect scheduler in CI, and the Composer voice tests were flaky the same way. T-0842 (test-only) made them wait for the visible state, and CI on `30e1c38a` passed all jobs.
+- **Production images:** all four built, and the server image smoke start ("zilar-server listening") passed with the new Effect entry (T-0838). The deploy job skipped because the Coolify secrets are not set, and live `/health` still reports `73fae1bf`.
+
 **2026-10-09 18:00 UTC: 100.0% Effect on main (`ee84523a`)**
 - **The map:** `pnpm effect:map` on main gives 879 files: effect 438, needs-effect 0, plain 329, exempt 112, legacy 0. Markers are 16 of 25, and Tier B (tracked only, decision D1) has 161 files.
 - **Merged since 17:55:**

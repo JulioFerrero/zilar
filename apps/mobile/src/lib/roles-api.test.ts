@@ -1,13 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createRolesApi, parseCustomGroupRole, RolesApiError } from './roles-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/wait';
 
 function roleRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {

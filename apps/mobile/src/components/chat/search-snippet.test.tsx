@@ -6,10 +6,6 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 interface TestElement {
   type: unknown;
   props: { children?: unknown; style?: unknown };

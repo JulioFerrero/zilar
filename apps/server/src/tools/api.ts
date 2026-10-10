@@ -13,30 +13,22 @@
 // messages. Tool run output and input never appear in a log line, as before.
 
 import { Effect, Layer, Option, Schema } from 'effect';
-import { SqlClient, type SqlError } from 'effect/sql';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-} from 'effect/http-api';
+import { SqlClient } from 'effect/sql';
+import { HttpServerRequest } from 'effect/http';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { RevertToolPayload, RunToolPayload, ToolsGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import {
-  CurrentUser,
-  Session,
-  failureResponse,
-  requestIdOf,
+  handler,
+  mountApi,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { canSeeTopic, getTopic, type TopicRow } from '../topics/access';
@@ -59,15 +51,6 @@ import {
   type ToolVersionDetail,
 } from './service';
 
-// Every read runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported surface stays the same.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
-
 // Manual runs are capped per user per minute.
 export const TOOL_RUN_RATE_LIMIT_MAX = 5;
 export const TOOL_RUN_RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -76,197 +59,11 @@ export const TOOL_RUN_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 // adapter): anything larger is 400 `invalid_request` before any run.
 export const MAX_TOOL_RUN_INPUT_BYTES = 16 * 1024;
 
-// Replaces `revertBodySchema` (zod strict): excess keys fail the decode.
-const RevertBody = Schema.Struct({
-  version: Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))),
-  message: Schema.optional(
-    Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(200))),
-  ),
-});
-
-// Replaces `runBodySchema` (zod strict): excess keys fail the decode. The
-// 16 KiB `input` check runs manually after the decode (see below), so its
-// failure answers the same `Invalid run body` text.
-const RunBody = Schema.Struct({
-  input: Schema.optional(Schema.Unknown),
-  version: Schema.optional(
-    Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))),
-  ),
-});
-
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 
-const ToolScope = Schema.Literals(['personal', 'group']);
-const ToolLastRunStatus = Schema.NullOr(Schema.Literals(['ok', 'error']));
-
-// The list shape is the full `PublicTool` plus scope, dates as the ISO
-// strings `c.json` used to write. Every field of the service return type is
-// listed, so no field is silently stripped by the success encoding.
-const ToolListItem = Schema.Struct({
-  id: Schema.String,
-  aiId: Schema.String,
-  groupId: Schema.NullOr(Schema.String),
-  topicId: Schema.NullOr(Schema.String),
-  name: Schema.String,
-  description: Schema.String,
-  currentVersion: Schema.Number,
-  hosts: Schema.Array(Schema.String),
-  approvedHosts: Schema.Array(Schema.String),
-  lastRunStatus: ToolLastRunStatus,
-  updatedAt: Schema.String,
-  scope: ToolScope,
-});
-
-const ToolList = Schema.Array(ToolListItem);
-
-// The detail shape is the list shape plus the current source.
-const ToolDetailView = Schema.Struct({
-  ...ToolListItem.fields,
-  source: Schema.String,
-});
-
-// The versions shape is every field of `PublicToolVersion`, without source.
-const ToolVersionItem = Schema.Struct({
-  id: Schema.String,
-  toolId: Schema.String,
-  version: Schema.Number,
-  message: Schema.String,
-  hosts: Schema.Array(Schema.String),
-  createdBy: Schema.String,
-  createdAt: Schema.String,
-});
-
-const ToolVersionList = Schema.Array(ToolVersionItem);
-
-// One version with source: every field of `ToolVersionDetail`.
-const ToolVersionView = Schema.Struct({
-  ...ToolVersionItem.fields,
-  source: Schema.String,
-});
-
-// Every field of `PublicToolRun`; the output text is the stored (truncated)
-// column, never the live run output.
-const ToolRunItem = Schema.Struct({
-  id: Schema.String,
-  toolId: Schema.String,
-  version: Schema.Number,
-  trigger: Schema.Literals(['manual', 'routine', 'ai']),
-  status: Schema.Literals(['ok', 'error']),
-  errorKind: Schema.NullOr(Schema.String),
-  durationMs: Schema.Number,
-  fetchCount: Schema.Number,
-  outputText: Schema.NullOr(Schema.String),
-  createdAt: Schema.String,
-});
-
-const ToolRunList = Schema.Array(ToolRunItem);
-
-// The revert answer: the new version plus the tool name.
-const RevertView = Schema.Struct({
-  id: Schema.String,
-  toolId: Schema.String,
-  version: Schema.Number,
-  message: Schema.String,
-  hosts: Schema.Array(Schema.String),
-  createdBy: Schema.String,
-  createdAt: Schema.String,
-  toolName: Schema.String,
-});
-
-// The run answer: the old `toRunWire` shape. `data` stays optional so an
-// output without data encodes exactly like `c.json` wrote it.
-const RunOutput = Schema.Struct({
-  text: Schema.String,
-  data: Schema.optional(Schema.Unknown),
-});
-
-const RunResultView = Schema.Union([
-  Schema.Struct({
-    ok: Schema.Literal(true),
-    output: RunOutput,
-    logs: Schema.String,
-    durationMs: Schema.Number,
-    fetchCount: Schema.Number,
-  }),
-  Schema.Struct({
-    ok: Schema.Literal(false),
-    error: Schema.Struct({ kind: Schema.String, message: Schema.String }),
-    logs: Schema.String,
-    durationMs: Schema.Number,
-    fetchCount: Schema.Number,
-  }),
-]);
-const ToolIdParams = Schema.Struct({ id: Schema.String });
-const ToolVersionParams = Schema.Struct({ id: Schema.String, n: Schema.String });
-
-// A params decode failure renders like the old path: a 400
-// `invalid_request`. Params are plain strings so this never fires; the
-// layer exists so the group middleware reads like the other modules.
-class ToolsSchemaErrors extends HttpApiMiddleware.Service<ToolsSchemaErrors>()(
-  'zilar/effect/http/ToolsSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<ToolsSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(ToolsSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid request'),
-      );
-    }),
-  );
-}
-
-const ToolsGroup = HttpApiGroup.make('tools')
-  .add(
-    HttpApiEndpoint.get('listForAi', '/ais/:id/tools', {
-      params: ToolIdParams,
-      success: ToolList,
-    }),
-    HttpApiEndpoint.get('listForGroup', '/groups/:id/tools', {
-      params: ToolIdParams,
-      success: ToolList,
-    }),
-    HttpApiEndpoint.get('listForTopic', '/topics/:id/tools', {
-      params: ToolIdParams,
-      success: ToolList,
-    }),
-    HttpApiEndpoint.get('detail', '/tools/:id', {
-      params: ToolIdParams,
-      success: ToolDetailView,
-    }),
-    HttpApiEndpoint.get('versions', '/tools/:id/versions', {
-      params: ToolIdParams,
-      success: ToolVersionList,
-    }),
-    HttpApiEndpoint.get('version', '/tools/:id/versions/:n', {
-      params: ToolVersionParams,
-      success: ToolVersionView,
-    }),
-    HttpApiEndpoint.get('runs', '/tools/:id/runs', {
-      params: ToolIdParams,
-      success: ToolRunList,
-    }),
-    HttpApiEndpoint.post('revert', '/tools/:id/revert', {
-      params: ToolIdParams,
-      success: RevertView,
-    }),
-    HttpApiEndpoint.delete('remove', '/tools/:id', {
-      params: ToolIdParams,
-      success: Schema.Void,
-    }),
-    HttpApiEndpoint.post('run', '/tools/:id/run', {
-      params: ToolIdParams,
-      success: RunResultView,
-    }),
-  )
-  .middleware(Session)
-  .middleware(ToolsSchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
-
+// `revert` and `run` declare their payloads in the contract for the derived
+// client, but are served with `handleRaw`: their bodies are decoded by hand in
+// the handlers, so the 400, 404, 429 and 501 order stays (see the header).
 const ToolsApi = HttpApi.make('tools').add(ToolsGroup);
 
 export interface ToolsApiDependencies {
@@ -282,19 +79,6 @@ export interface ToolsApiDependencies {
   runLimiter?: RateLimiter;
 }
 
-export const TOOLS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/ais/:id/tools' },
-  { method: 'GET', path: '/api/groups/:id/tools' },
-  { method: 'GET', path: '/api/topics/:id/tools' },
-  { method: 'GET', path: '/api/tools/:id' },
-  { method: 'GET', path: '/api/tools/:id/versions' },
-  { method: 'GET', path: '/api/tools/:id/versions/:n' },
-  { method: 'GET', path: '/api/tools/:id/runs' },
-  { method: 'POST', path: '/api/tools/:id/revert' },
-  { method: 'DELETE', path: '/api/tools/:id' },
-  { method: 'POST', path: '/api/tools/:id/run' },
-];
-
 export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
@@ -308,11 +92,10 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
 
   const groupLayer = HttpApiBuilder.group(ToolsApi, 'tools', (handlers) =>
     handlers
-      .handle('listForAi', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'listForAi',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const ai = yield* Effect.promise(() =>
               findOwnedAiRow(deps.db, request.params.id, user.id),
             );
@@ -336,15 +119,12 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             }
             return visible.map(toListWire);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('listForGroup', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'listForGroup',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const groupId = request.params.id;
             const membership = yield* Effect.promise(() =>
               findMembership(deps.db, groupId, user.id),
@@ -357,17 +137,14 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             const tools = yield* Effect.promise(() => listToolsForGroup(deps.db, groupId, user.id));
             return tools.map(toListWire);
           }),
-          logger,
-          requestId,
-        );
-      })
+        ),
+      )
       // T-0110: the tools of one topic. Anyone who can see the topic reads;
       // anyone else gets the same 404 as a missing id.
-      .handle('listForTopic', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'listForTopic',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const topicId = request.params.id;
             const topic = yield* Effect.promise(() => getTopic(deps.db, topicId));
             if (
@@ -412,76 +189,64 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             }
             return result.map(toListWire);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('detail', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'detail',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const tool = yield* Effect.promise(() =>
               requireReadableTool(deps.db, request.params.id, user.id),
             );
             return toDetailWire(tool);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('versions', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'versions',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const versions = yield* Effect.promise(() =>
               requireReadableVersions(deps.db, request.params.id, user.id),
             );
             return versions.map(toVersionListWire);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('version', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'version',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const version = yield* Effect.promise(() =>
               requireReadableVersion(deps.db, request.params.id, request.params.n, user.id),
             );
             return toVersionDetailWire(version);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('runs', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'runs',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const runs = yield* Effect.promise(() =>
               requireReadableRuns(deps.db, request.params.id, user.id),
             );
             return runs.map(toRunListWire);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('revert', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handleRaw(
+        'revert',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const body = yield* readJsonBody(request.request);
             if (!body.parsed) {
               throw new HttpError(400, 'invalid_request', 'Invalid JSON body');
             }
-            const decoded = Schema.decodeUnknownOption(RevertBody, STRICT_DECODE)(body.value);
+            const decoded = Schema.decodeUnknownOption(
+              RevertToolPayload,
+              STRICT_DECODE,
+            )(body.value);
             if (Option.isNone(decoded)) {
               throw new HttpError(400, 'invalid_request', 'Invalid revert body');
             }
@@ -523,15 +288,12 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             }
             return toRevertWire(tool, version);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('remove', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'remove',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const toolId = request.params.id;
             // `toolAccess` hides soft-deleted rows (they read as missing), but the
             // delete must be idempotent: a manager re-deleting sees 204, like the
@@ -562,22 +324,18 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
                 }),
               );
             }
-            return HttpServerResponse.empty({ status: 204 });
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('run', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handleRaw(
+        'run',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const body = yield* readJsonBody(request.request);
             if (!body.parsed) {
               throw new HttpError(400, 'invalid_request', 'Invalid JSON body');
             }
-            const decoded = Schema.decodeUnknownOption(RunBody, STRICT_DECODE)(body.value);
+            const decoded = Schema.decodeUnknownOption(RunToolPayload, STRICT_DECODE)(body.value);
             if (Option.isNone(decoded) || !runInputWithinLimit(decoded.value.input)) {
               throw new HttpError(400, 'invalid_request', 'Invalid run body');
             }
@@ -629,10 +387,8 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
             }
             return toRunWire(result);
           }),
-          logger,
-          requestId,
-        );
-      }),
+        ),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(ToolsApi).pipe(
@@ -641,14 +397,7 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: TOOLS_API_ROUTES };
+  return mountApi(ToolsApi, apiLayer);
 }
 
 function toListWire(tool: PublicTool & { scope: 'personal' | 'group' }) {

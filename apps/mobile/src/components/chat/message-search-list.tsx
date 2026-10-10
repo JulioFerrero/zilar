@@ -233,7 +233,7 @@ function MessageSearchGroups({
         </View>
       ) : (
         <View className="items-center py-3">
-          <ActivityIndicator color={ACCENT.dark} />
+          <ActivityIndicator color={ACCENT} />
         </View>
       )}
     </ScrollView>

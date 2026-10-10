@@ -13,7 +13,6 @@ import { Data, Effect } from 'effect';
 import { useCallback, useRef, useState } from 'react';
 import { Modal, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { Button } from '@/components/ui/button';
@@ -23,7 +22,6 @@ import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT_FOREGROUND, ICON } from '@/lib/colors';
 import { useAction } from '@/lib/effect/use-action';
 import type { Machine, MachinesApi, PairingCode } from '@/lib/machines-api';
@@ -116,7 +114,6 @@ export default function MachinesScreen() {
 
 function MachinesList() {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const { api } = useMachinesApi();
 
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -322,7 +319,7 @@ function MachinesList() {
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View className="flex-row items-center gap-1 px-2 py-2">
         <IconButton label="Back" onPress={() => router.back()}>
-          <ChevronLeft size={24} color={ICON[scheme]} />
+          <ChevronLeft size={24} color={ICON} />
         </IconButton>
         <View className="min-w-0 flex-1">
           <Text numberOfLines={1} className="text-[20px] font-semibold leading-6 text-foreground">
@@ -334,7 +331,7 @@ function MachinesList() {
         </View>
         {status === 'ready' ? (
           <IconButton label="Add machine" onPress={openAdd}>
-            <Plus size={22} color={ICON[scheme]} />
+            <Plus size={22} color={ICON} />
           </IconButton>
         ) : null}
       </View>
@@ -497,9 +494,9 @@ function MachinesList() {
                 onPress={() => setShowRevoked((value) => !value)}
               >
                 {showRevoked ? (
-                  <ChevronUp size={16} color={ICON[scheme]} />
+                  <ChevronUp size={16} color={ICON} />
                 ) : (
-                  <ChevronDown size={16} color={ICON[scheme]} />
+                  <ChevronDown size={16} color={ICON} />
                 )}
                 <Text className="text-[15px] font-semibold text-foreground">
                   Revoked ({revoked.length})
@@ -622,7 +619,6 @@ function AddMachineSheet({
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const [, copyCode] = useAction((code: string) =>
     Effect.tryPromise({
       try: () => Clipboard.setStringAsync(code),
@@ -692,9 +688,9 @@ function AddMachineSheet({
                     onPress={copy}
                   >
                     {copied ? (
-                      <Check size={14} color={ACCENT_FOREGROUND[scheme]} />
+                      <Check size={14} color={ACCENT_FOREGROUND} />
                     ) : (
-                      <Copy size={14} color={ACCENT_FOREGROUND[scheme]} />
+                      <Copy size={14} color={ACCENT_FOREGROUND} />
                     )}
                     <Text>{copied ? 'Copied' : 'Copy'}</Text>
                   </Button>

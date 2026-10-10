@@ -4,9 +4,9 @@
 // registers the runtime.
 
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 
 export type RevokeListener = (machineId: string) => void;
 export type ApproveListener = (machineId: string, publicKey: string) => void;
@@ -26,13 +26,6 @@ export interface DbMachineRegistry {
   // Called by the machines routes after an approve commits, so the hub can
   // trust a freshly-approved machine without waiting for its 30 s refresh.
   notifyApproved(machineId: string, publicKey: string): void;
-}
-
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 export function createDbMachineRegistry(db: ServerDatabase): DbMachineRegistry {

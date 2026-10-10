@@ -16,10 +16,6 @@ vi.mock('@/components/chat/ticks', () => ({
   Ticks: 'Ticks',
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 vi.mock('@/lib/auth', () => ({
   API_URL: 'http://127.0.0.1:3188',
 }));

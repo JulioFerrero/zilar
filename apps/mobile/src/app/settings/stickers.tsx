@@ -1,6 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ChevronDown, ChevronUp, Download, Pencil, Plus, Star, Sticker } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image, Pressable, View, useWindowDimensions } from 'react-native';
 import { Effect, Fiber } from 'effect';
@@ -14,7 +13,6 @@ import { SearchField } from '@/components/ui/search-field';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { useAuthStore } from '@/auth/session';
 import { API_URL } from '@/lib/auth';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT_FOREGROUND, FOREGROUND, ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { fromApi } from '@/lib/effect/api-effect';
 import { getSessionToken } from '@/lib/session-token';
@@ -76,7 +74,6 @@ function packCountLabel(count: number): string {
 
 function StickersBody() {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const { width: windowWidth } = useWindowDimensions();
   const { api } = useStickersApi();
 
@@ -365,7 +362,7 @@ function StickersBody() {
                 disabled={busy}
                 onPress={() => router.push('/settings/sticker-pack')}
               >
-                <Plus size={16} color={ACCENT_FOREGROUND[scheme]} />
+                <Plus size={16} color={ACCENT_FOREGROUND} />
                 <Text>New pack</Text>
               </Button>
             </View>
@@ -379,7 +376,7 @@ function StickersBody() {
                 setImportOpen(true);
               }}
             >
-              <Download size={16} color={ICON[scheme]} />
+              <Download size={16} color={ICON} />
               <Text className="text-[15px] text-foreground">Import from Telegram</Text>
             </Button>
             {actionError !== '' ? (
@@ -413,7 +410,7 @@ function StickersBody() {
                           disabled={busy || index === 0}
                           onPress={() => movePack(pack.id, -1)}
                         >
-                          <ChevronUp size={20} color={ICON[scheme]} />
+                          <ChevronUp size={20} color={ICON} />
                         </Button>
                         <Button
                           variant="ghost"
@@ -424,7 +421,7 @@ function StickersBody() {
                           disabled={busy || index === packs.length - 1}
                           onPress={() => movePack(pack.id, 1)}
                         >
-                          <ChevronDown size={20} color={ICON[scheme]} />
+                          <ChevronDown size={20} color={ICON} />
                         </Button>
                       </View>
                       <View className="flex-row items-center gap-2">
@@ -441,7 +438,7 @@ function StickersBody() {
                               })
                             }
                           >
-                            <Pencil size={14} color={ICON[scheme]} />
+                            <Pencil size={14} color={ICON} />
                             <Text>Edit</Text>
                           </Button>
                         ) : null}
@@ -582,7 +579,7 @@ function StickersBody() {
                       onPress={() => unstar(sticker.id)}
                       className="absolute right-0.5 top-0.5 h-6 w-6 items-center justify-center rounded-full bg-black/70 active:opacity-70 disabled:opacity-60"
                     >
-                      <Star size={12} color={FOREGROUND[scheme]} fill={FOREGROUND[scheme]} />
+                      <Star size={12} color={FOREGROUND} fill={FOREGROUND} />
                     </Pressable>
                   </View>
                 ))}
@@ -642,7 +639,6 @@ function PackCard({
   /** The signed-in user id: own packs get the subtitle and the Edit pill. */
   meId?: string | undefined;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const thumbs = pack.stickers.slice(0, 3);
   const own = meId !== undefined && pack.ownerId !== undefined && pack.ownerId === meId;
   const subtitle =
@@ -659,7 +655,7 @@ function PackCard({
         <View accessibilityElementsHidden className="flex-row">
           {thumbs.length === 0 ? (
             <View className="h-9 w-9 items-center justify-center rounded-[10px] border border-border bg-surface-raised">
-              <Sticker size={18} color={MUTED_FOREGROUND[scheme]} />
+              <Sticker size={18} color={MUTED_FOREGROUND} />
             </View>
           ) : (
             thumbs.map((sticker, index) => (

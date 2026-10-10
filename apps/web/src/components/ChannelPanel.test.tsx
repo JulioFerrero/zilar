@@ -7,6 +7,7 @@ import { ApiError, type GroupDetail, type PublicAi } from '@/lib/api';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { createChatStore } from '@/store/store';
 import { ChannelPanel } from './ChannelPanel';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 type Answer = (method: string, path: string) => Response | undefined;
 type ChannelCall = Mock<(chatId: string) => Promise<void>>;
@@ -67,13 +68,6 @@ function myAi(id: string, name: string): PublicAi {
     limits: { perDayUsd: 2, perMonthUsd: 20 },
     createdAt: '2026-09-20T10:00:00.000Z',
   };
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  if (status === 204) {
-    return new Response(null, { status });
-  }
-  return new Response(JSON.stringify(body), { status });
 }
 
 const membersBody = {

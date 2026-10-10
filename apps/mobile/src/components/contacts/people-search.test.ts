@@ -10,10 +10,6 @@ vi.mock('react-native', () => ({
   View: 'View',
 }));
 
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
 vi.mock('@/components/ui/use-key-press', () => ({
   useKeyPress: () => ({ pressed: false, reduceMotion: false, setPressed: () => {} }),
 }));
@@ -22,11 +18,6 @@ vi.mock('@/lib/depth', () => ({
   KEY_PRIMARY_PRESSED_SHADOW: {},
   pressStyle: () => ({}),
   primaryKey: {},
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('lucide-react-native', () => ({
@@ -44,6 +35,7 @@ import {
   PeopleSearchController,
   peopleHandleFor,
 } from './people-search';
+import { flushTasks as flush } from '@/test/wait';
 
 interface ManualClock {
   frames: SearchScheduler;
@@ -124,10 +116,6 @@ function fakeApi(respond: (handle: string) => Promise<HandleProfile>): {
     },
   };
   return { api, calls };
-}
-
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe('peopleHandleFor', () => {

@@ -1,12 +1,6 @@
 import { Effect } from 'effect';
 import webpush from 'web-push';
 
-export type PushConfigInput = {
-  PUSH_VAPID_PUBLIC_KEY: string;
-  PUSH_VAPID_PRIVATE_KEY: string;
-  PUSH_VAPID_SUBJECT: string;
-};
-
 export type WebPushDelivery = {
   send: (
     subscription: { endpoint: string; keys: { p256dh: string; auth: string } },

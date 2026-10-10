@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { createAuditRecorder } from '../audit/service';
@@ -12,6 +12,7 @@ import {
   type TestApp,
   type TestContext,
 } from '../test-support';
+import { seedAi, seedGroup } from '../test-support/seed';
 import {
   approveToolHosts,
   deleteTool,
@@ -71,48 +72,6 @@ interface ToolRunRow {
   outputText: string | null;
 }
 
-async function seedAi(context: TestContext, ownerId: string): Promise<string> {
-  const connectionId = randomUUID();
-  const aiId = randomUUID();
-  const localpart = `ai-${aiId}`;
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key) VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${'sealed-placeholder'})`;
-      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status) VALUES (${aiId}, ${ownerId}, ${'Helper AI'}, ${'dev'}, ${'A persona'}, ${connectionId}, ${'gpt-4o-mini'}, ${localpart}, ${`${localpart}@zilar.localhost`}, ${'active'})`;
-      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${'1.00'}, ${'20.00'})`;
-    }),
-  );
-  return aiId;
-}
-
-async function seedGroup(
-  context: TestContext,
-  ownerId: string,
-  memberIds: string[],
-  aiIds: string[],
-): Promise<{ groupId: string; generalTopicId: string }> {
-  const groupId = randomUUID();
-  const groupRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
-  const generalTopicId = randomUUID();
-  const generalRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${groupRoom}, ${'Trip'}, ${ownerId})`;
-      yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${ownerId}, ${'owner'})`;
-      for (const userId of memberIds) {
-        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${userId}, ${'member'})`;
-      }
-      for (const aiId of aiIds) {
-        yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${ownerId})`;
-      }
-      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${generalTopicId}, ${groupId}, ${'General'}, ${'G'}, ${generalRoom}, ${'public'}, ${'chat'}, ${'open'}, ${true}, ${ownerId})`;
-    }),
-  );
-  return { groupId, generalTopicId };
-}
-
 async function seedTopic(
   context: TestContext,
   groupId: string,
@@ -168,7 +127,7 @@ describe('tools service (T-0103)', () => {
     authApp = testApp(context);
     const owner = await bootstrapUser(context, authApp, `tool-owner-${emailCounter}@example.com`);
     ownerId = owner.id;
-    aiId = await seedAi(context, ownerId);
+    aiId = (await seedAi(context, ownerId)).aiId;
   });
 
   afterEach(async () => {
@@ -331,7 +290,12 @@ describe('tools service (T-0103)', () => {
     });
 
     it('the same name in a personal chat and in two topics are three tools', async () => {
-      const { groupId, generalTopicId } = await seedGroup(context, ownerId, [], [aiId]);
+      const { groupId, generalTopicId } = await seedGroup(
+        context,
+        ownerId,
+        [{ userId: ownerId, role: 'owner' }],
+        [aiId],
+      );
       const otherTopicId = await seedTopic(context, groupId, ownerId, 'Other');
       const personal = await saveToolVersion(
         context.db,
@@ -628,8 +592,51 @@ describe('tools service (T-0103)', () => {
       expect(one?.source).toBe('return { text: "gold 3000" };');
     });
 
+    it('listing N tools runs a constant number of queries', async () => {
+      const countQueries = async (count: number): Promise<number> => {
+        for (let index = 0; index < count; index += 1) {
+          const { tool } = await saveToolVersion(
+            context.db,
+            {
+              aiId,
+              groupId: null,
+              topicId: null,
+              userId: ownerId,
+              ...baseInput({ name: `counted-${count}-${index}` }),
+            },
+            NOW,
+          );
+          await runToolVersion(
+            { db: context.db, runner: okRunner() },
+            { toolId: tool.id, trigger: 'manual' },
+            NOW,
+          );
+        }
+        const spy = vi.spyOn(context.db as unknown as { query: () => unknown }, 'query');
+        try {
+          const listed = await listTools(context.db, { aiId, groupId: null, topicId: null });
+          expect(listed.length).toBeGreaterThanOrEqual(count);
+          expect(listed.every((tool) => tool.lastRunStatus === 'ok')).toBe(true);
+          const forAi = await listToolsForAi(context.db, aiId);
+          expect(forAi.length).toBe(listed.length);
+          return spy.mock.calls.length;
+        } finally {
+          spy.mockRestore();
+        }
+      };
+      const few = await countQueries(2);
+      const many = await countQueries(5);
+      expect(few).toBeGreaterThan(0);
+      expect(many).toBe(few);
+    });
+
     it('listToolsForAi annotates the scope', async () => {
-      const { groupId, generalTopicId } = await seedGroup(context, ownerId, [], [aiId]);
+      const { groupId, generalTopicId } = await seedGroup(
+        context,
+        ownerId,
+        [{ userId: ownerId, role: 'owner' }],
+        [aiId],
+      );
       await saveToolVersion(
         context.db,
         {
@@ -791,8 +798,13 @@ describe('tools service (T-0103)', () => {
 
   describe('AI removal deletes', () => {
     it('deleteToolsForAiInGroupEffect soft-deletes that AI group tools only', async () => {
-      const { groupId, generalTopicId } = await seedGroup(context, ownerId, [], [aiId]);
-      const other = await seedGroup(context, ownerId, [], [aiId]);
+      const { groupId, generalTopicId } = await seedGroup(
+        context,
+        ownerId,
+        [{ userId: ownerId, role: 'owner' }],
+        [aiId],
+      );
+      const other = await seedGroup(context, ownerId, [{ userId: ownerId, role: 'owner' }], [aiId]);
       const groupTool = await saveToolVersion(
         context.db,
         {
@@ -836,7 +848,12 @@ describe('tools service (T-0103)', () => {
     });
 
     it('deleteToolsForAiInTopicEffect soft-deletes only that topic tools', async () => {
-      const { groupId, generalTopicId } = await seedGroup(context, ownerId, [], [aiId]);
+      const { groupId, generalTopicId } = await seedGroup(
+        context,
+        ownerId,
+        [{ userId: ownerId, role: 'owner' }],
+        [aiId],
+      );
       const otherTopicId = await seedTopic(context, groupId, ownerId, 'Other Effect');
       const generalTool = await saveToolVersion(
         context.db,

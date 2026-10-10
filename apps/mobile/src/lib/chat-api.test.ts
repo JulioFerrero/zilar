@@ -1,13 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { ChatApiError, createChatApi } from './chat-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/wait';
 
 describe('createChatApi', () => {
   it('sends the bearer token and parses the chat list', async () => {
@@ -40,6 +34,35 @@ describe('createChatApi', () => {
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('http://127.0.0.1:3188/api/chats');
     expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer session-token');
+  });
+
+  it('parses isAi on DM entries, absent on older servers and human DMs', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        chats: [
+          {
+            kind: 'dm',
+            chatJid: 'bot@zilar.test',
+            title: 'Bot',
+            userId: 'u-bot',
+            isAi: true,
+          },
+          { kind: 'dm', chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' },
+        ],
+      }),
+    );
+    const api = createChatApi(async () => 'session-token', fetchImpl as unknown as typeof fetch);
+
+    const chats = await api.getChats();
+
+    expect(chats[0]).toEqual({
+      kind: 'dm',
+      chatJid: 'bot@zilar.test',
+      title: 'Bot',
+      userId: 'u-bot',
+      isAi: true,
+    });
+    expect(chats[1]).not.toHaveProperty('isAi');
   });
 
   it('parses the profile, contacts, group and XMPP token', async () => {

@@ -22,10 +22,6 @@ vi.mock('react-native', () => ({
   Pressable: 'Pressable',
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 vi.mock('@/components/ui/button', () => ({
   Button: 'Button',
 }));
@@ -34,10 +30,6 @@ vi.mock('lucide-react-native', () => ({
   CircleAlert: 'CircleAlert',
   Inbox: 'Inbox',
   RefreshCw: 'RefreshCw',
-}));
-
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'light' }),
 }));
 
 const NOW = new Date('2026-10-03T10:00:00.000Z');

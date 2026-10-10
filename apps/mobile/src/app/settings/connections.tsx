@@ -4,7 +4,6 @@ import { ChevronLeft, Eye, EyeOff, KeyRound, Plus, Trash2, X, Zap } from 'lucide
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useColorScheme } from 'nativewind';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { providerLabel } from '@/components/ais/providers';
@@ -20,7 +19,6 @@ import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON } from '@/lib/colors';
 import type { ProviderConnection } from '@/lib/connections-api';
 import { useAction } from '@/lib/effect/use-action';
@@ -59,7 +57,6 @@ export default function ConnectionsScreen() {
 
 function ConnectionsList() {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const { api } = useConnectionsApi();
 
   const [connections, setConnections] = useState<ProviderConnection[]>([]);
@@ -184,7 +181,7 @@ function ConnectionsList() {
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View className="flex-row items-center gap-1 px-2 py-2">
         <IconButton label="Back" onPress={() => router.back()}>
-          <ChevronLeft size={24} color={ICON[scheme]} />
+          <ChevronLeft size={24} color={ICON} />
         </IconButton>
         <View className="min-w-0 flex-1">
           <Text numberOfLines={1} className="text-[20px] font-semibold leading-6 text-foreground">
@@ -196,7 +193,7 @@ function ConnectionsList() {
         </View>
         {status === 'ready' ? (
           <IconButton label="Add a connection" onPress={() => setShowForm(true)}>
-            <Plus size={22} color={ICON[scheme]} />
+            <Plus size={22} color={ICON} />
           </IconButton>
         ) : null}
       </View>
@@ -314,7 +311,7 @@ function ConnectionsList() {
                               disabled={testingId === connection.id}
                               onPress={() => runTest(connection.id)}
                             >
-                              <Zap size={16} color={ICON[scheme]} />
+                              <Zap size={16} color={ICON} />
                             </Button>
                             <Button
                               variant="ghost"
@@ -323,7 +320,7 @@ function ConnectionsList() {
                               accessibilityLabel={`Remove ${providerLabel(connection.provider)} connection`}
                               onPress={() => askRemove(connection.id)}
                             >
-                              <Trash2 size={16} color={ICON[scheme]} />
+                              <Trash2 size={16} color={ICON} />
                             </Button>
                           </View>
                         </View>
@@ -335,7 +332,6 @@ function ConnectionsList() {
 
               {showForm ? (
                 <AddConnectionForm
-                  scheme={scheme}
                   onCancel={() => setShowForm(false)}
                   onSaved={(created) => {
                     setConnections((previous) => [created, ...previous]);
@@ -357,11 +353,9 @@ function ConnectionsList() {
  * it is never rendered back, logged or passed anywhere but the POST body.
  */
 function AddConnectionForm({
-  scheme,
   onCancel,
   onSaved,
 }: {
-  scheme: 'light' | 'dark';
   onCancel: () => void;
   onSaved: (connection: ProviderConnection) => void;
 }) {
@@ -420,7 +414,7 @@ function AddConnectionForm({
           accessibilityLabel="Close the form"
           onPress={onCancel}
         >
-          <X size={16} color={ICON[scheme]} />
+          <X size={16} color={ICON} />
         </Button>
       </View>
 
@@ -478,11 +472,7 @@ function AddConnectionForm({
             accessibilityLabel={showKey ? 'Hide key' : 'Show key'}
             onPress={() => setShowKey((value) => !value)}
           >
-            {showKey ? (
-              <EyeOff size={16} color={ICON[scheme]} />
-            ) : (
-              <Eye size={16} color={ICON[scheme]} />
-            )}
+            {showKey ? <EyeOff size={16} color={ICON} /> : <Eye size={16} color={ICON} />}
           </Button>
         </View>
       </View>

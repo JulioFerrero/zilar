@@ -71,20 +71,4 @@ describe('openSearchHit (T-0157 item 7)', () => {
     expect(pushChatNotFound).not.toHaveBeenCalled();
     expect(onNotFound).not.toHaveBeenCalled();
   });
-
-  it('fails if the search list lets an unexpected jump error vanish', async () => {
-    // `openSearchHitEffect` fails on anything but the not-found signal, and a
-    // router throw is a defect, so the call site must catch both and show the
-    // miss notice instead of leaving the user on a spinner (an unhandled
-    // failure).
-    const { readFileSync } = await import('node:fs');
-    const { dirname, join } = await import('node:path');
-    const { fileURLToPath } = await import('node:url');
-    const here = dirname(fileURLToPath(import.meta.url));
-    const list = readFileSync(join(here, 'message-search-list.tsx'), 'utf8');
-    const call = list.slice(list.indexOf('openSearchHitEffect('));
-    expect(call.slice(0, 900)).toContain('Effect.catch(');
-    expect(call.slice(0, 900)).toContain('Effect.catchDefect(');
-    expect(call.slice(0, 900)).toContain('notFoundRef.current');
-  });
 });

@@ -3,33 +3,24 @@
 // order as the deleted router (`routes.ts`), mounted by the Effect edge
 // (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
-import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
+import { Effect, Layer } from 'effect';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { SqlClient } from 'effect/sql';
 import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-  HttpApiSchema,
-} from 'effect/http-api';
-import { SqlClient, SqlError } from 'effect/sql';
+  ApprovalsGroup,
+  ApprovalsSchemaErrors,
+  type ApprovalRule,
+  type PublicApproval,
+} from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { ApprovalRuleRow } from '../db/rows';
 import { HttpError } from '../errors';
-import type { EffectApiMount, EffectApiRoute } from '../effect/http-core';
-import {
-  CurrentUser,
-  Session,
-  failureResponse,
-  requestIdOf,
-  sessionLayer,
-  withErrorEnvelope,
-} from '../effect/http-core';
-import { sqlRuntimeFor } from '../effect/sql';
+import type { EffectApiMount } from '../effect/http-core';
+import { handler, mountApi, schemaErrorLayerFor, sessionLayer } from '../effect/http-core';
+import { runSql } from '../effect/sql';
 import { canSeeTopic, type TopicRow } from '../topics/access';
 import {
   ApprovalServiceError,
@@ -48,16 +39,6 @@ import {
   toPublicRule,
   type PublicApprovalRule,
 } from './rules';
-
-// Reads run on the `effect/sql` client registered for this database (see
-// `../effect/sql`); `transformResultNames` camelCases the columns so the rows
-// keep the shapes the access helpers already take.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
 
 // The minimum slice of pino the route needs to log a hook failure. The
 // server wires its own logger; tests can pass a captor.
@@ -91,131 +72,22 @@ export interface ApprovalsApiDependencies {
   alwaysEligible?: AlwaysEligiblePredicate;
 }
 
-// Replaces `decisionSchema` (zod): strict, `note` bounded like the protocol
-// schema. The payload decode is strict (`PayloadParseOptions` below) so an
-// excess key fails like the old `.strict()`.
-const DecisionBody = Schema.Struct({
-  decision: Schema.Literals(['approve_once', 'approve_always', 'deny']),
-  note: Schema.optional(Schema.String.check(Schema.isMaxLength(500))),
-});
-
-const ApprovalStatus = Schema.Literals([
-  'pending',
-  'approved_once',
-  'approved_always',
-  'denied',
-  'consumed',
-  'expired',
-]);
-
-const WorstCase = Schema.Struct({
-  currency: Schema.Literals(['EUR', 'USD']),
-  amount: Schema.Number,
-});
-
-// Every field of `PublicApproval` (`service.ts`), compared side by side:
-// id, aiId, groupId, topicId, topicName, action, summary, details,
-// argsHash, worstCase, requestedBy, status, decidedAt, note, expiresAt,
-// createdAt, alwaysEligible, approverNames.
-const PublicApprovalView = Schema.Struct({
-  id: Schema.String,
-  aiId: Schema.String,
-  groupId: Schema.NullOr(Schema.String),
-  topicId: Schema.NullOr(Schema.String),
-  topicName: Schema.NullOr(Schema.String),
-  action: Schema.String,
-  summary: Schema.String,
-  details: Schema.NullOr(Schema.String),
-  argsHash: Schema.String,
-  worstCase: Schema.NullOr(WorstCase),
-  requestedBy: Schema.String,
-  status: ApprovalStatus,
-  decidedAt: Schema.NullOr(Schema.Date),
-  note: Schema.NullOr(Schema.String),
-  expiresAt: Schema.Date,
-  createdAt: Schema.Date,
-  alwaysEligible: Schema.Boolean,
-  approverNames: Schema.Array(Schema.String),
-});
-
-// Every field of `PublicApprovalRule` (`rules.ts`): id, action, scope,
-// groupId, topicId, topicName, createdAt, createdBy.
-const PublicApprovalRuleView = Schema.Struct({
-  id: Schema.String,
-  action: Schema.String,
-  scope: Schema.Literals(['personal', 'group']),
-  groupId: Schema.NullOr(Schema.String),
-  topicId: Schema.NullOr(Schema.String),
-  topicName: Schema.NullOr(Schema.String),
-  createdAt: Schema.Date,
-  createdBy: Schema.String,
-});
-
-const ApprovalIdParams = Schema.Struct({ id: Schema.String });
-
-// Applied to the group so a payload decode failure renders like the old zod
-// path: a 400 `invalid_request` carrying the fixed decision text (the old
-// zod path answered the first issue's message; no test asserts the exact
-// text, only the status).
-class ApprovalsSchemaErrors extends HttpApiMiddleware.Service<ApprovalsSchemaErrors>()(
-  'zilar/effect/http/ApprovalsSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<ApprovalsSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(ApprovalsSchemaErrors, () =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', 'Invalid decision body'),
-      );
-    }),
-  );
+// Dates travel as ISO strings (what `JSON.stringify` wrote before the
+// contract declared the views), so the handlers map the service rows.
+function toWireApproval(row: ReturnType<typeof toPublicApproval>): PublicApproval {
+  return {
+    ...row,
+    decidedAt: row.decidedAt === null ? null : row.decidedAt.toISOString(),
+    expiresAt: row.expiresAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+  };
 }
 
-const ApprovalsGroup = HttpApiGroup.make('approvals')
-  .add(
-    HttpApiEndpoint.get('list', '/approvals', {
-      success: Schema.Array(PublicApprovalView),
-    }),
-    HttpApiEndpoint.get('detail', '/approvals/:id', {
-      params: ApprovalIdParams,
-      success: PublicApprovalView,
-    }),
-    HttpApiEndpoint.post('decide', '/approvals/:id/decision', {
-      params: ApprovalIdParams,
-      payload: DecisionBody,
-      success: PublicApprovalView,
-    }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
-    HttpApiEndpoint.get('aiRules', '/ais/:id/approval-rules', {
-      params: ApprovalIdParams,
-      success: Schema.Array(PublicApprovalRuleView),
-    }),
-    HttpApiEndpoint.get('groupRules', '/groups/:id/approval-rules', {
-      params: ApprovalIdParams,
-      success: Schema.Array(PublicApprovalRuleView),
-    }),
-    HttpApiEndpoint.delete('revokeRule', '/approval-rules/:id', {
-      params: ApprovalIdParams,
-      success: HttpApiSchema.NoContent,
-    }),
-  )
-  .middleware(Session)
-  .middleware(ApprovalsSchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
+function toWireRule(rule: PublicApprovalRule): ApprovalRule {
+  return { ...rule, createdAt: rule.createdAt.toISOString() };
+}
 
 const ApprovalsApi = HttpApi.make('approvals').add(ApprovalsGroup);
-
-export const APPROVALS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/approvals' },
-  { method: 'GET', path: '/api/approvals/:id' },
-  { method: 'POST', path: '/api/approvals/:id/decision' },
-  { method: 'GET', path: '/api/ais/:id/approval-rules' },
-  { method: 'GET', path: '/api/groups/:id/approval-rules' },
-  { method: 'DELETE', path: '/api/approval-rules/:id' },
-];
 
 export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMount {
   const logger = deps.logger;
@@ -248,11 +120,10 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
 
   const groupLayer = HttpApiBuilder.group(ApprovalsApi, 'approvals', (handlers) =>
     handlers
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'list',
+        handler(logger, (_request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const approvals = yield* Effect.promise(() =>
               listDecidableApprovals(deps.db, user.id, new Date(now())),
             );
@@ -273,15 +144,12 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
               ),
             );
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('detail', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'detail',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const approval = yield* Effect.promise(() =>
               getDecidableApproval(deps.db, request.params.id, user.id, new Date(now())),
             );
@@ -304,15 +172,12 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
               isManager,
             );
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('decide', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'decide',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const payload = request.payload;
             const result = yield* Effect.promise(() =>
               decideApproval(
@@ -413,19 +278,16 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
                 )),
             );
           }),
-          logger,
-          requestId,
-        );
-      })
+        ),
+      )
       // T-0099: rule management routes. All three require a session.
       // T-0110: rules are scoped to (AI, topic). The AI route returns rules of
       // topics the AI owner can see; the group route returns rules of topics
       // the viewer can see. Rows carry `topicId` and `topicName`.
-      .handle('aiRules', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'aiRules',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const aiId = request.params.id;
             const aiRow = yield* Effect.promise(() => loadAiOwnerRow(deps.db, aiId));
             // A stranger and a non-owner get the same 404 as a missing AI, so
@@ -452,17 +314,14 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
                 visible.push({ ...rule, topicName: topic.name });
               }
             }
-            return visible;
+            return visible.map(toWireRule);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('groupRules', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'groupRules',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const groupId = request.params.id;
             const allowed = yield* Effect.promise(() => isGroupAdmin(deps.db, groupId, user.id));
             if (!allowed) {
@@ -486,17 +345,14 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
                 rules.push({ ...toPublicRule(rule), topicName: topic.name });
               }
             }
-            return rules;
+            return rules.map(toWireRule);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('revokeRule', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'revokeRule',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const ruleId = request.params.id;
             const existing = yield* Effect.promise(() => loadApprovalRule(deps.db, ruleId));
             // Same 404 shape for missing id and unauthorized: existence is never
@@ -539,26 +395,18 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
               );
             }
           }),
-          logger,
-          requestId,
-        );
-      }),
+        ),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(ApprovalsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
+    // A payload decode failure carries the fixed decision text.
+    Layer.provide(schemaErrorLayerFor(ApprovalsSchemaErrors, logger, 'Invalid decision body')),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: APPROVALS_API_ROUTES };
+  return mountApi(ApprovalsApi, apiLayer);
 }
 
 // One topic by id: the full row `canSeeTopic` needs (it reads visibility,
@@ -658,8 +506,8 @@ function decoratePublic(
   row: ReturnType<typeof toPublicApproval>,
   alwaysEligible: AlwaysEligiblePredicate,
   isManager: boolean,
-): ReturnType<typeof toPublicApproval> {
-  return { ...row, alwaysEligible: isManager && alwaysEligible(row.action) };
+): PublicApproval {
+  return toWireApproval({ ...row, alwaysEligible: isManager && alwaysEligible(row.action) });
 }
 
 // The topic names for rows the viewer can see, keyed by topic id. A row

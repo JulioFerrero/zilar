@@ -8,10 +8,10 @@
 // tests keep their shape during the transition.
 
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql, sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 
 // The list endpoint caps server-side; nobody should keep 500 blocks, but
@@ -31,13 +31,6 @@ export interface BlockedUserView {
   handle: string | null;
   image: string | null;
   jid: string | null;
-}
-
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 function serviceNow(deps: BlocksDeps): Date {

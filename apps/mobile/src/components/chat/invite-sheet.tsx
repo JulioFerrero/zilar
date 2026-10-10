@@ -1,13 +1,11 @@
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { useColorScheme } from 'nativewind';
 import { Check, Copy, Share2 } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ACCENT_FOREGROUND } from '@/lib/colors';
 import { fromApi } from '@/lib/effect/api-effect';
 import { useAction } from '@/lib/effect/use-action';
@@ -119,7 +117,6 @@ export function InviteSheetBody({
   onRetry: () => void;
   onClose: () => void;
 }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <Pressable
       onPress={() => {}}
@@ -160,9 +157,9 @@ export function InviteSheetBody({
               onPress={onCopy}
             >
               {copied ? (
-                <Check size={16} color={ACCENT_FOREGROUND[scheme]} />
+                <Check size={16} color={ACCENT_FOREGROUND} />
               ) : (
-                <Copy size={16} color={ACCENT_FOREGROUND[scheme]} />
+                <Copy size={16} color={ACCENT_FOREGROUND} />
               )}
               <Text>{copied ? 'Copied' : 'Copy'}</Text>
             </Button>

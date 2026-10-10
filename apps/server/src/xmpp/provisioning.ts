@@ -4,10 +4,10 @@
 
 import { createHash } from 'node:crypto';
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { XmppAccountRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import type { EjabberdAdminClient } from './admin-client';
 
 // XMPP localparts must be `[a-z0-9._-]` (see the admin client). The localpart
@@ -20,13 +20,6 @@ export type XmppAccountStatus = {
   jid: string;
   provisioned: boolean;
 };
-
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
 
 // The localpart of an XMPP account. Better Auth's default ids are random
 // alphanumeric strings (for example `ZHj28vfbcT5vss0u0vWhveDDnx5ptPkk`), so

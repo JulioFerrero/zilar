@@ -14,19 +14,11 @@ vi.mock('expo-router', () => ({
   useRouter: () => ({ replace: () => {} }),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',
   Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   TextInput: 'TextInput',
   View: 'View',
-}));
-
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
 }));
 
 vi.mock('@/components/ui/use-key-press', () => ({
@@ -35,11 +27,6 @@ vi.mock('@/components/ui/use-key-press', () => ({
 
 vi.mock('react-native-safe-area-context', () => ({
   SafeAreaView: 'SafeAreaView',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('./OtpInput', () => ({

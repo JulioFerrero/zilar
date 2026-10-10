@@ -9,7 +9,7 @@
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { classifyHandle, normalizeHandle } from './rules';
 
@@ -36,25 +36,6 @@ interface RetiredHandleRecord {
   reservedUntil: Date;
 }
 
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
-
-export async function findHandle(db: ServerDatabase, handle: string): Promise<HandleRow | null> {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<HandleRow>`SELECT * FROM handles
-        WHERE handle_lower = ${normalizeHandle(handle)} LIMIT 1`;
-    }),
-  );
-  return row ?? null;
-}
-
 export async function handleForUser(db: ServerDatabase, userId: string): Promise<string | null> {
   const [row] = await runSql(
     db,
@@ -65,33 +46,6 @@ export async function handleForUser(db: ServerDatabase, userId: string): Promise
     }),
   );
   return row?.handle ?? null;
-}
-
-export async function handleUserIdFor(
-  db: ServerDatabase,
-  userIds: string[],
-): Promise<Map<string, string>> {
-  if (userIds.length === 0) {
-    return new Map();
-  }
-  const rows = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{
-        userId: string | null;
-        handle: string;
-      }>`SELECT user_id, handle FROM handles
-        WHERE user_id IN ${sql.in([...new Set(userIds)])}`;
-    }),
-  );
-  const byUser = new Map<string, string>();
-  for (const row of rows) {
-    if (row.userId !== null) {
-      byUser.set(row.userId, row.handle);
-    }
-  }
-  return byUser;
 }
 
 // Whether a handle is free for `userId` to take: shape and reserved words
@@ -312,9 +266,9 @@ export async function claimHandle(
 
 // Whether `error` is a unique-constraint violation: either the structured
 // `effect/sql` `UniqueViolation` reason or a driver error carrying the
-// Postgres `23505` code. Drizzle wraps driver failures, so the code lives on
-// a nested `cause` (`groups/service.ts` still calls this from its drizzle
-// transaction). Walk the chain; the message check is a last-resort fallback
+// Postgres `23505` code. Driver failures can be wrapped, so the code may sit on
+// a nested `cause` (`groups/service.ts` calls this on its `effect/sql` insert).
+// Walk the chain; the message check is a last-resort fallback
 // for the wrapped shape only, never matched instead of a code.
 export function isUniqueViolation(error: unknown): boolean {
   if (error instanceof SqlError.SqlError) {
@@ -360,23 +314,4 @@ export async function reapExpiredRetiredHandles(
   } catch {
     // Best effort only.
   }
-}
-
-export async function displayNameFor(
-  db: ServerDatabase,
-  userId: string,
-): Promise<{ name: string; image: string | null }> {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ name: string; image: string | null }>`SELECT name, image FROM "user"
-        WHERE id = ${userId} LIMIT 1`;
-    }),
-  );
-  return { name: row?.name ?? '', image: row?.image ?? null };
-}
-
-export function isHandleChangeTooSoon(error: unknown): error is HttpError {
-  return error instanceof HttpError && error.code === 'handle_change_too_soon';
 }

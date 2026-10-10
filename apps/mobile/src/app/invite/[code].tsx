@@ -2,13 +2,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { useColorScheme } from 'nativewind';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AuthFlow } from '@/auth/AuthFlow';
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { CHAT_BACKGROUND } from '@/lib/colors';
 import { API_URL } from '@/lib/auth';
 import { checkInvite } from '@/lib/auth-api';
@@ -50,11 +48,10 @@ export default function InviteRoute() {
 }
 
 function InviteMessage({ title, body }: { title: string; body?: string }) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   return (
     <View className="flex-1">
       <LinearGradient
-        colors={CHAT_BACKGROUND[scheme]}
+        colors={CHAT_BACKGROUND}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}

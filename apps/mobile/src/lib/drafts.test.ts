@@ -7,6 +7,7 @@ import {
   type DraftStreamOptions,
   type DraftXhr,
 } from './drafts';
+import { flushMicrotasks as flush } from '@/test/wait';
 
 const TURN = '3f1a2b3c-4d5e-6f70-8a9b-0c1d2e3f4a5b';
 
@@ -82,12 +83,6 @@ function fakeAppState(initial = 'active'): FakeAppState {
       }
     },
   };
-}
-
-async function flush(): Promise<void> {
-  for (let index = 0; index < 5; index += 1) {
-    await Promise.resolve();
-  }
 }
 
 interface Harness {

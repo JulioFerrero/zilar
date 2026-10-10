@@ -4,7 +4,7 @@
 // Its store runs on effect/sql.
 //
 // The three bodies are decoded manually inside their handlers (Effect Schema,
-// same rules as the old zod schemas) instead of as endpoint payloads, so each
+// same rules as the old zod schemas) and served with `handleRaw`, so each
 // route keeps its exact order: `requirePush()` runs before the decode, and
 // the decode runs before that route's limiter check — exactly like the old
 // `requireSession` -> `requirePush` -> decode -> limiter sequence. The DELETE
@@ -17,29 +17,24 @@
 
 import { randomUUID } from 'node:crypto';
 import { Effect, Layer, Option, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-} from 'effect/http-api';
-import { struct } from '@zilar/protocol';
+  PushGroup,
+  PushSettingsPayload,
+  PushTestPayload,
+  RegisterPushDevicePayload,
+} from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
-  CurrentUser,
-  Session,
-  failureResponse,
-  requestIdOf,
+  handler,
+  mountApi,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { syncPushSubscriptionsForUser } from '../topics/rooms';
@@ -48,7 +43,6 @@ import { createPushCipher } from './crypto';
 import { pushConfigError, type PushConfig } from './config';
 import { parseNode, randomNode } from './protocol';
 import { createWebPushSender, isExpiredSubscription, type WebPushDelivery } from './sender';
-import { WebPushKeysSchema, WebPushSubscriptionSchema } from './subscriptions';
 import {
   devicesForUser,
   markDeviceFailed,
@@ -87,121 +81,12 @@ export interface PushApiDependencies extends PushRoutesDependencies {
   testLimiter?: RateLimiter;
 }
 
-// The subscribe body reuses the stored subscription schemas: the endpoint,
-// expiration time and keys are exactly `WebPushSubscriptionSchema`, and
-// `userAgent` is the extra device label. `struct` keeps zod's mutable field
-// types.
-const SubscribeBody = struct({
-  endpoint: WebPushSubscriptionSchema.fields.endpoint,
-  expirationTime: WebPushSubscriptionSchema.fields.expirationTime,
-  keys: WebPushKeysSchema,
-  userAgent: Schema.optional(
-    Schema.NullOr(Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256)))),
-  ),
-});
-
-// Replaces `showPreviewsSchema` (zod strict): excess keys fail the decode.
-const ShowPreviewsBody = struct({
-  showPreviews: Schema.Boolean,
-});
-
-// Replaces `testSchema` (zod strict): excess keys fail the decode.
-const TestBody = struct({
-  subscriptionId: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
-});
-
+// The three bodies' schemas live in the contract (`RegisterPushDevicePayload`,
+// `PushSettingsPayload`, `PushTestPayload`) so the derived client encodes them;
+// the handlers decode them by hand. Settings and test are strict.
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 
-const PushConfigView = Schema.Struct({
-  vapidPublicKey: Schema.String,
-  pushJid: Schema.String,
-});
-
-const PushDeviceView = Schema.Struct({
-  id: Schema.String,
-  userAgent: Schema.NullOr(Schema.String),
-  createdAt: Schema.String,
-  lastUsedAt: Schema.NullOr(Schema.String),
-  inactive: Schema.Boolean,
-});
-
-const PushDeviceList = Schema.Struct({ devices: Schema.Array(PushDeviceView) });
-
-const PushRegistration = Schema.Struct({
-  id: Schema.String,
-  node: Schema.String,
-  jid: Schema.String,
-});
-
-const PushRemoved = Schema.Struct({ removed: Schema.Boolean });
-
-const PushSettingsView = Schema.Struct({ showPreviews: Schema.Boolean });
-
-const PushTestResult = Schema.Struct({ sent: Schema.Boolean });
-
-const PushDeviceParams = Schema.Struct({ id: Schema.String });
-
-// A body or params decode failure renders like the old zod path: a 400. The
-// only decodes the framework performs are the DELETE params (always a
-// string); body decodes run manually in the handlers with their own texts.
-class PushSchemaErrors extends HttpApiMiddleware.Service<PushSchemaErrors>()(
-  'zilar/effect/http/PushSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<PushSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(PushSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid request'),
-      );
-    }),
-  );
-}
-
-const PushGroup = HttpApiGroup.make('push')
-  .add(
-    HttpApiEndpoint.get('config', '/push/config', {
-      success: PushConfigView,
-    }),
-    HttpApiEndpoint.post('subscribe', '/push/subscriptions', {
-      success: PushRegistration,
-    }),
-    HttpApiEndpoint.get('list', '/push/subscriptions', {
-      success: PushDeviceList,
-    }),
-    HttpApiEndpoint.delete('remove', '/push/subscriptions/:id', {
-      params: PushDeviceParams,
-      success: PushRemoved,
-    }),
-    HttpApiEndpoint.get('settings', '/push/settings', {
-      success: PushSettingsView,
-    }),
-    HttpApiEndpoint.put('updateSettings', '/push/settings', {
-      success: PushSettingsView,
-    }),
-    HttpApiEndpoint.post('test', '/push/test', {
-      success: PushTestResult,
-    }),
-  )
-  .middleware(Session)
-  .middleware(PushSchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
-
 const PushApi = HttpApi.make('push').add(PushGroup);
-
-export const PUSH_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/push/config' },
-  { method: 'POST', path: '/api/push/subscriptions' },
-  { method: 'GET', path: '/api/push/subscriptions' },
-  { method: 'DELETE', path: '/api/push/subscriptions/:id' },
-  { method: 'GET', path: '/api/push/settings' },
-  { method: 'PUT', path: '/api/push/settings' },
-  { method: 'POST', path: '/api/push/test' },
-];
 
 // Driver failures can be wrapped, so the unique code (23505 on Postgres and
 // PGlite) lives on a nested `cause`. Walk the chain.
@@ -273,31 +158,27 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
 
   const groupLayer = HttpApiBuilder.group(PushApi, 'push', (handlers) =>
     handlers
-      .handle('config', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            yield* CurrentUser;
+      .handle(
+        'config',
+        handler(logger, () =>
+          Effect.sync(() => {
             requirePush();
             return {
               vapidPublicKey: deps.push.PUSH_VAPID_PUBLIC_KEY as string,
               pushJid: deps.push.PUSH_COMPONENT_JID as string,
             };
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('subscribe', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handleRaw(
+        'subscribe',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const { storageKey } = requirePush();
             const raw = yield* request.request.json.pipe(
               Effect.catchCause(() => Effect.succeed<unknown>(undefined)),
             );
-            const decoded = Schema.decodeUnknownOption(SubscribeBody)(raw);
+            const decoded = Schema.decodeUnknownOption(RegisterPushDevicePayload)(raw);
             if (Option.isNone(decoded)) {
               throw new HttpError(400, 'invalid_subscription', 'The push subscription is invalid');
             }
@@ -413,15 +294,12 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
             }
             throw new HttpError(503, 'push_unavailable', 'Could not register the push device');
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'list',
+        handler(logger, (_request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             requirePush();
             const current = new Date(now());
             const devices = yield* Effect.promise(() => devicesForUser(deps.db, user.id));
@@ -429,15 +307,12 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
             // or the sealed keys.
             return { devices: devices.map((row) => toPushDeviceView(row, current)) };
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('remove', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'remove',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             requirePush();
             // Device add and remove share the registration window: both are
             // cheap writes, and an uncapped remove would let a client churn
@@ -486,34 +361,28 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
             }
             return { removed: true };
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('settings', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'settings',
+        handler(logger, (_request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             requirePush();
             return {
               showPreviews: yield* Effect.promise(() => showPreviewsForUser(deps.db, user.id)),
             };
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('updateSettings', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handleRaw(
+        'updateSettings',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             requirePush();
             const raw = yield* request.request.json.pipe(
               Effect.catchCause(() => Effect.succeed<unknown>(null)),
             );
-            const decoded = Schema.decodeUnknownOption(ShowPreviewsBody, STRICT_DECODE)(raw);
+            const decoded = Schema.decodeUnknownOption(PushSettingsPayload, STRICT_DECODE)(raw);
             if (Option.isNone(decoded)) {
               throw new HttpError(400, 'invalid_request', 'showPreviews must be a boolean');
             }
@@ -525,20 +394,17 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
             );
             return { showPreviews };
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('test', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handleRaw(
+        'test',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const { storageKey } = requirePush();
             const raw = yield* request.request.json.pipe(
               Effect.catchCause(() => Effect.succeed<unknown>(undefined)),
             );
-            const decoded = Schema.decodeUnknownOption(TestBody, STRICT_DECODE)(raw ?? {});
+            const decoded = Schema.decodeUnknownOption(PushTestPayload, STRICT_DECODE)(raw ?? {});
             if (Option.isNone(decoded)) {
               throw new HttpError(400, 'invalid_request', 'subscriptionId is required');
             }
@@ -604,10 +470,8 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
             yield* Effect.promise(() => markDeviceUsed(deps.db, target.id, new Date(now())));
             return { sent: true };
           }),
-          logger,
-          requestId,
-        );
-      }),
+        ),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(PushApi).pipe(
@@ -616,12 +480,5 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: PUSH_API_ROUTES };
+  return mountApi(PushApi, apiLayer);
 }

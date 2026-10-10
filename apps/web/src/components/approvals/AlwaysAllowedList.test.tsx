@@ -5,6 +5,7 @@ import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { createChatStore } from '@/store/store';
 import { AlwaysAllowedList, scopeTextFor } from './AlwaysAllowedList';
 import type { ApprovalRule } from '@/lib/api';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const auth: AuthState = {
   status: 'authenticated',
@@ -22,13 +23,6 @@ function ruleFixture(overrides: Partial<ApprovalRule> = {}): ApprovalRule {
     createdBy: 'u-you',
     ...overrides,
   };
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  if (status === 204) {
-    return new Response(null, { status });
-  }
-  return new Response(JSON.stringify(body), { status });
 }
 
 function errorResponse(status: number, code: string, message: string): Response {

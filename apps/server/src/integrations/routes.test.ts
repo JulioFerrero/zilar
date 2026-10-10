@@ -26,7 +26,7 @@ import {
   createGetBotToken,
   type IntegrationsRoutesDependencies,
 } from './routes';
-import { INTEGRATIONS_API_ROUTES } from './api';
+import { EXPECTED_ROUTES } from './routes.expected';
 import { getStoredTelegramToken, TELEGRAM_BOT_TOKEN_SETTING } from './settings';
 import { MAIL_FROM_SETTING, RESEND_API_KEY_SETTING, settingsCipherFor } from '../setup/settings';
 import type { TelegramClient } from '../stickers/telegram-import';
@@ -557,7 +557,7 @@ describe('PUT /api/settings/integrations/email', () => {
 
 describe('integrations route shape', () => {
   it('registers exactly GET, PUT/DELETE telegram and PUT email under /api/settings/integrations', () => {
-    const routes = INTEGRATIONS_API_ROUTES.map((route) => `${route.method}|${route.path}`);
+    const routes = EXPECTED_ROUTES.map((route) => `${route.method}|${route.path}`);
     expect(routes).toContain('GET|/api/settings/integrations');
     expect(routes).toContain('PUT|/api/settings/integrations/telegram');
     expect(routes).toContain('DELETE|/api/settings/integrations/telegram');

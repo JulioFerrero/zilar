@@ -4,6 +4,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { AuditEntry } from '../audit/service';
 import { createTestContext, testSql, type TestContext } from '../test-support';
+import { seedAi, seedUser } from '../test-support/seed';
 import { createApproval } from './service';
 import { startApprovalsSweeper, type SweeperLogger } from './sweeper';
 
@@ -27,53 +28,6 @@ function captureLogger(): SweeperLogger & { calls: CapturedError[] } {
     },
     calls,
   };
-}
-
-async function seedUser(context: TestContext): Promise<string> {
-  const id = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO "user" ${sql.insert({ id, name: 'User', email: `${id}@example.com` })}`;
-    }),
-  );
-  return id;
-}
-
-async function seedAi(context: TestContext, ownerId: string): Promise<{ aiId: string }> {
-  const connectionId = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO provider_connections ${sql.insert({
-        id: connectionId,
-        owner: ownerId,
-        provider: 'openai',
-        encrypted_key: 'sealed-placeholder',
-        label: null,
-      })}`;
-    }),
-  );
-  const aiId = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO ais ${sql.insert({
-        id: aiId,
-        owner: ownerId,
-        name: 'Helper',
-        template: 'dev',
-        persona: 'A persona',
-        provider_connection_id: connectionId,
-        model: 'gpt-4o-mini',
-        localpart: `ai-${aiId}`,
-        jid: `ai-${aiId}@zilar.localhost`,
-        status: 'active',
-      })}`;
-      yield* sql`INSERT INTO ai_limits ${sql.insert({ ai_id: aiId, per_day_usd: '1.00', per_month_usd: '20.00' })}`;
-    }),
-  );
-  return { aiId };
 }
 
 async function seedPastDueApproval(
@@ -207,7 +161,7 @@ describe('approvals sweeper', () => {
 
   it('writes one audit entry per swept row on the first tick', async () => {
     const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
+    const { aiId } = await seedAi(context, ownerId, { name: 'Helper' });
     const a = await seedPastDueApproval(context, aiId, 1, now);
     const b = await seedPastDueApproval(context, aiId, 2, now);
 
@@ -244,7 +198,7 @@ describe('approvals sweeper', () => {
 
   it('flips swept rows to denied with note=expired', async () => {
     const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
+    const { aiId } = await seedAi(context, ownerId, { name: 'Helper' });
     const { id } = await seedPastDueApproval(context, aiId, 3, now);
 
     const sweeper = startApprovalsSweeper({
@@ -266,7 +220,7 @@ describe('approvals sweeper', () => {
 
   it('does not write audit entries when nothing is past due', async () => {
     const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
+    const { aiId } = await seedAi(context, ownerId, { name: 'Helper' });
     // A still-valid request.
     await createApproval(
       context.db,
@@ -299,7 +253,7 @@ describe('approvals sweeper', () => {
 
   it('keeps the timer running after a failing sweep', async () => {
     const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
+    const { aiId } = await seedAi(context, ownerId, { name: 'Helper' });
     await seedPastDueApproval(context, aiId, 5, now);
 
     const logger = captureLogger();
@@ -344,7 +298,7 @@ describe('approvals sweeper', () => {
 
   it('does not overlap a previous one that has not resolved', async () => {
     const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
+    const { aiId } = await seedAi(context, ownerId, { name: 'Helper' });
     await seedPastDueApproval(context, aiId, 6, now);
 
     let activeTicks = 0;
@@ -385,7 +339,7 @@ describe('approvals sweeper', () => {
 
   it('stops firing once close is called', async () => {
     const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId);
+    const { aiId } = await seedAi(context, ownerId, { name: 'Helper' });
     await seedPastDueApproval(context, aiId, 7, now);
 
     const logger = captureLogger();

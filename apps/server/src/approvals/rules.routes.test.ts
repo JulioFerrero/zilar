@@ -13,6 +13,7 @@ import {
   type TestApp,
   type TestContext,
 } from '../test-support';
+import { seedAi, seedGroup } from '../test-support/seed';
 import {
   createApprovalsApi,
   type ApprovalsApiDependencies,
@@ -46,48 +47,6 @@ function argsHash(seed: number): string {
   buf[0] = seed & 0xff;
   buf[1] = (seed >> 8) & 0xff;
   return buf.toString('hex');
-}
-
-async function seedAi(context: TestContext, ownerId: string): Promise<{ aiId: string }> {
-  const connectionId = randomUUID();
-  const aiId = randomUUID();
-  const localpart = `ai-${aiId}`;
-  const jid = `${localpart}@zilar.localhost`;
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label) VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${'sealed-placeholder'}, ${null})`;
-      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status) VALUES (${aiId}, ${ownerId}, ${'Helper AI'}, ${'dev'}, ${'A persona'}, ${connectionId}, ${'gpt-4o-mini'}, ${localpart}, ${jid}, ${'active'})`;
-      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${'1.00'}, ${'20.00'})`;
-    }),
-  );
-  return { aiId };
-}
-
-async function seedGroup(
-  context: TestContext,
-  ownerId: string,
-  members: Array<{ userId: string; role: 'owner' | 'admin' | 'member' }>,
-  aiIds: string[],
-): Promise<{ groupId: string; generalTopicId: string }> {
-  const groupId = randomUUID();
-  const roomLocalpart = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
-  const generalTopicId = randomUUID();
-  const generalRoomLocalpart = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${roomLocalpart}, ${'Trip'}, ${ownerId})`;
-      for (const entry of members) {
-        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${entry.userId}, ${entry.role})`;
-      }
-      for (const aiId of aiIds) {
-        yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${ownerId})`;
-      }
-      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${generalTopicId}, ${groupId}, ${'General'}, ${'G'}, ${generalRoomLocalpart}, ${'public'}, ${'chat'}, ${'open'}, ${true}, ${ownerId})`;
-    }),
-  );
-  return { groupId, generalTopicId };
 }
 
 interface ApprovalsRequester {

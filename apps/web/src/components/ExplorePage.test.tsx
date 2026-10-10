@@ -113,10 +113,15 @@ describe('ExplorePage', () => {
     renderExplore();
     await waitFor(() => expect(searchMock).toHaveBeenCalledTimes(1));
 
-    fireEvent.change(screen.getByLabelText('Search public groups and channels'), {
-      target: { value: 'h' },
-    });
-    await new Promise((resolve) => setTimeout(resolve, 450));
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(screen.getByLabelText('Search public groups and channels'), {
+        target: { value: 'h' },
+      });
+      await vi.advanceTimersByTimeAsync(450);
+    } finally {
+      vi.useRealTimers();
+    }
     // Still one call (the initial empty listing): no 1-char search.
     expect(searchMock).toHaveBeenCalledTimes(1);
   });

@@ -1,4 +1,6 @@
+import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
+import { inject } from 'vitest';
 import type { Effect } from 'effect';
 import type { SqlClient, SqlError } from 'effect/sql';
 import type { Logger } from 'pino';
@@ -19,6 +21,12 @@ import type {
 } from './xmpp/admin-client';
 import type { XmppConfig } from './xmpp/config';
 import { localpartFor } from './xmpp/provisioning';
+
+declare module 'vitest' {
+  export interface ProvidedContext {
+    migratedSnapshotPath: string;
+  }
+}
 
 export const TEST_SECRET = 'test-better-auth-secret-0000000000000000';
 export const TEST_XMPP_DOMAIN = 'zilar.localhost';
@@ -256,19 +264,6 @@ export interface TestContextOptions {
   adminClient?: FakeAdminClient;
 }
 
-export function testXmppConfig(overrides: Partial<XmppConfig> = {}): XmppConfig {
-  return {
-    apiUrl: 'http://127.0.0.1:5280/api',
-    adminJid: 'admin@zilar.localhost',
-    adminPassword: 'admin-password',
-    domain: TEST_XMPP_DOMAIN,
-    mucDomain: TEST_XMPP_MUC_DOMAIN,
-    wsPublicUrl: TEST_XMPP_WS_URL,
-    jwtSecret: TEST_XMPP_JWT_SECRET,
-    ...overrides,
-  };
-}
-
 export function expectedJid(userId: string): string {
   return `${localpartFor(userId)}@${TEST_XMPP_DOMAIN}`;
 }
@@ -282,11 +277,14 @@ const TEST_XMPP_ENV = {
 };
 
 // Running every migration takes most of a second, and nearly every test needs a fresh database.
-// Each test worker migrates once, keeps a snapshot of the data directory, and starts every later
-// database from that snapshot: same schema, a fraction of the time.
+// The vitest global setup (test-global-setup.ts) migrates once per run and writes a snapshot of the
+// data directory to a temp file; every database starts from that snapshot. Without the global setup
+// (a run that skips the config) the first database in the file migrates and keeps its own snapshot.
 let migratedSnapshot: Promise<Blob> | undefined;
 
 async function snapshotOfMigratedDatabase(): Promise<Blob> {
+  const path = inject('migratedSnapshotPath');
+  if (path) return new Blob([await readFile(path)]);
   const template = new PGlite();
   await migratePglite(template);
   const snapshot = await template.dumpDataDir('none');

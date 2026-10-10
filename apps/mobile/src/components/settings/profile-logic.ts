@@ -126,70 +126,12 @@ export function friendlyAvatarError(error: unknown): string {
   return 'Could not save the picture. Try again.';
 }
 
-export const HANDLE_MIN_LENGTH = 3;
-export const HANDLE_MAX_LENGTH = 32;
-
-/** Builds a handle suggestion from a display name or an email local part. */
-export function suggestHandleFor(name: string, email?: string): string {
-  const candidates = [name, email === undefined ? '' : (email.split('@')[0] ?? '')];
-  for (const candidate of candidates) {
-    const suggestion = shapeSuggestion(candidate);
-    if (suggestion !== null) {
-      return suggestion;
-    }
-  }
-  return 'user';
-}
-
-// Reserved first (like the server): `me` is shorter than the minimum, but
-// the useful answer is that the word itself cannot be taken. Must match the
-// server's `RESERVED_HANDLES` in `apps/server/src/handles/rules.ts`.
-const RESERVED_HANDLES: ReadonlySet<string> = new Set([
-  'admin',
-  'administrator',
-  'support',
-  'help',
-  'root',
-  'system',
-  'zilar',
-  'ejabberd',
-  'api',
-  'settings',
-  'me',
-  'everyone',
-  'all',
-  'here',
-  'channel',
-  'bot',
-  'owner',
-  'moderator',
-]);
-
-function shapeSuggestion(raw: string): string | null {
-  let shaped = raw
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_]+/g, '_')
-    .replace(/^_+/, '');
-  shaped = shaped.replace(/_+$/, '');
-  if (shaped === '') {
-    return null;
-  }
-  if (!/^[a-z]/.test(shaped)) {
-    shaped = `u_${shaped}`;
-  }
-  shaped = shaped.slice(0, HANDLE_MAX_LENGTH).replace(/_+$/, '');
-  if (shaped.length < HANDLE_MIN_LENGTH) {
-    shaped = shaped.padEnd(HANDLE_MIN_LENGTH, '0').slice(0, HANDLE_MAX_LENGTH);
-  }
-  if (RESERVED_HANDLES.has(shaped)) {
-    return null;
-  }
-  if (!/^[a-zA-Z][a-zA-Z0-9_]{2,31}$/.test(shaped)) {
-    return null;
-  }
-  return shaped;
-}
+// The handle rules live in @zilar/protocol, shared with the server and web.
+export {
+  HANDLE_MAX_LENGTH,
+  HANDLE_MIN_LENGTH,
+  suggestHandle as suggestHandleFor,
+} from '@zilar/protocol';
 
 /** The phases of the profile avatar control (picked, uploading, failed, removed). */
 export type AvatarPhase =

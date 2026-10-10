@@ -8,7 +8,7 @@ import {
 import { Effect } from 'effect';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Animated, AppState, Pressable, StyleSheet, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
@@ -32,13 +32,11 @@ import { VoiceMessage } from '@/components/chat/voice-message';
 import type { VoicePlayerHost } from '@/components/chat/voice-player';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { BUBBLE_COLORS } from '@/lib/colors';
 import { WELL_BACKGROUND, bubbleStyle, raisedPill, senderColor } from '@/lib/depth';
 import { useSmoothText, type ActiveSource } from '@/lib/use-smooth-text';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
-import { useColorScheme } from 'nativewind';
 
 const TAIL_WIDTH = 9;
 const TAIL_HEIGHT = 12;
@@ -243,7 +241,7 @@ type MessageBubbleProps = {
   onUnpin?: (message: UiMessage) => void;
 };
 
-export function MessageBubble({
+function MessageBubbleImpl({
   message,
   isGroup,
   isFirstInGroup,
@@ -273,8 +271,7 @@ export function MessageBubble({
   onPin,
   onUnpin,
 }: MessageBubbleProps) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
-  const colors = BUBBLE_COLORS[scheme];
+  const colors = BUBBLE_COLORS;
   const reduceMotion = useReducedMotion();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -752,3 +749,10 @@ export function MessageBubble({
     </>
   );
 }
+
+/**
+ * Memoised (T-0846): the list passes stable handlers, so a bubble re-renders
+ * only when its own message, selection or flags change, not on every draft
+ * token or store update elsewhere in the list.
+ */
+export const MessageBubble = memo(MessageBubbleImpl);

@@ -9,7 +9,6 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image as RNImage, Pressable, TextInput, View, useWindowDimensions } from 'react-native';
 import { Effect, Fiber } from 'effect';
@@ -22,7 +21,6 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { API_URL } from '@/lib/auth';
-import { asColorScheme } from '@/lib/color-scheme';
 import { DANGER, FOREGROUND, ICON } from '@/lib/colors';
 import { well } from '@/lib/depth';
 import { getSessionToken } from '@/lib/session-token';
@@ -78,7 +76,6 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
   const packId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const { width: windowWidth } = useWindowDimensions();
   const { api } = useStickersApi();
   const me = useAuthStore((state) => state.me);
@@ -561,7 +558,7 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
                 opacity: visibilityDisabled ? 0.6 : 1,
               }}
             >
-              <Lock size={18} color={ICON[scheme]} />
+              <Lock size={18} color={ICON} />
               <View className="min-w-0 flex-1">
                 <Text className="text-[15px] font-medium text-foreground">Private</Text>
                 <Text className="text-[13px] text-muted-foreground">
@@ -569,9 +566,9 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
                 </Text>
               </View>
               {visibility === 'private' ? (
-                <CircleDot size={20} color={ICON[scheme]} />
+                <CircleDot size={20} color={ICON} />
               ) : (
-                <Circle size={20} color={ICON[scheme]} />
+                <Circle size={20} color={ICON} />
               )}
             </Pressable>
             <Pressable
@@ -592,7 +589,7 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
                 opacity: visibilityDisabled ? 0.6 : 1,
               }}
             >
-              <Globe size={18} color={ICON[scheme]} />
+              <Globe size={18} color={ICON} />
               <View className="min-w-0 flex-1">
                 <Text className="text-[15px] font-medium text-foreground">
                   Shared on this server
@@ -602,9 +599,9 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
                 </Text>
               </View>
               {visibility === 'server' ? (
-                <CircleDot size={20} color={ICON[scheme]} />
+                <CircleDot size={20} color={ICON} />
               ) : (
-                <Circle size={20} color={ICON[scheme]} />
+                <Circle size={20} color={ICON} />
               )}
             </Pressable>
             {imported ? (
@@ -648,7 +645,7 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
                     onPress={() => removeSaved(sticker.id)}
                     className="absolute right-0.5 top-0.5 h-6 w-6 items-center justify-center rounded-full bg-black/70 active:opacity-70 disabled:opacity-60"
                   >
-                    <X size={12} color={FOREGROUND[scheme]} />
+                    <X size={12} color={FOREGROUND} />
                   </Pressable>
                 </View>
               ))}
@@ -660,7 +657,7 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
                 className="items-center justify-center gap-1 rounded-[10px] border border-dashed border-border-strong bg-well disabled:opacity-60"
                 style={{ width: tile, height: tile }}
               >
-                <ImagePlus size={22} color={ICON[scheme]} />
+                <ImagePlus size={22} color={ICON} />
                 <Text className="text-[12px] text-muted-foreground">Add</Text>
               </Pressable>
             </View>
@@ -767,7 +764,7 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
                         onPress={() => removeFresh(item.key)}
                         className="h-9 w-9 items-center justify-center rounded-lg active:bg-surface-raised disabled:opacity-60"
                       >
-                        <X size={18} color={ICON[scheme]} />
+                        <X size={18} color={ICON} />
                       </Pressable>
                     </View>
                   </View>

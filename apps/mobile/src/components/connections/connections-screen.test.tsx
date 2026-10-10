@@ -24,10 +24,6 @@ vi.mock('expo-router', () => ({
   useRouter: () => ({ back: () => {}, push: () => {} }),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
@@ -35,10 +31,6 @@ vi.mock('react-native', () => ({
   ScrollView: 'ScrollView',
   TextInput: 'TextInput',
   View: 'View',
-}));
-
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
 }));
 
 vi.mock('react-native-safe-area-context', () => ({
@@ -65,25 +57,16 @@ vi.mock('@/components/ui/icon-button', () => ({
   IconButton: 'IconButton',
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
-}));
-
 vi.mock('@/components/connections/use-connections-api', () => ({
   useConnectionsApi: () => ({ api: {}, scenario: null }),
 }));
 
 vi.mock('@/lib/colors', () => ({
-  ACCENT: { dark: '#ededed', light: '#ededed' },
-  ACCENT_FOREGROUND: { dark: '#0a0a0a', light: '#0a0a0a' },
+  ACCENT: '#ededed',
+  ACCENT_FOREGROUND: '#0a0a0a',
   DANGER: '#ef4444',
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ICON: '#d4d4d4',
+  MUTED_FOREGROUND: '#a1a1a1',
 }));
 
 const CREATED_AT = '2026-10-03T10:00:00.000Z';

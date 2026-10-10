@@ -1,11 +1,8 @@
-import { Effect } from 'effect';
-import { type ApiFailure, toApiFailure } from '@/lib/effect/errors';
+import { makeFromApi } from '@zilar/client-core';
+import { toApiFailure } from '@/lib/effect/errors';
 
 /**
- * Lifts one *-api.ts Promise call into an Effect. The signal aborts when the
- * Effect is interrupted; the api functions do not take it yet, so callers
- * usually ignore it: `fromApi(() => getMe())`.
+ * Lifts one api Promise call into an Effect that fails with an ApiFailure:
+ * `fromApi(() => getMe())`. See `makeFromApi` in `@zilar/client-core`.
  */
-export const fromApi = <A>(
-  call: (signal: AbortSignal) => Promise<A>,
-): Effect.Effect<A, ApiFailure> => Effect.tryPromise({ try: call, catch: toApiFailure });
+export const fromApi = makeFromApi(toApiFailure);

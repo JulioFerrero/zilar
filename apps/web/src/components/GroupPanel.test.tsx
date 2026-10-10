@@ -6,6 +6,7 @@ import type { GroupDetail, PublicAi } from '@/lib/api';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { createChatStore, type ChatStoreSeed } from '@/store/store';
 import { GroupPanel } from './GroupPanel';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const auth: AuthState = {
   status: 'authenticated',
@@ -70,10 +71,6 @@ function seedWith(seed: ChatStoreSeed = {}): ChatStoreSeed {
 // pass `auditEntries: 'no-stub'` and skip the fetch stub; the rest of the
 // suite stubs `/audit` so a manager's section renders without errors.
 type AuditAnswer = unknown[] | 'no-stub';
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status });
-}
 
 function stubAudit(entries: unknown[]): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async (url: unknown) => {

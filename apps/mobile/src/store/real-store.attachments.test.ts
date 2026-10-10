@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ChatApi } from '../lib/chat-api';
 import type { AttachmentUploader, PickedFile } from '../lib/attachment-ports';
 import { createRealChatStore, type RealStoreDeps } from './real-store';
+import { flushTasks as flush, waitFor } from '@/test/wait';
 
 function message(overrides: Partial<ChatMessage> & { chatJid: string; body: string }): ChatMessage {
   return {
@@ -117,17 +118,6 @@ function fakeUploader(): AttachmentUploader {
   };
 }
 
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-async function flushUntil(predicate: () => boolean): Promise<void> {
-  for (let round = 0; round < 50 && !predicate(); round += 1) {
-    await flush();
-  }
-}
-
 const ANA = 'ana@zilar.test';
 
 const PHOTO: PickedFile = {
@@ -167,7 +157,7 @@ describe('real store sends attachments (T-0150)', () => {
     expect(optimistic?.text).toBe('Stage!');
     expect(optimistic?.status).toBe('sending');
 
-    await flushUntil(
+    await waitFor(
       () =>
         store.getState().messages(ANA).at(-1)?.attachment?.url ===
         'https://upload.zilar.test/get/abc',
@@ -217,7 +207,7 @@ describe('real store sends attachments (T-0150)', () => {
 
     store.getState().sendAttachment(ANA, PHOTO, { caption: 'Stage!' });
     const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
-    await flushUntil(
+    await waitFor(
       () =>
         store
           .getState()
@@ -227,7 +217,7 @@ describe('real store sends attachments (T-0150)', () => {
     expect(vi.mocked(xmpp.core.sendMessage)).toHaveBeenCalledTimes(1);
 
     store.getState().retryAttachment(ANA, localId);
-    await flushUntil(() => vi.mocked(xmpp.core.sendMessage).mock.calls.length > 1);
+    await waitFor(() => vi.mocked(xmpp.core.sendMessage).mock.calls.length > 1);
     expect(vi.mocked(xmpp.core.requestUploadSlot)).toHaveBeenCalledTimes(2);
     expect(
       store
@@ -236,7 +226,7 @@ describe('real store sends attachments (T-0150)', () => {
         .find((item) => item.id === localId)?.failed,
     ).toBeUndefined();
     // The pending bytes are dropped only after the send finally succeeds.
-    await flushUntil(
+    await waitFor(
       () =>
         store
           .getState()
@@ -251,7 +241,7 @@ describe('real store sends attachments (T-0150)', () => {
   it('merges the echo instead of duplicating the bubble', async () => {
     const { store, xmpp } = await setup();
     store.getState().sendAttachment(ANA, PHOTO, { caption: 'Stage!' });
-    await flushUntil(() => vi.mocked(xmpp.core.sendMessage).mock.calls.length > 0);
+    await waitFor(() => vi.mocked(xmpp.core.sendMessage).mock.calls.length > 0);
 
     xmpp.emit(
       'message',
@@ -291,7 +281,7 @@ describe('real store sends attachments (T-0150)', () => {
 
     store.getState().sendAttachment(ANA, PHOTO);
     const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
-    await flushUntil(
+    await waitFor(
       () =>
         store
           .getState()
@@ -301,7 +291,7 @@ describe('real store sends attachments (T-0150)', () => {
     expect(uploader.upload).not.toHaveBeenCalled();
 
     store.getState().retryAttachment(ANA, localId);
-    await flushUntil(() => vi.mocked(xmpp.core.sendMessage).mock.calls.length > 0);
+    await waitFor(() => vi.mocked(xmpp.core.sendMessage).mock.calls.length > 0);
     expect(vi.mocked(xmpp.core.requestUploadSlot)).toHaveBeenCalledTimes(2);
     expect(
       store
@@ -341,7 +331,7 @@ describe('real store sends attachments (T-0150)', () => {
     const optimistic = store.getState().messages(ANA).at(-1);
     expect(optimistic?.status).toBe('sending');
 
-    await flushUntil(() => vi.mocked(xmpp.core.sendMessage).mock.calls.length > 0);
+    await waitFor(() => vi.mocked(xmpp.core.sendMessage).mock.calls.length > 0);
     expect(vi.mocked(xmpp.core.requestUploadSlot)).toHaveBeenCalledWith(
       expect.objectContaining({ filename: 'photo.jpg', size: 240_000 }),
     );
@@ -366,7 +356,7 @@ describe('real store sends attachments (T-0150)', () => {
     expect(store.getState().actionError).toBeUndefined();
 
     const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
-    await flushUntil(
+    await waitFor(
       () =>
         store
           .getState()
@@ -423,14 +413,14 @@ describe('real store sends attachments (T-0150)', () => {
     store.getState().sendAttachment(TEAM, PDF);
     const anaId = store.getState().messages(ANA).at(-1)?.id ?? '';
     const teamId = store.getState().messages(TEAM).at(-1)?.id ?? '';
-    await flushUntil(() => vi.mocked(uploader.upload).mock.calls.length === 2);
+    await waitFor(() => vi.mocked(uploader.upload).mock.calls.length === 2);
 
     // Cancelling Ana's upload aborts only Ana's gate: the Team upload is
     // untouched and finishes on its own.
     store.getState().cancelAttachment(ANA, anaId);
     expect(vi.mocked(uploader.cancel)).toHaveBeenCalledWith(anaId);
     gates.get(PDF.uri)?.();
-    await flushUntil(
+    await waitFor(
       () =>
         store
           .getState()
@@ -466,7 +456,7 @@ describe('real store sends attachments (T-0150)', () => {
     );
     store.getState().sendAttachment(ANA, PHOTO);
     const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
-    await flushUntil(() => vi.mocked(xmpp.core.requestUploadSlot).mock.calls.length > 0);
+    await waitFor(() => vi.mocked(xmpp.core.requestUploadSlot).mock.calls.length > 0);
 
     store.getState().cancelAttachment(ANA, localId);
     releaseSlot();
@@ -485,7 +475,7 @@ describe('real store sends attachments (T-0150)', () => {
     vi.mocked(uploader.upload).mockImplementationOnce(() => gate.then(() => undefined));
     store.getState().sendAttachment(ANA, PHOTO);
     const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
-    await flushUntil(() => vi.mocked(uploader.upload).mock.calls.length > 0);
+    await waitFor(() => vi.mocked(uploader.upload).mock.calls.length > 0);
 
     store.getState().cancelAttachment(ANA, localId);
     release();

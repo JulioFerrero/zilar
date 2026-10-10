@@ -1,14 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createChatPrefsApi, parseChatPref, type ChatPref } from './chat-prefs-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response;
-}
+import { jsonResponse } from '@/test/wait';
 
 describe('parseChatPref', () => {
   it('parses a valid row', () => {

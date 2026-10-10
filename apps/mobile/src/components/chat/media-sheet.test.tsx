@@ -28,10 +28,6 @@ vi.mock('react-native', () => ({
   Linking: { openURL: vi.fn() },
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'light' }),
-}));
-
 vi.mock('lucide-react-native', () => ({
   CircleAlert: 'CircleAlert',
   Inbox: 'Inbox',

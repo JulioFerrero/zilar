@@ -7,13 +7,7 @@ import {
   type ApprovalRule,
   type PublicApproval,
 } from './approvals-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/wait';
 
 const PENDING_APPROVAL: PublicApproval = {
   id: 'apr-42',

@@ -4,15 +4,16 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.integration.json",
     "test": "vitest run"
   },
   "dependencies": {
-    "@xmpp/client": "^0.14.0",
+    "@xmpp/client": "catalog:",
     "@zilar/protocol": "workspace:*",
-    "effect": "^4.0.2"
+    "effect": "catalog:"
   }
 }

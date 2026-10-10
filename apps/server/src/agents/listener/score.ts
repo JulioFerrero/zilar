@@ -7,9 +7,9 @@
 // nobody.
 
 import { Effect, Exit, Schema } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
-import { sqlRuntimeFor } from '../../effect/sql';
+import { runSql } from '../../effect/sql';
 import type { CompleteChatInput, ModelRequestMessage } from '../reply';
 import { PERSONA_SUMMARY_MAX_LENGTH } from '../tools';
 
@@ -40,13 +40,6 @@ export interface LoadRosterInput {
 function summaryOf(persona: string): string {
   const firstLine = persona.split('\n')[0] ?? '';
   return firstLine.trim().slice(0, PERSONA_SUMMARY_MAX_LENGTH);
-}
-
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 interface RosterRow {

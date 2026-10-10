@@ -206,6 +206,18 @@ const COMMON_EMOJI = [
  * `max-w-[calc(100vw-2rem)]`, so it opens above the button and always stays
  * inside the viewport, even on narrow windows.
  */
+/**
+ * The mock GIF placeholders, only in a build that can run mock mode. The
+ * build-time condition is inline so Vite folds `mockGifItems` (and
+ * mock/helpers) out of a production build without `VITE_MOCK` (T-0882).
+ */
+function mockGifProps(): { mockItems?: ReturnType<typeof mockGifItems> } {
+  if (import.meta.env.DEV || import.meta.env.MODE === 'test' || import.meta.env.VITE_MOCK === '1') {
+    return isMockMode() ? { mockItems: mockGifItems() } : {};
+  }
+  return {};
+}
+
 export function StickerPanel({
   onPick,
   onClose,
@@ -437,7 +449,7 @@ export function StickerPanel({
       </div>
 
       {visibleTab === 'gifs' && gifsEnabled !== false && (
-        <GifPanel onPick={onGifPick} {...(isMockMode() ? { mockItems: mockGifItems() } : {})} />
+        <GifPanel onPick={onGifPick} {...mockGifProps()} />
       )}
 
       {visibleTab === 'emoji' && (

@@ -22,37 +22,28 @@
 // literals, shared with the service and the probe boundary.
 
 import { Effect, Layer, Option, Schema } from 'effect';
-import { HttpServer, HttpServerResponse, HttpRouter } from 'effect/http';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiSchema,
-} from 'effect/http-api';
+  CreateConnectionPayload,
+  ConnectionsGroup,
+  type ConnectionView,
+} from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
-import {
-  CurrentUser,
-  Session,
-  requestIdOf,
-  sessionLayer,
-  withErrorEnvelope,
-  type EffectApiMount,
-  type EffectApiRoute,
-} from '../effect/http-core';
+import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { KeyCipher } from './crypto';
 import { redactKey, createProviderProbe, type ProviderProbe } from './probe';
-import { ProviderIdSchema, type ProviderId } from './providers';
+import type { ProviderId } from './providers';
 import {
   countAisUsingConnection,
   createConnection as createConnectionRow,
   deleteConnection as deleteConnectionRow,
   findOwnedConnection,
   listConnections,
+  type PublicConnection,
 } from './service';
 
 // Each key test calls the provider with the stored key, so cap tests per user.
@@ -82,67 +73,23 @@ export interface ConnectionsApiDependencies extends ConnectionsRoutesDependencie
   testLimiter?: RateLimiter;
 }
 
-// Replaces `CreateConnectionSchema` (zod strict): the key is trimmed because
-// pasted keys often carry a trailing newline. Excess keys fail the decode,
-// like the old `.strict()`.
-const CreateConnectionBody = Schema.Struct({
-  provider: ProviderIdSchema,
-  key: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(16384)),
-  label: Schema.optional(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
-});
-
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 
-// Every field of `PublicConnection` (`./service`): the encrypted key is not
-// one of them, so it can never reach a response.
-const ConnectionView = Schema.Struct({
-  id: Schema.String,
-  provider: ProviderIdSchema,
-  label: Schema.NullOr(Schema.String),
-  status: Schema.Literals(['active', 'revoked']),
-  createdAt: Schema.Date,
-});
-
-const ConnectionTestResult = Schema.Union([
-  Schema.Struct({ ok: Schema.Literal(true) }),
-  Schema.Struct({ ok: Schema.Literal(false), message: Schema.String }),
-]);
-
-const ConnectionIdParams = Schema.Struct({ id: Schema.String });
+// A connection on the wire: the encrypted key is not part of `PublicConnection`
+// (`./service`), so it can never reach a response; `createdAt` travels as its
+// ISO string.
+function toWire(connection: PublicConnection): ConnectionView {
+  return { ...connection, createdAt: connection.createdAt.toISOString() };
+}
 
 // Marks a body that is not JSON at all, so the handler can answer `Invalid
 // JSON body` instead of the schema-violation text (JSON never yields a symbol).
 const INVALID_JSON = Symbol('connections/invalid-json');
 
-const ConnectionsGroup = HttpApiGroup.make('connections')
-  .add(
-    HttpApiEndpoint.get('list', '/connections', {
-      success: Schema.Array(ConnectionView),
-    }),
-    HttpApiEndpoint.post('create', '/connections', {
-      success: ConnectionView,
-    }),
-    HttpApiEndpoint.post('test', '/connections/:id/test', {
-      params: ConnectionIdParams,
-      success: ConnectionTestResult,
-    }),
-    HttpApiEndpoint.delete('remove', '/connections/:id', {
-      params: ConnectionIdParams,
-      success: HttpApiSchema.NoContent,
-    }),
-  )
-  .middleware(Session)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
-
+// `create` declares its payload in the contract for the derived client but is
+// served with `handleRaw`: the body is decoded by hand in the handler (see the
+// header).
 const ConnectionsApi = HttpApi.make('connections').add(ConnectionsGroup);
-
-export const CONNECTIONS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/connections' },
-  { method: 'POST', path: '/api/connections' },
-  { method: 'POST', path: '/api/connections/:id/test' },
-  { method: 'DELETE', path: '/api/connections/:id' },
-];
 
 export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
@@ -182,23 +129,17 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
 
   const groupLayer = HttpApiBuilder.group(ConnectionsApi, 'connections', (handlers) =>
     handlers
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'list',
+        handler(defectLogger, (_request, user) => {
+          requireCipher();
+          return listConnections(deps.db, user.id).then((rows) => rows.map(toWire));
+        }),
+      )
+      .handleRaw(
+        'create',
+        handler(defectLogger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            requireCipher();
-            return yield* Effect.promise(() => listConnections(deps.db, user.id));
-          }),
-          defectLogger,
-          requestId,
-        );
-      })
-      .handle('create', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const keyCipher = requireCipher();
             const raw = yield* request.request.json.pipe(
               Effect.catchCause(() => Effect.succeed<unknown>(INVALID_JSON)),
@@ -206,12 +147,12 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
             if (raw === INVALID_JSON) {
               throw new HttpError(400, 'invalid_request', 'Invalid JSON body');
             }
-            const decoded = Schema.decodeUnknownOption(CreateConnectionBody, STRICT_DECODE)(raw);
+            const decoded = Schema.decodeUnknownOption(CreateConnectionPayload, STRICT_DECODE)(raw);
             if (Option.isNone(decoded)) {
               throw new HttpError(400, 'invalid_request', 'Invalid connection request');
             }
             const body = decoded.value;
-            const connection = yield* Effect.promise(() =>
+            const created = yield* Effect.promise(() =>
               createConnectionRow(deps.db, {
                 owner: user.id,
                 provider: body.provider,
@@ -219,17 +160,14 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
                 label: body.label ?? null,
               }),
             );
-            return HttpServerResponse.jsonUnsafe(connection, { status: 201 });
+            return toWire(created);
           }),
-          defectLogger,
-          requestId,
-        );
-      })
-      .handle('test', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'test',
+        handler(defectLogger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const keyCipher = requireCipher();
             const connection = yield* Effect.promise(() =>
               findOwnedConnection(deps.db, request.params.id, user.id),
@@ -280,17 +218,14 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
             }
             return { ok: false as const, message: probed.outcome.message };
           }),
-          defectLogger,
-          requestId,
-        );
-      })
+        ),
+      )
       // Deletes a connection (204, no body). In use by an AI is a 409 with a
       // bare count, never the AI names.
-      .handle('remove', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'remove',
+        handler(defectLogger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             requireCipher();
             const connection = yield* Effect.promise(() =>
               findOwnedConnection(deps.db, request.params.id, user.id),
@@ -315,10 +250,8 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
               throw new HttpError(404, 'not_found', 'Connection not found');
             }
           }),
-          defectLogger,
-          requestId,
-        );
-      }),
+        ),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(ConnectionsApi).pipe(
@@ -326,12 +259,5 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
     Layer.provide(sessionLayer(deps.auth, defectLogger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: CONNECTIONS_API_ROUTES };
+  return mountApi(ConnectionsApi, apiLayer);
 }

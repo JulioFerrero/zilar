@@ -1,22 +1,18 @@
-import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
-import { struct } from '@zilar/protocol';
+import { omitUndefined, ApiError, runApi } from '@zilar/api-contract';
 
 import { API_URL } from './auth';
-import { errorFieldsOf } from './api-error-body';
 import type { TokenProvider } from './chat-api';
+import { createApiClient } from './effect/api-client';
 
 /**
  * Group invite links (T-0136), the mobile twin of the web client
  * (`apps/web/src/lib/api.ts`, "Group invite links" + "Join by link"): create,
  * list and revoke shareable group links for owners/admins, plus the
- * join-by-link preview and join. The wire contract lives in
- * `apps/server/src/invite-links/{routes,service}.ts` (T-0115).
- *
- * The boundary is validated with Effect Schema (T-0506 recipe): the request is
- * an Effect pipeline, cut back to a `Promise` at the edge with
- * `Effect.runPromise`. Malformed rows fail the decode and throw
- * `invalid_response`. The token is shown once at creation in `url` and never
- * stored — the list carries hints, labels, uses and state, never tokens.
+ * join-by-link preview and join, as a Promise port over the client derived
+ * from the shared contract (`@zilar/api-contract`, `invite-links.ts`, T-0892).
+ * Malformed rows fail the decode and throw `invalid_response`. The token is
+ * shown once at creation in `url` and never stored: the list carries hints,
+ * labels, uses and state, never tokens.
  */
 
 export interface GroupInviteLink {
@@ -68,133 +64,9 @@ export interface InviteLinksApi {
   previewJoinLink(token: string): Promise<JoinPreview>;
   joinByLink(token: string): Promise<JoinResult>;
 }
-
-export class InviteLinksApiError extends Error {
-  readonly status: number;
-  readonly code: string;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = 'InviteLinksApiError';
-    this.status = status;
-    this.code = code;
-  }
-}
-
-// `label`, `maxUses` and `expiresAt` are nullable but required: an explicit
-// `null` decodes to `null`, while a missing key or a wrong type fails the row,
-// exactly like the old type guards.
-const GroupInviteLinkSchema = struct({
-  id: Schema.String,
-  label: Schema.NullOr(Schema.String),
-  tokenHint: Schema.String,
-  uses: Schema.Number,
-  maxUses: Schema.NullOr(Schema.Number),
-  expiresAt: Schema.NullOr(Schema.String),
-  revoked: Schema.Boolean,
-  createdAt: Schema.String,
-});
-
-const CreatedInviteLinkSchema = struct({
-  id: Schema.String,
-  token: Schema.String,
-  url: Schema.String,
-});
-
-// `groupId` and `kind` are optional: absent keys are omitted from the preview,
-// but a present key with the wrong type fails it — an older server that omits
-// `kind` still parses (treated as a group).
-const JoinPreviewSchema = struct({
-  groupTitle: Schema.String,
-  memberCount: Schema.Number,
-  alreadyMember: Schema.Boolean,
-  groupId: Schema.optional(Schema.String),
-  kind: Schema.optional(Schema.Literals(['group', 'channel'])),
-});
-
-const JoinResultSchema = struct({
-  groupId: Schema.String,
-  alreadyMember: Schema.Boolean,
-});
-
-const InviteLinkListSchema = struct({
-  links: Schema.mutable(Schema.Array(GroupInviteLinkSchema)),
-});
-
-function parseCreatedInviteLink(value: unknown): CreatedInviteLink | null {
-  const decoded = Schema.decodeUnknownExit(CreatedInviteLinkSchema)(value);
-  return Exit.isSuccess(decoded) ? decoded.value : null;
-}
-
-function parseJoinPreview(value: unknown): JoinPreview | null {
-  const decoded = Schema.decodeUnknownExit(JoinPreviewSchema)(value);
-  return Exit.isSuccess(decoded) ? decoded.value : null;
-}
-
-function parseJoinResult(value: unknown): JoinResult | null {
-  const decoded = Schema.decodeUnknownExit(JoinResultSchema)(value);
-  return Exit.isSuccess(decoded) ? decoded.value : null;
-}
-
-function parseInviteLinkList(value: unknown): GroupInviteLink[] | null {
-  const decoded = Schema.decodeUnknownExit(InviteLinkListSchema)(value);
-  return Exit.isSuccess(decoded) ? decoded.value.links : null;
-}
-
-// revoke answers 204 with no body; any 2xx body is accepted and ignored,
-// exactly like the old hand validator.
-function parseRevoke(value: unknown): Record<string, never> | null {
-  const decoded = Schema.decodeUnknownExit(Schema.Unknown)(value);
-  return Exit.isSuccess(decoded) ? {} : null;
-}
-
-// The internal failures, one per case. They carry no field beyond what the old
-// `InviteLinksApiError` already surfaced; the `Promise` edge maps each back to
-// that same error, status, code and message.
-class InviteLinksNetworkError extends Data.TaggedError('InviteLinksNetworkError') {}
-class InviteLinksRequestError extends Data.TaggedError('InviteLinksRequestError')<{
-  readonly status: number;
-  readonly code: string;
-  readonly message: string;
-}> {}
-class InviteLinksUnauthorized extends Data.TaggedError('InviteLinksUnauthorized') {}
-class InviteLinksInvalidResponse extends Data.TaggedError('InviteLinksInvalidResponse') {}
-
-const requestEffect = Effect.fnUntraced(function* (
-  apiUrl: string,
-  path: string,
-  token: string,
-  init: RequestInit,
-  fetchImpl: typeof fetch,
-): EffectType.fn.Return<unknown, InviteLinksNetworkError | InviteLinksRequestError> {
-  const response = yield* Effect.tryPromise({
-    try: (signal) =>
-      fetchImpl(`${apiUrl}${path}`, {
-        ...init,
-        signal,
-        headers: {
-          accept: 'application/json',
-          authorization: `Bearer ${token}`,
-          ...init.headers,
-        },
-      }),
-    catch: () => new InviteLinksNetworkError(),
-  });
-
-  const body: unknown = yield* Effect.promise(
-    () => response.json().catch(() => null) as Promise<unknown>,
-  );
-
-  if (!response.ok) {
-    const error = errorFieldsOf(body);
-    return yield* new InviteLinksRequestError({
-      status: response.status,
-      code: error.code ?? 'request_failed',
-      message: error.message ?? `Request failed (${response.status})`,
-    });
-  }
-  return body;
-});
+/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
+export const InviteLinksApiError = ApiError;
+export type InviteLinksApiError = ApiError;
 
 /** The production `InviteLinksApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createInviteLinksApi(
@@ -202,99 +74,27 @@ export function createInviteLinksApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): InviteLinksApi {
-  const withTokenEffect = Effect.fnUntraced(function* (
-    path: string,
-    init: RequestInit,
-    parse: (value: unknown) => unknown,
-  ): EffectType.fn.Return<
-    unknown,
-    | InviteLinksUnauthorized
-    | InviteLinksNetworkError
-    | InviteLinksRequestError
-    | InviteLinksInvalidResponse
-  > {
-    const token = yield* Effect.promise(() => getToken());
-    if (token === undefined) {
-      return yield* new InviteLinksUnauthorized();
-    }
-    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
-    const parsed = parse(body);
-    if (parsed === null) {
-      return yield* new InviteLinksInvalidResponse();
-    }
-    return parsed;
-  });
-
-  const withToken = (
-    path: string,
-    init: RequestInit,
-    parse: (value: unknown) => unknown,
-  ): Promise<unknown> =>
-    Effect.runPromise(
-      withTokenEffect(path, init, parse).pipe(
-        Effect.catchTags({
-          InviteLinksUnauthorized: () =>
-            Effect.fail(new InviteLinksApiError(401, 'unauthorized', 'No session')),
-          InviteLinksNetworkError: () =>
-            Effect.fail(new InviteLinksApiError(0, 'network_error', 'Could not reach the server')),
-          InviteLinksRequestError: (error) =>
-            Effect.fail(new InviteLinksApiError(error.status, error.code, error.message)),
-          InviteLinksInvalidResponse: () =>
-            Effect.fail(
-              new InviteLinksApiError(
-                200,
-                'invalid_response',
-                'The server sent an unexpected response',
-              ),
-            ),
+  const client = createApiClient({ getToken, fetchImpl, apiUrl });
+  const links = client['invite-links'];
+  return {
+    // The server trims `label`; the contract encodes the trimmed form.
+    createGroupInviteLink: (groupId, input = {}) =>
+      runApi(
+        links.createLink({
+          params: { id: groupId },
+          payload: {
+            ...omitUndefined(input),
+            ...(input.label === undefined ? {} : { label: input.label.trim() }),
+          },
         }),
       ),
-    );
-
-  return {
-    async createGroupInviteLink(groupId, input = {}) {
-      const body = await withToken(
-        `/api/groups/${encodeURIComponent(groupId)}/invite-links`,
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(input),
-        },
-        parseCreatedInviteLink,
-      );
-      return body as CreatedInviteLink;
+    listGroupInviteLinks: (groupId) =>
+      runApi(links.listLinks({ params: { id: groupId } })).then(({ links: rows }) => [...rows]),
+    revokeGroupInviteLink: async (groupId, linkId) => {
+      await runApi(links.revokeLink({ params: { id: groupId, linkId } }));
     },
-    async listGroupInviteLinks(groupId) {
-      const body = await withToken(
-        `/api/groups/${encodeURIComponent(groupId)}/invite-links`,
-        { method: 'GET' },
-        parseInviteLinkList,
-      );
-      return body as GroupInviteLink[];
-    },
-    async revokeGroupInviteLink(groupId, linkId) {
-      await withToken(
-        `/api/groups/${encodeURIComponent(groupId)}/invite-links/${encodeURIComponent(linkId)}`,
-        { method: 'DELETE' },
-        parseRevoke,
-      );
-    },
-    async previewJoinLink(token) {
-      const body = await withToken(
-        `/api/join/${encodeURIComponent(token)}`,
-        { method: 'GET' },
-        parseJoinPreview,
-      );
-      return body as JoinPreview;
-    },
-    async joinByLink(token) {
-      const body = await withToken(
-        `/api/join/${encodeURIComponent(token)}`,
-        { method: 'POST' },
-        parseJoinResult,
-      );
-      return body as JoinResult;
-    },
+    previewJoinLink: (token) => runApi(links.preview({ params: { token } })),
+    joinByLink: (token) => runApi(links.join({ params: { token } })),
   };
 }
 

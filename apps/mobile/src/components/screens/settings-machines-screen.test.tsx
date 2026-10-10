@@ -6,6 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import MachinesScreen from '@/app/settings/machines';
 import { MachinesApiError, type Machine } from '@/lib/machines-api';
+import { waitForAct } from '@/test/wait';
 
 // Interactive tests for Settings → Machines. The screen is mounted in jsdom
 // with react-dom and its native primitives swapped for DOM elements, then the
@@ -41,10 +42,6 @@ vi.mock('expo-router', async () => {
 });
 
 vi.mock('expo-clipboard', () => clipboard);
-
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
 
 vi.mock('react-native', async () => {
   const React = await import('react');
@@ -226,12 +223,8 @@ vi.mock('@/components/machines/use-machines-api', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
-  ACCENT_FOREGROUND: { dark: '#0a0a0a', light: '#0a0a0a' },
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ACCENT_FOREGROUND: '#0a0a0a',
+  ICON: '#d4d4d4',
 }));
 
 const CREATED_AT = '2026-10-03T10:00:00.000Z';
@@ -331,21 +324,9 @@ function typeInto(label: string, value: string): void {
   });
 }
 
-async function settle(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  });
-}
-
 // Waits for the requests and state updates to land, a few ticks at a time.
 async function until(check: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (check()) {
-      return;
-    }
-    await settle();
-  }
-  throw new Error('the screen did not reach the expected state');
+  await waitForAct(check);
 }
 
 describe('MachinesScreen (interactive)', () => {

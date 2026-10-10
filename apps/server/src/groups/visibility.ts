@@ -10,7 +10,7 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import {
   HANDLE_CHANGE_INTERVAL_DAYS,
@@ -45,13 +45,6 @@ interface LiveHandleRow {
 interface RetiredHandleRow {
   formerGroupId: string | null;
   reservedUntil: Date;
-}
-
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // Makes a group public (with a handle) or private again, in one

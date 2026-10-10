@@ -1,13 +1,8 @@
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { AttachSheet, PreviewFallbackIcon, isImageName } from './attach-sheet';
-
-const here = dirname(fileURLToPath(import.meta.url));
 
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
@@ -15,14 +10,6 @@ vi.mock('react-native', () => ({
   Modal: 'Modal',
   Pressable: 'Pressable',
   View: 'View',
-}));
-
-vi.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
 }));
 
 vi.mock('@/lib/depth', () => ({
@@ -36,16 +23,8 @@ vi.mock('lucide-react-native', () => ({
   Paperclip: 'Paperclip',
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
-}));
-
 vi.mock('@/lib/colors', () => ({
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
+  ICON: '#d4d4d4',
 }));
 
 describe('attach sheet (T-0150)', () => {
@@ -91,8 +70,6 @@ describe('attach sheet (T-0150)', () => {
   });
 
   it('draws the sheet with lucide icons and no emoji', () => {
-    const source = readFileSync(join(here, 'attach-sheet.tsx'), 'utf8');
-    expect(source).not.toMatch(/\p{Extended_Pictographic}/u);
     const html = sheet({
       demoAttachments: [
         {
@@ -116,6 +93,7 @@ describe('attach sheet (T-0150)', () => {
     expect(html).toContain('<Image');
     expect(html).toContain('<Camera');
     expect(html).toContain('<FileText');
+    expect(html).not.toMatch(/\p{Extended_Pictographic}/u);
   });
 
   it('shows the image fallback icon for image names and the file icon otherwise', () => {

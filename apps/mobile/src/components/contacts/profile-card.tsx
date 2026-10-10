@@ -8,8 +8,6 @@ import type { ContactRelation, HandleProfile } from '@/lib/contacts-api';
 
 import { Avatar } from '../chat/avatar';
 
-export type ProfileCardAction = 'send' | 'cancel' | 'accept' | 'decline' | 'message' | 'requests';
-
 /**
  * True when the inline block confirm must be dropped because the card now
  * shows a different person or a different relation. A successful block or

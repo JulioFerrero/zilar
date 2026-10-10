@@ -1,11 +1,9 @@
 import { ChevronRight } from 'lucide-react-native';
-import { useColorScheme } from 'nativewind';
 import type { ReactNode } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { CountBadge } from '@/components/ui/count-badge';
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
@@ -39,7 +37,6 @@ export function ListRow({
   disabled = false,
   className,
 }: ListRowProps) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const rowClass = cn(
     'flex-row items-center gap-3 px-3 py-2.5',
     onPress === undefined ? undefined : 'active:bg-surface-raised disabled:opacity-60',
@@ -60,7 +57,7 @@ export function ListRow({
       </View>
       {count === undefined ? null : <CountBadge count={count} />}
       {trailing}
-      {chevron ? <ChevronRight size={18} color={MUTED_FOREGROUND[scheme]} /> : null}
+      {chevron ? <ChevronRight size={18} color={MUTED_FOREGROUND} /> : null}
     </>
   );
 

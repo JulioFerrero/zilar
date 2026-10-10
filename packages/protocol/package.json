@@ -11,6 +11,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "effect": "^4.0.2"
+    "effect": "catalog:"
   }
 }

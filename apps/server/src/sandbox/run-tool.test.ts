@@ -110,12 +110,13 @@ describe('runTool happy path', () => {
 });
 
 describe('runTool limits', () => {
-  it('does not count fetch wait time against cpuMs', async () => {
-    // Lead repro: cpuMs 300, fetch delayed 800 ms, then real work. Under the
-    // old wall-clock cpuDeadline this reported timeout; cpu time here is only
-    // the loop, so the run must succeed. The loop is kept small: the budget is
-    // measured as time spent executing, which a busy CI runner stretches, and
-    // the point is the 800 ms wait, not how much work fits in 300 ms.
+  it('does not count fetch wait time against cpuMs', { timeout: 20000 }, async () => {
+    // Lead repro: the fetch is delayed longer than cpuMs, then real work. Under
+    // the old wall-clock cpuDeadline this reported timeout; cpu time here is
+    // only the loop, so the run must succeed. The loop is kept small: the
+    // budget is measured as wall time spent inside the VM, which a saturated
+    // host stretches (at 300 ms it failed at load 30-45), and the point is that
+    // the 2500 ms wait exceeds the 1500 ms budget, not how much work fits in it.
     const result = await runTool({
       source: `export default async function run() {
         const res = await fetch('https://api.example.com/x');
@@ -127,11 +128,11 @@ describe('runTool limits', () => {
       input: null,
       allowedHosts: ['api.example.com'],
       fetcher: async () => {
-        await new Promise((resolve) => setTimeout(resolve, 800));
+        await new Promise((resolve) => setTimeout(resolve, 2500));
         return { status: 200, body: textEncoder.encode('fetched') };
       },
       resolver: PUBLIC_RESOLVER,
-      limits: { cpuMs: 300, wallMs: 10000, fetchTimeoutMs: 5000 },
+      limits: { cpuMs: 1500, wallMs: 10000, fetchTimeoutMs: 5000 },
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -199,7 +200,11 @@ describe('runTool limits', () => {
     }
   });
 
-  it('times out a tool that awaits a fetch that never answers', async () => {
+  // The fetch timer (fetchTimeoutMs + 1000 = 2 s) starts when the worker asks
+  // for the fetch, after the worker has spawned. wallMs and cpuMs are wide so a
+  // slow worker start on a saturated host cannot trip the wall clock first; the
+  // fetch timeout is still what ends this run.
+  it('times out a tool that awaits a fetch that never answers', { timeout: 30000 }, async () => {
     const result = await runTool({
       source: `export default async function run() {
         const res = await fetch('https://api.example.com/slow');
@@ -210,7 +215,7 @@ describe('runTool limits', () => {
       fetcher: async () =>
         new Promise(() => undefined) as Promise<{ status: number; body: Uint8Array }>,
       resolver: PUBLIC_RESOLVER,
-      limits: { wallMs: 3000, cpuMs: 3000, fetchTimeoutMs: 1000 },
+      limits: { wallMs: 20000, cpuMs: 20000, fetchTimeoutMs: 1000 },
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {

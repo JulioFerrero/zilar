@@ -68,11 +68,30 @@ jobs:
 
       - run: pnpm typecheck
 
+  # The server tests are about 80% of the old single test job (T-0860), so they run as three
+  # vitest shards (each file runs in exactly one shard); every other package runs in one
+  # `rest` leg through turbo. The legs run in parallel and fail independently.
   test:
-    name: Test
+    name: Test (${{ matrix.name }})
     runs-on: ubuntu-latest
     # a hung test must fail the run, not hold a runner for GitHub's six-hour default
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: server 1/3
+            id: server-1
+            command: pnpm --filter @zilar/server exec vitest run --shard=1/3 --testTimeout=30000 --hookTimeout=30000
+          - name: server 2/3
+            id: server-2
+            command: pnpm --filter @zilar/server exec vitest run --shard=2/3 --testTimeout=30000 --hookTimeout=30000
+          - name: server 3/3
+            id: server-3
+            command: pnpm --filter @zilar/server exec vitest run --shard=3/3 --testTimeout=30000 --hookTimeout=30000
+          - name: rest
+            id: rest
+            command: pnpm exec turbo test --filter='!@zilar/server'
     steps:
       - uses: actions/checkout@v7
 
@@ -86,14 +105,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # Turborepo 2 keeps its local cache in .turbo/cache (no remote cache, no secrets).
+      # The key includes the matrix id so the parallel legs never share one cache entry.
       - uses: actions/cache@v6
         with:
           path: .turbo/cache
-          key: turbo-${{ runner.os }}-${{ github.job }}-${{ github.sha }}
+          key: turbo-${{ runner.os }}-${{ matrix.id }}-${{ github.sha }}
           restore-keys: |
-            turbo-${{ runner.os }}-${{ github.job }}-
+            turbo-${{ runner.os }}-${{ matrix.id }}-
 
-      - run: pnpm test
+      - run: ${{ matrix.command }}
 
   build:
     name: Build

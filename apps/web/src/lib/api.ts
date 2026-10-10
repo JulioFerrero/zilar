@@ -1,26 +1,72 @@
-import { Effect, Exit, Schema } from 'effect';
-import { FOLDER_ICONS, type FolderChatType, type FolderIcon } from '@zilar/chat-core';
+import { Exit, Schema } from 'effect';
+import { ApiError, apiErrorFromBody, type Pin, type PinKind } from '@zilar/api-contract';
+import {
+  HANDLE_CHECK_MAX,
+  HANDLE_CHECK_MIN,
+  type BlockedPerson,
+  type Contact,
+  type ContactRequestPerson,
+  type ContactRequestRow,
+  type ContactRequestStatus,
+  type ContactRequestView,
+  type DirectoryEntry,
+  type HandleCheck,
+  type HandleCheckReason,
+  type HandleProfile,
+  type SearchItem,
+  omitUndefined,
+  type BackgroundPreset,
+  type ChatBackgroundChoice,
+  ChatEntry as chatEntrySchema,
+  type ChatFolder as ApiChatFolder,
+  type CreatedInviteLink,
+  type GroupAi,
+  type GroupBackground,
+  type GroupDetail,
+  type GroupJoinResult,
+  type GroupMember,
+  type GroupRole,
+  type ListenerEagerness,
+  type InviteLink as GroupInviteLink,
+  type JoinPreview,
+  type JoinResult,
+  type ChatPref,
+  type ApproverRole,
+  type Topic,
+  type TopicAi,
+  type TopicKind,
+  type TopicMember,
+  type TopicOwner,
+  type TopicRole,
+  type TopicStatus,
+  type TopicVisibility,
+  Topic as topicSchema,
+  trimTopicText,
+} from '@zilar/api-contract';
+import type { FolderChatType, FolderIcon } from '@zilar/chat-core';
 import { struct } from '@zilar/protocol';
+import { callApi, callApiAbortable } from '@/lib/effect/api-client';
 import { isMockApiEnabled } from '@/mock/gate';
-import { mockRequest } from '@/mock/api';
+import { loadMockRequest } from '@/mock/load';
+import { ApprovalRule, PublicApproval, isProviderId } from '@zilar/api-contract';
+import type {
+  AiLimits,
+  AiMemoryFact,
+  AiTemplate,
+  AiUsage,
+  ApprovalDecision,
+  ApprovalStatus,
+  ConnectionView,
+  PublicAi as ContractAi,
+  PublicAuditEntry,
+  ToolListItem,
+} from '@zilar/api-contract';
 
 /** Base path for the server API. The Vite dev server proxies it same-origin. */
 export const API_BASE = '/api';
 
-export class ApiError extends Error {
-  readonly status: number;
-  readonly code: string;
-  /** Extra fields the server merged into the `error` body (e.g. `nextChangeAt`). */
-  readonly detail: Record<string, unknown>;
-
-  constructor(status: number, code: string, message: string, detail: Record<string, unknown> = {}) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.code = code;
-    this.detail = detail;
-  }
-}
+// One error class for every call, hand-written or derived from the contract.
+export { ApiError };
 
 type ResponseSchema<T> = Schema.Codec<T, unknown>;
 
@@ -36,94 +82,20 @@ function decodeResponse<T>(
   return Exit.isSuccess(result) ? { ok: true, value: result.value } : { ok: false };
 }
 
-const errorBodySchema = struct({
-  error: Schema.StructWithRest(Schema.Struct({ code: Schema.String, message: Schema.String }), [
-    Schema.Record(Schema.String, Schema.Unknown),
-  ]),
-});
+// The profile and invite schemas live in `@zilar/api-contract` (`auth.ts`,
+// T-0895); their later fields (`handle`, `avatarUrl`, `jid`) are optional so
+// payloads from an older server still parse.
+export type Me = AuthMe;
 
-const meSchema = struct({
-  id: Schema.String,
-  email: Schema.String,
-  name: Schema.String,
-  image: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0163: the caller's own `@username`. Optional (not just nullable) so
-  // payloads from an older server still parse — absent reads like null.
-  handle: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0165: the caller's own picture, when set. Optional so older payloads
-  // parse (treated as none).
-  avatarUrl: Schema.optional(Schema.String),
-  jid: Schema.optional(Schema.NullOr(Schema.String)),
-});
+export type { Contact };
 
-export type Me = typeof meSchema.Type;
-
-const contactSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-  jid: Schema.String,
-  avatarUrl: Schema.optional(Schema.String),
-  // T-0163: the contact's `@username`. Optional so payloads from an older
-  // server still parse (treated as none).
-  handle: Schema.optional(Schema.NullOr(Schema.String)),
-});
-
-export type Contact = typeof contactSchema.Type;
-
-const dmEntrySchema = struct({
-  kind: Schema.Literal('dm'),
-  chatJid: Schema.String,
-  title: Schema.String,
-  userId: Schema.optional(Schema.String),
-  avatarUrl: Schema.optional(Schema.String),
-  /** Set on the caller's AIs; absent or false for human contacts. */
-  isAi: Schema.optional(Schema.Boolean),
-});
-
-// T-0466: the group's shared background, set by owners/admins. Optional on
-// entries and details so payloads from an older server still parse.
-const groupBackgroundSchema = struct({
-  backgroundPreset: Schema.NullOr(Schema.String),
-  backgroundImageId: Schema.NullOr(Schema.String),
-  backgroundDim: Schema.NullOr(Schema.Number),
-});
-
-export type GroupBackground = typeof groupBackgroundSchema.Type;
-
-const groupEntrySchema = struct({
-  kind: Schema.Literal('group'),
-  chatJid: Schema.String,
-  title: Schema.String,
-  groupId: Schema.String,
-  memberCount: Schema.Number,
-  role: Schema.Literals(['owner', 'admin', 'member']),
-  // T-0124: `group` behaves as before; `channel` is the broadcast feed (its
-  // General topic is the feed). Optional so older payloads parse as groups.
-  chatKind: Schema.optional(Schema.Literals(['group', 'channel'])),
-  // T-0124: the same count under the usual channel name, for channels only.
-  subscriberCount: Schema.optional(Schema.Number),
-  // T-0124: the channel's short blurb. Optional so older payloads parse.
-  description: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0164: `public` groups are in the directory; `private` stay
-  // invite-only. Optional so older payloads parse as private.
-  visibility: Schema.optional(Schema.Literals(['private', 'public'])),
-  // T-0164: the group's `@handle` while public, null while private.
-  // Optional so older payloads parse as none.
-  handle: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0111: present on servers with topics (T-0108); absent on older ones.
-  // Parsed loosely here — each entry is validated by `topicSchema` when
-  // mapping to chats — and unknown entries are dropped there.
-  topics: Schema.optional(Schema.mutable(Schema.Array(Schema.Unknown))),
-  // T-0165: the group's picture, when it has one. Optional so older
-  // payloads parse (treated as none).
-  avatarUrl: Schema.optional(Schema.String),
-  // T-0466: the group's shared background. Optional so older payloads parse.
-  background: Schema.optional(groupBackgroundSchema),
-});
-
-const chatEntrySchema = Schema.Union([dmEntrySchema, groupEntrySchema]);
-
+// The chats-list entry schema lives in `@zilar/api-contract` (T-0924), the
+// same union mobile decodes: `ChatList.chats` stays `Unknown` there so the
+// server passes entries through unchanged, and this is the schema the web
+// rows are validated with. `GroupBackground` is the contract's too.
 export type ChatEntry = typeof chatEntrySchema.Type;
+
+export type { GroupBackground };
 
 /**
  * The validated topics of a group chat entry: entries that parse as
@@ -146,83 +118,11 @@ export function chatEntryTopics(entry: ChatEntry): Topic[] {
 
 const chatsSchema = struct({ chats: Schema.mutable(Schema.Array(chatEntrySchema)) });
 
-const groupMemberSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-  role: Schema.Literals(['owner', 'admin', 'member']),
-  // T-0163: the member's `@username`. Optional so payloads from an older
-  // server still parse (treated as none).
-  handle: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0116: the custom group roles this member holds. Optional so payloads
-  // from an older server still parse (treated as none).
-  roles: Schema.optional(
-    Schema.mutable(Schema.Array(struct({ id: Schema.String, name: Schema.String }))),
-  ),
-  // T-0165: the member's picture. Optional so older payloads parse.
-  avatarUrl: Schema.optional(Schema.String),
-});
+// The group detail schemas live in `@zilar/api-contract` (T-0892). The fields
+// older servers omitted stay optional there, so older payloads still parse.
+export type { GroupAi, GroupDetail, GroupMember, ListenerEagerness };
 
-const groupAiSchema = struct({
-  aiId: Schema.String,
-  jid: Schema.String,
-  name: Schema.String,
-  ownerId: Schema.String,
-  // T-0165: the AI's picture. Optional so older payloads parse.
-  avatarUrl: Schema.optional(Schema.String),
-});
-
-// T-0478: the group's AI listener. `available` is the server's
-// `LISTENER_ENABLED` flag: when false the controls stay disabled. Optional
-// on details so payloads from an older server still parse.
-const groupListenerSchema = struct({
-  enabled: Schema.Boolean,
-  eagerness: Schema.Literals(['quiet', 'normal', 'eager']),
-  available: Schema.Boolean,
-});
-
-export type ListenerEagerness = (typeof groupListenerSchema.Type)['eagerness'];
-
-const groupDetailSchema = struct({
-  id: Schema.String,
-  title: Schema.String,
-  createdBy: Schema.String,
-  // T-0108: plain members may create topics when the switch is on. Optional
-  // so payloads from an older server still parse (treated as off).
-  membersCanCreateTopics: Schema.optional(Schema.Boolean),
-  // T-0124: `channel` is the broadcast feed. Optional so older payloads
-  // parse as groups.
-  kind: Schema.optional(Schema.Literals(['group', 'channel'])),
-  // T-0124: the channel's short blurb. Optional so older payloads parse.
-  description: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0164: `public` groups hold exactly one handle row and appear in the
-  // directory; `private` stay invite-only. Optional so older payloads parse
-  // as private.
-  visibility: Schema.optional(Schema.Literals(['private', 'public'])),
-  // T-0164: the group's `@handle` while public, null while private.
-  // Optional so older payloads parse as none.
-  handle: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0165: the group's picture. Optional so older payloads parse.
-  avatarUrl: Schema.optional(Schema.String),
-  // T-0466: the group's shared background. Optional so older payloads parse.
-  background: Schema.optional(groupBackgroundSchema),
-  // T-0478: the AI listener switch and eagerness. Optional so older
-  // payloads parse (treated as off and unavailable).
-  listener: Schema.optional(groupListenerSchema),
-  members: Schema.mutable(Schema.Array(groupMemberSchema)),
-  ais: Schema.mutable(Schema.Array(groupAiSchema)),
-});
-
-export type GroupMember = typeof groupMemberSchema.Type;
-export type GroupAi = typeof groupAiSchema.Type;
-export type GroupDetail = typeof groupDetailSchema.Type;
-
-const inviteSchema = struct({
-  code: Schema.String,
-  url: Schema.String,
-  expiresAt: Schema.optional(Schema.String),
-});
-
-export type Invite = typeof inviteSchema.Type;
+export type Invite = AuthInvite;
 
 const xmppTokenSchema = struct({
   jid: Schema.String,
@@ -243,7 +143,7 @@ async function request<T>(
   let response: Response;
   if (isMockApiEnabled()) {
     // Standalone mock mode: answer locally, never touch the network (T-0069).
-    response = await mockRequest(path, init);
+    response = await (await loadMockRequest())(path, init);
   } else {
     try {
       const headers = new Headers(init.headers);
@@ -262,7 +162,7 @@ async function request<T>(
 
   const raw: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw toApiError(response.status, raw);
+    throw apiErrorFromBody(response.status, raw);
   }
 
   const parsed = decodeResponse(schema, raw);
@@ -276,38 +176,28 @@ async function request<T>(
   return parsed.value;
 }
 
-// Builds the ApiError for a failed response: `code`/`message` plus any
-// extra body fields on `detail` (e.g. `nextChangeAt`), minus the `requestId`
-// the server adds for tracing.
-function toApiError(status: number, raw: unknown): ApiError {
-  const parsed = decodeResponse(errorBodySchema, raw);
-  if (!parsed.ok) {
-    return new ApiError(status, 'request_failed', `Request failed (${status})`);
-  }
-  const { code, message, requestId: _requestId, ...detail } = parsed.value.error;
-  void _requestId;
-  return new ApiError(status, code, message, detail as Record<string, unknown>);
-}
-
 export function getMe(): Promise<Me> {
-  return request('/me', meSchema);
+  return callApi((client) => client.auth.me());
 }
 
+// The contract encodes the trimmed name (the server trimmed it anyway).
 export function updateMe(name: string): Promise<Me> {
-  return request('/me', meSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
+  return callApi((client) => client.auth.patchMe({ payload: { name: name.trim() } }));
 }
 
 export async function getChats(): Promise<ChatEntry[]> {
-  const { chats } = await request('/chats', chatsSchema);
-  return chats;
+  // The contract passes the entries through as `unknown`; they are validated
+  // here, and one malformed entry fails the whole list.
+  const body = await callApi((client) => client.chats.list());
+  const parsed = decodeResponse(chatsSchema, body);
+  if (!parsed.ok) {
+    throw new ApiError(200, 'invalid_response', 'The server sent an unexpected response');
+  }
+  return parsed.value.chats;
 }
 
 export async function getContacts(): Promise<Contact[]> {
-  return request('/contacts', Schema.mutable(Schema.Array(contactSchema)));
+  return callApi((client) => client.contacts.list()).then((rows) => [...rows]);
 }
 
 export function createGroup(input: {
@@ -318,41 +208,39 @@ export function createGroup(input: {
   // T-0124: the channel's short blurb (≤ 300).
   description?: string;
 }): Promise<GroupDetail> {
-  return request('/groups', groupDetailSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  // The server trims `title` and `description`; the contract encodes the
+  // trimmed form, so the client trims before sending.
+  return callApi((client) =>
+    client.groups.create({
+      payload: {
+        ...omitUndefined(input),
+        title: input.title.trim(),
+        ...(input.description === undefined ? {} : { description: input.description.trim() }),
+      },
+    }),
+  );
 }
 
 export function getGroup(groupId: string): Promise<GroupDetail> {
-  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema);
+  return callApi((client) => client.groups.detail({ params: { id: groupId } }));
 }
 
 // T-0054: an owner or admin adds their own AI to a group, and its owner or a
 // group manager removes it. Both answer the fresh group detail.
 export function addGroupAi(groupId: string, aiId: string): Promise<GroupDetail> {
-  return request(`/groups/${encodeURIComponent(groupId)}/ais`, groupDetailSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ aiId }),
-  });
+  return callApi((client) => client.groups.addAi({ params: { id: groupId }, payload: { aiId } }));
 }
 
 export function removeGroupAi(groupId: string, aiId: string): Promise<GroupDetail> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/ais/${encodeURIComponent(aiId)}`,
-    groupDetailSchema,
-    { method: 'DELETE' },
-  );
+  return callApi((client) => client.groups.removeAi({ params: { id: groupId, aiId } }));
 }
 
 export function createInvite(): Promise<Invite> {
-  return request('/invites', inviteSchema, { method: 'POST' });
+  return callApi((client) => client.auth.createInvite());
 }
 
 export function getInvite(code: string): Promise<{ valid: boolean }> {
-  return request(`/invites/${encodeURIComponent(code)}`, struct({ valid: Schema.Boolean }));
+  return callApi((client) => client.authInvitesPublic.checkInvite({ params: { code } }));
 }
 
 export function getXmppToken(): Promise<XmppToken> {
@@ -367,86 +255,23 @@ export function getXmppToken(): Promise<XmppToken> {
 // carries its visible `topics` (archived excluded); older servers omit the
 // field, and the store treats such a group exactly as before. A topic the
 // viewer may not see is a 404 everywhere, byte-identical to a missing id.
-export const topicKindSchema = Schema.Literals(['chat', 'task', 'bug', 'ui', 'routine']);
-
-export type TopicKind = typeof topicKindSchema.Type;
-
-export const topicStatusSchema = Schema.Literals([
-  'open',
-  'in_progress',
-  'in_review',
-  'blocked',
-  'done',
-]);
-
-export type TopicStatus = typeof topicStatusSchema.Type;
-
-export const topicVisibilitySchema = Schema.Literals(['public', 'private']);
-
-export type TopicVisibility = typeof topicVisibilitySchema.Type;
-
-export const topicOwnerSchema = struct({
-  kind: Schema.Literals(['user', 'ai']),
-  id: Schema.String,
-  name: Schema.String,
-});
-
-export type TopicOwner = typeof topicOwnerSchema.Type;
-
-export const topicAiSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-});
-
-export type TopicAi = typeof topicAiSchema.Type;
-
-// T-0116: a custom group role attached to a topic (`roles`) or named as its
-// approver (`approverRole`). `memberCount` counts current holders.
-export const topicRoleSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-  memberCount: Schema.Number,
-});
-
-export type TopicRole = typeof topicRoleSchema.Type;
-
-export const approverRoleSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-});
-
-export type ApproverRole = typeof approverRoleSchema.Type;
-
-export const topicSchema = struct({
-  id: Schema.String,
-  groupId: Schema.String,
-  name: Schema.String,
-  glyph: Schema.String,
-  chatJid: Schema.String,
-  visibility: topicVisibilitySchema,
-  kind: topicKindSchema,
-  status: topicStatusSchema,
-  owner: Schema.NullOr(topicOwnerSchema),
-  linkUrl: Schema.NullOr(Schema.String),
-  linkLabel: Schema.NullOr(Schema.String),
-  isGeneral: Schema.Boolean,
-  archived: Schema.Boolean,
-  memberCount: Schema.Number,
-  ais: Schema.mutable(Schema.Array(topicAiSchema)),
-  // T-0116: roles with access and the approver role. Optional so payloads
-  // from an older server still parse (treated as none).
-  roles: Schema.optional(Schema.mutable(Schema.Array(topicRoleSchema))),
-  approverRole: Schema.optional(Schema.NullOr(approverRoleSchema)),
-});
-
-export type Topic = typeof topicSchema.Type;
-
-export const topicMemberSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-});
-
-export type TopicMember = typeof topicMemberSchema.Type;
+// The schemas live in `@zilar/api-contract` (T-0892). T-0116: `roles` and
+// `approverRole` are absent on older servers (treated as none). An unknown
+// kind, status or visibility from a newer server reads as `chat`, `open` and
+// `private`. `topicSchema` stays exported for the chat entries, which carry
+// topic rows that are decoded one by one.
+export { topicSchema };
+export type {
+  ApproverRole,
+  Topic,
+  TopicAi,
+  TopicKind,
+  TopicMember,
+  TopicOwner,
+  TopicRole,
+  TopicStatus,
+  TopicVisibility,
+};
 
 export interface CreateTopicInput {
   name: string;
@@ -474,80 +299,58 @@ export interface PatchTopicInput {
 }
 
 export function listGroupTopics(groupId: string): Promise<Topic[]> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/topics`,
-    struct({ topics: Schema.mutable(Schema.Array(topicSchema)) }),
-  ).then(({ topics }) => topics);
-}
-
-export function createTopic(groupId: string, input: CreateTopicInput): Promise<Topic> {
-  return request(`/groups/${encodeURIComponent(groupId)}/topics`, topicSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-}
-
-export function getTopic(id: string): Promise<Topic> {
-  return request(`/topics/${encodeURIComponent(id)}`, topicSchema);
-}
-
-export function patchTopic(id: string, input: PatchTopicInput): Promise<Topic> {
-  return request(`/topics/${encodeURIComponent(id)}`, topicSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-}
-
-export function archiveTopic(id: string): Promise<Topic> {
-  return request(`/topics/${encodeURIComponent(id)}/archive`, topicSchema, { method: 'POST' });
-}
-
-export function listTopicMembers(id: string): Promise<TopicMember[]> {
-  return request(
-    `/topics/${encodeURIComponent(id)}/members`,
-    struct({ members: Schema.mutable(Schema.Array(topicMemberSchema)) }),
-  ).then(({ members }) => members);
-}
-
-export function addTopicMember(id: string, userId: string): Promise<Topic> {
-  return request(`/topics/${encodeURIComponent(id)}/members`, topicSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId }),
-  });
-}
-
-export function removeTopicMember(id: string, userId: string): Promise<Topic> {
-  return request(
-    `/topics/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`,
-    topicSchema,
-    {
-      method: 'DELETE',
-    },
+  return callApi((client) => client.topics.list({ params: { id: groupId } })).then(
+    ({ topics }) => topics,
   );
 }
 
+export function createTopic(groupId: string, input: CreateTopicInput): Promise<Topic> {
+  return callApi((client) =>
+    client.topics.create({
+      params: { id: groupId },
+      payload: omitUndefined(trimTopicText(input)),
+    }),
+  );
+}
+
+export function getTopic(id: string): Promise<Topic> {
+  return callApi((client) => client.topics.detail({ params: { id } }));
+}
+
+export function patchTopic(id: string, input: PatchTopicInput): Promise<Topic> {
+  return callApi((client) =>
+    client.topics.patch({ params: { id }, payload: omitUndefined(trimTopicText(input)) }),
+  );
+}
+
+export function archiveTopic(id: string): Promise<Topic> {
+  return callApi((client) => client.topics.archive({ params: { id } }));
+}
+
+export function listTopicMembers(id: string): Promise<TopicMember[]> {
+  return callApi((client) => client.topics.members({ params: { id } })).then(
+    ({ members }) => members,
+  );
+}
+
+export function addTopicMember(id: string, userId: string): Promise<Topic> {
+  return callApi((client) => client.topics.addMember({ params: { id }, payload: { userId } }));
+}
+
+export function removeTopicMember(id: string, userId: string): Promise<Topic> {
+  return callApi((client) => client.topics.removeMember({ params: { id, userId } }));
+}
+
 export function listTopicAis(id: string): Promise<TopicAi[]> {
-  return request(
-    `/topics/${encodeURIComponent(id)}/ais`,
-    struct({ ais: Schema.mutable(Schema.Array(topicAiSchema)) }),
-  ).then(({ ais }) => ais);
+  return callApi((client) => client.topics.listAis({ params: { id } })).then(({ ais }) => ais);
 }
 
 export function addTopicAi(id: string, aiId: string): Promise<Topic> {
-  return request(`/topics/${encodeURIComponent(id)}/ais`, topicSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ aiId }),
-  });
+  return callApi((client) => client.topics.addAi({ params: { id }, payload: { aiId } }));
 }
 
 export function removeTopicAi(id: string, aiId: string): Promise<Topic> {
-  return request(`/topics/${encodeURIComponent(id)}/ais/${encodeURIComponent(aiId)}`, topicSchema, {
-    method: 'DELETE',
-  });
+  return callApi((client) => client.topics.removeAi({ params: { id, aiId } }));
 }
 
 // --- Group roles (T-0116) ---------------------------------------------------
@@ -555,54 +358,31 @@ export function removeTopicAi(id: string, aiId: string): Promise<Topic> {
 // approver rights). Reading needs only membership; every write needs a
 // group owner/admin.
 
-export const groupRoleMemberSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-});
-
-export type GroupRoleMember = typeof groupRoleMemberSchema.Type;
-
-export const groupRoleSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-  members: Schema.mutable(Schema.Array(groupRoleMemberSchema)),
-});
-
-export type GroupRole = typeof groupRoleSchema.Type;
+// The schemas live in `@zilar/api-contract` (T-0892).
+export type { GroupRole };
 
 export function listGroupRoles(groupId: string): Promise<GroupRole[]> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/roles`,
-    struct({ roles: Schema.mutable(Schema.Array(groupRoleSchema)) }),
-  ).then(({ roles }) => roles);
+  return callApi((client) => client.roles.list({ params: { id: groupId } })).then(
+    ({ roles }) => roles,
+  );
 }
 
+// The server trims `name`; the contract encodes the trimmed form, so the
+// client trims before sending.
 export function createGroupRole(groupId: string, name: string): Promise<GroupRole> {
-  return request(`/groups/${encodeURIComponent(groupId)}/roles`, groupRoleSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
+  return callApi((client) =>
+    client.roles.create({ params: { id: groupId }, payload: { name: name.trim() } }),
+  );
 }
 
 export function renameGroupRole(groupId: string, roleId: string, name: string): Promise<GroupRole> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/roles/${encodeURIComponent(roleId)}`,
-    groupRoleSchema,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    },
+  return callApi((client) =>
+    client.roles.rename({ params: { id: groupId, roleId }, payload: { name: name.trim() } }),
   );
 }
 
 export async function deleteGroupRole(groupId: string, roleId: string): Promise<void> {
-  await request(
-    `/groups/${encodeURIComponent(groupId)}/roles/${encodeURIComponent(roleId)}`,
-    Schema.Null,
-    { method: 'DELETE' },
-  );
+  await callApi((client) => client.roles.remove({ params: { id: groupId, roleId } }));
 }
 
 export function setGroupRoleMembers(
@@ -610,14 +390,8 @@ export function setGroupRoleMembers(
   roleId: string,
   userIds: string[],
 ): Promise<GroupRole> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/roles/${encodeURIComponent(roleId)}/members`,
-    groupRoleSchema,
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userIds }),
-    },
+  return callApi((client) =>
+    client.roles.setMembers({ params: { id: groupId, roleId }, payload: { userIds } }),
   );
 }
 
@@ -627,11 +401,7 @@ export interface SetTopicRolesInput {
 }
 
 export function setTopicRoles(id: string, input: SetTopicRolesInput): Promise<Topic> {
-  return request(`/topics/${encodeURIComponent(id)}/roles`, topicSchema, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) => client.topics.setRoles({ params: { id }, payload: input }));
 }
 
 // T-0108: the group owner/admin switch for plain members creating topics.
@@ -639,11 +409,9 @@ export function setMembersCanCreateTopics(
   groupId: string,
   membersCanCreateTopics: boolean,
 ): Promise<GroupDetail> {
-  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ membersCanCreateTopics }),
-  });
+  return callApi((client) =>
+    client.groups.patch({ params: { id: groupId }, payload: { membersCanCreateTopics } }),
+  );
 }
 
 export interface SetGroupListenerInput {
@@ -657,11 +425,18 @@ export function setGroupListener(
   groupId: string,
   input: SetGroupListenerInput,
 ): Promise<GroupDetail> {
-  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) =>
+    client.groups.patch({ params: { id: groupId }, payload: omitUndefined(input) }),
+  );
+}
+
+// The patch encoder checks the preset against the contract's list, so an
+// unknown id fails as `invalid_request` before any request is sent.
+function backgroundPatch(background: GroupBackground) {
+  return {
+    ...background,
+    backgroundPreset: background.backgroundPreset as BackgroundPreset | null,
+  };
 }
 
 // T-0466: owners and admins set the group's shared background. A member gets
@@ -670,30 +445,26 @@ export function setGroupBackground(
   groupId: string,
   background: GroupBackground,
 ): Promise<GroupDetail> {
-  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ background }),
-  });
+  return callApi((client) =>
+    client.groups.patch({
+      params: { id: groupId },
+      payload: { background: backgroundPatch(background) },
+    }),
+  );
 }
 
 // Web UI helper for T-0111: the panel shows the rules of one topic, read
 // through the existing per-group list (each row carries its `topicId`).
 // Declared as a type alias (not a const) because the approval schemas are
 // defined further below in this file.
-export type TopicApprovalRule = typeof approvalRuleSchema.Type;
 
 // --- Channels (T-0124) -------------------------------------------------------
 // One-way broadcast feeds: only owner/admins post (the room is moderated and
 // subscribers are visitors), everyone else subscribes, reads and mutes. A
 // channel is a group with one feed (its General topic): no more topics, and
 // the member list is visible to admins only (subscribers see the count).
-export const groupMemberListSchema = struct({
-  members: Schema.mutable(Schema.Array(groupMemberSchema)),
-});
-
 export function listGroupMembers(groupId: string): Promise<GroupMember[]> {
-  return request(`/groups/${encodeURIComponent(groupId)}/members`, groupMemberListSchema).then(
+  return callApi((client) => client.groups.members({ params: { id: groupId } })).then(
     ({ members }) => members,
   );
 }
@@ -706,79 +477,28 @@ export function changeGroupMemberRole(
   userId: string,
   role: 'admin' | 'member',
 ): Promise<GroupDetail> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}/role`,
-    groupDetailSchema,
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role }),
-    },
+  return callApi((client) =>
+    client.groups.changeRole({ params: { id: groupId, userId }, payload: { role } }),
   );
 }
 
 export function removeGroupMember(groupId: string, userId: string): Promise<GroupDetail> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
-    groupDetailSchema,
-    { method: 'DELETE' },
-  );
+  return callApi((client) => client.groups.removeMember({ params: { id: groupId, userId } }));
 }
 
-export function listTopicApprovalRules(groupId: string): Promise<TopicApprovalRule[]> {
-  return listGroupApprovalRules(groupId);
-}
+export type TopicTool = ToolListItem;
 
-export const topicToolSchema = struct({
-  id: Schema.String,
-  aiId: Schema.String,
-  groupId: Schema.NullOr(Schema.String),
-  topicId: Schema.NullOr(Schema.String),
-  name: Schema.String,
-  description: Schema.String,
-  currentVersion: Schema.Number,
-  hosts: Schema.mutable(Schema.Array(Schema.String)),
-  lastRunStatus: Schema.NullOr(Schema.String),
-  updatedAt: Schema.String,
-});
-
-export type TopicTool = typeof topicToolSchema.Type;
-
-export function listTopicTools(topicId: string): Promise<TopicTool[]> {
-  return request(
-    `/topics/${encodeURIComponent(topicId)}/tools`,
-    Schema.mutable(Schema.Array(topicToolSchema)),
-  );
+export async function listTopicTools(topicId: string): Promise<TopicTool[]> {
+  const rows = await callApi((client) => client.tools.listForTopic({ params: { id: topicId } }));
+  return [...rows];
 }
 
 // --- Group invite links (T-0115) -------------------------------------------
 // Shareable links that join a group as `member` (`${WEB}/j/<token>` on the
 // web). The token is shown once at creation and never stored — the list
 // below carries hints, labels, uses and state, never tokens.
-export const groupInviteLinkSchema = struct({
-  id: Schema.String,
-  label: Schema.NullOr(Schema.String),
-  tokenHint: Schema.String,
-  uses: Schema.Number,
-  maxUses: Schema.NullOr(Schema.Number),
-  expiresAt: Schema.NullOr(Schema.String),
-  revoked: Schema.Boolean,
-  createdAt: Schema.String,
-});
-
-export type GroupInviteLink = typeof groupInviteLinkSchema.Type;
-
-const groupInviteLinksSchema = struct({
-  links: Schema.mutable(Schema.Array(groupInviteLinkSchema)),
-});
-
-const createdInviteLinkSchema = struct({
-  id: Schema.String,
-  token: Schema.String,
-  url: Schema.String,
-});
-
-export type CreatedInviteLink = typeof createdInviteLinkSchema.Type;
+// The schemas live in `@zilar/api-contract` (T-0892).
+export type { CreatedInviteLink, GroupInviteLink };
 
 export interface CreateGroupInviteLinkInput {
   label?: string;
@@ -786,30 +506,31 @@ export interface CreateGroupInviteLinkInput {
   maxUses?: number;
 }
 
+// The server trims `label`; the contract encodes the trimmed form, so the
+// client trims before sending.
 export function createGroupInviteLink(
   groupId: string,
   input: CreateGroupInviteLinkInput = {},
 ): Promise<CreatedInviteLink> {
-  return request(`/groups/${encodeURIComponent(groupId)}/invite-links`, createdInviteLinkSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) =>
+    client['invite-links'].createLink({
+      params: { id: groupId },
+      payload: {
+        ...omitUndefined(input),
+        ...(input.label === undefined ? {} : { label: input.label.trim() }),
+      },
+    }),
+  );
 }
 
 export function listGroupInviteLinks(groupId: string): Promise<GroupInviteLink[]> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/invite-links`,
-    groupInviteLinksSchema,
-  ).then(({ links }) => links);
+  return callApi((client) => client['invite-links'].listLinks({ params: { id: groupId } })).then(
+    ({ links }) => links,
+  );
 }
 
 export async function revokeGroupInviteLink(groupId: string, linkId: string): Promise<void> {
-  await request(
-    `/groups/${encodeURIComponent(groupId)}/invite-links/${encodeURIComponent(linkId)}`,
-    Schema.Null,
-    { method: 'DELETE' },
-  );
+  await callApi((client) => client['invite-links'].revokeLink({ params: { id: groupId, linkId } }));
 }
 
 // --- Join by link (T-0115) -------------------------------------------------
@@ -819,31 +540,16 @@ export async function revokeGroupInviteLink(groupId: string, linkId: string): Pr
 // as `member` and returns the group id; an existing member answers
 // `alreadyMember: true` without consuming a use.
 
-export const joinPreviewSchema = struct({
-  groupTitle: Schema.String,
-  memberCount: Schema.Number,
-  alreadyMember: Schema.Boolean,
-  groupId: Schema.optional(Schema.String),
-  // T-0124: `channel` previews read "Join channel" (and count subscribers);
-  // absent on older servers = a group.
-  kind: Schema.optional(Schema.Literals(['group', 'channel'])),
-});
-
-export type JoinPreview = typeof joinPreviewSchema.Type;
-
-const joinResultSchema = struct({
-  groupId: Schema.String,
-  alreadyMember: Schema.Boolean,
-});
-
-export type JoinResult = typeof joinResultSchema.Type;
+// T-0124: `channel` previews read "Join channel" (and count subscribers);
+// `kind` is absent on older servers = a group.
+export type { JoinPreview, JoinResult };
 
 export function previewJoinLink(token: string): Promise<JoinPreview> {
-  return request(`/join/${encodeURIComponent(token)}`, joinPreviewSchema);
+  return callApi((client) => client['invite-links'].preview({ params: { token } }));
 }
 
 export function joinByLink(token: string): Promise<JoinResult> {
-  return request(`/join/${encodeURIComponent(token)}`, joinResultSchema, { method: 'POST' });
+  return callApi((client) => client['invite-links'].join({ params: { token } }));
 }
 
 // --- Chat preferences (T-0113) -------------------------------------------------
@@ -852,22 +558,10 @@ export function joinByLink(token: string): Promise<JoinResult> {
 // group covers its topics (the pref sits on the General room JID and the
 // client applies it to every topic unless the topic has its own row).
 
-const chatPrefSchema = struct({
-  chatJid: Schema.String,
-  mutedUntil: Schema.NullOr(Schema.String),
-  archived: Schema.Boolean,
-  pinnedAt: Schema.NullOr(Schema.String),
-  updatedAt: Schema.String,
-  // T-0461: per-chat background override (T-0458). All null when the chat
-  // inherits the caller's global default.
-  backgroundPreset: Schema.optional(Schema.NullOr(Schema.String)),
-  backgroundImageId: Schema.optional(Schema.NullOr(Schema.String)),
-  backgroundDim: Schema.optional(Schema.NullOr(Schema.Number)),
-});
-
-export type ChatPref = typeof chatPrefSchema.Type;
-
-const chatPrefsSchema = struct({ prefs: Schema.mutable(Schema.Array(chatPrefSchema)) });
+// The schemas live in `@zilar/api-contract` (T-0892). T-0461: the per-chat
+// background fields are all null when the chat inherits the caller's global
+// default.
+export type { ChatPref };
 
 export interface PutChatPrefInput {
   mutedUntil?: string | null | undefined;
@@ -881,25 +575,28 @@ export interface PutChatPrefInput {
 }
 
 export function listChatPrefs(): Promise<ChatPref[]> {
-  return request('/chat-prefs', chatPrefsSchema).then((body) => body.prefs);
+  return callApi((client) => client.chatPrefs.list()).then((body) => [...body.prefs]);
 }
 
 // T-0461: the caller's global chat background default (T-0458). `GET
 // /chat-background` returns it under `defaultBackground`; all-null means the
 // caller never chose one, so chats fall back to the slate grid.
-const chatBackgroundChoiceSchema = struct({
-  backgroundPreset: Schema.NullOr(Schema.String),
-  backgroundImageId: Schema.NullOr(Schema.String),
-  backgroundDim: Schema.NullOr(Schema.Number),
-});
-
-export type ChatBackgroundChoice = typeof chatBackgroundChoiceSchema.Type;
+export type { ChatBackgroundChoice };
 
 export function getChatBackgroundDefault(): Promise<ChatBackgroundChoice> {
-  return request(
-    '/chat-background',
-    struct({ defaultBackground: chatBackgroundChoiceSchema }),
-  ).then((body) => body.defaultBackground);
+  return callApi((client) => client.chatPrefs.getBackground()).then(
+    (body) => body.defaultBackground,
+  );
+}
+
+// The payload encoder checks the preset against the contract's list, so an
+// unknown id fails as `invalid_request` before any request is sent. Fields set
+// to `undefined` are left out, as `JSON.stringify` always did.
+function prefPayload(input: PutChatPrefInput) {
+  return omitUndefined({
+    ...input,
+    backgroundPreset: input.backgroundPreset as BackgroundPreset | null | undefined,
+  });
 }
 
 // T-0462: write the caller's global background default. The body carries the
@@ -907,30 +604,22 @@ export function getChatBackgroundDefault(): Promise<ChatBackgroundChoice> {
 export function putChatBackgroundDefault(
   input: ChatBackgroundChoice,
 ): Promise<ChatBackgroundChoice> {
-  return request('/chat-background', struct({ defaultBackground: chatBackgroundChoiceSchema }), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  }).then((body) => body.defaultBackground);
+  return callApi((client) => client.chatPrefs.putBackground({ payload: prefPayload(input) })).then(
+    (body) => body.defaultBackground,
+  );
 }
 
 export async function putChatPref(
   chatJid: string,
   input: PutChatPrefInput,
 ): Promise<ChatPref | null> {
-  const raw: unknown = await request(
-    `/chat-prefs/${encodeURIComponent(chatJid)}`,
-    Schema.Union([chatPrefSchema, struct({ prefs: Schema.Null })]),
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
-    },
+  const saved = await callApi((client) =>
+    client.chatPrefs.putPref({
+      params: { chatJid },
+      payload: prefPayload(input),
+    }),
   );
-  if (typeof raw === 'object' && raw !== null && 'prefs' in raw) {
-    return null;
-  }
-  return Schema.decodeUnknownSync(chatPrefSchema)(raw);
+  return 'prefs' in saved ? null : saved;
 }
 
 // --- Chat folders (T-0237) ---------------------------------------------------
@@ -938,28 +627,8 @@ export async function putChatPref(
 // the client only lists and syncs them here (create/rename/delete/reorder
 // UI is T-0238). The wire shape mirrors `ChatFolder` in chat-core.
 
-const folderChatTypeSchema = Schema.Literals(['dm', 'group', 'channel', 'ai']);
-const folderIconSchema = Schema.Literals(FOLDER_ICONS);
-
-export const chatFolderSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-  icon: folderIconSchema,
-  position: Schema.Number,
-  includeTypes: Schema.mutable(Schema.Array(folderChatTypeSchema)),
-  includeChats: Schema.mutable(Schema.Array(Schema.String)),
-  excludeChats: Schema.mutable(Schema.Array(Schema.String)),
-  excludeMuted: Schema.Boolean,
-  excludeRead: Schema.Boolean,
-});
-
-export type ApiChatFolder = typeof chatFolderSchema.Type;
-
-const chatFoldersSchema = struct({
-  folders: Schema.mutable(Schema.Array(chatFolderSchema)),
-});
-const chatFolderResultSchema = struct({ folder: chatFolderSchema });
-const chatFolderDeletedSchema = struct({ deleted: Schema.Literal(true) });
+// The schemas live in `@zilar/api-contract` (T-0892).
+export type { ApiChatFolder };
 
 export interface CreateChatFolderInput {
   name: string;
@@ -974,64 +643,47 @@ export interface CreateChatFolderInput {
 export type PatchChatFolderInput = Partial<CreateChatFolderInput>;
 
 export function listChatFolders(): Promise<ApiChatFolder[]> {
-  return request('/chat-folders', chatFoldersSchema).then((body) => body.folders);
+  return callApi((client) => client.chatFolders.list()).then((body) => [...body.folders]);
 }
 
+// The server trims `name`; the contract encodes the trimmed form, so the
+// client trims before sending.
 export function createChatFolder(input: CreateChatFolderInput): Promise<ApiChatFolder> {
-  return request('/chat-folders', chatFolderResultSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  }).then((body) => body.folder);
+  return callApi((client) =>
+    client.chatFolders.create({ payload: { ...omitUndefined(input), name: input.name.trim() } }),
+  ).then((body) => body.folder);
 }
 
+// The server trims `name`; the contract encodes the trimmed form, so the
+// client trims before sending.
 export function patchChatFolder(id: string, input: PatchChatFolderInput): Promise<ApiChatFolder> {
-  return request(`/chat-folders/${encodeURIComponent(id)}`, chatFolderResultSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  }).then((body) => body.folder);
+  return callApi((client) =>
+    client.chatFolders.update({
+      params: { id },
+      payload: {
+        ...omitUndefined(input),
+        ...(input.name === undefined ? {} : { name: input.name.trim() }),
+      },
+    }),
+  ).then((body) => body.folder);
 }
 
 export function reorderChatFolders(ids: string[]): Promise<ApiChatFolder[]> {
-  return request('/chat-folders/order', chatFoldersSchema, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ids }),
-  }).then((body) => body.folders);
+  return callApi((client) => client.chatFolders.order({ payload: { ids } })).then((body) => [
+    ...body.folders,
+  ]);
 }
 
 export async function deleteChatFolder(id: string): Promise<void> {
-  await request(`/chat-folders/${encodeURIComponent(id)}`, chatFolderDeletedSchema, {
-    method: 'DELETE',
-  });
+  await callApi((client) => client.chatFolders.remove({ params: { id } }));
 }
 
 // --- Pinned messages (T-0114) ------------------------------------------------
-// The wire contract lives in apps/server/src/pins/{routes,service,access}.
-// `chat` is a room bare JID for groups/topics, or a DM peer's bare JID (the
-// server keeps the canonical pair key, so both sides share one list). Pins
-// arrive newest first. The snapshot (`senderName`/`text`/`kind`) is display
-// only: the server trusts it for rendering, never for authorization.
+// The contract (schemas and endpoints) lives in `@zilar/api-contract`
+// (`pins.ts`, T-0864); these functions are thin wrappers over the derived
+// client. Pins arrive newest first.
 
-export const pinKindSchema = Schema.Literals(['text', 'image', 'file', 'voice', 'card']);
-
-export type PinKind = typeof pinKindSchema.Type;
-
-export const pinSchema = struct({
-  id: Schema.String,
-  chat: Schema.String,
-  messageId: Schema.String,
-  senderName: Schema.String,
-  text: Schema.String,
-  kind: pinKindSchema,
-  pinnedBy: Schema.String,
-  pinnedAt: Schema.String,
-});
-
-export type Pin = typeof pinSchema.Type;
-
-const pinsSchema = struct({ pins: Schema.mutable(Schema.Array(pinSchema)) });
+export type { Pin, PinKind };
 
 export interface PinMessageInput {
   chat: string;
@@ -1042,21 +694,19 @@ export interface PinMessageInput {
 }
 
 export function listPins(chat: string): Promise<Pin[]> {
-  const params = new URLSearchParams();
-  params.set('chat', chat);
-  return request(`/pins?${params.toString()}`, pinsSchema).then((body) => body.pins);
+  return callApi((client) => client.pins.list({ query: { chat } })).then((body) => [...body.pins]);
 }
 
+// The server trims `senderName`; the contract encodes the trimmed form, so
+// the client trims before sending.
 export function pinMessage(input: PinMessageInput): Promise<Pin> {
-  return request('/pins', pinSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) =>
+    client.pins.create({ payload: { ...input, senderName: input.senderName.trim() } }),
+  );
 }
 
 export async function unpinMessage(id: string): Promise<void> {
-  await request(`/pins/${encodeURIComponent(id)}`, pinSchema, { method: 'DELETE' });
+  await callApi((client) => client.pins.remove({ params: { id } }));
 }
 
 // --- AI memory (T-0443) ------------------------------------------------------
@@ -1065,26 +715,15 @@ export async function unpinMessage(id: string): Promise<void> {
 // server answers the pinned facts and the cover lines; `canChange` is false
 // for a room member who may only view.
 
-const aiMemoryFactSchema = struct({
-  id: Schema.String,
-  text: Schema.String,
-});
+export interface AiMemory {
+  facts: AiMemoryFact[];
+  lines: string[];
+  canChange: boolean;
+}
 
-export const aiMemorySchema = struct({
-  facts: Schema.mutable(Schema.Array(aiMemoryFactSchema)),
-  lines: Schema.mutable(Schema.Array(Schema.String)),
-  canChange: Schema.Boolean,
-});
-
-export type AiMemory = typeof aiMemorySchema.Type;
-
-const okResponseSchema = struct({ ok: Schema.Literal(true) });
-
-export function getAiMemory(chat: string, aiId: string): Promise<AiMemory> {
-  const params = new URLSearchParams();
-  params.set('chat', chat);
-  params.set('ai', aiId);
-  return request(`/ai-memory?${params.toString()}`, aiMemorySchema);
+export async function getAiMemory(chat: string, aiId: string): Promise<AiMemory> {
+  const memory = await callApi((client) => client.aiMemory.view({ query: { chat, ai: aiId } }));
+  return { facts: [...memory.facts], lines: [...memory.lines], canChange: memory.canChange };
 }
 
 export async function forgetAiMemoryFact(
@@ -1092,24 +731,13 @@ export async function forgetAiMemoryFact(
   aiId: string,
   factId: string,
 ): Promise<void> {
-  const params = new URLSearchParams();
-  params.set('chat', chat);
-  params.set('ai', aiId);
-  await request(
-    `/ai-memory/facts/${encodeURIComponent(factId)}?${params.toString()}`,
-    okResponseSchema,
-    {
-      method: 'DELETE',
-    },
+  await callApi((client) =>
+    client.aiMemory.deleteFact({ params: { id: factId }, query: { chat, ai: aiId } }),
   );
 }
 
 export async function clearAiMemory(chat: string, aiId: string): Promise<void> {
-  await request('/ai-memory/clear', okResponseSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat, ai: aiId }),
-  });
+  await callApi((client) => client.aiMemory.clear({ payload: { chat, ai: aiId } }));
 }
 
 // --- Media gallery (T-0434) --------------------------------------------------
@@ -1118,36 +746,10 @@ export async function clearAiMemory(chat: string, aiId: string): Promise<void> {
 // tab; `before` is the `next` cursor of the previous page (microseconds as a
 // string). Items arrive newest first.
 
-export const mediaTabSchema = Schema.Literals(['media', 'files', 'links', 'voice']);
-
-export type MediaTab = typeof mediaTabSchema.Type;
-
-export const mediaItemSchema = struct({
-  messageId: Schema.String,
-  chat: Schema.String,
-  at: Schema.String,
-  senderName: Schema.String,
-  kind: Schema.Literals(['image', 'file', 'gif', 'voice', 'link']),
-  url: Schema.optional(Schema.String),
-  name: Schema.optional(Schema.String),
-  size: Schema.optional(Schema.Number),
-  mime: Schema.optional(Schema.String),
-  width: Schema.optional(Schema.Number),
-  height: Schema.optional(Schema.Number),
-  durationMs: Schema.optional(Schema.Number),
-  waveform: Schema.optional(Schema.mutable(Schema.Array(Schema.Number))),
-  linkUrl: Schema.optional(Schema.String),
-  linkHost: Schema.optional(Schema.String),
-});
-
-export type MediaItem = typeof mediaItemSchema.Type;
-
-export const mediaPageSchema = struct({
-  items: Schema.mutable(Schema.Array(mediaItemSchema)),
-  next: Schema.NullOr(Schema.String),
-});
-
-export type MediaPage = typeof mediaPageSchema.Type;
+// The schemas and the query keys live in `@zilar/api-contract` (`media.ts`,
+// T-0895). The server decodes the query by hand, after its archive check and
+// limiter, so every key travels as a plain string.
+export type { MediaItem, MediaPage, MediaTab };
 
 export interface ListChatMediaInput {
   chat: string;
@@ -1157,16 +759,16 @@ export interface ListChatMediaInput {
 }
 
 export function listChatMedia(input: ListChatMediaInput): Promise<MediaPage> {
-  const params = new URLSearchParams();
-  params.set('chat', input.chat);
-  params.set('type', input.type);
-  if (input.before !== undefined) {
-    params.set('before', input.before);
-  }
-  if (input.limit !== undefined) {
-    params.set('limit', String(input.limit));
-  }
-  return request(`/media?${params.toString()}`, mediaPageSchema);
+  return callApi((client) =>
+    client.media.gallery({
+      query: {
+        chat: input.chat,
+        type: input.type,
+        ...(input.before === undefined ? {} : { before: input.before }),
+        ...(input.limit === undefined ? {} : { limit: String(input.limit) }),
+      },
+    }),
+  ).then((page) => ({ items: [...page.items], next: page.next }));
 }
 
 // --- AIs (T-0032) --------------------------------------------------------
@@ -1174,64 +776,13 @@ export function listChatMedia(input: ListChatMediaInput): Promise<MediaPage> {
 // `ApiError` already carries the server's `code` and `status`, so callers can
 // branch without parsing the message again.
 
-const aiTemplateSchema = Schema.Literals(['dev', 'marketing', 'fun', 'custom']);
+export type { AiLimits, AiTemplate, AiUsage };
 
-export type AiTemplate = typeof aiTemplateSchema.Type;
+// The contract's AI with mutable fields, the shape the mock backend and the
+// fixtures build.
+export type PublicAi = { -readonly [K in keyof ContractAi]: ContractAi[K] };
 
-const aiLimitsSchema = struct({
-  perDayUsd: Schema.Number,
-  perMonthUsd: Schema.Number,
-});
-
-export type AiLimits = typeof aiLimitsSchema.Type;
-
-// T-0058: the AI's spend summary. Optional (not just nullable) so responses
-// from older servers still parse; absent means "unavailable" like null.
-const aiUsageSchema = struct({
-  todayUsd: Schema.Number,
-  windowUsd: Schema.Number,
-});
-
-export type AiUsage = typeof aiUsageSchema.Type;
-
-const publicAiSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-  template: aiTemplateSchema,
-  persona: Schema.String,
-  model: Schema.String,
-  jid: Schema.String,
-  // `stopped` is the owner kill switch (T-0080): the AI is paused, not
-  // deleted, and a resume brings it back.
-  status: Schema.Literals(['active', 'disabled', 'stopped']),
-  providerConnectionId: Schema.String,
-  limits: aiLimitsSchema,
-  usage: Schema.optional(Schema.NullOr(aiUsageSchema)),
-  // T-0091: the AI's home machine id, or null when it runs on the platform.
-  // Optional so a payload from a server that has not been upgraded yet
-  // still parses — the panel renders the same way when it is absent.
-  machineId: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0165: the AI's picture, when it has one. Optional so older payloads
-  // parse (treated as none).
-  avatarUrl: Schema.optional(Schema.String),
-  // T-0478: the owner's delegation opt-ins. Optional so older payloads parse
-  // (treated as off).
-  canDelegate: Schema.optional(Schema.Boolean),
-  acceptsDelegation: Schema.optional(Schema.Boolean),
-  createdAt: Schema.String,
-});
-
-export type PublicAi = typeof publicAiSchema.Type;
-
-const connectionSchema = struct({
-  id: Schema.String,
-  provider: Schema.String,
-  label: Schema.NullOr(Schema.String),
-  status: Schema.String,
-  createdAt: Schema.String,
-});
-
-export type Connection = typeof connectionSchema.Type;
+export type Connection = ConnectionView;
 
 export interface CreateAiInput {
   name: string;
@@ -1253,40 +804,55 @@ export interface UpdateAiInput {
   acceptsDelegation?: boolean;
 }
 
-export function listAis(): Promise<PublicAi[]> {
-  return request('/ais', Schema.mutable(Schema.Array(publicAiSchema)));
+export async function listAis(): Promise<PublicAi[]> {
+  const rows = await callApi((client) => client.ais.list());
+  return [...rows];
 }
 
 export function getAi(id: string): Promise<PublicAi> {
-  return request(`/ais/${encodeURIComponent(id)}`, publicAiSchema);
+  return callApi((client) => client.ais.detail({ params: { id } }));
 }
 
+// The server trims these strings before its length checks; the contract
+// encodes the trimmed form, so they are trimmed here.
 export function createAi(input: CreateAiInput): Promise<PublicAi> {
-  const body = {
-    name: input.name,
-    template: input.template,
-    ...(input.persona === undefined ? {} : { persona: input.persona }),
-    providerConnectionId: input.providerConnectionId,
-    model: input.model,
-    limits: input.limits,
-  };
-  return request('/ais', publicAiSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  return callApi((client) =>
+    client.ais.create({
+      payload: {
+        name: input.name.trim(),
+        template: input.template,
+        ...(input.persona === undefined ? {} : { persona: input.persona.trim() }),
+        providerConnectionId: input.providerConnectionId.trim(),
+        model: input.model.trim(),
+        limits: input.limits,
+      },
+    }),
+  );
 }
 
 export function updateAi(id: string, input: UpdateAiInput): Promise<PublicAi> {
-  return request(`/ais/${encodeURIComponent(id)}`, publicAiSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) =>
+    client.ais.patch({
+      params: { id },
+      payload: {
+        ...(input.name === undefined ? {} : { name: input.name.trim() }),
+        ...(input.persona === undefined ? {} : { persona: input.persona.trim() }),
+        ...(input.limits === undefined ? {} : { limits: input.limits }),
+        ...(input.model === undefined ? {} : { model: input.model.trim() }),
+        ...(input.providerConnectionId === undefined
+          ? {}
+          : { providerConnectionId: input.providerConnectionId.trim() }),
+        ...(input.canDelegate === undefined ? {} : { canDelegate: input.canDelegate }),
+        ...(input.acceptsDelegation === undefined
+          ? {}
+          : { acceptsDelegation: input.acceptsDelegation }),
+      },
+    }),
+  );
 }
 
 export async function deleteAi(id: string): Promise<void> {
-  await request(`/ais/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
+  await callApi((client) => client.ais.remove({ params: { id } }));
 }
 
 // T-0080: the owner's kill switch. Both return the fresh public AI so the
@@ -1294,11 +860,11 @@ export async function deleteAi(id: string): Promise<void> {
 // server answers the same `not_active` 409 when the AI was already in the
 // other terminal state, which the panel treats as a refresh cue.
 export function stopAi(id: string): Promise<PublicAi> {
-  return request(`/ais/${encodeURIComponent(id)}/stop`, publicAiSchema, { method: 'POST' });
+  return callApi((client) => client.ais.stop({ params: { id } }));
 }
 
 export function resumeAi(id: string): Promise<PublicAi> {
-  return request(`/ais/${encodeURIComponent(id)}/resume`, publicAiSchema, { method: 'POST' });
+  return callApi((client) => client.ais.resume({ params: { id } }));
 }
 
 // T-0091: set or clear the AI's home machine. `null` clears the assignment
@@ -1306,15 +872,17 @@ export function resumeAi(id: string): Promise<PublicAi> {
 // answers the fresh public AI, so the panel re-renders against server
 // truth.
 export function setAiMachine(aiId: string, machineId: string | null): Promise<PublicAi> {
-  return request(`/ais/${encodeURIComponent(aiId)}/machine`, publicAiSchema, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ machineId: machineId }),
-  });
+  return callApi((client) =>
+    client.ais.assignMachine({
+      params: { id: aiId },
+      payload: { machineId: machineId === null ? null : machineId.trim() },
+    }),
+  );
 }
 
-export function listConnections(): Promise<Connection[]> {
-  return request('/connections', Schema.mutable(Schema.Array(connectionSchema)));
+export async function listConnections(): Promise<Connection[]> {
+  const rows = await callApi((client) => client.connections.list());
+  return [...rows];
 }
 
 // T-0074: `ConnectionsPage` used to call `fetch` directly with its own copy of
@@ -1329,34 +897,58 @@ export interface CreateConnectionInput {
 }
 
 export function createConnection(input: CreateConnectionInput): Promise<Connection> {
-  const body = {
-    provider: input.provider,
-    key: input.key,
-    ...(input.label === undefined ? {} : { label: input.label }),
-  };
-  return request('/connections', connectionSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const { provider } = input;
+  if (!isProviderId(provider)) {
+    return Promise.reject(new ApiError(400, 'invalid_request', 'Invalid connection request'));
+  }
+  // The server trims the key and the label; the contract encodes the trimmed form.
+  return callApi((client) =>
+    client.connections.create({
+      payload: {
+        provider,
+        key: input.key.trim(),
+        ...(input.label === undefined ? {} : { label: input.label.trim() }),
+      },
+    }),
+  );
 }
 
-const connectionTestResultSchema = struct({
-  ok: Schema.Boolean,
-  message: Schema.optional(Schema.String),
-});
-
-export type ConnectionTestResult = typeof connectionTestResultSchema.Type;
+export interface ConnectionTestResult {
+  ok: boolean;
+  message?: string;
+}
 
 export function testConnection(id: string): Promise<ConnectionTestResult> {
-  return request(`/connections/${encodeURIComponent(id)}/test`, connectionTestResultSchema, {
-    method: 'POST',
-  });
+  return callApi((client) => client.connections.test({ params: { id } }));
 }
 
 export async function deleteConnection(id: string): Promise<void> {
-  await request(`/connections/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
+  await callApi((client) => client.connections.remove({ params: { id } }));
 }
+
+import {
+  BackgroundImage as BackgroundImageSchema,
+  Machine,
+  Sticker as StickerSchema,
+  type AuthInvite,
+  type AuthMe,
+  type BackgroundImage,
+  type BackgroundListItem,
+  type GifResult,
+  type GifResultPage,
+  type IntegrationsStatus,
+  type MachineStatus,
+  type MediaItem,
+  type MediaPage,
+  type MediaTab,
+  type PairingCode,
+  type PushConfig,
+  type Sticker,
+  type StickerPack as ContractStickerPack,
+  type TelegramImportResult as ContractTelegramImportResult,
+  type PushDevice,
+  type RegisteredDevice,
+} from '@zilar/api-contract';
 
 // --- Machines (T-0070) ---------------------------------------------------
 // The wire contract lives in apps/server/src/machines/api.ts and
@@ -1364,93 +956,40 @@ export async function deleteConnection(id: string): Promise<void> {
 // can branch without parsing the message again. `online` is optional so the
 // schema works before T-0071 (the runner hub) lands.
 
-export type MachineStatus = 'pending' | 'approved' | 'revoked';
-
-export interface Machine {
-  id: string;
-  name: string;
-  status: MachineStatus;
-  os: string;
-  osVersion: string;
-  arch: string;
-  cpu: string;
-  cores: number;
-  ramGb: number;
-  diskFreeGb: number;
-  drivers: string[];
-  fingerprint: string;
-  createdAt: string;
-  approvedAt: string | null;
-  lastSeenAt: string | null;
-  /** Added by T-0071 (the runner hub). Absent before then; default to false. */
-  online?: boolean | undefined;
-}
-
-const machineStatusSchema = Schema.Literals(['pending', 'approved', 'revoked']);
-
-export const machineSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-  status: machineStatusSchema,
-  os: Schema.String,
-  osVersion: Schema.String,
-  arch: Schema.String,
-  cpu: Schema.String,
-  cores: Schema.Number,
-  ramGb: Schema.Number,
-  diskFreeGb: Schema.Number,
-  drivers: Schema.mutable(Schema.Array(Schema.String)),
-  fingerprint: Schema.String,
-  createdAt: Schema.String,
-  approvedAt: Schema.NullOr(Schema.String),
-  lastSeenAt: Schema.NullOr(Schema.String),
-  online: Schema.optional(Schema.Boolean),
-});
-
-export interface PairingCode {
-  code: string;
-  expiresAt: string;
-}
-
-const pairingCodeSchema = struct({
-  code: Schema.String,
-  expiresAt: Schema.String,
-});
+// The schemas and endpoints live in `@zilar/api-contract` (`machines.ts`,
+// T-0895).
+export type { Machine, MachineStatus, PairingCode };
+export { Machine as machineSchema };
 
 export function listMachines(): Promise<Machine[]> {
-  return request('/machines', Schema.mutable(Schema.Array(machineSchema)));
+  return callApi((client) => client.machines.list()).then((rows) => [...rows]);
 }
 
 export function createPairingCode(): Promise<PairingCode> {
-  return request('/machines/pairing-codes', pairingCodeSchema, { method: 'POST' });
+  return callApi((client) => client.machines.createPairingCode());
 }
 
 export function approveMachine(id: string): Promise<Machine> {
-  return request(`/machines/${encodeURIComponent(id)}/approve`, machineSchema, {
-    method: 'POST',
-  });
+  return callApi((client) => client.machines.approve({ params: { id } }));
 }
 
 export async function denyMachine(id: string): Promise<void> {
-  await request(`/machines/${encodeURIComponent(id)}/deny`, Schema.Null, { method: 'POST' });
+  await callApi((client) => client.machines.deny({ params: { id } }));
 }
 
 export function revokeMachine(id: string): Promise<Machine> {
-  return request(`/machines/${encodeURIComponent(id)}/revoke`, machineSchema, {
-    method: 'POST',
-  });
+  return callApi((client) => client.machines.revoke({ params: { id } }));
 }
 
 export function renameMachine(id: string, name: string): Promise<Machine> {
-  return request(`/machines/${encodeURIComponent(id)}`, machineSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
+  // The server trims the name; the contract encodes the trimmed form.
+  return callApi((client) =>
+    client.machines.rename({ params: { id }, payload: { name: name.trim() } }),
+  );
 }
 
 export async function deleteMachine(id: string): Promise<void> {
-  await request(`/machines/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
+  await callApi((client) => client.machines.remove({ params: { id } }));
 }
 
 // --- Approvals (T-0076) ---------------------------------------------------
@@ -1459,68 +998,21 @@ export async function deleteMachine(id: string): Promise<void> {
 // types line up with `ApprovalRequest.expires_at` and we don't have to think
 // about zod's string-to-Date coercion in tests.
 
-export type ApprovalStatus =
-  'pending' | 'approved_once' | 'approved_always' | 'denied' | 'consumed' | 'expired';
+export type { ApprovalDecision, ApprovalStatus, ApprovalRule, PublicApproval };
 
-export type ApprovalDecision = 'approve_once' | 'approve_always' | 'deny';
-
-const approvalWorstCaseSchema = Schema.NullOr(
-  struct({
-    currency: Schema.Literals(['EUR', 'USD']),
-    amount: Schema.Number,
-  }),
-);
-
-export const publicApprovalSchema = struct({
-  id: Schema.String,
-  aiId: Schema.String,
-  groupId: Schema.NullOr(Schema.String),
-  // T-0110: the topic the approval belongs to. Optional so older payloads
-  // parse (a missing topic reads like a group approval).
-  topicId: Schema.optional(Schema.NullOr(Schema.String)),
-  topicName: Schema.optional(Schema.NullOr(Schema.String)),
-  action: Schema.String,
-  summary: Schema.String,
-  details: Schema.NullOr(Schema.String),
-  argsHash: Schema.String,
-  worstCase: approvalWorstCaseSchema,
-  requestedBy: Schema.String,
-  status: Schema.Literals([
-    'pending',
-    'approved_once',
-    'approved_always',
-    'denied',
-    'consumed',
-    'expired',
-  ]),
-  decidedAt: Schema.NullOr(Schema.String),
-  note: Schema.NullOr(Schema.String),
-  expiresAt: Schema.String,
-  createdAt: Schema.String,
-  // T-0100: whether `approve_always` is a real choice for this action.
-  // Optional with a `false` default so a payload from a server that has not
-  // been upgraded yet still parses — the card just hides the third button.
-  alwaysEligible: Schema.Boolean.pipe(Schema.withDecodingDefaultTypeKey(Effect.succeed(false))),
-  // T-0134/T-0141: display names of the holders of the topic's approver
-  // role, resolved server-side in one batched query per list so the card
-  // never fetches the topic per approval (N+1). Optional with an empty
-  // default so payloads from an older server still parse — the card hides
-  // the approver line.
-  approverNames: Schema.mutable(Schema.Array(Schema.String)).pipe(
-    Schema.withDecodingDefaultTypeKey(Effect.succeed([])),
-  ),
-});
-
-export type PublicApproval = typeof publicApprovalSchema.Type;
+// Kept under their old names: the shared schemas decode a payload from an
+// older server (a missing topic, `alwaysEligible: false`, no `approverNames`).
+export const publicApprovalSchema = PublicApproval;
 
 export function getApproval(id: string): Promise<PublicApproval> {
-  return request(`/approvals/${encodeURIComponent(id)}`, publicApprovalSchema);
+  return callApi((client) => client.approvals.detail({ params: { id } }));
 }
 
 // T-0081: the inbox page lists everything pending. The server already filters
 // by pending, unexpired, decidable by the caller, newest first, max 100.
-export function listApprovals(): Promise<PublicApproval[]> {
-  return request('/approvals', Schema.mutable(Schema.Array(publicApprovalSchema)));
+export async function listApprovals(): Promise<PublicApproval[]> {
+  const rows = await callApi((client) => client.approvals.list());
+  return [...rows];
 }
 
 export function decideApproval(
@@ -1528,12 +1020,12 @@ export function decideApproval(
   decision: ApprovalDecision,
   note?: string,
 ): Promise<PublicApproval> {
-  const body = note === undefined ? { decision } : { decision, note };
-  return request(`/approvals/${encodeURIComponent(id)}/decision`, publicApprovalSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  return callApi((client) =>
+    client.approvals.decide({
+      params: { id },
+      payload: note === undefined ? { decision } : { decision, note },
+    }),
+  );
 }
 
 // --- Approval rules (T-0100) ------------------------------------------------
@@ -1542,65 +1034,28 @@ export function decideApproval(
 // approvals schemas. The two list routes 404 for a viewer who may not
 // manage the rules, and so does revoke; all three flow through `ApiError`.
 
-export const approvalRuleSchema = struct({
-  id: Schema.String,
-  action: Schema.String,
-  scope: Schema.Literals(['personal', 'group']),
-  groupId: Schema.NullOr(Schema.String),
-  // T-0110: the rule's topic scope. Optional so older payloads parse.
-  topicId: Schema.optional(Schema.NullOr(Schema.String)),
-  topicName: Schema.optional(Schema.NullOr(Schema.String)),
-  createdAt: Schema.String,
-  createdBy: Schema.String,
-});
+export const approvalRuleSchema = ApprovalRule;
 
-export type ApprovalRule = typeof approvalRuleSchema.Type;
-
-export function listAiApprovalRules(aiId: string): Promise<ApprovalRule[]> {
-  return request(
-    `/ais/${encodeURIComponent(aiId)}/approval-rules`,
-    Schema.mutable(Schema.Array(approvalRuleSchema)),
-  );
+export async function listAiApprovalRules(aiId: string): Promise<ApprovalRule[]> {
+  const rows = await callApi((client) => client.approvals.aiRules({ params: { id: aiId } }));
+  return [...rows];
 }
 
-export function listGroupApprovalRules(groupId: string): Promise<ApprovalRule[]> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/approval-rules`,
-    Schema.mutable(Schema.Array(approvalRuleSchema)),
-  );
+export async function listGroupApprovalRules(groupId: string): Promise<ApprovalRule[]> {
+  const rows = await callApi((client) => client.approvals.groupRules({ params: { id: groupId } }));
+  return [...rows];
 }
 
 export async function revokeApprovalRule(id: string): Promise<void> {
-  await request(`/approval-rules/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
+  await callApi((client) => client.approvals.revokeRule({ params: { id } }));
 }
 
 // --- Message search (T-0117) -----------------------------------------------
-// The wire contract lives in apps/server/src/search/routes.ts. Snippets
+// The wire contract lives in packages/api-contract/src/search.ts. Snippets
 // arrive as plain text plus `marks` ranges; the client highlights with
 // spans and never renders HTML.
 
-const searchMarkSchema = Schema.mutable(
-  Schema.Tuple([
-    Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
-    Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
-  ]),
-);
-
-const searchItemSchema = struct({
-  chatJid: Schema.String,
-  messageId: Schema.String,
-  senderName: Schema.String,
-  at: Schema.String,
-  snippet: Schema.String,
-  marks: Schema.mutable(Schema.Array(searchMarkSchema)),
-});
-
-export type SearchItem = typeof searchItemSchema.Type;
-
-const searchPageSchema = struct({
-  items: Schema.mutable(Schema.Array(searchItemSchema)),
-  nextBefore: Schema.optional(Schema.String),
-});
+export type { SearchItem };
 
 export interface SearchMessagesInput {
   q: string;
@@ -1610,141 +1065,77 @@ export interface SearchMessagesInput {
   signal?: AbortSignal;
 }
 
-async function searchRequest<T>(
-  params: URLSearchParams,
-  schema: ResponseSchema<T>,
-  signal?: AbortSignal,
-): Promise<T> {
-  let response: Response;
-  if (isMockApiEnabled()) {
-    response = await mockRequest(`/search?${params.toString()}`, { method: 'GET' });
-  } else {
-    if (signal?.aborted === true) {
-      throw new DOMException('Aborted', 'AbortError');
-    }
-    try {
-      response = await fetch(`${API_BASE}/search?${params.toString()}`, {
-        credentials: 'same-origin',
-        headers: { Accept: 'application/json' },
-        ...(signal === undefined ? {} : { signal }),
-      });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        throw error;
-      }
-      throw new ApiError(0, 'network_error', 'Could not reach the server');
-    }
-  }
-  if (signal?.aborted === true) {
-    throw new DOMException('Aborted', 'AbortError');
-  }
-
-  const raw: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw toApiError(response.status, raw);
-  }
-  const parsed = decodeResponse(schema, raw);
-  if (!parsed.ok) {
-    throw new ApiError(
-      response.status,
-      'invalid_response',
-      'The server sent an unexpected response',
-    );
-  }
-  return parsed.value;
-}
-
 export function searchMessages(
   input: SearchMessagesInput,
 ): Promise<{ items: SearchItem[]; nextBefore?: string | undefined }> {
-  const params = new URLSearchParams();
-  params.set('q', input.q);
-  if (input.chat !== undefined && input.chat !== '') {
-    params.set('chat', input.chat);
-  }
-  if (input.limit !== undefined) {
-    params.set('limit', String(input.limit));
-  }
-  if (input.before !== undefined && input.before !== '') {
-    params.set('before', input.before);
-  }
-  return searchRequest(params, searchPageSchema, input.signal);
+  // The cursor travels as a string in the app and decodes to a number in the
+  // contract; an empty `chat` or `before` is left out, like before.
+  const query = {
+    q: input.q,
+    ...(input.chat === undefined || input.chat === '' ? {} : { chat: input.chat }),
+    ...(input.limit === undefined ? {} : { limit: input.limit }),
+    ...(input.before === undefined || input.before === '' ? {} : { before: Number(input.before) }),
+  };
+  return callApiAbortable((client) => client.search.search({ query }), input.signal).then(
+    (page) => ({
+      items: [...page.items],
+      ...(page.nextBefore === undefined ? {} : { nextBefore: page.nextBefore }),
+    }),
+  );
 }
 
 // --- Stickers (T-0120) -----------------------------------------------------
 // User-made packs: the panel lists mine in order (with stickers), discover
 // lists `server`-visible packs, and files are served same-origin so the
 // renderer can auto-load them without leaking the viewer's IP.
-export const stickerSchema = struct({
-  id: Schema.String,
-  packId: Schema.String,
-  emoji: Schema.NullOr(Schema.String),
-  mime: Schema.Literals(['image/webp', 'image/png']),
-  width: Schema.Number,
-  height: Schema.Number,
-  bytes: Schema.Number,
-  url: Schema.String,
-});
+// The schemas and endpoints live in `@zilar/api-contract` (`stickers.ts`,
+// T-0895). `uploadStickerFile` posts raw image bytes, so it stays outside the
+// client and decodes with the contract's reply schema.
+export type { Sticker };
 
-export type Sticker = typeof stickerSchema.Type;
+// The pack keeps a mutable `stickers` array, the shape its editor takes.
+export type StickerPack = Omit<ContractStickerPack, 'stickers'> & { stickers: Sticker[] };
 
-export const stickerPackSchema = struct({
-  id: Schema.String,
-  ownerId: Schema.String,
-  title: Schema.String,
-  visibility: Schema.Literals(['private', 'server']),
-  // Set by the Telegram importer (`telegram:<name>`); absent otherwise.
-  importedFrom: Schema.optional(Schema.String),
-  stickers: Schema.mutable(Schema.Array(stickerSchema)),
-  createdAt: Schema.String,
-  updatedAt: Schema.String,
-});
-
-export type StickerPack = typeof stickerPackSchema.Type;
-
-const stickerPacksSchema = struct({ packs: Schema.mutable(Schema.Array(stickerPackSchema)) });
-
-const discoverPacksSchema = struct({
-  packs: Schema.mutable(Schema.Array(stickerPackSchema)),
-  next: Schema.NullOr(Schema.String),
-});
-
-export function listStickerPacks(): Promise<StickerPack[]> {
-  return request('/sticker-packs', stickerPacksSchema).then((body) => body.packs);
+function toStickerPack(pack: ContractStickerPack): StickerPack {
+  return { ...pack, stickers: [...pack.stickers] };
 }
 
+export function listStickerPacks(): Promise<StickerPack[]> {
+  return callApi((client) => client.stickers.listPacks()).then((body) =>
+    body.packs.map(toStickerPack),
+  );
+}
+
+// The contract encodes the trimmed title (the server trimmed it anyway).
 export function createStickerPack(input: {
   title: string;
   visibility?: 'private' | 'server';
 }): Promise<StickerPack> {
-  return request('/sticker-packs', stickerPackSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) =>
+    client.stickers.createPack({
+      payload: omitUndefined({ ...input, title: input.title.trim() }),
+    }),
+  ).then(toStickerPack);
 }
 
 export function discoverStickerPacks(
   query?: string,
 ): Promise<{ packs: StickerPack[]; next: string | null }> {
-  const params = new URLSearchParams();
-  if (query !== undefined && query.trim() !== '') {
-    params.set('q', query.trim());
-  }
-  const suffix = params.size === 0 ? '' : `?${params.toString()}`;
-  return request(`/sticker-packs/discover${suffix}`, discoverPacksSchema);
+  const q = query?.trim();
+  return callApi((client) =>
+    client.stickers.discover({ query: q === undefined || q === '' ? {} : { q } }),
+  ).then((page) => ({
+    packs: page.packs.map(toStickerPack),
+    next: page.next,
+  }));
 }
 
 export async function addStickerPanelPack(packId: string): Promise<void> {
-  await request(`/sticker-panel/${encodeURIComponent(packId)}`, struct({ ok: Schema.Boolean }), {
-    method: 'PUT',
-  });
+  await callApi((client) => client.stickers.addPanelPack({ params: { packId } }));
 }
 
 export async function removeStickerPanelPack(packId: string): Promise<void> {
-  await request(`/sticker-panel/${encodeURIComponent(packId)}`, struct({ ok: Schema.Boolean }), {
-    method: 'DELETE',
-  });
+  await callApi((client) => client.stickers.removePanelPack({ params: { packId } }));
 }
 
 // --- Push notifications (T-0119) -------------------------------------------
@@ -1754,37 +1145,13 @@ export async function removeStickerPanelPack(packId: string): Promise<void> {
 // user's session). The device list carries labels and dates only — never
 // the endpoint URL or keys.
 
-const pushConfigSchema = struct({
-  vapidPublicKey: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
-  pushJid: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
-});
-
-export type PushConfig = typeof pushConfigSchema.Type;
-
-const registeredDeviceSchema = struct({
-  id: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
-  node: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
-  jid: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
-});
-
-export type RegisteredDevice = typeof registeredDeviceSchema.Type;
-
-const pushDeviceSchema = struct({
-  id: Schema.String,
-  userAgent: Schema.NullOr(Schema.String),
-  createdAt: Schema.String,
-  lastUsedAt: Schema.NullOr(Schema.String),
-  inactive: Schema.Boolean,
-});
-
-export type PushDevice = typeof pushDeviceSchema.Type;
-
-const pushDevicesSchema = struct({ devices: Schema.mutable(Schema.Array(pushDeviceSchema)) });
-
-const pushSettingsSchema = struct({ showPreviews: Schema.Boolean });
+// The contract (`@zilar/api-contract`, `push.ts`, T-0895) types the replies and
+// the three payloads; the server decodes those bodies by hand (their step order
+// and error codes are part of the wire).
+export type { PushConfig, PushDevice, RegisteredDevice };
 
 export function getPushConfig(): Promise<PushConfig> {
-  return request('/push/config', pushConfigSchema);
+  return callApi((client) => client.push.config());
 }
 
 export interface RegisterPushDeviceInput {
@@ -1794,85 +1161,65 @@ export interface RegisterPushDeviceInput {
 }
 
 export function registerPushDevice(input: RegisterPushDeviceInput): Promise<RegisteredDevice> {
-  return request('/push/subscriptions', registeredDeviceSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      endpoint: input.endpoint,
-      keys: input.keys,
-      ...(input.userAgent === undefined ? {} : { userAgent: input.userAgent }),
+  return callApi((client) =>
+    client.push.subscribe({
+      payload: {
+        endpoint: input.endpoint,
+        keys: input.keys,
+        ...(input.userAgent === undefined ? {} : { userAgent: input.userAgent }),
+      },
     }),
-  });
+  );
 }
 
 export function listPushDevices(): Promise<PushDevice[]> {
-  return request('/push/subscriptions', pushDevicesSchema).then((body) => body.devices);
+  return callApi((client) => client.push.list()).then((body) => [...body.devices]);
 }
 
 export function removePushDevice(id: string): Promise<void> {
-  return request(
-    `/push/subscriptions/${encodeURIComponent(id)}`,
-    struct({ removed: Schema.Boolean }),
-    { method: 'DELETE' },
-  ).then(() => undefined);
+  return callApi((client) => client.push.remove({ params: { id } })).then(() => undefined);
 }
 
 export function getPushSettings(): Promise<{ showPreviews: boolean }> {
-  return request('/push/settings', pushSettingsSchema);
+  return callApi((client) => client.push.settings());
 }
 
 export function setPushSettings(showPreviews: boolean): Promise<{ showPreviews: boolean }> {
-  return request('/push/settings', pushSettingsSchema, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ showPreviews }),
-  });
+  return callApi((client) => client.push.updateSettings({ payload: { showPreviews } }));
 }
 
 export function sendTestPushNotification(subscriptionId: string): Promise<void> {
-  return request('/push/test', struct({ sent: Schema.Boolean }), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ subscriptionId }),
-  }).then(() => undefined);
+  return callApi((client) => client.push.test({ payload: { subscriptionId } })).then(
+    () => undefined,
+  );
 }
 
 /** Reorders the caller's whole panel atomically (exact id permutation). */
 export async function reorderStickerPanelPacks(order: string[]): Promise<void> {
-  await request('/sticker-panel', struct({ ok: Schema.Boolean }), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ order }),
-  });
+  await callApi((client) => client.stickers.reorderPanel({ payload: { order } }));
 }
 
 export function patchStickerPack(
   packId: string,
   input: { title?: string; visibility?: 'private' | 'server'; order?: string[] },
 ): Promise<StickerPack> {
-  return request(`/sticker-packs/${encodeURIComponent(packId)}`, stickerPackSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) =>
+    client.stickers.patchPack({
+      params: { id: packId },
+      payload: omitUndefined({
+        ...input,
+        ...(input.title === undefined ? {} : { title: input.title.trim() }),
+      }),
+    }),
+  ).then(toStickerPack);
 }
 
 export function deleteStickerPack(packId: string): Promise<{ warning: string }> {
-  return request(
-    `/sticker-packs/${encodeURIComponent(packId)}`,
-    struct({ warning: Schema.String }),
-    {
-      method: 'DELETE',
-    },
-  );
+  return callApi((client) => client.stickers.deletePack({ params: { id: packId } }));
 }
 
 export function deletePackSticker(packId: string, stickerId: string): Promise<{ ok: boolean }> {
-  return request(
-    `/sticker-packs/${encodeURIComponent(packId)}/stickers/${encodeURIComponent(stickerId)}`,
-    struct({ ok: Schema.Boolean }),
-    { method: 'DELETE' },
-  );
+  return callApi((client) => client.stickers.deleteSticker({ params: { id: packId, stickerId } }));
 }
 
 /**
@@ -1893,7 +1240,9 @@ export async function uploadStickerFile(
   }
   let response: Response;
   if (isMockApiEnabled()) {
-    response = await mockRequest(`/sticker-packs/${encodeURIComponent(packId)}/stickers`, {
+    response = await (
+      await loadMockRequest()
+    )(`/sticker-packs/${encodeURIComponent(packId)}/stickers`, {
       method: 'POST',
       headers,
       body: blob as unknown as string,
@@ -1912,9 +1261,9 @@ export async function uploadStickerFile(
   }
   const raw: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw toApiError(response.status, raw);
+    throw apiErrorFromBody(response.status, raw);
   }
-  const parsed = decodeResponse(stickerSchema, raw);
+  const parsed = decodeResponse(StickerSchema, raw);
   if (!parsed.ok) {
     throw new ApiError(
       response.status,
@@ -1928,27 +1277,16 @@ export async function uploadStickerFile(
 // --- Sticker favorites (T-0121) --------------------------------------------
 // One user's starred stickers, at most 200, oldest first.
 
-const stickerFavoritesSchema = struct({
-  favorites: Schema.mutable(Schema.Array(stickerSchema)),
-});
-
 export function listStickerFavorites(): Promise<Sticker[]> {
-  return request('/sticker-favorites', stickerFavoritesSchema).then((body) => body.favorites);
+  return callApi((client) => client.stickers.listFavorites()).then((body) => [...body.favorites]);
 }
 
 export function addStickerFavorite(stickerId: string): Promise<Sticker> {
-  return request('/sticker-favorites', stickerSchema, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sticker_id: stickerId }),
-  });
+  return callApi((client) => client.stickers.addFavorite({ payload: { sticker_id: stickerId } }));
 }
 
 export async function removeStickerFavorite(stickerId: string): Promise<void> {
-  const params = new URLSearchParams({ sticker_id: stickerId });
-  await request(`/sticker-favorites?${params.toString()}`, struct({ ok: Schema.Boolean }), {
-    method: 'DELETE',
-  });
+  await callApi((client) => client.stickers.removeFavorite({ query: { sticker_id: stickerId } }));
 }
 
 // --- Telegram import (T-0123) -------------------------------------------------
@@ -1959,22 +1297,14 @@ export async function removeStickerFavorite(stickerId: string): Promise<void> {
 // fills the gaps. Imported packs are personal-use only (`importedFrom` is
 // set, visibility stays private, the UI says so).
 
-export const telegramImportResultSchema = struct({
-  pack: stickerPackSchema,
-  imported: Schema.Number,
-  skippedAnimated: Schema.Number,
-  skippedInvalid: Schema.Number,
-  partial: Schema.optional(Schema.Boolean),
-});
-
-export type TelegramImportResult = typeof telegramImportResultSchema.Type;
+export type TelegramImportResult = Omit<ContractTelegramImportResult, 'pack'> & {
+  pack: StickerPack;
+};
 
 export function importTelegramStickers(input: string): Promise<TelegramImportResult> {
-  return request('/sticker-packs/import/telegram', telegramImportResultSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ input }),
-  });
+  return callApi((client) => client.stickers.importTelegram({ payload: { input } })).then(
+    (result) => ({ ...result, pack: toStickerPack(result.pack) }),
+  );
 }
 
 // --- Integrations settings (T-0162 + Email follow-up) ----------------------
@@ -1983,48 +1313,24 @@ export function importTelegramStickers(input: string): Promise<TelegramImportRes
 // never returned by the server, not even masked — only `configured` and
 // `source` say whether one is set.
 
-const integrationsTelegramSchema = struct({
-  configured: Schema.Boolean,
-  source: Schema.NullOr(Schema.Literals(['env', 'stored'])),
-});
-
-const integrationsEmailSchema = struct({
-  configured: Schema.Boolean,
-  source: Schema.NullOr(Schema.Literals(['env', 'stored'])),
-  from: Schema.NullOr(Schema.String),
-});
-
-const integrationsStatusSchema = struct({
-  telegram: integrationsTelegramSchema,
-  email: integrationsEmailSchema,
-  voiceTranscription: Schema.optional(
-    struct({
-      configured: Schema.Boolean,
-      baseUrl: Schema.NullOr(Schema.String),
-      model: Schema.NullOr(Schema.String),
-    }),
-  ),
-  canManage: Schema.Boolean,
-});
-
-export type IntegrationsStatus = typeof integrationsStatusSchema.Type;
+// The schemas and endpoints live in `@zilar/api-contract` (`integrations.ts`,
+// T-0895); these are thin wrappers over the derived client. The contract
+// encodes the trimmed form, so the secrets are trimmed before sending (the
+// server trimmed them anyway).
+export type { IntegrationsStatus };
 
 export function getIntegrationsStatus(): Promise<IntegrationsStatus> {
-  return request('/settings/integrations', integrationsStatusSchema);
+  return callApi((client) => client.integrations.status());
 }
 
 export async function saveTelegramBotToken(botToken: string): Promise<void> {
-  await request('/settings/integrations/telegram', struct({ ok: Schema.Boolean }), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ botToken }),
-  });
+  await callApi((client) =>
+    client.integrations.setTelegram({ payload: { botToken: botToken.trim() } }),
+  );
 }
 
 export async function removeTelegramBotToken(): Promise<void> {
-  await request('/settings/integrations/telegram', struct({ ok: Schema.Boolean }), {
-    method: 'DELETE',
-  });
+  await callApi((client) => client.integrations.removeTelegram());
 }
 
 export interface SaveEmailSettingsInput {
@@ -2033,15 +1339,15 @@ export interface SaveEmailSettingsInput {
 }
 
 export async function saveEmailSettings(input: SaveEmailSettingsInput): Promise<void> {
-  const body =
-    input.resendApiKey === undefined
-      ? { from: input.from }
-      : { from: input.from, resendApiKey: input.resendApiKey };
-  await request('/settings/integrations/email', struct({ ok: Schema.Boolean }), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const from = input.from.trim();
+  await callApi((client) =>
+    client.integrations.setEmail({
+      payload:
+        input.resendApiKey === undefined
+          ? { from }
+          : { from, resendApiKey: input.resendApiKey.trim() },
+    }),
+  );
 }
 
 // --- Voice transcripts (T-0170) --------------------------------------------
@@ -2097,86 +1403,37 @@ export async function removeVoiceTranscriptionSettings(): Promise<void> {
 // (`/api/gifs/media/:token`). An unconfigured provider answers 501
 // `gifs_unavailable` and the panel hides the tab.
 
-export const gifResultSchema = struct({
-  id: Schema.String,
-  title: Schema.String,
-  mediaToken: Schema.String,
-  kind: Schema.Literals(['image', 'video']),
-  width: Schema.Number,
-  height: Schema.Number,
-  sizeBytes: Schema.optional(Schema.Number),
-});
-
-export type GifResult = typeof gifResultSchema.Type;
-
-const gifPageSchema = struct({
-  items: Schema.mutable(Schema.Array(gifResultSchema)),
-  nextPos: Schema.optional(Schema.String),
-});
+// The reply schemas and the query keys live in `@zilar/api-contract`
+// (`gifs.ts`, T-0895). The server decodes the query by hand, after its provider
+// check and limiter, so every key travels as a plain string. A caller may
+// abort a search, so the calls go through `callApiAbortable`.
+export type { GifResult };
 
 export interface GifPage {
   items: GifResult[];
   nextPos?: string | undefined;
 }
 
-async function gifRequest(
-  params: URLSearchParams,
-  endpoint: 'search' | 'trending',
-  signal?: AbortSignal,
-): Promise<GifPage> {
-  let response: Response;
-  if (isMockApiEnabled()) {
-    response = await mockRequest(`/gifs/${endpoint}?${params.toString()}`, { method: 'GET' });
-  } else {
-    if (signal?.aborted === true) {
-      throw new DOMException('Aborted', 'AbortError');
-    }
-    try {
-      response = await fetch(`${API_BASE}/gifs/${endpoint}?${params.toString()}`, {
-        credentials: 'same-origin',
-        headers: { Accept: 'application/json' },
-        ...(signal === undefined ? {} : { signal }),
-      });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        throw error;
-      }
-      throw new ApiError(0, 'network_error', 'Could not reach the server');
-    }
-  }
-  if (signal?.aborted === true) {
-    throw new DOMException('Aborted', 'AbortError');
-  }
-  const raw: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw toApiError(response.status, raw);
-  }
-  const parsed = decodeResponse(gifPageSchema, raw);
-  if (!parsed.ok) {
-    throw new ApiError(
-      response.status,
-      'invalid_response',
-      'The server sent an unexpected response',
-    );
-  }
-  return parsed.value;
+function toGifPage(page: GifResultPage): GifPage {
+  const { items, nextPos } = page;
+  return { items: [...items], ...(nextPos === undefined ? {} : { nextPos }) };
 }
 
 export function searchGifs(query: string, pos?: string, signal?: AbortSignal): Promise<GifPage> {
-  const params = new URLSearchParams();
-  params.set('q', query);
-  if (pos !== undefined && pos !== '') {
-    params.set('pos', pos);
-  }
-  return gifRequest(params, 'search', signal);
+  return callApiAbortable(
+    (client) =>
+      client.gifs.search({
+        query: { q: query, ...(pos === undefined || pos === '' ? {} : { pos }) },
+      }),
+    signal,
+  ).then(toGifPage);
 }
 
 export function trendingGifs(pos?: string, signal?: AbortSignal): Promise<GifPage> {
-  const params = new URLSearchParams();
-  if (pos !== undefined && pos !== '') {
-    params.set('pos', pos);
-  }
-  return gifRequest(params, 'trending', signal);
+  return callApiAbortable(
+    (client) => client.gifs.trending({ query: pos === undefined || pos === '' ? {} : { pos } }),
+    signal,
+  ).then(toGifPage);
 }
 
 /** The same-origin proxy URL for one GIF result's media. */
@@ -2187,33 +1444,7 @@ export function gifMediaUrl(mediaToken: string): string {
 // --- Audit log (T-0079, T-0084) --------------------------------------------
 // The wire contract lives in apps/server/src/audit/api.ts and service.ts.
 
-const auditCostSchema = Schema.NullOr(
-  struct({
-    currency: Schema.Literals(['EUR', 'USD']),
-    amount: Schema.Number,
-  }),
-);
-
-export const publicAuditEntrySchema = struct({
-  id: Schema.String,
-  at: Schema.String,
-  aiId: Schema.NullOr(Schema.String),
-  groupId: Schema.NullOr(Schema.String),
-  action: Schema.String,
-  subjectId: Schema.NullOr(Schema.String),
-  argsHash: Schema.NullOr(Schema.String),
-  cost: auditCostSchema,
-  result: Schema.Literals(['ok', 'denied', 'error']),
-  detail: Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown)),
-  actorUserId: Schema.NullOr(Schema.String),
-});
-
-export type PublicAuditEntry = typeof publicAuditEntrySchema.Type;
-
-const auditPageSchema = struct({
-  entries: Schema.mutable(Schema.Array(publicAuditEntrySchema)),
-  next: Schema.NullOr(Schema.String),
-});
+export type { PublicAuditEntry };
 
 export interface ListAuditPage {
   entries: PublicAuditEntry[];
@@ -2232,20 +1463,21 @@ export type ListAuditInput = AuditScope & {
   before?: string;
 };
 
-export function listAudit(input: ListAuditInput): Promise<ListAuditPage> {
-  const params = new URLSearchParams();
-  if ('aiId' in input && input.aiId !== undefined) {
-    params.set('aiId', input.aiId);
-  } else if ('groupId' in input && input.groupId !== undefined) {
-    params.set('groupId', input.groupId);
-  }
-  if (input.limit !== undefined) {
-    params.set('limit', String(input.limit));
-  }
-  if (input.before !== undefined && input.before !== '') {
-    params.set('before', input.before);
-  }
-  return request(`/audit?${params.toString()}`, auditPageSchema);
+export async function listAudit(input: ListAuditInput): Promise<ListAuditPage> {
+  const page = await callApi((client) =>
+    client.audit.list({
+      query: {
+        ...('aiId' in input && input.aiId !== undefined
+          ? { aiId: input.aiId }
+          : 'groupId' in input && input.groupId !== undefined
+            ? { groupId: input.groupId }
+            : {}),
+        ...(input.limit === undefined ? {} : { limit: input.limit }),
+        ...(input.before === undefined || input.before === '' ? {} : { before: input.before }),
+      },
+    }),
+  );
+  return { entries: [...page.entries], next: page.next };
 }
 
 // --- First-run setup (T-0161) ------------------------------------------------
@@ -2292,139 +1524,72 @@ export function postSetup(input: SetupInput): Promise<SetupResult> {
 // contact request the other person must accept. Handles are stored with the
 // typed casing but compared case-insensitively; there is no prefix search.
 
-export type HandleCheckReason = 'invalid' | 'reserved' | 'taken';
+export type { HandleCheck, HandleCheckReason };
 
-const handleCheckSchema = struct({
-  available: Schema.Boolean,
-  reason: Schema.optional(Schema.Literals(['invalid', 'reserved', 'taken'])),
-});
-
-export interface HandleCheck {
-  available: boolean;
-  reason?: HandleCheckReason | undefined;
+// The server answers a handle outside 1..64 characters with a success body
+// (`invalid`), but the derived client encodes the query before it sends it.
+// So the same answer is given here, without the round trip.
+function checkHandleKind(handle: string, kind?: 'group'): Promise<HandleCheck> {
+  if (handle.length < HANDLE_CHECK_MIN || handle.length > HANDLE_CHECK_MAX) {
+    return Promise.resolve({ available: false, reason: 'invalid' });
+  }
+  return callApi((client) =>
+    client.handles.check({ query: kind === undefined ? { handle } : { handle, kind } }),
+  );
 }
 
 export function checkHandle(handle: string): Promise<HandleCheck> {
-  const params = new URLSearchParams();
-  params.set('handle', handle);
-  return request(`/handles/check?${params.toString()}`, handleCheckSchema);
+  return checkHandleKind(handle);
 }
 
-const claimedHandleSchema = struct({ handle: Schema.String });
-
 export function claimHandle(handle: string): Promise<{ handle: string }> {
-  return request('/me/handle', claimedHandleSchema, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ handle }),
-  });
+  return callApi((client) => client.handles.claim({ payload: { handle } }));
 }
 
 export type ContactRelation =
   'none' | 'contact' | 'request_sent' | 'request_received' | 'self' | 'blocked';
 
-const handleProfileSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-  handle: Schema.String,
-  image: Schema.NullOr(Schema.String),
-  relation: Schema.Literals([
-    'none',
-    'contact',
-    'request_sent',
-    'request_received',
-    'self',
-    'blocked',
-  ]),
-});
-
-export type HandleProfile = typeof handleProfileSchema.Type;
+export type {
+  ContactRequestPerson,
+  ContactRequestRow,
+  ContactRequestStatus,
+  ContactRequestView,
+  HandleProfile,
+};
 
 export function lookupByHandle(handle: string): Promise<HandleProfile> {
-  return request(`/users/by-handle/${encodeURIComponent(handle)}`, handleProfileSchema);
+  return callApi((client) => client.contactRequests.byHandle({ params: { handle } }));
 }
-
-export type ContactRequestStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
-
-export const contactRequestPersonSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-  handle: Schema.NullOr(Schema.String),
-  image: Schema.NullOr(Schema.String),
-});
-
-export type ContactRequestPerson = typeof contactRequestPersonSchema.Type;
-
-export const contactRequestViewSchema = struct({
-  id: Schema.String,
-  status: Schema.Literals(['pending', 'accepted', 'declined', 'cancelled']),
-  createdAt: Schema.String,
-  other: contactRequestPersonSchema,
-});
-
-export type ContactRequestView = typeof contactRequestViewSchema.Type;
-
-const contactRequestListSchema = struct({
-  incoming: Schema.mutable(Schema.Array(contactRequestViewSchema)),
-  outgoing: Schema.mutable(Schema.Array(contactRequestViewSchema)),
-});
 
 export interface ContactRequestList {
   incoming: ContactRequestView[];
   outgoing: ContactRequestView[];
 }
 
-const contactRequestRowSchema = struct({
-  id: Schema.String,
-  fromUserId: Schema.String,
-  toUserId: Schema.String,
-  status: Schema.Literals(['pending', 'accepted', 'declined', 'cancelled']),
-  createdAt: Schema.String,
-  decidedAt: Schema.optional(Schema.String),
-});
-
-export type ContactRequestRow = typeof contactRequestRowSchema.Type;
-
-const createdRequestSchema = struct({
-  request: contactRequestRowSchema,
-  // Present when the other side already asked: the web offers "Accept" on
-  // the existing request instead of creating a second row.
-  incoming: Schema.optional(Schema.Boolean),
-});
-
 export function sendContactRequest(handle: string): Promise<{
   request: ContactRequestRow;
   incoming?: boolean | undefined;
 }> {
-  return request('/contact-requests', createdRequestSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ handle }),
-  });
+  return callApi((client) => client.contactRequests.create({ payload: { handle } }));
 }
 
 export function listContactRequests(): Promise<ContactRequestList> {
-  return request('/contact-requests', contactRequestListSchema);
+  return callApi((client) => client.contactRequests.list()).then((body) => ({
+    incoming: [...body.incoming],
+    outgoing: [...body.outgoing],
+  }));
 }
 
-const decidedRequestSchema = struct({ request: contactRequestRowSchema });
-
 export function acceptContactRequest(id: string): Promise<{ request: ContactRequestRow }> {
-  return request(`/contact-requests/${encodeURIComponent(id)}/accept`, decidedRequestSchema, {
-    method: 'POST',
-  });
+  return callApi((client) => client.contactRequests.accept({ params: { id } }));
 }
 
 export function declineContactRequest(id: string): Promise<{ request: ContactRequestRow }> {
-  return request(`/contact-requests/${encodeURIComponent(id)}/decline`, decidedRequestSchema, {
-    method: 'POST',
-  });
+  return callApi((client) => client.contactRequests.decline({ params: { id } }));
 }
 
 export function cancelContactRequest(id: string): Promise<{ request: ContactRequestRow }> {
-  return request(`/contact-requests/${encodeURIComponent(id)}`, decidedRequestSchema, {
-    method: 'DELETE',
-  });
+  return callApi((client) => client.contactRequests.cancel({ params: { id } }));
 }
 
 // --- Blocked people (T-0235) -------------------------------------------------
@@ -2432,35 +1597,19 @@ export function cancelContactRequest(id: string): Promise<{ request: ContactRequ
 // requests never reach the blocker. Writes answer `{ blocked: true/false }`,
 // the list answers newest first.
 
-const blockResultSchema = struct({ blocked: Schema.Boolean });
-
-const blockedPersonSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-  handle: Schema.NullOr(Schema.String),
-  image: Schema.NullOr(Schema.String),
-  jid: Schema.NullOr(Schema.String),
-});
-
-export type BlockedPerson = typeof blockedPersonSchema.Type;
-
-const blockedListSchema = struct({ blocked: Schema.mutable(Schema.Array(blockedPersonSchema)) });
+export type { BlockedPerson };
 
 export function blockUser(userId: string): Promise<{ blocked: boolean }> {
-  return request(`/blocks/${encodeURIComponent(userId)}`, blockResultSchema, {
-    method: 'PUT',
-  });
+  return callApi((client) => client.blocks.block({ params: { userId } }));
 }
 
 export function unblockUser(userId: string): Promise<{ blocked: boolean }> {
-  return request(`/blocks/${encodeURIComponent(userId)}`, blockResultSchema, {
-    method: 'DELETE',
-  });
+  return callApi((client) => client.blocks.unblock({ params: { userId } }));
 }
 
 export async function listBlockedUsers(): Promise<BlockedPerson[]> {
-  const { blocked } = await request('/blocks', blockedListSchema);
-  return blocked;
+  const { blocked } = await callApi((client) => client.blocks.list());
+  return [...blocked];
 }
 
 // --- Public groups and channels (T-0164) -----------------------------------
@@ -2468,25 +1617,7 @@ export async function listBlockedUsers(): Promise<BlockedPerson[]> {
 // `@username`s), appears in the directory, and joins with one tap. A
 // private group stays invisible and invite-only, exactly as before.
 
-export const directoryEntrySchema = struct({
-  id: Schema.String,
-  kind: Schema.Literals(['group', 'channel']),
-  title: Schema.String,
-  handle: Schema.String,
-  description: Schema.NullOr(Schema.String),
-  memberCount: Schema.Number,
-  joined: Schema.Boolean,
-  // T-0165: the group's picture, when it has one. Optional so older
-  // payloads parse (treated as none).
-  avatarUrl: Schema.optional(Schema.String),
-});
-
-export type DirectoryEntry = typeof directoryEntrySchema.Type;
-
-const directoryPageSchema = struct({
-  entries: Schema.mutable(Schema.Array(directoryEntrySchema)),
-  next: Schema.NullOr(Schema.String),
-});
+export type { DirectoryEntry };
 
 export interface DirectoryPage {
   entries: DirectoryEntry[];
@@ -2500,40 +1631,31 @@ export interface SearchDirectoryInput {
 }
 
 export function searchDirectory(input: SearchDirectoryInput = {}): Promise<DirectoryPage> {
-  const params = new URLSearchParams();
-  if (input.q !== undefined && input.q !== '') {
-    params.set('q', input.q);
-  }
-  if (input.kind !== undefined) {
-    params.set('kind', input.kind);
-  }
-  if (input.cursor !== undefined && input.cursor !== '') {
-    params.set('cursor', input.cursor);
-  }
-  const suffix = params.size === 0 ? '' : `?${params.toString()}`;
-  return request(`/directory${suffix}`, directoryPageSchema);
+  // An empty `q` or `cursor` is left out, like before.
+  const query = {
+    ...(input.q === undefined || input.q === '' ? {} : { q: input.q }),
+    ...(input.kind === undefined ? {} : { kind: input.kind }),
+    ...(input.cursor === undefined || input.cursor === '' ? {} : { cursor: input.cursor }),
+  };
+  return callApi((client) => client.directory.search({ query })).then((page) => ({
+    entries: [...page.entries],
+    next: page.next,
+  }));
 }
 
 // Exact match of one public group by `@handle` (case-insensitive). A
 // private group and an unknown handle answer the same 404.
 export function lookupGroupByHandle(handle: string): Promise<DirectoryEntry> {
-  return request(`/groups/by-handle/${encodeURIComponent(handle)}`, directoryEntrySchema);
+  return callApi((client) => client.directory.byHandle({ params: { handle } }));
 }
 
-const publicJoinResultSchema = struct({
-  groupId: Schema.String,
-  alreadyMember: Schema.Boolean,
-});
-
-export type PublicJoinResult = typeof publicJoinResultSchema.Type;
+export type PublicJoinResult = GroupJoinResult;
 
 // Joins a public group or channel with one request (private or unknown
 // answers the same 404; a full group 409 `group_full`; joining twice is
 // harmless with `alreadyMember: true`).
 export function joinPublicGroup(groupId: string): Promise<PublicJoinResult> {
-  return request(`/groups/${encodeURIComponent(groupId)}/join`, publicJoinResultSchema, {
-    method: 'POST',
-  });
+  return callApi((client) => client.groups.join({ params: { id: groupId } }));
 }
 
 // Owner-only: flips a group public (with a handle) or back to private.
@@ -2543,21 +1665,16 @@ export function setGroupVisibility(
   groupId: string,
   input: { visibility: 'private' | 'public'; handle?: string },
 ): Promise<GroupDetail> {
-  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) =>
+    client.groups.patch({ params: { id: groupId }, payload: omitUndefined(input) }),
+  );
 }
 
 // Live availability of a handle for a public group or channel (the same
 // shape, reserved words and uniqueness as `@username`s; the asker's own
 // group reservation counts as available).
 export function checkGroupHandle(handle: string): Promise<HandleCheck> {
-  const params = new URLSearchParams();
-  params.set('handle', handle);
-  params.set('kind', 'group');
-  return request(`/handles/check?${params.toString()}`, handleCheckSchema);
+  return checkHandleKind(handle, 'group');
 }
 
 // --- Avatars (T-0165) ------------------------------------------------------
@@ -2579,7 +1696,9 @@ export function uploadAvatar(
 async function uploadAvatarBytes(path: string, blob: Blob): Promise<{ url: string }> {
   let response: Response;
   if (isMockApiEnabled()) {
-    response = await mockRequest(path, {
+    response = await (
+      await loadMockRequest()
+    )(path, {
       method: 'PUT',
       headers: { 'Content-Type': blob.type },
       body: blob as unknown as string,
@@ -2598,7 +1717,7 @@ async function uploadAvatarBytes(path: string, blob: Blob): Promise<{ url: strin
   }
   const raw: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw toApiError(response.status, raw);
+    throw apiErrorFromBody(response.status, raw);
   }
   const parsed = decodeResponse(avatarUrlSchema, raw);
   if (!parsed.ok) {
@@ -2621,35 +1740,18 @@ export async function removeAvatar(kind: 'user' | 'ai' | 'group', ownerId: strin
 // Personal wallpapers for the chat background dialog. The client resizes and
 // re-encodes before upload (`lib/background-image.ts`); the server validates
 // by magic bytes (WebP/PNG, 64-2048 px, at most 1 MiB, at most 20 per user).
-const backgroundImageSchema = struct({
-  id: Schema.String,
-  url: Schema.String,
-  width: Schema.Number,
-  height: Schema.Number,
-});
-
-export type BackgroundImage = typeof backgroundImageSchema.Type;
-
-const backgroundListItemSchema = struct({
-  id: Schema.String,
-  url: Schema.String,
-  width: Schema.NullOr(Schema.Number),
-  height: Schema.NullOr(Schema.Number),
-  createdAt: Schema.String,
-});
-
-export type BackgroundListItem = typeof backgroundListItemSchema.Type;
-
-const backgroundListSchema = struct({
-  backgrounds: Schema.mutable(Schema.Array(backgroundListItemSchema)),
-});
+// The schemas live in `@zilar/api-contract` (`backgrounds.ts`, T-0895). The
+// upload stays outside the derived client: it posts raw image bytes.
+export type { BackgroundImage, BackgroundListItem };
 
 // The POST twin of `uploadAvatarBytes`: a raw-body fetch with a mock branch,
-// `toApiError` on failure and an Effect Schema parse of the reply.
+// `apiErrorFromBody` on failure and an Effect Schema parse of the reply.
 export async function uploadBackground(blob: Blob): Promise<BackgroundImage> {
   let response: Response;
   if (isMockApiEnabled()) {
-    response = await mockRequest('/backgrounds', {
+    response = await (
+      await loadMockRequest()
+    )('/backgrounds', {
       method: 'POST',
       headers: { 'Content-Type': blob.type },
       body: blob as unknown as string,
@@ -2668,9 +1770,9 @@ export async function uploadBackground(blob: Blob): Promise<BackgroundImage> {
   }
   const raw: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw toApiError(response.status, raw);
+    throw apiErrorFromBody(response.status, raw);
   }
-  const parsed = decodeResponse(backgroundImageSchema, raw);
+  const parsed = decodeResponse(BackgroundImageSchema, raw);
   if (!parsed.ok) {
     throw new ApiError(
       response.status,
@@ -2682,9 +1784,9 @@ export async function uploadBackground(blob: Blob): Promise<BackgroundImage> {
 }
 
 export function listBackgrounds(): Promise<BackgroundListItem[]> {
-  return request('/backgrounds', backgroundListSchema).then((body) => body.backgrounds);
+  return callApi((client) => client.backgrounds.list()).then((body) => [...body.backgrounds]);
 }
 
 export async function deleteBackground(id: string): Promise<void> {
-  await request(`/backgrounds/${encodeURIComponent(id)}`, Schema.Null, { method: 'DELETE' });
+  await callApi((client) => client.backgrounds.remove({ params: { id } }));
 }

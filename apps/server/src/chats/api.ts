@@ -2,9 +2,9 @@
 // path and answer as the deleted router (`routes.ts`), mounted by the Effect
 // edge (`apps/server/src/effect/edge.ts`). Its services run on effect/sql.
 
-import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpRouter } from 'effect/http';
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { Effect, Layer } from 'effect';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { ChatsGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import { listAis } from '../ais/service';
 import type { Auth } from '../auth/auth';
@@ -14,15 +14,7 @@ import { listContacts } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
 import { listGroupsForUser, type GroupBackground, type GroupRole } from '../groups/service';
 import { toTopicViews, visibleTopics, type TopicView } from '../topics/access';
-import {
-  CurrentUser,
-  Session,
-  requestIdOf,
-  sessionLayer,
-  withErrorEnvelope,
-  type EffectApiMount,
-  type EffectApiRoute,
-} from '../effect/http-core';
+import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 
 export type ChatListEntry =
   | {
@@ -70,34 +62,18 @@ export interface ChatsApiDependencies {
 }
 
 // The chat list is a discriminated union already typed by `ChatListEntry`; the
-// schema passes each entry through unchanged, so the wire shape stays exactly
-// what the old route returned (a named Struct would drop keys it does not
-// list).
-const ChatsResult = Schema.Struct({
-  chats: Schema.Array(Schema.Unknown),
-});
-
-const ChatsGroup = HttpApiGroup.make('chats')
-  .add(HttpApiEndpoint.get('list', '/chats', { success: ChatsResult }))
-  .middleware(Session)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
-
+// contract's schema (`@zilar/api-contract`, T-0894) passes each entry through
+// unchanged, so the wire shape stays exactly what the old route returned.
 const ChatsApi = HttpApi.make('chats').add(ChatsGroup);
-
-export const CHATS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/chats' },
-];
 
 export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
   const logger = deps.logger;
 
   const groupLayer = HttpApiBuilder.group(ChatsApi, 'chats', (handlers) =>
-    handlers.handle('list', (request) => {
-      const requestId = requestIdOf(request.request);
-      return withErrorEnvelope(
+    handlers.handle(
+      'list',
+      handler(logger, (_request, user) =>
         Effect.gen(function* () {
-          const user = yield* CurrentUser;
           const [contacts, groups, ais] = yield* Effect.promise(() =>
             Promise.all([
               listContacts(deps.db, user.id, deps.config.xmpp.domain),
@@ -191,10 +167,8 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
 
           return { chats };
         }),
-        logger,
-        requestId,
-      );
-    }),
+      ),
+    ),
   );
 
   const apiLayer = HttpApiBuilder.layer(ChatsApi).pipe(
@@ -202,12 +176,5 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
     Layer.provide(sessionLayer(deps.auth, logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: CHATS_API_ROUTES };
+  return mountApi(ChatsApi, apiLayer);
 }

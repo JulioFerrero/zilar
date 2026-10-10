@@ -1,13 +1,8 @@
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { AttachmentVideo } from './attachment-video';
-
-const here = dirname(fileURLToPath(import.meta.url));
 
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
@@ -20,14 +15,6 @@ vi.mock('expo-video', () => ({
   VideoView: 'VideoView',
 }));
 
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 vi.mock('@/lib/session-token', () => ({
   getSessionToken: async () => 'tok',
 }));
@@ -37,16 +24,8 @@ vi.mock('lucide-react-native', () => ({
   Video: 'Video',
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
-}));
-
 vi.mock('@/lib/colors', () => ({
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
+  ICON: '#d4d4d4',
 }));
 
 vi.mock('./attachment-message', () => ({
@@ -89,6 +68,7 @@ describe('attachment video (T-0150)', () => {
     expect(html).not.toContain('VideoView');
     expect(html).toContain('Not loaded: untrusted address');
     expect(html).toContain('<Video');
+    expect(html).not.toMatch(/\p{Extended_Pictographic}/u);
   });
 
   it('shows Retry on a failed video upload', () => {
@@ -146,10 +126,5 @@ describe('attachment video (T-0150)', () => {
     );
     expect(html).toContain('VideoView');
     expect(html).not.toContain('GIF');
-  });
-
-  it('draws the untrusted row with a lucide icon and no emoji', () => {
-    const source = readFileSync(join(here, 'attachment-video.tsx'), 'utf8');
-    expect(source).not.toMatch(/\p{Extended_Pictographic}/u);
   });
 });

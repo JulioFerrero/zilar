@@ -1,9 +1,5 @@
 import { ApiError } from '@/lib/api';
 
-export interface MachineErrorInfo {
-  message: string;
-}
-
 // Maps the machine error codes in the T-0068 contract to plain language.
 // Most codes keep the server's own message; the few known ones get friendlier.
 export function machineErrorMessage(error: unknown, fallback: string): string {

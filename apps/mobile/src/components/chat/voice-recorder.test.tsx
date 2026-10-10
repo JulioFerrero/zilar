@@ -27,14 +27,6 @@ vi.mock('lucide-react-native', () => ({
   Trash2: 'Trash2',
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 function fakeRecorder(
   overrides: Partial<{
     startResult: { status: 'started' } | { status: 'error'; message: string };

@@ -31,9 +31,9 @@ const BASE: ChatFolder = {
   excludeRead: false,
 };
 
-function openCreate(): void {
+async function openCreate(): Promise<void> {
   renderApp('/settings/folders');
-  fireEvent.click(screen.getByRole('button', { name: 'Create new folder' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Create new folder' }));
 }
 
 describe('FolderEditorDialog', () => {
@@ -44,7 +44,7 @@ describe('FolderEditorDialog', () => {
   it('create sends the right body and updates the store', async () => {
     const { store } = renderApp('/settings/folders');
     createMock.mockResolvedValue({ ...BASE, id: 'f-new', name: 'Work' });
-    fireEvent.click(screen.getByRole('button', { name: 'Create new folder' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Create new folder' }));
 
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Work' } });
     fireEvent.click(screen.getByRole('radio', { name: 'briefcase' }));
@@ -65,8 +65,8 @@ describe('FolderEditorDialog', () => {
     expect(store.getState().folders.some((entry) => entry.id === 'f-new')).toBe(true);
   });
 
-  it('Save is disabled with an empty name or nothing included', () => {
-    openCreate();
+  it('Save is disabled with an empty name or nothing included', async () => {
+    await openCreate();
     const save = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
 
@@ -80,8 +80,8 @@ describe('FolderEditorDialog', () => {
     expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('shows the name counter capped at 24 and picks an icon', () => {
-    openCreate();
+  it('shows the name counter capped at 24 and picks an icon', async () => {
+    await openCreate();
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: `${'a'.repeat(FOLDER_NAME_MAX)}extra` },
     });
@@ -93,7 +93,7 @@ describe('FolderEditorDialog', () => {
     expect(screen.getByRole('radio', { name: 'star' }).getAttribute('aria-checked')).toBe('true');
   });
 
-  it('caps the include and exclude pickers at 100', () => {
+  it('caps the include and exclude pickers at 100', async () => {
     const many = Array.from({ length: 101 }, (_, index) => ({
       id: `c-${index}`,
       title: `Chat ${index}`,
@@ -111,7 +111,7 @@ describe('FolderEditorDialog', () => {
           { ...BASE, includeChats: Array.from({ length: 100 }, (_, index) => `c-${index}`) },
         ]);
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Personal' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Personal' }));
 
     const showSection = within(screen.getByRole('region', { name: 'Show these chats' }));
     const hideSection = within(screen.getByRole('region', { name: 'Hide' }));
@@ -128,7 +128,7 @@ describe('FolderEditorDialog', () => {
     expect(hideSection.getByText('0 of 100 selected')).toBeTruthy();
   });
 
-  it('filters each picker with its own search field', () => {
+  it('filters each picker with its own search field', async () => {
     const chats = [
       {
         id: 'c-ana',
@@ -150,7 +150,7 @@ describe('FolderEditorDialog', () => {
       },
     ];
     renderApp('/settings/folders', { chats });
-    fireEvent.click(screen.getByRole('button', { name: 'Create new folder' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Create new folder' }));
 
     const showSection = within(screen.getByRole('region', { name: 'Show these chats' }));
     fireEvent.change(showSection.getByLabelText('Search add chats'), {
@@ -163,7 +163,7 @@ describe('FolderEditorDialog', () => {
     expect(hideSection.getByRole('checkbox', { name: 'Test group' })).toBeTruthy();
   });
 
-  it('shows picked chats that are no longer pickable as removable rows', () => {
+  it('shows picked chats that are no longer pickable as removable rows', async () => {
     const chats = [
       {
         id: 'c-archived',
@@ -180,7 +180,7 @@ describe('FolderEditorDialog', () => {
     act(() => {
       store.getState().setFolders([{ ...BASE, includeChats: ['c-archived'] }]);
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Personal' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Personal' }));
 
     expect(screen.getByText('(archived)')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Remove Old chat' }));
@@ -193,7 +193,7 @@ describe('FolderEditorDialog', () => {
       store.getState().setFolders([BASE]);
     });
     deleteMock.mockResolvedValue(undefined);
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Personal' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Personal' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete folder' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
@@ -203,12 +203,12 @@ describe('FolderEditorDialog', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('clicking the delete confirm backdrop keeps the editor open', () => {
+  it('clicking the delete confirm backdrop keeps the editor open', async () => {
     const { store } = renderApp('/settings/folders');
     act(() => {
       store.getState().setFolders([BASE]);
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Personal' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Personal' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete folder' }));
 
     const confirm = screen.getByRole('dialog', { name: 'Delete folder' });
@@ -218,12 +218,12 @@ describe('FolderEditorDialog', () => {
     expect(deleteMock).not.toHaveBeenCalled();
   });
 
-  it('Escape closes only the delete confirm', () => {
+  it('Escape closes only the delete confirm', async () => {
     const { store } = renderApp('/settings/folders');
     act(() => {
       store.getState().setFolders([BASE]);
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Personal' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Personal' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete folder' }));
 
     expect(screen.getByRole('dialog', { name: 'Delete folder' })).toBeTruthy();
@@ -239,7 +239,7 @@ describe('FolderEditorDialog', () => {
       store.getState().setFolders([BASE]);
     });
     patchMock.mockResolvedValue({ ...BASE, name: 'Renamed' });
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Personal' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Personal' }));
 
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Renamed' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -254,7 +254,7 @@ describe('FolderEditorDialog', () => {
     createMock.mockRejectedValueOnce(
       new ApiError(409, 'folder_limit', 'You can have up to 20 folders.'),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Create new folder' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Create new folder' }));
 
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Work' } });
     fireEvent.click(screen.getByRole('switch', { name: 'Personal chats' }));

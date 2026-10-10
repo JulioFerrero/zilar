@@ -6,10 +6,7 @@ import { mockRequest, resetMockApi, setMockDelay } from '@/mock/api';
 import { mockGroupDetails } from '@/mock/groups';
 import { renderApp } from '@/test/renderApp';
 import { JoinPage } from './JoinPage';
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status });
-}
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 beforeEach(() => {
   setMockDelay(0);

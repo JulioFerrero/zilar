@@ -1,13 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createToolsApi } from './tools-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/wait';
 
 describe('createToolsApi effect pipeline errors', () => {
   it('reports a fetch throw as network_error', async () => {

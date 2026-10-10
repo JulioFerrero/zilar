@@ -1,4 +1,6 @@
 export * from './common';
+export * from './jid';
+export * from './handles';
 export * from './task';
 export * from './approval';
 export * from './progress';

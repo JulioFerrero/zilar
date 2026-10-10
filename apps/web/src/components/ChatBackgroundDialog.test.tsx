@@ -7,6 +7,7 @@ import { deleteBackground, listBackgrounds, uploadBackground } from '@/lib/api';
 import { prepareBackgroundImage } from '@/lib/background-image';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { createChatStore, type ChatStoreState } from '@/store/store';
+import { flushTasks } from '@/test/wait';
 import { ChatBackgroundDialog } from './ChatBackgroundDialog';
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -395,7 +396,7 @@ describe('ChatBackgroundDialog images (T-0464)', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     // Let the unmounted row's state settle (a macrotask) before the server answers.
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await flushTasks();
     });
 
     await act(async () => {

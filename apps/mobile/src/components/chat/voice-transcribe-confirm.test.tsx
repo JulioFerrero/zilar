@@ -16,10 +16,6 @@ vi.mock('../ui/text', () => ({
   Text: 'Text',
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 vi.mock('@/components/ui/button', () => ({
   Button: 'Button',
 }));

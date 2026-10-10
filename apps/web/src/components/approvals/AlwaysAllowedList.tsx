@@ -12,7 +12,7 @@ import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { Button, FieldError } from '@/components/ais/AiPageShell';
 import { StateMessage } from '@/components/ui/state-message';
 
@@ -78,7 +78,7 @@ export function AlwaysAllowedList({
   /** T-0111: the topic panel reads the list without revoke actions. */
   readOnly?: boolean;
 }) {
-  const { groupInfos } = useChatStore();
+  const groupInfos = useChatSelector((s) => s.groupInfos);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [removedIds, setRemovedIds] = useState<ReadonlySet<string>>(() => new Set());

@@ -1,17 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createGroupsApi, GroupsApiError } from './groups-api';
+import { jsonResponse } from '@/test/wait';
 
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
+// The group detail the server answers (the derived client decodes the whole
+// detail, not just the id).
+function detail(id: string): Record<string, unknown> {
+  return { id, title: 'Team', createdBy: 'u-owner', members: [], ais: [] };
 }
 
 describe('createGroupsApi (T-0144)', () => {
   it('creates a channel with kind channel and the trimmed description', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ id: 'g-1' }));
+    const fetchImpl = vi.fn(async () => jsonResponse(detail('g-1'), 201));
     const api = createGroupsApi(async () => 'session-token', fetchImpl as unknown as typeof fetch);
 
     await expect(
@@ -28,7 +28,7 @@ describe('createGroupsApi (T-0144)', () => {
   });
 
   it('omits a blank description so the server clears it to null', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ id: 'g-1' }));
+    const fetchImpl = vi.fn(async () => jsonResponse(detail('g-1'), 201));
     const api = createGroupsApi(async () => 't', fetchImpl as unknown as typeof fetch);
 
     await api.createChannel({ title: 'Releases', description: '   ' });
@@ -43,7 +43,7 @@ describe('createGroupsApi (T-0144)', () => {
           members: [{ userId: 'u-a', name: 'Ana', role: 'admin', roles: [] }],
         });
       }
-      return jsonResponse({ id: 'g-1' });
+      return jsonResponse(detail('g-1'));
     });
     const api = createGroupsApi(async () => 't', fetchImpl as unknown as typeof fetch);
 
@@ -58,7 +58,7 @@ describe('createGroupsApi (T-0144)', () => {
   });
 
   it('removes a member through the member route', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ id: 'g-1' }));
+    const fetchImpl = vi.fn(async () => jsonResponse(detail('g-1')));
     const api = createGroupsApi(async () => 't', fetchImpl as unknown as typeof fetch);
 
     await api.removeGroupMember('g-1', 'u-luis');
@@ -91,7 +91,7 @@ describe('createGroupsApi (T-0144)', () => {
 
 describe('createGroupsApi createGroup (T-0214)', () => {
   it('posts the title with the member ids and no kind, then parses the id', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ id: 'g-9' }));
+    const fetchImpl = vi.fn(async () => jsonResponse(detail('g-9'), 201));
     const api = createGroupsApi(async () => 'session-token', fetchImpl as unknown as typeof fetch);
 
     await expect(
@@ -119,7 +119,7 @@ describe('createGroupsApi createGroup (T-0214)', () => {
 
 describe('createGroupsApi public creates (T-0228)', () => {
   it('sends visibility public with the handle for a public channel', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ id: 'g-2' }));
+    const fetchImpl = vi.fn(async () => jsonResponse(detail('g-2'), 201));
     const api = createGroupsApi(async () => 't', fetchImpl as unknown as typeof fetch);
 
     await api.createChannel({ title: 'Releases', visibility: 'public', handle: 'hiking_club' });
@@ -133,7 +133,7 @@ describe('createGroupsApi public creates (T-0228)', () => {
   });
 
   it('sends neither visibility nor handle for a private channel', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ id: 'g-2' }));
+    const fetchImpl = vi.fn(async () => jsonResponse(detail('g-2'), 201));
     const api = createGroupsApi(async () => 't', fetchImpl as unknown as typeof fetch);
 
     await api.createChannel({ title: 'Releases', description: 'Notes' });
@@ -146,7 +146,7 @@ describe('createGroupsApi public creates (T-0228)', () => {
   });
 
   it('sends visibility public with the handle for a public group', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ id: 'g-9' }));
+    const fetchImpl = vi.fn(async () => jsonResponse(detail('g-9'), 201));
     const api = createGroupsApi(async () => 't', fetchImpl as unknown as typeof fetch);
 
     await api.createGroup({
@@ -165,7 +165,7 @@ describe('createGroupsApi public creates (T-0228)', () => {
   });
 
   it('sends neither visibility nor handle for a private group', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ id: 'g-9' }));
+    const fetchImpl = vi.fn(async () => jsonResponse(detail('g-9'), 201));
     const api = createGroupsApi(async () => 't', fetchImpl as unknown as typeof fetch);
 
     await api.createGroup({ title: 'Weekend club', memberIds: ['u-ana'] });

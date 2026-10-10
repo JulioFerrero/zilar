@@ -871,3 +871,87 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0841](T-0841-people-search-stale-card.md) | mobile people-search card shows the refreshed relation | 2026-10-09 |
 | [T-0838](T-0838-server-entry.md) | S12 + S13: server entry on Effect | 2026-10-09 |
 | [T-0842](T-0842-web-test-races.md) | web tests wait for the visible state | 2026-10-09 |
+| [T-0843](T-0843-mobile-ai-chats.md) | Mobile marks AI DMs as AI (isAi from /api/chats, as web does) | 2026-10-10 |
+| [T-0844](T-0844-shared-topic-order-money.md) | One topic order and one money format in chat-core, used by web and mobile; mobile search… | 2026-10-10 |
+| [T-0845](T-0845-web-store-selectors.md) | Web store selector hook; MessageBubble, ChatListItem, MessageList and ChatList subscribe… | 2026-10-10 |
+| [T-0846](T-0846-mobile-message-list-perf.md) | Mobile message list: memoised bubbles, AI draft outside the list entries, then real… | 2026-10-10 |
+| [T-0847](T-0847-web-mock-out-of-bundle.md) | Web: the mock backend and mock store leave the production bundle (build-time gate plus… | 2026-10-10 |
+| [T-0848](T-0848-mobile-mock-out-of-bundle.md) | Mobile: the mock store, mock APIs and dev screens leave the release bundle | 2026-10-10 |
+| [T-0849](T-0849-membership-indexes.md) | One migration: indexes for lookups by user_id / ai_id on membership tables,… | 2026-10-10 |
+| [T-0850](T-0850-tools-list-n-plus-1.md) | Tools list endpoints: batch the per-tool queries (no N+1), select only the columns the… | 2026-10-10 |
+| [T-0851](T-0851-topic-views-n-plus-1.md) | Topic list: batch toTopicViews (4 queries per topic today) into a few grouped queries | 2026-10-10 |
+| [T-0852](T-0852-approvals-list-n-plus-1.md) | Approvals list: preload what canDecide needs instead of 3-6 queries per row | 2026-10-10 |
+| [T-0853](T-0853-stickers-prefs-n-plus-1.md) | Sticker discover page and chat-prefs room check: batch the per-row queries | 2026-10-10 |
+| [T-0854](T-0854-mobile-fonts.md) | Mobile bundles only the 5 font faces it loads (not 36) and drops the unused Material… | 2026-10-10 |
+| [T-0855](T-0855-drizzle-leftovers.md) | Remove the unused drizzle migration snapshots (apps/server/drizzle/meta, 3.7 MB) and… | 2026-10-10 |
+| [T-0856](T-0856-delete-agent-drivers-git-proxy.md) | Delete packages/agent-drivers and the unmounted git proxy (apps/server/src/git) — Julio… | 2026-10-10 |
+| [T-0857](T-0857-xmpp-events-streams.md) | xmpp-core: delete the unused events.* Streams (10 unbounded PubSubs per connection) —… | 2026-10-10 |
+| [T-0858](T-0858-session-cookie-cache.md) | better-auth session cookie cache, 5 minutes — Julio approved | 2026-10-10 |
+| [T-0859](T-0859-test-db-snapshot-once.md) | Server tests: build the migrated PGlite snapshot once per run (globalSetup), not once per… | 2026-10-10 |
+| [T-0860](T-0860-ci-shard-server-tests.md) | CI: run the server tests in 3 shards next to a job for the other packages | 2026-10-10 |
+| [T-0861](T-0861-server-bundle-image.md) | Server image: bundled build instead of tsx, PGlite out of production deps, Dockerfile… | 2026-10-10 |
+| [T-0862](T-0862-web-lazy-routes.md) | Web code splitting: lazy settings, setup, welcome and login routes | 2026-10-10 |
+| [T-0888](T-0888-composer-voice-test-deterministic.md) | Composer.voice test deterministic: fake setTimeout around the 400 ms hold, 20/20 under load | 2026-10-10 |
+| [T-0863](T-0863-server-http-helpers.md) | Server HTTP helpers (runSql, SchemaErrors, makeRateLimit, handler, mountApi), blocks/roles/routines converted, routes.expected per module | 2026-10-10 |
+| [T-0865](T-0865-dead-files-exports.md) | Dead files and 58 unreferenced declarations removed (-357 lines) | 2026-10-10 |
+| [T-0889](T-0889-scope-glob-zero-folders.md) | Gate scope check: **/ matches zero folders | 2026-10-10 |
+| [T-0864](T-0864-api-contract-pilot.md) | packages/api-contract pilot: pins group shared by server, web, mobile with derived clients | 2026-10-10 |
+| [T-0890](T-0890-prettier-gate-test-batch-check.md) | Main CI green: prettier on gate.test.ts; lead batch check runs prettier --check | 2026-10-10 |
+| [T-0866](T-0866-sweep-tools-chats.md) | Server sweep: tools, chats, contacts, drafts, xmpp onto the shared HTTP helpers (runSql, SchemaErrors, makeRat | 2026-10-10 |
+| [T-0867](T-0867-sweep-media-files.md) | Server sweep: stickers, avatars, backgrounds, files onto the shared HTTP helpers (runSql, SchemaErrors, makeRa | 2026-10-10 |
+| [T-0868](T-0868-sweep-approvals-routines.md) | Server sweep: approvals, audit, routines, directory onto the shared HTTP helpers (runSql, SchemaErrors, makeRa | 2026-10-10 |
+| [T-0869](T-0869-sweep-groups.md) | Server sweep: groups, invite-links, chat-folders, chat-prefs, roles onto the shared HTTP helpers (runSql, Sche | 2026-10-10 |
+| [T-0870](T-0870-sweep-ais.md) | Server sweep: ais, agents/memory, connections, voice, search onto the shared HTTP helpers (runSql, SchemaError | 2026-10-10 |
+| [T-0871](T-0871-sweep-push-topics.md) | Server sweep: push, topics, handles, media onto the shared HTTP helpers (runSql, SchemaErrors, makeRateLimit,  | 2026-10-10 |
+| [T-0872](T-0872-sweep-machines-setup.md) | Server sweep: machines, integrations, setup onto the shared HTTP helpers (runSql, SchemaErrors, makeRateLimit, | 2026-10-10 |
+| [T-0873](T-0873-sweep-voice-auth.md) | Server sweep: voice-transcription, gifs, auth, contact-requests onto the shared HTTP helpers (runSql, SchemaEr | 2026-10-10 |
+| [T-0874](T-0874-protocol-jid-handles.md) | JID helpers and handle rules in @zilar/protocol, used by web, mobile, chat-core and the non-api server files | 2026-10-10 |
+| [T-0875](T-0875-chat-core-format-media.md) | chat-core gets the duplicated format, attachment, media-trust, sticker-size and smooth-text helpers; web and m | 2026-10-10 |
+| [T-0876](T-0876-chat-core-prefs-routines-ai.md) | chat-core gets chat prefs, routines formatting and the AI form logic (limits, templates, models, errors, activ | 2026-10-10 |
+| [T-0877](T-0877-chat-core-store-ledger.md) | chat-core gets the store message-ledger helpers both stores copy: forwarding payloads, reaction/mention equali | 2026-10-10 |
+| [T-0878](T-0878-client-core-react-glue.md) | packages/client-core: the shared React + Effect glue (useAction, useQuery, atomStore, api-effect) used by web  | 2026-10-10 |
+| [T-0879](T-0879-web-selectors-rest.md) | Web: ChatView and the remaining useChatStore() call sites use useChatSelector; GroupHeaderRow memoised | 2026-10-10 |
+| [T-0880](T-0880-web-lazy-markdown.md) | Web: lazy-load the markdown stack (about 120 KB min) behind a plain-text fallback | 2026-10-10 |
+| [T-0881](T-0881-mobile-dark-only.md) | Mobile is dark-only: remove the dead light-theme branches (155 [scheme] lookups, 135 useColorScheme calls) | 2026-10-10 |
+| [T-0882](T-0882-mock-imports-rest.md) | The last static mock imports leave the production bundles (mobile chat screen, chats tab, composer; web Sticke | 2026-10-10 |
+| [T-0883](T-0883-web-panels-dedupe.md) | Web panels: one roleLabel/GroupAiRow/pick-row and one set of shared tagged errors instead of copies in GroupPa | 2026-10-10 |
+| [T-0884](T-0884-fake-xmpp-core-mobile-fakes.md) | One createFakeXmppCore() in xmpp-core/testing; mobile store tests use it and shared fakeApi/fakeAppState helpe | 2026-10-10 |
+| [T-0885](T-0885-web-store-fakes.md) | Web store tests share one fakeApi/fakeXmpp harness (159-line copies today) | 2026-10-10 |
+| [T-0886](T-0886-gateway-test-split.md) | Split apps/server/src/agents/gateway.test.ts (7,242 lines, 100 s) into feature files around one extracted harn | 2026-10-10 |
+| [T-0887](T-0887-slow-loop-tests.md) | Server: cut the loop-driven slow tests (600 real requests for a 429, 200 sticker uploads) without weakening th | 2026-10-10 |
+| [T-0891](T-0891-contract-prep-chains.md) | api-contract prep: one Session/CurrentUser, per-chain blocks, per-group smoke files | 2026-10-10 |
+| [T-0892](T-0892-contract-chain-a-groups.md) | api-contract chain A: move the groups, invite-links, roles, chat-folders, chat-prefs, topics groups into packa | 2026-10-10 |
+| [T-0894](T-0894-contract-chain-c-people.md) | api-contract chain C: move the contacts, contact-requests, directory, blocks, search, chats, drafts, handles g | 2026-10-10 |
+| [T-0893](T-0893-contract-chain-b-ais.md) | api-contract chain B: move the ais, agents/memory, connections, approvals, audit, tools, routines groups into  | 2026-10-10 |
+| [T-0895](T-0895-contract-chain-d-media.md) | api-contract chain D: move the stickers, gifs, machines, integrations, push, backgrounds, voice, media, auth g | 2026-10-10 |
+| [T-0896](T-0896-store-core-design.md) | Store core design: docs/STORE_CORE_PLAN.md, 10-task split, lead decisions Q1-Q4 | 2026-10-10 |
+| [T-0900](T-0900-deps-catalog.md) | Dependency alignment: effect ^4.0.2 everywhere and a pnpm catalog for the repeated packages (simplify plan 6.5 | 2026-10-10 |
+| [T-0899](T-0899-test-wait-helpers.md) | One flush/waitFor/jsonResponse per package, real sleeps replaced with fake timers, and a guard against one-tic | 2026-10-10 |
+| [T-0898](T-0898-source-pinning-tests.md) | Replace the brittle mobile source-pinning tests with render tests or a lint rule (simplify plan 5.6, F-F7) | 2026-10-10 |
+| [T-0897](T-0897-contract-tidy.md) | api-contract tidy: one middleware file and one schema-error layer, the chain lists merged, hand-decoded payloa | 2026-10-10 |
+| [T-0901](T-0901-mobile-sign-out-state.md) | Sign-out clears the user's chat state: no chats, contacts, messages or profile of the previous user survive in | 2026-10-10 |
+| [T-0902](T-0902-store-core-t1-rows.md) | Store core T1 (pilot): @zilar/client-core/store subpath and the pure row helpers moved from both stores | 2026-10-10 |
+| [T-0903](T-0903-store-core-t2-lifetime.md) | Store core T2: the lifetime (store and session Scopes, keyed fibers) in packages/client-core, web runtime on i | 2026-10-10 |
+| [T-0904](T-0904-store-core-t3-ledger.md) | Store core T3: the message ledger (ids, aliases, edits, reactions, mentions) in packages/client-core, the web  | 2026-10-10 |
+| [T-0905](T-0905-store-core-t4-mobile-lifetime.md) | Store core T4: the mobile store on the core lifetime (makeLife and makeRunners as adapters, keyed fibers for t | 2026-10-10 |
+| [T-0906](T-0906-store-core-t5-mobile-ledger.md) | Store core T5: the mobile store on the core ledger, tests first, with the group echo race fix (linkAckToServer | 2026-10-10 |
+| [T-0910](T-0910-contract-lenient-rows.md) | Lenient row schemas in the api-contract, so the mobile gifs, media and stickers clients derive from it and sti | 2026-10-10 |
+| [T-0908](T-0908-one-run-sql.md) | One runSql: delete the 21 module-local copies of runSql and import the shared one from apps/server/src/effect/ | 2026-10-10 |
+| [T-0909](T-0909-pglite-dev-only.md) | PGlite out of the production install: lazy or type-only imports, so @electric-sql/pglite and @effect/sql-pglit | 2026-10-10 |
+| [T-0907](T-0907-store-core-t6-incoming-history.md) | Store core T6: incoming events, message actions, reads and history in packages/client-core, the web store on t | 2026-10-10 |
+| [T-0911](T-0911-test-sleeps-followup.md) | Test follow-up from T-0899: the remaining real sleeps and 10 ms settles in web and mobile tests use fake timer | 2026-10-10 |
+| [T-0912](T-0912-store-core-t6b-history.md) | Store core T6b: web history (first page, older pages, open at message) in packages/client-core, tests first, w | 2026-10-10 |
+| [T-0914](T-0914-store-core-t7a-mobile-incoming.md) | Store core T7a: the mobile store on the core incoming events, message actions and reads (history stays for T7b | 2026-10-10 |
+| [T-0916](T-0916-core-echo-refresh.md) | Core echo re-applies pending edits and reactions: an edit made between the ack and the echo keeps its new text | 2026-10-10 |
+| [T-0915](T-0915-store-core-t8-lifecycle.md) | Store core T8: polling, drafts and lifecycle (boot, connect with retry, resume, stop/reset) in packages/client | 2026-10-10 |
+| [T-0913](T-0913-load-flakes.md) | Load flakes: four timing tests that fail combined checks under high load become deterministic (fake timers or  | 2026-10-10 |
+| [T-0917](T-0917-store-core-t7b-mobile-history.md) | Store core T7b: the mobile store on the core history (first page, older pages, open at message), with the load | 2026-10-10 |
+| [T-0919](T-0919-store-core-pins-prefs-folders.md) | Store core phase 2: pins, chat prefs and folders in packages/client-core, both stores on them (one set of pin  | 2026-10-10 |
+| [T-0920](T-0920-store-core-group-detail.md) | Store core phase 2a: one GroupDetail type, a per-group detail cache and applyTopicRow in packages/client-core, | 2026-10-10 |
+| [T-0921](T-0921-store-core-group-actions.md) | Store core phase 2b: the group, topic and channel actions (create, patch, members, AIs, roles, leave, settings | 2026-10-10 |
+| [T-0923](T-0923-store-core-group-actions-2.md) | Store core phase 2c: the channel and group actions (create, leave, roles, settings, join, AIs, invite, archive | 2026-10-10 |
+| [T-0918](T-0918-store-core-t9-mobile-lifecycle.md) | Store core T9: the mobile store on the core polling and lifecycle (boot, connect retry with backoff Q3, resume | 2026-10-10 |
+| [T-0924](T-0924-one-chat-entry.md) | Store core phase 2d: one ChatEntry schema in packages/api-contract and one summariesFor in packages/client-cor | 2026-10-10 |
+| [T-0926](T-0926-mobile-native-mocks.md) | Mobile tests: the three most-copied native mocks (reanimated, safe-area insets, ui/text) move to one vitest se | 2026-10-10 |
+| [T-0922](T-0922-store-core-t10-send.md) | Store core T10: the send pipeline (text, sticker, attachment, voice, forward; failure, deadline, retry) in pac | 2026-10-10 |
+| [T-0925](T-0925-server-test-seeds.md) | Server tests: one shared seed module (seedUser, seedAi, seedGroup with overrides) in apps/server/src/test-supp | 2026-10-10 |

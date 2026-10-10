@@ -3,14 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { renderApp } from '@/test/renderApp';
 import { ConnectionsPage } from './ConnectionsPage';
-
-function jsonResponse(status: number, body: unknown): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response;
-}
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const openaiConnection = {
   id: 'c-1',
@@ -155,7 +148,11 @@ describe('ConnectionsPage', () => {
   });
 
   it('navigates to the Connections page from the main menu', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(200, [])));
+    // Several requests are made; a `Response` body can be read only once.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse(200, [])),
+    );
 
     renderApp('/');
 

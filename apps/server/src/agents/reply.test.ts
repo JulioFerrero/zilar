@@ -18,6 +18,7 @@ import {
   type ValidToolCall,
 } from './reply';
 import { formatPersonaUpdatedLine, type ChatToolDefinition } from './tools';
+import { jsonResponse } from '../test-support/wait';
 
 const VIRTUAL_KEY = 'sk-virtual-turn-test-key-aaaa';
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
@@ -29,13 +30,6 @@ const MESSAGES: ChatCompletionMessage[] = [
   { role: 'system', content: 'Be helpful.' },
   { role: 'user', content: 'hello' },
 ];
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
 
 function completionResponse(content: string): Response {
   return jsonResponse({ choices: [{ message: { content } }] });

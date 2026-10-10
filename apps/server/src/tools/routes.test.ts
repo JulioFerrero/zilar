@@ -13,6 +13,7 @@ import {
   type TestApp,
   type TestContext,
 } from '../test-support';
+import { seedAi, seedGroup } from '../test-support/seed';
 import { createToolsApi, TOOL_RUN_RATE_LIMIT_MAX } from './api';
 import { saveToolVersion } from './service';
 import type { ToolRunResult, ToolRunner } from './types';
@@ -22,47 +23,6 @@ const NOW = new Date('2026-01-01T00:00:00Z');
 interface AuditRow {
   action: string;
   detail: unknown;
-}
-
-async function seedAi(context: TestContext, ownerId: string): Promise<string> {
-  const connectionId = randomUUID();
-  const aiId = randomUUID();
-  const localpart = `ai-${aiId}`;
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key) VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${'sealed-placeholder'})`;
-      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status) VALUES (${aiId}, ${ownerId}, ${'Helper AI'}, ${'dev'}, ${'A persona'}, ${connectionId}, ${'gpt-4o-mini'}, ${localpart}, ${`${localpart}@zilar.localhost`}, ${'active'})`;
-      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${'1.00'}, ${'20.00'})`;
-    }),
-  );
-  return aiId;
-}
-
-async function seedGroup(
-  context: TestContext,
-  ownerId: string,
-  members: Array<{ userId: string; role: 'owner' | 'admin' | 'member' }>,
-  aiIds: string[],
-): Promise<{ groupId: string; generalTopicId: string }> {
-  const groupId = randomUUID();
-  const groupRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
-  const generalTopicId = randomUUID();
-  const generalRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${groupRoom}, ${'Trip'}, ${ownerId})`;
-      for (const entry of members) {
-        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${entry.userId}, ${entry.role})`;
-      }
-      for (const aiId of aiIds) {
-        yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${ownerId})`;
-      }
-      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${generalTopicId}, ${groupId}, ${'General'}, ${'G'}, ${generalRoom}, ${'public'}, ${'chat'}, ${'open'}, ${true}, ${ownerId})`;
-    }),
-  );
-  return { groupId, generalTopicId };
 }
 
 function fakeRunner(output = 'ok output'): ToolRunner {
@@ -148,7 +108,7 @@ describe('tools routes (T-0103)', () => {
 
   async function ownerWithAi(email: string): Promise<{ cookie: string; id: string; aiId: string }> {
     const owner = await bootstrapUser(context, authApp, email);
-    const aiId = await seedAi(context, owner.id);
+    const { aiId } = await seedAi(context, owner.id);
     return { cookie: owner.cookie, id: owner.id, aiId };
   }
 

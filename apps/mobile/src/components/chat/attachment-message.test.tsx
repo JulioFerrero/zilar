@@ -1,7 +1,4 @@
 import type { Attachment } from '@zilar/protocol';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -12,8 +9,6 @@ import {
   AttachmentViewer,
   isLoadableMediaUrl,
 } from './attachment-message';
-
-const here = dirname(fileURLToPath(import.meta.url));
 
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
@@ -34,14 +29,6 @@ vi.mock('react-native-gesture-handler', () => ({
   PinchGestureHandler: 'PinchGestureHandler',
 }));
 
-vi.mock('react-native-safe-area-context', () => ({
-  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-}));
-
 vi.mock('@/lib/depth', () => ({
   raisedPill: { borderWidth: 1 },
 }));
@@ -56,16 +43,8 @@ vi.mock('lucide-react-native', () => ({
   RotateCcw: 'RotateCcw',
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
-}));
-
 vi.mock('@/lib/colors', () => ({
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
+  ICON: '#d4d4d4',
 }));
 
 const TRUSTED = new Set(['upload.zilar.test', 'zilar.test']);
@@ -157,6 +136,7 @@ describe('attachment rendering (T-0150)', () => {
     expect(html).toContain('2.3 MB');
     expect(html).toContain('application/pdf');
     expect(html).toContain('<FileText');
+    expect(html).not.toMatch(/\p{Extended_Pictographic}/u);
   });
 
   it('renders the file row with retry and open icon controls', () => {
@@ -172,11 +152,6 @@ describe('attachment rendering (T-0150)', () => {
       createElement(AttachmentFileRow, { attachment: file(), onOpen: () => {} }),
     );
     expect(openable).toContain('<ArrowUpRight');
-  });
-
-  it('draws the file row with a lucide icon and no emoji', () => {
-    const source = readFileSync(join(here, 'attachment-message.tsx'), 'utf8');
-    expect(source).not.toMatch(/\p{Extended_Pictographic}/u);
   });
 
   it('renders the untrusted file row without size or MIME', () => {

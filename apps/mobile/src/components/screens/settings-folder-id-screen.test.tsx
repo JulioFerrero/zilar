@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { ChatFolder } from '@zilar/chat-core';
 import { ChatFoldersApiError } from '@/lib/chat-folders-api';
+import { flushTasks as flush } from '@/test/wait';
 
 // Settings → Chat folders → editor. The folder comes from the chat store (the
 // selector is stubbed) and the route id from `useLocalSearchParams`. The form's
@@ -20,10 +21,6 @@ let params: { id?: string } = { id: 'new' };
 vi.mock('expo-router', () => ({
   useLocalSearchParams: () => params,
   useRouter: () => routerMock,
-}));
-
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
 }));
 
 vi.mock('react-native', () => ({
@@ -73,11 +70,6 @@ vi.mock('@/components/ui/switch', () => ({
   Switch: ({ label }: { label: string }) => createElement('Switch', null, label),
 }));
 
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
-}));
-
 vi.mock('@/lib/chat-folders-api', () => ({
   ChatFoldersApiError: class extends Error {
     readonly status: number;
@@ -90,13 +82,9 @@ vi.mock('@/lib/chat-folders-api', () => ({
   },
 }));
 
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
-}));
-
 vi.mock('@/lib/colors', () => ({
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
+  ICON: '#d4d4d4',
+  MUTED_FOREGROUND: '#a1a1a1',
 }));
 
 vi.mock('@/lib/depth', () => ({
@@ -193,8 +181,6 @@ async function renderScreen(input: {
 }
 
 // Lets the press handler's promise chain and any Effect run finish.
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
 describe('FolderEditorScreen', () => {
   it('shows loading while an existing folder is not synced yet', async () => {
     const html = await renderScreen({ id: 'f1', folders: [], foldersLoaded: false });

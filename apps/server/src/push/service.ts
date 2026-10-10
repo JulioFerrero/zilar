@@ -1,9 +1,9 @@
 import { Data, Duration, Effect, type Effect as EffectType } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import type { GroupRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { allowedArchives, type ArchivePool, type SearchOwner } from '../search/service';
 import { stanzaFrom } from '../search/routes';
 import { canSeeTopic, type TopicRow } from '../topics/access';
@@ -80,23 +80,12 @@ function dropped(device: PushDeviceRow, reason: DroppedReason): PushOutcome {
   return { kind: 'dropped', userId: device.userId, deviceId: device.id, reason };
 }
 
-// Lifts a drizzle promise the same way `await` did: a DB failure rejects the
+// Lifts a promise-returning DB call the way `await` did: a DB failure rejects the
 // boundary promise with the original error, identical and unwrapped. Only the
 // calls whose old contract was "any throw becomes archive-unavailable" use a
 // typed catch instead (see `newestMessageForUserEffect`).
 const awaitDb = <A>(promise: () => Promise<A>): EffectType.Effect<A, never, never> =>
   Effect.promise(promise);
-
-// Runs one `effect/sql` query on the runtime registered for this database
-// (see `../effect/sql`). The exported functions stay `async`: a DB failure
-// rejects the returned promise with the `SqlError`, which the caller maps the
-// same way the drizzle rejects were mapped before.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
 
 // How many of the newest archived rows to scan for an acceptable message,
 // and how often to re-read before giving up (the publish IQ can win the race

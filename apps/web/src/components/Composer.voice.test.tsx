@@ -8,6 +8,23 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// Captured before any fake clock is installed, so the flush tick stays real.
+const HOLD_MS = 400;
+const realSetTimeout = globalThis.setTimeout;
+
+/** Fakes only the timer the 400 ms hold is built on; call before pressing the mic. */
+function controlHoldClock(): void {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: false });
+}
+
+/** Crosses the 400 ms hold threshold without waiting, then returns to real timers. */
+async function crossHold(): Promise<void> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(HOLD_MS + 100);
+  });
+  vi.useRealTimers();
+}
+
 function stubStart() {
   let resolveStart!: (recorder: VoiceRecorder) => void;
   let rejectStart!: (error: unknown) => void;
@@ -32,13 +49,14 @@ function stubStart() {
   // covers the extra microtask hops of the async/await chain.
   const flushStart = async (): Promise<void> => {
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => realSetTimeout(resolve, 0));
     });
   };
   return { startSpy, resolveStart, rejectStart, makeRecorder, flushStart };
 }
 
 function pressMic(clientX = 100): void {
+  controlHoldClock();
   fireEvent.pointerDown(screen.getByLabelText('Record voice message'), {
     pointerId: 1,
     clientX,
@@ -50,9 +68,11 @@ function releaseOnDocument(): void {
   // recording row has replaced; without capture it bubbles to the document.
   // Either way the component finishes the press from the document level.
   fireEvent.pointerUp(document.body);
+  vi.useRealTimers();
 }
 
 function holdMic(clientX = 100): void {
+  controlHoldClock();
   fireEvent.pointerDown(screen.getByLabelText('Record voice message'), {
     pointerId: 1,
     clientX,
@@ -76,7 +96,7 @@ describe('Composer voice recording (T-0166)', () => {
     resolveStart(recorder);
     await flushStart();
     // The recording row shows the elapsed time and the cancel gesture.
-    expect(await screen.findByText('Slide to cancel')).toBeTruthy();
+    expect(screen.getByText('Slide to cancel')).toBeTruthy();
 
     // A short release locks into click mode with Send/Cancel to finish.
     releaseMic();
@@ -121,6 +141,7 @@ describe('Composer voice recording (T-0166)', () => {
     );
     await flushStart();
 
+    vi.useRealTimers();
     expect(await screen.findByText(/Microphone access is blocked/)).toBeTruthy();
   });
 
@@ -132,11 +153,8 @@ describe('Composer voice recording (T-0166)', () => {
     const recorder = makeRecorder();
     resolveStart(recorder);
     await flushStart();
-    expect(await screen.findByText('Slide to cancel')).toBeTruthy();
-    // A real 500 ms wait crosses the 400 ms hold threshold.
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    });
+    expect(screen.getByText('Slide to cancel')).toBeTruthy();
+    await crossHold();
     const before = store.getState().messages('c-ana').length;
     await act(async () => {
       releaseMic();
@@ -191,7 +209,9 @@ describe('Composer voice recording (T-0166)', () => {
     pressMic();
     resolveStart(recorder);
     await flushStart();
-    expect(await screen.findByText('Slide to cancel')).toBeTruthy();
+    expect(screen.getByText('Slide to cancel')).toBeTruthy();
+
+    vi.useRealTimers();
 
     // Leaving the chat discards the recording and stops the mic tracks:
     // navigate to another chat like a user would.
@@ -217,11 +237,9 @@ describe('Composer voice recording (T-0166)', () => {
     holdMic();
     resolveStart(recorder);
     await flushStart();
-    expect(await screen.findByText('Slide to cancel')).toBeTruthy();
+    expect(screen.getByText('Slide to cancel')).toBeTruthy();
     // A long hold released after start sends (or, here, reports too short).
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    });
+    await crossHold();
     await act(async () => {
       releaseMic();
     });
@@ -241,10 +259,8 @@ describe('Composer voice recording (T-0166)', () => {
     holdMic();
     resolveStart(recorder);
     await flushStart();
-    expect(await screen.findByText('Slide to cancel')).toBeTruthy();
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    });
+    expect(screen.getByText('Slide to cancel')).toBeTruthy();
+    await crossHold();
     await act(async () => {
       releaseMic();
     });
@@ -268,10 +284,8 @@ describe('Composer voice recording (T-0166)', () => {
     const recorder = makeRecorder();
     resolveStart(recorder);
     await flushStart();
-    expect(await screen.findByText('Slide to cancel')).toBeTruthy();
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    });
+    expect(screen.getByText('Slide to cancel')).toBeTruthy();
+    await crossHold();
     const before = store.getState().messages('c-ana').length;
     await act(async () => {
       releaseMic();

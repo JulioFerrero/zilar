@@ -1,23 +1,39 @@
 // Pins of a chat and the chat media panel. Loading pins is best effort: the
 // chat works without them. Pinning and unpinning paint first and roll back
-// when the server refuses.
-import { Cause, Effect, Exit } from 'effect';
-import type { MediaPage, MediaTab, Pin, PinMessageInput } from '@/lib/api';
+// when the server refuses; the shared logic (and the two error texts) lives in
+// `@zilar/client-core/store`, this file binds it to the web state.
+import { Effect } from 'effect';
+import {
+  loadPins as loadPinsCore,
+  pinMessage as pinMessageCore,
+  unpinMessage as unpinMessageCore,
+  type PinsStore,
+} from '@zilar/client-core/store';
+import type { MediaPage, MediaTab } from '@/lib/api';
 import { isTrustedMediaUrl, trustedMediaHosts } from '@/lib/attachments';
 import type { StoreCtx } from './ctx';
 import { Ports } from './ports';
 import { fromPromise } from './util';
 
+/** Binds the core pins logic to the web state (`pinsByChat`, `pinsReady`, `pinsError`). */
+function pinsStore(ctx: StoreCtx): PinsStore {
+  return {
+    pins: (chatId) => ctx.get().pinsByChat[chatId] ?? [],
+    publish: (chatId, pins) =>
+      ctx.set((state) => ({ pinsByChat: { ...state.pinsByChat, [chatId]: [...pins] } })),
+    markReady: (chatId) =>
+      ctx.set((state) => ({ pinsReady: { ...state.pinsReady, [chatId]: true } })),
+    setError: (error) => ctx.set({ pinsError: error }),
+    currentUserId: () => ctx.get().currentUserId,
+  };
+}
+
 /** Loads the pins of `chatId` into the store; a failure is ignored. */
 export const refreshPinsFor = (ctx: StoreCtx, chatId: string): Effect.Effect<void, never, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
-    const pins = yield* fromPromise(() => api.listPins(chatId));
-    ctx.set((state) => ({
-      pinsByChat: { ...state.pinsByChat, [chatId]: pins },
-      pinsReady: { ...state.pinsReady, [chatId]: true },
-    }));
-  }).pipe(Effect.catchCause(() => Effect.void));
+    yield* loadPinsCore(ctx, api, pinsStore(ctx), chatId, false);
+  });
 
 // An image or GIF item on an untrusted host is downgraded to a file-style item
 // by dropping its `url`, so the panel never auto-loads it (T-0434). With no
@@ -71,59 +87,7 @@ export const pinMessage = (
 ): Effect.Effect<void, unknown, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
-    const { k } = ctx;
-    const message = k.listFor(ctx.get(), chatId).find((item) => k.sameMessage(item.id, messageId));
-    if (message === undefined) {
-      return yield* Effect.fail(new Error('Message not found'));
-    }
-    const kind: Pin['kind'] =
-      message.voice !== undefined
-        ? 'voice'
-        : message.image !== undefined ||
-            (message.attachment !== undefined && message.attachment.kind === 'image')
-          ? 'image'
-          : message.attachment !== undefined
-            ? 'file'
-            : message.card !== undefined
-              ? 'card'
-              : 'text';
-    const snapshot: PinMessageInput = {
-      chat: chatId,
-      messageId: message.id,
-      senderName: message.senderName.slice(0, 80) || 'Someone',
-      ...(kind === 'text' ? { text: (message.text ?? '').slice(0, 300) } : { text: '' }),
-      kind,
-    };
-    const before = ctx.get().pinsByChat[chatId] ?? [];
-    const optimistic: Pin = {
-      ...snapshot,
-      id: `pin-local-${message.id}`,
-      pinnedBy: ctx.get().currentUserId,
-      pinnedAt: new Date().toISOString(),
-    };
-    ctx.set((state) => ({
-      pinsByChat: {
-        ...state.pinsByChat,
-        [chatId]: [optimistic, ...(state.pinsByChat[chatId] ?? [])],
-      },
-      pinsError: undefined,
-    }));
-    const saved = yield* Effect.exit(fromPromise(() => api.pinMessage(snapshot)));
-    if (Exit.isFailure(saved)) {
-      ctx.set((state) => ({
-        pinsByChat: { ...state.pinsByChat, [chatId]: before },
-        pinsError: { chatId, message: 'Could not pin the message. Try again.' },
-      }));
-      return yield* Effect.fail(Cause.squash(saved.cause));
-    }
-    ctx.set((state) => ({
-      pinsByChat: {
-        ...state.pinsByChat,
-        [chatId]: (state.pinsByChat[chatId] ?? []).map((pin) =>
-          pin.id === optimistic.id ? saved.value : pin,
-        ),
-      },
-    }));
+    yield* pinMessageCore(ctx, api, pinsStore(ctx), chatId, messageId);
   });
 
 /** Unpins a message: the pin leaves at once and comes back if the server refuses. */
@@ -134,22 +98,7 @@ export const unpinMessage = (
 ): Effect.Effect<void, unknown, Ports> =>
   Effect.gen(function* () {
     const { api } = yield* Ports;
-    const before = ctx.get().pinsByChat[chatId] ?? [];
-    ctx.set((state) => ({
-      pinsByChat: {
-        ...state.pinsByChat,
-        [chatId]: (state.pinsByChat[chatId] ?? []).filter((pin) => pin.id !== pinId),
-      },
-      pinsError: undefined,
-    }));
-    const removed = yield* Effect.exit(fromPromise(() => api.unpinMessage(pinId)));
-    if (Exit.isFailure(removed)) {
-      ctx.set((state) => ({
-        pinsByChat: { ...state.pinsByChat, [chatId]: before },
-        pinsError: { chatId, message: 'Could not unpin the message. Try again.' },
-      }));
-      return yield* Effect.fail(Cause.squash(removed.cause));
-    }
+    yield* unpinMessageCore(ctx, api, pinsStore(ctx), chatId, pinId);
   });
 
 // XEP-0357 enable/disable over the user's own session (ejabberd requires it;

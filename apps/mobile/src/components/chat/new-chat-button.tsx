@@ -147,10 +147,8 @@ export function NewChatButton() {
     previousKeyboardHeight.current = keyboardHeight;
   }, [keyboardHeight]);
   // The invite box always talks to the real session API (a personal invite
-  // link is meaningless offline): the mock-capable `useInvitesApi` hook stays
-  // available for mock-mode surfaces, but this menu must stay importable
-  // under the Node tests, whose `expo-router` mock has no
-  // `useGlobalSearchParams`.
+  // link is meaningless offline), and this menu must stay importable under
+  // the Node tests, whose `expo-router` mock has no `useGlobalSearchParams`.
   const invitesApi = useMemo(() => createInvitesApi(getSessionToken), []);
 
   // The clipboard/share bridge for the invite box: `expo-clipboard` cannot be

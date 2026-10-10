@@ -90,6 +90,28 @@ describe('runMigrations', () => {
     expect(rows).toEqual([[], [], [], [], []]);
   });
 
+  it('creates the membership lookup indexes', async () => {
+    await runMigrations(client);
+
+    const rows = await sqlRows<{ indexname: string }>(
+      `SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND indexname IN (
+        'group_members_user_id_idx', 'topic_members_user_id_idx', 'topic_ais_ai_id_idx',
+        'group_ais_ai_id_idx', 'group_member_roles_user_id_idx', 'xmpp_accounts_lower_jid_idx',
+        'contacts_contact_user_id_idx')
+      ORDER BY indexname`,
+    );
+
+    expect(rows.map((row) => row.indexname)).toEqual([
+      'contacts_contact_user_id_idx',
+      'group_ais_ai_id_idx',
+      'group_member_roles_user_id_idx',
+      'group_members_user_id_idx',
+      'topic_ais_ai_id_idx',
+      'topic_members_user_id_idx',
+      'xmpp_accounts_lower_jid_idx',
+    ]);
+  });
+
   it('defaults a new group to listener off with normal eagerness', async () => {
     await runMigrations(client);
     await seedDelegationScope();

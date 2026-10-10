@@ -1,3 +1,4 @@
+import { commonPrefixLength, safeCut } from '@zilar/chat-core';
 import { useEffect, useLayoutEffect, useReducer, useState } from 'react';
 
 /**
@@ -63,22 +64,7 @@ export interface SmoothTextOptions {
   onChange?: () => void;
 }
 
-function commonPrefixLength(left: string, right: string): number {
-  const max = Math.min(left.length, right.length);
-  let index = 0;
-  while (index < max && left[index] === right[index]) {
-    index += 1;
-  }
-  return index;
-}
-
-// Never cut between the two halves of a surrogate pair (most emoji): a half
-// renders as a replacement glyph for a frame.
-export function safeCut(text: string, progress: number): number {
-  const end = Math.floor(progress);
-  const last = text.charCodeAt(end - 1);
-  return end > 0 && end < text.length && last >= 0xd800 && last <= 0xdbff ? end + 1 : end;
-}
+export { safeCut };
 
 /**
  * The reveal itself: `text` is always a prefix of the target and grows every

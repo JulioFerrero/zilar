@@ -1,13 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { AuthApiError, checkInvite, fetchMe, updateMe } from './auth-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/wait';
 
 const ME = { id: 'u1', email: 'you@example.com', name: 'Ada', jid: 'you@zilar.localhost' };
 
@@ -33,7 +27,7 @@ describe('fetchMe', () => {
     ) as unknown as typeof fetch;
 
     await expect(fetchMe('http://server.test', 'bad', fetchImpl)).rejects.toMatchObject({
-      name: 'AuthApiError',
+      name: 'ApiError',
       status: 401,
       code: 'unauthorized',
     });

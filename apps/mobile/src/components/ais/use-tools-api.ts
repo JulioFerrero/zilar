@@ -3,8 +3,19 @@ import { useMemo } from 'react';
 
 import { createToolsApi, type AiToolsApi } from '@/lib/tools-api';
 import { getSessionToken } from '@/lib/session-token';
-import { createMockToolsApi } from '@/mock/tools';
 import { ENV_MOCK, mockParamAllowed } from '@/mock/gate';
+
+/**
+ * Loads the mock behind a literal build-time condition: Metro folds it to
+ * `false` in a release build, so the mock module stays out of the bundle.
+ */
+function createMockTools(): AiToolsApi {
+  if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return (require('@/mock/tools') as typeof import('@/mock/tools')).createMockToolsApi();
+  }
+  throw new Error('The mock API is not part of this build');
+}
 
 /**
  * The tools API supports exactly one mock scenario (the seeded tools and
@@ -43,9 +54,6 @@ export function useToolsApi(): ToolsApiHandle {
   const params = useGlobalSearchParams();
   const envMock = ENV_MOCK;
   const mock = toolsMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
-  const api = useMemo(
-    () => (mock ? createMockToolsApi() : createToolsApi(getSessionToken)),
-    [mock],
-  );
+  const api = useMemo(() => (mock ? createMockTools() : createToolsApi(getSessionToken)), [mock]);
   return { api, mock };
 }

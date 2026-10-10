@@ -17,6 +17,7 @@ export const OTP_LENGTH = 6;
 export const OTP_EXPIRES_IN_SECONDS = 10 * 60;
 export const OTP_ALLOWED_ATTEMPTS = 5;
 
+export const SESSION_COOKIE_CACHE_SECONDS = 5 * 60;
 const RATE_LIMIT_WINDOW_SECONDS = 10 * 60;
 // Asking for a code: 3 per minute, so a typo or a resend never locks a
 // household out for ten minutes. Guessing a code stays capped separately.
@@ -64,6 +65,7 @@ export function createAuth({
   adminClient,
   logger,
 }: CreateAuthInput & { logger?: AuthLogger }) {
+  const profileVersions = new Map<string, number>();
   return betterAuth({
     baseURL: config.BETTER_AUTH_URL,
     secret: config.BETTER_AUTH_SECRET,
@@ -80,6 +82,20 @@ export function createAuth({
         '/sign-in/email-otp': { window: RATE_LIMIT_WINDOW_SECONDS, max: 10 },
         '/email-otp/check-verification-otp': { window: RATE_LIMIT_WINDOW_SECONDS, max: 10 },
         '/email-otp/verify-email': { window: RATE_LIMIT_WINDOW_SECONDS, max: 10 },
+      },
+    },
+    session: {
+      // T-0858: a signed `session_data` cookie lets a browser request skip the
+      // session and user reads for 5 minutes. Sign-out clears it on the device;
+      // a session revoked elsewhere may stay valid here for up to 5 minutes.
+      // Mobile sends only a bearer token, so it still reads the database.
+      cookieCache: {
+        enabled: true,
+        maxAge: SESSION_COOKIE_CACHE_SECONDS,
+        // A profile update bumps the user's version, so a cache cookie that
+        // still holds the old user is dropped and the next read hits the
+        // database (PATCH /api/me re-reads the session right after updating).
+        version: (_session, user) => String(profileVersions.get(user.id) ?? 0),
       },
     },
     advanced: {
@@ -153,6 +169,12 @@ export function createAuth({
     },
     databaseHooks: {
       user: {
+        update: {
+          after: (user) => {
+            profileVersions.set(user.id, (profileVersions.get(user.id) ?? 0) + 1);
+            return Promise.resolve();
+          },
+        },
         create: {
           before: (user, context) =>
             Effect.runPromise(

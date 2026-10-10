@@ -5,13 +5,16 @@ import { Bot, LayoutGrid, Pencil, Plus, UserRound } from 'lucide-react';
 import { folderIconComponent } from './folderIcon';
 import { FolderEditorDialog } from './FolderEditorDialog';
 import { FOLDERS_MAX } from '@zilar/chat-core';
-import { folderUnread } from '@/store/store';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { folderUnreadTotal } from '@zilar/chat-core';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 
 /** Folder rail for wide screens: All chats, every folder, then My AIs and Profile keys. */
 export function FolderRail() {
-  const store = useChatStore();
+  const folders = useChatSelector((s) => s.folders);
+  const chats = useChatSelector((s) => s.chats);
+  const activeFolder = useChatSelector((s) => s.activeFolder);
+  const setActiveFolder = useChatSelector((s) => s.setActiveFolder);
   const navigate = useNavigate();
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -29,16 +32,16 @@ export function FolderRail() {
       id: 'all',
       label: 'All chats',
       icon: LayoutGrid,
-      unread: folderUnread(store, 'all'),
-      onSelect: () => store.setActiveFolder('all'),
+      unread: folderUnreadTotal('all', chats),
+      onSelect: () => setActiveFolder('all'),
     },
-    ...store.folders.map((folder) => ({
+    ...folders.map((folder) => ({
       key: folder.id,
       id: folder.id,
       label: folder.name,
       icon: folderIconComponent(folder.icon),
-      unread: folderUnread(store, folder.id),
-      onSelect: () => store.setActiveFolder(folder.id),
+      unread: folderUnreadTotal(folder, chats),
+      onSelect: () => setActiveFolder(folder.id),
     })),
   ];
 
@@ -47,7 +50,7 @@ export function FolderRail() {
   // tab selects it (selection follows focus); moving onto an action key only
   // moves focus, Enter/Space activates it.
   const tabCount = items.length;
-  const showNew = store.folders.length < FOLDERS_MAX;
+  const showNew = folders.length < FOLDERS_MAX;
   const editIndex = tabCount + (showNew ? 1 : 0);
 
   const keyActions: { onSelect: () => void; selects: boolean }[] = [
@@ -96,7 +99,7 @@ export function FolderRail() {
           className="flex flex-col items-stretch gap-1"
         >
           {items.map((item, index) => {
-            const active = store.activeFolder === item.id;
+            const active = activeFolder === item.id;
             const Icon = item.icon;
             return (
               <button

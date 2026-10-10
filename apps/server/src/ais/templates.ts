@@ -1,12 +1,9 @@
-import { Schema } from 'effect';
+import { AI_TEMPLATES, AiTemplate as AiTemplateSchema, type AiTemplate } from '@zilar/api-contract';
 
-// The templates the wizard (T-0032) offers. `custom` starts empty: its owner
-// must write the persona, because there is no sensible default for one.
-export const AI_TEMPLATES = ['dev', 'marketing', 'fun', 'custom'] as const;
-
-export const AiTemplateSchema = Schema.Literals(AI_TEMPLATES);
-
-export type AiTemplate = (typeof AI_TEMPLATES)[number];
+// The templates the wizard (T-0032) offers live in the shared contract.
+// `custom` starts empty: its owner must write the persona, because there is
+// no sensible default for one.
+export { AI_TEMPLATES, AiTemplateSchema, type AiTemplate };
 
 // Short, two-or-three-sentence personas. They are a starting point the owner
 // edits, not a full agent spec (tools, placement and memory come later).

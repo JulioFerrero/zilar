@@ -7,6 +7,7 @@ import {
   type FetchLike,
   type LitellmClientConfig,
 } from './litellm-client';
+import { jsonResponse } from '../test-support/wait';
 
 const config: LitellmClientConfig = {
   baseUrl: 'http://litellm.test:4000',
@@ -14,13 +15,6 @@ const config: LitellmClientConfig = {
 };
 
 type Call = { url: string; init: RequestInit };
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
 
 function createFetch(handler: (call: Call) => Response): { fetchImpl: FetchLike; calls: Call[] } {
   const calls: Call[] = [];

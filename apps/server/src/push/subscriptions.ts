@@ -21,9 +21,3 @@ export const WebPushSubscriptionSchema = struct({
 });
 
 export type WebPushSubscription = Schema.Schema.Type<typeof WebPushSubscriptionSchema>;
-
-// A short human label for the device list ("Pixel 8 · Chrome"), supplied by
-// the web app from the user agent. Free text, capped, never trusted.
-export const UserAgentSchema = Schema.String.pipe(
-  Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
-);

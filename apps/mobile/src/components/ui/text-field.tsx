@@ -1,9 +1,7 @@
-import { useColorScheme } from 'nativewind';
 import * as React from 'react';
 import { TextInput, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
@@ -25,11 +23,10 @@ export function TextField({
   style,
   ...props
 }: TextFieldProps) {
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const input = (
     <TextInput
       multiline={multiline}
-      placeholderTextColor={placeholderTextColor ?? MUTED_FOREGROUND[scheme]}
+      placeholderTextColor={placeholderTextColor ?? MUTED_FOREGROUND}
       style={multiline ? [{ textAlignVertical: 'top' }, style] : style}
       className={cn(
         'rounded-[10px] border border-border-strong bg-well px-3 py-2 text-[15px] text-foreground',

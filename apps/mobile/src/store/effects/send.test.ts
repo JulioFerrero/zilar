@@ -3,30 +3,17 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { ChatApi } from '../../lib/chat-api';
 import { createRealChatStore } from '../real-store';
+import { fakeApi } from '../test-support';
+import { flushTasks as flush } from '@/test/wait';
 
 const ANA = 'ana@zilar.test';
 
-function fakeApi(): ChatApi {
-  return {
-    getMe: vi.fn(async () => ({
-      id: 'u-me',
-      email: 'me@zilar.test',
-      name: 'Me',
-      jid: 'me@zilar.test',
-    })),
+function anaApi(): ChatApi {
+  return fakeApi({
     getChats: vi.fn(async () => [
       { kind: 'dm' as const, chatJid: ANA, title: 'Ana', userId: 'u-ana' },
     ]),
-    getContacts: vi.fn(async () => []),
-    getXmppToken: vi.fn(async () => ({
-      jid: 'me@zilar.test',
-      token: 'tok',
-      expiresAt: '2026-09-28T12:05:00Z',
-      service: 'ws://x',
-      domain: 'zilar.test',
-      mucDomain: 'rooms.zilar.test',
-    })),
-  } as unknown as ChatApi;
+  }) as unknown as ChatApi;
 }
 
 function core(sendMessage: XmppCore['sendMessage']): XmppCore {
@@ -45,11 +32,9 @@ function core(sendMessage: XmppCore['sendMessage']): XmppCore {
   } as unknown as XmppCore;
 }
 
-const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
-
 async function started(sendMessage: XmppCore['sendMessage']) {
   const store = createRealChatStore({
-    api: fakeApi(),
+    api: anaApi(),
     createXmpp: () => core(sendMessage),
     now: () => new Date('2026-09-28T12:00:00Z'),
   });
@@ -97,10 +82,15 @@ describe('sending on the effect fibers', () => {
     const store = await started(sendMessage);
 
     store.getState().sendText(ANA, 'hola');
-    const before = store.getState().messages(ANA);
     store.getState().stop();
+    // stop() leaves no messages behind; the late ack must write nothing.
+    expect(store.getState().messages(ANA)).toHaveLength(0);
+    const writes = vi.fn();
+    const unsubscribe = store.subscribe(writes);
     ack({ id: 'srv-late' });
     await flush();
-    expect(store.getState().messages(ANA)).toBe(before);
+    unsubscribe();
+    expect(writes).not.toHaveBeenCalled();
+    expect(store.getState().messages(ANA)).toHaveLength(0);
   });
 });

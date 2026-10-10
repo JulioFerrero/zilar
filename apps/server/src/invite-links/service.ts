@@ -5,7 +5,7 @@ import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { GroupInviteLinkRow, GroupRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -14,12 +14,14 @@ import type { TopicRow } from '../topics/access';
 import { MAX_GROUP_MEMBERS, type InviteLogger } from '../groups/service';
 
 export const INVITE_LINK_TOKEN_BYTES = 32;
-export const INVITE_LINK_TOKEN_HEX_LENGTH = INVITE_LINK_TOKEN_BYTES * 2;
-export const INVITE_LINK_LABEL_MAX = 60;
-export const INVITE_LINK_CREATE_MAX_USES = 10000;
-export const INVITE_LINK_CREATE_MAX_EXPIRY_HOURS = 8760;
-export const INVITE_LINK_MIN_EXPIRY_HOURS = 1;
-export const INVITE_LINK_MIN_MAX_USES = 1;
+// The label and create limits live in the shared contract (T-0892).
+export {
+  INVITE_LINK_CREATE_MAX_EXPIRY_HOURS,
+  INVITE_LINK_CREATE_MAX_USES,
+  INVITE_LINK_LABEL_MAX,
+  INVITE_LINK_MIN_EXPIRY_HOURS,
+  INVITE_LINK_MIN_MAX_USES,
+} from '@zilar/api-contract';
 export const MAX_ACTIVE_INVITE_LINKS = 10;
 
 export const JOIN_RATE_LIMIT_MAX_PER_USER = 20;
@@ -142,16 +144,6 @@ export interface CreatedInviteLink {
   /** The raw token, shown once. Never stored, logged or audited. */
   token: string;
   url: string;
-}
-
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition.
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 function serviceNow(deps: InviteLinkServiceDeps): Date {

@@ -18,20 +18,12 @@ vi.mock('expo-router', () => ({
   useRouter: () => ({ back: () => {}, push: () => {} }),
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
   Platform: { OS: 'ios', select: (options: Record<string, unknown>) => options['ios'] },
   Pressable: 'Pressable',
   ScrollView: 'ScrollView',
   View: 'View',
-}));
-
-vi.mock('react-native-reanimated', () => ({
-  useReducedMotion: () => false,
 }));
 
 vi.mock('react-native-safe-area-context', () => ({
@@ -51,11 +43,6 @@ vi.mock('@/auth/RequireAuth', () => ({
 
 vi.mock('@/components/ui/icon-button', () => ({
   IconButton: 'IconButton',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
-  TextClassContext: { Provider: 'TextClassContextProvider' },
 }));
 
 vi.mock('@/components/ui/use-key-press', () => ({
@@ -79,12 +66,8 @@ vi.mock('@/components/contacts/use-contacts-api', () => ({
 
 vi.mock('@/lib/colors', () => ({
   DANGER: '#ef4444',
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-  MUTED_FOREGROUND: { dark: '#a1a1a1', light: '#a1a1a1' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ICON: '#d4d4d4',
+  MUTED_FOREGROUND: '#a1a1a1',
 }));
 
 const EVE: BlockedPerson = {

@@ -8,7 +8,6 @@ import {
 } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useColorScheme } from 'nativewind';
 import { useState } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
@@ -25,7 +24,6 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { ChatFoldersApiError } from '@/lib/chat-folders-api';
-import { asColorScheme } from '@/lib/color-scheme';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { iconKey } from '@/lib/depth';
 import { cn } from '@/lib/utils';
@@ -98,7 +96,6 @@ function FolderEditor() {
 
 function FolderForm({ id, folder }: { id: string; folder: ChatFolder | undefined }) {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const createFolder = useChatStore((state) => state.createFolder);
   const updateFolder = useChatStore((state) => state.updateFolder);
   const deleteFolder = useChatStore((state) => state.deleteFolder);
@@ -189,7 +186,7 @@ function FolderForm({ id, folder }: { id: string; folder: ChatFolder | undefined
               value={name}
               onChangeText={setName}
               placeholder="Folder name"
-              placeholderTextColor={MUTED_FOREGROUND[scheme]}
+              placeholderTextColor={MUTED_FOREGROUND}
               className="min-w-0 flex-1 text-[15px] text-foreground"
             />
             <Text className="text-[13px] tabular-nums text-muted-foreground">
@@ -218,7 +215,7 @@ function FolderForm({ id, folder }: { id: string; folder: ChatFolder | undefined
                       selected ? '' : 'border border-transparent',
                     )}
                   >
-                    <Icon size={18} color={selected ? ICON[scheme] : MUTED_FOREGROUND[scheme]} />
+                    <Icon size={18} color={selected ? ICON : MUTED_FOREGROUND} />
                   </View>
                 </Pressable>
               );

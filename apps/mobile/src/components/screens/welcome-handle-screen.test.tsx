@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import { ProfileApiError } from '@/lib/profile-api';
 import HandleRoute from '@/app/welcome/handle';
+import { waitForAct as waitFor } from '@/test/wait';
 
 // The post-sign-up handle step is rendered with its native pieces mocked as
 // DOM elements. `react-dom/client` ships no bundled types, so it is loaded
@@ -29,7 +30,6 @@ vi.mock('expo-router', () => ({
   useRouter: () => h.router,
 }));
 vi.mock('expo-linear-gradient', () => ({ LinearGradient: () => null }));
-vi.mock('nativewind', () => ({ useColorScheme: () => ({ colorScheme: 'dark' }) }));
 vi.mock('react-native', async () => {
   const { createElement: el } = await import('react');
   return { View: ({ children }: { children?: ReactNode }) => el('div', null, children) };
@@ -118,23 +118,6 @@ const mount = async (): Promise<void> => {
   const root = createRoot(container);
   unmount = () => act(() => root.unmount());
   await act(async () => root.render(createElement(HandleRoute)));
-};
-
-const waitFor = async (check: () => void, timeout = 3000): Promise<void> => {
-  const started = Date.now();
-  for (;;) {
-    try {
-      check();
-      return;
-    } catch (error) {
-      if (Date.now() - started > timeout) {
-        throw error;
-      }
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      });
-    }
-  }
 };
 
 const labelled = (label: string): HTMLElement => {

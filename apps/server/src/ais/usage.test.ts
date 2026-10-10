@@ -2,61 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { LitellmAdminClient, VirtualKeyInfo } from '../ai/litellm-client';
 import { createKeyCipher } from '../connections/crypto';
 import { createTestContext, TEST_XMPP_DOMAIN, testSql, type TestContext } from '../test-support';
 import { getAiUsage, utcDayString, type AiUsageDeps } from './usage';
+import { FakeLitellm } from '../agents/gateway.test-harness';
 
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
 const PROVIDER_KEY = 'sk-provider-key-do-not-leak';
-
-// A LiteLLM stand-in whose key spend the test sets directly. Failures are
-// toggled per test, so the fail-open path is covered without the network.
-class FakeLitellm implements LitellmAdminClient {
-  spendByKey = new Map<string, number>();
-  failKeyInfo = false;
-  readonly seenKeys: string[] = [];
-
-  getKeyInfo(key: string): Promise<VirtualKeyInfo> {
-    this.seenKeys.push(key);
-    if (this.failKeyInfo) {
-      return Promise.reject(new Error('LiteLLM is down'));
-    }
-    return Promise.resolve({
-      keyAlias: null,
-      maxBudget: 20,
-      spend: this.spendByKey.get(key) ?? 0,
-      tpmLimit: null,
-      rpmLimit: null,
-      blocked: null,
-      models: [],
-    });
-  }
-
-  generateKey(): Promise<never> {
-    throw new Error('generateKey is not used by usage');
-  }
-
-  updateKey(): Promise<never> {
-    throw new Error('updateKey is not used by usage');
-  }
-
-  revokeKey(): Promise<void> {
-    return Promise.resolve();
-  }
-
-  addModel(): Promise<never> {
-    throw new Error('addModel is not used by usage');
-  }
-
-  deleteModel(): Promise<void> {
-    return Promise.resolve();
-  }
-
-  listModels(): Promise<[]> {
-    return Promise.resolve([]);
-  }
-}
 
 function captureLogger(): {
   warn: (fields: Record<string, unknown>, message: string) => void;

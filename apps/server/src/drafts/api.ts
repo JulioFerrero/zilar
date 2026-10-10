@@ -11,19 +11,11 @@
 // declares no payload and the handler returns a raw `HttpServerResponse`.
 
 import { Duration, Effect, Layer, Queue, Schema, Stream } from 'effect';
-import { HttpServer, HttpServerResponse, HttpRouter } from 'effect/http';
+import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { pino, type Logger } from 'pino';
 import type { Auth } from '../auth/auth';
-import {
-  CurrentUser,
-  Session,
-  requestIdOf,
-  sessionLayer,
-  withErrorEnvelope,
-  type EffectApiMount,
-  type EffectApiRoute,
-} from '../effect/http-core';
+import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import type { DraftHubEvent } from './events';
 import { sharedDraftHub, type DraftHub } from './hub';
 
@@ -47,10 +39,6 @@ const DraftsGroup = HttpApiGroup.make('drafts')
   .prefix('/api');
 
 const DraftsApi = HttpApi.make('drafts').add(DraftsGroup);
-
-export const DRAFTS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/drafts/stream' },
-];
 
 // The old `streamSSE` helper's `writeSSE({ event, data })` splits `data` on
 // newlines into one `data: <line>` frame per line, then writes
@@ -78,11 +66,10 @@ export function createDraftsApi(deps: DraftsApiDependencies): EffectApiMount {
   const hub = deps.hub ?? sharedDraftHub;
 
   const groupLayer = HttpApiBuilder.group(DraftsApi, 'drafts', (handlers) =>
-    handlers.handle('stream', (request) => {
-      const requestId = requestIdOf(request.request);
-      return withErrorEnvelope(
-        Effect.gen(function* () {
-          const user = yield* CurrentUser;
+    handlers.handle(
+      'stream',
+      handler(logger, (_request, user) =>
+        Effect.sync(() => {
           const frames = Stream.unwrap(
             Effect.acquireRelease(
               Effect.gen(function* () {
@@ -120,10 +107,8 @@ export function createDraftsApi(deps: DraftsApiDependencies): EffectApiMount {
             },
           });
         }),
-        logger,
-        requestId,
-      );
-    }),
+      ),
+    ),
   );
 
   const apiLayer = HttpApiBuilder.layer(DraftsApi).pipe(
@@ -131,14 +116,7 @@ export function createDraftsApi(deps: DraftsApiDependencies): EffectApiMount {
     Layer.provide(sessionLayer(deps.auth, logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: DRAFTS_API_ROUTES };
+  return mountApi(DraftsApi, apiLayer);
 }
 
 let silentLogger: Logger | undefined;

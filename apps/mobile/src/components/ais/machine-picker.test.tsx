@@ -5,17 +5,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MachinePicker } from './machine-picker';
 import type { Machine } from '@/lib/machines-api';
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',
   View: 'View',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
 }));
 
 const CREATED_AT = '2026-10-03T10:00:00.000Z';

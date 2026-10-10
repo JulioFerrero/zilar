@@ -1,14 +1,8 @@
-import { Effect, Exit, Fiber, Scope } from 'effect';
-import type {
-  ChatSummary,
-  EditAuthor,
-  EditsState,
-  MessageStatus,
-  ReplyRef,
-  UiMessage,
-} from '@zilar/chat-core';
+import { makeLifetime, type CoreCtx, type Lifetime } from '@zilar/client-core/store';
+import { Context, Effect, Exit, Fiber, Scope } from 'effect';
+import type { ChatSummary, EditAuthor, MessageStatus, ReplyRef, UiMessage } from '@zilar/chat-core';
 import type { Attachment, ForwardOrigin, Payload } from '@zilar/protocol';
-import type { ChatMessage, Occupant, PresenceEvent, XmppCore } from '@zilar/xmpp-core';
+import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
 
 import type { PickedFile } from '../../lib/attachment-ports';
 import type { MediaTokenShape } from '../../lib/attachments';
@@ -76,38 +70,56 @@ export function closeScope(scope: Scope.Closeable): void {
 }
 
 /**
- * Two lifetimes replace the old `generation` counter and the teardown lists.
- * The session scope holds what only `stop()` ends: the AppState listener, the
- * XMPP event subscriptions, the draft stream. The generation scope holds what
- * a restart also ends: boot, reconnect, polls and background loads. Closing a
- * scope interrupts every fiber forked into it.
+ * One lifetime replaces the old `generation` counter and the teardown lists.
+ * The store Scope holds what only `stop()` ends: the AppState listener, the
+ * XMPP event subscriptions, the draft stream. A "generation" is the core
+ * lifetime's current session (the core owns both, T-0918); a boot retry ends
+ * it. Closing a scope interrupts every fiber forked into it.
  */
 export interface Life {
+  /** The core lifetime underneath: the `rt` of the core modules (`CoreCtx`). */
+  readonly lifetime: Lifetime<never>;
+  /** The store Scope, opened on first use: what `stop()` closes. */
   session(): Scope.Closeable;
-  generation(): Scope.Closeable;
-  /** Ends the current generation and opens the next one. */
+  /** The current session Scope, opened on first use. */
+  generation(): Scope.Scope;
+  /** Ends the current session and opens the next one. */
   restartGeneration(): void;
-  /** Ends the session (and the generation with it) and opens fresh scopes. */
+  /** Closes the store Scope; the next use opens fresh scopes. */
   endSession(): void;
+  /** Starts `task` now under `key` in the store; a task with the same key is interrupted first. */
+  forkKeyed(key: string, task: Effect.Effect<unknown>): Fiber.Fiber<unknown, never>;
+  /** Like `forkKeyed`, but a task with the same key ends with the session. */
+  forkGenerationKeyed(key: string, task: Effect.Effect<unknown>): Fiber.Fiber<unknown, never>;
+  /** Interrupts the store task with this key, if any. */
+  cancel(key: string): void;
+  /** Interrupts the session task with this key, if any. */
+  cancelGeneration(key: string): void;
 }
 
+/**
+ * An adapter over the core lifetime: the session is its store Scope and a
+ * "generation" is its current session. Nothing is created at construction, so
+ * the core's `start()` owns the first session and a fork before it lands in
+ * the store Scope.
+ */
 export function makeLife(): Life {
-  let session = Scope.makeUnsafe();
-  let generation = Scope.makeUnsafe();
-  const restartGeneration = (): void => {
-    const old = generation;
-    generation = Scope.makeUnsafe();
-    closeScope(old);
-  };
+  const lifetime = makeLifetime(Context.empty());
+  const currentSession = (): ReturnType<Lifetime<never>['beginSession']> =>
+    lifetime.session() ?? lifetime.beginSession();
   return {
-    session: () => session,
-    generation: () => generation,
-    restartGeneration,
-    endSession: () => {
-      const old = session;
-      session = Scope.makeUnsafe();
-      restartGeneration();
-      closeScope(old);
+    lifetime,
+    session: () => lifetime.storeScope(),
+    generation: () => currentSession().scope,
+    restartGeneration: () => {
+      lifetime.beginSession();
+    },
+    endSession: () => lifetime.closeStore(),
+    forkKeyed: lifetime.forkKeyed,
+    forkGenerationKeyed: (key, task) => currentSession().forkKeyed(key, task),
+    cancel: lifetime.cancel,
+    cancelGeneration: (key) => {
+      lifetime.session()?.cancel(key);
     },
   };
 }
@@ -127,6 +139,9 @@ export interface StoreState {
   chatPrefRows: ChatPref[];
   /** The archive cursor to page before, by chat id. */
   readonly cursors: Record<string, string | undefined>;
+  /** Turn ids whose draft is done, so a late `draft` is ignored (T-0918). */
+  readonly finishedTurns: Set<string>;
+  readonly finishedTurnOrder: string[];
   /** First-page history loads in flight, by chat id (T-0067). */
   readonly loadingHistory: Set<string>;
   readonly loadingOlder: Set<string>;
@@ -149,7 +164,6 @@ export interface StoreState {
   readonly loadingTopicRoles: Set<string>;
   /** Chat id -> (lowercased user id -> display name). */
   readonly groupMembers: Map<string, Map<string, string>>;
-  readonly loadingGroupMembers: Set<string>;
 }
 
 /** The plain helpers of `real-store.ts` the effect modules call. */
@@ -158,8 +172,6 @@ export interface StoreHelpers {
   summariesFor(entry: ChatEntry): ChatSummary[];
   rememberGroupIds(entries: ChatEntry[]): void;
   nick(me: Me): string;
-  flushPending(): void;
-  isVisible(): boolean;
   coreKind(chat: ChatSummary): 'chat' | 'groupchat';
   isReactionOnly(message: ChatMessage): boolean;
   isEditStanza(message: ChatMessage): boolean;
@@ -174,36 +186,16 @@ export interface StoreHelpers {
   recordRead(chatId: string, messageId: string | undefined): void;
   sameMessage(left: string, right: string): boolean;
   listFor(state: ChatStoreState, chatId: string): UiMessage[];
-  setHistoryLoad(chatId: string, load: 'loading' | 'loaded' | 'error'): void;
-  clearSupersededMarker(chatId: string): void;
   groupIdForChat(chatId: string): string | undefined;
   rememberTopicRoles(topic: Topic): void;
   rememberMembers(chatId: string, detail: GroupDetail): void;
   myJid(): string | undefined;
-  isOwnSender(fromJid: string): boolean;
-  senderNameFor(message: {
-    chatJid: string;
-    fromJid: string;
-    outgoing: boolean;
-    fromNick?: string;
-  }): string;
-  wireTargetFor(messageId: string): string | undefined;
-  correctionTargetFor(messageId: string): string | undefined;
-  retractionTargetFor(chat: ChatSummary, messageId: string): string | undefined;
-  applyReactionUpdate(
-    chatId: string,
-    targetId: string,
-    reactorJid: string,
-    emojis: string[],
-    order: number,
-  ): void;
-  restoreMessage(chatId: string, snapshot: UiMessage): void;
-  restoreEdits(chatId: string, previous: EditsState | undefined): void;
   aliasRoot(id: string): string;
   rememberAuthor(messageId: string, author: EditAuthor): void;
   rememberOriginId(messageId: string, originId: string): void;
   linkMessageIds(left: string, right: string): void;
-  linkLocalToServer(localId: string, serverId: string): void;
+  /** Links a send's ack id to its optimistic id (the ledger's `linkAckToServer`). */
+  linkAckToServer(chat: ChatSummary, localId: string, serverId: string): void;
   updateMessageStatus(chatId: string, messageId: string, status: MessageStatus): void;
   signatureFor(chatId: string, body: string, replyTo: ReplyRef | undefined): string;
   stickerSignatureFor(
@@ -229,22 +221,8 @@ export interface StoreHelpers {
   forwardOriginFor(message: UiMessage): ForwardOrigin | undefined;
   forwardedPayloadFor(message: UiMessage): Payload | undefined;
   forwardedUiFieldsFor(payload: Payload): Pick<UiMessage, 'voice' | 'attachment' | 'card'>;
-  startDraftStream(): void;
-  startTopicsPolling(): void;
-  /** Ends what `stop()` clears besides the scopes: timers, caches and per-session maps. */
+  /** Ends what `stop()` clears besides the core scopes: timers, caches, per-session maps. */
   teardown(): void;
-  handleMessage(message: ChatMessage): void;
-  handleTyping(event: { chatJid: string; fromJid: string; state: string; outgoing: boolean }): void;
-  handleDisplayed(event: {
-    chatJid: string;
-    fromJid: string;
-    messageId: string;
-    outgoing: boolean;
-  }): void;
-  handleOccupants(event: { roomJid: string; occupants: Occupant[] }): void;
-  handlePresence(event: PresenceEvent): void;
-  handleInvited(): void;
-  handleRoster(): void;
 }
 
 /** Effects of one concern that another concern calls. Filled in by `real-store.ts`. */
@@ -255,7 +233,11 @@ export interface StoreFx {
   loadPins(chatId: string, loud: boolean): Effect.Effect<void, never, Ports>;
   ensureGroupDetail(groupId: string, force?: boolean): Effect.Effect<void, never, Ports>;
   ensureGroupMembers(chatId: string): Effect.Effect<void, never, Ports>;
+  /** Debounces a chat-list refresh (a roster push or a group invitation). */
+  scheduleChatsRefresh(): void;
   startPinsPolling(chatId: string): void;
+  /** Refreshes the open chat's pins now, when its poll is running. */
+  refreshActiveChatPins(chatId: string): void;
   restartBoot(): void;
   joinGroups(current: XmppCore, me: Me): Effect.Effect<void, never, Ports>;
   loadPreview(current: XmppCore, chat: ChatSummary): Effect.Effect<void, never, Ports>;
@@ -270,6 +252,11 @@ export interface StoreCtx {
   readonly life: Life;
   readonly h: StoreHelpers;
   readonly fx: StoreFx;
+  /**
+   * The same store as the core modules see it (`@zilar/client-core/store`):
+   * the incoming handlers, the message actions and the reads run on it.
+   */
+  readonly coreCtx: CoreCtx;
   /** Starts `effect` at once as a fiber of `scope` (default: the current generation). */
   fork<A, E>(effect: Effect.Effect<A, E, Ports>, scope?: Scope.Scope): Fiber.Fiber<A, E>;
   /**

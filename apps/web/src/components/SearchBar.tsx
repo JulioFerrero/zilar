@@ -2,10 +2,13 @@ import { Search } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { Chip } from './ui/chip';
 import { Well } from './ui/well';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 export function SearchBar() {
-  const store = useChatStore();
+  const chats = useChatSelector((s) => s.chats);
+  const searchChat = useChatSelector((s) => s.searchChat);
+  const search = useChatSelector((s) => s.search);
+  const setSearch = useChatSelector((s) => s.setSearch);
   const storeApi = useChatStoreApi();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -32,9 +35,7 @@ export function SearchBar() {
   }, []);
 
   const scopedChat =
-    store.searchChat === undefined
-      ? undefined
-      : store.chats.find((chat) => chat.id === store.searchChat);
+    searchChat === undefined ? undefined : chats.find((chat) => chat.id === searchChat);
   const clearScope = (): void => {
     storeApi.getState().setSearchChat(undefined);
   };
@@ -58,8 +59,8 @@ export function SearchBar() {
         id="chat-search"
         name="chat-search"
         type="search"
-        value={store.search}
-        onChange={(event) => store.setSearch(event.target.value)}
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
         onKeyDown={(event) => {
           // Enter opens the top message hit when the Messages section has
           // one; the results list (a separate subtree) listens for this.

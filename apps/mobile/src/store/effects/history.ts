@@ -1,23 +1,37 @@
+// The chat list refresh, the prefs and folders, `reloadChats` and the mobile
+// `openChat` side effects. History itself (the first page, older pages,
+// previews, the pending open and opening at a message) is in
+// `@zilar/client-core/store`; it runs here through a `HistoryCtx` that maps the
+// mobile state names (`historyLoad`/`'loaded'`) to the core's
+// (`historyState`/`'ready'`), so the screens keep reading `historyLoad`.
 import { Effect } from 'effect';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { XmppCore } from '@zilar/xmpp-core';
+import {
+  clearSupersededMarker,
+  flushPending as flushCore,
+  loadOlder as loadOlderCore,
+  loadPreview as loadPreviewCore,
+  openAtMessage as openAtMessageCore,
+  openHistory,
+  type HistoryCtx,
+  type HistoryPatch,
+  type HistorySet,
+  type HistoryState,
+  type HistoryLoad,
+} from '@zilar/client-core/store';
 
 import type { ChatEntry } from '../../lib/chat-api';
 import type { ChatPref } from '../../lib/chat-prefs-api';
 import { applyChatPrefs } from '../../lib/chat-prefs';
 import { TOPIC_GONE_NOTICE } from '../../lib/topics';
+import type { ChatStoreState, LoadState } from '../types';
 import { Ports } from './ports';
 import { detached, isClosed, lift, orElse, recover, type StoreCtx } from './runtime';
 
-const PREVIEW_HISTORY_MAX = 1;
-const PAGE_HISTORY_MAX = 50;
-
-// A search jump loads at most this many history pages back looking for the
-// hit before giving up with "Message not found" (web uses the same cap).
-export const MESSAGE_JUMP_MAX_PAGES = 20;
-// Upper bound for one stalled history wait inside `openAtMessage`: after
-// this the jump gives up with "Message not found" instead of hanging.
-export const MESSAGE_JUMP_WAIT_MS = 10_000;
+// The search-jump caps live in the core; re-exported for `real-store.ts` and
+// the timer tests, which still import them from this module.
+export { MESSAGE_JUMP_MAX_PAGES, MESSAGE_JUMP_WAIT_MS } from '@zilar/client-core/store';
 
 export interface History {
   /** The prefs rows: server truth when injected, empty otherwise. */
@@ -36,6 +50,9 @@ export interface History {
   openAtMessage(chatId: string, messageId: string): Promise<UiMessage>;
 }
 
+const toCoreLoad = (load: LoadState): HistoryLoad => (load === 'loaded' ? 'ready' : load);
+const toMobileLoad = (load: HistoryLoad): LoadState => (load === 'ready' ? 'loaded' : load);
+
 /**
  * First-page history, older pages, previews, the chat list refresh and
  * `openChat`. Every load is a fiber of the session, so `stop()` interrupts
@@ -43,7 +60,86 @@ export interface History {
  */
 export function makeHistory(ctx: StoreCtx): History {
   const { ports, get, set, s, life, h, fx } = ctx;
-  const { cursors, loadingHistory, loadingOlder, groupIds } = s;
+  const { groupIds } = s;
+
+  // The core's `HistoryState` over the mobile state: only the load-map name
+  // and its `'ready'`/`'loaded'` value differ.
+  const asHistoryState = (state: ChatStoreState): HistoryState => ({
+    ...state,
+    historyState: Object.fromEntries(
+      Object.entries(state.historyLoad).map(([chatId, load]) => [chatId, toCoreLoad(load)]),
+    ),
+  });
+
+  // A core patch back to the mobile names: `historyState` becomes
+  // `historyLoad`, everything else passes through.
+  const asMobilePatch = (patch: HistoryPatch): Partial<ChatStoreState> => {
+    if (patch.historyState === undefined) {
+      return patch;
+    }
+    const { historyState, ...rest } = patch;
+    return {
+      ...rest,
+      historyLoad: Object.fromEntries(
+        Object.entries(historyState).map(([chatId, load]) => [chatId, toMobileLoad(load)]),
+      ),
+    };
+  };
+
+  const historySet: HistorySet = (update) => {
+    set((state) => {
+      const previous = asHistoryState(state);
+      const patch = typeof update === 'function' ? update(previous) : update;
+      // `clearSupersededMarker` returns the state it was given to skip the
+      // write; keep the store's "same object" convention.
+      if (patch === previous) {
+        return state;
+      }
+      return asMobilePatch(patch);
+    });
+  };
+
+  // The view of this store the core history modules run on. `rt`, `k`, `fx`,
+  // the ports, `lastRead` and the mutable bookkeeping are the same objects the
+  // rest of the core uses, so a read mark or a cursor written here is visible
+  // everywhere.
+  const historyCtx: HistoryCtx = {
+    get: () => asHistoryState(get()),
+    set: historySet,
+    ports: ctx.coreCtx.ports,
+    rt: ctx.coreCtx.rt,
+    k: ctx.coreCtx.k,
+    fx: ctx.coreCtx.fx,
+    get core() {
+      return s.core;
+    },
+    set core(value) {
+      s.core = value;
+    },
+    get lastRead() {
+      return s.lastRead;
+    },
+    set lastRead(value) {
+      s.lastRead = value;
+    },
+    lastReadUserId: ctx.coreCtx.lastReadUserId,
+    pendingOutgoing: s.pendingOutgoing,
+    get groupsJoined() {
+      return s.groupsJoined;
+    },
+    set groupsJoined(value) {
+      s.groupsJoined = value;
+    },
+    get pendingOpenChatId() {
+      return s.pendingOpenChatId;
+    },
+    set pendingOpenChatId(value) {
+      s.pendingOpenChatId = value;
+    },
+    cursors: s.cursors,
+    loadingHistory: s.loadingHistory,
+    loadingOlder: s.loadingOlder,
+  };
 
   const loadPrefRows: Effect.Effect<ChatPref[], never, Ports> = Effect.gen(function* () {
     const { chatPrefs } = yield* Ports;
@@ -125,42 +221,7 @@ export function makeHistory(ctx: StoreCtx): History {
   }
 
   const loadPreview = (current: XmppCore, chat: ChatSummary): Effect.Effect<void, never, Ports> =>
-    // Preview is best-effort; the chat still works when opened.
-    orElse(
-      Effect.gen(function* () {
-        const page = yield* lift(() =>
-          current.loadHistory(chat.id, h.coreKind(chat), { max: PREVIEW_HISTORY_MAX }),
-        );
-        // Edits and reactions update derived state and never render as a
-        // bubble or preview row.
-        h.ingestHistoryReactions(page.messages);
-        h.ingestHistoryEdits(page.messages);
-        const last = page.messages
-          .filter((message) => !h.isReactionOnly(message) && !h.isEditStanza(message))
-          .at(-1);
-        if (last === undefined) {
-          return;
-        }
-        const ui = h.toUiMessage(last, get().currentUserId);
-        h.resolvePendingEdits(chat.id);
-        const preview = h.previewFor(h.withEdits(ui, chat.id));
-        set((state) => ({
-          chats: state.chats.map((entry) =>
-            entry.id === chat.id && entry.lastMessage === undefined
-              ? { ...entry, lastMessage: preview }
-              : entry,
-          ),
-        }));
-        if (s.lastRead[chat.id] === undefined) {
-          s.lastRead[chat.id] = ui.id;
-        }
-        cursors[chat.id] = page.first;
-        set((state) => ({
-          historyComplete: { ...state.historyComplete, [chat.id]: page.complete },
-        }));
-      }),
-      undefined,
-    );
+    loadPreviewCore(historyCtx, current, chat);
 
   // Joins the rooms of the new groups and loads their preview, best-effort.
   // Topic rows (T-0112) each join their own room, like group rows today.
@@ -226,7 +287,7 @@ export function makeHistory(ctx: StoreCtx): History {
     const [entries, prefs] = fetched.value;
     s.chatPrefRows = prefs;
     const known = mergeChatEntries(entries);
-    h.flushPending();
+    flushCore(historyCtx);
     yield* adoptChatEntries(entries, known);
   });
 
@@ -249,223 +310,18 @@ export function makeHistory(ctx: StoreCtx): History {
     s.chatPrefRows = prefs;
     const known = mergeChatEntries(entries);
     set({ chatsLoad: 'loaded' });
-    h.flushPending();
+    flushCore(historyCtx);
     yield* adoptChatEntries(entries, known);
   });
 
-  // A history load is safe only once the core is online (it is assigned
-  // before `connect()` resolves, so presence alone is not enough: a MAM query
-  // sent while still connecting fails) and, for a group, once its room joined.
-  function canLoadHistory(chat: ChatSummary): boolean {
-    return (
-      s.core !== undefined && get().status === 'online' && (chat.kind !== 'group' || s.groupsJoined)
-    );
-  }
-
-  // Runs the pending open once the core is online and the chat is known.
-  // Called after every point where either can become ready: the first chat
-  // merge, a background refresh, a manual reload and (re)connect.
-  function flushPending(): void {
-    const pending = s.pendingOpenChatId;
-    if (pending === undefined) {
-      return;
-    }
-    const chat = get().chats.find((entry) => entry.id === pending);
-    if (chat === undefined || !canLoadHistory(chat)) {
-      return;
-    }
-    s.pendingOpenChatId = undefined;
-    ctx.forkSession(openHistory(pending));
-  }
-
-  const openHistory = (chatId: string): Effect.Effect<void, never, Ports> =>
-    Effect.gen(function* () {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      const current = s.core;
-      if (current === undefined || chat === undefined || !canLoadHistory(chat)) {
-        // The chat screen mounted before the data was there. Remember it and
-        // load once the core and the chat are both ready; never query MAM while
-        // the core is still connecting.
-        s.pendingOpenChatId = chatId;
-        h.setHistoryLoad(chatId, 'loading');
-        return;
-      }
-      if (loadingHistory.has(chatId)) {
-        // A load for this chat is already in flight; it covers this open.
-        if (s.pendingOpenChatId === chatId) {
-          s.pendingOpenChatId = undefined;
-        }
-        return;
-      }
-      if (s.pendingOpenChatId === chatId) {
-        s.pendingOpenChatId = undefined;
-      }
-      loadingHistory.add(chatId);
-      h.setHistoryLoad(chatId, 'loading');
-      yield* recover(
-        Effect.gen(function* () {
-          const page = yield* lift(() =>
-            current.loadHistory(chatId, h.coreKind(chat), { max: PAGE_HISTORY_MAX }),
-          );
-          // Edits and reactions update derived state and never render as a
-          // bubble or preview row.
-          h.ingestHistoryReactions(page.messages);
-          h.ingestHistoryEdits(page.messages);
-          const loaded = page.messages
-            .filter((message) => !h.isReactionOnly(message) && !h.isEditStanza(message))
-            .map((message) => h.toUiMessage(message, get().currentUserId));
-          h.resolvePendingEdits(chatId);
-          const withEditsApplied = loaded.map((message) => h.withEdits(message, chatId));
-          const newest = withEditsApplied.at(-1);
-          set((state) => {
-            const live = h
-              .listFor(state, chatId)
-              .filter(
-                (message) => !withEditsApplied.some((item) => h.sameMessage(item.id, message.id)),
-              );
-            return {
-              messagesByChat: {
-                ...state.messagesByChat,
-                [chatId]: h.sortMessages([...withEditsApplied, ...live]),
-              },
-              historyComplete: { ...state.historyComplete, [chatId]: page.complete },
-              chats:
-                newest === undefined
-                  ? state.chats
-                  : state.chats.map((entry) =>
-                      entry.id === chatId ? { ...entry, lastMessage: h.previewFor(newest) } : entry,
-                    ),
-            };
-          });
-          cursors[chatId] = page.first;
-          h.refreshEdits(chatId);
-          const last = withEditsApplied.at(-1);
-          if (last !== undefined) {
-            h.recordRead(chatId, last.id);
-            current.markDisplayed(chatId, h.coreKind(chat), last.id);
-          }
-          h.setHistoryLoad(chatId, 'loaded');
-        }),
-        // Keep whatever live messages we have; the view offers a retry.
-        () => Effect.sync(() => h.setHistoryLoad(chatId, 'error')),
-      ).pipe(Effect.ensuring(Effect.sync(() => loadingHistory.delete(chatId))));
-      h.flushPending();
-    });
-
-  // One backwards history page, shared by `loadOlder` and `openAtMessage`.
-  const loadOlderPage = (chatId: string, cursor: string): Effect.Effect<void, never, Ports> =>
-    Effect.gen(function* () {
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      const current = s.core;
-      if (chat === undefined || current === undefined || loadingOlder.has(chatId)) {
-        return;
-      }
-      loadingOlder.add(chatId);
-      // A failed page load leaves the cursor for a later retry.
-      yield* orElse(
-        Effect.gen(function* () {
-          const page = yield* lift(() =>
-            current.loadHistory(chatId, h.coreKind(chat), {
-              before: cursor,
-              max: PAGE_HISTORY_MAX,
-            }),
-          );
-          // Edits and reactions update derived state and never render as a
-          // bubble or preview row.
-          h.ingestHistoryReactions(page.messages);
-          h.ingestHistoryEdits(page.messages);
-          const older = page.messages
-            .filter((message) => !h.isReactionOnly(message) && !h.isEditStanza(message))
-            .map((message) => h.toUiMessage(message, get().currentUserId));
-          h.resolvePendingEdits(chatId);
-          const withEditsApplied = older.map((message) => h.withEdits(message, chatId));
-          set((state) => ({
-            messagesByChat: {
-              ...state.messagesByChat,
-              [chatId]: h.sortMessages([...withEditsApplied, ...h.listFor(state, chatId)]),
-            },
-            historyComplete: { ...state.historyComplete, [chatId]: page.complete },
-          }));
-          cursors[chatId] = page.first;
-          h.refreshEdits(chatId);
-        }),
-        undefined,
-      ).pipe(Effect.ensuring(Effect.sync(() => loadingOlder.delete(chatId))));
-    });
-
-  function loadOlder(chatId: string): void {
-    const cursor = cursors[chatId];
-    if (cursor === undefined) {
-      return;
-    }
-    ctx.forkSession(loadOlderPage(chatId, cursor));
-  }
-
-  // Resolves true once the in-flight first-page load for a chat settles,
-  // so a search jump never pages past a page that is still arriving.
-  const waitForHistory = (chatId: string): Effect.Effect<boolean> =>
-    Effect.gen(function* () {
-      if (!loadingHistory.has(chatId)) {
-        return true;
-      }
-      return yield* Effect.repeat(Effect.sleep(25), {
-        while: () => loadingHistory.has(chatId),
-      }).pipe(
-        Effect.as(true),
-        Effect.timeoutOrElse({
-          duration: MESSAGE_JUMP_WAIT_MS,
-          orElse: () => Effect.succeed(false),
-        }),
-      );
-    });
-
+  // The core's `openAtMessage` opens the chat and pages back to the message;
+  // mobile also flags it as the jump target for the chat screen to scroll to.
   const openAtMessage = (
     chatId: string,
     messageId: string,
   ): Effect.Effect<UiMessage, Error, Ports> =>
     Effect.gen(function* () {
-      get().openChat(chatId);
-      const chat = get().chats.find((entry) => entry.id === chatId);
-      const current = s.core;
-      if (chat === undefined || current === undefined || !canLoadHistory(chat)) {
-        const found = h.listFor(get(), chatId).find((item) => h.sameMessage(item.id, messageId));
-        if (found === undefined) {
-          return yield* Effect.fail(new Error('message_not_found'));
-        }
-        set({ jumpTarget: { chatId, messageId } });
-        return found;
-      }
-      // Wait for the opening page when it is still in flight, then page
-      // backwards until the message is loaded or history runs out. A
-      // stalled wait (false) breaks out to "Message not found".
-      for (let pages = 0; pages < MESSAGE_JUMP_MAX_PAGES; pages += 1) {
-        const loaded = h.listFor(get(), chatId).find((item) => h.sameMessage(item.id, messageId));
-        if (loaded !== undefined) {
-          set({ jumpTarget: { chatId, messageId } });
-          return loaded;
-        }
-        if (get().historyComplete[chatId] === true) {
-          break;
-        }
-        if (loadingHistory.has(chatId)) {
-          if (!(yield* waitForHistory(chatId))) {
-            break;
-          }
-          continue;
-        }
-        const cursor = cursors[chatId];
-        if (cursor === undefined) {
-          if (!(yield* waitForHistory(chatId))) {
-            break;
-          }
-          continue;
-        }
-        yield* loadOlderPage(chatId, cursor);
-      }
-      const found = h.listFor(get(), chatId).find((item) => h.sameMessage(item.id, messageId));
-      if (found === undefined) {
-        return yield* Effect.fail(new Error('message_not_found'));
-      }
+      const found = yield* openAtMessageCore(historyCtx, chatId, messageId);
       set({ jumpTarget: { chatId, messageId } });
       return found;
     });
@@ -475,11 +331,15 @@ export function makeHistory(ctx: StoreCtx): History {
     loadFolders,
     refreshChats,
     loadPreview,
-    flushPending,
-    loadOlder,
+    flushPending: () => {
+      flushCore(historyCtx);
+    },
+    loadOlder: (chatId) => {
+      loadOlderCore(historyCtx, chatId);
+    },
     openAtMessage: (chatId, messageId) => ctx.run(openAtMessage(chatId, messageId)),
     retryHistory: (chatId) => {
-      ctx.forkSession(openHistory(chatId));
+      ctx.forkSession(openHistory(historyCtx, chatId));
     },
     reloadChats: () => {
       set({ chatsLoad: 'loading' });
@@ -515,10 +375,10 @@ export function makeHistory(ctx: StoreCtx): History {
       ctx.forkSession(fx.loadPins(chatId, true));
       fx.startPinsPolling(chatId);
       if (s.pendingOpenChatId !== undefined && s.pendingOpenChatId !== chatId) {
-        h.clearSupersededMarker(s.pendingOpenChatId);
+        clearSupersededMarker(historyCtx, s.pendingOpenChatId);
       }
       s.pendingOpenChatId = chatId;
-      ctx.forkSession(openHistory(chatId));
+      ctx.forkSession(openHistory(historyCtx, chatId));
     },
   };
 }

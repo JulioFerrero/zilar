@@ -1,9 +1,11 @@
 import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
 import { struct } from '@zilar/protocol';
+import { ApiError, HANDLE_CHECK_MAX, HANDLE_CHECK_MIN, runApi } from '@zilar/api-contract';
 
 import { errorFieldsOf } from './api-error-body';
 import { API_URL } from './auth';
 import type { TokenProvider } from './chat-api';
+import { createApiClient } from './effect/api-client';
 
 /**
  * The public directory API (directory search, lookup by handle, public
@@ -84,35 +86,9 @@ export interface DirectoryApi {
   checkGroupHandle(handle: string): Promise<HandleCheck>;
 }
 
-export class DirectoryApiError extends Error {
-  readonly status: number;
-  readonly code: string;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = 'DirectoryApiError';
-    this.status = status;
-    this.code = code;
-  }
-}
-
-const DirectoryKindSchema = Schema.Literals(['group', 'channel']);
-
-const DirectoryEntrySchema = struct({
-  id: Schema.String,
-  kind: DirectoryKindSchema,
-  title: Schema.String,
-  handle: Schema.String,
-  description: Schema.NullOr(Schema.String),
-  memberCount: Schema.Number,
-  joined: Schema.Boolean,
-  avatarUrl: Schema.optional(Schema.String),
-});
-
-const DirectoryPageSchema = struct({
-  entries: Schema.mutable(Schema.Array(DirectoryEntrySchema)),
-  next: Schema.NullOr(Schema.String),
-});
+/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
+export const DirectoryApiError = ApiError;
+export type DirectoryApiError = ApiError;
 
 const PublicJoinResultSchema = struct({
   groupId: Schema.String,
@@ -126,21 +102,6 @@ const GroupVisibilitySchema = struct({
   handle: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
-const HandleCheckSchema = struct({
-  available: Schema.Boolean,
-  reason: Schema.optional(Schema.Literals(['invalid', 'reserved', 'taken'])),
-});
-
-function parseDirectoryEntry(value: unknown): DirectoryEntry | null {
-  const decoded = Schema.decodeUnknownExit(DirectoryEntrySchema)(value);
-  return Exit.isSuccess(decoded) ? decoded.value : null;
-}
-
-function parseDirectoryPage(value: unknown): DirectoryPage | null {
-  const decoded = Schema.decodeUnknownExit(DirectoryPageSchema)(value);
-  return Exit.isSuccess(decoded) ? decoded.value : null;
-}
-
 function parsePublicJoinResult(value: unknown): PublicJoinResult | null {
   const decoded = Schema.decodeUnknownExit(PublicJoinResultSchema)(value);
   return Exit.isSuccess(decoded) ? decoded.value : null;
@@ -153,11 +114,6 @@ function parseGroupVisibility(value: unknown): GroupVisibilityState | null {
     visibility: decoded.value.visibility ?? 'private',
     handle: decoded.value.handle ?? null,
   };
-}
-
-function parseHandleCheck(value: unknown): HandleCheck | null {
-  const decoded = Schema.decodeUnknownExit(HandleCheckSchema)(value);
-  return Exit.isSuccess(decoded) ? decoded.value : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -225,6 +181,7 @@ export function createDirectoryApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): DirectoryApi {
+  const client = createApiClient({ getToken, fetchImpl, apiUrl });
   const withTokenEffect = Effect.fnUntraced(function* (
     path: string,
     init: RequestInit,
@@ -272,33 +229,19 @@ export function createDirectoryApi(
     );
 
   return {
-    async searchDirectory(input = {}) {
-      const params = new URLSearchParams();
-      if (input.q !== undefined && input.q !== '') {
-        params.set('q', input.q);
-      }
-      if (input.kind !== undefined) {
-        params.set('kind', input.kind);
-      }
-      if (input.cursor !== undefined && input.cursor !== '') {
-        params.set('cursor', input.cursor);
-      }
-      const suffix = params.size === 0 ? '' : `?${params.toString()}`;
-      const body = await withToken(
-        `/api/directory${suffix}`,
-        { method: 'GET' },
-        parseDirectoryPage,
-      );
-      return body as DirectoryPage;
+    searchDirectory: (input = {}) => {
+      // An empty `q` or `cursor` is left out, like before.
+      const query = {
+        ...(input.q === undefined || input.q === '' ? {} : { q: input.q }),
+        ...(input.kind === undefined ? {} : { kind: input.kind }),
+        ...(input.cursor === undefined || input.cursor === '' ? {} : { cursor: input.cursor }),
+      };
+      return runApi(client.directory.search({ query })).then((page) => ({
+        entries: [...page.entries],
+        next: page.next,
+      }));
     },
-    async lookupGroupByHandle(handle) {
-      const body = await withToken(
-        `/api/groups/by-handle/${encodeURIComponent(handle)}`,
-        { method: 'GET' },
-        parseDirectoryEntry,
-      );
-      return body as DirectoryEntry;
-    },
+    lookupGroupByHandle: (handle) => runApi(client.directory.byHandle({ params: { handle } })),
     async joinPublicGroup(groupId) {
       const body = await withToken(
         `/api/groups/${encodeURIComponent(groupId)}/join`,
@@ -326,16 +269,14 @@ export function createDirectoryApi(
         (value) => (isRecord(value) ? value : null),
       );
     },
-    async checkGroupHandle(handle) {
-      const params = new URLSearchParams();
-      params.set('handle', handle);
-      params.set('kind', 'group');
-      const body = await withToken(
-        `/api/handles/check?${params.toString()}`,
-        { method: 'GET' },
-        parseHandleCheck,
-      );
-      return body as HandleCheck;
+    checkGroupHandle: (handle) => {
+      // The server answers a handle outside 1..64 characters with a success
+      // body (`invalid`), but the derived client encodes the query before it
+      // sends it, so the same answer is given here.
+      if (handle.length < HANDLE_CHECK_MIN || handle.length > HANDLE_CHECK_MAX) {
+        return Promise.resolve({ available: false, reason: 'invalid' });
+      }
+      return runApi(client.handles.check({ query: { handle, kind: 'group' } }));
     },
   };
 }

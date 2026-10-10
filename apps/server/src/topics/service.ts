@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
-import { SqlClient, type SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
@@ -27,12 +27,8 @@ import { revokeActiveRulesForAiInTopic } from '../approvals/rules';
 import { deleteRoutinesForAiInTopic } from '../routines/service';
 import { deleteRoomMemoryEffect } from '../agents/memory/store';
 import { deleteToolsForAiInTopicEffect } from '../tools/service';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { syncTopicRoom } from './rooms';
-
-export const TOPIC_NAME_MAX = 80;
-export const TOPIC_LINK_URL_MAX = 300;
-export const TOPIC_LINK_LABEL_MAX = 40;
 
 // The request bodies are validated at the Effect HTTP boundary in `api.ts`;
 // these are the shapes the service accepts.
@@ -768,15 +764,6 @@ export async function removeTopicMember(
     );
   }
   return updated;
-}
-
-// The topic-AI statements run on the `effect/sql` client registered for this
-// database (see `../effect/sql`), like `getTopic` in `./access.ts`.
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError | E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // Compares the topic's `topic_ais` rows against the live rule

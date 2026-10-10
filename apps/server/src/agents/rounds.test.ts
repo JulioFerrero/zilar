@@ -22,6 +22,7 @@ import {
   stageForToolCall,
 } from './tool-guide';
 import { formatPersonaUpdatedLine } from './tools';
+import { jsonResponse } from '../test-support/wait';
 
 const VIRTUAL_KEY = 'sk-virtual-rounds-test-key-aaaa';
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
@@ -42,13 +43,6 @@ const REQUEST_ACTION_TOOL = {
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
 } as const;
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
 
 function completionResponse(content: string): Response {
   return jsonResponse({ choices: [{ message: { content } }] });

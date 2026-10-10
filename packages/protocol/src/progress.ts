@@ -35,8 +35,6 @@ export const CostTokensSchema = struct({
   output: Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
 });
 
-export type CostTokens = typeof CostTokensSchema.Type;
-
 export const CostSchema = struct({
   ai: JidSchema,
   room: Schema.optional(JidSchema),

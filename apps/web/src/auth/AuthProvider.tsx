@@ -109,7 +109,12 @@ export function AuthProvider({ children, value }: { children: ReactNode; value?:
   if (value !== undefined) {
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
   }
-  if (isMockMode()) {
+  // The build-time condition (the same as `resolveMockMode` accepts) is inline,
+  // so Vite folds the mock provider and mock/ids out of a production build.
+  if (
+    (import.meta.env.DEV || import.meta.env.MODE === 'test' || import.meta.env.VITE_MOCK === '1') &&
+    isMockMode()
+  ) {
     return <MockAuthProvider>{children}</MockAuthProvider>;
   }
   return <LiveAuthProvider>{children}</LiveAuthProvider>;

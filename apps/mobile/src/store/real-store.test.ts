@@ -13,6 +13,7 @@ import {
   type AppStateLike,
   type RealStoreDeps,
 } from './real-store';
+import { flushTasks as flush, waitFor } from '@/test/wait';
 
 function message(overrides: Partial<ChatMessage> & { chatJid: string; body: string }): ChatMessage {
   return {
@@ -222,18 +223,6 @@ function fakeApi(overrides: Partial<ChatApi> = {}): ChatApi {
   };
 }
 
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-/** Flushes microtasks until `predicate` holds (or gives up after 50 rounds). */
-async function flushUntil(predicate: () => boolean): Promise<void> {
-  for (let round = 0; round < 50 && !predicate(); round += 1) {
-    await flush();
-  }
-}
-
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
   const promise = new Promise<void>((res) => {
@@ -301,6 +290,25 @@ describe('createRealChatStore', () => {
       'group hello',
     );
     expect(store.getState().currentUserId).toBe('u-me');
+  });
+
+  it('marks a DM the server flags as an AI chat, and leaves a human DM as not AI', async () => {
+    const { store } = await setup({
+      getChats: vi.fn(async () => [
+        {
+          kind: 'dm' as const,
+          chatJid: 'bot@zilar.test',
+          title: 'Bot',
+          userId: 'u-bot',
+          isAi: true,
+        },
+        { kind: 'dm' as const, chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' },
+      ]),
+    });
+
+    const chats = store.getState().chats;
+    expect(chats.find((chat) => chat.id === 'bot@zilar.test')?.isAI).toBe(true);
+    expect(chats.find((chat) => chat.id === 'ana@zilar.test')?.isAI).toBe(false);
   });
 
   it('updates the preview and unread count from a live message', async () => {
@@ -680,7 +688,7 @@ describe('createRealChatStore', () => {
     expect(createXmpp).toHaveBeenCalledTimes(0);
 
     gate.resolve();
-    await flushUntil(() => store.getState().status === 'online');
+    await waitFor(() => store.getState().status === 'online');
     expect(store.getState().chats.map((chat) => chat.id)).toEqual(['ana@zilar.test']);
     expect(createXmpp).toHaveBeenCalledTimes(1);
   });
@@ -718,7 +726,7 @@ describe('createRealChatStore', () => {
     expect(api.getChats).toHaveBeenCalledTimes(2);
 
     gate.resolve();
-    await flushUntil(() => store.getState().status === 'online');
+    await waitFor(() => store.getState().status === 'online');
     expect(store.getState().chatsLoad).toBe('loaded');
     expect(createXmpp).toHaveBeenCalledTimes(1);
   });
@@ -754,7 +762,7 @@ describe('createRealChatStore', () => {
     expect(api.getChats).toHaveBeenCalledTimes(2);
 
     gate.resolve();
-    await flushUntil(() => store.getState().status === 'online');
+    await waitFor(() => store.getState().status === 'online');
     expect(store.getState().chats.map((chat) => chat.id)).toEqual(['ana@zilar.test']);
     expect(createXmpp).toHaveBeenCalledTimes(1);
   });
@@ -799,14 +807,14 @@ describe('createRealChatStore', () => {
       },
     });
     store.getState().start();
-    await flushUntil(() => tokenCalls >= 1);
+    await waitFor(() => tokenCalls >= 1);
 
     // Resume while the first boot is still waiting on its token, then fail it.
     appState.setActive();
     await flush();
     rejectToken(new Error('the network is down'));
 
-    await flushUntil(() => store.getState().status === 'online');
+    await waitFor(() => store.getState().status === 'online');
     expect(api.getXmppToken).toHaveBeenCalledTimes(2);
     expect(xmpp.core.connect).toHaveBeenCalledTimes(1);
   });
@@ -1117,7 +1125,7 @@ describe('loading states (T-0067)', () => {
     expect(store.getState().chats).toHaveLength(0);
 
     gate.resolve();
-    await flushUntil(() => store.getState().chatsLoad === 'loaded');
+    await waitFor(() => store.getState().chatsLoad === 'loaded');
 
     expect(store.getState().chatsLoad).toBe('loaded');
     expect(store.getState().chats.map((chat) => chat.id)).toEqual(['team@rooms.zilar.test', ANA]);
@@ -1140,7 +1148,7 @@ describe('loading states (T-0067)', () => {
     expect(store.getState().chats).toHaveLength(0);
 
     store.getState().reloadChats();
-    await flushUntil(() => store.getState().chatsLoad === 'loaded');
+    await waitFor(() => store.getState().chatsLoad === 'loaded');
 
     expect(store.getState().chatsLoad).toBe('loaded');
     expect(store.getState().chats).toHaveLength(2);
@@ -1173,7 +1181,7 @@ describe('loading states (T-0067)', () => {
     ];
 
     store.getState().openChat(ANA);
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
     const ids = store
       .getState()
       .messages(ANA)
@@ -1233,7 +1241,7 @@ describe('loading states (T-0067)', () => {
     expect(store.getState().historyLoad[ANA]).toBe('loading');
 
     gate.resolve();
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
 
     expect(loadHistory).toHaveBeenCalledWith(ANA, 'chat', { max: 50 });
     expect(
@@ -1261,7 +1269,7 @@ describe('loading states (T-0067)', () => {
     expect(store.getState().historyLoad[ANA]).toBe('loading');
 
     gate.resolve();
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
 
     expect(loadHistory).toHaveBeenCalledWith(ANA, 'chat', { max: 50 });
     expect(
@@ -1282,7 +1290,7 @@ describe('loading states (T-0067)', () => {
     store.getState().openChat(ANA);
 
     gate.resolve();
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
 
     const pageLoads = loadHistory.mock.calls.filter((call) => call[2]?.max === 50);
     expect(pageLoads).toHaveLength(1);
@@ -1301,7 +1309,7 @@ describe('loading states (T-0067)', () => {
     expect(store.getState().historyLoad['team@rooms.zilar.test']).toBe('loading');
 
     gate.resolve();
-    await flushUntil(() => store.getState().historyLoad['team@rooms.zilar.test'] === 'loaded');
+    await waitFor(() => store.getState().historyLoad['team@rooms.zilar.test'] === 'loaded');
 
     const pageLoads = loadHistory.mock.calls.filter((call) => call[2]?.max === 50);
     expect(pageLoads).toHaveLength(1);
@@ -1314,13 +1322,13 @@ describe('loading states (T-0067)', () => {
     loadHistory.mockRejectedValueOnce(new Error('MAM failed'));
 
     store.getState().openChat(ANA);
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'error');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'error');
 
     expect(store.getState().historyLoad[ANA]).toBe('error');
     expect(store.getState().messages(ANA)).toHaveLength(0);
 
     store.getState().retryHistory(ANA);
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
 
     expect(store.getState().historyLoad[ANA]).toBe('loaded');
     expect(
@@ -1409,7 +1417,7 @@ describe('loading states (T-0067)', () => {
     expect(store.getState().historyLoad[ANA]).toBe('loading');
 
     appState.setActive();
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
 
     expect(loadHistory).toHaveBeenCalledWith(ANA, 'chat', { max: 50 });
     expect(store.getState().historyLoad[ANA]).toBe('loaded');
@@ -1443,7 +1451,7 @@ describe('message edits, retractions and reactions received (T-0078)', () => {
   it('applies a live correction and retraction from the original sender', async () => {
     const { store, xmpp } = await setup();
     store.getState().openChat(ANA);
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
 
     xmpp.emit(
       'message',
@@ -1485,7 +1493,7 @@ describe('message edits, retractions and reactions received (T-0078)', () => {
   it('ignores a correction or retraction from a foreign sender', async () => {
     const { store, xmpp } = await setup();
     store.getState().openChat(ANA);
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
 
     xmpp.emit(
       'message',
@@ -1549,7 +1557,7 @@ describe('message edits, retractions and reactions received (T-0078)', () => {
     expect(store.getState().messages(ANA)).toHaveLength(0);
 
     store.getState().openChat(ANA);
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
     store.getState().loadOlder(ANA);
     await flush();
 
@@ -1590,7 +1598,7 @@ describe('message edits, retractions and reactions received (T-0078)', () => {
     ];
 
     store.getState().openChat(ANA);
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
 
     const list = store.getState().messages(ANA);
     expect(list.map((m) => m.id)).toEqual(['ana-1', 'ana-2']);
@@ -1629,7 +1637,7 @@ describe('message edits, retractions and reactions received (T-0078)', () => {
     xmpp.history[ANA] = history;
 
     store.getState().openChat(ANA);
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
     store.getState().loadOlder(ANA);
     await flush();
 
@@ -1646,7 +1654,7 @@ describe('message edits, retractions and reactions received (T-0078)', () => {
   it('adds and clears reactions and waits for an unknown target', async () => {
     const { store, xmpp } = await setup();
     store.getState().openChat(ANA);
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
 
     xmpp.emit(
       'message',
@@ -1725,7 +1733,7 @@ describe('message edits, retractions and reactions received (T-0078)', () => {
       }),
     ];
     store.getState().retryHistory(ANA);
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
 
     expect(
       store
@@ -1738,7 +1746,7 @@ describe('message edits, retractions and reactions received (T-0078)', () => {
   it('updates the preview for edits and deletions', async () => {
     const { store, xmpp } = await setup();
     store.getState().openChat(ANA);
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
 
     xmpp.emit(
       'message',
@@ -1781,7 +1789,7 @@ describe('message edits, retractions and reactions received (T-0078)', () => {
       }),
     ];
     store.getState().openChat(ANA);
-    await flushUntil(() => store.getState().historyLoad[ANA] === 'loaded');
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
 
     xmpp.emit(
       'message',

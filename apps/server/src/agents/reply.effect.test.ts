@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { FetchLike } from '../ai/litellm-client';
 import type { ChatCompletionMessage } from './context';
 import { ChatCompletionError, completeChat } from './reply';
+import { jsonResponse } from '../test-support/wait';
 
 const VIRTUAL_KEY = 'sk-virtual-effect-turn-test-key-aaaa';
 const MODEL = 'ai-abc-123';
@@ -11,13 +12,6 @@ const MESSAGES: ChatCompletionMessage[] = [
   { role: 'system', content: 'Be helpful.' },
   { role: 'user', content: 'hello' },
 ];
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
 
 // An SSE body that emits a first delta and then never closes: the stream read
 // hangs until the Effect deadline interrupts it.

@@ -15,18 +15,11 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Effect, Layer, Stream } from 'effect';
-import { HttpServer, HttpServerResponse, HttpRouter } from 'effect/http';
+import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import type { Logger } from 'pino';
 import { HttpError } from '../errors';
-import {
-  Session,
-  requestIdOf,
-  sessionLayer,
-  withErrorEnvelope,
-  type EffectApiMount,
-  type EffectApiRoute,
-} from '../effect/http-core';
+import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { NotAudioError, createFfmpegEngine } from './engine';
 import { VOICE_MAX_BYTES, VOICE_MAX_DURATION_MS, type VoiceRoutesDependencies } from './routes';
 
@@ -43,10 +36,6 @@ const VoiceGroup = HttpApiGroup.make('voice')
 
 const VoiceApi = HttpApi.make('voice').add(VoiceGroup);
 
-export const VOICE_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'POST', path: '/api/voice' },
-];
-
 /**
  * `POST /api/voice` takes a browser recording, converts it to AAC/M4A and
  * answers with the converted bytes plus the duration `ffprobe` measured. The
@@ -59,9 +48,9 @@ export function createVoiceApi(deps: VoiceApiDependencies): EffectApiMount {
   const maxBytes = deps.maxBytes ?? VOICE_MAX_BYTES;
 
   const groupLayer = HttpApiBuilder.group(VoiceApi, 'voice', (handlers) =>
-    handlers.handle('convert', (request) => {
-      const requestId = requestIdOf(request.request);
-      return withErrorEnvelope(
+    handlers.handle(
+      'convert',
+      handler(logger, (request) =>
         Effect.gen(function* () {
           const declared = Number(request.request.headers['content-length'] ?? '');
           if (Number.isFinite(declared) && declared > maxBytes) {
@@ -132,10 +121,8 @@ export function createVoiceApi(deps: VoiceApiDependencies): EffectApiMount {
             ),
           );
         }),
-        logger,
-        requestId,
-      );
-    }),
+      ),
+    ),
   );
 
   const apiLayer = HttpApiBuilder.layer(VoiceApi).pipe(
@@ -143,14 +130,7 @@ export function createVoiceApi(deps: VoiceApiDependencies): EffectApiMount {
     Layer.provide(sessionLayer(deps.auth, logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: VOICE_API_ROUTES };
+  return mountApi(VoiceApi, apiLayer);
 }
 
 // Reads the body stream chunk by chunk and stops as soon as the cap is passed,

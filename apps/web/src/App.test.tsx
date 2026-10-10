@@ -3,12 +3,12 @@ import { screen } from '@testing-library/react';
 import { renderApp } from '@/test/renderApp';
 
 describe('App routes', () => {
-  it('redirects a guest to the login screen', () => {
+  it('redirects a guest to the login screen', async () => {
     renderApp('/', undefined, {
       auth: { status: 'guest', user: undefined, refetch: async () => {} },
     });
 
-    expect(screen.getByText('Sign in to Zilar')).toBeTruthy();
+    expect(await screen.findByText('Sign in to Zilar')).toBeTruthy();
   });
 
   it('renders the chat shell with the search field for a signed-in user', () => {

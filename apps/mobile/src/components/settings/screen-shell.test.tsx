@@ -28,20 +28,12 @@ vi.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => insets,
 }));
 
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
-
 vi.mock('lucide-react-native', () => ({
   ChevronLeft: 'ChevronLeft',
 }));
 
 vi.mock('@/components/ui/icon-button', () => ({
   IconButton: 'IconButton',
-}));
-
-vi.mock('@/components/ui/text', () => ({
-  Text: 'Text',
 }));
 
 // The shells now import `floating-tab-bar` for the tab-screen padding helper,

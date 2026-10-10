@@ -1,8 +1,8 @@
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { LitellmAdminClient } from '../ai/litellm-client';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 
 export interface AiUsageLogger {
   warn: (fields: Record<string, unknown>, message: string) => void;
@@ -31,16 +31,8 @@ export function utcDayString(now: Date): string {
   return now.toISOString().slice(0, 10);
 }
 
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
-
 // `numeric` columns come back as strings from node-postgres (and PGlite), so
-// these stay `string` and the reads below keep the same `Number(...)`
-// conversion the drizzle version did.
+// these stay `string` and the reads below convert them with `Number(...)`.
 interface AiLimitRow {
   perDayUsd: string;
   perMonthUsd: string;

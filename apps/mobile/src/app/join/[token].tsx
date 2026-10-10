@@ -1,7 +1,6 @@
 import { Effect } from 'effect';
 import { Redirect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useColorScheme } from 'nativewind';
 import { useEffect, useState, type ReactNode } from 'react';
 import { View } from 'react-native';
 
@@ -17,7 +16,6 @@ import {
 } from '@/components/chat/join-link';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { asColorScheme } from '@/lib/color-scheme';
 import { CHAT_BACKGROUND } from '@/lib/colors';
 import { useAction } from '@/lib/effect/use-action';
 import { extractJoinToken, type JoinPreview } from '@/lib/invite-links-api';
@@ -72,14 +70,13 @@ export default function JoinRoute() {
 /** The inline name gate: choose a name first, then return to the join. */
 function NameGate({ raw }: { raw: string | undefined }) {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   // The raw param rides through: a junk token still matches this route's
   // `[token]` segment, so the join screen shows its invalid-link state
   // instead of landing on a route that does not exist. `/join` alone matches
   // no route, so a missing param falls back to the chats list.
   const from = raw === undefined ? '/' : `/join/${raw}`;
   return (
-    <JoinBackground scheme={scheme}>
+    <JoinBackground>
       <View className="w-full max-w-sm rounded-2xl bg-background p-6 shadow-xl">
         <Text className="text-center text-[24px] font-semibold leading-8 text-foreground">
           You are invited
@@ -103,7 +100,6 @@ function NameGate({ raw }: { raw: string | undefined }) {
 
 function Join({ token }: { token: string | undefined }) {
   const router = useRouter();
-  const scheme = asColorScheme(useColorScheme().colorScheme);
   const previewJoinLink = useChatStore((state) => state.previewJoinLink);
   const joinByLink = useChatStore((state) => state.joinByLink);
   const store = useChatStoreApi();
@@ -209,7 +205,7 @@ function Join({ token }: { token: string | undefined }) {
   };
 
   return (
-    <JoinBackground scheme={scheme}>
+    <JoinBackground>
       {token === undefined ? (
         <View className="w-full max-w-sm rounded-2xl bg-background p-6 shadow-xl">
           <Text className="text-center text-[24px] font-semibold leading-8 text-foreground">
@@ -223,11 +219,11 @@ function Join({ token }: { token: string | undefined }) {
   );
 }
 
-function JoinBackground({ scheme, children }: { scheme: 'light' | 'dark'; children: ReactNode }) {
+function JoinBackground({ children }: { children: ReactNode }) {
   return (
     <View className="flex-1">
       <LinearGradient
-        colors={CHAT_BACKGROUND[scheme]}
+        colors={CHAT_BACKGROUND}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}

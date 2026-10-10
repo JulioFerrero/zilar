@@ -88,8 +88,7 @@ async function main(): Promise<void> {
     console.log(`Expires at: ${invite.expiresAt.toISOString()}`);
     console.log(`Maximum uses: ${invite.maxUses}`);
   } finally {
-    // Dispose the `effect/sql` pool before closing the drizzle client it shares
-    // the database with.
+    // Dispose the `effect/sql` pool, which owns the connections, before closing.
     await disposeSqlRuntime(db);
     await close();
   }

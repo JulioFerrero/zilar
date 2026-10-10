@@ -2,7 +2,7 @@ import { createCore } from './client';
 import { createCoreEffect } from './core-effect';
 import type { XmppCore, XmppCoreEffect, XmppCoreOptions } from './types';
 
-export type { EventName, EventPayload, EventStreams } from './events';
+export type { EventName, EventPayload } from './events';
 
 export type {
   ChatKind,

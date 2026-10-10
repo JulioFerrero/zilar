@@ -6,27 +6,13 @@ import { createChatStore } from '@/store/store';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { renderApp } from '@/test/renderApp';
 import { ApprovalsPage } from '@/routes/ApprovalsPage';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const auth: AuthState = {
   status: 'authenticated',
   user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
   refetch: async () => {},
 };
-
-function jsonResponse(status: number, body: unknown): Response {
-  if (status === 204) {
-    return {
-      ok: true,
-      status,
-      json: async () => body,
-    } as Response;
-  }
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response;
-}
 
 function errorResponse(status: number, code: string, message: string): Response {
   return jsonResponse(status, { error: { code, message } });

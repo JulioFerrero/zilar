@@ -1,17 +1,21 @@
+import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createApp } from '../app';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
+  testSql,
   TEST_BASE_URL,
   type SignedInUser,
   type TestContext,
 } from '../test-support';
-import { STICKER_FAVORITES_MAX } from './service';
+import { STICKER_FAVORITES_MAX, STICKERS_MAX_PER_PACK } from './service';
 
 function pngBytes(width: number, height: number): Uint8Array {
   const bytes = new Uint8Array(33);
@@ -90,6 +94,39 @@ describe('sticker favorites', () => {
     expect(uploaded.status).toBe(201);
     const sticker = (await uploaded.json()) as { id: string };
     return { packId: pack.id, stickerId: sticker.id };
+  }
+
+  // Writes `count` stickers for `userId` straight into the tables the upload
+  // route writes (pack, owner link, sticker rows), in packs of 120. Only the
+  // cap tests use it: 200 HTTP uploads cost seconds per test.
+  async function seedStickers(userId: string, count: number): Promise<string[]> {
+    const ids: string[] = [];
+    const now = new Date().toISOString();
+    for (let start = 0; start < count; start += STICKERS_MAX_PER_PACK) {
+      const packId = randomUUID();
+      const packIndex = start / STICKERS_MAX_PER_PACK;
+      const stickers = Array.from(
+        { length: Math.min(STICKERS_MAX_PER_PACK, count - start) },
+        (_, position) => ({ id: randomUUID(), position }),
+      );
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO sticker_packs (id, owner_id, title, visibility, created_at, updated_at)
+            VALUES (${packId}, ${userId}, ${`Seeded ${packIndex}`}, 'private', ${now}, ${now})`;
+          yield* sql`INSERT INTO user_sticker_packs (user_id, pack_id, position, added_at)
+            VALUES (${userId}, ${packId}, ${packIndex}, ${now})`;
+          for (const sticker of stickers) {
+            yield* sql`INSERT INTO stickers
+                (id, pack_id, position, emoji, mime, width, height, bytes, storage_key)
+              VALUES (${sticker.id}, ${packId}, ${sticker.position}, NULL, 'image/png', 8, 8, 33,
+                ${`${sticker.id}.png`})`;
+          }
+        }),
+      );
+      ids.push(...stickers.map((sticker) => sticker.id));
+    }
+    return ids;
   }
 
   it('stars, lists and unstars a sticker', async () => {
@@ -199,85 +236,24 @@ describe('sticker favorites', () => {
   });
 
   it('enforces the 200-favorites cap', async () => {
-    // A limiter that never fires, so 201 uploads can land in one test (the
-    // route-level limiter is covered by the sibling routes test).
-    const unthrottled = createApp({
-      db: context.db,
-      logger: context.logger,
-      config: context.config,
-      auth: context.auth,
-      adminClient: context.adminClient,
-      stickerStorageDir: storageDir,
-      uploadLimiter: { allow: () => true },
-    });
-    const created = await jsonRequest(unthrottled, 'POST', '/api/sticker-packs', owner, {
-      title: 'Big',
-    });
-    expect(created.status).toBe(201);
-    const firstPackId = ((await created.json()) as { id: string }).id;
-    const second = await jsonRequest(unthrottled, 'POST', '/api/sticker-packs', owner, {
-      title: 'Big 2',
-    });
-    expect(second.status).toBe(201);
-    // Packs hold 120 stickers, so 200 favorites span two packs.
-    const packIds = [firstPackId, ((await second.json()) as { id: string }).id];
-    const ids: string[] = [];
-    for (let index = 0; index < STICKER_FAVORITES_MAX; index += 1) {
-      const uploaded = await uploadBytes(
-        unthrottled,
-        packIds[Math.floor(index / 120)]!,
-        owner,
-        pngBytes(8 + (index % 8), 8),
-      );
-      expect(uploaded.status).toBe(201);
-      ids.push(((await uploaded.json()) as { id: string }).id);
-    }
-    for (const stickerId of ids) {
+    // 200 favorites span two packs (120 + 80); one more sticker is the 201st.
+    const ids = await seedStickers(owner.id, STICKER_FAVORITES_MAX + 1);
+    for (const stickerId of ids.slice(0, STICKER_FAVORITES_MAX)) {
       const put = await jsonRequest(app, 'PUT', '/api/sticker-favorites', owner, {
         sticker_id: stickerId,
       });
       expect(put.status).toBe(200);
     }
-    const oneMore = await uploadBytes(unthrottled, packIds[1]!, owner, pngBytes(40, 40));
-    expect(oneMore.status).toBe(201);
-    const extra = ((await oneMore.json()) as { id: string }).id;
     const over = await jsonRequest(app, 'PUT', '/api/sticker-favorites', owner, {
-      sticker_id: extra,
+      sticker_id: ids[STICKER_FAVORITES_MAX],
     });
     expect(over.status).toBe(400);
     expect(((await over.json()) as { error: { code: string } }).error.code).toBe('favorites_full');
   });
 
   it('re-stars an existing favorite at the cap with 200, not favorites_full', async () => {
-    // Fill to the cap through the tested route.
-    const unthrottled = createApp({
-      db: context.db,
-      logger: context.logger,
-      config: context.config,
-      auth: context.auth,
-      adminClient: context.adminClient,
-      stickerStorageDir: storageDir,
-      uploadLimiter: { allow: () => true },
-    });
-    const first = await jsonRequest(unthrottled, 'POST', '/api/sticker-packs', owner, {
-      title: 'Full',
-    });
-    const firstPackId = ((await first.json()) as { id: string }).id;
-    const second = await jsonRequest(unthrottled, 'POST', '/api/sticker-packs', owner, {
-      title: 'Full 2',
-    });
-    const secondPackId = ((await second.json()) as { id: string }).id;
-    const ids: string[] = [];
-    for (let index = 0; index < STICKER_FAVORITES_MAX; index += 1) {
-      const uploaded = await uploadBytes(
-        unthrottled,
-        index < 120 ? firstPackId : secondPackId,
-        owner,
-        pngBytes(8 + (index % 8), 8),
-      );
-      expect(uploaded.status).toBe(201);
-      ids.push(((await uploaded.json()) as { id: string }).id);
-    }
+    // Fill to the cap with seeded stickers, then star through the route.
+    const ids = await seedStickers(owner.id, STICKER_FAVORITES_MAX);
     for (const stickerId of ids) {
       expect(
         (await jsonRequest(app, 'PUT', '/api/sticker-favorites', owner, { sticker_id: stickerId }))
@@ -335,34 +311,7 @@ describe('sticker favorites', () => {
 
   it('lists 200 favorites in star order with a bounded number of queries', async () => {
     // Star the full cap in a known order (two packs: 120 + 80).
-    const unthrottled = createApp({
-      db: context.db,
-      logger: context.logger,
-      config: context.config,
-      auth: context.auth,
-      adminClient: context.adminClient,
-      stickerStorageDir: storageDir,
-      uploadLimiter: { allow: () => true },
-    });
-    const first = await jsonRequest(unthrottled, 'POST', '/api/sticker-packs', owner, {
-      title: 'Full',
-    });
-    const firstPackId = ((await first.json()) as { id: string }).id;
-    const second = await jsonRequest(unthrottled, 'POST', '/api/sticker-packs', owner, {
-      title: 'Full 2',
-    });
-    const secondPackId = ((await second.json()) as { id: string }).id;
-    const ids: string[] = [];
-    for (let index = 0; index < STICKER_FAVORITES_MAX; index += 1) {
-      const uploaded = await uploadBytes(
-        unthrottled,
-        index < 120 ? firstPackId : secondPackId,
-        owner,
-        pngBytes(8 + (index % 8), 8),
-      );
-      expect(uploaded.status).toBe(201);
-      ids.push(((await uploaded.json()) as { id: string }).id);
-    }
+    const ids = await seedStickers(owner.id, STICKER_FAVORITES_MAX);
     for (const stickerId of ids) {
       expect(
         (await jsonRequest(app, 'PUT', '/api/sticker-favorites', owner, { sticker_id: stickerId }))

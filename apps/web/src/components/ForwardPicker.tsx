@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Avatar } from './Avatar';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
@@ -39,7 +39,7 @@ export function ForwardPicker({
   messages: UiMessage[];
   onClose: () => void;
 }) {
-  const store = useChatStore();
+  const chats = useChatSelector((s) => s.chats);
   const storeApi = useChatStoreApi();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
@@ -47,7 +47,7 @@ export function ForwardPicker({
 
   const targets = useMemo(() => {
     const search = query.trim().toLowerCase();
-    return store.chats.filter((chat) => {
+    return chats.filter((chat) => {
       if (chat.archived === true || !canPostTo(chat)) {
         return false;
       }
@@ -59,7 +59,7 @@ export function ForwardPicker({
         (chat.groupTitle !== undefined && chat.groupTitle.toLowerCase().includes(search))
       );
     });
-  }, [store.chats, query]);
+  }, [chats, query]);
 
   const toggle = (chatId: string): void => {
     setSelected((current) =>

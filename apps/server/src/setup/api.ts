@@ -13,7 +13,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { Effect, Layer, Result, Schema, SchemaGetter, SchemaIssue } from 'effect';
-import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
+import type { HttpServerRequest } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { Logger } from 'pino';
@@ -28,13 +28,13 @@ import {
 import { createResendMailer, type CurrentMailer, type Mailer } from '../auth/mailer';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import {
+  mountApi,
   requestIdOf,
   socketAddressOf,
   withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { clientIpFrom } from '../http/client-ip';
@@ -75,16 +75,6 @@ export interface SetupApiDependencies {
    * capture. Defaults to swapping the shared `mailer` above.
    */
   swapMailer?: ((mailer: Mailer) => void) | undefined;
-}
-
-// Every setup query runs on the `effect/sql` client registered for this
-// database (see `../effect/sql`). A rejection here is a defect for the caller,
-// exactly like the old `db.transaction` rejection it replaces.
-function runSql<A, E>(
-  db: SetupApiDependencies['db'],
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // zod v4's practical email check (`z.email()`), kept so an address the setup
@@ -194,11 +184,6 @@ const SetupGroup = HttpApiGroup.make('setup')
   .prefix('/api');
 
 const SetupApi = HttpApi.make('setup').add(SetupGroup);
-
-export const SETUP_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/setup/status' },
-  { method: 'POST', path: '/api/setup' },
-];
 
 function notFound(): HttpError {
   return new HttpError(404, 'not_found', 'Not found');
@@ -394,14 +379,7 @@ export function createSetupApi(deps: SetupApiDependencies): EffectApiMount {
 
   const apiLayer = HttpApiBuilder.layer(SetupApi).pipe(Layer.provide(groupLayer));
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: SETUP_API_ROUTES };
+  return mountApi(SetupApi, apiLayer);
 }
 
 // Env-based SMTP installs behave exactly as before: explicit

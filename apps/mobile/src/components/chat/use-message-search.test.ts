@@ -6,6 +6,7 @@ import {
   MessageSearchController,
   type SearchScheduler,
 } from './message-search';
+import { flushTasks as flush } from '@/test/wait';
 
 interface ManualClock {
   frames: SearchScheduler;
@@ -79,10 +80,6 @@ function fakeApi(
     },
   };
   return { api, calls, signals };
-}
-
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe('MessageSearchController', () => {
@@ -356,8 +353,8 @@ describe('MessageSearchController', () => {
     expect(changes).toBeGreaterThan(0);
   });
 
-  it('waits MESSAGE_SEARCH_DEBOUNCE_MS of about 300 ms', () => {
-    expect(MESSAGE_SEARCH_DEBOUNCE_MS).toBe(300);
+  it('waits MESSAGE_SEARCH_DEBOUNCE_MS of 250 ms like web', () => {
+    expect(MESSAGE_SEARCH_DEBOUNCE_MS).toBe(250);
   });
 
   it('does not log the query: the API receives it only as a request param', async () => {

@@ -5,6 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import IntegrationsScreen from '@/app/settings/integrations';
 import { IntegrationsApiError, type IntegrationsStatus } from '@/lib/integrations-api';
+import { settle } from '@/test/wait';
 
 // `react-dom/client` ships no bundled types and mobile has no testing library,
 // so the screen renders through a typed require handle (the media-sheet and
@@ -34,10 +35,6 @@ vi.mock('expo-router', async () => {
     useRouter: () => ({ back: () => {}, push: () => {} }),
   };
 });
-
-vi.mock('nativewind', () => ({
-  useColorScheme: () => ({ colorScheme: 'dark' }),
-}));
 
 vi.mock('react-native', async () => {
   const { createElement } = await import('react');
@@ -208,11 +205,7 @@ vi.mock('@/lib/auth', () => ({
 }));
 
 vi.mock('@/lib/colors', () => ({
-  ICON: { dark: '#d4d4d4', light: '#d4d4d4' },
-}));
-
-vi.mock('@/lib/color-scheme', () => ({
-  asColorScheme: () => 'dark',
+  ICON: '#d4d4d4',
 }));
 
 function status(overrides: Partial<IntegrationsStatus> = {}): IntegrationsStatus {
@@ -238,14 +231,6 @@ afterEach(() => {
   }
 });
 
-async function settle(): Promise<void> {
-  for (let turn = 0; turn < 5; turn += 1) {
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-  }
-}
-
 async function mount(): Promise<HTMLDivElement> {
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -257,7 +242,7 @@ async function mount(): Promise<HTMLDivElement> {
   await act(async () => {
     root.render(createElement(IntegrationsScreen));
   });
-  await settle();
+  await settle(5);
   return container;
 }
 
@@ -278,7 +263,7 @@ async function click(element: HTMLElement): Promise<void> {
   act(() => {
     element.click();
   });
-  await settle();
+  await settle(5);
 }
 
 async function typeInto(input: HTMLElement, text: string): Promise<void> {
@@ -287,7 +272,7 @@ async function typeInto(input: HTMLElement, text: string): Promise<void> {
     setter?.call(input, text);
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
-  await settle();
+  await settle(5);
 }
 
 describe('Settings → Integrations screen', () => {

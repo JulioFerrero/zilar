@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { ChatApi, ChatEntry } from '../lib/chat-api';
 import { createRealChatStore } from './real-store';
+import { flushTasks as flush } from '@/test/wait';
 
 function message(overrides: Partial<ChatMessage> & { chatJid: string; body: string }): ChatMessage {
   return {
@@ -137,11 +138,6 @@ function fakeApi(overrides: Partial<ChatApi> = {}): ChatApi {
     })),
     ...overrides,
   };
-}
-
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 // Two DMs and a group to forward into, so a target never equals the source.

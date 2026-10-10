@@ -2,178 +2,33 @@
 // paths, limiter order, statuses and bodies as the deleted router
 // (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
 // Its service runs on effect/sql.
+//
+// The schemas, the group and its middleware tags live in the shared contract
+// (`@zilar/api-contract`, T-0864); this file keeps the handlers and layers.
 
-import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-} from 'effect/http-api';
+import { Effect, Layer } from 'effect';
+import { HttpServer, HttpRouter } from 'effect/http';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { CurrentUser, PinsGroup, PinsWriteRateLimit } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {
-  CurrentUser,
-  Session,
-  failureResponse,
-  httpErrorResponse,
   requestIdOf,
+  schemaErrorLayer,
   sessionLayer,
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
 } from '../effect/http-core';
-import {
-  PIN_MESSAGE_ID_MAX,
-  PIN_SENDER_NAME_MAX,
-  PIN_TEXT_MAX,
-  listPins,
-  pinMessage,
-  unpinMessage,
-  type PinsServiceDeps,
-} from './service';
+import { rateLimitLayer } from '../effect/rate-limit-middleware';
+import { listPins, pinMessage, unpinMessage, type PinsServiceDeps } from './service';
 
 export const PINS_WRITE_RATE_LIMIT_MAX = 60;
 export const PINS_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-
-const CONTROL_CHAR_MAX = 0x1f;
-const CONTROL_CHAR_DEL = 0x7f;
-// Message bodies may carry tab and newline (Shift+Enter); the snapshot keeps
-// the same rule and rejects every other control character.
-const SNAPSHOT_WHITESPACE = new Set(['\t', '\n']);
-
-function hasControlCharacters(value: string, allowWhitespace = false): boolean {
-  for (const char of value) {
-    const code = char.codePointAt(0) ?? 0;
-    if (code <= CONTROL_CHAR_MAX || code === CONTROL_CHAR_DEL) {
-      if (allowWhitespace && SNAPSHOT_WHITESPACE.has(char)) {
-        continue;
-      }
-      return true;
-    }
-  }
-  return false;
-}
-
-const PinKind = Schema.Literals(['text', 'image', 'file', 'voice', 'card']);
-
-// Replaces `listQuerySchema` (zod): one required `chat` string; strict, so an
-// excess key is a 400 like the old `.strict()`.
-const ListPinsQuery = Schema.Struct({
-  chat: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(255)),
-});
-
-// Replaces `createPinBodySchema` (zod). `senderName` is trimmed before the
-// length and control-character checks, exactly like the old `.trim()`.
-const CreatePinBody = Schema.Struct({
-  chat: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(255)),
-  messageId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(PIN_MESSAGE_ID_MAX)),
-  senderName: Schema.Trim.check(
-    Schema.isMinLength(1),
-    Schema.isMaxLength(PIN_SENDER_NAME_MAX),
-    Schema.makeFilter((value) =>
-      hasControlCharacters(value) ? 'senderName must not contain control characters' : undefined,
-    ),
-  ),
-  text: Schema.optional(
-    Schema.String.check(
-      Schema.isMaxLength(PIN_TEXT_MAX),
-      Schema.makeFilter((value) =>
-        hasControlCharacters(value, true) ? 'text must not contain control characters' : undefined,
-      ),
-    ),
-  ),
-  kind: Schema.optional(PinKind),
-});
-
-const PinView = Schema.Struct({
-  id: Schema.String,
-  chat: Schema.String,
-  messageId: Schema.String,
-  senderName: Schema.String,
-  text: Schema.String,
-  kind: PinKind,
-  pinnedBy: Schema.String,
-  pinnedAt: Schema.String,
-});
-
-const PinList = Schema.Struct({ pins: Schema.Array(PinView) });
-
-// Applied to the group so a query or payload decode failure renders like the
-// old zod path: 400 `invalid_request`. No test asserts the exact text, so the
-// Effect Schema message is used (the old text was the first zod issue).
-class PinsSchemaErrors extends HttpApiMiddleware.Service<PinsSchemaErrors>()(
-  'zilar/effect/http/PinsSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<PinsSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(PinsSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message),
-      );
-    }),
-  );
-}
-
-// Runs the write budget before the payload is decoded, exactly like the old
-// POST/DELETE routes' `writeLimiter.allow` -> decode order: an invalid body
-// still spends budget. `requires: CurrentUser` is satisfied by `Session`.
-class PinsWriteRateLimit extends HttpApiMiddleware.Service<
-  PinsWriteRateLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/PinsWriteRateLimit') {}
-
-function writeRateLimitLayer(limiter: RateLimiter): Layer.Layer<PinsWriteRateLimit> {
-  return Layer.succeed(
-    PinsWriteRateLimit,
-    PinsWriteRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many pins, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
-
-const PinsGroup = HttpApiGroup.make('pins')
-  .add(
-    HttpApiEndpoint.get('list', '/pins', {
-      query: ListPinsQuery,
-      success: PinList,
-    }).annotate(HttpApi.QueryParseOptions, { onExcessProperty: 'error' }),
-    HttpApiEndpoint.post('create', '/pins', {
-      payload: CreatePinBody,
-      success: PinView,
-    })
-      .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
-      .middleware(PinsWriteRateLimit),
-    HttpApiEndpoint.delete('remove', '/pins/:id', {
-      params: { id: Schema.String },
-      success: PinView,
-    }).middleware(PinsWriteRateLimit),
-  )
-  .middleware(Session)
-  .middleware(PinsSchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
 
 const PinsApi = HttpApi.make('pins').add(PinsGroup);
 
@@ -230,17 +85,16 @@ export function createPinsApi(deps: PinsApiDependencies): EffectApiMount {
           requestId,
         );
       })
-      // Pins one message. The write budget was already charged, before the
-      // payload decode.
+      // Pins one message (201, declared by the contract). The write budget
+      // was already charged, before the payload decode.
       .handle('create', (request) => {
         const requestId = requestIdOf(request.request);
         return withErrorEnvelope(
           Effect.gen(function* () {
             const user = yield* CurrentUser;
-            const pin = yield* Effect.promise(() =>
+            return yield* Effect.promise(() =>
               pinMessage(serviceDeps(), { ...request.payload, actorId: user.id }),
             );
-            return HttpServerResponse.jsonUnsafe(pin, { status: 201 });
           }),
           logger,
           requestId,
@@ -266,7 +120,11 @@ export function createPinsApi(deps: PinsApiDependencies): EffectApiMount {
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayer(logger)),
-    Layer.provide(writeRateLimitLayer(writeLimiter)),
+    // The write budget runs before the payload is decoded: an invalid body
+    // still spends budget.
+    Layer.provide(
+      rateLimitLayer(PinsWriteRateLimit, writeLimiter, 'Too many pins, try again later'),
+    ),
   );
 
   // The edge keeps the request log (redacted path); the router's own logger prints
