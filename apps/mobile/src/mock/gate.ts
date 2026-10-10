@@ -14,6 +14,34 @@ export function mockParamAllowed(env: { dev: boolean; envMock: string | undefine
   return env.envMock !== 'false';
 }
 
+/**
+ * The mock-mode decision the chat store provider and the auth guard share. It
+ * mirrors the old store's gate: the unit-test run and a literal
+ * `EXPO_PUBLIC_ZILAR_MOCK=1` select mock mode anywhere; the `?mock=1` route
+ * param selects it only where `mockParamAllowed` opens the gate (a dev build, or
+ * a build with the env var set). The env is passed in by the caller, which reads
+ * the build-time literals once, so this stays pure.
+ */
+export interface MockModeEnv {
+  dev: boolean;
+  envMock: string | undefined;
+  nodeEnv: string | undefined;
+}
+
+export function isMockMode(
+  params: Record<string, string | string[] | undefined> | undefined,
+  env: MockModeEnv,
+): boolean {
+  if (env.nodeEnv === 'test' || env.envMock === '1') {
+    return true;
+  }
+  if (!mockParamAllowed({ dev: env.dev, envMock: env.envMock })) {
+    return false;
+  }
+  const value = params?.['mock'];
+  return value === '1' || (Array.isArray(value) && value.includes('1'));
+}
+
 // The mock env vars the API hooks and the chat store provider read. Each is a literal
 // `process.env.EXPO_PUBLIC_*` expression, so babel-preset-expo inlines it at Metro time.
 export const ENV_MOCK = process.env.EXPO_PUBLIC_ZILAR_MOCK;

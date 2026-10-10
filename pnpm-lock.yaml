@@ -99,6 +99,9 @@ importers:
       '@zilar/client-core':
         specifier: workspace:*
         version: link:../../packages/client-core
+      '@zilar/mock-backend':
+        specifier: workspace:*
+        version: link:../../packages/mock-backend
       '@zilar/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
