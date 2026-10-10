@@ -3,7 +3,7 @@
 // effect/sql. `app.ts` mounts {@link createAuditApi} through the Effect edge.
 
 import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
+import { HttpServerRequest, HttpServerResponse } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
@@ -16,15 +16,14 @@ import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
-  CurrentUser,
   Session,
   failureResponse,
+  handler,
   httpErrorResponse,
+  mountApi,
   requestIdOf,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import {
   MAX_AUDIT_LIST_LIMIT,
@@ -127,10 +126,6 @@ export interface AuditApiDependencies {
   logger: Logger;
 }
 
-export const AUDIT_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/audit' },
-];
-
 export function createAuditApi(deps: AuditApiDependencies): EffectApiMount {
   const logger = deps.logger;
 
@@ -138,11 +133,11 @@ export function createAuditApi(deps: AuditApiDependencies): EffectApiMount {
     handlers
       // The caller's audit rows: a group's (owner/admin) or an AI's (owner).
       // Unknown scopes answer an empty page, never a 404.
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'list',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
+            const requestId = requestIdOf(request.request);
             const { groupId, aiId, limit, before } = request.query;
             const hasGroup = groupId !== undefined;
             const hasAi = aiId !== undefined;
@@ -171,10 +166,8 @@ export function createAuditApi(deps: AuditApiDependencies): EffectApiMount {
               new HttpError(400, 'invalid_request', 'Provide exactly one of groupId or aiId'),
             );
           }),
-          logger,
-          requestId,
-        );
-      }),
+        ),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(AuditApi).pipe(
@@ -183,12 +176,5 @@ export function createAuditApi(deps: AuditApiDependencies): EffectApiMount {
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: AUDIT_API_ROUTES };
+  return mountApi(AuditApi, apiLayer);
 }

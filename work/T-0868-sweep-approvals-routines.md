@@ -1,7 +1,7 @@
 ---
 id: T-0868
 title: "Server sweep: approvals, audit, routines, directory onto the shared HTTP helpers (runSql, SchemaErrors, makeRateLimit, handler, mountApi) with truthful success statuses"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0868-sweep-approvals-routines
 model: auto
@@ -69,4 +69,17 @@ Run the tests 3 times after the last commit. The machine is shared, so note `upt
 
 ## Report (written by the worker when done)
 
+- **Commits:** `0390053c` directory, `c8a89004` audit, `764a4057` routines, `56cf5436` approvals (one per module).
+- **Lines removed** (`git diff --numstat`, removed / added incl. the new `routes.expected.ts`): directory 108 / 40 (net -68); audit 36 / 15 (net -21); routines 178 / 114 (net -64); approvals 103 / 49 (net -54). Total net -207.
+- **Recipe steps:** `runSql` copies deleted in `audit/service.ts`, `approvals/service.ts`, `approvals/rules.ts`, `approvals/api.ts` (routines had none left after T-0863; directory had none). Rate limit via `makeRateLimit` in directory (tag `zilar/effect/http/DirectoryRateLimit`, same message). Handlers via `handler(logger, ...)` in all four. `*_API_ROUTES` replaced by `mountApi`, old arrays moved to `<module>/routes.expected.ts`; `routes-manifest.test.ts` untouched.
+- **Truthful status:** `routines/api.ts` `remove` now declares `HttpApiSchema.NoContent` (was `Schema.Void`), and the handler returns nothing instead of `HttpServerResponse.empty({ status: 204 })`, like `roles` remove. The wire stays 204 with no body (existing tests pass). Both cited sites (`:131` the `Schema.Void` declaration, `:296` the `empty({ status: 204 })` return) matched the code.
+- **Kept local on purpose** (not plain, wire text would change with the shared class): `AuditSchemaErrors` (fixed text `Invalid audit query`) and `ApprovalsSchemaErrors` (fixed text `Invalid decision body`). Routines and directory now use the shared `SchemaErrors`; routines' old local one added `|| 'Invalid request'` for an empty message, which cannot fire (its params are plain strings).
+- **Routines:** pause and resume share a local `changeStatus` helper (same access check, same `withServiceErrors` mapping, same re-read). The other handlers are `async` bodies; thrown `HttpError`s still travel as defects through the envelope.
+- **Audit/approvals handlers** keep their `Effect.gen` bodies (audit returns raw `jsonUnsafe` responses and the 400 for both/neither id; approvals' decide keeps `catchDefect` mapping).
+- **Checks:** combined vitest command (approvals, audit, routines, directory, authz-sweep, routes-manifest): 16 files, 234 tests passed, 3 of 3 runs, run at load average about 51 (`uptime`: 50.85 56.60 69.97), with 120 s timeouts. `pnpm --filter @zilar/server typecheck` clean. `oxlint` on the four folders clean.
+- **Behaviour differences:** none.
+- **Unsure:** none. `pnpm gate` not run (wave mode).
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.** Directory, audit, routines and approvals are converted (net −207 lines), and the routines remove declares 204. Audit and approvals keep their own schema-error text, so the bytes stay identical. The merge with main keeps T-0852's `canDecideMany`. The combined wave 4 check passes.

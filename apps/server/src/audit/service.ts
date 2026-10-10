@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { Effect, Exit, Schema, SchemaIssue } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import { ARGS_HASH_PATTERN, struct } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 
 // `action` is dotted: `domain.verb`, lowercase + underscores. Same regex the
 // protocol's approval schema already enforces for similar dotted ids.
@@ -12,16 +12,6 @@ const ACTION_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 // A serialised `detail` blob stays under 2 KB so the audit log can never
 // quietly start storing secrets, free text or big payloads.
 const MAX_DETAIL_BYTES = 2 * 1024;
-
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
 
 // We accept the few cost currencies the rest of the platform stores.
 const costCurrencySchema = Schema.Literals(['EUR', 'USD']);

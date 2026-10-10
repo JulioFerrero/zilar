@@ -4,7 +4,7 @@
 // (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
+import { HttpServerRequest } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
@@ -13,23 +13,23 @@ import {
   HttpApiMiddleware,
   HttpApiSchema,
 } from 'effect/http-api';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { ApprovalRuleRow } from '../db/rows';
 import { HttpError } from '../errors';
-import type { EffectApiMount, EffectApiRoute } from '../effect/http-core';
+import type { EffectApiMount } from '../effect/http-core';
 import {
-  CurrentUser,
   Session,
   failureResponse,
+  handler,
+  mountApi,
   requestIdOf,
   sessionLayer,
-  withErrorEnvelope,
 } from '../effect/http-core';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { canSeeTopic, type TopicRow } from '../topics/access';
 import {
   ApprovalServiceError,
@@ -48,16 +48,6 @@ import {
   toPublicRule,
   type PublicApprovalRule,
 } from './rules';
-
-// Reads run on the `effect/sql` client registered for this database (see
-// `../effect/sql`); `transformResultNames` camelCases the columns so the rows
-// keep the shapes the access helpers already take.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
 
 // The minimum slice of pino the route needs to log a hook failure. The
 // server wires its own logger; tests can pass a captor.
@@ -208,15 +198,6 @@ const ApprovalsGroup = HttpApiGroup.make('approvals')
 
 const ApprovalsApi = HttpApi.make('approvals').add(ApprovalsGroup);
 
-export const APPROVALS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/approvals' },
-  { method: 'GET', path: '/api/approvals/:id' },
-  { method: 'POST', path: '/api/approvals/:id/decision' },
-  { method: 'GET', path: '/api/ais/:id/approval-rules' },
-  { method: 'GET', path: '/api/groups/:id/approval-rules' },
-  { method: 'DELETE', path: '/api/approval-rules/:id' },
-];
-
 export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
@@ -248,11 +229,10 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
 
   const groupLayer = HttpApiBuilder.group(ApprovalsApi, 'approvals', (handlers) =>
     handlers
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'list',
+        handler(logger, (_request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const approvals = yield* Effect.promise(() =>
               listDecidableApprovals(deps.db, user.id, new Date(now())),
             );
@@ -273,15 +253,12 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
               ),
             );
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('detail', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'detail',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const approval = yield* Effect.promise(() =>
               getDecidableApproval(deps.db, request.params.id, user.id, new Date(now())),
             );
@@ -304,15 +281,12 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
               isManager,
             );
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('decide', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'decide',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const payload = request.payload;
             const result = yield* Effect.promise(() =>
               decideApproval(
@@ -413,19 +387,16 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
                 )),
             );
           }),
-          logger,
-          requestId,
-        );
-      })
+        ),
+      )
       // T-0099: rule management routes. All three require a session.
       // T-0110: rules are scoped to (AI, topic). The AI route returns rules of
       // topics the AI owner can see; the group route returns rules of topics
       // the viewer can see. Rows carry `topicId` and `topicName`.
-      .handle('aiRules', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'aiRules',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const aiId = request.params.id;
             const aiRow = yield* Effect.promise(() => loadAiOwnerRow(deps.db, aiId));
             // A stranger and a non-owner get the same 404 as a missing AI, so
@@ -454,15 +425,12 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
             }
             return visible;
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('groupRules', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'groupRules',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const groupId = request.params.id;
             const allowed = yield* Effect.promise(() => isGroupAdmin(deps.db, groupId, user.id));
             if (!allowed) {
@@ -488,15 +456,12 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
             }
             return rules;
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('revokeRule', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+        ),
+      )
+      .handle(
+        'revokeRule',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const ruleId = request.params.id;
             const existing = yield* Effect.promise(() => loadApprovalRule(deps.db, ruleId));
             // Same 404 shape for missing id and unauthorized: existence is never
@@ -539,10 +504,8 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
               );
             }
           }),
-          logger,
-          requestId,
-        );
-      }),
+        ),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(ApprovalsApi).pipe(
@@ -551,14 +514,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: APPROVALS_API_ROUTES };
+  return mountApi(ApprovalsApi, apiLayer);
 }
 
 // One topic by id: the full row `canSeeTopic` needs (it reads visibility,

@@ -3,20 +3,10 @@ import { Effect, Result, Schema } from 'effect';
 import { SqlClient, SqlError, type Statement } from 'effect/sql';
 import { ARGS_HASH_PATTERN } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import type { ApprovalInsert, ApprovalRow, TopicRow } from '../db/rows';
 import { canSeeTopic, getTopic } from '../topics/access';
 import { createRuleEffect, isGroupAdmin } from './rules';
-
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition.
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
 
 // `approved_always` is treated exactly like `approved_once` for the
 // single-use path; T-0099 adds a separate standing-rule flow that the

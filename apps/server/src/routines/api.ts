@@ -6,27 +6,25 @@
 
 import { Effect, Layer, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
   HttpApiEndpoint,
   HttpApiGroup,
-  HttpApiMiddleware,
+  HttpApiSchema,
 } from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import {
-  CurrentUser,
+  SchemaErrors,
   Session,
-  failureResponse,
-  requestIdOf,
+  handler,
+  mountApi,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { canSeeTopic, type TopicRow } from '../topics/access';
@@ -88,26 +86,6 @@ const RoutineDetail = Schema.Struct({
 
 const RoutineIdParams = Schema.Struct({ id: Schema.String });
 
-// A params decode failure renders like the old zod path: a 400
-// `invalid_request`. Params are plain strings so this never fires; the
-// layer exists so the group middleware reads like the other modules.
-class RoutinesSchemaErrors extends HttpApiMiddleware.Service<RoutinesSchemaErrors>()(
-  'zilar/effect/http/RoutinesSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<RoutinesSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(RoutinesSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid request'),
-      );
-    }),
-  );
-}
-
 const RoutinesGroup = HttpApiGroup.make('routines')
   .add(
     HttpApiEndpoint.get('listForAi', '/ais/:id/routines', {
@@ -128,11 +106,11 @@ const RoutinesGroup = HttpApiGroup.make('routines')
     }),
     HttpApiEndpoint.delete('remove', '/routines/:id', {
       params: RoutineIdParams,
-      success: Schema.Void,
+      success: HttpApiSchema.NoContent,
     }),
   )
   .middleware(Session)
-  .middleware(RoutinesSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
@@ -147,159 +125,115 @@ export interface RoutinesApiDependencies {
   now?: () => Date;
 }
 
-export const ROUTINES_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/ais/:id/routines' },
-  { method: 'GET', path: '/api/groups/:id/routines' },
-  { method: 'POST', path: '/api/routines/:id/pause' },
-  { method: 'POST', path: '/api/routines/:id/resume' },
-  { method: 'DELETE', path: '/api/routines/:id' },
-];
-
 export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? (() => new Date());
 
   const groupLayer = HttpApiBuilder.group(RoutinesApi, 'routines', (handlers) =>
     handlers
-      .handle('listForAi', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const ai = yield* Effect.promise(() =>
-              findOwnedAiRow(deps.db, request.params.id, user.id),
-            );
-            if (!ai) {
-              throw new HttpError(404, 'not_found', 'AI not found');
+      .handle(
+        'listForAi',
+        handler(logger, async (request, user) => {
+          const ai = await findOwnedAiRow(deps.db, request.params.id, user.id);
+          if (!ai) {
+            throw new HttpError(404, 'not_found', 'AI not found');
+          }
+          // Only routines of topics the owner can see: a routine in a
+          // private topic the owner was removed from stays hidden until
+          // they are back.
+          const all = await listRoutinesForAi(deps.db, ai.id);
+          const visible: PublicRoutine[] = [];
+          for (const routine of all) {
+            if (routine.topicId === null) {
+              visible.push(routine);
+              continue;
             }
-            // Only routines of topics the owner can see: a routine in a
-            // private topic the owner was removed from stays hidden until
-            // they are back.
-            const all = yield* Effect.promise(() => listRoutinesForAi(deps.db, ai.id));
-            const visible: PublicRoutine[] = [];
-            for (const routine of all) {
-              if (routine.topicId === null) {
-                visible.push(routine);
-                continue;
-              }
-              const topicId = routine.topicId;
-              const topic = yield* Effect.promise(() => findTopicById(deps.db, topicId));
-              if (topic && (yield* Effect.promise(() => canSeeTopic(deps.db, topic, user.id)))) {
-                visible.push(routine);
-              }
+            const topic = await findTopicById(deps.db, routine.topicId);
+            if (topic && (await canSeeTopic(deps.db, topic, user.id))) {
+              visible.push(routine);
             }
-            return visible.map(toListWire);
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('listForGroup', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const groupId = request.params.id;
-            const membership = yield* Effect.promise(() =>
-              findMembership(deps.db, groupId, user.id),
-            );
-            if (!membership) {
-              throw new HttpError(404, 'not_found', 'Group not found');
+          }
+          return visible.map(toListWire);
+        }),
+      )
+      .handle(
+        'listForGroup',
+        handler(logger, async (request, user) => {
+          const groupId = request.params.id;
+          const membership = await findMembership(deps.db, groupId, user.id);
+          if (!membership) {
+            throw new HttpError(404, 'not_found', 'Group not found');
+          }
+          // Only routines of topics the viewer can see.
+          const topicRows = await listTopicsByGroup(deps.db, groupId);
+          const result: PublicRoutine[] = [];
+          for (const topic of topicRows) {
+            if (topic.archivedAt !== null) {
+              continue;
             }
-            // Only routines of topics the viewer can see.
-            const topicRows = yield* Effect.promise(() => listTopicsByGroup(deps.db, groupId));
-            const result: PublicRoutine[] = [];
-            for (const topic of topicRows) {
-              if (topic.archivedAt !== null) {
-                continue;
-              }
-              if (!(yield* Effect.promise(() => canSeeTopic(deps.db, topic, user.id)))) {
-                continue;
-              }
-              const rows = yield* Effect.promise(() => listRoutinesForTopic(deps.db, topic.id));
-              for (const routine of rows) {
-                result.push(routine);
-              }
+            if (!(await canSeeTopic(deps.db, topic, user.id))) {
+              continue;
             }
-            return result.map(toListWire);
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('pause', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const access = yield* Effect.promise(() =>
-              routineAccess(deps.db, request.params.id, user.id),
-            );
-            if (!access || !access.manager) {
-              throw new HttpError(404, 'not_found', 'Routine not found');
+            const rows = await listRoutinesForTopic(deps.db, topic.id);
+            for (const routine of rows) {
+              result.push(routine);
             }
-            yield* withServiceErrors(() =>
-              pauseRoutine(deps.db, access.routine.id, user.id, now(), deps.audit),
-            );
-            const found = yield* Effect.promise(() => getRoutine(deps.db, access.routine.id));
-            if (!found) {
-              throw new HttpError(404, 'not_found', 'Routine not found');
-            }
-            return toDetailWire(found.routine, found.toolName);
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('resume', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const access = yield* Effect.promise(() =>
-              routineAccess(deps.db, request.params.id, user.id),
-            );
-            if (!access || !access.manager) {
-              throw new HttpError(404, 'not_found', 'Routine not found');
-            }
-            yield* withServiceErrors(() =>
-              resumeRoutine(deps.db, access.routine.id, user.id, now(), deps.audit),
-            );
-            const found = yield* Effect.promise(() => getRoutine(deps.db, access.routine.id));
-            if (!found) {
-              throw new HttpError(404, 'not_found', 'Routine not found');
-            }
-            return toDetailWire(found.routine, found.toolName);
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('remove', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const routineId = request.params.id;
-            // Like the tools delete: managers resolve on the raw row
-            // (including soft-deleted ones) so a re-delete answers 204;
-            // strangers still get the missing-id 404.
-            const access = yield* Effect.promise(() =>
-              routineAccessIncludingDeleted(deps.db, routineId, user.id),
-            );
-            if (!access || !access.manager) {
-              throw new HttpError(404, 'not_found', 'Routine not found');
-            }
-            yield* Effect.promise(() =>
-              deleteRoutine(deps.db, routineId, user.id, now(), deps.audit),
-            );
-            return HttpServerResponse.empty({ status: 204 });
-          }),
-          logger,
-          requestId,
-        );
-      }),
+          }
+          return result.map(toListWire);
+        }),
+      )
+      .handle(
+        'pause',
+        handler(logger, (request, user) =>
+          changeStatus(request.params.id, user.id, (id) =>
+            pauseRoutine(deps.db, id, user.id, now(), deps.audit),
+          ),
+        ),
+      )
+      .handle(
+        'resume',
+        handler(logger, (request, user) =>
+          changeStatus(request.params.id, user.id, (id) =>
+            resumeRoutine(deps.db, id, user.id, now(), deps.audit),
+          ),
+        ),
+      )
+      .handle(
+        'remove',
+        handler(logger, async (request, user) => {
+          const routineId = request.params.id;
+          // Like the tools delete: managers resolve on the raw row
+          // (including soft-deleted ones) so a re-delete answers 204;
+          // strangers still get the missing-id 404.
+          const access = await routineAccessIncludingDeleted(deps.db, routineId, user.id);
+          if (!access || !access.manager) {
+            throw new HttpError(404, 'not_found', 'Routine not found');
+          }
+          await deleteRoutine(deps.db, routineId, user.id, now(), deps.audit);
+        }),
+      ),
   );
+
+  // Pause and resume share the access check and the re-read; only the service
+  // call differs. A service error maps through `mapServiceError`.
+  function changeStatus(
+    routineId: string,
+    userId: string,
+    change: (id: string) => Promise<unknown>,
+  ) {
+    return Effect.gen(function* () {
+      const access = yield* Effect.promise(() => routineAccess(deps.db, routineId, userId));
+      if (!access || !access.manager) {
+        throw new HttpError(404, 'not_found', 'Routine not found');
+      }
+      yield* withServiceErrors(() => change(access.routine.id));
+      const found = yield* Effect.promise(() => getRoutine(deps.db, access.routine.id));
+      if (!found) {
+        throw new HttpError(404, 'not_found', 'Routine not found');
+      }
+      return toDetailWire(found.routine, found.toolName);
+    });
+  }
 
   const apiLayer = HttpApiBuilder.layer(RoutinesApi).pipe(
     Layer.provide(groupLayer),
@@ -307,14 +241,7 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: ROUTINES_API_ROUTES };
+  return mountApi(RoutinesApi, apiLayer);
 }
 
 function toListWire(routine: PublicRoutine) {
