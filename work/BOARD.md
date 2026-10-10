@@ -9,6 +9,14 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-1028](T-1028-split-server-routine-execute.md) | Size split T105: server routines/execute.ts (434) | in-progress | auto | T-0936 | size-plan |
+| [T-1029](T-1029-split-server-agent-tools.md) | Size split T73: server agents/tools.ts (536) | in-progress | auto | T-0936 | size-plan |
+| [T-1030](T-1030-split-mobile-voice-native.md) | Size split T96: mobile voice-native.ts (451) | in-progress | auto | T-0936 | size-plan |
+| [T-1031](T-1031-split-mobile-message-search.md) | Size split T97: mobile message-search.ts (451) | in-progress | auto | T-0936 | size-plan |
+| [T-1032](T-1032-split-mobile-voice-player.md) | Size split T109: mobile voice-player.ts (423) | in-progress | auto | T-0936 | size-plan |
+| [T-1033](T-1033-split-server-voice-transcription-api.md) | Size split T110: server voice-transcription/api.ts (422) | in-progress | auto | T-0936 | size-plan |
+| [T-1034](T-1034-split-web-voice-lib.md) | Size split T112: web lib/voice.ts (420) | in-progress | auto | T-0936 | size-plan |
+| [T-1035](T-1035-split-web-chat-media-panel.md) | Size split T123: web ChatMediaPanel.tsx (403) | in-progress | auto | T-0936 | size-plan |
 
 ## Follow-ups
 

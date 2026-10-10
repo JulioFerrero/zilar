@@ -2,6 +2,20 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 21:50 local: wave 8 merged; wave 9 running**
+- **Merged, 8 tasks:**
+  - **mobile, with phone smokes:** T-1020 (chats tab: list, search, long-press), T-1021 (attachments: the demo PDF stages), T-1022 (topic info and topic actions sheets);
+  - **server, by a line check against main:** T-1023 (topic rooms), T-1024 (media indexer), T-1025 (agent memory);
+  - **site:** T-1026 (3D scene). Headless Playwright screenshots of branch and main look the same; the lead's Chrome tab is `hidden`, so its scene never draws;
+  - **devtools:** T-1027 (xmpp-e2e, with one `withDeadline`).
+- **Running, 8 workers, 3 of them mobile:** T-1028 (routine execute), T-1029 (agent tools), T-1030 (voice-native), T-1031 (message search), T-1032 (voice player), T-1033 (voice transcription API), T-1034 (web voice lib), T-1035 (web media panel).
+- **Mock gap:** mobile Pin and Mute show "Could not save" because the mock backend has no chat-prefs handler (wave 2).
+- **Deferred as security or boot code:** `config.ts`, `setup/api.ts`, `effect/edge.ts`, `auth/sql-adapter.ts`, `machines/api.ts`.
+- **Deferred for other reasons:**
+  - `db/rows.ts`, because schema specs edit it;
+  - the lead CLI files, `client.ts` and `cli.ts`.
+- **Splits still to launch after wave 9:** `chat-api.ts` (it changed since the plan; the plan's dedup deletes about 220 lines, so it needs its own spec), web `store/effects/ports.ts` (a store), `message-list.tsx`, `markdown.ts`, `channel-screen.tsx`, `routines/api.ts`, `client-core lifecycle.ts`, site `instruments.ts`, `FolderEditorDialog.tsx`, `emoji-data.ts` and `lead/client.ts`.
+
 **2026-10-10 21:25 local: wave 7 merged; wave 8 running**
 - **Merged, 9 tasks:**
   - **mobile, with phone smokes:** T-1011 (media sheet), T-1012 (voice recorder: a 2 s hold records a note), T-1013 (GIF tab);
