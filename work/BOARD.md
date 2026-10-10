@@ -9,6 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | [T-0913](T-0913-load-flakes.md) | Four timing tests that fail combined checks under load become deterministic | in-progress | sonnet-5.5 | | test stability |
+| [T-0915](T-0915-store-core-t8-lifecycle.md) | Store core T8: polling, drafts, lifecycle in core; web on them | in-progress | opus-5.5 | T-0912 | phase 4.3, live |
 | [T-0914](T-0914-store-core-t7a-mobile-incoming.md) | Store core T7a: mobile on core incoming, actions, reads | in-progress | opus-5.5 | T-0905, T-0906, T-0907 | phase 4.3 |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
