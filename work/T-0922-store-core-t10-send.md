@@ -20,7 +20,7 @@ This is task T10 of `docs/STORE_CORE_PLAN.md` (section 6, "T10: the send pipelin
 The lead re-checked the files on main on 2026-10-10:
 - `apps/web/src/store/effects/send.ts` (722 lines) and `effects/sendFailure.ts` (70);
 - `apps/mobile/src/store/effects/send.ts` (708);
-- mobile `apps/mobile/src/store/real-store.ts`: `forwardOriginFor` at `:381`, and the upload-progress mutators around `:314-334`.
+- mobile `apps/mobile/src/store/real-store.ts`: `forwardOriginFor` at `:379`, and the upload-progress mutators around `:312-332`.
 
 Behaviour rows (plan section 2.3) and the lead's decisions (section 8):
 - **R6 (Q2 = yes):** a mobile voice message, attachment or forwarded copy that fails or hangs shows "Not sent" with the reason within 60 s, as on web. Web has the deadline and run tokens in `send.ts`.
@@ -56,7 +56,7 @@ Behaviour rows (plan section 2.3) and the lead's decisions (section 8):
 ### Allowed files
 `packages/client-core/src/store/send.ts`, `packages/client-core/src/store/send-failure.ts`, `packages/client-core/src/store/send.test.ts`, `packages/client-core/src/store/send-failure.test.ts`, `packages/client-core/src/store/ports.ts`, `packages/client-core/src/store/ctx.ts`, `packages/client-core/src/store/ledger.ts` (only what send needs), `packages/client-core/src/store/index.ts` (T10 section only), `apps/web/src/store/effects/send.ts`, `apps/web/src/store/effects/sendFailure.ts`, `apps/web/src/store/effects/ports.ts`, `apps/web/src/store/effects/ctx.ts`, `apps/web/src/store/realStore.ts`, `apps/web/src/store/realStore.send.test.tsx`, `apps/mobile/src/store/effects/send.ts`, `apps/mobile/src/store/effects/ports.ts`, `apps/mobile/src/store/effects/runtime.ts`, `apps/mobile/src/store/real-store.ts`, `apps/mobile/src/store/real-store.send.test.ts`, `work/T-0922-store-core-t10-send.md`.
 
-T-0921 changes the groups effect files in parallel, plus a small hunk in mobile `runtime.ts` and `real-store.ts` (`loadingGroupMembers`). Keep away from those lines.
+No other task runs on these files.
 
 ### Checks (wave mode)
 ```bash
