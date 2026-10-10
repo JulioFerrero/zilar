@@ -2,14 +2,11 @@ import type { ChatEntry } from '../lib/chat-api';
 import type { ChatPrefsApi } from '../lib/chat-prefs-api';
 import type { PinsApi } from '../lib/pins-api';
 import type { TopicsApi } from '../lib/topics-api';
+import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createRealChatStore, type RealStoreDeps } from './real-store';
-import type { AppStateLike } from './real-store';
-
-function fakeAppState(): AppStateLike {
-  return { current: () => 'active', subscribe: () => () => {} };
-}
+import { fakeApiWithMembers, fakeAppState } from './test-support';
 
 function dmEntry(chatJid: string, title: string): ChatEntry {
   return { kind: 'dm', chatJid, title, userId: `u-${chatJid}` };
@@ -55,55 +52,6 @@ function groupEntry(overrides: Record<string, unknown> = {}): ChatEntry {
     role: 'member',
     ...overrides,
   } as ChatEntry;
-}
-
-function fakeApi(entries: ChatEntry[], myRole: 'owner' | 'admin' | 'member' = 'admin') {
-  return {
-    getMe: vi.fn(async () => ({
-      id: 'u-me',
-      email: 'me@zilar.test',
-      name: 'Me',
-      jid: 'me@zilar.test',
-    })),
-    getChats: vi.fn(async () => entries),
-    getContacts: vi.fn(async () => []),
-    getGroup: vi.fn(async (groupId: string) => ({
-      id: groupId,
-      title: 'Dev team',
-      createdBy: 'u-me',
-      members: [
-        { userId: 'u-me', name: 'Me', role: myRole, roles: [] },
-        { userId: 'u-ana', name: 'Ana', role: 'member' as const, roles: [] },
-      ],
-      ais: [],
-    })),
-    getXmppToken: vi.fn(async () => ({
-      jid: 'me@zilar.test',
-      token: 'tok',
-      expiresAt: '2026-09-28T12:05:00Z',
-      service: 'ws://x',
-      domain: 'zilar.test',
-      mucDomain: 'rooms.zilar.test',
-    })),
-  };
-}
-
-function fakeCore(): unknown {
-  return {
-    status: () => 'online',
-    connect: async () => {},
-    disconnect: async () => {},
-    joinRoom: async () => {},
-    occupants: () => [],
-    sendMessage: async () => ({ id: 'srv-1' }),
-    sendReactions: async () => {},
-    sendCorrection: async () => ({ id: 'srv-c' }),
-    sendRetraction: async () => {},
-    loadHistory: async () => ({ messages: [], complete: true, first: undefined }),
-    sendTyping: () => {},
-    markDisplayed: () => {},
-    on: () => () => {},
-  };
 }
 
 function fakeTopics(): TopicsApi {
@@ -208,7 +156,7 @@ describe('real store chat prefs (T-0135)', () => {
     prefs: ReturnType<typeof fakePrefs> = fakePrefs(),
     deps: Partial<RealStoreDeps> = {},
   ) {
-    const api = fakeApi(entries);
+    const api = fakeApiWithMembers(entries);
     const store = createRealChatStore({
       api,
       topicsApi: fakeTopics(),
@@ -216,7 +164,7 @@ describe('real store chat prefs (T-0135)', () => {
       pinsApi: fakePins(),
       appState: fakeAppState(),
       openDrafts: () => () => {},
-      createXmpp: () => fakeCore() as never,
+      createXmpp: () => createFakeXmppCore(),
       ...deps,
     });
     return { store, api, prefs };
@@ -457,7 +405,7 @@ describe('real store pins (T-0135)', () => {
     deps: Partial<RealStoreDeps> = {},
     myRole: 'owner' | 'admin' | 'member' = 'admin',
   ) {
-    const api = fakeApi(entries, myRole);
+    const api = fakeApiWithMembers(entries, myRole);
     const store = createRealChatStore({
       api,
       topicsApi: fakeTopics(),
@@ -465,7 +413,7 @@ describe('real store pins (T-0135)', () => {
       pinsApi: pins,
       appState: fakeAppState(),
       openDrafts: () => () => {},
-      createXmpp: () => fakeCore() as never,
+      createXmpp: () => createFakeXmppCore(),
       ...deps,
     });
     return { store, api, pins };
@@ -520,40 +468,24 @@ describe('real store pins (T-0135)', () => {
   });
 
   it('pins a loaded message optimistically and keeps the saved row', async () => {
-    const listeners = new Map<string, Set<(payload: unknown) => void>>();
-    const core = {
-      ...(fakeCore() as Record<string, unknown>),
-      on: ((event: string, callback: (payload: unknown) => void) => {
-        let set = listeners.get(event);
-        if (set === undefined) {
-          set = new Set();
-          listeners.set(event, set);
-        }
-        set.add(callback);
-        return () => {
-          set?.delete(callback);
-        };
-      }) as never,
-    };
+    const core = createFakeXmppCore();
     const { store, pins } = setup([dmEntry('ana@zilar.test', 'Ana')], fakePins(), {
-      createXmpp: () => core as never,
+      createXmpp: () => core,
     });
     store.getState().start();
     await flush();
 
     // A live incoming message becomes a loaded message the pin can target.
-    for (const callback of listeners.get('message') ?? []) {
-      callback({
-        id: 'm-1',
-        kind: 'chat',
-        chatJid: 'ana@zilar.test',
-        fromJid: 'ana@zilar.test',
-        fromResolved: true,
-        timestamp: new Date('2026-09-30T10:00:00Z'),
-        outgoing: false,
-        body: 'hello',
-      });
-    }
+    core.emit('message', {
+      id: 'm-1',
+      kind: 'chat',
+      chatJid: 'ana@zilar.test',
+      fromJid: 'ana@zilar.test',
+      fromResolved: true,
+      timestamp: new Date('2026-09-30T10:00:00Z'),
+      outgoing: false,
+      body: 'hello',
+    });
 
     // A DM may always pin; an unknown message rejects without calling the API.
     expect(store.getState().canPin('ana@zilar.test')).toBe(true);
@@ -623,7 +555,10 @@ describe('real store pins (T-0135)', () => {
     // A group with topics but no General row (older server shape): the
     // detail request hangs, so no role is known and topics may not pin —
     // while a DM still may.
-    const api = fakeApi([dmEntry('ana@zilar.test', 'Ana'), groupEntry({ topics: [topicRow()] })]);
+    const api = fakeApiWithMembers([
+      dmEntry('ana@zilar.test', 'Ana'),
+      groupEntry({ topics: [topicRow()] }),
+    ]);
     vi.mocked(api.getGroup).mockImplementation(() => new Promise(() => {}));
     const store = createRealChatStore({
       api,
@@ -632,7 +567,7 @@ describe('real store pins (T-0135)', () => {
       pinsApi: fakePins(),
       appState: fakeAppState(),
       openDrafts: () => () => {},
-      createXmpp: () => fakeCore() as never,
+      createXmpp: () => createFakeXmppCore(),
     });
     store.getState().start();
     await flush();

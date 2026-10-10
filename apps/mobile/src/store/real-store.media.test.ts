@@ -1,34 +1,18 @@
+import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ChatEntry } from '../lib/chat-api';
 import type { MediaApi, MediaItem } from '../lib/media-api';
-import { createRealChatStore, type AppStateLike, type RealStoreDeps } from './real-store';
-
-function fakeAppState(): AppStateLike {
-  return { current: () => 'active', subscribe: () => () => {} };
-}
+import { createRealChatStore, type RealStoreDeps } from './real-store';
+import { fakeApi, fakeAppState } from './test-support';
 
 function dmEntry(chatJid: string, title: string): ChatEntry {
   return { kind: 'dm', chatJid, title, userId: `u-${chatJid}` };
 }
 
-function fakeApi(service: string, domain: string) {
-  return {
-    getMe: vi.fn(async () => ({
-      id: 'u-me',
-      email: 'me@zilar.test',
-      name: 'Me',
-      jid: 'me@zilar.test',
-    })),
+function dmApi(service: string, domain: string) {
+  return fakeApi({
     getChats: vi.fn(async () => [dmEntry('ana@zilar.test', 'Ana')]),
-    getContacts: vi.fn(async () => []),
-    getGroup: vi.fn(async () => ({
-      id: 'g1',
-      title: 'Dev team',
-      createdBy: 'u-me',
-      members: [],
-      ais: [],
-    })),
     getXmppToken: vi.fn(async () => ({
       jid: 'me@zilar.test',
       token: 'tok',
@@ -37,25 +21,7 @@ function fakeApi(service: string, domain: string) {
       domain,
       mucDomain: 'rooms.zilar.test',
     })),
-  };
-}
-
-function fakeCore(): unknown {
-  return {
-    status: () => 'online',
-    connect: async () => {},
-    disconnect: async () => {},
-    joinRoom: async () => {},
-    occupants: () => [],
-    sendMessage: async () => ({ id: 'srv-1' }),
-    sendReactions: async () => {},
-    sendCorrection: async () => ({ id: 'srv-c' }),
-    sendRetraction: async () => {},
-    loadHistory: async () => ({ messages: [], complete: true, first: undefined }),
-    sendTyping: () => {},
-    markDisplayed: () => {},
-    on: () => () => {},
-  };
+  });
 }
 
 function mediaRow(overrides: Partial<MediaItem> = {}): MediaItem {
@@ -80,13 +46,13 @@ async function flush(): Promise<void> {
 }
 
 function setup(media: MediaApi, service = 'ws://files.zilar.test', domain = 'zilar.test') {
-  const api = fakeApi(service, domain);
+  const api = dmApi(service, domain);
   const deps: Partial<RealStoreDeps> = {
     api,
     mediaApi: media,
     appState: fakeAppState(),
     openDrafts: () => () => {},
-    createXmpp: () => fakeCore() as never,
+    createXmpp: () => createFakeXmppCore(),
   };
   const store = createRealChatStore(deps);
   return { store, api };

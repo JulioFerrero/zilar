@@ -3,16 +3,14 @@ import type { ChatApi } from '../lib/chat-api';
 import type { ChatPrefsApi } from '../lib/chat-prefs-api';
 import type { PinsApi } from '../lib/pins-api';
 import type { TopicsApi } from '../lib/topics-api';
+import type { XmppCore } from '@zilar/xmpp-core';
+import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { parseTopic, type Topic } from '../lib/topics-api';
 
 import { createRealChatStore, type RealStoreDeps } from './real-store';
-import type { AppStateLike } from './real-store';
-
-function fakeAppState(): AppStateLike {
-  return { current: () => 'active', subscribe: () => () => {} };
-}
+import { fakeApiWithMembers, fakeAppState } from './test-support';
 
 function topicWire(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -45,55 +43,6 @@ function groupEntry(overrides: Record<string, unknown> = {}): ChatEntry {
     role: 'member',
     ...overrides,
   } as ChatEntry;
-}
-
-function fakeApi(entries: ChatEntry[], myRole: 'owner' | 'admin' | 'member' = 'admin') {
-  return {
-    getMe: vi.fn(async () => ({
-      id: 'u-me',
-      email: 'me@zilar.test',
-      name: 'Me',
-      jid: 'me@zilar.test',
-    })),
-    getChats: vi.fn(async () => entries),
-    getContacts: vi.fn(async () => []),
-    getGroup: vi.fn(async (groupId: string) => ({
-      id: groupId,
-      title: 'Dev team',
-      createdBy: 'u-me',
-      members: [
-        { userId: 'u-me', name: 'Me', role: myRole, roles: [] },
-        { userId: 'u-ana', name: 'Ana', role: 'member' as const, roles: [] },
-      ],
-      ais: [],
-    })),
-    getXmppToken: vi.fn(async () => ({
-      jid: 'me@zilar.test',
-      token: 'tok',
-      expiresAt: '2026-09-28T12:05:00Z',
-      service: 'ws://x',
-      domain: 'zilar.test',
-      mucDomain: 'rooms.zilar.test',
-    })),
-  };
-}
-
-function fakeCore(): unknown {
-  return {
-    status: () => 'online',
-    connect: async () => {},
-    disconnect: async () => {},
-    joinRoom: async () => {},
-    occupants: () => [],
-    sendMessage: async () => ({ id: 'srv-1' }),
-    sendReactions: async () => {},
-    sendCorrection: async () => ({ id: 'srv-c' }),
-    sendRetraction: async () => {},
-    loadHistory: async () => ({ messages: [], complete: true, first: undefined }),
-    sendTyping: () => {},
-    markDisplayed: () => {},
-    on: () => () => {},
-  };
 }
 
 function fakeTopics(): TopicsApi {
@@ -138,7 +87,7 @@ async function flush(): Promise<void> {
 
 describe('real store General-only group (T-0139)', () => {
   function setup(entries: ChatEntry[], deps: Partial<RealStoreDeps> = {}) {
-    const api = fakeApi(entries);
+    const api = fakeApiWithMembers(entries);
     const store = createRealChatStore({
       api,
       topicsApi: fakeTopics(),
@@ -146,7 +95,7 @@ describe('real store General-only group (T-0139)', () => {
       pinsApi: fakePins(),
       appState: fakeAppState(),
       openDrafts: () => () => {},
-      createXmpp: () => fakeCore() as never,
+      createXmpp: () => createFakeXmppCore(),
       ...deps,
     });
     return { store, api };
@@ -217,7 +166,7 @@ describe('real store General-only group (T-0139)', () => {
 describe('real store group detail fetch count (T-0147)', () => {
   function detailApi(entries: ChatEntry[]) {
     return {
-      ...(fakeApi(entries) as unknown as ChatApi),
+      ...(fakeApiWithMembers(entries) as unknown as ChatApi),
       getGroup: vi.fn(async (groupId: string) => ({
         id: groupId,
         title: 'Dev team',
@@ -247,7 +196,7 @@ describe('real store group detail fetch count (T-0147)', () => {
     return (getGroup as { mock: { calls: unknown[] } }).mock.calls.length;
   }
 
-  function setupCold(entries: ChatEntry[], core?: unknown) {
+  function setupCold(entries: ChatEntry[], core?: XmppCore) {
     const api = detailApi(entries);
     const store = createRealChatStore({
       api,
@@ -256,7 +205,7 @@ describe('real store group detail fetch count (T-0147)', () => {
       pinsApi: fakePins(),
       appState: fakeAppState(),
       openDrafts: () => () => {},
-      createXmpp: () => (core ?? fakeCore()) as never,
+      createXmpp: () => core ?? createFakeXmppCore(),
     });
     return { store, api };
   }
@@ -265,7 +214,7 @@ describe('real store group detail fetch count (T-0147)', () => {
   // detail has ever fetched (the XMPP connect fails, so `joinGroups` never
   // runs). Mirrors a deep link opened before the socket is up. `entries`
   // may be empty for the roster-push test, which lands its rows later.
-  async function bootCold(entries: ChatEntry[], core?: unknown) {
+  async function bootCold(entries: ChatEntry[], core?: XmppCore) {
     const { store, api } = setupCold(entries, core);
     store.getState().start();
     await flush();
@@ -275,13 +224,12 @@ describe('real store group detail fetch count (T-0147)', () => {
     return { store, api };
   }
 
-  function failingConnectCore(): unknown {
-    return {
-      ...(fakeCore() as Record<string, unknown>),
+  function failingConnectCore(): XmppCore {
+    return createFakeXmppCore({
       connect: async () => {
         throw new Error('offline');
       },
-    };
+    });
   }
 
   it('opens a cold chat with one group GET', async () => {
@@ -372,7 +320,7 @@ describe('real store group detail fetch count (T-0147)', () => {
     }
     const entries: ChatEntry[] = [groupEntry({ topics: parsed })];
     const api = {
-      ...(fakeApi(entries) as unknown as ChatApi),
+      ...(fakeApiWithMembers(entries) as unknown as ChatApi),
       getGroup: vi.fn(async (groupId: string) => ({
         id: groupId,
         title: 'Dev team',
@@ -391,7 +339,7 @@ describe('real store group detail fetch count (T-0147)', () => {
       pinsApi: fakePins(),
       appState: fakeAppState(),
       openDrafts: () => () => {},
-      createXmpp: () => fakeCore() as never,
+      createXmpp: () => createFakeXmppCore(),
     });
     const getGroup = api.getGroup as unknown as { mock: { calls: string[] } };
     store.getState().start();

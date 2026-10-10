@@ -1,23 +1,13 @@
+import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ChatEntry, GroupMember } from '../lib/chat-api';
 import type { GroupsApi } from '../lib/groups-api';
-import { createRealChatStore, type AppStateLike, type RealStoreDeps } from './real-store';
+import { createRealChatStore, type RealStoreDeps } from './real-store';
+import { fakeApi, fakeAppState } from './test-support';
 
-function fakeAppState(): AppStateLike {
-  return { current: () => 'active', subscribe: () => () => {} };
-}
-
-function fakeApi() {
-  return {
-    getMe: vi.fn(async () => ({
-      id: 'u-me',
-      email: 'me@zilar.test',
-      name: 'Me',
-      jid: 'me@zilar.test',
-    })),
-    getChats: vi.fn(async (): Promise<ChatEntry[]> => []),
-    getContacts: vi.fn(async () => []),
+function newGroupApi() {
+  return fakeApi({
     getGroup: vi.fn(async () => ({
       id: 'g-new',
       title: 'Weekend club',
@@ -27,33 +17,7 @@ function fakeApi() {
       members: [] as GroupMember[],
       ais: [],
     })),
-    getXmppToken: vi.fn(async () => ({
-      jid: 'me@zilar.test',
-      token: 'tok',
-      expiresAt: '2026-09-28T12:05:00Z',
-      service: 'ws://x',
-      domain: 'zilar.test',
-      mucDomain: 'rooms.zilar.test',
-    })),
-  };
-}
-
-function fakeCore(): unknown {
-  return {
-    status: () => 'online',
-    connect: async () => {},
-    disconnect: async () => {},
-    joinRoom: async () => {},
-    occupants: () => [],
-    sendMessage: async () => ({ id: 'srv-1' }),
-    sendReactions: async () => {},
-    sendCorrection: async () => ({ id: 'srv-c' }),
-    sendRetraction: async () => {},
-    loadHistory: async () => ({ messages: [], complete: true, first: undefined }),
-    sendTyping: () => {},
-    markDisplayed: () => {},
-    on: () => () => {},
-  };
+  });
 }
 
 function fakeGroups(): GroupsApi & {
@@ -76,14 +40,14 @@ async function flush(): Promise<void> {
 }
 
 function setup(deps: Partial<RealStoreDeps> = {}) {
-  const api = fakeApi();
+  const api = newGroupApi();
   const groups = fakeGroups();
   const store = createRealChatStore({
     api,
     groupsApi: groups,
     appState: fakeAppState(),
     openDrafts: () => () => {},
-    createXmpp: () => fakeCore() as never,
+    createXmpp: () => createFakeXmppCore(),
     ...deps,
   });
   return { store, api, groups };
@@ -121,7 +85,7 @@ describe('real store createGroup (T-0214)', () => {
 
   it('resolves the id even when the background refresh fails', async () => {
     const failingApi = {
-      ...fakeApi(),
+      ...newGroupApi(),
       getChats: vi.fn(async (): Promise<ChatEntry[]> => {
         throw new Error('offline');
       }),

@@ -3,14 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { ChatApi } from '../lib/chat-api';
 import { createChatStore } from './chat-store';
-import { createRealChatStore, type AppStateLike, type RealStoreDeps } from './real-store';
-
-function fakeAppState(): AppStateLike {
-  return {
-    current: () => 'active',
-    subscribe: () => () => {},
-  };
-}
+import { createRealChatStore, type RealStoreDeps } from './real-store';
+import { fakeAppState } from './test-support';
 
 function fakeXmpp(): { core: XmppCore; sent: unknown[] } {
   const sent: unknown[] = [];

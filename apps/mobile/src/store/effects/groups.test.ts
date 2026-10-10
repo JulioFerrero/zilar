@@ -1,51 +1,22 @@
-import type { XmppCore } from '@zilar/xmpp-core';
+import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ChatApi } from '../../lib/chat-api';
 import { createRealChatStore } from '../real-store';
+import { fakeApi } from '../test-support';
 
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
-function fakeApi(getGroup: ChatApi['getGroup']): ChatApi {
-  return {
-    getMe: vi.fn(async () => ({
-      id: 'u-me',
-      email: 'me@zilar.test',
-      name: 'Me',
-      jid: 'me@zilar.test',
-    })),
-    getChats: vi.fn(async () => []),
-    getContacts: vi.fn(async () => []),
-    getGroup,
-    getXmppToken: vi.fn(async () => ({
-      jid: 'me@zilar.test',
-      token: 'tok',
-      expiresAt: '2026-09-28T12:05:00Z',
-      service: 'ws://x',
-      domain: 'zilar.test',
-      mucDomain: 'rooms.zilar.test',
-    })),
-  } as unknown as ChatApi;
+function groupApi(getGroup: ChatApi['getGroup']): ChatApi {
+  return fakeApi({ getGroup }) as unknown as ChatApi;
 }
-
-const fakeCore = (): XmppCore =>
-  ({
-    status: () => 'online' as const,
-    me: () => 'me@zilar.test',
-    connect: vi.fn(async () => {}),
-    disconnect: vi.fn(async () => {}),
-    joinRoom: vi.fn(async () => {}),
-    occupants: vi.fn(() => []),
-    loadHistory: vi.fn(async () => ({ messages: [], complete: true, first: undefined })),
-    on: () => () => {},
-  }) as unknown as XmppCore;
 
 describe('groups on the effect fibers', () => {
   it('serves two callers of ensureGroupDetail with one GET and bumps the revision', async () => {
     const getGroup = vi.fn(async () => ({ id: 'g1', members: [], ais: [] }));
     const store = createRealChatStore({
-      api: fakeApi(getGroup as unknown as ChatApi['getGroup']),
-      createXmpp: () => fakeCore(),
+      api: groupApi(getGroup as unknown as ChatApi['getGroup']),
+      createXmpp: () => createFakeXmppCore(),
     });
     store.getState().start();
     await flush();
@@ -70,8 +41,8 @@ describe('groups on the effect fibers', () => {
       .mockRejectedValueOnce(new Error('down'))
       .mockResolvedValue({ id: 'g1', members: [], ais: [] });
     const store = createRealChatStore({
-      api: fakeApi(getGroup as unknown as ChatApi['getGroup']),
-      createXmpp: () => fakeCore(),
+      api: groupApi(getGroup as unknown as ChatApi['getGroup']),
+      createXmpp: () => createFakeXmppCore(),
     });
     store.getState().start();
     await flush();
@@ -88,8 +59,8 @@ describe('groups on the effect fibers', () => {
 
   it('rejects a topic action for a chat that is not a topic', async () => {
     const store = createRealChatStore({
-      api: fakeApi(vi.fn() as unknown as ChatApi['getGroup']),
-      createXmpp: () => fakeCore(),
+      api: groupApi(vi.fn() as unknown as ChatApi['getGroup']),
+      createXmpp: () => createFakeXmppCore(),
     });
     store.getState().start();
     await flush();

@@ -2,13 +2,11 @@ import type { ChatApi, ChatEntry } from '../lib/chat-api';
 import { describeRolesError, ROLE_GONE_MESSAGE, ROLE_LOAD_FAILED_MESSAGE } from '../lib/roles';
 import type { CustomGroupRole, RolesApi } from '../lib/roles-api';
 import type { TopicsApi } from '../lib/topics-api';
+import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createRealChatStore, type AppStateLike, type RealStoreDeps } from './real-store';
-
-function fakeAppState(): AppStateLike {
-  return { current: () => 'active', subscribe: () => () => {} };
-}
+import { createRealChatStore, type RealStoreDeps } from './real-store';
+import { fakeApi, fakeAppState } from './test-support';
 
 function topicRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -72,16 +70,9 @@ function roleRow(overrides: Record<string, unknown> = {}): Record<string, unknow
   };
 }
 
-function fakeApi(): ChatApi {
-  return {
-    getMe: vi.fn(async () => ({
-      id: 'u-me',
-      email: 'me@zilar.test',
-      name: 'Me',
-      jid: 'me@zilar.test',
-    })),
+function rolesChatApi(): ChatApi {
+  return fakeApi({
     getChats: vi.fn(async () => [groupEntry()]),
-    getContacts: vi.fn(async () => []),
     getGroup: vi.fn(async () => ({
       id: 'g1',
       title: 'Dev team',
@@ -92,33 +83,7 @@ function fakeApi(): ChatApi {
       ],
       ais: [],
     })),
-    getXmppToken: vi.fn(async () => ({
-      jid: 'me@zilar.test',
-      token: 'tok',
-      expiresAt: '2026-09-28T12:05:00Z',
-      service: 'ws://x',
-      domain: 'zilar.test',
-      mucDomain: 'rooms.zilar.test',
-    })),
-  };
-}
-
-function fakeCore(): unknown {
-  return {
-    status: () => 'online',
-    connect: async () => {},
-    disconnect: async () => {},
-    joinRoom: async () => {},
-    occupants: () => [],
-    sendMessage: async () => ({ id: 'srv-1' }),
-    sendReactions: async () => {},
-    sendCorrection: async () => ({ id: 'srv-c' }),
-    sendRetraction: async () => {},
-    loadHistory: async () => ({ messages: [], complete: true, first: undefined }),
-    sendTyping: () => {},
-    markDisplayed: () => {},
-    on: () => () => {},
-  };
+  });
 }
 
 function fakeRoles(): RolesApi & { bodies: unknown[] } {
@@ -211,7 +176,7 @@ async function flush(): Promise<void> {
 }
 
 function setup(deps: Partial<RealStoreDeps> = {}) {
-  const api = fakeApi();
+  const api = rolesChatApi();
   const roles = fakeRoles();
   const topics = fakeTopics();
   const store = createRealChatStore({
@@ -220,7 +185,7 @@ function setup(deps: Partial<RealStoreDeps> = {}) {
     rolesApi: roles,
     appState: fakeAppState(),
     openDrafts: () => () => {},
-    createXmpp: () => fakeCore() as never,
+    createXmpp: () => createFakeXmppCore(),
     ...deps,
   });
   return { store, api, roles, topics };

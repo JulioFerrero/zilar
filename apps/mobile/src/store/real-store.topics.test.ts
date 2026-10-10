@@ -1,3 +1,4 @@
+import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import type { ChatEntry } from '../lib/chat-api';
 import type { ChatApi } from '../lib/chat-api';
 import type { TopicsApi } from '../lib/topics-api';
@@ -5,11 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createRealChatStore, summariesFor, TOPIC_REFRESH_INTERVAL_MS } from './real-store';
 import type { RealStoreDeps } from './real-store';
-import type { AppStateLike } from './real-store';
-
-function fakeAppState(): AppStateLike {
-  return { current: () => 'active', subscribe: () => () => {} };
-}
+import { fakeApi, fakeAppState } from './test-support';
 
 function topicRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -44,16 +41,9 @@ function groupEntry(overrides: Record<string, unknown> = {}): ChatEntry {
   } as ChatEntry;
 }
 
-function fakeApi(entries: ChatEntry[]): ChatApi {
-  return {
-    getMe: vi.fn(async () => ({
-      id: 'u-me',
-      email: 'me@zilar.test',
-      name: 'Me',
-      jid: 'me@zilar.test',
-    })),
+function topicsChatApi(entries: ChatEntry[]): ChatApi {
+  return fakeApi({
     getChats: vi.fn(async () => entries),
-    getContacts: vi.fn(async () => []),
     // T-0112 should-fix: the old fake ignored its argument, so a test
     // passing a chat JID where a group id belongs still resolved. It now
     // answers only the known group id and throws otherwise.
@@ -69,33 +59,7 @@ function fakeApi(entries: ChatEntry[]): ChatApi {
         ais: [],
       };
     }),
-    getXmppToken: vi.fn(async () => ({
-      jid: 'me@zilar.test',
-      token: 'tok',
-      expiresAt: '2026-09-28T12:05:00Z',
-      service: 'ws://x',
-      domain: 'zilar.test',
-      mucDomain: 'rooms.zilar.test',
-    })),
-  };
-}
-
-function fakeCore(): unknown {
-  return {
-    status: () => 'online',
-    connect: async () => {},
-    disconnect: async () => {},
-    joinRoom: async () => {},
-    occupants: () => [],
-    sendMessage: async () => ({ id: 'srv-1' }),
-    sendReactions: async () => {},
-    sendCorrection: async () => ({ id: 'srv-c' }),
-    sendRetraction: async () => {},
-    loadHistory: async () => ({ messages: [], complete: true, first: undefined }),
-    sendTyping: () => {},
-    markDisplayed: () => {},
-    on: () => () => {},
-  };
+  });
 }
 
 function fakeTopics(): TopicsApi & { calls: string[] } {
@@ -177,14 +141,14 @@ describe('summariesFor', () => {
 
 describe('real store topics (T-0112)', () => {
   function setup(entries: ChatEntry[], deps: Partial<RealStoreDeps> = {}) {
-    const api = fakeApi(entries);
+    const api = topicsChatApi(entries);
     const topics = fakeTopics();
     const store = createRealChatStore({
       api,
       topicsApi: topics,
       appState: fakeAppState(),
       openDrafts: () => () => {},
-      createXmpp: () => fakeCore() as never,
+      createXmpp: () => createFakeXmppCore(),
       ...deps,
     });
     return { store, api, topics };

@@ -1,12 +1,10 @@
+import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ChatEntry, GroupMember } from '../lib/chat-api';
 import type { GroupsApi } from '../lib/groups-api';
-import { createRealChatStore, type AppStateLike, type RealStoreDeps } from './real-store';
-
-function fakeAppState(): AppStateLike {
-  return { current: () => 'active', subscribe: () => () => {} };
-}
+import { createRealChatStore, type RealStoreDeps } from './real-store';
+import { fakeApi, fakeAppState } from './test-support';
 
 function generalRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -46,16 +44,9 @@ function channelEntry(): ChatEntry {
   } as unknown as ChatEntry;
 }
 
-function fakeApi() {
-  return {
-    getMe: vi.fn(async () => ({
-      id: 'u-me',
-      email: 'me@zilar.test',
-      name: 'Me',
-      jid: 'me@zilar.test',
-    })),
+function channelApi() {
+  return fakeApi({
     getChats: vi.fn(async (): Promise<ChatEntry[]> => [channelEntry()]),
-    getContacts: vi.fn(async () => []),
     getGroup: vi.fn(async () => ({
       id: 'g-acme',
       title: 'Acme Announcements',
@@ -65,33 +56,7 @@ function fakeApi() {
       members: [] as GroupMember[],
       ais: [],
     })),
-    getXmppToken: vi.fn(async () => ({
-      jid: 'me@zilar.test',
-      token: 'tok',
-      expiresAt: '2026-09-28T12:05:00Z',
-      service: 'ws://x',
-      domain: 'zilar.test',
-      mucDomain: 'rooms.zilar.test',
-    })),
-  };
-}
-
-function fakeCore(): unknown {
-  return {
-    status: () => 'online',
-    connect: async () => {},
-    disconnect: async () => {},
-    joinRoom: async () => {},
-    occupants: () => [],
-    sendMessage: async () => ({ id: 'srv-1' }),
-    sendReactions: async () => {},
-    sendCorrection: async () => ({ id: 'srv-c' }),
-    sendRetraction: async () => {},
-    loadHistory: async () => ({ messages: [], complete: true, first: undefined }),
-    sendTyping: () => {},
-    markDisplayed: () => {},
-    on: () => () => {},
-  };
+  });
 }
 
 function fakeGroups(): GroupsApi & { calls: { role: { userId: string; role: string }[] } } {
@@ -121,14 +86,14 @@ async function flush(): Promise<void> {
 }
 
 function setup(deps: Partial<RealStoreDeps> = {}) {
-  const api = fakeApi();
+  const api = channelApi();
   const groups = fakeGroups();
   const store = createRealChatStore({
     api,
     groupsApi: groups,
     appState: fakeAppState(),
     openDrafts: () => () => {},
-    createXmpp: () => fakeCore() as never,
+    createXmpp: () => createFakeXmppCore(),
     ...deps,
   });
   return { store, api, groups };

@@ -1,7 +1,7 @@
 ---
 id: T-0884
 title: "One createFakeXmppCore() in xmpp-core/testing; mobile store tests use it and shared fakeApi/fakeAppState helpers"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0884-fake-xmpp-core-mobile-fakes
 model: auto
@@ -56,4 +56,15 @@ Run the tests 3 times after the last commit. The machine is shared, so note `upt
 
 ## Report (written by the worker when done)
 
+- Merged `task/T-0857-xmpp-events-streams` first, so the fake is typed against the interface without `events.*`.
+- New: `packages/xmpp-core/src/testing.ts` (88 lines; `createFakeXmppCore(overrides)` with `calls`, `emit` and `failures`; reuses `makeEventHub`; exported as `@zilar/xmpp-core/testing`, not in the main index), `testing.test.ts` (4 tests), `apps/mobile/src/store/test-support.ts` (69 lines: `fakeAppState`, `fakeApi(overrides)`, `fakeApiWithMembers`).
+- Migrated 14 mobile store test files: the 8 byte-identical `fakeCore()` (channels, general-only, groups-create, invite-links, media, prefs-pins, roles, topics) now use `createFakeXmppCore()` with no `as never` casts; `effects/events|groups|pins.test.ts` fakeCores too; `fakeAppState` in 9 files; the `fakeApi` boilerplate in 14 files.
+- Lines in the migrated test files: 607 removed, 136 added (net -471). With the 69-line support file, mobile net is -402. The 88+39 xmpp-core lines are new.
+- Tests: mobile `src/store` 315 passed | 1 skipped before and after (3 of 3 runs after the last commit); xmpp-core 249 passed | 4 skipped (245 + 4 new). Both typechecks and oxlint clean. Load average was 100-300 during the runs.
+- Behaviour differences: the fake core now also answers `me()` (`me@zilar.test`), `leaveRoom` and `requestUploadSlot`, which the old copies lacked; no test changed an assertion. `events.test.ts` now drives events through `core.emit(...)` instead of a captured handler map, and `prefs-pins` pin test does the same.
+- Not migrated (stateful, test-specific fakes that record sent stanzas or history): `fakeXmpp` in `real-store.test.ts`, `forward`, `attachments`, `mentions`, `voice`; `fakeApi`/`fakeAppState` in `real-store.test.ts` (richer, with `setActive/setBackground`), forward, attachments, voice, mentions, roles-mock, others in `src/store` outside this list. `apps/server` gateway FakeCore is out of scope.
+- Audit facts: 11 `fakeCore()` copies claimed, I found 8 identical `fakeCore()` plus 3 `effects/*` variants; matches. I did not run `pnpm gate` (wave mode).
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.** `@zilar/xmpp-core/testing` exports a typed `createFakeXmppCore`, and mobile's `store/test-support.ts` holds the shared `fakeApi` and `fakeAppState`. 14 mobile store test files use them, for a net −402 lines. The test count is unchanged (315). The combined wave 4 check passes.

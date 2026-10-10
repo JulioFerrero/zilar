@@ -3,30 +3,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChatApi } from '../../lib/chat-api';
 import { createRealChatStore, MESSAGE_JUMP_WAIT_MS } from '../real-store';
+import { fakeApi } from '../test-support';
 
 const ANA = 'ana@zilar.test';
 
-function fakeApi(): ChatApi {
-  return {
-    getMe: vi.fn(async () => ({
-      id: 'u-me',
-      email: 'me@zilar.test',
-      name: 'Me',
-      jid: 'me@zilar.test',
-    })),
+function anaApi(): ChatApi {
+  return fakeApi({
     getChats: vi.fn(async () => [
       { kind: 'dm' as const, chatJid: ANA, title: 'Ana', userId: 'u-ana' },
     ]),
-    getContacts: vi.fn(async () => []),
-    getXmppToken: vi.fn(async () => ({
-      jid: 'me@zilar.test',
-      token: 'tok',
-      expiresAt: '2026-09-28T12:05:00Z',
-      service: 'ws://x',
-      domain: 'zilar.test',
-      mucDomain: 'rooms.zilar.test',
-    })),
-  } as unknown as ChatApi;
+  }) as unknown as ChatApi;
 }
 
 // A core whose first history load (the previews) answers at once and whose
@@ -60,7 +46,7 @@ describe('history on the effect fibers', () => {
   it('openAtMessage gives up when the opening page stalls past the wait cap', async () => {
     vi.useFakeTimers();
     const store = createRealChatStore({
-      api: fakeApi(),
+      api: anaApi(),
       createXmpp: () => hangingCore(),
       now: () => new Date('2026-09-28T12:00:00Z'),
     });
@@ -79,7 +65,7 @@ describe('history on the effect fibers', () => {
 
   it('stop interrupts a history load in flight and leaves nothing behind', async () => {
     const core = hangingCore();
-    const store = createRealChatStore({ api: fakeApi(), createXmpp: () => core });
+    const store = createRealChatStore({ api: anaApi(), createXmpp: () => core });
     store.getState().start();
     await new Promise((resolve) => setTimeout(resolve, 0));
     store.getState().openChat(ANA);
