@@ -10,8 +10,6 @@ import type { Sticker, StickerPack } from '@/lib/api';
 import { discoverStickerPacks, listStickerFavorites, listStickerPacks } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { useQuery } from '@/lib/effect/use-query';
-import { isMockMode } from '@/mock/gate';
-import { mockGifItems } from '@/mock/helpers';
 import { rememberRecentSticker } from '@/lib/stickers';
 import type { RecentStickerEntry } from '@/lib/stickers';
 import { SegmentedControl } from '@/components/ui/segmented-control';
@@ -42,8 +40,7 @@ export interface StickerPanelProps {
   onCreate?: (() => void) | undefined;
   /**
    * Forces the GIFs tab visible or hidden (T-0146, tests only): the panel
-   * otherwise probes the server once per session. Mock mode always shows
-   * the tab (placeholders need no server).
+   * otherwise probes the server once per session.
    */
   gifsTab?: 'show' | 'hide' | undefined;
 }
@@ -103,18 +100,6 @@ function favoriteFrom(choice: StickerChoice): Sticker {
  * `max-w-[calc(100vw-2rem)]`, so it opens above the button and always stays
  * inside the viewport, even on narrow windows.
  */
-/**
- * The mock GIF placeholders, only in a build that can run mock mode. The
- * build-time condition is inline so Vite folds `mockGifItems` (and
- * mock/helpers) out of a production build without `VITE_MOCK` (T-0882).
- */
-function mockGifProps(): { mockItems?: ReturnType<typeof mockGifItems> } {
-  if (import.meta.env.DEV || import.meta.env.MODE === 'test' || import.meta.env.VITE_MOCK === '1') {
-    return isMockMode() ? { mockItems: mockGifItems() } : {};
-  }
-  return {};
-}
-
 export function StickerPanel({
   onPick,
   onClose,
@@ -131,22 +116,20 @@ export function StickerPanel({
   const [favoriteError, setFavoriteError] = useState('');
   const [recents, setRecents] = useState<RecentStickerEntry[]>(readStoredRecents);
   // T-0146: the GIFs tab hides when the provider is off. The probe runs
-  // once per session and remembers the answer; mock mode keeps the tab
-  // (placeholders need no server). Shown/hidden are derived during render
-  // from the tri-state; the probe settles into the state below (an
+  // once per session and remembers the answer. Shown/hidden are derived during
+  // render from the tri-state; the probe settles into the state below (an
   // external-system sync, like the sticker list load), and a tab that
   // disappears under the active tab falls back to Stickers at render time
   // so the panel never shows an empty body.
-  // In the unit-test run (`MODE === 'test'`) and in mock mode the panel
-  // uses placeholders, so no probe is needed and the tab always shows.
-  // `isMockMode()` is true in tests (MODE=test), which also covers mock.
+  // The probe runs in mock mode too (T-1086): the shared mock backend serves
+  // trending and search, so the tab is not assumed available.
   // `gifsTab` forces the answer in tests of the hidden state.
-  const gifsProbeNeeded = gifsTab === undefined && !isMockMode();
+  const gifsProbeNeeded = gifsTab === undefined;
   const [gifsEnabled, setGifsEnabled] = useState<boolean | undefined>(() => {
     if (gifsTab !== undefined) {
       return gifsTab === 'show';
     }
-    return isMockMode() ? true : gifsAvailability();
+    return gifsAvailability();
   });
 
   useQuery(
@@ -290,9 +273,7 @@ export function StickerPanel({
         />
       </div>
 
-      {visibleTab === 'gifs' && gifsEnabled !== false && (
-        <GifPanel onPick={onGifPick} {...mockGifProps()} />
-      )}
+      {visibleTab === 'gifs' && gifsEnabled !== false && <GifPanel onPick={onGifPick} />}
 
       {visibleTab === 'emoji' && (
         <div
