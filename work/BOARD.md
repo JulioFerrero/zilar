@@ -10,6 +10,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1065](T-1065-web-mock-delete-covered-routes-2.md) | Mock sweep W1b: delete the rest of the covered web mock/api.ts routes | in-progress | auto | T-1062 | probe first |
+| [T-1066](T-1066-delete-mobile-replaced-mocks.md) | Mock sweep M2+R2: delete 7 replaced mobile mocks (1,172 lines) | in-progress | auto | T-1063, T-1064 | no importers left |
+| [T-1067](T-1067-mock-backend-contacts-blocks-handles.md) | Mock backend F3: contact-requests, blocks, handles/check, PUT /me/handle | in-progress | auto | T-1059 | unblocks contacts, profile, directory, W10 |
 
 ## Follow-ups
 
