@@ -130,7 +130,12 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
       maxResponseBytes: limits.maxResponseBytes,
     });
 
-  const workerPath = fileURLToPath(new URL('./tool-worker.ts', import.meta.url));
+  // Production runs the bundle: `dist/tool-worker.mjs` sits next to
+  // `dist/index.mjs`, is plain JavaScript and needs no loader.
+  const bundled = !import.meta.url.endsWith('.ts');
+  const workerPath = fileURLToPath(
+    new URL(bundled ? './tool-worker.mjs' : './tool-worker.ts', import.meta.url),
+  );
   // The worker entry is TypeScript. The main thread may run under tsx, plain
   // node, or vitest (whose workers do not inherit a TS loader), so always
   // bootstrap through an eval wrapper that registers tsx's CJS hook and then
@@ -152,6 +157,12 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
     },
   };
   const spawnWorker = (): Worker => {
+    if (bundled) {
+      return new Worker(workerPath, {
+        workerData: workerOptions.workerData,
+        resourceLimits: workerOptions.resourceLimits,
+      });
+    }
     const requireFromHere = createRequire(import.meta.url);
     const tsxHook = requireFromHere.resolve('tsx/cjs');
     const bootstrap = `require(${JSON.stringify(tsxHook)}); require(${JSON.stringify(workerPath)});`;

@@ -126,9 +126,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Builds the amd64 server image for the smoke start from the gha cache that the
-      # green-main build writes (scope per image), so a warm run skips the rebuild.
-      - name: Build the server image for the smoke start
+      # The one amd64 build of the server image (T-0861). It is loaded into the local
+      # docker, smoke-started below, and then pushed as it is on a green main (the
+      # push step tags and pushes this same image instead of building again). A
+      # version tag still builds the multi-arch image in its own step; its amd64
+      # layers come from the cache this step writes.
+      - name: Build the server image (smoke start, and the push on green main)
         if: matrix.name == 'zilar-server'
         uses: docker/build-push-action@v7
         with:
@@ -138,6 +141,12 @@ jobs:
           load: true
           tags: zilar-server:smoke
           cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          build-args: |
+            ZILAR_COMMIT=${{ steps.commit.outputs.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=MIT
 
       # Why this step exists (T-0739): on 2026-10-09 the server image crash-looped
       # at start (ERR_MODULE_NOT_FOUND for @electric-sql/pglite, a devDependency),
@@ -208,7 +217,7 @@ jobs:
           exit "$fail"
 
       - name: Build ${{ matrix.name }} (no push)
-        if: "!startsWith(github.ref, 'refs/tags/v') && github.event_name != 'workflow_run'"
+        if: "matrix.name != 'zilar-server' && !startsWith(github.ref, 'refs/tags/v') && github.event_name != 'workflow_run'"
         uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
@@ -240,8 +249,20 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=MIT
 
+      # The server image was built and smoke-tested above: push that exact image.
+      - name: Push the smoke-tested server image (green main)
+        if: matrix.name == 'zilar-server' && github.event_name == 'workflow_run'
+        env:
+          IMAGE: ${{ steps.image.outputs.ref }}
+          SHORT: ${{ steps.commit.outputs.short }}
+        run: |
+          docker tag zilar-server:smoke "${IMAGE}:latest"
+          docker tag zilar-server:smoke "${IMAGE}:sha-${SHORT}"
+          docker push "${IMAGE}:latest"
+          docker push "${IMAGE}:sha-${SHORT}"
+
       - name: Build and push ${{ matrix.name }} (green main)
-        if: github.event_name == 'workflow_run'
+        if: matrix.name != 'zilar-server' && github.event_name == 'workflow_run'
         uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
