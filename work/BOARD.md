@@ -13,7 +13,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0998](T-0998-split-web-chat-background-dialog.md) | Size split T66: web ChatBackgroundDialog.tsx (555) | in-progress | auto | T-0936 | size-plan |
 | [T-0999](T-0999-split-web-notifications-page.md) | Size split T67: web NotificationsPage.tsx (551) | in-progress | auto | T-0936 | size-plan |
 | [T-1000](T-1000-split-web-integrations-page.md) | Size split T69: web IntegrationsPage.tsx (548) | in-progress | auto | T-0936 | size-plan |
-| [T-1002](T-1002-split-server-push-service.md) | Size split T64: server push/service.ts (561) | in-progress | auto | T-0936 | size-plan |
 
 ## Follow-ups
 
@@ -1029,3 +1028,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1001](T-1001-split-server-telegram-import.md) | Size split T59: apps/server/src/stickers/telegram-import.ts (573 lines) into stickers/telegram/{pack-input,err | 2026-10-10 |
 | [T-0995](T-0995-split-mobile-machines.md) | Size split T41: apps/mobile/src/app/settings/machines.tsx (717 lines) into components/machines/{mutations,use- | 2026-10-10 |
 | [T-0996](T-0996-split-mobile-stickers-screen.md) | Size split T44: apps/mobile/src/app/settings/stickers.tsx (691 lines) into components/stickers/{tile-size,use- | 2026-10-10 |
+| [T-1002](T-1002-split-server-push-service.md) | Size split T64: apps/server/src/push/service.ts (561 lines) into push/{delivery,archive-scan,candidates}.ts, t | 2026-10-10 |
