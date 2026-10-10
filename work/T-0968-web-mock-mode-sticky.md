@@ -1,7 +1,7 @@
 ---
 id: T-0968
 title: "Web mock mode stays on for the tab: decide once at page load and remember ?mock=1 in sessionStorage (dev builds only); ?mock=0 turns it off"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0968-web-mock-mode-sticky
 model: auto
@@ -52,4 +52,68 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+Made mock mode sticky for a tab in dev builds, so in-app navigation (which
+drops `?mock=1`) no longer flips the API layer back to real while the store
+keeps its fake XMPP.
+
+- `apps/web/src/mock/gate.ts`:
+  - Added `saved: string | undefined` to `MockEnv`. `resolveMockMode` stays
+    pure: it checks `VITE_MOCK=1`/`MODE==='test'` first, returns `false` when
+    `!dev` (the T-0063/T-0069 safety rule, unchanged), then reads the URL param
+    (`?mock=1` → true, `?mock=0` → false), and only when there is no param falls
+    back to `saved === '1'`.
+  - New dev-only storage helpers `readSavedMock`/`writeSavedMock` around the key
+    `zilar.mock`; every access is wrapped in try/catch, and a failed read counts
+    as "not saved".
+  - `decideMockMode` applies the URL param to `sessionStorage` (only in a dev
+    build, not test, and not with `VITE_MOCK=1`), then calls `resolveMockMode`.
+  - `isMockMode` now decides once per page load into a module-level cache and
+    returns the same value for the rest of the page's life.
+  - `isMockApiEnabled` is unchanged.
+- `apps/web/src/mock/gate.test.ts` (new): unit tests for the pure decision,
+  including the production safety property.
+
+I did not touch `apps/web/src/store/ChatStoreProvider.tsx`; it already calls
+`isMockMode()` in both the initializer and the effect, so the once-per-load cache
+is enough for the store and the API layer to agree.
+
+### Files changed
+- `apps/web/src/mock/gate.ts`
+- `apps/web/src/mock/gate.test.ts` (new)
+- `work/T-0968-web-mock-mode-sticky.md` (this file)
+
+### Commands and real results
+- `pnpm --filter @zilar/web exec vitest run --maxWorkers=2 --reporter=dot src/mock/gate.test.ts`
+  → `Test Files 1 passed (1)`, `Tests 7 passed (7)` (same file as the Checks
+  command, with the AGENTS.md worker cap added).
+- `pnpm gate` from the repo root:
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (2.1s)
+  PASS  format  (0.8s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (4.6s)
+  PASS  effect  (1.7s)
+  PASS  tests @zilar/web  (1.5s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+- `MockEnv` gained a `saved` field so `resolveMockMode` can stay pure and still
+  be tested with a saved value; `currentMockEnv` fills it from `sessionStorage`.
+- The storage read/write is skipped in `MODE==='test'` and when `VITE_MOCK=1`, to
+  keep unit tests free of storage side effects and to leave the build-time
+  override alone. The spec only required "dev build only".
+
+### Open questions
+None.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved. The pre-review is clean, with no nits.**
+- **The change:** in a dev build, `?mock=1` is saved as `zilar.mock` in `sessionStorage` and `?mock=0` clears it. The decision is made once per page load.
+- **The production rule holds:** the saved value is read only after `resolveMockMode`'s existing `if (!env.dev) return false`, and it is written only in dev. The new `gate.test.ts` (7 tests) covers `dev: false` with `?mock=1`, which gives false.
+- **The lead checked it in Chrome:** open `?mock=1`, then click My AIs (all three AIs load), then Profile at `/settings/profile`, where the URL has no param and the page still loads from the mock.
+- **Check:** the gate passed.

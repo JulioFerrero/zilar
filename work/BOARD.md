@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0962](T-0962-split-mobile-chat-screen.md) | Size split T15: mobile chat/[id].tsx (1,118) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0966](T-0966-split-server-tools-adapters.md) | Size split T21: server tools/adapters.ts (944) | in-progress | deepseek-flash | T-0936 | size-plan |
-| [T-0968](T-0968-web-mock-mode-sticky.md) | Web mock mode stays on for the tab (dev only) | in-progress | deepseek-flash | — | lead QA |
 | [T-0969](T-0969-split-store-send.md) | Size split T33: client-core store/send.ts (883), byte-identical | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0970](T-0970-split-lead-batch.md) | Size split T22: devtools lead/batch.ts (913) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0971](T-0971-split-web-message-bubble.md) | Size split T25: web MessageBubble.tsx (846) | in-progress | deepseek-flash | T-0936 | size-plan |
@@ -999,3 +998,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0965](T-0965-split-lead-policy.md) | Size split T16: packages/devtools/src/lead/policy.ts (1,111 lines) into lead/policy/{types,shell-parse,rm,curl | 2026-10-10 |
 | [T-0963](T-0963-split-server-actions-gateway.md) | Size split T18: apps/server/src/actions/gateway.ts (1,036 lines) into actions/{decisions,recovery,queries,supp | 2026-10-10 |
 | [T-0967](T-0967-split-web-group-panel.md) | Size split T20: apps/web/src/components/GroupPanel.tsx (995 lines) into components/panels/{groupPanelOps,Group | 2026-10-10 |
+| [T-0968](T-0968-web-mock-mode-sticky.md) | Web mock mode stays on for the tab: decide once at page load and remember ?mock=1 in sessionStorage (dev build | 2026-10-10 |
