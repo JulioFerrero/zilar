@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router';
-import type { ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
 import { SKELETON_DELAY_MS } from '@/components/Skeleton';
 import { hasDismissedHandleGate } from '@/lib/handleGate';
@@ -9,22 +9,36 @@ import { ChatShell } from './ChatShell';
 import { GroupHandleRoute } from './GroupHandleRoute';
 import { HandlePage } from './HandlePage';
 import { AisPage } from './AisPage';
-import { ConnectionsPage } from './ConnectionsPage';
 import { InvitePage } from './InvitePage';
 import { JoinPage } from './JoinPage';
-import { LoginPage } from './LoginPage';
 import { BlockedPage } from './BlockedPage';
-import { FoldersPage } from './FoldersPage';
 import { RequestsPage } from './RequestsPage';
-import { SetupPage } from './SetupPage';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
-import { MachinesPage } from './MachinesPage';
 import { NamePage } from './NamePage';
-import { NotificationsPage } from './NotificationsPage';
-import { IntegrationsPage } from './IntegrationsPage';
 import { ProfilePage } from './ProfilePage';
-import { StickersPage } from './StickersPage';
-import { ApprovalsPage } from './ApprovalsPage';
+
+// Settings, setup and login pages load on demand; the chat routes stay eager.
+const ConnectionsPage = lazy(() =>
+  import('./ConnectionsPage').then((m) => ({ default: m.ConnectionsPage })),
+);
+const LoginPage = lazy(() => import('./LoginPage').then((m) => ({ default: m.LoginPage })));
+const FoldersPage = lazy(() => import('./FoldersPage').then((m) => ({ default: m.FoldersPage })));
+const SetupPage = lazy(() => import('./SetupPage').then((m) => ({ default: m.SetupPage })));
+const MachinesPage = lazy(() =>
+  import('./MachinesPage').then((m) => ({ default: m.MachinesPage })),
+);
+const NotificationsPage = lazy(() =>
+  import('./NotificationsPage').then((m) => ({ default: m.NotificationsPage })),
+);
+const IntegrationsPage = lazy(() =>
+  import('./IntegrationsPage').then((m) => ({ default: m.IntegrationsPage })),
+);
+const StickersPage = lazy(() =>
+  import('./StickersPage').then((m) => ({ default: m.StickersPage })),
+);
+const ApprovalsPage = lazy(() =>
+  import('./ApprovalsPage').then((m) => ({ default: m.ApprovalsPage })),
+);
 
 // The session check usually answers within a frame or two; the text only
 // shows when it is slow, so a reload doesn't flash a "Loading…" page.
@@ -91,124 +105,125 @@ function RequireAuth({ children }: { children: ReactNode }) {
 
 export function AppRoutes() {
   return (
-    <Routes>
-      <Route path="/invite/:code" element={<InvitePage />} />
-      <Route path="/j/:token" element={<JoinRoute />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/setup" element={<SetupPage />} />
-      <Route
-        path="/welcome/name"
-        element={
-          <RequireUser>
-            <NamePage />
-          </RequireUser>
-        }
-      />
-      <Route
-        path="/welcome/handle"
-        element={
-          <RequireUser>
-            <HandlePage />
-          </RequireUser>
-        }
-      />
-      <Route
-        path="/"
-        element={
-          <RequireAuth>
-            <ChatShell />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/c/:chatJid"
-        element={
-          <RequireAuth>
-            <ChatShell />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/settings/connections"
-        element={
-          <RequireAuth>
-            <ConnectionsPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/settings/ais"
-        element={
-          <RequireAuth>
-            <AisPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/settings/machines"
-        element={
-          <RequireAuth>
-            <MachinesPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/settings/approvals"
-        element={
-          <RequireAuth>
-            <ApprovalsPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/settings/notifications"
-        element={
-          <RequireAuth>
-            <NotificationsPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/settings/stickers"
-        element={
-          <RequireAuth>
-            <StickersPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/settings/profile"
-        element={
-          <RequireAuth>
-            <ProfilePage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/settings/requests"
-        element={
-          <RequireAuth>
-            <RequestsRoute />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/settings/folders"
-        element={
-          <RequireAuth>
-            <FoldersRoute />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/settings/blocked"
-        element={
-          <RequireAuth>
-            <BlockedRoute />
-          </RequireAuth>
-        }
-      />
-      {/* Share links: /@handle opens the group card for a public group or
+    <Suspense fallback={<LoadingScreen />}>
+      <Routes>
+        <Route path="/invite/:code" element={<InvitePage />} />
+        <Route path="/j/:token" element={<JoinRoute />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/setup" element={<SetupPage />} />
+        <Route
+          path="/welcome/name"
+          element={
+            <RequireUser>
+              <NamePage />
+            </RequireUser>
+          }
+        />
+        <Route
+          path="/welcome/handle"
+          element={
+            <RequireUser>
+              <HandlePage />
+            </RequireUser>
+          }
+        />
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <ChatShell />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/c/:chatJid"
+          element={
+            <RequireAuth>
+              <ChatShell />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings/connections"
+          element={
+            <RequireAuth>
+              <ConnectionsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings/ais"
+          element={
+            <RequireAuth>
+              <AisPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings/machines"
+          element={
+            <RequireAuth>
+              <MachinesPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings/approvals"
+          element={
+            <RequireAuth>
+              <ApprovalsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings/notifications"
+          element={
+            <RequireAuth>
+              <NotificationsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings/stickers"
+          element={
+            <RequireAuth>
+              <StickersPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings/profile"
+          element={
+            <RequireAuth>
+              <ProfilePage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings/requests"
+          element={
+            <RequireAuth>
+              <RequestsRoute />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings/folders"
+          element={
+            <RequireAuth>
+              <FoldersRoute />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings/blocked"
+          element={
+            <RequireAuth>
+              <BlockedRoute />
+            </RequireAuth>
+          }
+        />
+        {/* Share links: /@handle opens the group card for a public group or
           the Add contact dialog for a person when logged in, and goes to
           login (returning afterwards) when logged out. react-router matches
           params only as full segments, so `/@:handle` never matches: instead
@@ -219,18 +234,19 @@ export function AppRoutes() {
           fallback for hosts that cannot serve `@` paths. All three sit
           outside the handle gate (which only guards the chat and settings
           pages), so a share link never redirects to /welcome/handle. */}
-      <Route path="/u/:handle" element={<AddContactRoute />} />
-      <Route path="/:atHandle" element={<AtHandleGate />} />
-      <Route
-        path="/settings/integrations"
-        element={
-          <RequireAuth>
-            <IntegrationsPage />
-          </RequireAuth>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="/u/:handle" element={<AddContactRoute />} />
+        <Route path="/:atHandle" element={<AtHandleGate />} />
+        <Route
+          path="/settings/integrations"
+          element={
+            <RequireAuth>
+              <IntegrationsPage />
+            </RequireAuth>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 

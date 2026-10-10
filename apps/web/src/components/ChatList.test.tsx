@@ -254,11 +254,11 @@ describe('ChatList', () => {
     expect(screen.queryByRole('status', { name: 'Loading chats' })).toBeNull();
   });
 
-  it('navigates to the Machines page from the menu', () => {
+  it('navigates to the Machines page from the menu', async () => {
     renderApp('/');
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Machines' }));
-    expect(screen.getByText('Machines')).toBeTruthy();
+    expect(await screen.findByText('Machines')).toBeTruthy();
   });
 
   it('closes the main menu on Escape and returns focus to the trigger', () => {
@@ -274,11 +274,11 @@ describe('ChatList', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
-  it('navigates to the Chat folders page from the menu', () => {
+  it('navigates to the Chat folders page from the menu', async () => {
     renderApp('/');
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Chat folders' }));
-    expect(screen.getByText('Chat folders')).toBeTruthy();
+    expect(await screen.findByText('Chat folders')).toBeTruthy();
   });
 
   it('navigates to the Blocked people page from the menu', () => {

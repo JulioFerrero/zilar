@@ -36,7 +36,7 @@ describe('IntegrationsPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Integrations' })).toBeTruthy();
     expect(container.querySelector('.mx-auto.max-w-2xl')).not.toBeNull();
-    const cards = screen.getAllByRole('region');
+    const cards = await screen.findAllByRole('region');
     expect(cards.map((card) => card.getAttribute('aria-label'))).toEqual([
       'Email',
       'Telegram',

@@ -48,7 +48,7 @@ describe('FolderRail', () => {
     );
   });
 
-  it('has a tablist, a New key that opens the editor, and an Edit pencil that navigates', () => {
+  it('has a tablist, a New key that opens the editor, and an Edit pencil that navigates', async () => {
     stubWide(true);
     const { store } = renderApp('/');
     act(() => {
@@ -61,7 +61,7 @@ describe('FolderRail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit folders' }));
-    expect(screen.getByText(/Group chats into folders/)).toBeTruthy();
+    expect(await screen.findByText(/Group chats into folders/)).toBeTruthy();
   });
 
   it('arrow keys reach New and Edit', () => {

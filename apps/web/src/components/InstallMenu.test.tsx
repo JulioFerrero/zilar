@@ -38,11 +38,11 @@ describe('ChatList install and notifications entries', () => {
     expect(prompt).toHaveBeenCalledTimes(1);
   });
 
-  it('navigates to the Notifications page from the menu', () => {
+  it('navigates to the Notifications page from the menu', async () => {
     renderApp('/');
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Notifications' }));
-    expect(screen.getByRole('heading', { name: 'Notifications' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Notifications' })).toBeTruthy();
   });
 
   it('shows the Integrations menu item only to the server owner', async () => {
