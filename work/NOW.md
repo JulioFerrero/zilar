@@ -2,6 +2,15 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 00:30 local: 6 mobile hooks on the shared backend; next deletion and backend routes running**
+- **Merged:**
+  - **T-1063:** H2-1, mobile AIs, memory, audit and tools on the backend. On the phone, the AIs tab, Dev-1's page (memory, tools, routines, activity) and Approvals with no "Could not load" all work;
+  - **T-1064:** H2-3, machines and connections on the backend. On the phone, the connection keys and the machine picker show. Directory is held back, because the backend lacks `handles/check`.
+- **Running, 3 workers:**
+  - **T-1065:** W1b, the rest of the covered web `mock/api.ts` routes;
+  - **T-1066:** delete the 7 replaced mobile mocks (1,172 lines, no importers left);
+  - **T-1067:** backend contact-requests, blocks, `handles/check` and `PUT /me/handle`. It unblocks mobile contacts, profile and directory, and web W10.
+
 **2026-10-11 00:05 local: the sweep is under way, about 2,700 lines deleted**
 - **Merged:**
   - **T-1060:** the dead mobile mock store and 4 old mocks are deleted (1,954 lines). On the phone, chats, a chat and a group work;
