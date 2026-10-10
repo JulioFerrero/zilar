@@ -15,7 +15,7 @@ v3).
 ## The 100% rule and the client patterns (2026-10-09)
 
 **The rule** (`docs/audit/effect-100-plan.md` section 1). A file is done when it uses Effect for everything that can wait, fail or touch the outside world, or when it has nothing of that kind in it.
-- **The checker:** `pnpm effect:map` classifies every non-test source file as `effect`, `plain` (pure, which is fine), `exempt` (a `// effect-plain: <reason>` marker in the first 15 lines; at most 25 in the repo), or `needs-effect`.
+- **The checker:** the Effect ratchet (`packages/devtools/src/effect-map/`) classifies every non-test source file as `effect`, `plain` (pure, which is fine), `exempt` (a `// effect-plain: <reason>` marker in the first 15 lines; at most 25 in the repo), or `needs-effect`.
 - **Coverage:** Effect lines / (Effect lines + needs-effect lines).
 - **The ratchet:** the gate fails on a new or regressed needs-effect file (R6, T-0768).
 - **Tier B:** a Promise edge inside an Effect file (`Effect.runPromise` at a library callback, `await` inside `Effect.promise`). It is tracked, not failing.

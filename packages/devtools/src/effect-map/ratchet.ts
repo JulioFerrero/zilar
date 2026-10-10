@@ -20,7 +20,7 @@ export interface RatchetViolation {
 }
 
 // The class of one file's source, with no open tasks (the ratchet ignores them).
-const kindOf = (path: string, source: string): Kind => sourceFile(path, source, []).kind;
+const kindOf = (path: string, source: string): Kind => sourceFile(path, source).kind;
 
 export function ratchetViolations(files: readonly RatchetFile[]): RatchetViolation[] {
   return files.flatMap((file) => {
@@ -29,7 +29,7 @@ export function ratchetViolations(files: readonly RatchetFile[]): RatchetViolati
     if (file.baseSource !== null && kindOf(file.path, file.baseSource) === 'needs-effect') {
       return [];
     }
-    const branch = sourceFile(file.path, file.branchSource, []);
+    const branch = sourceFile(file.path, file.branchSource);
     return [{ path: file.path, signals: branch.signals, firstHit: branch.firstHit }];
   });
 }

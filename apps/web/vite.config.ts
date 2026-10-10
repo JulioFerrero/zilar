@@ -1,23 +1,14 @@
 import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import { loadEnv } from 'vite';
 import { defineConfig } from 'vitest/config';
 
 const src = fileURLToPath(new URL('./src', import.meta.url));
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    alias: [
-      // A production build without VITE_MOCK=1 swaps the in-memory mock store
-      // for a stub, so it and its fixtures stay out of the bundle (T-0847).
-      // Dev and the test run keep the real module.
-      ...(mode === 'production' && loadEnv(mode, process.cwd(), 'VITE_').VITE_MOCK !== '1'
-        ? [{ find: /^@\/store\/mockStore$/, replacement: `${src}/mock/storeStub.ts` }]
-        : []),
-      { find: '@', replacement: src },
-    ],
+    alias: [{ find: '@', replacement: src }],
   },
   server: {
     proxy: {
@@ -51,4 +42,4 @@ export default defineConfig(({ mode }) => ({
     // stays default (hooks only do cleanup).
     testTimeout: 15_000,
   },
-}));
+});

@@ -2,6 +2,19 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 17:00 local: the store core is done; ready for Julio's single live test**
+- **Merged:** T-0929 (T10b, the mobile send on the core) and T-0930 (test memory caps). Web and mobile now both run on `packages/client-core/src/store`.
+- **The live test, on web and on the phone, against the dev server:**
+  1. sign in, sign out, then sign in as another user (the old chats must not show);
+  2. the chat list: folders, pins, unread; open a long chat, scroll up at once, and jump to a message from search;
+  3. send text, a sticker, a photo, voice and a forward; edit, react, delete;
+  4. network off during an upload: "Not sent" within 60 s, then retry;
+  5. background and foreground the phone; airplane mode on, then off: it reconnects by itself;
+  6. groups: create a group, a topic and a channel; members, AIs, roles, invite, leave, settings, archiving a topic.
+  7. Older items are in the lists further down this file.
+- **Then:** a deploy after Julio's OK. It needs the 3 Coolify secrets.
+- **Running:** the audits T-0935 (mock plan) and T-0936 (size and duplication plan).
+
 **2026-10-10 16:30 local: test cuts merged; size and mock audits running**
 - **Merged:** T-0931 (server), T-0932 (web), T-0933 (mobile), T-0934 (packages). Test code went from about 201k lines to 23k. Suites:
   - server 646 → 197 s;

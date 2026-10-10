@@ -9,6 +9,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0936](T-0936-size-dup-audit.md) | Audit: 400-line limit and duplicated code | in-progress | deepseek-flash | — | Julio 10-10 |
+| [T-0949](T-0949-mobile-mock-cutover-store.md) | Mock cutover H1: mobile mock mode on the real store, fake session | in-progress | deepseek-flash | T-0946 | mock-plan H |
+| [T-0950](T-0950-unread-clears-on-refocus.md) | Unread clears on refocus with the chat open (core, web + mobile) | in-progress | deepseek-flash | — | lead QA, live |
 
 ## Follow-ups
 
@@ -961,3 +964,16 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0931](T-0931-cut-server-tests.md) | Cut the server tests to the crucial ones (auth and keys, permissions and money): keep a fixed list, delete eve | 2026-10-10 |
 | [T-0930](T-0930-test-memory-cap.md) | Test memory: cap the web vmThreads pool (memory limit, worker count) and the lead's combined check, measured p | 2026-10-10 |
 | [T-0929](T-0929-store-core-t10b-mobile-send.md) | Store core T10b: the mobile store on the core send pipeline (R6 deadline, R18 sticker retry, R20 banner), mobi | 2026-10-10 |
+| [T-0935](T-0935-mock-plan-audit.md) | Audit: mock mode on one shared fake backend (docs/audit/mock-plan.md) | 2026-10-10 |
+| [T-0937](T-0937-mock-backend-scaffold.md) | Mock backend A: scaffold @zilar/mock-backend with one JID-keyed seed (people, chats, messages), in-memory stat | 2026-10-10 |
+| [T-0940](T-0940-mock-backend-ais.md) | Mock backend E1: the AI routes (ais, ai-memory, connections, machines) in @zilar/mock-backend (docs/audit/mock | 2026-10-10 |
+| [T-0938](T-0938-code-map-page.md) | Replace the Effect map on GitHub Pages with a Code map: lines, file sizes against the 400-line limit, files ad | 2026-10-10 |
+| [T-0941](T-0941-mock-backend-approvals-tools.md) | Mock backend E2: approvals, approval rules, audit, tools and routines routes in @zilar/mock-backend (docs/audi | 2026-10-10 |
+| [T-0939](T-0939-mock-backend-messages-search.md) | Mock backend B: the full message seed and the /search route in @zilar/mock-backend (docs/audit/mock-plan.md ta | 2026-10-10 |
+| [T-0942](T-0942-mock-backend-domains.md) | Mock backend: one module per domain (seed, state and routes together) and alphabetical registries, so parallel | 2026-10-10 |
+| [T-0945](T-0945-mock-backend-xmpp.md) | Mock backend F2: a fake XMPP core on createFakeXmppCore that serves the seed's history, echoes sends, and emit | 2026-10-10 |
+| [T-0943](T-0943-mock-backend-groups-topics.md) | Mock backend D1: groups, members, topics and roles domains in @zilar/mock-backend, plus topic rows on the grou | 2026-10-10 |
+| [T-0944](T-0944-mock-backend-channels-invites.md) | Mock backend D2: invite links, join, directory and public-group lookup domains in @zilar/mock-backend (docs/au | 2026-10-10 |
+| [T-0946](T-0946-web-mock-cutover.md) | Mock cutover G (web): mock mode runs the real web store on @zilar/mock-backend | 2026-10-10 |
+| [T-0947](T-0947-delete-web-mock-store.md) | Mock sweep O: delete the web mock store (apps/web/src/store/mockStore.ts, 1,294 lines), its production stub an | 2026-10-10 |
+| [T-0948](T-0948-mock-backend-polish.md) | Mock backend polish: real-format AI JIDs (ai-<id>@zilar.test) so AI markdown renders, read markers clear unrea | 2026-10-10 |

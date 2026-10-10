@@ -60,7 +60,7 @@ This page is the short version for conversion workers. Read it, your task file a
 ## The Report
 
 Fill in, as short bullets:
-- each file's `effect:map` kind;
+- each file's Effect kind (the ratchet's classification);
 - the test counts before and after;
 - every behaviour difference (or "none");
 - anything you were unsure about.
