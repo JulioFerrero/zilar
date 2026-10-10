@@ -2,6 +2,22 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 05:00 local: no screen reads local mock data any more; the images are next**
+- **Merged since 04:10:**
+  - **T-1081:** your own sticker packs are editable in mobile mock mode (after a lead fix round);
+  - **T-1082:** the mock sweep audit, round 2 (`docs/audit/mock-sweep-status.md`);
+  - **T-1083:** web seed sticker images show, through a dev-only vite plugin;
+  - **T-1084:** dead mock files deleted;
+  - **T-1085:** the mobile composer's sticker and GIF tabs on the backend. On the phone, packs list and a sticker sends;
+  - **T-1086:** the web GIF tab on the backend. In the browser, GIFs list and send.
+- **Mock folders now:**
+  - web: `backend`, `gate`, `ids`, `load`, `dev-sticker-files`;
+  - mobile: `attachments` (the attach-sheet placeholders), `backend`, `gate`, `uploader`, `load`, `dev-kit-screen`.
+- **Still broken, mock only:**
+  - mobile sticker and GIF images are blank, because native `Image` fetches over the network;
+  - a sent attachment or GIF shows as a file row on web and "untrusted" on mobile, because the fake upload slot holds no bytes;
+  - the plan is audit §3-§4, slices 2-4.
+
 **2026-10-11 04:10 local: dither avatars live in both apps; mobile profile, integrations and stickers on the shared backend**
 - **Merged since 02:40:**
   - **T-1074:** web mock is backend-only. In the browser, a chat, sending a message and push settings work;
