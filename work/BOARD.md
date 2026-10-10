@@ -9,6 +9,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-1060](T-1060-delete-mobile-mock-store.md) | Mock sweep Q: delete the dead mobile mock store and 4 mocks only it imports | in-progress | auto | T-1059 | mock-sweep-status §3 |
+| [T-1061](T-1061-mobile-approvals-on-mock-backend.md) | Mock H2-2: mobile approvals on the shared backend; one mockToken | in-progress | auto | T-1059 | fixes empty "Always allowed" |
+| [T-1062](T-1062-web-mock-delete-covered-routes-1.md) | Mock sweep W1+W2: delete web mock/api.ts routes the backend answers | in-progress | auto | T-1059 | mock-sweep-status §1a |
 
 ## Follow-ups
 
