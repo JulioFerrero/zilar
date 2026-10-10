@@ -2,6 +2,16 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 15:30 local: minimal tests (Julio's call)**
+- **Julio's rule:** tests only for auth and keys, permissions and money, and the message pipeline; all UI tests deleted; no "tests first". It is in `CLAUDE.md`, `docs/EFFECT_BRIEF.md` and memory `minimal-tests`.
+- **Running:**
+  - the cuts: T-0931 (server), T-0932 (web), T-0933 (mobile), T-0934 (packages, plus the `AGENTS.md` rule);
+  - T-0930 (test memory cap).
+- **Merged:** T-0922 (T10's core and web half), T-0925, T-0926.
+- **Next:** T-0929 (T10b, mobile send) after T-0933. Then Julio's single live test.
+- **Cancelled:** T-0927 and T-0928 (test refactors).
+- **The slow PC was memory:** the web test process grew to 9 GB, plus about 6 GB of server test workers, plus the idle emulator at 6 GB. The lead now stops the emulator after each smoke.
+
 **2026-10-10 13:00 local: store core through T8 plus phase 2 pins and prefs merged; nothing deployed**
 - **Merged since the morning:**
   - T-0914 (T7a, mobile incoming, actions and reads);
