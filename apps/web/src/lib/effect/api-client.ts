@@ -17,16 +17,18 @@ import {
   type ZilarClient,
 } from '@zilar/api-contract';
 import { isMockApiEnabled } from '@/mock/gate';
-import { mockRequest } from '@/mock/api';
+import { loadMockRequest } from '@/mock/load';
 import { webRuntime } from './runtime';
 
-const webFetch: typeof globalThis.fetch = (input, init = {}) => {
+const webFetch: typeof globalThis.fetch = async (input, init = {}) => {
   const url = new URL(String(input), window.location.href);
   const path = url.origin === window.location.origin ? `${url.pathname}${url.search}` : url.href;
   const plain: RequestInit = { ...init, headers: { ...(init.headers as Record<string, string>) } };
   if (isMockApiEnabled()) {
     // Standalone mock mode: answer locally, never touch the network (T-0069).
-    return mockRequest(path, plain);
+    // The loader keeps the mock backend out of a production build (T-0946).
+    const dispatch = await loadMockRequest();
+    return dispatch(path, plain);
   }
   return globalThis.fetch(path, { credentials: 'same-origin', ...plain });
 };

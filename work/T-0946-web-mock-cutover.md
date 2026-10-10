@@ -1,7 +1,7 @@
 ---
 id: T-0946
 title: "Mock cutover G (web): mock mode runs the real web store on @zilar/mock-backend (fake HTTP with a fallback to the old mock routes, plus the fake XMPP); the old mock store stops being used"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0946-web-mock-cutover
 model: auto
@@ -67,4 +67,139 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: review. Branch `task/T-0946-web-mock-cutover`. Only the Allowed files
+changed (`pnpm gate` confirms this).
+
+### What I built
+
+1. **`apps/web/src/mock/backend.ts` (new).** One `createMockBackend()` singleton
+   (`backend`), so its HTTP routes and its fake XMPP core share the same
+   in-memory seed. `dispatch(path, init)`:
+   - returns `backend.http(path, init)` when it gives a `Response`;
+   - otherwise answers `/xmpp/token` with a fixed token (see "Gap" below);
+   - otherwise falls back to the old `mockRequest(path, init)` from
+     `apps/web/src/mock/api.ts`.
+
+   The token fallback sits **after** `backend.http`, so if the shared backend
+   later grows a `/xmpp/token` route, that route wins without touching this file.
+2. **`apps/web/src/mock/load.ts`.** `loadMockRequest()` now returns `dispatch`
+   (not `mockRequest`) and a new `loadMockXmpp()` returns `backend.xmpp`. Both
+   keep the same inline build condition, so Vite folds both dynamic imports away
+   in a production build. The old static `mockRequest` import is gone.
+3. **`apps/web/src/lib/effect/api-client.ts`.** Dropped
+   `import { mockRequest } from '@/mock/api'` (the static import that defeated
+   the build fold, plan risk R6). `webFetch` is now `async` and calls
+   `await loadMockRequest()` when `isMockApiEnabled()`, the same lazy path
+   `lib/api.ts:146` uses.
+4. **`apps/web/src/store/ChatStoreProvider.tsx`.** Always uses the real store:
+   - non-mock: created synchronously as before;
+   - mock mode: created once `loadMockXmpp()` resolves, passing
+     `createXmpp` from the mock backend. It renders `null` for the one tick
+     until then (the store render is the only thing gated; `AuthProvider` and
+     the router mount normally). A `store` prop (tests) still wins.
+
+   `createChatStore` is no longer imported here; `mockStore.ts` is untouched and
+   its only remaining importer is the `store.ts:40` re-export, as the spec
+   allows. `MockAuthProvider` is unchanged.
+5. **`apps/web/package.json` + `pnpm-lock.yaml`.** Added the
+   `@zilar/mock-backend` workspace dependency.
+
+### Gap: the real store needed `/xmpp/token`
+
+The real store's boot calls `api.getXmppToken()` (`connectXmpp`,
+`client-core/store/lifecycle.ts:341`) and goes `offline` with a retry loop if
+that fails. **Neither `@zilar/mock-backend` nor the old `mock/api.ts` serves
+`/xmpp/token`** (the old hand-written `mockStore.ts` never needed it). Without
+it, `?mock=1` would paint the chat list but never connect the fake XMPP core.
+
+`@zilar/mock-backend` is not in this task's Allowed files, so the web dispatcher
+answers it with a fixed token (`jid you@zilar.test`, `service wss://mock...`,
+`domain zilar.test`, `mucDomain rooms.zilar.test`). The fake core ignores the
+token; only `service`/`domain` are used (media allow-list). The clean fix is a
+backend `/xmpp/token` route in a later task; the dispatcher case is written to
+yield to it.
+
+### Old routes that still fall back to `mockRequest`
+
+I could not click through in a browser (starting a dev server is a background
+run, which `AGENTS.md` forbids), so this is reasoned from the two route sets. I
+did **not** add dev logging.
+
+Backend-served prefixes: `me`, `chats` (`/chats` only), `contacts`, `search`,
+`ais`, `ai-memory`, `approvals`, `approval-rules`, `audit`, `tools`, `routines`,
+`groups`, `topics`, `roles`, `invite-links` (`/groups/:id/invite-links`,
+`/join/:token`), `directory`, `public-groups`, `machines`, `connections`.
+
+Fall back to the old `mock/api.ts` (backend returns `undefined`):
+`chat-prefs`, `chat-background`, `chat-folders`, `pins`, `backgrounds`,
+`stickers`, `sticker-packs`, `sticker-panel`, `sticker-favorites`, `gifs`,
+`voice`, `push`, `blocks`, `contact-requests`, `handles`, `users/by-handle`, and
+the nested paths the backend's single-segment routes do not own
+(`GET /chats/:id/media`, `PUT /me/handle`, `GET /chats/:id/prefs`, group media,
+…). These are exactly the plan's wave-2 domains (C/F) plus a few settings ones,
+so the migration fallback is doing its job.
+
+`/xmpp/token` is served by the web dispatcher itself (neither backend nor old
+mock), as noted above.
+
+### Commands and real results
+
+- `pnpm install` → `Done`, `+ @zilar/mock-backend` linked.
+- `pnpm --filter @zilar/web build` → `✓ built in 671ms` (one >500 kB chunk
+  warning, pre-existing).
+- Bundle grep for mock seed strings (production `apps/web/dist`):
+  `Viernes -> 0 file(s)`, `Hello from the mock -> 0 file(s)`,
+  `mock-token -> 0 file(s)`, `you@zilar.test -> 0 file(s)`,
+  `Dev team -> 0 file(s)`. No `*mock*`/`*backend*` chunk is emitted. So the mock
+  backend and the old mock routes stay out of the production build (R6 holds).
+- `pnpm gate` (repo root), run twice (the second after the token fallback edit):
+
+  ```text
+  gate: 7 changed file(s) against main
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (0.9s)
+  PASS  lint  (0.6s)
+  PASS  typecheck  (2.1s)
+  PASS  effect  (0.3s)
+  PASS  tests @zilar/web  (1.3s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+  The `tests @zilar/web` step is the 8 kept web tests; gate ran them, I did not
+  run any single test file by hand (none of the changed files has a nearby unit
+  test, and the spec says no new tests).
+
+### Deviations and honesty
+
+- **Deviation (small, forced):** `dispatch` has one extra branch for
+  `/xmpp/token` instead of "backend then old fallback" only. Reason above; it is
+  ordered so the shared backend wins once it serves the route.
+- I did **not** verify `?mock=1` in a browser; that is the lead's check. I
+  verified the production fold and the type/test gate. `ChatStoreProvider`
+  renders `null` briefly in mock mode while the backend chunk loads — a
+  deliberate trade for keeping `@zilar/mock-backend` out of the production
+  bundle.
+- I did not touch `mockStore.ts`, `mock/api.ts`, `ports.ts` or `lib/api.ts`
+  (no change was needed; `loadMockRequest`'s new return type is transparent to
+  `lib/api.ts:146`).
+
+### Open questions
+
+- None blocking. If the `/xmpp/token` handling should live in the shared backend
+  (or in `lib/api.ts`) instead of the web dispatcher, say so and I will move it.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved. The pre-review is clean, with 1 nit and 1 follow-up.**
+- **The cutover:** web mock mode runs the real store on `@zilar/mock-backend`. `mock/backend.ts` dispatches to the backend first and falls back to the old `mockRequest`. The fake XMPP comes in through `createXmpp`, and `api-client.ts` no longer imports the mock statically.
+- **Production bundle:** the grep for mock seed strings finds them in 0 files.
+- **The lead checked `?mock=1` in Chrome:**
+  - the chat list shows the Dev team with 7 topics;
+  - General's history loads through the fake XMPP;
+  - a sent message gets its ✓, and Dev-1 replies "Sounds good." through the fake XMPP.
+- **Follow-ups for the mock tasks:**
+  - Dev-1's markdown message shows raw `##` and `**`; the seed probably lacks the markdown flag or format the old mock set;
+  - General shows an unread badge for a reply that arrives while it is open, so the fake core should answer `markDisplayed` the way the real server does;
+  - a fallback route pays the 150 ms delay twice (the nit).
+- **Check:** the gate passed, and the 8 web tests pass.

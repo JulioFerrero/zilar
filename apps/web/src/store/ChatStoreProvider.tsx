@@ -3,8 +3,9 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { useAuth } from '@/auth/AuthProvider';
 import type { StoreApi } from '@/store/atomStore';
 import { isMockMode } from '@/mock/gate';
+import { loadMockXmpp } from '@/mock/load';
 import { createRealChatStore } from '@/store/realStore';
-import { createChatStore, type ChatStoreState } from '@/store/store';
+import type { ChatStoreState } from '@/store/store';
 
 const ChatStoreContext = createContext<StoreApi<ChatStoreState> | null>(null);
 
@@ -19,17 +20,41 @@ export function ChatStoreProvider({
   store?: StoreApi<ChatStoreState>;
   children: ReactNode;
 }) {
-  const [created] = useState(() => (isMockMode() ? createChatStore() : createRealChatStore()));
-  const value = store ?? created;
   const auth = useAuth();
+  // Mock mode builds its store once the fake XMPP core has loaded (task G);
+  // the real build creates it now. A `store` from a test wins over both.
+  const [created, setCreated] = useState<StoreApi<ChatStoreState> | undefined>(() =>
+    store === undefined && !isMockMode() ? createRealChatStore() : undefined,
+  );
 
   useEffect(() => {
-    if (store !== undefined || auth.status !== 'authenticated') {
+    if (store !== undefined || !isMockMode()) {
+      return;
+    }
+    let cancelled = false;
+    void loadMockXmpp().then((createXmpp) => {
+      if (!cancelled) {
+        setCreated(createRealChatStore({ createXmpp }));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [store]);
+
+  const value = store ?? created;
+
+  useEffect(() => {
+    if (store !== undefined || value === undefined || auth.status !== 'authenticated') {
       return;
     }
     value.getState().start();
     return () => value.getState().stop();
   }, [store, value, auth.status]);
+
+  if (value === undefined) {
+    return null;
+  }
 
   return (
     <RegistryContext.Provider value={value.registry}>
