@@ -1,11 +1,11 @@
 import type { MentionMember } from '@zilar/chat-core';
-import { sortFolders } from '@zilar/chat-core';
 import {
   createMessageLedger,
   deleteForEveryone,
   editMessage,
   react,
   sendTyping,
+  setFolders as setFoldersCore,
 } from '@zilar/client-core/store';
 import { type XmppCore } from '@zilar/xmpp-core';
 import { sortByRecency, summariesFor } from './effects/chatRows';
@@ -498,15 +498,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       setSearchChat: (chatId) => set({ searchChat: chatId }),
       setActiveFolder: (folder) => set({ activeFolder: folder }),
       setFolders: (folders) => {
-        const sorted = sortFolders(folders);
-        set((state) => ({
-          folders: sorted,
-          activeFolder:
-            state.activeFolder === 'all' ||
-            sorted.some((folder) => folder.id === state.activeFolder)
-              ? state.activeFolder
-              : 'all',
-        }));
+        setFoldersCore(
+          { activeFolder: () => get().activeFolder, commit: (patch) => set(patch) },
+          folders,
+        );
       },
       refreshChatPrefs: () => rt.runPromise(refreshChatPrefs(ctx)),
       refreshDefaultBackground: () => rt.runPromise(refreshDefaultBackground(ctx)),

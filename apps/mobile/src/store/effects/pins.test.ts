@@ -65,7 +65,7 @@ describe('pins on the effect fibers', () => {
 
     await expect(store.getState().unpinMessage(ANA, 'p1')).rejects.toThrow('nope');
     expect(store.getState().pins(ANA)).toHaveLength(1);
-    expect(store.getState().pinsError?.message).toBe('Could not unpin. Try again.');
+    expect(store.getState().pinsError?.message).toBe('Could not unpin the message. Try again.');
     store.getState().stop();
   });
 });

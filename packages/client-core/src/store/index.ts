@@ -35,3 +35,10 @@ export * from './lifecycle';
 // T10 (send, send-failure): add `export * from './<x>';` lines below.
 // ----------------------------------------------------------------------------
 // End of T10.
+
+// Phase 2 (T-0919: pins, prefs, folders): add `export * from './<x>';` lines below.
+export * from './pins';
+export * from './prefs';
+export * from './folders';
+// ----------------------------------------------------------------------------
+// End of Phase 2.

@@ -1,12 +1,18 @@
 import { Effect } from 'effect';
-import { sortFolders } from '@zilar/chat-core';
-import { deleteForEveryone, editMessage, react } from '@zilar/client-core/store';
+import {
+  deleteForEveryone,
+  editMessage,
+  react,
+  setFolders as setFoldersCore,
+  updatePref as updatePrefCore,
+  type PrefsStore,
+} from '@zilar/client-core/store';
 
 import type { ChatFoldersApi } from '../../lib/chat-folders-api';
 import { applyChatPrefs, optimisticPrefRow } from '../../lib/chat-prefs';
-import type { PutChatPrefInput } from '../../lib/chat-prefs-api';
+import type { ChatPref, PutChatPrefInput } from '../../lib/chat-prefs-api';
 import type { ChatStoreState } from '../types';
-import { failAfter, lift, type StoreCtx } from './runtime';
+import { lift, type StoreCtx } from './runtime';
 
 export { TYPING_CLEAR_MS } from '@zilar/client-core/store';
 export const CHAT_REFRESH_DEBOUNCE_MS = 500;
@@ -80,6 +86,19 @@ export function makeEvents(ctx: StoreCtx): Events {
     return api;
   }
 
+  // The core pref write bound to the phone: `s.chatPrefRows` is the saved
+  // truth, the chat summaries carry the optimistic paint (R11).
+  const prefsStore: PrefsStore<PutChatPrefInput, ChatPref> = {
+    savedRows: () => s.chatPrefRows,
+    setSavedRows: (rows) => {
+      s.chatPrefRows = [...rows];
+    },
+    paint: (rows) =>
+      set((state) => ({ chats: applyChatPrefs(state.chats, [...rows], now().getTime()) })),
+    optimisticRow: (chatId, saved, patch, nowDate) =>
+      optimisticPrefRow(chatId, saved, patch, nowDate),
+  };
+
   const actions: EventActions = {
     react: (chatId, messageId, emoji) => react(ctx.coreCtx, chatId, messageId, emoji),
     startEdit: (chatId, messageId) => {
@@ -100,63 +119,17 @@ export function makeEvents(ctx: StoreCtx): Events {
           if (api === undefined) {
             return yield* Effect.fail(new Error('Chat preferences are not available.'));
           }
-          const nowMs = now().getTime();
-          // Optimistic: merge the intended row into a copy of the full saved
-          // rows first, like the web store; the saved truth below replaces
-          // it. Merging into the full rows (not a single-row list) keeps
-          // every other chat's prefs, and seeding from the chat's own saved
-          // row keeps its kept fields on a partial write: a single row built
-          // from the input alone would strip both until the PUT returns.
-          const optimisticRows = [
-            ...s.chatPrefRows.filter((row) => row.chatJid.toLowerCase() !== chatId.toLowerCase()),
-            optimisticPrefRow(chatId, s.chatPrefRows, input as PutChatPrefInput, new Date(nowMs)),
-          ];
-          set((state) => ({ chats: applyChatPrefs(state.chats, optimisticRows, nowMs) }));
-          // A failure re-merges the saved rows instead of restoring the
-          // pre-write snapshot: anything that landed mid-flight (a new
-          // message, an unread bump, a background refresh) survives, and
-          // only the failed pref change is dropped.
-          yield* failAfter(
-            lift(() => api.putChatPref(chatId, input as PutChatPrefInput)).pipe(
-              Effect.flatMap((saved) =>
-                Effect.sync(() => {
-                  s.chatPrefRows =
-                    saved === null
-                      ? s.chatPrefRows.filter(
-                          (row) => row.chatJid.toLowerCase() !== chatId.toLowerCase(),
-                        )
-                      : [
-                          ...s.chatPrefRows.filter(
-                            (row) => row.chatJid.toLowerCase() !== chatId.toLowerCase(),
-                          ),
-                          saved,
-                        ];
-                  const refreshed = now().getTime();
-                  set((state) => ({
-                    chats: applyChatPrefs(state.chats, s.chatPrefRows, refreshed),
-                  }));
-                }),
-              ),
-            ),
-            () =>
-              Effect.sync(() =>
-                set((state) => ({
-                  chats: applyChatPrefs(state.chats, s.chatPrefRows, now().getTime()),
-                })),
-              ),
-          );
+          yield* updatePrefCore(ctx.coreCtx, api, prefsStore, chatId, input as PutChatPrefInput);
         }),
       ),
     setFolders: (folders) => {
-      const sorted = sortFolders(folders);
-      set((state) => ({
-        folders: sorted,
-        foldersLoaded: true,
-        activeFolder:
-          state.activeFolder === 'all' || sorted.some((folder) => folder.id === state.activeFolder)
-            ? state.activeFolder
-            : 'all',
-      }));
+      setFoldersCore(
+        {
+          activeFolder: () => get().activeFolder,
+          commit: (patch) => set({ ...patch, foldersLoaded: true }),
+        },
+        folders,
+      );
     },
     createFolder: (input) =>
       ctx.run(

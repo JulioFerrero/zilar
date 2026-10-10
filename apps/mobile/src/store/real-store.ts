@@ -15,6 +15,7 @@ import {
   sortMessages,
   stickerSignatureFor,
   type CoreCtx,
+  type CorePorts,
 } from '@zilar/client-core/store';
 import { Effect } from 'effect';
 import { type ChatMessage, type XmppCore } from '@zilar/xmpp-core';
@@ -491,7 +492,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     const coreCtx: CoreCtx = {
       get,
       set,
-      ports: { now, isVisible, storage: null },
+      ports: { now, isVisible, storage: null } as unknown as CorePorts,
       rt: life.lifetime,
       k: ledger,
       fx: {
