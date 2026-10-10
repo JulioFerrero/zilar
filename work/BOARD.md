@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0958](T-0958-split-server-stickers-service.md) | Size split T8: server stickers/service.ts (1,388) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0959](T-0959-split-web-api.md) | Size split T1+T2: web lib/api.ts (1,792) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0960](T-0960-split-server-agents-reply.md) | Size split T3+T4: server agents/reply.ts (1,585) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0961](T-0961-split-server-groups-service.md) | Size split T5+T6: server groups/service.ts (1,583) | in-progress | deepseek-flash | T-0936 | size-plan |
@@ -992,3 +991,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0949](T-0949-mobile-mock-cutover-store.md) | Mock cutover H1 (mobile): mock mode runs the real mobile store on @zilar/mock-backend (fake HTTP through fetch | 2026-10-10 |
 | [T-0955](T-0955-split-server-tools-service.md) | Size split T10: apps/server/src/tools/service.ts (1,200 lines) into tools/{queries,mutations,hosts,runner}.ts, | 2026-10-10 |
 | [T-0954](T-0954-split-web-composer.md) | Size split T13: apps/web/src/components/Composer.tsx (1,145 lines) into composer/{useVoiceRecorder,useComposer | 2026-10-10 |
+| [T-0958](T-0958-split-server-stickers-service.md) | Size split T8: apps/server/src/stickers/service.ts (1,388 lines) into stickers/{schemas,packs,panel,favorites, | 2026-10-10 |
