@@ -38,7 +38,7 @@ Mobile mock mode answers 404 for any route the shared backend lacks (`apps/mobil
    - `GET /media` for the Ana DM, on each tab or kind the contract has.
 
 ### Read first
-`AGENTS.md`, `docs/audit/mock-plan.md`, `packages/mock-backend/src/domains/index.ts`, `domains/routines/` and `domains/messages/`, and the web mock ranges and contract files above.
+`AGENTS.md`, `docs/audit/mock-plan.md`, `packages/mock-backend/src/domains/index.ts`, `packages/mock-backend/src/domains/routines/` and `packages/mock-backend/src/domains/messages/`, and the web mock ranges and contract files above.
 
 ### Allowed files
 `packages/mock-backend/**`, `work/T-1045-mock-backend-folders-media.md`.
