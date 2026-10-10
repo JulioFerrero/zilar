@@ -49,10 +49,16 @@ export function sessionLayer(auth: Auth, logger: Logger): Layer.Layer<Session> {
       Effect.fnUntraced(function* (httpEffect) {
         const request = yield* HttpServerRequest.HttpServerRequest;
         const requestId = requestIdOf(request);
+        // T-0858: only reads trust the session cache cookie. A write looks the
+        // session up without it, so a revoked session cannot write. The
+        // handler still sees the untouched request.
+        const lookupHeaders = isReadMethod(request.method)
+          ? new Headers(request.headers)
+          : headersWithoutSessionCache(request.headers);
         // A rejection from the auth store is a defect outside the handler
         // envelope; render it through the same 500 branch as `app.onError`.
         const session = yield* Effect.promise(() =>
-          auth.api.getSession({ headers: new Headers(request.headers) }),
+          auth.api.getSession({ headers: lookupHeaders }),
         ).pipe(
           Effect.catchDefect((defect) =>
             Effect.succeed(failureResponse(logger, requestId, defect)),
@@ -71,6 +77,25 @@ export function sessionLayer(auth: Auth, logger: Logger): Layer.Layer<Session> {
       }),
     ),
   );
+}
+
+function isReadMethod(method: string): boolean {
+  return method === 'GET' || method === 'HEAD';
+}
+
+// Better Auth names the cache cookie `<prefix>session_data`, in chunks
+// (`session_data.0`) when large.
+function headersWithoutSessionCache(source: Record<string, string>): Headers {
+  const headers = new Headers(source);
+  const cookie = headers.get('cookie');
+  if (cookie !== null) {
+    const kept = cookie
+      .split(';')
+      .map((pair) => pair.trim())
+      .filter((pair) => pair !== '' && !pair.split('=')[0]?.includes('session_data'));
+    headers.set('cookie', kept.join('; '));
+  }
+  return headers;
 }
 
 export function requestIdOf(request: HttpServerRequest.HttpServerRequest): string {
