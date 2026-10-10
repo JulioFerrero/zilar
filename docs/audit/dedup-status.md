@@ -258,7 +258,7 @@ are never touched.
 | # | Slice | Files (exact) | Est. lines | Security flag |
 | --- | --- | --- | ---: | --- |
 | S1 | F1: last `sqlRuntimeFor` service sites → `runSql` | `blocks/service.ts`, `pins/access.ts`, `pins/service.ts`, `auth/sql-adapter.ts`, `roles/service.ts`, `voice-transcription/pipeline.ts` | ~30 | auth site: move unchanged |
-| S2 | F2: 7 `withErrorEnvelope` → `handler` | `pins/api.ts`, `auth/api.ts`, `setup/api.ts`, `machines/api.ts` | ~50 | auth/setup: move unchanged |
+| S2 | F2: the 3 `pins/api.ts` `withErrorEnvelope` blocks → `handler` (lead, 2026-10-10: `auth/api.ts:225`, `setup/api.ts:216,232` and `machines/api.ts:311` are public routes with no session, so `handler`, which needs `CurrentUser`, cannot serve them) | `pins/api.ts` | ~30 | none |
 | S3 | F6c+6e: one `bareJid`/`ownBareJid`; one `truncateChars` | new `apps/server/src/effect/jid.ts`, `apps/server/src/effect/text.ts`; `agents/context.ts`, `agents/memory/indexer.ts`, `search/routes.ts`, `push/candidates.ts`, `media/api.ts`, `web-tools/guarded-fetch.ts`, `tools/adapter-support.ts`, `routines/outcomes.ts`, `actions/support.ts` | ~90 | none |
 | S4 | F6d: one schema-issue walker | new `apps/server/src/effect/schema-issues.ts`; `auth/api.ts`, `routines/schemas.ts`, `audit/schema.ts`, `xmpp/admin/errors.ts` | ~90 | auth site: move unchanged |
 | S5 | F6f: one `readCapped` | new `apps/server/src/effect/read-capped.ts`; `stickers/api-upload.ts`, `backgrounds/api.ts`, `voice/api.ts`, `avatars/api.ts` | ~90 | none |

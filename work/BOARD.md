@@ -15,6 +15,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1052](T-1052-server-runsql-last-sites.md) | Dedup S1: last service sqlRuntimeFor sites use runSql | in-progress | auto | T-1051 | dedup-status §1 |
 | [T-1053](T-1053-server-jid-truncate-helpers.md) | Dedup S3: one server bareJid/ownBareJid and truncateChars | in-progress | auto | T-1051 | dedup-status §6 |
 | [T-1054](T-1054-server-read-capped.md) | Dedup S5: one readCapped | in-progress | auto | T-1051 | dedup-status §6.6 |
+| [T-1055](T-1055-server-pins-handler.md) | Dedup S2: pins/api.ts on the shared handler() | in-progress | auto | T-1051 | dedup-status §2 |
 
 ## Follow-ups
 
