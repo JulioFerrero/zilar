@@ -1,15 +1,21 @@
 import type { ChatEntry, ConnectionView, Machine, PublicAi } from '@zilar/api-contract';
-import type { MockAiMemory, MockMe, MockMessage, MockPerson, MockSeed } from './data';
-import type { MockApproval, MockApprovalRule } from './data/approvals';
-import { seedAiMemory } from './data/ais';
-import type { MockAuditEntry } from './data/audit';
-import type { MockRoutine, MockRun, MockTool } from './data/tools';
+import type { MockMe, MockMessage, MockPerson, MockSeed } from './data';
+import type { MockAiMemory } from './domains/ai-memory/seed';
+import type { MockApproval } from './domains/approvals/seed';
+import type { MockApprovalRule } from './domains/approval-rules/seed';
+import type { MockAuditEntry } from './domains/audit/seed';
+import type { MockRoutine } from './domains/routines/seed';
+import type { MockRun, MockTool } from './domains/tools/seed';
+import { domains } from './domains';
 
 /**
- * The live, in-memory tables and their mutators. One per `MockBackend`.
+ * The live, in-memory tables and their mutators, one `MockBackend` per instance.
+ * It is assembled from `src/domains/index.ts`: each domain's `createState` returns
+ * its slice and the slices are merged here, so this file lists no domain.
  *
- * The AI/connection/machine tables (T-0940) are owned here so the four AI
- * routes only validate and shape the request; every array is replaced, never
+ * Getters are copied as accessors (not values) so a slice's mutators stay live:
+ * `renameMe`, `putAi`, `removeConnection` and friends replace the array or row
+ * behind the getter and the merged view follows. Every array is replaced, never
  * mutated in place, so a `reset()` cannot leak a previous seed.
  */
 export interface MockData {
@@ -17,10 +23,6 @@ export interface MockData {
   readonly people: readonly MockPerson[];
   readonly chats: readonly ChatEntry[];
   readonly messages: Readonly<Record<string, readonly MockMessage[]>>;
-  // T-0941: the approvals, audit and tools tables. `approvals`, `tools`,
-  // `routines` and `runs` are mutable in place, so a decision, a revert or a
-  // run leaves the table changed. `approvalRules` starts empty; an
-  // `approve_always` decision adds a row. The counters mint new ids.
   readonly approvals: MockApproval[];
   readonly approvalRules: MockApprovalRule[];
   readonly audit: readonly MockAuditEntry[];
@@ -63,129 +65,11 @@ export interface MockData {
   clearAiMemory(key: string): void;
 }
 
-function cloneAi(ai: PublicAi): PublicAi {
-  return { ...ai, limits: { ...ai.limits } };
-}
-
 export function createMockData(seed: MockSeed): MockData {
-  let me = { ...seed.me };
-  let ais: PublicAi[] = seed.ais.map(cloneAi);
-  let connections: ConnectionView[] = seed.connections.map((connection) => ({ ...connection }));
-  let machines: Machine[] = seed.machines.map((machine) => ({ ...machine }));
-  const aiMemory = new Map<string, MockAiMemory>();
-  let aiSequence = 1;
-  let connectionSequence = 1;
-
-  return {
-    get me(): MockMe {
-      return me;
-    },
-    people: seed.people,
-    chats: seed.chats,
-    messages: seed.messages,
-    // Clone the mutated tables so a shared seed (a caller-supplied
-    // `MockBackendOptions.seed`) is never changed by a decision or a run.
-    approvals: seed.approvals.map((row) => ({ ...row })),
-    approvalRules: [],
-    audit: seed.audit,
-    tools: seed.tools.map((tool) => ({
-      ...tool,
-      approvedHosts: [...tool.approvedHosts],
-      versions: tool.versions.map((version) => ({ ...version, hosts: [...version.hosts] })),
-    })),
-    routines: seed.routines.map((routine) => ({
-      ...routine,
-      approvedHosts: [...routine.approvedHosts],
-    })),
-    runs: seed.runs.map((run) => ({ ...run })),
-    nextToolSequence: 100,
-    nextRunSequence: 100,
-    get ais(): readonly PublicAi[] {
-      return ais;
-    },
-    get connections(): readonly ConnectionView[] {
-      return connections;
-    },
-    get machines(): readonly Machine[] {
-      return machines;
-    },
-    renameMe(name: string): void {
-      me = { ...me, name };
-    },
-
-    findAi(id: string): PublicAi | undefined {
-      return ais.find((ai) => ai.id === id);
-    },
-    nextAiId(): string {
-      const id = `ai-mock-${aiSequence}`;
-      aiSequence += 1;
-      return id;
-    },
-    putAi(ai: PublicAi): void {
-      const exists = ais.some((item) => item.id === ai.id);
-      ais = exists ? ais.map((item) => (item.id === ai.id ? ai : item)) : [ai, ...ais];
-    },
-    removeAi(id: string): void {
-      ais = ais.filter((ai) => ai.id !== id);
-    },
-
-    hasConnection(id: string): boolean {
-      return connections.some((connection) => connection.id === id);
-    },
-    nextConnectionId(): string {
-      const id = `conn-mock-${connectionSequence}`;
-      connectionSequence += 1;
-      return id;
-    },
-    putConnection(connection: ConnectionView): void {
-      const exists = connections.some((item) => item.id === connection.id);
-      connections = exists
-        ? connections.map((item) => (item.id === connection.id ? connection : item))
-        : [connection, ...connections];
-    },
-    removeConnection(id: string): void {
-      connections = connections.filter((connection) => connection.id !== id);
-    },
-
-    findMachine(id: string): Machine | undefined {
-      return machines.find((machine) => machine.id === id);
-    },
-    putMachine(machine: Machine): Machine {
-      const exists = machines.some((item) => item.id === machine.id);
-      machines = exists
-        ? machines.map((item) => (item.id === machine.id ? machine : item))
-        : [...machines, machine];
-      return machine;
-    },
-    removeMachine(id: string): void {
-      machines = machines.filter((machine) => machine.id !== id);
-    },
-    detachMachine(machineId: string): void {
-      ais = ais.map((ai) => (ai.machineId === machineId ? { ...ai, machineId: null } : ai));
-    },
-
-    aiMemoryFor(key: string): MockAiMemory {
-      const existing = aiMemory.get(key);
-      if (existing !== undefined) {
-        return existing;
-      }
-      const seeded = seedAiMemory();
-      aiMemory.set(key, seeded);
-      return seeded;
-    },
-    removeAiFact(key: string, factId: string): boolean {
-      const memory = this.aiMemoryFor(key);
-      if (!memory.facts.some((fact) => fact.id === factId)) {
-        return false;
-      }
-      aiMemory.set(key, {
-        ...memory,
-        facts: memory.facts.filter((fact) => fact.id !== factId),
-      });
-      return true;
-    },
-    clearAiMemory(key: string): void {
-      aiMemory.set(key, { facts: [], lines: [] });
-    },
-  };
+  // `people` is the one shared table; every other key comes from a domain.
+  const merged = { people: seed.people } as MockData;
+  for (const domain of domains) {
+    Object.defineProperties(merged, Object.getOwnPropertyDescriptors(domain.createState(seed)));
+  }
+  return merged;
 }
