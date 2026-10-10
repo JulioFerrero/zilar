@@ -2,6 +2,20 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 21:25 local: wave 7 merged; wave 8 running**
+- **Merged, 9 tasks:**
+  - **mobile, with phone smokes:** T-1011 (media sheet), T-1012 (voice recorder: a 2 s hold records a note), T-1013 (GIF tab);
+  - **web, in Chrome:** T-1014 (machines: approve, add machine), T-1015 (task strip: status, owner, link);
+  - **server:** T-1016 (audit; the lead ran 57 tests), T-1017 (push API), T-1018 (machines service), T-1019 (chat prefs).
+- **Running, 8 workers, 3 of them mobile:** T-1020 (chats tab), T-1021 (attachment-native), T-1022 (topic sheets), T-1023 (topic rooms), T-1024 (media indexer), T-1025 (agent memory store), T-1026 (site scene), T-1027 (xmpp-e2e).
+- **Mock gaps for wave 2, seen on main:**
+  - the media sheet shows "Could not load media";
+  - a voice note fails with "Could not send";
+  - GIF cells have no images;
+  - the task-strip owner reads "Owner: An AI" after a save.
+- **Still over 400 lines after wave 8, all deferred:** the stores (they wait for the mock rebuild), `main.ts`, `app.ts`, `topics/access.ts`, `group-turn.ts`, the runner-tunnel files, `litellm-client.ts`, `approvals/api.ts`, `search/routes.ts`, `lead/autopilot.ts` and `sandbox/tool-worker.ts`.
+- **Splits still to launch:** `routines/execute.ts`, `agents/tools.ts`, `config.ts`, `setup/api.ts`, `effect/edge.ts`, `voice-native.ts`, `message-search.ts`, `chat-api.ts` and `emoji-data.ts`.
+
 **2026-10-10 21:05 local: wave 6 merged; wave 7 running**
 - **Merged:**
   - **tests:** T-1003 (5 push candidate tests, after a lead fix round so `hidden` really exercises the private-topic check; the lead ran them, 5 passed);
