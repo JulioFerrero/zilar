@@ -1,7 +1,7 @@
 ---
 id: T-0920
 title: "Store core phase 2a: one GroupDetail type, a per-group detail cache and applyTopicRow in packages/client-core, both stores on them, tests first"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0920-store-core-group-detail
 model: auto
@@ -73,4 +73,56 @@ Run the store tests 3 times.
 
 ## Report (written by the worker when done)
 
+**Commits (in order)**
+1. `df15d279` tests first, on the old code: web `realStore.groups.test.tsx` (3 guards) and mobile `real-store.group-detail.test.ts` (4 guards). Both passed on the old code.
+2. `8cd620cd` the new expectations (both failed on the old code): web "loads the group detail once for two topics of the same group (R14)" (`getGroup` was called twice before the move) and mobile "drops an archived topic row (R17)" (the row stayed before the move).
+3. `2adcff78` the move.
+
+**What I did**
+- **Core** (`packages/client-core/src/store/groups.ts`, new):
+  - `ensureGroupDetail(api, store, groupId, force)`: a per-group detail cache behind a `cached`/`isLoading`/`begin`/`finish`/`publish` adapter. A cached detail returns without a request, an in-flight load is not started twice, `force` re-fetches an already cached group, and a failure is swallowed (the caller gets `undefined`). Generic over the detail type `D`, so each app keeps its own shape (like `pins.ts`/`prefs.ts` take their app row type).
+  - `applyTopicRow(ctx, store, topic)`: re-reads `/api/chats`, drops an archived topic row, keeps a live row's local `lastMessage`/`unread`/`online`/`onlineCount`, and re-applies the saved chat prefs through `applyChatPrefs`.
+  - One line added to the Phase 2 section of `index.ts`.
+- **Web**: `effects/groupMembers.ts` `ensureGroupMembers` binds the core cache over the existing chat-keyed `groupInfos` (the cache is read by `detail.id`, the in-flight marks share `loadingGroupMembers`, and publish fills every row of the group, so a caller that shares an in-flight GET still gets its own chat-keyed entry). `effects/groups.ts` `applyTopicRow` is now the core function with a web `TopicRowStore` (`/api/chats` + `chatPrefs`). `groupInfos`/`groupMembers` stay keyed by chat id for the screens. Facades and existing tests unedited.
+- **Mobile**: `effects/groups.ts` `ensureGroupDetail`/`ensureGroupMembers` bind the core cache over the store's group-keyed `groupDetails`/`loadingGroupDetails`; the `Deferred` waiter map is gone (publish fills every row of the group). `applyTopicRow` is the core function with a mobile `TopicRowStore`. `lib/chat-api.ts` drops its hand-written `GroupDetail`/`GroupMember`/`GroupAi` and derives them from the API contract.
+
+**Behaviour**
+- **R14:** web now loads a group detail once for every topic row of the group (it was once per chat id). Mobile was already per group. No visible change.
+- **R17:** both apps drop an archived topic row and re-apply the saved prefs; mobile used to keep the archived row. A server list already excludes archived topics, so the drop matches what the next refresh would show.
+
+**One GroupDetail type — the differences found**
+- The contract `GroupMember.handle` is `string | null` (the wire sends `null` when unset); mobile's old type had `handle?: string`. Mobile `real-store.ts:465` and the mock `chat-store.ts:543` build a `MentionMember` (`handle?: string`) from `member.handle`, so the raw contract member does not typecheck there, and neither file is in the Allowed list. I kept the contract shape and narrowed that one field: mobile `GroupMember = Omit<ContractGroupMember,'handle'> & { handle?: string }`, `GroupDetail = Omit<ContractGroupDetail,'members'> & { members: GroupMember[] }`, `GroupAi = ContractGroupAi`. The generic core cache lets the two shapes interoperate.
+- Extra contract fields mobile lacked (`background`, `listener`, `visibility`, `handle`, `avatarUrl`, `createdAt`, and `GroupMember.roles?`) are tolerated as optional; mobile already reads `roles` through `?? []`.
+- No field differs in meaning; the only difference is the `handle` nullability above.
+
+**Lines per side** (`git diff --numstat main`, source unless noted)
+- Core: `groups.ts` +128, `index.ts` +2 = **+130**; tests `groups.test.ts` +209.
+- Web: `groupMembers.ts` +51/-16, `groups.ts` +13/-35, `ctx.ts` +1/-1 = **+65/-52**; tests `realStore.groups.test.tsx` +174.
+- Mobile: `effects/groups.ts` +55/-119, `lib/chat-api.ts` +16/-35 = **+71/-154 (net -83)**; tests `real-store.group-detail.test.ts` +179.
+
+**Checks (real results)**
+- `pnpm gate` (repo root): `gate: 11 changed file(s) against main`; `PASS install (frozen) 1.0s`, `PASS format 1.1s`, `PASS lint 0.5s`, `PASS typecheck 3.9s`, `PASS effect 0.9s`, `PASS tests @zilar/client-core 4.1s`, `PASS tests @zilar/mobile 2.1s`, `PASS tests @zilar/web 1.7s`; `scope: every changed file is inside the Allowed files`; ends `GATE PASS`.
+- Store suites, 3 runs each: client-core `16 files, 157 passed` ×3; web `src/store` `23 files, 251 passed` ×3; mobile `src/store src/lib` `121 passed | 1 skipped, 1105 passed | 1 skipped` ×3.
+- Single files while working: core `groups.test.ts` (10 passed); web `realStore.groups.test.tsx` (4) + `realStore.test.tsx`/`realStore.topics.test.tsx`/`reload.test.tsx` (159); mobile `real-store.group-detail.test.ts` (5) + `real-store.test.ts`/topics/general-only/topics-screen/selector-stability (108) + `src/lib` (763).
+- `pnpm --filter @zilar/{client-core,web,mobile} typecheck` pass; `pnpm exec prettier --write` and `pnpm exec oxlint` on every changed file are clean.
+
+**Deviations / things to flag**
+- Mobile `loadingGroupMembers` (declared in `effects/runtime.ts`, filled in `real-store.ts`) now has no reader: the core's per-group in-flight marks replace it. Removing it needs `real-store.ts`/`runtime.ts`, which T-0918 owns, so I left it in place.
+- Mobile's `GroupDetail` is the contract type with one field narrowed (the `handle` above), not the verbatim contract type. If the lead wants the raw contract type, the two `MentionMember` sites in `real-store.ts`/`chat-store.ts` need `member.handle ?? undefined`.
+- The core `ensureGroupDetail` is generic over the detail type (so the ledger's contract type and mobile's normalized type both fit), following the `prefs.ts`/`pins.ts` pattern.
+
+**Live check for Julio (web and mobile):** group and topic screens, member lists, and archiving a topic, on web and mobile.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved. The pre-review is clean, with 3 nits and 1 follow-up.**
+- **The move:** `packages/client-core/src/store/groups.ts` holds the per-group detail cache and `applyTopicRow`, and both stores bind to it. Mobile uses the contract `GroupDetail`, and no field differs in meaning.
+- **Tests first:** guards, then the R14 and R17 expectations, then the move.
+- **Behaviour:**
+  - R14: web loads a group's detail once for all its topics;
+  - R17: mobile drops an archived topic row and keeps prefs.
+- **Follow-ups for the groups-actions task:**
+  - delete the now-dead mobile `loadingGroupMembers` (`effects/runtime.ts`, `real-store.ts`);
+  - the shared web loading set relies on group ids and chat ids never colliding.
+- **Check:** the combined check passes.
+- **Live check for Julio:** group and topic screens, member lists, and archiving a topic, on web and mobile.

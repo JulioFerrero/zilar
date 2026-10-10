@@ -2,9 +2,10 @@
 // joining rooms, and the actions that change a group or topic on the server
 // and then repaint the chat list or the group detail from the answer.
 import { Cause, Effect, Exit } from 'effect';
-import type { ChatSummary } from '@zilar/chat-core';
+import { applyTopicRow as applyTopicRowCore, type TopicRowStore } from '@zilar/client-core/store';
 import {
   ApiError,
+  type ChatEntry,
   type ChatPref,
   type CreateTopicInput,
   type GroupBackground,
@@ -46,40 +47,17 @@ const resolveGroup = (
   return Effect.succeed({ groupId, domain: domainOf(mine) });
 };
 
-const applyTopicRow = (ctx: StoreCtx, topic: Topic): Effect.Effect<void, unknown, Ports> =>
-  Effect.gen(function* () {
-    const { api } = yield* Ports;
-    const entries = yield* fromPromise(() => api.getChats());
-    ctx.k.rememberGroupIds(entries);
-    const rows = entries.flatMap((entry) => summariesFor(entry));
-    const match = rows.find((row) => row.topic?.id === topic.id);
-    ctx.set((state) => {
-      // An archived topic is gone for everyone: the server excludes it from
-      // the list, so drop the row at once instead of waiting for the next
-      // poll. The open view follows via the removed-while-open flow in
-      // `refreshChats`.
-      if (match === undefined || topic.archived) {
-        const filtered = state.chats.filter((chat) => chat.topic?.id !== topic.id);
-        return filtered.length === state.chats.length ? state : { chats: filtered };
-      }
-      const before = state.chats.find((chat) => chat.id === match.id);
-      const merged: ChatSummary =
-        before === undefined
-          ? match
-          : {
-              ...match,
-              ...(before.lastMessage === undefined ? {} : { lastMessage: before.lastMessage }),
-              unread: before.unread,
-              ...(before.online === undefined ? {} : { online: before.online }),
-              ...(before.onlineCount === undefined ? {} : { onlineCount: before.onlineCount }),
-            };
-      return {
-        chats: state.chats.some((chat) => chat.id === merged.id)
-          ? state.chats.map((chat) => (chat.id === merged.id ? merged : chat))
-          : sortByRecency([...state.chats, merged]),
-      };
-    });
-  });
+/** The web half of the core topic-row refresh (R17): `/api/chats` and prefs. */
+const topicRowStore = (ctx: StoreCtx): TopicRowStore => ({
+  getChats: () => ctx.ports.api.getChats(),
+  summariesFor: (entry) => summariesFor(entry as ChatEntry),
+  rememberGroupIds: (entries) => ctx.k.rememberGroupIds(entries as ChatEntry[]),
+  prefRows: () => Object.values(ctx.get().chatPrefs),
+  now: () => ctx.ports.now(),
+});
+
+const applyTopicRow = (ctx: StoreCtx, topic: Topic): Effect.Effect<void, unknown> =>
+  applyTopicRowCore(ctx, topicRowStore(ctx), topic);
 
 const topicIdFor = (
   ctx: StoreCtx,

@@ -40,5 +40,7 @@ export * from './lifecycle';
 export * from './pins';
 export * from './prefs';
 export * from './folders';
+// T-0920: group detail cache and topic rows.
+export * from './groups';
 // ----------------------------------------------------------------------------
 // End of Phase 2.

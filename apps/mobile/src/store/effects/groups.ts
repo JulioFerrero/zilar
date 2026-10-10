@@ -1,9 +1,13 @@
-import { Deferred, Effect } from 'effect';
-import type { ChatSummary } from '@zilar/chat-core';
+import { Effect } from 'effect';
+import {
+  applyTopicRow as applyTopicRowCore,
+  ensureGroupDetail as ensureGroupDetailCore,
+  type GroupDetailStore,
+  type TopicRowStore,
+} from '@zilar/client-core/store';
 import type { XmppCore } from '@zilar/xmpp-core';
 
-import type { Me } from '../../lib/chat-api';
-import { applyChatPrefs } from '../../lib/chat-prefs';
+import type { ChatEntry, GroupDetail, Me } from '../../lib/chat-api';
 import type {
   CreateTopicInput,
   PatchTopicInput,
@@ -77,41 +81,35 @@ export function makeGroups(ctx: StoreCtx): Groups {
     topicRolesById,
     loadingTopicRoles,
     groupMembers,
-    loadingGroupMembers,
   } = s;
   const { topics, inviteLinks, roles: rolesApi, groups: groupsApi } = ports;
 
   const bumpRevision = (): void =>
     set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
 
-  // Waiters (e.g. `ensureGroupMembers`) subscribe through
-  // `groupDetailSettled` so one in-flight GET serves them all.
-  const groupDetailWaiters = new Map<string, Set<Deferred.Deferred<void>>>();
-
-  // Resolves once the in-flight detail load for a group settles (success
-  // or failure), so waiters share the single GET instead of fetching.
-  const groupDetailSettled = (groupId: string): Effect.Effect<void> =>
-    Effect.suspend(() => {
-      const waiter = Deferred.makeUnsafe<void>();
-      let waiting = groupDetailWaiters.get(groupId);
-      if (waiting === undefined) {
-        waiting = new Set();
-        groupDetailWaiters.set(groupId, waiting);
+  // The mobile view of the core's per-group cache (T-0920): the detail map and
+  // the in-flight marks are the store's own (group-keyed); publishing fills the
+  // sender-name map of every row of the group and bumps the revision so
+  // `groupDetail` selectors re-fire.
+  const groupDetailStore = (): GroupDetailStore<GroupDetail> => ({
+    cached: (groupId) => groupDetails.get(groupId),
+    isLoading: (groupId) => loadingGroupDetails.has(groupId),
+    begin: (groupId) => {
+      loadingGroupDetails.add(groupId);
+    },
+    finish: (groupId) => {
+      loadingGroupDetails.delete(groupId);
+    },
+    publish: (groupId, detail) => {
+      groupDetails.set(groupId, detail);
+      for (const row of get().chats) {
+        if (row.groupId === detail.id) {
+          h.rememberMembers(row.id, detail);
+        }
       }
-      waiting.add(waiter);
-      return Deferred.await(waiter);
-    });
-
-  function notifyGroupDetailSettled(groupId: string): void {
-    const waiting = groupDetailWaiters.get(groupId);
-    if (waiting === undefined) {
-      return;
-    }
-    groupDetailWaiters.delete(groupId);
-    for (const waiter of waiting) {
-      Deferred.doneUnsafe(waiter, Effect.void);
-    }
-  }
+      bumpRevision();
+    },
+  });
 
   // Loads the group detail (people + roles + AIs) of a group once, so the
   // topics screen, the owner picker and the role checks can read it. The
@@ -119,35 +117,7 @@ export function makeGroups(ctx: StoreCtx): Groups {
   const ensureGroupDetail = (groupId: string, force = false): Effect.Effect<void, never, Ports> =>
     Effect.gen(function* () {
       const { api } = yield* Ports;
-      if (groupId === '') {
-        return;
-      }
-      if (loadingGroupDetails.has(groupId)) {
-        return;
-      }
-      if (!force && groupDetails.has(groupId)) {
-        return;
-      }
-      loadingGroupDetails.add(groupId);
-      // The sheet falls back to an empty member list and hides creation.
-      yield* orElse(
-        Effect.gen(function* () {
-          const detail = yield* lift(() => api.getGroup(groupId));
-          groupDetails.set(groupId, detail);
-          // Publishing a monotonically increasing revision notifies every
-          // `groupDetail(groupId)` subscriber, including screens mounted before
-          // the fetch resolved.
-          bumpRevision();
-        }),
-        undefined,
-      ).pipe(
-        Effect.ensuring(
-          Effect.sync(() => {
-            loadingGroupDetails.delete(groupId);
-            notifyGroupDetailSettled(groupId);
-          }),
-        ),
-      );
+      yield* ensureGroupDetailCore(api, groupDetailStore(), groupId, force);
     });
 
   // Loads the custom roles (T-0137) of a group once, so the group screen
@@ -200,43 +170,26 @@ export function makeGroups(ctx: StoreCtx): Groups {
       );
     });
 
-  // Loads the member names of a group once per chat, so a typing indicator
-  // or a message from a member who is not a contact can still show a name.
-  // T-0147: resolves through the shared group detail only — never its own
-  // `api.getGroup`. When no detail is cached or in flight, this starts the
-  // shared detail load itself (which fills the detail cache), so concurrent
-  // rows collapse into one GET however they arrive.
+  // Loads the member names of a group once per group, so a typing indicator or
+  // a message from a member who is not a contact can still show a name, and
+  // every topic row of the group shares one GET (R14). Resolves through the
+  // shared group detail only — never its own `api.getGroup`.
   const ensureGroupMembers = (chatId: string): Effect.Effect<void, never, Ports> =>
     Effect.gen(function* () {
-      if (groupMembers.has(chatId) || loadingGroupMembers.has(chatId)) {
+      if (groupMembers.has(chatId)) {
         return;
       }
       const groupId = h.groupIdForChat(chatId);
       if (groupId === undefined) {
         return;
       }
-      const cached = groupDetails.get(groupId);
-      if (cached !== undefined) {
-        h.rememberMembers(chatId, cached);
-        return;
+      const { api } = yield* Ports;
+      const detail = yield* ensureGroupDetailCore(api, groupDetailStore(), groupId, false);
+      // A pure cache hit (or a load another caller started) does not publish;
+      // fill this chat's sender-name map, which publish may not have reached.
+      if (detail !== undefined && !groupMembers.has(chatId)) {
+        h.rememberMembers(chatId, detail);
       }
-      loadingGroupMembers.add(chatId);
-      yield* Effect.gen(function* () {
-        // Starts the shared detail load when nothing is in flight (a no-op
-        // when someone else already started it), then waits for it: one GET
-        // serves every topic row of the group, and the fallback fills the
-        // detail cache instead of a side map.
-        yield* ensureGroupDetail(groupId);
-        let settled = groupDetails.get(groupId);
-        if (settled === undefined && loadingGroupDetails.has(groupId)) {
-          yield* groupDetailSettled(groupId);
-          settled = groupDetails.get(groupId);
-        }
-        if (settled === undefined) {
-          return;
-        }
-        h.rememberMembers(chatId, settled);
-      }).pipe(Effect.ensuring(Effect.sync(() => loadingGroupMembers.delete(chatId))));
     });
 
   const joinGroups = (current: XmppCore, me: Me): Effect.Effect<void, never, Ports> =>
@@ -260,37 +213,20 @@ export function makeGroups(ctx: StoreCtx): Groups {
       }
     });
 
-  // One topic row refreshed from the server (create/patch/member/AI):
-  // re-reads `/api/chats`, merges the row, and preserves its local state.
+  // The mobile half of the core topic-row refresh (R17): `/api/chats` and the
+  // store's saved pref rows.
+  const topicRowStore = (): TopicRowStore => ({
+    getChats: () => ports.api.getChats(),
+    summariesFor: (entry) => h.summariesFor(entry as ChatEntry),
+    rememberGroupIds: (entries) => h.rememberGroupIds(entries as ChatEntry[]),
+    prefRows: () => s.chatPrefRows,
+    now: () => ports.now(),
+  });
+
+  // One topic row refreshed from the server (create/patch/member/AI): the core
+  // re-reads `/api/chats`, drops an archived topic and preserves local state.
   const applyTopicRow = (topic: Topic): Effect.Effect<void, unknown> =>
-    Effect.gen(function* () {
-      const entries = yield* lift(() => ports.api.getChats());
-      h.rememberGroupIds(entries);
-      const rows = entries.flatMap((entry) => h.summariesFor(entry));
-      const match = rows.find((row) => row.topic?.id === topic.id);
-      set((state) => {
-        if (match === undefined) {
-          return state;
-        }
-        const before = state.chats.find((chat) => chat.id === match.id);
-        const prefed = applyChatPrefs([match], s.chatPrefRows, ports.now().getTime())[0] ?? match;
-        const merged: ChatSummary =
-          before === undefined
-            ? prefed
-            : {
-                ...prefed,
-                ...(before.lastMessage === undefined ? {} : { lastMessage: before.lastMessage }),
-                unread: before.unread,
-                ...(before.online === undefined ? {} : { online: before.online }),
-                ...(before.onlineCount === undefined ? {} : { onlineCount: before.onlineCount }),
-              };
-        return {
-          chats: state.chats.some((chat) => chat.id === merged.id)
-            ? state.chats.map((chat) => (chat.id === merged.id ? merged : chat))
-            : h.sortByRecency([...state.chats, merged]),
-        };
-      });
-    });
+    applyTopicRowCore(ctx.coreCtx, topicRowStore(), topic);
 
   // The topic id + group id of the topic that owns `chatId`. Fails for a
   // chat that is not a topic yet (e.g. a legacy group row).

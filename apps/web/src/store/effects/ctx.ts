@@ -60,7 +60,7 @@ export interface StoreCtx extends HistoryCtx {
 
   /** The group id of every group or topic chat row seen so far. */
   readonly groupIds: Map<string, string>;
-  /** Group member loads in flight, by chat id. */
+  /** Group detail or member loads in flight, by chat id or group id (T-0920). */
   readonly loadingGroupMembers: Set<string>;
   readonly groupMembers: Map<string, Map<string, MentionMember>>;
   readonly groupInfos: Map<string, GroupDetail>;
