@@ -1,8 +1,15 @@
-import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
-import { struct } from '@zilar/protocol';
+import { Exit, Schema } from 'effect';
+import {
+  ApiError,
+  runApi,
+  Sticker as ContractSticker,
+  StickerPack as ContractStickerPack,
+  type TelegramImportResult as ContractTelegramImportResult,
+} from '@zilar/api-contract';
 
 import { API_URL } from './auth';
 import { errorFieldsOf } from './api-error-body';
+import { createApiClient } from './effect/api-client';
 import { getSessionToken } from './session-token';
 import type { StickerItem, StickerPack } from './stickers';
 
@@ -11,100 +18,74 @@ import type { StickerItem, StickerPack } from './stickers';
  * in `apps/web/src/lib/api.ts`: `GET /api/sticker-packs` (my panel, ordered,
  * with stickers). T-0187 adds the panel management calls (discover, add,
  * remove, reorder) and the favorites calls, mirroring the web client
- * function names. Creating packs stays web-only.
+ * function names.
  *
- * The boundary is validated with Effect Schema (T-0550, the T-0506 recipe):
- * the request is an Effect pipeline, cut back to a `Promise` at the edge
- * with `Effect.runPromise`. Malformed rows are dropped, never rendered.
+ * A Promise port over the client derived from the shared contract
+ * (`@zilar/api-contract`, `stickers.ts`, T-0910). The contract's list schemas
+ * drop a malformed pack or sticker row and keep the rest (`lenientArray`);
+ * the bounds a sticker must meet to be shown are checked here. Only the raw
+ * byte upload stays outside the derived client.
  */
 
-export class StickersApiError extends Error {
-  readonly status: number;
-  readonly code: string;
+/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
+export const StickersApiError = ApiError;
+export type StickersApiError = ApiError;
 
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = 'StickersApiError';
-    this.status = status;
-    this.code = code;
-  }
+const MAX_STICKER_DIMENSION = 512;
+
+function isStickerDimension(value: number): boolean {
+  return Number.isInteger(value) && value >= 1 && value <= MAX_STICKER_DIMENSION;
 }
 
-const NonEmptyStringSchema = Schema.String.pipe(Schema.check(Schema.isMinLength(1)));
-const StickerUrlSchema = Schema.String.pipe(
-  Schema.check(Schema.isMinLength(1), Schema.isMaxLength(2048)),
-);
-const StickerDimensionSchema = Schema.Number.pipe(
-  Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1), Schema.isLessThanOrEqualTo(512)),
-);
-const StickerMimeSchema = Schema.Literals(['image/webp', 'image/png']);
-
-// The row without its pack id: the pack id rides on the envelope (or the
-// favorites row) and is attached by the parser, like the old hand validator.
-const StickerItemRowSchema = struct({
-  id: NonEmptyStringSchema,
-  url: StickerUrlSchema,
-  width: StickerDimensionSchema,
-  height: StickerDimensionSchema,
-  mime: StickerMimeSchema,
-  emoji: Schema.optional(Schema.Unknown),
-});
-
-// The pack envelope: sticker rows decode as unknowns so one malformed row is
-// dropped and the rest stay; the editor metadata rides along when present.
-const StickerPackEnvelopeSchema = struct({
-  id: NonEmptyStringSchema,
-  title: Schema.String,
-  stickers: Schema.mutable(Schema.Array(Schema.Unknown)),
-  ownerId: Schema.optional(Schema.Unknown),
-  visibility: Schema.optional(Schema.Unknown),
-  importedFrom: Schema.optional(Schema.Unknown),
-});
-
-/** One sticker row the panel may show; malformed rows return null. */
-export function parseStickerItem(value: unknown, packId: string): StickerItem | null {
-  const decoded = Schema.decodeUnknownExit(StickerItemRowSchema)(value);
-  if (!Exit.isSuccess(decoded)) return null;
-  const emoji = decoded.value.emoji;
-  if (emoji !== null && emoji !== undefined && typeof emoji !== 'string') {
+/** One contract sticker as the panel shows it, or null when it is out of bounds. */
+function toStickerItem(row: ContractSticker): StickerItem | null {
+  if (
+    row.id === '' ||
+    row.url === '' ||
+    row.url.length > 2048 ||
+    !isStickerDimension(row.width) ||
+    !isStickerDimension(row.height)
+  ) {
     return null;
   }
   return {
-    id: decoded.value.id,
-    packId,
-    url: decoded.value.url,
-    emoji: typeof emoji === 'string' && emoji !== '' ? emoji.slice(0, 8) : null,
-    width: decoded.value.width,
-    height: decoded.value.height,
-    mime: decoded.value.mime,
+    id: row.id,
+    packId: row.packId,
+    url: row.url,
+    emoji: row.emoji === null || row.emoji === '' ? null : row.emoji.slice(0, 8),
+    width: row.width,
+    height: row.height,
+    mime: row.mime,
   };
+}
+
+/** One contract pack as the panel shows it; out-of-bounds stickers are dropped. */
+function toStickerPack(row: ContractStickerPack): StickerPack | null {
+  if (row.id === '') {
+    return null;
+  }
+  return {
+    id: row.id,
+    title: row.title,
+    ...(row.ownerId === '' ? {} : { ownerId: row.ownerId }),
+    visibility: row.visibility,
+    ...(row.importedFrom === undefined || row.importedFrom === ''
+      ? {}
+      : { importedFrom: row.importedFrom }),
+    stickers: row.stickers.flatMap((sticker) => toStickerItem(sticker) ?? []),
+  };
+}
+
+/** One sticker row the panel may show; malformed rows return null. */
+export function parseStickerItem(value: unknown): StickerItem | null {
+  const decoded = Schema.decodeUnknownExit(ContractSticker)(value);
+  return Exit.isSuccess(decoded) ? toStickerItem(decoded.value) : null;
 }
 
 /** One pack row the panel may show; malformed rows return null. */
 export function parseStickerPack(value: unknown): StickerPack | null {
-  const decoded = Schema.decodeUnknownExit(StickerPackEnvelopeSchema)(value);
-  if (!Exit.isSuccess(decoded)) return null;
-  const id = decoded.value.id;
-  const items: StickerItem[] = [];
-  for (const entry of decoded.value.stickers) {
-    const item = parseStickerItem(entry, id);
-    if (item !== null) {
-      items.push(item);
-    }
-  }
-  // T-0191: the editor metadata rides along when present; wrong types are
-  // ignored and the pack still parses (the panel keeps working unchanged).
-  const ownerId = decoded.value.ownerId;
-  const visibility = decoded.value.visibility;
-  const importedFrom = decoded.value.importedFrom;
-  return {
-    id,
-    title: decoded.value.title,
-    ...(typeof ownerId === 'string' && ownerId !== '' ? { ownerId } : {}),
-    ...(visibility === 'private' || visibility === 'server' ? { visibility } : {}),
-    ...(typeof importedFrom === 'string' && importedFrom !== '' ? { importedFrom } : {}),
-    stickers: items,
-  };
+  const decoded = Schema.decodeUnknownExit(ContractStickerPack)(value);
+  return Exit.isSuccess(decoded) ? toStickerPack(decoded.value) : null;
 }
 
 /** The Telegram import outcome (web `TelegramImportResult`): `partial`
@@ -117,30 +98,23 @@ export interface TelegramImportResult {
   partial: boolean;
 }
 
-const NonNegativeIntSchema = Schema.Number.pipe(
-  Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
-);
+const INVALID_RESPONSE = 'The server sent an unexpected response';
 
-const TelegramImportEnvelopeSchema = struct({
-  pack: Schema.Unknown,
-  imported: NonNegativeIntSchema,
-  skippedAnimated: NonNegativeIntSchema,
-  skippedInvalid: NonNegativeIntSchema,
-  partial: Schema.optional(Schema.Boolean),
-});
+function packOf(row: ContractStickerPack): StickerPack {
+  const pack = toStickerPack(row);
+  if (pack === null) {
+    throw new ApiError(200, 'invalid_response', INVALID_RESPONSE);
+  }
+  return pack;
+}
 
-/** Parses the import result; malformed bodies return null. */
-export function parseTelegramImportResult(value: unknown): TelegramImportResult | null {
-  const decoded = Schema.decodeUnknownExit(TelegramImportEnvelopeSchema)(value);
-  if (!Exit.isSuccess(decoded)) return null;
-  const pack = parseStickerPack(decoded.value.pack);
-  if (pack === null) return null;
+function toImportResult(body: ContractTelegramImportResult): TelegramImportResult {
   return {
-    pack,
-    imported: decoded.value.imported,
-    skippedAnimated: decoded.value.skippedAnimated,
-    skippedInvalid: decoded.value.skippedInvalid,
-    partial: decoded.value.partial === true,
+    pack: packOf(body.pack),
+    imported: body.imported,
+    skippedAnimated: body.skippedAnimated,
+    skippedInvalid: body.skippedInvalid,
+    partial: body.partial === true,
   };
 }
 
@@ -175,7 +149,7 @@ async function defaultBinaryUpload(
     });
     return { status: result.status, body: result.body };
   } catch {
-    throw new StickersApiError(0, 'network_error', 'Could not reach the server');
+    throw new ApiError(0, 'network_error', 'Could not reach the server');
   }
 }
 
@@ -220,126 +194,12 @@ export interface StickersApi {
   ): Promise<StickerItem>;
 }
 
-// The internal failures, one per case. They carry no field beyond what the old
-// `StickersApiError` already surfaced; the `Promise` edge maps each back to
-// that same error, status, code and message.
-class StickersNetworkError extends Data.TaggedError('StickersNetworkError') {}
-class StickersRequestError extends Data.TaggedError('StickersRequestError')<{
-  readonly status: number;
-  readonly code: string;
-  readonly message: string;
-}> {}
-class StickersUnauthorized extends Data.TaggedError('StickersUnauthorized') {}
-class StickersInvalidResponse extends Data.TaggedError('StickersInvalidResponse') {}
-
-const requestEffect = Effect.fnUntraced(function* (
-  apiUrl: string,
-  path: string,
-  token: string,
-  init: RequestInit,
-  fetchImpl: typeof fetch,
-): EffectType.fn.Return<unknown, StickersNetworkError | StickersRequestError> {
-  const response = yield* Effect.tryPromise({
-    try: (signal) =>
-      fetchImpl(`${apiUrl}${path}`, {
-        ...init,
-        signal,
-        headers: {
-          accept: 'application/json',
-          authorization: `Bearer ${token}`,
-          ...init.headers,
-        },
-      }),
-    catch: () => new StickersNetworkError(),
-  });
-
-  const body: unknown = yield* Effect.promise(
-    () => response.json().catch(() => null) as Promise<unknown>,
-  );
-
-  if (!response.ok) {
-    const error = errorFieldsOf(body);
-    return yield* new StickersRequestError({
-      status: response.status,
-      code: error.code ?? 'request_failed',
-      message: error.message ?? `Request failed (${response.status})`,
-    });
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return null;
   }
-  return body;
-});
-
-const parseDeleteBody = (value: unknown): undefined | null => {
-  const decoded = Schema.decodeUnknownExit(Schema.Unknown)(value);
-  return Exit.isSuccess(decoded) ? undefined : null;
-};
-
-const PackListEnvelopeSchema = struct({
-  packs: Schema.mutable(Schema.Array(Schema.Unknown)),
-});
-
-function parsePackList(body: unknown): StickerPack[] | null {
-  const decoded = Schema.decodeUnknownExit(PackListEnvelopeSchema)(body);
-  if (!Exit.isSuccess(decoded)) return null;
-  const packs: StickerPack[] = [];
-  for (const entry of decoded.value.packs) {
-    // One malformed pack row is dropped and the rest stay, like
-    // malformed sticker rows inside a pack.
-    const pack = parseStickerPack(entry);
-    if (pack !== null) {
-      packs.push(pack);
-    }
-  }
-  return packs;
-}
-
-const FavoriteListEnvelopeSchema = struct({
-  favorites: Schema.mutable(Schema.Array(Schema.Unknown)),
-});
-
-const FavoriteRowSchema = struct({
-  packId: Schema.String,
-});
-
-function parseFavoriteList(body: unknown): StickerItem[] | null {
-  const decoded = Schema.decodeUnknownExit(FavoriteListEnvelopeSchema)(body);
-  if (!Exit.isSuccess(decoded)) return null;
-  const favorites: StickerItem[] = [];
-  for (const entry of decoded.value.favorites) {
-    // Favorites carry their pack id on the row (the server shapes them
-    // like web's `stickerSchema`); a malformed row is dropped.
-    const packDecoded = Schema.decodeUnknownExit(FavoriteRowSchema)(entry);
-    const packId =
-      Exit.isSuccess(packDecoded) && packDecoded.value.packId !== ''
-        ? packDecoded.value.packId
-        : '';
-    const item = packId === '' ? null : parseStickerItem(entry, packId);
-    if (item !== null) {
-      favorites.push(item);
-    }
-  }
-  return favorites;
-}
-
-const DiscoverEnvelopeSchema = struct({
-  packs: Schema.mutable(Schema.Array(Schema.Unknown)),
-  next: Schema.NullOr(Schema.String),
-});
-
-function parseDiscoverPage(body: unknown): { packs: StickerPack[]; next: string | null } | null {
-  const decoded = Schema.decodeUnknownExit(DiscoverEnvelopeSchema)(body);
-  if (!Exit.isSuccess(decoded)) return null;
-  const packs = parsePackList(body);
-  if (packs === null) return null;
-  return { packs, next: decoded.value.next };
-}
-
-const WarningEnvelopeSchema = struct({
-  warning: Schema.String,
-});
-
-function parseWarning(body: unknown): { warning: string } | null {
-  const decoded = Schema.decodeUnknownExit(WarningEnvelopeSchema)(body);
-  return Exit.isSuccess(decoded) ? { warning: decoded.value.warning } : null;
 }
 
 /** The production `StickersApi`: bearer auth, `fetch`, build-time API URL. */
@@ -349,63 +209,12 @@ export function createStickersApi(
   apiUrl: string = API_URL,
   binaryUpload: StickerBinaryUpload = { upload: defaultBinaryUpload },
 ): StickersApi {
-  const withTokenEffect = Effect.fnUntraced(function* (
-    path: string,
-    init: RequestInit,
-    parse: (value: unknown) => unknown,
-  ): EffectType.fn.Return<
-    unknown,
-    StickersUnauthorized | StickersNetworkError | StickersRequestError | StickersInvalidResponse
-  > {
-    const token = yield* Effect.promise(() => getToken());
-    if (token === undefined) {
-      return yield* new StickersUnauthorized();
-    }
-    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
-    const parsed = parse(body);
-    if (parsed === null) {
-      return yield* new StickersInvalidResponse();
-    }
-    return parsed;
-  });
+  const client = createApiClient({ getToken, fetchImpl, apiUrl });
 
-  const withToken = (
-    path: string,
-    init: RequestInit,
-    parse: (value: unknown) => unknown,
-  ): Promise<unknown> =>
-    Effect.runPromise(
-      withTokenEffect(path, init, parse).pipe(
-        Effect.catchTags({
-          StickersUnauthorized: () =>
-            Effect.fail(new StickersApiError(401, 'unauthorized', 'No session')),
-          StickersNetworkError: () =>
-            Effect.fail(new StickersApiError(0, 'network_error', 'Could not reach the server')),
-          StickersRequestError: (error) =>
-            Effect.fail(new StickersApiError(error.status, error.code, error.message)),
-          StickersInvalidResponse: () =>
-            Effect.fail(
-              new StickersApiError(
-                200,
-                'invalid_response',
-                'The server sent an unexpected response',
-              ),
-            ),
-        }),
-      ),
-    );
-
-  const uploadStickerFileEffect = Effect.fnUntraced(function* (
-    packId: string,
-    file: { uri: string; mimeType: 'image/webp' | 'image/png' },
-    emoji: string | undefined,
-  ): EffectType.fn.Return<
-    StickerItem,
-    StickersUnauthorized | StickersRequestError | StickersInvalidResponse
-  > {
-    const token = yield* Effect.promise(() => getToken());
+  const uploadStickerFile: StickersApi['uploadStickerFile'] = async (packId, file, emoji) => {
+    const token = await getToken();
     if (token === undefined) {
-      return yield* new StickersUnauthorized();
+      throw new ApiError(401, 'unauthorized', 'No session');
     }
     const headers: Record<string, string> = {
       'content-type': file.mimeType,
@@ -414,175 +223,70 @@ export function createStickersApi(
     if (emoji !== undefined && emoji !== '') {
       headers['x-emoji'] = encodeURIComponent(emoji);
     }
-    // A rejected upload propagates like the old `await` did; only the
-    // response decode changes.
-    const result = yield* Effect.promise(() =>
-      binaryUpload.upload(
-        `${apiUrl}/api/sticker-packs/${encodeURIComponent(packId)}/stickers`,
-        file.uri,
-        headers,
-      ),
+    const result = await binaryUpload.upload(
+      `${apiUrl}/api/sticker-packs/${encodeURIComponent(packId)}/stickers`,
+      file.uri,
+      headers,
     );
+    const body = parseJson(result.body);
     if (result.status < 200 || result.status >= 300) {
-      let parsed: unknown = null;
-      try {
-        parsed = JSON.parse(result.body);
-      } catch {
-        parsed = null;
-      }
-      const error = errorFieldsOf(parsed);
-      return yield* new StickersRequestError({
-        status: result.status,
-        code: error.code ?? 'request_failed',
-        message: error.message ?? `Request failed (${result.status})`,
-      });
+      const error = errorFieldsOf(body);
+      throw new ApiError(
+        result.status,
+        error.code ?? 'request_failed',
+        error.message ?? `Request failed (${result.status})`,
+      );
     }
-    let parsed: unknown = null;
-    try {
-      parsed = JSON.parse(result.body);
-    } catch {
-      parsed = null;
-    }
-    const item = parseStickerItem(parsed, packId);
+    const item = parseStickerItem(body);
     if (item === null) {
-      return yield* new StickersInvalidResponse();
+      throw new ApiError(200, 'invalid_response', INVALID_RESPONSE);
     }
     return item;
-  });
-
-  const uploadStickerFile = (
-    packId: string,
-    file: { uri: string; mimeType: 'image/webp' | 'image/png' },
-    emoji: string | undefined,
-  ): Promise<StickerItem> =>
-    Effect.runPromise(
-      uploadStickerFileEffect(packId, file, emoji).pipe(
-        Effect.catchTags({
-          StickersUnauthorized: () =>
-            Effect.fail(new StickersApiError(401, 'unauthorized', 'No session')),
-          StickersRequestError: (error) =>
-            Effect.fail(new StickersApiError(error.status, error.code, error.message)),
-          StickersInvalidResponse: () =>
-            Effect.fail(
-              new StickersApiError(
-                200,
-                'invalid_response',
-                'The server sent an unexpected response',
-              ),
-            ),
-        }),
-      ),
-    );
+  };
 
   return {
-    async listStickerPacks() {
-      const body = await withToken('/api/sticker-packs', { method: 'GET' }, parsePackList);
-      return body as StickerPack[];
-    },
-    async discoverStickerPacks(query?: string) {
+    listStickerPacks: () =>
+      runApi(client.stickers.listPacks()).then((body) =>
+        body.packs.flatMap((p) => toStickerPack(p) ?? []),
+      ),
+    discoverStickerPacks: (query) => {
       const trimmed = query?.trim() ?? '';
-      const params = new URLSearchParams();
-      if (trimmed !== '') {
-        params.set('q', trimmed);
-      }
-      const suffix = params.size === 0 ? '' : `?${params.toString()}`;
-      const body = await withToken(
-        `/api/sticker-packs/discover${suffix}`,
-        { method: 'GET' },
-        parseDiscoverPage,
-      );
-      return body as { packs: StickerPack[]; next: string | null };
-    },
-    async addStickerPanelPack(packId: string) {
-      await withToken(
-        `/api/sticker-panel/${encodeURIComponent(packId)}`,
-        { method: 'PUT' },
-        parseDeleteBody,
+      return runApi(client.stickers.discover({ query: trimmed === '' ? {} : { q: trimmed } })).then(
+        (body) => ({
+          packs: body.packs.flatMap((p) => toStickerPack(p) ?? []),
+          next: body.next,
+        }),
       );
     },
-    async removeStickerPanelPack(packId: string) {
-      await withToken(
-        `/api/sticker-panel/${encodeURIComponent(packId)}`,
-        { method: 'DELETE' },
-        parseDeleteBody,
-      );
+    addStickerPanelPack: async (packId) => {
+      await runApi(client.stickers.addPanelPack({ params: { packId } }));
     },
-    async reorderStickerPanelPacks(order: string[]) {
-      await withToken(
-        '/api/sticker-panel',
-        {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ order }),
-        },
-        parseDeleteBody,
-      );
+    removeStickerPanelPack: async (packId) => {
+      await runApi(client.stickers.removePanelPack({ params: { packId } }));
     },
-    async listStickerFavorites() {
-      const body = await withToken('/api/sticker-favorites', { method: 'GET' }, parseFavoriteList);
-      return body as StickerItem[];
+    reorderStickerPanelPacks: async (order) => {
+      await runApi(client.stickers.reorderPanel({ payload: { order } }));
     },
-    async removeStickerFavorite(stickerId: string) {
-      const params = new URLSearchParams({ sticker_id: stickerId });
-      await withToken(
-        `/api/sticker-favorites?${params.toString()}`,
-        { method: 'DELETE' },
-        parseDeleteBody,
-      );
+    listStickerFavorites: () =>
+      runApi(client.stickers.listFavorites()).then((body) =>
+        body.favorites.flatMap((s) => toStickerItem(s) ?? []),
+      ),
+    removeStickerFavorite: async (stickerId) => {
+      await runApi(client.stickers.removeFavorite({ query: { sticker_id: stickerId } }));
     },
-    async importTelegramStickers(input: string) {
-      const body = await withToken(
-        '/api/sticker-packs/import/telegram',
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ input }),
-        },
-        parseTelegramImportResult,
-      );
-      return body as TelegramImportResult;
+    importTelegramStickers: (input) =>
+      runApi(client.stickers.importTelegram({ payload: { input } })).then(toImportResult),
+    createStickerPack: (input) =>
+      runApi(client.stickers.createPack({ payload: input })).then(packOf),
+    patchStickerPack: (packId, input) =>
+      runApi(client.stickers.patchPack({ params: { id: packId }, payload: input })).then(packOf),
+    deleteStickerPack: (packId) =>
+      runApi(client.stickers.deletePack({ params: { id: packId } })).then((body) => ({
+        warning: body.warning,
+      })),
+    deletePackSticker: async (packId, stickerId) => {
+      await runApi(client.stickers.deleteSticker({ params: { id: packId, stickerId } }));
     },
-    async createStickerPack(input) {
-      const body = await withToken(
-        '/api/sticker-packs',
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(input),
-        },
-        parseStickerPack,
-      );
-      return body as StickerPack;
-    },
-    async patchStickerPack(packId, input) {
-      const body = await withToken(
-        `/api/sticker-packs/${encodeURIComponent(packId)}`,
-        {
-          method: 'PATCH',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(input),
-        },
-        parseStickerPack,
-      );
-      return body as StickerPack;
-    },
-    async deleteStickerPack(packId) {
-      const body = await withToken(
-        `/api/sticker-packs/${encodeURIComponent(packId)}`,
-        { method: 'DELETE' },
-        parseWarning,
-      );
-      return body as { warning: string };
-    },
-    async deletePackSticker(packId, stickerId) {
-      await withToken(
-        `/api/sticker-packs/${encodeURIComponent(packId)}/stickers/${encodeURIComponent(stickerId)}`,
-        { method: 'DELETE' },
-        parseDeleteBody,
-      );
-    },
-    async uploadStickerFile(packId, file, emoji) {
-      return uploadStickerFile(packId, file, emoji);
-    },
+    uploadStickerFile,
   };
 }

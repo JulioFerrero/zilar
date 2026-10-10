@@ -8,6 +8,8 @@
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { lenientArray } from './lenient';
+import { LenientNullableString } from './lenient-nullable-string';
 import { SchemaErrors, Session } from './middleware';
 import { RawQueryValue } from './raw-query';
 
@@ -42,8 +44,10 @@ export type MediaItem = typeof MediaItem.Type;
 
 /** One page, newest first; `next` is the paging cursor (microseconds as a string). */
 export const MediaPage = Schema.Struct({
-  items: Schema.Array(MediaItem),
-  next: Schema.NullOr(Schema.String),
+  // A client drops a malformed row and keeps the page; a `next` of the wrong
+  // type reads as `null`.
+  items: lenientArray(MediaItem),
+  next: LenientNullableString,
 });
 
 export type MediaPage = typeof MediaPage.Type;

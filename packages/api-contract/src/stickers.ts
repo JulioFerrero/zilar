@@ -19,6 +19,7 @@
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
+import { lenientArray } from './lenient';
 import { Session, StickersSchemaErrors, StickersUploadRateLimit } from './middleware';
 import { RawQueryValue } from './raw-query';
 
@@ -101,21 +102,23 @@ export const StickerPack = Schema.Struct({
   visibility: StickerVisibility,
   // Set by the Telegram importer (`telegram:<name>`); absent otherwise.
   importedFrom: Schema.optional(Schema.String),
-  stickers: Schema.Array(Sticker),
+  stickers: lenientArray(Sticker),
   createdAt: Schema.String,
   updatedAt: Schema.String,
 });
 
 export type StickerPack = typeof StickerPack.Type;
 
-export const StickerPackList = Schema.Struct({ packs: Schema.Array(StickerPack) });
+// The list responses drop a malformed row and keep the rest (a client shows
+// the good packs and stickers), see `lenientArray`.
+export const StickerPackList = Schema.Struct({ packs: lenientArray(StickerPack) });
 
 export const StickerDiscoverPage = Schema.Struct({
-  packs: Schema.Array(StickerPack),
+  packs: lenientArray(StickerPack),
   next: Schema.NullOr(Schema.String),
 });
 
-export const StickerFavorites = Schema.Struct({ favorites: Schema.Array(Sticker) });
+export const StickerFavorites = Schema.Struct({ favorites: lenientArray(Sticker) });
 
 export const StickerDeletePackResult = Schema.Struct({ warning: Schema.String });
 

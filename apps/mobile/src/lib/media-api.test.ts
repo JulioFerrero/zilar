@@ -3,11 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createMediaApi, parseMediaItem, type MediaItem } from './media-api';
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response;
+  return new Response(JSON.stringify(body), { status });
 }
 
 const ROW: MediaItem = {
@@ -28,18 +24,9 @@ describe('parseMediaItem', () => {
     expect(parseMediaItem(ROW)).toEqual(ROW);
   });
 
-  it('keeps only the known shapes of the optional fields', () => {
-    expect(parseMediaItem({ ...ROW, size: 'big', waveform: [0, 1, 'x'] })).toEqual({
-      messageId: ROW.messageId,
-      chat: ROW.chat,
-      at: ROW.at,
-      senderName: ROW.senderName,
-      kind: ROW.kind,
-      url: ROW.url,
-      name: ROW.name,
-      width: ROW.width,
-      height: ROW.height,
-    });
+  it('drops a row whose optional field has the wrong shape or whose kind is unknown', () => {
+    expect(parseMediaItem({ ...ROW, size: 'big' })).toBeNull();
+    expect(parseMediaItem({ ...ROW, waveform: [0, 1, 'x'] })).toBeNull();
     expect(parseMediaItem({ ...ROW, kind: 'sticker' })).toBeNull();
   });
 

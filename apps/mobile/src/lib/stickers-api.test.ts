@@ -8,15 +8,12 @@ import {
 } from './stickers-api';
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  } as Response;
+  return new Response(JSON.stringify(body), { status });
 }
 
 const ITEM = {
   id: '223e4567-e89b-12d3-a456-426614174001',
+  packId: '11111111-1111-4111-8111-111111111111',
   emoji: '🐱',
   mime: 'image/png',
   width: 200,
@@ -57,32 +54,28 @@ describe('parseStickerPack', () => {
     });
   });
 
-  it('ignores editor fields with the wrong type and still returns the pack', () => {
-    expect(
-      parseStickerPack({ ...PACK, ownerId: 7, visibility: 'nobody' })?.ownerId,
-    ).toBeUndefined();
-    expect(
-      parseStickerPack({ ...PACK, ownerId: 7, visibility: 'nobody' })?.visibility,
-    ).toBeUndefined();
-    expect(parseStickerPack({ ...PACK, importedFrom: 7 })?.importedFrom).toBeUndefined();
+  it('keeps the editor fields and drops a pack whose fields have the wrong type', () => {
     expect(parseStickerPack({ ...PACK, importedFrom: 'telegram:cats' })?.importedFrom).toBe(
       'telegram:cats',
     );
     expect(parseStickerPack({ ...PACK, visibility: 'private' })?.visibility).toBe('private');
+    expect(parseStickerPack({ ...PACK, ownerId: 7 })).toBeNull();
+    expect(parseStickerPack({ ...PACK, visibility: 'nobody' })).toBeNull();
+    expect(parseStickerPack({ ...PACK, importedFrom: 7 })).toBeNull();
   });
 
   it('drops malformed packs and oversized rows', () => {
     expect(parseStickerPack(null)).toBeNull();
     expect(parseStickerPack({ ...PACK, id: '' })).toBeNull();
     expect(parseStickerPack({ ...PACK, stickers: 'nope' })).toBeNull();
-    expect(parseStickerItem({ ...ITEM, width: 600 }, PACK.id)).toBeNull();
-    expect(parseStickerItem({ ...ITEM, mime: 'image/gif' }, PACK.id)).toBeNull();
-    expect(parseStickerItem({ ...ITEM, url: 'https://evil.test/x.webp' }, PACK.id)).not.toBeNull();
+    expect(parseStickerItem({ ...ITEM, width: 600 })).toBeNull();
+    expect(parseStickerItem({ ...ITEM, mime: 'image/gif' })).toBeNull();
+    expect(parseStickerItem({ ...ITEM, url: 'https://evil.test/x.webp' })).not.toBeNull();
   });
 
   it('normalizes a null or empty emoji', () => {
-    expect(parseStickerItem({ ...ITEM, emoji: null }, PACK.id)?.emoji).toBeNull();
-    expect(parseStickerItem({ ...ITEM, emoji: '' }, PACK.id)?.emoji).toBeNull();
+    expect(parseStickerItem({ ...ITEM, emoji: null })?.emoji).toBeNull();
+    expect(parseStickerItem({ ...ITEM, emoji: '' })?.emoji).toBeNull();
   });
 });
 
@@ -224,7 +217,7 @@ describe('stickers api client', () => {
   });
 
   it('creates a pack with the title and visibility', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ ...PACK, title: 'New' }));
+    const fetchImpl = vi.fn(async () => jsonResponse({ ...PACK, title: 'New' }, 201));
     const created = await api(fetchImpl).createStickerPack({ title: 'New', visibility: 'private' });
     expect(created.title).toBe('New');
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];

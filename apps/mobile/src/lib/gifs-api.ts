@@ -1,8 +1,8 @@
-import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
-import { struct } from '@zilar/protocol';
+import { Effect, Exit, Schema } from 'effect';
+import { ApiError, GifResult, toApiError } from '@zilar/api-contract';
 
-import { errorFieldsOf } from './api-error-body';
 import { API_URL } from './auth';
+import { createApiClient } from './effect/api-client';
 import { getSessionToken } from './session-token';
 import type { GifItem } from './gifs';
 
@@ -13,72 +13,52 @@ import type { GifItem } from './gifs';
  * provider URLs; previews and the send path load through the same-origin
  * proxy (`/api/gifs/media/:token`).
  *
- * The boundary is validated with Effect Schema (T-0527, the T-0506 recipe):
- * the request is an Effect pipeline, cut back to a `Promise` at the edge with
- * `Effect.runPromise`. Malformed rows are dropped, never rendered. Queries
- * are never logged.
+ * A Promise port over the client derived from the shared contract
+ * (`@zilar/api-contract`, `gifs.ts`, T-0910). The contract's page schema
+ * drops a malformed row and keeps the rest (`lenientArray`); the bounds a row
+ * must meet to be shown are checked here. Queries are never logged.
  */
 
-export class GifsApiError extends Error {
-  readonly status: number;
-  readonly code: string;
+/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
+export const GifsApiError = ApiError;
+export type GifsApiError = ApiError;
 
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = 'GifsApiError';
-    this.status = status;
-    this.code = code;
-  }
+const MAX_DIMENSION = 4096;
+
+function isDimension(value: number): boolean {
+  return Number.isInteger(value) && value >= 1 && value <= MAX_DIMENSION;
 }
 
-const GifItemSchema = struct({
-  id: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(128))),
-  title: Schema.String.pipe(Schema.check(Schema.isMaxLength(100))),
-  mediaToken: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(2048))),
-  kind: Schema.Literals(['image', 'video']),
-  width: Schema.Number.pipe(
-    Schema.check(
-      Schema.isInt(),
-      Schema.isGreaterThanOrEqualTo(1),
-      Schema.isLessThanOrEqualTo(4096),
-    ),
-  ),
-  height: Schema.Number.pipe(
-    Schema.check(
-      Schema.isInt(),
-      Schema.isGreaterThanOrEqualTo(1),
-      Schema.isLessThanOrEqualTo(4096),
-    ),
-  ),
-  sizeBytes: Schema.optional(
-    Schema.Number.pipe(Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))),
-  ),
-});
-
-// The page envelope: item rows stay `unknown` because one malformed row is
-// dropped and the rest stay, like malformed sticker rows inside a pack. A
-// non-string `nextPos` is ignored rather than failing the page.
-const GifEnvelopeSchema = struct({
-  items: Schema.mutable(Schema.Array(Schema.Unknown)),
-  nextPos: Schema.optional(Schema.Unknown),
-});
+/** One contract row as the panel shows it, or null when it is out of bounds. */
+function toGifItem(row: GifResult, apiUrl: string): GifItem | null {
+  const sizeBytes = row.sizeBytes;
+  if (
+    row.id.length < 1 ||
+    row.id.length > 128 ||
+    row.title.length > 100 ||
+    row.mediaToken.length < 1 ||
+    row.mediaToken.length > 2048 ||
+    !isDimension(row.width) ||
+    !isDimension(row.height) ||
+    (sizeBytes !== undefined && (!Number.isInteger(sizeBytes) || sizeBytes < 0))
+  ) {
+    return null;
+  }
+  return {
+    id: row.id,
+    title: row.title,
+    url: gifMediaUrl(row.mediaToken, apiUrl),
+    kind: row.kind,
+    width: row.width,
+    height: row.height,
+    ...(sizeBytes === undefined ? {} : { sizeBytes }),
+  };
+}
 
 /** One GIF row the panel may show; malformed rows return null. */
 export function parseGifItem(value: unknown, apiUrl: string): GifItem | null {
-  const decoded = Schema.decodeUnknownExit(GifItemSchema)(value);
-  if (!Exit.isSuccess(decoded)) {
-    return null;
-  }
-  const item = decoded.value;
-  return {
-    id: item.id,
-    title: item.title,
-    url: gifMediaUrl(item.mediaToken, apiUrl),
-    kind: item.kind,
-    width: item.width,
-    height: item.height,
-    ...(item.sizeBytes === undefined ? {} : { sizeBytes: item.sizeBytes }),
-  };
+  const decoded = Schema.decodeUnknownExit(GifResult)(value);
+  return Exit.isSuccess(decoded) ? toGifItem(decoded.value, apiUrl) : null;
 }
 
 /** The same-origin proxy URL for one GIF result's media. */
@@ -99,11 +79,6 @@ export interface GifPage {
   nextPos?: string | undefined;
 }
 
-/** True when the caller already aborted the request. */
-function isAborted(signal: AbortSignal | undefined): boolean {
-  return signal !== undefined && signal.aborted;
-}
-
 /** Reads the bearer session token from secure storage. */
 export type TokenProvider = () => Promise<string | undefined>;
 
@@ -112,92 +87,9 @@ export interface GifsApi {
   trendingGifs(pos?: string, signal?: AbortSignal): Promise<GifPage>;
 }
 
-// The internal failures, one per case. They carry no field beyond what the old
-// `GifsApiError` already surfaced; the `Promise` edge maps each back to that
-// same error, status, code and message. An abort is re-raised as the caller's
-// `AbortError`, never mapped to an API error.
-class GifsNetworkError extends Data.TaggedError('GifsNetworkError') {}
-class GifsRequestError extends Data.TaggedError('GifsRequestError')<{
-  readonly status: number;
-  readonly code: string;
-  readonly message: string;
-}> {}
-class GifsUnauthorized extends Data.TaggedError('GifsUnauthorized') {}
-class GifsInvalidResponse extends Data.TaggedError('GifsInvalidResponse') {}
-class GifsAborted extends Data.TaggedError('GifsAborted') {}
-
-const gifRequestEffect = Effect.fnUntraced(function* (
-  apiUrl: string,
-  endpoint: 'search' | 'trending',
-  query: string | undefined,
-  pos: string | undefined,
-  getToken: TokenProvider,
-  fetchImpl: typeof fetch,
-  signal: AbortSignal | undefined,
-): EffectType.fn.Return<
-  GifPage,
-  GifsUnauthorized | GifsAborted | GifsNetworkError | GifsRequestError | GifsInvalidResponse
-> {
-  const token = yield* Effect.promise(() => getToken());
-  if (token === undefined) {
-    return yield* new GifsUnauthorized();
-  }
-  if (isAborted(signal)) {
-    return yield* new GifsAborted();
-  }
-  const params = new URLSearchParams();
-  if (query !== undefined && query !== '') {
-    params.set('q', query);
-  }
-  if (pos !== undefined && pos !== '') {
-    params.set('pos', pos);
-  }
-  const suffix = params.size === 0 ? '' : `?${params.toString()}`;
-  const response = yield* Effect.tryPromise({
-    try: () =>
-      fetchImpl(`${apiUrl}/api/gifs/${endpoint}${suffix}`, {
-        method: 'GET',
-        headers: { accept: 'application/json', authorization: `Bearer ${token}` },
-        ...(signal === undefined ? {} : { signal }),
-      }),
-    catch: (error) =>
-      error instanceof DOMException && error.name === 'AbortError'
-        ? new GifsAborted()
-        : new GifsNetworkError(),
-  });
-  if (isAborted(signal)) {
-    return yield* new GifsAborted();
-  }
-  const body: unknown = yield* Effect.promise(
-    () => response.json().catch(() => null) as Promise<unknown>,
-  );
-  if (!response.ok) {
-    const error = errorFieldsOf(body);
-    return yield* new GifsRequestError({
-      status: response.status,
-      code: error.code ?? 'request_failed',
-      message: error.message ?? `Request failed (${response.status})`,
-    });
-  }
-  const envelope = Schema.decodeUnknownExit(GifEnvelopeSchema)(body);
-  if (!Exit.isSuccess(envelope)) {
-    return yield* new GifsInvalidResponse();
-  }
-  const items: GifItem[] = [];
-  for (const entry of envelope.value.items) {
-    // One malformed row is dropped and the rest stay, like malformed
-    // sticker rows inside a pack.
-    const item = parseGifItem(entry, apiUrl);
-    if (item !== null) {
-      items.push(item);
-    }
-  }
-  const nextPos = envelope.value.nextPos;
-  return {
-    items,
-    ...(typeof nextPos === 'string' && nextPos !== '' ? { nextPos } : {}),
-  };
-});
+function abortError(): DOMException {
+  return new DOMException('Aborted', 'AbortError');
+}
 
 /** The production `GifsApi`: bearer auth, `fetch`, build-time API URL. */
 export function createGifsApi(
@@ -205,37 +97,51 @@ export function createGifsApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): GifsApi {
+  const client = createApiClient({ getToken, fetchImpl, apiUrl });
+  const pageOf = async (
+    call: Effect.Effect<
+      { readonly items: ReadonlyArray<GifResult>; readonly nextPos?: string | undefined },
+      unknown
+    >,
+    signal: AbortSignal | undefined,
+  ): Promise<GifPage> => {
+    // A function, not a direct read, so TypeScript does not narrow `aborted`
+    // to `false` after the first check: the signal can still fire mid-request.
+    const isAborted = () => signal?.aborted === true;
+    if (isAborted()) {
+      throw abortError();
+    }
+    let page;
+    try {
+      // An abort is not an API failure: it interrupts the request and
+      // surfaces as the `AbortError` a `fetch` abort would give.
+      page = await Effect.runPromise(
+        Effect.mapError(call, toApiError),
+        signal === undefined ? undefined : { signal },
+      );
+    } catch (error) {
+      throw isAborted() ? abortError() : error;
+    }
+    if (isAborted()) {
+      throw abortError();
+    }
+    const items: GifItem[] = [];
+    for (const row of page.items) {
+      const item = toGifItem(row, apiUrl);
+      if (item !== null) {
+        items.push(item);
+      }
+    }
+    const nextPos = page.nextPos;
+    return { items, ...(nextPos === undefined || nextPos === '' ? {} : { nextPos }) };
+  };
+  const posQuery = (pos: string | undefined) => (pos === undefined || pos === '' ? {} : { pos });
   return {
     searchGifs: (query, pos, signal) =>
-      gifRequest(apiUrl, 'search', query, pos, getToken, fetchImpl, signal),
-    trendingGifs: (pos, signal) =>
-      gifRequest(apiUrl, 'trending', undefined, pos, getToken, fetchImpl, signal),
+      pageOf(
+        client.gifs.search({ query: { ...(query === '' ? {} : { q: query }), ...posQuery(pos) } }),
+        signal,
+      ),
+    trendingGifs: (pos, signal) => pageOf(client.gifs.trending({ query: posQuery(pos) }), signal),
   };
-}
-
-function gifRequest(
-  apiUrl: string,
-  endpoint: 'search' | 'trending',
-  query: string | undefined,
-  pos: string | undefined,
-  getToken: TokenProvider,
-  fetchImpl: typeof fetch,
-  signal: AbortSignal | undefined,
-): Promise<GifPage> {
-  return Effect.runPromise(
-    gifRequestEffect(apiUrl, endpoint, query, pos, getToken, fetchImpl, signal).pipe(
-      Effect.catchTags({
-        GifsUnauthorized: () => Effect.fail(new GifsApiError(401, 'unauthorized', 'No session')),
-        GifsAborted: () => Effect.die(new DOMException('Aborted', 'AbortError')),
-        GifsNetworkError: () =>
-          Effect.fail(new GifsApiError(0, 'network_error', 'Could not reach the server')),
-        GifsRequestError: (error) =>
-          Effect.fail(new GifsApiError(error.status, error.code, error.message)),
-        GifsInvalidResponse: () =>
-          Effect.fail(
-            new GifsApiError(200, 'invalid_response', 'The server sent an unexpected response'),
-          ),
-      }),
-    ),
-  );
 }

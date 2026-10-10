@@ -12,6 +12,7 @@
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { lenientArray, LenientOptionalString } from './lenient';
 import { SchemaErrors, Session } from './middleware';
 import { RawQueryValue } from './raw-query';
 
@@ -28,8 +29,10 @@ export const GifResult = Schema.Struct({
 export type GifResult = typeof GifResult.Type;
 
 export const GifResultPage = Schema.Struct({
-  items: Schema.Array(GifResult),
-  nextPos: Schema.optional(Schema.String),
+  // A client drops a malformed row and keeps the page; a `nextPos` of the
+  // wrong type reads as absent.
+  items: lenientArray(GifResult),
+  nextPos: LenientOptionalString,
 });
 
 export type GifResultPage = typeof GifResultPage.Type;
