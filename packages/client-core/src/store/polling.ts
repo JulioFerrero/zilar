@@ -4,11 +4,12 @@
 // into a Scope, so they stop when it closes. The app supplies the two refreshes
 // and the draft stream through its hooks and ports.
 import { Effect, Schedule, type Scope } from 'effect';
-import type { StoreAppHooks } from './ctx';
+import type { CoreCtx, StoreAppHooks } from './ctx';
 import type { HistoryCtx } from './history';
 import type { Fibers } from './lifetime';
 import type { DraftHubEvent } from './ports';
-import { FINISHED_TURNS_MAX, withoutDraft } from './rows';
+import { recordRead } from './reads';
+import { coreKind, FINISHED_TURNS_MAX, withoutDraft } from './rows';
 
 // Refetch `/api/chats` every 60 s while the tab is visible, and on focus.
 export const TOPIC_REFRESH_INTERVAL_MS = 60_000;
@@ -57,10 +58,34 @@ const whileFocused = (
     (unsubscribe) => Effect.sync(unsubscribe),
   );
 
+// Coming back to a chat that collected messages while the app was hidden
+// clears its unread at once: the same `recordRead` + read marker pair that
+// opening the chat uses, instead of leaving the badge until the user leaves
+// and reopens it (T-0950).
+export function clearActiveChatRead(ctx: CoreCtx): void {
+  const state = ctx.get();
+  const chatId = state.activeChatId;
+  if (chatId === undefined || chatId === null) {
+    return;
+  }
+  const chat = state.chats.find((entry) => entry.id === chatId);
+  if (chat === undefined || chat.unread === 0) {
+    return;
+  }
+  const newest = chat.lastMessage?.id;
+  recordRead(ctx, chatId, newest);
+  if (newest !== undefined && ctx.core !== undefined) {
+    ctx.core.markDisplayed(chatId, coreKind(chat), newest);
+  }
+}
+
 const chatsPolling = (ctx: PollingCtx): Effect.Effect<void> =>
   Effect.scoped(
     Effect.gen(function* () {
-      yield* whileFocused(ctx, () => ctx.fx.refreshChats());
+      yield* whileFocused(ctx, () => {
+        ctx.fx.refreshChats();
+        clearActiveChatRead(ctx);
+      });
       yield* everyInterval(
         TOPIC_REFRESH_INTERVAL_MS,
         Effect.sync(() => {
