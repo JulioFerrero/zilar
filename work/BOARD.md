@@ -9,6 +9,14 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-0986](T-0986-split-mobile-composer.md) | Size split T30: mobile composer.tsx (788) | in-progress | auto | T-0936 | size-plan |
+| [T-0987](T-0987-split-mobile-message-bubble.md) | Size split T37: mobile message-bubble.tsx (758) | in-progress | auto | T-0936 | size-plan |
+| [T-0988](T-0988-split-mobile-integrations.md) | Size split T38: mobile settings/integrations.tsx (740) | in-progress | auto | T-0936 | size-plan |
+| [T-0989](T-0989-split-web-sticker-panel.md) | Size split T49: web StickerPanel.tsx (634) | in-progress | auto | T-0936 | size-plan |
+| [T-0990](T-0990-split-web-channel-panel.md) | Size split T65: web ChannelPanel.tsx (559) | in-progress | auto | T-0936 | size-plan |
+| [T-0991](T-0991-split-server-invite-links.md) | Size split T50: server invite-links/service.ts (631) | in-progress | auto | T-0936 | size-plan |
+| [T-0992](T-0992-split-server-stickers-api.md) | Size split T56: server stickers/api.ts (595) | in-progress | auto | T-0936 | size-plan |
+| [T-0993](T-0993-split-server-web-tools-adapters.md) | Size split T55: server web-tools/adapters.ts (606) | in-progress | auto | T-0936 | size-plan |
 
 ## Follow-ups
 

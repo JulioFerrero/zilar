@@ -2,6 +2,23 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 20:15 local (UTC+2): 15 more splits merged; wave 4 running**
+- **Merged:**
+  - **web, each checked in Chrome at `?mock=1`:** T-0971 (MessageBubble), T-0973 (AiPanel), T-0977 (TopicPanel), T-0981 (PackEditor), T-0982 (StickersPage);
+  - **mobile, each with a phone smoke:** T-0974 (group screen), T-0979 (tool sheet; Run now works), T-0980 (sticker pack);
+  - **server and devtools:** T-0975 (lead/watch.ts), T-0976 (tools API), T-0978 (roles service), T-0983 (contact requests), T-0984 (routines service), T-0985 (watch-app).
+- **Running, 8 workers, 3 of them mobile:** T-0986 (mobile composer), T-0987 (mobile message bubble), T-0988 (mobile integrations), T-0989 (web StickerPanel), T-0990 (web ChannelPanel), T-0991 (invite links), T-0992 (stickers API), T-0993 (web-tools adapters).
+- **Found:**
+  - **No contact-request tests.** No test covers who can send, accept or block a request. That is permissions code; a small test task comes next.
+  - **First click on a header button.** On the T-0973 and T-0977 branches, the first click on a chat-header info button after a page load did nothing, and the second click opened the panel. Still to check whether main does the same.
+  - **Broken mock thumbnails.** Web mock sticker thumbnails are broken images, the same on main. That is mock media, wave 2.
+- **Deferred on purpose:**
+  - `main.ts`, because it is startup order and a worker can't boot the server to check it;
+  - `sandbox/tool-worker.ts` and `topics/access.ts`, because they are security code;
+  - `agents/gateway/group-turn.ts`, because it is the message pipeline;
+  - `runner-tunnel/runner.ts`, because it is one class;
+  - the mobile and web stores, because the mock rebuild touches them.
+
 **2026-10-10 20:30 local: every file over 1,000 lines is split or in review**
 - **Merged since 19:40:** T-0954 (web Composer), T-0958 (stickers), T-0959 (web api.ts), T-0960 (agents/reply.ts), T-0961 (groups), T-0964 (approvals), T-0965 (lead/policy.ts; byte-identical, and all 15 sample commands classify the same).
 - **Running:**
