@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1030](T-1030-split-mobile-voice-native.md) | Size split T96: mobile voice-native.ts (451) | in-progress | auto | T-0936 | size-plan |
 | [T-1031](T-1031-split-mobile-message-search.md) | Size split T97: mobile message-search.ts (451) | in-progress | auto | T-0936 | size-plan |
 | [T-1032](T-1032-split-mobile-voice-player.md) | Size split T109: mobile voice-player.ts (423) | in-progress | auto | T-0936 | size-plan |
 | [T-1036](T-1036-split-server-routines-api.md) | Size split T116: server routines/api.ts (409) | in-progress | auto | T-0936 | size-plan |
@@ -1067,3 +1066,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1035](T-1035-split-web-chat-media-panel.md) | Size split T123: apps/web/src/components/ChatMediaPanel.tsx (403 lines) into components/media/{mediaModel,useS | 2026-10-10 |
 | [T-1028](T-1028-split-server-routine-execute.md) | Size split T105: apps/server/src/routines/execute.ts (434 lines) into routines/{outcomes,audit,preflight}.ts,  | 2026-10-10 |
 | [T-1034](T-1034-split-web-voice-lib.md) | Size split T112: apps/web/src/lib/voice.ts (420 lines) into lib/voice/{recorder,convert,waveform,sample}.ts, v | 2026-10-10 |
+| [T-1030](T-1030-split-mobile-voice-native.md) | Size split T96: apps/mobile/src/lib/voice-native.ts (451 lines) into lib/{voice-recorder,voice-playback,voice- | 2026-10-10 |
