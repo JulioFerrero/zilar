@@ -34,6 +34,8 @@ export interface CoreState extends LedgerState {
   readonly typing: Record<string, CoreTyping>;
   readonly drafts: Record<string, CoreDraft>;
   readonly finishedDraftMessages: Record<string, string>;
+  /** An inline error under one chat, from a failed message or send action. */
+  readonly actionError?: CoreActionError | undefined;
 }
 
 /** The part of a store's state the core writes. */

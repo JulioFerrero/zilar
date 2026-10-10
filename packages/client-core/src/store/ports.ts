@@ -2,6 +2,7 @@
 // the app, the key-value storage, the API the lifecycle boots with, the XMPP
 // factory, the AI draft stream, the app badge and the behaviour flags. Each app
 // builds these from its own adapters (web: `apps/web/src/store/effects/ports.ts`).
+import type { Effect } from 'effect';
 import type { ChatSummary } from '@zilar/chat-core';
 import type { XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 
@@ -103,6 +104,60 @@ export interface CorePorts {
   readonly drafts: OpenDraftStream;
   readonly notifications: Notifications;
   readonly flags: StoreFlags;
+}
+
+/** One file on its way out, as the send pipeline describes it (T10). */
+export interface OutgoingBytesData {
+  readonly kind: 'image' | 'file';
+  readonly name: string;
+  readonly size: number;
+  readonly mime: string;
+  readonly width?: number | undefined;
+  readonly height?: number | undefined;
+  /** A local preview URL (`blob:` on web, a file URI on mobile), never on the wire. */
+  readonly localUrl?: string | undefined;
+}
+
+/** The bytes of an outgoing file: classify, measure, upload with progress and
+ * cancel (T10, plan section 4). Web has no cancel; mobile returns no size. */
+export interface OutgoingBytes {
+  describe(file: unknown): OutgoingBytesData;
+  measure(file: unknown): Effect.Effect<{ width: number; height: number } | undefined, unknown>;
+  upload(
+    core: XmppCore,
+    file: unknown,
+    onProgress: (fraction: number) => void,
+    key: string,
+  ): Effect.Effect<string, unknown>;
+  cancel?(key: string): void;
+}
+
+/** One voice recording on its way out (T10). The bytes stay opaque to the core. */
+export interface VoiceInput {
+  readonly bytes: unknown;
+  readonly durationMs: number;
+  readonly waveform: number[];
+  readonly localUrl?: string | undefined;
+}
+
+/** The voice pipeline: convert a recording, then upload the audio (T10). */
+export interface VoiceOut {
+  convert(recording: VoiceInput): Effect.Effect<{ durationMs: number; audio: unknown }, unknown>;
+  upload(
+    core: XmppCore,
+    audio: unknown,
+    onProgress: (fraction: number) => void,
+    key: string,
+  ): Effect.Effect<string, unknown>;
+}
+
+/**
+ * The send pipeline's own ports, beside `CorePorts` (T10, plan section 4).
+ * Mobile adopts them in its own task, so they are not on `CorePorts` yet.
+ */
+export interface SendPorts {
+  readonly bytes: OutgoingBytes;
+  readonly voice: VoiceOut;
 }
 
 const inertApi: CoreApi = {

@@ -33,6 +33,8 @@ export * from './lifecycle';
 // End of T8.
 
 // T10 (send, send-failure): add `export * from './<x>';` lines below.
+export * from './send';
+export * from './send-failure';
 // ----------------------------------------------------------------------------
 // End of T10.
 

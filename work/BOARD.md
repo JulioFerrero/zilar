@@ -942,7 +942,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0911](T-0911-test-sleeps-followup.md) | Test follow-up from T-0899: the remaining real sleeps and 10 ms settles in web and mobile tests use fake timer | 2026-10-10 |
 | [T-0912](T-0912-store-core-t6b-history.md) | Store core T6b: web history (first page, older pages, open at message) in packages/client-core, tests first, w | 2026-10-10 |
 | [T-0914](T-0914-store-core-t7a-mobile-incoming.md) | Store core T7a: the mobile store on the core incoming events, message actions and reads (history stays for T7b | 2026-10-10 |
-| [T-0922](T-0922-store-core-t10-send.md) | Store core T10: send pipeline in core (Q2, Q4) | in-progress | deepseek-flash | T-0918 | phase 4.3, live |
 | [T-0925](T-0925-server-test-seeds.md) | Server tests: shared seedUser/seedAi/seedGroup, approvals and tools first | in-progress | deepseek-flash | — | phase 5.4 |
 | [T-0916](T-0916-core-echo-refresh.md) | Core echo re-applies pending edits and reactions: an edit made between the ack and the echo keeps its new text | 2026-10-10 |
 | [T-0915](T-0915-store-core-t8-lifecycle.md) | Store core T8: polling, drafts and lifecycle (boot, connect with retry, resume, stop/reset) in packages/client | 2026-10-10 |
@@ -955,3 +954,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0918](T-0918-store-core-t9-mobile-lifecycle.md) | Store core T9: the mobile store on the core polling and lifecycle (boot, connect retry with backoff Q3, resume | 2026-10-10 |
 | [T-0924](T-0924-one-chat-entry.md) | Store core phase 2d: one ChatEntry schema in packages/api-contract and one summariesFor in packages/client-cor | 2026-10-10 |
 | [T-0926](T-0926-mobile-native-mocks.md) | Mobile tests: the three most-copied native mocks (reanimated, safe-area insets, ui/text) move to one vitest se | 2026-10-10 |
+| [T-0922](T-0922-store-core-t10-send.md) | Store core T10: the send pipeline (text, sticker, attachment, voice, forward; failure, deadline, retry) in pac | 2026-10-10 |

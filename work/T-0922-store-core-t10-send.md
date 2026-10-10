@@ -1,7 +1,7 @@
 ---
 id: T-0922
 title: "Store core T10: the send pipeline (text, sticker, attachment, voice, forward; failure, deadline, retry) in packages/client-core, both stores on it, tests first (Q2, Q4)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0922-store-core-t10-send
 model: auto
@@ -85,4 +85,56 @@ Run the store tests 3 times. The lead runs the phone smoke.
 
 ## Report (written by the worker when done)
 
+**Decision: the split rule is triggered; this branch is the core + web half.**
+`git diff --numstat main...HEAD -- packages/client-core apps/web` = added 1658, deleted 739 (net +919 lines), which passes the spec's ~900-line limit. Mobile is left untouched (still on its own `effects/send.ts`), so the lead can chain it as its own task; `apps/mobile` typechecks and its store suite still pass on this branch (see Checks).
+
+**Commits, in order**
+1. `1e3e93cf` — tests first, on the old code: new `apps/web/src/store/realStore.send.test.tsx`, 8 guard tests. Verified against the old code with the save-`git diff` → `git checkout --` → run → `git apply` method (no `git stash`): **8 passed**.
+2. `c94e92a5` — the new expectation: R20 ("a stale web error banner clears on the next send"). On the old code: **8 passed, 1 failed** (the banner stayed set).
+3. `9af6c2a2` — the move: core `send.ts` + `send-failure.ts`, the core ports, and the web binding.
+4. `46890f41`, `9145597b`, `33578458` — fixes the full suites found after the move: prettier on the new test; keep web's empty-options (`{}`) text send in the core (an existing test pins it); keep web's size-0 facade return (R19).
+
+**The move (what changed)**
+- **Core:** new `packages/client-core/src/store/send.ts` (778), new `send-failure.ts` (70, moved verbatim from web), `ports.ts` (+55: `OutgoingBytes`, `VoiceOut`, `VoiceInput`, `SendPorts`), `ctx.ts` (+2: `actionError` on `CoreState`, read by R20's clear), `index.ts` (+2 T10 lines). New core tests `send.test.ts` (+384, 11 tests).
+- **Web:** `effects/send.ts` (655 → 33 lines) is now a binding over the core; `effects/sendFailure.ts` (70 → 3) re-exports the core table; `effects/ports.ts` (+69/−14) builds the core `bytes`/`voice` ports from `AttachmentPort`/`VoicePort`; new `realStore.send.test.tsx` (+276, 10 tests).
+- `realStore.ts` needed no edit: the facade already passes `ctx`, whose `StoreCtx` now satisfies the core `SendCtx`.
+
+**Behaviour changes, each listed**
+- **R6 (Q2 = yes):** voice/attachment/forward sends get the 60 s deadline in the core (`SEND_TIMEOUT_MS`, `armSendTimeout`/`settleSendTimeout`); a hung upload ends `failed` with `timed_out`. Web already had this and keeps it; the core carries it so the chained mobile half can adopt it. Core test "marks a hung upload timed_out after the deadline".
+- **R18:** `retrySticker` does not re-enqueue the sticker signature, so a failed first send leaves one queue entry and a later identical sticker's echo links to the right bubble. Core test "does not re-enqueue the signature on a retry". (Web's behaviour; the mobile bug is fixed when mobile adopts core.)
+- **R20 (Q4 = yes):** a stale `actionError` clears on the next validated send (sticker/attachment/voice) and on `retrySticker` — mobile's rule, now shared. Web test "clears a stale error banner on the next send".
+- **D-1:** a failed text stays `sending` (core test).
+- **R19:** each app's input validation stays in its facade — web's size-0 attachment return and empty-recording return live in `effects/send.ts` (web test "returns silently on a size-0 file"); mobile's inline banner is deferred with the mobile half.
+- No other behaviour changed.
+
+**Deviations from the spec (with reasons)**
+- **`bytes`/`voice` are in a new `SendPorts`, not on `CorePorts`.** Adding required fields to `CorePorts` would force mobile's `corePorts` (in `real-store.ts`) to supply them, but the split rule leaves mobile untouched. The interfaces live in `ports.ts` as the spec asks; the core `SendCtx` requires `CorePorts & SendPorts`, and web's `PortsShape` supplies both. The chained mobile task moves them onto `CorePorts` when it wires the mobile adapters.
+- **The core text send keeps `{}` for a plain text, not `undefined`.** Plan section 2.3 says the core uses `undefined` and that no web test pins `{}`; that is stale — `realStore.forward.test.tsx:318` pins `{}` for a forwarded comment, and no existing test may be edited. Recorded for the mobile half (its `real-store.mentions.test.ts` pins `undefined`; the chained task must reconcile).
+- **`CoreState` read `actionError`.** R20 needs to read the current banner to clear only this chat's; it is an optional field added to `CoreState` (mobile's state already has it).
+- The mobile half (tests first for R6/R18, mobile `send.ts` binding, `effects/ports.ts` uploader/`statSize`/voice mapping, `forwardOriginFor` and the upload-progress mutators moving into core, `cancelAttachment`/`cancelVoice`) is **not done** — it is the chained task.
+
+**Checks (real results)**
+- Core `send.test.ts`, 3 runs: 11 passed each.
+- Web `realStore.send.test.tsx`, 3 runs: 10 passed each (9 before the R19 test was added).
+- `@zilar/client-core` full: 19 files, 202 passed.
+- `@zilar/web` `src/store` full: 26 files, 282 passed.
+- `@zilar/mobile` `src/store` full (mobile untouched): 38 passed + 1 skipped files, 364 passed + 1 skipped tests.
+- `pnpm --filter @zilar/mobile typecheck`: clean.
+- `pnpm gate` (repo root, final, after the fixes): `gate: 11 changed file(s) against main`; `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS effect`, `PASS tests @zilar/client-core` (74.2s), `PASS tests @zilar/web` (92.5s); `scope: every changed file is inside the Allowed files`; `GATE PASS`. Gate ran once before the fixes too (same PASS/scope lines, without the two fix commits).
+
+**Live check for Julio:** unchanged from the spec — text, sticker, photo, voice and forward on web; upload with the network off shows "Not sent" within 60 s, then retry; the error banner clears on the next send. Mobile is not part of this half.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved for the core and web half. Mobile is chained to T-0929 under the split rule.**
+- **The move:**
+  - the send pipeline is in `packages/client-core/src/store/send.ts`, and `send-failure.ts` moved verbatim;
+  - `bytes` and `voice` live in a separate `SendPorts`, so mobile's `CorePorts` is not forced;
+  - web `effects/send.ts` went from 722 lines to a binding.
+- **Tests first:** guards, then the failing R20 expectation (8 passed, 1 failed on the old code).
+- **Behaviour on web:** R20 only: a stale banner clears on the next send. R6 and R18 were already web behaviour and are kept, and R19 stays in the facade. A plain text keeps `{}` options, which `realStore.forward.test.tsx:318` pins.
+- **Nits for T-0929:**
+  - `bytes.describe` runs twice per image send;
+  - `retrySticker` clearing the banner has no test.
+- **Check:** the combined check passes.
+- **Live check for Julio on web:** send text, a sticker, a photo, voice and a forward; a failed upload shows "Not sent" and can be retried; an error banner clears on the next send.

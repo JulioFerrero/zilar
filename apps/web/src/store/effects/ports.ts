@@ -5,7 +5,14 @@
 // supply with an inert one, so no test reaches the network by accident.
 import { Context, Effect, Layer } from 'effect';
 import { createXmppCore, type XmppCore, type XmppCoreOptions } from '@zilar/xmpp-core';
-import type { ChatRows, Notifications, StoreFlags, Visibility } from '@zilar/client-core/store';
+import type {
+  ChatRows,
+  Notifications,
+  OutgoingBytes,
+  StoreFlags,
+  Visibility,
+  VoiceOut,
+} from '@zilar/client-core/store';
 import {
   addGroupAi as addGroupAiRequest,
   archiveTopic as archiveTopicRequest,
@@ -86,7 +93,7 @@ import {
 } from '@/lib/api';
 import { subscribeToDrafts, type OpenDraftStream } from '@/lib/drafts';
 import { defaultVoicePort, type VoicePort } from '@/lib/voice';
-import { defaultAttachmentPort, type AttachmentPort } from '@/lib/attachments';
+import { defaultAttachmentPort, cleanFilename, type AttachmentPort } from '@/lib/attachments';
 import { dismissChatNotifications, totalBadgeUnread, updateAppBadge } from '@/lib/push';
 import { summariesFor } from './chatRows';
 import { fromPromise } from './util';
@@ -193,8 +200,11 @@ export interface PortsShape {
   readonly now: () => Date;
   readonly isVisible: () => boolean;
   readonly createXmpp: (options: XmppCoreOptions) => XmppCore;
-  readonly voice: VoicePort;
+  /** The raw voice port tests inject; `voice` below is the core-shaped adapter. */
   readonly attachments: AttachmentPort;
+  /** The core send pipeline's file and voice ports (T10). */
+  readonly bytes: OutgoingBytes;
+  readonly voice: VoiceOut;
   readonly openDrafts: OpenDraftStream;
   readonly goToLogin: () => void;
   // T-0915: what the core lifecycle, polling and connection retry read.
@@ -299,16 +309,54 @@ function defaultGoToLogin(): void {
   }
 }
 
+// `URL.createObjectURL` is missing in some test environments.
+function objectUrlFor(blob: Blob): string | undefined {
+  return Effect.runSync(
+    Effect.try(() => URL.createObjectURL(blob)).pipe(Effect.orElseSucceed(() => undefined)),
+  );
+}
+
+// The core `bytes` port over web's attachment port (T10): classification, the
+// image size and the XEP-0363 upload. Web has no cancel and ignores progress.
+function bytesFromAttachmentPort(port: AttachmentPort): OutgoingBytes {
+  return {
+    describe: (file) => {
+      const picked = file as File;
+      const kind = port.classify(picked);
+      return {
+        kind,
+        name: cleanFilename(picked.name),
+        size: picked.size,
+        mime: picked.type === '' ? 'application/octet-stream' : picked.type,
+        ...(kind === 'image' ? { localUrl: objectUrlFor(picked) } : {}),
+      };
+    },
+    measure: (file) => fromPromise(() => port.readImageSize(file as File)),
+    upload: (core, file) => fromPromise(() => port.upload(core, file as File)),
+  };
+}
+
+// The core `voice` port over web's voice port (T10). The recording's bytes are
+// opaque to the core, so this unwraps them.
+function voiceFromPort(port: VoicePort): VoiceOut {
+  return {
+    convert: (recording) => fromPromise(() => port.convert(recording.bytes as Blob)),
+    upload: (core, audio) => fromPromise(() => port.upload(core, audio as Blob)),
+  };
+}
+
 /** The live ports, with any field of `deps` replacing its real counterpart. */
 export function resolvePorts(deps: RealStoreDeps = {}): PortsShape {
+  const attachments = deps.attachments ?? defaultAttachmentPort;
   return {
     api: deps.api ?? realApi,
     storage: deps.storage === undefined ? defaultStorage() : deps.storage,
     now: deps.now ?? ((): Date => new Date()),
     isVisible: deps.documentVisible ?? defaultVisible,
     createXmpp: deps.createXmpp ?? ((options: XmppCoreOptions) => createXmppCore(options)),
-    voice: deps.voice ?? defaultVoicePort,
-    attachments: deps.attachments ?? defaultAttachmentPort,
+    voice: voiceFromPort(deps.voice ?? defaultVoicePort),
+    attachments,
+    bytes: bytesFromAttachmentPort(attachments),
     openDrafts: deps.openDrafts ?? subscribeToDrafts,
     goToLogin: deps.goToLogin ?? defaultGoToLogin,
     rows: realRows,
@@ -338,21 +386,28 @@ function inert(name: string): never {
 
 /** The ports of a test: supplied fakes win, every other port is inert. */
 export function testPorts(fakes: RealStoreDeps = {}): PortsShape {
+  const attachments =
+    fakes.attachments ??
+    ({
+      classify: () => 'file',
+      readImageSize: () => Promise.resolve(undefined),
+      upload: () => Promise.reject(new Error('attachments are not provided in this test')),
+    } as AttachmentPort);
+  const voicePort =
+    fakes.voice ??
+    ({
+      convert: () => Promise.reject(new Error('voice is not provided in this test')),
+      upload: () => Promise.reject(new Error('voice is not provided in this test')),
+    } as VoicePort);
   return {
     api: fakes.api ?? inertApi(),
     storage: fakes.storage === undefined ? null : fakes.storage,
     now: fakes.now ?? ((): Date => new Date(0)),
     isVisible: fakes.documentVisible ?? ((): boolean => true),
     createXmpp: fakes.createXmpp ?? (() => inert('createXmpp')),
-    voice: fakes.voice ?? {
-      convert: () => Promise.reject(new Error('voice is not provided in this test')),
-      upload: () => Promise.reject(new Error('voice is not provided in this test')),
-    },
-    attachments: fakes.attachments ?? {
-      classify: () => 'file',
-      readImageSize: () => Promise.resolve(undefined),
-      upload: () => Promise.reject(new Error('attachments are not provided in this test')),
-    },
+    voice: voiceFromPort(voicePort),
+    attachments,
+    bytes: bytesFromAttachmentPort(attachments),
     openDrafts: fakes.openDrafts ?? (() => () => undefined),
     goToLogin: fakes.goToLogin ?? ((): void => undefined),
     rows: { summariesFor: () => [] },
