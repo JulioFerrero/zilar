@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1015](T-1015-split-web-task-strip.md) | Size split T99: web TaskStrip.tsx (442) | in-progress | auto | T-0936 | size-plan |
-| [T-1016](T-1016-split-server-audit-service.md) | Size split T82: server audit/service.ts (514) | in-progress | auto | T-0936 | size-plan |
 | [T-1017](T-1017-split-server-push-api.md) | Size split T89: server push/api.ts (484) | in-progress | auto | T-0936 | size-plan |
 | [T-1018](T-1018-split-server-machines-service.md) | Size split T90: server machines/service.ts (476) | in-progress | auto | T-0936 | size-plan |
 | [T-1019](T-1019-split-server-chat-prefs.md) | Size split T98: server chat-prefs/service.ts (445) | in-progress | auto | T-0936 | size-plan |
@@ -1048,3 +1047,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1011](T-1011-split-mobile-media-sheet.md) | Size split T87: apps/mobile/src/components/chat/media-sheet.tsx (491 lines) into chat/{media-rows,media-sheet- | 2026-10-10 |
 | [T-1012](T-1012-split-mobile-voice-recorder.md) | Size split T93: apps/mobile/src/components/chat/voice-recorder.tsx (470 lines) into chat/{voice-recorder-flow, | 2026-10-10 |
 | [T-1013](T-1013-split-mobile-gif-panel.md) | Size split T95: apps/mobile/src/components/chat/gif-panel.tsx (461 lines) into chat/{gif-cells,gif-paging,gif- | 2026-10-10 |
+| [T-1016](T-1016-split-server-audit-service.md) | Size split T82: apps/server/src/audit/service.ts (514 lines) into audit/{schema,recorder,list}.ts, the old pat | 2026-10-10 |
