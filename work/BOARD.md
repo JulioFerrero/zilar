@@ -12,6 +12,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds, media gallery | in-progress | auto | T-0949 | mock wave 2 |
 | [T-1056](T-1056-mobile-approvals-ai-list-mock.md) | Mobile approvals: AI list through useAisApi (mock "Always allowed") | in-progress | auto | T-1004 | the follow-up's real cause |
 | [T-1057](T-1057-server-schema-issues.md) | Dedup S4: one firstIssueMessage (audit keeps its own) | in-progress | auto | T-1051 | dedup-status §6.4 |
+| [T-1058](T-1058-split-mobile-boot-check.md) | Size split: mobile boot-check.mjs (805) into 4 files, moved unchanged | in-progress | auto | T-1042 | last new max-lines warning |
 
 ## Follow-ups
 
