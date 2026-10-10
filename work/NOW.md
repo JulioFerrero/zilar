@@ -2,6 +2,21 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 05:45 local: wave 5 merged (api-contract, T-0891 to T-0895, main `5f3e5f6f`); nothing deployed**
+- **What landed:** 28 JSON API groups now live in `packages/api-contract`. The server implements them, and web and mobile derive their clients from them.
+  - **Mobile:** about 4,000 hand-written client lines removed.
+  - **Wire:** unchanged; no server route test was edited.
+  - **Web bundle:** flat.
+- **Checks:** the combined check of the four chains passed, and main is identical to the checked tree. The phone smoke passed with clean screenshots on chats, settings, explore, AIs, approvals, machines, connections and stickers.
+- **Bug caught:** Effect's JSON codec turns an explicit `undefined` on a nullable optional field into `null`, which would clear the field. The contract's `omitUndefined` fixes it, and body-shape tests pin it.
+- **Still hand-written, follow-ups for a later task:**
+  - **Binary, SSE and better-auth endpoints:** these stay outside the client on purpose.
+  - **Hand-decoded endpoints:** web still calls them with `request()`: push subscribe, machines rename and pair, gifs search, the media gallery, and sticker discover and import. They should be declared and served with `handleRaw`.
+  - **Duplicate groups:** connections and tools exist twice in the contract, as a client version and a server version.
+  - **Mobile clients:** stickers, gifs and media stay hand-written, because they drop malformed rows on purpose.
+  - **Schema-error tags:** each chain has its own; they should be folded into `http-core`.
+- **Live-check additions:** groups, topics, folders, roles, invite links, AIs, connections, approvals, tools, contacts, contact requests, blocking, search, explore, stickers, gifs, push settings, machines and integrations, on web and mobile.
+
 **2026-10-10 04:45 local: waves 3 and 4 merged (48 tasks, main `b9aa5d98`); nothing deployed**
 - **The plan:** `docs/audit/simplify-plan.md`. Julio chose "everything, test once" on 2026-10-09: the whole plan lands on main, then he does one live test before any deploy.
 - **Wave 3, merged:** T-0843 to T-0865, T-0888 (the voice test is deterministic), T-0889 (the scope glob) and T-0890 (main CI green again; `lead batch check` now runs `prettier --check` as CI does).
