@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1087](T-1087-mobile-rules-fanout-partial-failure.md) | Mobile approvals: rules error only when every AI failed | in-progress | auto | - | real-build bug, 1 small test |
 | [T-1088](T-1088-voice-transcription-contract-schemas.md) | api-contract: shared voice-transcription response schemas | in-progress | auto | T-1080 | T-1073 follow-up |
 
 ## Follow-ups
@@ -1135,3 +1134,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1083](T-1083-web-mock-sticker-files-dev-middleware.md) | Web mock: a dev-server-only vite middleware serves the shared backend's seed sticker files, so sticker images  | 2026-10-10 |
 | [T-1085](T-1085-mobile-composer-stickers-gifs-on-backend.md) | Mock H2-8 (mobile): the composer's sticker and GIF tabs load from @zilar/mock-backend through injected APIs in | 2026-10-10 |
 | [T-1086](T-1086-web-gif-tab-on-backend.md) | Mock H1 (web): the GIF tab loads from @zilar/mock-backend like real mode (no placeholder props, real probe); d | 2026-10-10 |
+| [T-1087](T-1087-mobile-rules-fanout-partial-failure.md) | Mobile approvals: mergeRulesFanOut returns the error state only when every AI's rules fetch failed (not when t | 2026-10-10 |

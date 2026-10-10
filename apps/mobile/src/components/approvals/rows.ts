@@ -75,18 +75,19 @@ export type RulesFanOut = PromiseSettledResult<{ aiId: string; rules: ApprovalRu
 /**
  * Merges one rules fetch per AI into the owned list. One AI's failure never
  * blanks the others: a failed AI (404 or other) is skipped. `null` means
- * every AI failed, so the caller shows the error state with Retry.
+ * every AI failed (with at least one result), so the caller shows the error
+ * state with Retry; otherwise the merged successes come back, even when they
+ * are empty.
  */
 export function mergeRulesFanOut(settled: RulesFanOut[]): OwnedScreenRule[] | null {
-  const succeeded = settled.flatMap((result) =>
+  if (settled.length > 0 && settled.every((result) => result.status === 'rejected')) {
+    return null;
+  }
+  return settled.flatMap((result) =>
     result.status === 'fulfilled'
       ? result.value.rules.map((rule) => ({ aiId: result.value.aiId, rule }))
       : [],
   );
-  if (succeeded.length === 0 && settled.some((result) => result.status === 'rejected')) {
-    return null;
-  }
-  return succeeded;
 }
 
 /**
