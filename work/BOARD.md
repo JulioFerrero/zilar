@@ -14,7 +14,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1031](T-1031-split-mobile-message-search.md) | Size split T97: mobile message-search.ts (451) | in-progress | auto | T-0936 | size-plan |
 | [T-1032](T-1032-split-mobile-voice-player.md) | Size split T109: mobile voice-player.ts (423) | in-progress | auto | T-0936 | size-plan |
 | [T-1034](T-1034-split-web-voice-lib.md) | Size split T112: web lib/voice.ts (420) | in-progress | auto | T-0936 | size-plan |
-| [T-1035](T-1035-split-web-chat-media-panel.md) | Size split T123: web ChatMediaPanel.tsx (403) | in-progress | auto | T-0936 | size-plan |
 
 ## Follow-ups
 
@@ -1064,3 +1063,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1022](T-1022-split-mobile-topic-sheets.md) | Size split T100: apps/mobile/src/components/chat/topic-sheets.tsx (442 lines) into chat/{topic-actions-sheet,t | 2026-10-10 |
 | [T-1029](T-1029-split-server-agent-tools.md) | Size split T73: apps/server/src/agents/tools.ts (536 lines) into agents/tools/{schemas,parse,definitions,reply | 2026-10-10 |
 | [T-1033](T-1033-split-server-voice-transcription-api.md) | Size split T110: apps/server/src/voice-transcription/api.ts (422 lines) into voice-transcription/{schemas,midd | 2026-10-10 |
+| [T-1035](T-1035-split-web-chat-media-panel.md) | Size split T123: apps/web/src/components/ChatMediaPanel.tsx (403 lines) into components/media/{mediaModel,useS | 2026-10-10 |
