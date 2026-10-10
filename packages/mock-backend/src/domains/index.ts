@@ -9,15 +9,18 @@ import { approvalRulesDomain } from './approval-rules';
 import { approvalsDomain } from './approvals';
 import { auditDomain } from './audit';
 import { backgroundsDomain } from './backgrounds';
+import { blocksDomain } from './blocks';
 import { chatFoldersDomain } from './chat-folders';
 import { chatPrefsDomain } from './chat-prefs';
 import { chatsDomain } from './chats';
 import { connectionsDomain } from './connections';
+import { contactRequestsDomain } from './contact-requests';
 import { contactsDomain } from './contacts';
 import { directoryDomain } from './directory';
 import type { Domain } from './domain';
 import { gifsDomain } from './gifs';
 import { groupsDomain } from './groups';
+import { handlesDomain } from './handles';
 import { inviteLinksDomain } from './invite-links';
 import { machinesDomain } from './machines';
 import { meDomain } from './me';
@@ -40,14 +43,17 @@ export const domains: readonly Domain[] = [
   approvalsDomain,
   auditDomain,
   backgroundsDomain,
+  blocksDomain,
   chatFoldersDomain,
   chatPrefsDomain,
   chatsDomain,
   connectionsDomain,
+  contactRequestsDomain,
   contactsDomain,
   directoryDomain,
   gifsDomain,
   groupsDomain,
+  handlesDomain,
   inviteLinksDomain,
   machinesDomain,
   meDomain,
