@@ -15,7 +15,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0998](T-0998-split-web-chat-background-dialog.md) | Size split T66: web ChatBackgroundDialog.tsx (555) | in-progress | auto | T-0936 | size-plan |
 | [T-0999](T-0999-split-web-notifications-page.md) | Size split T67: web NotificationsPage.tsx (551) | in-progress | auto | T-0936 | size-plan |
 | [T-1000](T-1000-split-web-integrations-page.md) | Size split T69: web IntegrationsPage.tsx (548) | in-progress | auto | T-0936 | size-plan |
-| [T-1001](T-1001-split-server-telegram-import.md) | Size split T59: server stickers/telegram-import.ts (573) | in-progress | auto | T-0936 | size-plan |
 | [T-1002](T-1002-split-server-push-service.md) | Size split T64: server push/service.ts (561) | in-progress | auto | T-0936 | size-plan |
 
 ## Follow-ups
@@ -1029,3 +1028,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0987](T-0987-split-mobile-message-bubble.md) | Size split T37: apps/mobile/src/components/chat/message-bubble.tsx (758 lines) into chat/{message-bubble-decor | 2026-10-10 |
 | [T-0988](T-0988-split-mobile-integrations.md) | Size split T38: apps/mobile/src/app/settings/integrations.tsx (740 lines) into components/integrations/{card-f | 2026-10-10 |
 | [T-0994](T-0994-contact-request-permission-tests.md) | Contact requests: a few permission tests (who may accept, decline, cancel; blocks; limits) | 2026-10-10 |
+| [T-1001](T-1001-split-server-telegram-import.md) | Size split T59: apps/server/src/stickers/telegram-import.ts (573 lines) into stickers/telegram/{pack-input,err | 2026-10-10 |
