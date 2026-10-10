@@ -16,6 +16,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1016](T-1016-split-server-audit-service.md) | Size split T82: server audit/service.ts (514) | in-progress | auto | T-0936 | size-plan |
 | [T-1017](T-1017-split-server-push-api.md) | Size split T89: server push/api.ts (484) | in-progress | auto | T-0936 | size-plan |
 | [T-1018](T-1018-split-server-machines-service.md) | Size split T90: server machines/service.ts (476) | in-progress | auto | T-0936 | size-plan |
+| [T-1019](T-1019-split-server-chat-prefs.md) | Size split T98: server chat-prefs/service.ts (445) | in-progress | auto | T-0936 | size-plan |
 
 ## Follow-ups
 
