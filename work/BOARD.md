@@ -11,6 +11,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1063](T-1063-mobile-ais-on-mock-backend.md) | Mock H2-1: mobile AIs, memory, audit, tools on the shared backend | in-progress | auto | T-1061 | fixes "Could not load the rules" |
 | [T-1064](T-1064-mobile-machines-connections-directory-on-mock-backend.md) | Mock H2-3: mobile machines, connections, directory on the shared backend | in-progress | auto | T-1061 | contacts waits |
+| [T-1065](T-1065-web-mock-delete-covered-routes-2.md) | Mock sweep W1b: delete the rest of the covered web mock/api.ts routes | in-progress | auto | T-1062 | probe first |
 
 ## Follow-ups
 
@@ -23,6 +24,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
   - **GIFs:** `apps/mobile/src/lib/gifs-api.ts` `toGifItem` wraps every `data:` token in `/api/gifs/media/<token>`, and the token is SVG too.
 
   The fix needs raster (PNG) art, plus a mock path the native image can reach.
+  - **Web too (lead, T-1062 check, on main):** the sticker thumbnails are broken images. `<img src="/api/stickers/<id>/file">` goes to the vite dev server, which answers 404, and never reaches the mock dispatcher (`apps/web/src/mock/backend.ts`).
 - **Mobile mock approvals have no rules (corrected 2026-10-10, T-1056).** "Always allowed" is always empty in mock mode, because `apps/mobile/src/mock/approvals.ts:119-121` returns `[]` and the "Always" decision records no rule. On real builds the rules load for every owned AI (`use-approvals.ts:117-160`). The fix belongs with the approvals domain of the shared mock backend (`docs/audit/mock-plan.md`).
 - **Mock: `GET /groups/:id/topics` returns `[]` for groups whose General exists only in `/chats` (T-1048 follow-up).**
 - **Mobile: about 9 more `Effect.runFork(Fiber.interrupt(...))` sites in `components/chat` could use `interruptFiber` (`lib/effect/timers.ts`, T-1050).** The `runSync` ones differ and stay.
