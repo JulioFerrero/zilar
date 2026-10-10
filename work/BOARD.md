@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1044](T-1044-mock-backend-prefs-pins.md) | Mock backend C1: chat-prefs, chat-background, pins | in-progress | auto | T-0949 | mock wave 2 |
 | [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds, media gallery | in-progress | auto | T-0949 | mock wave 2 |
 | [T-1046](T-1046-mock-backend-stickers-gifs.md) | Mock backend F1: stickers, GIFs | in-progress | auto | T-0949 | mock wave 2 |
 
@@ -1075,3 +1074,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1042](T-1042-max-lines-lint-warning.md) | Lint: oxlint max-lines warning at 400 for source files; tests, mocks, the emoji table and .d.ts files are off | 2026-10-10 |
 | [T-1043](T-1043-server-shared-error-helpers.md) | Dedup F6a: one server errorName/errorClassName and one isUniqueViolation in effect/error-utils.ts, replacing 1 | 2026-10-10 |
 | [T-1041](T-1041-split-mobile-channel-screen.md) | Size split T117: apps/mobile/src/components/chat/channel-screen.tsx (408 lines) into chat/{channel-members,use | 2026-10-10 |
+| [T-1044](T-1044-mock-backend-prefs-pins.md) | Mock backend C1: chat-prefs (pin, mute, archive), chat-background and pins domains in @zilar/mock-backend | 2026-10-10 |
