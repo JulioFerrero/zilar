@@ -2,6 +2,17 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 19:15 local: size plan merged; Julio chose all 131 tasks; wave 1 running**
+- **Merged:** T-0936 (`docs/audit/size-plan.md`).
+  - 119 files are over 400 lines, 78,831 lines in all; duplication is small (33 pairs, about 1,320 lines).
+  - The plan is 131 tasks: they move about 72.9k lines and remove about 5.9k.
+- **Julio chose "All 131 tasks".** Every split follows `docs/audit/split-rules.md`: one file per task, the old path stays a barrel, no behaviour change, no new tests.
+- **Wave 1, running:** T-0951 (core-effect), T-0952 (stanza), T-0953 (ledger), T-0954 (web Composer), T-0955 (tools service), T-0956 (ais service), T-0957 (topics service).
+- **Also running:** T-0949, the mobile mock cutover.
+  - Round 1 fixed the chat list (a mobile decoder required `userId`, which the real server omits on AI DMs; added 10-08, never live).
+  - Round 3 is on the chat history, which never loads on the phone.
+- **The lead's miss:** T-0936 waited about 3 h on an unanswered permission (wrong session id); see memory `permission-check-session-id`.
+
 **2026-10-10 evening: the mock backend wave 1 and the web cutover are merged**
 - **Merged:**
   - the mock backend: T-0937 to T-0945 (`packages/mock-backend`, about 6k lines in domain folders, plus a fake XMPP core);
