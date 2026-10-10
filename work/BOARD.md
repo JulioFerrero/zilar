@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0873](T-0873-sweep-voice-auth.md) | Server sweep: voice-transcription, gifs, auth, contact-requests onto the shared HTTP hel… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
 | [T-0874](T-0874-protocol-jid-handles.md) | JID helpers and handle rules in @zilar/protocol, used by web, mobile, chat-core and the … | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0875](T-0875-chat-core-format-media.md) | chat-core gets the duplicated format, attachment, media-trust, sticker-size and smooth-t… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0876](T-0876-chat-core-prefs-routines-ai.md) | chat-core gets chat prefs, routines formatting and the AI form logic (limits, templates,… | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
@@ -919,3 +918,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0870](T-0870-sweep-ais.md) | Server sweep: ais, agents/memory, connections, voice, search onto the shared HTTP helpers (runSql, SchemaError | 2026-10-10 |
 | [T-0871](T-0871-sweep-push-topics.md) | Server sweep: push, topics, handles, media onto the shared HTTP helpers (runSql, SchemaErrors, makeRateLimit,  | 2026-10-10 |
 | [T-0872](T-0872-sweep-machines-setup.md) | Server sweep: machines, integrations, setup onto the shared HTTP helpers (runSql, SchemaErrors, makeRateLimit, | 2026-10-10 |
+| [T-0873](T-0873-sweep-voice-auth.md) | Server sweep: voice-transcription, gifs, auth, contact-requests onto the shared HTTP helpers (runSql, SchemaEr | 2026-10-10 |

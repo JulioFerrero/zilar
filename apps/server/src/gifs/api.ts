@@ -14,28 +14,21 @@
 import { createHmac } from 'node:crypto';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
-import { Effect, Layer, Option, Schema } from 'effect';
+import { Layer, Option, Schema } from 'effect';
 import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-} from 'effect/http-api';
+import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import {
-  CurrentUser,
   REQUEST_ID_HEADER,
+  SchemaErrors,
   Session,
-  failureResponse,
-  requestIdOf,
+  handler,
+  reflectRoutes,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';
@@ -116,23 +109,6 @@ const GifResultPage = Schema.Struct({
 // handler so a bad token answers 404 `not_found`, never a 400.
 const GifMediaParams = Schema.Struct({ token: Schema.String });
 
-class GifsSchemaErrors extends HttpApiMiddleware.Service<GifsSchemaErrors>()(
-  'zilar/effect/http/GifsSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<GifsSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(GifsSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid request'),
-      );
-    }),
-  );
-}
-
 const GifsGroup = HttpApiGroup.make('gifs')
   .add(
     HttpApiEndpoint.get('search', '/gifs/search', {
@@ -150,17 +126,11 @@ const GifsGroup = HttpApiGroup.make('gifs')
   // The framework never decodes a body or query here, so this layer only
   // guards against a future endpoint adding one; the query decode runs
   // manually in each handler with its fixed text.
-  .middleware(GifsSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const GifsApi = HttpApi.make('gifs').add(GifsGroup);
-
-export const GIFS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/gifs/search' },
-  { method: 'GET', path: '/api/gifs/trending' },
-  { method: 'GET', path: '/api/gifs/media/:token' },
-];
 
 async function resolvePublicAddress(host: string): Promise<string | undefined> {
   let addresses: string[];
@@ -282,159 +252,137 @@ export function createGifsApi(deps: GifsApiDependencies): EffectApiMount {
 
   const groupLayer = HttpApiBuilder.group(GifsApi, 'gifs', (handlers) =>
     handlers
-      .handle('search', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            if (!providerConfigured(deps.config) && deps.provider === undefined) {
-              throw new HttpError(501, 'gifs_unavailable', 'GIF search is not configured');
-            }
-            if (!searchLimiter.allow(user.id)) {
-              throw new HttpError(429, 'rate_limited', 'Too many GIF requests, try again later');
-            }
-            const decoded = Schema.decodeUnknownOption(
-              GifSearchQuery,
-              STRICT_QUERY,
-            )(queryRecord(request.request));
-            if (Option.isNone(decoded)) {
-              throw new HttpError(400, 'invalid_request', 'Invalid GIF search');
-            }
-            const query = decoded.value;
-            const start = performance.now();
-            const page = yield* Effect.promise(() =>
-              searchOrFail(() =>
-                providerFor().search(query.q, {
-                  limit: GIF_PAGE_LIMIT,
-                  ...(query.pos === undefined ? {} : { pos: query.pos }),
-                }),
-              ),
-            );
-            // The log carries counts and durations only — never the search text.
-            deps.logger.info(
-              {
-                userId: user.id,
-                results: page.items.length,
-                durationMs: Math.round(performance.now() - start),
-              },
-              'gifs_search',
-            );
-            return searchBody(user.id, page);
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('trending', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            if (!providerConfigured(deps.config) && deps.provider === undefined) {
-              throw new HttpError(501, 'gifs_unavailable', 'GIF search is not configured');
-            }
-            if (!searchLimiter.allow(user.id)) {
-              throw new HttpError(429, 'rate_limited', 'Too many GIF requests, try again later');
-            }
-            const decoded = Schema.decodeUnknownOption(
-              GifTrendingQuery,
-              STRICT_QUERY,
-            )(queryRecord(request.request));
-            if (Option.isNone(decoded)) {
-              throw new HttpError(400, 'invalid_request', 'Invalid GIF request');
-            }
-            const query = decoded.value;
-            const start = performance.now();
-            const page = yield* Effect.promise(() =>
-              searchOrFail(() =>
-                providerFor().trending({
-                  limit: GIF_PAGE_LIMIT,
-                  ...(query.pos === undefined ? {} : { pos: query.pos }),
-                }),
-              ),
-            );
-            deps.logger.info(
-              {
-                userId: user.id,
-                results: page.items.length,
-                durationMs: Math.round(performance.now() - start),
-              },
-              'gifs_trending',
-            );
-            return searchBody(user.id, page);
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('media', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            if (!providerConfigured(deps.config) && deps.provider === undefined) {
-              throw new HttpError(501, 'gifs_unavailable', 'GIF search is not configured');
-            }
-            if (!mediaLimiter.allow(user.id)) {
-              throw new HttpError(429, 'rate_limited', 'Too many GIF requests, try again later');
-            }
-            // The Effect router hands out decoded params (like the old
-            // `c.req.param`), so this second decode is idempotent on normal
-            // tokens and keeps the old 404 on a bad escape.
-            const rawToken = yield* Effect.sync(() => {
-              try {
-                return decodeURIComponent(request.params.token);
-              } catch {
-                throw new HttpError(404, 'not_found', 'GIF media not found');
-              }
-            });
-            const mediaUrl = issuer.verify(rawToken, user.id);
-            if (mediaUrl === undefined) {
-              // An unknown token and one the caller may not use answer the same 404.
-              throw new HttpError(404, 'not_found', 'GIF media not found');
-            }
-            let url: URL;
-            try {
-              url = new URL(mediaUrl);
-            } catch {
-              throw new HttpError(404, 'not_found', 'GIF media not found');
-            }
-            if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') {
-              throw new HttpError(404, 'not_found', 'GIF media not found');
-            }
-            const host = url.hostname.toLowerCase();
-            if (!(GIPHY_MEDIA_HOSTS as readonly string[]).includes(host)) {
-              throw new HttpError(404, 'not_found', 'GIF media not found');
-            }
-            const address = yield* Effect.promise(() => resolvePublicAddress(host));
-            if (address === undefined) {
-              throw new HttpError(404, 'not_found', 'GIF media not found');
-            }
-            const fetched = yield* Effect.promise(() =>
-              mediaFetcher(url, address).catch(() => {
-                throw new HttpError(502, 'gif_media_failed', 'Could not load the GIF media');
-              }),
-            );
-            if (fetched.status < 200 || fetched.status >= 300) {
-              throw new HttpError(502, 'gif_media_failed', 'Could not load the GIF media');
-            }
-            if (!(GIF_MEDIA_TYPES as readonly string[]).includes(fetched.contentType)) {
-              throw new HttpError(502, 'gif_media_failed', 'Could not load the GIF media');
-            }
-            return HttpServerResponse.uint8Array(fetched.body, {
-              status: 200,
-              headers: {
-                'content-type': fetched.contentType,
-                'content-length': String(fetched.body.byteLength),
-                'x-content-type-options': 'nosniff',
-                'cache-control': 'private, max-age=86400',
-              },
-            });
-          }),
-          logger,
-          requestId,
-        );
-      }),
+      .handle(
+        'search',
+        handler(logger, async (request, user) => {
+          if (!providerConfigured(deps.config) && deps.provider === undefined) {
+            throw new HttpError(501, 'gifs_unavailable', 'GIF search is not configured');
+          }
+          if (!searchLimiter.allow(user.id)) {
+            throw new HttpError(429, 'rate_limited', 'Too many GIF requests, try again later');
+          }
+          const decoded = Schema.decodeUnknownOption(
+            GifSearchQuery,
+            STRICT_QUERY,
+          )(queryRecord(request.request));
+          if (Option.isNone(decoded)) {
+            throw new HttpError(400, 'invalid_request', 'Invalid GIF search');
+          }
+          const query = decoded.value;
+          const start = performance.now();
+          const page = await searchOrFail(() =>
+            providerFor().search(query.q, {
+              limit: GIF_PAGE_LIMIT,
+              ...(query.pos === undefined ? {} : { pos: query.pos }),
+            }),
+          );
+          // The log carries counts and durations only — never the search text.
+          deps.logger.info(
+            {
+              userId: user.id,
+              results: page.items.length,
+              durationMs: Math.round(performance.now() - start),
+            },
+            'gifs_search',
+          );
+          return searchBody(user.id, page);
+        }),
+      )
+      .handle(
+        'trending',
+        handler(logger, async (request, user) => {
+          if (!providerConfigured(deps.config) && deps.provider === undefined) {
+            throw new HttpError(501, 'gifs_unavailable', 'GIF search is not configured');
+          }
+          if (!searchLimiter.allow(user.id)) {
+            throw new HttpError(429, 'rate_limited', 'Too many GIF requests, try again later');
+          }
+          const decoded = Schema.decodeUnknownOption(
+            GifTrendingQuery,
+            STRICT_QUERY,
+          )(queryRecord(request.request));
+          if (Option.isNone(decoded)) {
+            throw new HttpError(400, 'invalid_request', 'Invalid GIF request');
+          }
+          const query = decoded.value;
+          const start = performance.now();
+          const page = await searchOrFail(() =>
+            providerFor().trending({
+              limit: GIF_PAGE_LIMIT,
+              ...(query.pos === undefined ? {} : { pos: query.pos }),
+            }),
+          );
+          deps.logger.info(
+            {
+              userId: user.id,
+              results: page.items.length,
+              durationMs: Math.round(performance.now() - start),
+            },
+            'gifs_trending',
+          );
+          return searchBody(user.id, page);
+        }),
+      )
+      .handle(
+        'media',
+        handler(logger, async (request, user) => {
+          if (!providerConfigured(deps.config) && deps.provider === undefined) {
+            throw new HttpError(501, 'gifs_unavailable', 'GIF search is not configured');
+          }
+          if (!mediaLimiter.allow(user.id)) {
+            throw new HttpError(429, 'rate_limited', 'Too many GIF requests, try again later');
+          }
+          // The Effect router hands out decoded params (like the old
+          // `c.req.param`), so this second decode is idempotent on normal
+          // tokens and keeps the old 404 on a bad escape.
+          let rawToken: string;
+          try {
+            rawToken = decodeURIComponent(request.params.token);
+          } catch {
+            throw new HttpError(404, 'not_found', 'GIF media not found');
+          }
+          const mediaUrl = issuer.verify(rawToken, user.id);
+          if (mediaUrl === undefined) {
+            // An unknown token and one the caller may not use answer the same 404.
+            throw new HttpError(404, 'not_found', 'GIF media not found');
+          }
+          let url: URL;
+          try {
+            url = new URL(mediaUrl);
+          } catch {
+            throw new HttpError(404, 'not_found', 'GIF media not found');
+          }
+          if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') {
+            throw new HttpError(404, 'not_found', 'GIF media not found');
+          }
+          const host = url.hostname.toLowerCase();
+          if (!(GIPHY_MEDIA_HOSTS as readonly string[]).includes(host)) {
+            throw new HttpError(404, 'not_found', 'GIF media not found');
+          }
+          const address = await resolvePublicAddress(host);
+          if (address === undefined) {
+            throw new HttpError(404, 'not_found', 'GIF media not found');
+          }
+          const fetched = await mediaFetcher(url, address).catch(() => {
+            throw new HttpError(502, 'gif_media_failed', 'Could not load the GIF media');
+          });
+          if (fetched.status < 200 || fetched.status >= 300) {
+            throw new HttpError(502, 'gif_media_failed', 'Could not load the GIF media');
+          }
+          if (!(GIF_MEDIA_TYPES as readonly string[]).includes(fetched.contentType)) {
+            throw new HttpError(502, 'gif_media_failed', 'Could not load the GIF media');
+          }
+          return HttpServerResponse.uint8Array(fetched.body, {
+            status: 200,
+            headers: {
+              'content-type': fetched.contentType,
+              'content-length': String(fetched.body.byteLength),
+              'x-content-type-options': 'nosniff',
+              'cache-control': 'private, max-age=86400',
+            },
+          });
+        }),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(GifsApi).pipe(
@@ -458,7 +406,7 @@ export function createGifsApi(deps: GifsApiDependencies): EffectApiMount {
   // runs), so a bad token escape under the media prefix keeps the old
   // `not_found` envelope here at the edge.
   const mediaPrefix = '/api/gifs/media/';
-  const handler: EffectApiMount['handler'] = async (request) => {
+  const edgeHandler: EffectApiMount['handler'] = async (request) => {
     const response = await effectHandler(request);
     if (response.status !== 404) {
       return response;
@@ -477,5 +425,5 @@ export function createGifsApi(deps: GifsApiDependencies): EffectApiMount {
     );
   };
 
-  return { handler, routes: GIFS_API_ROUTES };
+  return { handler: edgeHandler, routes: reflectRoutes(GifsApi) };
 }

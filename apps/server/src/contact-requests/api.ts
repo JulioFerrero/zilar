@@ -4,13 +4,14 @@
 // runs on effect/sql.
 
 import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
+import { HttpServerRequest } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
   HttpApiEndpoint,
   HttpApiGroup,
   HttpApiMiddleware,
+  HttpApiSchema,
 } from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
@@ -20,16 +21,15 @@ import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import { makeRateLimit } from '../effect/rate-limit-middleware';
 import {
-  CurrentUser,
   Session,
   failureResponse,
-  httpErrorResponse,
+  handler,
+  mountApi,
   requestIdOf,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import {
   acceptContactRequest,
@@ -70,10 +70,17 @@ const CreateContactRequestBody = Schema.Struct({
   handle: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
 });
 
-const CreateContactRequestResult = Schema.Struct({
+// Two success statuses: 200 when the other side already asked
+// (`incoming: true`), 201 for a new request. The 200 member comes first so an
+// `incoming` value never falls through to the 201 member, which would strip it.
+const ReverseContactRequestResult = Schema.Struct({
   request: ContactRequest,
-  incoming: Schema.optional(Schema.Boolean),
+  incoming: Schema.Literal(true),
 });
+
+const CreatedContactRequestResult = ContactRequestResult.pipe(HttpApiSchema.status(201));
+
+const CreateContactRequestResult = [ReverseContactRequestResult, CreatedContactRequestResult];
 
 const ContactRequestView = Schema.Struct({
   id: Schema.String,
@@ -108,7 +115,8 @@ const ByHandleResult = Schema.Struct({
 });
 
 // Applied to the group so a payload decode failure answers 400
-// `invalid_request` with one fixed message.
+// `invalid_request` with one fixed message. This module keeps its own copy
+// because the shared `SchemaErrors` carries the schema's text instead.
 class ContactRequestsSchemaErrors extends HttpApiMiddleware.Service<ContactRequestsSchemaErrors>()(
   'zilar/effect/http/ContactRequestsSchemaErrors',
 ) {}
@@ -130,81 +138,27 @@ function schemaErrorLayer(logger: Logger): Layer.Layer<ContactRequestsSchemaErro
   );
 }
 
+const RATE_LIMITED_MESSAGE = 'Too many attempts, try again later';
+
 // Runs the create budget before the payload is decoded, exactly like the old
 // route's `createLimiter.allow` -> `safeParse` order: an invalid body still
-// spends budget. `requires: CurrentUser` is satisfied by `Session`.
-class CreateRateLimit extends HttpApiMiddleware.Service<
-  CreateRateLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/ContactRequestCreateRateLimit') {}
-
-function createRateLimitLayer(limiter: RateLimiter): Layer.Layer<CreateRateLimit> {
-  return Layer.succeed(
-    CreateRateLimit,
-    CreateRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many attempts, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
+// spends budget.
+const CreateRateLimit = makeRateLimit(
+  'zilar/effect/http/ContactRequestCreateRateLimit',
+  RATE_LIMITED_MESSAGE,
+);
 
 // The read budget covers list, accept, decline and cancel; it runs after the
 // session and before the store call.
-class ReadRateLimit extends HttpApiMiddleware.Service<ReadRateLimit, { requires: CurrentUser }>()(
+const ReadRateLimit = makeRateLimit(
   'zilar/effect/http/ContactRequestReadRateLimit',
-) {}
+  RATE_LIMITED_MESSAGE,
+);
 
-function readRateLimitLayer(limiter: RateLimiter): Layer.Layer<ReadRateLimit> {
-  return Layer.succeed(
-    ReadRateLimit,
-    ReadRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many attempts, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
-
-class ByHandleRateLimit extends HttpApiMiddleware.Service<
-  ByHandleRateLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/ContactRequestByHandleRateLimit') {}
-
-function byHandleRateLimitLayer(limiter: RateLimiter): Layer.Layer<ByHandleRateLimit> {
-  return Layer.succeed(
-    ByHandleRateLimit,
-    ByHandleRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many attempts, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
+const ByHandleRateLimit = makeRateLimit(
+  'zilar/effect/http/ContactRequestByHandleRateLimit',
+  RATE_LIMITED_MESSAGE,
+);
 
 const RequestIdParams = Schema.Struct({ id: Schema.String });
 const HandleParams = Schema.Struct({ handle: Schema.String });
@@ -216,26 +170,26 @@ const ContactRequestsGroup = HttpApiGroup.make('contactRequests')
       success: CreateContactRequestResult,
     })
       .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
-      .middleware(CreateRateLimit),
+      .middleware(CreateRateLimit.Middleware),
     HttpApiEndpoint.get('list', '/contact-requests', {
       success: ListContactRequestsResult,
-    }).middleware(ReadRateLimit),
+    }).middleware(ReadRateLimit.Middleware),
     HttpApiEndpoint.post('accept', '/contact-requests/:id/accept', {
       params: RequestIdParams,
       success: ContactRequestResult,
-    }).middleware(ReadRateLimit),
+    }).middleware(ReadRateLimit.Middleware),
     HttpApiEndpoint.post('decline', '/contact-requests/:id/decline', {
       params: RequestIdParams,
       success: ContactRequestResult,
-    }).middleware(ReadRateLimit),
+    }).middleware(ReadRateLimit.Middleware),
     HttpApiEndpoint.delete('cancel', '/contact-requests/:id', {
       params: RequestIdParams,
       success: ContactRequestResult,
-    }).middleware(ReadRateLimit),
+    }).middleware(ReadRateLimit.Middleware),
     HttpApiEndpoint.get('byHandle', '/users/by-handle/:handle', {
       params: HandleParams,
       success: ByHandleResult,
-    }).middleware(ByHandleRateLimit),
+    }).middleware(ByHandleRateLimit.Middleware),
   )
   .middleware(Session)
   .middleware(ContactRequestsSchemaErrors)
@@ -257,15 +211,6 @@ export interface ContactRequestsApiDependencies {
   readLimiter?: RateLimiter;
   byHandleLimiter?: RateLimiter;
 }
-
-export const CONTACT_REQUESTS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'POST', path: '/api/contact-requests' },
-  { method: 'GET', path: '/api/contact-requests' },
-  { method: 'POST', path: '/api/contact-requests/:id/accept' },
-  { method: 'POST', path: '/api/contact-requests/:id/decline' },
-  { method: 'DELETE', path: '/api/contact-requests/:id' },
-  { method: 'GET', path: '/api/users/by-handle/:handle' },
-];
 
 function toJson(row: ContactRequestRow) {
   return {
@@ -318,122 +263,70 @@ export function createContactRequestsApi(deps: ContactRequestsApiDependencies): 
       // Creates a pending request to the owner of `handle`. Unknown handles
       // answer the same 404 as retired ones. When the other side already asked,
       // answers 200 `{ request, incoming: true }` so the web can offer
-      // "Accept"; otherwise 201 `{ request }`. The 200-vs-201 split is why the
-      // handler answers raw responses.
-      .handle('create', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            // The create budget was already charged by `CreateRateLimit`,
-            // before the payload decode.
-            const user = yield* CurrentUser;
-            const { request: created, reverseOf } = yield* Effect.promise(() =>
-              createContactRequest(service(), user.id, request.payload.handle),
-            );
-            if (reverseOf) {
-              return HttpServerResponse.jsonUnsafe(
-                { request: toJson(reverseOf), incoming: true },
-                { status: 200 },
-              );
-            }
-            return HttpServerResponse.jsonUnsafe({ request: toJson(created) }, { status: 201 });
-          }),
-          logger,
-          requestId,
-        );
-      })
+      // "Accept"; otherwise 201 `{ request }`. Both statuses are declared on
+      // the endpoint, so the handler returns the value and the schema picks
+      // the status.
+      .handle(
+        'create',
+        handler(logger, async (request, user) => {
+          // The create budget was already charged by `CreateRateLimit`,
+          // before the payload decode.
+          const { request: created, reverseOf } = await createContactRequest(
+            service(),
+            user.id,
+            request.payload.handle,
+          );
+          if (reverseOf) {
+            return { request: toJson(reverseOf), incoming: true as const };
+          }
+          return { request: toJson(created) };
+        }),
+      )
       // The viewer's pending requests: `{ incoming, outgoing }`, newest first.
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            return yield* Effect.promise(() => listContactRequests(service(), user.id));
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'list',
+        handler(logger, (_request, user) => listContactRequests(service(), user.id)),
+      )
       // Accepts a request (recipient only). Idempotent and repairing.
-      .handle('accept', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const accepted = yield* Effect.promise(() =>
-              acceptContactRequest(service(), request.params.id, user.id),
-            );
-            return { request: toJson(accepted) };
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'accept',
+        handler(logger, async (request, user) => ({
+          request: toJson(await acceptContactRequest(service(), request.params.id, user.id)),
+        })),
+      )
       // Declines a request (recipient only). Not-actable and unknown ids
       // answer the same 404.
-      .handle('decline', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const declined = yield* Effect.promise(() =>
-              declineContactRequest(service(), request.params.id, user.id),
-            );
-            return { request: toJson(declined) };
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'decline',
+        handler(logger, async (request, user) => ({
+          request: toJson(await declineContactRequest(service(), request.params.id, user.id)),
+        })),
+      )
       // Cancels a request (sender only). Not-actable and unknown ids answer
       // the same 404.
-      .handle('cancel', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const cancelled = yield* Effect.promise(() =>
-              cancelContactRequest(service(), request.params.id, user.id),
-            );
-            return { request: toJson(cancelled) };
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'cancel',
+        handler(logger, async (request, user) => ({
+          request: toJson(await cancelContactRequest(service(), request.params.id, user.id)),
+        })),
+      )
       // Exact, case-insensitive handle lookup: `{ userId, name, handle, image,
       // relation }`. Unknown and retired handles answer the same 404. Never an
       // email.
-      .handle('byHandle', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            return yield* Effect.promise(() =>
-              profileForHandle(db, user.id, request.params.handle),
-            );
-          }),
-          logger,
-          requestId,
-        );
-      }),
+      .handle(
+        'byHandle',
+        handler(logger, (request, user) => profileForHandle(db, user.id, request.params.handle)),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(ContactRequestsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayer(logger)),
-    Layer.provide(createRateLimitLayer(createLimiter)),
-    Layer.provide(readRateLimitLayer(readLimiter)),
-    Layer.provide(byHandleRateLimitLayer(byHandleLimiter)),
+    Layer.provide(CreateRateLimit.layer(createLimiter)),
+    Layer.provide(ReadRateLimit.layer(readLimiter)),
+    Layer.provide(ByHandleRateLimit.layer(byHandleLimiter)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: CONTACT_REQUESTS_API_ROUTES };
+  return mountApi(ContactRequestsApi, apiLayer);
 }

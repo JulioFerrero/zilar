@@ -1,7 +1,7 @@
 ---
 id: T-0873
 title: "Server sweep: voice-transcription, gifs, auth, contact-requests onto the shared HTTP helpers (runSql, SchemaErrors, makeRateLimit, handler, mountApi) with truthful success statuses"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0873-sweep-voice-auth
 model: auto
@@ -70,4 +70,25 @@ Run the tests 3 times after the last commit. The machine is shared, so note `upt
 
 ## Report (written by the worker when done)
 
+- Commits: voice-transcription `5faa7961`, gifs `b0fc1126`, auth `ccdd10c6`, contact-requests `86b765d1`.
+- Lines (git numstat of `api.ts`, +added/-removed; each module also gains a `routes.expected.ts`): voice +173/-233 (net -60), gifs +140/-192 (net -52), auth +104/-172 (net -68), contact-requests +85/-192 (net -107). Total net -287 in `api.ts`, +34 in the four `routes.expected.ts`. No other file changed.
+- Checks (`--testTimeout=120000 --hookTimeout=120000`): voice, gifs, auth, contact-requests, `authz-sweep.test.ts`, `routes-manifest.test.ts`: 17 files passed, 1 skipped; 172 tests passed, 2 skipped (skips are in existing files); 3 of 3 runs. `tsc --noEmit` on the server, `oxlint` and `prettier --check` on the four folders: clean. Machine load was about 55-62 (`uptime`); runs took 270-310 s.
+- Recipe applied: shared `runSql` (auth had a local copy), shared `SchemaErrors` (voice, gifs, auth), `makeRateLimit` (contact-requests: Create, Read, ByHandle, same tag strings and message), `handler(logger, ...)` for every handler with a session, `mountApi` (voice, auth, contact-requests), `routes.expected.ts` for all four; `routes-manifest.test.ts` untouched.
+- Voice: `TranscriptConfigured` and `VoiceSettingsOwnerLimit` stay (not plain limits).
+- Deviation, gifs: no `mountApi`. It sets `routerConfig: { maxParamLength: 4096 }` and wraps the handler for the media 404 envelope, which `mountApi` cannot do. It uses `reflectRoutes(GifsApi)` for the routes and keeps `HttpRouter.toWebHandler`; the local handler const is now `edgeHandler`.
+- Deviation, contact-requests: kept its own `ContactRequestsSchemaErrors`. The shared `SchemaErrors` answers the schema's text; this module answers a fixed text that `contact-requests.test.ts` asserts.
+- Deviation, auth public group (`checkInvite`): no session, so it cannot use `handler` (needs `CurrentUser`); it keeps `withErrorEnvelope`.
+- Truthful statuses: contact-requests `create` declares `success: [{request, incoming: true} (200), {request} with HttpApiSchema.status(201)]` and returns the value (no `jsonUnsafe`). The 200 member is first so `incoming` is not stripped by the 201 member. Existing tests assert 201, the reverse 200 and `incoming: true`.
+- PATCH /me: the payload `UpdateMeBody` is declared, but the endpoint is served with `handleRaw`, so the framework does not decode the body. With `handle` (tested with a temporary probe, deleted): a malformed or empty body answered "Expected a valid JSON body" / "Expected JSON value" instead of "Invalid name", and a request without a JSON content-type answered 415 instead of 200. With `handleRaw` the probe (malformed, empty, null, array, string, valid, no content-type) gave the old answers. The hand decode and its messages stay.
+- Behaviour differences on the wire: none observed.
+- Audit line numbers had moved; the facts were right (hand decode in PATCH /me; 200 vs 201 in create). Voice and gifs have no 201/204 sites.
+- I assembled gifs/auth/contact-requests `api.ts` with head/tail/cat from text I wrote, not with sed/python. Did not run `pnpm gate` (wave mode).
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.**
+- **Converted:** voice-transcription, gifs, auth and contact-requests, net −287 lines in the `api.ts` files.
+- **Statuses:** contact-requests declares both its 200 and its 201 success.
+- **PATCH /me:** it declares its payload but keeps `handleRaw`, because the worker's probe showed that a framework decode changes the wire (415 and other messages).
+- **gifs:** it keeps its own `toWebHandler` for `maxParamLength` and uses `reflectRoutes`.
+- **Check:** the combined wave 4 check passes.

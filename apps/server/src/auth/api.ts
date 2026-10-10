@@ -4,36 +4,30 @@
 // run on effect/sql and call Better Auth's API.
 //
 // The name decode runs manually inside the PATCH handler (Effect Schema,
-// same rules as the old zod schema) instead of as an endpoint payload, so
+// same rules as the old zod schema) instead of by the framework, so
 // the route keeps its exact order: session -> raw body -> decode ->
 // `updateUser` -> session read again -> roster refresh. No decode text
 // changes: every failure answers byte-identical codes and messages.
 
 import { Effect, Exit, Layer, Schema, SchemaIssue } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
-import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-} from 'effect/http-api';
+import { SqlClient } from 'effect/sql';
+import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import type { Logger } from 'pino';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerConfig } from '../config';
 import { refreshRosterNicknames } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import {
-  CurrentUser,
+  SchemaErrors,
   Session,
-  failureResponse,
+  handler,
+  mountApi,
   requestIdOf,
+  schemaErrorLayer,
   sessionLayer,
   withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -51,13 +45,6 @@ export interface AuthApiDependencies {
 
 const CONTROL_CHAR_MAX = 0x1f;
 const CONTROL_CHAR_DEL = 0x7f;
-
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
 
 interface HandleLookupRow {
   handle: string;
@@ -176,33 +163,19 @@ const InviteCheckView = Schema.Struct({ valid: Schema.Boolean });
 const InviteParams = Schema.Struct({ code: Schema.String });
 
 const RevokedView = Schema.Struct({ revoked: Schema.Boolean });
-
-// A body or params decode failure renders like the old zod path: a 400
-// `invalid_request`. Only the DELETE params decode runs in the framework
-// (always a string); the PATCH body is decoded manually in its handler.
-class AuthSchemaErrors extends HttpApiMiddleware.Service<AuthSchemaErrors>()(
-  'zilar/effect/http/AuthSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<AuthSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(AuthSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid request'),
-      );
-    }),
-  );
-}
-
 // GET /invites/:code stays public: a would-be sign-up needs to know if a
 // code works. Every other route requires a session.
+//
+// PATCH /me declares its payload (`UpdateMeBody`) so a derived client is
+// typed, but it is served with `handleRaw`: the framework does not decode the
+// body. The name rules run by hand (see the header) because the framework's
+// decode would change the texts of a malformed or empty body (400 "Expected a
+// valid JSON body" instead of "Invalid name") and reject a request without a
+// JSON content-type with 415.
 const AuthGroup = HttpApiGroup.make('auth')
   .add(
     HttpApiEndpoint.get('me', '/me', { success: MeView }),
-    HttpApiEndpoint.patch('patchMe', '/me', { success: PatchMeView }),
+    HttpApiEndpoint.patch('patchMe', '/me', { payload: UpdateMeBody, success: PatchMeView }),
     HttpApiEndpoint.post('createInvite', '/invites', { success: InviteView }),
     HttpApiEndpoint.delete('revokeInvite', '/invites/:code', {
       params: InviteParams,
@@ -210,7 +183,7 @@ const AuthGroup = HttpApiGroup.make('auth')
     }),
   )
   .middleware(Session)
-  .middleware(AuthSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
@@ -221,143 +194,109 @@ const AuthInvitesPublicGroup = HttpApiGroup.make('authInvitesPublic')
       success: InviteCheckView,
     }),
   )
-  .middleware(AuthSchemaErrors)
+  .middleware(SchemaErrors)
   .prefix('/api');
 
 const AuthApi = HttpApi.make('auth').add(AuthGroup, AuthInvitesPublicGroup);
-
-export const AUTH_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/me' },
-  { method: 'PATCH', path: '/api/me' },
-  { method: 'POST', path: '/api/invites' },
-  { method: 'GET', path: '/api/invites/:code' },
-  { method: 'DELETE', path: '/api/invites/:code' },
-];
 
 export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
   const logger = deps.logger;
 
   const groupLayer = HttpApiBuilder.group(AuthApi, 'auth', (handlers) =>
     handlers
-      .handle('me', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'me',
+        handler(logger, (_request, user) => meView(deps, user.id)),
+      )
+      .handleRaw(
+        'patchMe',
+        handler(logger, (request) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            return yield* Effect.promise(() => meView(deps, user.id));
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('patchMe', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            yield* CurrentUser;
             const headers = new Headers(request.request.headers);
             // Mirrors `c.req.json().catch(() => null)`: an unparseable body
             // is a validation failure, not a 500.
             const raw = yield* request.request.json.pipe(
               Effect.catchCause(() => Effect.succeed<unknown>(null)),
             );
-            const exit = Schema.decodeUnknownExit(UpdateMeBody, { errors: 'all' })(raw);
-            if (!Exit.isSuccess(exit)) {
-              throw new HttpError(400, 'invalid_request', updateMeMessage(raw));
-            }
-            // Update through Better Auth's own API so its hooks and
-            // validation apply.
-            yield* Effect.promise(() =>
-              deps.auth.api.updateUser({ headers, body: { name: exit.value.name } }),
-            );
-            const session = yield* Effect.promise(() => deps.auth.api.getSession({ headers }));
-            if (!session) {
-              throw new HttpError(401, 'unauthorized', 'Authentication required');
-            }
-            const { user } = session;
-            // The nickname must follow the name in every contact's roster.
-            // Best-effort: a failure leaves the rows unsynced and the token
-            // endpoint retries with the current name. Logs ids only.
-            const refreshed = yield* Effect.promise(() =>
-              refreshRosterNicknames(
-                deps.db,
-                deps.adminClient,
-                deps.config.xmpp.domain,
-                user.id,
-                user.name,
-              ).then(
-                (result) => ({ ok: true as const, result }),
-                (error: unknown) => ({ ok: false as const, error }),
-              ),
-            );
-            if (refreshed.ok) {
-              if (!refreshed.result.ok) {
-                logger.warn(
-                  { userId: user.id, pending: refreshed.result.pending },
-                  'roster nickname refresh is incomplete',
-                );
-              }
-            } else {
-              logger.warn(
-                { userId: user.id, err: refreshed.error },
-                'could not refresh roster nicknames',
-              );
-            }
-            return {
-              id: user.id,
-              email: user.email,
-              name: user.name,
-              image: user.image ?? null,
-            };
+            return yield* Effect.promise(() => updateMe(headers, raw));
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('createInvite', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const invite = yield* Effect.promise(() =>
-              createInvite(deps.db, { createdBy: user.id }),
-            );
-            return {
-              code: invite.code,
-              url: `${deps.config.PUBLIC_URL}/invite/${invite.code}`,
-              expiresAt: invite.expiresAt,
-            };
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('revokeInvite', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const code = request.params.code;
-            const invite = yield* Effect.promise(() => findInviteByCode(deps.db, code));
-            if (!invite) {
-              throw new HttpError(404, 'not_found', 'Invite not found');
-            }
-            if (invite.createdBy !== user.id) {
-              throw new HttpError(403, 'forbidden', 'Only the creator can revoke this invite');
-            }
-            yield* Effect.promise(() => revokeInvite(deps.db, code));
-            return { revoked: true };
-          }),
-          logger,
-          requestId,
-        );
-      }),
+        ),
+      )
+      .handle(
+        'createInvite',
+        handler(logger, async (_request, user) => {
+          const invite = await createInvite(deps.db, { createdBy: user.id });
+          return {
+            code: invite.code,
+            url: `${deps.config.PUBLIC_URL}/invite/${invite.code}`,
+            expiresAt: invite.expiresAt,
+          };
+        }),
+      )
+      .handle(
+        'revokeInvite',
+        handler(logger, async (request, user) => {
+          const code = request.params.code;
+          const invite = await findInviteByCode(deps.db, code);
+          if (!invite) {
+            throw new HttpError(404, 'not_found', 'Invite not found');
+          }
+          if (invite.createdBy !== user.id) {
+            throw new HttpError(403, 'forbidden', 'Only the creator can revoke this invite');
+          }
+          await revokeInvite(deps.db, code);
+          return { revoked: true };
+        }),
+      ),
   );
 
+  async function updateMe(headers: Headers, raw: unknown) {
+    const exit = Schema.decodeUnknownExit(UpdateMeBody, { errors: 'all' })(raw);
+    if (!Exit.isSuccess(exit)) {
+      throw new HttpError(400, 'invalid_request', updateMeMessage(raw));
+    }
+    // Update through Better Auth's own API so its hooks and
+    // validation apply.
+    await deps.auth.api.updateUser({ headers, body: { name: exit.value.name } });
+    const session = await deps.auth.api.getSession({ headers });
+    if (!session) {
+      throw new HttpError(401, 'unauthorized', 'Authentication required');
+    }
+    const { user } = session;
+    // The nickname must follow the name in every contact's roster.
+    // Best-effort: a failure leaves the rows unsynced and the token
+    // endpoint retries with the current name. Logs ids only.
+    const refreshed = await refreshRosterNicknames(
+      deps.db,
+      deps.adminClient,
+      deps.config.xmpp.domain,
+      user.id,
+      user.name,
+    ).then(
+      (result) => ({ ok: true as const, result }),
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    if (refreshed.ok) {
+      if (!refreshed.result.ok) {
+        logger.warn(
+          { userId: user.id, pending: refreshed.result.pending },
+          'roster nickname refresh is incomplete',
+        );
+      }
+    } else {
+      logger.warn({ userId: user.id, err: refreshed.error }, 'could not refresh roster nicknames');
+    }
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      image: user.image ?? null,
+    };
+  }
+
   const publicGroupLayer = HttpApiBuilder.group(AuthApi, 'authInvitesPublic', (handlers) =>
-    handlers.handle('checkInvite', (request) => {
-      const requestId = requestIdOf(request.request);
-      return withErrorEnvelope(
+    handlers.handle('checkInvite', (request) =>
+      withErrorEnvelope(
         Effect.gen(function* () {
           const invite = yield* Effect.promise(() =>
             findUsableInvite(deps.db, request.params.code),
@@ -365,9 +304,9 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
           return { valid: invite !== null };
         }),
         logger,
-        requestId,
-      );
-    }),
+        requestIdOf(request.request),
+      ),
+    ),
   );
 
   const apiLayer = HttpApiBuilder.layer(AuthApi).pipe(
@@ -376,14 +315,7 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: AUTH_API_ROUTES };
+  return mountApi(AuthApi, apiLayer);
 }
 
 async function meView(
