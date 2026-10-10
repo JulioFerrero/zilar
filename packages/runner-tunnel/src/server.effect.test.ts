@@ -1,8 +1,10 @@
+import { once } from 'node:events';
+import { WebSocket } from 'ws';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CLOSE_AUTH } from './protocol.ts';
 import { InMemoryKeyRegistry, generateRunnerKeypair, signNonce } from './keys.ts';
 import { TunnelServer } from './server.ts';
-import { rawHandshake, startFakeGateway, waitFor, wsCloseCode } from './test-harness.ts';
+import { startFakeGateway, waitFor, wsCloseCode } from './test-harness.ts';
 
 interface StartedServer {
   server: TunnelServer;
@@ -57,24 +59,58 @@ describe('TunnelServer timers on Effect', () => {
     });
     const keypair = generateRunnerKeypair();
     registry.approve('raw-heartbeat', keypair.publicKey);
-    const raw = await rawHandshake(server, 'raw-heartbeat', (nonce) =>
-      signNonce(keypair.privateKey, nonce),
+    // A ws client that never answers pings and counts them: the server sweeps
+    // once per interval, so the number of pings it sends before it gives up is
+    // a count of sweeps, which host load cannot stretch (a late sweep only
+    // moves the whole schedule, and sweeps stay at least one interval apart).
+    const ws = new WebSocket(server.wsUrl, { autoPong: false });
+    const texts: string[] = [];
+    let pings = 0;
+    let closed = false;
+    ws.on('ping', () => {
+      pings += 1;
+    });
+    ws.on('close', () => {
+      closed = true;
+    });
+    ws.on('message', (data) => {
+      texts.push(String(data));
+      if (texts.length === 1) {
+        const challenge = JSON.parse(texts[0] as string) as { nonce?: string };
+        ws.send(
+          JSON.stringify({
+            type: 'auth',
+            signature: signNonce(keypair.privateKey, Buffer.from(challenge.nonce ?? '', 'base64')),
+          }),
+        );
+      }
+    });
+    await once(ws, 'open');
+    ws.send(
+      JSON.stringify({
+        type: 'hello',
+        runner_id: 'raw-heartbeat',
+        runner_version: '0.1.0',
+        protocol_version: 1,
+      }),
     );
-    // This client never answers pings, so the last pong the server can have
-    // counted is the moment it marks the connection ready. Taking the mark here
-    // (right after auth is sent, before the server can reach ready) is at or
-    // before that instant, so observation lag can never shorten the measured
-    // interval.
+    // The last pong the server can have counted is the moment it marks the
+    // connection ready. Taking the mark before auth is sent is at or before
+    // that instant, so observation lag can never shorten the measured interval.
     const started = Date.now();
-    await waitFor(() => raw.texts.length > 1 || raw.closed, 5000, 'raw ready');
-    expect(raw.closed).toBe(false);
-    await waitFor(() => raw.closed, 5000, 'dead connection detection');
+    await waitFor(() => texts.length > 1, 5000, 'raw ready');
+    await waitFor(() => closed, 5000, 'dead connection detection');
     const elapsed = Date.now() - started;
     // Terminated, and not before the timeout counted from the last pong...
     expect(elapsed).toBeGreaterThanOrEqual(heartbeatTimeoutMs - heartbeatIntervalMs);
-    // ...nor much later than the timeout plus one sweep interval, plus slack.
-    expect(elapsed).toBeLessThanOrEqual(heartbeatTimeoutMs + 2 * heartbeatIntervalMs + 50);
-    raw.destroy();
+    // ...and no later than the sweep after the timeout: every sweep before the
+    // timeout pings, and sweeps stay at least one interval apart, so a window
+    // of the timeout holds at most timeout / interval + 1 pings. Host load
+    // moves the sweeps; it cannot pack more of them into the window. A stalled
+    // event loop can push the first sweep past the timeout, so the count may be
+    // zero, but the elapsed lower bound above still proves it did not end early.
+    expect(pings).toBeLessThanOrEqual(heartbeatTimeoutMs / heartbeatIntervalMs + 1);
+    ws.terminate();
   });
 
   it('interrupts every fiber on close so no timer keeps the process alive', async () => {

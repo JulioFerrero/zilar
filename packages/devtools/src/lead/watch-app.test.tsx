@@ -795,34 +795,47 @@ describe('WatchApp speed colour', () => {
 describe('WatchLive refresh overlap guard', () => {
   type RefreshCallback = (error: Error | null, stdout: string, stderr: string) => void;
 
-  it('skips a refresh while the previous child process is still running', async () => {
-    vi.useFakeTimers();
-    try {
-      const mocked = vi.mocked(execFile);
-      mocked.mockReset();
-      mocked.mockImplementation((() => undefined) as unknown as typeof execFile);
-      const { unmount } = render(<WatchLive initial={view([])} />);
+  // The fake clock already makes the timing exact. What load stretches is the
+  // real CPU cost of the Ink re-renders driven by the ~20 one-second clock ticks
+  // across the two 10 s advances: about 230 ms idle, over 5 s on a saturated
+  // host, so the budget is wide.
+  it(
+    'skips a refresh while the previous child process is still running',
+    { timeout: 60000 },
+    async () => {
+      vi.useFakeTimers();
       try {
-        await vi.advanceTimersByTimeAsync(0);
-        expect(mocked).toHaveBeenCalledTimes(1);
-        await vi.advanceTimersByTimeAsync(REFRESH_INTERVAL_MS);
-        expect(mocked).toHaveBeenCalledTimes(1);
-        const firstCall = mocked.mock.calls[0] as unknown[];
-        const callback = firstCall[3] as RefreshCallback;
-        callback(
-          null,
-          JSON.stringify({ clock: '11:33:52', refreshFailed: false, mergedToday: 3, entries: [] }),
-          '',
-        );
-        await vi.advanceTimersByTimeAsync(REFRESH_INTERVAL_MS);
-        expect(mocked).toHaveBeenCalledTimes(2);
+        const mocked = vi.mocked(execFile);
+        mocked.mockReset();
+        mocked.mockImplementation((() => undefined) as unknown as typeof execFile);
+        const { unmount } = render(<WatchLive initial={view([])} />);
+        try {
+          await vi.advanceTimersByTimeAsync(0);
+          expect(mocked).toHaveBeenCalledTimes(1);
+          await vi.advanceTimersByTimeAsync(REFRESH_INTERVAL_MS);
+          expect(mocked).toHaveBeenCalledTimes(1);
+          const firstCall = mocked.mock.calls[0] as unknown[];
+          const callback = firstCall[3] as RefreshCallback;
+          callback(
+            null,
+            JSON.stringify({
+              clock: '11:33:52',
+              refreshFailed: false,
+              mergedToday: 3,
+              entries: [],
+            }),
+            '',
+          );
+          await vi.advanceTimersByTimeAsync(REFRESH_INTERVAL_MS);
+          expect(mocked).toHaveBeenCalledTimes(2);
+        } finally {
+          unmount();
+        }
       } finally {
-        unmount();
+        vi.useRealTimers();
       }
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+    },
+  );
 });
 
 describe('WatchLive without a TTY stdin', () => {
