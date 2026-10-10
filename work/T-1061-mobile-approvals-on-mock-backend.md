@@ -1,7 +1,7 @@
 ---
 id: T-1061
 title: "Mock H2-2 (mobile): approvals run on @zilar/mock-backend through mockFetch; one shared mockToken in mock/gate.ts"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1061-mobile-approvals-on-mock-backend
 model: auto
@@ -64,4 +64,90 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What changed
+
+Mock-mode approvals now run through the shared `@zilar/mock-backend`, like the
+rest of the mobile mocks.
+
+1. **One shared token.** Moved `mockToken` and its comment out of
+   `apps/mobile/src/store/chat-store-provider.tsx` into
+   `apps/mobile/src/mock/gate.ts` as `export const mockToken`. The provider now
+   imports it from `@/mock/gate` (its existing import line); nothing else in the
+   provider changed.
+2. **The adapter.** In `apps/mobile/src/components/chat/use-approvals-api.ts` the
+   mock branch now builds `createApprovalsApi(mockToken, mockFetch, API_URL)`.
+   `mockFetch` is loaded from `@/mock/backend` with the same guarded `require`
+   inside the existing `__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK` condition,
+   so a release build still leaves the mock out. `API_URL` comes from
+   `@/lib/auth`, the same module the provider imports it from. `approvalsMockActive`,
+   the `ApprovalsApiHandle` shape and the `mock` flag are unchanged. I also
+   refreshed the now-stale comments that named the old mock (`mock/messages.ts`)
+   to describe the shared backend.
+3. `apps/mobile/src/mock/approvals.ts` is **not** deleted (later slice).
+4. No other change.
+
+### Files changed
+
+- `apps/mobile/src/components/chat/use-approvals-api.ts`
+- `apps/mobile/src/mock/gate.ts`
+- `apps/mobile/src/store/chat-store-provider.tsx`
+- `work/T-1061-mobile-approvals-on-mock-backend.md`
+
+### Is `mock/approvals.ts` still imported?
+
+No. After this change nothing in `apps/mobile/src` imports `@/mock/approvals`;
+its `createMockApprovalsApi` and `resetApprovalsMock` exports are now
+unreferenced in code (only audit/task docs mention them). There is no
+`mock/approvals.test.ts` in the tree. So the file is dead code awaiting the
+later deletion slice — left in place per the spec.
+
+### Commands and results
+
+- `pnpm install`: exit 0 (`Done in 11.6s using pnpm v10.32.1`); the only warning
+  is the pre-existing `@types/react` peer-dependency notice in `apps/mobile`.
+- Acceptance checks:
+  - `grep -n "mock/approvals" apps/mobile/src/components/chat/use-approvals-api.ts`: no output (exit 1).
+  - `grep -rn "const mockToken" apps/mobile/src`: only `apps/mobile/src/mock/gate.ts:48`.
+- Single tests: none. No test file in the tree references the three touched
+  files (`gate.ts`, `chat-store-provider.tsx`, `use-approvals-api.ts`), so there
+  was no near test to run.
+- `pnpm gate` (repo root): exit 0.
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (1.5s)
+  PASS  format  (0.8s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (4.5s)
+  PASS  effect  (1.7s)
+  PASS  tests @zilar/mobile  (3.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Problems / deviations / open questions
+
+- None. The `git status` set is exactly the Allowed files, and the gate's scope
+  check agrees.
+- The mock-backed smoke (Dev team card, Settings › Approvals with Always and
+  Revoke) is the lead's phone smoke; I did not run it. The shared backend's
+  routes match the contract the adapter calls: `GET/POST /approvals*`
+  (`packages/mock-backend/src/domains/approvals/routes.ts`) and
+  `GET /ais/:id/approval-rules`, `GET /groups/:id/approval-rules`,
+  `DELETE /approval-rules/:id` (`.../approval-rules/routes.ts`), and the seed
+  provides `apr-42` (`.../approvals/seed.ts:41`) — the Dev team card's id.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved. The pre-review is clean, with no nits.**
+- **The change:**
+  - **the adapter:** mobile approvals in mock mode now run `createApprovalsApi(mockToken, mockFetch, API_URL)` on `@zilar/mock-backend`, behind the same build-time `require`. Before, it used the old `mock/approvals.ts`;
+  - **the token:** `mockToken` moved from `chat-store-provider.tsx` to `mock/gate.ts`, and the provider imports it from there.
+- **The lead's phone smoke** (mock, `/settings/approvals`):
+  - the pending card is now the backend's `apr-42` (`merge_pull_request`, "Merge PR #42…", worst case EUR 0.40);
+  - **Always** clears it, and "Always allowed" then lists Dev-1 › merge_pull_request › Personal chat;
+  - **Revoke** asks "Stop always allowing merge_pull_request?", and confirming removes the rule.
+- **Seen before the decision:** "Always allowed" read "Could not load the rules."
+  - The AI list still comes from the old mobile AIs mock (`ai-dev-1`, `ai-marketing-1`). The backend answers 200 `[]` for `ai-dev-1` and 404 for `ai-marketing-1` (it calls that AI `ai-marketing`).
+  - `mergeRulesFanOut` (`components/approvals/rows.ts:86`) returns the error state when no rule came back and any AI failed.
+  - H2-1, the AIs onto the backend, removes the id mismatch. The fan-out rule itself goes on the board as a follow-up.
+- **Check:** the gate passed.

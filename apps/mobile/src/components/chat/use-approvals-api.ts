@@ -2,27 +2,28 @@ import { useGlobalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 
 import { createApprovalsApi, type ApprovalsApi } from '@/lib/approvals-api';
+import { API_URL } from '@/lib/auth';
 import { getSessionToken } from '@/lib/session-token';
-import { ENV_MOCK, mockParamAllowed } from '@/mock/gate';
+import { ENV_MOCK, mockParamAllowed, mockToken } from '@/mock/gate';
 
 /**
- * Loads the mock behind a literal build-time condition: Metro folds it to
- * `false` in a release build, so the mock module stays out of the bundle.
+ * Builds the mock-mode `ApprovalsApi` on the shared mock backend, behind a
+ * literal build-time condition: Metro folds it to `false` in a release build,
+ * so the mock module stays out of the bundle.
  */
 function createMockApprovals(): ApprovalsApi {
   if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return (
-      require('@/mock/approvals') as typeof import('@/mock/approvals')
-    ).createMockApprovalsApi();
+    const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
+    return createApprovalsApi(mockToken, mockFetch, API_URL);
   }
   throw new Error('The mock API is not part of this build');
 }
 
 /**
- * The approvals API supports exactly one mock scenario (the pending request
- * seeded in `mock/messages.ts`), so a yes/no answer is enough. The shape mirrors
- * `use-ais-api.ts` so the chat screens pick the same mock gate and env vars.
+ * The mock-mode gate mirrors `use-ais-api.ts` so the chat screens read the same
+ * `?mock=` param and env var. In mock mode the adapter talks to the shared mock
+ * backend, which seeds the Dev team card's pending approval.
  */
 function approvalsMockActive(
   envMock: string | undefined,
@@ -48,9 +49,9 @@ export interface ApprovalsApiHandle {
 
 /**
  * Picks the real API or the mock one from the route's `?mock=` param or the
- * bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env. The mock serves the same pending
- * approval the chat's mock card references, so the card can be approved end to
- * end without a server.
+ * bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env. The mock runs on the shared backend
+ * through `mockFetch`, so the chat's card and the Settings › Approvals rules
+ * work end to end without a server.
  */
 export function useApprovalsApi(): ApprovalsApiHandle {
   const params = useGlobalSearchParams();

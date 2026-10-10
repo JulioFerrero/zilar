@@ -10,7 +10,7 @@ import {
 import { AppState } from 'react-native';
 
 import { useSession } from '@/auth/session';
-import { ENV_MOCK, ENV_NODE_ENV, isMockMode } from '@/mock/gate';
+import { ENV_MOCK, ENV_NODE_ENV, isMockMode, mockToken } from '@/mock/gate';
 
 import { createRealChatStore, type AppStateLike, type RealStoreDeps } from './real-store';
 import { createChatApi } from '../lib/chat-api';
@@ -39,11 +39,6 @@ const rnAppState: AppStateLike = {
     return () => subscription.remove();
   },
 };
-
-// The token the mock-mode factories hand the API client. The shared backend
-// ignores it, but the client fails `unauthorized` before sending when the token
-// is `undefined` (plan risk R3).
-const mockToken = (): Promise<string> => Promise.resolve('mock-token');
 
 /** The deps both store builds share: the phone's `AppState` and the uploader. */
 function sharedDeps(): Pick<RealStoreDeps, 'appState' | 'uploader' | 'statSize'> {
