@@ -9,9 +9,8 @@
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
-import { ChainASchemaErrors, InviteLinksPreviewRateLimit } from './chain-a-middleware';
 import { lenientLiterals } from './lenient';
-import { Session } from './middleware';
+import { InviteLinksPreviewRateLimit, SchemaErrors, Session } from './middleware';
 
 export const INVITE_LINK_LABEL_MAX = 60;
 export const INVITE_LINK_CREATE_MAX_USES = 10000;
@@ -124,6 +123,6 @@ export const InviteLinksGroup = HttpApiGroup.make('invite-links')
     }),
   )
   .middleware(Session)
-  .middleware(ChainASchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

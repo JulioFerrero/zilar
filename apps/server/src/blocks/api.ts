@@ -10,9 +10,14 @@ import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
-import { chainASchemaErrorLayer } from '../groups/schema-errors';
-import { rateLimitLayer } from './chain-c-layers';
+import {
+  handler,
+  mountApi,
+  schemaErrorLayer,
+  sessionLayer,
+  type EffectApiMount,
+} from '../effect/http-core';
+import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { blockUser, listBlockedUsers, unblockUser } from './service';
 
 export const BLOCK_WRITE_RATE_LIMIT_MAX = 30;
@@ -92,7 +97,7 @@ export function createBlocksApi(deps: BlocksApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(BlocksApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(chainASchemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayer(logger)),
     Layer.provide(rateLimitLayer(BlocksWriteRateLimit, writeLimiter, RATE_LIMIT_MESSAGE)),
     Layer.provide(rateLimitLayer(BlocksReadRateLimit, readLimiter, RATE_LIMIT_MESSAGE)),
   );

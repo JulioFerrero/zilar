@@ -8,8 +8,7 @@
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
 import { LenientOptionalNullableString } from './lenient-nullable-string';
-import { Session } from './middleware';
-import { AisConfigured, AisSchemaErrors } from './middleware-chain-b';
+import { AisConfigured, AisSchemaErrors, Session } from './middleware';
 
 export const AI_TEMPLATES = ['dev', 'marketing', 'fun', 'custom'] as const;
 

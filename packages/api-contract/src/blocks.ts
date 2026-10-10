@@ -4,9 +4,7 @@
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import { ChainASchemaErrors } from './chain-a-middleware';
-import { BlocksReadRateLimit, BlocksWriteRateLimit } from './chain-c-middleware';
-import { Session } from './middleware';
+import { BlocksReadRateLimit, BlocksWriteRateLimit, SchemaErrors, Session } from './middleware';
 
 // `{ blocked: true }` on PUT, `{ blocked: false }` on DELETE.
 export const BlockResult = Schema.Struct({ blocked: Schema.Boolean });
@@ -40,6 +38,6 @@ export const BlocksGroup = HttpApiGroup.make('blocks')
     }).middleware(BlocksReadRateLimit),
   )
   .middleware(Session)
-  .middleware(ChainASchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

@@ -15,22 +15,16 @@
 import { Effect, Layer, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { HttpServerRequest } from 'effect/http';
-import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
-import {
-  RevertToolPayload,
-  RunToolPayload,
-  ToolsSchemaErrors,
-  ToolsServerGroup,
-} from '@zilar/api-contract';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { RevertToolPayload, RunToolPayload, ToolsGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import {
-  failureResponse,
   handler,
   mountApi,
-  requestIdOf,
+  schemaErrorLayer,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
@@ -67,25 +61,10 @@ export const MAX_TOOL_RUN_INPUT_BYTES = 16 * 1024;
 
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 
-// A params decode failure renders as 400 `invalid_request` through the shared
-// envelope.
-function schemaErrorLayer(logger: Logger): Layer.Layer<ToolsSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(ToolsSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message),
-      );
-    }),
-  );
-}
-
-// The server group declares no payload on `revert` and `run`: their bodies
-// are decoded by hand in the handlers (see the header). The derived clients
-// use `ToolsGroup`.
-const ToolsApi = HttpApi.make('tools').add(ToolsServerGroup);
+// `revert` and `run` declare their payloads in the contract for the derived
+// client, but are served with `handleRaw`: their bodies are decoded by hand in
+// the handlers, so the 400, 404, 429 and 501 order stays (see the header).
+const ToolsApi = HttpApi.make('tools').add(ToolsGroup);
 
 export interface ToolsApiDependencies {
   auth: Auth;
@@ -256,7 +235,7 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
           }),
         ),
       )
-      .handle(
+      .handleRaw(
         'revert',
         handler(logger, (request, user) =>
           Effect.gen(function* () {
@@ -348,7 +327,7 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
           }),
         ),
       )
-      .handle(
+      .handleRaw(
         'run',
         handler(logger, (request, user) =>
           Effect.gen(function* () {

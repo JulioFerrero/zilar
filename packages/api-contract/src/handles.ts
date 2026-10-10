@@ -3,9 +3,8 @@
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import { HandlesCheckRateLimit, HandlesSchemaErrors } from './chain-c-middleware';
 import { lenientLiterals } from './lenient';
-import { Session } from './middleware';
+import { HandlesCheckRateLimit, HandlesSchemaErrors, Session } from './middleware';
 
 export const HANDLE_CHECK_REASONS = ['invalid', 'reserved', 'taken'] as const;
 

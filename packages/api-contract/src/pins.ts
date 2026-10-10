@@ -7,7 +7,7 @@
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
 import { lenientLiterals } from './lenient';
-import { PinsSchemaErrors, PinsWriteRateLimit, Session } from './middleware';
+import { PinsWriteRateLimit, SchemaErrors, Session } from './middleware';
 
 export const PIN_SENDER_NAME_MAX = 80;
 export const PIN_TEXT_MAX = 300;
@@ -105,6 +105,6 @@ export const PinsGroup = HttpApiGroup.make('pins')
     }).middleware(PinsWriteRateLimit),
   )
   .middleware(Session)
-  .middleware(PinsSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

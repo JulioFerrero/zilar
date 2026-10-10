@@ -20,10 +20,10 @@ import {
   httpErrorResponse,
   mountApi,
   requestIdOf,
+  schemaErrorLayer,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
-import { chainASchemaErrorLayer } from '../groups/schema-errors';
 import {
   getChatBackgroundDefault,
   listChatPrefs,
@@ -148,7 +148,7 @@ export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMou
   const apiLayer = HttpApiBuilder.layer(ChatPrefsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(chainASchemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayer(logger)),
   );
 
   return mountApi(ChatPrefsApi, apiLayer);

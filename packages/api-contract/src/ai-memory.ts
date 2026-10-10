@@ -5,8 +5,7 @@
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import { Session } from './middleware';
-import { AiMemorySchemaErrors, AiMemoryWriteRateLimit } from './middleware-chain-b';
+import { AiMemoryWriteRateLimit, SchemaErrors, Session } from './middleware';
 
 // 1..256 characters; the query and payload decodes are strict, so an excess
 // key is a 400.
@@ -51,6 +50,6 @@ export const AiMemoryGroup = HttpApiGroup.make('aiMemory')
       .middleware(AiMemoryWriteRateLimit),
   )
   .middleware(Session)
-  .middleware(AiMemorySchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

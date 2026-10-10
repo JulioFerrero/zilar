@@ -17,13 +17,18 @@ import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { MediaGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
-import { contractSchemaErrorLayer } from '../auth/schema-errors';
 import { isDmBlocked } from '../blocks/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import type { MediaItemRow } from '../db/rows';
 import { runSql } from '../effect/sql';
-import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import {
+  handler,
+  mountApi,
+  schemaErrorLayer,
+  sessionLayer,
+  type EffectApiMount,
+} from '../effect/http-core';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {
@@ -306,7 +311,7 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(MediaApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(contractSchemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayer(logger)),
   );
 
   return mountApi(MediaApi, apiLayer);

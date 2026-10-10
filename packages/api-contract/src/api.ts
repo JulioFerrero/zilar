@@ -1,114 +1,33 @@
 import { HttpApi } from 'effect/http-api';
-import { PinsGroup } from './pins';
-
-// Each chain adds its groups inside its own area, one import line and one
-// array line per group (`FooGroup,`). The arrays are spread into one
-// `.add(...)` below, so the `HttpApi` type still carries every group and the
-// derived client stays typed. Keep the comment lines around each area: they
-// keep the chains' edits apart so parallel moves merge without conflicts.
-
-// Chain A (T-0892) imports: add `import { XGroup } from './x';` lines below.
+import { AiMemoryGroup } from './ai-memory';
+import { AisGroup } from './ais';
+import { ApprovalsGroup } from './approvals';
+import { AuditGroup } from './audit';
+import { AuthGroup, AuthInvitesPublicGroup } from './auth';
+import { BackgroundsGroup } from './backgrounds';
+import { BlocksGroup } from './blocks';
 import { ChatFoldersGroup } from './chat-folders';
 import { ChatPrefsGroup } from './chat-prefs';
-import { GroupsGroup } from './groups';
-import { InviteLinksGroup } from './invite-links';
-import { RolesGroup } from './roles';
-import { TopicsGroup } from './topics';
-// ----------------------------------------------------------------------------
-// End of chain A imports.
-
-// Chain A (T-0892) groups: add `XGroup,` lines inside the brackets.
-// ----------------------------------------------------------------------------
-const chainAGroups = [
-  ChatPrefsGroup,
-  ChatFoldersGroup,
-  RolesGroup,
-  InviteLinksGroup,
-  GroupsGroup,
-  TopicsGroup,
-] as const;
-// ----------------------------------------------------------------------------
-// End of chain A.
-
-// Chain B (T-0893) imports: add `import { XGroup } from './x';` lines below.
-// ----------------------------------------------------------------------------
-import { AuditGroup } from './audit';
-import { AiMemoryGroup } from './ai-memory';
-import { ConnectionsGroup } from './connections';
-import { ApprovalsGroup } from './approvals';
-import { AisGroup } from './ais';
-import { ToolsGroup } from './tools';
-import { RoutinesGroup } from './routines';
-// End of chain B imports.
-
-// Chain B (T-0893) groups: add `XGroup,` lines inside the brackets.
-// ----------------------------------------------------------------------------
-const chainBGroups = [
-  AuditGroup,
-  AiMemoryGroup,
-  ConnectionsGroup,
-  ApprovalsGroup,
-  AisGroup,
-  ToolsGroup,
-  RoutinesGroup,
-  // (chain B groups)
-] as const;
-// ----------------------------------------------------------------------------
-// End of chain B.
-
-// Chain C (T-0894) imports: add `import { XGroup } from './x';` lines below.
-import { BlocksGroup } from './blocks';
 import { ChatsGroup } from './chats';
+import { ConnectionsGroup } from './connections';
 import { ContactRequestsGroup } from './contact-requests';
 import { ContactsGroup } from './contacts';
 import { DirectoryGroup } from './directory';
-import { HandlesGroup } from './handles';
-import { SearchGroup } from './search';
-// ----------------------------------------------------------------------------
-// End of chain C imports.
-
-// Chain C (T-0894) groups: add `XGroup,` lines inside the brackets.
-// ----------------------------------------------------------------------------
-const chainCGroups = [
-  // (chain C groups)
-  ContactsGroup,
-  BlocksGroup,
-  ContactRequestsGroup,
-  HandlesGroup,
-  DirectoryGroup,
-  SearchGroup,
-  ChatsGroup,
-] as const;
-// ----------------------------------------------------------------------------
-// End of chain C.
-
-// Chain D (T-0895) imports: add `import { XGroup } from './x';` lines below.
-// ----------------------------------------------------------------------------
-import { AuthGroup, AuthInvitesPublicGroup } from './auth';
-import { BackgroundsGroup } from './backgrounds';
 import { GifsGroup } from './gifs';
+import { GroupsGroup } from './groups';
+import { HandlesGroup } from './handles';
 import { IntegrationsGroup } from './integrations';
+import { InviteLinksGroup } from './invite-links';
 import { MachinesGroup } from './machines';
 import { MediaGroup } from './media';
+import { PinsGroup } from './pins';
 import { PushGroup } from './push';
+import { RolesGroup } from './roles';
+import { RoutinesGroup } from './routines';
+import { SearchGroup } from './search';
 import { StickersGroup } from './stickers';
-// End of chain D imports.
-
-// Chain D (T-0895) groups: add `XGroup,` lines inside the brackets.
-// ----------------------------------------------------------------------------
-const chainDGroups = [
-  AuthGroup,
-  AuthInvitesPublicGroup,
-  BackgroundsGroup,
-  GifsGroup,
-  IntegrationsGroup,
-  MachinesGroup,
-  MediaGroup,
-  PushGroup,
-  StickersGroup,
-] as const;
-// ----------------------------------------------------------------------------
-// End of chain D.
+import { ToolsGroup } from './tools';
+import { TopicsGroup } from './topics';
 
 /**
  * The whole HTTP API as one contract. Clients derive from it
@@ -116,9 +35,34 @@ const chainDGroups = [
  * from its group until the modules are mounted as one API.
  */
 export const ZilarApi = HttpApi.make('zilar').add(
+  AiMemoryGroup,
+  AisGroup,
+  ApprovalsGroup,
+  AuditGroup,
+  AuthGroup,
+  AuthInvitesPublicGroup,
+  BackgroundsGroup,
+  BlocksGroup,
+  ChatFoldersGroup,
+  ChatPrefsGroup,
+  ChatsGroup,
+  ConnectionsGroup,
+  ContactRequestsGroup,
+  ContactsGroup,
+  DirectoryGroup,
+  GifsGroup,
+  GroupsGroup,
+  HandlesGroup,
+  IntegrationsGroup,
+  InviteLinksGroup,
+  MachinesGroup,
+  MediaGroup,
   PinsGroup,
-  ...chainAGroups,
-  ...chainBGroups,
-  ...chainCGroups,
-  ...chainDGroups,
+  PushGroup,
+  RolesGroup,
+  RoutinesGroup,
+  SearchGroup,
+  StickersGroup,
+  ToolsGroup,
+  TopicsGroup,
 );

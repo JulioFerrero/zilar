@@ -4,10 +4,8 @@
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import { ChainASchemaErrors } from './chain-a-middleware';
-import { DirectoryRateLimit } from './chain-c-middleware';
 import { lenientLiterals } from './lenient';
-import { Session } from './middleware';
+import { DirectoryRateLimit, SchemaErrors, Session } from './middleware';
 
 export const DIRECTORY_KINDS = ['group', 'channel'] as const;
 
@@ -57,6 +55,6 @@ export const DirectoryGroup = HttpApiGroup.make('directory')
     }).middleware(DirectoryRateLimit),
   )
   .middleware(Session)
-  .middleware(ChainASchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

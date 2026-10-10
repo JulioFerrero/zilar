@@ -7,67 +7,28 @@
 // (`@zilar/api-contract`, T-0864); this file keeps the handlers and layers.
 
 import { Effect, Layer } from 'effect';
-import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
-import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
-import { CurrentUser, PinsGroup, PinsSchemaErrors, PinsWriteRateLimit } from '@zilar/api-contract';
+import { HttpServer, HttpRouter } from 'effect/http';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { CurrentUser, PinsGroup, PinsWriteRateLimit } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {
-  failureResponse,
-  httpErrorResponse,
   requestIdOf,
+  schemaErrorLayer,
   sessionLayer,
   withErrorEnvelope,
   type EffectApiMount,
   type EffectApiRoute,
 } from '../effect/http-core';
+import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { listPins, pinMessage, unpinMessage, type PinsServiceDeps } from './service';
 
 export const PINS_WRITE_RATE_LIMIT_MAX = 60;
 export const PINS_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-
-// Applied to the group so a query or payload decode failure renders like the
-// old zod path: 400 `invalid_request`. No test asserts the exact text, so the
-// Effect Schema message is used (the old text was the first zod issue).
-function schemaErrorLayer(logger: Logger): Layer.Layer<PinsSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(PinsSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message),
-      );
-    }),
-  );
-}
-
-// Runs the write budget before the payload is decoded, exactly like the old
-// POST/DELETE routes' `writeLimiter.allow` -> decode order: an invalid body
-// still spends budget. `requires: CurrentUser` is satisfied by `Session`.
-function writeRateLimitLayer(limiter: RateLimiter): Layer.Layer<PinsWriteRateLimit> {
-  return Layer.succeed(
-    PinsWriteRateLimit,
-    PinsWriteRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many pins, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
 
 const PinsApi = HttpApi.make('pins').add(PinsGroup);
 
@@ -159,7 +120,11 @@ export function createPinsApi(deps: PinsApiDependencies): EffectApiMount {
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayer(logger)),
-    Layer.provide(writeRateLimitLayer(writeLimiter)),
+    // The write budget runs before the payload is decoded: an invalid body
+    // still spends budget.
+    Layer.provide(
+      rateLimitLayer(PinsWriteRateLimit, writeLimiter, 'Too many pins, try again later'),
+    ),
   );
 
   // The edge keeps the request log (redacted path); the router's own logger prints

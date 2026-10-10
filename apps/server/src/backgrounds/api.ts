@@ -11,10 +11,15 @@ import { HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { BackgroundsGroup, BackgroundsUploadRateLimit } from '@zilar/api-contract';
 import type { Logger } from 'pino';
-import { contractSchemaErrorLayer } from '../auth/schema-errors';
-import { rateLimitLayer } from '../auth/rate-limit-layer';
+import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { HttpError } from '../errors';
-import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import {
+  handler,
+  mountApi,
+  schemaErrorLayer,
+  sessionLayer,
+  type EffectApiMount,
+} from '../effect/http-core';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { BackgroundsRoutesDependencies } from './routes';
 import {
@@ -152,14 +157,14 @@ export function createBackgroundsApi(deps: BackgroundsApiDependencies): EffectAp
   const apiLayer = HttpApiBuilder.layer(BackgroundsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(contractSchemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayer(logger)),
     // The upload budget runs before the body is read, exactly like the old
     // route's `uploadLimiter.allow` -> declared-length -> `readCapped` order.
     Layer.provide(
       rateLimitLayer(
         BackgroundsUploadRateLimit,
-        'Too many background uploads, try again later',
         uploadLimiter,
+        'Too many background uploads, try again later',
       ),
     ),
   );

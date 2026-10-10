@@ -1,5 +1,5 @@
 import { Schema } from 'effect';
-import { ApiError, Machine as MachineSchema, runApi } from '@zilar/api-contract';
+import { ApiError, runApi } from '@zilar/api-contract';
 import type { Machine, MachineStatus, PairingCode } from '@zilar/api-contract';
 import { struct } from '@zilar/protocol';
 
@@ -11,9 +11,8 @@ import { rawRequest } from './effect/raw-request';
  * The machines (runners) API (`/api/machines`), the mobile twin of the web
  * client in `apps/web/src/lib/api.ts`. The routes come from the client derived
  * from the shared contract (`@zilar/api-contract`, `machines.ts`, T-0895).
- * Two calls stay hand-written: `renameMachine` (the server reads that body by
- * hand, so the contract declares no payload for it) and `setAiMachine` (the
- * AIs module is not in the contract yet).
+ * One call stays hand-written: `setAiMachine` (the AIs module is not in the
+ * contract yet).
  *
  * `setAiMachine` mirrors web's `setAiMachine`: the AI's home machine is a
  * separate route on purpose, not part of the general PATCH.
@@ -59,12 +58,9 @@ export function createMachinesApi(
     approveMachine: (id) => runApi(client.machines.approve({ params: { id } })),
     denyMachine: (id) => runApi(client.machines.deny({ params: { id } })),
     revokeMachine: (id) => runApi(client.machines.revoke({ params: { id } })),
+    // The server trims the name; the contract encodes the trimmed form.
     renameMachine: (id, name) =>
-      rawRequest(transport, `/api/machines/${encodeURIComponent(id)}`, MachineSchema, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name }),
-      }),
+      runApi(client.machines.rename({ params: { id }, payload: { name: name.trim() } })),
     deleteMachine: (id) => runApi(client.machines.remove({ params: { id } })),
     setAiMachine: async (aiId, machineId) => {
       const parsed = await rawRequest(

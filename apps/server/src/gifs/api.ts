@@ -20,12 +20,12 @@ import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { GifsGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
-import { contractSchemaErrorLayer } from '../auth/schema-errors';
 import type { ServerConfig } from '../config';
 import {
   REQUEST_ID_HEADER,
   handler,
   reflectRoutes,
+  schemaErrorLayer,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
@@ -346,7 +346,7 @@ export function createGifsApi(deps: GifsApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(GifsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(contractSchemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayer(logger)),
   );
 
   // The edge keeps the request log (redacted path); the router's own logger prints

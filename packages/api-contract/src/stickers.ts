@@ -4,20 +4,23 @@
 // same-origin so the renderer can auto-load them without leaking the viewer's
 // IP.
 //
-// Five routes declare no payload or query on purpose, and a client sends their
-// bodies itself; the contract only types the replies:
+// Three routes are decoded by hand in the server handlers and declare only
+// what the derived client needs to type and encode the call:
 //
 // - `discover` and `removeFavorite` read their query by hand, with a fixed 400
-//   text per route.
-// - `importTelegram` decodes its body by hand after the 501 token check, so a
-//   missing token never spends the import budget.
-// - `uploadSticker` and `serveFile` carry raw bytes (multipart or the image
-//   itself), so they stay outside the derived client.
+//   text per route, so their query keys are `RawQueryValue` (the router never
+//   rejects them).
+// - `importTelegram` declares its payload but is served with `handleRaw`: it
+//   decodes its body after the 501 token check, so a missing token never
+//   spends the import budget.
+//
+// `uploadSticker` and `serveFile` carry raw bytes (multipart or the image
+// itself), so they stay outside the derived client.
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
-import { StickersSchemaErrors, StickersUploadRateLimit } from './chain-d-middleware';
-import { Session } from './middleware';
+import { Session, StickersSchemaErrors, StickersUploadRateLimit } from './middleware';
+import { RawQueryValue } from './raw-query';
 
 export const STICKERS_MAX_PER_PACK = 120;
 export const STICKER_PACK_TITLE_MIN = 1;
@@ -71,6 +74,11 @@ export const ReorderStickerPanelPayload = Schema.Struct({
 /** Strict, `sticker_id` is a UUID. */
 export const AddStickerFavoritePayload = Schema.Struct({
   sticker_id: Schema.String.pipe(Schema.check(Schema.isUUID())),
+});
+
+/** A Telegram pack name or link, 1..512 characters; strict when decoded by the server. */
+export const ImportTelegramPayload = Schema.Struct({
+  input: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
 });
 
 export const Sticker = Schema.Struct({
@@ -134,9 +142,11 @@ export const StickersGroup = HttpApiGroup.make('stickers')
       success: StickerPack.pipe(HttpApiSchema.status(201)),
     }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
     HttpApiEndpoint.get('discover', '/sticker-packs/discover', {
+      query: { q: RawQueryValue, cursor: RawQueryValue },
       success: StickerDiscoverPage,
     }),
     HttpApiEndpoint.post('importTelegram', '/sticker-packs/import/telegram', {
+      payload: ImportTelegramPayload,
       success: TelegramImportResult,
     }),
     HttpApiEndpoint.patch('patchPack', '/sticker-packs/:id', {
@@ -172,6 +182,7 @@ export const StickersGroup = HttpApiGroup.make('stickers')
       success: Sticker,
     }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
     HttpApiEndpoint.delete('removeFavorite', '/sticker-favorites', {
+      query: { sticker_id: RawQueryValue },
       success: StickerOk,
     }),
     // Binary routes: the upload reads its multipart/raw body in the handler,

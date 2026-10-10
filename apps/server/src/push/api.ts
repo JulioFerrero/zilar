@@ -4,7 +4,7 @@
 // Its store runs on effect/sql.
 //
 // The three bodies are decoded manually inside their handlers (Effect Schema,
-// same rules as the old zod schemas) instead of as endpoint payloads, so each
+// same rules as the old zod schemas) and served with `handleRaw`, so each
 // route keeps its exact order: `requirePush()` runs before the decode, and
 // the decode runs before that route's limiter check — exactly like the old
 // `requireSession` -> `requirePush` -> decode -> limiter sequence. The DELETE
@@ -18,15 +18,24 @@
 import { randomUUID } from 'node:crypto';
 import { Effect, Layer, Option, Schema } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
-import { PushGroup } from '@zilar/api-contract';
-import { struct } from '@zilar/protocol';
+import {
+  PushGroup,
+  PushSettingsPayload,
+  PushTestPayload,
+  RegisterPushDevicePayload,
+} from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
-import { contractSchemaErrorLayer } from '../auth/schema-errors';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
-import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import {
+  handler,
+  mountApi,
+  schemaErrorLayer,
+  sessionLayer,
+  type EffectApiMount,
+} from '../effect/http-core';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { syncPushSubscriptionsForUser } from '../topics/rooms';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -34,7 +43,6 @@ import { createPushCipher } from './crypto';
 import { pushConfigError, type PushConfig } from './config';
 import { parseNode, randomNode } from './protocol';
 import { createWebPushSender, isExpiredSubscription, type WebPushDelivery } from './sender';
-import { WebPushKeysSchema, WebPushSubscriptionSchema } from './subscriptions';
 import {
   devicesForUser,
   markDeviceFailed,
@@ -73,29 +81,9 @@ export interface PushApiDependencies extends PushRoutesDependencies {
   testLimiter?: RateLimiter;
 }
 
-// The subscribe body reuses the stored subscription schemas: the endpoint,
-// expiration time and keys are exactly `WebPushSubscriptionSchema`, and
-// `userAgent` is the extra device label. `struct` keeps zod's mutable field
-// types.
-const SubscribeBody = struct({
-  endpoint: WebPushSubscriptionSchema.fields.endpoint,
-  expirationTime: WebPushSubscriptionSchema.fields.expirationTime,
-  keys: WebPushKeysSchema,
-  userAgent: Schema.optional(
-    Schema.NullOr(Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256)))),
-  ),
-});
-
-// Replaces `showPreviewsSchema` (zod strict): excess keys fail the decode.
-const ShowPreviewsBody = struct({
-  showPreviews: Schema.Boolean,
-});
-
-// Replaces `testSchema` (zod strict): excess keys fail the decode.
-const TestBody = struct({
-  subscriptionId: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
-});
-
+// The three bodies' schemas live in the contract (`RegisterPushDevicePayload`,
+// `PushSettingsPayload`, `PushTestPayload`) so the derived client encodes them;
+// the handlers decode them by hand. Settings and test are strict.
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 
 const PushApi = HttpApi.make('push').add(PushGroup);
@@ -182,7 +170,7 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
           }),
         ),
       )
-      .handle(
+      .handleRaw(
         'subscribe',
         handler(logger, (request, user) =>
           Effect.gen(function* () {
@@ -190,7 +178,7 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
             const raw = yield* request.request.json.pipe(
               Effect.catchCause(() => Effect.succeed<unknown>(undefined)),
             );
-            const decoded = Schema.decodeUnknownOption(SubscribeBody)(raw);
+            const decoded = Schema.decodeUnknownOption(RegisterPushDevicePayload)(raw);
             if (Option.isNone(decoded)) {
               throw new HttpError(400, 'invalid_subscription', 'The push subscription is invalid');
             }
@@ -386,7 +374,7 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
           }),
         ),
       )
-      .handle(
+      .handleRaw(
         'updateSettings',
         handler(logger, (request, user) =>
           Effect.gen(function* () {
@@ -394,7 +382,7 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
             const raw = yield* request.request.json.pipe(
               Effect.catchCause(() => Effect.succeed<unknown>(null)),
             );
-            const decoded = Schema.decodeUnknownOption(ShowPreviewsBody, STRICT_DECODE)(raw);
+            const decoded = Schema.decodeUnknownOption(PushSettingsPayload, STRICT_DECODE)(raw);
             if (Option.isNone(decoded)) {
               throw new HttpError(400, 'invalid_request', 'showPreviews must be a boolean');
             }
@@ -408,7 +396,7 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
           }),
         ),
       )
-      .handle(
+      .handleRaw(
         'test',
         handler(logger, (request, user) =>
           Effect.gen(function* () {
@@ -416,7 +404,7 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
             const raw = yield* request.request.json.pipe(
               Effect.catchCause(() => Effect.succeed<unknown>(undefined)),
             );
-            const decoded = Schema.decodeUnknownOption(TestBody, STRICT_DECODE)(raw ?? {});
+            const decoded = Schema.decodeUnknownOption(PushTestPayload, STRICT_DECODE)(raw ?? {});
             if (Option.isNone(decoded)) {
               throw new HttpError(400, 'invalid_request', 'subscriptionId is required');
             }
@@ -489,7 +477,7 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(PushApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(contractSchemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayer(logger)),
   );
 
   return mountApi(PushApi, apiLayer);

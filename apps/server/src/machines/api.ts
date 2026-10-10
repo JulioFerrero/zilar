@@ -12,11 +12,17 @@
 
 import { Effect, Layer, Option, Schema } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
-import { MachinesGroup, MachinesPairingCodeRateLimit, type Machine } from '@zilar/api-contract';
+import {
+  MachinesGroup,
+  MachinesPairingCodeRateLimit,
+  PairMachinePayload,
+  RenameMachinePayload,
+  type Machine,
+} from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
-import { rateLimitLayer } from '../auth/rate-limit-layer';
+import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
@@ -78,85 +84,12 @@ export type MachinesLogger = Logger;
 
 const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 
-// zod `.trim().min(1).max(64)`.
-const MachineName = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64));
-
-// Strips nothing and stays non-strict; a malformed body is handled by the
-// caller with the route's own text.
-const PairingCode = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64));
-const PublicKey = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512));
-const Signature = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512));
-
-// A capability report value: `z.union([string, number, boolean, string[]])`.
-const ToolsValue = Schema.Union([
-  Schema.String.check(Schema.isMaxLength(1024)),
-  Schema.Number,
-  Schema.Boolean,
-  Schema.Array(Schema.String.check(Schema.isMaxLength(128))).check(Schema.isMaxLength(64)),
-]);
-
-// `Schema.Record` does not run checks on the key schema, so the key length and
-// the 64-entry cap are enforced on the whole record (`toolsValueSchema`).
-const Tools = Schema.Record(Schema.String, ToolsValue).check(
-  Schema.makeFilter((tools) => {
-    const keys = Object.keys(tools);
-    if (keys.length > 64) {
-      return 'tools must have at most 64 entries';
-    }
-    if (keys.some((key) => key.length < 1 || key.length > 128)) {
-      return 'tool keys must be 1-128 characters';
-    }
-    return undefined;
-  }),
-);
-
-// The capability report (§11.3), snake_case as the runner sends it. Strict so a
-// report with an unexpected field is rejected rather than silently stored.
-const Capabilities = Schema.Struct({
-  os: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
-  os_version: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
-  arch: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
-  cpu: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
-  cores: Schema.Number.check(
-    Schema.isInt(),
-    Schema.isGreaterThanOrEqualTo(1),
-    Schema.isLessThanOrEqualTo(1024),
-  ),
-  ram_gb: Schema.Number.check(
-    Schema.isGreaterThanOrEqualTo(0),
-    Schema.isLessThanOrEqualTo(1000000),
-  ),
-  disk_free_gb: Schema.Number.check(
-    Schema.isGreaterThanOrEqualTo(0),
-    Schema.isLessThanOrEqualTo(1000000),
-  ),
-  power: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
-  drivers: Schema.Array(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64))).check(
-    Schema.isMaxLength(32),
-  ),
-  tools: Tools,
-  labels: Schema.Array(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64))).check(
-    Schema.isMaxLength(32),
-  ),
-  runner_version: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
-});
-
-const PairBody = Schema.Struct({
-  code: PairingCode,
-  publicKey: PublicKey,
-  signature: Signature,
-  name: MachineName,
-  capabilities: Capabilities,
-});
-
-const RenameBody = Schema.Struct({ name: MachineName });
-
-// The group and the reply schemas live in the shared contract
-// (`@zilar/api-contract`, `machines.ts`, T-0895). `rename` and `pair` read the
-// body by hand (their own 400 texts, and `pair` answers every failure with the
-// same `invalid_code`), so the body schemas `RenameBody` and `PairBody` stay
-// here: a declared payload would be decoded by the framework first and change
-// the error order.
+// The group, the body schemas and the reply schemas live in the shared
+// contract (`@zilar/api-contract`, `machines.ts`, T-0895). `rename` and `pair`
+// declare their payloads for the derived client but are served with
+// `handleRaw`: they read the body by hand (their own 400 texts, and `pair`
+// answers every failure with the same `invalid_code`), so the error order
+// stays.
 const MachinesApi = HttpApi.make('machines').add(MachinesGroup);
 
 // The wire form of a `PublicMachine`: the dates as the ISO strings
@@ -323,7 +256,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
           return toMachineView(toPublicMachine(revoked));
         }),
       )
-      .handle(
+      .handleRaw(
         'rename',
         handler(logger, (request, user) =>
           Effect.gen(function* () {
@@ -334,7 +267,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
             if (raw === INVALID_JSON) {
               throw new HttpError(400, 'invalid_request', 'Invalid JSON body');
             }
-            const parsed = Schema.decodeUnknownOption(RenameBody, STRICT_DECODE)(raw);
+            const parsed = Schema.decodeUnknownOption(RenameMachinePayload, STRICT_DECODE)(raw);
             if (Option.isNone(parsed)) {
               throw new HttpError(400, 'invalid_request', 'Invalid machine update');
             }
@@ -371,7 +304,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
           await recordAudit({ actorUserId: user.id, action: 'machine.deleted', subjectId: id });
         }),
       )
-      .handle(
+      .handleRaw(
         'pair',
         // Public route: no session, so it uses the envelope directly.
         (request) =>
@@ -394,7 +327,7 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
               const raw = yield* request.request.json.pipe(
                 Effect.catchCause(() => Effect.succeed<unknown>(undefined)),
               );
-              const parsed = Schema.decodeUnknownOption(PairBody, STRICT_DECODE)(raw);
+              const parsed = Schema.decodeUnknownOption(PairMachinePayload, STRICT_DECODE)(raw);
               const normalized = Option.isSome(parsed)
                 ? normalizePairingCode(parsed.value.code)
                 : null;
@@ -461,8 +394,8 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
     Layer.provide(
       rateLimitLayer(
         MachinesPairingCodeRateLimit,
-        'Too many pairing codes, try again later',
         createCodeLimiter,
+        'Too many pairing codes, try again later',
       ),
     ),
   );

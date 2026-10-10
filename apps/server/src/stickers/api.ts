@@ -28,21 +28,22 @@
 
 import { Effect, Layer, Option, Schema, Stream } from 'effect';
 import { HttpServerRequest, HttpServerResponse } from 'effect/http';
-import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import {
   AddStickerFavoritePayload,
+  ImportTelegramPayload,
   StickersGroup,
   StickersSchemaErrors,
   StickersUploadRateLimit,
 } from '@zilar/api-contract';
 import type { Logger } from 'pino';
-import { rateLimitLayer } from '../auth/rate-limit-layer';
+import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import {
-  failureResponse,
   handler,
   mountApi,
-  requestIdOf,
+  schemaErrorLayerFor,
   sessionLayer,
+  type SchemaErrorRender,
   type EffectApiMount,
 } from '../effect/http-core';
 import { HttpError } from '../errors';
@@ -93,20 +94,16 @@ export interface StickersApiDependencies extends StickersRoutesDependencies {
 // decodes by hand.
 
 // Optional `q` <= 60, `cursor` <= 128. The route decodes the query manually
-// with this Schema (the endpoint declares no query) so an invalid query
-// answers the fixed 400 message.
+// with this Schema (the contract declares the keys as `RawQueryValue`, which
+// the router never rejects) so an invalid query answers the fixed 400 message.
 const DiscoverQuery = Schema.Struct({
   q: Schema.optional(Schema.String.check(Schema.isMaxLength(60))),
   cursor: Schema.optional(Schema.String.check(Schema.isMaxLength(128))),
 });
 
-// Strict, `input` 1..512. The import route decodes this manually in its
-// handler (after the 501 token check), so strictness comes from
-// `STRICT_PAYLOAD` below.
-const TelegramImportBody = Schema.Struct({
-  input: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(512)),
-});
-
+// The import route decodes `ImportTelegramPayload` (the contract's schema)
+// manually in its handler (after the 501 token check), so strictness comes
+// from `STRICT_PAYLOAD` below.
 const STRICT_PAYLOAD = { onExcessProperty: 'error' } as const;
 
 // Strict, `sticker_id: uuid`; the favorite-delete route decodes it from the
@@ -147,20 +144,15 @@ function favoriteQueryRecord(request: HttpServerRequest.HttpServerRequest): Reco
 // read (and cached) by the failed payload decode. The discover and
 // favorite-delete routes decode manually in their handlers, so they never
 // reach this layer.
-function schemaErrorLayer(logger: Logger): Layer.Layer<StickersSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(StickersSchemaErrors, () =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      const body = parseJsonOrNull(yield* Effect.orDie(request.text));
-      const message = matchSchemaErrorMessage(request.originalUrl, body);
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', message),
-      );
-    }),
-  );
-}
+const renderSchemaError: SchemaErrorRender = (_error, request) =>
+  Effect.gen(function* () {
+    const body = parseJsonOrNull(yield* Effect.orDie(request.text));
+    return new HttpError(
+      400,
+      'invalid_request',
+      matchSchemaErrorMessage(request.originalUrl, body),
+    );
+  });
 
 function isEmptyRecord(value: unknown): boolean {
   return (
@@ -280,9 +272,9 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
           createPack(serviceDeps(), user.id, { ...request.payload }),
         ),
       )
-      // The query is decoded manually inside the handler (the endpoint
-      // declares no query) so an invalid query answers the fixed 400 message,
-      // like the media gallery's hand decode.
+      // The query is decoded manually inside the handler (the contract's
+      // `RawQueryValue` keys never fail in the router) so an invalid query
+      // answers the fixed 400 message, like the media gallery's hand decode.
       .handle(
         'discover',
         handler(logger, (request) => {
@@ -304,8 +296,8 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
       // any handler code, so a malformed body answered 400 instead of the
       // specified 501 `import_unavailable` (the old order is session ->
       // token -> body -> pack-input parse -> limiter -> import). For the same
-      // reason the endpoint cannot declare `TelegramImportBody` as its payload.
-      .handle(
+      // reason the endpoint is served with `handleRaw`.
+      .handleRaw(
         'importTelegram',
         handler(logger, (request, user) =>
           Effect.gen(function* () {
@@ -314,7 +306,7 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
               throw new HttpError(501, 'import_unavailable', 'Telegram import is not configured');
             }
             const raw = parseJsonOrNull(yield* Effect.orDie(request.request.text));
-            const decoded = Schema.decodeUnknownOption(TelegramImportBody, STRICT_PAYLOAD)(raw);
+            const decoded = Schema.decodeUnknownOption(ImportTelegramPayload, STRICT_PAYLOAD)(raw);
             if (Option.isNone(decoded)) {
               throw new HttpError(
                 400,
@@ -546,15 +538,15 @@ export function createStickersApi(deps: StickersApiDependencies): EffectApiMount
   const apiLayer = HttpApiBuilder.layer(StickersApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayerFor(StickersSchemaErrors, logger, renderSchemaError)),
     // The upload budget is the first step after the session, so it is a plain
     // endpoint middleware (the Telegram import budget is not: it runs after
     // the 501 token check and the input parse, so it stays in its handler).
     Layer.provide(
       rateLimitLayer(
         StickersUploadRateLimit,
-        'Too many sticker uploads, try again later',
         uploadLimiter,
+        'Too many sticker uploads, try again later',
       ),
     ),
   );

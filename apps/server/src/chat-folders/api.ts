@@ -20,10 +20,10 @@ import {
   httpErrorResponse,
   mountApi,
   requestIdOf,
+  schemaErrorLayer,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
-import { chainASchemaErrorLayer } from '../groups/schema-errors';
 import {
   createChatFolder,
   deleteChatFolder,
@@ -157,7 +157,7 @@ export function createChatFoldersApi(deps: ChatFoldersApiDependencies): EffectAp
   const apiLayer = HttpApiBuilder.layer(ChatFoldersApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(chainASchemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayer(logger)),
   );
 
   return mountApi(ChatFoldersApi, apiLayer);

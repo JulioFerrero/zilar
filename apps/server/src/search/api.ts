@@ -6,17 +6,16 @@
 
 import { Effect, Layer } from 'effect';
 import { HttpServerRequest } from 'effect/http';
-import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { CurrentUser, SearchGroup, SearchGuards, SearchSchemaErrors } from '@zilar/api-contract';
-import type { Logger } from 'pino';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {
-  failureResponse,
   handler,
   httpErrorResponse,
   mountApi,
   requestIdOf,
+  schemaErrorLayerFor,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
@@ -32,21 +31,7 @@ export type { SearchRoutesDependencies };
 // The schemas, the group and the middleware tags live in the shared contract
 // (`@zilar/api-contract`, T-0894).
 //
-// Any query decode failure is the fixed text `Invalid search query`, exactly
-// like the old route.
-function schemaErrorLayer(logger: Logger): Layer.Layer<SearchSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(SearchSchemaErrors, () =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', 'Invalid search query'),
-      );
-    }),
-  );
-}
-
+// Any query decode failure is the fixed text `Invalid search query`.
 // The archive and rate-limit guards run before the query is decoded, exactly
 // like the old route's session -> 501 -> limiter -> decode order. `requires:
 // CurrentUser` is satisfied by `Session`.
@@ -108,7 +93,7 @@ export function createSearchApi(deps: SearchRoutesDependencies): EffectApiMount 
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(guardsLayer(deps, limiter)),
-    Layer.provide(schemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayerFor(SearchSchemaErrors, logger, 'Invalid search query')),
   );
 
   return mountApi(SearchApi, apiLayer);

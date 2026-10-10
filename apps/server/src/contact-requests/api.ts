@@ -6,9 +6,8 @@
 // The schemas, the group and its middleware tags live in the shared contract
 // (`@zilar/api-contract`, T-0894); this file keeps the handlers and layers.
 
-import { Effect, Layer } from 'effect';
-import { HttpServerRequest } from 'effect/http';
-import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
+import { Layer } from 'effect';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import {
   ContactRequestByHandleRateLimit,
   ContactRequestCreateRateLimit,
@@ -21,15 +20,13 @@ import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
-import { rateLimitLayer } from '../blocks/chain-c-layers';
+import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import {
-  failureResponse,
   handler,
   mountApi,
-  requestIdOf,
+  schemaErrorLayerFor,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
@@ -50,26 +47,6 @@ export const CONTACT_REQUEST_READ_RATE_LIMIT_MAX = 60;
 export const CONTACT_REQUEST_READ_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 export const BY_HANDLE_RATE_LIMIT_MAX = 30;
 export const BY_HANDLE_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-
-// Applied to the group so a payload decode failure answers 400
-// `invalid_request` with one fixed message. This module keeps its own layer
-// because the shared schema-error layer carries the schema's text instead.
-function schemaErrorLayer(logger: Logger): Layer.Layer<ContactRequestsSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(ContactRequestsSchemaErrors, () =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(
-          400,
-          'invalid_request',
-          'handle must be a string of 1 to 64 characters, with no other keys',
-        ),
-      );
-    }),
-  );
-}
 
 const RATE_LIMITED_MESSAGE = 'Too many attempts, try again later';
 
@@ -202,7 +179,14 @@ export function createContactRequestsApi(deps: ContactRequestsApiDependencies): 
   const apiLayer = HttpApiBuilder.layer(ContactRequestsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
+    // A payload decode failure answers one fixed message, not the schema's text.
+    Layer.provide(
+      schemaErrorLayerFor(
+        ContactRequestsSchemaErrors,
+        logger,
+        'handle must be a string of 1 to 64 characters, with no other keys',
+      ),
+    ),
     Layer.provide(
       rateLimitLayer(ContactRequestCreateRateLimit, createLimiter, RATE_LIMITED_MESSAGE),
     ),

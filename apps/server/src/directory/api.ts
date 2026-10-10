@@ -9,9 +9,14 @@ import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import { rateLimitLayer } from '../blocks/chain-c-layers';
-import { chainASchemaErrorLayer } from '../groups/schema-errors';
-import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import { rateLimitLayer } from '../effect/rate-limit-middleware';
+import {
+  handler,
+  mountApi,
+  schemaErrorLayer,
+  sessionLayer,
+  type EffectApiMount,
+} from '../effect/http-core';
 import { publicGroupForHandle, searchDirectory, type GroupKind } from './service';
 
 export const DIRECTORY_RATE_LIMIT_MAX = 30;
@@ -97,7 +102,7 @@ export function createDirectoryApi(deps: DirectoryApiDependencies): EffectApiMou
     Layer.provide(
       rateLimitLayer(DirectoryRateLimit, limiter, 'Too many attempts, try again later'),
     ),
-    Layer.provide(chainASchemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayer(logger)),
   );
 
   return mountApi(DirectoryApi, apiLayer);

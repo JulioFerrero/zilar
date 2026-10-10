@@ -10,8 +10,8 @@ import {
   ContactRequestCreateRateLimit,
   ContactRequestReadRateLimit,
   ContactRequestsSchemaErrors,
-} from './chain-c-middleware';
-import { Session } from './middleware';
+  Session,
+} from './middleware';
 
 export const ContactRequestStatus = Schema.Literals([
   'pending',

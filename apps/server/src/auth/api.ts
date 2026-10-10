@@ -23,6 +23,7 @@ import {
   handler,
   mountApi,
   requestIdOf,
+  schemaErrorLayer,
   sessionLayer,
   withErrorEnvelope,
   type EffectApiMount,
@@ -31,7 +32,6 @@ import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { findXmppAccount } from '../xmpp/provisioning';
 import type { Auth } from './auth';
-import { contractSchemaErrorLayer } from './schema-errors';
 import { createInvite, findInviteByCode, findUsableInvite, revokeInvite } from './invites';
 
 export interface AuthApiDependencies {
@@ -238,7 +238,7 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(AuthApi).pipe(
     Layer.provide(Layer.merge(groupLayer, publicGroupLayer)),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(contractSchemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayer(logger)),
   );
 
   return mountApi(AuthApi, apiLayer);

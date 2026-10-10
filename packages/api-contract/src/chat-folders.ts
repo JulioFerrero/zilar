@@ -5,8 +5,7 @@
 
 import { Exit, Schema, SchemaGetter } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
-import { ChainASchemaErrors } from './chain-a-middleware';
-import { Session } from './middleware';
+import { SchemaErrors, Session } from './middleware';
 
 // Mirrors `packages/chat-core/src/folders.ts` (FOLDER_ICONS, FOLDER_NAME_MAX,
 // FOLDER_CHATS_MAX). The contract does not depend on `@zilar/chat-core`.
@@ -158,6 +157,6 @@ export const ChatFoldersGroup = HttpApiGroup.make('chatFolders')
     }),
   )
   .middleware(Session)
-  .middleware(ChainASchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

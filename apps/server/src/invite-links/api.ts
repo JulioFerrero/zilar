@@ -21,11 +21,11 @@ import {
   httpErrorResponse,
   mountApi,
   requestIdOf,
+  schemaErrorLayer,
   sessionLayer,
   socketAddressOf,
   type EffectApiMount,
 } from '../effect/http-core';
-import { chainASchemaErrorLayer } from '../groups/schema-errors';
 import { clientIpFrom } from '../http/client-ip';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -220,7 +220,7 @@ export function createInviteLinksApi(deps: InviteLinksApiDependencies): EffectAp
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(previewRateLimitLayer(previewLimiter)),
-    Layer.provide(chainASchemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayer(logger)),
   );
 
   return mountApi(InviteLinksApi, apiLayer);

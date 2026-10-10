@@ -791,10 +791,9 @@ export async function clearAiMemory(chat: string, aiId: string): Promise<void> {
 // tab; `before` is the `next` cursor of the previous page (microseconds as a
 // string). Items arrive newest first.
 
-// The reply schemas live in `@zilar/api-contract` (`media.ts`, T-0895). The
-// contract declares no query (the server decodes it by hand, after its archive
-// check and limiter), so the call keeps building its own query string and
-// decodes with the contract page schema.
+// The schemas and the query keys live in `@zilar/api-contract` (`media.ts`,
+// T-0895). The server decodes the query by hand, after its archive check and
+// limiter, so every key travels as a plain string.
 export type { MediaItem, MediaPage, MediaTab };
 
 export interface ListChatMediaInput {
@@ -805,16 +804,16 @@ export interface ListChatMediaInput {
 }
 
 export function listChatMedia(input: ListChatMediaInput): Promise<MediaPage> {
-  const params = new URLSearchParams();
-  params.set('chat', input.chat);
-  params.set('type', input.type);
-  if (input.before !== undefined) {
-    params.set('before', input.before);
-  }
-  if (input.limit !== undefined) {
-    params.set('limit', String(input.limit));
-  }
-  return request(`/media?${params.toString()}`, MediaPageSchema);
+  return callApi((client) =>
+    client.media.gallery({
+      query: {
+        chat: input.chat,
+        type: input.type,
+        ...(input.before === undefined ? {} : { before: input.before }),
+        ...(input.limit === undefined ? {} : { limit: String(input.limit) }),
+      },
+    }),
+  ).then((page) => ({ items: [...page.items], next: page.next }));
 }
 
 // --- AIs (T-0032) --------------------------------------------------------
@@ -972,24 +971,16 @@ export async function deleteConnection(id: string): Promise<void> {
   await callApi((client) => client.connections.remove({ params: { id } }));
 }
 
-// Chain D (T-0895): the contract types its groups share, in one import so the
-// other chains' edits to the top of this file stay apart.
 import {
   BackgroundImage as BackgroundImageSchema,
-  GifResultPage,
   Machine,
-  MediaPage as MediaPageSchema,
-  PushSettings as PushSettingsSchema,
-  RegisteredDevice as RegisteredDeviceSchema,
   Sticker as StickerSchema,
-  StickerDiscoverPage as StickerDiscoverPageSchema,
-  StickerOk as StickerOkSchema,
-  TelegramImportResult as TelegramImportResultSchema,
   type AuthInvite,
   type AuthMe,
   type BackgroundImage,
   type BackgroundListItem,
   type GifResult,
+  type GifResultPage,
   type IntegrationsStatus,
   type MachineStatus,
   type MediaItem,
@@ -1011,8 +1002,7 @@ import {
 // schema works before T-0071 (the runner hub) lands.
 
 // The schemas and endpoints live in `@zilar/api-contract` (`machines.ts`,
-// T-0895). `renameMachine` stays on `request()`: the server reads that body by
-// hand (its own 400 texts), so the contract declares no payload for it.
+// T-0895).
 export type { Machine, MachineStatus, PairingCode };
 export { Machine as machineSchema };
 
@@ -1037,11 +1027,10 @@ export function revokeMachine(id: string): Promise<Machine> {
 }
 
 export function renameMachine(id: string, name: string): Promise<Machine> {
-  return request(`/machines/${encodeURIComponent(id)}`, Machine, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
+  // The server trims the name; the contract encodes the trimmed form.
+  return callApi((client) =>
+    client.machines.rename({ params: { id }, payload: { name: name.trim() } }),
+  );
 }
 
 export async function deleteMachine(id: string): Promise<void> {
@@ -1145,10 +1134,8 @@ export function searchMessages(
 // lists `server`-visible packs, and files are served same-origin so the
 // renderer can auto-load them without leaking the viewer's IP.
 // The schemas and endpoints live in `@zilar/api-contract` (`stickers.ts`,
-// T-0895). `discoverStickerPacks`, `removeStickerFavorite` and
-// `importTelegramStickers` stay on `request()` (the server decodes their query
-// or body by hand, so the contract declares none), and `uploadStickerFile`
-// posts raw image bytes; they decode with the contract's reply schemas.
+// T-0895). `uploadStickerFile` posts raw image bytes, so it stays outside the
+// client and decodes with the contract's reply schema.
 export type { Sticker };
 
 // The pack keeps a mutable `stickers` array, the shape its editor takes.
@@ -1179,12 +1166,10 @@ export function createStickerPack(input: {
 export function discoverStickerPacks(
   query?: string,
 ): Promise<{ packs: StickerPack[]; next: string | null }> {
-  const params = new URLSearchParams();
-  if (query !== undefined && query.trim() !== '') {
-    params.set('q', query.trim());
-  }
-  const suffix = params.size === 0 ? '' : `?${params.toString()}`;
-  return request(`/sticker-packs/discover${suffix}`, StickerDiscoverPageSchema).then((page) => ({
+  const q = query?.trim();
+  return callApi((client) =>
+    client.stickers.discover({ query: q === undefined || q === '' ? {} : { q } }),
+  ).then((page) => ({
     packs: page.packs.map(toStickerPack),
     next: page.next,
   }));
@@ -1206,9 +1191,8 @@ export async function removeStickerPanelPack(packId: string): Promise<void> {
 // the endpoint URL or keys.
 
 // The contract (`@zilar/api-contract`, `push.ts`, T-0895) types the replies and
-// the four body-less calls. The server decodes the other three bodies by hand
-// (their step order and error codes are part of the wire), so the contract
-// declares no payload for them and they stay on `request()` below.
+// the three payloads; the server decodes those bodies by hand (their step order
+// and error codes are part of the wire).
 export type { PushConfig, PushDevice, RegisteredDevice };
 
 export function getPushConfig(): Promise<PushConfig> {
@@ -1222,15 +1206,15 @@ export interface RegisterPushDeviceInput {
 }
 
 export function registerPushDevice(input: RegisterPushDeviceInput): Promise<RegisteredDevice> {
-  return request('/push/subscriptions', RegisteredDeviceSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      endpoint: input.endpoint,
-      keys: input.keys,
-      ...(input.userAgent === undefined ? {} : { userAgent: input.userAgent }),
+  return callApi((client) =>
+    client.push.subscribe({
+      payload: {
+        endpoint: input.endpoint,
+        keys: input.keys,
+        ...(input.userAgent === undefined ? {} : { userAgent: input.userAgent }),
+      },
     }),
-  });
+  );
 }
 
 export function listPushDevices(): Promise<PushDevice[]> {
@@ -1246,19 +1230,13 @@ export function getPushSettings(): Promise<{ showPreviews: boolean }> {
 }
 
 export function setPushSettings(showPreviews: boolean): Promise<{ showPreviews: boolean }> {
-  return request('/push/settings', PushSettingsSchema, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ showPreviews }),
-  });
+  return callApi((client) => client.push.updateSettings({ payload: { showPreviews } }));
 }
 
 export function sendTestPushNotification(subscriptionId: string): Promise<void> {
-  return request('/push/test', struct({ sent: Schema.Boolean }), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ subscriptionId }),
-  }).then(() => undefined);
+  return callApi((client) => client.push.test({ payload: { subscriptionId } })).then(
+    () => undefined,
+  );
 }
 
 /** Reorders the caller's whole panel atomically (exact id permutation). */
@@ -1353,10 +1331,7 @@ export function addStickerFavorite(stickerId: string): Promise<Sticker> {
 }
 
 export async function removeStickerFavorite(stickerId: string): Promise<void> {
-  const params = new URLSearchParams({ sticker_id: stickerId });
-  await request(`/sticker-favorites?${params.toString()}`, StickerOkSchema, {
-    method: 'DELETE',
-  });
+  await callApi((client) => client.stickers.removeFavorite({ query: { sticker_id: stickerId } }));
 }
 
 // --- Telegram import (T-0123) -------------------------------------------------
@@ -1372,11 +1347,9 @@ export type TelegramImportResult = Omit<ContractTelegramImportResult, 'pack'> & 
 };
 
 export function importTelegramStickers(input: string): Promise<TelegramImportResult> {
-  return request('/sticker-packs/import/telegram', TelegramImportResultSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ input }),
-  }).then((result) => ({ ...result, pack: toStickerPack(result.pack) }));
+  return callApi((client) => client.stickers.importTelegram({ payload: { input } })).then(
+    (result) => ({ ...result, pack: toStickerPack(result.pack) }),
+  );
 }
 
 // --- Integrations settings (T-0162 + Email follow-up) ----------------------
@@ -1475,10 +1448,10 @@ export async function removeVoiceTranscriptionSettings(): Promise<void> {
 // (`/api/gifs/media/:token`). An unconfigured provider answers 501
 // `gifs_unavailable` and the panel hides the tab.
 
-// The reply schemas live in `@zilar/api-contract` (`gifs.ts`, T-0895). The
-// contract declares no query (the server decodes it by hand, after its
-// provider check and limiter), so the calls below keep their own request and
-// abort handling and decode with the contract page schema.
+// The reply schemas and the query keys live in `@zilar/api-contract`
+// (`gifs.ts`, T-0895). The server decodes the query by hand, after its provider
+// check and limiter, so every key travels as a plain string. A caller may
+// abort a search, so the calls go through `callApiAbortable`.
 export type { GifResult };
 
 export interface GifPage {
@@ -1486,67 +1459,26 @@ export interface GifPage {
   nextPos?: string | undefined;
 }
 
-async function gifRequest(
-  params: URLSearchParams,
-  endpoint: 'search' | 'trending',
-  signal?: AbortSignal,
-): Promise<GifPage> {
-  let response: Response;
-  if (isMockApiEnabled()) {
-    response = await (
-      await loadMockRequest()
-    )(`/gifs/${endpoint}?${params.toString()}`, { method: 'GET' });
-  } else {
-    if (signal?.aborted === true) {
-      throw new DOMException('Aborted', 'AbortError');
-    }
-    try {
-      response = await fetch(`${API_BASE}/gifs/${endpoint}?${params.toString()}`, {
-        credentials: 'same-origin',
-        headers: { Accept: 'application/json' },
-        ...(signal === undefined ? {} : { signal }),
-      });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        throw error;
-      }
-      throw new ApiError(0, 'network_error', 'Could not reach the server');
-    }
-  }
-  if (signal?.aborted === true) {
-    throw new DOMException('Aborted', 'AbortError');
-  }
-  const raw: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw apiErrorFromBody(response.status, raw);
-  }
-  const parsed = decodeResponse(GifResultPage, raw);
-  if (!parsed.ok) {
-    throw new ApiError(
-      response.status,
-      'invalid_response',
-      'The server sent an unexpected response',
-    );
-  }
-  const { items, nextPos } = parsed.value;
+function toGifPage(page: GifResultPage): GifPage {
+  const { items, nextPos } = page;
   return { items: [...items], ...(nextPos === undefined ? {} : { nextPos }) };
 }
 
 export function searchGifs(query: string, pos?: string, signal?: AbortSignal): Promise<GifPage> {
-  const params = new URLSearchParams();
-  params.set('q', query);
-  if (pos !== undefined && pos !== '') {
-    params.set('pos', pos);
-  }
-  return gifRequest(params, 'search', signal);
+  return callApiAbortable(
+    (client) =>
+      client.gifs.search({
+        query: { q: query, ...(pos === undefined || pos === '' ? {} : { pos }) },
+      }),
+    signal,
+  ).then(toGifPage);
 }
 
 export function trendingGifs(pos?: string, signal?: AbortSignal): Promise<GifPage> {
-  const params = new URLSearchParams();
-  if (pos !== undefined && pos !== '') {
-    params.set('pos', pos);
-  }
-  return gifRequest(params, 'trending', signal);
+  return callApiAbortable(
+    (client) => client.gifs.trending({ query: pos === undefined || pos === '' ? {} : { pos } }),
+    signal,
+  ).then(toGifPage);
 }
 
 /** The same-origin proxy URL for one GIF result's media. */

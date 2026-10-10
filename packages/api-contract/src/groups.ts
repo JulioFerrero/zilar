@@ -6,8 +6,7 @@
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
 import { CHAT_BACKGROUND_PRESET_IDS } from './chat-prefs';
-import { ChainASchemaErrors, GroupsJoinRateLimit, GroupsRoleRateLimit } from './chain-a-middleware';
-import { Session } from './middleware';
+import { GroupsJoinRateLimit, GroupsRoleRateLimit, SchemaErrors, Session } from './middleware';
 import { mutableStruct } from './mutable-struct';
 
 export const GROUP_MEMBERS_MAX = 50;
@@ -202,6 +201,6 @@ export const GroupsGroup = HttpApiGroup.make('groups')
     }).middleware(GroupsJoinRateLimit),
   )
   .middleware(Session)
-  .middleware(ChainASchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

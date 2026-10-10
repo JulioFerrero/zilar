@@ -3,39 +3,22 @@
 // effect/sql. `app.ts` mounts {@link createAuditApi} through the Effect edge.
 
 import { Effect, Layer } from 'effect';
-import { HttpServerRequest } from 'effect/http';
-import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { AuditGroup, AuditSchemaErrors, type AuditPage } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
-  failureResponse,
   handler,
   httpErrorResponse,
   mountApi,
   requestIdOf,
+  schemaErrorLayerFor,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
 import { listAuditForAi, listAuditForGroup, type ListAuditPage } from './service';
-
-// Any query decode failure is the fixed text `Invalid audit query`, exactly
-// like the old route.
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<AuditSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(AuditSchemaErrors, () =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', 'Invalid audit query'),
-      );
-    }),
-  );
-}
 
 // The service throws `Error('Invalid cursor')` for a malformed `before`; the
 // old route mapped just that message to 400, and every other rejection stayed
@@ -116,7 +99,8 @@ export function createAuditApi(deps: AuditApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(AuditApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
+    // Any query decode failure is the fixed text `Invalid audit query`.
+    Layer.provide(schemaErrorLayerFor(AuditSchemaErrors, logger, 'Invalid audit query')),
   );
 
   return mountApi(AuditApi, apiLayer);

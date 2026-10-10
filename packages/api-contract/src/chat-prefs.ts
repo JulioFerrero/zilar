@@ -5,9 +5,8 @@
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import { ChainASchemaErrors } from './chain-a-middleware';
 import { IsoDateTime } from './iso-datetime';
-import { Session } from './middleware';
+import { SchemaErrors, Session } from './middleware';
 
 // Mirrors `CHAT_BACKGROUND_PRESET_IDS` in `packages/ui-tokens` (T-0457). The
 // contract keeps its own copy so it does not depend on the UI package.
@@ -114,6 +113,6 @@ export const ChatPrefsGroup = HttpApiGroup.make('chatPrefs')
     }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
   )
   .middleware(Session)
-  .middleware(ChainASchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

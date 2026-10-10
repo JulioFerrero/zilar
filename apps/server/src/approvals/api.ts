@@ -4,8 +4,7 @@
 // (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
 import { Effect, Layer } from 'effect';
-import { HttpServerRequest } from 'effect/http';
-import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { SqlClient } from 'effect/sql';
 import {
   ApprovalsGroup,
@@ -20,7 +19,7 @@ import type { ServerDatabase } from '../db/client';
 import type { ApprovalRuleRow } from '../db/rows';
 import { HttpError } from '../errors';
 import type { EffectApiMount } from '../effect/http-core';
-import { failureResponse, handler, mountApi, requestIdOf, sessionLayer } from '../effect/http-core';
+import { handler, mountApi, schemaErrorLayerFor, sessionLayer } from '../effect/http-core';
 import { runSql } from '../effect/sql';
 import { canSeeTopic, type TopicRow } from '../topics/access';
 import {
@@ -86,21 +85,6 @@ function toWireApproval(row: ReturnType<typeof toPublicApproval>): PublicApprova
 
 function toWireRule(rule: PublicApprovalRule): ApprovalRule {
   return { ...rule, createdAt: rule.createdAt.toISOString() };
-}
-
-// A payload decode failure renders like the old zod path: a 400
-// `invalid_request` carrying the fixed decision text.
-function schemaErrorLayer(logger: Logger): Layer.Layer<ApprovalsSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(ApprovalsSchemaErrors, () =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', 'Invalid decision body'),
-      );
-    }),
-  );
 }
 
 const ApprovalsApi = HttpApi.make('approvals').add(ApprovalsGroup);
@@ -418,7 +402,8 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
   const apiLayer = HttpApiBuilder.layer(ApprovalsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
+    // A payload decode failure carries the fixed decision text.
+    Layer.provide(schemaErrorLayerFor(ApprovalsSchemaErrors, logger, 'Invalid decision body')),
   );
 
   return mountApi(ApprovalsApi, apiLayer);

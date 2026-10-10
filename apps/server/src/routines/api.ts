@@ -6,18 +6,16 @@
 
 import { Effect, Layer } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { HttpServerRequest } from 'effect/http';
-import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
-import { RoutinesGroup, RoutinesSchemaErrors } from '@zilar/api-contract';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { RoutinesGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import {
-  failureResponse,
   handler,
   mountApi,
-  requestIdOf,
+  schemaErrorLayer,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
@@ -35,21 +33,6 @@ import {
   type RoutineRow,
 } from './service';
 import { runSql } from '../effect/sql';
-
-// A params decode failure renders as 400 `invalid_request` through the shared
-// envelope.
-function schemaErrorLayer(logger: Logger): Layer.Layer<RoutinesSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(RoutinesSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message),
-      );
-    }),
-  );
-}
 
 const RoutinesApi = HttpApi.make('routines').add(RoutinesGroup);
 

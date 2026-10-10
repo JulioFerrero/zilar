@@ -26,15 +26,15 @@ describe('api contract smoke: media (T-0895)', () => {
     const { context, app } = harness;
     const owner = await bootstrapUser(context, app, 'owner@example.com');
 
-    const unavailable = await runApi(harness.bearerClient(owner.bearer).media.gallery()).catch(
-      (error: unknown) => error,
-    );
+    const unavailable = await runApi(
+      harness.bearerClient(owner.bearer).media.gallery({ query: {} }),
+    ).catch((error: unknown) => error);
     expect(unavailable).toBeInstanceOf(ApiError);
     expect(unavailable).toMatchObject({ status: 501, code: 'media_unavailable' });
   });
 
   it('answers a missing session before anything else', async () => {
-    const anonymous = await runApi(harness.cookieClient('').media.gallery()).catch(
+    const anonymous = await runApi(harness.cookieClient('').media.gallery({ query: {} })).catch(
       (error: unknown) => error,
     );
     expect(anonymous).toMatchObject({ status: 401, code: 'unauthorized' });

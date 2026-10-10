@@ -1,17 +1,15 @@
 // The media gallery (T-0431, T-0434, T-0560, T-0895): the shared files, links,
 // voice notes and images of one chat, newest first.
 //
-// `gallery` declares NO query on purpose. The server decodes the query by
-// hand inside the handler, because the archive check and the limiter must run
-// before the decode (an invalid query still spends budget; the order is
-// session, 501, 429, 400, 404). A declared query would be decoded by the router
-// first and change that order, so a client builds the query string itself and
-// the contract only types the reply.
+// `gallery` declares its query keys as `RawQueryValue` (the router accepts any
+// string), because the server decodes the query by hand inside the handler:
+// the archive check and the limiter must run before the decode (an invalid
+// query still spends budget; the order is session, 501, 429, 400, 404).
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import { ChainDSchemaErrors } from './chain-d-middleware';
-import { Session } from './middleware';
+import { SchemaErrors, Session } from './middleware';
+import { RawQueryValue } from './raw-query';
 
 /** The gallery tabs a client can ask for (`type`). */
 export const MEDIA_TABS = ['media', 'files', 'links', 'voice'] as const;
@@ -53,10 +51,16 @@ export type MediaPage = typeof MediaPage.Type;
 export const MediaGroup = HttpApiGroup.make('media')
   .add(
     HttpApiEndpoint.get('gallery', '/media', {
+      query: {
+        chat: RawQueryValue,
+        type: RawQueryValue,
+        before: RawQueryValue,
+        limit: RawQueryValue,
+      },
       success: MediaPage,
     }),
   )
   .middleware(Session)
-  .middleware(ChainDSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

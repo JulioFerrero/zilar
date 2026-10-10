@@ -4,8 +4,7 @@
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import { Session } from './middleware';
-import { AuditSchemaErrors } from './middleware-chain-b';
+import { AuditSchemaErrors, Session } from './middleware';
 
 export const MAX_AUDIT_LIST_LIMIT = 200;
 

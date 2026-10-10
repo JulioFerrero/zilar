@@ -3,18 +3,17 @@
 // and the send path load through the same-origin proxy
 // (`/api/gifs/media/:token`).
 //
-// `search` and `trending` declare NO query on purpose. The server decodes the
-// query by hand inside the handler, because the provider check and the limiter
-// must run before the decode (an invalid query still spends budget; the order
-// is session, 501, limiter, 400). A declared query would be decoded by the
-// router first and change that order, so a client builds the query string
-// itself and the contract only types the reply. `media` answers raw bytes with
-// custom headers, so it declares no success.
+// `search` and `trending` declare their query keys as `RawQueryValue` (the
+// router accepts any string), because the server decodes the query by hand
+// inside the handler: the provider check and the limiter must run before the
+// decode (an invalid query still spends budget; the order is session, 501,
+// limiter, 400). `media` answers raw bytes with custom headers, so it declares
+// no success.
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import { ChainDSchemaErrors } from './chain-d-middleware';
-import { Session } from './middleware';
+import { SchemaErrors, Session } from './middleware';
+import { RawQueryValue } from './raw-query';
 
 export const GifResult = Schema.Struct({
   id: Schema.String,
@@ -38,9 +37,11 @@ export type GifResultPage = typeof GifResultPage.Type;
 export const GifsGroup = HttpApiGroup.make('gifs')
   .add(
     HttpApiEndpoint.get('search', '/gifs/search', {
+      query: { q: RawQueryValue, pos: RawQueryValue },
       success: GifResultPage,
     }),
     HttpApiEndpoint.get('trending', '/gifs/trending', {
+      query: { pos: RawQueryValue },
       success: GifResultPage,
     }),
     // The token is verified inside the handler so a bad token answers 404
@@ -50,6 +51,6 @@ export const GifsGroup = HttpApiGroup.make('gifs')
     }),
   )
   .middleware(Session)
-  .middleware(ChainDSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

@@ -13,8 +13,7 @@
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import { ChainDSchemaErrors } from './chain-d-middleware';
-import { Session } from './middleware';
+import { SchemaErrors, Session } from './middleware';
 
 const CONTROL_CHAR_MAX = 0x1f;
 const CONTROL_CHAR_DEL = 0x7f;
@@ -91,7 +90,7 @@ export const AuthGroup = HttpApiGroup.make('auth')
     }),
   )
   .middleware(Session)
-  .middleware(ChainDSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');
 
@@ -102,5 +101,5 @@ export const AuthInvitesPublicGroup = HttpApiGroup.make('authInvitesPublic')
       success: AuthInviteCheck,
     }),
   )
-  .middleware(ChainDSchemaErrors)
+  .middleware(SchemaErrors)
   .prefix('/api');

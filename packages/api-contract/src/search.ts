@@ -4,9 +4,8 @@
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import { SearchGuards, SearchSchemaErrors } from './chain-c-middleware';
 import { lenientLiterals } from './lenient';
-import { Session } from './middleware';
+import { SearchGuards, SearchSchemaErrors, Session } from './middleware';
 
 export const SEARCH_MAX_LIMIT = 50;
 

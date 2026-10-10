@@ -6,11 +6,11 @@
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import {
-  ChainDSchemaErrors,
   IntegrationsEmailRateLimit,
   IntegrationsTelegramRateLimit,
-} from './chain-d-middleware';
-import { Session } from './middleware';
+  SchemaErrors,
+  Session,
+} from './middleware';
 
 /** A bare address or a display name plus angle-addr. */
 export function isMailbox(value: string): boolean {
@@ -109,6 +109,6 @@ export const IntegrationsGroup = HttpApiGroup.make('integrations')
       .middleware(IntegrationsEmailRateLimit),
   )
   .middleware(Session)
-  .middleware(ChainDSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

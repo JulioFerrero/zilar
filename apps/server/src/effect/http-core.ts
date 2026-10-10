@@ -10,10 +10,10 @@
 // branch. The request id Hono generated is forwarded as the `x-request-id`
 // header so both branches can carry it.
 
-import { CurrentUser, Session, type SessionUser } from '@zilar/api-contract';
-import { Effect, Layer } from 'effect';
+import { CurrentUser, SchemaErrors, Session, type SessionUser } from '@zilar/api-contract';
+import { Effect, Layer, type Context } from 'effect';
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from 'effect/http';
-import { HttpApi, HttpApiMiddleware, type HttpApiGroup } from 'effect/http-api';
+import { HttpApi, HttpApiMiddleware, type HttpApiError, type HttpApiGroup } from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { HttpError } from '../errors';
@@ -25,7 +25,7 @@ export const SOCKET_ADDRESS_HEADER = 'x-zilar-socket-address';
 // moved there and a server module use the same classes. An absent session
 // short-circuits with the same body as `requireSession`, before any query or
 // body decoding runs.
-export { CurrentUser, Session, type SessionUser };
+export { CurrentUser, SchemaErrors, Session, type SessionUser };
 
 export function sessionLayer(auth: Auth, logger: Logger): Layer.Layer<Session> {
   return Layer.succeed(
@@ -64,25 +64,51 @@ export function sessionLayer(auth: Auth, logger: Logger): Layer.Layer<Session> {
   );
 }
 
-/**
- * Schema-error middleware, shared by every module: a params, query or payload
- * decode failure renders as 400 `invalid_request` through the shared envelope.
- * A group declares it with `.middleware(SchemaErrors)` and the module provides
- * `schemaErrorLayer(logger)`.
- */
-export class SchemaErrors extends HttpApiMiddleware.Service<SchemaErrors>()(
-  'zilar/effect/http/SchemaErrors',
-) {}
+/** A schema-error tag a group declares; its layer renders the decode failure. */
+export type SchemaErrorTag<Id> = Context.Service<
+  Id,
+  HttpApiMiddleware.HttpApiMiddleware<never, never, never>
+>;
 
+/**
+ * What a schema-error layer answers: a fixed message, or a function of the
+ * error and the request that returns the `HttpError` (400 `invalid_request` is
+ * the usual one) or a full response (the handles check answers 200).
+ */
+export type SchemaErrorRender =
+  | string
+  | ((
+      error: HttpApiError.HttpApiSchemaError,
+      request: HttpServerRequest.HttpServerRequest,
+    ) => Effect.Effect<HttpError | HttpServerResponse.HttpServerResponse>);
+
+/**
+ * The one schema-error layer: a params, query or payload decode failure
+ * renders as 400 `invalid_request` through the shared envelope. With no
+ * `render` the message is the schema's own text; a string is a fixed message.
+ * A group declares `SchemaErrors` with `.middleware(SchemaErrors)` and the
+ * module provides `schemaErrorLayer(logger)`; a group with its own tag
+ * provides `schemaErrorLayerFor(tag, logger, render?)`.
+ */
 export function schemaErrorLayer(logger: Logger): Layer.Layer<SchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(SchemaErrors, (error) =>
+  return schemaErrorLayerFor(SchemaErrors, logger);
+}
+
+export function schemaErrorLayerFor<Id>(
+  tag: SchemaErrorTag<Id>,
+  logger: Logger,
+  render?: SchemaErrorRender,
+): Layer.Layer<Id> {
+  return HttpApiMiddleware.layerSchemaErrorTransform(tag, (error) =>
     Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message),
-      );
+      const answer =
+        typeof render === 'function'
+          ? yield* render(error, request)
+          : new HttpError(400, 'invalid_request', render ?? error.cause.message);
+      return HttpServerResponse.isHttpServerResponse(answer)
+        ? answer
+        : failureResponse(logger, requestIdOf(request), answer);
     }),
   );
 }

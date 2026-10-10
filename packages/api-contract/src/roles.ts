@@ -4,8 +4,7 @@
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
-import { ChainASchemaErrors } from './chain-a-middleware';
-import { Session } from './middleware';
+import { SchemaErrors, Session } from './middleware';
 
 export const ROLE_NAME_MAX = 30;
 export const ROLE_MEMBERS_MAX = 50;
@@ -86,6 +85,6 @@ export const RolesGroup = HttpApiGroup.make('roles')
     }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
   )
   .middleware(Session)
-  .middleware(ChainASchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

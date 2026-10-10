@@ -26,15 +26,25 @@ describe('api contract smoke: gifs (T-0895)', () => {
     const { context, app } = harness;
     const owner = await bootstrapUser(context, app, 'owner@example.com');
 
-    const unavailable = await runApi(harness.cookieClient(owner.cookie).gifs.trending()).catch(
-      (error: unknown) => error,
-    );
+    const unavailable = await runApi(
+      harness.cookieClient(owner.cookie).gifs.trending({ query: {} }),
+    ).catch((error: unknown) => error);
     expect(unavailable).toBeInstanceOf(ApiError);
     expect(unavailable).toMatchObject({ status: 501, code: 'gifs_unavailable' });
   });
 
+  it('lets a repeated query key reach the handler guards (no router 400)', async () => {
+    const { context, app } = harness;
+    const owner = await bootstrapUser(context, app, 'owner@example.com');
+
+    const unavailable = await runApi(
+      harness.cookieClient(owner.cookie).gifs.search({ query: { q: ['a', 'b'] } }),
+    ).catch((error: unknown) => error);
+    expect(unavailable).toMatchObject({ status: 501, code: 'gifs_unavailable' });
+  });
+
   it('answers a missing session before anything else', async () => {
-    const anonymous = await runApi(harness.cookieClient('').gifs.search()).catch(
+    const anonymous = await runApi(harness.cookieClient('').gifs.search({ query: {} })).catch(
       (error: unknown) => error,
     );
     expect(anonymous).toMatchObject({ status: 401, code: 'unauthorized' });

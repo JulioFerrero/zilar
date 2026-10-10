@@ -4,8 +4,7 @@
 
 import { Effect, Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
-import { Session } from './middleware';
-import { ApprovalsSchemaErrors } from './middleware-chain-b';
+import { ApprovalsSchemaErrors, Session } from './middleware';
 
 export const APPROVAL_STATUSES = [
   'pending',

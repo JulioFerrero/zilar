@@ -6,34 +6,27 @@
 // managers. Text is never logged.
 
 import { Effect, Layer } from 'effect';
-import { HttpServerRequest } from 'effect/http';
 import { SqlClient } from 'effect/sql';
-import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
-import {
-  AiMemoryGroup,
-  AiMemorySchemaErrors,
-  AiMemoryWriteRateLimit,
-  CurrentUser,
-} from '@zilar/api-contract';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { AiMemoryGroup, AiMemoryWriteRateLimit } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../../auth/auth';
 import type { ServerConfig } from '../../config';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
 import { HttpError } from '../../errors';
-import { createRateLimiter, type RateLimiter } from '../../rate-limit';
+import { createRateLimiter } from '../../rate-limit';
 import { resolvePinChat } from '../../pins/access';
 import { canManageTopic } from '../../topics/access';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import {
-  failureResponse,
   handler,
-  httpErrorResponse,
   mountApi,
-  requestIdOf,
+  schemaErrorLayer,
   sessionLayer,
   type EffectApiMount,
 } from '../../effect/http-core';
+import { rateLimitLayer } from '../../effect/rate-limit-middleware';
 import { clearMemory, deleteFact, listFacts, renderMemoryBlock } from './store';
 
 export const AI_MEMORY_WRITE_RATE_LIMIT_MAX = 60;
@@ -130,43 +123,6 @@ export async function resolveMemoryChat(
   throw toMissingMemoryChat();
 }
 
-// A params, query or payload decode failure renders as 400 `invalid_request`
-// through the shared envelope.
-function schemaErrorLayer(logger: Logger): Layer.Layer<AiMemorySchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(AiMemorySchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message),
-      );
-    }),
-  );
-}
-
-// The write budget runs before the query or body is decoded, exactly like the
-// old routes' `requireWriteBudget` -> `safeParse` order: an invalid request
-// still spends budget. `requires: CurrentUser` is satisfied by `Session`.
-function writeRateLimitLayer(limiter: RateLimiter): Layer.Layer<AiMemoryWriteRateLimit> {
-  return Layer.succeed(
-    AiMemoryWriteRateLimit,
-    AiMemoryWriteRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many memory changes, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
-
 const AiMemoryApi = HttpApi.make('aiMemory').add(AiMemoryGroup);
 
 export function createAiMemoryApi(deps: AiMemoryApiDependencies): EffectApiMount {
@@ -249,7 +205,15 @@ export function createAiMemoryApi(deps: AiMemoryApiDependencies): EffectApiMount
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayer(logger)),
-    Layer.provide(writeRateLimitLayer(writeLimiter)),
+    // The write budget runs before the query or body is decoded: an invalid
+    // request still spends budget.
+    Layer.provide(
+      rateLimitLayer(
+        AiMemoryWriteRateLimit,
+        writeLimiter,
+        'Too many memory changes, try again later',
+      ),
+    ),
   );
 
   return mountApi(AiMemoryApi, apiLayer);

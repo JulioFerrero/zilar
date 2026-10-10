@@ -5,7 +5,7 @@
 
 import { Effect, Layer } from 'effect';
 import { HttpServerRequest } from 'effect/http';
-import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import {
   AisConfigured,
   AisGroup,
@@ -22,12 +22,13 @@ import type { KeyCipher } from '../connections/crypto';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
-  failureResponse,
   handler,
   httpErrorResponse,
   mountApi,
   requestIdOf,
+  schemaErrorLayerFor,
   sessionLayer,
+  type SchemaErrorRender,
   type EffectApiMount,
 } from '../effect/http-core';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -95,18 +96,10 @@ function toLogger(logger: AiLogger): Logger {
   } as unknown as Logger;
 }
 
-function schemaErrorLayer(logger: Logger): Layer.Layer<AisSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(AisSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid AI request'),
-      );
-    }),
+const renderSchemaError: SchemaErrorRender = (error) =>
+  Effect.succeed(
+    new HttpError(400, 'invalid_request', error.cause.message || 'Invalid AI request'),
   );
-}
 
 // Runs the 503 availability gate before the payload is decoded, exactly like
 // the old routes' `requireConfigured()` -> `safeParse` order: a malformed
@@ -391,7 +384,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(AisApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, effectLogger)),
-    Layer.provide(schemaErrorLayer(effectLogger)),
+    Layer.provide(schemaErrorLayerFor(AisSchemaErrors, effectLogger, renderSchemaError)),
     Layer.provide(
       configuredLayer({
         ...(litellm === undefined ? {} : { litellm }),

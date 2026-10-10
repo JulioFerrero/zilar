@@ -5,9 +5,8 @@
 
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
-import { ChainASchemaErrors, TopicsCreateRateLimit } from './chain-a-middleware';
 import { lenientLiterals } from './lenient';
-import { Session } from './middleware';
+import { SchemaErrors, Session, TopicsCreateRateLimit } from './middleware';
 import { mutableStruct } from './mutable-struct';
 
 export const TOPIC_NAME_MAX = 80;
@@ -284,6 +283,6 @@ export const TopicsGroup = HttpApiGroup.make('topics')
     }),
   )
   .middleware(Session)
-  .middleware(ChainASchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

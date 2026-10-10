@@ -1,11 +1,9 @@
 // Model provider connections (T-0557): the API keys a user lets their AIs
 // use. A key is write-only: no response carries one.
 //
-// The create body is decoded by hand in the server handler, so `requireCipher`
-// (503) still runs before the decode (400). The server therefore builds its
-// `HttpApi` from `ConnectionsServerGroup`, whose `create` declares no payload;
-// the derived client uses `ConnectionsGroup`, whose `create` declares the
-// payload, so the call is typed and encoded on the client side.
+// `create` declares its payload so the derived client is typed and encodes it,
+// but the server serves it with `handleRaw` and decodes the body by hand, so
+// `requireCipher` (503) still runs before the decode (400).
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
@@ -70,44 +68,24 @@ export type ConnectionTestResult = typeof ConnectionTestResult.Type;
 
 const ConnectionIdParams = Schema.Struct({ id: Schema.String });
 
-const listEndpoint = HttpApiEndpoint.get('list', '/connections', {
-  success: Schema.Array(ConnectionView),
-});
-
-const testEndpoint = HttpApiEndpoint.post('test', '/connections/:id/test', {
-  params: ConnectionIdParams,
-  success: ConnectionTestResult,
-});
-
-const removeEndpoint = HttpApiEndpoint.delete('remove', '/connections/:id', {
-  params: ConnectionIdParams,
-  success: HttpApiSchema.NoContent,
-});
-
-const createSuccess = ConnectionView.pipe(HttpApiSchema.status(201));
-
-/** The group the derived clients use: `create` carries its payload. */
 export const ConnectionsGroup = HttpApiGroup.make('connections')
   .add(
-    listEndpoint,
+    HttpApiEndpoint.get('list', '/connections', {
+      success: Schema.Array(ConnectionView),
+    }),
     HttpApiEndpoint.post('create', '/connections', {
       payload: CreateConnectionPayload,
-      success: createSuccess,
+      success: ConnectionView.pipe(HttpApiSchema.status(201)),
     }),
-    testEndpoint,
-    removeEndpoint,
+    HttpApiEndpoint.post('test', '/connections/:id/test', {
+      params: ConnectionIdParams,
+      success: ConnectionTestResult,
+    }),
+    HttpApiEndpoint.delete('remove', '/connections/:id', {
+      params: ConnectionIdParams,
+      success: HttpApiSchema.NoContent,
+    }),
   )
   .middleware(Session)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
-  .prefix('/api');
-
-/** The group the server implements: `create` decodes its body by hand. */
-export const ConnectionsServerGroup = HttpApiGroup.make('connections')
-  .add(
-    listEndpoint,
-    HttpApiEndpoint.post('create', '/connections', { success: createSuccess }),
-    testEndpoint,
-    removeEndpoint,
-  )
-  .middleware(Session)
   .prefix('/api');

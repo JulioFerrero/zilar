@@ -25,7 +25,7 @@ import { Effect, Layer, Option, Schema } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import {
   CreateConnectionPayload,
-  ConnectionsServerGroup,
+  ConnectionsGroup,
   type ConnectionView,
 } from '@zilar/api-contract';
 import type { Logger } from 'pino';
@@ -86,9 +86,10 @@ function toWire(connection: PublicConnection): ConnectionView {
 // JSON body` instead of the schema-violation text (JSON never yields a symbol).
 const INVALID_JSON = Symbol('connections/invalid-json');
 
-// The server group declares no create payload: the body is decoded by hand in
-// the handler (see the header). The derived clients use `ConnectionsGroup`.
-const ConnectionsApi = HttpApi.make('connections').add(ConnectionsServerGroup);
+// `create` declares its payload in the contract for the derived client but is
+// served with `handleRaw`: the body is decoded by hand in the handler (see the
+// header).
+const ConnectionsApi = HttpApi.make('connections').add(ConnectionsGroup);
 
 export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectApiMount {
   const now = deps.now ?? Date.now;
@@ -135,7 +136,7 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
           return listConnections(deps.db, user.id).then((rows) => rows.map(toWire));
         }),
       )
-      .handle(
+      .handleRaw(
         'create',
         handler(defectLogger, (request, user) =>
           Effect.gen(function* () {

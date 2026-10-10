@@ -26,12 +26,12 @@ import {
   httpErrorResponse,
   mountApi,
   requestIdOf,
+  schemaErrorLayer,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
-import { chainASchemaErrorLayer } from './schema-errors';
 import {
   addGroupAi,
   addGroupMembers,
@@ -363,7 +363,7 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(roleRateLimitLayer(roleLimiter)),
     Layer.provide(joinRateLimitLayer(joinLimiter)),
-    Layer.provide(chainASchemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayer(logger)),
   );
 
   return mountApi(GroupsApi, apiLayer);

@@ -9,8 +9,7 @@
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
-import { BackgroundsUploadRateLimit, ChainDSchemaErrors } from './chain-d-middleware';
-import { Session } from './middleware';
+import { BackgroundsUploadRateLimit, SchemaErrors, Session } from './middleware';
 
 /** The upload result. */
 export const BackgroundImage = Schema.Struct({
@@ -53,6 +52,6 @@ export const BackgroundsGroup = HttpApiGroup.make('backgrounds')
     }),
   )
   .middleware(Session)
-  .middleware(ChainDSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

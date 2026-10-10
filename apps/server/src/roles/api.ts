@@ -15,8 +15,13 @@ import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
-import { chainASchemaErrorLayer } from '../groups/schema-errors';
+import {
+  handler,
+  mountApi,
+  schemaErrorLayer,
+  sessionLayer,
+  type EffectApiMount,
+} from '../effect/http-core';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   createRole,
@@ -105,7 +110,7 @@ export function createRolesApi(deps: RolesApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(RolesApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(chainASchemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayer(logger)),
   );
 
   return mountApi(RolesApi, apiLayer);

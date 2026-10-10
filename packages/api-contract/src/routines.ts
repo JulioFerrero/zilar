@@ -4,8 +4,7 @@
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
-import { Session } from './middleware';
-import { RoutinesSchemaErrors } from './middleware-chain-b';
+import { SchemaErrors, Session } from './middleware';
 
 export const Routine = Schema.Struct({
   id: Schema.String,
@@ -53,6 +52,6 @@ export const RoutinesGroup = HttpApiGroup.make('routines')
     }),
   )
   .middleware(Session)
-  .middleware(RoutinesSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

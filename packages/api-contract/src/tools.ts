@@ -1,17 +1,14 @@
 // Tools (T-0103 to T-0107): the small programs an AI owns, their versions and
 // their runs. Dates travel as ISO strings and stay strings in the clients.
 //
-// The revert and run bodies are decoded by hand in the server handlers, so
-// the order stays: session, then decode (400), then access (404), then the
-// run limiter (429), then the runner check (501). The server therefore builds
-// its `HttpApi` from `ToolsServerGroup`, whose `revert` and `run` declare no
-// payload; the derived client uses `ToolsGroup`, whose two endpoints declare
-// the payload, so the calls are typed and encoded on the client side.
+// `revert` and `run` declare their payloads so the derived client is typed and
+// encodes them, but the server serves both with `handleRaw` and decodes the
+// bodies by hand, so the order stays: session, then decode (400), then access
+// (404), then the run limiter (429), then the runner check (501).
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
-import { Session } from './middleware';
-import { ToolsSchemaErrors } from './middleware-chain-b';
+import { SchemaErrors, Session } from './middleware';
 
 export const ToolListItem = Schema.Struct({
   id: Schema.String,
@@ -161,7 +158,6 @@ const remove = HttpApiEndpoint.delete('remove', '/tools/:id', {
   success: HttpApiSchema.NoContent,
 });
 
-/** The group the derived clients use: `revert` and `run` carry their payloads. */
 export const ToolsGroup = HttpApiGroup.make('tools')
   .add(
     listForAi,
@@ -184,30 +180,6 @@ export const ToolsGroup = HttpApiGroup.make('tools')
     }),
   )
   .middleware(Session)
-  .middleware(ToolsSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
-  .prefix('/api');
-
-/** The group the server implements: `revert` and `run` decode their bodies by hand. */
-export const ToolsServerGroup = HttpApiGroup.make('tools')
-  .add(
-    listForAi,
-    listForGroup,
-    listForTopic,
-    detail,
-    versions,
-    version,
-    runs,
-    HttpApiEndpoint.post('revert', '/tools/:id/revert', {
-      params: ToolIdParams,
-      success: ToolVersion,
-    }),
-    remove,
-    HttpApiEndpoint.post('run', '/tools/:id/run', {
-      params: ToolIdParams,
-      success: ToolRunResult,
-    }),
-  )
-  .middleware(Session)
-  .middleware(ToolsSchemaErrors)
   .prefix('/api');

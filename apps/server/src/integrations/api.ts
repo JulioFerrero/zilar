@@ -16,7 +16,6 @@ import {
   IntegrationsTelegramRateLimit,
 } from '@zilar/api-contract';
 import { createResendMailer } from '../auth/mailer';
-import { contractSchemaErrorLayer } from '../auth/schema-errors';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
@@ -25,6 +24,7 @@ import {
   httpErrorResponse,
   mountApi,
   requestIdOf,
+  schemaErrorLayer,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
@@ -282,7 +282,7 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(telegramRateLimitLayer(telegramLimiter, deps.db)),
     Layer.provide(emailRateLimitLayer(emailLimiter, deps.db, deps.config)),
-    Layer.provide(contractSchemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayer(logger)),
   );
 
   return mountApi(IntegrationsApi, apiLayer);

@@ -4,8 +4,8 @@
 // Its store runs on effect/sql.
 
 import { Effect, Layer } from 'effect';
-import { HttpServerRequest, HttpServerResponse } from 'effect/http';
-import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
+import { HttpServerResponse } from 'effect/http';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { HandlesCheckRateLimit, HandlesGroup, HandlesSchemaErrors } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
@@ -13,14 +13,15 @@ import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import { rateLimitLayer } from '../blocks/chain-c-layers';
+import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import {
-  failureResponse,
   handler,
   httpErrorResponse,
   mountApi,
   requestIdOf,
+  schemaErrorLayerFor,
   sessionLayer,
+  type SchemaErrorRender,
   type EffectApiMount,
 } from '../effect/http-core';
 import {
@@ -42,25 +43,16 @@ export const HANDLE_CLAIM_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 // Applied to the group so a query or payload decode failure renders as the
 // module's typed envelope: an invalid check query is a 200 `invalid` answer,
 // an invalid claim body is a 400 `invalid_request` error.
-function schemaErrorLayer(logger: Logger): Layer.Layer<HandlesSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(HandlesSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      if (error.kind === 'Query') {
-        return HttpServerResponse.jsonUnsafe({ available: false, reason: 'invalid' });
-      }
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(
+const renderSchemaError: SchemaErrorRender = (error) =>
+  Effect.succeed(
+    error.kind === 'Query'
+      ? HttpServerResponse.jsonUnsafe({ available: false, reason: 'invalid' })
+      : new HttpError(
           400,
           'invalid_request',
           'handle must be a string of 1 to 64 characters, with no other keys',
         ),
-      );
-    }),
   );
-}
 
 const RATE_LIMITED_MESSAGE = 'Too many attempts, try again later';
 
@@ -152,7 +144,7 @@ export function createHandlesApi(deps: HandlesApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(HandlesApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
+    Layer.provide(schemaErrorLayerFor(HandlesSchemaErrors, logger, renderSchemaError)),
     // The check budget runs before the query is decoded, exactly like the old
     // route's `checkLimiter.allow` -> `safeParse` order: an invalid query
     // still spends budget.
