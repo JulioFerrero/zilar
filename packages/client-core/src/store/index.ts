@@ -7,6 +7,7 @@ export * from './rows';
 // End of T1.
 
 // T2 (lifetime): add `export * from './<x>';` lines below.
+export * from './lifetime';
 // ----------------------------------------------------------------------------
 // End of T2.
 

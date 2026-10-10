@@ -1,7 +1,7 @@
 ---
 id: T-0903
 title: "Store core T2: the lifetime (store and session Scopes, keyed fibers) in packages/client-core, web runtime on it"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0903-store-core-t2-lifetime
 model: auto
@@ -62,4 +62,20 @@ Run `src/store/realStore.test.tsx` 3 times.
 
 ## Report (written by the worker when done)
 
+**Done.** Core `makeLifetime<R>(Context.Context<R>)` in `packages/client-core/src/store/lifetime.ts` (web's code made generic). `fork` and `forkKeyed` return the fiber; `Fibers` gained `onClose` and `isOpen` (`scope.state._tag !== 'Closed'`). Index line added in the T2 section. Web `runtime.ts` is now an adapter: `makeLifetime(ports) = core(Context.make(Ports, ports))` plus `Task`, `Fibers`, `Lifetime` aliases bound to `Ports`.
+
+**Lines per side:** core 120 (lifetime.ts) + 105 (lifetime.test.ts) + 1 (index); web runtime.ts 126 -> 18 (14 added, 113 deleted).
+
+**New core tests (7):** fork returns fiber and runs inline; forkKeyed returns fiber; store end runs finalizers once, no timer left; closed session reads closed (`isOpen`); replaced session runs only its own finalizer; rollback handler (`catchCause` and `catch`) never runs on interruption (T-0896 probe); failing task is logged and does not stop others.
+
+**Differences from the plan:** web keeps `onStoreClose` and `isStoreOpen` on `Lifetime` (the core has them too, `onStoreClose` calls `Fibers.onClose`), so web callers and tests are untouched. Fork return type is `Fiber<unknown, never>` because the guard catches every cause.
+
+**Checks run:** client-core vitest 68 passed; web `runtime.test.ts` 5 passed; web `src/store` 214 passed (16 files); `realStore.test.tsx` x3: 134 passed each time; both typechecks clean; prettier and oxlint clean. `pnpm gate` not run (wave mode).
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.**
+- **Core lifetime:** `lifetime.ts` has 7 new tests. They cover a fork returning its fiber, finalizers running once, `isOpen`, replaced sessions, rollback handlers never running on interruption, and a failing fork being isolated.
+- **Web:** `runtime.ts` drops from 126 to 18 lines as an adapter. `runtime.test.ts` and `realStore.test.tsx` pass unedited, the latter 3 times.
+- **No behaviour change.** T4 (mobile on the core lifetime) can follow.
+- **Check:** the combined wave 6 check passes.
