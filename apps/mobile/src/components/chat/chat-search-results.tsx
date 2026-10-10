@@ -8,13 +8,14 @@ import { ChatRow, chatRowKey } from '@/components/chat/chat-rows';
 import { MessageSearchList } from '@/components/chat/message-search-list';
 import { PeopleSearchResult } from '@/components/contacts/people-search-result';
 import { Text } from '@/components/ui/text';
+import { API_URL } from '@/lib/auth';
 import type { ChatListRow } from '@/lib/chat-list';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import type { ContactsApi } from '@/lib/contacts-api';
 import { createSearchApi } from '@/lib/search-api';
 import { getSessionToken } from '@/lib/session-token';
 import type { ChatSummary } from '@/lib/types';
-import { createMockSearchApi } from '@/mock/search';
+import { mockToken } from '@/mock/gate';
 
 /**
  * The chats screen's full-screen search results (T-0138, T-0193): the People
@@ -62,14 +63,17 @@ export function ChatSearchResults({
   searchMiss: string | null;
 }) {
   // The message-search API, real or mock like the store itself: tests run on
-  // the mock store (`NODE_ENV=test`), UI work on `EXPO_PUBLIC_ZILAR_MOCK`.
-  const searchApi = useMemo(
-    () =>
-      process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_ZILAR_MOCK === '1'
-        ? createMockSearchApi()
-        : createSearchApi(getSessionToken),
-    [],
-  );
+  // the mock store (`NODE_ENV=test`), UI work on `EXPO_PUBLIC_ZILAR_MOCK`. The
+  // mock branch talks to the shared mock backend through `mockFetch`, behind a
+  // literal build-time condition, so a release build leaves the mock out.
+  const searchApi = useMemo(() => {
+    if (process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_ZILAR_MOCK === '1') {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
+      return createSearchApi(mockToken, mockFetch, API_URL);
+    }
+    return createSearchApi(getSessionToken);
+  }, []);
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       {searchHeader}
