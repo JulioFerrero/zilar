@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0936](T-0936-size-dup-audit.md) | Audit: 400-line limit and duplicated code | in-progress | deepseek-flash | — | Julio 10-10 |
-| [T-0939](T-0939-mock-backend-messages-search.md) | Mock backend B: full message seed, /search | in-progress | deepseek-flash | T-0937 | mock-plan B |
 
 ## Follow-ups
 
@@ -968,3 +967,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0940](T-0940-mock-backend-ais.md) | Mock backend E1: the AI routes (ais, ai-memory, connections, machines) in @zilar/mock-backend (docs/audit/mock | 2026-10-10 |
 | [T-0938](T-0938-code-map-page.md) | Replace the Effect map on GitHub Pages with a Code map: lines, file sizes against the 400-line limit, files ad | 2026-10-10 |
 | [T-0941](T-0941-mock-backend-approvals-tools.md) | Mock backend E2: approvals, approval rules, audit, tools and routines routes in @zilar/mock-backend (docs/audi | 2026-10-10 |
+| [T-0939](T-0939-mock-backend-messages-search.md) | Mock backend B: the full message seed and the /search route in @zilar/mock-backend (docs/audit/mock-plan.md ta | 2026-10-10 |

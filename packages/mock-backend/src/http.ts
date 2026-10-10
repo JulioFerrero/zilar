@@ -2,8 +2,8 @@
 // setTimeout and the matching itself is pure
 
 // The mock HTTP layer. `createMockHttp(data)` returns a handler shaped like
-// `fetch` minus the network: it answers `/me`, `/chats`, `/contacts`, the AI
-// routes (`/ais`, `/ai-memory`, `/connections`, `/machines`) and the
+// `fetch` minus the network: it answers `/me`, `/chats`, `/contacts`, `/search`,
+// the AI routes (`/ais`, `/ai-memory`, `/connections`, `/machines`) and the
 // approvals/audit/tools/routines routes from the in-memory seed, and returns
 // `undefined` for every other path.
 //
@@ -24,6 +24,7 @@ import { handleContacts } from './http/contacts';
 import { handleMachines } from './http/machines';
 import { handleMe } from './http/me';
 import { handleRoutines } from './http/routines';
+import { handleSearch } from './http/search';
 import { handleTools } from './http/tools';
 import { DEFAULT_DELAY_MS, parseRequest, type MockRoute } from './http/shared';
 
@@ -35,6 +36,7 @@ const routes: readonly MockRoute[] = [
   handleMe,
   handleChats,
   handleContacts,
+  handleSearch,
   handleAis,
   handleAiMemory,
   handleConnections,

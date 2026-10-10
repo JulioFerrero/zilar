@@ -4,5 +4,5 @@
     "lib": ["ES2023", "DOM"],
     "types": []
   },
-  "include": ["src"]
+  "include": ["src", "../xmpp-core/src/types/xmpp.d.ts"]
 }
