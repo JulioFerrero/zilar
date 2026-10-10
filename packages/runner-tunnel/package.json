@@ -12,7 +12,7 @@
     "demo": "node src/demo.ts"
   },
   "dependencies": {
-    "effect": "^4.0.0",
+    "effect": "catalog:",
     "ws": "^8.22.0"
   },
   "devDependencies": {

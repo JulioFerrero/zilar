@@ -12,8 +12,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@xmpp/client": "^0.14.0",
+    "@xmpp/client": "catalog:",
     "@zilar/protocol": "workspace:*",
-    "effect": "^4.0.2"
+    "effect": "catalog:"
   }
 }

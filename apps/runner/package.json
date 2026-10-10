@@ -10,11 +10,11 @@
   },
   "dependencies": {
     "@zilar/runner-tunnel": "workspace:*",
-    "effect": "^4.0.0"
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@zilar/server": "workspace:*",
-    "tsx": "^4.23.15",
-    "vitest": "^5.0.2"
+    "tsx": "catalog:",
+    "vitest": "catalog:"
   }
 }
