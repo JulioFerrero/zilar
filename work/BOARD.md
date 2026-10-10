@@ -13,6 +13,11 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 ## Follow-ups
 
+- **Planned late: our own "ball avatar" library to replace the dither avatars (Julio, 2026-10-11).** Queue it near the end of the current plan: after the mock rebuild and the remaining cleanups, but before Julio's single live test and the deploy.
+  - **What it is:** like `dither-avatar`, a deterministic avatar from a seed (the id), but rendered as a **3D-looking ball**. Each seed gives its own colours and light direction (highlight, shading, maybe a rim light).
+  - **What it outputs:** SVG, so web shows it as `<img>` and mobile through `SvgXml` (react-native-svg), exactly where T-1075 plugged in `ditherAvatarSvg`/`ditherAvatarDataUri` (`packages/chat-core/src/avatar.ts`).
+  - **Where it lives:** a small workspace package with zero dependencies, like `dither-avatar`.
+  - **Before the spec:** show Julio a preview page of a few seeds, as for the dither pick.
 - **Mobile approvals: "Could not load the rules." when every AI with no rules succeeds but one AI fails (found 2026-10-10, T-1061 smoke).** `apps/mobile/src/components/approvals/rows.ts:86` returns the error state when `succeeded.length === 0` and any fetch was rejected. This applies to real builds too, for example an AI deleted between the list and the rules fetch. It should show the empty list, plus a note for the failed AI.
 - **Mock backend lacks contact requests, blocks, `users/by-handle`, `handles/check`, `PUT /me/handle`, avatars, push and voice transcription (`docs/audit/mock-sweep-status.md` §1b).** These block mobile H2 for contacts and profile, and web sweep W10.
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile.
