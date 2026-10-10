@@ -2,7 +2,7 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-**2026-10-10 22:30 local (UTC+2): wave 4 merged; wave 5 running**
+**2026-10-10 20:26 local: wave 4 merged; wave 5 running**
 - **Merged:**
   - **web, checked in Chrome:** T-0989 (StickerPanel: star, unstar and send a sticker), T-0990 (ChannelPanel: promote and demote);
   - **mobile, with phone smokes:** T-0986 (composer: send), T-0987 (bubble: long-press, react), T-0988 (integrations: save, remove with confirm);
