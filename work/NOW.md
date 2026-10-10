@@ -2,6 +2,16 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 23:35 local: mock wave 2 complete; the sweep starts**
+- **Merged:**
+  - **T-1045** (folders, backgrounds and media). On the phone, the media panel and the folder chips work;
+  - **T-1059**, the audit `docs/audit/mock-sweep-status.md`. The lead confirmed with grep that the mobile mock store `store/chat-store.ts` (1,595 lines) has no importers.
+- **Running, 3 workers:**
+  - **T-1060:** delete the dead mobile mock store and the 4 old mocks only it imports, about 1,950 lines;
+  - **T-1061:** H2-2, mobile approvals on the shared backend. The rules show, and the chat card `apr-42` matches. It also creates the one shared `mockToken` in `mock/gate.ts`;
+  - **T-1062:** W1+W2, delete the web `mock/api.ts` routes the backend already answers. Each exact method and path is probed before deletion.
+- **Next, in order:** H2-1 (the AIs group) and H2-3 (contacts, machines, connections, directory) after T-1061, because they need `mockToken`. Then W3-W4, H2-4, and the voice and profile backend domains (plan F).
+
 **2026-10-10 23:20 local: T-1056 to T-1058 merged; T-1045 in pre-review; the mock sweep audit running**
 - **Merged:**
   - **T-1056:** the approvals AI list goes through `useAisApi`. The lead's phone smoke showed the spec's premise was wrong: the mobile approvals mock returns no rules at all. The review and the board are corrected;
