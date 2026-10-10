@@ -9,6 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-1085](T-1085-mobile-composer-stickers-gifs-on-backend.md) | Mock H2-8: mobile composer stickers/GIFs on the backend; delete mock/stickers, mock/gifs | in-progress | auto | T-1084 | last local mock data |
 
 ## Follow-ups
 
