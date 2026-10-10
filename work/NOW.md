@@ -2,6 +2,15 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 19:40 local: size wave 1 mostly merged; wave 2 running; mobile mock cutover merged**
+- **Merged:**
+  - T-0949: mobile mock mode on the real store. The lead's phone smoke shows the chat list and the full General history from the shared seed;
+  - the size splits T-0951 (core-effect), T-0952 (stanza), T-0953 (ledger), T-0955 (tools), T-0956 (ais), T-0957 (topics).
+- **Running:**
+  - wave 1's rest: T-0954 (web Composer; the lead checks it in Chrome), T-0958 (stickers);
+  - wave 2: T-0959 (web api.ts), T-0960 (agents/reply.ts), T-0961 (groups service), T-0962 (mobile chat screen; phone smoke), T-0963 (actions gateway), T-0964 (approvals service).
+- **Next:** the last file over 1,000 lines (`lead/policy.ts`), then the 601–1,000 band, the F helpers one at a time, and mock wave 2 (pins and the rest).
+
 **2026-10-10 19:15 local: size plan merged; Julio chose all 131 tasks; wave 1 running**
 - **Merged:** T-0936 (`docs/audit/size-plan.md`).
   - 119 files are over 400 lines, 78,831 lines in all; duplication is small (33 pairs, about 1,320 lines).

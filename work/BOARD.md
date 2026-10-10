@@ -11,6 +11,12 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0954](T-0954-split-web-composer.md) | Size split T13: web Composer.tsx (1,145) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0958](T-0958-split-server-stickers-service.md) | Size split T8: server stickers/service.ts (1,388) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0959](T-0959-split-web-api.md) | Size split T1+T2: web lib/api.ts (1,792) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0960](T-0960-split-server-agents-reply.md) | Size split T3+T4: server agents/reply.ts (1,585) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0961](T-0961-split-server-groups-service.md) | Size split T5+T6: server groups/service.ts (1,583) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0962](T-0962-split-mobile-chat-screen.md) | Size split T15: mobile chat/[id].tsx (1,118) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0963](T-0963-split-server-actions-gateway.md) | Size split T18: server actions/gateway.ts (1,036) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0964](T-0964-split-server-approvals-service.md) | Size split T19: server approvals/service.ts (1,030) | in-progress | deepseek-flash | T-0936 | size-plan |
 
 ## Follow-ups
 
