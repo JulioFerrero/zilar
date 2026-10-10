@@ -1,7 +1,7 @@
 ---
 id: T-0860
 title: "CI: run the server tests in 3 shards next to a job for the other packages"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0860-ci-shard-server-tests
 model: auto
@@ -54,4 +54,37 @@ Run the tests 3 times after the last commit.
 
 ## Report (written by the worker when done)
 
+**Changed:** `.github/workflows/ci.yml` only (+24 / -4). `images.yml` is unchanged.
+
+**New job layout.** The `test` job is now a matrix with `fail-fast: false` and `timeout-minutes: 20`. Each leg's display name is `Test (<name>)`. Every leg runs the same install, pnpm setup, Node setup and turbo cache steps as before.
+
+| Leg | Command |
+|---|---|
+| `server 1/3` | `pnpm --filter @zilar/server exec vitest run --shard=1/3 --testTimeout=30000 --hookTimeout=30000` |
+| `server 2/3` | same, `--shard=2/3` |
+| `server 3/3` | same, `--shard=3/3` |
+| `rest` | `pnpm exec turbo test --filter='!@zilar/server'` |
+
+- The turbo cache key now includes the matrix `id` (`server-1`, `rest`, ...). Without it the parallel legs would share one cache entry. The shard legs never touch turbo, so their cache step is a no-op. I kept it because the spec asks for the same cache steps.
+- The workflow name stays `CI`, so `images.yml` is unchanged. Its `workflow_run: workflows: [CI], types: [completed]` fires once per CI run, after all legs finish. Its conclusion is `success` only when every leg passes, so a failing shard blocks the image build and deploy exactly as a failing `Test` job did.
+- No branch protection (`gh api .../branches/main/protection` returns 404) and no rulesets, so no required-check name depends on `Test`.
+
+**Checks run:**
+- `pnpm exec prettier --write .github/workflows/ci.yml`: unchanged. `prettier --check` on both workflow files passes.
+- `pnpm exec oxlint .github/workflows/ci.yml`: "No files found to lint", because oxlint does not lint YAML. `pnpm lint` (root oxlint .) ran without reported errors.
+- Both workflow files parse as YAML with the `yaml` package bundled in the workspace. Job lists are `static,typecheck,test,build` for CI and `tip,build,deploy` for images.
+- No local test run, as the Checks section asks. The first CI run on main is the check.
+- `pnpm install --frozen-lockfile` ran in the worktree, which had no `node_modules`.
+
+**Facts that differ from the spec:**
+- The old `test` job was at `ci.yml:71-96` (`pnpm test` at line 96), not 75-92.
+- `apps/server/src` has 162 `*.test.ts` files, which matches the audit.
+- The Acceptance section says to run the tests 3 times, but the Checks section says no local test run. I followed Checks.
+
+**Not measured:** shard file counts and timings. Nothing was run locally, so the wall-time gain is unverified until the first CI run on main.
+
+**Unsure:** whether turbo honours `--filter='!@zilar/server'` without a `--` separator. It should, but the first CI run on main will show it.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.** CI runs the server tests in 3 shards, next to a job for the other packages. The first CI run on main after the merge is the real check, and the lead watches it.
