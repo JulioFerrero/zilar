@@ -17,10 +17,15 @@ import {
   editsFor,
   emptyEdits,
   emptyReactions,
+  forwardedPayloadFor,
+  forwardedUiFieldsFor,
+  mentionsEqual,
   mergeEdits,
   mergeTargets,
+  reactionChips as sharedReactionChips,
+  reactionsEqual,
   resolveEdits,
-  summarize,
+  userLocalpartOf as sharedUserLocalpartOf,
 } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import {
@@ -30,14 +35,10 @@ import {
   type XmppCore,
 } from '@zilar/xmpp-core';
 import {
-  AttachmentSchema,
   ForwardOriginSchema,
-  PayloadSchema,
-  VoiceMetaSchema,
   isValid,
   type Attachment,
   type ForwardOrigin,
-  type Payload,
   type VoiceMeta,
 } from '@zilar/protocol';
 import { createAtomStore, type StoreApi } from './atomStore';
@@ -646,25 +647,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       set((state) => ({ edits: { ...state.edits, [chatId]: next } }));
     }
 
-    // Two mentions are equal when their ids and ranges match, in order.
-    function mentionsEqual(left: UiMention[] | undefined, right: UiMention[] | undefined): boolean {
-      if (left === undefined || right === undefined) {
-        return left === right;
-      }
-      if (left.length !== right.length) {
-        return false;
-      }
-      return left.every((entry, idx) => {
-        const other = right[idx];
-        return (
-          other !== undefined &&
-          entry.jid === other.jid &&
-          entry.begin === other.begin &&
-          entry.end === other.end
-        );
-      });
-    }
-
     // Applies one message's current edit state. A deleted message keeps only
     // its place and identity; a corrected one shows the new text and mentions.
     function withEdits(message: UiMessage, chatId: string): UiMessage {
@@ -854,49 +836,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }));
     }
 
-    // The chips of a message, from the stored reaction updates. The lookup is
-    // alias-aware, like `sameMessage`: an optimistic id and the server id of
-    // the same message resolve to one target.
     function reactionChips(
       state: ReactionsState | undefined,
       chatId: string,
       messageId: string,
     ): UiReaction[] | undefined {
-      if (state === undefined) {
-        return undefined;
-      }
-      const summary = summarize(state, aliasRoot(messageId), myJid() ?? '');
-      if (summary.length === 0) {
-        return undefined;
-      }
-      return summary.map((entry) => ({
-        emoji: entry.emoji,
-        count: entry.count,
-        mine: entry.mine,
-        reactors: entry.reactors.map((reactor) => reactorName(chatId, reactor)),
-      }));
-    }
-
-    function reactionsEqual(
-      left: UiReaction[] | undefined,
-      right: UiReaction[] | undefined,
-    ): boolean {
-      if (left === undefined || right === undefined) {
-        return left === right;
-      }
-      if (left.length !== right.length) {
-        return false;
-      }
-      return left.every((entry, index) => {
-        const other = right[index];
-        return (
-          other !== undefined &&
-          entry.emoji === other.emoji &&
-          entry.count === other.count &&
-          entry.mine === other.mine &&
-          entry.reactors.join('\u0000') === other.reactors.join('\u0000')
-        );
-      });
+      return sharedReactionChips(state, chatId, messageId, { aliasRoot, myJid, reactorName });
     }
 
     // Re-attaches the current chips to every loaded message of a chat after a
@@ -1242,39 +1187,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       return isValid(ForwardOriginSchema)(candidate) ? candidate : undefined;
     }
 
-    // The reused payload of a forwarded message: a sticker or other card as-is,
-    // an attachment or voice rebuilt from the UiMessage fields. The voice
-    // transcript is dropped (it is chat-scoped). Every payload is validated
-    // with the protocol schema before the optimistic insert, like `sendSticker`.
-    function forwardedPayloadFor(message: UiMessage): Payload | undefined {
-      if (message.card !== undefined) {
-        return isValid(PayloadSchema)(message.card) ? message.card : undefined;
-      }
-      if (message.attachment !== undefined) {
-        const data = message.attachment;
-        return isValid(AttachmentSchema)(data) ? { v: 0, type: 'attachment', data } : undefined;
-      }
-      if (message.voice !== undefined) {
-        const { transcript: _transcript, ...data } = message.voice;
-        return isValid(VoiceMetaSchema)(data) ? { v: 0, type: 'voice', data } : undefined;
-      }
-      return undefined;
-    }
-
-    // The content fields a forwarded payload paints into the optimistic bubble,
-    // so it looks like the echo the matching normal send would produce.
-    function forwardedUiFieldsFor(
-      payload: Payload,
-    ): Pick<UiMessage, 'voice' | 'attachment' | 'card'> {
-      if (payload.type === 'attachment') {
-        return { attachment: payload.data };
-      }
-      if (payload.type === 'voice') {
-        return { voice: payload.data };
-      }
-      return { card: payload };
-    }
-
     function myJid(): string | undefined {
       const jid = get().me?.jid;
       return jid === undefined || jid === null || jid === '' ? undefined : jid;
@@ -1285,21 +1197,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       return jid !== undefined && fromJid === jid;
     }
 
-    // The localpart of a JID on our own domain, used only as a lookup key.
-    // It is never shown; the localpart of a user JID is the user id lowercased.
     function userLocalpartOf(fromJid: string): string | undefined {
-      const mine = myJid();
-      if (mine === undefined) {
-        return undefined;
-      }
-      const domain = mine.slice(mine.indexOf('@') + 1);
-      const at = fromJid.indexOf('@');
-      if (at === -1) {
-        return undefined;
-      }
-      const local = fromJid.slice(0, at);
-      const host = fromJid.slice(at + 1);
-      return host === domain ? local.toLowerCase() : undefined;
+      return sharedUserLocalpartOf(myJid(), fromJid);
     }
 
     function groupMemberNameFor(chatId: string, fromJid: string): string | undefined {

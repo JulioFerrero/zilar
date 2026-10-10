@@ -7,6 +7,8 @@
 // which outcome counts.
 import { Cause, Deferred, Effect } from 'effect';
 import {
+  forwardedPayloadFor,
+  forwardedUiFieldsFor,
   mentionsForTrimmedText,
   type Attachment,
   type ChatSummary,
@@ -15,14 +17,7 @@ import {
   type VoiceMeta,
 } from '@zilar/chat-core';
 import type { ForwardOrigin, Payload } from '@zilar/protocol';
-import {
-  AttachmentSchema,
-  ForwardOriginSchema,
-  PayloadSchema,
-  StickerSchema,
-  VoiceMetaSchema,
-  isValid,
-} from '@zilar/protocol';
+import { ForwardOriginSchema, StickerSchema, isValid } from '@zilar/protocol';
 import { cleanFilename } from '@/lib/attachments';
 import type {
   SendAttachmentOptions,
@@ -331,37 +326,6 @@ function forwardOriginFor(ctx: StoreCtx, message: UiMessage): ForwardOrigin | un
     original_at: new Date(createdAt).toISOString(),
   };
   return isValid(ForwardOriginSchema)(candidate) ? candidate : undefined;
-}
-
-// The reused payload of a forwarded message: a sticker or other card as-is, an
-// attachment or voice rebuilt from the UiMessage fields. The voice transcript
-// is dropped (it is chat-scoped). Every payload is validated with the protocol
-// schema before the optimistic insert, like `sendSticker`.
-function forwardedPayloadFor(message: UiMessage): Payload | undefined {
-  if (message.card !== undefined) {
-    return isValid(PayloadSchema)(message.card) ? message.card : undefined;
-  }
-  if (message.attachment !== undefined) {
-    const data = message.attachment;
-    return isValid(AttachmentSchema)(data) ? { v: 0, type: 'attachment', data } : undefined;
-  }
-  if (message.voice !== undefined) {
-    const { transcript: _transcript, ...data } = message.voice;
-    return isValid(VoiceMetaSchema)(data) ? { v: 0, type: 'voice', data } : undefined;
-  }
-  return undefined;
-}
-
-// The content fields a forwarded payload paints into the optimistic bubble, so
-// it looks like the echo the matching normal send would produce.
-function forwardedUiFieldsFor(payload: Payload): Pick<UiMessage, 'voice' | 'attachment' | 'card'> {
-  if (payload.type === 'attachment') {
-    return { attachment: payload.data };
-  }
-  if (payload.type === 'voice') {
-    return { voice: payload.data };
-  }
-  return { card: payload };
 }
 
 // One forwarded copy's send: the same deadline/status machinery as voice and

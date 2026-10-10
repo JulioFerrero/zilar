@@ -20,12 +20,15 @@ import {
   editsFor,
   emptyEdits,
   emptyReactions,
+  mentionsEqual,
   mergeEdits,
   mergeTargets,
+  reactionChips as sharedReactionChips,
+  reactionsEqual,
   resolveEdits,
   sanitizeIncomingAttachment,
   sortFolders,
-  summarize,
+  userLocalpartOf as sharedUserLocalpartOf,
 } from '@zilar/chat-core';
 import { jidLocal } from '@zilar/protocol';
 import { type ChatMessage, type XmppCore } from '@zilar/xmpp-core';
@@ -482,24 +485,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       set((state) => ({ edits: { ...state.edits, [chatId]: next } }));
     }
 
-    function mentionsEqual(left: UiMention[] | undefined, right: UiMention[] | undefined): boolean {
-      if (left === undefined || right === undefined) {
-        return left === right;
-      }
-      if (left.length !== right.length) {
-        return false;
-      }
-      return left.every((mention, index) => {
-        const other = right[index];
-        return (
-          other !== undefined &&
-          mention.jid === other.jid &&
-          mention.begin === other.begin &&
-          mention.end === other.end
-        );
-      });
-    }
-
     // Applies one message's current edit state. A deleted message keeps only
     // its place and identity; a corrected one shows the new text and mentions.
     function withEdits(message: UiMessage, chatId: string): UiMessage {
@@ -923,21 +908,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       return jid !== undefined && fromJid === jid;
     }
 
-    // The localpart of a JID on our own domain, used only as a lookup key.
-    // It is never shown; the localpart of a user JID is the user id lowercased.
     function userLocalpartOf(fromJid: string): string | undefined {
-      const mine = myJid();
-      if (mine === undefined) {
-        return undefined;
-      }
-      const domain = mine.slice(mine.indexOf('@') + 1);
-      const at = fromJid.indexOf('@');
-      if (at === -1) {
-        return undefined;
-      }
-      const local = fromJid.slice(0, at);
-      const host = fromJid.slice(at + 1);
-      return host === domain ? local.toLowerCase() : undefined;
+      return sharedUserLocalpartOf(myJid(), fromJid);
     }
 
     function groupMemberNameFor(chatId: string, fromJid: string): string | undefined {
@@ -1009,49 +981,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       );
     }
 
-    // The chips of a message, from the stored reaction updates. The lookup is
-    // alias-aware, like `sameMessage`: an optimistic id and the server id of
-    // the same message resolve to one target.
     function reactionChips(
       state: ReactionsState | undefined,
       chatId: string,
       messageId: string,
     ): UiReaction[] | undefined {
-      if (state === undefined) {
-        return undefined;
-      }
-      const summary = summarize(state, aliasRoot(messageId), myJid() ?? '');
-      if (summary.length === 0) {
-        return undefined;
-      }
-      return summary.map((entry) => ({
-        emoji: entry.emoji,
-        count: entry.count,
-        mine: entry.mine,
-        reactors: entry.reactors.map((reactor) => reactorName(chatId, reactor)),
-      }));
-    }
-
-    function reactionsEqual(
-      left: UiReaction[] | undefined,
-      right: UiReaction[] | undefined,
-    ): boolean {
-      if (left === undefined || right === undefined) {
-        return left === right;
-      }
-      if (left.length !== right.length) {
-        return false;
-      }
-      return left.every((entry, index) => {
-        const other = right[index];
-        return (
-          other !== undefined &&
-          entry.emoji === other.emoji &&
-          entry.count === other.count &&
-          entry.mine === other.mine &&
-          entry.reactors.join('\u0000') === other.reactors.join('\u0000')
-        );
-      });
+      return sharedReactionChips(state, chatId, messageId, { aliasRoot, myJid, reactorName });
     }
 
     // Re-attaches the current chips to every loaded message of a chat after a
