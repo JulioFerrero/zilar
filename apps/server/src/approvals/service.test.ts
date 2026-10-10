@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { createTestContext, testSql, type TestContext } from '../test-support';
+import { seedAi, seedGroup, seedUser } from '../test-support/seed';
 import {
   ApprovalServiceError,
   canDecide,
@@ -35,115 +36,6 @@ function argsHash(seed: number | string): string {
 
 function futureExpiresAt(now: Date, offsetMs: number): Date {
   return new Date(now.getTime() + offsetMs);
-}
-
-async function seedUser(
-  context: TestContext,
-  overrides: { name?: string; email?: string } = {},
-): Promise<string> {
-  const id = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO "user" ${sql.insert({
-        id,
-        name: overrides.name ?? 'User',
-        email: overrides.email ?? `${id}@example.com`,
-      })}`;
-    }),
-  );
-  return id;
-}
-
-async function seedAi(
-  context: TestContext,
-  ownerId: string,
-  overrides: { name?: string } = {},
-): Promise<{ aiId: string; jid: string }> {
-  const connectionId = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO provider_connections ${sql.insert({
-        id: connectionId,
-        owner: ownerId,
-        provider: 'openai',
-        encrypted_key: 'sealed-placeholder',
-        label: null,
-      })}`;
-    }),
-  );
-  const aiId = randomUUID();
-  const localpart = `ai-${aiId}`;
-  const jid = `${localpart}@zilar.localhost`;
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO ais ${sql.insert({
-        id: aiId,
-        owner: ownerId,
-        name: overrides.name ?? 'Helper AI',
-        template: 'dev',
-        persona: 'A persona',
-        provider_connection_id: connectionId,
-        model: 'gpt-4o-mini',
-        localpart,
-        jid,
-        status: 'active',
-      })}`;
-      yield* sql`INSERT INTO ai_limits ${sql.insert({ ai_id: aiId, per_day_usd: '1.00', per_month_usd: '20.00' })}`;
-    }),
-  );
-  return { aiId, jid };
-}
-
-async function seedGroup(
-  context: TestContext,
-  ownerId: string,
-  members: Array<{ userId: string; role: 'admin' | 'member' | 'owner' }>,
-  aiIds: string[],
-): Promise<{ groupId: string; generalTopicId: string }> {
-  const groupId = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO groups ${sql.insert({
-        id: groupId,
-        room_localpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-        title: 'Trip',
-        created_by: ownerId,
-      })}`;
-      yield* sql`INSERT INTO group_members ${sql.insert(
-        members.map((entry) => ({
-          group_id: groupId,
-          user_id: entry.userId,
-          role: entry.role,
-        })),
-      )}`;
-      for (const aiId of aiIds) {
-        yield* sql`INSERT INTO group_ais ${sql.insert({ group_id: groupId, ai_id: aiId, added_by: ownerId })}`;
-      }
-    }),
-  );
-  const generalTopicId = randomUUID();
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO topics ${sql.insert({
-        id: generalTopicId,
-        group_id: groupId,
-        name: 'General',
-        glyph: 'G',
-        room_localpart: `g${randomBytes(15).toString('hex').slice(0, 15)}`,
-        visibility: 'public',
-        kind: 'chat',
-        status: 'open',
-        is_general: true,
-        created_by: ownerId,
-      })}`;
-    }),
-  );
-  return { groupId, generalTopicId };
 }
 
 interface ApprovalStatusRow {

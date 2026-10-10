@@ -5,6 +5,7 @@ import { SqlClient } from 'effect/sql';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { createApp } from '../app';
 import { bootstrapUser } from '../test-support';
+import { seedAi, seedGroup, seedUser } from '../test-support/seed';
 import { ApprovalServiceError, createApproval, decideApproval, toPublicApproval } from './service';
 import {
   createRule,
@@ -39,100 +40,6 @@ function argsHash(seed: number): string {
   buf[0] = seed & 0xff;
   buf[1] = (seed >> 8) & 0xff;
   return buf.toString('hex');
-}
-
-async function seedUser(context: TestContext, overrides: { name?: string } = {}): Promise<string> {
-  const id = randomUUID();
-  const name = overrides.name ?? 'User';
-  const email = `${id}@example.com`;
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO "user" (id, name, email) VALUES (${id}, ${name}, ${email})`;
-    }),
-  );
-  return id;
-}
-
-async function seedAi(
-  context: TestContext,
-  ownerId: string,
-): Promise<{ aiId: string; jid: string }> {
-  const connectionId = randomUUID();
-  const encryptedKey = 'sealed-placeholder';
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label) VALUES (${connectionId}, ${ownerId}, ${'openai'}, ${encryptedKey}, ${null})`;
-    }),
-  );
-  const aiId = randomUUID();
-  const localpart = `ai-${aiId}`;
-  const jid = `${localpart}@zilar.localhost`;
-  const aiName = 'Helper AI';
-  const template = 'dev';
-  const persona = 'A persona';
-  const model = 'gpt-4o-mini';
-  const status = 'active';
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status) VALUES (${aiId}, ${ownerId}, ${aiName}, ${template}, ${persona}, ${connectionId}, ${model}, ${localpart}, ${jid}, ${status})`;
-    }),
-  );
-  const perDay = '1.00';
-  const perMonth = '20.00';
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO ai_limits (ai_id, per_day_usd, per_month_usd) VALUES (${aiId}, ${perDay}, ${perMonth})`;
-    }),
-  );
-  return { aiId, jid };
-}
-
-async function seedGroup(
-  context: TestContext,
-  ownerId: string,
-  members: Array<{ userId: string; role: 'owner' | 'admin' | 'member' }>,
-  aiIds: string[],
-): Promise<{ groupId: string; generalTopicId: string }> {
-  const groupId = randomUUID();
-  const roomLocalpart = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
-  const title = 'Trip';
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO groups (id, room_localpart, title, created_by) VALUES (${groupId}, ${roomLocalpart}, ${title}, ${ownerId})`;
-    }),
-  );
-  for (const entry of members) {
-    await testSql(context)(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`INSERT INTO group_members (group_id, user_id, role) VALUES (${groupId}, ${entry.userId}, ${entry.role})`;
-      }),
-    );
-  }
-  for (const aiId of aiIds) {
-    await testSql(context)(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`INSERT INTO group_ais (group_id, ai_id, added_by) VALUES (${groupId}, ${aiId}, ${ownerId})`;
-      }),
-    );
-  }
-  // Every group has a General topic; group-scoped fixtures use it.
-  const generalTopicId = randomUUID();
-  const generalRoom = `g${randomBytes(15).toString('hex').slice(0, 15)}`;
-  const generalName = 'General';
-  await testSql(context)(
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${generalTopicId}, ${groupId}, ${generalName}, ${'G'}, ${generalRoom}, ${'public'}, ${'chat'}, ${'open'}, ${true}, ${ownerId})`;
-    }),
-  );
-  return { groupId, generalTopicId };
 }
 
 async function seedTopic(
