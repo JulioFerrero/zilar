@@ -7,8 +7,9 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 - **T-0909:** `drizzle-orm` and `drizzle-kit` are overridden away, so the deployed server folder goes from 321 to 230 MB with no PGlite.
 - **T-0910:** lenient contract rows, and the mobile gifs, media and stickers clients derive from the contract.
 - **Merged after that:** T-0907 (T6: incoming, actions and reads in the core) and T-0911 (test sleeps).
+- **T-0912 merged:** web history is in the core. `loadOlder` during the first page no longer shows messages twice, and the fix landed tests first. Mobile has the same race, and T7b carries its fix.
 - **Running:**
-  - T-0912 (T6b: web history in the core, plus the `loadOlder` overlap fix, tests first);
+  - T-0915 (T8: polling, drafts and lifecycle in the core, web side; high risk, live check);
   - T-0914 (T7a: mobile on the core incoming, actions and reads);
   - T-0913 (load flakes).
 - **Next:** T7b (mobile history) after T-0912, then T8 (polling, drafts and lifecycle in the core, web), T9 and T10.
