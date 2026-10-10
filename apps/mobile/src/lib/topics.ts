@@ -6,8 +6,8 @@ import {
   type TopicKind,
   type TopicStatus,
 } from '@zilar/chat-core';
+import { summariesFor as coreSummariesFor } from '@zilar/client-core/store';
 
-import { chatEntryTopics, type Topic } from './topics-api';
 import type { ChatEntry } from './chat-api';
 import type { ChatFolder } from './types';
 
@@ -19,108 +19,18 @@ import type { ChatFolder } from './types';
  * a pure function with Vitest coverage.
  */
 
-/** One topic row from the wire, keyed by its room JID (General keeps the id). */
-export function summaryForTopic(
-  groupTitle: string,
-  groupId: string,
-  topic: Topic,
-  channel?: { subscriberCount: number; description: string | null; role: GroupRole },
-): ChatSummary {
-  return {
-    id: topic.chatJid,
-    title: topic.name,
-    kind: 'group',
-    isAI: false,
-    space: 'personal',
-    unread: 0,
-    muted: false,
-    memberCount: topic.memberCount,
-    onlineCount: 0,
-    // T-0144: a channel's General topic is its feed, so the row carries the
-    // channel fields (chatKind, subscriberCount, description, myRole) like
-    // web's `summaryForTopic`.
-    ...(channel === undefined
-      ? {}
-      : {
-          chatKind: 'channel' as const,
-          subscriberCount: channel.subscriberCount,
-          description: channel.description,
-          myRole: channel.role,
-        }),
-    groupId,
-    groupTitle,
-    topic: {
-      id: topic.id,
-      glyph: topic.glyph,
-      kind: topic.kind,
-      status: topic.status,
-      visibility: topic.visibility,
-      isGeneral: topic.isGeneral,
-      archived: false,
-      owner: topic.owner,
-      linkUrl: topic.linkUrl,
-      linkLabel: topic.linkLabel,
-    },
-  };
-}
-
-function baseSummaryForGroup(entry: Extract<ChatEntry, { kind: 'group' }>): ChatSummary {
-  const chatKind = entry.chatKind ?? 'group';
-  return {
-    id: entry.chatJid,
-    title: entry.title,
-    kind: 'group',
-    isAI: false,
-    space: 'personal',
-    unread: 0,
-    muted: false,
-    memberCount: entry.memberCount,
-    onlineCount: 0,
-    // T-0144: a legacy channel row (older server, no `topics`) still reads as
-    // a channel — the subscriber count, the blurb and the viewer's role ride
-    // the row, like web's `summaryFor`.
-    ...(chatKind === 'channel'
-      ? {
-          chatKind: 'channel' as const,
-          subscriberCount: entry.subscriberCount ?? entry.memberCount,
-          description: entry.description ?? null,
-          myRole: entry.role,
-        }
-      : {}),
-  };
-}
-
 /**
- * One `/api/chats` entry to its chat rows: a group with `topics` maps to one
- * row per non-archived topic; a group without the field keeps its single
- * legacy row. Archived topics never produce a row.
+ * One `/api/chats` entry to its chat rows (T-0924): the shared core
+ * `summariesFor` does the mapping for both apps, so mobile's group rows now
+ * also carry the fields web kept (visibility, handle, avatarUrl,
+ * groupBackground). A DM yields no topic rows here; the caller's `summaryFor`
+ * handles DMs.
  */
 export function summariesForTopicsEntry(entry: ChatEntry): ChatSummary[] {
   if (entry.kind !== 'group') {
     return [];
   }
-  // T-0139: the entry's rows come from `parseChat`'s `parseTopic`
-  // validation, but untyped callers (older tests) may pass raw wire rows:
-  // re-validate every row with the same shape so a malformed one is
-  // dropped, never rendered.
-  const raw = entry.topics !== undefined ? entry.topics : [];
-  const topics = chatEntryTopics({ topics: raw }).filter((topic) => !topic.archived);
-  if (topics.length === 0) {
-    return [baseSummaryForGroup(entry)];
-  }
-  // T-0144: a channel's General topic is its feed, so every row carries the
-  // channel fields (the feed paints the channel bar; the role gates the
-  // composer), like web's `summariesFor`.
-  const chatKind = entry.chatKind ?? 'group';
-  const channel =
-    chatKind === 'channel'
-      ? {
-          subscriberCount: entry.subscriberCount ?? entry.memberCount,
-          description: entry.description ?? null,
-          role: entry.role,
-        }
-      : undefined;
-  return topics.map((topic) => summaryForTopic(entry.title, entry.groupId, topic, channel));
+  return coreSummariesFor(entry);
 }
 
 /** True when the chat is a group topic (a group chat with a task strip). */

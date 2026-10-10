@@ -44,5 +44,7 @@ export * from './folders';
 export * from './groups';
 // T-0921: the shared group and topic actions.
 export * from './group-actions';
+// T-0924: one ChatEntry -> chat-row mapper for both apps.
+export * from './chat-rows';
 // ----------------------------------------------------------------------------
 // End of Phase 2.

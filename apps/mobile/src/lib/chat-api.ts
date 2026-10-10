@@ -2,7 +2,9 @@ import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } f
 import { struct } from '@zilar/protocol';
 import {
   ApiError,
+  GroupBackground,
   runApi,
+  type ChatEntry as ContractChatEntry,
   type Contact as ContractContact,
   type GroupAi as ContractGroupAi,
   type GroupDetail as ContractGroupDetail,
@@ -26,38 +28,10 @@ export type { Me };
 
 export type Contact = ContractContact;
 
-export type ChatEntry =
-  | {
-      kind: 'dm';
-      chatJid: string;
-      title: string;
-      userId: string;
-      avatarUrl?: string;
-      // Set on the caller's AIs; absent on older servers (treated as human).
-      isAi?: boolean;
-    }
-  | {
-      kind: 'group';
-      chatJid: string;
-      title: string;
-      groupId: string;
-      memberCount: number;
-      role: GroupRole;
-      // T-0144: `group` behaves as before; `channel` is the broadcast feed
-      // (its General topic is the feed). Optional so older servers still
-      // parse; the store maps the feed row from the General topic with the
-      // channel fields (chatKind, subscriberCount, description, myRole).
-      chatKind?: 'group' | 'channel';
-      // T-0144: the same count under the usual channel name, for channels only.
-      subscriberCount?: number;
-      // T-0144: the channel's short blurb. Optional so older payloads parse.
-      description?: string | null;
-      // T-0108: a group entry may carry its visible `topics` (archived
-      // excluded). Optional so older servers still parse; the store maps such
-      // a group to one row per topic (General keeps the old chat id).
-      // Validated `Topic` rows (T-0139), malformed wire rows dropped.
-      topics?: Topic[];
-    };
+// T-0924: the entry type comes from the API contract, the same union web
+// decodes. `parseChatEntry` (below) still decodes each entry on its own and
+// skips a bad one, so the mobile leniency (audit F5) is unchanged.
+export type ChatEntry = ContractChatEntry;
 
 export type GroupRole = 'owner' | 'admin' | 'member';
 
@@ -147,6 +121,13 @@ const GroupEntryRawSchema = struct({
   chatKind: Schema.optional(Schema.Literals(['group', 'channel'])),
   subscriberCount: Schema.optional(Schema.Number),
   description: Schema.optional(Schema.NullOr(Schema.String)),
+  // T-0924: the fields web already carried onto its rows. Absent on older
+  // servers (still parses); a malformed one rejects the entry rather than
+  // rendering half of it, like the channel fields above.
+  visibility: Schema.optional(Schema.Literals(['private', 'public'])),
+  handle: Schema.optional(Schema.NullOr(Schema.String)),
+  avatarUrl: Schema.optional(Schema.String),
+  background: Schema.optional(GroupBackground),
   // T-0139: the server's `topics` on the entry. Absent on older servers
   // (still parses, as before); a non-array rejects the entry, while
   // malformed rows inside a valid array are dropped by `parseTopic`.
@@ -265,6 +246,12 @@ function parseChatEntry(value: unknown): ChatEntry | null {
     ...(raw.chatKind === undefined ? {} : { chatKind: raw.chatKind }),
     ...(raw.subscriberCount === undefined ? {} : { subscriberCount: raw.subscriberCount }),
     ...(raw.description === undefined ? {} : { description: raw.description }),
+    // T-0924: carry the four fields web already kept, so both apps' rows
+    // match. Absent on older servers, so they stay absent here.
+    ...(raw.visibility === undefined ? {} : { visibility: raw.visibility }),
+    ...(raw.handle === undefined ? {} : { handle: raw.handle }),
+    ...(raw.avatarUrl === undefined ? {} : { avatarUrl: raw.avatarUrl }),
+    ...(raw.background === undefined ? {} : { background: raw.background }),
   };
 }
 

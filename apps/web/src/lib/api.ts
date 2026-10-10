@@ -17,9 +17,11 @@ import {
   omitUndefined,
   type BackgroundPreset,
   type ChatBackgroundChoice,
+  ChatEntry as chatEntrySchema,
   type ChatFolder as ApiChatFolder,
   type CreatedInviteLink,
   type GroupAi,
+  type GroupBackground,
   type GroupDetail,
   type GroupJoinResult,
   type GroupMember,
@@ -87,60 +89,13 @@ export type Me = AuthMe;
 
 export type { Contact };
 
-const dmEntrySchema = struct({
-  kind: Schema.Literal('dm'),
-  chatJid: Schema.String,
-  title: Schema.String,
-  userId: Schema.optional(Schema.String),
-  avatarUrl: Schema.optional(Schema.String),
-  /** Set on the caller's AIs; absent or false for human contacts. */
-  isAi: Schema.optional(Schema.Boolean),
-});
-
-// T-0466: the group's shared background, set by owners/admins. Optional on
-// entries and details so payloads from an older server still parse.
-const groupBackgroundSchema = struct({
-  backgroundPreset: Schema.NullOr(Schema.String),
-  backgroundImageId: Schema.NullOr(Schema.String),
-  backgroundDim: Schema.NullOr(Schema.Number),
-});
-
-export type GroupBackground = typeof groupBackgroundSchema.Type;
-
-const groupEntrySchema = struct({
-  kind: Schema.Literal('group'),
-  chatJid: Schema.String,
-  title: Schema.String,
-  groupId: Schema.String,
-  memberCount: Schema.Number,
-  role: Schema.Literals(['owner', 'admin', 'member']),
-  // T-0124: `group` behaves as before; `channel` is the broadcast feed (its
-  // General topic is the feed). Optional so older payloads parse as groups.
-  chatKind: Schema.optional(Schema.Literals(['group', 'channel'])),
-  // T-0124: the same count under the usual channel name, for channels only.
-  subscriberCount: Schema.optional(Schema.Number),
-  // T-0124: the channel's short blurb. Optional so older payloads parse.
-  description: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0164: `public` groups are in the directory; `private` stay
-  // invite-only. Optional so older payloads parse as private.
-  visibility: Schema.optional(Schema.Literals(['private', 'public'])),
-  // T-0164: the group's `@handle` while public, null while private.
-  // Optional so older payloads parse as none.
-  handle: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0111: present on servers with topics (T-0108); absent on older ones.
-  // Parsed loosely here — each entry is validated by `topicSchema` when
-  // mapping to chats — and unknown entries are dropped there.
-  topics: Schema.optional(Schema.mutable(Schema.Array(Schema.Unknown))),
-  // T-0165: the group's picture, when it has one. Optional so older
-  // payloads parse (treated as none).
-  avatarUrl: Schema.optional(Schema.String),
-  // T-0466: the group's shared background. Optional so older payloads parse.
-  background: Schema.optional(groupBackgroundSchema),
-});
-
-const chatEntrySchema = Schema.Union([dmEntrySchema, groupEntrySchema]);
-
+// The chats-list entry schema lives in `@zilar/api-contract` (T-0924), the
+// same union mobile decodes: `ChatList.chats` stays `Unknown` there so the
+// server passes entries through unchanged, and this is the schema the web
+// rows are validated with. `GroupBackground` is the contract's too.
 export type ChatEntry = typeof chatEntrySchema.Type;
+
+export type { GroupBackground };
 
 /**
  * The validated topics of a group chat entry: entries that parse as
