@@ -303,6 +303,25 @@ describe('createRealChatStore', () => {
     expect(store.getState().currentUserId).toBe('u-me');
   });
 
+  it('marks a DM the server flags as an AI chat, and leaves a human DM as not AI', async () => {
+    const { store } = await setup({
+      getChats: vi.fn(async () => [
+        {
+          kind: 'dm' as const,
+          chatJid: 'bot@zilar.test',
+          title: 'Bot',
+          userId: 'u-bot',
+          isAi: true,
+        },
+        { kind: 'dm' as const, chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' },
+      ]),
+    });
+
+    const chats = store.getState().chats;
+    expect(chats.find((chat) => chat.id === 'bot@zilar.test')?.isAI).toBe(true);
+    expect(chats.find((chat) => chat.id === 'ana@zilar.test')?.isAI).toBe(false);
+  });
+
   it('updates the preview and unread count from a live message', async () => {
     const { store, xmpp } = await setup();
 

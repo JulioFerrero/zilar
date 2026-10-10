@@ -42,6 +42,35 @@ describe('createChatApi', () => {
     expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer session-token');
   });
 
+  it('parses isAi on DM entries, absent on older servers and human DMs', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        chats: [
+          {
+            kind: 'dm',
+            chatJid: 'bot@zilar.test',
+            title: 'Bot',
+            userId: 'u-bot',
+            isAi: true,
+          },
+          { kind: 'dm', chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' },
+        ],
+      }),
+    );
+    const api = createChatApi(async () => 'session-token', fetchImpl as unknown as typeof fetch);
+
+    const chats = await api.getChats();
+
+    expect(chats[0]).toEqual({
+      kind: 'dm',
+      chatJid: 'bot@zilar.test',
+      title: 'Bot',
+      userId: 'u-bot',
+      isAi: true,
+    });
+    expect(chats[1]).not.toHaveProperty('isAi');
+  });
+
   it('parses the profile, contacts, group and XMPP token', async () => {
     const fetchImpl = vi.fn(async (url: string) => {
       if (url.endsWith('/api/me')) {

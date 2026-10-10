@@ -23,7 +23,15 @@ export interface Contact {
 }
 
 export type ChatEntry =
-  | { kind: 'dm'; chatJid: string; title: string; userId: string; avatarUrl?: string }
+  | {
+      kind: 'dm';
+      chatJid: string;
+      title: string;
+      userId: string;
+      avatarUrl?: string;
+      // Set on the caller's AIs; absent on older servers (treated as human).
+      isAi?: boolean;
+    }
   | {
       kind: 'group';
       chatJid: string;
@@ -160,6 +168,8 @@ const DmEntrySchema = struct({
   title: Schema.String,
   userId: Schema.String,
   avatarUrl: LenientOptionalStringSchema,
+  // Set on the caller's AIs; absent or false for human contacts (as web).
+  isAi: Schema.optional(Schema.Boolean),
 });
 
 const GroupEntryRawSchema = struct({

@@ -165,7 +165,7 @@ function summaryFor(entry: ChatEntry): ChatSummary {
   const base = {
     id: entry.chatJid,
     title: entry.title,
-    isAI: false,
+    isAI: entry.kind === 'dm' && entry.isAi === true,
     space: 'personal' as const,
     unread: 0,
     muted: false,

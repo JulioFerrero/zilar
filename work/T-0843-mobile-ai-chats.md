@@ -1,7 +1,7 @@
 ---
 id: T-0843
 title: "Mobile marks AI DMs as AI (isAi from /api/chats, as web does)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0843-mobile-ai-chats
 model: auto
@@ -54,4 +54,25 @@ Run the tests 3 times after the last commit.
 
 ## Report (written by the worker when done)
 
+**What changed**
+- `apps/mobile/src/lib/chat-api.ts`: `DmEntrySchema` gets `isAi: Schema.optional(Schema.Boolean)` (same as `apps/web/src/lib/api.ts:80`). The `ChatEntry` dm variant gets `isAi?: boolean`. The DM branch of `parseChatEntry` already passes the decoded fields through, so `isAi` reaches the entry.
+- `apps/mobile/src/store/real-store.ts` (`summaryFor`): `isAI: entry.kind === 'dm' && entry.isAi === true`. The spec wrote `entry.isAi === true`; that does not typecheck on the union (groups have no `isAi`), so the `kind === 'dm'` guard was added. Web sets `isAI` for DMs only too (`chatRows.ts:57` sits in the dm branch), so behaviour matches.
+- Tests first: `apps/mobile/src/store/real-store.test.ts` (new test: a DM with `isAi: true` gives `isAI: true`, a DM without it gives `false`), and `apps/mobile/src/lib/chat-api.test.ts` (new test: decodes `isAi` on DMs, absent on older payloads). Both failed before the change (2 failed, 92 passed in those two files) and pass after.
+
+**Test counts** (Checks: `vitest run src/store src/lib/chat-api`)
+- Before: 337 tests in the set (the 2 new ones were added to it), inferred from 339 minus the 2 added; I did not run the set before editing.
+- After: 339 tests, 338 passed, 1 skipped (the skip was already there). 3 of 3 runs identical.
+- `pnpm --filter @zilar/mobile typecheck`: clean (no output).
+- `pnpm exec oxlint` on the 4 changed files: exit 0. Prettier run on the 4 files: unchanged.
+
+**Measured numbers**: none asked for beyond the test counts.
+
+**Behaviour differences**: a DM with `isAi: true` now shows as AI on mobile (AI badge, "writing…", working status). Human DMs and older servers without the field are unchanged (`false`). A non-boolean `isAi` on a DM now rejects that DM row (as on web, where the same schema applies); before, the field was ignored.
+
+**Not done**: no live check on the phone (Julio's check per the Acceptance section). `pnpm gate` not run (wave mode).
+
+**Unsure**: nothing in the code; the audit's line numbers were right (`real-store.ts:168`, `chat-api.ts` DM schema near line 18-33 of the old file, now at 158).
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.** Mobile now takes `isAi` from `/api/chats`, as web does (`real-store.ts:168` hard-coded `isAI: false`). The UI reads it in 6+ places. The combined wave 3 check is clean and the phone smoke of the wave branch passes. Live check for Julio: an AI DM on mobile shows the AI marks.

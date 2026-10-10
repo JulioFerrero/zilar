@@ -32,7 +32,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0885](T-0885-web-store-fakes.md) | Web store tests share one fakeApi/fakeXmpp harness (159-line copies today) | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0886](T-0886-gateway-test-split.md) | Split apps/server/src/agents/gateway.test.ts (7,242 lines, 100 s) into feature files aro… | todo | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0887](T-0887-slow-loop-tests.md) | Server: cut the loop-driven slow tests (600 real requests for a 429, 200 sticker uploads… | todo | haiku-5.5 |  | wave 4, simplify plan |
-| [T-0843](T-0843-mobile-ai-chats.md) | Mobile marks AI DMs as AI (isAi from /api/chats, as web does) | in-progress | haiku-5.5 | | wave 3, simplify plan |
 | [T-0844](T-0844-shared-topic-order-money.md) | One topic order and one money format in chat-core, used by web and mobile; mobile search… | in-progress | sonnet-5.5 | | wave 3, simplify plan |
 | [T-0845](T-0845-web-store-selectors.md) | Web store selector hook; MessageBubble, ChatListItem, MessageList and ChatList subscribe… | in-progress | sonnet-5.5 | | wave 3, simplify plan |
 | [T-0846](T-0846-mobile-message-list-perf.md) | Mobile message list: memoised bubbles, AI draft outside the list entries, then real… | in-progress | sonnet-5.5 | | wave 3, simplify plan |
@@ -918,3 +917,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0841](T-0841-people-search-stale-card.md) | mobile people-search card shows the refreshed relation | 2026-10-09 |
 | [T-0838](T-0838-server-entry.md) | S12 + S13: server entry on Effect | 2026-10-09 |
 | [T-0842](T-0842-web-test-races.md) | web tests wait for the visible state | 2026-10-09 |
+| [T-0843](T-0843-mobile-ai-chats.md) | Mobile marks AI DMs as AI (isAi from /api/chats, as web does) | 2026-10-10 |
