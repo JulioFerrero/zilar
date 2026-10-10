@@ -34,6 +34,12 @@ export default defineConfig(({ mode }) => ({
     // The price: window.location cannot be redefined, so code that navigates
     // takes the navigation as an injected dependency (see goToLogin).
     pool: 'vmThreads',
+    // vm pools never free a file's realm, so a long-lived worker grows until it
+    // is recycled. Cap each worker's memory and the number of workers, or a
+    // full run peaks at ~6.6 GB (T-0930). With 4 workers and a 512 MB limit the
+    // measured peak is ~3.2 GB at a similar wall time.
+    vmMemoryLimit: '512MB',
+    maxWorkers: 4,
     setupFiles: ['./src/test/setup.ts'],
     // First full-app render in each file (renderApp) pays the cold
     // jsdom/module warm-up plus a full render: ~0.2-0.5 s idle, up to
