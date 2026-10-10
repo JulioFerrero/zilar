@@ -1,7 +1,8 @@
-import { initials } from '@zilar/chat-core';
+import { ditherAvatarSvg } from '@zilar/chat-core';
 import { Bot, MessagesSquare, Settings } from 'lucide-react-native';
 import { Image, Keyboard, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SvgXml } from 'react-native-svg';
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { TabTrigger, useTabTrigger } from 'expo-router/ui';
@@ -42,7 +43,7 @@ export const FLOATING_TABS: FloatingTab[] = [
 /**
  * Whether the avatar picture failed to load for the *current* url. The
  * failed url is stored instead of a boolean flag, so a fresh `avatarUrl`
- * (e.g. after Set photo saves) clears the initials fallback instead of
+ * (e.g. after Set photo saves) clears the dither fallback instead of
  * sticking on it until remount.
  */
 export function avatarFailedFor(
@@ -63,7 +64,7 @@ export interface TabProfile {
 type FloatingTabBarProps = {
   /** Total unread of non-muted chats (the All folder total); hidden at 0. */
   unreadTotal: number;
-  /** The signed-in profile for the Profile tab avatar; initials when absent. */
+  /** The signed-in profile for the Profile tab avatar; a dither face when present. */
   profile?: TabProfile | undefined;
 };
 
@@ -85,9 +86,13 @@ function TabIcon({
         imageFailed={imageFailed}
         onImageError={onImageError}
         fallback={
-          <Text className="text-[13px] font-semibold text-foreground">
-            {initials(profile?.name ?? '?')}
-          </Text>
+          profile === undefined ? (
+            <Text className="text-[13px] font-semibold text-foreground">?</Text>
+          ) : (
+            <View style={{ width: 20, height: 20, borderRadius: 10, overflow: 'hidden' }}>
+              <SvgXml xml={ditherAvatarSvg(profile.id)} width={20} height={20} />
+            </View>
+          )
         }
       />
     );
@@ -97,7 +102,7 @@ function TabIcon({
 }
 
 /**
- * The Profile tab face: the resolved picture, or the initials fallback when
+ * The Profile tab face: the resolved picture, or the dither fallback when
  * there is no picture or the load fails. The server's `avatarUrl` is a
  * relative `/api/avatars/<id>` path, resolved against the API origin with
  * the bearer on same-origin only (the `profile-view` pattern); a bare
@@ -148,10 +153,10 @@ function FloatingTabButton({
 }) {
   const { trigger, triggerProps } = useTabTrigger({ name: tab.name });
   const selected = trigger?.isFocused ?? false;
-  // The tab-bar avatar falls back to initials when the picture 404s (a
+  // The tab-bar avatar falls back to a dither face when the picture 404s (a
   // removed picture keeps its stale url until the next focus reload). The
   // failed url is stored, not a flag, so a fresh `avatarUrl` clears the
-  // fallback instead of sticking on initials until remount.
+  // fallback instead of sticking on the dither until remount.
   const [failedUrl, setFailedUrl] = useState<string | undefined>(undefined);
   return (
     <TabTrigger

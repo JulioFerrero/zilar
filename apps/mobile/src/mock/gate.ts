@@ -42,6 +42,11 @@ export function isMockMode(
   return value === '1' || (Array.isArray(value) && value.includes('1'));
 }
 
+// The token the mock-mode factories hand the API client. The shared backend
+// ignores it, but the client fails `unauthorized` before sending when the token
+// is `undefined` (plan risk R3).
+export const mockToken = (): Promise<string> => Promise.resolve('mock-token');
+
 // The mock env vars the API hooks and the chat store provider read. Each is a literal
 // `process.env.EXPO_PUBLIC_*` expression, so babel-preset-expo inlines it at Metro time.
 export const ENV_MOCK = process.env.EXPO_PUBLIC_ZILAR_MOCK;

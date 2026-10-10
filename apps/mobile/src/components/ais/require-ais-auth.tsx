@@ -10,8 +10,8 @@ import { useAisApi } from './use-ais-api';
  * only redirect a screenshot session to the login screen.
  */
 export function RequireAisAuth({ children }: { children: ReactNode }) {
-  const { scenario } = useAisApi();
-  if (scenario !== null) {
+  const { mock } = useAisApi();
+  if (mock) {
     return <>{children}</>;
   }
   return <RequireAuth>{children}</RequireAuth>;

@@ -9,10 +9,16 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds, media gallery | in-progress | auto | T-0949 | mock wave 2 |
 
 ## Follow-ups
 
+- **Planned late: our own "ball avatar" library to replace the dither avatars (Julio, 2026-10-11).** Queue it near the end of the current plan: after the mock rebuild and the remaining cleanups, but before Julio's single live test and the deploy.
+  - **What it is:** like `dither-avatar`, a deterministic avatar from a seed (the id), but rendered as a **3D-looking ball**. Each seed gives its own colours and light direction (highlight, shading, maybe a rim light).
+  - **What it outputs:** SVG, so web shows it as `<img>` and mobile through `SvgXml` (react-native-svg), exactly where T-1075 plugged in `ditherAvatarSvg`/`ditherAvatarDataUri` (`packages/chat-core/src/avatar.ts`).
+  - **Where it lives:** a small workspace package with zero dependencies, like `dither-avatar`.
+  - **Before the spec:** show Julio a preview page of a few seeds, as for the dither pick.
+- **Mobile approvals: "Could not load the rules." when every AI with no rules succeeds but one AI fails (found 2026-10-10, T-1061 smoke).** `apps/mobile/src/components/approvals/rows.ts:86` returns the error state when `succeeded.length === 0` and any fetch was rejected. This applies to real builds too, for example an AI deleted between the list and the rules fetch. It should show the empty list, plus a note for the failed AI.
+- **Mock backend lacks contact requests, blocks, `users/by-handle`, `handles/check`, `PUT /me/handle`, avatars, push and voice transcription (`docs/audit/mock-sweep-status.md` §1b).** These block mobile H2 for contacts and profile, and web sweep W10.
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile.
 - **Mock: attachments show "Not loaded: untrusted address" on mobile (found 2026-10-10, T-1047 smoke).** Sends work now (T-1047), but the fake slot's `getUrl` is a `data:` URL (`packages/mock-backend/src/xmpp/core.ts:229`), and the seeded `Stage.png` and `tickets.pdf` read the same.
 - **Mock: sticker and GIF images are blank on mobile (found 2026-10-10, T-1046 smoke).** The panels list packs and results, but no image draws:
@@ -20,6 +26,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
   - **GIFs:** `apps/mobile/src/lib/gifs-api.ts` `toGifItem` wraps every `data:` token in `/api/gifs/media/<token>`, and the token is SVG too.
 
   The fix needs raster (PNG) art, plus a mock path the native image can reach.
+  - **Web too (lead, T-1062 check, on main):** the sticker thumbnails are broken images. `<img src="/api/stickers/<id>/file">` goes to the vite dev server, which answers 404, and never reaches the mock dispatcher (`apps/web/src/mock/backend.ts`).
 - **Mobile mock approvals have no rules (corrected 2026-10-10, T-1056).** "Always allowed" is always empty in mock mode, because `apps/mobile/src/mock/approvals.ts:119-121` returns `[]` and the "Always" decision records no rule. On real builds the rules load for every owned AI (`use-approvals.ts:117-160`). The fix belongs with the approvals domain of the shared mock backend (`docs/audit/mock-plan.md`).
 - **Mock: `GET /groups/:id/topics` returns `[]` for groups whose General exists only in `/chats` (T-1048 follow-up).**
 - **Mobile: about 9 more `Effect.runFork(Fiber.interrupt(...))` sites in `components/chat` could use `interruptFiber` (`lib/effect/timers.ts`, T-1050).** The `runSync` ones differ and stay.
@@ -1097,3 +1104,30 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1056](T-1056-mobile-approvals-ai-list-mock.md) | Mobile approvals: list AIs through useAisApi, so 'Always allowed' keeps its rules in mock mode when nothing is | 2026-10-10 |
 | [T-1058](T-1058-split-mobile-boot-check.md) | Size split: apps/mobile/scripts/boot-check.mjs (805 lines) into boot-check-{proc,steps,launch}.mjs, moved unch | 2026-10-10 |
 | [T-1057](T-1057-server-schema-issues.md) | Dedup F6 (S4): one firstIssueMessage in apps/server/src/effect/schema-issues.ts for auth, routines and xmpp ad | 2026-10-10 |
+| [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds and media gallery domains in @zilar/mock-backend | 2026-10-10 |
+| [T-1059](T-1059-audit-mock-sweep-status.md) | Audit: what still uses the old mock code (web mock/api.ts fallback, mobile use-*-api mock switches, mobile moc | 2026-10-10 |
+| [T-1060](T-1060-delete-mobile-mock-store.md) | Mock sweep Q (mobile): delete the dead mock store apps/mobile/src/store/chat-store.ts (1,595 lines) and the fo | 2026-10-10 |
+| [T-1061](T-1061-mobile-approvals-on-mock-backend.md) | Mock H2-2 (mobile): approvals run on @zilar/mock-backend through mockFetch; one shared mockToken in mock/gate. | 2026-10-10 |
+| [T-1062](T-1062-web-mock-delete-covered-routes-1.md) | Mock sweep W1+W2 (web): delete the mock/api.ts routes the shared backend already answers (tools, chats, sticke | 2026-10-10 |
+| [T-1063](T-1063-mobile-ais-on-mock-backend.md) | Mock H2-1 (mobile): AIs, AI memory, audit and tools run on @zilar/mock-backend through mockFetch | 2026-10-10 |
+| [T-1064](T-1064-mobile-machines-connections-directory-on-mock-backend.md) | Mock H2-3 (mobile): machines, connections and directory run on @zilar/mock-backend through mockFetch (contacts | 2026-10-10 |
+| [T-1066](T-1066-delete-mobile-replaced-mocks.md) | Mock sweep M2+R2 (mobile): delete the seven old mocks the H2 adapters replaced (ais, ai-memory, audit, tools,  | 2026-10-10 |
+| [T-1065](T-1065-web-mock-delete-covered-routes-2.md) | Mock sweep W1b (web): delete the mock/api.ts routes the shared backend answers that T-1062 kept, plus backgrou | 2026-10-10 |
+| [T-1067](T-1067-mock-backend-contacts-blocks-handles.md) | Mock backend F3: contact-requests (with users/by-handle), blocks, handles/check and PUT /me/handle domains in  | 2026-10-10 |
+| [T-1068](T-1068-web-mock-delete-covered-routes-3.md) | Mock sweep W3 (web): delete the mock/api.ts groups, invite-links, join, directory and topics routes the shared | 2026-10-10 |
+| [T-1069](T-1069-mobile-contacts-directory-on-mock-backend.md) | Mock H2-4a (mobile): contacts and directory run on @zilar/mock-backend through mockFetch | 2026-10-10 |
+| [T-1070](T-1070-mobile-search-on-mock-backend-and-delete-dead-mocks.md) | Mock H2-4b + sweep (mobile): chat search runs on @zilar/mock-backend; delete contacts-mock, mock/directory and | 2026-10-10 |
+| [T-1071](T-1071-web-mock-delete-covered-routes-4.md) | Mock sweep W4 (web): delete the mock/api.ts /topics/:id, roles, audit, approvals, approval-rules, connections  | 2026-10-10 |
+| [T-1072](T-1072-web-mock-delete-covered-routes-5.md) | Mock sweep W10 (web): delete the mock/api.ts me, me/handle, users/by-handle, contact-requests, blocks and hand | 2026-10-10 |
+| [T-1073](T-1073-mock-backend-push-voice.md) | Mock backend F4: push (config, subscriptions, settings, test) and voice transcription domains in @zilar/mock-b | 2026-10-10 |
+| [T-1074](T-1074-web-mock-drop-old-routes.md) | Mock sweep W5-W9 (web): dispatch answers only from @zilar/mock-backend; delete mock/api.ts and the dead seed f | 2026-10-10 |
+| [T-1075](T-1075-dither-avatars.md) | Dither avatars: every avatar without a picture shows dither-avatar's coloured SVG (web and mobile, AIs too) in | 2026-10-10 |
+| [T-1076](T-1076-mock-backend-avatars.md) | Mock backend F5: avatars domain (PUT/DELETE /avatars/:kind/:ownerId) whose urls show without a server; /me car | 2026-10-10 |
+| [T-1077](T-1077-mobile-profile-on-mock-backend.md) | Mock H2-6 (mobile): profile runs on @zilar/mock-backend through mockFetch; delete mock/profile.ts | 2026-10-10 |
+| [T-1078](T-1078-mock-backend-integrations-and-mobile-switch.md) | Mock backend F6 + H2-5: integrations domain in @zilar/mock-backend; mobile integrations run on it; delete inte | 2026-10-10 |
+| [T-1080](T-1080-mock-voice-follows-integrations.md) | Mock backend: GET /voice/transcription follows the integrations voice setting; seed voice as configured; fix s | 2026-10-10 |
+| [T-1079](T-1079-mobile-stickers-on-mock-backend.md) | Mock H2-7 (mobile): sticker management runs on @zilar/mock-backend through mockFetch; delete stickers-mock.ts | 2026-10-10 |
+| [T-1082](T-1082-mock-sweep-status-2.md) | Audit: rewrite docs/audit/mock-sweep-status.md for main after T-1081, with what is left of the mock plan and a | 2026-10-10 |
+| [T-1081](T-1081-mobile-mock-sticker-owner.md) | Mobile mock: sticker screens know the mock viewer, so your own packs open for editing (viewerId from the share | 2026-10-10 |
+| [T-1084](T-1084-mobile-mock-dead-files.md) | Mock cleanup: delete mobile mock/drafts.ts and mock/time.ts (no importers); trim web mock/ids.ts to currentUse | 2026-10-10 |
+| [T-1083](T-1083-web-mock-sticker-files-dev-middleware.md) | Web mock: a dev-server-only vite middleware serves the shared backend's seed sticker files, so sticker images  | 2026-10-10 |

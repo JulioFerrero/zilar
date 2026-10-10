@@ -2,11 +2,12 @@ import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
+import { devStickerFiles } from './src/mock/dev-sticker-files';
 
 const src = fileURLToPath(new URL('./src', import.meta.url));
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [devStickerFiles(), react(), tailwindcss()],
   resolve: {
     alias: [{ find: '@', replacement: src }],
   },

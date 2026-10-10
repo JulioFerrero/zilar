@@ -28,7 +28,7 @@ const FAVORITE_ERROR = 'Could not remove the favorite. Try again.';
  */
 export function useStickersPanel() {
   const { width: windowWidth } = useWindowDimensions();
-  const { api } = useStickersApi();
+  const { api, viewerId } = useStickersApi();
 
   const [tab, setTab] = useState<StickerTab>('packs');
   const [packs, setPacks] = useState<StickerPack[]>([]);
@@ -300,7 +300,7 @@ export function useStickersPanel() {
     importNonce,
     openImport,
     token,
-    meId: me?.id,
+    meId: viewerId ?? me?.id,
     reload,
     loadDiscover,
     addPack,

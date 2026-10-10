@@ -2,6 +2,91 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 04:10 local: dither avatars live in both apps; mobile profile, integrations and stickers on the shared backend**
+- **Merged since 02:40:**
+  - **T-1074:** web mock is backend-only. In the browser, a chat, sending a message and push settings work;
+  - **T-1075:** dither avatars. Checked on the web and the phone: chat list, header, messages, profile and tab face;
+  - **T-1076:** backend avatars. In the browser, upload, crop, save and remove work;
+  - **T-1077:** mobile profile on the backend, `mock/profile.ts` deleted. On the phone, the username taken/free/saved checks work;
+  - **T-1078:** backend integrations, `integrations-mock.ts` deleted. On the phone, Telegram remove works; on the web the page loads (it was a 404);
+  - **T-1079:** mobile stickers on the backend, `stickers-mock.ts` deleted. On the phone, the packs list;
+  - **T-1080:** mock voice transcription follows the integrations setting.
+- **Julio (03:00):** later in the plan, our own **3D ball avatar** library replaces the dither. It goes after the cleanups and before his live test, with a preview first. It is on the BOARD.
+- **Running:** T-1081, so your own sticker packs are editable in mobile mock mode (`me` is null there; the viewer id comes from the seed).
+- **Left in mobile `mock/`:** `gifs`, `stickers` and `attachments` (small demo helpers still imported by `lib/`), plus `gate`, `backend`, `uploader`, `load`, `drafts`, `time` and `dev-kit-screen`.
+
+**2026-10-11 02:40 local: web mock runs only on the shared backend; dither avatars running**
+- **Merged since 01:10:**
+  - **T-1070:** mobile search on the backend; 9 dead mobile mocks deleted (1,603 lines). On the phone, search and opening a result work;
+  - **T-1071:** 749 web mock lines deleted. In the browser, Machines, Approvals approve and topic info work;
+  - **T-1072:** 374 web mock lines deleted. In the browser, Add contact, Block and the username taken/free/save checks work;
+  - **T-1073:** backend push and voice-transcription domains, all decoded with the real schemas;
+  - **T-1074:** web `dispatch` answers only from the backend (404 otherwise). `mock/api.ts` and 6 seed files deleted (2,953 lines). In the browser, a chat, sending a message and push settings work.
+- **Tonight in all:** about 12,000 old mock lines deleted. Web `mock/` now holds only `backend`, `gate`, `load`, `helpers` and `ids`.
+- **Julio's pick (02:20):** avatars without a picture use dither-avatar in its colours, for everyone, AIs too.
+- **Running:** **T-1075**, dither avatars on web and mobile. After it, update `docs/design/ui-style.md` §2 (the monochrome shades are gone).
+- **Next:**
+  - the backend avatars domain, then mobile profile on the backend;
+  - mobile stickers, gifs, attachments and integrations mocks;
+  - a `voiceTranscription` group in api-contract (T-1073 follow-up).
+
+**2026-10-11 01:10 local: about 6,600 mock lines deleted tonight; the last mobile switches and web slices running**
+- **Merged since 00:30:**
+  - **T-1066:** 7 replaced mobile mocks deleted (1,176 lines). On the phone, AIs, Dev-1 and Machines work;
+  - **T-1065:** 723 lines of web `mock/api.ts` deleted. In the browser, pins, folders, mute and the background work;
+  - **T-1067:** backend contact-requests, blocks, `handles/check` and `PUT /me/handle`. Every route decoded, and the seeds are as empty as web's;
+  - **T-1068:** 649 lines of web `mock/api.ts` deleted. In the browser, Dev team › General and topic info work;
+  - **T-1069:** mobile contacts and directory on the backend. On the phone, Explore, a profile by handle, sending a request and the Requests list work.
+- **Web `mock/api.ts`:** 4,297 lines at the start of tonight, about 2,175 now.
+- **Running:**
+  - **T-1070:** mobile search on the backend, then delete `contacts-mock`, `mock/directory` and the `mock/index` chain, about 1,600 lines;
+  - **T-1071:** W4, the web `/topics/:id`, roles, audit, approvals, connections and machines routes.
+- **Next:**
+  - W10, the web routes T-1067 now covers;
+  - the backend avatars, push and voice domains, then mobile profile and stickers, and their deletions.
+
+**2026-10-11 00:30 local: 6 mobile hooks on the shared backend; next deletion and backend routes running**
+- **Merged:**
+  - **T-1063:** H2-1, mobile AIs, memory, audit and tools on the backend. On the phone, the AIs tab, Dev-1's page (memory, tools, routines, activity) and Approvals with no "Could not load" all work;
+  - **T-1064:** H2-3, machines and connections on the backend. On the phone, the connection keys and the machine picker show. Directory is held back, because the backend lacks `handles/check`.
+- **Running, 3 workers:**
+  - **T-1065:** W1b, the rest of the covered web `mock/api.ts` routes;
+  - **T-1066:** delete the 7 replaced mobile mocks (1,172 lines, no importers left);
+  - **T-1067:** backend contact-requests, blocks, `handles/check` and `PUT /me/handle`. It unblocks mobile contacts, profile and directory, and web W10.
+
+**2026-10-11 00:05 local: the sweep is under way, about 2,700 lines deleted**
+- **Merged:**
+  - **T-1060:** the dead mobile mock store and 4 old mocks are deleted (1,954 lines). On the phone, chats, a chat and a group work;
+  - **T-1061:** mobile approvals on the shared backend. On the phone, the backend card `apr-42`, Always (the rule shows) and Revoke all work;
+  - **T-1062:** 754 lines of web `mock/api.ts` are deleted (tools, chats, stickers, GIFs). The deleted routes were probed as unreachable, and the web chat list and sticker panel work as on main.
+- **Found:**
+  - mobile `mergeRulesFanOut` shows "Could not load the rules" when every AI that succeeded had no rules and one AI failed. This applies to real builds too (board);
+  - web mock sticker thumbnails are broken images on main too (board, with the mobile images item).
+- **Running, 3 workers:**
+  - **T-1063:** H2-1, mobile AIs, memory, audit and tools on the backend. It fixes the id mismatch behind "Could not load the rules";
+  - **T-1064:** H2-3, mobile machines, connections and directory. Contacts waits for backend domains;
+  - **T-1065:** W1b, the rest of the covered web routes.
+
+**2026-10-10 23:35 local: mock wave 2 complete; the sweep starts**
+- **Merged:**
+  - **T-1045** (folders, backgrounds and media). On the phone, the media panel and the folder chips work;
+  - **T-1059**, the audit `docs/audit/mock-sweep-status.md`. The lead confirmed with grep that the mobile mock store `store/chat-store.ts` (1,595 lines) has no importers.
+- **Running, 3 workers:**
+  - **T-1060:** delete the dead mobile mock store and the 4 old mocks only it imports, about 1,950 lines;
+  - **T-1061:** H2-2, mobile approvals on the shared backend. The rules show, and the chat card `apr-42` matches. It also creates the one shared `mockToken` in `mock/gate.ts`;
+  - **T-1062:** W1+W2, delete the web `mock/api.ts` routes the backend already answers. Each exact method and path is probed before deletion.
+- **Next, in order:** H2-1 (the AIs group) and H2-3 (contacts, machines, connections, directory) after T-1061, because they need `mockToken`. Then W3-W4, H2-4, and the voice and profile backend domains (plan F).
+
+**2026-10-10 23:20 local: T-1056 to T-1058 merged; T-1045 in pre-review; the mock sweep audit running**
+- **Merged:**
+  - **T-1056:** the approvals AI list goes through `useAisApi`. The lead's phone smoke showed the spec's premise was wrong: the mobile approvals mock returns no rules at all. The review and the board are corrected;
+  - **T-1057:** one `firstIssueMessage`, identical to auth's by diff; server tests passed;
+  - **T-1058:** the `boot-check.mjs` split. The line check shows no difference, `--help` is identical, and `--device NOPE` fails cleanly.
+- **Running:**
+  - **T-1045:** the pre-review after the lead's fix round (rebase resolved, tests dropped);
+  - **T-1059:** an audit of what still uses the old mock code (the web `mock/api.ts` fallback, mobile `use-*-api` switches such as approvals, the mobile mock store), to slice H2 and the deletion sweep.
+- **Holding:** dedup S12-S14 (the web API facades onto the derived client) wait for the audit's order. The security slices wait for Julio.
+
 **2026-10-10 23:10 local: 6 more merged; T-1045 in its fix round; 3 new tasks running**
 - **Merged since 22:55:**
   - **dedups, each read line by line:**

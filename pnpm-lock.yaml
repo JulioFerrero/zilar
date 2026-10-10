@@ -491,6 +491,9 @@ importers:
       '@zilar/protocol':
         specifier: workspace:*
         version: link:../protocol
+      dither-avatar:
+        specifier: 1.0.0
+        version: 1.0.0(react@19.3.0)
 
   packages/client-core:
     dependencies:
@@ -3873,6 +3876,14 @@ packages:
 
   didyoumean@1.2.2:
     resolution: {integrity: sha512-gxtyfqMg7GKyhQmb056K7M3xszy/myH8w+B4RT+QXBQsvAOdc3XymqDDPHx1BgPgsdAA5SIifona89YtRATDzw==}
+
+  dither-avatar@1.0.0:
+    resolution: {integrity: sha512-D8eOqcqsePWhQOTxGVa1a0gmi+9pBMfP8lFMtcSsY3S0FdttHdBkUiSNcX/M4CHO1ywbc33Po0uxW5UB+41+IQ==}
+    peerDependencies:
+      react: '>=18'
+    peerDependenciesMeta:
+      react:
+        optional: true
 
   dlv@1.1.3:
     resolution: {integrity: sha512-+HlytyjlPKnIG8XuRG8WvmBP8xs8P71y+SKKS6ZXWoEgLuePxtDoUEiH7WkdePWrQ5JBpE6aoVqfZfJUQkjXwA==}
@@ -10454,6 +10465,10 @@ snapshots:
       dequal: 2.0.3
 
   didyoumean@1.2.2: {}
+
+  dither-avatar@1.0.0(react@19.3.0):
+    optionalDependencies:
+      react: 19.3.0
 
   dlv@1.1.3: {}
 
