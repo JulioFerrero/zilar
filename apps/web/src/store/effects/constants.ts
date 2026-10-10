@@ -27,4 +27,4 @@ export const DRAFT_IDLE_MS = 60_000;
 
 // Finished turn ids are remembered only to ignore a late `draft`. The set is
 // capped so it cannot grow for the life of the tab.
-export const FINISHED_TURNS_MAX = 50;
+export { FINISHED_TURNS_MAX } from '@zilar/client-core/store';

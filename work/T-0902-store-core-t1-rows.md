@@ -1,7 +1,7 @@
 ---
 id: T-0902
 title: "Store core T1 (pilot): @zilar/client-core/store subpath and the pure row helpers moved from both stores"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0902-store-core-t1-rows
 model: auto
@@ -72,4 +72,17 @@ ZILAR_SMOKE_DIR=<scratchpad>/T-0902/smoke ZILAR_ROUTES="/ /settings" pnpm phone:
 
 ## Report (written by the worker when done)
 
+- Core: `@zilar/client-core` got the four workspace deps and the `./store` export. New `src/store/index.ts` has one comment section per task (T1 live, T2, T3, T6, T8, T10). New `src/store/rows.ts` holds the 8 helpers plus `FINISHED_TURNS_MAX`, and `rows.test.ts` has 13 tests. Lines: +about 105 in rows.ts, +about 100 in the test, +about 30 in index.ts (core is about +235 including test and index; the plan said +130 for code).
+- Web: `chatRows.ts` re-exports 7 helpers (-86 net), `polling.ts` imports and re-exports `withoutDraft` (-6 net), `constants.ts` re-exports `FINISHED_TURNS_MAX` (0 net). About -90 total (plan: -80).
+- Mobile: `real-store.ts` -85 net (7 helper copies removed, one import added); `effects/polling.ts` -12 net (also dropped the now-unused `DraftState` import). About -97 (plan: -75).
+- Checks: client-core vitest 4 files / 61 tests pass; web `src/store` 16 files / 214 pass; mobile `src/store` 30 files / 306 pass, 1 skipped (already skipped before). Typecheck of client-core, web and mobile clean. Prettier and oxlint clean on the changed files.
+- Phone smoke: `SMOKE PASS` for `/` and `/settings` on emulator-5554; Metro resolved `@zilar/client-core/store`. Both screenshots show the chat list and the settings page rendered normally.
+- Differences from the plan: none in behaviour. No existing test was edited. `pnpm gate` was not run (wave mode).
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.**
+- **What landed:** `@zilar/client-core/store` exists with the pure row helpers, and both stores import them. That is core +105 code lines, web −90 and mobile −97, with no behaviour change and no existing test edited.
+- **Metro:** it resolves the subpath, and the phone smoke shows the chat list and settings rendering normally.
+- **Next:** T2 and T3 of `docs/STORE_CORE_PLAN.md` can start.
+- **Check:** the combined wave 6 check passes.

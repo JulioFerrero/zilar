@@ -2,6 +2,7 @@
 // pins poll (both also run on tab focus), and the AI draft stream with the
 // timers that drop a finished or stale draft. Loops are forked into a Scope,
 // so they stop when it closes.
+import { withoutDraft } from '@zilar/client-core/store';
 import { Effect, Schedule, type Scope } from 'effect';
 import type { DraftEndEvent, DraftHubEvent } from '@/lib/drafts';
 import {
@@ -117,14 +118,7 @@ export function clearFinishedTurns(ctx: StoreCtx): void {
   ctx.finishedTurnOrder.length = 0;
 }
 
-export function withoutDraft<T>(drafts: Record<string, T>, chatId: string): Record<string, T> {
-  if (drafts[chatId] === undefined) {
-    return drafts;
-  }
-  const next = { ...drafts };
-  delete next[chatId];
-  return next;
-}
+export { withoutDraft };
 
 /** Cancels the removal timer of a chat's draft. */
 export function clearDraftTimeout(ctx: StoreCtx, chatId: string): void {

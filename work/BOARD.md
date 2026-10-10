@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | [T-0903](T-0903-store-core-t2-lifetime.md) | Store core T2: lifetime in client-core, web runtime on it | in-progress | sonnet-5.5 | T-0902 | wave 6, phase 4.3 |
 | [T-0904](T-0904-store-core-t3-ledger.md) | Store core T3: message ledger in client-core, web store on it | in-progress | opus-5.5 | T-0902 | wave 6, phase 4.3 |
-| [T-0902](T-0902-store-core-t1-rows.md) | Store core T1 pilot: client-core/store subpath, pure row helpers | in-progress | sonnet-5.5 | T-0896, T-0900 | wave 6, phase 4.3 |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
@@ -933,3 +932,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0898](T-0898-source-pinning-tests.md) | Replace the brittle mobile source-pinning tests with render tests or a lint rule (simplify plan 5.6, F-F7) | 2026-10-10 |
 | [T-0897](T-0897-contract-tidy.md) | api-contract tidy: one middleware file and one schema-error layer, the chain lists merged, hand-decoded payloa | 2026-10-10 |
 | [T-0901](T-0901-mobile-sign-out-state.md) | Sign-out clears the user's chat state: no chats, contacts, messages or profile of the previous user survive in | 2026-10-10 |
+| [T-0902](T-0902-store-core-t1-rows.md) | Store core T1 (pilot): @zilar/client-core/store subpath and the pure row helpers moved from both stores | 2026-10-10 |

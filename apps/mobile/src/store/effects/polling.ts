@@ -1,7 +1,7 @@
+import { FINISHED_TURNS_MAX, withoutDraft } from '@zilar/client-core/store';
 import { Effect, Fiber, Schedule, Scope } from 'effect';
 
 import type { DraftEndEvent, DraftHubEvent } from '../../lib/drafts';
-import type { DraftState } from '../types';
 import { closeScope, onClose, type StoreCtx } from './runtime';
 
 /** Refetch `/api/chats` every 60 s while the app is active (T-0112). */
@@ -20,19 +20,7 @@ export const DRAFT_IDLE_MS = 60_000;
 
 // Finished turn ids are remembered only to ignore a late `draft`. The set is
 // capped so it cannot grow for the life of the app session.
-export const FINISHED_TURNS_MAX = 50;
-
-export function withoutDraft(
-  drafts: Record<string, DraftState>,
-  chatId: string,
-): Record<string, DraftState> {
-  if (drafts[chatId] === undefined) {
-    return drafts;
-  }
-  const next = { ...drafts };
-  delete next[chatId];
-  return next;
-}
+export { FINISHED_TURNS_MAX, withoutDraft };
 
 export interface Polling {
   /** The 60 s poll for new and removed topics, plus its resume listener. */

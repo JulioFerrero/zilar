@@ -27,6 +27,16 @@ import {
   resolveEdits,
   userLocalpartOf as sharedUserLocalpartOf,
 } from '@zilar/chat-core';
+import {
+  advanceStatus,
+  clearFailure,
+  coreKind,
+  moveChatToTop,
+  rememberFinishedDraftMessage,
+  sortByRecency,
+  sortMessages,
+  withoutDraft,
+} from '@zilar/client-core/store';
 import { Effect } from 'effect';
 import {
   type ChatMessage,
@@ -54,7 +64,7 @@ import { makeHistory } from './effects/history';
 import { makeLifecycle } from './effects/lifecycle';
 import { makePins } from './effects/pins';
 import { makeSend } from './effects/send';
-import { makePolling, FINISHED_TURNS_MAX, withoutDraft } from './effects/polling';
+import { makePolling } from './effects/polling';
 import { Ports, PortsLive, type RealStoreDeps } from './effects/ports';
 import { makeLife, makeRunners, type StoreCtx, type StoreState } from './effects/runtime';
 import {
@@ -77,28 +87,7 @@ export {
   TOPIC_REFRESH_INTERVAL_MS,
 } from './effects/polling';
 
-// Records which final message took over a draft's turn, capped like the
-// finished-turn set. Insertion order is the cap order.
-function rememberFinishedDraftMessage(
-  record: Record<string, string>,
-  messageId: string,
-  turnId: string,
-): Record<string, string> {
-  const next = { ...record, [messageId]: turnId };
-  const keys = Object.keys(next);
-  if (keys.length > FINISHED_TURNS_MAX) {
-    for (const key of keys.slice(0, keys.length - FINISHED_TURNS_MAX)) {
-      delete next[key];
-    }
-  }
-  return next;
-}
-
 export type { AppStateLike, RealStoreDeps } from './effects/ports';
-
-function coreKind(chat: ChatSummary): 'chat' | 'groupchat' {
-  return chat.kind === 'group' ? 'groupchat' : 'chat';
-}
 
 /**
  * XEP-0308 corrections, XEP-0424 retractions and XEP-0444 reactions arrive as
@@ -132,34 +121,6 @@ function isReactionOnly(message: ChatMessage): boolean {
  */
 function isEditStanza(message: ChatMessage): boolean {
   return message.correction !== undefined || message.retraction !== undefined;
-}
-
-function sortMessages(messages: UiMessage[]): UiMessage[] {
-  return [...messages].sort(
-    (left, right) =>
-      left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id),
-  );
-}
-
-function sortByRecency(chats: ChatSummary[]): ChatSummary[] {
-  return [...chats].sort((left, right) => {
-    const leftTime = left.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY;
-    const rightTime = right.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY;
-    return rightTime - leftTime || left.title.localeCompare(right.title);
-  });
-}
-
-function moveChatToTop(chats: ChatSummary[], chatId: string): ChatSummary[] {
-  const index = chats.findIndex((chat) => chat.id === chatId);
-  if (index <= 0) {
-    return chats;
-  }
-  const next = [...chats];
-  const [chat] = next.splice(index, 1);
-  if (chat !== undefined) {
-    next.unshift(chat);
-  }
-  return next;
 }
 
 function summaryFor(entry: ChatEntry): ChatSummary {
@@ -921,24 +882,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }
     }
 
-    // A status only moves forward: sending -> sent -> read. A late echo or
-    // send confirmation must never downgrade a message the peer already read.
-    // `failed` is outside the ladder: `advanceStatus` never moves into or out
-    // of it by accident — only an explicit retry does (web's T-0168).
-    const STATUS_RANK: Record<MessageStatus, number> = {
-      sending: 0,
-      sent: 1,
-      read: 2,
-      failed: 2,
-    };
-
-    function advanceStatus(current: MessageStatus, next: MessageStatus): MessageStatus {
-      if (current === 'failed' || next === 'failed') {
-        return current;
-      }
-      return STATUS_RANK[next] > STATUS_RANK[current] ? next : current;
-    }
-
     // Updates a message's status in the open conversation and, when it is the
     // same message, in the chat list preview, so the two always agree.
     function updateMessageStatus(chatId: string, messageId: string, status: MessageStatus): void {
@@ -994,17 +937,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           ),
         },
       }));
-    }
-
-    /** Drops the `failed` flag without leaving an `undefined` value behind. */
-    function clearFailure(message: UiMessage): UiMessage {
-      if (message.failed === undefined && message.failureReason === undefined) {
-        return message;
-      }
-      const next: UiMessage = { ...message };
-      delete next.failed;
-      delete next.failureReason;
-      return next;
     }
 
     function clearAttachmentFailure(chatId: string, messageId: string): void {

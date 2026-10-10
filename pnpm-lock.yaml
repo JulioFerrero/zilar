@@ -485,6 +485,19 @@ importers:
         version: link:../protocol
 
   packages/client-core:
+    dependencies:
+      '@zilar/api-contract':
+        specifier: workspace:*
+        version: link:../api-contract
+      '@zilar/chat-core':
+        specifier: workspace:*
+        version: link:../chat-core
+      '@zilar/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@zilar/xmpp-core':
+        specifier: workspace:*
+        version: link:../xmpp-core
     devDependencies:
       '@effect/atom-react':
         specifier: 'catalog:'
