@@ -36,7 +36,7 @@ export default function BlockedScreen() {
 
 function BlockedList() {
   const router = useRouter();
-  const { api, scenario } = useContactsApi();
+  const { api, mock } = useContactsApi();
 
   const [people, setPeople] = useState<BlockedPerson[]>([]);
   const [status, setStatus] = useState<PageStatus>('loading');
@@ -163,7 +163,7 @@ function BlockedList() {
           ) : null}
         </View>
       </ScrollView>
-      {scenario !== null ? (
+      {mock ? (
         <View className="items-center border-t border-divider px-4 py-1">
           <Text className="text-[12px] text-muted-foreground">Mock data</Text>
         </View>

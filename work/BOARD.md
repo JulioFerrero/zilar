@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1069](T-1069-mobile-contacts-directory-on-mock-backend.md) | Mock H2-4a: mobile contacts and directory on the shared backend | in-progress | auto | T-1067 | probe first |
 
 ## Follow-ups
 
@@ -1111,3 +1110,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1065](T-1065-web-mock-delete-covered-routes-2.md) | Mock sweep W1b (web): delete the mock/api.ts routes the shared backend answers that T-1062 kept, plus backgrou | 2026-10-10 |
 | [T-1067](T-1067-mock-backend-contacts-blocks-handles.md) | Mock backend F3: contact-requests (with users/by-handle), blocks, handles/check and PUT /me/handle domains in  | 2026-10-10 |
 | [T-1068](T-1068-web-mock-delete-covered-routes-3.md) | Mock sweep W3 (web): delete the mock/api.ts groups, invite-links, join, directory and topics routes the shared | 2026-10-10 |
+| [T-1069](T-1069-mobile-contacts-directory-on-mock-backend.md) | Mock H2-4a (mobile): contacts and directory run on @zilar/mock-backend through mockFetch | 2026-10-10 |
