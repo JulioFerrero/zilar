@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Schema } from 'effect';
-import type { ChatMessage, Occupant, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
+import type { XmppCoreOptions } from '@zilar/xmpp-core';
+import { fakeXmpp as baseFakeXmpp } from '@/test/storeHarness';
 import {
   TOPIC_REFRESH_INTERVAL_MS,
   createRealChatStore,
@@ -74,63 +75,14 @@ function groupEntry(overrides: Record<string, unknown> = {}): ChatEntry {
   } as ChatEntry;
 }
 
-function fakeXmpp(): {
-  core: XmppCore;
-  joined: string[];
-  history: Record<string, ChatMessage[]>;
-  emit: (event: string, payload: unknown) => void;
-} {
-  const listeners = new Map<string, Set<(payload: unknown) => void>>();
+function fakeXmpp() {
   const joined: string[] = [];
-  const history: Record<string, ChatMessage[]> = {};
-  const core = {
-    status: () => 'online' as const,
-    me: () => 'me@zilar.test',
-    connect: vi.fn(async () => {}),
-    disconnect: vi.fn(async () => {}),
+  const xmpp = baseFakeXmpp({
     joinRoom: vi.fn(async (roomJid: string) => {
       joined.push(roomJid);
     }),
-    leaveRoom: vi.fn(async () => {}),
-    occupants: vi.fn((): Occupant[] => []),
-    sendMessage: vi.fn(async () => ({ id: 'srv-1' })),
-    sendReactions: vi.fn(async () => {}),
-    sendCorrection: vi.fn(async () => ({ id: 'edit-1' })),
-    sendRetraction: vi.fn(async () => {}),
-    requestUploadSlot: vi.fn(async () => ({
-      putUrl: 'http://upload.zilar.test/put/1',
-      getUrl: 'http://upload.zilar.test/get/1/voice.m4a',
-      headers: {},
-    })),
-    loadHistory: vi.fn(async (chatJid: string) => ({
-      messages: history[chatJid] ?? [],
-      complete: true,
-      first: undefined,
-    })),
-    sendTyping: vi.fn(),
-    markDisplayed: vi.fn(),
-    on: ((event: string, callback: (payload: unknown) => void) => {
-      let set = listeners.get(event);
-      if (set === undefined) {
-        set = new Set();
-        listeners.set(event, set);
-      }
-      set.add(callback);
-      return () => {
-        set?.delete(callback);
-      };
-    }) as unknown as XmppCore['on'],
-  } as unknown as XmppCore;
-  return {
-    core,
-    joined,
-    history,
-    emit: (event, payload) => {
-      for (const callback of listeners.get(event) ?? []) {
-        callback(payload);
-      }
-    },
-  };
+  });
+  return { ...xmpp, joined };
 }
 
 function topicApi(overrides: Partial<ApiClient> = {}): ApiClient {
