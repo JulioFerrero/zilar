@@ -2,6 +2,19 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 04:10 local: dither avatars live in both apps; mobile profile, integrations and stickers on the shared backend**
+- **Merged since 02:40:**
+  - **T-1074:** web mock is backend-only. In the browser, a chat, sending a message and push settings work;
+  - **T-1075:** dither avatars. Checked on the web and the phone: chat list, header, messages, profile and tab face;
+  - **T-1076:** backend avatars. In the browser, upload, crop, save and remove work;
+  - **T-1077:** mobile profile on the backend, `mock/profile.ts` deleted. On the phone, the username taken/free/saved checks work;
+  - **T-1078:** backend integrations, `integrations-mock.ts` deleted. On the phone, Telegram remove works; on the web the page loads (it was a 404);
+  - **T-1079:** mobile stickers on the backend, `stickers-mock.ts` deleted. On the phone, the packs list;
+  - **T-1080:** mock voice transcription follows the integrations setting.
+- **Julio (03:00):** later in the plan, our own **3D ball avatar** library replaces the dither. It goes after the cleanups and before his live test, with a preview first. It is on the BOARD.
+- **Running:** T-1081, so your own sticker packs are editable in mobile mock mode (`me` is null there; the viewer id comes from the seed).
+- **Left in mobile `mock/`:** `gifs`, `stickers` and `attachments` (small demo helpers still imported by `lib/`), plus `gate`, `backend`, `uploader`, `load`, `drafts`, `time` and `dev-kit-screen`.
+
 **2026-10-11 02:40 local: web mock runs only on the shared backend; dither avatars running**
 - **Merged since 01:10:**
   - **T-1070:** mobile search on the backend; 9 dead mobile mocks deleted (1,603 lines). On the phone, search and opening a result work;
