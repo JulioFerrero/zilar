@@ -24,6 +24,7 @@ import { routinesDomain } from './routines';
 import { searchDomain } from './search';
 import { toolsDomain } from './tools';
 import { topicsDomain } from './topics';
+import { xmppTokenDomain } from './xmpp-token';
 
 export const domains: readonly Domain[] = [
   aiMemoryDomain,
@@ -46,4 +47,5 @@ export const domains: readonly Domain[] = [
   searchDomain,
   toolsDomain,
   topicsDomain,
+  xmppTokenDomain,
 ];

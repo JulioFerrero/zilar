@@ -5,7 +5,6 @@
 // (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
 import { Effect, Layer } from 'effect';
-import { SqlClient } from 'effect/sql';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { RoutinesGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
@@ -20,7 +19,9 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import { HttpError } from '../errors';
-import { canSeeTopic, type TopicRow } from '../topics/access';
+import { canSeeTopic } from '../topics/access';
+import { routineAccess, routineAccessIncludingDeleted } from './access';
+import { findMembership, findOwnedAiRow, findTopicById, listTopicsByGroup } from './reads';
 import {
   deleteRoutine,
   getRoutine,
@@ -28,11 +29,10 @@ import {
   listRoutinesForTopic,
   pauseRoutine,
   resumeRoutine,
-  RoutineServiceError,
   type PublicRoutine,
-  type RoutineRow,
 } from './service';
-import { runSql } from '../effect/sql';
+import { withServiceErrors } from './status-errors';
+import { toDetailWire, toListWire } from './wire';
 
 const RoutinesApi = HttpApi.make('routines').add(RoutinesGroup);
 
@@ -162,248 +162,4 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
   );
 
   return mountApi(RoutinesApi, apiLayer);
-}
-
-function toListWire(routine: PublicRoutine) {
-  return {
-    id: routine.id,
-    aiId: routine.aiId,
-    groupId: routine.groupId,
-    topicId: routine.topicId,
-    toolId: routine.toolId,
-    toolName: routine.toolName,
-    title: routine.title,
-    schedule: routine.schedule,
-    status: routine.status,
-    pausedReason: routine.pausedReason,
-    nextRunAt: routine.nextRunAt.toISOString(),
-    lastRunAt: routine.lastRunAt === null ? null : routine.lastRunAt.toISOString(),
-    lastStatus: routine.lastStatus,
-    approvedHosts: [...routine.approvedHosts],
-    scope: routine.scope,
-  };
-}
-
-function toDetailWire(
-  routine: {
-    id: string;
-    title: string;
-    schedule: unknown;
-    status: 'active' | 'paused' | 'needs_approval';
-    pausedReason: 'user' | 'failures' | 'hosts_changed' | null;
-    nextRunAt: Date;
-    lastRunAt: Date | null;
-    lastStatus: 'ok' | 'error' | 'skipped' | null;
-    approvedHosts: string[];
-    groupId: string | null;
-  },
-  toolName: string,
-) {
-  return {
-    id: routine.id,
-    title: routine.title,
-    toolName,
-    schedule: routine.schedule,
-    status: routine.status,
-    pausedReason: routine.pausedReason,
-    nextRunAt: routine.nextRunAt.toISOString(),
-    lastRunAt: routine.lastRunAt === null ? null : routine.lastRunAt.toISOString(),
-    lastStatus: routine.lastStatus,
-    approvedHosts: [...routine.approvedHosts],
-    scope: routine.groupId === null ? ('personal' as const) : ('group' as const),
-  };
-}
-
-interface RoutineAccess {
-  routine: { id: string; aiId: string; groupId: string | null; topicId: string | null };
-  manager: boolean;
-}
-
-// Reader = the AI's owner, or anyone who can see the topic. Manager =
-// the AI's owner, or a group owner/admin who can see the topic. Null for
-// a missing/deleted routine, a blind viewer, or a stranger (same shape
-// for all, so existence is never leaked).
-async function routineAccess(
-  db: ServerDatabase,
-  routineId: string,
-  userId: string,
-): Promise<RoutineAccess | null> {
-  const found = await getRoutine(db, routineId);
-  if (!found) {
-    return null;
-  }
-  return accessFor(db, found.routine, userId);
-}
-
-// Same manager check on the raw row, including soft-deleted ones. Only
-// the DELETE route uses this (idempotent 204).
-async function routineAccessIncludingDeleted(
-  db: ServerDatabase,
-  routineId: string,
-  userId: string,
-): Promise<RoutineAccess | null> {
-  const row = await findRoutineById(db, routineId);
-  if (!row) {
-    return null;
-  }
-  if (row.deletedAt !== null) {
-    // A deleted routine reads as missing everywhere except the manager
-    // check: resolve the manager on the row so a re-delete answers 204.
-    return deletedAccessFor(db, row, userId);
-  }
-  return accessFor(db, row, userId);
-}
-
-async function accessFor(
-  db: ServerDatabase,
-  routine: { id: string; aiId: string; groupId: string | null; topicId: string | null },
-  userId: string,
-): Promise<RoutineAccess | null> {
-  const ai = await findAiOwner(db, routine.aiId);
-  if (!ai) {
-    return null;
-  }
-  if (routine.topicId === null) {
-    // Personal-chat routine: the AI owner only.
-    return ai.owner === userId ? { routine, manager: true } : null;
-  }
-  const topic = await findTopicById(db, routine.topicId);
-  if (!topic || !(await canSeeTopic(db, topic, userId))) {
-    return null;
-  }
-  if (ai.owner === userId) {
-    return { routine, manager: true };
-  }
-  const membership = await findMembership(db, routine.groupId as string, userId);
-  if (!membership) {
-    return null;
-  }
-  return { routine, manager: membership.role === 'owner' || membership.role === 'admin' };
-}
-
-async function deletedAccessFor(
-  db: ServerDatabase,
-  routine: { id: string; aiId: string; groupId: string | null; topicId: string | null },
-  userId: string,
-): Promise<RoutineAccess | null> {
-  // A deleted row's topic may itself be gone; fall back to the group
-  // membership alone so the manager check still resolves.
-  const ai = await findAiOwner(db, routine.aiId);
-  if (!ai) {
-    return null;
-  }
-  if (ai.owner === userId) {
-    return { routine, manager: true };
-  }
-  if (routine.groupId === null) {
-    return null;
-  }
-  if (routine.topicId !== null) {
-    const topic = await findTopicById(db, routine.topicId);
-    if (topic && !(await canSeeTopic(db, topic, userId))) {
-      return null;
-    }
-  }
-  const membership = await findMembership(db, routine.groupId, userId);
-  if (!membership) {
-    return null;
-  }
-  return { routine, manager: membership.role === 'owner' || membership.role === 'admin' };
-}
-
-// The module's own reads on `effect/sql`. `SELECT *` returns camelCased
-// columns (see `../effect/sql`), so the rows keep the `TopicRow` and
-// `RoutineRow` shapes the access helpers and wire mappers already expect.
-async function findTopicById(db: ServerDatabase, topicId: string): Promise<TopicRow | null> {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<TopicRow>`SELECT * FROM topics WHERE id = ${topicId} LIMIT 1`;
-    }),
-  );
-  return row ?? null;
-}
-
-async function listTopicsByGroup(db: ServerDatabase, groupId: string): Promise<TopicRow[]> {
-  const rows = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<TopicRow>`SELECT * FROM topics WHERE group_id = ${groupId}`;
-    }),
-  );
-  return [...rows];
-}
-
-async function findRoutineById(db: ServerDatabase, routineId: string): Promise<RoutineRow | null> {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<RoutineRow>`SELECT * FROM routines WHERE id = ${routineId} LIMIT 1`;
-    }),
-  );
-  return row ?? null;
-}
-
-async function findAiOwner(db: ServerDatabase, aiId: string): Promise<{ owner: string } | null> {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ owner: string }>`SELECT owner FROM ais WHERE id = ${aiId} LIMIT 1`;
-    }),
-  );
-  return row ?? null;
-}
-
-async function findOwnedAiRow(db: ServerDatabase, aiId: string, ownerId: string) {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ id: string }>`SELECT id FROM ais
-        WHERE id = ${aiId} AND owner = ${ownerId} LIMIT 1`;
-    }),
-  );
-  return row ?? null;
-}
-
-async function findMembership(db: ServerDatabase, groupId: string, userId: string) {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ role: 'owner' | 'admin' | 'member' }>`SELECT role FROM group_members
-        WHERE group_id = ${groupId} AND user_id = ${userId} LIMIT 1`;
-    }),
-  );
-  return row ?? null;
-}
-
-function mapServiceError(error: unknown): unknown {
-  if (error instanceof RoutineServiceError) {
-    if (error.errorCode === 'not_found') {
-      return new HttpError(404, 'not_found', 'Routine not found');
-    }
-    if (error.errorCode === 'needs_approval') {
-      return new HttpError(409, 'needs_approval', error.message);
-    }
-    if (error.errorCode === 'routine_limit' || error.errorCode === 'hosts_not_approved') {
-      return new HttpError(400, error.errorCode, error.message);
-    }
-    return new HttpError(400, 'invalid_request', error.message);
-  }
-  return error;
-}
-
-// Service rejections travel as defects (`Effect.promise`), which `try/catch`
-// inside `Effect.gen` cannot see: map them with `catchDefect` and re-die so
-// the envelope renders the mapped answer. Unknown rejections pass through
-// unchanged and stay a 500, exactly like the old route's unmapped throw.
-function withServiceErrors<A>(promise: () => Promise<A>): Effect.Effect<A> {
-  return Effect.promise(promise).pipe(
-    Effect.catchDefect((defect) => Effect.die(mapServiceError(defect))),
-  );
 }

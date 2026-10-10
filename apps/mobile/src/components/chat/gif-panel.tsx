@@ -1,26 +1,25 @@
 import { Effect, Fiber } from 'effect';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Image } from 'expo-image';
-import { Modal, Pressable, ScrollView, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ScrollView, View } from 'react-native';
 
 import { SearchField } from '@/components/ui/search-field';
 import { StateMessage } from '@/components/ui/state-message';
-
 import { Text } from '@/components/ui/text';
-import { API_URL } from '@/lib/auth';
-import { getSessionToken } from '@/lib/session-token';
 import {
   GIF_ATTRIBUTION,
   GIF_SEARCH_DEBOUNCE_MS,
-  gifsAvailability,
-  isLoadableGifPreviewUrl,
   setGifsAvailability,
   type GifItem,
 } from '@/lib/gifs';
-import { createGifsApi, GifsApiError, type GifPage, type GifsApi } from '@/lib/gifs-api';
+import { createGifsApi, GifsApiError, type GifsApi } from '@/lib/gifs-api';
+import { getSessionToken } from '@/lib/session-token';
 
-const CELL_ASPECT = 4 / 3;
+import { GifCell } from './gif-cells';
+import { fetchGifPageEffect } from './gif-paging';
+
+export { GifCell, isPanelGifUrl } from './gif-cells';
+export { fetchGifPage, probeGifsAvailability } from './gif-paging';
+export { GifSheet } from './gif-panel-sheet';
 
 /**
  * Runs an Effect for as long as the component's effect lasts: the returned
@@ -40,79 +39,13 @@ function cancelWait(fiber: Fiber.Fiber<void> | undefined): void {
   }
 }
 
-/**
- * Whether the panel may show a preview inline: same-origin proxy URLs
- * only. Anything else (a hostile URL, mock `data:` art handled below, ...)
- * shows a placeholder tile, so the device never fetches it.
- */
-export function isPanelGifUrl(url: string, apiUrl: string): boolean {
-  return isLoadableGifPreviewUrl(url, apiUrl);
-}
-
-/** One GIF cell: the preview image with a play badge for videos. */
-export function GifCell({
-  item,
-  token,
-  onPick,
-}: {
-  item: GifItem;
-  token: string | undefined;
-  onPick: (gif: GifItem) => void;
-}) {
-  const label = item.title === '' ? 'GIF' : item.title;
-  if (!isPanelGifUrl(item.url, API_URL) && !item.url.startsWith('data:image/')) {
-    return (
-      <View
-        accessibilityRole="image"
-        accessibilityLabel={label}
-        className="items-center justify-center rounded-[8px] bg-surface-raised"
-        style={{ aspectRatio: CELL_ASPECT }}
-      >
-        <Text className="text-[26px]">🎞️</Text>
-      </View>
-    );
-  }
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Send ${label}`}
-      onPress={() => onPick(item)}
-      className="overflow-hidden rounded-[8px] bg-surface-raised"
-      style={{ aspectRatio: CELL_ASPECT }}
-    >
-      <Image
-        source={
-          item.url.startsWith('data:image/')
-            ? { uri: item.url }
-            : {
-                uri: item.url,
-                ...(token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } }),
-              }
-        }
-        accessibilityLabel={label}
-        style={{ width: '100%', height: '100%' }}
-        contentFit="cover"
-      />
-      {item.kind === 'video' ? (
-        <View className="absolute right-1 bottom-1 items-center justify-center rounded-full bg-black/60 px-2 py-0.5">
-          <Text className="text-[11px] text-white">▶ GIF</Text>
-        </View>
-      ) : null}
-    </Pressable>
-  );
-}
-
-type GifPanelProps = {
+export type GifPanelProps = {
   open: boolean;
   /** Mock mode serves generated placeholders without a server. */
   mockItems?: GifItem[] | undefined;
   /** Injected API client; tests hand a fake, production builds the real one. */
   api?: GifsApi | undefined;
   onPick: (gif: GifItem) => void;
-};
-
-type GifSheetProps = GifPanelProps & {
-  onClose: () => void;
 };
 
 /**
@@ -355,107 +288,5 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
         </>
       )}
     </View>
-  );
-}
-
-/**
- * The GIF sheet's pager: given the query and cursor, fetches one page (the
- * trending feed for an empty query, a search otherwise). Kept here (not on
- * the panel) so the request shape is unit-testable in Node (T-0157).
- */
-export const fetchGifPage = (input: {
-  query: string;
-  pos: string | undefined;
-  client: { searchGifs: GifsApi['searchGifs']; trendingGifs: GifsApi['trendingGifs'] };
-  signal: AbortSignal;
-}): Promise<GifPage> => Effect.runPromise(fetchGifPageEffect(input));
-
-// One page as an Effect; a rejected call keeps its own error, unchanged.
-const fetchGifPageEffect = (input: {
-  query: string;
-  pos: string | undefined;
-  client: { searchGifs: GifsApi['searchGifs']; trendingGifs: GifsApi['trendingGifs'] };
-  signal: AbortSignal;
-}): Effect.Effect<GifPage, unknown> =>
-  Effect.tryPromise({
-    try: () => {
-      const trimmed = input.query.trim();
-      return trimmed === ''
-        ? input.client.trendingGifs(input.pos, input.signal)
-        : input.client.searchGifs(trimmed, input.pos, input.signal);
-    },
-    catch: (error) => error,
-  });
-
-/**
- * Probes GIF availability once per session and remembers the answer: `false`
- * after a 501 `gifs_unavailable`, `true` once the provider answers.
- * Network errors keep the answer unknown (the tab stays, the panel shows
- * Retry) so a transient outage does not permanently hide the tab. Mirrors
- * web's `probeGifsAvailability`.
- */
-export const probeGifsAvailability = (api?: GifsApi): Promise<boolean> =>
-  Effect.runPromise(probeGifsAvailabilityEffect(api));
-
-function probeGifsAvailabilityEffect(api?: GifsApi): Effect.Effect<boolean> {
-  const cached = gifsAvailability();
-  if (cached !== undefined) {
-    return Effect.succeed(cached);
-  }
-  return Effect.tryPromise({
-    try: () => (api ?? createGifsApi()).trendingGifs(undefined, undefined),
-    catch: (error) => error,
-  }).pipe(
-    Effect.andThen(
-      Effect.sync(() => {
-        setGifsAvailability(true);
-        return true;
-      }),
-    ),
-    Effect.catch((error) =>
-      error instanceof GifsApiError && error.code === 'gifs_unavailable'
-        ? Effect.sync(() => {
-            setGifsAvailability(false);
-            return false;
-          })
-        : Effect.succeed(true),
-    ),
-  );
-}
-
-/**
- * The GIF sheet wrapper (the composer renders it next to `StickerPanel`).
- * Kept in this file so the composer imports one GIF module, like stickers.
- */
-export function GifSheet({ open, mockItems, api, onPick, onClose }: GifSheetProps) {
-  const insets = useSafeAreaInsets();
-  if (!open) {
-    return null;
-  }
-  return (
-    <Modal visible={open} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable
-        accessibilityLabel="Close GIFs"
-        onPress={onClose}
-        className="flex-1 justify-end bg-black/40"
-      >
-        <Pressable
-          onPress={() => {}}
-          accessibilityRole="menu"
-          accessibilityLabel="GIFs"
-          className="h-[50%] rounded-t-2xl border-t border-border-strong bg-surface px-4 pt-3"
-          style={{ paddingBottom: Math.max(insets.bottom, 8) }}
-        >
-          <View className="mb-1 h-1 w-10 self-center rounded-full bg-surface-raised" />
-          <Text
-            accessibilityRole="header"
-            className="py-2 text-[17px] font-semibold text-foreground"
-          >
-            GIFs
-          </Text>
-          <GifPanel open={open} mockItems={mockItems} api={api} onPick={onPick} />
-        </Pressable>
-      </Pressable>
-    </Modal>
   );
 }

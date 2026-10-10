@@ -9,11 +9,42 @@
     "browser": true,
     "node": true
   },
+  "rules": {
+    "max-lines": ["warn", { "max": 400, "skipBlankLines": false, "skipComments": false }]
+  },
   "overrides": [
     {
       "files": ["apps/mobile/src/app/**/*.tsx"],
       "rules": {
         "react/rules-of-hooks": "error"
+      }
+    },
+    {
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx",
+        "**/*.test-harness.ts",
+        "**/test-harness.ts",
+        "**/test-support.ts",
+        "**/test-support/**",
+        "**/*.d.ts"
+      ],
+      "rules": {
+        "max-lines": "off"
+      }
+    },
+    {
+      "files": [
+        "apps/mobile/src/mock/**",
+        "apps/web/src/mock/**",
+        "packages/mock-backend/**",
+        "apps/mobile/src/store/chat-store.ts",
+        "apps/mobile/src/lib/emoji-data.ts"
+      ],
+      "rules": {
+        "max-lines": "off"
       }
     }
   ],

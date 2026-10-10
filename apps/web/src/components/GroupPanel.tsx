@@ -1,31 +1,12 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { Data, Effect } from 'effect';
+import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { Brain, Image, X } from 'lucide-react';
+import { Image, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import type {
-  CreatedInviteLink,
-  GroupAi,
-  GroupInviteLink,
-  GroupRole,
-  ListenerEagerness,
-  PublicAi,
-  SetGroupListenerInput,
-} from '@/lib/api';
-import {
-  createGroupInviteLink,
-  createGroupRole,
-  deleteGroupRole,
-  listGroupInviteLinks,
-  listGroupRoles,
-  renameGroupRole,
-  revokeGroupInviteLink,
-  setGroupRoleMembers,
-} from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
+import type { CreatedInviteLink, GroupAi, GroupInviteLink, GroupRole, PublicAi } from '@/lib/api';
+import { createGroupInviteLink, revokeGroupInviteLink } from '@/lib/api';
 import { runWeb } from '@/lib/effect/runtime';
-import { failureOf, isWaiting, useAction, type ActionState } from '@/lib/effect/use-action';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { HandleSuffix } from './HandleSuffix';
@@ -33,108 +14,24 @@ import { ActivitySection } from './ais/AiActivity';
 import { AiMemoryDialog } from './ais/AiMemoryDialog';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { PinsSection } from './PinsPanel';
-import { AiBadge } from './AiBadge';
-import { AvatarUploader } from './AvatarUploader';
 import { ChatBackgroundDialog } from './ChatBackgroundDialog';
 import { FieldError } from './ais/AiPageShell';
-import { describeAiError } from './ais/errors';
 import { Avatar } from './Avatar';
 import { Button } from './ui/button';
-import { Checkbox } from './ui/checkbox';
 import { ListRow } from './ui/list-row';
 import { Sheet } from './ui/sheet';
-import { SegmentedControl } from './ui/segmented-control';
 import { StateMessage } from './ui/state-message';
-import { Switch } from './ui/switch';
-import { TextInput } from './ui/text-input';
 import { InviteLinksSection } from './InviteLinksSection';
 import { RoutinesSection } from './tools/RoutinesSection';
 import { ToolsSection } from './tools/ToolsSection';
 import { VisibilitySection } from './VisibilitySection';
-import { GroupAiRowView } from './panels/GroupAiRowView';
+import { GroupAiSection } from './panels/GroupAiSection';
+import { GroupPictureSection } from './panels/GroupPictureSection';
+import { GroupRolesSection } from './panels/GroupRolesSection';
+import { GroupListenerSetting, GroupTopicSetting } from './panels/GroupSettingSwitch';
+import { apiStep, loadLinks, loadRoles, messageOf, rolesViewOf } from './panels/groupPanelOps';
+import type { PanelFailure } from './panels/groupPanelOps';
 import { roleLabel } from './panels/role-label';
-
-/** A failed panel action; `message` is the sentence the panel shows. */
-class PanelFailure extends Data.TaggedError('PanelFailure')<{ readonly message: string }> {}
-
-/**
- * The sentence for a failed API call: the server's message, or the fallback
- * when the call never reached the server (`toApiFailure` marks that case).
- */
-function apiFailureText(failure: ApiFailure, fallback: string): string {
-  return failure.code === 'unknown_error' ? fallback : failure.message;
-}
-
-/** An API call whose failure shows `fallback` unless the server sent a message. */
-function apiStep<A>(call: () => Promise<A>, fallback: string): Effect.Effect<A, PanelFailure> {
-  return fromApi(call).pipe(
-    Effect.mapError((failure) => new PanelFailure({ message: apiFailureText(failure, fallback) })),
-  );
-}
-
-/**
- * A store call. The store throws the raw error, so `textOf` builds the
- * sentence from that error (the text the panel showed before the move).
- */
-function storeStep<A>(
-  call: () => Promise<A>,
-  textOf: (error: unknown) => string,
-): Effect.Effect<A, PanelFailure> {
-  return Effect.tryPromise({
-    try: call,
-    catch: (error) => new PanelFailure({ message: textOf(error) }),
-  });
-}
-
-function settingText(error: unknown): string {
-  return error instanceof Error ? error.message : 'Could not save the setting.';
-}
-
-function addAiText(error: unknown): string {
-  return describeAiError(error, 'Could not add the AI').message;
-}
-
-function removeAiText(error: unknown): string {
-  return describeAiError(error, 'Could not remove the AI').message;
-}
-
-/** The shown failure of the last call; hidden while a new call runs. */
-function messageOf<A>(state: ActionState<A, PanelFailure>): string | undefined {
-  return isWaiting(state) ? undefined : failureOf(state)?.message;
-}
-
-/** The invite links, for managers only; a plain member makes no request. */
-function loadLinks(
-  manager: boolean,
-  groupId: string | undefined,
-): Effect.Effect<GroupInviteLink[], PanelFailure> {
-  if (!manager || groupId === undefined) {
-    return Effect.succeed([]);
-  }
-  return fromApi(() => listGroupInviteLinks(groupId)).pipe(
-    Effect.mapError(() => new PanelFailure({ message: 'Could not load the invite links.' })),
-  );
-}
-
-/** The group's roles. With no group yet the load waits, so the section reads as loading. */
-function loadRoles(groupId: string | undefined): Effect.Effect<GroupRole[], PanelFailure> {
-  if (groupId === undefined) {
-    return Effect.never;
-  }
-  return apiStep(() => listGroupRoles(groupId), 'Could not load the roles.');
-}
-
-type RolesView = { status: 'loading' | 'ready' | 'error'; roles: GroupRole[]; message: string };
-
-function rolesViewOf(result: AsyncResult.AsyncResult<GroupRole[], PanelFailure>): RolesView {
-  if (isWaiting(result) || AsyncResult.isInitial(result)) {
-    return { status: 'loading', roles: [], message: '' };
-  }
-  if (AsyncResult.isSuccess(result)) {
-    return { status: 'ready', roles: result.value, message: '' };
-  }
-  return { status: 'error', roles: [], message: failureOf(result)?.message ?? '' };
-}
 
 /**
  * The group info panel: the people, the AIs (with their owner), add one of my
@@ -248,48 +145,6 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
     info?.members.find((member) => member.userId === ai.ownerId)?.name ?? 'someone';
   const isOwner = meRole === 'owner';
 
-  const [switchState, setTopicsAllowed] = useAction<boolean, void, PanelFailure>((allowed) =>
-    storeStep(
-      () => storeApi.getState().setMembersCanCreateTopics(chat.id, allowed),
-      settingText,
-    ).pipe(Effect.asVoid),
-  );
-  const switchBusy = isWaiting(switchState);
-  const switchError = messageOf(switchState) ?? '';
-
-  const flipTopicSwitch = (): void => {
-    if (info !== undefined) {
-      setTopicsAllowed(info.membersCanCreateTopics !== true);
-    }
-  };
-
-  // T-0478: the listener switch and eagerness. Both go through
-  // `setGroupListener`; the store refreshes the detail on success and an
-  // inline error shows on failure, exactly like the topic switch.
-  const listenerEnabled = info?.listener?.enabled === true;
-  const listenerAvailable = info?.listener?.available === true;
-
-  const [listenerState, saveListener] = useAction<SetGroupListenerInput, void, PanelFailure>(
-    (input) =>
-      storeStep(() => storeApi.getState().setGroupListener(chat.id, input), settingText).pipe(
-        Effect.asVoid,
-      ),
-  );
-  const listenerBusy = isWaiting(listenerState);
-  const listenerError = messageOf(listenerState) ?? '';
-
-  const flipListenerSwitch = (): void => {
-    if (info !== undefined && listenerAvailable) {
-      saveListener({ listenerEnabled: !listenerEnabled });
-    }
-  };
-
-  const chooseEagerness = (eagerness: ListenerEagerness): void => {
-    if (info !== undefined && listenerAvailable) {
-      saveListener({ listenerEagerness: eagerness });
-    }
-  };
-
   return (
     <Sheet open onClose={onClose} ariaLabel={`${chat.title} info`}>
       <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
@@ -369,7 +224,7 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
             {/* T-0116: custom group roles — managers only. Everyone sees
                   the chips next to the member names above. */}
             {isManager && info !== undefined && (
-              <RolesSection
+              <GroupRolesSection
                 groupId={info.id}
                 members={info.members.map((member) => ({
                   userId: member.userId,
@@ -381,59 +236,19 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
               />
             )}
 
-            <section aria-label="AIs" className="flex flex-col gap-1">
-              <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">AIs</h2>
-              {info.ais.length === 0 && (
-                <p className="px-2 text-[13px] text-muted-foreground">No AIs in this group yet.</p>
-              )}
-              {info.ais.map((ai) => (
-                <GroupAiRow
-                  key={ai.aiId}
-                  ai={ai}
-                  chatId={chat.id}
-                  ownerName={ownerName(ai)}
-                  canRemove={ai.ownerId === me || isManager}
-                  onOpenMemory={() => setMemoryAi({ id: ai.aiId, name: ai.name })}
-                  onError={setErrorMessage}
-                />
-              ))}
-
-              {isManager && (eligibleAis.length > 0 || pickerChoices !== undefined) && (
-                <div className="mt-1 flex flex-col gap-2 px-2">
-                  {pickerChoices !== undefined ? (
-                    <div className="flex flex-col gap-1">
-                      {pickerChoices.map((ai) => (
-                        <AddAiOption
-                          key={ai.id}
-                          ai={ai}
-                          chatId={chat.id}
-                          onAdded={() => setPickerChoices(undefined)}
-                          onError={setErrorMessage}
-                        />
-                      ))}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="self-start"
-                        onClick={() => setPickerChoices(undefined)}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      type="button"
-                      size="lg"
-                      className="self-start rounded-full px-4"
-                      onClick={() => setPickerChoices(eligibleAis)}
-                    >
-                      Add my AI
-                    </Button>
-                  )}
-                </div>
-              )}
-            </section>
+            <GroupAiSection
+              ais={info.ais}
+              chatId={chat.id}
+              ownerNameOf={ownerName}
+              canRemove={(ai) => ai.ownerId === me || isManager}
+              isManager={isManager}
+              eligibleAis={eligibleAis}
+              pickerChoices={pickerChoices}
+              onOpenPicker={() => setPickerChoices(eligibleAis)}
+              onClosePicker={() => setPickerChoices(undefined)}
+              onOpenMemory={(ai) => setMemoryAi(ai)}
+              onError={setErrorMessage}
+            />
 
             {memoryAi !== undefined && (
               <AiMemoryDialog
@@ -489,60 +304,18 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
             {/* T-0111: "Members can create topics", same visibility —
                   owners and admins only. */}
             {isManager && (
-              <section aria-label="Topic settings" className="flex flex-col gap-2 px-2">
-                <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl px-2 py-1.5 hover:bg-list-hover">
-                  <span className="text-[14px]">Members can create topics</span>
-                  <Switch
-                    checked={info.membersCanCreateTopics === true}
-                    onCheckedChange={() => flipTopicSwitch()}
-                    label="Members can create topics"
-                    hideLabel
-                    disabled={switchBusy}
-                  />
-                </label>
-                {switchError !== '' && <FieldError>{switchError}</FieldError>}
-              </section>
+              <GroupTopicSetting chatId={chat.id} canCreateTopics={info.membersCanCreateTopics} />
             )}
 
             {/* T-0478: the AI listener switch and eagerness, same visibility —
                   owners and admins only. */}
             {isManager && (
-              <section aria-label="AI listener" className="flex flex-col gap-2 px-2">
-                <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl px-2 py-1.5 hover:bg-list-hover">
-                  <span className="text-[14px]">Let AIs answer without @mention</span>
-                  <Switch
-                    checked={listenerEnabled}
-                    onCheckedChange={() => flipListenerSwitch()}
-                    label="Let AIs answer without @mention"
-                    hideLabel
-                    disabled={!listenerAvailable || listenerBusy}
-                  />
-                </label>
-                {listenerEnabled && (
-                  <fieldset
-                    disabled={!listenerAvailable || listenerBusy}
-                    className="m-0 min-w-0 border-0 p-0"
-                  >
-                    <SegmentedControl
-                      options={[
-                        { value: 'quiet', label: 'Quiet' },
-                        { value: 'normal', label: 'Normal' },
-                        { value: 'eager', label: 'Eager' },
-                      ]}
-                      value={info.listener?.eagerness ?? 'normal'}
-                      onChange={(value) => chooseEagerness(value as ListenerEagerness)}
-                      ariaLabel="Eagerness"
-                      mode="radio"
-                    />
-                  </fieldset>
-                )}
-                <p className="px-2 text-[13px] text-muted-foreground">
-                  {listenerAvailable
-                    ? 'Normal suits most groups. Quiet wakes AIs only for clear asks.'
-                    : 'Turned off on this server'}
-                </p>
-                {listenerError !== '' && <FieldError>{listenerError}</FieldError>}
-              </section>
+              <GroupListenerSetting
+                chatId={chat.id}
+                enabled={info.listener?.enabled === true}
+                available={info.listener?.available === true}
+                eagerness={info.listener?.eagerness ?? 'normal'}
+              />
             )}
 
             {/* T-0466: the group's shared background, same visibility —
@@ -585,411 +358,5 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
         )}
       </div>
     </Sheet>
-  );
-}
-
-/**
- * One AI in the group, with its own Remove action so two AIs can be removed
- * at once; a second click on the same row waits for the first.
- */
-function GroupAiRow({
-  ai,
-  chatId,
-  ownerName,
-  canRemove,
-  onOpenMemory,
-  onError,
-}: {
-  ai: GroupAi;
-  chatId: string;
-  ownerName: string;
-  canRemove: boolean;
-  onOpenMemory: () => void;
-  onError: (message: string) => void;
-}) {
-  const storeApi = useChatStoreApi();
-  const [confirming, setConfirming] = useState(false);
-  const [state, removeAi] = useAction<void, void, PanelFailure>(() =>
-    storeStep(() => storeApi.getState().removeGroupAi(chatId, ai.aiId), removeAiText).pipe(
-      Effect.asVoid,
-      Effect.tap(() => Effect.sync(() => setConfirming(false))),
-      Effect.tapError((failure) => Effect.sync(() => onError(failure.message))),
-    ),
-  );
-  const busy = isWaiting(state);
-  const startRemove = (): void => {
-    if (busy) {
-      return;
-    }
-    onError('');
-    removeAi();
-  };
-
-  return (
-    <GroupAiRowView
-      ai={ai}
-      addedBy={ownerName}
-      extra={
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label={`What ${ai.name} remembers`}
-          className="shrink-0 text-muted-foreground"
-          onClick={onOpenMemory}
-        >
-          <Brain className="size-4" aria-hidden="true" />
-        </Button>
-      }
-      canRemove={canRemove}
-      confirming={confirming}
-      busy={busy}
-      removeLabel={`Remove ${ai.name} from the group`}
-      onAskRemove={() => setConfirming(true)}
-      onConfirmRemove={startRemove}
-      onCancel={() => setConfirming(false)}
-    />
-  );
-}
-
-/**
- * One of my AIs in the add picker, with its own add action so two options
- * can run at once; a second click on the same option waits for the first.
- */
-function AddAiOption({
-  ai,
-  chatId,
-  onAdded,
-  onError,
-}: {
-  ai: PublicAi;
-  chatId: string;
-  onAdded: () => void;
-  onError: (message: string) => void;
-}) {
-  const storeApi = useChatStoreApi();
-  const [state, addAi] = useAction<void, void, PanelFailure>(() =>
-    storeStep(() => storeApi.getState().addGroupAi(chatId, ai.id), addAiText).pipe(
-      Effect.asVoid,
-      Effect.tap(() => Effect.sync(onAdded)),
-      Effect.tapError((failure) => Effect.sync(() => onError(failure.message))),
-    ),
-  );
-  const busy = isWaiting(state);
-  const startAdd = (): void => {
-    if (busy) {
-      return;
-    }
-    onError('');
-    addAi();
-  };
-
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      disabled={busy}
-      onClick={startAdd}
-      className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
-    >
-      <Avatar id={ai.jid} name={ai.name} size={28} ai avatarUrl={ai.avatarUrl} />
-      <span className="min-w-0 flex-1 truncate">{ai.name}</span>
-      <AiBadge />
-      {busy && <span className="text-[12px] text-muted-foreground">Adding…</span>}
-    </Button>
-  );
-}
-
-/**
- * The group's picture (T-0165), for owners and admins. Refreshes the
- * group's chats from the server after a change (the uploader reports the
- * new url or undefined), so the list and header show it at once.
- */
-function GroupPictureSection({
-  groupId,
-  title,
-  currentUrl,
-  chatId,
-}: {
-  groupId: string;
-  title: string;
-  currentUrl?: string | undefined;
-  chatId: string;
-}) {
-  const storeApi = useChatStoreApi();
-  // The uploader reports the new url (or undefined after a remove) through
-  // `onChanged`; while no change happened this render, the server row wins.
-  const [changedUrl, setChangedUrl] = useState<string | undefined | null>(null);
-  const shown = changedUrl !== null ? changedUrl : currentUrl;
-  return (
-    <AvatarUploader
-      kind="group"
-      ownerId={groupId}
-      ownerName={title}
-      currentUrl={shown}
-      onChanged={(next) => {
-        setChangedUrl(next);
-        storeApi.getState().refreshChats();
-        storeApi.getState().refreshGroupInfo(chatId);
-      }}
-    />
-  );
-}
-
-/**
- * Custom group roles for managers (T-0116): create, rename, delete, and
- * assign with a member multi-select. A role grants private-topic access and
- * approver rights in the topics it is attached to — picked per topic in
- * the topic panel, not here.
- */
-function RolesSection({
-  groupId,
-  members,
-  rolesState,
-  onReload,
-}: {
-  groupId: string;
-  members: Array<{ userId: string; name: string; avatarUrl?: string | undefined }>;
-  rolesState: { status: 'loading' | 'ready' | 'error'; roles: GroupRole[]; message: string };
-  onReload: () => void;
-}) {
-  const [newName, setNewName] = useState('');
-  const [renamingId, setRenamingId] = useState<string | undefined>(undefined);
-  const [renameValue, setRenameValue] = useState('');
-  const [confirmingId, setConfirmingId] = useState<string | undefined>(undefined);
-  const [assigningId, setAssigningId] = useState<string | undefined>(undefined);
-  // One action for the section, as before: every role button is disabled
-  // while a change runs, and the roles reload after each success.
-  const [changeState, runChange] = useAction<Effect.Effect<void, PanelFailure>, void, PanelFailure>(
-    (change) => change.pipe(Effect.tap(() => Effect.sync(onReload))),
-  );
-  const busy = isWaiting(changeState);
-  const errorMessage = messageOf(changeState) ?? '';
-
-  const create = (): void => {
-    const name = newName.trim();
-    runChange(
-      name === ''
-        ? Effect.fail(new PanelFailure({ message: 'Enter a role name.' }))
-        : apiStep(
-            () => createGroupRole(groupId, name.slice(0, 30)),
-            'Could not save the roles.',
-          ).pipe(Effect.tap(() => Effect.sync(() => setNewName('')))),
-    );
-  };
-
-  const rename = (roleId: string): void => {
-    const name = renameValue.trim();
-    runChange(
-      name === ''
-        ? Effect.fail(new PanelFailure({ message: 'Enter a role name.' }))
-        : apiStep(
-            () => renameGroupRole(groupId, roleId, name.slice(0, 30)),
-            'Could not save the roles.',
-          ).pipe(Effect.tap(() => Effect.sync(() => setRenamingId(undefined)))),
-    );
-  };
-
-  const remove = (roleId: string): void => {
-    runChange(
-      apiStep(() => deleteGroupRole(groupId, roleId), 'Could not save the roles.').pipe(
-        Effect.tap(() => Effect.sync(() => setConfirmingId(undefined))),
-      ),
-    );
-  };
-
-  const toggleHolder = (role: GroupRole, userId: string): void => {
-    const held = role.members.some((holder) => holder.userId === userId);
-    const userIds = held
-      ? role.members.filter((holder) => holder.userId !== userId).map((holder) => holder.userId)
-      : [...role.members.map((holder) => holder.userId), userId];
-    runChange(
-      apiStep(
-        () => setGroupRoleMembers(groupId, role.id, userIds),
-        'Could not save the roles.',
-      ).pipe(Effect.asVoid),
-    );
-  };
-
-  return (
-    <section aria-label="Roles" className="flex flex-col gap-1">
-      <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Roles</h2>
-      {rolesState.status === 'loading' && (
-        <StateMessage kind="loading" size="inline" title="Loading…" />
-      )}
-      {rolesState.status === 'error' && (
-        <div className="flex flex-col gap-2 px-2">
-          <FieldError>{rolesState.message}</FieldError>
-          <Button
-            type="button"
-            size="lg"
-            className="self-start rounded-full px-4"
-            onClick={onReload}
-          >
-            Retry
-          </Button>
-        </div>
-      )}
-      {rolesState.status === 'ready' && rolesState.roles.length === 0 && (
-        <p className="px-2 text-[13px] text-muted-foreground">
-          No roles yet. Roles grant private-topic access and approver rights.
-        </p>
-      )}
-      {rolesState.status === 'ready' &&
-        rolesState.roles.map((role) => {
-          const renaming = renamingId === role.id;
-          const confirming = confirmingId === role.id;
-          const assigning = assigningId === role.id;
-          return (
-            <div key={role.id} className="flex flex-col gap-1 rounded-xl px-2 py-1.5">
-              <div className="flex items-center gap-2">
-                {renaming ? (
-                  <TextInput
-                    aria-label={`Rename ${role.name}`}
-                    value={renameValue}
-                    maxLength={30}
-                    onChange={(event) => setRenameValue(event.target.value)}
-                    className="min-w-0 flex-1"
-                  />
-                ) : (
-                  <span className="min-w-0 flex-1 truncate text-[14px] font-medium">
-                    {role.name} ({role.members.length})
-                  </span>
-                )}
-                {renaming ? (
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => rename(role.id)}
-                    >
-                      Save
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => setRenamingId(undefined)}
-                    >
-                      Cancel
-                    </Button>
-                  </>
-                ) : confirming ? (
-                  <>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      aria-label={`Confirm deleting ${role.name}`}
-                      disabled={busy}
-                      onClick={() => remove(role.id)}
-                    >
-                      Delete
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => setConfirmingId(undefined)}
-                    >
-                      Cancel
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      aria-label={`Assign ${role.name}`}
-                      className="shrink-0"
-                      disabled={busy}
-                      onClick={() => setAssigningId(assigning ? undefined : role.id)}
-                    >
-                      Assign
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`Rename ${role.name}`}
-                      className="shrink-0"
-                      disabled={busy}
-                      onClick={() => {
-                        setRenameValue(role.name);
-                        setRenamingId(role.id);
-                      }}
-                    >
-                      Rename
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`Delete ${role.name}`}
-                      className="shrink-0"
-                      disabled={busy}
-                      onClick={() => setConfirmingId(role.id)}
-                    >
-                      Delete
-                    </Button>
-                  </>
-                )}
-              </div>
-              {assigning && !renaming && !confirming && (
-                <div className="flex flex-col gap-1 pl-1">
-                  {members.map((member) => {
-                    const checked = role.members.some((holder) => holder.userId === member.userId);
-                    return (
-                      <label
-                        key={member.userId}
-                        className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-list-hover"
-                      >
-                        <Checkbox
-                          checked={checked}
-                          disabled={busy}
-                          label={`${member.name} holds ${role.name}`}
-                          onCheckedChange={() => toggleHolder(role, member.userId)}
-                        />
-                        <Avatar
-                          id={member.userId}
-                          name={member.name}
-                          size={28}
-                          avatarUrl={member.avatarUrl}
-                        />
-                        <span className="min-w-0 flex-1 truncate text-[14px]">{member.name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      <div className="mt-1 flex items-center gap-2 px-2">
-        <TextInput
-          aria-label="New role name"
-          value={newName}
-          maxLength={30}
-          onChange={(event) => setNewName(event.target.value)}
-          placeholder="e.g. Designers"
-          className="min-w-0 flex-1"
-        />
-        <Button
-          type="button"
-          size="lg"
-          className="shrink-0 rounded-full px-4"
-          disabled={busy || newName.trim() === ''}
-          onClick={() => create()}
-        >
-          {busy ? 'Saving…' : 'Add role'}
-        </Button>
-      </div>
-      {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
-    </section>
   );
 }

@@ -1,13 +1,8 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { Data, Effect } from 'effect';
+import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { Check, ImagePlus, Trash2 } from 'lucide-react';
-import { useRef, useState } from 'react';
-import {
-  CHAT_BACKGROUND_PRESET_IDS,
-  DEFAULT_CHAT_BACKGROUND_PRESET,
-  type ChatBackgroundPresetId,
-} from '@zilar/ui-tokens';
+import { useState } from 'react';
+import { DEFAULT_CHAT_BACKGROUND_PRESET } from '@zilar/ui-tokens';
 import {
   deleteBackground,
   listBackgrounds,
@@ -18,68 +13,22 @@ import { fromApi } from '@/lib/effect/api-effect';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { prepareBackgroundImage } from '@/lib/background-image';
-import { chatBackgroundStyle, DEFAULT_BACKGROUND_DIM } from '@/lib/chatBackground';
-import { cn } from '@/lib/utils';
+import { DEFAULT_BACKGROUND_DIM } from '@/lib/chatBackground';
 import { useChatSelector } from '@/store/ChatStoreProvider';
-import { Button } from './ui/button';
+import { BackgroundImages } from './background/BackgroundImages';
+import { createBackgroundWrites } from './background/backgroundWrites';
+import {
+  DIM_SAVE_DELAY_MS,
+  DeleteFailed,
+  type SaveRequest,
+  type Scope,
+  UploadFailed,
+  type UploadRequest,
+  uploadErrorMessage,
+} from './background/backgroundOps';
+import { PresetGrid } from './background/PresetGrid';
 import { Dialog } from './ui/dialog';
-import { IconButton } from './ui/icon-button';
 import { SegmentedControl } from './ui/segmented-control';
-
-type Scope = 'chat' | 'all';
-
-/** T-0464: the dim slider saves this long after the last change. */
-const DIM_SAVE_DELAY_MS = 400;
-
-/** The chat store rejected a write; the dialog shows its fixed sentence. */
-class SaveFailed extends Data.TaggedError('SaveFailed') {}
-
-/** A picked image could not be prepared or uploaded; `text` is the fixed sentence. */
-class UploadFailed extends Data.TaggedError('UploadFailed')<{ readonly text: string }> {}
-
-/** The image could not be deleted. */
-class DeleteFailed extends Data.TaggedError('DeleteFailed') {}
-
-/** One save: an optional wait (the dim slider), then one store write. */
-interface SaveRequest {
-  readonly delayMs: number;
-  readonly write: () => Promise<void>;
-}
-
-interface UploadRequest {
-  readonly file: File;
-  readonly scope: Scope;
-}
-
-/** A store write as an Effect: a rejection becomes SaveFailed. */
-const writeSave = (write: () => Promise<void>): Effect.Effect<void, SaveFailed> =>
-  Effect.tryPromise({ try: write, catch: () => new SaveFailed() });
-
-function presetLabel(id: ChatBackgroundPresetId): string {
-  return id.charAt(0).toUpperCase() + id.slice(1);
-}
-
-/** A plain sentence for an upload failure, never the server's text. */
-function uploadErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    if (error.message === 'too_small') {
-      return 'This image is too small';
-    }
-    if (error.message === 'too_large') {
-      return 'This image is too large';
-    }
-  }
-  if (error !== null && typeof error === 'object' && 'status' in error) {
-    const status = (error as { status?: unknown }).status;
-    if (status === 413) {
-      return 'This image is too large';
-    }
-    if (status === 409) {
-      return 'You already have 20 images, delete one first';
-    }
-  }
-  return "Couldn't upload the image";
-}
 
 /**
  * T-0462/T-0464/T-0466: pick a shared preset (or one of the caller's uploaded
@@ -120,7 +69,6 @@ export function ChatBackgroundDialog({
   // scope or image switch falls back to that image's stored dim during render
   // (no effect needed).
   const [dimDraft, setDimDraft] = useState<{ imageId: string; value: number } | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const chatPreset = chatPref?.backgroundPreset ?? null;
   const chatImageId = chatPref?.backgroundImageId ?? null;
@@ -154,60 +102,20 @@ export function ChatBackgroundDialog({
       ? dimDraft.value
       : (storedDim ?? DEFAULT_BACKGROUND_DIM);
 
-  // A store write; a rejection shows the save sentence. Each save starts by
-  // clearing the previous save error.
-  const persist = (write: () => Promise<void>): Effect.Effect<void> =>
-    Effect.sync(() => setError(false)).pipe(
-      Effect.andThen(writeSave(write)),
-      Effect.catchTag('SaveFailed', () => Effect.sync(() => setError(true))),
-    );
-
-  const writePreset = (presetId: string | null): Promise<void> => {
-    if (isGroup) {
-      return setGroupBackground(chat.id, {
-        backgroundPreset: presetId,
-        backgroundImageId: null,
-        backgroundDim: null,
-      });
-    }
-    return scope === 'chat' ? setChatBackground(chat.id, presetId) : setDefaultBackground(presetId);
-  };
-
-  // `targetScope` is passed in rather than read from the render closure so a
-  // timer scheduled under one scope can never write under another.
-  const writeImage = (imageId: string, nextDim: number, targetScope: Scope): Promise<void> => {
-    if (isGroup) {
-      return setGroupBackground(chat.id, {
-        backgroundPreset: null,
-        backgroundImageId: imageId,
-        backgroundDim: nextDim,
-      });
-    }
-    return targetScope === 'chat'
-      ? setChatBackgroundImage(chat.id, imageId, nextDim)
-      : setDefaultBackgroundImage(imageId, nextDim);
-  };
-
-  // The server clears a deleted image from any pref that referenced it; the
-  // store is patched to match so the chat stops painting the now-404 URL.
-  const clearDeletedSelection = (id: string): Effect.Effect<void, SaveFailed> => {
-    if (isGroup) {
-      return groupBackground?.backgroundImageId === id
-        ? writeSave(() =>
-            setGroupBackground(chat.id, {
-              backgroundPreset: null,
-              backgroundImageId: null,
-              backgroundDim: null,
-            }),
-          )
-        : Effect.void;
-    }
-    const clearChat: Effect.Effect<void, SaveFailed> =
-      chatImageId === id ? writeSave(() => setChatBackground(chat.id, null)) : Effect.void;
-    const clearDefault: Effect.Effect<void, SaveFailed> =
-      defaultImageId === id ? writeSave(() => setDefaultBackground(null)) : Effect.void;
-    return clearChat.pipe(Effect.andThen(clearDefault));
-  };
+  const { persist, writePreset, writeImage, clearDeletedSelection } = createBackgroundWrites({
+    chatId: chat.id,
+    isGroup,
+    scope,
+    groupBackground,
+    chatImageId,
+    defaultImageId,
+    setError,
+    setGroupBackground,
+    setChatBackground,
+    setDefaultBackground,
+    setChatBackgroundImage,
+    setDefaultBackgroundImage,
+  });
 
   // Load the caller's images each time the dialog opens. A failure leaves the
   // list empty, so the section still offers Upload.
@@ -366,92 +274,26 @@ export function ChatBackgroundDialog({
           mode="radio"
         />
       )}
-      <div className="mt-4 grid grid-cols-4 gap-3">
-        {CHAT_BACKGROUND_PRESET_IDS.map((id) => {
-          const isSelected = selected === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              aria-label={presetLabel(id)}
-              aria-pressed={isSelected}
-              onClick={() => choose(id)}
-              className={cn(
-                'chat-background relative aspect-square rounded-[10px] border transition-shadow',
-                isSelected ? 'border-accent ring-2 ring-accent/40' : 'border-border',
-              )}
-              style={chatBackgroundStyle({ kind: 'preset', id })}
-            >
-              {isSelected && (
-                <span className="absolute inset-0 flex items-center justify-center">
-                  <Check className="size-5 text-white" aria-hidden="true" />
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-      <div className="mt-3">
-        <h3 className="text-[13px] font-medium text-muted-foreground">Your images</h3>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          {images.map((image) => (
-            <BackgroundRow
-              key={image.id}
-              image={image}
-              index={shownIds.indexOf(image.id)}
-              removed={removedIds.has(image.id)}
-              selected={selectedImageId === image.id}
-              confirming={confirmId === image.id}
-              onPick={() => selectImage(image.id, storedDim ?? DEFAULT_BACKGROUND_DIM, scope)}
-              onAskDelete={() => setConfirmId(image.id)}
-              onCancelDelete={() => setConfirmId(undefined)}
-              onStartDelete={startDelete}
-              deleteImage={deleteImage}
-            />
-          ))}
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => fileRef.current?.click()}
-            disabled={busy}
-          >
-            <ImagePlus aria-hidden="true" />
-            {busy ? 'Uploading…' : 'Upload image'}
-          </Button>
-        </div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          aria-label="Choose a background image"
-          className="hidden"
-          onChange={(event) => {
-            startUpload(event.target.files?.[0]);
-            event.target.value = '';
-          }}
-        />
-        {uploadError !== undefined && (
-          <p role="alert" className="mt-2 text-[12px] text-danger">
-            {uploadError}
-          </p>
-        )}
-        {selectedImageId !== null && (
-          <label className="mt-3 flex items-center gap-2 text-[13px]">
-            Dim
-            <input
-              type="range"
-              min={0}
-              max={80}
-              step={5}
-              aria-label="Dim"
-              value={dim}
-              onChange={(event) => changeDim(Number(event.target.value))}
-              className="w-full accent-white"
-            />
-            <span className="w-8 text-right text-muted-foreground">{dim}%</span>
-          </label>
-        )}
-      </div>
+      <PresetGrid selected={selected} onChoose={choose} />
+      <BackgroundImages
+        images={images}
+        shownIds={shownIds}
+        removedIds={removedIds}
+        selectedImageId={selectedImageId}
+        storedDim={storedDim}
+        scope={scope}
+        confirmId={confirmId}
+        busy={busy}
+        uploadError={uploadError}
+        dim={dim}
+        onSelectImage={selectImage}
+        onAskDelete={setConfirmId}
+        onCancelDelete={() => setConfirmId(undefined)}
+        onStartDelete={startDelete}
+        onDeleteImage={deleteImage}
+        onStartUpload={startUpload}
+        onChangeDim={changeDim}
+      />
       <div className="mt-4 flex items-center justify-between gap-3">
         <button
           type="button"
@@ -467,89 +309,5 @@ export function ChatBackgroundDialog({
         )}
       </div>
     </Dialog>
-  );
-}
-
-/**
- * One uploaded image: a thumbnail, or the inline delete confirm. Each row has
- * its own delete action, so two rows can be deleted at once and a second click
- * on the same row while it waits is ignored. A deleted row stays mounted and
- * renders nothing, so the store patch after its delete still runs to the end
- * (the BlockedPage model, T-0767).
- */
-function BackgroundRow({
-  image,
-  index,
-  removed,
-  selected,
-  confirming,
-  onPick,
-  onAskDelete,
-  onCancelDelete,
-  onStartDelete,
-  deleteImage,
-}: {
-  image: BackgroundListItem;
-  /** Position among the rows still shown, for the labels. */
-  index: number;
-  removed: boolean;
-  selected: boolean;
-  confirming: boolean;
-  onPick: () => void;
-  onAskDelete: () => void;
-  onCancelDelete: () => void;
-  /** Runs when a confirmed delete starts. */
-  onStartDelete: () => void;
-  deleteImage: (id: string) => Effect.Effect<void>;
-}) {
-  const [, runDelete] = useAction((id: string) => deleteImage(id));
-  if (removed) {
-    return null;
-  }
-  return (
-    <div className="flex items-center">
-      {confirming ? (
-        <div className="flex items-center gap-2 rounded-[10px] border border-border px-2 py-1">
-          <span className="text-[12px]">Delete this image?</span>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => {
-              onStartDelete();
-              runDelete(image.id);
-            }}
-          >
-            Delete
-          </Button>
-          <Button type="button" size="sm" variant="ghost" onClick={onCancelDelete}>
-            Cancel
-          </Button>
-        </div>
-      ) : (
-        <div className="relative">
-          <button
-            type="button"
-            aria-label={`Background image ${index + 1}`}
-            aria-pressed={selected}
-            onClick={onPick}
-            className={cn(
-              'block size-14 overflow-hidden rounded-[10px] border transition-shadow',
-              selected ? 'border-accent ring-2 ring-accent/40' : 'border-border',
-            )}
-          >
-            <img src={image.url} alt="" className="size-full object-cover" />
-          </button>
-          <IconButton
-            aria-label={`Delete background image ${index + 1}`}
-            size={20}
-            radius={6}
-            className="absolute top-0.5 right-0.5"
-            onClick={onAskDelete}
-          >
-            <Trash2 className="size-3.5" aria-hidden="true" />
-          </IconButton>
-        </div>
-      )}
-    </div>
   );
 }

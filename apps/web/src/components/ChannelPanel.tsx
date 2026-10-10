@@ -1,7 +1,6 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { Megaphone, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import type {
@@ -12,15 +11,13 @@ import type {
   GroupMember,
 } from '@/lib/api';
 import {
-  ApiError,
   createGroupInviteLink,
   listGroupInviteLinks,
   listGroupMembers,
   revokeGroupInviteLink,
 } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
-import { type ApiFailure, toApiFailure } from '@/lib/effect/errors';
-import { StoreFailed } from '@/lib/errors';
+import type { ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -29,50 +26,20 @@ import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { PinsSection } from './PinsPanel';
 import { AiBadge } from './AiBadge';
 import { FieldError } from './ais/AiPageShell';
-import { describeAiError } from './ais/errors';
 import { Avatar } from './Avatar';
 import { Button } from './ui/button';
 import { Sheet } from './ui/sheet';
 import { StateMessage } from './ui/state-message';
 import { InviteLinksSection } from './InviteLinksSection';
 import { VisibilitySection } from './VisibilitySection';
-import { GroupAiRowView } from './panels/GroupAiRowView';
-import { roleLabel } from './panels/role-label';
-
-type ChannelFailure = ApiFailure | StoreFailed;
-
-// A store action's rejection. An ApiError stays an API failure (its server
-// message, as before); a plain Error keeps its message; anything else gets
-// the fallback.
-function storeCall<A>(call: () => Promise<A>, fallback: string): Effect.Effect<A, ChannelFailure> {
-  return Effect.tryPromise({
-    try: call,
-    catch: (cause): ChannelFailure =>
-      cause instanceof ApiError
-        ? toApiFailure(cause)
-        : new StoreFailed({ message: cause instanceof Error ? cause.message : fallback }),
-  });
-}
-
-// The text a failure shows. An API failure keeps the server's own sentence, as
-// before; any other throw (its failure is 'unknown_error') shows the fallback.
-function failureText(failure: ChannelFailure, fallback: string): string {
-  if (failure._tag === 'StoreFailed') {
-    return failure.message;
-  }
-  return failure.code === 'unknown_error' ? fallback : failure.message;
-}
-
-// describeAiError reads an ApiError, so an API failure is rebuilt as one.
-function describeFailure(failure: ChannelFailure, fallback: string): string {
-  if (failure._tag === 'StoreFailed') {
-    return failure.message;
-  }
-  return describeAiError(
-    new ApiError(failure.status, failure.code, failure.message, failure.detail),
-    fallback,
-  ).message;
-}
+import { ChannelAdminsSection, GroupAiRow } from './panels/ChannelAdminsSection';
+import { ChannelHeader } from './panels/ChannelHeader';
+import {
+  type ChannelFailure,
+  describeFailure,
+  failureText,
+  storeCall,
+} from './panels/channelPanelOps';
 
 /**
  * The channel info panel (T-0124): the feed's description, the subscriber
@@ -254,28 +221,7 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
 
   return (
     <Sheet open onClose={onClose} ariaLabel={`${chat.title} channel info`}>
-      <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
-        <Avatar id={chat.id} name={chat.title} size={44} avatarUrl={chat.avatarUrl} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <div className="truncate text-[16px] font-semibold">{chat.title}</div>
-            <Megaphone aria-label="Channel" className="size-4 shrink-0 text-subtle-foreground" />
-          </div>
-          <p className="text-[13px] text-muted-foreground">
-            {count} {count === 1 ? 'subscriber' : 'subscribers'}
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-lg"
-          aria-label="Close channel panel"
-          onClick={onClose}
-          className="shrink-0 rounded-full text-muted-foreground"
-        >
-          <X className="size-5" aria-hidden="true" />
-        </Button>
-      </header>
+      <ChannelHeader chat={chat} count={count} onClose={onClose} />
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
         {description !== null && description !== '' && (
@@ -288,90 +234,18 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
 
         {info !== undefined && (
           <>
-            {isManager ? (
-              <section aria-label="Subscribers" className="flex flex-col gap-1">
-                <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">
-                  Subscribers
-                </h2>
-                {audience.map((member) => {
-                  const label = roleLabel(member.role);
-                  const canFlip = isOwner && member.userId !== me;
-                  return (
-                    <div
-                      key={member.userId}
-                      className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
-                    >
-                      <Avatar
-                        id={member.userId}
-                        name={member.name}
-                        size={32}
-                        avatarUrl={member.avatarUrl}
-                      />
-                      <span className="min-w-0 flex-1 truncate text-[14px]">{member.name}</span>
-                      {label !== undefined && (
-                        <span className="font-mono rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
-                          {label}
-                        </span>
-                      )}
-                      {canFlip && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          aria-label={
-                            member.role === 'admin'
-                              ? `Demote ${member.name} to subscriber`
-                              : `Promote ${member.name} to admin`
-                          }
-                          className="shrink-0"
-                          disabled={roleBusy}
-                          onClick={() =>
-                            flipRole({
-                              userId: member.userId,
-                              role: member.role === 'admin' ? 'member' : 'admin',
-                            })
-                          }
-                        >
-                          {member.role === 'admin' ? 'Demote' : 'Promote'}
-                        </Button>
-                      )}
-                    </div>
-                  );
-                })}
-                {roleError !== '' && <FieldError>{roleError}</FieldError>}
-              </section>
-            ) : (
-              <section aria-label="Admins" className="flex flex-col gap-1">
-                <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Admins</h2>
-                {!adminsLoaded && adminsFailure === undefined && (
-                  <StateMessage kind="loading" size="inline" title="Loading…" />
-                )}
-                {adminsFailure !== undefined && (
-                  <FieldError>
-                    {failureText(adminsFailure, 'Could not load the admins.')}
-                  </FieldError>
-                )}
-                {adminsLoaded && admins.length === 0 && (
-                  <p className="px-2 text-[13px] text-muted-foreground">
-                    Only admins can post here.
-                  </p>
-                )}
-                {admins.map((member) => (
-                  <div
-                    key={member.userId}
-                    className="flex items-center gap-2 rounded-xl px-2 py-1.5"
-                  >
-                    <Avatar
-                      id={member.userId}
-                      name={member.name}
-                      size={32}
-                      avatarUrl={member.avatarUrl}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-[14px]">{member.name}</span>
-                  </div>
-                ))}
-              </section>
-            )}
+            <ChannelAdminsSection
+              isManager={isManager}
+              audience={audience}
+              isOwner={isOwner}
+              me={me}
+              roleBusy={roleBusy}
+              flipRole={flipRole}
+              roleError={roleError}
+              adminsLoaded={adminsLoaded}
+              adminsFailure={adminsFailure}
+              admins={admins}
+            />
 
             <section aria-label="AIs" className="flex flex-col gap-1">
               <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">AIs</h2>
@@ -501,59 +375,5 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
         )}
       </div>
     </Sheet>
-  );
-}
-
-/**
- * One AI row with its own Remove action, so two AIs can be removed at once; a
- * second click on the same row waits for the first.
- */
-function GroupAiRow({
-  chatId,
-  ai,
-  addedBy,
-  canRemove,
-  confirming,
-  onConfirm,
-  onError,
-}: {
-  chatId: string;
-  ai: GroupAi;
-  addedBy: string;
-  canRemove: boolean;
-  confirming: boolean;
-  onConfirm: (aiId: string | undefined) => void;
-  onError: (message: string) => void;
-}) {
-  const storeApi = useChatStoreApi();
-  const [removeState, removeAi] = useAction<void, void, ChannelFailure>(() =>
-    Effect.sync(() => onError('')).pipe(
-      Effect.andThen(
-        storeCall(
-          () => storeApi.getState().removeGroupAi(chatId, ai.aiId),
-          'Could not remove the AI',
-        ),
-      ),
-      Effect.tap(() => Effect.sync(() => onConfirm(undefined))),
-      Effect.asVoid,
-      Effect.tapError((failure) =>
-        Effect.sync(() => onError(describeFailure(failure, 'Could not remove the AI'))),
-      ),
-    ),
-  );
-  const removing = isWaiting(removeState);
-
-  return (
-    <GroupAiRowView
-      ai={ai}
-      addedBy={addedBy}
-      canRemove={canRemove}
-      confirming={confirming}
-      busy={removing}
-      removeLabel={`Remove ${ai.name} from the channel`}
-      onAskRemove={() => onConfirm(ai.aiId)}
-      onConfirmRemove={() => removeAi()}
-      onCancel={() => onConfirm(undefined)}
-    />
   );
 }

@@ -5,142 +5,43 @@
 // Every query runs on the `effect/sql` client registered for this database
 // (see `../effect/sql`). The exported functions stay `async` so routes and
 // tests keep their shape during the transition.
+//
+// T-0983 size split: the shared types, limits and query helpers live in
+// `./queries`, the public reads in `./reads` and the error helpers in
+// `./errors`. This path keeps the mutating service functions and re-exports
+// the same public names it always did.
 
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
-import type { AuditRecorder } from '../audit/service';
-import type { ServerDatabase } from '../db/client';
+import { SqlClient } from 'effect/sql';
+import { addContactPair, syncRoster } from '../contacts/service';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import { addContactPair, syncRoster } from '../contacts/service';
-import { normalizeHandle } from '../handles/rules';
-import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import { isPendingPairViolation, notFound } from './errors';
+import {
+  auditFor,
+  findActionableEffect,
+  isContactEffect,
+  MAX_PENDING_OUTGOING,
+  pendingBetweenEffect,
+  RE_REQUEST_COOLDOWN_DAYS,
+  resolveHandleUser,
+  serviceNow,
+  type ContactRequestRow,
+  type ContactRequestsDeps,
+} from './queries';
 
-export const MAX_PENDING_OUTGOING = 20;
-export const RE_REQUEST_COOLDOWN_DAYS = 7;
-// The list endpoint caps each side server-side; the outgoing cap above is
-// the binding one, so 100 newest per side is headroom, not a limit anyone
-// should hit.
-export const MAX_LIST_ROWS = 100;
-
-export type ContactRequestStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
-
-export interface ContactRequestRow {
-  id: string;
-  fromUserId: string;
-  toUserId: string;
-  status: ContactRequestStatus;
-  createdAt: Date;
-  decidedAt: Date | null;
-}
-
-export interface ContactRequestView {
-  id: string;
-  status: ContactRequestStatus;
-  createdAt: string;
-  other: { userId: string; name: string; handle: string | null; image: string | null };
-}
-
-export interface ContactRequestsDeps {
-  db: ServerDatabase;
-  audit?: AuditRecorder;
-  adminClient?: EjabberdAdminClient;
-  domain?: string;
-  /** Override the clock in tests. Defaults to the wall clock. */
-  now?: () => Date;
-  /**
-   * Test-only seam: called inside the create transaction immediately before
-   * the insert. A test throws a pair-index unique violation here to reach the
-   * recovery path, which PGlite cannot reproduce by racing (it serializes on
-   * one connection). Never set in production.
-   */
-  onInsert?: () => void;
-  /**
-   * Test-only seam: called on the fresh connection before the recovery reads.
-   * A test uses it to trace the recovery reads and to commit the concurrent
-   * winner that landed between the pre-check and the insert. Never set in
-   * production.
-   */
-  onRecovery?: () => void | Promise<void>;
-}
-
-// Resolves an exact, case-insensitive handle to its user row under the
-// caller's transaction connection. Unknown and retired handles answer the
-// same 404 `not_found`, so failures never reveal which one it was. There is
-// deliberately no prefix or partial search.
-export function resolveHandleUser(
-  sql: SqlClient.SqlClient,
-  handle: string,
-): Effect.Effect<{ id: string }, HttpError | SqlError.SqlError> {
-  return Effect.gen(function* () {
-    const [row] = yield* sql<{ userId: string | null }>`SELECT user_id FROM handles
-      WHERE handle_lower = ${normalizeHandle(handle.trim())} LIMIT 1`;
-    if (!row || !row.userId) {
-      return yield* Effect.fail(new HttpError(404, 'not_found', 'No user with that username'));
-    }
-    return { id: row.userId };
-  });
-}
-
-function serviceNow(deps: ContactRequestsDeps): Date {
-  return deps.now ? deps.now() : new Date();
-}
-
-function notFound(): HttpError {
-  return new HttpError(404, 'not_found', 'Not found');
-}
-
-function auditFor(
-  deps: ContactRequestsDeps,
-  action: string,
-  actorUserId: string,
-  subjectId: string,
-): void {
-  void deps.audit?.record({
-    actorUserId,
-    aiId: null,
-    groupId: null,
-    action,
-    subjectId,
-    argsHash: null,
-    costCurrency: null,
-    costAmount: null,
-    result: 'ok',
-    detail: null,
-  });
-}
-
-function isContactEffect(
-  sql: SqlClient.SqlClient,
-  userId: string,
-  otherId: string,
-): Effect.Effect<boolean, SqlError.SqlError> {
-  return Effect.gen(function* () {
-    const [row] = yield* sql<{ userId: string }>`SELECT user_id FROM contacts
-      WHERE user_id = ${userId} AND contact_user_id = ${otherId} LIMIT 1`;
-    return row !== undefined;
-  });
-}
-
-function pendingBetweenEffect(
-  sql: SqlClient.SqlClient,
-  firstId: string,
-  secondId: string,
-): Effect.Effect<ContactRequestRow | null, SqlError.SqlError> {
-  return Effect.gen(function* () {
-    const [forward] = yield* sql<ContactRequestRow>`SELECT * FROM contact_requests
-      WHERE from_user_id = ${firstId} AND to_user_id = ${secondId} AND status = 'pending'
-      LIMIT 1`;
-    if (forward) {
-      return forward;
-    }
-    const [reverse] = yield* sql<ContactRequestRow>`SELECT * FROM contact_requests
-      WHERE from_user_id = ${secondId} AND to_user_id = ${firstId} AND status = 'pending'
-      LIMIT 1`;
-    return reverse ?? null;
-  });
-}
+export { MAX_LIST_ROWS } from './queries';
+export {
+  isPendingPairViolation,
+  MAX_PENDING_OUTGOING,
+  RE_REQUEST_COOLDOWN_DAYS,
+  resolveHandleUser,
+};
+export type { ContactRequestsDeps };
+export { listContactRequests, profileForHandle, relationFor } from './reads';
+export type { OtherUserProfile } from './reads';
+export type { ContactRequestRow, ContactRequestStatus, ContactRequestView } from './queries';
 
 // Creates a pending request `fromId -> handle`. Refuses: to yourself (400),
 // to an existing contact (409 `already_contact`), a duplicate pending
@@ -338,160 +239,6 @@ export async function createContactRequest(
   }
 }
 
-// Whether `error` is a unique violation on one of the pending-request
-// indexes: either the structured `effect/sql` `UniqueViolation` reason (which
-// carries the constraint identifier) or a plain `{ code: '23505', constraint }`
-// object (plain driver errors and the recovery test's doubles).
-// Matched by code/constraint — never by message text.
-export function isPendingPairViolation(error: unknown): boolean {
-  if (error instanceof SqlError.SqlError) {
-    const reason = error.reason;
-    return (
-      reason._tag === 'UniqueViolation' &&
-      (reason.constraint === undefined ||
-        reason.constraint === 'contact_requests_pending_idx' ||
-        reason.constraint === 'contact_requests_pending_pair_idx')
-    );
-  }
-  let current: unknown = error;
-  for (let depth = 0; depth < 5; depth += 1) {
-    if (typeof current !== 'object' || current === null) {
-      return false;
-    }
-    const record = current as { code?: unknown; constraint?: unknown; cause?: unknown };
-    if (record.code === '23505') {
-      return (
-        record.constraint === undefined ||
-        record.constraint === 'contact_requests_pending_idx' ||
-        record.constraint === 'contact_requests_pending_pair_idx'
-      );
-    }
-    if (!('cause' in record)) {
-      return false;
-    }
-    current = record.cause;
-  }
-  return false;
-}
-
-function toView(
-  row: ContactRequestRow,
-  viewerId: string,
-  profileByUser: Map<string, { name: string; image: string | null; handle: string | null }>,
-): ContactRequestView {
-  const otherId = row.fromUserId === viewerId ? row.toUserId : row.fromUserId;
-  const profile = profileByUser.get(otherId);
-  return {
-    id: row.id,
-    status: row.status,
-    createdAt: row.createdAt.toISOString(),
-    other: {
-      userId: otherId,
-      name: profile?.name ?? 'Unnamed user',
-      handle: profile?.handle ?? null,
-      image: profile?.image ?? null,
-    },
-  };
-}
-
-// Lists the viewer's pending requests, newest first: `{ incoming, outgoing }`
-// with the other person's name, handle and image. Never an email. Incoming
-// requests from people the viewer blocked are never listed. Names, images
-// and handles resolve in ONE joined query over the distinct other ids —
-// never one select per row.
-export async function listContactRequests(
-  deps: ContactRequestsDeps,
-  viewerId: string,
-): Promise<{ incoming: ContactRequestView[]; outgoing: ContactRequestView[] }> {
-  const { blockedSenders, sent, received } = await runSql(
-    deps.db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const blockedSenders = yield* sql<{ blockedUserId: string }>`SELECT blocked_user_id
-        FROM user_blocks WHERE user_id = ${viewerId}`;
-      const sent = yield* sql<ContactRequestRow>`SELECT * FROM contact_requests
-        WHERE from_user_id = ${viewerId} AND status = 'pending'
-        ORDER BY created_at DESC LIMIT ${MAX_LIST_ROWS}`;
-      const received = yield* sql<ContactRequestRow>`SELECT * FROM contact_requests
-        WHERE to_user_id = ${viewerId} AND status = 'pending'
-        ORDER BY created_at DESC LIMIT ${MAX_LIST_ROWS}`;
-      return { blockedSenders, sent, received };
-    }),
-  );
-  const blocked = new Set(blockedSenders.map((row) => row.blockedUserId));
-  const visibleIncoming = received.filter((row) => !blocked.has(row.fromUserId));
-  const rows = [...sent, ...visibleIncoming].sort(
-    (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
-  );
-  const otherIds = [
-    ...new Set(rows.map((row) => (row.fromUserId === viewerId ? row.toUserId : row.fromUserId))),
-  ];
-  const profileByUser = await runSql(deps.db, profilesByUserEffect(otherIds));
-  const incoming: ContactRequestView[] = [];
-  const outgoing: ContactRequestView[] = [];
-  for (const row of rows) {
-    const view = toView(row, viewerId, profileByUser);
-    if (row.toUserId === viewerId) {
-      incoming.push(view);
-    } else {
-      outgoing.push(view);
-    }
-  }
-  return { incoming, outgoing };
-}
-
-// One joined query for every distinct other party: display name + image
-// from `user`, handle from `handles`. Missing users (deleted between the
-// list read and here — nearly impossible inside one request) fall back to
-// the `toView` defaults.
-function profilesByUserEffect(
-  otherIds: string[],
-): Effect.Effect<
-  Map<string, { name: string; image: string | null; handle: string | null }>,
-  SqlError.SqlError,
-  SqlClient.SqlClient
-> {
-  return Effect.gen(function* () {
-    const byUser = new Map<string, { name: string; image: string | null; handle: string | null }>();
-    if (otherIds.length === 0) {
-      return byUser;
-    }
-    const sql = yield* SqlClient.SqlClient;
-    const rows = yield* sql<{
-      userId: string;
-      name: string;
-      image: string | null;
-      handle: string | null;
-    }>`SELECT u.id AS user_id, u.name, u.image, h.handle
-      FROM "user" u
-      LEFT JOIN handles h ON h.user_id = u.id
-      WHERE u.id IN ${sql.in([...new Set(otherIds)])}`;
-    for (const row of rows) {
-      const name = row.name.trim() === '' ? 'Unnamed user' : row.name;
-      byUser.set(row.userId, { name, image: row.image, handle: row.handle });
-    }
-    return byUser;
-  });
-}
-
-function findActionableEffect(
-  sql: SqlClient.SqlClient,
-  id: string,
-  viewerId: string,
-  side: 'to' | 'from',
-): Effect.Effect<ContactRequestRow | null, SqlError.SqlError> {
-  return Effect.gen(function* () {
-    const statement =
-      side === 'to'
-        ? sql<ContactRequestRow>`SELECT * FROM contact_requests
-            WHERE id = ${id} AND to_user_id = ${viewerId} LIMIT 1`
-        : sql<ContactRequestRow>`SELECT * FROM contact_requests
-            WHERE id = ${id} AND from_user_id = ${viewerId} LIMIT 1`;
-    const [row] = yield* statement;
-    return row ?? null;
-  });
-}
-
 // Accepts a request (recipient only). The status flip runs in a transaction
 // under a per-request advisory lock, so a double click flips once and a
 // failure before the flip leaves nothing behind. The contact-pair creation
@@ -635,96 +382,4 @@ export async function cancelContactRequest(
   viewerId: string,
 ): Promise<ContactRequestRow> {
   return decideContactRequest(deps, id, viewerId, 'cancelled', 'from', 'contact_request.cancelled');
-}
-
-// The relation between the viewer and the owner of a handle, for
-// `GET /api/users/by-handle/:handle`: `self`, `blocked`, `contact`,
-// `request_sent`, `request_received` or `none`. `blocked` is checked first
-// after `self` and means the viewer blocked the other side. Unknown and
-// retired handles answer the same 404 as `resolveHandleUser`.
-export async function relationFor(
-  db: ServerDatabase,
-  viewerId: string,
-  otherId: string,
-): Promise<'self' | 'blocked' | 'contact' | 'request_sent' | 'request_received' | 'none'> {
-  if (viewerId === otherId) {
-    return 'self';
-  }
-  return runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const [block] = yield* sql<{ userId: string }>`SELECT user_id FROM user_blocks
-        WHERE user_id = ${viewerId} AND blocked_user_id = ${otherId} LIMIT 1`;
-      if (block) {
-        return 'blocked' as const;
-      }
-      if (yield* isContactEffect(sql, viewerId, otherId)) {
-        return 'contact' as const;
-      }
-      const pending = yield* pendingBetweenEffect(sql, viewerId, otherId);
-      if (pending) {
-        return pending.fromUserId === viewerId
-          ? ('request_sent' as const)
-          : ('request_received' as const);
-      }
-      return 'none' as const;
-    }),
-  );
-}
-
-export interface OtherUserProfile {
-  userId: string;
-  name: string;
-  handle: string;
-  image: string | null;
-}
-
-export async function profileForHandle(
-  db: ServerDatabase,
-  viewerId: string,
-  handle: string,
-): Promise<OtherUserProfile & { relation: Awaited<ReturnType<typeof relationFor>> }> {
-  const lower = normalizeHandle(handle.trim());
-  const row = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const [found] = yield* sql<{
-        userId: string;
-        handle: string;
-        name: string;
-        image: string | null;
-      }>`SELECT h.user_id, h.handle, u.name, u.image
-        FROM handles h
-        INNER JOIN "user" u ON u.id = h.user_id
-        WHERE h.handle_lower = ${lower} LIMIT 1`;
-      return found ?? null;
-    }),
-  );
-  // Reuse the row just read: an unknown handle and a retired handle answer
-  // the same 404. So does a handle whose owner blocked the viewer: the
-  // blocked person is never told the account exists.
-  if (!row || !row.userId) {
-    throw new HttpError(404, 'not_found', 'No user with that username');
-  }
-  const blockedByTarget = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      const [block] = yield* sql<{ userId: string }>`SELECT user_id FROM user_blocks
-        WHERE user_id = ${row.userId} AND blocked_user_id = ${viewerId} LIMIT 1`;
-      return block ?? null;
-    }),
-  );
-  if (blockedByTarget) {
-    throw new HttpError(404, 'not_found', 'No user with that username');
-  }
-  return {
-    userId: row.userId,
-    name: row.name.trim() === '' ? 'Unnamed user' : row.name,
-    handle: row.handle,
-    image: row.image,
-    relation: await relationFor(db, viewerId, row.userId),
-  };
 }

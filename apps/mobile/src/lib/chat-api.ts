@@ -103,7 +103,9 @@ const DmEntrySchema = struct({
   kind: Schema.Literals(['dm']),
   chatJid: Schema.String,
   title: Schema.String,
-  userId: Schema.String,
+  // Absent on the caller's own AI DMs (the same as the shared contract and the
+  // real server), so it must stay optional or an owned AI fails the whole list.
+  userId: Schema.optional(Schema.String),
   avatarUrl: LenientOptionalStringSchema,
   // Set on the caller's AIs; absent or false for human contacts (as web).
   isAi: Schema.optional(Schema.Boolean),

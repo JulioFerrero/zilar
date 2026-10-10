@@ -1,101 +1,17 @@
-import { useFocusEffect, useRouter } from 'expo-router';
-import * as Clipboard from 'expo-clipboard';
-import {
-  Check,
-  ChevronDown,
-  ChevronLeft,
-  ChevronUp,
-  Copy,
-  Plus,
-  Server,
-} from 'lucide-react-native';
-import { Data, Effect } from 'effect';
-import { useCallback, useRef, useState } from 'react';
-import { Modal, ScrollView, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Server } from 'lucide-react-native';
+import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
-import { Button } from '@/components/ui/button';
-import { Card, SectionLabel } from '@/components/ui/card';
+import { AddMachineSheet } from '@/components/machines/add-machine-sheet';
+import { ApprovedMachines } from '@/components/machines/approved-machines';
+import { MachinesHeader } from '@/components/machines/machines-header';
+import { PendingMachines } from '@/components/machines/pending-machines';
+import { RevokedMachines } from '@/components/machines/revoked-machines';
+import { useMachinesList } from '@/components/machines/use-machines-list';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
-import { Text } from '@/components/ui/text';
-import { TextField } from '@/components/ui/text-field';
-import { ACCENT_FOREGROUND, ICON } from '@/lib/colors';
-import { useAction } from '@/lib/effect/use-action';
-import type { Machine, MachinesApi, PairingCode } from '@/lib/machines-api';
-import { describeMachinesError, type MachinesErrorInfo } from '@/components/machines/errors';
-import { useMachinesApi } from '@/components/machines/use-machines-api';
-
-type PageStatus = 'loading' | 'ready' | 'error';
-
-/** A failed machines call, carrying the fixed sentence the screen shows. */
-class MachineCallFailed extends Data.TaggedError('MachineCallFailed')<{
-  readonly message: string;
-}> {}
-
-/** A row or dialog change: the machine that came back, or `null` when it was removed. */
-interface MachineChange {
-  readonly id: string;
-  readonly machine: Machine | null;
-}
-
-/** One mutation the list can run; each one's failure text is fixed. */
-type MachineMutation =
-  | { readonly kind: 'approve' | 'deny' | 'revoke' | 'delete'; readonly id: string }
-  | { readonly kind: 'rename'; readonly id: string; readonly name: string };
-
-/**
- * Runs one machines-api call. A rejection becomes the sentence for its error
- * (or the fallback), never the server's raw text.
- */
-function call<A>(attempt: () => Promise<A>, fallback: string) {
-  return Effect.tryPromise({
-    try: attempt,
-    catch: (cause) =>
-      new MachineCallFailed({ message: describeMachinesError(cause, fallback).message }),
-  });
-}
-
-/** The API call behind a mutation, mapped to the change it makes in the list. */
-function mutationCall(
-  api: MachinesApi,
-  input: MachineMutation,
-): Effect.Effect<MachineChange, MachineCallFailed> {
-  switch (input.kind) {
-    case 'approve':
-      return call(() => api.approveMachine(input.id), 'Could not approve the machine.').pipe(
-        Effect.map((machine) => ({ id: input.id, machine })),
-      );
-    case 'deny':
-      return call(() => api.denyMachine(input.id), 'Could not deny the machine.').pipe(
-        Effect.map(() => ({ id: input.id, machine: null })),
-      );
-    case 'rename':
-      return call(
-        () => api.renameMachine(input.id, input.name),
-        'Could not rename the machine.',
-      ).pipe(Effect.map((machine) => ({ id: input.id, machine })));
-    case 'revoke':
-      return call(() => api.revokeMachine(input.id), 'Could not revoke the machine.').pipe(
-        Effect.map((machine) => ({ id: input.id, machine })),
-      );
-    case 'delete':
-      return call(() => api.deleteMachine(input.id), 'Could not delete the machine.').pipe(
-        Effect.map(() => ({ id: input.id, machine: null })),
-      );
-  }
-}
-
-/** Replaces the changed machine, or drops it when it was removed. */
-function applyChange(list: Machine[], change: MachineChange): Machine[] {
-  if (change.machine === null) {
-    return list.filter((m) => m.id !== change.id);
-  }
-  const next = change.machine;
-  return list.map((m) => (m.id === change.id ? next : m));
-}
 
 /**
  * Settings → Machines (mirrors web's `MachinesPage`): pending machines with
@@ -114,227 +30,44 @@ export default function MachinesScreen() {
 
 function MachinesList() {
   const router = useRouter();
-  const { api } = useMachinesApi();
-
-  const [machines, setMachines] = useState<Machine[]>([]);
-  const [status, setStatus] = useState<PageStatus>('loading');
-  const [errorInfo, setErrorInfo] = useState<MachinesErrorInfo>({ message: '' });
-  const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<{ kind: 'revoke' | 'delete'; id: string } | null>(
-    null,
-  );
-  const [confirmError, setConfirmError] = useState('');
-  // The add flow state lives in the parent: the "Add machine" tap mints
-  // the code directly (an event, not an effect), and the sheet only renders
-  // the result. `addToken` guards a late answer after the sheet closed.
-  // `mintCode` ignores a second tap while a code is being made (10 per hour).
-  const [adding, setAdding] = useState(false);
-  const [pairing, setPairing] = useState<PairingCode | null>(null);
-  const [pairingLoading, setPairingLoading] = useState(false);
-  const [pairingError, setPairingError] = useState('');
-  const addToken = useRef(0);
-  const [showRevoked, setShowRevoked] = useState(false);
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = useState('');
-
-  const setRowError = (id: string, message: string): void => {
-    setActionErrors((previous) => ({ ...previous, [id]: message }));
-  };
-
-  const clearRowError = (id: string): void => {
-    setActionErrors((previous) => {
-      if (!(id in previous)) {
-        return previous;
-      }
-      const { [id]: _removed, ...rest } = previous;
-      void _removed;
-      return rest;
-    });
-  };
-
-  // Loads the list. A reload (focus, Retry) replaces one still running.
-  const [, loadList] = useAction(
-    (_input: void) =>
-      Effect.sync(() => {
-        setStatus('loading');
-        setActionErrors({});
-      }).pipe(
-        Effect.andThen(call(() => api.listMachines(), 'Could not load your machines.')),
-        Effect.tap((list) =>
-          Effect.sync(() => {
-            setMachines(list);
-            setStatus('ready');
-          }),
-        ),
-        Effect.catch((failure) =>
-          Effect.sync(() => {
-            setErrorInfo({ message: failure.message });
-            setStatus('error');
-          }),
-        ),
-      ),
-    { mode: 'replace' },
-  );
-
-  const reload = useCallback(() => {
-    loadList();
-  }, [loadList]);
-
-  useFocusEffect(
-    useCallback(() => {
-      reload();
-    }, [reload]),
-  );
-
-  // One mutation at a time: a second tap while one runs is dropped.
-  const [, runMutation] = useAction((input: MachineMutation) => {
-    const dialog = input.kind === 'revoke' || input.kind === 'delete';
-    return Effect.sync(() => {
-      setBusyId(input.id);
-      if (dialog) {
-        setConfirmError('');
-      } else {
-        clearRowError(input.id);
-      }
-    }).pipe(
-      Effect.andThen(mutationCall(api, input)),
-      Effect.tap((change) =>
-        Effect.sync(() => {
-          setMachines((previous) => applyChange(previous, change));
-          if (input.kind === 'rename') {
-            setRenamingId(null);
-          }
-          if (dialog) {
-            setConfirming(null);
-          }
-        }),
-      ),
-      Effect.catch((failure) =>
-        Effect.sync(() => {
-          if (dialog) {
-            setConfirmError(failure.message);
-          } else {
-            setRowError(input.id, failure.message);
-          }
-        }),
-      ),
-      Effect.ensuring(Effect.sync(() => setBusyId(null))),
-    );
-  });
-
-  const [, mintCode] = useAction(
-    (_input: void) =>
-      Effect.sync(() => {
-        addToken.current += 1;
-        setAdding(true);
-        setPairingLoading(true);
-        setPairingError('');
-        setPairing(null);
-        return addToken.current;
-      }).pipe(
-        Effect.flatMap((token) =>
-          call(() => api.createPairingCode(), 'Could not create a pairing code.').pipe(
-            Effect.tap((next) =>
-              Effect.sync(() => {
-                if (addToken.current === token) {
-                  setPairing(next);
-                }
-              }),
-            ),
-            Effect.catch((failure) =>
-              Effect.sync(() => {
-                if (addToken.current === token) {
-                  setPairingError(failure.message);
-                }
-              }),
-            ),
-            Effect.ensuring(
-              Effect.sync(() => {
-                if (addToken.current === token) {
-                  setPairingLoading(false);
-                }
-              }),
-            ),
-          ),
-        ),
-      ),
-    { mode: 'ignore' },
-  );
-
-  const openAdd = useCallback(() => {
-    mintCode();
-  }, [mintCode]);
-
-  const closeAdd = useCallback(() => {
-    addToken.current += 1;
-    setAdding(false);
-  }, []);
-
-  const retryAdd = useCallback(() => {
-    closeAdd();
-    openAdd();
-  }, [closeAdd, openAdd]);
-
-  const approve = (id: string): void => {
-    runMutation({ kind: 'approve', id });
-  };
-
-  const deny = (id: string): void => {
-    runMutation({ kind: 'deny', id });
-  };
-
-  const openRename = (machine: Machine): void => {
-    setRenamingId(machine.id);
-    setRenameDraft(machine.name);
-    clearRowError(machine.id);
-  };
-
-  const saveRename = (id: string): void => {
-    const name = renameDraft.trim();
-    if (name === '') {
-      setRowError(id, 'Give the machine a name.');
-      return;
-    }
-    runMutation({ kind: 'rename', id, name });
-  };
-
-  const askConfirm = (kind: 'revoke' | 'delete', id: string): void => {
-    setConfirming({ kind, id });
-    setConfirmError('');
-  };
-
-  const confirmAction = (): void => {
-    if (confirming === null) {
-      return;
-    }
-    runMutation({ kind: confirming.kind, id: confirming.id });
-  };
-
-  const pending = machines.filter((m) => m.status === 'pending');
-  const approved = machines.filter((m) => m.status === 'approved');
-  const revoked = machines.filter((m) => m.status === 'revoked');
+  const {
+    status,
+    errorInfo,
+    machines,
+    pending,
+    approved,
+    revoked,
+    busyId,
+    actionErrors,
+    renamingId,
+    renameDraft,
+    showRevoked,
+    adding,
+    pairing,
+    pairingLoading,
+    pairingError,
+    confirming,
+    confirmError,
+    setRenameDraft,
+    reload,
+    openAdd,
+    closeAdd,
+    retryAdd,
+    approve,
+    deny,
+    openRename,
+    saveRename,
+    askRevoke,
+    askDelete,
+    confirmAction,
+    cancelConfirm,
+    cancelRename,
+    toggleRevoked,
+  } = useMachinesList();
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="flex-row items-center gap-1 px-2 py-2">
-        <IconButton label="Back" onPress={() => router.back()}>
-          <ChevronLeft size={24} color={ICON} />
-        </IconButton>
-        <View className="min-w-0 flex-1">
-          <Text numberOfLines={1} className="text-[20px] font-semibold leading-6 text-foreground">
-            Machines
-          </Text>
-          <Text numberOfLines={1} className="mt-0.5 text-[14px] leading-5 text-muted-foreground">
-            Computers where your AIs can work.
-          </Text>
-        </View>
-        {status === 'ready' ? (
-          <IconButton label="Add machine" onPress={openAdd}>
-            <Plus size={22} color={ICON} />
-          </IconButton>
-        ) : null}
-      </View>
+      <MachinesHeader onBack={() => router.back()} onAdd={openAdd} showAdd={status === 'ready'} />
 
       <ScrollView
         className="flex-1"
@@ -370,162 +103,39 @@ function MachinesList() {
           ) : null}
 
           {status === 'ready' && pending.length > 0 ? (
-            <View accessibilityLabel="Waiting for approval" className="gap-2">
-              <SectionLabel>Waiting for approval</SectionLabel>
-              <Card>
-                {pending.map((machine) => (
-                  <MachineCard
-                    key={machine.id}
-                    machine={machine}
-                    busy={busyId === machine.id}
-                    error={actionErrors[machine.id] ?? ''}
-                    actions={
-                      <>
-                        <Button
-                          variant="default"
-                          size="sm"
-                          accessibilityLabel={`Approve ${machine.name}`}
-                          disabled={busyId === machine.id}
-                          onPress={() => approve(machine.id)}
-                        >
-                          <Text>Approve</Text>
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          accessibilityLabel={`Deny ${machine.name}`}
-                          disabled={busyId === machine.id}
-                          onPress={() => deny(machine.id)}
-                        >
-                          <Text>Deny</Text>
-                        </Button>
-                      </>
-                    }
-                  />
-                ))}
-              </Card>
-            </View>
+            <PendingMachines
+              machines={pending}
+              busyId={busyId}
+              actionErrors={actionErrors}
+              onApprove={approve}
+              onDeny={deny}
+            />
           ) : null}
 
           {status === 'ready' && approved.length > 0 ? (
-            <View accessibilityLabel="Your machines" className="gap-2">
-              <SectionLabel>Your machines</SectionLabel>
-              <Card>
-                {approved.map((machine) =>
-                  renamingId === machine.id ? (
-                    <View key={machine.id} className="gap-2 px-3 py-2.5">
-                      <Text className="text-[14px] font-medium text-foreground">Rename</Text>
-                      <TextField
-                        value={renameDraft}
-                        onChangeText={setRenameDraft}
-                        accessibilityLabel={`Name for ${machine.name}`}
-                        maxLength={64}
-                        autoFocus
-                      />
-                      {actionErrors[machine.id] !== undefined && actionErrors[machine.id] !== '' ? (
-                        <Text accessibilityRole="alert" className="text-[13px] text-danger">
-                          {actionErrors[machine.id]}
-                        </Text>
-                      ) : null}
-                      <View className="flex-row justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          accessibilityLabel="Cancel renaming"
-                          disabled={busyId === machine.id}
-                          onPress={() => setRenamingId(null)}
-                        >
-                          <Text>Cancel</Text>
-                        </Button>
-                        <Button
-                          variant="default"
-                          size="sm"
-                          accessibilityLabel="Save the new name"
-                          disabled={busyId === machine.id}
-                          onPress={() => saveRename(machine.id)}
-                        >
-                          <Text>{busyId === machine.id ? 'Saving…' : 'Save'}</Text>
-                        </Button>
-                      </View>
-                    </View>
-                  ) : (
-                    <MachineCard
-                      key={machine.id}
-                      machine={machine}
-                      busy={busyId === machine.id}
-                      error={actionErrors[machine.id] ?? ''}
-                      actions={
-                        <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            accessibilityLabel={`Rename ${machine.name}`}
-                            disabled={busyId === machine.id}
-                            onPress={() => openRename(machine)}
-                          >
-                            <Text>Rename</Text>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            accessibilityLabel={`Revoke ${machine.name}`}
-                            disabled={busyId === machine.id}
-                            onPress={() => askConfirm('revoke', machine.id)}
-                          >
-                            <Text>Revoke</Text>
-                          </Button>
-                        </>
-                      }
-                    />
-                  ),
-                )}
-              </Card>
-            </View>
+            <ApprovedMachines
+              machines={approved}
+              busyId={busyId}
+              actionErrors={actionErrors}
+              renamingId={renamingId}
+              renameDraft={renameDraft}
+              onChangeRenameDraft={setRenameDraft}
+              onCancelRename={cancelRename}
+              onSaveRename={saveRename}
+              onRename={openRename}
+              onRevoke={askRevoke}
+            />
           ) : null}
 
           {status === 'ready' && revoked.length > 0 ? (
-            <View accessibilityLabel="Revoked machines" className="gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="self-start gap-1 px-0"
-                accessibilityLabel={showRevoked ? 'Hide revoked machines' : 'Show revoked machines'}
-                accessibilityState={{ expanded: showRevoked }}
-                onPress={() => setShowRevoked((value) => !value)}
-              >
-                {showRevoked ? (
-                  <ChevronUp size={16} color={ICON} />
-                ) : (
-                  <ChevronDown size={16} color={ICON} />
-                )}
-                <Text className="text-[15px] font-semibold text-foreground">
-                  Revoked ({revoked.length})
-                </Text>
-              </Button>
-              {showRevoked ? (
-                <Card>
-                  {revoked.map((machine) => (
-                    <MachineCard
-                      key={machine.id}
-                      machine={machine}
-                      busy={busyId === machine.id}
-                      error={actionErrors[machine.id] ?? ''}
-                      actions={
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          accessibilityLabel={`Delete ${machine.name}`}
-                          disabled={busyId === machine.id}
-                          onPress={() => askConfirm('delete', machine.id)}
-                        >
-                          <Text>Delete</Text>
-                        </Button>
-                      }
-                    />
-                  ))}
-                </Card>
-              ) : null}
-            </View>
+            <RevokedMachines
+              machines={revoked}
+              busyId={busyId}
+              actionErrors={actionErrors}
+              showRevoked={showRevoked}
+              onToggle={toggleRevoked}
+              onDelete={askDelete}
+            />
           ) : null}
         </View>
       </ScrollView>
@@ -551,167 +161,12 @@ function MachinesList() {
         confirmLabel={confirming?.kind === 'revoke' ? 'Revoke' : 'Delete'}
         busyLabel="Working…"
         busy={busyId !== null}
-        onCancel={() => setConfirming(null)}
+        onCancel={cancelConfirm}
         onConfirm={confirmAction}
         confirmAccessibilityLabel={
           confirming?.kind === 'revoke' ? 'Confirm revoke' : 'Confirm delete'
         }
       />
     </SafeAreaView>
-  );
-}
-
-function MachineCard({
-  machine,
-  busy,
-  error,
-  actions,
-}: {
-  machine: Machine;
-  busy: boolean;
-  error: string;
-  actions: React.ReactNode;
-}) {
-  return (
-    <View className="gap-1 px-3 py-2.5">
-      <View className="flex-row items-center gap-3">
-        <View className="min-w-0 flex-1">
-          <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">
-            {machine.name}
-          </Text>
-          <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
-            {machine.os} {machine.osVersion} · {machine.arch}
-          </Text>
-        </View>
-        <View className="flex-row shrink-0 gap-2" pointerEvents={busy ? 'none' : 'auto'}>
-          {actions}
-        </View>
-      </View>
-      {error !== '' ? (
-        <Text accessibilityRole="alert" className="text-[13px] text-danger">
-          {error}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
-/**
- * The add flow (mirrors web's `AddMachineDialog`): shows the pairing code
- * big with a Copy button and the `zilar-runner pair <CODE>` command. The
- * code is minted by the parent's "Add machine" tap, so this sheet only
- * renders the result. The desktop runner is not published yet, so the sheet
- * says so honestly, exactly like web.
- */
-function AddMachineSheet({
-  visible,
-  pairing,
-  loading,
-  error,
-  onRetry,
-  onClose,
-}: {
-  visible: boolean;
-  pairing: PairingCode | null;
-  loading: boolean;
-  error: string;
-  onRetry: () => void;
-  onClose: () => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const [, copyCode] = useAction((code: string) =>
-    Effect.tryPromise({
-      try: () => Clipboard.setStringAsync(code),
-      catch: () => new MachineCallFailed({ message: 'Could not copy the code.' }),
-    }).pipe(
-      Effect.tap(() =>
-        Effect.sync(() => {
-          setCopied(true);
-        }),
-      ),
-    ),
-  );
-
-  const copy = (): void => {
-    if (pairing === null) {
-      return;
-    }
-    copyCode(pairing.code);
-  };
-
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View className="flex-1 items-center justify-center bg-black/40 p-6">
-        <View className="w-full max-w-xs rounded-2xl border border-border-strong bg-surface p-4">
-          <Text className="text-[16px] font-semibold text-foreground">Add machine</Text>
-          <Text className="mt-1 text-[14px] leading-5 text-muted-foreground">
-            Pair a new computer where your AIs can work.
-          </Text>
-
-          {loading ? <StateMessage kind="loading" title="Creating code…" /> : null}
-
-          {!loading && error !== '' ? (
-            <>
-              <Text accessibilityRole="alert" className="mt-3 text-[14px] text-danger">
-                {error}
-              </Text>
-              <View className="mt-4 flex-row justify-end gap-2">
-                <Button variant="ghost" size="sm" accessibilityLabel="Close" onPress={onClose}>
-                  <Text>Close</Text>
-                </Button>
-                <Button
-                  variant="default"
-                  size="sm"
-                  accessibilityLabel="Try again"
-                  onPress={onRetry}
-                >
-                  <Text>Try again</Text>
-                </Button>
-              </View>
-            </>
-          ) : null}
-
-          {!loading && error === '' && pairing !== null ? (
-            <>
-              <View className="mt-3 rounded-xl border border-divider bg-surface px-4 py-3">
-                <Text
-                  selectable
-                  className="text-center font-mono text-[24px] font-semibold tracking-[0.1em] text-foreground"
-                >
-                  {pairing.code}
-                </Text>
-                <View className="mt-2 flex-row items-center justify-center">
-                  <Button
-                    variant="default"
-                    size="sm"
-                    accessibilityLabel="Copy pairing code"
-                    onPress={copy}
-                  >
-                    {copied ? (
-                      <Check size={14} color={ACCENT_FOREGROUND} />
-                    ) : (
-                      <Copy size={14} color={ACCENT_FOREGROUND} />
-                    )}
-                    <Text>{copied ? 'Copied' : 'Copy'}</Text>
-                  </Button>
-                </View>
-              </View>
-              <Text className="mt-3 text-[14px] leading-5 text-foreground">
-                On the machine, download the runner app, then run{' '}
-                <Text className="font-mono text-[13px]">zilar-runner pair {pairing.code}</Text>
-              </Text>
-              <Text className="mt-1 text-[13px] text-muted-foreground">
-                The desktop runner is not published yet — this code is ready for when it is.
-              </Text>
-              <View className="mt-4 flex-row justify-end">
-                <Button variant="default" size="sm" accessibilityLabel="Done" onPress={onClose}>
-                  <Text>Done</Text>
-                </Button>
-              </View>
-            </>
-          ) : null}
-        </View>
-      </View>
-    </Modal>
   );
 }

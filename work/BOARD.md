@@ -9,10 +9,15 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0936](T-0936-size-dup-audit.md) | Audit: 400-line limit and duplicated code | in-progress | deepseek-flash | — | Julio 10-10 |
-| [T-0949](T-0949-mobile-mock-cutover-store.md) | Mock cutover H1: mobile mock mode on the real store, fake session | in-progress | deepseek-flash | T-0946 | mock-plan H |
+| [T-1041](T-1041-split-mobile-channel-screen.md) | Size split T117: mobile channel-screen.tsx (408) | in-progress | auto | T-0936 | size-plan |
+| [T-1043](T-1043-server-shared-error-helpers.md) | Dedup F6a: shared errorName/errorClassName/isUniqueViolation | in-progress | auto | T-0936 | size-plan F6 |
+| [T-1044](T-1044-mock-backend-prefs-pins.md) | Mock backend C1: chat-prefs, chat-background, pins | in-progress | auto | T-0949 | mock wave 2 |
+| [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds, media gallery | in-progress | auto | T-0949 | mock wave 2 |
+| [T-1046](T-1046-mock-backend-stickers-gifs.md) | Mock backend F1: stickers, GIFs | in-progress | auto | T-0949 | mock wave 2 |
 
 ## Follow-ups
+
+- **Mobile approvals: "Always allowed" empties when nothing is pending (found 2026-10-10, T-1004 smoke; on main).** Rules load only for the AIs referenced by pending rows (`apps/mobile/src/components/approvals/use-approvals.ts`, was `approvals.tsx:209`), so once the last request is decided, the rule list shows "Nothing is always allowed here" even when rules exist. Load the rules for every owned AI instead.
 
 - **M5 plan (2026-09-29): see [`docs/ROADMAP_M5.md`](../docs/ROADMAP_M5.md)** for the order, the waves for tonight, what only Julio can provide, and the decisions the lead made in the specs.
 - **AI-built tools and routines (Julio, 2026-09-29: server sandbox first).** T-0102 sandbox (QuickJS/WASM, allowlisted SSRF-safe fetch), T-0103 versioned tools store + routes, T-0104 scheduler/routines (pinned to approved hosts, auto-pause after failures), T-0105 tool/routine actions for the action gateway (routine.schedule needs a card and can never be always-allowed) + wiring the sandbox (`TOOLS_ENABLED`), T-0106 model side (prompt guide, more rounds per turn, "working on it" line, scripted-model e2e), T-0107 web Tools & Routines in the AI/group panel.
@@ -977,3 +982,96 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0947](T-0947-delete-web-mock-store.md) | Mock sweep O: delete the web mock store (apps/web/src/store/mockStore.ts, 1,294 lines), its production stub an | 2026-10-10 |
 | [T-0948](T-0948-mock-backend-polish.md) | Mock backend polish: real-format AI JIDs (ai-<id>@zilar.test) so AI markdown renders, read markers clear unrea | 2026-10-10 |
 | [T-0950](T-0950-unread-clears-on-refocus.md) | Unread clears on refocus: when the app or tab comes back to the foreground with a chat open, that chat is mark | 2026-10-10 |
+| [T-0936](T-0936-size-dup-audit.md) | Audit (no code): a 400-line file limit and duplicated code: measure clones, plan a split for every source file | 2026-10-10 |
+| [T-0952](T-0952-split-xmpp-stanza.md) | Size split T17: packages/xmpp-core/src/stanza.ts (1,078 lines) into stanza/{reactions,build-outgoing,parse-con | 2026-10-10 |
+| [T-0957](T-0957-split-server-topics-service.md) | Size split T14: apps/server/src/topics/service.ts (1,127 lines) into topics/{schemas,members,roles,ais,queries | 2026-10-10 |
+| [T-0951](T-0951-split-xmpp-core-effect.md) | Size split T9: packages/xmpp-core/src/core-effect.ts (1,206 lines) into core-effect/{config,lifecycle,presence | 2026-10-10 |
+| [T-0956](T-0956-split-server-ais-service.md) | Size split T7: apps/server/src/ais/service.ts (1,390 lines) into ais/{queries,provisioning,persona,status}.ts, | 2026-10-10 |
+| [T-0953](T-0953-split-store-ledger.md) | Size split T11+T12: packages/client-core/src/store/ledger.ts (1,176 lines) into ledger-{types,signatures,ids,e | 2026-10-10 |
+| [T-0949](T-0949-mobile-mock-cutover-store.md) | Mock cutover H1 (mobile): mock mode runs the real mobile store on @zilar/mock-backend (fake HTTP through fetch | 2026-10-10 |
+| [T-0955](T-0955-split-server-tools-service.md) | Size split T10: apps/server/src/tools/service.ts (1,200 lines) into tools/{queries,mutations,hosts,runner}.ts, | 2026-10-10 |
+| [T-0954](T-0954-split-web-composer.md) | Size split T13: apps/web/src/components/Composer.tsx (1,145 lines) into composer/{useVoiceRecorder,useComposer | 2026-10-10 |
+| [T-0958](T-0958-split-server-stickers-service.md) | Size split T8: apps/server/src/stickers/service.ts (1,388 lines) into stickers/{schemas,packs,panel,favorites, | 2026-10-10 |
+| [T-0964](T-0964-split-server-approvals-service.md) | Size split T19: apps/server/src/approvals/service.ts (1,030 lines) into approvals/{schemas,queries,access}.ts, | 2026-10-10 |
+| [T-0959](T-0959-split-web-api.md) | Size split T1+T2: apps/web/src/lib/api.ts (1,792 lines) into lib/api/{http,chats,groups,topics,media,settings, | 2026-10-10 |
+| [T-0961](T-0961-split-server-groups-service.md) | Size split T5+T6: apps/server/src/groups/service.ts (1,583 lines) into groups/{schemas,members,ais,queries}.ts | 2026-10-10 |
+| [T-0960](T-0960-split-server-agents-reply.md) | Size split T3+T4: apps/server/src/agents/reply.ts (1,585 lines) into agents/{tool-loop,dm-turn,group-turn}.ts, | 2026-10-10 |
+| [T-0965](T-0965-split-lead-policy.md) | Size split T16: packages/devtools/src/lead/policy.ts (1,111 lines) into lead/policy/{types,shell-parse,rm,curl | 2026-10-10 |
+| [T-0963](T-0963-split-server-actions-gateway.md) | Size split T18: apps/server/src/actions/gateway.ts (1,036 lines) into actions/{decisions,recovery,queries,supp | 2026-10-10 |
+| [T-0967](T-0967-split-web-group-panel.md) | Size split T20: apps/web/src/components/GroupPanel.tsx (995 lines) into components/panels/{groupPanelOps,Group | 2026-10-10 |
+| [T-0968](T-0968-web-mock-mode-sticky.md) | Web mock mode stays on for the tab: decide once at page load and remember ?mock=1 in sessionStorage (dev build | 2026-10-10 |
+| [T-0966](T-0966-split-server-tools-adapters.md) | Size split T21: apps/server/src/tools/adapters.ts (944 lines) into tools/{tool-adapters,tool-arg-schemas,routi | 2026-10-10 |
+| [T-0962](T-0962-split-mobile-chat-screen.md) | Size split T15: apps/mobile/src/app/chat/[id].tsx (1,118 lines) into components/chat/{use-chat-screen,chat-hea | 2026-10-10 |
+| [T-0969](T-0969-split-store-send.md) | Size split T33: packages/client-core/src/store/send.ts (883 lines) into store/send/{context,pipeline,text,voic | 2026-10-10 |
+| [T-0972](T-0972-ai-reply-crucial-tests.md) | Crucial tests for the AI reply pipeline: failure-to-reply mapping, secret redaction, and the tool-loop call ca | 2026-10-10 |
+| [T-0970](T-0970-split-lead-batch.md) | Size split T22: packages/devtools/src/lead/batch.ts (913 lines) into lead/batch/{types,text,wave,parsers,check | 2026-10-10 |
+| [T-0971](T-0971-split-web-message-bubble.md) | Size split T25: apps/web/src/components/MessageBubble.tsx (846 lines) into components/message/{SendFailure,Mes | 2026-10-10 |
+| [T-0973](T-0973-split-web-ai-panel.md) | Size split T23: apps/web/src/components/ais/AiPanel.tsx (870 lines) into ais/{aiPanelOps,AiUsageSection,AiPict | 2026-10-10 |
+| [T-0975](T-0975-split-lead-watch.md) | Size split T27: packages/devtools/src/lead/watch.ts (818 lines) into lead/watch/{live-step,changed-files,forma | 2026-10-10 |
+| [T-0976](T-0976-split-server-tools-api.md) | Size split T29: apps/server/src/tools/api.ts (799 lines) into tools/{routes,wire,access}.ts, the old path a ba | 2026-10-10 |
+| [T-0978](T-0978-split-server-roles-service.md) | Size split T36: apps/server/src/roles/service.ts (763 lines) into roles/{schemas,access,queries,sync}.ts, the  | 2026-10-10 |
+| [T-0977](T-0977-split-web-topic-panel.md) | Size split T32: apps/web/src/components/TopicPanel.tsx (780 lines) into components/panels/{topicPanelOps,Topic | 2026-10-10 |
+| [T-0974](T-0974-split-mobile-group-screen.md) | Size split T26: apps/mobile/src/app/group/[id].tsx (835 lines) into components/chat/{group-header,group-topic- | 2026-10-10 |
+| [T-0979](T-0979-split-mobile-tool-detail-sheet.md) | Size split T28: apps/mobile/src/components/ais/tool-detail-sheet.tsx (808 lines) into ais/{tool-run-blocks,too | 2026-10-10 |
+| [T-0980](T-0980-split-mobile-sticker-pack.md) | Size split T24: apps/mobile/src/app/settings/sticker-pack.tsx (859 lines) into components/stickers/{use-pack-e | 2026-10-10 |
+| [T-0983](T-0983-split-server-contact-requests.md) | Size split T40: apps/server/src/contact-requests/service.ts (730 lines) into contact-requests/{queries,reads,e | 2026-10-10 |
+| [T-0984](T-0984-split-server-routines-service.md) | Size split T47: apps/server/src/routines/service.ts (657 lines) into routines/{schemas,queries,support}.ts, th | 2026-10-10 |
+| [T-0985](T-0985-split-lead-watch-app.md) | Size split T39: packages/devtools/src/lead/watch-app.tsx (735 lines) into lead/watch-app/{segments,lines,chrom | 2026-10-10 |
+| [T-0982](T-0982-split-web-stickers-page.md) | Size split T35: apps/web/src/routes/StickersPage.tsx (765 lines) into components/sticker/{pageActions,PackThum | 2026-10-10 |
+| [T-0981](T-0981-split-web-pack-editor.md) | Size split T31: apps/web/src/components/PackEditor.tsx (783 lines) into components/sticker/{packEditorModel,Bl | 2026-10-10 |
+| [T-0990](T-0990-split-web-channel-panel.md) | Size split T65: apps/web/src/components/ChannelPanel.tsx (559 lines) into components/panels/{channelPanelOps,C | 2026-10-10 |
+| [T-0989](T-0989-split-web-sticker-panel.md) | Size split T49: apps/web/src/components/StickerPanel.tsx (634 lines) into components/sticker/{StickerThumb,Fav | 2026-10-10 |
+| [T-0991](T-0991-split-server-invite-links.md) | Size split T50: apps/server/src/invite-links/service.ts (631 lines) into invite-links/{tokens,queries,join}.ts | 2026-10-10 |
+| [T-0993](T-0993-split-server-web-tools-adapters.md) | Size split T55: apps/server/src/web-tools/adapters.ts (606 lines) into web-tools/{shared,fetch-adapter,wikiped | 2026-10-10 |
+| [T-0992](T-0992-split-server-stickers-api.md) | Size split T56: apps/server/src/stickers/api.ts (595 lines) into stickers/{api-handlers,api-decode,api-upload} | 2026-10-10 |
+| [T-0986](T-0986-split-mobile-composer.md) | Size split T30: apps/mobile/src/components/chat/composer.tsx (788 lines) into chat/{composer-media,composer-sh | 2026-10-10 |
+| [T-0987](T-0987-split-mobile-message-bubble.md) | Size split T37: apps/mobile/src/components/chat/message-bubble.tsx (758 lines) into chat/{message-bubble-decor | 2026-10-10 |
+| [T-0988](T-0988-split-mobile-integrations.md) | Size split T38: apps/mobile/src/app/settings/integrations.tsx (740 lines) into components/integrations/{card-f | 2026-10-10 |
+| [T-0994](T-0994-contact-request-permission-tests.md) | Contact requests: a few permission tests (who may accept, decline, cancel; blocks; limits) | 2026-10-10 |
+| [T-1001](T-1001-split-server-telegram-import.md) | Size split T59: apps/server/src/stickers/telegram-import.ts (573 lines) into stickers/telegram/{pack-input,err | 2026-10-10 |
+| [T-0995](T-0995-split-mobile-machines.md) | Size split T41: apps/mobile/src/app/settings/machines.tsx (717 lines) into components/machines/{mutations,use- | 2026-10-10 |
+| [T-0996](T-0996-split-mobile-stickers-screen.md) | Size split T44: apps/mobile/src/app/settings/stickers.tsx (691 lines) into components/stickers/{tile-size,use- | 2026-10-10 |
+| [T-1002](T-1002-split-server-push-service.md) | Size split T64: apps/server/src/push/service.ts (561 lines) into push/{delivery,archive-scan,candidates}.ts, t | 2026-10-10 |
+| [T-0998](T-0998-split-web-chat-background-dialog.md) | Size split T66: apps/web/src/components/ChatBackgroundDialog.tsx (555 lines) into components/background/{backg | 2026-10-10 |
+| [T-0999](T-0999-split-web-notifications-page.md) | Size split T67: apps/web/src/routes/NotificationsPage.tsx (551 lines) into lib/push/{deviceStorage,pageActions | 2026-10-10 |
+| [T-1000](T-1000-split-web-integrations-page.md) | Size split T69: apps/web/src/routes/IntegrationsPage.tsx (548 lines) into components/settings/{integrationErro | 2026-10-10 |
+| [T-0997](T-0997-split-mobile-voice-message.md) | Size split T51: apps/mobile/src/components/chat/voice-message.tsx (631 lines) into chat/{voice-playback-source | 2026-10-10 |
+| [T-1007](T-1007-split-web-avatar-uploader.md) | Size split T81: apps/web/src/components/AvatarUploader.tsx (514 lines) into components/avatar/{avatarImageCode | 2026-10-10 |
+| [T-1008](T-1008-split-web-tool-detail-panel.md) | Size split T83: apps/web/src/components/tools/ToolDetailPanel.tsx (513 lines) into tools/{toolDetailOps,ToolSo | 2026-10-10 |
+| [T-1010](T-1010-split-server-xmpp-admin-client.md) | Size split T71: apps/server/src/xmpp/admin-client.ts (539 lines) into xmpp/admin/{schemas,types,errors,client} | 2026-10-10 |
+| [T-1009](T-1009-split-web-chat-list.md) | Size split T84: apps/web/src/components/ChatList.tsx (509 lines) into components/chatList/{rowsSelector,ChatLi | 2026-10-10 |
+| [T-1004](T-1004-split-mobile-approvals.md) | Size split T74: apps/mobile/src/app/settings/approvals.tsx (529 lines) into components/approvals/{use-approval | 2026-10-10 |
+| [T-1005](T-1005-split-mobile-profile.md) | Size split T78: apps/mobile/src/app/settings/profile.tsx (521 lines) into components/settings/{use-profile-set | 2026-10-10 |
+| [T-1006](T-1006-split-mobile-connections.md) | Size split T79: apps/mobile/src/app/settings/connections.tsx (519 lines) into components/connections/{use-conn | 2026-10-10 |
+| [T-1003](T-1003-push-candidate-tests.md) | Push: a few tests for who gets a notification (hidden private topic, muted chat, own message, retraction) | 2026-10-10 |
+| [T-1014](T-1014-split-web-machines-page.md) | Size split T91: apps/web/src/routes/MachinesPage.tsx (473 lines) into components/machines/{machineRowOps,Pendi | 2026-10-10 |
+| [T-1011](T-1011-split-mobile-media-sheet.md) | Size split T87: apps/mobile/src/components/chat/media-sheet.tsx (491 lines) into chat/{media-rows,media-sheet- | 2026-10-10 |
+| [T-1012](T-1012-split-mobile-voice-recorder.md) | Size split T93: apps/mobile/src/components/chat/voice-recorder.tsx (470 lines) into chat/{voice-recorder-flow, | 2026-10-10 |
+| [T-1013](T-1013-split-mobile-gif-panel.md) | Size split T95: apps/mobile/src/components/chat/gif-panel.tsx (461 lines) into chat/{gif-cells,gif-paging,gif- | 2026-10-10 |
+| [T-1016](T-1016-split-server-audit-service.md) | Size split T82: apps/server/src/audit/service.ts (514 lines) into audit/{schema,recorder,list}.ts, the old pat | 2026-10-10 |
+| [T-1017](T-1017-split-server-push-api.md) | Size split T89: apps/server/src/push/api.ts (484 lines) into push/{api-handlers,api-subscribe,api-util}.ts, ap | 2026-10-10 |
+| [T-1018](T-1018-split-server-machines-service.md) | Size split T90: apps/server/src/machines/service.ts (476 lines) into machines/{pairing,machines,crypto,view}.t | 2026-10-10 |
+| [T-1019](T-1019-split-server-chat-prefs.md) | Size split T98: apps/server/src/chat-prefs/service.ts (445 lines) into chat-prefs/{access,backgrounds}.ts, the | 2026-10-10 |
+| [T-1015](T-1015-split-web-task-strip.md) | Size split T99: apps/web/src/components/TaskStrip.tsx (442 lines) into components/topic/{stripModel,StatusMenu | 2026-10-10 |
+| [T-1023](T-1023-split-server-topic-rooms.md) | Size split T77: apps/server/src/topics/rooms.ts (522 lines) into topics/{room-members,room-sync,room-push}.ts, | 2026-10-10 |
+| [T-1024](T-1024-split-server-media-indexer.md) | Size split T103: apps/server/src/media/indexer.ts (435 lines) into media/{extract,rows}.ts, the old path keeps | 2026-10-10 |
+| [T-1025](T-1025-split-server-agent-memory-store.md) | Size split T60: apps/server/src/agents/memory/store.ts (572 lines) into memory/{mirror,render,recall,facts,com | 2026-10-10 |
+| [T-1027](T-1027-split-devtools-xmpp-e2e.md) | Size split T94: packages/devtools/src/xmpp-e2e.ts (457 lines) into xmpp-e2e/{harness,connect,muc,mam,main}.ts; | 2026-10-10 |
+| [T-1026](T-1026-split-site-scene.md) | Size split T80: apps/site/src/scene.ts (515 lines) into scene/{config,textures,geometry,backdrop,mark,post,loo | 2026-10-10 |
+| [T-1020](T-1020-split-mobile-chats-tab.md) | Size split T72: apps/mobile/src/app/(tabs)/index.tsx (537 lines) into components/chat/{search-header,chat-sear | 2026-10-10 |
+| [T-1021](T-1021-split-mobile-attachment-native.md) | Size split T75: apps/mobile/src/lib/attachment-native.ts (528 lines) into lib/{attachment-picker,attachment-up | 2026-10-10 |
+| [T-1022](T-1022-split-mobile-topic-sheets.md) | Size split T100: apps/mobile/src/components/chat/topic-sheets.tsx (442 lines) into chat/{topic-actions-sheet,t | 2026-10-10 |
+| [T-1029](T-1029-split-server-agent-tools.md) | Size split T73: apps/server/src/agents/tools.ts (536 lines) into agents/tools/{schemas,parse,definitions,reply | 2026-10-10 |
+| [T-1033](T-1033-split-server-voice-transcription-api.md) | Size split T110: apps/server/src/voice-transcription/api.ts (422 lines) into voice-transcription/{schemas,midd | 2026-10-10 |
+| [T-1035](T-1035-split-web-chat-media-panel.md) | Size split T123: apps/web/src/components/ChatMediaPanel.tsx (403 lines) into components/media/{mediaModel,useS | 2026-10-10 |
+| [T-1028](T-1028-split-server-routine-execute.md) | Size split T105: apps/server/src/routines/execute.ts (434 lines) into routines/{outcomes,audit,preflight}.ts,  | 2026-10-10 |
+| [T-1034](T-1034-split-web-voice-lib.md) | Size split T112: apps/web/src/lib/voice.ts (420 lines) into lib/voice/{recorder,convert,waveform,sample}.ts, v | 2026-10-10 |
+| [T-1030](T-1030-split-mobile-voice-native.md) | Size split T96: apps/mobile/src/lib/voice-native.ts (451 lines) into lib/{voice-recorder,voice-playback,voice- | 2026-10-10 |
+| [T-1031](T-1031-split-mobile-message-search.md) | Size split T97: apps/mobile/src/components/chat/message-search.ts (451 lines) into chat/{message-search-format | 2026-10-10 |
+| [T-1032](T-1032-split-mobile-voice-player.md) | Size split T109: apps/mobile/src/components/chat/voice-player.ts (423 lines) into chat/{voice-player-registry, | 2026-10-10 |
+| [T-1036](T-1036-split-server-routines-api.md) | Size split T116: apps/server/src/routines/api.ts (409 lines) into routines/{wire,access,reads,status-errors}.t | 2026-10-10 |
+| [T-1038](T-1038-split-web-folder-editor.md) | Size split T120: apps/web/src/components/FolderEditorDialog.tsx (404 lines) into components/folder/{folderEdit | 2026-10-10 |
+| [T-1037](T-1037-split-site-instruments.md) | Size split T119: apps/site/src/instruments.ts (405 lines) into instruments/{dom,approval,routine,provider,pair | 2026-10-10 |
+| [T-1039](T-1039-split-mobile-message-list.md) | Size split T114: apps/mobile/src/components/chat/message-list.tsx (418 lines) into chat/{use-stable-handlers,u | 2026-10-10 |
+| [T-1040](T-1040-split-mobile-markdown.md) | Size split T115: apps/mobile/src/lib/markdown.ts (410 lines) into lib/{markdown-inline,markdown-blocks}.ts, th | 2026-10-10 |
+| [T-1042](T-1042-max-lines-lint-warning.md) | Lint: oxlint max-lines warning at 400 for source files; tests, mocks, the emoji table and .d.ts files are off | 2026-10-10 |

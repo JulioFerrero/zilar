@@ -1,189 +1,34 @@
-import {
-  canDeleteMessage,
-  canEditMessage,
-  formatTime,
-  isBigEmoji,
-  type UiMessage,
-} from '@zilar/chat-core';
-import { Effect } from 'effect';
-import * as Clipboard from 'expo-clipboard';
-import * as Haptics from 'expo-haptics';
+import { canDeleteMessage, canEditMessage, isBigEmoji, type UiMessage } from '@zilar/chat-core';
 import { memo, useEffect, useRef, useState } from 'react';
-import { Animated, AppState, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
-import Svg, { Path } from 'react-native-svg';
 
 import { Avatar } from '@/components/chat/avatar';
-import { AttachmentBody } from '@/components/chat/attachment-body';
-import { ForwardedHeader } from '@/components/chat/forwarded-header';
-import { ImageMessage } from '@/components/chat/image-message';
-import { LinkText } from '@/components/chat/link-text';
 import { rendersMarkdown } from '@/components/chat/markdown-decision';
-import { MarkdownText } from '@/components/chat/markdown-text';
-import { MessageActionsSheet } from '@/components/chat/message-actions-sheet';
-import { PayloadCard, stickerOf } from '@/components/chat/payload-card';
+import { BubbleActionsSheet, openMessageMenu } from '@/components/chat/message-bubble-actions';
+import {
+  BigEmojiBubble,
+  MessageBubbleContent,
+  StickerBubble,
+} from '@/components/chat/message-bubble-content';
+import {
+  appActiveSource,
+  BubbleTail,
+  GENERATING_FOREGROUND,
+  LONG_PRESS_MS,
+  SWAP_MS,
+} from '@/components/chat/message-bubble-decor';
+import { MessageTombstone } from '@/components/chat/message-bubble-tombstone';
+import { stickerOf } from '@/components/chat/payload-card';
 import { ReactionChips } from '@/components/chat/reaction-chips';
-import { ReplyQuote } from '@/components/chat/reply-quote';
-import { StickerMessage } from '@/components/chat/sticker-message';
 import { SwipeToReply } from '@/components/chat/swipe-to-reply';
-import { Ticks } from '@/components/chat/ticks';
-import { PulseDot } from '@/components/chat/typing-dots';
-import { VoiceMessage } from '@/components/chat/voice-message';
 import type { VoicePlayerHost } from '@/components/chat/voice-player';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Text } from '@/components/ui/text';
 import { BUBBLE_COLORS } from '@/lib/colors';
-import { WELL_BACKGROUND, bubbleStyle, raisedPill, senderColor } from '@/lib/depth';
-import { useSmoothText, type ActiveSource } from '@/lib/use-smooth-text';
+import { WELL_BACKGROUND, bubbleStyle } from '@/lib/depth';
+import { useSmoothText } from '@/lib/use-smooth-text';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
-
-const TAIL_WIDTH = 9;
-const TAIL_HEIGHT = 12;
-const LONG_PRESS_MS = 350;
-// Mirrors `--generating-foreground` in `src/global.css` (the bubble text while
-// the AI is still writing).
-const GENERATING_FOREGROUND = '#8f8f8f';
-const CARET_COLOR = '#bdbdbd';
-// The recessed generating look fades into the incoming look over this long.
-const SWAP_MS = 400;
-
-// The bubble follows the app's foreground state so a reply that arrives while
-// the app was backgrounded snaps to its latest text instead of replaying.
-const appActiveSource: ActiveSource = {
-  subscribe: (onActive) => {
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        onActive();
-      }
-    });
-    return () => subscription.remove();
-  },
-};
-
-function BubbleTail({ outgoing, color }: { outgoing: boolean; color: string }) {
-  return (
-    <Svg
-      width={TAIL_WIDTH}
-      height={TAIL_HEIGHT}
-      viewBox={`0 0 ${TAIL_WIDTH} ${TAIL_HEIGHT}`}
-      style={
-        outgoing
-          ? { position: 'absolute', right: -8, bottom: 0 }
-          : { position: 'absolute', left: -8, bottom: 0, transform: [{ scaleX: -1 }] }
-      }
-    >
-      <Path
-        d={`M0 0 C0.5 6.5 2.5 9.5 ${TAIL_WIDTH} ${TAIL_HEIGHT} L0 ${TAIL_HEIGHT} Z`}
-        fill={color}
-      />
-    </Svg>
-  );
-}
-
-function BubbleMeta({
-  message,
-  outgoing,
-  color,
-  className,
-}: {
-  message: UiMessage;
-  outgoing: boolean;
-  color: string;
-  className?: string;
-}) {
-  return (
-    <View className={cn('flex-row items-center gap-1', className)}>
-      <Text className="font-mono text-[10px]" color={color}>
-        {formatTime(message.createdAt)}
-      </Text>
-      {outgoing && message.status === 'failed' ? (
-        <Text className="font-mono text-[10px]" color={color}>
-          Not sent
-        </Text>
-      ) : null}
-      {outgoing ? <Ticks status={message.status} color={color} size={13} /> : null}
-    </View>
-  );
-}
-
-/** A soft blinking caret at the end of a live draft (no blink with reduced motion). */
-function DraftCaret({ reduceMotion }: { reduceMotion: boolean }) {
-  const [opacity] = useState(() => new Animated.Value(1));
-  useEffect(() => {
-    if (reduceMotion) {
-      opacity.setValue(1);
-      return;
-    }
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(opacity, { toValue: 0.2, duration: 600, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 1, duration: 600, useNativeDriver: true }),
-      ]),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [opacity, reduceMotion]);
-  return (
-    <Animated.Text style={{ color: CARET_COLOR, opacity }} accessible={false}>
-      ▍
-    </Animated.Text>
-  );
-}
-
-/** The recessed `generating` label under a reply that is still being written. */
-function GeneratingLabel() {
-  return (
-    <View className="mt-1 flex-row items-center gap-1.5">
-      <PulseDot color={GENERATING_FOREGROUND} size={5} />
-      <Text className="font-mono text-[11px]" color={GENERATING_FOREGROUND}>
-        generating
-      </Text>
-    </View>
-  );
-}
-
-function BigEmoji({
-  message,
-  text,
-  outgoing,
-  generating,
-  reduceMotion,
-  onLongPress,
-}: {
-  message: UiMessage;
-  text: string;
-  outgoing: boolean;
-  generating: boolean;
-  reduceMotion: boolean;
-  onLongPress: () => void;
-}) {
-  return (
-    <Pressable
-      onLongPress={onLongPress}
-      delayLongPress={LONG_PRESS_MS}
-      className={cn('flex-col', outgoing ? 'items-end' : 'items-start')}
-    >
-      <Text
-        className="px-2 py-1 text-[48px] leading-none text-foreground"
-        {...(generating ? { color: GENERATING_FOREGROUND } : {})}
-      >
-        {text}
-        {generating ? <DraftCaret reduceMotion={reduceMotion} /> : null}
-      </Text>
-      <View
-        className="mt-1 flex-row items-center gap-1 self-center rounded-full px-2 py-0.5"
-        style={raisedPill}
-      >
-        <Text className="font-mono text-[10px] text-muted-foreground">
-          {message.edited === true ? 'edited ' : ''}
-          {formatTime(message.createdAt)}
-        </Text>
-        {outgoing ? <Ticks status={message.status} color="#8a8a8a" size={13} /> : null}
-      </View>
-    </Pressable>
-  );
-}
 
 type MessageBubbleProps = {
   message: UiMessage;
@@ -356,14 +201,7 @@ function MessageBubbleImpl({
 
   // The haptic is a native call the press does not wait for; it starts here,
   // in the press handler, and a failed haptic is ignored.
-  const openMenu = () => {
-    Effect.runFork(
-      Effect.tryPromise(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)).pipe(
-        Effect.ignore,
-      ),
-    );
-    setMenuOpen(true);
-  };
+  const openMenu = () => openMessageMenu(setMenuOpen);
 
   // A failed sticker keeps its message and shows a Retry instead of a silent
   // "sending" state, like attachments do on web.
@@ -373,33 +211,12 @@ function MessageBubbleImpl({
   // and no reactions: web does the same.
   if (message.deleted === true) {
     return (
-      <View
-        className={cn(
-          'flex-row px-2',
-          outgoing ? 'justify-end' : 'items-end',
-          isLastInGroup ? 'mb-2' : 'mb-0.5',
-        )}
-      >
-        {!outgoing && isGroup ? (
-          showAvatar ? (
-            <Avatar id={message.senderId} name={message.senderName} size={34} className="mr-2" />
-          ) : (
-            <View className="mr-2" style={{ width: 34 }} />
-          )
-        ) : null}
-        <View className={cn('max-w-[80%] shrink', outgoing ? 'items-end' : 'items-start')}>
-          <View
-            className={cn(
-              'rounded-[14px] bg-[#1a1a1a] px-3 py-1.5',
-              outgoing ? 'rounded-br-[4px]' : 'rounded-bl-[4px]',
-            )}
-          >
-            <Text className="text-[13px] italic text-muted-foreground">
-              {outgoing ? 'You deleted this message' : 'This message was deleted'}
-            </Text>
-          </View>
-        </View>
-      </View>
+      <MessageTombstone
+        message={message}
+        outgoing={outgoing}
+        isGroup={isGroup}
+        isLastInGroup={isLastInGroup}
+      />
     );
   }
 
@@ -432,52 +249,24 @@ function MessageBubbleImpl({
           <View className={cn('max-w-[80%] shrink', outgoing ? 'items-end' : 'items-start')}>
             <View className="relative">
               {sticker !== undefined ? (
-                <>
-                  {showSenderName ? (
-                    <Text
-                      className="mb-0.5 text-[14px] font-semibold"
-                      color={senderColor(message.senderId)}
-                    >
-                      {message.senderName}
-                    </Text>
-                  ) : null}
-                  {message.forward !== undefined ? (
-                    <ForwardedHeader origin={message.forward} />
-                  ) : null}
-                  {message.replyTo ? <ReplyQuote reply={message.replyTo} /> : null}
-                  <StickerMessage
-                    sticker={sticker}
-                    message={message}
-                    outgoing={outgoing}
-                    onLongPress={openMenu}
-                  />
-                  {failedSticker ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Retry sending sticker"
-                      onPress={() => onRetrySticker?.(message)}
-                      className="mt-1 rounded-[10px] bg-danger/20 px-3 py-1.5 active:opacity-80"
-                    >
-                      <Text className="text-[13px] font-semibold text-danger">
-                        Couldn't send. Retry
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                </>
+                <StickerBubble
+                  sticker={sticker}
+                  message={message}
+                  outgoing={outgoing}
+                  showSenderName={showSenderName}
+                  failed={failedSticker}
+                  onRetry={onRetrySticker}
+                  onLongPress={openMenu}
+                />
               ) : bigEmoji ? (
-                <>
-                  {message.forward !== undefined ? (
-                    <ForwardedHeader origin={message.forward} />
-                  ) : null}
-                  <BigEmoji
-                    message={message}
-                    text={text}
-                    outgoing={outgoing}
-                    generating={generating}
-                    reduceMotion={reduceMotion}
-                    onLongPress={generating ? () => {} : openMenu}
-                  />
-                </>
+                <BigEmojiBubble
+                  message={message}
+                  text={text}
+                  outgoing={outgoing}
+                  generating={generating}
+                  reduceMotion={reduceMotion}
+                  onLongPress={generating ? () => {} : openMenu}
+                />
               ) : (
                 <Pressable
                   onLongPress={generating ? undefined : openMenu}
@@ -498,153 +287,26 @@ function MessageBubbleImpl({
                       ]}
                     />
                   ) : null}
-                  {showSenderName ? (
-                    <Text
-                      className="mb-0.5 text-[14px] font-semibold"
-                      color={senderColor(message.senderId)}
-                    >
-                      {message.senderName}
-                    </Text>
-                  ) : null}
-                  {message.forward !== undefined ? (
-                    <ForwardedHeader origin={message.forward} />
-                  ) : null}
-                  {message.replyTo ? <ReplyQuote reply={message.replyTo} /> : null}
-                  {hasAttachment ? (
-                    <AttachmentBody
-                      message={message}
-                      outgoing={outgoing}
-                      onRetryAttachment={onRetryAttachment}
-                      onCancelAttachment={onCancelAttachment}
-                      onOpenAttachment={onOpenAttachment}
-                      opening={openingAttachmentId === message.id}
-                    />
-                  ) : message.card ? (
-                    <>
-                      <PayloadCard card={message.card} />
-                      <BubbleMeta
-                        message={message}
-                        outgoing={outgoing}
-                        color={metaColor}
-                        className="mt-1 justify-end"
-                      />
-                    </>
-                  ) : message.image ? (
-                    <View className="relative">
-                      <ImageMessage image={message.image} />
-                      <View
-                        className="absolute right-2 bottom-2 flex-row items-center gap-1 rounded-full px-2 py-0.5"
-                        style={raisedPill}
-                      >
-                        <Text className="font-mono text-[10px] text-muted-foreground">
-                          {formatTime(message.createdAt)}
-                        </Text>
-                        {outgoing ? (
-                          <Ticks status={message.status} color="#8a8a8a" size={13} />
-                        ) : null}
-                      </View>
-                      {message.text ? (
-                        <Text className="mt-1 px-0.5 text-[15px]" color={textColor}>
-                          {text}
-                        </Text>
-                      ) : null}
-                    </View>
-                  ) : message.voice ? (
-                    <>
-                      <VoiceMessage
-                        voice={message.voice}
-                        outgoing={outgoing}
-                        message={message}
-                        onRetryVoice={onRetryVoice}
-                        onCancelVoice={onCancelVoice}
-                        {...(voiceHost === undefined
-                          ? {}
-                          : { playback: voiceHost.playback, controls: voiceHost.controls })}
-                      />
-                      <BubbleMeta
-                        message={message}
-                        outgoing={outgoing}
-                        color={metaColor}
-                        className="mt-1 justify-end"
-                      />
-                    </>
-                  ) : showMarkdown ? (
-                    <>
-                      <MarkdownText text={text} color={textColor} />
-                      <Text className="text-[15px] leading-5" color={textColor}>
-                        {generating ? <DraftCaret reduceMotion={reduceMotion} /> : null}
-                        <Text
-                          className="font-mono text-[10px]"
-                          color={metaColor}
-                          style={generating ? { opacity: 0 } : undefined}
-                        >
-                          {'  '}
-                          {message.edited === true ? 'edited ' : ''}
-                          {formatTime(message.createdAt)}
-                          {/* A no-break space then a word joiner: the tick
-                              view stays on the time's line and cannot wrap
-                              alone onto a second line. */}
-                          {outgoing ? '\u00a0\u2060' : null}
-                          {outgoing ? (
-                            <View
-                              style={{
-                                width: 14,
-                                height: 11,
-                                // Nudge the ticks down onto the time's baseline
-                                // (they otherwise sit about a third too high).
-                                transform: [{ translateY: 2 }],
-                                ...(generating ? { opacity: 0 } : undefined),
-                              }}
-                            >
-                              <Ticks status={message.status} color={metaColor} size={11} />
-                            </View>
-                          ) : null}
-                        </Text>
-                      </Text>
-                      {generating ? <GeneratingLabel /> : null}
-                    </>
-                  ) : (
-                    <>
-                      <Text className="text-[15px] leading-5" color={textColor}>
-                        <LinkText
-                          text={text}
-                          color={textColor}
-                          mentions={message.mentions}
-                          meJid={meJid}
-                          outgoing={outgoing}
-                        />
-                        {generating ? <DraftCaret reduceMotion={reduceMotion} /> : null}
-                        <Text
-                          className="font-mono text-[10px]"
-                          color={metaColor}
-                          style={generating ? { opacity: 0 } : undefined}
-                        >
-                          {'  '}
-                          {message.edited === true ? 'edited ' : ''}
-                          {formatTime(message.createdAt)}
-                          {/* A no-break space then a word joiner: the tick
-                              view stays on the time's line and cannot wrap
-                              alone onto a second line. */}
-                          {outgoing ? '\u00a0\u2060' : null}
-                          {outgoing ? (
-                            <View
-                              style={{
-                                width: 14,
-                                height: 11,
-                                // Nudge the ticks down onto the time's baseline
-                                // (they otherwise sit about a third too high).
-                                transform: [{ translateY: 2 }],
-                                ...(generating ? { opacity: 0 } : undefined),
-                              }}
-                            >
-                              <Ticks status={message.status} color={metaColor} size={11} />
-                            </View>
-                          ) : null}
-                        </Text>
-                      </Text>
-                      {generating ? <GeneratingLabel /> : null}
-                    </>
-                  )}
+                  <MessageBubbleContent
+                    message={message}
+                    outgoing={outgoing}
+                    generating={generating}
+                    showSenderName={showSenderName}
+                    hasAttachment={hasAttachment}
+                    showMarkdown={showMarkdown}
+                    text={text}
+                    textColor={textColor}
+                    metaColor={metaColor}
+                    reduceMotion={reduceMotion}
+                    meJid={meJid}
+                    onRetryAttachment={onRetryAttachment}
+                    onCancelAttachment={onCancelAttachment}
+                    onOpenAttachment={onOpenAttachment}
+                    openingAttachmentId={openingAttachmentId}
+                    onRetryVoice={onRetryVoice}
+                    onCancelVoice={onCancelVoice}
+                    voiceHost={voiceHost}
+                  />
                 </Pressable>
               )}
               {isLastInGroup ? (
@@ -685,8 +347,10 @@ function MessageBubbleImpl({
           ) : null}
         </View>
       </SwipeToReply>
-      <MessageActionsSheet
+      <BubbleActionsSheet
         visible={menuOpen}
+        confirmOpen={confirmOpen}
+        message={message}
         canCopy={hasText && sticker === undefined}
         canEdit={sticker === undefined && message.voice === undefined && canEdit}
         canDelete={canDelete}
@@ -694,57 +358,16 @@ function MessageBubbleImpl({
         canPin={canPin}
         isPinned={isPinned}
         myReactions={myReactions}
-        confirmOpen={confirmOpen}
-        onReply={() => {
-          setMenuOpen(false);
-          onReply(message);
-        }}
-        onEdit={() => {
-          setMenuOpen(false);
-          onEdit?.(message);
-        }}
-        onCopy={() => {
-          setMenuOpen(false);
-          Effect.runFork(
-            Effect.tryPromise(() => Clipboard.setStringAsync(message.text ?? '')).pipe(
-              Effect.ignore,
-            ),
-          );
-        }}
-        onDelete={() => {
-          setConfirmOpen(true);
-        }}
-        onForward={() => {
-          setMenuOpen(false);
-          onForward?.(message);
-        }}
-        {...(onStartSelect === undefined
-          ? {}
-          : {
-              onSelect: () => {
-                setMenuOpen(false);
-                onStartSelect(message);
-              },
-            })}
-        onPin={() => {
-          setMenuOpen(false);
-          if (isPinned === true) {
-            onUnpin?.(message);
-          } else {
-            onPin?.(message);
-          }
-        }}
-        onCloseConfirm={() => setConfirmOpen(false)}
-        onConfirmDelete={() => {
-          setConfirmOpen(false);
-          setMenuOpen(false);
-          onDelete?.(message);
-        }}
-        onReact={(emoji) => {
-          setMenuOpen(false);
-          react(message, emoji);
-        }}
-        onClose={() => setMenuOpen(false)}
+        onReply={onReply}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onForward={onForward}
+        onStartSelect={onStartSelect}
+        onPin={onPin}
+        onUnpin={onUnpin}
+        react={react}
+        setMenuOpen={setMenuOpen}
+        setConfirmOpen={setConfirmOpen}
       />
     </>
   );

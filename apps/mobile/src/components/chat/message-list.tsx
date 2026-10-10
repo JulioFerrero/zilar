@@ -2,36 +2,22 @@ import {
   groupMessages,
   unreadDividerIndex,
   type ChatSummary,
-  type MessageItem,
   type UiMessage,
 } from '@zilar/chat-core';
-import { Effect, Fiber } from 'effect';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FlatList, View } from 'react-native';
 
-import { DateSeparator } from '@/components/chat/date-separator';
-import { startJumpScroll } from '@/components/chat/jump-scroll';
 import { LoadError } from '@/components/chat/load-error';
-import { MessageBubble } from '@/components/chat/message-bubble';
+import { MessageListRow, type ListEntry } from '@/components/chat/message-list-row';
 import { MessageListSkeleton } from '@/components/chat/skeleton';
+import { useMessageListScroll } from '@/components/chat/use-message-list-scroll';
+import { runLater, useStableHandler, useStableReact } from '@/components/chat/use-stable-handlers';
 import type { VoicePlayerHost } from '@/components/chat/voice-player';
-import { UnreadDivider } from '@/components/chat/unread-divider';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { StateMessage } from '@/components/ui/state-message';
 import { useBlockedJids, filterBlockedMessages } from '@/lib/blocked-users';
 import { useChatStore } from '@/store/chat-store-provider';
 import { draftEntryKey, messagesListView } from '@/store/types';
-
-type ListEntry =
-  | { type: 'divider'; key: string }
-  | { type: 'separator'; key: string; date: Date }
-  | {
-      type: 'message';
-      key: string;
-      item: MessageItem;
-      isDraft: boolean;
-      revealTurnId: string | undefined;
-    };
 
 type MessageListProps = {
   chat: ChatSummary;
@@ -72,45 +58,6 @@ type MessageListProps = {
       }
     | undefined;
 };
-
-// A timer as an Effect fiber: `run` happens after `ms`. Cancelling the timer
-// interrupts its fiber (`Effect.runSync(Fiber.interrupt(timer))`), as
-// clearTimeout did.
-const runLater = (ms: number, run: () => void): Fiber.Fiber<void> =>
-  Effect.runFork(Effect.sleep(ms).pipe(Effect.andThen(Effect.sync(run))));
-
-type MessageHandler = (message: UiMessage) => void;
-
-// A handler that keeps its identity while the screen hands over a new closure
-// each render, so the memoised bubbles do not re-render for it. It stays
-// `undefined` while the screen passes none, because the bubble hides the
-// matching action then.
-function useStableHandler(handler: MessageHandler | undefined): MessageHandler | undefined {
-  const latest = useRef(handler);
-  useEffect(() => {
-    latest.current = handler;
-  });
-  const present = handler !== undefined;
-  return useMemo(
-    () => (present ? (message: UiMessage) => latest.current?.(message) : undefined),
-    [present],
-  );
-}
-
-type ReactHandler = (message: UiMessage, emoji: string) => void;
-
-function useStableReact(handler: ReactHandler | undefined): ReactHandler | undefined {
-  const latest = useRef(handler);
-  useEffect(() => {
-    latest.current = handler;
-  });
-  const present = handler !== undefined;
-  return useMemo(
-    () =>
-      present ? (message: UiMessage, emoji: string) => latest.current?.(message, emoji) : undefined,
-    [present],
-  );
-}
 
 /**
  * Message list grouped by sender and day. Opening a chat with unread messages
@@ -233,82 +180,16 @@ export function MessageList({
     return list;
   }, [items, dividerIndex, draftMessage, draft, finishedDraftMessages]);
 
-  const listRef = useRef<FlatList<ListEntry>>(null);
-  const previousCount = useRef(visibleMessages.length);
-  // True while the user is at (or near) the bottom, so a growing draft or a new
-  // message keeps the view pinned; someone reading older messages is not moved.
-  const atBottomRef = useRef(true);
-
-  // Scroll after mount and again a few times while images and the list settle.
-  // A search jump owns the scroll instead: the jump effect below lands on the
-  // message, so the mount scroll stays out of its way.
-  useEffect(() => {
-    if (jumpTarget !== undefined) {
-      return;
-    }
-    const scroll = () => {
-      if (dividerIndex !== null) {
-        listRef.current?.scrollToIndex({ index: dividerIndex, viewPosition: 0.5, animated: false });
-      } else {
-        listRef.current?.scrollToEnd({ animated: false });
-      }
-    };
-    scroll();
-    const timers = [80, 200, 400, 700].map((ms) => runLater(ms, scroll));
-    return () => timers.forEach((timer) => Effect.runSync(Fiber.interrupt(timer)));
-  }, [chat.id, dividerIndex, jumpTarget]);
-
-  useEffect(() => {
-    // A search jump owns the scroll while its target is set; a live message
-    // arriving in that window must not yank the view to the bottom.
-    if (jumpTarget === undefined && visibleMessages.length > previousCount.current) {
-      listRef.current?.scrollToEnd({ animated: true });
-    }
-    previousCount.current = visibleMessages.length;
-  }, [visibleMessages.length, jumpTarget]);
-
-  // A search hit lands here: once the jump target's message is loaded, scroll
-  // to it (centered) and confirm the target on the LAST retry so a later
-  // message with the same id does not re-scroll. `startJumpScroll`
-  // re-resolves the index on every retry: a message arriving within 400 ms
-  // of the jump moves every row below it, so a captured index would scroll
-  // to a stale row — and confirming early would clear the target before the
-  // retries could follow it (T-0147).
-  const jumpMessageId = jumpTarget?.messageId;
-  useEffect(() => {
-    if (jumpMessageId === undefined) {
-      return;
-    }
-    return startJumpScroll({
-      findIndex: () =>
-        entries.findIndex(
-          (entry) => entry.type === 'message' && entry.item.message.id === jumpMessageId,
-        ),
-      scrollToIndex: (index) =>
-        listRef.current?.scrollToIndex({ index, viewPosition: 0.5, animated: false }),
-      onDone: clearJumpTarget,
-    });
-  }, [jumpMessageId, entries, clearJumpTarget]);
-
-  // A pin jump scrolls to the target bubble once it renders. Only fires
-  // when the message is loaded (the banner shows "Message not found" when
-  // it is not — mobile has no history paging yet).
-  useEffect(() => {
-    if (jumpToMessageId === undefined) {
-      return;
-    }
-    const index = entries.findIndex(
-      (entry) => entry.type === 'message' && entry.item.message.id === jumpToMessageId,
-    );
-    if (index === -1) {
-      return;
-    }
-    const timer = runLater(100, () => {
-      listRef.current?.scrollToIndex({ index, viewPosition: 0.5, animated: true });
-      onJumped?.();
-    });
-    return () => Effect.runSync(Fiber.interrupt(timer));
-  }, [jumpToMessageId, entries, onJumped]);
+  const { listRef, atBottomRef } = useMessageListScroll({
+    chatId: chat.id,
+    dividerIndex,
+    jumpTarget,
+    jumpToMessageId,
+    entries,
+    visibleCount: visibleMessages.length,
+    clearJumpTarget,
+    onJumped,
+  });
 
   // Loading, error and empty are three different states: the empty text and
   // the Retry only appear once the first page has settled. Live messages that
@@ -367,52 +248,33 @@ export function MessageList({
           loadOlder(chat.id);
         }
       }}
-      renderItem={({ item }) => {
-        if (item.type === 'divider') {
-          return <UnreadDivider />;
-        }
-        if (item.type === 'separator') {
-          return <DateSeparator date={item.date} />;
-        }
-        return (
-          <MessageBubble
-            message={item.item.message}
-            isGroup={chat.kind === 'group'}
-            isFirstInGroup={item.item.firstInGroup}
-            isLastInGroup={item.item.lastInGroup}
-            currentUserId={currentUserId}
-            onReply={stableReply ?? onReply}
-            {...(stableReact === undefined ? {} : { onReact: stableReact })}
-            {...(stableEdit === undefined ? {} : { onEdit: stableEdit })}
-            {...(stableDelete === undefined ? {} : { onDelete: stableDelete })}
-            {...(stableForward === undefined ? {} : { onForward: stableForward })}
-            canPin={canPinChat}
-            isPinned={pinnedIds.includes(item.item.message.id)}
-            {...(stablePin === undefined ? {} : { onPin: stablePin })}
-            {...(stableUnpin === undefined ? {} : { onUnpin: stableUnpin })}
-            draft={item.isDraft}
-            revealTurnId={item.revealTurnId}
-            {...(stableRetrySticker === undefined ? {} : { onRetrySticker: stableRetrySticker })}
-            {...(stableRetryAttachment === undefined
-              ? {}
-              : { onRetryAttachment: stableRetryAttachment })}
-            {...(stableCancelAttachment === undefined
-              ? {}
-              : { onCancelAttachment: stableCancelAttachment })}
-            {...(stableRetryVoice === undefined ? {} : { onRetryVoice: stableRetryVoice })}
-            {...(stableCancelVoice === undefined ? {} : { onCancelVoice: stableCancelVoice })}
-            {...(stableOpenAttachment === undefined
-              ? {}
-              : { onOpenAttachment: stableOpenAttachment })}
-            {...(openingAttachmentId === undefined ? {} : { openingAttachmentId })}
-            {...(voiceHost === undefined ? {} : { voiceHost })}
-            selecting={selection !== undefined && selection.ids.length > 0}
-            selected={selection !== undefined && selection.ids.includes(item.item.message.id)}
-            {...(stableToggle === undefined ? {} : { onToggleSelect: stableToggle })}
-            {...(stableStart === undefined ? {} : { onStartSelect: stableStart })}
-          />
-        );
-      }}
+      renderItem={({ item }) => (
+        <MessageListRow
+          item={item}
+          chat={chat}
+          currentUserId={currentUserId}
+          canPinChat={canPinChat}
+          pinnedIds={pinnedIds}
+          openingAttachmentId={openingAttachmentId}
+          voiceHost={voiceHost}
+          selection={selection}
+          onReply={stableReply ?? onReply}
+          onReact={stableReact}
+          onEdit={stableEdit}
+          onDelete={stableDelete}
+          onForward={stableForward}
+          onPin={stablePin}
+          onUnpin={stableUnpin}
+          onRetrySticker={stableRetrySticker}
+          onRetryAttachment={stableRetryAttachment}
+          onCancelAttachment={stableCancelAttachment}
+          onRetryVoice={stableRetryVoice}
+          onCancelVoice={stableCancelVoice}
+          onOpenAttachment={stableOpenAttachment}
+          onToggleSelect={stableToggle}
+          onStartSelect={stableStart}
+        />
+      )}
     />
   );
 }

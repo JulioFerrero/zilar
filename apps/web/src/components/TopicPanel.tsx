@@ -1,60 +1,19 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { Effect } from 'effect';
-import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
-import { ConfirmDialog } from './ConfirmDialog';
-import { RoutinesSection } from './tools/RoutinesSection';
-import { ToolsSection } from './tools/ToolsSection';
-import { FieldError } from './ais/AiPageShell';
+import { isWaiting } from '@/lib/effect/use-action';
 import { AiMemoryDialog } from './ais/AiMemoryDialog';
+import { FieldError } from './ais/AiPageShell';
+import { ConfirmDialog } from './ConfirmDialog';
 import { PinsSection } from './PinsPanel';
-import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { TopicAisSection } from './panels/TopicAisSection';
 import { TopicDangerZone } from './panels/TopicDangerZone';
 import { TopicHeader } from './panels/TopicHeader';
 import { TopicMembersSection } from './panels/TopicMembersSection';
-import { failInline, textOf } from './panels/topic-failure';
-import { Button } from './ui/button';
+import { TopicRolesSection } from './panels/TopicRolesSection';
+import { TopicRulesSection } from './panels/TopicRulesSection';
+import { useTopicPanelOps } from './panels/topicPanelOps';
+import { RoutinesSection } from './tools/RoutinesSection';
+import { ToolsSection } from './tools/ToolsSection';
 import { Sheet } from './ui/sheet';
-import { StateMessage } from './ui/state-message';
-import {
-  ApiError,
-  getTopic,
-  listGroupRoles,
-  listTopicAis,
-  listTopicMembers,
-  listTopicTools,
-  type ApproverRole,
-  type GroupDetail,
-  type GroupRole,
-  type PublicAi,
-  type TopicAi,
-  type TopicMember,
-  type TopicRole,
-  type TopicTool,
-} from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
-import { ApiFailure, isApiFailureCode, toApiFailure } from '@/lib/effect/errors';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
-import { useQuery } from '@/lib/effect/use-query';
-import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-
-type PanelStatus = 'loading' | 'ready' | 'error';
-
-/**
- * A chat-store action. The store throws an ApiError (mapped as fromApi maps
- * it) or a plain Error whose message is the user-facing sentence, which keeps
- * its text. Any other cause becomes the unknown failure, so `textOf` shows the
- * fixed fallback.
- */
-const storeCall = <A,>(call: () => Promise<A>): Effect.Effect<A, ApiFailure> =>
-  Effect.tryPromise({
-    try: call,
-    catch: (cause) =>
-      cause instanceof Error && !(cause instanceof ApiError)
-        ? new ApiFailure({ status: 0, code: 'store_error', message: cause.message, detail: {} })
-        : toApiFailure(cause),
-  });
 
 /**
  * The topic info panel (T-0111): visibility, members (private list with
@@ -81,298 +40,44 @@ function TopicPanelBody({
   topic: NonNullable<ChatSummary['topic']>;
   onClose: () => void;
 }) {
-  const storeApi = useChatStoreApi();
-  const info: GroupDetail | undefined = useChatSelector((s) => s.groupInfo(chat.id));
-  const me = useChatSelector((s) => s.currentUserId);
-  const navigate = useNavigate();
-
-  const topicId = topic.id;
-  const groupTitle = chat.groupTitle ?? info?.title ?? '';
-  const meRole = info?.members.find((member) => member.userId === me)?.role;
-  const isManager = meRole === 'owner' || meRole === 'admin';
-
-  const [membersState, setMembersState] = useState<{
-    status: PanelStatus;
-    members: TopicMember[];
-    message: string;
-  }>({ status: 'loading', members: [], message: '' });
-  const [aisState, setAisState] = useState<{
-    status: PanelStatus;
-    ais: TopicAi[];
-    message: string;
-  }>({ status: 'loading', ais: [], message: '' });
-  const [toolsCount, setToolsCount] = useState<number | null>(null);
-  const [myAis, setMyAis] = useState<PublicAi[]>([]);
-  const [memberPickerOpen, setMemberPickerOpen] = useState(false);
-  const [aiPickerOpen, setAiPickerOpen] = useState(false);
-  const [confirmingVisibility, setConfirmingVisibility] = useState(false);
-  const [confirmingArchive, setConfirmingArchive] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [memoryAi, setMemoryAi] = useState<{ id: string; name: string } | undefined>(undefined);
-
-  useEffect(() => {
-    storeApi.getState().refreshGroupInfo(chat.id);
-  }, [storeApi, chat.id]);
-
-  // Members and AIs load when the panel opens; the topic detail (strip)
-  // already rides the chat row. A failure shows an inline error with Retry.
-  // A list that is already shown stays on screen while it reloads, so the
-  // rows of a call still running are not unmounted under it.
-  const setMembersFailure = (failure: ApiFailure): void =>
-    setMembersState({
-      status: 'error',
-      members: [],
-      message: textOf(failure, 'Could not load the members.'),
-    });
-  // `onShown` runs in the same step as the list update, so a row or picker
-  // that the update removes has finished its last step.
-  const fetchMembers = (onShown: () => void = () => undefined): Effect.Effect<void, ApiFailure> =>
-    fromApi(() => listTopicMembers(topicId)).pipe(
-      Effect.tap((members) =>
-        Effect.sync(() => {
-          setMembersState({ status: 'ready', members, message: '' });
-          onShown();
-        }),
-      ),
-      Effect.asVoid,
-    );
-  const loadMembers = Effect.sync(() =>
-    setMembersState((previous) =>
-      previous.status === 'ready' ? previous : { status: 'loading', members: [], message: '' },
-    ),
-  ).pipe(
-    Effect.andThen(fetchMembers()),
-    Effect.catchTag('ApiFailure', (failure) => Effect.sync(() => setMembersFailure(failure))),
-  );
-  const [, refreshMembers] = useQuery(() => loadMembers, [topicId]);
-  // The list re-read after an action: a failure shows the list's inline error,
-  // and `done` runs in the same step either way.
-  const reloadMembersAfter = (done: () => void = () => undefined): Effect.Effect<void> =>
-    fetchMembers(done).pipe(
-      Effect.catchTag('ApiFailure', (failure) =>
-        Effect.sync(() => {
-          setMembersFailure(failure);
-          done();
-        }),
-      ),
-    );
-
-  const setAisFailure = (failure: ApiFailure): void =>
-    setAisState({ status: 'error', ais: [], message: textOf(failure, 'Could not load the AIs.') });
-  const fetchAis = (onShown: () => void = () => undefined): Effect.Effect<void, ApiFailure> =>
-    fromApi(() => listTopicAis(topicId)).pipe(
-      Effect.tap((ais) =>
-        Effect.sync(() => {
-          setAisState({ status: 'ready', ais, message: '' });
-          onShown();
-        }),
-      ),
-      Effect.asVoid,
-    );
-  const loadAis = Effect.sync(() =>
-    setAisState((previous) =>
-      previous.status === 'ready' ? previous : { status: 'loading', ais: [], message: '' },
-    ),
-  ).pipe(
-    Effect.andThen(fetchAis()),
-    Effect.catchTag('ApiFailure', (failure) => Effect.sync(() => setAisFailure(failure))),
-  );
-  const [, refreshAis] = useQuery(() => loadAis, [topicId]);
-  const reloadAisAfter = (done: () => void = () => undefined): Effect.Effect<void> =>
-    fetchAis(done).pipe(
-      Effect.catchTag('ApiFailure', (failure) =>
-        Effect.sync(() => {
-          setAisFailure(failure);
-          done();
-        }),
-      ),
-    );
-
-  useQuery(
-    () =>
-      fromApi(() => listTopicTools(topicId)).pipe(
-        Effect.tap((tools: TopicTool[]) => Effect.sync(() => setToolsCount(tools.length))),
-        Effect.catchTag('ApiFailure', () => Effect.sync(() => setToolsCount(null))),
-      ),
-    [topicId],
-  );
-
-  useQuery(
-    () =>
-      storeCall(() => storeApi.getState().listMyAis()).pipe(
-        Effect.tap((list) =>
-          Effect.sync(() => setMyAis(list.filter((ai) => ai.status === 'active'))),
-        ),
-        Effect.catchTag('ApiFailure', () => Effect.sync(() => setMyAis([]))),
-      ),
-    [storeApi],
-  );
-
-  const clearError = Effect.sync(() => setErrorMessage(''));
-
-  // The row re-check after a removal 404. A superseded refresh (the store
-  // restarted mid-flight) rejects with `stale_refresh` instead of merging:
-  // retry once so a transient restart does not surface the store's
-  // "superseded" wording in the panel; a second supersede is genuinely
-  // stale state, so report a generic message the user can act on.
-  const refreshTopicRowOnce = (): Effect.Effect<boolean, ApiFailure> => {
-    const recheck = storeCall(() => storeApi.getState().refreshTopicRow(chat.id, topic.id));
-    return recheck.pipe(
-      Effect.catchIf(isApiFailureCode('stale_refresh'), () =>
-        recheck.pipe(
-          Effect.catchIf(isApiFailureCode('stale_refresh'), () =>
-            Effect.fail(
-              new ApiFailure({
-                status: 0,
-                code: 'stale_refresh',
-                message: 'Could not refresh the topic. Try again.',
-                detail: {},
-              }),
-            ),
-          ),
-        ),
-      ),
-    );
-  };
-
-  const closeTopicScreen = Effect.sync(() => {
-    navigate('/');
-    onClose();
-  });
-
-  /** A failed reload after a delete drops the member's row locally (never a stale row). */
-  const dropMemberRow = (userId: string): void => {
-    setMembersState((previous) => ({
-      status: previous.status === 'ready' && previous.members.length > 1 ? 'ready' : 'error',
-      members: previous.members.filter((member) => member.userId !== userId),
-      message: 'Could not refresh the list.',
-    }));
-  };
-
-  // A 404 alone never means "the topic is gone" — the server also 404s for a
-  // user who is not a member — so only navigate away when the refreshed list
-  // no longer has the topic row. Any other failure keeps the user here with
-  // the inline error.
-  const afterMissingMember = (): Effect.Effect<void, ApiFailure> =>
-    refreshTopicRowOnce().pipe(
-      Effect.flatMap((gone) => (gone ? closeTopicScreen : reloadMembersAfter())),
-    );
-
-  // ONE call: the store issues the POST and folds the row back in. The
-  // picker closes in the same step as the list update.
-  const addMember = (userId: string): Effect.Effect<void, ApiFailure> =>
-    storeCall(() => storeApi.getState().addTopicMember(chat.id, userId)).pipe(
-      Effect.andThen(reloadMembersAfter(() => setMemberPickerOpen(false))),
-    );
-
-  // ONE call: the store issues the DELETE and folds the row back in (real)
-  // or drops it when archived (both). A 404 alone never means "the topic is
-  // gone" (see afterMissingMember).
-  const removeMember = (userId: string): Effect.Effect<void, ApiFailure> =>
-    storeCall(() => storeApi.getState().removeTopicMember(chat.id, userId)).pipe(
-      Effect.matchEffect({
-        onFailure: (failure: ApiFailure): Effect.Effect<void, ApiFailure> =>
-          failure.status === 404 ? afterMissingMember() : Effect.fail(failure),
-        onSuccess: (): Effect.Effect<void> =>
-          fetchMembers().pipe(
-            Effect.catchTag('ApiFailure', () => Effect.sync(() => dropMemberRow(userId))),
-          ),
-      }),
-    );
-
-  // ONE call: the store issues the POST and folds the row back in.
-  const addAi = (aiId: string): Effect.Effect<void, ApiFailure> =>
-    storeCall(() => storeApi.getState().addTopicAi(chat.id, aiId)).pipe(
-      Effect.andThen(reloadAisAfter(() => setAiPickerOpen(false))),
-    );
-
-  // ONE call: the store issues the DELETE and folds the row back in.
-  // The reload may fail after a successful delete (transient network):
-  // never show the removed row as if the delete failed — drop it
-  // locally and surface the refresh problem with its own Retry instead.
-  const removeAi = (aiId: string): Effect.Effect<void, ApiFailure> =>
-    storeCall(() => storeApi.getState().removeTopicAi(chat.id, aiId)).pipe(
-      Effect.andThen(
-        fetchAis().pipe(
-          Effect.catchTag('ApiFailure', () =>
-            Effect.sync(() =>
-              setAisState((previous) => ({
-                status: previous.status === 'ready' && previous.ais.length > 0 ? 'ready' : 'error',
-                ais: previous.ais.filter((ai) => ai.id !== aiId),
-                message: 'Could not refresh the list.',
-              })),
-            ),
-          ),
-        ),
-      ),
-    );
-
-  const leaveEffect = storeCall(() => storeApi.getState().leaveTopic(chat.id)).pipe(
-    // The store's `leaveTopic` swallows the last-seat 404 itself (the topic
-    // archived, so there is nothing left to leave): success means the caller
-    // is out either way, so navigate away.
-    Effect.andThen(closeTopicScreen),
-  );
-
-  const archiveEffect = storeCall(() =>
-    storeApi.getState().patchTopic(chat.id, { archived: true }),
-  ).pipe(
-    Effect.matchEffect({
-      onFailure: (): Effect.Effect<void> =>
-        Effect.sync(() => {
-          setErrorMessage('Could not archive the topic.');
-          setConfirmingArchive(false);
-        }),
-      onSuccess: (): Effect.Effect<void> =>
-        Effect.sync(() => setConfirmingArchive(false)).pipe(Effect.andThen(closeTopicScreen)),
-    }),
-  );
-
-  const flipVisibilityEffect = (): Effect.Effect<void, ApiFailure> => {
-    const toPublic = topic.visibility === 'private';
-    return storeCall(() =>
-      storeApi.getState().patchTopic(chat.id, {
-        visibility: toPublic ? 'public' : 'private',
-        ...(toPublic ? { confirmExposeHistory: true } : { memberIds: [me] }),
-      }),
-    ).pipe(
-      Effect.matchEffect({
-        onFailure: (): Effect.Effect<void> =>
-          Effect.sync(() => {
-            setErrorMessage(
-              toPublic ? 'Could not make the topic public.' : 'Could not make the topic private.',
-            );
-            setConfirmingVisibility(false);
-          }),
-        onSuccess: (): Effect.Effect<void> =>
-          Effect.sync(() => setConfirmingVisibility(false)).pipe(
-            Effect.andThen(reloadMembersAfter()),
-          ),
-      }),
-    );
-  };
-
-  // The panel-level buttons each own their call; the confirm dialogs stay here.
-  const [leaveState, runLeave] = useAction<void, void, never>(() =>
-    clearError.pipe(
-      Effect.andThen(leaveEffect),
-      Effect.catchTag('ApiFailure', failInline(setErrorMessage, 'Could not leave the topic.')),
-    ),
-  );
-  const [archiveState, runArchive] = useAction<void, void, never>(() =>
-    clearError.pipe(Effect.andThen(archiveEffect)),
-  );
-  const [visibilityState, runVisibility] = useAction<void, void, never>(() =>
-    clearError.pipe(
-      Effect.andThen(flipVisibilityEffect()),
-      Effect.catchTag(
-        'ApiFailure',
-        failInline(setErrorMessage, 'Could not change the visibility.'),
-      ),
-    ),
-  );
+  const {
+    storeApi,
+    info,
+    me,
+    groupTitle,
+    isManager,
+    membersState,
+    refreshMembers,
+    aisState,
+    refreshAis,
+    toolsCount,
+    myAis,
+    memberPickerOpen,
+    setMemberPickerOpen,
+    aiPickerOpen,
+    setAiPickerOpen,
+    confirmingVisibility,
+    setConfirmingVisibility,
+    confirmingArchive,
+    setConfirmingArchive,
+    errorMessage,
+    setErrorMessage,
+    memoryAi,
+    setMemoryAi,
+    removeMember,
+    addMember,
+    removeAi,
+    addAi,
+    leaveState,
+    runLeave,
+    archiveState,
+    runArchive,
+    visibilityState,
+    runVisibility,
+  } = useTopicPanelOps({ chat, topic, onClose });
 
   const isPrivate = topic.visibility === 'private';
+  const topicId = topic.id;
   const groupMembers = info?.members ?? [];
   const addableMembers = groupMembers.filter(
     (member) =>
@@ -534,247 +239,5 @@ function TopicPanelBody({
         />
       )}
     </>
-  );
-}
-
-/** The topic's Always-allowed rules, read-only: rows show the topic name. */
-function TopicRulesSection({
-  groupId,
-  topicId,
-  topicName,
-}: {
-  groupId: string;
-  topicId: string;
-  topicName: string;
-}) {
-  return (
-    <section aria-label={`Always allowed in ${topicName}`}>
-      <AlwaysAllowedList scope={{ groupId }} topicId={topicId} topicName={topicName} readOnly />
-    </section>
-  );
-}
-
-/**
- * The topic's roles (T-0116): attached roles with holder counts next to the
- * people list, and the approver select ("Owner and admins only" or one
- * role). Managers edit; everyone else reads. Saving goes through the
- * store so the chat row refreshes. Saves stay one action for the section:
- * each save sends the whole role list, so two saves at once would drop one.
- */
-function TopicRolesSection({
-  chatId,
-  topicId,
-  groupId,
-  isManager,
-}: {
-  chatId: string;
-  topicId: string;
-  groupId: string;
-  isManager: boolean;
-}) {
-  const storeApi = useChatStoreApi();
-  const [rolesState, setRolesState] = useState<{
-    status: PanelStatus;
-    roles: TopicRole[];
-    approverRole: ApproverRole | null;
-    message: string;
-  }>({ status: 'loading', roles: [], approverRole: null, message: '' });
-  const [groupRoles, setGroupRoles] = useState<GroupRole[]>([]);
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-
-  // The topic and the group's roles load side by side; a failure shows the
-  // inline error with Retry.
-  const loadRoles = Effect.sync(() =>
-    setRolesState({ status: 'loading', roles: [], approverRole: null, message: '' }),
-  ).pipe(
-    Effect.andThen(
-      Effect.all([fromApi(() => getTopic(topicId)), fromApi(() => listGroupRoles(groupId))], {
-        concurrency: 'unbounded',
-      }),
-    ),
-    Effect.tap(([topic, roles]) =>
-      Effect.sync(() => {
-        setGroupRoles(roles);
-        setRolesState({
-          status: 'ready',
-          roles: topic.roles ?? [],
-          approverRole: topic.approverRole ?? null,
-          message: '',
-        });
-      }),
-    ),
-    Effect.catchTag('ApiFailure', (failure) =>
-      Effect.sync(() =>
-        setRolesState({
-          status: 'error',
-          roles: [],
-          approverRole: null,
-          message: textOf(failure, 'Could not load the roles.'),
-        }),
-      ),
-    ),
-  );
-  const [, refreshRoles] = useQuery(() => loadRoles, [topicId, groupId]);
-
-  // A second click while a save waits is dropped (mode 'ignore').
-  const [saveState, saveRoles] = useAction(
-    (input: { roleIds: string[]; approverRoleId: string | null }) =>
-      Effect.sync(() => setErrorMessage('')).pipe(
-        Effect.andThen(storeCall(() => storeApi.getState().setTopicRoles(chatId, input))),
-        Effect.andThen(loadRoles),
-        Effect.andThen(Effect.sync(() => setPickerOpen(false))),
-        Effect.catchTag('ApiFailure', failInline(setErrorMessage, 'Could not save the roles.')),
-      ),
-  );
-  const busy = isWaiting(saveState);
-
-  const save = (roleIds: string[], approverRoleId: string | null): void =>
-    saveRoles({ roleIds, approverRoleId });
-
-  const toggleRole = (roleId: string): void => {
-    if (rolesState.status !== 'ready') {
-      return;
-    }
-    const attached = rolesState.roles.some((role) => role.id === roleId);
-    const roleIds = attached
-      ? rolesState.roles.filter((role) => role.id !== roleId).map((role) => role.id)
-      : [...rolesState.roles.map((role) => role.id), roleId];
-    save(roleIds, rolesState.approverRole?.id ?? null);
-  };
-
-  const pickApprover = (value: string): void => {
-    if (rolesState.status !== 'ready') {
-      return;
-    }
-    save(
-      rolesState.roles.map((role) => role.id),
-      value === '' ? null : value,
-    );
-  };
-
-  return (
-    <section aria-label="Roles" className="flex flex-col gap-1">
-      <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Roles</h2>
-      {rolesState.status === 'loading' && (
-        <StateMessage kind="loading" size="inline" title="Loading…" />
-      )}
-      {rolesState.status === 'error' && (
-        <div className="flex flex-col gap-2 px-2">
-          <FieldError>{rolesState.message}</FieldError>
-          <Button
-            type="button"
-            size="lg"
-            className="self-start rounded-full px-4"
-            onClick={() => refreshRoles()}
-          >
-            Retry
-          </Button>
-        </div>
-      )}
-      {rolesState.status === 'ready' && (
-        <>
-          {rolesState.roles.length === 0 ? (
-            <p className="px-2 text-[13px] text-muted-foreground">
-              No roles here yet — only the people above can see this topic.
-            </p>
-          ) : (
-            rolesState.roles.map((role) => (
-              <div
-                key={role.id}
-                className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
-              >
-                <span className="min-w-0 flex-1 truncate text-[14px]">
-                  {role.name} ({role.memberCount})
-                </span>
-                {isManager && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    aria-label={`Remove ${role.name} from the topic`}
-                    className="shrink-0"
-                    disabled={busy}
-                    onClick={() => void toggleRole(role.id)}
-                  >
-                    Remove
-                  </Button>
-                )}
-              </div>
-            ))
-          )}
-          {isManager && (
-            <>
-              {pickerOpen ? (
-                <div className="mt-1 flex flex-col gap-1 px-2">
-                  {groupRoles
-                    .filter((role) => !rolesState.roles.some((item) => item.id === role.id))
-                    .map((role) => (
-                      <Button
-                        key={role.id}
-                        type="button"
-                        variant="outline"
-                        disabled={busy}
-                        onClick={() => void toggleRole(role.id)}
-                        className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
-                      >
-                        <span className="min-w-0 flex-1 truncate">{role.name}</span>
-                        <span className="text-[12px] text-muted-foreground">
-                          {role.members.length}
-                        </span>
-                      </Button>
-                    ))}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="self-start"
-                    onClick={() => setPickerOpen(false)}
-                  >
-                    Done
-                  </Button>
-                </div>
-              ) : (
-                groupRoles.some(
-                  (role) => !rolesState.roles.some((item) => item.id === role.id),
-                ) && (
-                  <Button
-                    type="button"
-                    size="lg"
-                    className="mx-2 self-start rounded-full px-4"
-                    onClick={() => setPickerOpen(true)}
-                  >
-                    Add roles
-                  </Button>
-                )
-              )}
-              <label className="mt-1 flex flex-col gap-1 px-2">
-                <span className="text-[13px] font-medium text-muted-foreground">Approvers</span>
-                <select
-                  aria-label="Approvers"
-                  value={rolesState.approverRole?.id ?? ''}
-                  disabled={busy}
-                  onChange={(event) => pickApprover(event.target.value)}
-                  className="well-surface rounded-[10px] px-3 py-2 text-[14px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-                >
-                  <option value="">Owner and admins only</option>
-                  {rolesState.roles.map((role) => (
-                    <option key={role.id} value={role.id}>
-                      {role.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </>
-          )}
-          {!isManager && rolesState.approverRole !== null && (
-            <p className="px-2 text-[13px] text-muted-foreground">
-              Approvers: {rolesState.approverRole.name}
-            </p>
-          )}
-          {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
-        </>
-      )}
-    </section>
   );
 }

@@ -2,6 +2,147 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 22:30 local: wave 9 merged; last splits, the lint rule and mock wave 2 running**
+- **Merged, 11 tasks:**
+  - **server, by a line check against main:** T-1028 (routine execute), T-1029 (agent tools; the lead ran `reply.test.ts`), T-1033 (voice transcription API), T-1036 (routines API);
+  - **mobile, with phone smokes:** T-1030 (voice-native), T-1031 (message search), T-1032 (voice player). T-1032 swapped two module variables for getters and setters, so the lead read every call site against main and ran play on main too;
+  - **web:** T-1034 (voice lib; recorded with a headless fake microphone, branch against main), T-1035 (media panel), T-1038 (folder editor: create, icon, include, save);
+  - **site:** T-1037 (instruments; headless, the text matches main).
+- **Running, 8 workers:**
+  - T-1039, T-1040 and T-1041: the last 3 mobile splits. T-1040's packet is ready, and its phone smoke waits for the other two;
+  - T-1042: the oxlint `max-lines` warning at 400;
+  - T-1043: dedup F6a, shared `errorName`/`errorClassName`/`isUniqueViolation`. The copies differ, so `isUniqueViolation` is deliberately widened to the `handles/store.ts` version;
+  - T-1044 to T-1046: mock wave 2 (prefs and pins; folders, backgrounds and media; stickers and GIFs).
+- **Found:** mobile mock mode has no request fallback (`apps/mobile/src/mock/backend.ts:8`), so every domain not yet in `@zilar/mock-backend` answers 404. That causes the "Could not save", "Could not load pins" and "Could not load media" errors.
+- **Next:**
+  - fake XMPP upload slots, so voice and attachment sends work in mock mode;
+  - the F dedups one at a time;
+  - then flip `max-lines` to error once the remaining deferred files are split.
+- **Deferred files still over 400:** the stores, `main.ts`, `app.ts`, `topics/access.ts`, `group-turn.ts`, the runner-tunnel files, `litellm-client.ts`, `approvals/api.ts`, `search/routes.ts`, the lead CLI files, `config.ts`, `setup/api.ts`, `effect/edge.ts`, `auth/sql-adapter.ts`, `machines/api.ts`, `db/rows.ts`, `chat-api.ts`, `client-core lifecycle.ts`, `sandbox/tool-worker.ts` and `mux.ts`.
+
+**2026-10-10 21:50 local: wave 8 merged; wave 9 running**
+- **Merged, 8 tasks:**
+  - **mobile, with phone smokes:** T-1020 (chats tab: list, search, long-press), T-1021 (attachments: the demo PDF stages), T-1022 (topic info and topic actions sheets);
+  - **server, by a line check against main:** T-1023 (topic rooms), T-1024 (media indexer), T-1025 (agent memory);
+  - **site:** T-1026 (3D scene). Headless Playwright screenshots of branch and main look the same; the lead's Chrome tab is `hidden`, so its scene never draws;
+  - **devtools:** T-1027 (xmpp-e2e, with one `withDeadline`).
+- **Running, 8 workers, 3 of them mobile:** T-1028 (routine execute), T-1029 (agent tools), T-1030 (voice-native), T-1031 (message search), T-1032 (voice player), T-1033 (voice transcription API), T-1034 (web voice lib), T-1035 (web media panel).
+- **Mock gap:** mobile Pin and Mute show "Could not save" because the mock backend has no chat-prefs handler (wave 2).
+- **Deferred as security or boot code:** `config.ts`, `setup/api.ts`, `effect/edge.ts`, `auth/sql-adapter.ts`, `machines/api.ts`.
+- **Deferred for other reasons:**
+  - `db/rows.ts`, because schema specs edit it;
+  - the lead CLI files, `client.ts` and `cli.ts`.
+- **Splits still to launch after wave 9:** `chat-api.ts` (it changed since the plan; the plan's dedup deletes about 220 lines, so it needs its own spec), web `store/effects/ports.ts` (a store), `message-list.tsx`, `markdown.ts`, `channel-screen.tsx`, `routines/api.ts`, `client-core lifecycle.ts`, site `instruments.ts`, `FolderEditorDialog.tsx`, `emoji-data.ts` and `lead/client.ts`.
+
+**2026-10-10 21:25 local: wave 7 merged; wave 8 running**
+- **Merged, 9 tasks:**
+  - **mobile, with phone smokes:** T-1011 (media sheet), T-1012 (voice recorder: a 2 s hold records a note), T-1013 (GIF tab);
+  - **web, in Chrome:** T-1014 (machines: approve, add machine), T-1015 (task strip: status, owner, link);
+  - **server:** T-1016 (audit; the lead ran 57 tests), T-1017 (push API), T-1018 (machines service), T-1019 (chat prefs).
+- **Running, 8 workers, 3 of them mobile:** T-1020 (chats tab), T-1021 (attachment-native), T-1022 (topic sheets), T-1023 (topic rooms), T-1024 (media indexer), T-1025 (agent memory store), T-1026 (site scene), T-1027 (xmpp-e2e).
+- **Mock gaps for wave 2, seen on main:**
+  - the media sheet shows "Could not load media";
+  - a voice note fails with "Could not send";
+  - GIF cells have no images;
+  - the task-strip owner reads "Owner: An AI" after a save.
+- **Still over 400 lines after wave 8, all deferred:** the stores (they wait for the mock rebuild), `main.ts`, `app.ts`, `topics/access.ts`, `group-turn.ts`, the runner-tunnel files, `litellm-client.ts`, `approvals/api.ts`, `search/routes.ts`, `lead/autopilot.ts` and `sandbox/tool-worker.ts`.
+- **Splits still to launch:** `routines/execute.ts`, `agents/tools.ts`, `config.ts`, `setup/api.ts`, `effect/edge.ts`, `voice-native.ts`, `message-search.ts`, `chat-api.ts` and `emoji-data.ts`.
+
+**2026-10-10 21:05 local: wave 6 merged; wave 7 running**
+- **Merged:**
+  - **tests:** T-1003 (5 push candidate tests, after a lead fix round so `hidden` really exercises the private-topic check; the lead ran them, 5 passed);
+  - **mobile, with phone smokes:** T-1004 (approvals), T-1005 (profile: name save), T-1006 (connections: add form, test key);
+  - **web, in Chrome:** T-1007 (avatar crop clamp), T-1008 (tool detail: run now), T-1009 (chat list menu, targets checked against main);
+  - **server:** T-1010 (XMPP admin client).
+- **Running, 8 workers, 3 of them mobile:** T-1011 (media sheet), T-1012 (voice recorder), T-1013 (GIF panel), T-1014 (web machines), T-1015 (task strip), T-1016 (audit service), T-1017 (push API), T-1018 (machines service).
+- **Found on main, now a BOARD follow-up:** mobile "Always allowed" goes empty once nothing is pending, because rules load only for the AIs in pending rows.
+- **Mock gaps seen:**
+  - web avatar upload has no mock handler;
+  - web integrations shows only the not-admin message;
+  - the voice clip has no audio.
+
+  All three belong to mock wave 2.
+
+**2026-10-10 20:50 local: wave 5 merged; wave 6 running**
+- **Merged:**
+  - **mobile, with phone smokes:** T-0995 (machines: approve), T-0996 (stickers: reorder, discover), T-0997 (voice: transcript toggle);
+  - **web, Chrome or code read:** T-0998 (chat background preset), T-0999 (notifications toggle), T-1000 (integrations; read in code, because web mock shows only the not-admin message, on main too);
+  - **server:** T-1001 (Telegram import: token scrub at the same 2 sites), T-1002 (push service: import cycle checked at runtime).
+- **Running, 8 workers, 3 of them mobile:** T-1003 (push tests), T-1004 (approvals), T-1005 (profile), T-1006 (connections), T-1007 (avatar uploader), T-1008 (tool detail), T-1009 (chat list), T-1010 (XMPP admin client).
+- **Still deferred:** the stores (mock rebuild), `main.ts`, `app.ts`, `sandbox/tool-worker.ts`, `topics/access.ts`, `group-turn.ts`, the runner-tunnel files, `ai/litellm-client.ts`, `approvals/api.ts` and `search/routes.ts` (security or pipeline code), and `lead/autopilot.ts`.
+
+**2026-10-10 20:26 local: wave 4 merged; wave 5 running**
+- **Merged:**
+  - **web, checked in Chrome:** T-0989 (StickerPanel: star, unstar and send a sticker), T-0990 (ChannelPanel: promote and demote);
+  - **mobile, with phone smokes:** T-0986 (composer: send), T-0987 (bubble: long-press, react), T-0988 (integrations: save, remove with confirm);
+  - **server:** T-0991 (invite links, 21 tests), T-0992 (stickers API, upload caps checked), T-0993 (web-tools, rate limit checked);
+  - **tests:** T-0994 (5 contact-request permission tests; the gap is closed).
+- **Running, 8 workers, 3 of them mobile:** T-0995 (machines), T-0996 (mobile stickers), T-0997 (voice message), T-0998 (chat background), T-0999 (notifications), T-1000 (web integrations), T-1001 (Telegram import), T-1002 (push service).
+- **Found:**
+  - **The browser tool drops a click.** In Chrome, the first click after a page load is often dropped; it happened on every branch and with every component, so it is most likely the browser tool, not the app. To check by hand on main.
+  - **No push tests.** No test covers who gets a push notification, which is message-pipeline code; a small test task is to be specced.
+
+**2026-10-10 20:15 local (UTC+2): 15 more splits merged; wave 4 running**
+- **Merged:**
+  - **web, each checked in Chrome at `?mock=1`:** T-0971 (MessageBubble), T-0973 (AiPanel), T-0977 (TopicPanel), T-0981 (PackEditor), T-0982 (StickersPage);
+  - **mobile, each with a phone smoke:** T-0974 (group screen), T-0979 (tool sheet; Run now works), T-0980 (sticker pack);
+  - **server and devtools:** T-0975 (lead/watch.ts), T-0976 (tools API), T-0978 (roles service), T-0983 (contact requests), T-0984 (routines service), T-0985 (watch-app).
+- **Running, 8 workers, 3 of them mobile:** T-0986 (mobile composer), T-0987 (mobile message bubble), T-0988 (mobile integrations), T-0989 (web StickerPanel), T-0990 (web ChannelPanel), T-0991 (invite links), T-0992 (stickers API), T-0993 (web-tools adapters).
+- **Found:**
+  - **No contact-request tests.** No test covers who can send, accept or block a request. That is permissions code; a small test task comes next.
+  - **First click on a header button.** On the T-0973 and T-0977 branches, the first click on a chat-header info button after a page load did nothing, and the second click opened the panel. Still to check whether main does the same.
+  - **Broken mock thumbnails.** Web mock sticker thumbnails are broken images, the same on main. That is mock media, wave 2.
+- **Deferred on purpose:**
+  - `main.ts`, because it is startup order and a worker can't boot the server to check it;
+  - `sandbox/tool-worker.ts` and `topics/access.ts`, because they are security code;
+  - `agents/gateway/group-turn.ts`, because it is the message pipeline;
+  - `runner-tunnel/runner.ts`, because it is one class;
+  - the mobile and web stores, because the mock rebuild touches them.
+
+**2026-10-10 20:30 local: every file over 1,000 lines is split or in review**
+- **Merged since 19:40:** T-0954 (web Composer), T-0958 (stickers), T-0959 (web api.ts), T-0960 (agents/reply.ts), T-0961 (groups), T-0964 (approvals), T-0965 (lead/policy.ts; byte-identical, and all 15 sample commands classify the same).
+- **Running:**
+  - T-0962 (mobile chat screen; phone smoke), T-0963 (actions gateway), T-0966 (tools adapters), T-0967 (GroupPanel; Chrome);
+  - T-0968 (sticky web mock mode), T-0969 (core send.ts, byte-identical), T-0970 (lead/batch.ts), T-0971 (MessageBubble; Chrome).
+- **Found:**
+  - web mock mode is lost on in-app navigation; T-0968 fixes it;
+  - no test covers the AI reply pipeline (`agents/`) since the test cut. That is crucial code under Julio's rule; a small test task is to be specced.
+- **For Julio's live test:** switch chats while recording voice (T-0954 moved two ref writes into an effect).
+
+**2026-10-10 19:40 local: size wave 1 mostly merged; wave 2 running; mobile mock cutover merged**
+- **Merged:**
+  - T-0949: mobile mock mode on the real store. The lead's phone smoke shows the chat list and the full General history from the shared seed;
+  - the size splits T-0951 (core-effect), T-0952 (stanza), T-0953 (ledger), T-0955 (tools), T-0956 (ais), T-0957 (topics).
+- **Running:**
+  - wave 1's rest: T-0954 (web Composer; the lead checks it in Chrome), T-0958 (stickers);
+  - wave 2: T-0959 (web api.ts), T-0960 (agents/reply.ts), T-0961 (groups service), T-0962 (mobile chat screen; phone smoke), T-0963 (actions gateway), T-0964 (approvals service).
+- **Next:** the last file over 1,000 lines (`lead/policy.ts`), then the 601–1,000 band, the F helpers one at a time, and mock wave 2 (pins and the rest).
+
+**2026-10-10 19:15 local: size plan merged; Julio chose all 131 tasks; wave 1 running**
+- **Merged:** T-0936 (`docs/audit/size-plan.md`).
+  - 119 files are over 400 lines, 78,831 lines in all; duplication is small (33 pairs, about 1,320 lines).
+  - The plan is 131 tasks: they move about 72.9k lines and remove about 5.9k.
+- **Julio chose "All 131 tasks".** Every split follows `docs/audit/split-rules.md`: one file per task, the old path stays a barrel, no behaviour change, no new tests.
+- **Wave 1, running:** T-0951 (core-effect), T-0952 (stanza), T-0953 (ledger), T-0954 (web Composer), T-0955 (tools service), T-0956 (ais service), T-0957 (topics service).
+- **Also running:** T-0949, the mobile mock cutover.
+  - Round 1 fixed the chat list (a mobile decoder required `userId`, which the real server omits on AI DMs; added 10-08, never live).
+  - Round 3 is on the chat history, which never loads on the phone.
+- **The lead's miss:** T-0936 waited about 3 h on an unanswered permission (wrong session id); see memory `permission-check-session-id`.
+
+**2026-10-10 evening: the mock backend wave 1 and the web cutover are merged**
+- **Merged:**
+  - the mock backend: T-0937 to T-0945 (`packages/mock-backend`, about 6k lines in domain folders, plus a fake XMPP core);
+  - T-0946: web mock mode (`?mock=1`) now runs the real store on that backend. The lead checked it in Chrome: chats, topics, history, a send with an AI reply, and markdown;
+  - T-0947: the old web mock store is deleted (1,322 lines gone);
+  - T-0948: real-format AI JIDs in the seed, so AI markdown renders; a fallback route pays one delay;
+  - T-0950: the open chat's unread clears when the tab or app comes back to the front.
+- **Running:**
+  - T-0949: mobile mock mode on the real store, with a fake dev-only session. The lead runs a phone smoke in mock mode before merging;
+  - T-0936: the size and duplication audit.
+- **Next:** the mock wave 2 (prefs, folders, pins, media, backgrounds, stickers, gifs, voice, profile), then the deletion sweep of the old mock files.
+- **Add to the live test below:** with a chat open, switch to another tab or app, get a message, and come back: the badge clears.
+- **Main checkout note:** after merges that add a workspace dependency, run `pnpm install` in main before running a dev server from it.
+
 **2026-10-10 17:00 local: the store core is done; ready for Julio's single live test**
 - **Merged:** T-0929 (T10b, the mobile send on the core) and T-0930 (test memory caps). Web and mobile now both run on `packages/client-core/src/store`.
 - **The live test, on web and on the phone, against the dev server:**
