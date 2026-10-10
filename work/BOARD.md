@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1060](T-1060-delete-mobile-mock-store.md) | Mock sweep Q: delete the dead mobile mock store and 4 mocks only it imports | in-progress | auto | T-1059 | mock-sweep-status §3 |
 | [T-1061](T-1061-mobile-approvals-on-mock-backend.md) | Mock H2-2: mobile approvals on the shared backend; one mockToken | in-progress | auto | T-1059 | fixes empty "Always allowed" |
 | [T-1062](T-1062-web-mock-delete-covered-routes-1.md) | Mock sweep W1+W2: delete web mock/api.ts routes the backend answers | in-progress | auto | T-1059 | mock-sweep-status §1a |
 
@@ -1101,3 +1100,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1057](T-1057-server-schema-issues.md) | Dedup F6 (S4): one firstIssueMessage in apps/server/src/effect/schema-issues.ts for auth, routines and xmpp ad | 2026-10-10 |
 | [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds and media gallery domains in @zilar/mock-backend | 2026-10-10 |
 | [T-1059](T-1059-audit-mock-sweep-status.md) | Audit: what still uses the old mock code (web mock/api.ts fallback, mobile use-*-api mock switches, mobile moc | 2026-10-10 |
+| [T-1060](T-1060-delete-mobile-mock-store.md) | Mock sweep Q (mobile): delete the dead mock store apps/mobile/src/store/chat-store.ts (1,595 lines) and the fo | 2026-10-10 |
