@@ -7,7 +7,7 @@
     "smoke": "tsx src/smoke.ts",
     "xmpp:e2e": "tsx src/xmpp-e2e.ts",
     "lead": "tsx src/lead/cli.ts",
-    "effect:map": "tsx src/effect-map/cli.ts",
+    "code:map": "tsx src/code-map/cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "gate": "tsx src/gate/cli.ts"

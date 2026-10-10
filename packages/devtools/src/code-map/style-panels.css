@@ -1,0 +1,187 @@
+.chart svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+.chart .grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.chart .axis {
+  fill: var(--soft);
+  font: 11px var(--f-data);
+}
+.chart path {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.chart .h-source {
+  stroke: var(--green);
+}
+.chart .h-test {
+  stroke: var(--test);
+}
+.chart .h-mock {
+  stroke: var(--mock);
+}
+.merges {
+  display: flex;
+  flex-direction: column;
+}
+.mrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 9rem 4.5rem;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+  font: 12px/1.35 var(--f-data);
+}
+.mtitle {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mtitle b {
+  color: var(--soft);
+}
+.mmeta {
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mtrack {
+  position: relative;
+  height: 9px;
+  background: var(--line);
+}
+.mtrack::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--bg);
+}
+.mtrack i {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  min-width: 1px;
+}
+.mtrack i.cut {
+  background: var(--cut);
+}
+.mtrack i.grow {
+  background: var(--grow);
+}
+.mnet {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.mnet.cut {
+  color: var(--cut);
+}
+.mnet.grow {
+  color: var(--grow);
+}
+.biggest {
+  display: flex;
+  flex-direction: column;
+}
+.brow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 4.5rem;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+  font: 12px/1.35 var(--f-data);
+}
+.bpath {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.btrack {
+  position: relative;
+  height: 9px;
+  background: var(--line);
+}
+.btrack i {
+  display: block;
+  height: 100%;
+}
+.btrack i.green {
+  background: var(--green);
+}
+.btrack i.amber {
+  background: var(--amber);
+}
+.btrack i.orange {
+  background: var(--orange);
+}
+.btrack i.red {
+  background: var(--red);
+}
+.btrack u {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 0;
+  border-left: 1px solid var(--ink);
+  text-decoration: none;
+}
+.blines {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+footer {
+  color: var(--soft);
+  font: 12px/1.4 var(--f-data);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 560px) {
+  body {
+    padding: 14px;
+  }
+  .row {
+    grid-template-columns: minmax(0, 1.2fr) 6.5rem 3.2rem minmax(0, 1fr);
+    gap: 6px;
+    font-size: 12px;
+  }
+  .mrow {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      'title title'
+      'meta net'
+      'track track';
+    gap: 2px 8px;
+  }
+  .mtitle {
+    grid-area: title;
+  }
+  .mmeta {
+    grid-area: meta;
+    text-align: left;
+    white-space: normal;
+  }
+  .mnet {
+    grid-area: net;
+  }
+  .mtrack {
+    grid-area: track;
+    margin-top: 3px;
+  }
+  .opt-sm {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

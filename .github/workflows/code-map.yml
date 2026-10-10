@@ -1,6 +1,6 @@
-name: Effect map
+name: Code map
 
-# Rebuilds the Effect map from the commit on main and publishes it to GitHub Pages.
+# Rebuilds the Code map from the commit on main and publishes it to GitHub Pages.
 on:
   push:
     branches: [main]
@@ -18,11 +18,14 @@ concurrency:
 
 jobs:
   build:
-    name: Build the Effect map
+    name: Build the Code map
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The history walks the full git log, so it needs every commit.
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v6
 
@@ -32,11 +35,11 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm effect:map
+      - run: pnpm code:map
 
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: dist/effect-map
+          path: dist/code-map
 
   deploy:
     name: Publish to GitHub Pages

@@ -1,25 +1,13 @@
-// Builds the data behind the Effect map: one entry per counted source file
-// (its line count, its kind, the signals that make it need Effect, the legacy
-// libraries it still imports and the open tasks whose Allowed files cover it),
-// plus per-package and total sums. The rule is docs/audit/effect-100-plan.md §1.4.
-// Works in any checkout: the root comes from git, nothing lives in $HOME.
+// Source classification shared by the Effect ratchet (`ratchet.ts`), the gate
+// (`gate/plan.ts`) and the lead watcher (`lead/watch.ts`).
+//
+// The Effect map page that used to read this was removed in T-0938; what stays
+// is the rule behind the ratchet (docs/audit/effect-100-plan.md §1.4) — which
+// counted source files still need Effect — plus the board parser the watcher
+// uses. Works in any checkout: the root comes from git, nothing lives in $HOME.
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { Result, Schema } from 'effect';
-import { tokenMatcher } from '../gate/scope.js';
 
 export type Kind = 'effect' | 'needs-effect' | 'plain' | 'exempt' | 'legacy';
-
-export interface TaskRef {
-  id: string;
-  title: string;
-  status: string;
-}
-
-export interface OpenTask extends TaskRef {
-  matchers: RegExp[];
-}
 
 export interface SignalHit {
   id: string;
@@ -40,55 +28,7 @@ export interface SourceFile {
   tierB: boolean;
   /** The reason of the `// effect-plain:` marker in the first 15 lines, or null. */
   marker: string | null;
-  tasks: TaskRef[];
 }
-
-export interface Tally {
-  files: number;
-  lines: number;
-}
-
-export interface Marker {
-  path: string;
-  reason: string;
-}
-
-export interface Summary {
-  files: number;
-  lines: number;
-  kinds: Record<Kind, Tally>;
-  effectFilesPct: number;
-  /** Share of all counted lines that are Effect lines (the secondary figure). */
-  effectLinesPct: number;
-  /** Effect lines / (Effect lines + needs-effect lines), in percent; 100 when both are 0. */
-  coveragePct: number;
-  tierB: Tally;
-  /** needs-effect files whose only hits are weak signals. */
-  needsWeak: Tally;
-  markers: Marker[];
-  markersOverBudget: boolean;
-}
-
-export interface PackageSummary extends Summary {
-  name: string;
-}
-
-export interface TaskSummary extends TaskRef {
-  files: number;
-}
-
-export interface EffectMap {
-  generatedAt: string;
-  commit: string;
-  commitSubject: string;
-  markerBudget: number;
-  total: Summary;
-  packages: PackageSummary[];
-  tasks: TaskSummary[];
-  files: SourceFile[];
-}
-
-export const MARKER_BUDGET = 25;
 
 const LEGACY_LIBS: ReadonlyArray<readonly [string, RegExp]> = [
   ['drizzle', /^drizzle-orm/],
@@ -248,10 +188,38 @@ export function signalHits(source: string): SignalHit[] {
   return hits;
 }
 
-// apps/server/src/x.ts -> apps/server; scripts/x.ts -> scripts.
-export function packageOf(path: string): string {
-  const parts = path.split('/');
-  return parts[0] === 'scripts' ? 'scripts' : parts.slice(0, 2).join('/');
+function kindOf(
+  path: string,
+  importKind: 'effect' | 'plain' | 'legacy',
+  marker: string | null,
+  signals: readonly string[],
+): Kind {
+  if (importKind === 'legacy') return 'legacy';
+  if (isExemptPath(path) || marker !== null) return 'exempt';
+  if (importKind === 'effect') return 'effect';
+  return signals.length > 0 ? 'needs-effect' : 'plain';
+}
+
+export function sourceFile(path: string, source: string): SourceFile {
+  const hits = signalHits(source);
+  const signals = SIGNAL_IDS.filter((id) => hits.some((hit) => hit.id === id));
+  const first = hits.reduce<SignalHit | null>(
+    (best, hit) => (best === null || hit.line < best.line ? hit : best),
+    null,
+  );
+  const { kind: importKind, legacy } = classifySource(source);
+  const marker = markerReason(source);
+  const kind = kindOf(path, importKind, marker, signals);
+  return {
+    path,
+    lines: source.split('\n').length,
+    kind,
+    legacy,
+    signals,
+    firstHit: first === null ? null : { line: first.line, text: first.text.trim().slice(0, 120) },
+    tierB: kind === 'effect' && signals.some(isHard),
+    marker,
+  };
 }
 
 export interface BoardRow {
@@ -274,215 +242,6 @@ export function parseBoard(text: string): BoardRow[] {
   });
 }
 
-// The paths under "### Allowed files": backtick tokens with a slash or an
-// extension, read up to the next heading, rule, or "**Not allowed" line.
-export function allowedPaths(taskText: string): string[] {
-  const lines = taskText.split('\n');
-  const start = lines.findIndex((line) => /^### Allowed files\s*$/.test(line));
-  if (start < 0) return [];
-  const paths: string[] = [];
-  for (const line of lines.slice(start + 1)) {
-    if (/^(###|## |---)/.test(line) || line.startsWith('**Not allowed')) break;
-    for (const match of line.matchAll(/`([^`\n]+)`/g)) {
-      const token = (match[1] ?? '').trim();
-      if (token.includes('/') || /\.[a-z]+$/i.test(token)) paths.push(token);
-    }
-  }
-  return paths;
-}
-
-// An open task from its board row and its task file (empty text when the file is missing).
-export function openTask(row: BoardRow, taskText: string): OpenTask {
-  const full = /^title:\s*"?(.*?)"?\s*$/m.exec(taskText)?.[1] || row.title;
-  const title = full.length > 120 ? `${full.slice(0, 119)}…` : full;
-  return {
-    id: row.id,
-    title,
-    status: row.status,
-    matchers: allowedPaths(taskText).map(tokenMatcher),
-  };
-}
-
-function kindOf(
-  path: string,
-  importKind: 'effect' | 'plain' | 'legacy',
-  marker: string | null,
-  signals: readonly string[],
-): Kind {
-  if (importKind === 'legacy') return 'legacy';
-  if (isExemptPath(path) || marker !== null) return 'exempt';
-  if (importKind === 'effect') return 'effect';
-  return signals.length > 0 ? 'needs-effect' : 'plain';
-}
-
-export function sourceFile(path: string, source: string, tasks: readonly OpenTask[]): SourceFile {
-  const hits = signalHits(source);
-  const signals = SIGNAL_IDS.filter((id) => hits.some((hit) => hit.id === id));
-  const first = hits.reduce<SignalHit | null>(
-    (best, hit) => (best === null || hit.line < best.line ? hit : best),
-    null,
-  );
-  const { kind: importKind, legacy } = classifySource(source);
-  const marker = markerReason(source);
-  const kind = kindOf(path, importKind, marker, signals);
-  const covering = tasks
-    .filter((task) => task.matchers.some((matcher) => matcher.test(path)))
-    .map(({ id, title, status }) => ({ id, title, status }));
-  return {
-    path,
-    lines: source.split('\n').length,
-    kind,
-    legacy,
-    signals,
-    firstHit: first === null ? null : { line: first.line, text: first.text.trim().slice(0, 120) },
-    tierB: kind === 'effect' && signals.some(isHard),
-    marker,
-    tasks: covering,
-  };
-}
-
-const share = (part: number, whole: number): number =>
-  whole === 0 ? 0 : Math.round((part / whole) * 1000) / 10;
-
-const coverage = (effectLines: number, needsEffectLines: number): number => {
-  const whole = effectLines + needsEffectLines;
-  return whole === 0 ? 100 : share(effectLines, whole);
-};
-
-const emptyTally = (): Tally => ({ files: 0, lines: 0 });
-
-function bump(tally: Tally, lines: number): void {
-  tally.files += 1;
-  tally.lines += lines;
-}
-
-export function summarise(files: readonly SourceFile[]): Summary {
-  const kinds: Record<Kind, Tally> = {
-    effect: emptyTally(),
-    'needs-effect': emptyTally(),
-    plain: emptyTally(),
-    exempt: emptyTally(),
-    legacy: emptyTally(),
-  };
-  const tierB = emptyTally();
-  const needsWeak = emptyTally();
-  let lines = 0;
-  for (const file of files) {
-    bump(kinds[file.kind], file.lines);
-    lines += file.lines;
-    if (file.tierB) bump(tierB, file.lines);
-    if (file.kind === 'needs-effect' && !file.signals.some(isHard)) bump(needsWeak, file.lines);
-  }
-  const markers = files.flatMap((file) =>
-    file.marker === null ? [] : [{ path: file.path, reason: file.marker }],
-  );
-  return {
-    files: files.length,
-    lines,
-    kinds,
-    effectFilesPct: share(kinds.effect.files, files.length),
-    effectLinesPct: share(kinds.effect.lines, lines),
-    coveragePct: coverage(kinds.effect.lines, kinds['needs-effect'].lines),
-    tierB,
-    needsWeak,
-    markers,
-    markersOverBudget: markers.length > MARKER_BUDGET,
-  };
-}
-
-export function packageSummaries(files: readonly SourceFile[]): PackageSummary[] {
-  const byPackage = new Map<string, SourceFile[]>();
-  for (const file of files) {
-    const name = packageOf(file.path);
-    byPackage.set(name, [...(byPackage.get(name) ?? []), file]);
-  }
-  return [...byPackage]
-    .map(([name, list]) => ({ name, ...summarise(list) }))
-    .sort((a, b) => b.lines - a.lines || a.name.localeCompare(b.name));
-}
-
-export function taskSummaries(
-  tasks: readonly OpenTask[],
-  files: readonly SourceFile[],
-): TaskSummary[] {
-  const counts = new Map<string, number>();
-  for (const file of files) {
-    for (const task of file.tasks) counts.set(task.id, (counts.get(task.id) ?? 0) + 1);
-  }
-  return tasks
-    .map(({ id, title, status }) => ({ id, title, status, files: counts.get(id) ?? 0 }))
-    .sort((a, b) => a.id.localeCompare(b.id));
-}
-
-export function buildEffectMap(input: {
-  files: readonly SourceFile[];
-  tasks: readonly OpenTask[];
-  generatedAt: string;
-  commit: string;
-  commitSubject: string;
-}): EffectMap {
-  return {
-    generatedAt: input.generatedAt,
-    commit: input.commit,
-    commitSubject: input.commitSubject,
-    markerBudget: MARKER_BUDGET,
-    total: summarise(input.files),
-    packages: packageSummaries(input.files),
-    tasks: taskSummaries(input.tasks, input.files),
-    files: [...input.files],
-  };
-}
-
-const NeedsEffectBaseline = Schema.Struct({ needsEffectFiles: Schema.Number });
-
-// The ratchet (task R6): a message when the map has more needs-effect files
-// than the baseline allows, or null when it is within the baseline.
-export function checkNeedsEffectBaseline(map: EffectMap, json: string): string | null {
-  const parsed: unknown = JSON.parse(json);
-  const decoded = Schema.decodeUnknownResult(NeedsEffectBaseline)(parsed);
-  if (Result.isFailure(decoded)) return 'baseline must be JSON {"needsEffectFiles": number}';
-  const allowed = decoded.success.needsEffectFiles;
-  const current = map.total.kinds['needs-effect'].files;
-  return current > allowed ? `needs-effect files ${current} exceed the baseline ${allowed}` : null;
-}
-
 export function repoRoot(cwd: string = process.cwd()): string {
   return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' }).trim();
-}
-
-function readOpenTasks(root: string): OpenTask[] {
-  const dir = join(root, 'work');
-  return parseBoard(readFileSync(join(dir, 'BOARD.md'), 'utf8')).map((row) => {
-    const path = join(dir, row.file);
-    return openTask(row, existsSync(path) ? readFileSync(path, 'utf8') : '');
-  });
-}
-
-function listCountedSources(root: string): string[] {
-  return execFileSync('git', ['ls-files'], {
-    cwd: root,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  })
-    .split('\n')
-    .filter(isCountedSource);
-}
-
-export function generateEffectMap(root: string = repoRoot()): EffectMap {
-  const tasks = readOpenTasks(root);
-  const files = listCountedSources(root).map((path) =>
-    sourceFile(path, readFileSync(join(root, path), 'utf8'), tasks),
-  );
-  const head = execFileSync('git', ['log', '-1', '--format=%h%x09%s'], {
-    cwd: root,
-    encoding: 'utf8',
-  }).trim();
-  const [commit = '', commitSubject = ''] = head.split('\t');
-  return buildEffectMap({
-    files,
-    tasks,
-    generatedAt: new Date().toISOString(),
-    commit,
-    commitSubject,
-  });
 }

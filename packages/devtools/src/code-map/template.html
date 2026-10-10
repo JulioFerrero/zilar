@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Zilar's code size: lines per file, the 400-line limit, files added and removed, and the trend over time."
+    />
+    <title>Zilar Code Map</title>
+    <style>
+      /*STYLE*/
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Code map</h1>
+      <div class="stat">
+        <span class="pct" id="pct"></span>
+        <span class="note" id="week"></span>
+      </div>
+      <div class="stat small">
+        <span><b id="n-test"></b> test lines</span>
+        <span><b id="n-mock"></b> mock lines</span>
+        <span><b id="n-files"></b> files</span>
+        <span><b id="n-over"></b> files over 400 lines</span>
+        <span class="muted">goal 0</span>
+      </div>
+      <div class="legend" aria-label="Legend">
+        <span><i class="sw green"></i>≤400</span>
+        <span><i class="sw amber"></i>401–600</span>
+        <span><i class="sw orange"></i>601–1,000</span>
+        <span><i class="sw red"></i>over 1,000</span>
+        <span><i class="sw test"></i>test</span>
+        <span><i class="sw mock"></i>mock</span>
+        <span><i class="sw generated"></i>generated</span>
+        <label class="toggle"><input type="checkbox" id="hide-extra" /> hide tests and mocks</label>
+      </div>
+    </header>
+
+    <nav id="crumbs" aria-label="Folder path"></nav>
+    <div class="well">
+      <canvas
+        id="map"
+        role="img"
+        aria-label="Every file as a box sized by lines, coloured by size band, test, mock or generated"
+      ></canvas>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+
+    <section aria-labelledby="history-h">
+      <h2 id="history-h">History</h2>
+      <p class="note">
+        Lines per day since the first commit: <b>source</b> in green, test in blue, mock in purple.
+      </p>
+      <div class="chart" id="chart"></div>
+    </section>
+
+    <section aria-labelledby="merges-h">
+      <h2 id="merges-h">Recent merges</h2>
+      <p class="note">
+        The last 40 T-NNNN commits, with lines added and removed, files created and deleted, and the
+        net: green for a cut, red for growth.
+      </p>
+      <div class="merges" id="merges"></div>
+    </section>
+
+    <section aria-labelledby="packages-h">
+      <h2 id="packages-h">Per package</h2>
+      <div class="table" id="packages"></div>
+    </section>
+
+    <section aria-labelledby="biggest-h">
+      <h2 id="biggest-h">Biggest files</h2>
+      <p class="note">The 25 largest source files; the marker is the 400-line limit.</p>
+      <div class="biggest" id="biggest"></div>
+    </section>
+
+    <footer id="meta"></footer>
+
+    <script>
+      /*SCRIPT*/
+    </script>
+  </body>
+</html>
