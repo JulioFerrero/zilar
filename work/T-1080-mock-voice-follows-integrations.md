@@ -20,7 +20,7 @@ These are the T-1078 pre-review follow-up and nit. The lead read main (2026-10-1
   - `packages/mock-backend/src/domains/voice-transcription/routes.ts:28-30` always answers `{ enabled: true }`;
   - the integrations seed has voice off: `voiceConfigured: false` in `packages/mock-backend/src/domains/integrations/seed.ts`;
   - so in mock mode the Integrations screen says "Not set up" while voice messages still offer transcripts.
-- **What T-1073 mirrored:** "enabled" came from web's old mock, so mock mode showed transcripts.
+- **What T-1073 mirrored:** "enabled" came from the old `apps/web/src/mock/api.ts:1037-1040` (its `voice/transcription` branch, deleted in T-1074; see `git show 39438d8f~1:apps/web/src/mock/api.ts`), so mock mode showed transcripts.
 - **The state:** `data.integrations.voiceConfigured`, declared in `packages/mock-backend/src/domains/integrations/state.ts:16`. Saving voice turns it on and removing it turns it off (`:63`, `:66`).
 - **Stale comments:** `integrations/seed.ts:1-4` and `integrations/routes.ts:3` cite `apps/mobile/src/components/integrations/integrations-mock.ts`, which T-1078 deleted.
 
