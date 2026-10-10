@@ -2,6 +2,17 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 08:20 local: T-0908, T-0909 and T-0910 merged; nothing deployed**
+- **T-0908:** one `runSql` (−219 lines).
+- **T-0909:** `drizzle-orm` and `drizzle-kit` are overridden away, so the deployed server folder goes from 321 to 230 MB with no PGlite.
+- **T-0910:** lenient contract rows, and the mobile gifs, media and stickers clients derive from the contract.
+- **In check:** T-0907 (T6: incoming, actions and reads in the core) and T-0911 (test sleeps).
+- **Running:** T-0913 (four load flakes made deterministic).
+- **Next:** T-0912 (T6b history) after T-0907 merges, then T7 and T8.
+- **Live-check additions:**
+  - the production image after deploy, where sign-in works without drizzle (T-0909);
+  - stickers, GIFs and the media gallery on mobile (T-0910).
+
 **2026-10-10 07:40 local: usage limit reached, handoff; nothing deployed**
 - **Merged on main:**
   - T-0905 (T4, mobile on the core lifetime);
