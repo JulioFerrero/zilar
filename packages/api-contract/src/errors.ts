@@ -47,9 +47,28 @@ export class ApiError extends Error {
 export function apiErrorFromBody(status: number, raw: unknown): ApiError {
   const decoded = Schema.decodeUnknownExit(ApiErrorBody)(raw);
   if (!Exit.isSuccess(decoded)) {
-    return new ApiError(status, 'request_failed', `Request failed (${status})`);
+    return partialApiError(status, raw);
   }
   const { code, message, requestId: _requestId, ...detail } = decoded.value.error;
   void _requestId;
   return new ApiError(status, code, message, detail);
+}
+
+/**
+ * A malformed `code` must not discard a valid `message`, nor the reverse: each
+ * field falls back on its own (`request_failed`, `Request failed (N)`), as the
+ * mobile clients' per-field guards did before the contract (T-0892).
+ */
+function partialApiError(status: number, raw: unknown): ApiError {
+  const error =
+    typeof raw === 'object' && raw !== null && 'error' in raw
+      ? (raw as { readonly error: unknown }).error
+      : undefined;
+  const fields =
+    typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : {};
+  return new ApiError(
+    status,
+    typeof fields.code === 'string' ? fields.code : 'request_failed',
+    typeof fields.message === 'string' ? fields.message : `Request failed (${status})`,
+  );
 }

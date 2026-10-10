@@ -2,34 +2,36 @@
 // paths, statuses, bodies, limiter order and audit calls as the deleted
 // router (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
 // Its service runs on effect/sql.
+//
+// The schemas, the group and its middleware tags live in the shared contract
+// (`@zilar/api-contract`, T-0892); this file keeps the handlers and layers.
 
-import { Effect, Layer, Schema } from 'effect';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiSchema,
-} from 'effect/http-api';
+import { Effect, Layer } from 'effect';
+import { HttpServerRequest } from 'effect/http';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
+import {
+  CurrentUser,
+  GroupsGroup,
+  GroupsJoinRateLimit,
+  GroupsRoleRateLimit,
+} from '@zilar/api-contract';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
-import { CHAT_BACKGROUND_PRESET_IDS } from '../chat-prefs/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
-  SchemaErrors,
-  Session,
   handler,
+  httpErrorResponse,
   mountApi,
-  schemaErrorLayer,
+  requestIdOf,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
-import { makeRateLimit } from '../effect/rate-limit-middleware';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import { chainASchemaErrorLayer } from './schema-errors';
 import {
   addGroupAi,
   addGroupMembers,
@@ -38,7 +40,6 @@ import {
   getGroupDetail,
   getMembership,
   listMembersForViewer,
-  MAX_GROUP_MEMBERS,
   patchGroup,
   removeGroupAi,
   removeGroupMember,
@@ -55,196 +56,49 @@ export const ROLE_CHANGE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 export const PUBLIC_JOIN_RATE_LIMIT_MAX = 30;
 export const PUBLIC_JOIN_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
-const GroupMemberRole = Schema.Literals(['owner', 'admin', 'member']);
-const ChangeableRole = Schema.Literals(['admin', 'member']);
-const ChannelKind = Schema.Literals(['group', 'channel']);
-const GroupVisibility = Schema.Literals(['private', 'public']);
-const ListenerEagerness = Schema.Literals(['quiet', 'normal', 'eager']);
-const BackgroundPreset = Schema.Literals(CHAT_BACKGROUND_PRESET_IDS);
-
-// Replaces `titleSchema` / `descriptionSchema` (zod): trimmed before the
-// length checks, exactly like the old `.trim().min()/.max()`.
-const Title = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(100));
-const Description = Schema.Trim.check(Schema.isMaxLength(300));
-const Handle = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64));
-
-const MemberIds = Schema.Array(Schema.String.check(Schema.isMinLength(1))).check(
-  Schema.isMaxLength(MAX_GROUP_MEMBERS),
-);
-
-// Replaces `createGroupSchema` (zod). `memberIds` defaults to an empty list;
-// `kind`, `description`, `visibility` and `handle` are optional.
-const CreateGroupBody = Schema.Struct({
-  title: Title,
-  memberIds: MemberIds.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
-  kind: Schema.optional(ChannelKind),
-  description: Schema.optional(Description),
-  visibility: Schema.optional(GroupVisibility),
-  handle: Schema.optional(Handle),
-});
-
-// Replaces `addMembersSchema` (zod): 1..50 non-empty user ids.
-const AddMembersBody = Schema.Struct({
-  userIds: MemberIds.check(Schema.isMinLength(1)),
-});
-
-// Replaces `addAiSchema` (zod): one non-empty AI id.
-const AddAiBody = Schema.Struct({
-  aiId: Schema.String.check(Schema.isMinLength(1)),
-});
-
-// Replaces `changeRoleSchema` (zod): strict, `admin` or `member`.
-const ChangeRoleBody = Schema.Struct({ role: ChangeableRole });
-
-// Replaces `patchGroupSchema` (zod): strict at the top level and on the
-// nested `background` object. `undefined` keeps a field, `null` clears it.
-const GroupBackgroundPatch = Schema.Struct({
-  backgroundPreset: Schema.optional(Schema.NullOr(BackgroundPreset)),
-  backgroundImageId: Schema.optional(Schema.NullOr(Handle)),
-  backgroundDim: Schema.optional(
-    Schema.NullOr(
-      Schema.Number.check(
-        Schema.isInt(),
-        Schema.isGreaterThanOrEqualTo(0),
-        Schema.isLessThanOrEqualTo(80),
-      ),
-    ),
-  ),
-});
-
-const PatchGroupBody = Schema.Struct({
-  membersCanCreateTopics: Schema.optional(Schema.Boolean),
-  visibility: Schema.optional(GroupVisibility),
-  handle: Schema.optional(Handle),
-  background: Schema.optional(GroupBackgroundPatch),
-  listenerEnabled: Schema.optional(Schema.Boolean),
-  listenerEagerness: Schema.optional(ListenerEagerness),
-});
-
-const GroupMember = Schema.Struct({
-  userId: Schema.String,
-  name: Schema.String,
-  role: GroupMemberRole,
-  roles: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
-  handle: Schema.optional(Schema.NullOr(Schema.String)),
-  avatarUrl: Schema.optional(Schema.String),
-});
-
-const GroupAi = Schema.Struct({
-  aiId: Schema.String,
-  jid: Schema.String,
-  name: Schema.String,
-  ownerId: Schema.String,
-  avatarUrl: Schema.optional(Schema.String),
-});
-
-const GroupBackground = Schema.Struct({
-  backgroundPreset: Schema.NullOr(Schema.String),
-  backgroundImageId: Schema.NullOr(Schema.String),
-  backgroundDim: Schema.NullOr(Schema.Number),
-});
-
-const GroupDetailView = Schema.Struct({
-  id: Schema.String,
-  title: Schema.String,
-  createdBy: Schema.String,
-  createdAt: Schema.Date,
-  membersCanCreateTopics: Schema.Boolean,
-  kind: ChannelKind,
-  description: Schema.NullOr(Schema.String),
-  visibility: GroupVisibility,
-  handle: Schema.NullOr(Schema.String),
-  avatarUrl: Schema.optional(Schema.String),
-  background: GroupBackground,
-  listener: Schema.Struct({
-    enabled: Schema.Boolean,
-    eagerness: ListenerEagerness,
-    available: Schema.Boolean,
-  }),
-  members: Schema.Array(GroupMember),
-  ais: Schema.Array(GroupAi),
-});
-
-const MembersList = Schema.Struct({ members: Schema.Array(GroupMember) });
-
-const JoinResult = Schema.Struct({
-  groupId: Schema.String,
-  alreadyMember: Schema.Boolean,
-});
-
-const GroupIdParams = Schema.Struct({ id: Schema.String });
-const GroupMemberParams = Schema.Struct({ id: Schema.String, userId: Schema.String });
-const GroupAiParams = Schema.Struct({ id: Schema.String, aiId: Schema.String });
-
 // T-0124: role changes hit ejabberd (one affiliation write per call), so they
 // are capped per owner like topic creation is capped per user. The budget runs
 // before the payload is decoded, exactly like the old route's
 // `roleLimiter.allow` -> decode order.
-const RoleRateLimit = makeRateLimit(
-  'zilar/effect/http/GroupsRoleRateLimit',
-  'Too many role changes, try again later',
-);
+function roleRateLimitLayer(limiter: RateLimiter): Layer.Layer<GroupsRoleRateLimit> {
+  return Layer.succeed(
+    GroupsRoleRateLimit,
+    GroupsRoleRateLimit.of(
+      Effect.fnUntraced(function* (httpEffect) {
+        const user = yield* CurrentUser;
+        if (!limiter.allow(user.id)) {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          return httpErrorResponse(
+            requestIdOf(request),
+            new HttpError(429, 'rate_limited', 'Too many role changes, try again later'),
+          );
+        }
+        return yield* httpEffect;
+      }),
+    ),
+  );
+}
 
 // T-0164: the join budget runs before the path is decoded, exactly like the old
 // route's `joinLimiter.allow` -> `joinPublicGroup` order.
-const JoinRateLimit = makeRateLimit(
-  'zilar/effect/http/GroupsJoinRateLimit',
-  'Too many join attempts, try again later',
-);
-
-const GroupsGroup = HttpApiGroup.make('groups')
-  .add(
-    HttpApiEndpoint.post('create', '/groups', {
-      payload: CreateGroupBody,
-      success: GroupDetailView.pipe(HttpApiSchema.status(201)),
-    }),
-    HttpApiEndpoint.get('detail', '/groups/:id', {
-      params: GroupIdParams,
-      success: GroupDetailView,
-    }),
-    HttpApiEndpoint.get('members', '/groups/:id/members', {
-      params: GroupIdParams,
-      success: MembersList,
-    }),
-    HttpApiEndpoint.put('changeRole', '/groups/:id/members/:userId/role', {
-      params: GroupMemberParams,
-      payload: ChangeRoleBody,
-      success: GroupDetailView,
-    })
-      .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
-      .middleware(RoleRateLimit.Middleware),
-    HttpApiEndpoint.post('addMembers', '/groups/:id/members', {
-      params: GroupIdParams,
-      payload: AddMembersBody,
-      success: GroupDetailView,
-    }),
-    HttpApiEndpoint.delete('removeMember', '/groups/:id/members/:userId', {
-      params: GroupMemberParams,
-      success: GroupDetailView,
-    }),
-    HttpApiEndpoint.post('addAi', '/groups/:id/ais', {
-      params: GroupIdParams,
-      payload: AddAiBody,
-      success: GroupDetailView,
-    }),
-    HttpApiEndpoint.delete('removeAi', '/groups/:id/ais/:aiId', {
-      params: GroupAiParams,
-      success: GroupDetailView,
-    }),
-    HttpApiEndpoint.patch('patch', '/groups/:id', {
-      params: GroupIdParams,
-      payload: PatchGroupBody,
-      success: GroupDetailView,
-    }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
-    HttpApiEndpoint.post('join', '/groups/:id/join', {
-      params: GroupIdParams,
-      success: JoinResult,
-    }).middleware(JoinRateLimit.Middleware),
-  )
-  .middleware(Session)
-  .middleware(SchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
+function joinRateLimitLayer(limiter: RateLimiter): Layer.Layer<GroupsJoinRateLimit> {
+  return Layer.succeed(
+    GroupsJoinRateLimit,
+    GroupsJoinRateLimit.of(
+      Effect.fnUntraced(function* (httpEffect) {
+        const user = yield* CurrentUser;
+        if (!limiter.allow(user.id)) {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          return httpErrorResponse(
+            requestIdOf(request),
+            new HttpError(429, 'rate_limited', 'Too many join attempts, try again later'),
+          );
+        }
+        return yield* httpEffect;
+      }),
+    ),
+  );
+}
 
 const GroupsApi = HttpApi.make('groups').add(GroupsGroup);
 
@@ -321,7 +175,7 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
             await createGroup(deps.db, deps.adminClient, {
               creatorId: user.id,
               title: request.payload.title,
-              memberIds: [...request.payload.memberIds],
+              memberIds: [...(request.payload.memberIds ?? [])],
               domain,
               logger,
               ...(request.payload.kind === undefined ? {} : { kind: request.payload.kind }),
@@ -507,9 +361,9 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(GroupsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(RoleRateLimit.layer(roleLimiter)),
-    Layer.provide(JoinRateLimit.layer(joinLimiter)),
-    Layer.provide(schemaErrorLayer(logger)),
+    Layer.provide(roleRateLimitLayer(roleLimiter)),
+    Layer.provide(joinRateLimitLayer(joinLimiter)),
+    Layer.provide(chainASchemaErrorLayer(logger)),
   );
 
   return mountApi(GroupsApi, apiLayer);

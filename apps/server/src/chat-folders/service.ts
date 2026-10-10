@@ -6,50 +6,24 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
+import type { FolderChatType, FolderIcon } from '@zilar/api-contract';
 import type { ServerDatabase } from '../db/client';
 import type { ChatFolderRow } from '../db/rows';
 import { sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 
-// Mirrors `packages/chat-core/src/folders.ts` (FOLDER_ICONS,
-// FOLDER_NAME_MAX, FOLDERS_MAX, FOLDER_CHATS_MAX). The server does not
-// depend on `@zilar/chat-core`, so the list and limits are copied here.
-export const FOLDER_ICONS = [
-  'folder',
-  'message-circle',
-  'user',
-  'users',
-  'megaphone',
-  'bot',
-  'briefcase',
-  'house',
-  'star',
-  'heart',
-  'bookmark',
-  'flag',
-  'bell',
-  'globe',
-  'graduation-cap',
-  'gamepad-2',
-  'music',
-  'camera',
-  'shopping-bag',
-  'plane',
-  'coffee',
-  'dumbbell',
-  'code',
-  'wallet',
-] as const;
+// The icon list, chat types and the name and chat-list limits live in the
+// shared contract (T-0892; they mirror `packages/chat-core/src/folders.ts`).
+export {
+  FOLDER_CHATS_MAX,
+  FOLDER_CHAT_TYPES,
+  FOLDER_ICONS,
+  FOLDER_NAME_MAX,
+  type FolderChatType,
+  type FolderIcon,
+} from '@zilar/api-contract';
 
-export type FolderIcon = (typeof FOLDER_ICONS)[number];
-
-export const FOLDER_CHAT_TYPES = ['dm', 'group', 'channel', 'ai'] as const;
-
-export type FolderChatType = (typeof FOLDER_CHAT_TYPES)[number];
-
-export const FOLDER_NAME_MAX = 24;
 export const FOLDERS_MAX = 20;
-export const FOLDER_CHATS_MAX = 100;
 
 export type { ChatFolderRow };
 

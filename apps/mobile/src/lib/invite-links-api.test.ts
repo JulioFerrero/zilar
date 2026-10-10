@@ -41,11 +41,14 @@ describe('createInviteLinksApi', () => {
       calls.push(`${init?.method ?? 'GET'} ${url}`);
       const method = init?.method ?? 'GET';
       if (method === 'POST' && url.endsWith('/invite-links')) {
-        return jsonResponse({
-          id: 'link-1',
-          token: 'a'.repeat(64),
-          url: `http://web.test/j/${'a'.repeat(64)}`,
-        });
+        return jsonResponse(
+          {
+            id: 'link-1',
+            token: 'a'.repeat(64),
+            url: `http://web.test/j/${'a'.repeat(64)}`,
+          },
+          201,
+        );
       }
       if (method === 'DELETE') {
         return new Response(null, { status: 204 });
@@ -65,7 +68,7 @@ describe('createInviteLinksApi', () => {
 
   it('sends the create input as JSON', async () => {
     const fetchImpl = vi.fn(async () =>
-      jsonResponse({ id: 'link-1', token: 't', url: 'http://web.test/j/t' }),
+      jsonResponse({ id: 'link-1', token: 't', url: 'http://web.test/j/t' }, 201),
     ) as unknown as typeof fetch;
     const api = createInviteLinksApi(async () => 'session-token', fetchImpl, 'http://x.test');
     await api.createGroupInviteLink('g1', { label: 'Friends', expiresInHours: 48, maxUses: 10 });

@@ -8,13 +8,24 @@ import { PinsGroup } from './pins';
 // keep the chains' edits apart so parallel moves merge without conflicts.
 
 // Chain A (T-0892) imports: add `import { XGroup } from './x';` lines below.
+import { ChatFoldersGroup } from './chat-folders';
+import { ChatPrefsGroup } from './chat-prefs';
+import { GroupsGroup } from './groups';
+import { InviteLinksGroup } from './invite-links';
+import { RolesGroup } from './roles';
+import { TopicsGroup } from './topics';
 // ----------------------------------------------------------------------------
 // End of chain A imports.
 
 // Chain A (T-0892) groups: add `XGroup,` lines inside the brackets.
 // ----------------------------------------------------------------------------
 const chainAGroups = [
-  // (chain A groups)
+  ChatPrefsGroup,
+  ChatFoldersGroup,
+  RolesGroup,
+  InviteLinksGroup,
+  GroupsGroup,
+  TopicsGroup,
 ] as const;
 // ----------------------------------------------------------------------------
 // End of chain A.

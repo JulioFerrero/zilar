@@ -82,7 +82,7 @@ describe('topics API (T-0111)', () => {
       groupId: 'g-1',
       memberCount: 4,
       role: 'member' as const,
-      topics: [topicFixture(), { ...topicFixture(), visibility: 'secret' }, 42],
+      topics: [topicFixture(), { ...topicFixture(), memberCount: 'many' }, 42],
     };
     const topics = chatEntryTopics(entry);
     expect(topics).toHaveLength(1);

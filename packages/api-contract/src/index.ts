@@ -6,6 +6,15 @@ export * from './api';
 export * from './client';
 
 // Chain A (T-0892): add `export * from './<x>';` lines below.
+export * from './chain-a-middleware';
+export * from './iso-datetime';
+export * from './omit-undefined';
+export * from './chat-prefs';
+export * from './chat-folders';
+export * from './roles';
+export * from './invite-links';
+export * from './groups';
+export * from './topics';
 // ----------------------------------------------------------------------------
 // End of chain A.
 

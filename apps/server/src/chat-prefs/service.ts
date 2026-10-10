@@ -16,17 +16,8 @@ import { jidFor, localpartFor } from '../xmpp/provisioning';
 export const CHAT_PREFS_MAX_ROWS = 200;
 export const CHAT_PREFS_MAX_PINNED = 20;
 
-// Mirrors `CHAT_BACKGROUND_PRESET_IDS` in `packages/ui-tokens` (T-0457). The
-// server keeps its own copy so it does not depend on the UI package.
-export const CHAT_BACKGROUND_PRESET_IDS = [
-  'slate',
-  'gold',
-  'blue',
-  'navy',
-  'forest',
-  'wine',
-  'amber',
-] as const;
+// The preset ids live in the shared contract (T-0892).
+export { CHAT_BACKGROUND_PRESET_IDS } from '@zilar/api-contract';
 
 /** The three nullable background columns, shared by the pref and the default. */
 export interface BackgroundFields {

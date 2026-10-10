@@ -5,9 +5,9 @@ vi.mock('@/mock/gate', () => ({
   isMockApiEnabled: vi.fn(() => false),
 }));
 
+import { InviteLink as groupInviteLinkSchema } from '@zilar/api-contract';
 import {
   createGroupInviteLink,
-  groupInviteLinkSchema,
   joinByLink,
   listGroupInviteLinks,
   previewJoinLink,

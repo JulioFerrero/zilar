@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
+import { GROUP_MEMBERS_MAX } from '@zilar/api-contract';
 import { findOwnedAi } from '../ais/service';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
@@ -32,7 +33,7 @@ function runSql<A, E>(
   return sqlRuntimeFor(db).runPromise(effect);
 }
 
-export const MAX_GROUP_MEMBERS = 50;
+export const MAX_GROUP_MEMBERS = GROUP_MEMBERS_MAX;
 export const ROOM_LOCALPART_LENGTH = 16;
 
 const ROOM_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567';

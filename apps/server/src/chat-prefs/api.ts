@@ -2,29 +2,29 @@
 // paths, limiter order and answers as the deleted router (`routes.ts`),
 // mounted by the Effect edge (`apps/server/src/effect/edge.ts`). Its service
 // runs on effect/sql.
+//
+// The schemas and the group live in the shared contract (`@zilar/api-contract`,
+// T-0892); this file keeps the handlers and layers.
 
-import { Layer, Schema } from 'effect';
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { Layer } from 'effect';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
-import { IsoDateTimeSchema } from '@zilar/protocol';
+import { ChatPrefsGroup } from '@zilar/api-contract';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { createRateLimiter } from '../rate-limit';
 import {
-  SchemaErrors,
-  Session,
   handler,
   httpErrorResponse,
   mountApi,
   requestIdOf,
-  schemaErrorLayer,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
+import { chainASchemaErrorLayer } from '../groups/schema-errors';
 import {
-  CHAT_BACKGROUND_PRESET_IDS,
   getChatBackgroundDefault,
   listChatPrefs,
   putChatBackgroundDefault,
@@ -34,73 +34,6 @@ import {
 
 export const CHAT_PREFS_WRITE_RATE_LIMIT_MAX = 60;
 export const CHAT_PREFS_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-
-const BackgroundPreset = Schema.Literals(CHAT_BACKGROUND_PRESET_IDS);
-
-// The three nullable background columns, returned by the service for both the
-// per-chat pref and the per-user default. The response keeps `string` for the
-// preset so it accepts every persisted value.
-const BackgroundFields = Schema.Struct({
-  backgroundPreset: Schema.NullOr(Schema.String),
-  backgroundImageId: Schema.NullOr(Schema.String),
-  backgroundDim: Schema.NullOr(Schema.Number),
-});
-
-const ChatPrefView = Schema.Struct({
-  chatJid: Schema.String,
-  mutedUntil: Schema.NullOr(Schema.String),
-  archived: Schema.Boolean,
-  pinnedAt: Schema.NullOr(Schema.String),
-  backgroundPreset: Schema.NullOr(Schema.String),
-  backgroundImageId: Schema.NullOr(Schema.String),
-  backgroundDim: Schema.NullOr(Schema.Number),
-  updatedAt: Schema.String,
-});
-
-const ListChatPrefsResult = Schema.Struct({
-  prefs: Schema.Array(ChatPrefView),
-  defaultBackground: BackgroundFields,
-});
-
-// A write that lands back on the all-defaults row answers `{ prefs: null }`;
-// otherwise the bare pref view.
-const PutChatPrefResult = Schema.Union([ChatPrefView, Schema.Struct({ prefs: Schema.Null })]);
-
-const BackgroundDefaultResult = Schema.Struct({ defaultBackground: BackgroundFields });
-
-// `mutedUntil`: an ISO datetime string (a far-future value means "forever"),
-// or null to unmute. `pinned`: true stamps now, false clears the pin.
-// Background fields: a preset id, or an owned image id plus an optional dim;
-// null clears a field. Unknown keys are rejected through the strict payload
-// decode, like the other patch-style routes.
-const backgroundFieldsShape = {
-  backgroundPreset: Schema.optional(Schema.NullOr(BackgroundPreset)),
-  backgroundImageId: Schema.optional(
-    Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64))),
-  ),
-  backgroundDim: Schema.optional(
-    Schema.NullOr(
-      Schema.Number.check(
-        Schema.isInt(),
-        Schema.isGreaterThanOrEqualTo(0),
-        Schema.isLessThanOrEqualTo(80),
-      ),
-    ),
-  ),
-};
-
-const PutChatPrefBody = Schema.Struct({
-  mutedUntil: Schema.optional(Schema.NullOr(IsoDateTimeSchema)),
-  archived: Schema.optional(Schema.Boolean),
-  pinned: Schema.optional(Schema.Boolean),
-  ...backgroundFieldsShape,
-}).check(
-  Schema.makeFilter((value) => (Object.keys(value).length > 0 ? undefined : 'Nothing to update')),
-);
-
-const PutChatBackgroundBody = Schema.Struct(backgroundFieldsShape).check(
-  Schema.makeFilter((value) => (Object.keys(value).length > 0 ? undefined : 'Nothing to update')),
-);
 
 // A malformed percent escape is an unknown chat (404), not a server error.
 function decodePathJid(raw: string): string {
@@ -125,29 +58,6 @@ function parseMutedUntil(value: string | null | undefined): Date | null | undefi
 function tooManyChanges(): HttpError {
   return new HttpError(429, 'rate_limited', 'Too many preference changes, try again later');
 }
-
-const ChatPrefsGroup = HttpApiGroup.make('chatPrefs')
-  .add(
-    HttpApiEndpoint.get('list', '/chat-prefs', {
-      success: ListChatPrefsResult,
-    }),
-    HttpApiEndpoint.put('putPref', '/chat-prefs/:chatJid', {
-      params: { chatJid: Schema.String },
-      payload: PutChatPrefBody,
-      success: PutChatPrefResult,
-    }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
-    HttpApiEndpoint.get('getBackground', '/chat-background', {
-      success: BackgroundDefaultResult,
-    }),
-    HttpApiEndpoint.put('putBackground', '/chat-background', {
-      payload: PutChatBackgroundBody,
-      success: BackgroundDefaultResult,
-    }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
-  )
-  .middleware(Session)
-  .middleware(SchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
 
 const ChatPrefsApi = HttpApi.make('chatPrefs').add(ChatPrefsGroup);
 
@@ -238,7 +148,7 @@ export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMou
   const apiLayer = HttpApiBuilder.layer(ChatPrefsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(schemaErrorLayer(logger)),
+    Layer.provide(chainASchemaErrorLayer(logger)),
   );
 
   return mountApi(ChatPrefsApi, apiLayer);

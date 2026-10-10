@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0892](T-0892-contract-chain-a-groups.md) | api-contract chain A: groups, invite-links, roles, chat-folders, chat-prefs, topics | review | sonnet-5.5 | T-0891 | wave 5, phase 3 |
 | [T-0893](T-0893-contract-chain-b-ais.md) | api-contract chain B: ais, memory, connections, approvals, audit, tools, routines | review | sonnet-5.5 | T-0891 | wave 5, phase 3 |
 | [T-0894](T-0894-contract-chain-c-people.md) | api-contract chain C: contacts, contact-requests, directory, blocks, search, chats, handles | review | sonnet-5.5 | T-0891 | wave 5, phase 3 |
 | [T-0895](T-0895-contract-chain-d-media.md) | api-contract chain D: JSON parts of stickers, gifs, machines, integrations, push, backgrounds, media, auth | review | sonnet-5.5 | T-0891 | wave 5, phase 3 |
@@ -924,3 +923,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0886](T-0886-gateway-test-split.md) | Split apps/server/src/agents/gateway.test.ts (7,242 lines, 100 s) into feature files around one extracted harn | 2026-10-10 |
 | [T-0887](T-0887-slow-loop-tests.md) | Server: cut the loop-driven slow tests (600 real requests for a 429, 200 sticker uploads) without weakening th | 2026-10-10 |
 | [T-0891](T-0891-contract-prep-chains.md) | api-contract prep: one Session/CurrentUser, per-chain blocks, per-group smoke files | 2026-10-10 |
+| [T-0892](T-0892-contract-chain-a-groups.md) | api-contract chain A: move the groups, invite-links, roles, chat-folders, chat-prefs, topics groups into packa | 2026-10-10 |

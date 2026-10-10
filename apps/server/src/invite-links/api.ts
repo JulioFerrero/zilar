@@ -2,43 +2,35 @@
 // methods, paths, statuses (201 create, 204 revoke), bodies, limiter order
 // and audit calls as the deleted router (`routes.ts`), mounted by the Effect
 // edge (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
+//
+// The schemas and the group live in the shared contract (`@zilar/api-contract`,
+// T-0892); this file keeps the handlers and layers.
 
-import { Layer, Option, Schema } from 'effect';
-import type { HttpServerRequest } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiSchema,
-} from 'effect/http-api';
+import { Effect, Layer, Option, Schema } from 'effect';
+import { HttpServerRequest } from 'effect/http';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
+import { CurrentUser, InviteLinksGroup, InviteLinksPreviewRateLimit } from '@zilar/api-contract';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
-  SchemaErrors,
-  Session,
   handler,
+  httpErrorResponse,
   mountApi,
-  schemaErrorLayer,
+  requestIdOf,
   sessionLayer,
   socketAddressOf,
   type EffectApiMount,
 } from '../effect/http-core';
-import { makeRateLimit } from '../effect/rate-limit-middleware';
+import { chainASchemaErrorLayer } from '../groups/schema-errors';
 import { clientIpFrom } from '../http/client-ip';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   createInviteLink,
-  INVITE_LINK_CREATE_MAX_EXPIRY_HOURS,
-  INVITE_LINK_CREATE_MAX_USES,
-  INVITE_LINK_LABEL_MAX,
-  INVITE_LINK_MIN_EXPIRY_HOURS,
-  INVITE_LINK_MIN_MAX_USES,
   JOIN_PREVIEW_RATE_LIMIT_MAX_PER_USER,
   JOIN_PREVIEW_RATE_LIMIT_WINDOW_MS,
   JOIN_RATE_LIMIT_MAX_PER_IP,
@@ -81,106 +73,30 @@ export interface TestInviteLinksOverrides {
 
 const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
 
-// Replaces `tokenSchema` (zod): the shape check still answers the same 404
-// `invalid_link`, so it runs inside the handler where the old decode did.
+// The shape check still answers the same 404 `invalid_link`, so it runs inside
+// the handler where the old decode did; the contract keeps `:token` a string.
 const InviteToken = Schema.String.check(Schema.isPattern(TOKEN_PATTERN));
-
-// Replaces `createLinkSchema` (zod): trimmed before the length checks, exactly
-// like the old `.trim().min()/.max()`.
-const InviteLinkLabel = Schema.Trim.check(
-  Schema.isMinLength(1),
-  Schema.isMaxLength(INVITE_LINK_LABEL_MAX),
-);
-const ExpiresInHours = Schema.Number.check(
-  Schema.isInt(),
-  Schema.isGreaterThanOrEqualTo(INVITE_LINK_MIN_EXPIRY_HOURS),
-  Schema.isLessThanOrEqualTo(INVITE_LINK_CREATE_MAX_EXPIRY_HOURS),
-);
-const MaxUses = Schema.Number.check(
-  Schema.isInt(),
-  Schema.isGreaterThanOrEqualTo(INVITE_LINK_MIN_MAX_USES),
-  Schema.isLessThanOrEqualTo(INVITE_LINK_CREATE_MAX_USES),
-);
-
-const CreateLinkBody = Schema.Struct({
-  label: Schema.optional(InviteLinkLabel),
-  expiresInHours: Schema.optional(ExpiresInHours),
-  maxUses: Schema.optional(MaxUses),
-});
-
-const CreatedInviteLink = Schema.Struct({
-  id: Schema.String,
-  // The raw token, shown once at creation and never stored or listed.
-  token: Schema.String,
-  url: Schema.String,
-});
-
-const InviteLinkView = Schema.Struct({
-  id: Schema.String,
-  label: Schema.NullOr(Schema.String),
-  tokenHint: Schema.String,
-  uses: Schema.Number,
-  maxUses: Schema.NullOr(Schema.Number),
-  expiresAt: Schema.NullOr(Schema.String),
-  revoked: Schema.Boolean,
-  createdAt: Schema.String,
-});
-
-const InviteLinkList = Schema.Struct({ links: Schema.Array(InviteLinkView) });
-
-const JoinPreview = Schema.Struct({
-  groupTitle: Schema.String,
-  memberCount: Schema.Number,
-  alreadyMember: Schema.Boolean,
-  // Present only for an already-member, so previews leak no group ids.
-  groupId: Schema.optional(Schema.String),
-  kind: Schema.Literals(['group', 'channel']),
-});
-
-const JoinResult = Schema.Struct({
-  groupId: Schema.String,
-  alreadyMember: Schema.Boolean,
-});
-
-const GroupIdParams = Schema.Struct({ id: Schema.String });
-const InviteLinkParams = Schema.Struct({ id: Schema.String, linkId: Schema.String });
-const JoinTokenParams = Schema.Struct({ token: Schema.String });
 
 // The join preview limiter runs before the token is decoded, exactly like the
 // old route's `previewLimiter.allow` -> token check order.
-const PreviewRateLimit = makeRateLimit(
-  'zilar/effect/http/InviteLinksPreviewRateLimit',
-  'Too many join attempts, try again later',
-);
-
-const InviteLinksGroup = HttpApiGroup.make('invite-links')
-  .add(
-    HttpApiEndpoint.post('createLink', '/groups/:id/invite-links', {
-      params: GroupIdParams,
-      payload: CreateLinkBody,
-      success: CreatedInviteLink.pipe(HttpApiSchema.status(201)),
-    }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
-    HttpApiEndpoint.get('listLinks', '/groups/:id/invite-links', {
-      params: GroupIdParams,
-      success: InviteLinkList,
-    }),
-    HttpApiEndpoint.delete('revokeLink', '/groups/:id/invite-links/:linkId', {
-      params: InviteLinkParams,
-      success: HttpApiSchema.NoContent,
-    }),
-    HttpApiEndpoint.get('preview', '/join/:token', {
-      params: JoinTokenParams,
-      success: JoinPreview,
-    }).middleware(PreviewRateLimit.Middleware),
-    HttpApiEndpoint.post('join', '/join/:token', {
-      params: JoinTokenParams,
-      success: JoinResult,
-    }),
-  )
-  .middleware(Session)
-  .middleware(SchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
+function previewRateLimitLayer(limiter: RateLimiter): Layer.Layer<InviteLinksPreviewRateLimit> {
+  return Layer.succeed(
+    InviteLinksPreviewRateLimit,
+    InviteLinksPreviewRateLimit.of(
+      Effect.fnUntraced(function* (httpEffect) {
+        const user = yield* CurrentUser;
+        if (!limiter.allow(user.id)) {
+          const request = yield* HttpServerRequest.HttpServerRequest;
+          return httpErrorResponse(
+            requestIdOf(request),
+            new HttpError(429, 'rate_limited', 'Too many join attempts, try again later'),
+          );
+        }
+        return yield* httpEffect;
+      }),
+    ),
+  );
+}
 
 const InviteLinksApi = HttpApi.make('invite-links').add(InviteLinksGroup);
 
@@ -303,8 +219,8 @@ export function createInviteLinksApi(deps: InviteLinksApiDependencies): EffectAp
   const apiLayer = HttpApiBuilder.layer(InviteLinksApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(PreviewRateLimit.layer(previewLimiter)),
-    Layer.provide(schemaErrorLayer(logger)),
+    Layer.provide(previewRateLimitLayer(previewLimiter)),
+    Layer.provide(chainASchemaErrorLayer(logger)),
   );
 
   return mountApi(InviteLinksApi, apiLayer);

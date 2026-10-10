@@ -11,7 +11,6 @@ import type { InviteLogger } from '../groups/service';
 import { syncTopicRoom } from '../topics/rooms';
 
 export const MAX_ROLES_PER_GROUP = 20;
-export const ROLE_NAME_MAX = 30;
 
 export type { GroupRoleRow };
 

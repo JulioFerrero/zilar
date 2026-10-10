@@ -1,6 +1,34 @@
 import { Effect, Exit, Schema } from 'effect';
 import { ApiError, apiErrorFromBody, type Pin, type PinKind } from '@zilar/api-contract';
-import { FOLDER_ICONS, type FolderChatType, type FolderIcon } from '@zilar/chat-core';
+import {
+  omitUndefined,
+  type BackgroundPreset,
+  type ChatBackgroundChoice,
+  type ChatFolder as ApiChatFolder,
+  type CreatedInviteLink,
+  type GroupAi,
+  type GroupDetail,
+  type GroupJoinResult,
+  type GroupMember,
+  type GroupRole,
+  type ListenerEagerness,
+  type InviteLink as GroupInviteLink,
+  type JoinPreview,
+  type JoinResult,
+  type ChatPref,
+  type ApproverRole,
+  type Topic,
+  type TopicAi,
+  type TopicKind,
+  type TopicMember,
+  type TopicOwner,
+  type TopicRole,
+  type TopicStatus,
+  type TopicVisibility,
+  Topic as topicSchema,
+  trimTopicText,
+} from '@zilar/api-contract';
+import type { FolderChatType, FolderIcon } from '@zilar/chat-core';
 import { struct } from '@zilar/protocol';
 import { callApi } from '@/lib/effect/api-client';
 import { isMockApiEnabled } from '@/mock/gate';
@@ -130,75 +158,9 @@ export function chatEntryTopics(entry: ChatEntry): Topic[] {
 
 const chatsSchema = struct({ chats: Schema.mutable(Schema.Array(chatEntrySchema)) });
 
-const groupMemberSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-  role: Schema.Literals(['owner', 'admin', 'member']),
-  // T-0163: the member's `@username`. Optional so payloads from an older
-  // server still parse (treated as none).
-  handle: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0116: the custom group roles this member holds. Optional so payloads
-  // from an older server still parse (treated as none).
-  roles: Schema.optional(
-    Schema.mutable(Schema.Array(struct({ id: Schema.String, name: Schema.String }))),
-  ),
-  // T-0165: the member's picture. Optional so older payloads parse.
-  avatarUrl: Schema.optional(Schema.String),
-});
-
-const groupAiSchema = struct({
-  aiId: Schema.String,
-  jid: Schema.String,
-  name: Schema.String,
-  ownerId: Schema.String,
-  // T-0165: the AI's picture. Optional so older payloads parse.
-  avatarUrl: Schema.optional(Schema.String),
-});
-
-// T-0478: the group's AI listener. `available` is the server's
-// `LISTENER_ENABLED` flag: when false the controls stay disabled. Optional
-// on details so payloads from an older server still parse.
-const groupListenerSchema = struct({
-  enabled: Schema.Boolean,
-  eagerness: Schema.Literals(['quiet', 'normal', 'eager']),
-  available: Schema.Boolean,
-});
-
-export type ListenerEagerness = (typeof groupListenerSchema.Type)['eagerness'];
-
-const groupDetailSchema = struct({
-  id: Schema.String,
-  title: Schema.String,
-  createdBy: Schema.String,
-  // T-0108: plain members may create topics when the switch is on. Optional
-  // so payloads from an older server still parse (treated as off).
-  membersCanCreateTopics: Schema.optional(Schema.Boolean),
-  // T-0124: `channel` is the broadcast feed. Optional so older payloads
-  // parse as groups.
-  kind: Schema.optional(Schema.Literals(['group', 'channel'])),
-  // T-0124: the channel's short blurb. Optional so older payloads parse.
-  description: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0164: `public` groups hold exactly one handle row and appear in the
-  // directory; `private` stay invite-only. Optional so older payloads parse
-  // as private.
-  visibility: Schema.optional(Schema.Literals(['private', 'public'])),
-  // T-0164: the group's `@handle` while public, null while private.
-  // Optional so older payloads parse as none.
-  handle: Schema.optional(Schema.NullOr(Schema.String)),
-  // T-0165: the group's picture. Optional so older payloads parse.
-  avatarUrl: Schema.optional(Schema.String),
-  // T-0466: the group's shared background. Optional so older payloads parse.
-  background: Schema.optional(groupBackgroundSchema),
-  // T-0478: the AI listener switch and eagerness. Optional so older
-  // payloads parse (treated as off and unavailable).
-  listener: Schema.optional(groupListenerSchema),
-  members: Schema.mutable(Schema.Array(groupMemberSchema)),
-  ais: Schema.mutable(Schema.Array(groupAiSchema)),
-});
-
-export type GroupMember = typeof groupMemberSchema.Type;
-export type GroupAi = typeof groupAiSchema.Type;
-export type GroupDetail = typeof groupDetailSchema.Type;
+// The group detail schemas live in `@zilar/api-contract` (T-0892). The fields
+// older servers omitted stay optional there, so older payloads still parse.
+export type { GroupAi, GroupDetail, GroupMember, ListenerEagerness };
 
 const inviteSchema = struct({
   code: Schema.String,
@@ -289,33 +251,31 @@ export function createGroup(input: {
   // T-0124: the channel's short blurb (≤ 300).
   description?: string;
 }): Promise<GroupDetail> {
-  return request('/groups', groupDetailSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  // The server trims `title` and `description`; the contract encodes the
+  // trimmed form, so the client trims before sending.
+  return callApi((client) =>
+    client.groups.create({
+      payload: {
+        ...omitUndefined(input),
+        title: input.title.trim(),
+        ...(input.description === undefined ? {} : { description: input.description.trim() }),
+      },
+    }),
+  );
 }
 
 export function getGroup(groupId: string): Promise<GroupDetail> {
-  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema);
+  return callApi((client) => client.groups.detail({ params: { id: groupId } }));
 }
 
 // T-0054: an owner or admin adds their own AI to a group, and its owner or a
 // group manager removes it. Both answer the fresh group detail.
 export function addGroupAi(groupId: string, aiId: string): Promise<GroupDetail> {
-  return request(`/groups/${encodeURIComponent(groupId)}/ais`, groupDetailSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ aiId }),
-  });
+  return callApi((client) => client.groups.addAi({ params: { id: groupId }, payload: { aiId } }));
 }
 
 export function removeGroupAi(groupId: string, aiId: string): Promise<GroupDetail> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/ais/${encodeURIComponent(aiId)}`,
-    groupDetailSchema,
-    { method: 'DELETE' },
-  );
+  return callApi((client) => client.groups.removeAi({ params: { id: groupId, aiId } }));
 }
 
 export function createInvite(): Promise<Invite> {
@@ -338,86 +298,23 @@ export function getXmppToken(): Promise<XmppToken> {
 // carries its visible `topics` (archived excluded); older servers omit the
 // field, and the store treats such a group exactly as before. A topic the
 // viewer may not see is a 404 everywhere, byte-identical to a missing id.
-export const topicKindSchema = Schema.Literals(['chat', 'task', 'bug', 'ui', 'routine']);
-
-export type TopicKind = typeof topicKindSchema.Type;
-
-export const topicStatusSchema = Schema.Literals([
-  'open',
-  'in_progress',
-  'in_review',
-  'blocked',
-  'done',
-]);
-
-export type TopicStatus = typeof topicStatusSchema.Type;
-
-export const topicVisibilitySchema = Schema.Literals(['public', 'private']);
-
-export type TopicVisibility = typeof topicVisibilitySchema.Type;
-
-export const topicOwnerSchema = struct({
-  kind: Schema.Literals(['user', 'ai']),
-  id: Schema.String,
-  name: Schema.String,
-});
-
-export type TopicOwner = typeof topicOwnerSchema.Type;
-
-export const topicAiSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-});
-
-export type TopicAi = typeof topicAiSchema.Type;
-
-// T-0116: a custom group role attached to a topic (`roles`) or named as its
-// approver (`approverRole`). `memberCount` counts current holders.
-export const topicRoleSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-  memberCount: Schema.Number,
-});
-
-export type TopicRole = typeof topicRoleSchema.Type;
-
-export const approverRoleSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-});
-
-export type ApproverRole = typeof approverRoleSchema.Type;
-
-export const topicSchema = struct({
-  id: Schema.String,
-  groupId: Schema.String,
-  name: Schema.String,
-  glyph: Schema.String,
-  chatJid: Schema.String,
-  visibility: topicVisibilitySchema,
-  kind: topicKindSchema,
-  status: topicStatusSchema,
-  owner: Schema.NullOr(topicOwnerSchema),
-  linkUrl: Schema.NullOr(Schema.String),
-  linkLabel: Schema.NullOr(Schema.String),
-  isGeneral: Schema.Boolean,
-  archived: Schema.Boolean,
-  memberCount: Schema.Number,
-  ais: Schema.mutable(Schema.Array(topicAiSchema)),
-  // T-0116: roles with access and the approver role. Optional so payloads
-  // from an older server still parse (treated as none).
-  roles: Schema.optional(Schema.mutable(Schema.Array(topicRoleSchema))),
-  approverRole: Schema.optional(Schema.NullOr(approverRoleSchema)),
-});
-
-export type Topic = typeof topicSchema.Type;
-
-export const topicMemberSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-});
-
-export type TopicMember = typeof topicMemberSchema.Type;
+// The schemas live in `@zilar/api-contract` (T-0892). T-0116: `roles` and
+// `approverRole` are absent on older servers (treated as none). An unknown
+// kind, status or visibility from a newer server reads as `chat`, `open` and
+// `private`. `topicSchema` stays exported for the chat entries, which carry
+// topic rows that are decoded one by one.
+export { topicSchema };
+export type {
+  ApproverRole,
+  Topic,
+  TopicAi,
+  TopicKind,
+  TopicMember,
+  TopicOwner,
+  TopicRole,
+  TopicStatus,
+  TopicVisibility,
+};
 
 export interface CreateTopicInput {
   name: string;
@@ -445,80 +342,58 @@ export interface PatchTopicInput {
 }
 
 export function listGroupTopics(groupId: string): Promise<Topic[]> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/topics`,
-    struct({ topics: Schema.mutable(Schema.Array(topicSchema)) }),
-  ).then(({ topics }) => topics);
-}
-
-export function createTopic(groupId: string, input: CreateTopicInput): Promise<Topic> {
-  return request(`/groups/${encodeURIComponent(groupId)}/topics`, topicSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-}
-
-export function getTopic(id: string): Promise<Topic> {
-  return request(`/topics/${encodeURIComponent(id)}`, topicSchema);
-}
-
-export function patchTopic(id: string, input: PatchTopicInput): Promise<Topic> {
-  return request(`/topics/${encodeURIComponent(id)}`, topicSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
-}
-
-export function archiveTopic(id: string): Promise<Topic> {
-  return request(`/topics/${encodeURIComponent(id)}/archive`, topicSchema, { method: 'POST' });
-}
-
-export function listTopicMembers(id: string): Promise<TopicMember[]> {
-  return request(
-    `/topics/${encodeURIComponent(id)}/members`,
-    struct({ members: Schema.mutable(Schema.Array(topicMemberSchema)) }),
-  ).then(({ members }) => members);
-}
-
-export function addTopicMember(id: string, userId: string): Promise<Topic> {
-  return request(`/topics/${encodeURIComponent(id)}/members`, topicSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId }),
-  });
-}
-
-export function removeTopicMember(id: string, userId: string): Promise<Topic> {
-  return request(
-    `/topics/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`,
-    topicSchema,
-    {
-      method: 'DELETE',
-    },
+  return callApi((client) => client.topics.list({ params: { id: groupId } })).then(
+    ({ topics }) => topics,
   );
 }
 
+export function createTopic(groupId: string, input: CreateTopicInput): Promise<Topic> {
+  return callApi((client) =>
+    client.topics.create({
+      params: { id: groupId },
+      payload: omitUndefined(trimTopicText(input)),
+    }),
+  );
+}
+
+export function getTopic(id: string): Promise<Topic> {
+  return callApi((client) => client.topics.detail({ params: { id } }));
+}
+
+export function patchTopic(id: string, input: PatchTopicInput): Promise<Topic> {
+  return callApi((client) =>
+    client.topics.patch({ params: { id }, payload: omitUndefined(trimTopicText(input)) }),
+  );
+}
+
+export function archiveTopic(id: string): Promise<Topic> {
+  return callApi((client) => client.topics.archive({ params: { id } }));
+}
+
+export function listTopicMembers(id: string): Promise<TopicMember[]> {
+  return callApi((client) => client.topics.members({ params: { id } })).then(
+    ({ members }) => members,
+  );
+}
+
+export function addTopicMember(id: string, userId: string): Promise<Topic> {
+  return callApi((client) => client.topics.addMember({ params: { id }, payload: { userId } }));
+}
+
+export function removeTopicMember(id: string, userId: string): Promise<Topic> {
+  return callApi((client) => client.topics.removeMember({ params: { id, userId } }));
+}
+
 export function listTopicAis(id: string): Promise<TopicAi[]> {
-  return request(
-    `/topics/${encodeURIComponent(id)}/ais`,
-    struct({ ais: Schema.mutable(Schema.Array(topicAiSchema)) }),
-  ).then(({ ais }) => ais);
+  return callApi((client) => client.topics.listAis({ params: { id } })).then(({ ais }) => ais);
 }
 
 export function addTopicAi(id: string, aiId: string): Promise<Topic> {
-  return request(`/topics/${encodeURIComponent(id)}/ais`, topicSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ aiId }),
-  });
+  return callApi((client) => client.topics.addAi({ params: { id }, payload: { aiId } }));
 }
 
 export function removeTopicAi(id: string, aiId: string): Promise<Topic> {
-  return request(`/topics/${encodeURIComponent(id)}/ais/${encodeURIComponent(aiId)}`, topicSchema, {
-    method: 'DELETE',
-  });
+  return callApi((client) => client.topics.removeAi({ params: { id, aiId } }));
 }
 
 // --- Group roles (T-0116) ---------------------------------------------------
@@ -526,52 +401,31 @@ export function removeTopicAi(id: string, aiId: string): Promise<Topic> {
 // approver rights). Reading needs only membership; every write needs a
 // group owner/admin.
 
-export const groupRoleMemberSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-});
-
-export const groupRoleSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-  members: Schema.mutable(Schema.Array(groupRoleMemberSchema)),
-});
-
-export type GroupRole = typeof groupRoleSchema.Type;
+// The schemas live in `@zilar/api-contract` (T-0892).
+export type { GroupRole };
 
 export function listGroupRoles(groupId: string): Promise<GroupRole[]> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/roles`,
-    struct({ roles: Schema.mutable(Schema.Array(groupRoleSchema)) }),
-  ).then(({ roles }) => roles);
+  return callApi((client) => client.roles.list({ params: { id: groupId } })).then(
+    ({ roles }) => roles,
+  );
 }
 
+// The server trims `name`; the contract encodes the trimmed form, so the
+// client trims before sending.
 export function createGroupRole(groupId: string, name: string): Promise<GroupRole> {
-  return request(`/groups/${encodeURIComponent(groupId)}/roles`, groupRoleSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
+  return callApi((client) =>
+    client.roles.create({ params: { id: groupId }, payload: { name: name.trim() } }),
+  );
 }
 
 export function renameGroupRole(groupId: string, roleId: string, name: string): Promise<GroupRole> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/roles/${encodeURIComponent(roleId)}`,
-    groupRoleSchema,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    },
+  return callApi((client) =>
+    client.roles.rename({ params: { id: groupId, roleId }, payload: { name: name.trim() } }),
   );
 }
 
 export async function deleteGroupRole(groupId: string, roleId: string): Promise<void> {
-  await request(
-    `/groups/${encodeURIComponent(groupId)}/roles/${encodeURIComponent(roleId)}`,
-    Schema.Null,
-    { method: 'DELETE' },
-  );
+  await callApi((client) => client.roles.remove({ params: { id: groupId, roleId } }));
 }
 
 export function setGroupRoleMembers(
@@ -579,14 +433,8 @@ export function setGroupRoleMembers(
   roleId: string,
   userIds: string[],
 ): Promise<GroupRole> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/roles/${encodeURIComponent(roleId)}/members`,
-    groupRoleSchema,
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userIds }),
-    },
+  return callApi((client) =>
+    client.roles.setMembers({ params: { id: groupId, roleId }, payload: { userIds } }),
   );
 }
 
@@ -596,11 +444,7 @@ export interface SetTopicRolesInput {
 }
 
 export function setTopicRoles(id: string, input: SetTopicRolesInput): Promise<Topic> {
-  return request(`/topics/${encodeURIComponent(id)}/roles`, topicSchema, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) => client.topics.setRoles({ params: { id }, payload: input }));
 }
 
 // T-0108: the group owner/admin switch for plain members creating topics.
@@ -608,11 +452,9 @@ export function setMembersCanCreateTopics(
   groupId: string,
   membersCanCreateTopics: boolean,
 ): Promise<GroupDetail> {
-  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ membersCanCreateTopics }),
-  });
+  return callApi((client) =>
+    client.groups.patch({ params: { id: groupId }, payload: { membersCanCreateTopics } }),
+  );
 }
 
 export interface SetGroupListenerInput {
@@ -626,11 +468,18 @@ export function setGroupListener(
   groupId: string,
   input: SetGroupListenerInput,
 ): Promise<GroupDetail> {
-  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) =>
+    client.groups.patch({ params: { id: groupId }, payload: omitUndefined(input) }),
+  );
+}
+
+// The patch encoder checks the preset against the contract's list, so an
+// unknown id fails as `invalid_request` before any request is sent.
+function backgroundPatch(background: GroupBackground) {
+  return {
+    ...background,
+    backgroundPreset: background.backgroundPreset as BackgroundPreset | null,
+  };
 }
 
 // T-0466: owners and admins set the group's shared background. A member gets
@@ -639,11 +488,12 @@ export function setGroupBackground(
   groupId: string,
   background: GroupBackground,
 ): Promise<GroupDetail> {
-  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ background }),
-  });
+  return callApi((client) =>
+    client.groups.patch({
+      params: { id: groupId },
+      payload: { background: backgroundPatch(background) },
+    }),
+  );
 }
 
 // Web UI helper for T-0111: the panel shows the rules of one topic, read
@@ -656,12 +506,8 @@ export function setGroupBackground(
 // subscribers are visitors), everyone else subscribes, reads and mutes. A
 // channel is a group with one feed (its General topic): no more topics, and
 // the member list is visible to admins only (subscribers see the count).
-export const groupMemberListSchema = struct({
-  members: Schema.mutable(Schema.Array(groupMemberSchema)),
-});
-
 export function listGroupMembers(groupId: string): Promise<GroupMember[]> {
-  return request(`/groups/${encodeURIComponent(groupId)}/members`, groupMemberListSchema).then(
+  return callApi((client) => client.groups.members({ params: { id: groupId } })).then(
     ({ members }) => members,
   );
 }
@@ -674,23 +520,13 @@ export function changeGroupMemberRole(
   userId: string,
   role: 'admin' | 'member',
 ): Promise<GroupDetail> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}/role`,
-    groupDetailSchema,
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role }),
-    },
+  return callApi((client) =>
+    client.groups.changeRole({ params: { id: groupId, userId }, payload: { role } }),
   );
 }
 
 export function removeGroupMember(groupId: string, userId: string): Promise<GroupDetail> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
-    groupDetailSchema,
-    { method: 'DELETE' },
-  );
+  return callApi((client) => client.groups.removeMember({ params: { id: groupId, userId } }));
 }
 
 export const topicToolSchema = struct({
@@ -719,30 +555,8 @@ export function listTopicTools(topicId: string): Promise<TopicTool[]> {
 // Shareable links that join a group as `member` (`${WEB}/j/<token>` on the
 // web). The token is shown once at creation and never stored — the list
 // below carries hints, labels, uses and state, never tokens.
-export const groupInviteLinkSchema = struct({
-  id: Schema.String,
-  label: Schema.NullOr(Schema.String),
-  tokenHint: Schema.String,
-  uses: Schema.Number,
-  maxUses: Schema.NullOr(Schema.Number),
-  expiresAt: Schema.NullOr(Schema.String),
-  revoked: Schema.Boolean,
-  createdAt: Schema.String,
-});
-
-export type GroupInviteLink = typeof groupInviteLinkSchema.Type;
-
-const groupInviteLinksSchema = struct({
-  links: Schema.mutable(Schema.Array(groupInviteLinkSchema)),
-});
-
-const createdInviteLinkSchema = struct({
-  id: Schema.String,
-  token: Schema.String,
-  url: Schema.String,
-});
-
-export type CreatedInviteLink = typeof createdInviteLinkSchema.Type;
+// The schemas live in `@zilar/api-contract` (T-0892).
+export type { CreatedInviteLink, GroupInviteLink };
 
 export interface CreateGroupInviteLinkInput {
   label?: string;
@@ -750,30 +564,31 @@ export interface CreateGroupInviteLinkInput {
   maxUses?: number;
 }
 
+// The server trims `label`; the contract encodes the trimmed form, so the
+// client trims before sending.
 export function createGroupInviteLink(
   groupId: string,
   input: CreateGroupInviteLinkInput = {},
 ): Promise<CreatedInviteLink> {
-  return request(`/groups/${encodeURIComponent(groupId)}/invite-links`, createdInviteLinkSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) =>
+    client['invite-links'].createLink({
+      params: { id: groupId },
+      payload: {
+        ...omitUndefined(input),
+        ...(input.label === undefined ? {} : { label: input.label.trim() }),
+      },
+    }),
+  );
 }
 
 export function listGroupInviteLinks(groupId: string): Promise<GroupInviteLink[]> {
-  return request(
-    `/groups/${encodeURIComponent(groupId)}/invite-links`,
-    groupInviteLinksSchema,
-  ).then(({ links }) => links);
+  return callApi((client) => client['invite-links'].listLinks({ params: { id: groupId } })).then(
+    ({ links }) => links,
+  );
 }
 
 export async function revokeGroupInviteLink(groupId: string, linkId: string): Promise<void> {
-  await request(
-    `/groups/${encodeURIComponent(groupId)}/invite-links/${encodeURIComponent(linkId)}`,
-    Schema.Null,
-    { method: 'DELETE' },
-  );
+  await callApi((client) => client['invite-links'].revokeLink({ params: { id: groupId, linkId } }));
 }
 
 // --- Join by link (T-0115) -------------------------------------------------
@@ -783,31 +598,16 @@ export async function revokeGroupInviteLink(groupId: string, linkId: string): Pr
 // as `member` and returns the group id; an existing member answers
 // `alreadyMember: true` without consuming a use.
 
-export const joinPreviewSchema = struct({
-  groupTitle: Schema.String,
-  memberCount: Schema.Number,
-  alreadyMember: Schema.Boolean,
-  groupId: Schema.optional(Schema.String),
-  // T-0124: `channel` previews read "Join channel" (and count subscribers);
-  // absent on older servers = a group.
-  kind: Schema.optional(Schema.Literals(['group', 'channel'])),
-});
-
-export type JoinPreview = typeof joinPreviewSchema.Type;
-
-const joinResultSchema = struct({
-  groupId: Schema.String,
-  alreadyMember: Schema.Boolean,
-});
-
-export type JoinResult = typeof joinResultSchema.Type;
+// T-0124: `channel` previews read "Join channel" (and count subscribers);
+// `kind` is absent on older servers = a group.
+export type { JoinPreview, JoinResult };
 
 export function previewJoinLink(token: string): Promise<JoinPreview> {
-  return request(`/join/${encodeURIComponent(token)}`, joinPreviewSchema);
+  return callApi((client) => client['invite-links'].preview({ params: { token } }));
 }
 
 export function joinByLink(token: string): Promise<JoinResult> {
-  return request(`/join/${encodeURIComponent(token)}`, joinResultSchema, { method: 'POST' });
+  return callApi((client) => client['invite-links'].join({ params: { token } }));
 }
 
 // --- Chat preferences (T-0113) -------------------------------------------------
@@ -816,22 +616,10 @@ export function joinByLink(token: string): Promise<JoinResult> {
 // group covers its topics (the pref sits on the General room JID and the
 // client applies it to every topic unless the topic has its own row).
 
-const chatPrefSchema = struct({
-  chatJid: Schema.String,
-  mutedUntil: Schema.NullOr(Schema.String),
-  archived: Schema.Boolean,
-  pinnedAt: Schema.NullOr(Schema.String),
-  updatedAt: Schema.String,
-  // T-0461: per-chat background override (T-0458). All null when the chat
-  // inherits the caller's global default.
-  backgroundPreset: Schema.optional(Schema.NullOr(Schema.String)),
-  backgroundImageId: Schema.optional(Schema.NullOr(Schema.String)),
-  backgroundDim: Schema.optional(Schema.NullOr(Schema.Number)),
-});
-
-export type ChatPref = typeof chatPrefSchema.Type;
-
-const chatPrefsSchema = struct({ prefs: Schema.mutable(Schema.Array(chatPrefSchema)) });
+// The schemas live in `@zilar/api-contract` (T-0892). T-0461: the per-chat
+// background fields are all null when the chat inherits the caller's global
+// default.
+export type { ChatPref };
 
 export interface PutChatPrefInput {
   mutedUntil?: string | null | undefined;
@@ -845,25 +633,28 @@ export interface PutChatPrefInput {
 }
 
 export function listChatPrefs(): Promise<ChatPref[]> {
-  return request('/chat-prefs', chatPrefsSchema).then((body) => body.prefs);
+  return callApi((client) => client.chatPrefs.list()).then((body) => [...body.prefs]);
 }
 
 // T-0461: the caller's global chat background default (T-0458). `GET
 // /chat-background` returns it under `defaultBackground`; all-null means the
 // caller never chose one, so chats fall back to the slate grid.
-const chatBackgroundChoiceSchema = struct({
-  backgroundPreset: Schema.NullOr(Schema.String),
-  backgroundImageId: Schema.NullOr(Schema.String),
-  backgroundDim: Schema.NullOr(Schema.Number),
-});
-
-export type ChatBackgroundChoice = typeof chatBackgroundChoiceSchema.Type;
+export type { ChatBackgroundChoice };
 
 export function getChatBackgroundDefault(): Promise<ChatBackgroundChoice> {
-  return request(
-    '/chat-background',
-    struct({ defaultBackground: chatBackgroundChoiceSchema }),
-  ).then((body) => body.defaultBackground);
+  return callApi((client) => client.chatPrefs.getBackground()).then(
+    (body) => body.defaultBackground,
+  );
+}
+
+// The payload encoder checks the preset against the contract's list, so an
+// unknown id fails as `invalid_request` before any request is sent. Fields set
+// to `undefined` are left out, as `JSON.stringify` always did.
+function prefPayload(input: PutChatPrefInput) {
+  return omitUndefined({
+    ...input,
+    backgroundPreset: input.backgroundPreset as BackgroundPreset | null | undefined,
+  });
 }
 
 // T-0462: write the caller's global background default. The body carries the
@@ -871,30 +662,22 @@ export function getChatBackgroundDefault(): Promise<ChatBackgroundChoice> {
 export function putChatBackgroundDefault(
   input: ChatBackgroundChoice,
 ): Promise<ChatBackgroundChoice> {
-  return request('/chat-background', struct({ defaultBackground: chatBackgroundChoiceSchema }), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  }).then((body) => body.defaultBackground);
+  return callApi((client) => client.chatPrefs.putBackground({ payload: prefPayload(input) })).then(
+    (body) => body.defaultBackground,
+  );
 }
 
 export async function putChatPref(
   chatJid: string,
   input: PutChatPrefInput,
 ): Promise<ChatPref | null> {
-  const raw: unknown = await request(
-    `/chat-prefs/${encodeURIComponent(chatJid)}`,
-    Schema.Union([chatPrefSchema, struct({ prefs: Schema.Null })]),
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
-    },
+  const saved = await callApi((client) =>
+    client.chatPrefs.putPref({
+      params: { chatJid },
+      payload: prefPayload(input),
+    }),
   );
-  if (typeof raw === 'object' && raw !== null && 'prefs' in raw) {
-    return null;
-  }
-  return Schema.decodeUnknownSync(chatPrefSchema)(raw);
+  return 'prefs' in saved ? null : saved;
 }
 
 // --- Chat folders (T-0237) ---------------------------------------------------
@@ -902,28 +685,8 @@ export async function putChatPref(
 // the client only lists and syncs them here (create/rename/delete/reorder
 // UI is T-0238). The wire shape mirrors `ChatFolder` in chat-core.
 
-const folderChatTypeSchema = Schema.Literals(['dm', 'group', 'channel', 'ai']);
-const folderIconSchema = Schema.Literals(FOLDER_ICONS);
-
-export const chatFolderSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-  icon: folderIconSchema,
-  position: Schema.Number,
-  includeTypes: Schema.mutable(Schema.Array(folderChatTypeSchema)),
-  includeChats: Schema.mutable(Schema.Array(Schema.String)),
-  excludeChats: Schema.mutable(Schema.Array(Schema.String)),
-  excludeMuted: Schema.Boolean,
-  excludeRead: Schema.Boolean,
-});
-
-export type ApiChatFolder = typeof chatFolderSchema.Type;
-
-const chatFoldersSchema = struct({
-  folders: Schema.mutable(Schema.Array(chatFolderSchema)),
-});
-const chatFolderResultSchema = struct({ folder: chatFolderSchema });
-const chatFolderDeletedSchema = struct({ deleted: Schema.Literal(true) });
+// The schemas live in `@zilar/api-contract` (T-0892).
+export type { ApiChatFolder };
 
 export interface CreateChatFolderInput {
   name: string;
@@ -938,37 +701,39 @@ export interface CreateChatFolderInput {
 export type PatchChatFolderInput = Partial<CreateChatFolderInput>;
 
 export function listChatFolders(): Promise<ApiChatFolder[]> {
-  return request('/chat-folders', chatFoldersSchema).then((body) => body.folders);
+  return callApi((client) => client.chatFolders.list()).then((body) => [...body.folders]);
 }
 
+// The server trims `name`; the contract encodes the trimmed form, so the
+// client trims before sending.
 export function createChatFolder(input: CreateChatFolderInput): Promise<ApiChatFolder> {
-  return request('/chat-folders', chatFolderResultSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  }).then((body) => body.folder);
+  return callApi((client) =>
+    client.chatFolders.create({ payload: { ...omitUndefined(input), name: input.name.trim() } }),
+  ).then((body) => body.folder);
 }
 
+// The server trims `name`; the contract encodes the trimmed form, so the
+// client trims before sending.
 export function patchChatFolder(id: string, input: PatchChatFolderInput): Promise<ApiChatFolder> {
-  return request(`/chat-folders/${encodeURIComponent(id)}`, chatFolderResultSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  }).then((body) => body.folder);
+  return callApi((client) =>
+    client.chatFolders.update({
+      params: { id },
+      payload: {
+        ...omitUndefined(input),
+        ...(input.name === undefined ? {} : { name: input.name.trim() }),
+      },
+    }),
+  ).then((body) => body.folder);
 }
 
 export function reorderChatFolders(ids: string[]): Promise<ApiChatFolder[]> {
-  return request('/chat-folders/order', chatFoldersSchema, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ids }),
-  }).then((body) => body.folders);
+  return callApi((client) => client.chatFolders.order({ payload: { ids } })).then((body) => [
+    ...body.folders,
+  ]);
 }
 
 export async function deleteChatFolder(id: string): Promise<void> {
-  await request(`/chat-folders/${encodeURIComponent(id)}`, chatFolderDeletedSchema, {
-    method: 'DELETE',
-  });
+  await callApi((client) => client.chatFolders.remove({ params: { id } }));
 }
 
 // --- Pinned messages (T-0114) ------------------------------------------------
@@ -2467,20 +2232,13 @@ export function lookupGroupByHandle(handle: string): Promise<DirectoryEntry> {
   return request(`/groups/by-handle/${encodeURIComponent(handle)}`, directoryEntrySchema);
 }
 
-const publicJoinResultSchema = struct({
-  groupId: Schema.String,
-  alreadyMember: Schema.Boolean,
-});
-
-export type PublicJoinResult = typeof publicJoinResultSchema.Type;
+export type PublicJoinResult = GroupJoinResult;
 
 // Joins a public group or channel with one request (private or unknown
 // answers the same 404; a full group 409 `group_full`; joining twice is
 // harmless with `alreadyMember: true`).
 export function joinPublicGroup(groupId: string): Promise<PublicJoinResult> {
-  return request(`/groups/${encodeURIComponent(groupId)}/join`, publicJoinResultSchema, {
-    method: 'POST',
-  });
+  return callApi((client) => client.groups.join({ params: { id: groupId } }));
 }
 
 // Owner-only: flips a group public (with a handle) or back to private.
@@ -2490,11 +2248,9 @@ export function setGroupVisibility(
   groupId: string,
   input: { visibility: 'private' | 'public'; handle?: string },
 ): Promise<GroupDetail> {
-  return request(`/groups/${encodeURIComponent(groupId)}`, groupDetailSchema, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  return callApi((client) =>
+    client.groups.patch({ params: { id: groupId }, payload: omitUndefined(input) }),
+  );
 }
 
 // Live availability of a handle for a public group or channel (the same

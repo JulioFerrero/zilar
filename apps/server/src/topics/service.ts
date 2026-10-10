@@ -30,10 +30,6 @@ import { deleteToolsForAiInTopicEffect } from '../tools/service';
 import { runSql } from '../effect/sql';
 import { syncTopicRoom } from './rooms';
 
-export const TOPIC_NAME_MAX = 80;
-export const TOPIC_LINK_URL_MAX = 300;
-export const TOPIC_LINK_LABEL_MAX = 40;
-
 // The request bodies are validated at the Effect HTTP boundary in `api.ts`;
 // these are the shapes the service accepts.
 export interface CreateTopicBody {

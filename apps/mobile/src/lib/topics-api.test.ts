@@ -147,6 +147,10 @@ describe('createTopicsApi', () => {
       if (url.endsWith('/ais') && (init?.method ?? 'GET') === 'GET') {
         return jsonResponse({ ais: [{ id: 'dev-1', name: 'Dev-1' }] });
       }
+      // Creating answers 201, as the contract declares.
+      if (url.endsWith('/topics') && init?.method === 'POST') {
+        return jsonResponse(topicRow(), 201);
+      }
       return jsonResponse(topicRow());
     });
 
@@ -163,7 +167,17 @@ describe('createTopicsApi', () => {
     await expect(api.addTopicAi('t-1', 'dev-1')).resolves.toMatchObject({ id: 't-1' });
     await expect(api.removeTopicAi('t-1', 'dev-1')).resolves.toMatchObject({ id: 't-1' });
 
-    const switchApi = switchApiFor(async () => jsonResponse({ membersCanCreateTopics: true }));
+    // The switch is a group patch, which answers the whole group detail.
+    const switchApi = switchApiFor(async () =>
+      jsonResponse({
+        id: 'g1',
+        title: 'Team',
+        createdBy: 'u-owner',
+        membersCanCreateTopics: true,
+        members: [],
+        ais: [],
+      }),
+    );
     await expect(switchApi.setMembersCanCreateTopics('g1', true)).resolves.toBe(true);
 
     expect(calls).toContain('POST http://127.0.0.1:3188/api/groups/g1/topics');

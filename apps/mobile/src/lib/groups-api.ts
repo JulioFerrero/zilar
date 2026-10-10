@@ -1,19 +1,15 @@
-import { Data, Effect, Exit, Schema, type Effect as EffectType } from 'effect';
-import { struct } from '@zilar/protocol';
+import { ApiError, runApi } from '@zilar/api-contract';
 
-import { errorFieldsOf } from './api-error-body';
 import { API_URL } from './auth';
 import type { GroupMember, TokenProvider } from './chat-api';
+import { createApiClient } from './effect/api-client';
 
 /**
  * The channel management calls (T-0144), the mobile twin of the web channel
  * client (`apps/web/src/lib/api.ts`, "Channels"): create a channel, leave
- * one, read the members slice and flip a member's role. The wire contract
- * lives in `apps/server/src/groups/api.ts` (T-0124).
- *
- * The boundary is validated with Effect Schema (T-0532, the T-0506 recipe):
- * the request is an Effect pipeline, cut back to a `Promise` at the edge with
- * `Effect.runPromise`. A malformed payload throws `invalid_response`. Raw
+ * one, read the members slice and flip a member's role, as a Promise port over
+ * the client derived from the shared contract (`@zilar/api-contract`,
+ * `groups.ts`, T-0892). A malformed payload throws `invalid_response`. Raw
  * server messages never reach the UI; callers map status/code to their own
  * neutral lines.
  */
@@ -56,112 +52,9 @@ export interface GroupsApi {
   removeGroupMember(groupId: string, userId: string): Promise<void>;
 }
 
-export class GroupsApiError extends Error {
-  readonly status: number;
-  readonly code: string;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = 'GroupsApiError';
-    this.status = status;
-    this.code = code;
-  }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-const NamedRoleSchema = struct({
-  id: Schema.String,
-  name: Schema.String,
-});
-
-const GroupMemberSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-  role: Schema.Literals(['owner', 'admin', 'member']),
-  roles: Schema.optional(Schema.mutable(Schema.Array(NamedRoleSchema))),
-});
-
-// The slice rejects as a whole when any member is malformed, so a half-rendered
-// audience never reaches the UI.
-const GroupMembersEnvelopeSchema = struct({
-  members: Schema.mutable(Schema.Array(GroupMemberSchema)),
-});
-
-const IdAckSchema = struct({ id: Schema.String });
-
-function parseGroupMembers(value: unknown): GroupMember[] | null {
-  const decoded = Schema.decodeUnknownExit(GroupMembersEnvelopeSchema)(value);
-  if (!Exit.isSuccess(decoded)) {
-    return null;
-  }
-  return decoded.value.members.map((member) => ({
-    userId: member.userId,
-    name: member.name,
-    role: member.role,
-    roles: member.roles ?? [],
-  }));
-}
-
-function parseIdAck(value: unknown): { id: string } | null {
-  const decoded = Schema.decodeUnknownExit(IdAckSchema)(value);
-  return Exit.isSuccess(decoded) ? decoded.value : null;
-}
-
-// The role and remove calls only require a JSON object; any record answers.
-function parseRecord(value: unknown): Record<string, unknown> | null {
-  return isRecord(value) ? value : null;
-}
-
-// The internal failures, one per case. They carry no field beyond what the old
-// `GroupsApiError` already surfaced; the `Promise` edge maps each back to that
-// same error, status, code and message.
-class GroupsNetworkError extends Data.TaggedError('GroupsNetworkError') {}
-class GroupsRequestError extends Data.TaggedError('GroupsRequestError')<{
-  readonly status: number;
-  readonly code: string;
-  readonly message: string;
-}> {}
-class GroupsUnauthorized extends Data.TaggedError('GroupsUnauthorized') {}
-class GroupsInvalidResponse extends Data.TaggedError('GroupsInvalidResponse') {}
-
-const requestEffect = Effect.fnUntraced(function* (
-  apiUrl: string,
-  path: string,
-  token: string,
-  init: RequestInit,
-  fetchImpl: typeof fetch,
-): EffectType.fn.Return<unknown, GroupsNetworkError | GroupsRequestError> {
-  const response = yield* Effect.tryPromise({
-    try: (signal) =>
-      fetchImpl(`${apiUrl}${path}`, {
-        ...init,
-        signal,
-        headers: {
-          accept: 'application/json',
-          authorization: `Bearer ${token}`,
-          ...init.headers,
-        },
-      }),
-    catch: () => new GroupsNetworkError(),
-  });
-
-  const body: unknown = yield* Effect.promise(
-    () => response.json().catch(() => null) as Promise<unknown>,
-  );
-
-  if (!response.ok) {
-    const error = errorFieldsOf(body);
-    return yield* new GroupsRequestError({
-      status: response.status,
-      code: error.code ?? 'request_failed',
-      message: error.message ?? `Request failed (${response.status})`,
-    });
-  }
-  return body;
-});
+/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
+export const GroupsApiError = ApiError;
+export type GroupsApiError = ApiError;
 
 /** The production `GroupsApi`: bearer auth, `fetch`, and the build-time API URL. */
 export function createGroupsApi(
@@ -169,57 +62,14 @@ export function createGroupsApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): GroupsApi {
-  const withTokenEffect = Effect.fnUntraced(function* (
-    path: string,
-    init: RequestInit,
-    parse: (value: unknown) => unknown,
-  ): EffectType.fn.Return<
-    unknown,
-    GroupsUnauthorized | GroupsNetworkError | GroupsRequestError | GroupsInvalidResponse
-  > {
-    const token = yield* Effect.promise(() => getToken());
-    if (token === undefined) {
-      return yield* new GroupsUnauthorized();
-    }
-    const body = yield* requestEffect(apiUrl, path, token, init, fetchImpl);
-    const parsed = parse(body);
-    if (parsed === null) {
-      return yield* new GroupsInvalidResponse();
-    }
-    return parsed;
-  });
-
-  const withToken = (
-    path: string,
-    init: RequestInit,
-    parse: (value: unknown) => unknown,
-  ): Promise<unknown> =>
-    Effect.runPromise(
-      withTokenEffect(path, init, parse).pipe(
-        Effect.catchTags({
-          GroupsUnauthorized: () =>
-            Effect.fail(new GroupsApiError(401, 'unauthorized', 'No session')),
-          GroupsNetworkError: () =>
-            Effect.fail(new GroupsApiError(0, 'network_error', 'Could not reach the server')),
-          GroupsRequestError: (error) =>
-            Effect.fail(new GroupsApiError(error.status, error.code, error.message)),
-          GroupsInvalidResponse: () =>
-            Effect.fail(
-              new GroupsApiError(200, 'invalid_response', 'The server sent an unexpected response'),
-            ),
-        }),
-      ),
-    );
-
+  const client = createApiClient({ getToken, fetchImpl, apiUrl });
   return {
-    async createChannel(input) {
-      const body = await withToken(
-        '/api/groups',
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            title: input.title,
+    // The server trims `title`; the contract encodes the trimmed form.
+    createChannel: (input) =>
+      runApi(
+        client.groups.create({
+          payload: {
+            title: input.title.trim(),
             kind: 'channel',
             ...(input.description === undefined || input.description.trim() === ''
               ? {}
@@ -227,58 +77,40 @@ export function createGroupsApi(
             // T-0228: visibility and handle go over the wire only on public
             // creates (private requests stay exactly as before).
             ...(input.visibility === 'public' && input.handle !== undefined
-              ? { visibility: 'public', handle: input.handle }
+              ? { visibility: 'public' as const, handle: input.handle }
               : {}),
-          }),
-        },
-        parseIdAck,
-      );
-      return body as { id: string };
-    },
-    async createGroup(input) {
-      const body = await withToken(
-        '/api/groups',
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            title: input.title,
+          },
+        }),
+      ).then(({ id }) => ({ id })),
+    createGroup: (input) =>
+      runApi(
+        client.groups.create({
+          payload: {
+            title: input.title.trim(),
             memberIds: input.memberIds,
             // T-0228: public creates carry the handle in the same step.
             ...(input.visibility === 'public' && input.handle !== undefined
-              ? { visibility: 'public', handle: input.handle }
+              ? { visibility: 'public' as const, handle: input.handle }
               : {}),
-          }),
-        },
-        parseIdAck,
-      );
-      return body as { id: string };
-    },
-    async listGroupMembers(groupId) {
-      const body = await withToken(
-        `/api/groups/${encodeURIComponent(groupId)}/members`,
-        { method: 'GET' },
-        parseGroupMembers,
-      );
-      return body as GroupMember[];
-    },
-    async changeGroupMemberRole(groupId, userId, role) {
-      await withToken(
-        `/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}/role`,
-        {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ role }),
-        },
-        parseRecord,
+          },
+        }),
+      ).then(({ id }) => ({ id })),
+    listGroupMembers: (groupId) =>
+      runApi(client.groups.members({ params: { id: groupId } })).then(({ members }) =>
+        members.map((member) => ({
+          userId: member.userId,
+          name: member.name,
+          role: member.role,
+          roles: member.roles ?? [],
+        })),
+      ),
+    changeGroupMemberRole: async (groupId, userId, role) => {
+      await runApi(
+        client.groups.changeRole({ params: { id: groupId, userId }, payload: { role } }),
       );
     },
-    async removeGroupMember(groupId, userId) {
-      await withToken(
-        `/api/groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(userId)}`,
-        { method: 'DELETE' },
-        parseRecord,
-      );
+    removeGroupMember: async (groupId, userId) => {
+      await runApi(client.groups.removeMember({ params: { id: groupId, userId } }));
     },
   };
 }

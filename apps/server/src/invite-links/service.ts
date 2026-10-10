@@ -14,11 +14,14 @@ import type { TopicRow } from '../topics/access';
 import { MAX_GROUP_MEMBERS, type InviteLogger } from '../groups/service';
 
 export const INVITE_LINK_TOKEN_BYTES = 32;
-export const INVITE_LINK_LABEL_MAX = 60;
-export const INVITE_LINK_CREATE_MAX_USES = 10000;
-export const INVITE_LINK_CREATE_MAX_EXPIRY_HOURS = 8760;
-export const INVITE_LINK_MIN_EXPIRY_HOURS = 1;
-export const INVITE_LINK_MIN_MAX_USES = 1;
+// The label and create limits live in the shared contract (T-0892).
+export {
+  INVITE_LINK_CREATE_MAX_EXPIRY_HOURS,
+  INVITE_LINK_CREATE_MAX_USES,
+  INVITE_LINK_LABEL_MAX,
+  INVITE_LINK_MIN_EXPIRY_HOURS,
+  INVITE_LINK_MIN_MAX_USES,
+} from '@zilar/api-contract';
 export const MAX_ACTIVE_INVITE_LINKS = 10;
 
 export const JOIN_RATE_LIMIT_MAX_PER_USER = 20;
