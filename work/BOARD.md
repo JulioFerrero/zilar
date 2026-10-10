@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0888](T-0888-composer-voice-test-deterministic.md) | Composer.voice.test.tsx is deterministic: no real 500 ms waits, a controlled clock for the 400 ms hold | review | sonnet-5.5 | | wave 3 add-on |
 | [T-0889](T-0889-scope-glob-zero-folders.md) | Gate scope check: `**/` also matches zero folders | review | haiku-5.5 | | wave 3 add-on |
 | [T-0866](T-0866-sweep-tools-chats.md) | Server sweep: tools, chats, contacts, drafts, xmpp onto the shared HTTP helpers (runSql,… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
 | [T-0867](T-0867-sweep-media-files.md) | Server sweep: stickers, avatars, backgrounds, files onto the shared HTTP helpers (runSql… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
@@ -918,3 +917,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0860](T-0860-ci-shard-server-tests.md) | CI: run the server tests in 3 shards next to a job for the other packages | 2026-10-10 |
 | [T-0861](T-0861-server-bundle-image.md) | Server image: bundled build instead of tsx, PGlite out of production deps, Dockerfile… | 2026-10-10 |
 | [T-0862](T-0862-web-lazy-routes.md) | Web code splitting: lazy settings, setup, welcome and login routes | 2026-10-10 |
+| [T-0888](T-0888-composer-voice-test-deterministic.md) | Composer.voice test deterministic: fake setTimeout around the 400 ms hold, 20/20 under load | 2026-10-10 |

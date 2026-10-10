@@ -1,7 +1,7 @@
 ---
 id: T-0888
 title: "Composer.voice.test.tsx is deterministic: no real 500 ms waits, a controlled clock for the 400 ms hold"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0888-composer-voice-test-deterministic
 model: auto
@@ -54,4 +54,12 @@ Run the voice file 20 times as described above.
 
 ## Report (written by the worker when done)
 
+- Hold is measured in `Composer.tsx` with `Effect.sleep(HOLD_MS)` (HOLD_MS = 400, :53, :676), which runs on the global `setTimeout`. No product change.
+- Test now fakes only `setTimeout`/`clearTimeout` (`vi.useFakeTimers({ toFake, shouldAdvanceTime: false })`) from `pressMic`/`holdMic` until release. The four real 500 ms waits became `crossHold()` = `advanceTimersByTimeAsync(500)` inside `act`, then real timers. The `flushStart` tick uses a `setTimeout` captured before faking. Short-press tests no longer race the 400 ms timer under load either.
+- In-window `findBy*` became `getBy*` (RTL waitFor hangs on fake timers); real timers are restored before later async finds.
+- Runs: 20 of 20 passed, load average 38.63 / 78.99 / 117.89 at the end (up to ~140 earlier). Before the fix a run failed 1 to 7 tests at this load.
+- Checks: Composer.voice + Composer tests 44 passed; web typecheck clean; oxlint clean; prettier clean. `pnpm gate` not run (wave mode).
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.** The hold is `Effect.sleep(400)` on the global `setTimeout`, so the test now fakes only `setTimeout`/`clearTimeout` around each press and advances the clock past the hold. The scenarios are unchanged. The file passed 20 of 20 runs under load. It was the only failure left in the wave 3 combined check, so it lands with wave 3.
