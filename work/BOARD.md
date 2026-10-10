@@ -9,8 +9,18 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-1011](T-1011-split-mobile-media-sheet.md) | Size split T87: mobile media-sheet.tsx (491) | in-progress | auto | T-0936 | size-plan |
+| [T-1012](T-1012-split-mobile-voice-recorder.md) | Size split T93: mobile voice-recorder.tsx (470) | in-progress | auto | T-0936 | size-plan |
+| [T-1013](T-1013-split-mobile-gif-panel.md) | Size split T95: mobile gif-panel.tsx (461) | in-progress | auto | T-0936 | size-plan |
+| [T-1014](T-1014-split-web-machines-page.md) | Size split T91: web MachinesPage.tsx (473) | in-progress | auto | T-0936 | size-plan |
+| [T-1015](T-1015-split-web-task-strip.md) | Size split T99: web TaskStrip.tsx (442) | in-progress | auto | T-0936 | size-plan |
+| [T-1016](T-1016-split-server-audit-service.md) | Size split T82: server audit/service.ts (514) | in-progress | auto | T-0936 | size-plan |
+| [T-1017](T-1017-split-server-push-api.md) | Size split T89: server push/api.ts (484) | in-progress | auto | T-0936 | size-plan |
+| [T-1018](T-1018-split-server-machines-service.md) | Size split T90: server machines/service.ts (476) | in-progress | auto | T-0936 | size-plan |
 
 ## Follow-ups
+
+- **Mobile approvals: "Always allowed" empties when nothing is pending (found 2026-10-10, T-1004 smoke; on main).** Rules load only for the AIs referenced by pending rows (`apps/mobile/src/components/approvals/use-approvals.ts`, was `approvals.tsx:209`), so once the last request is decided, the rule list shows "Nothing is always allowed here" even when rules exist. Load the rules for every owned AI instead.
 
 - **M5 plan (2026-09-29): see [`docs/ROADMAP_M5.md`](../docs/ROADMAP_M5.md)** for the order, the waves for tonight, what only Julio can provide, and the decisions the lead made in the specs.
 - **AI-built tools and routines (Julio, 2026-09-29: server sandbox first).** T-0102 sandbox (QuickJS/WASM, allowlisted SSRF-safe fetch), T-0103 versioned tools store + routes, T-0104 scheduler/routines (pinned to approved hosts, auto-pause after failures), T-0105 tool/routine actions for the action gateway (routine.schedule needs a card and can never be always-allowed) + wiring the sandbox (`TOOLS_ENABLED`), T-0106 model side (prompt guide, more rounds per turn, "working on it" line, scripted-model e2e), T-0107 web Tools & Routines in the AI/group panel.

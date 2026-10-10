@@ -2,6 +2,21 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 21:05 local: wave 6 merged; wave 7 running**
+- **Merged:**
+  - **tests:** T-1003 (5 push candidate tests, after a lead fix round so `hidden` really exercises the private-topic check; the lead ran them, 5 passed);
+  - **mobile, with phone smokes:** T-1004 (approvals), T-1005 (profile: name save), T-1006 (connections: add form, test key);
+  - **web, in Chrome:** T-1007 (avatar crop clamp), T-1008 (tool detail: run now), T-1009 (chat list menu, targets checked against main);
+  - **server:** T-1010 (XMPP admin client).
+- **Running, 8 workers, 3 of them mobile:** T-1011 (media sheet), T-1012 (voice recorder), T-1013 (GIF panel), T-1014 (web machines), T-1015 (task strip), T-1016 (audit service), T-1017 (push API), T-1018 (machines service).
+- **Found on main, now a BOARD follow-up:** mobile "Always allowed" goes empty once nothing is pending, because rules load only for the AIs in pending rows.
+- **Mock gaps seen:**
+  - web avatar upload has no mock handler;
+  - web integrations shows only the not-admin message;
+  - the voice clip has no audio.
+
+  All three belong to mock wave 2.
+
 **2026-10-10 20:50 local: wave 5 merged; wave 6 running**
 - **Merged:**
   - **mobile, with phone smokes:** T-0995 (machines: approve), T-0996 (stickers: reorder, discover), T-0997 (voice: transcript toggle);
