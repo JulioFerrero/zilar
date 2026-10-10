@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1028](T-1028-split-server-routine-execute.md) | Size split T105: server routines/execute.ts (434) | in-progress | auto | T-0936 | size-plan |
-| [T-1029](T-1029-split-server-agent-tools.md) | Size split T73: server agents/tools.ts (536) | in-progress | auto | T-0936 | size-plan |
 | [T-1030](T-1030-split-mobile-voice-native.md) | Size split T96: mobile voice-native.ts (451) | in-progress | auto | T-0936 | size-plan |
 | [T-1031](T-1031-split-mobile-message-search.md) | Size split T97: mobile message-search.ts (451) | in-progress | auto | T-0936 | size-plan |
 | [T-1032](T-1032-split-mobile-voice-player.md) | Size split T109: mobile voice-player.ts (423) | in-progress | auto | T-0936 | size-plan |
@@ -1064,3 +1063,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1020](T-1020-split-mobile-chats-tab.md) | Size split T72: apps/mobile/src/app/(tabs)/index.tsx (537 lines) into components/chat/{search-header,chat-sear | 2026-10-10 |
 | [T-1021](T-1021-split-mobile-attachment-native.md) | Size split T75: apps/mobile/src/lib/attachment-native.ts (528 lines) into lib/{attachment-picker,attachment-up | 2026-10-10 |
 | [T-1022](T-1022-split-mobile-topic-sheets.md) | Size split T100: apps/mobile/src/components/chat/topic-sheets.tsx (442 lines) into chat/{topic-actions-sheet,t | 2026-10-10 |
+| [T-1029](T-1029-split-server-agent-tools.md) | Size split T73: apps/server/src/agents/tools.ts (536 lines) into agents/tools/{schemas,parse,definitions,reply | 2026-10-10 |
