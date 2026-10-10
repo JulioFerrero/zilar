@@ -22,6 +22,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.js
 COPY apps/web/package.json apps/web/
 COPY packages/api-contract/package.json packages/api-contract/
 COPY packages/protocol/package.json packages/protocol/
+COPY packages/client-core/package.json packages/client-core/
 COPY packages/xmpp-core/package.json packages/xmpp-core/
 COPY packages/chat-core/package.json packages/chat-core/
 COPY packages/ui-tokens/package.json packages/ui-tokens/
@@ -30,10 +31,12 @@ RUN pnpm install --frozen-lockfile
 
 # Now the sources the web app imports (keep this list in sync with what
 # apps/web imports from the workspace: @zilar/api-contract,
-# @zilar/chat-core, @zilar/protocol, @zilar/ui-tokens, @zilar/xmpp-core).
+# @zilar/chat-core, @zilar/client-core, @zilar/protocol, @zilar/ui-tokens,
+# @zilar/xmpp-core).
 COPY apps/web apps/web
 COPY packages/api-contract packages/api-contract
 COPY packages/protocol packages/protocol
+COPY packages/client-core packages/client-core
 COPY packages/xmpp-core packages/xmpp-core
 COPY packages/chat-core packages/chat-core
 COPY packages/ui-tokens packages/ui-tokens

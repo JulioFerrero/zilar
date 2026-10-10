@@ -1,17 +1,6 @@
-import { Data } from 'effect';
+import { ApiFailure } from '@zilar/client-core';
 
-/**
- * The typed failure of a *-api.ts call lifted into Effect. Mobile has one
- * error class per api module (`ChatApiError`, `AisApiError`, ...) with the
- * same `status`, `code` and `message`, so this mirrors them field for field
- * and a caller that matches on `code` or `status` behaves the same.
- */
-export class ApiFailure extends Data.TaggedError('ApiFailure')<{
-  readonly status: number;
-  readonly code: string;
-  readonly message: string;
-  readonly detail: Record<string, unknown>;
-}> {}
+export { ApiFailure };
 
 const UNKNOWN_MESSAGE = 'Something went wrong';
 

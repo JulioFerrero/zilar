@@ -1,89 +1,15 @@
-// @vitest-environment jsdom
 import { RegistryContext } from '@effect/atom-react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { Data, Deferred, Effect } from 'effect';
 import { AsyncResult, AtomRegistry } from 'effect/reactivity';
-import { createRequire } from 'node:module';
-import { act, createElement, type ComponentType, type ReactNode } from 'react';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { failureOf, isWaiting } from '@/lib/effect/use-action';
-import { useQuery } from '@/lib/effect/use-query';
+import type { ReactNode } from 'react';
+import { describe, expect, it } from 'vitest';
+import { FetchHttpClient } from 'effect/http';
+import { Atom } from 'effect/reactivity';
+import { failureOf, isWaiting } from './use-action';
+import { makeUseQuery } from './use-query';
 
-// `react-dom/client` ships no bundled types and mobile has no `@types/react-dom`
-// or testing library, so load it through a typed require handle and drive the
-// hook with a small renderHook (same pattern as `store/atomStore.test.ts`).
-const nodeRequire = createRequire(import.meta.url);
-const { createRoot } = nodeRequire('react-dom/client') as {
-  createRoot: (container: Element) => { render(node: ReactNode): void; unmount(): void };
-};
-
-type Wrapper = ComponentType<{ children?: ReactNode }>;
-
-const mounted: Array<() => void> = [];
-
-beforeAll(() => {
-  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-});
-
-afterEach(() => {
-  while (mounted.length > 0) {
-    mounted.pop()?.();
-  }
-});
-
-function renderHook<P, R>(
-  hook: (props: P) => R,
-  options: { wrapper?: Wrapper; initialProps?: P } = {},
-) {
-  let latest: { value: R } | undefined;
-  const Probe = ({ props }: { props: P }) => {
-    latest = { value: hook(props) };
-    return null;
-  };
-  const container = document.createElement('div');
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  let live = true;
-  const draw = (props: P) => {
-    const probe = createElement(Probe, { props });
-    root.render(options.wrapper ? createElement(options.wrapper, null, probe) : probe);
-  };
-  const unmount = () => {
-    if (!live) {
-      return;
-    }
-    live = false;
-    act(() => root.unmount());
-    container.remove();
-  };
-  mounted.push(unmount);
-  act(() => draw(options.initialProps as P));
-  return {
-    result: {
-      get current(): R {
-        if (latest === undefined) {
-          throw new Error('The hook has not rendered');
-        }
-        return latest.value;
-      },
-    },
-    rerender: (props: P) => act(() => draw(props)),
-    unmount,
-  };
-}
-
-const waitFor = async (check: () => void): Promise<void> => {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    try {
-      check();
-      return;
-    } catch {
-      await act(async () => {
-        await new Promise<void>((resolve) => setTimeout(resolve, 5));
-      });
-    }
-  }
-  check();
-};
+const useQuery = makeUseQuery(Atom.runtime(FetchHttpClient.layer));
 
 class LoadFailed extends Data.TaggedError('LoadFailed') {}
 
@@ -113,9 +39,12 @@ const tracked = <A,>(probe: Probe, body: Effect.Effect<A>) =>
     ),
   );
 
-const registryWrapper = (): Wrapper => {
+const registryWrapper = () => {
   const registry = AtomRegistry.make();
-  return ({ children }) => createElement(RegistryContext.Provider, { value: registry }, children);
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <RegistryContext.Provider value={registry}>{children}</RegistryContext.Provider>
+  );
+  return wrapper;
 };
 
 describe.each([

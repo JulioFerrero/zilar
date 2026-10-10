@@ -1,16 +1,8 @@
-// @vitest-environment jsdom
-import { createRequire } from 'node:module';
-import { act, createElement, useEffect, type ReactNode } from 'react';
+import { act, createElement, useEffect } from 'react';
+import { createRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createAtomStore, createBoundStore } from './atomStore';
-
-// `react-dom/client` ships no bundled types and mobile has no `@types/react-dom`,
-// so load it through a typed require handle rather than an untyped import.
-const nodeRequire = createRequire(import.meta.url);
-const { createRoot } = nodeRequire('react-dom/client') as {
-  createRoot: (container: Element) => { render(node: ReactNode): void; unmount(): void };
-};
+import { createAtomStore, createBoundStore } from './atom-store';
 
 type CounterState = {
   count: number;

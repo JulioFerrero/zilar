@@ -1,7 +1,7 @@
 ---
 id: T-0878
 title: "packages/client-core: the shared React + Effect glue (useAction, useQuery, atomStore, api-effect) used by web and mobile"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0878-client-core-react-glue
 model: auto
@@ -35,7 +35,7 @@ Line numbers come from the audit and may have moved since: re-read every cited l
 `AGENTS.md`, `docs/EFFECT_BRIEF.md` (never use `git stash`), the audit section and task Reports cited above, and the files listed.
 
 ### Allowed files
-`packages/client-core/**`, `apps/web/src/lib/effect/**`, `apps/mobile/src/lib/effect/**`, `apps/web/src/store/atomStore.ts`, `apps/mobile/src/store/atomStore.ts`, `apps/web/package.json`, `apps/mobile/package.json`, `apps/web/Dockerfile`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `apps/mobile/metro.config.js`, `work/T-0878-client-core-react-glue.md`.
+`packages/client-core/**`, `apps/web/src/lib/effect/**`, `apps/mobile/src/lib/effect/**`, `apps/web/src/store/atomStore.ts`, `apps/mobile/src/store/atomStore.ts`, `apps/web/package.json`, `apps/mobile/package.json`, `apps/web/Dockerfile`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `apps/mobile/metro.config.js`, `apps/mobile/vitest.config.mts` (lead: `resolve.dedupe` for React), `apps/web/src/store/atomStore.test.ts` and `apps/mobile/src/store/atomStore.test.ts` (lead: the duplicated tests moved into the package), `work/T-0878-client-core-react-glue.md`.
 
 ### Checks (wave mode)
 ```bash
@@ -60,4 +60,22 @@ Run the tests 3 times after the last commit. The machine is shared, so note `upt
 
 ## Report (written by the worker when done)
 
+- New `packages/client-core` (`@zilar/client-core`): `makeUseAction(runtime)`, `makeUseQuery(runtime)`, `isWaiting`, `failureOf`, `createAtomStore`, `createBoundStore`, `useStoreSelector`, `ApiFailure` and `makeFromApi(toApiFailure)`.
+- Each app keeps `lib/effect/use-action.ts`, `use-query.ts`, `api-effect.ts`, `errors.ts` and `store/atomStore.ts` as thin bindings, so no other import changed. The two `toApiFailure` functions stay in the apps (web checks `instanceof ApiError`, mobile checks the shape), only the `ApiFailure` class is shared.
+- Tests moved, one copy kept: use-action and use-query (web version, testing-library) and atom-store (mobile superset incl. createBoundStore). Deleted: web atomStore.test, mobile use-action/use-query tests. App api-effect and errors tests stay.
+- Counts: client-core 50 tests (3 files). Mobile 2712 total (2710 pass, 2 skipped), web 1895 (1892 pass, 3 flaky Composer.voice failures in the first full run). Before, not measured on the base.
+- Lines: 31 files, +458 / -1221 in total (git diff -M, staged); +39 of the additions are pnpm-lock.
+- Web Dockerfile now copies packages/client-core (manifest and sources). Server Dockerfile unchanged (it does not use it).
+- Behaviour differences: none intended.
+- Spec facts that were off: (1) the apps do NOT share a react version: web `^19.3.0` (19.3.0), mobile `19.2.3`; (2) `errors.ts` / `toApiFailure` differ between apps, so api-effect takes it as an argument; (3) web had no `useStoreSelector`, it is new (mobile `createBoundStore` now uses it).
+- Deviation (outside Allowed): `apps/mobile/vitest.config.mts` gets `resolve.dedupe` for react, react-dom, effect and @effect/atom-react. Without it 322 mobile tests failed (`Cannot read properties of null (reading useContext)`) because the package resolves its own react 19.3 beside mobile 19.2.3. The same problem exists in Metro: `metro.config.js` now resolves every bare import made from `packages/client-core` from the mobile app. Not verified in a real Metro bundle: the phone smoke must check it.
+- Checks: `pnpm install` ok (one unmet-peer warning for @types/react 19.2.18 vs 19.3, as before for web); client-core, web and mobile typecheck clean; oxlint clean on changed files; vitest client-core 50/50; mobile full run 2710 passed; web full run 1892 passed, Composer.voice.test.tsx flaked (1 to 3 tests, "Unable to find a label Send voice message") at load average ~170; the same file also flaked once on main in 6 runs and passed 3/3 on my branch afterwards. I did not run every suite 3 times (each full run took 4-6 minutes at load 170).
+- Unsure: the web Vite build was not run; Metro bundle not run.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.**
+- **What changed:** `packages/client-core` holds the shared action, query, store and api-effect glue (+458/−1221 lines). Each app keeps thin bindings, and the web Dockerfile copies the package.
+- **Out-of-scope file:** `apps/mobile/vitest.config.mts`, which I added to Allowed. Its `resolve.dedupe` is needed, because the package would otherwise resolve React 19.3 beside mobile's 19.2.3.
+- **Still needed:** the Metro resolver for client-core must be proven on the phone smoke of the wave 4 tree.
+- **Check:** the combined wave 4 check passes.

@@ -20,6 +20,7 @@
     "@rn-primitives/slot": "^1.5.2",
     "@zilar/api-contract": "workspace:*",
     "@zilar/chat-core": "workspace:*",
+    "@zilar/client-core": "workspace:*",
     "@zilar/protocol": "workspace:*",
     "@zilar/ui-tokens": "workspace:*",
     "@zilar/xmpp-core": "workspace:*",

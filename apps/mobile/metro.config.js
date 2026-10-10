@@ -48,7 +48,25 @@ const UNUSED_ICON_FONT = '@expo-google-fonts/material-symbols';
 
 const previousResolveRequest = config.resolver.resolveRequest;
 
+// @zilar/client-core has its own node_modules (react, effect, @effect/atom-react
+// at the web app's versions). A second copy of react or of the atom-react
+// RegistryContext would break the hooks, so every bare import made from the
+// package resolves from this app instead.
+const clientCoreDir = path.resolve(__dirname, '../../packages/client-core') + path.sep;
+const appOrigin = path.resolve(__dirname, 'package.json');
+
 config.resolver.resolveRequest = (context, moduleName, platform, realModuleName) => {
+  if (
+    context.originModulePath.startsWith(clientCoreDir) &&
+    !moduleName.startsWith('.') &&
+    !path.isAbsolute(moduleName)
+  ) {
+    return context.resolveRequest(
+      { ...context, originModulePath: appOrigin },
+      moduleName,
+      platform,
+    );
+  }
   if (
     STUBBED.has(moduleName) ||
     moduleName === UNUSED_ICON_FONT ||
