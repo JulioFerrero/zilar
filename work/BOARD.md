@@ -32,7 +32,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0885](T-0885-web-store-fakes.md) | Web store tests share one fakeApi/fakeXmpp harness (159-line copies today) | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0886](T-0886-gateway-test-split.md) | Split apps/server/src/agents/gateway.test.ts (7,242 lines, 100 s) into feature files aro… | todo | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0887](T-0887-slow-loop-tests.md) | Server: cut the loop-driven slow tests (600 real requests for a 429, 200 sticker uploads… | todo | haiku-5.5 |  | wave 4, simplify plan |
-| [T-0859](T-0859-test-db-snapshot-once.md) | Server tests: build the migrated PGlite snapshot once per run (globalSetup), not once per… | in-progress | sonnet-5.5 | | wave 3, simplify plan |
 | [T-0860](T-0860-ci-shard-server-tests.md) | CI: run the server tests in 3 shards next to a job for the other packages | in-progress | haiku-5.5 | | wave 3, simplify plan |
 | [T-0861](T-0861-server-bundle-image.md) | Server image: bundled build instead of tsx, PGlite out of production deps, Dockerfile… | in-progress | sonnet-5.5 | | wave 3, simplify plan |
 | [T-0862](T-0862-web-lazy-routes.md) | Web code splitting: lazy settings, setup, welcome and login routes | in-progress | sonnet-5.5 | | wave 3, simplify plan |
@@ -918,3 +917,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0856](T-0856-delete-agent-drivers-git-proxy.md) | Delete packages/agent-drivers and the unmounted git proxy (apps/server/src/git) — Julio… | 2026-10-10 |
 | [T-0857](T-0857-xmpp-events-streams.md) | xmpp-core: delete the unused events.* Streams (10 unbounded PubSubs per connection) —… | 2026-10-10 |
 | [T-0858](T-0858-session-cookie-cache.md) | better-auth session cookie cache, 5 minutes — Julio approved | 2026-10-10 |
+| [T-0859](T-0859-test-db-snapshot-once.md) | Server tests: build the migrated PGlite snapshot once per run (globalSetup), not once per… | 2026-10-10 |

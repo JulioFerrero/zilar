@@ -1,7 +1,7 @@
 ---
 id: T-0859
 title: "Server tests: build the migrated PGlite snapshot once per run (globalSetup), not once per test file"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0859-test-db-snapshot-once
 model: auto
@@ -54,4 +54,23 @@ Run the tests 3 times after the last commit.
 
 ## Report (written by the worker when done)
 
+**Changed:** new `apps/server/src/test-global-setup.ts` (migrates once, writes the snapshot to a per-run temp dir, `project.provide('migratedSnapshotPath')`, removes the dir in teardown); new `apps/server/vitest.config.ts` (testTimeout/hookTimeout 30000, globalSetup); `test-support.ts` reads the snapshot via `inject`, falling back to migrating in-file when it is not provided. `package.json` unchanged (its flags stay, same values as the config). `db/migrate.test.ts` untouched and still migrates itself.
+
+**Timings (machine at load average 55-80 the whole time, so they are NOT comparable):**
+- Before, `src/db src/blocks src/pins`: 174 s at load 77 (1 test failed, a 30 s timeout in migrate.test.ts; edits to the files landed during this run).
+- After, same command: 274 s at load 55-60 (3 failed, all 30 s timeouts in migrate.test.ts, which does not use the snapshot).
+- After, full server suite: 23m49s wall at load 55-65; many tests timed out at 30 s (indexer, run-tool, search, ...). `search.test.ts` alone passes, 27/27, in 170 s at load 60-80.
+- No clean before/after number was possible. I did not get the 3 repeat runs or a green full suite: load made 30 s timeouts hit unrelated files.
+
+**Checks:** typecheck clean; prettier and oxlint clean on the 3 changed files.
+
+**Unsure:** whether any full-suite failure comes from this change. The ones I looked at are load timeouts, but a quiet-machine full run is needed to confirm and to measure the saving. Audit line numbers (285-300) were correct.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved after fix round 1.**
+- **What changed:** a vitest globalSetup migrates once per run, and `test-support` loads the snapshot file, falling back to an in-file migration.
+- **Fix round:** the `ProvidedContext` declaration moved next to `inject`.
+- **Not this task:** the `backfill.test.ts` failure was T-0849's new migration.
+- **Not yet measured:** the timing saving, because load was 55-300 all night. Measure on a quiet machine with the next full server run.
+- **Checks:** the combined check is clean.
