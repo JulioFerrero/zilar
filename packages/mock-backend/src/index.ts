@@ -9,7 +9,19 @@ import { createMockHttp, DEFAULT_DELAY_MS, type MockHttp } from './http';
 import { createMockData, type MockData } from './state';
 
 export { createSeed, defaultSeed } from './data';
-export type { MockMe, MockMessage, MockPerson, MockSeed } from './data';
+export type {
+  MockApproval,
+  MockApprovalRule,
+  MockAuditEntry,
+  MockMe,
+  MockMessage,
+  MockPerson,
+  MockRoutine,
+  MockRun,
+  MockSeed,
+  MockTool,
+  MockToolVersion,
+} from './data';
 export { createMockHttp } from './http';
 export type { MockHttp } from './http';
 export { createMockData } from './state';

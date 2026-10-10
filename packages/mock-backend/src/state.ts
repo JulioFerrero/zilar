@@ -1,6 +1,9 @@
 import type { ChatEntry, ConnectionView, Machine, PublicAi } from '@zilar/api-contract';
 import type { MockAiMemory, MockMe, MockMessage, MockPerson, MockSeed } from './data';
+import type { MockApproval, MockApprovalRule } from './data/approvals';
 import { seedAiMemory } from './data/ais';
+import type { MockAuditEntry } from './data/audit';
+import type { MockRoutine, MockRun, MockTool } from './data/tools';
 
 /**
  * The live, in-memory tables and their mutators. One per `MockBackend`.
@@ -14,6 +17,19 @@ export interface MockData {
   readonly people: readonly MockPerson[];
   readonly chats: readonly ChatEntry[];
   readonly messages: Readonly<Record<string, readonly MockMessage[]>>;
+  // T-0941: the approvals, audit and tools tables. `approvals`, `tools`,
+  // `routines` and `runs` are mutable in place, so a decision, a revert or a
+  // run leaves the table changed. `approvalRules` starts empty; an
+  // `approve_always` decision adds a row. The counters mint new ids.
+  readonly approvals: MockApproval[];
+  readonly approvalRules: MockApprovalRule[];
+  readonly audit: readonly MockAuditEntry[];
+  readonly tools: MockTool[];
+  readonly routines: MockRoutine[];
+  readonly runs: MockRun[];
+  nextToolSequence: number;
+  nextRunSequence: number;
+
   readonly ais: readonly PublicAi[];
   readonly connections: readonly ConnectionView[];
   readonly machines: readonly Machine[];
@@ -67,6 +83,23 @@ export function createMockData(seed: MockSeed): MockData {
     people: seed.people,
     chats: seed.chats,
     messages: seed.messages,
+    // Clone the mutated tables so a shared seed (a caller-supplied
+    // `MockBackendOptions.seed`) is never changed by a decision or a run.
+    approvals: seed.approvals.map((row) => ({ ...row })),
+    approvalRules: [],
+    audit: seed.audit,
+    tools: seed.tools.map((tool) => ({
+      ...tool,
+      approvedHosts: [...tool.approvedHosts],
+      versions: tool.versions.map((version) => ({ ...version, hosts: [...version.hosts] })),
+    })),
+    routines: seed.routines.map((routine) => ({
+      ...routine,
+      approvedHosts: [...routine.approvedHosts],
+    })),
+    runs: seed.runs.map((run) => ({ ...run })),
+    nextToolSequence: 100,
+    nextRunSequence: 100,
     get ais(): readonly PublicAi[] {
       return ais;
     },

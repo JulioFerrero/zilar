@@ -41,6 +41,11 @@ export function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+/** The contract's error body (`{ error: { code, message } }`), like web's mock. */
+export function errorResponse(code: string, message: string, status = 400): Response {
+  return jsonResponse({ error: { code, message } }, status);
+}
+
 /** `204 No Content`, the success shape the contract's delete routes declare. */
 export function noContent(): Response {
   return new Response(null, { status: 204 });

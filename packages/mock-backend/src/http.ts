@@ -2,9 +2,10 @@
 // setTimeout and the matching itself is pure
 
 // The mock HTTP layer. `createMockHttp(data)` returns a handler shaped like
-// `fetch` minus the network: it answers `/me`, `/chats`, `/contacts` and the
-// AI routes (`/ais`, `/ai-memory`, `/connections`, `/machines`) from the
-// in-memory seed, and returns `undefined` for every other path.
+// `fetch` minus the network: it answers `/me`, `/chats`, `/contacts`, the AI
+// routes (`/ais`, `/ai-memory`, `/connections`, `/machines`) and the
+// approvals/audit/tools/routines routes from the in-memory seed, and returns
+// `undefined` for every other path.
 //
 // The `undefined` contract matters for the app cutovers (plan tasks G and H):
 // the app dispatcher tries this backend first and, on `undefined`, falls back to
@@ -14,11 +15,16 @@
 import type { MockData } from './state';
 import { handleAiMemory } from './http/ai-memory';
 import { handleAis } from './http/ais';
+import { handleApprovalRules } from './http/approval-rules';
+import { handleApprovals } from './http/approvals';
+import { handleAudit } from './http/audit';
 import { handleChats } from './http/chats';
 import { handleConnections } from './http/connections';
 import { handleContacts } from './http/contacts';
 import { handleMachines } from './http/machines';
 import { handleMe } from './http/me';
+import { handleRoutines } from './http/routines';
+import { handleTools } from './http/tools';
 import { DEFAULT_DELAY_MS, parseRequest, type MockRoute } from './http/shared';
 
 export { DEFAULT_DELAY_MS };
@@ -33,6 +39,11 @@ const routes: readonly MockRoute[] = [
   handleAiMemory,
   handleConnections,
   handleMachines,
+  handleApprovals,
+  handleApprovalRules,
+  handleAudit,
+  handleTools,
+  handleRoutines,
 ];
 
 export function createMockHttp(

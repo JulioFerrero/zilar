@@ -1,11 +1,24 @@
 import type { ChatEntry, ConnectionView, Machine, PublicAi } from '@zilar/api-contract';
 import { mockAis, mockConnections, mockMachines } from './ais';
+import { seedApprovals, type MockApproval } from './approvals';
+import { seedAudit, type MockAuditEntry } from './audit';
 import { chats } from './chats';
 import { messageSeeds } from './messages';
 import { defaultMe, people, type MockMe, type MockPerson } from './people';
+import {
+  seedRoutines,
+  seedRuns,
+  seedTools,
+  type MockRoutine,
+  type MockRun,
+  type MockTool,
+} from './tools';
 
 export type { MockAiMemory } from './ais';
 export type { MockMe, MockPerson } from './people';
+export type { MockApproval, MockApprovalRule } from './approvals';
+export type { MockAuditEntry } from './audit';
+export type { MockRoutine, MockRun, MockTool, MockToolVersion } from './tools';
 
 /** One stored message: `chatJid` is the record's key, `createdAt` an ISO string. */
 export interface MockMessage {
@@ -22,6 +35,11 @@ export interface MockSeed {
   readonly people: readonly MockPerson[];
   readonly chats: readonly ChatEntry[];
   readonly messages: Readonly<Record<string, readonly MockMessage[]>>;
+  readonly approvals: readonly MockApproval[];
+  readonly audit: readonly MockAuditEntry[];
+  readonly tools: readonly MockTool[];
+  readonly routines: readonly MockRoutine[];
+  readonly runs: readonly MockRun[];
   readonly ais: readonly PublicAi[];
   readonly connections: readonly ConnectionView[];
   readonly machines: readonly Machine[];
@@ -53,6 +71,11 @@ export function createSeed(now: () => Date = () => new Date()): MockSeed {
     people,
     chats,
     messages,
+    approvals: seedApprovals(now),
+    audit: seedAudit(now),
+    tools: seedTools(),
+    routines: seedRoutines(),
+    runs: seedRuns(),
     ais: mockAis,
     connections: mockConnections,
     machines: mockMachines,
