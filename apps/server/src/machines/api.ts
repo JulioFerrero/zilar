@@ -11,23 +11,29 @@
 //   handler.
 
 import { Effect, Layer, Option, Schema } from 'effect';
-import { HttpServer, HttpServerResponse, HttpRouter } from 'effect/http';
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import {
+  HttpApi,
+  HttpApiBuilder,
+  HttpApiEndpoint,
+  HttpApiGroup,
+  HttpApiSchema,
+} from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
-  CurrentUser,
   Session,
+  handler,
+  mountApi,
   requestIdOf,
   sessionLayer,
   socketAddressOf,
   withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
+import { makeRateLimit } from '../effect/rate-limit-middleware';
 import { createRateLimiter } from '../rate-limit';
 import { hashPairingCode, normalizePairingCode } from './codes';
 import { createDbMachineRegistry, type DbMachineRegistry } from './registry';
@@ -182,11 +188,25 @@ const PairResult = Schema.Struct({
   status: Schema.Literals(['pending']),
 });
 
+// Pairing codes are minted sparingly; the budget is spent right after the
+// session, before any query.
+const PairingCodeRateLimit = makeRateLimit(
+  'zilar/effect/http/MachinesPairingCodeRateLimit',
+  'Too many pairing codes, try again later',
+);
+
+// `rename` and `pair` read the body by hand (their own 400 texts, and `pair`
+// answers every failure with the same `invalid_code`), so the body schemas
+// `RenameBody` and `PairBody` are not declared on the endpoints: a declared
+// payload would be decoded by the framework first and change the error order.
 const MachinesGroup = HttpApiGroup.make('machines')
   .add(
     HttpApiEndpoint.post('createPairingCode', '/machines/pairing-codes', {
-      success: CreatedPairingCode,
-    }).middleware(Session),
+      success: CreatedPairingCode.pipe(HttpApiSchema.status(201)),
+    })
+      // The later middleware is the outer one, so `Session` runs first.
+      .middleware(PairingCodeRateLimit.Middleware)
+      .middleware(Session),
     HttpApiEndpoint.get('list', '/machines', {
       success: Schema.Array(PublicMachineView),
     }).middleware(Session),
@@ -196,7 +216,7 @@ const MachinesGroup = HttpApiGroup.make('machines')
     }).middleware(Session),
     HttpApiEndpoint.post('deny', '/machines/:id/deny', {
       params: MachineIdParams,
-      success: Schema.Void,
+      success: HttpApiSchema.NoContent,
     }).middleware(Session),
     HttpApiEndpoint.post('revoke', '/machines/:id/revoke', {
       params: MachineIdParams,
@@ -208,26 +228,17 @@ const MachinesGroup = HttpApiGroup.make('machines')
     }).middleware(Session),
     HttpApiEndpoint.delete('remove', '/machines/:id', {
       params: MachineIdParams,
-      success: Schema.Void,
+      success: HttpApiSchema.NoContent,
     }).middleware(Session),
     // Public: the pairing code plus signature are the credential.
-    HttpApiEndpoint.post('pair', '/runner/pair', { success: PairResult }),
+    HttpApiEndpoint.post('pair', '/runner/pair', {
+      success: PairResult.pipe(HttpApiSchema.status(201)),
+    }),
   )
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const MachinesApi = HttpApi.make('machines').add(MachinesGroup);
-
-export const MACHINES_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'POST', path: '/api/machines/pairing-codes' },
-  { method: 'GET', path: '/api/machines' },
-  { method: 'POST', path: '/api/machines/:id/approve' },
-  { method: 'POST', path: '/api/machines/:id/deny' },
-  { method: 'POST', path: '/api/machines/:id/revoke' },
-  { method: 'PATCH', path: '/api/machines/:id' },
-  { method: 'DELETE', path: '/api/machines/:id' },
-  { method: 'POST', path: '/api/runner/pair' },
-];
 
 function invalidCode(): HttpError {
   return new HttpError(400, 'invalid_code', 'Invalid or expired pairing code');
@@ -269,164 +280,123 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
 
   // `audit.record` stays awaited: a write failure rejects the route just like
   // the old `await`.
-  function recordAudit(entry: {
+  async function recordAudit(entry: {
     actorUserId: string;
     action: string;
     subjectId: string;
-  }): Effect.Effect<void, never, never> {
+  }): Promise<void> {
     if (audit === undefined) {
-      return Effect.void;
+      return;
     }
-    return Effect.promise(() =>
-      audit.record({
-        actorUserId: entry.actorUserId,
-        aiId: null,
-        groupId: null,
-        action: entry.action,
-        subjectId: entry.subjectId,
-        argsHash: null,
-        costCurrency: null,
-        costAmount: null,
-        result: 'ok',
-        detail: null,
-      }),
-    );
+    await audit.record({
+      actorUserId: entry.actorUserId,
+      aiId: null,
+      groupId: null,
+      action: entry.action,
+      subjectId: entry.subjectId,
+      argsHash: null,
+      costCurrency: null,
+      costAmount: null,
+      result: 'ok',
+      detail: null,
+    });
+  }
+
+  // Runs a service call whose rejection may be a `MachineServiceError`, which
+  // answers 409 with the service's code; anything else stays a 500.
+  async function orConflict<A>(run: () => Promise<A>): Promise<A> {
+    try {
+      return await run();
+    } catch (error) {
+      throw toConflict(error);
+    }
   }
 
   const groupLayer = HttpApiBuilder.group(MachinesApi, 'machines', (handlers) =>
     handlers
-      .handle('createPairingCode', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
+      .handle(
+        'createPairingCode',
+        handler(logger, async (_request, user) => {
+          // The pairing-code budget is spent by `PairingCodeRateLimit`, which
+          // reads this limiter through the layer below.
+          const created = await orConflict(() =>
+            createPairingCode(deps.db, user.id, new Date(now())),
+          );
+          return { code: created.code, expiresAt: created.expiresAt.toISOString() };
+        }),
+      )
+      .handle(
+        'list',
+        handler(logger, async (_request, user) => {
+          const rows = await listMachines(deps.db, user.id);
+          return rows.map((row) => toPublicMachine(row, isMachineOnline));
+        }),
+      )
+      .handle(
+        'approve',
+        handler(logger, async (request, user) => {
+          const id = request.params.id;
+          const existing = await findOwnedMachine(deps.db, id, user.id);
+          if (!existing) {
+            throw new HttpError(404, 'not_found', 'Machine not found');
+          }
+          if (existing.status !== 'pending') {
+            throw new HttpError(409, 'invalid_transition', 'Only pending machines can be approved');
+          }
+          const approved = await approveMachine(deps.db, id, user.id, new Date(now()));
+          if (!approved) {
+            throw new HttpError(409, 'invalid_transition', 'Only pending machines can be approved');
+          }
+          machineRegistry.notifyApproved(id, approved.publicKey);
+          logger.info({ machineId: id }, 'machine approved');
+          await recordAudit({ actorUserId: user.id, action: 'machine.approved', subjectId: id });
+          return toPublicMachine(approved);
+        }),
+      )
+      .handle(
+        'deny',
+        handler(logger, async (request, user) => {
+          const id = request.params.id;
+          const existing = await findOwnedMachine(deps.db, id, user.id);
+          if (!existing) {
+            throw new HttpError(404, 'not_found', 'Machine not found');
+          }
+          if (existing.status !== 'pending') {
+            throw new HttpError(409, 'invalid_transition', 'Only pending machines can be denied');
+          }
+          const denied = await denyMachine(deps.db, id, user.id);
+          if (!denied) {
+            throw new HttpError(409, 'invalid_transition', 'Only pending machines can be denied');
+          }
+          logger.info({ machineId: id }, 'machine denied');
+          await recordAudit({ actorUserId: user.id, action: 'machine.denied', subjectId: id });
+        }),
+      )
+      .handle(
+        'revoke',
+        handler(logger, async (request, user) => {
+          const id = request.params.id;
+          const existing = await findOwnedMachine(deps.db, id, user.id);
+          if (!existing) {
+            throw new HttpError(404, 'not_found', 'Machine not found');
+          }
+          if (existing.status === 'revoked') {
+            throw new HttpError(409, 'invalid_transition', 'Machine is already revoked');
+          }
+          const revoked = await revokeMachine(deps.db, id, user.id, new Date(now()));
+          if (!revoked) {
+            throw new HttpError(409, 'invalid_transition', 'Machine is already revoked');
+          }
+          machineRegistry.notifyRevoked(id);
+          logger.info({ machineId: id }, 'machine revoked');
+          await recordAudit({ actorUserId: user.id, action: 'machine.revoked', subjectId: id });
+          return toPublicMachine(revoked);
+        }),
+      )
+      .handle(
+        'rename',
+        handler(logger, (request, user) =>
           Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            if (!createCodeLimiter.allow(user.id)) {
-              throw new HttpError(429, 'rate_limited', 'Too many pairing codes, try again later');
-            }
-            const outcome = yield* Effect.promise(() =>
-              createPairingCode(deps.db, user.id, new Date(now())),
-            ).pipe(
-              Effect.map((value) => ({ ok: true as const, value })),
-              Effect.catchDefect((defect) => Effect.succeed({ ok: false as const, defect })),
-            );
-            if (!outcome.ok) {
-              throw toConflict(outcome.defect);
-            }
-            return HttpServerResponse.jsonUnsafe(
-              { code: outcome.value.code, expiresAt: outcome.value.expiresAt.toISOString() },
-              { status: 201 },
-            );
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const rows = yield* Effect.promise(() => listMachines(deps.db, user.id));
-            return rows.map((row) => toPublicMachine(row, isMachineOnline));
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('approve', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const id = request.params.id;
-            const existing = yield* Effect.promise(() => findOwnedMachine(deps.db, id, user.id));
-            if (!existing) {
-              throw new HttpError(404, 'not_found', 'Machine not found');
-            }
-            if (existing.status !== 'pending') {
-              throw new HttpError(
-                409,
-                'invalid_transition',
-                'Only pending machines can be approved',
-              );
-            }
-            const approved = yield* Effect.promise(() =>
-              approveMachine(deps.db, id, user.id, new Date(now())),
-            );
-            if (!approved) {
-              throw new HttpError(
-                409,
-                'invalid_transition',
-                'Only pending machines can be approved',
-              );
-            }
-            machineRegistry.notifyApproved(id, approved.publicKey);
-            logger.info({ machineId: id }, 'machine approved');
-            yield* recordAudit({ actorUserId: user.id, action: 'machine.approved', subjectId: id });
-            return toPublicMachine(approved);
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('deny', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const id = request.params.id;
-            const existing = yield* Effect.promise(() => findOwnedMachine(deps.db, id, user.id));
-            if (!existing) {
-              throw new HttpError(404, 'not_found', 'Machine not found');
-            }
-            if (existing.status !== 'pending') {
-              throw new HttpError(409, 'invalid_transition', 'Only pending machines can be denied');
-            }
-            const denied = yield* Effect.promise(() => denyMachine(deps.db, id, user.id));
-            if (!denied) {
-              throw new HttpError(409, 'invalid_transition', 'Only pending machines can be denied');
-            }
-            logger.info({ machineId: id }, 'machine denied');
-            yield* recordAudit({ actorUserId: user.id, action: 'machine.denied', subjectId: id });
-            return HttpServerResponse.empty({ status: 204 });
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('revoke', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const id = request.params.id;
-            const existing = yield* Effect.promise(() => findOwnedMachine(deps.db, id, user.id));
-            if (!existing) {
-              throw new HttpError(404, 'not_found', 'Machine not found');
-            }
-            if (existing.status === 'revoked') {
-              throw new HttpError(409, 'invalid_transition', 'Machine is already revoked');
-            }
-            const revoked = yield* Effect.promise(() =>
-              revokeMachine(deps.db, id, user.id, new Date(now())),
-            );
-            if (!revoked) {
-              throw new HttpError(409, 'invalid_transition', 'Machine is already revoked');
-            }
-            machineRegistry.notifyRevoked(id);
-            logger.info({ machineId: id }, 'machine revoked');
-            yield* recordAudit({ actorUserId: user.id, action: 'machine.revoked', subjectId: id });
-            return toPublicMachine(revoked);
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('rename', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
             const id = request.params.id;
             const raw = yield* request.request.json.pipe(
               Effect.catchCause(() => Effect.succeed<unknown>(INVALID_JSON)),
@@ -450,127 +420,114 @@ export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount
             }
             return toPublicMachine(renamed);
           }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('remove', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const id = request.params.id;
-            const existing = yield* Effect.promise(() => findOwnedMachine(deps.db, id, user.id));
-            if (!existing) {
-              throw new HttpError(404, 'not_found', 'Machine not found');
-            }
-            if (existing.status === 'approved') {
-              throw new HttpError(409, 'revoke_first', 'Revoke the machine before deleting it');
-            }
-            const deleted = yield* Effect.promise(() => deleteMachine(deps.db, id, user.id));
-            if (!deleted) {
-              throw new HttpError(409, 'invalid_transition', 'Machine can no longer be deleted');
-            }
-            logger.info({ machineId: id }, 'machine deleted');
-            yield* recordAudit({ actorUserId: user.id, action: 'machine.deleted', subjectId: id });
-            return HttpServerResponse.empty({ status: 204 });
-          }),
-          logger,
-          requestId,
-        );
-      })
-      .handle('pair', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            if (!pairGlobalLimiter.allow('runner-pair')) {
-              throw new HttpError(
-                429,
-                'rate_limited',
-                'Too many pairing attempts, try again in a minute',
+        ),
+      )
+      .handle(
+        'remove',
+        handler(logger, async (request, user) => {
+          const id = request.params.id;
+          const existing = await findOwnedMachine(deps.db, id, user.id);
+          if (!existing) {
+            throw new HttpError(404, 'not_found', 'Machine not found');
+          }
+          if (existing.status === 'approved') {
+            throw new HttpError(409, 'revoke_first', 'Revoke the machine before deleting it');
+          }
+          const deleted = await deleteMachine(deps.db, id, user.id);
+          if (!deleted) {
+            throw new HttpError(409, 'invalid_transition', 'Machine can no longer be deleted');
+          }
+          logger.info({ machineId: id }, 'machine deleted');
+          await recordAudit({ actorUserId: user.id, action: 'machine.deleted', subjectId: id });
+        }),
+      )
+      .handle(
+        'pair',
+        // Public route: no session, so it uses the envelope directly.
+        (request) =>
+          withErrorEnvelope(
+            Effect.gen(function* () {
+              if (!pairGlobalLimiter.allow('runner-pair')) {
+                throw new HttpError(
+                  429,
+                  'rate_limited',
+                  'Too many pairing attempts, try again in a minute',
+                );
+              }
+              if (!pairIpLimiter.allow(socketAddressOf(request.request))) {
+                throw new HttpError(
+                  429,
+                  'rate_limited',
+                  'Too many pairing attempts, try again in a minute',
+                );
+              }
+              const raw = yield* request.request.json.pipe(
+                Effect.catchCause(() => Effect.succeed<unknown>(undefined)),
               );
-            }
-            if (!pairIpLimiter.allow(socketAddressOf(request.request))) {
-              throw new HttpError(
-                429,
-                'rate_limited',
-                'Too many pairing attempts, try again in a minute',
+              const parsed = Schema.decodeUnknownOption(PairBody, STRICT_DECODE)(raw);
+              const normalized = Option.isSome(parsed)
+                ? normalizePairingCode(parsed.value.code)
+                : null;
+              // The code-consume and the signature check run together and the
+              // route branches once afterwards, so the timing does not reveal
+              // which one failed. Every failure below answers the identical 400
+              // invalid_code. The `Promise.all` shape is kept on purpose.
+              const [consumed, signatureOk] = yield* Effect.promise(() =>
+                Promise.all([
+                  normalized === null
+                    ? Promise.resolve(null)
+                    : consumePairingCode(deps.db, hashPairingCode(normalized), new Date(now())),
+                  Promise.resolve(
+                    Option.isSome(parsed) && normalized !== null
+                      ? verifyPairingSignature(
+                          parsed.value.publicKey,
+                          parsed.value.signature,
+                          normalized,
+                        )
+                      : false,
+                  ),
+                ]),
               );
-            }
-            const raw = yield* request.request.json.pipe(
-              Effect.catchCause(() => Effect.succeed<unknown>(undefined)),
-            );
-            const parsed = Schema.decodeUnknownOption(PairBody, STRICT_DECODE)(raw);
-            const normalized = Option.isSome(parsed)
-              ? normalizePairingCode(parsed.value.code)
-              : null;
-            // The code-consume and the signature check run together and the
-            // route branches once afterwards, so the timing does not reveal
-            // which one failed. Every failure below answers the identical 400
-            // invalid_code. The `Promise.all` shape is kept on purpose.
-            const [consumed, signatureOk] = yield* Effect.promise(() =>
-              Promise.all([
+              if (
+                consumed === null ||
+                !signatureOk ||
+                Option.isNone(parsed) ||
                 normalized === null
-                  ? Promise.resolve(null)
-                  : consumePairingCode(deps.db, hashPairingCode(normalized), new Date(now())),
-                Promise.resolve(
-                  Option.isSome(parsed) && normalized !== null
-                    ? verifyPairingSignature(
-                        parsed.value.publicKey,
-                        parsed.value.signature,
-                        normalized,
-                      )
-                    : false,
+              ) {
+                throw invalidCode();
+              }
+              const body = parsed.value;
+              const machine = yield* Effect.promise(() =>
+                orConflict(() =>
+                  insertPendingMachine(deps.db, {
+                    ownerUserId: consumed.ownerUserId,
+                    name: body.name,
+                    publicKey: body.publicKey,
+                    capabilities: body.capabilities,
+                  }),
                 ),
-              ]),
-            );
-            if (consumed === null || !signatureOk || Option.isNone(parsed) || normalized === null) {
-              throw invalidCode();
-            }
-            const body = parsed.value;
-            const outcome = yield* Effect.promise(() =>
-              insertPendingMachine(deps.db, {
-                ownerUserId: consumed.ownerUserId,
-                name: body.name,
-                publicKey: body.publicKey,
-                capabilities: body.capabilities,
-              }),
-            ).pipe(
-              Effect.map((value) => ({ ok: true as const, value })),
-              Effect.catchDefect((defect) => Effect.succeed({ ok: false as const, defect })),
-            );
-            if (!outcome.ok) {
-              throw toConflict(outcome.defect);
-            }
-            const machine = outcome.value;
-            logger.info({ machineId: machine.id }, 'runner paired');
-            yield* recordAudit({
-              actorUserId: consumed.ownerUserId,
-              action: 'machine.paired',
-              subjectId: machine.id,
-            });
-            return HttpServerResponse.jsonUnsafe(
-              { machineId: machine.id, status: 'pending' },
-              { status: 201 },
-            );
-          }),
-          logger,
-          requestId,
-        );
-      }),
+              );
+              logger.info({ machineId: machine.id }, 'runner paired');
+              yield* Effect.promise(() =>
+                recordAudit({
+                  actorUserId: consumed.ownerUserId,
+                  action: 'machine.paired',
+                  subjectId: machine.id,
+                }),
+              );
+              return { machineId: machine.id, status: 'pending' as const };
+            }),
+            logger,
+            requestIdOf(request.request),
+          ),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(MachinesApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
+    Layer.provide(PairingCodeRateLimit.layer(createCodeLimiter)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: MACHINES_API_ROUTES };
+  return mountApi(MachinesApi, apiLayer);
 }

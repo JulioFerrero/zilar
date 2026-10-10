@@ -1,7 +1,7 @@
 ---
 id: T-0872
 title: "Server sweep: machines, integrations, setup onto the shared HTTP helpers (runSql, SchemaErrors, makeRateLimit, handler, mountApi) with truthful success statuses"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0872-sweep-machines-setup
 model: auto
@@ -69,4 +69,18 @@ Run the tests 3 times after the last commit. The machine is shared, so note `upt
 
 ## Report (written by the worker when done)
 
+- Commits: machines `0ae92954`, integrations `b72ba49a`, setup `cf81d6f6`.
+- Lines (git numstat, +added/-removed, `routes.expected.ts` excluded): machines `api.ts` +237/-280; integrations `api.ts` +113/-207, `routes.ts` +2/-12, `settings.ts` +2/-12, `routes.test.ts` +2/-2; setup `api.ts` +4/-26, `settings.ts` +3/-11, `routes.test.ts` +12/-14. Removed 593, added 375.
+- Checks: 11 files, 117 tests passed, 3 of 3 runs after the last commit (load average 55-62, 101-236 s per run, timeouts 120 s). Typecheck and oxlint clean.
+- Truthful statuses: `createPairingCode` and `pair` declare 201 (`HttpApiSchema.status(201)`) and return plain values; `deny` and `remove` declare `HttpApiSchema.NoContent` and return void. The line numbers in the spec (199, 211, 315, 391, 476, 552) had moved; the five sites were found by endpoint name.
+- Machines: `createPairingCode` uses `makeRateLimit` (tag `zilar/effect/http/MachinesPairingCodeRateLimit`; on the endpoint the Session middleware must be added last so it runs first). The pair limiters (global and per IP) are not plain per-user limits and stay in the handler. `pair` is public, so it keeps `withErrorEnvelope` (`handler` needs `CurrentUser`).
+- Hand-decoded bodies stay hand-decoded and are NOT declared as endpoint payloads: `rename` (own 400 texts, "Invalid JSON body" / "Invalid machine update") and `pair` (every failure answers `invalid_code`, timing-safe `Promise.all`), and setup `run` (order 404 -> 429 -> decode 400). Declaring a payload would make the framework decode first and change errors. This differs from the spec's "still declare the schema"; it is not possible in Effect 4 without the framework decoding.
+- Integrations: local `runSql` copies in `routes.ts` and `settings.ts` removed; the schema-error middleware is the shared `SchemaErrors`; handlers use `handler(logger, ...)`; `mountApi`. The Telegram and Email limiter middlewares stay custom (owner check 404 and env guard 409 before the limit). The setEmail transaction uses the shared `runSql`.
+- Setup: local `runSql` in `api.ts` and `settings.ts` removed; `mountApi`. No `handler` or `SchemaErrors` (public route, hand decode).
+- Behaviour differences: integrations schema-error 400 no longer falls back to `'Invalid request'` when the decode message is empty (shared `SchemaErrors` has no fallback); no test hits it. Machines and `pair` 201/204 bytes are the same as before.
+- Test edits (spec said tests unchanged, but they imported the deleted arrays or mocked `sqlRuntimeFor`): integrations and setup `routes.test.ts` read `EXPECTED_ROUTES` from `routes.expected.ts`; setup `routes.test.ts` now mocks `runSql` instead of `sqlRuntimeFor`, because the shared `runSql` calls `sqlRuntimeFor` inside its own module and the mock no longer saw it. Same assertion (`calls` is 3).
+- Not run: `pnpm gate` (wave mode).
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.** Machines, integrations and setup are converted (−593/+375 lines). The pairing code and pair declare 201, and deny and remove declare 204. The two test edits follow the moved route arrays and the shared `runSql`, with the same assertions. The public routes keep `withErrorEnvelope`. The combined wave 4 check passes.

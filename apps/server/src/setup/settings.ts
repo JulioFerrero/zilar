@@ -8,7 +8,7 @@
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { createSettingsCipher } from './crypto';
 import type { ServerConfig } from '../config';
 
@@ -38,13 +38,6 @@ export function settingsCipherFor(
 // Wrappers over the `effect/sql` helpers below: every query runs
 // on the runtime registered for this database (see `../effect/sql`). They stay
 // `async` so routes, `index.ts` and existing tests keep their shape.
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
-
 export function needsSetup(db: ServerDatabase): Promise<boolean> {
   return runSql(db, needsSetupEffect());
 }

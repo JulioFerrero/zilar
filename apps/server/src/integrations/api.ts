@@ -6,7 +6,7 @@
 // log line or an error text. Helpers stay in `routes.ts`.
 
 import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
+import { HttpServerRequest } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
@@ -15,23 +15,23 @@ import {
   HttpApiMiddleware,
 } from 'effect/http-api';
 import { SqlClient } from 'effect/sql';
-import type { Logger } from 'pino';
 import { createResendMailer } from '../auth/mailer';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
   CurrentUser,
+  SchemaErrors,
   Session,
-  failureResponse,
+  handler,
   httpErrorResponse,
+  mountApi,
   requestIdOf,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { getMailSettings, saveMailSettingsEffect, settingsCipherFor } from '../setup/settings';
 import { createTelegramClient } from '../stickers/telegram-import';
@@ -54,6 +54,9 @@ import {
   telegramStatusFor,
   type IntegrationsRoutesDependencies,
 } from './routes';
+
+const MAIL_SEND_FAILED =
+  'The test email could not be sent. Check the Resend key and the sender address.';
 
 // Replaces `telegramBodySchema` (zod): trimmed before the length and
 // no-spaces checks, strict via the endpoint's `PayloadParseOptions`.
@@ -116,25 +119,6 @@ const IntegrationsView = Schema.Struct({
 });
 
 const OkResult = Schema.Struct({ ok: Schema.Boolean });
-
-// Applied to the group so a payload decode failure renders like the old zod
-// path: 400 `invalid_request` carrying the first schema message.
-class IntegrationsSchemaErrors extends HttpApiMiddleware.Service<IntegrationsSchemaErrors>()(
-  'zilar/effect/http/IntegrationsSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<IntegrationsSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(IntegrationsSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message || 'Invalid request'),
-      );
-    }),
-  );
-}
 
 // Runs the Telegram save budget before the payload is decoded, exactly like
 // the old route's `requireOwner` -> `allow` -> decode order: the owner check
@@ -241,18 +225,11 @@ const IntegrationsGroup = HttpApiGroup.make('integrations')
       .middleware(IntegrationsEmailRateLimit),
   )
   .middleware(Session)
-  .middleware(IntegrationsSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const IntegrationsApi = HttpApi.make('integrations').add(IntegrationsGroup);
-
-export const INTEGRATIONS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/settings/integrations' },
-  { method: 'PUT', path: '/api/settings/integrations/telegram' },
-  { method: 'DELETE', path: '/api/settings/integrations/telegram' },
-  { method: 'PUT', path: '/api/settings/integrations/email' },
-];
 
 export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): EffectApiMount {
   const logger = deps.logger;
@@ -281,189 +258,125 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
     }
   }
 
+  function recordAudit(userId: string, action: string): void {
+    void deps.audit?.record({
+      actorUserId: userId,
+      aiId: null,
+      groupId: null,
+      action,
+      subjectId: null,
+      argsHash: null,
+      costCurrency: null,
+      costAmount: null,
+      result: 'ok',
+      detail: null,
+    });
+  }
+
   const groupLayer = HttpApiBuilder.group(IntegrationsApi, 'integrations', (handlers) =>
     handlers
       // Owner-only like the three writes: anyone else gets the same 404 as
       // an unknown route. The web reads "am I the owner" from 200 versus
       // 404 (`useIsServerOwner`).
-      .handle('status', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            yield* Effect.promise(() => requireOwner(user.id));
-            const [telegram, email, voiceTranscription] = yield* Effect.promise(() =>
-              Promise.all([
-                telegramStatusFor(deps),
-                mailStatusFor(deps),
-                voiceTranscriptionStatusFor(deps.db, deps.config, deps.logger),
-              ]),
-            );
-            return { telegram, email, voiceTranscription, canManage: true };
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'status',
+        handler(logger, async (_request, user) => {
+          await requireOwner(user.id);
+          const [telegram, email, voiceTranscription] = await Promise.all([
+            telegramStatusFor(deps),
+            mailStatusFor(deps),
+            voiceTranscriptionStatusFor(deps.db, deps.config, deps.logger),
+          ]);
+          return { telegram, email, voiceTranscription, canManage: true };
+        }),
+      )
       // The Telegram token, verified through `getMe` before storing. The
       // limiter middleware already charged the budget, before the payload
       // decode. A rejected token answers 422 `invalid_token` and nothing is
       // stored; anything else failing to reach Telegram answers 503.
-      .handle('setTelegram', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            yield* Effect.promise(() => requireOwner(user.id));
-            const botToken = request.payload.botToken;
-            const client = buildTelegram(botToken);
-            yield* Effect.promise(() => client.getMe()).pipe(
-              Effect.catchDefect((defect) => {
-                if (isInvalidToken(defect)) {
-                  return Effect.die(
-                    new HttpError(
-                      422,
-                      'invalid_token',
-                      'Telegram rejected the bot token. Check it and try again.',
-                    ),
-                  );
-                }
-                return Effect.die(
-                  new HttpError(503, 'try_later', 'Could not reach Telegram, try again later'),
-                );
-              }),
-            );
-            const cipher = settingsCipherFor(deps.config);
-            yield* Effect.promise(() => saveStoredTelegramToken(deps.db, cipher, botToken));
-            void deps.audit?.record({
-              actorUserId: user.id,
-              aiId: null,
-              groupId: null,
-              action: 'integrations.telegram_set',
-              subjectId: null,
-              argsHash: null,
-              costCurrency: null,
-              costAmount: null,
-              result: 'ok',
-              detail: null,
-            });
-            return { ok: true };
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'setTelegram',
+        handler(logger, async (request, user) => {
+          await requireOwner(user.id);
+          const botToken = request.payload.botToken;
+          const client = buildTelegram(botToken);
+          try {
+            await client.getMe();
+          } catch (defect) {
+            if (isInvalidToken(defect)) {
+              throw new HttpError(
+                422,
+                'invalid_token',
+                'Telegram rejected the bot token. Check it and try again.',
+              );
+            }
+            throw new HttpError(503, 'try_later', 'Could not reach Telegram, try again later');
+          }
+          await saveStoredTelegramToken(deps.db, settingsCipherFor(deps.config), botToken);
+          recordAudit(user.id, 'integrations.telegram_set');
+          return { ok: true };
+        }),
+      )
       // Removes the stored token. An env token cannot be deleted here and
       // stays in effect.
-      .handle('removeTelegram', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            yield* Effect.promise(() => requireOwner(user.id));
-            yield* Effect.promise(() => deleteStoredTelegramToken(deps.db));
-            void deps.audit?.record({
-              actorUserId: user.id,
-              aiId: null,
-              groupId: null,
-              action: 'integrations.telegram_removed',
-              subjectId: null,
-              argsHash: null,
-              costCurrency: null,
-              costAmount: null,
-              result: 'ok',
-              detail: null,
-            });
-            return { ok: true };
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'removeTelegram',
+        handler(logger, async (_request, user) => {
+          await requireOwner(user.id);
+          await deleteStoredTelegramToken(deps.db);
+          recordAudit(user.id, 'integrations.telegram_removed');
+          return { ok: true };
+        }),
+      )
       // The sender changes always; the key changes only when given. Before
       // storing anything a real test message goes to the owner's own email
       // through the candidate mailer; a failed send answers 422
       // `mail_send_failed` and nothing is stored. The env guard and the
       // limiter middleware already ran, before the payload decode.
-      .handle('setEmail', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            yield* Effect.promise(() => requireOwner(user.id));
-            if (envMailConfigured(deps.config)) {
-              throw new HttpError(
-                409,
-                'managed_by_environment',
-                'Email is managed by environment variables on this server',
-              );
-            }
-            const { from, resendApiKey } = request.payload;
-            const cipher = settingsCipherFor(deps.config);
-            let key: string | null = null;
-            if (resendApiKey !== undefined) {
-              key = resendApiKey;
-            } else {
-              const stored = yield* Effect.promise(() => getMailSettings(deps.db, cipher));
-              key = stored?.resendApiKey ?? null;
-            }
-            if (key === null) {
-              throw new HttpError(
-                422,
-                'mail_send_failed',
-                'The test email could not be sent. Check the Resend key and the sender address.',
-              );
-            }
-            const candidate = createResendMailer(deps.config, deps.logger, {
-              resendApiKey: key,
-              from,
-            });
-            const ownerEmail = yield* Effect.promise(() => ownerEmailFor(deps.db, user.id));
-            yield* Effect.promise(() =>
-              sendTestMail({ mailer: candidate, email: ownerEmail }),
-            ).pipe(
-              // Nothing is stored on a failed send: same fixed message as
-              // setup, with no provider detail and no secret.
-              Effect.catchDefect(() =>
-                Effect.die(
-                  new HttpError(
-                    422,
-                    'mail_send_failed',
-                    'The test email could not be sent. Check the Resend key and the sender address.',
-                  ),
-                ),
-              ),
+      .handle(
+        'setEmail',
+        handler(logger, async (request, user) => {
+          await requireOwner(user.id);
+          if (envMailConfigured(deps.config)) {
+            throw new HttpError(
+              409,
+              'managed_by_environment',
+              'Email is managed by environment variables on this server',
             );
-            const storedKey: string = key;
-            yield* Effect.promise(() =>
-              sqlRuntimeFor(deps.db).runPromise(
-                Effect.gen(function* () {
-                  const sql = yield* SqlClient.SqlClient;
-                  return yield* sql.withTransaction(
-                    saveMailSettingsEffect(cipher, { resendApiKey: storedKey, from }),
-                  );
-                }),
-              ),
-            );
-            swap(candidate);
-            void deps.audit?.record({
-              actorUserId: user.id,
-              aiId: null,
-              groupId: null,
-              action: 'integrations.email_set',
-              subjectId: null,
-              argsHash: null,
-              costCurrency: null,
-              costAmount: null,
-              result: 'ok',
-              detail: null,
-            });
-            return { ok: true };
-          }),
-          logger,
-          requestId,
-        );
-      }),
+          }
+          const { from, resendApiKey } = request.payload;
+          const cipher = settingsCipherFor(deps.config);
+          const key =
+            resendApiKey ?? (await getMailSettings(deps.db, cipher))?.resendApiKey ?? null;
+          if (key === null) {
+            throw new HttpError(422, 'mail_send_failed', MAIL_SEND_FAILED);
+          }
+          const candidate = createResendMailer(deps.config, deps.logger, {
+            resendApiKey: key,
+            from,
+          });
+          const ownerEmail = await ownerEmailFor(deps.db, user.id);
+          try {
+            await sendTestMail({ mailer: candidate, email: ownerEmail });
+          } catch {
+            // Nothing is stored on a failed send: same fixed message as
+            // setup, with no provider detail and no secret.
+            throw new HttpError(422, 'mail_send_failed', MAIL_SEND_FAILED);
+          }
+          await runSql(
+            deps.db,
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              return yield* sql.withTransaction(
+                saveMailSettingsEffect(cipher, { resendApiKey: key, from }),
+              );
+            }),
+          );
+          swap(candidate);
+          recordAudit(user.id, 'integrations.email_set');
+          return { ok: true };
+        }),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(IntegrationsApi).pipe(
@@ -474,12 +387,5 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: INTEGRATIONS_API_ROUTES };
+  return mountApi(IntegrationsApi, apiLayer);
 }

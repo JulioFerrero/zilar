@@ -8,9 +8,10 @@ import { SqlClient } from 'effect/sql';
 import { createAuditRecorder } from '../audit/service';
 import { CurrentMailer, type Mailer } from '../auth/mailer';
 import { createApp } from '../app';
-import { sqlRuntimeFor, type SqlRuntime } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { createTestContext, testSql, TEST_BASE_URL, type TestContext } from '../test-support';
-import { SETUP_API_ROUTES, SETUP_RATE_LIMIT_MAX, type SetupApiDependencies } from './api';
+import { SETUP_RATE_LIMIT_MAX, type SetupApiDependencies } from './api';
+import { EXPECTED_ROUTES } from './routes.expected';
 import {
   getMailSettings,
   MAIL_FROM_SETTING,
@@ -19,12 +20,11 @@ import {
   settingsCipherFor,
 } from './settings';
 
-// Only `sqlRuntimeFor` is wrapped; every other export is the real module. A
-// test can break the runtime for the next call; unqueued calls pass through
-// (the T-0669 pattern).
+// Only `runSql` is wrapped; every other export is the real module. A test can
+// break the call it names; unqueued calls pass through (the T-0669 pattern).
 vi.mock('../effect/sql', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../effect/sql')>();
-  return { ...actual, sqlRuntimeFor: vi.fn(actual.sqlRuntimeFor) };
+  return { ...actual, runSql: vi.fn(actual.runSql) };
 });
 
 const SENTINEL_KEY = 're_ZILAR_SETUP_SENTINEL_KEY_9f8e7d6c5b4a';
@@ -258,16 +258,14 @@ describe('POST /api/setup', () => {
     // `needsSetup` (the pre-check), the setup transaction, then the rollback.
     // Break the rollback's runtime: the cleanup failure must never mask the
     // specified 422 or leak anything (the T-0669 pattern).
-    const passthrough = vi.mocked(sqlRuntimeFor).getMockImplementation();
+    const passthrough = vi.mocked(runSql).getMockImplementation();
     let calls = 0;
-    vi.mocked(sqlRuntimeFor).mockImplementation((db) => {
+    vi.mocked(runSql).mockImplementation((db, effect) => {
       calls += 1;
       if (calls === 3) {
-        return {
-          runPromise: () => Promise.reject(new Error('database is down')),
-        } as unknown as SqlRuntime;
+        return Promise.reject(new Error('database is down'));
       }
-      return passthrough!(db);
+      return passthrough!(db, effect);
     });
     try {
       const response = await postSetup(app, validBody);
@@ -279,7 +277,7 @@ describe('POST /api/setup', () => {
       expect(raw).not.toContain('down');
       expect(context.logOutput()).not.toContain(SENTINEL_KEY);
     } finally {
-      vi.mocked(sqlRuntimeFor).mockImplementation(passthrough!);
+      vi.mocked(runSql).mockImplementation(passthrough!);
     }
   });
 
@@ -374,7 +372,7 @@ describe('POST /api/setup', () => {
 
 describe('setup route shape', () => {
   it('registers exactly GET /api/setup/status and POST /api/setup', () => {
-    const paths = SETUP_API_ROUTES.map((route) => `${route.method}|${route.path}`);
+    const paths = EXPECTED_ROUTES.map((route) => `${route.method}|${route.path}`);
     expect(paths).toContain('GET|/api/setup/status');
     expect(paths).toContain('POST|/api/setup');
     expect(paths).toHaveLength(2);

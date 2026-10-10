@@ -8,14 +8,14 @@
 // gets the same 404 as an unknown route, so existence is never leaked.
 
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { CurrentMailer, Mailer } from '../auth/mailer';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { RateLimiter } from '../rate-limit';
 import { getMailSettings, settingsCipherFor } from '../setup/settings';
@@ -70,16 +70,6 @@ export interface IntegrationsRoutesDependencies {
 
 export function notFound(): HttpError {
   return new HttpError(404, 'not_found', 'Not found');
-}
-
-// Every owner lookup runs on the `effect/sql` client registered for this
-// database (see `../effect/sql`); the exported functions stay `async` so the
-// routes and tests keep their shape during the transition.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // The server owner is the user with the earliest `createdAt`: there is no
