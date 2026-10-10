@@ -2,6 +2,16 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 20:30 local: every file over 1,000 lines is split or in review**
+- **Merged since 19:40:** T-0954 (web Composer), T-0958 (stickers), T-0959 (web api.ts), T-0960 (agents/reply.ts), T-0961 (groups), T-0964 (approvals), T-0965 (lead/policy.ts; byte-identical, and all 15 sample commands classify the same).
+- **Running:**
+  - T-0962 (mobile chat screen; phone smoke), T-0963 (actions gateway), T-0966 (tools adapters), T-0967 (GroupPanel; Chrome);
+  - T-0968 (sticky web mock mode), T-0969 (core send.ts, byte-identical), T-0970 (lead/batch.ts), T-0971 (MessageBubble; Chrome).
+- **Found:**
+  - web mock mode is lost on in-app navigation; T-0968 fixes it;
+  - no test covers the AI reply pipeline (`agents/`) since the test cut. That is crucial code under Julio's rule; a small test task is to be specced.
+- **For Julio's live test:** switch chats while recording voice (T-0954 moved two ref writes into an effect).
+
 **2026-10-10 19:40 local: size wave 1 mostly merged; wave 2 running; mobile mock cutover merged**
 - **Merged:**
   - T-0949: mobile mock mode on the real store. The lead's phone smoke shows the chat list and the full General history from the shared seed;
