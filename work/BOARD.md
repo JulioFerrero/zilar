@@ -22,6 +22,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
   - **GIFs:** `apps/mobile/src/lib/gifs-api.ts` `toGifItem` wraps every `data:` token in `/api/gifs/media/<token>`, and the token is SVG too.
 
   The fix needs raster (PNG) art, plus a mock path the native image can reach.
+- **Mobile mock approvals have no rules (corrected 2026-10-10, T-1056).** "Always allowed" is always empty in mock mode, because `apps/mobile/src/mock/approvals.ts:119-121` returns `[]` and the "Always" decision records no rule. On real builds the rules load for every owned AI (`use-approvals.ts:117-160`). The fix belongs with the approvals domain of the shared mock backend (`docs/audit/mock-plan.md`).
 - **Mock: `GET /groups/:id/topics` returns `[]` for groups whose General exists only in `/chats` (T-1048 follow-up).**
 - **Mobile: about 9 more `Effect.runFork(Fiber.interrupt(...))` sites in `components/chat` could use `interruptFiber` (`lib/effect/timers.ts`, T-1050).** The `runSync` ones differ and stay.
 - **Dedup slices that need a lead decision (`docs/audit/dedup-status.md` §8):** S6 crypto envelope (keys), S7-S9 rate limiters, S10-S11 `groups/access.ts` (permissions), S15 web settings facade (keys). S4 (schema-issue walker) must keep audit's two extra cases.
