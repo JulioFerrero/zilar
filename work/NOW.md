@@ -2,6 +2,14 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 07:00 local: store core T2 and T3 merged (T-0903, T-0904, main `c29784ea`); nothing deployed**
+- **T-0903 (T2):** the lifetime is in `packages/client-core`, with web `runtime.ts` as an 18-line adapter.
+- **T-0904 (T3):** the message ledger is in the core, web `realStore.ts` went from 1,550 to 479 lines, and the group echo race is fixed on web, tests first.
+- **Running:**
+  - T-0905 (T4, mobile on the core lifetime) is in its check;
+  - T-0906 (T5, mobile on the core ledger, plus the mobile echo race fix and Q1 mentions);
+  - T-0907 (T6, web incoming, actions, reads and history in the core).
+
 **2026-10-10 06:25 local: wave 6 merged (T-0896 to T-0902), main `6fb2c224`; nothing deployed**
 - **Checks:** the combined check of the six code tasks passed, and main equals the checked tree. The phone smoke (chats, settings, machines) is clean.
 - **Main CI:** green at `6fb2c224`, which also covers T-0895 from wave 5.

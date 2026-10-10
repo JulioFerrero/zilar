@@ -8,6 +8,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
+| [T-0906](T-0906-store-core-t5-mobile-ledger.md) | Store core T5: mobile on the core ledger, group echo race fix, received mentions | in-progress | sonnet-5.5 | T-0904 | phase 4.3 |
+| [T-0907](T-0907-store-core-t6-incoming-history.md) | Store core T6: incoming, actions, reads, history in core; web on them | in-progress | opus-5.5 | T-0903, T-0904 | phase 4.3 |
 | [T-0905](T-0905-store-core-t4-mobile-lifetime.md) | Store core T4: mobile store on the core lifetime | in-progress | sonnet-5.5 | T-0903 | phase 4.3 |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
