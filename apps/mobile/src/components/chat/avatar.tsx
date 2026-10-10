@@ -1,8 +1,7 @@
-import { initials } from '@zilar/chat-core';
+import { ditherAvatarSvg } from '@zilar/chat-core';
 import { View } from 'react-native';
+import { SvgXml } from 'react-native-svg';
 
-import { Text } from '@/components/ui/text';
-import { avatarShade } from '@/lib/depth';
 import { cn } from '@/lib/utils';
 
 type AvatarProps = {
@@ -10,22 +9,13 @@ type AvatarProps = {
   name: string;
   size?: number;
   online?: boolean;
-  /** AIs get the light `#ededed` circle; people and groups a monochrome shade. */
+  /** Kept for callers; the dither avatar no longer changes for AIs. */
   ai?: boolean;
   className?: string;
 };
 
-/** Monochrome circle with initials and the online dot (ui-style.md §2). */
-export function Avatar({
-  id,
-  name,
-  size = 54,
-  online = false,
-  ai = false,
-  className,
-}: AvatarProps) {
-  const shade = avatarShade(id, ai);
-  const fontSize = Math.round(size * 0.35);
+/** The dither avatar circle and the online dot. */
+export function Avatar({ id, size = 54, online = false, className }: AvatarProps) {
   const dotSize = Math.max(10, Math.round(size * 0.22));
   return (
     <View className={cn('relative', className)} style={{ width: size, height: size }}>
@@ -34,19 +24,10 @@ export function Avatar({
           width: size,
           height: size,
           borderRadius: size / 2,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: shade.background,
-          borderWidth: shade.ring ? 1 : 0,
-          borderColor: '#333333',
+          overflow: 'hidden',
         }}
       >
-        <Text
-          className="font-semibold"
-          style={{ fontSize, lineHeight: Math.round(fontSize * 1.2), color: shade.color }}
-        >
-          {initials(name)}
-        </Text>
+        <SvgXml xml={ditherAvatarSvg(id)} width={size} height={size} />
       </View>
       {online ? (
         <View

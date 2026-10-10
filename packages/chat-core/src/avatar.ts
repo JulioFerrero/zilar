@@ -1,3 +1,5 @@
+import { generateDitherAvatar, SIZE } from 'dither-avatar';
+
 import { graphemes } from './text';
 
 export interface AvatarGradient {
@@ -55,4 +57,17 @@ export function initials(name: string): string {
     .map(firstLetterOrDigit)
     .filter((character) => character.length > 0);
   return ((characters[0] ?? '') + (characters[1] ?? '')).toUpperCase();
+}
+
+/**
+ * The dither-avatar SVG for a seed, with a `viewBox` added to the root so it
+ * scales to any avatar box (the package ships a fixed 200 px size).
+ */
+export function ditherAvatarSvg(seed: string): string {
+  return generateDitherAvatar(seed).replace('<svg ', `<svg viewBox="0 0 ${SIZE} ${SIZE}" `);
+}
+
+/** The dither avatar as an SVG `data:` URI, ready for an image source. */
+export function ditherAvatarDataUri(seed: string): string {
+  return 'data:image/svg+xml,' + encodeURIComponent(ditherAvatarSvg(seed));
 }

@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1075](T-1075-dither-avatars.md) | Dither avatars (colour, everyone) for avatars without a picture, web + mobile | in-progress | auto | - | Julio's pick 10-11 |
 | [T-1076](T-1076-mock-backend-avatars.md) | Mock backend F5: avatars domain with data:/blob: urls; /me avatarUrl | in-progress | auto | T-1074 | unblocks mobile profile H2 |
 
 ## Follow-ups
@@ -1118,3 +1117,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1072](T-1072-web-mock-delete-covered-routes-5.md) | Mock sweep W10 (web): delete the mock/api.ts me, me/handle, users/by-handle, contact-requests, blocks and hand | 2026-10-10 |
 | [T-1073](T-1073-mock-backend-push-voice.md) | Mock backend F4: push (config, subscriptions, settings, test) and voice transcription domains in @zilar/mock-b | 2026-10-10 |
 | [T-1074](T-1074-web-mock-drop-old-routes.md) | Mock sweep W5-W9 (web): dispatch answers only from @zilar/mock-backend; delete mock/api.ts and the dead seed f | 2026-10-10 |
+| [T-1075](T-1075-dither-avatars.md) | Dither avatars: every avatar without a picture shows dither-avatar's coloured SVG (web and mobile, AIs too) in | 2026-10-10 |

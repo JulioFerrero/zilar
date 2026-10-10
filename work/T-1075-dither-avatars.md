@@ -1,7 +1,7 @@
 ---
 id: T-1075
 title: "Dither avatars: every avatar without a picture shows dither-avatar's coloured SVG (web and mobile, AIs too) instead of initials"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1075-dither-avatars
 model: auto
@@ -68,4 +68,63 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- **Shared helper** (`packages/chat-core`): added `"dither-avatar": "1.0.0"` (exact) to dependencies and ran `pnpm install`. In `src/avatar.ts` added `ditherAvatarSvg(seed)` (runs `generateDitherAvatar(seed)` and injects `viewBox="0 0 ${SIZE} ${SIZE}"` into the root `<svg>`) and `ditherAvatarDataUri(seed)` (`'data:image/svg+xml,' + encodeURIComponent(ditherAvatarSvg(seed))`). Both are re-exported through the existing `export * from './avatar'` at `src/index.ts:4`.
+- **Web** `apps/web/src/components/Avatar.tsx`: with no `avatarUrl` it now renders `<img src={ditherAvatarDataUri(id)} alt="" aria-hidden="true" className="h-full w-full rounded-full object-cover" />`. The real picture and the online dot are unchanged. Deleted `avatarShade`, `AvatarShade`, `PERSON_SHADES`, `AI_SHADE`, `hashId` and the `User` / `initials` imports after grepping: nothing else in the repo used them. `id` and `name` stay in `AvatarProps` for callers; `ai` stays in the props but is no longer destructured or used.
+- **Mobile `components/chat/avatar.tsx`**: replaced the shaded circle/initials with a `size`×`size` `View` (`borderRadius: size / 2`, `overflow: 'hidden'`) holding `<SvgXml xml={ditherAvatarSvg(id)} width={size} height={size} />`. Online dot kept. Removed the `avatarShade` and `initials` imports and the `Text` import. `name`/`ai` stay in the props for callers but are no longer destructured.
+- **Mobile `lib/depth.ts`**: deleted `avatarShade`, `AI_SHADE`, `PERSON_SHADES` and `AvatarShade` — a repo grep showed `avatarShade` was only used by `components/chat/avatar.tsx` (and the web had its own copy). `senderColor` and the sender colours are untouched.
+- **Mobile `profile/profile-view.tsx`**: the no-picture fallback is now a 104×104 circle with `overflow: 'hidden'` holding `<SvgXml xml={ditherAvatarSvg(profile.id)} width={104} height={104} />`, with the same `accessibilityLabel={`${profile.name} picture`}`. Removed the `initials` import.
+- **Mobile `nav/floating-tab-bar.tsx`**: the Profile tab fallback is the dither of `profile.id` (20×20, matching the resolved picture) when `profile` is present, and the `?` text when it is undefined. Removed the `initials` import.
+- Updated a few comments that still said "initials" to say "dither".
+- No tests written (UI code, as the spec says).
+- Deviation: none from the spec. `name` in both `AvatarProps` types also stays for callers (like `ai`), since the spec only names `ai`; removing it would break callers and it is outside scope.
+
+### Files changed
+
+`packages/chat-core/package.json`, `packages/chat-core/src/avatar.ts`, `pnpm-lock.yaml`, `apps/web/src/components/Avatar.tsx`, `apps/mobile/src/components/chat/avatar.tsx`, `apps/mobile/src/lib/depth.ts`, `apps/mobile/src/components/profile/profile-view.tsx`, `apps/mobile/src/components/nav/floating-tab-bar.tsx`, `work/T-1075-dither-avatars.md`.
+
+### Commands and real results
+
+- `pnpm install`: ok (added `dither-avatar@1.0.0`; it landed at `packages/chat-core/node_modules/dither-avatar`, exports `generateDitherAvatar` and `SIZE = 200`, `dist/index.d.ts`).
+- Single tests: none run separately — no test file sits next to any changed file (checked; the package suites have no avatar tests). The gate ran the nearest package suites instead.
+- `pnpm gate` (from the repo root):
+  ```
+  gate: 9 changed file(s) against main
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (1.0s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (4.7s)
+  PASS  effect  (0.7s)
+  PASS  tests @zilar/chat-core  (1.1s)
+  PASS  tests @zilar/mobile  (1.2s)
+  SKIP tests @zilar/web (no nearby test files)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The first run failed on `format` for `apps/mobile/src/lib/depth.ts` (a leftover blank line from the deletion); I ran `pnpm exec prettier --write` on that one allowed file and re-ran the gate.
+
+### Acceptance: `ditherAvatarSvg('u-ana')` first 120 characters
+
+```
+<svg viewBox="0 0 200 200" width="200" height="200" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rec
+```
+
+(120 chars; includes `viewBox="0 0 200 200"`.)
+
+### Blocked / needs a decision
+
+Nothing blocked. Not verified on web/mobile at runtime (mock mode) — that is the lead's smoke test.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-11: approved. The pre-review is clean, with no nits.**
+- **The shared helpers:** `dither-avatar@1.0.0` (exact) in `@zilar/chat-core`. `ditherAvatarSvg` adds `viewBox="0 0 200 200"`, and `ditherAvatarDataUri` wraps it.
+- **Web:** `Avatar.tsx` shows the dither `<img>` when there is no picture. The monochrome shades are removed.
+- **Mobile:** `chat/avatar.tsx` uses `SvgXml` in a round clip. `profile-view` and the Profile tab face use the viewer's id. `avatarShade` and the shades are removed from `lib/depth.ts`.
+- **The lead's web check** (`?mock=1`): coloured dithers in the chat list, the chat header and message avatars, AIs (Dev-1) too.
+- **The lead's phone smoke** (mock):
+  - **Chats:** Dev AI, Dev team, Marta, Familia, QA squad, Acme, Luis and Marketing AI each show their own dither, scaled to the circle;
+  - **Profile:** the 104 px dither for Ada, plus the tab-bar face;
+  - **`/u/some_guy` and AIs** pass.
+- **Check:** the gate passed.

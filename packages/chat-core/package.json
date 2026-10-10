@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@zilar/protocol": "workspace:*"
+    "@zilar/protocol": "workspace:*",
+    "dither-avatar": "1.0.0"
   }
 }

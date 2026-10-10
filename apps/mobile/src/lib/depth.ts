@@ -141,29 +141,3 @@ export function senderColor(id: string): string {
   }
   return SENDER_COLORS[(hash >>> 0) % SENDER_COLORS.length] ?? SENDER_COLORS[0];
 }
-
-/** Monochrome avatar shades (ui-style.md §2). */
-export const AI_SHADE = { background: '#ededed', color: '#0a0a0a', ring: false } as const;
-export const PERSON_SHADES = [
-  { background: '#262626', color: '#ededed', ring: false },
-  { background: '#1a1a1a', color: '#ededed', ring: true },
-] as const;
-
-export interface AvatarShade {
-  background: string;
-  color: string;
-  ring: boolean;
-}
-
-/** Picks the avatar shade deterministically from the id; AIs get the light one. */
-export function avatarShade(id: string, ai = false): AvatarShade {
-  if (ai) {
-    return AI_SHADE;
-  }
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < id.length; index += 1) {
-    hash ^= id.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return PERSON_SHADES[(hash >>> 0) % PERSON_SHADES.length] ?? PERSON_SHADES[0];
-}

@@ -1,8 +1,9 @@
-import { initials } from '@zilar/chat-core';
+import { ditherAvatarSvg } from '@zilar/chat-core';
 import { Image } from 'expo-image';
 import { Camera, Copy, Pencil, Settings } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
+import { SvgXml } from 'react-native-svg';
 
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
@@ -102,19 +103,14 @@ export function ProfileViewContent({
         {source === null ? (
           <View
             accessibilityLabel={`${profile.name} picture`}
-            className="items-center justify-center"
             style={{
               width: 104,
               height: 104,
               borderRadius: 52,
-              backgroundColor: '#262626',
-              borderWidth: 1,
-              borderColor: '#333333',
+              overflow: 'hidden',
             }}
           >
-            <Text className="font-semibold text-foreground" style={{ fontSize: 36 }}>
-              {initials(profile.name)}
-            </Text>
+            <SvgXml xml={ditherAvatarSvg(profile.id)} width={104} height={104} />
           </View>
         ) : (
           <Image
@@ -258,8 +254,8 @@ export function PhotoEditRow({ edit, stagedName }: { edit: PhotoEdit; stagedName
 /** The stateful Profile tab body: the content plus the failed-url flag. */
 export function ProfileView(props: ProfileViewProps & { photoEdit?: PhotoEdit | undefined }) {
   // The failed url, not a boolean: a 404 for a stale url clears itself when
-  // `setProfile` carries the new `avatarUrl`, instead of sticking on
-  // initials until remount.
+  // `setProfile` carries the new `avatarUrl`, instead of sticking on the
+  // dither until remount.
   const [failedUrl, setFailedUrl] = useState<string | undefined>(undefined);
   return (
     <ProfileViewContent
