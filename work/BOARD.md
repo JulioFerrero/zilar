@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0936](T-0936-size-dup-audit.md) | Audit: 400-line limit and duplicated code | in-progress | deepseek-flash | — | Julio 10-10 |
-| [T-0944](T-0944-mock-backend-channels-invites.md) | Mock backend D2: invite links, join, directory | in-progress | deepseek-flash | T-0942 | mock-plan D |
 
 ## Follow-ups
 
@@ -972,3 +971,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0942](T-0942-mock-backend-domains.md) | Mock backend: one module per domain (seed, state and routes together) and alphabetical registries, so parallel | 2026-10-10 |
 | [T-0945](T-0945-mock-backend-xmpp.md) | Mock backend F2: a fake XMPP core on createFakeXmppCore that serves the seed's history, echoes sends, and emit | 2026-10-10 |
 | [T-0943](T-0943-mock-backend-groups-topics.md) | Mock backend D1: groups, members, topics and roles domains in @zilar/mock-backend, plus topic rows on the grou | 2026-10-10 |
+| [T-0944](T-0944-mock-backend-channels-invites.md) | Mock backend D2: invite links, join, directory and public-group lookup domains in @zilar/mock-backend (docs/au | 2026-10-10 |

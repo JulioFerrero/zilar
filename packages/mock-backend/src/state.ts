@@ -4,6 +4,7 @@ import type { MockAiMemory } from './domains/ai-memory/seed';
 import type { MockApproval } from './domains/approvals/seed';
 import type { MockApprovalRule } from './domains/approval-rules/seed';
 import type { MockAuditEntry } from './domains/audit/seed';
+import type { MockInviteLink } from './domains/invite-links/seed';
 import type { MockRoutine } from './domains/routines/seed';
 import type { MockRun, MockTool } from './domains/tools/seed';
 import { domains } from './domains';
@@ -65,6 +66,14 @@ export interface MockData {
   aiMemoryFor(key: string): MockAiMemory;
   removeAiFact(key: string, factId: string): boolean;
   clearAiMemory(key: string): void;
+
+  // T-0944: invite links in memory for the page load. `inviteTokens` maps each
+  // shown-once token to its link id; the rows carry hints only, like the real
+  // server's list. `joinAttempts` is the per-link 429 window.
+  inviteLinks: MockInviteLink[];
+  readonly inviteTokens: Map<string, string>;
+  readonly joinAttempts: Map<string, number>;
+  nextInviteLinkSequence: number;
 }
 
 export function createMockData(seed: MockSeed): MockData {

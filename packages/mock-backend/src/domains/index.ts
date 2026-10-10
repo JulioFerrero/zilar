@@ -11,11 +11,14 @@ import { auditDomain } from './audit';
 import { chatsDomain } from './chats';
 import { connectionsDomain } from './connections';
 import { contactsDomain } from './contacts';
+import { directoryDomain } from './directory';
 import type { Domain } from './domain';
 import { groupsDomain } from './groups';
+import { inviteLinksDomain } from './invite-links';
 import { machinesDomain } from './machines';
 import { meDomain } from './me';
 import { messagesDomain } from './messages';
+import { publicGroupsDomain } from './public-groups';
 import { rolesDomain } from './roles';
 import { routinesDomain } from './routines';
 import { searchDomain } from './search';
@@ -31,10 +34,13 @@ export const domains: readonly Domain[] = [
   chatsDomain,
   connectionsDomain,
   contactsDomain,
+  directoryDomain,
   groupsDomain,
+  inviteLinksDomain,
   machinesDomain,
   meDomain,
   messagesDomain,
+  publicGroupsDomain,
   rolesDomain,
   routinesDomain,
   searchDomain,

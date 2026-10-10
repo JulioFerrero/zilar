@@ -29,7 +29,13 @@ export function handleGroups(data: MockData, request: MockHttpRequest): Response
     return request.method === 'POST' ? createGroup(data, request) : undefined;
   }
   const groupId = decodeURIComponent(id);
-  if (RESERVED_GROUP_PATHS.has(groupId) || sub === 'topics' || sub === 'roles') {
+  if (
+    RESERVED_GROUP_PATHS.has(groupId) ||
+    sub === 'topics' ||
+    sub === 'roles' ||
+    sub === 'invite-links' ||
+    sub === 'join'
+  ) {
     return undefined;
   }
   const group = data.findGroup(groupId);
