@@ -25,8 +25,6 @@ export interface GifChoice {
 
 export interface GifPanelProps {
   onPick: (gif: GifChoice) => void;
-  /** Mock mode serves generated placeholders without a server. */
-  mockItems?: GifResult[] | undefined;
 }
 
 /** The pages after the first one, for the search that is shown. */
@@ -38,7 +36,6 @@ interface MorePages {
 const SEARCH_DEBOUNCE_MS = 300;
 const ATTRIBUTION = 'Powered by Giphy';
 const LOAD_ERROR = 'Could not load GIFs. Try again.';
-const NO_PAGE: GifPage = { items: [] };
 
 /**
  * Probes GIF availability once per session and remembers the answer: `true`
@@ -99,8 +96,8 @@ function shownFailure<A>(state: AsyncResult.AsyncResult<A, ApiFailure>): ApiFail
 
 /**
  * The bytes to show for one result. Real results load through the
- * same-origin proxy; mock placeholders are app-generated `data:image/` art
- * (the same trust argument as the sticker demo packs) and render directly.
+ * same-origin proxy; the mock backend's placeholder art is `data:image/`
+ * (the same trust argument as the sticker demo packs) and renders directly.
  */
 export function gifPreviewUrl(item: Pick<GifResult, 'mediaToken'>): string {
   return item.mediaToken.startsWith('data:image/') ? item.mediaToken : gifMediaUrl(item.mediaToken);
@@ -185,22 +182,12 @@ function GifCell({
  * probe runs once per session (`gifsAvailability`) and caches the answer;
  * `GifPanel` still renders its own unavailable state when mounted directly.
  */
-export function GifPanel({ onPick, mockItems }: GifPanelProps) {
-  const isMock = mockItems !== undefined;
+export function GifPanel({ onPick }: GifPanelProps) {
   const [typed, setTyped] = useState('');
   // The search the results show: it moves 300 ms after the last keystroke.
   const [searched, setSearched] = useState('');
-  // Mock placeholders are read once at mount and never reloaded.
-  const [mockList] = useState<GifResult[]>(() => mockItems ?? []);
   const [more, setMore] = useState<MorePages | undefined>(undefined);
-  const [visibleIds, setVisibleIds] = useState<ReadonlySet<string>>(
-    () =>
-      new Set(
-        typeof IntersectionObserver === 'undefined'
-          ? (mockItems ?? []).map((item) => item.mediaToken)
-          : [],
-      ),
-  );
+  const [visibleIds, setVisibleIds] = useState<ReadonlySet<string>>(() => new Set());
   const cellRefs = useRef(new Map<string, HTMLDivElement | null>());
 
   // The next page of the shown search. A new search cancels it (below).
@@ -240,29 +227,23 @@ export function GifPanel({ onPick, mockItems }: GifPanelProps) {
     [typed],
   );
 
-  const [firstState, reloadFirst] = useQuery(
-    () => (isMock ? Effect.succeed(NO_PAGE) : pageOf(searched, undefined)),
-    [searched, isMock],
-  );
+  const [firstState, reloadFirst] = useQuery(() => pageOf(searched, undefined), [searched]);
   const page = AsyncResult.isSuccess(firstState) ? firstState.value : undefined;
   const firstSettled = AsyncResult.isNotInitial(firstState) && !isWaiting(firstState);
-  const loading = !isMock && !firstSettled;
+  const loading = !firstSettled;
   const loadingMore = isWaiting(moreState);
   const failure = shownFailure(firstState) ?? shownFailure(moreState);
   const unavailable = failure?.code === 'gifs_unavailable';
   const error = failure !== undefined && !unavailable ? LOAD_ERROR : undefined;
 
-  const items = useMemo(
-    () => (isMock ? mockList : [...(page?.items ?? []), ...(more?.items ?? [])]),
-    [isMock, mockList, page, more],
-  );
+  const items = useMemo(() => [...(page?.items ?? []), ...(more?.items ?? [])], [page, more]);
   const nextPos = more !== undefined ? more.nextPos : page?.nextPos;
 
   // Only visible items play: an IntersectionObserver tracks the cells. When
-  // the observer is unavailable every item counts as visible (also the
-  // initial state above).
+  // the observer is unavailable every item counts as visible (see the grid).
+  const observerUnavailable = typeof IntersectionObserver === 'undefined';
   useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined') {
+    if (observerUnavailable) {
       return;
     }
     const observer = new IntersectionObserver(
@@ -291,7 +272,7 @@ export function GifPanel({ onPick, mockItems }: GifPanelProps) {
       }
     }
     return () => observer.disconnect();
-  }, [items]);
+  }, [items, observerUnavailable]);
 
   const loadMore = (): void => {
     if (nextPos !== undefined && !loadingMore && !loading) {
@@ -370,7 +351,11 @@ export function GifPanel({ onPick, mockItems }: GifPanelProps) {
                 }}
                 data-media-token={item.mediaToken}
               >
-                <GifCell item={item} onPick={onPick} visible={visibleIds.has(item.mediaToken)} />
+                <GifCell
+                  item={item}
+                  onPick={onPick}
+                  visible={observerUnavailable || visibleIds.has(item.mediaToken)}
+                />
               </div>
             ))}
           </div>
