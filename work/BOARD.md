@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1041](T-1041-split-mobile-channel-screen.md) | Size split T117: mobile channel-screen.tsx (408) | in-progress | auto | T-0936 | size-plan |
-| [T-1042](T-1042-max-lines-lint-warning.md) | Lint: max-lines warning at 400 | in-progress | auto | T-0936 | size-plan §3 |
 | [T-1043](T-1043-server-shared-error-helpers.md) | Dedup F6a: shared errorName/errorClassName/isUniqueViolation | in-progress | auto | T-0936 | size-plan F6 |
 | [T-1044](T-1044-mock-backend-prefs-pins.md) | Mock backend C1: chat-prefs, chat-background, pins | in-progress | auto | T-0949 | mock wave 2 |
 | [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds, media gallery | in-progress | auto | T-0949 | mock wave 2 |
@@ -1075,3 +1074,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1037](T-1037-split-site-instruments.md) | Size split T119: apps/site/src/instruments.ts (405 lines) into instruments/{dom,approval,routine,provider,pair | 2026-10-10 |
 | [T-1039](T-1039-split-mobile-message-list.md) | Size split T114: apps/mobile/src/components/chat/message-list.tsx (418 lines) into chat/{use-stable-handlers,u | 2026-10-10 |
 | [T-1040](T-1040-split-mobile-markdown.md) | Size split T115: apps/mobile/src/lib/markdown.ts (410 lines) into lib/{markdown-inline,markdown-blocks}.ts, th | 2026-10-10 |
+| [T-1042](T-1042-max-lines-lint-warning.md) | Lint: oxlint max-lines warning at 400 for source files; tests, mocks, the emoji table and .d.ts files are off | 2026-10-10 |
