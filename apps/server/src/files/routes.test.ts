@@ -168,6 +168,7 @@ describe('GET /api/files', () => {
   function filesApp(
     fetchImpl: typeof fetch,
     withoutArchive = false,
+    rateLimitMax?: number,
   ): { request(url: string, init?: RequestInit): Promise<Response> } {
     const api = createFilesApi({
       auth: context.auth,
@@ -175,6 +176,7 @@ describe('GET /api/files', () => {
       config: context.config,
       logger: context.logger,
       ...(withoutArchive ? {} : { archive }),
+      ...(rateLimitMax === undefined ? {} : { rateLimitMax }),
       now: () => now,
       fetchImpl,
     });
@@ -577,15 +579,16 @@ describe('GET /api/files', () => {
     expect(errorCode(json)).toBe('file_unavailable');
   });
 
-  it('answers 429 after 600 requests a minute', async () => {
+  it('answers 429 after the per-minute limit', async () => {
     const { alice, bob } = await setupDm();
     const own = localpartFor(alice.id);
     const peer = dmJid(bob.id);
     await seedMediaItem(own, peer, 'o-doc', 'doc.pdf');
     const { fetchImpl } = makeFetch(200, { 'content-type': 'application/pdf' }, 'hello-bytes');
-    const target = filesApp(fetchImpl);
+    const limit = 3;
+    const target = filesApp(fetchImpl, false, limit);
     const params = fileParams(peer);
-    for (let i = 0; i < 600; i += 1) {
+    for (let i = 0; i < limit; i += 1) {
       const { status } = await getFile(target, alice.cookie, params);
       expect(status).toBe(200);
     }

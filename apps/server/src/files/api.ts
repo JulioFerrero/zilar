@@ -44,6 +44,8 @@ export interface FilesRoutesDependencies {
   archive?: ArchivePool;
   /** Injected in tests so the rate-limit window can advance without waiting. */
   now?: () => number;
+  /** Injected in tests so the 429 boundary is reached in a few requests. */
+  rateLimitMax?: number;
   /** Injected in tests so the ejabberd fetch never touches the network. */
   fetchImpl?: typeof fetch;
 }
@@ -162,7 +164,7 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
   const limiter = createRateLimiter({
-    max: FILES_RATE_LIMIT_MAX,
+    max: deps.rateLimitMax ?? FILES_RATE_LIMIT_MAX,
     windowMs: FILES_RATE_LIMIT_WINDOW_MS,
     now,
   });
