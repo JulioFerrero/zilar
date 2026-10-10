@@ -2,6 +2,21 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 02:40 local: web mock runs only on the shared backend; dither avatars running**
+- **Merged since 01:10:**
+  - **T-1070:** mobile search on the backend; 9 dead mobile mocks deleted (1,603 lines). On the phone, search and opening a result work;
+  - **T-1071:** 749 web mock lines deleted. In the browser, Machines, Approvals approve and topic info work;
+  - **T-1072:** 374 web mock lines deleted. In the browser, Add contact, Block and the username taken/free/save checks work;
+  - **T-1073:** backend push and voice-transcription domains, all decoded with the real schemas;
+  - **T-1074:** web `dispatch` answers only from the backend (404 otherwise). `mock/api.ts` and 6 seed files deleted (2,953 lines). In the browser, a chat, sending a message and push settings work.
+- **Tonight in all:** about 12,000 old mock lines deleted. Web `mock/` now holds only `backend`, `gate`, `load`, `helpers` and `ids`.
+- **Julio's pick (02:20):** avatars without a picture use dither-avatar in its colours, for everyone, AIs too.
+- **Running:** **T-1075**, dither avatars on web and mobile. After it, update `docs/design/ui-style.md` §2 (the monochrome shades are gone).
+- **Next:**
+  - the backend avatars domain, then mobile profile on the backend;
+  - mobile stickers, gifs, attachments and integrations mocks;
+  - a `voiceTranscription` group in api-contract (T-1073 follow-up).
+
 **2026-10-11 01:10 local: about 6,600 mock lines deleted tonight; the last mobile switches and web slices running**
 - **Merged since 00:30:**
   - **T-1066:** 7 replaced mobile mocks deleted (1,176 lines). On the phone, AIs, Dev-1 and Machines work;
