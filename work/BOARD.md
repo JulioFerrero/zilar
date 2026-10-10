@@ -14,6 +14,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1041](T-1041-split-mobile-channel-screen.md) | Size split T117: mobile channel-screen.tsx (408) | in-progress | auto | T-0936 | size-plan |
 | [T-1042](T-1042-max-lines-lint-warning.md) | Lint: max-lines warning at 400 | in-progress | auto | T-0936 | size-plan §3 |
 | [T-1043](T-1043-server-shared-error-helpers.md) | Dedup F6a: shared errorName/errorClassName/isUniqueViolation | in-progress | auto | T-0936 | size-plan F6 |
+| [T-1044](T-1044-mock-backend-prefs-pins.md) | Mock backend C1: chat-prefs, chat-background, pins | in-progress | auto | T-0949 | mock wave 2 |
+| [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds, media gallery | in-progress | auto | T-0949 | mock wave 2 |
+| [T-1046](T-1046-mock-backend-stickers-gifs.md) | Mock backend F1: stickers, GIFs | in-progress | auto | T-0949 | mock wave 2 |
 
 ## Follow-ups
 
