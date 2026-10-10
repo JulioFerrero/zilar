@@ -34,11 +34,15 @@ function createMockStickerUpload(mockFetch: typeof fetch): StickerBinaryUpload {
  * literal build-time condition: Metro folds it to `false` in a release build,
  * so the mock module stays out of the bundle.
  */
-function createMockStickers(): StickersApi {
+function createMockStickers(): { api: StickersApi; viewerId: string } {
   if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
-    return createStickersApi(mockToken, mockFetch, API_URL, createMockStickerUpload(mockFetch));
+    const { mockFetch, mockViewerId } =
+      require('@/mock/backend') as typeof import('@/mock/backend');
+    return {
+      api: createStickersApi(mockToken, mockFetch, API_URL, createMockStickerUpload(mockFetch)),
+      viewerId: mockViewerId,
+    };
   }
   throw new Error('The mock API is not part of this build');
 }
@@ -68,6 +72,11 @@ export interface StickersApiHandle {
   api: StickersApi;
   /** True when the mock is active (used by tests/UI to skip the network). */
   mock: boolean;
+  /**
+   * The viewer's id in mock mode (nobody signs in there), else `undefined`;
+   * callers fall back to it wherever they need the signed-in user's id.
+   */
+  viewerId: string | undefined;
 }
 
 /**
@@ -79,9 +88,12 @@ export function useStickersApi(): StickersApiHandle {
   const params = useGlobalSearchParams();
   const envMock = ENV_MOCK;
   const mock = stickersMockActive(envMock, params, mockParamAllowed({ dev: __DEV__, envMock }));
-  const api = useMemo(
-    () => (mock ? createMockStickers() : createStickersApi(getSessionToken)),
+  const resolved = useMemo(
+    () =>
+      mock
+        ? createMockStickers()
+        : { api: createStickersApi(getSessionToken), viewerId: undefined },
     [mock],
   );
-  return { api, mock };
+  return { api: resolved.api, mock, viewerId: resolved.viewerId };
 }

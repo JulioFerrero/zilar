@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1081](T-1081-mobile-mock-sticker-owner.md) | Mobile mock: own sticker packs editable (viewerId from the shared seed) | in-progress | auto | T-1079 | found in T-1079 smoke |
 
 ## Follow-ups
 
@@ -1129,3 +1128,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1080](T-1080-mock-voice-follows-integrations.md) | Mock backend: GET /voice/transcription follows the integrations voice setting; seed voice as configured; fix s | 2026-10-10 |
 | [T-1079](T-1079-mobile-stickers-on-mock-backend.md) | Mock H2-7 (mobile): sticker management runs on @zilar/mock-backend through mockFetch; delete stickers-mock.ts | 2026-10-10 |
 | [T-1082](T-1082-mock-sweep-status-2.md) | Audit: rewrite docs/audit/mock-sweep-status.md for main after T-1081, with what is left of the mock plan and a | 2026-10-10 |
+| [T-1081](T-1081-mobile-mock-sticker-owner.md) | Mobile mock: sticker screens know the mock viewer, so your own packs open for editing (viewerId from the share | 2026-10-10 |

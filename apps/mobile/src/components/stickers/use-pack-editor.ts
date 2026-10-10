@@ -79,8 +79,11 @@ export function usePackEditor({ picker, preparer }: PackEditorDeps): PackEditor 
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
   const packId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const { api } = useStickersApi();
+  const { api, viewerId } = useStickersApi();
   const me = useAuthStore((state) => state.me);
+  // In mock mode the seeded viewer wins: a stored session from an earlier
+  // sign-in may still be present, and `me.id` would never match the seed owner.
+  const viewer = viewerId ?? me?.id;
   const activePicker = useMemo(() => picker ?? createStickerImagePicker(), [picker]);
   const activePreparer = useMemo(() => preparer ?? createStickerPreparer(), [preparer]);
 
@@ -149,7 +152,7 @@ export function usePackEditor({ picker, preparer }: PackEditorDeps): PackEditor 
               setStatus('not-found');
               return;
             }
-            if (found.ownerId !== undefined && (me === null || found.ownerId !== me.id)) {
+            if (found.ownerId !== undefined && found.ownerId !== viewer) {
               setStatus('forbidden');
               return;
             }
@@ -171,7 +174,7 @@ export function usePackEditor({ picker, preparer }: PackEditorDeps): PackEditor 
         ),
       ),
     );
-  }, [api, me, packId, setSaved]);
+  }, [api, packId, setSaved, viewer]);
 
   useFocusEffect(
     useCallback(() => {

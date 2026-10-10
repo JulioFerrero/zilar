@@ -10,9 +10,12 @@
  * a 404. This module is only `require`d behind the mock build condition, so a
  * release build carries none of it.
  */
-import { createMockBackend } from '@zilar/mock-backend';
+import { createMockBackend, defaultSeed } from '@zilar/mock-backend';
 
 const backend = createMockBackend();
+
+/** The seeded viewer's id; mock mode signs nobody in, so owner checks use this. */
+export const mockViewerId: string = defaultSeed.me.id;
 
 export { backend };
 
