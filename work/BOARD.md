@@ -8,6 +8,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
+| [T-0901](T-0901-mobile-sign-out-state.md) | Sign-out clears the previous user's chat state on the same device (mobile; check web) | in-progress | sonnet-5.5 | | wave 6, privacy |
+| [T-0902](T-0902-store-core-t1-rows.md) | Store core T1 pilot: client-core/store subpath, pure row helpers | in-progress | sonnet-5.5 | T-0896, T-0900 | wave 6, phase 4.3 |
 | [T-0897](T-0897-contract-tidy.md) | api-contract tidy: one middleware file, one schema-error layer, handleRaw payloads, no duplicate groups | in-progress | sonnet-5.5 | | wave 6 |
 | [T-0898](T-0898-source-pinning-tests.md) | Mobile source-pinning tests become render tests or a lint rule (5.6) | in-progress | sonnet-5.5 | | wave 6 |
 | [T-0899](T-0899-test-wait-helpers.md) | One flush/waitFor/jsonResponse per package, fake timers, one-tick guard (5.5) | in-progress | sonnet-5.5 | | wave 6 |
