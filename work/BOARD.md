@@ -16,6 +16,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0962](T-0962-split-mobile-chat-screen.md) | Size split T15: mobile chat/[id].tsx (1,118) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0963](T-0963-split-server-actions-gateway.md) | Size split T18: server actions/gateway.ts (1,036) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0964](T-0964-split-server-approvals-service.md) | Size split T19: server approvals/service.ts (1,030) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0965](T-0965-split-lead-policy.md) | Size split T16: devtools lead/policy.ts (1,111), byte-identical | in-progress | deepseek-flash | T-0936 | size-plan |
 
 ## Follow-ups
 
