@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0930](T-0930-test-memory-cap.md) | Cap test memory (web vmThreads, check maxWorkers) | in-progress | deepseek-flash | — | load fix |
 | [T-0931](T-0931-cut-server-tests.md) | Cut server tests to auth, permissions, money | in-progress | deepseek-flash | — | Julio 10-10 minimal tests |
-| [T-0932](T-0932-cut-web-tests.md) | Cut web tests: no UI tests, pipeline + auth only | in-progress | deepseek-flash | — | Julio 10-10 minimal tests |
 | [T-0933](T-0933-cut-mobile-tests.md) | Cut mobile tests: no UI tests, pipeline + auth only | in-progress | deepseek-flash | — | Julio 10-10 minimal tests |
 | [T-0929](T-0929-store-core-t10b-mobile-send.md) | Store core T10b: mobile send on core | todo | auto | T-0933 | phase 4.3, live |
 
@@ -961,3 +960,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0922](T-0922-store-core-t10-send.md) | Store core T10: the send pipeline (text, sticker, attachment, voice, forward; failure, deadline, retry) in pac | 2026-10-10 |
 | [T-0925](T-0925-server-test-seeds.md) | Server tests: one shared seed module (seedUser, seedAi, seedGroup with overrides) in apps/server/src/test-supp | 2026-10-10 |
 | [T-0934](T-0934-cut-package-tests.md) | Cut the package tests to the crucial ones (message pipeline, tunnel auth, the lead's merge and gate scope), pa | 2026-10-10 |
+| [T-0932](T-0932-cut-web-tests.md) | Cut the web tests: delete every UI test and every non-crucial test; keep the auth provider and the message-pip | 2026-10-10 |
