@@ -85,6 +85,13 @@ function handleOutgoingEcho(ctx: CoreCtx, message: ChatMessage, ui: UiMessage): 
       ),
     };
   });
+  // The reconcile above wrote the raw echo, so an edit made after the ack (and
+  // filed under the optimistic id) is gone from the bubble. Re-apply the three
+  // the incoming path does below. A correction or a reaction-only stanza
+  // returned before this point, so neither reaches here.
+  k.resolvePendingEdits(chatId);
+  k.refreshEdits(chatId);
+  k.refreshReactions(chatId);
 }
 
 export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {

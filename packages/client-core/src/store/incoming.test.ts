@@ -1,5 +1,6 @@
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { editMessage, react } from './actions';
 import {
   handleDisplayed,
   handleMessage,
@@ -9,7 +10,7 @@ import {
   TYPING_CLEAR_MS,
 } from './incoming';
 import { LAST_READ_PREFIX } from './reads';
-import { ANA, ME, NOW, TEAM, testCtx } from './test-ctx';
+import { ANA, dm, ME, NOW, TEAM, team, testCtx } from './test-ctx';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -202,5 +203,71 @@ describe('markers, occupants and presence (core)', () => {
       online: false,
       lastSeenAt: NOW,
     });
+  });
+});
+
+describe('the outgoing echo re-applies edits and reactions (core)', () => {
+  // The state after a send's ack: the ledger aliases the optimistic id to the
+  // server id, so an edit or a reaction filed between the ack and the echo
+  // lands under the optimistic id the bubble currently carries.
+  function ackedLocal(chatId: string, chat: typeof dm, id: string, text: string) {
+    const { ctx, state } = testCtx();
+    ctx.k.setChatMessage(
+      chatId,
+      {
+        id,
+        chatId,
+        senderId: 'u-me',
+        senderName: 'You',
+        text,
+        createdAt: NOW,
+        status: 'sent',
+      },
+      true,
+    );
+    ctx.k.rememberAuthor(id, { jid: ME, resolved: true });
+    ctx.k.linkMessageIds(id, 'srv-1');
+    ctx.k.linkAckToServer(chat, id, 'srv-1');
+    ctx.k.rememberOriginId(id, 'srv-1');
+    return { ctx, state };
+  }
+
+  it('keeps an edit made after the ack when the echo arrives', () => {
+    const { ctx, state } = ackedLocal(ANA, dm, 'local-1', 'hello');
+    editMessage(ctx, ANA, 'local-1', 'hello there');
+    expect(state().messagesByChat[ANA]?.at(-1)?.text).toBe('hello there');
+
+    ctx.pendingOutgoing.set(ctx.k.signatureFor(ANA, 'hello', undefined), ['local-1']);
+    handleMessage(ctx, message({ id: 'srv-1', body: 'hello', fromJid: ME, outgoing: true }));
+
+    expect(state().messagesByChat[ANA]?.map((item) => [item.id, item.text, item.edited])).toEqual([
+      ['srv-1', 'hello there', true],
+    ]);
+  });
+
+  it('keeps a reaction made after the ack when the group echo arrives', () => {
+    const { ctx, state } = ackedLocal(TEAM, team, 'local-1', 'hi team');
+    react(ctx, TEAM, 'local-1', '👍');
+    expect(state().messagesByChat[TEAM]?.at(-1)?.reactions).toEqual([
+      expect.objectContaining({ emoji: '👍', count: 1, mine: true }),
+    ]);
+
+    ctx.pendingOutgoing.set(ctx.k.signatureFor(TEAM, 'hi team', undefined), ['local-1']);
+    handleMessage(
+      ctx,
+      message({
+        id: 'room-1',
+        originId: 'srv-1',
+        chatJid: TEAM,
+        kind: 'groupchat',
+        body: 'hi team',
+        fromJid: ME,
+        outgoing: true,
+      }),
+    );
+
+    expect(state().messagesByChat[TEAM]?.map((item) => [item.id, item.reactions?.length])).toEqual([
+      ['room-1', 1],
+    ]);
   });
 });

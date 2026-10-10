@@ -280,7 +280,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       myJid,
       previewFor,
       refreshEdits,
-      refreshReactions,
       rememberAuthor,
       rememberOriginId,
       resolvePendingEdits,
@@ -545,18 +544,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       pendingOutgoing,
     };
 
-    function handleMessage(message: ChatMessage): void {
-      handleCoreMessage(coreCtx, message);
-      // The echo merged the optimistic id into the server id, which may have
-      // been the target of an edit or reaction filed under the optimistic id.
-      // The core's echo does not re-apply them, so mobile does it here.
-      if (message.outgoing && !isEditStanza(message) && !isReactionOnly(message)) {
-        resolvePendingEdits(message.chatJid);
-        refreshEdits(message.chatJid);
-        refreshReactions(message.chatJid);
-      }
-    }
-
     function nick(me: Me): string {
       const name = me.name.trim();
       if (name.length > 0) {
@@ -634,7 +621,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         startDraftStream: () => polling.startDraftStream(),
         startTopicsPolling: () => polling.startTopicsPolling(),
         teardown,
-        handleMessage,
+        handleMessage: (message) => handleCoreMessage(coreCtx, message),
         handleTyping: (event) => handleTyping(coreCtx, event),
         handleDisplayed: (event) => handleDisplayed(coreCtx, event),
         handleOccupants: (event) => handleOccupants(coreCtx, event),

@@ -1,7 +1,7 @@
 ---
 id: T-0916
 title: "Core echo re-applies pending edits and reactions: an edit made between the ack and the echo keeps its new text (web bug on main), and the mobile wrapper goes"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0916-core-echo-refresh
 model: auto
@@ -57,4 +57,53 @@ pnpm exec oxlint <your changed files>
 
 ## Report (written by the worker when done)
 
+**Commits:** `e3e8e0e3` tests first (new test files, run on the old code); the fix + the mobile wrapper removal (this commit).
+
+**What I did**
+- Tests first (committed before the fix):
+  - `apps/web/src/store/realStore.echo-edit.test.tsx`: send, ack, edit, then echo keeps the edited text; send, ack, react, then group echo keeps the reaction.
+  - `packages/client-core/src/store/incoming.test.ts`: two cases in "the outgoing echo re-applies edits and reactions (core)" (edit, group reaction), over the real ledger through an `ackedLocal` helper.
+- `packages/client-core/src/store/incoming.ts`: `handleOutgoingEcho` now calls `k.resolvePendingEdits(chatId)`, `k.refreshEdits(chatId)` and `k.refreshReactions(chatId)` after the reconcile. A correction or a reaction-only stanza returns before `handleOutgoingEcho` (the two guards at the top of `handleMessage`), so this skips them exactly as mobile's wrapper did.
+- `apps/mobile/src/store/real-store.ts`: deleted the `handleMessage` wrapper; `h.handleMessage` now calls the core handler directly (`handleMessage: (message) => handleCoreMessage(coreCtx, message)`).
+
+**Files changed:** `incoming.ts` +7; `real-store.ts` +1/-14; `incoming.test.ts` (new cases, +46); `realStore.echo-edit.test.tsx` (new file). No existing test edited.
+
+**Commands and real results**
+- On the old code, the new files:
+  - `pnpm --filter @zilar/client-core test --maxWorkers=2 --reporter=dot src/store/incoming.test.ts`: 1 failed | 13 passed (14). The failure is "keeps an edit made after the ack when the echo arrives": received `[['srv-1','hello',undefined]]`, expected `[['srv-1','hello there',true]]`.
+  - `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/store/realStore.echo-edit.test.tsx`: 1 failed | 1 passed (2), the edit case (received `hello`, expected `hello there`).
+- After the fix:
+  - core `incoming.test.ts`: 14 passed (14).
+  - web `realStore.echo-edit.test.tsx`: 2 passed (2).
+  - mobile `real-store.incoming.test.ts` (unedited): 8 passed (8).
+- `pnpm gate` from the repo root:
+```
+gate: 5 changed file(s) against main
+PASS  install (frozen)
+PASS  format
+PASS  lint
+PASS  typecheck
+PASS  effect
+PASS  tests @zilar/client-core
+PASS  tests @zilar/mobile
+PASS  tests @zilar/web
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+**Problems / deviations**
+- The mobile edit is not literally confined to `:548-557`. Deleting the wrapper also required, inside the same file, (a) pointing `h.handleMessage` at the core handler and (b) dropping the now-unused `refreshReactions` from the ledger destructure (only the wrapper used it). Without these the file would not lint/typecheck.
+- **The edit is the real regression; the reaction case was already correct on main.** The outgoing echo's `toUiMessage` re-attaches reaction chips alias-aware (`ledger.ts:1089`), while it does not apply edits, so a reaction made between the ack and the echo already survived. My reaction tests therefore pass before *and* after the fix. I kept them because the spec asks for the reaction case, and added `refreshReactions` for parity with mobile. Tell me if you want only fail-first tests and I will drop the reaction cases.
+- Everything else is unchanged.
+
+**Live check for Julio:** on web, send a message and edit it right after; the new text should stay.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved. The pre-review is clean, with 3 nits.**
+- **The fix:** the core outgoing echo re-runs `resolvePendingEdits`, `refreshEdits` and `refreshReactions`, so on web an edit made between the ack and the echo keeps its new text. The fix was tests first: the edit case failed on the old code.
+- **Mobile:** its wrapper is gone, and its T-0914 test passes unedited.
+- **The reaction tests passed before the fix too,** because the echo already re-attaches reactions. My spec's premise was wrong, and keeping them is harmless.
+- **Follow-up nit:** the comment at `packages/client-core/src/store/incoming.ts:88-91` says "the three the incoming path does", but that path runs two. Fix it in the next task that touches the file.
+- **Check:** the combined check passes.
+- **Live check for Julio:** on web, edit a message right after sending it.
