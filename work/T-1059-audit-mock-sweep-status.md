@@ -1,7 +1,7 @@
 ---
 id: T-1059
 title: "Audit: what still uses the old mock code (web mock/api.ts fallback, mobile use-*-api mock switches, mobile mock store), with H2 and sweep slices"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1059-audit-mock-sweep-status
 model: auto
@@ -62,4 +62,80 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did.** Read-only audit; wrote `docs/audit/mock-sweep-status.md` (283
+lines) covering the five asks: (1) per-family web `mockRequest` coverage with a
+throwaway probe, (2) every mobile mock switch and its backend domain, (3) the
+mobile store's reachability, (4) old-mock-file importers, (5) proposed slices
+and order. No code changed.
+
+**Measurement.** I wrote a temporary vitest file
+(`apps/web/src/mock/audit-probe.test.ts`) that called
+`createMockBackend({ delayMs: 0 })` and `mockRequest(path, init, { delayMs: 0 })`
+for ~150 method+path probes (one per route family) and printed
+`backend=<status|undefined>` vs `web=<status|mock_not_implemented>`. A backend
+result other than `undefined` means the shared backend serves that method+path.
+I corrected two probe paths (`/stickers/:id/file`,
+`/sticker-packs/import/telegram`) and re-ran; then deleted the file before gate.
+
+**Files changed.**
+- `docs/audit/mock-sweep-status.md` (new).
+- `work/T-1059-audit-mock-sweep-status.md` (this report).
+
+**Commands and real results.**
+- `pnpm install` → done in 11.2s; one pre-existing peer warning
+  (`@types/react-dom` vs `@types/react`), no error.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/mock/audit-probe.test.ts`
+  → `Test Files 1 passed (1) / Tests 1 passed (1)`; printed the probe table.
+- `pnpm gate` → `GATE PASS`; `grep`-visible summary lines:
+  `gate: 2 changed file(s) against main`, `PASS install (frozen)`,
+  `PASS format`, `PASS lint`, `PASS typecheck`,
+  `SKIP effect (no source files changed)`,
+  `scope: every changed file is inside the Allowed files`, `GATE PASS`.
+
+**Main findings.**
+- Web: nearly all `mockRequest` families are already answered by
+  `createMockBackend().http` (task G is merged). Still falling back:
+  `users/by-handle`, `contact-requests`, `blocks`, `handles/check`,
+  `backgrounds`, `chat-folders`, `push`, `voice` and `PUT /me/handle`.
+  `backgrounds`/`chat-folders` are only covered by T-1045 (not merged).
+- Mobile: 12 `use-*-api.ts` hooks still pick old mocks. Backend domains exist
+  for all but `integrations`; `profile` is only partly covered (`me` serves
+  `GET/PATCH /me`, not handle/avatar). The approval-rules gap is real:
+  `mock/approvals.ts:119-127` returns `[]`/404, the backend has real rules.
+- The mobile store `apps/mobile/src/store/chat-store.ts` has **zero** importers
+  (`createChatStore :358` and `isMockMode :1583` are unreferenced); it is already
+  dead, so task Q is a pure removal.
+- Slices: five small H2 adapter tasks (one domain group each; H2-5 integrations
+  is blocked), then the web deletion slices W1–W10 and mobile M1–M7, each ≤ ~800
+  changed lines.
+
+**Deviations / notes.**
+- The task text said T-1045 is "in review", but `work/T-1045-...md` reads
+  `status: todo` here; either way it is not merged, which is what the doc needs.
+- The plan's §1.1 citations `app/(tabs)/index.tsx:94` and
+  `app/chat/[id].tsx:213-232` no longer import mocks; all direct mock use now
+  sits in `components/` (recorded in the doc).
+- `/media` is not a `mockRequest` route (it was served by the deleted web store),
+  so it is not in the §1 table.
+
+**Open question (not blocking).** Deletion slice W8 must also move
+`apps/web/src/auth/AuthProvider.tsx:9` and
+`apps/web/src/components/StickerPanel.tsx:14` off the deleted seed files — that
+is a code change, not a pure deletion, so it needs its own Allowed files. Flagged
+in the doc for the lead to scope.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved. The pre-review is clean, with 1 nit.**
+- **The doc:** `docs/audit/mock-sweep-status.md` (283 lines) covers four things:
+  - the web fallback coverage, measured by probing `createMockBackend().http` against `mockRequest`;
+  - the 12 mobile `use-*-api.ts` mock switches, with their factories and `fetchImpl` lines;
+  - the mobile mock store;
+  - every old mock file's importers, followed by the H2 adapters and the deletion slices, in order.
+- **What the lead checked on main with grep:**
+  - `apps/mobile/src/store/chat-store.ts` has no importers;
+  - mobile `mock/{contacts,pins,invite-links,chat-prefs}.ts` are imported only by `chat-store.ts`;
+  - `mock/index.ts` (with `chats`, `channel`, `messages`, `topics` and `voice`) is still live through `mock/search.ts` ← `components/chat/chat-search-results.tsx`, so it waits for H2-4.
+- **Out of date:** §1c was written before T-1045 merged. Backgrounds and chat-folders are now in the shared backend.
+- **Next:** the lead specs Q (deleting the dead mobile store), H2-1 and H2-2, and W1.
+- **Check:** the gate passed.
