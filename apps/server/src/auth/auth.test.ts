@@ -767,18 +767,6 @@ describe('auth flows', () => {
       });
     }
 
-    it('sets a trimmed display name and returns it', async () => {
-      const { app, cookie } = await signedIn();
-
-      const response = await patchName(app, cookie, { name: '  Ada Lovelace  ' });
-
-      expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ name: 'Ada Lovelace' });
-
-      const me = await app.request(`${BASE_URL}/api/me`, { headers: { cookie } });
-      expect(await me.json()).toMatchObject({ name: 'Ada Lovelace' });
-    });
-
     it('returns the JID on GET /api/me', async () => {
       const { app, cookie, id } = await signedIn();
 

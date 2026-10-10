@@ -41,7 +41,6 @@ The full design is in `docs/PROJECT_PLAN.md`. Read the sections your task links 
 - Validate data at boundaries (network, files, env vars) with `zod`.
 - Match the style of the code around you: naming, file layout, comment density.
 - **Don't add dependencies** unless the spec lists them. If you think one is needed, ask in the Report.
-- Write tests with Vitest for the logic you add. Tests must not call real external services or use real API keys.
 - Keep functions small and names clear. Don't leave dead code or commented-out code.
 - Write English in code, comments and docs.
 
@@ -63,6 +62,12 @@ The full design is in `docs/PROJECT_PLAN.md`. Read the sections your task links 
 - Never start daemons, background jobs or detached runs (`launchctl`, `nohup`, `setsid`, `disown`, `crontab`, `at`, `osascript`, `screen`, `tmux`, a trailing `&`): they outlive your session and cannot be stopped. Every command runs in the foreground.
 - Never change `AGENTS.md`, `docs/PROJECT_PLAN.md`, `work/BOARD.md`, or any other task's file.
 - Don't guess on architecture or security decisions. Ask in the Report instead.
+
+## Tests
+
+Tests: write a test only when the change touches crucial code (auth and keys, permissions and money, the message pipeline) or fixes a real bug there. No "tests first", no coverage target. UI code gets no tests; the lead's phone smoke and Julio's live checks cover it. Run only the tests near your change, plus `pnpm gate`.
+
+Tests must not call real external services or use real API keys.
 
 ## Running tests (the machine is shared)
 

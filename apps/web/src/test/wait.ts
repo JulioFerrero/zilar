@@ -2,8 +2,7 @@ import { vi } from 'vitest';
 
 // The one place tests wait for async work. A test that waits "one tick" for a
 // visible state is flaky on a busy CI box: wait for the state with `waitFor`
-// (or `findBy*`) instead. Raw `setTimeout(resolve, 0)` waits in test files are
-// banned by `src/test/noRawTimeoutWaits.test.ts`.
+// (or `findBy*`) instead, never with a raw `setTimeout(resolve, 0)`.
 
 const POLL_MS = 10;
 

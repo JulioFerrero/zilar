@@ -35,6 +35,7 @@ The full loop is `docs/LEAD_LOOP.md`; commands, devices and pitfalls are in `doc
 ## Hard rules
 
 - **Tests (Julio, 2026-10-10):** tests only for crucial code: auth and keys, permissions and money, and the message pipeline. There are no UI tests, no "tests first" rule and no coverage target. Specs ask for at most a few tests, and only in those areas. Cutting the old tests is T-0931 to T-0934.
+- **File size (Julio, 2026-10-10):** at most 400 lines per source file; tests, mocks and generated files are exempt. A spec never grows a file past 400 lines, and shared code goes into the packages. The split plan is `docs/audit/size-plan.md` (T-0936), and the mock rebuild plan is `docs/audit/mock-plan.md` (T-0935).
 - Read a file before writing about it; list a folder before creating a file in it.
 - One command at a time; read its result before the next. Never chain a commit or merge behind a command that can fail.
 - No Python or `sed` to edit files. Edit and Write are for specs, docs and memory.
