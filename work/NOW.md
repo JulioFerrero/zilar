@@ -17,6 +17,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - mobile sticker and GIF images are blank, because native `Image` fetches over the network;
   - a sent attachment or GIF shows as a file row on web and "untrusted" on mobile, because the fake upload slot holds no bytes;
   - the plan is audit §3-§4, slices 2-4.
+- **Waits for Julio: how to fix the mock images.** Every fix sits next to a security check: `isTrustedMediaUrl` (`packages/chat-core/src/media.ts:82`) and the same-origin sticker checks. The audit's slice 4 (a files domain served by the vite middleware) cannot work on web, because uploads land in the browser's in-memory backend, which the dev server cannot see. The options:
+  - (a) a mock-only service worker on web that answers `/api/...` media from the in-browser backend, plus a mock-gated `file://`/`data:` allowance on mobile;
+  - (b) leave the mock images blank;
+  - (c) raster seed art only.
+  - I did not decide this at night.
+- **Running:**
+  - T-1087: mobile approvals shows "Could not load the rules." only when every AI failed. This is a real-build bug;
+  - T-1088: the voice-transcription response schemas move into `@zilar/api-contract`.
 
 **2026-10-11 04:10 local: dither avatars live in both apps; mobile profile, integrations and stickers on the shared backend**
 - **Merged since 02:40:**

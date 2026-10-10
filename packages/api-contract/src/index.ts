@@ -29,6 +29,7 @@ export * from './middleware';
 export * from './omit-undefined';
 export * from './pins';
 export * from './push';
+export * from './voice-transcription';
 export * from './raw-query';
 export * from './roles';
 export * from './routines';
