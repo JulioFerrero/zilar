@@ -1,15 +1,20 @@
-import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { Megaphone } from 'lucide-react-native';
-import { Data, Effect, Option } from 'effect';
+import { Effect, Option } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, Share, View } from 'react-native';
+import { useEffect } from 'react';
+import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { Avatar } from '@/components/chat/avatar';
-import { InviteLinksSheet, type CreateInviteLinkForm } from '@/components/chat/invite-links-sheet';
+import { ChannelMembers } from '@/components/chat/channel-members';
+import { InviteLinksSheet } from '@/components/chat/invite-links-sheet';
+import {
+  ChannelCallFailed,
+  callStore,
+  useChannelInvites,
+} from '@/components/chat/use-channel-invites';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,24 +33,6 @@ type ChannelScreenProps = {
   feedId: string;
   title: string;
 };
-
-/** A store call that rejected; `code` is what the server said (empty when none). */
-class ChannelCallFailed extends Data.TaggedError('ChannelCallFailed')<{
-  readonly code: string;
-}> {}
-
-const codeOf = (error: unknown): string =>
-  typeof error === 'object' && error !== null && 'code' in error
-    ? String((error as { code: unknown }).code)
-    : '';
-
-/** A store promise as an Effect: a rejection keeps its code for the message. */
-function callStore<A>(call: () => Promise<A>): Effect.Effect<A, ChannelCallFailed> {
-  return Effect.tryPromise({
-    try: call,
-    catch: (error) => new ChannelCallFailed({ code: codeOf(error) }),
-  });
-}
 
 /**
  * The channel screen (T-0144), the mobile twin of web's `ChannelPanel`: the
@@ -77,9 +64,7 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
   const listChannelMembers = useChatStore((state) => state.listChannelMembers);
   const changeChannelRole = useChatStore((state) => state.changeChannelRole);
   const leaveChannel = useChatStore((state) => state.leaveChannel);
-  const listInviteLinks = useChatStore((state) => state.listInviteLinks);
-  const createInviteLink = useChatStore((state) => state.createInviteLink);
-  const revokeInviteLink = useChatStore((state) => state.revokeInviteLink);
+  const links = useChannelInvites(groupId);
 
   // A role change ignores a second press while one is waiting (the old
   // `roleBusy` guard). The message is cleared while a new attempt runs.
@@ -122,25 +107,6 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
   });
   const slice = Option.getOrUndefined(AsyncResult.value(sliceState));
   const sliceFailed = failureOf(sliceState) !== undefined;
-
-  const [linksOpen, setLinksOpen] = useState(false);
-  const [linksNow, setLinksNow] = useState(() => Date.now());
-  const [links, setLinks] = useState<
-    {
-      id: string;
-      label: string | null;
-      tokenHint: string;
-      uses: number;
-      maxUses: number | null;
-      expiresAt: string | null;
-      revoked: boolean;
-      createdAt: string;
-    }[]
-  >([]);
-  const [linksBusy, setLinksBusy] = useState(false);
-  const [linksError, setLinksError] = useState('');
-  const [createdUrl, setCreatedUrl] = useState<string | undefined>(undefined);
-  const [revokingId, setRevokingId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (groupId !== '') {
@@ -187,27 +153,6 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
   );
   const description = channelDescription(feedRow ?? {}, groupDetail);
 
-  // The links list, each step an Effect run in the background (the old
-  // promise chains, same order and same messages). A new load clears the
-  // error first; a failed load keeps the last list.
-  const reloadLinks = (): Effect.Effect<void> =>
-    Effect.sync(() => setLinksError('')).pipe(
-      Effect.andThen(callStore(() => listInviteLinks(groupId))),
-      Effect.match({
-        onFailure: () => setLinksError('Could not load invite links. Try again.'),
-        onSuccess: (next) => setLinks(next),
-      }),
-    );
-
-  const openLinks = () => {
-    setLinksError('');
-    setCreatedUrl(undefined);
-    setRevokingId(undefined);
-    setLinksNow(Date.now());
-    setLinksOpen(true);
-    Effect.runFork(reloadLinks());
-  };
-
   const flipRole = (userId: string, role: 'admin' | 'member') => {
     changeRole({ userId, role });
   };
@@ -218,30 +163,6 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
     }
     leaveAction(undefined);
   };
-
-  // The clipboard/share bridge for the shown-once block: `expo-clipboard`
-  // and React Native's `Share` cannot run in Node tests, so the sheet takes
-  // callbacks and this screen wires the real modules at the edge. The sheet
-  // takes Promises, so each bridge call runs its Effect to a Promise.
-  const linksShare = useMemo(
-    () => ({
-      copyText: (text: string) =>
-        Effect.runPromise(
-          Effect.tryPromise({
-            try: () => Clipboard.setStringAsync(text),
-            catch: (error) => error,
-          }).pipe(Effect.asVoid),
-        ),
-      shareText: (text: string): Promise<void> =>
-        Effect.runPromise(
-          Effect.tryPromise({
-            try: () => Share.share({ message: text }),
-            catch: (error) => error,
-          }).pipe(Effect.asVoid),
-        ),
-    }),
-    [],
-  );
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
@@ -276,66 +197,23 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
           </View>
         </Pressable>
 
-        <Text className="mt-5 text-[13px] font-semibold text-muted-foreground">
-          {isManager ? 'SUBSCRIBERS' : 'ADMINS'}
-        </Text>
-        {groupDetail === undefined && slice === undefined ? (
-          <Text className="mt-1 text-[13px] text-muted-foreground">Loading…</Text>
-        ) : null}
-        {!isManager && sliceFailed ? (
-          <Text role="alert" className="mt-1 text-[13px] text-danger">
-            Could not load the admins. Try again.
-          </Text>
-        ) : null}
-        {admins.map((member) => (
-          <View key={member.userId} className="mt-1 flex-row items-center gap-2 py-1.5">
-            <Avatar id={member.userId} name={member.name} size={32} />
-            <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px] text-foreground">
-              {member.name}
-            </Text>
-            <Text className="text-[11px] text-muted-foreground">{member.role}</Text>
-            {isOwner && member.userId !== currentUserId && member.role === 'admin' ? (
-              <Button
-                accessibilityLabel={`Demote ${member.name} to subscriber`}
-                disabled={roleBusy}
-                onPress={() => flipRole(member.userId, 'member')}
-                variant="outline"
-                size="sm"
-              >
-                <Text>Demote</Text>
-              </Button>
-            ) : null}
-          </View>
-        ))}
-        {subscribers.map((member) => (
-          <View key={member.userId} className="mt-1 flex-row items-center gap-2 py-1.5">
-            <Avatar id={member.userId} name={member.name} size={32} />
-            <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px] text-foreground">
-              {member.name}
-            </Text>
-            {isOwner && member.userId !== currentUserId ? (
-              <Button
-                accessibilityLabel={`Promote ${member.name} to admin`}
-                disabled={roleBusy}
-                onPress={() => flipRole(member.userId, 'admin')}
-                variant="outline"
-                size="sm"
-              >
-                <Text>Promote</Text>
-              </Button>
-            ) : null}
-          </View>
-        ))}
-        {roleError !== '' ? (
-          <Text role="alert" className="mt-1 text-[13px] text-danger">
-            {roleError}
-          </Text>
-        ) : null}
+        <ChannelMembers
+          isManager={isManager}
+          isOwner={isOwner}
+          currentUserId={currentUserId}
+          loading={groupDetail === undefined && slice === undefined}
+          admins={admins}
+          adminsLoadFailed={sliceFailed}
+          subscribers={subscribers}
+          roleBusy={roleBusy}
+          roleError={roleError}
+          onFlipRole={flipRole}
+        />
 
         {isManager ? (
           <Button
             accessibilityLabel="Invite links"
-            onPress={openLinks}
+            onPress={links.open}
             variant="default"
             size="default"
             className="mt-4 self-start"
@@ -361,47 +239,18 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
         ) : null}
       </View>
       <InviteLinksSheet
-        visible={linksOpen}
-        links={links}
-        busy={linksBusy}
-        error={linksError}
-        createdUrl={createdUrl}
-        revokingId={revokingId}
-        now={linksNow}
-        share={linksShare}
-        onCreate={(input: CreateInviteLinkForm) => {
-          setLinksBusy(true);
-          setLinksError('');
-          Effect.runFork(
-            callStore(() => createInviteLink(groupId, input)).pipe(
-              Effect.tap((created) => Effect.sync(() => setCreatedUrl(created.url))),
-              Effect.andThen(reloadLinks()),
-              Effect.catchTag('ChannelCallFailed', () =>
-                Effect.sync(() => setLinksError('Could not create the invite link. Try again.')),
-              ),
-              Effect.ensuring(Effect.sync(() => setLinksBusy(false))),
-            ),
-          );
-        }}
-        onRevoke={(linkId: string) => {
-          setRevokingId(linkId);
-          setLinksError('');
-          Effect.runFork(
-            callStore(() => revokeInviteLink(groupId, linkId)).pipe(
-              Effect.andThen(reloadLinks()),
-              Effect.catchTag('ChannelCallFailed', () =>
-                Effect.sync(() => setLinksError('Could not revoke the invite link. Try again.')),
-              ),
-              Effect.ensuring(Effect.sync(() => setRevokingId(undefined))),
-            ),
-          );
-        }}
-        onDismissCreated={() => setCreatedUrl(undefined)}
-        onClose={() => {
-          if (!linksBusy) {
-            setLinksOpen(false);
-          }
-        }}
+        visible={links.visible}
+        links={links.links}
+        busy={links.busy}
+        error={links.error}
+        createdUrl={links.createdUrl}
+        revokingId={links.revokingId}
+        now={links.now}
+        share={links.share}
+        onCreate={links.onCreate}
+        onRevoke={links.onRevoke}
+        onDismissCreated={links.onDismissCreated}
+        onClose={links.onClose}
       />
     </SafeAreaView>
   );
