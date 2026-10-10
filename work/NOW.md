@@ -2,6 +2,20 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 evening: the mock backend wave 1 and the web cutover are merged**
+- **Merged:**
+  - the mock backend: T-0937 to T-0945 (`packages/mock-backend`, about 6k lines in domain folders, plus a fake XMPP core);
+  - T-0946: web mock mode (`?mock=1`) now runs the real store on that backend. The lead checked it in Chrome: chats, topics, history, a send with an AI reply, and markdown;
+  - T-0947: the old web mock store is deleted (1,322 lines gone);
+  - T-0948: real-format AI JIDs in the seed, so AI markdown renders; a fallback route pays one delay;
+  - T-0950: the open chat's unread clears when the tab or app comes back to the front.
+- **Running:**
+  - T-0949: mobile mock mode on the real store, with a fake dev-only session. The lead runs a phone smoke in mock mode before merging;
+  - T-0936: the size and duplication audit.
+- **Next:** the mock wave 2 (prefs, folders, pins, media, backgrounds, stickers, gifs, voice, profile), then the deletion sweep of the old mock files.
+- **Add to the live test below:** with a chat open, switch to another tab or app, get a message, and come back: the badge clears.
+- **Main checkout note:** after merges that add a workspace dependency, run `pnpm install` in main before running a dev server from it.
+
 **2026-10-10 17:00 local: the store core is done; ready for Julio's single live test**
 - **Merged:** T-0929 (T10b, the mobile send on the core) and T-0930 (test memory caps). Web and mobile now both run on `packages/client-core/src/store`.
 - **The live test, on web and on the phone, against the dev server:**
