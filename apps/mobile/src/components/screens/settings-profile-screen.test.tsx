@@ -6,6 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import ProfileSettingsScreen from '@/app/settings/profile';
 import { ProfileApiError, type MyProfile } from '@/lib/profile-api';
+import { settle, waitForAct } from '@/test/wait';
 
 // Interactive tests for Settings → Profile. The screen is mounted in jsdom
 // with react-dom and its native parts swapped for DOM elements; the test
@@ -308,21 +309,9 @@ function typeInto(label: string, value: string): void {
   });
 }
 
-async function settle(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  });
-}
-
 // Waits for the requests and state updates to land, a few ticks at a time.
 async function until(check: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (check()) {
-      return;
-    }
-    await settle();
-  }
-  throw new Error('the screen did not reach the expected state');
+  await waitForAct(check);
 }
 
 describe('ProfileSettingsScreen (interactive)', () => {

@@ -4,6 +4,7 @@ import { act, createElement, type ReactNode } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { VoiceRecorderPort } from '@/lib/voice-native';
+import { settle } from '@/test/wait';
 import { VoiceRecorderButton } from './voice-recorder';
 
 // Hold to record, release to send, slide left to cancel. The mic must stay
@@ -75,11 +76,6 @@ afterEach(() => {
     mounted.pop()?.();
   }
 });
-
-const settle = (): Promise<void> =>
-  act(async () => {
-    await new Promise<void>((resolve) => setTimeout(resolve, 20));
-  });
 
 async function mountButton() {
   const recorder = fakeRecorder();

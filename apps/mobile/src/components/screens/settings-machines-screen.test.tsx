@@ -6,6 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import MachinesScreen from '@/app/settings/machines';
 import { MachinesApiError, type Machine } from '@/lib/machines-api';
+import { waitForAct } from '@/test/wait';
 
 // Interactive tests for Settings → Machines. The screen is mounted in jsdom
 // with react-dom and its native primitives swapped for DOM elements, then the
@@ -323,21 +324,9 @@ function typeInto(label: string, value: string): void {
   });
 }
 
-async function settle(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  });
-}
-
 // Waits for the requests and state updates to land, a few ticks at a time.
 async function until(check: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (check()) {
-      return;
-    }
-    await settle();
-  }
-  throw new Error('the screen did not reach the expected state');
+  await waitForAct(check);
 }
 
 describe('MachinesScreen (interactive)', () => {

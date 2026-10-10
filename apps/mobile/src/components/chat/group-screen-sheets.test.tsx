@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import GroupTopicsScreen from '@/app/group/[id]';
 import { ROLE_GONE_MESSAGE, ROLE_LOAD_FAILED_MESSAGE } from '@/lib/roles';
+import { settle } from '@/test/wait';
 
 // The group screen (`app/group/[id].tsx`) is mounted for real in jsdom with
 // its sheets replaced by stubs that expose the props the screen hands them.
@@ -200,12 +201,6 @@ afterEach(async () => {
   }
   container.remove();
 });
-
-async function settle(): Promise<void> {
-  await act(async () => {
-    await new Promise<void>((resolve) => setTimeout(resolve, 20));
-  });
-}
 
 async function mount(): Promise<void> {
   root = createRoot(container);

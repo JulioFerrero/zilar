@@ -77,6 +77,7 @@ vi.mock('./session', () => ({
     select({ me: mocks.me.value, setName: mocks.setName }),
 }));
 
+import { settle as flush, flushTasks } from '@/test/wait';
 import { NameForm } from './NameForm';
 
 const mounted: Array<() => void> = [];
@@ -140,11 +141,6 @@ function type(container: HTMLElement, value: string): void {
 const press = (container: HTMLElement): void => {
   act(() => button(container).click());
 };
-
-const flush = (): Promise<void> =>
-  act(async () => {
-    await new Promise<void>((resolve) => setTimeout(resolve, 10));
-  });
 
 describe('NameForm', () => {
   it('asks for the name and starts with the saved one', () => {
@@ -246,7 +242,7 @@ describe('NameForm', () => {
 
     await act(async () => {
       finish({ ok: true });
-      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      await flushTasks();
     });
 
     expect(button(container).disabled).toBe(false);

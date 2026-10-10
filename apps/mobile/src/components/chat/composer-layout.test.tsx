@@ -4,6 +4,7 @@ import { act, createElement, type ReactNode } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { resetGifsAvailability, setGifsAvailability } from '@/lib/gifs';
+import { flushTasks, settle } from '@/test/wait';
 import { Composer } from './composer';
 
 // Composer rules found on a real Android phone (2026-10-03), asserted on the
@@ -164,9 +165,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  await act(async () => {
-    await new Promise<void>((resolve) => setTimeout(resolve, 10));
-  });
+  await settle();
   while (mounted.length > 0) {
     mounted.pop()?.();
   }
@@ -246,7 +245,7 @@ describe('composer rules from the Android device pass', () => {
     );
     await act(async () => {
       captured.onPickEmoji?.('X');
-      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      await flushTasks();
     });
     expect((byLabel(container, 'Message') as HTMLInputElement).value).toBe('aXb');
   });
