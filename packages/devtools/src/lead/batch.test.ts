@@ -4,6 +4,7 @@ import {
   BatchError,
   ownerOf,
   parseLintErrors,
+  parsePrettierFiles,
   parseTypecheckErrors,
   parseVitestFailures,
   runBatchCheck,
@@ -89,6 +90,7 @@ interface Script {
   typecheck?: CommandResult;
   install?: CommandResult;
   lint?: CommandResult;
+  format?: CommandResult;
   /** Vitest JSON report text (or undefined: no file) and exit status per package name. */
   tests?: Record<string, { status: number; json?: string }>;
 }
@@ -146,6 +148,9 @@ function world(tasks: Task[], script: Script = {}): World {
       }
       if (joined.includes('oxlint')) {
         return script.lint ?? { status: 0, output: '' };
+      }
+      if (joined.includes('prettier')) {
+        return script.format ?? { status: 0, output: '' };
       }
       const pkg = args[1] ?? '';
       const test = script.tests?.[pkg];
@@ -373,6 +378,53 @@ describe('runBatchCheck', () => {
     expect(report).toContain('| T-0002 | merged | - | 0 | 0 | 0 |');
   });
 
+  it('gives an unformatted file to the task whose diff holds it and fails that task', async () => {
+    const w = world([TASK_A, TASK_B], {
+      format: {
+        status: 1,
+        output: [
+          'Checking formatting...',
+          '[warn] apps/web/src/chat.tsx',
+          '[warn] Code style issues found in the above file. Run Prettier with --write to fix.',
+        ].join('\n'),
+      },
+    });
+    const result = await runBatchCheck(w.deps, ['T-0001', 'T-0002']);
+    expect(result.ok).toBe(false);
+    const fix = w.files.get(`${result.waveDir}/T-0001.fix.md`) ?? '';
+    expect(fix).toContain('1. Prettier: apps/web/src/chat.tsx is not formatted');
+    expect(fix).toContain('pnpm exec prettier --write apps/web/src/chat.tsx');
+    expect(w.files.has(`${result.waveDir}/T-0002.fix.md`)).toBe(false);
+    expect(result.lines).toContain('T-0001 FAIL typecheck 0, tests 0, format 1, out of scope 0');
+    expect(result.lines).toContain('T-0002 ok');
+  });
+
+  it('lists an unformatted file no task owns in the unowned section and fails the wave', async () => {
+    const w = world([TASK_A, TASK_B], {
+      format: {
+        status: 1,
+        output:
+          '[warn] packages/devtools/src/gate/gate.test.ts\n[warn] Code style issues found in the above file.',
+      },
+    });
+    const result = await runBatchCheck(w.deps, ['T-0001', 'T-0002']);
+    expect(result.ok).toBe(false);
+    expect(result.lines).toContain('unowned: 1 failure(s), see the report');
+    const report = w.files.get(result.reportPath) ?? '';
+    const unowned = report.slice(report.indexOf('## unowned'));
+    expect(unowned).toContain('Prettier: packages/devtools/src/gate/gate.test.ts is not formatted');
+    expect([...w.files.keys()].some((file) => file.endsWith('.fix.md'))).toBe(false);
+  });
+
+  it('reports a failing prettier run with no readable file as an unowned check failure', async () => {
+    const w = world([TASK_A], { format: { status: 2, output: '[error] SyntaxError' } });
+    const result = await runBatchCheck(w.deps, ['T-0001']);
+    expect(result.ok).toBe(false);
+    const report = w.files.get(result.reportPath) ?? '';
+    expect(report).toContain('Check failed: format (no file could be read)');
+    expect(report).toContain('[error] SyntaxError');
+  });
+
   it('reports a failing lint run with no readable error as an unowned check failure', async () => {
     const w = world([TASK_A], { lint: { status: 2, output: 'oxlint: failed to read config' } });
     const result = await runBatchCheck(w.deps, ['T-0001']);
@@ -519,6 +571,35 @@ describe('ownership and parsing', () => {
         message: '8:2 Do not use `new Array(x)`.',
       },
     ]);
+  });
+
+  it('reads unformatted files from prettier --check, skipping its summary and the header', () => {
+    const failures = parsePrettierFiles(
+      [
+        'Checking formatting...',
+        `[warn] ${WAVE}/packages/devtools/src/gate/gate.test.ts`,
+        '[warn] apps/web/src/chat.tsx',
+        '[warn] Code style issues found in 2 files. Run Prettier with --write to fix.',
+        '',
+      ].join('\n'),
+      WAVE,
+    );
+    expect(failures).toEqual([
+      {
+        kind: 'format',
+        file: 'packages/devtools/src/gate/gate.test.ts',
+        name: 'prettier',
+        message:
+          'Run `pnpm exec prettier --write packages/devtools/src/gate/gate.test.ts`, then commit the result.',
+      },
+      {
+        kind: 'format',
+        file: 'apps/web/src/chat.tsx',
+        name: 'prettier',
+        message: 'Run `pnpm exec prettier --write apps/web/src/chat.tsx`, then commit the result.',
+      },
+    ]);
+    expect(parsePrettierFiles('All matched files use Prettier code style!', WAVE)).toEqual([]);
   });
 
   it('keeps the package own flags from its test script', () => {

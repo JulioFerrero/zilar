@@ -1,5 +1,5 @@
 // `lead batch check` combines the branches of a wave of tasks on one worktree,
-// runs install, typecheck, lint and every package's tests without stopping at the
+// runs install, typecheck, lint, prettier --check and every package's tests without stopping at the
 // first failure, and writes one fix file per task that owns a failure.
 // `lead batch merge` then merges a checked wave task by task without a gate.
 // Every side effect (git, commands, files, clock) goes through `BatchDeps`, so
@@ -62,7 +62,7 @@ export interface BatchDeps {
 }
 
 export interface Failure {
-  kind: 'typecheck' | 'lint' | 'test' | 'tool';
+  kind: 'typecheck' | 'lint' | 'format' | 'test' | 'tool';
   /** Repo-relative file, when the failure names one. */
   file?: string;
   /** The test's full name, the TS error code or the failing step. */
@@ -271,6 +271,29 @@ export function parseLintErrors(output: string, worktree: string): Failure[] {
   return failures;
 }
 
+// prettier --check: `[warn] <path>` per unformatted file; `[warn] Code style issues ...` is the summary.
+const PRETTIER_WARN = /^\[warn\] (.+)$/;
+const PRETTIER_SUMMARY = /^Code style issues found/;
+
+/** Unformatted files from `prettier --check`, one failure per file. */
+export function parsePrettierFiles(output: string, worktree: string): Failure[] {
+  const failures: Failure[] = [];
+  for (const raw of stripAnsi(output).split('\n')) {
+    const match = PRETTIER_WARN.exec(raw.trim());
+    if (match === null || PRETTIER_SUMMARY.test(match[1] as string)) {
+      continue;
+    }
+    const file = path.posix.normalize(relativeTo(worktree, match[1] as string));
+    failures.push({
+      kind: 'format',
+      file,
+      name: 'prettier',
+      message: `Run \`pnpm exec prettier --write ${file}\`, then commit the result.`,
+    });
+  }
+  return failures;
+}
+
 /** Failed tests from a Vitest JSON report. Returns undefined when the text is not one. */
 export function parseVitestFailures(text: string, worktree: string): Failure[] | undefined {
   let parsed: unknown;
@@ -448,6 +471,18 @@ async function runChecks(deps: BatchDeps, wave: string, waveDir: string): Promis
     tool('lint (no error could be read)', lint);
   }
 
+  const format = await deps.runCommand(
+    wave,
+    'pnpm',
+    ['exec', 'prettier', '--check', '.'],
+    STEP_TIMEOUT_MS,
+  );
+  const formatErrors = parsePrettierFiles(format.output, wave);
+  failures.push(...formatErrors);
+  if (format.status !== 0 && formatErrors.length === 0) {
+    tool('format (no file could be read)', format);
+  }
+
   await runPool(
     packages.filter((pkg) => pkg.testArgs !== undefined),
     2,
@@ -497,11 +532,13 @@ function summaryLine(outcome: TaskOutcome): string {
   const typecheck = outcome.failures.filter((failure) => failure.kind === 'typecheck').length;
   const tests = outcome.failures.filter((failure) => failure.kind === 'test').length;
   const lint = outcome.failures.filter((failure) => failure.kind === 'lint').length;
-  if (typecheck + tests + lint + outcome.outside.length === 0) {
+  const format = outcome.failures.filter((failure) => failure.kind === 'format').length;
+  if (typecheck + tests + lint + format + outcome.outside.length === 0) {
     return `${outcome.task} ok`;
   }
   const lintPart = lint === 0 ? '' : `, lint ${lint}`;
-  return `${outcome.task} FAIL typecheck ${typecheck}, tests ${tests}${lintPart}, out of scope ${outcome.outside.length}`;
+  const formatPart = format === 0 ? '' : `, format ${format}`;
+  return `${outcome.task} FAIL typecheck ${typecheck}, tests ${tests}${lintPart}${formatPart}, out of scope ${outcome.outside.length}`;
 }
 
 function failureItem(failure: Failure): string {
@@ -510,9 +547,11 @@ function failureItem(failure: Failure): string {
       ? `Typecheck error ${failure.name}`
       : failure.kind === 'lint'
         ? `Lint error ${failure.name} in ${failure.file ?? '(unknown file)'}`
-        : failure.kind === 'test'
-          ? `Failing test in ${failure.file ?? '(unknown file)'}: ${failure.name}`
-          : `Check failed: ${failure.name}${failure.file === undefined ? '' : ` (${failure.file})`}`;
+        : failure.kind === 'format'
+          ? `Prettier: ${failure.file ?? '(unknown file)'} is not formatted`
+          : failure.kind === 'test'
+            ? `Failing test in ${failure.file ?? '(unknown file)'}: ${failure.name}`
+            : `Check failed: ${failure.name}${failure.file === undefined ? '' : ` (${failure.file})`}`;
   return `${head}\n\n\`\`\`\n${failure.message}\n\`\`\``;
 }
 

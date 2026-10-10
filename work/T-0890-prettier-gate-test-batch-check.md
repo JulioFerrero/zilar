@@ -1,7 +1,7 @@
 ---
 id: T-0890
 title: "Main CI green again: prettier on gate.test.ts, and lead batch check runs prettier --check like CI"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0890-prettier-gate-test-batch-check
 model: auto
@@ -49,4 +49,25 @@ pnpm exec oxlint <your changed files>
 
 ## Report (written by the worker when done)
 
+- Item 1: `pnpm exec prettier --write packages/devtools/src/gate/gate.test.ts` (6 insertions, 2 deletions), its own commit `fe4c125d`.
+- Item 2 (`batch.ts`):
+  - New `parsePrettierFiles(output, worktree)` reads `[warn] <path>` lines and skips the `Code style issues found ...` summary; each file becomes a `format` failure with the message "Run `pnpm exec prettier --write <file>`, then commit the result."
+  - `runChecks` runs `pnpm exec prettier --check .` after lint. A non-zero exit with no readable file is a `tool` failure "format (no file could be read)".
+  - Ownership uses the existing `ownerOf`: the task whose diff holds the file owns it; otherwise it is unowned and fails the wave.
+  - Summary line gains `, format N` only when N > 0. The report table columns are unchanged (format failures show in the per-task fix file and the unowned section).
+  - Header comment updated to list prettier.
+- Item 3 (`batch.test.ts`): 1 parser test (`reads unformatted files from prettier --check, ...`) and 3 `runBatchCheck` tests (owned file, unowned file, prettier with no readable file). The fake `runCommand` got a prettier branch and a `format` script.
+- Tests, before and after: `src/lead src/gate` 735 tests in total now; 4 are new, so 731 before (derived from the new test count, not measured on the old tree).
+  - Runs after the change: 735 passed (31 files) on a rerun; `batch.test.ts` alone 29 passed.
+  - One earlier run of `src/lead src/gate` showed 1 failed | 734 passed. It ran alongside a background prettier process, I did not identify the failing test, and it did not reproduce on the next two runs. Treat as an unexplained flake under load.
+- Checks:
+  - `pnpm exec prettier --check .`: "All matched files use Prettier code style!" (exit 0).
+  - `pnpm --filter @zilar/devtools exec vitest run --reporter=dot src/lead src/gate`: as above.
+  - `pnpm --filter @zilar/devtools typecheck`: `tsc --noEmit`, no errors.
+  - `pnpm exec oxlint` on batch.ts, batch.test.ts, gate.test.ts: no output (clean).
+- `pnpm gate` not run (per wave rules).
+- Unsure: the Checks say `--reporter=dot`, and the first run printed the flake, so I could not see which test failed.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.** This fixes main's only red CI job: prettier on `gate.test.ts`, in its own commit. `lead batch check` now runs `prettier --check .` and assigns each unformatted file to the task whose diff holds it, so the gap that let this through is closed. The devtools `src/lead` and `src/gate` tests pass (735), and `prettier --check .` is clean. The change touches devtools only.

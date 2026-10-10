@@ -74,8 +74,12 @@ describe('tokenMatcher', () => {
   });
 
   it('treats brackets and question marks in paths as literal text', () => {
-    expect(tokenMatcher('apps/mobile/src/app/chat/[id].tsx').test('apps/mobile/src/app/chat/[id].tsx')).toBe(true);
-    expect(tokenMatcher('apps/mobile/src/app/chat/[id].tsx').test('apps/mobile/src/app/chat/i.tsx')).toBe(false);
+    expect(
+      tokenMatcher('apps/mobile/src/app/chat/[id].tsx').test('apps/mobile/src/app/chat/[id].tsx'),
+    ).toBe(true);
+    expect(
+      tokenMatcher('apps/mobile/src/app/chat/[id].tsx').test('apps/mobile/src/app/chat/i.tsx'),
+    ).toBe(false);
     expect(tokenMatcher('a/what?.ts').test('a/what?.ts')).toBe(true);
     expect(tokenMatcher('a/what?.ts').test('a/whats.ts')).toBe(false);
   });

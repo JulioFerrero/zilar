@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0890](T-0890-prettier-gate-test-batch-check.md) | Main CI green: prettier on gate.test.ts; lead batch check runs prettier --check | review | haiku-5.5 | | CI fix |
 | [T-0866](T-0866-sweep-tools-chats.md) | Server sweep: tools, chats, contacts, drafts, xmpp onto the shared HTTP helpers (runSql,… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
 | [T-0867](T-0867-sweep-media-files.md) | Server sweep: stickers, avatars, backgrounds, files onto the shared HTTP helpers (runSql… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
 | [T-0868](T-0868-sweep-approvals-routines.md) | Server sweep: approvals, audit, routines, directory onto the shared HTTP helpers (runSql… | todo | sonnet-5.5 | T-0863 | wave 4, simplify plan |
@@ -919,3 +918,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0865](T-0865-dead-files-exports.md) | Dead files and 58 unreferenced declarations removed (-357 lines) | 2026-10-10 |
 | [T-0889](T-0889-scope-glob-zero-folders.md) | Gate scope check: **/ matches zero folders | 2026-10-10 |
 | [T-0864](T-0864-api-contract-pilot.md) | packages/api-contract pilot: pins group shared by server, web, mobile with derived clients | 2026-10-10 |
+| [T-0890](T-0890-prettier-gate-test-batch-check.md) | Main CI green: prettier on gate.test.ts; lead batch check runs prettier --check | 2026-10-10 |
