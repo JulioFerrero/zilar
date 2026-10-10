@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0988](T-0988-split-mobile-integrations.md) | Size split T38: mobile settings/integrations.tsx (740) | in-progress | auto | T-0936 | size-plan |
 
 ## Follow-ups
 
@@ -1020,3 +1019,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0992](T-0992-split-server-stickers-api.md) | Size split T56: apps/server/src/stickers/api.ts (595 lines) into stickers/{api-handlers,api-decode,api-upload} | 2026-10-10 |
 | [T-0986](T-0986-split-mobile-composer.md) | Size split T30: apps/mobile/src/components/chat/composer.tsx (788 lines) into chat/{composer-media,composer-sh | 2026-10-10 |
 | [T-0987](T-0987-split-mobile-message-bubble.md) | Size split T37: apps/mobile/src/components/chat/message-bubble.tsx (758 lines) into chat/{message-bubble-decor | 2026-10-10 |
+| [T-0988](T-0988-split-mobile-integrations.md) | Size split T38: apps/mobile/src/app/settings/integrations.tsx (740 lines) into components/integrations/{card-f | 2026-10-10 |
