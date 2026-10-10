@@ -23,6 +23,14 @@ export * from './topics';
 // End of chain B.
 
 // Chain C (T-0894): add `export * from './<x>';` lines below.
+export * from './chain-c-middleware';
+export * from './blocks';
+export * from './chats';
+export * from './contact-requests';
+export * from './contacts';
+export * from './directory';
+export * from './handles';
+export * from './search';
 // ----------------------------------------------------------------------------
 // End of chain C.
 

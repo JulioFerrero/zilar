@@ -1,13 +1,16 @@
 // Contacts module on the Effect `HttpApi` adapter (T-0514): the same method,
-// path and answer as the deleted router. Its store runs on effect/sql.
+// path and answer as the deleted router. Its store runs on effect/sql. The
+// schemas and the group live in the shared contract (`@zilar/api-contract`,
+// T-0894); this file keeps the handlers and layers.
 
-import { Layer, Schema } from 'effect';
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { Layer } from 'effect';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { ContactsGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { listContacts } from './service';
 
 export interface ContactsApiDependencies {
@@ -16,26 +19,6 @@ export interface ContactsApiDependencies {
   config: ServerConfig;
   logger: Logger;
 }
-
-// The contact rows, exactly like `listContacts` returns them: an email never
-// appears here. `avatarUrl` and `handle` are omitted when absent.
-const Contact = Schema.Struct({
-  userId: Schema.String,
-  name: Schema.String,
-  jid: Schema.String,
-  avatarUrl: Schema.optional(Schema.String),
-  handle: Schema.optional(Schema.NullOr(Schema.String)),
-});
-
-const ContactsGroup = HttpApiGroup.make('contacts')
-  .add(
-    HttpApiEndpoint.get('list', '/contacts', {
-      success: Schema.Array(Contact),
-    }),
-  )
-  .middleware(Session)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
 
 const ContactsApi = HttpApi.make('contacts').add(ContactsGroup);
 

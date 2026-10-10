@@ -4,21 +4,14 @@
 // The archive query core lives in `routes.ts` (`runSearchEffect`); this module
 // owns the Effect query schema, the 501/429 guards and the adapter wiring.
 
-import { Effect, Layer, Schema } from 'effect';
+import { Effect, Layer } from 'effect';
 import { HttpServerRequest } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-} from 'effect/http-api';
+import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
+import { CurrentUser, SearchGroup, SearchGuards, SearchSchemaErrors } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {
-  CurrentUser,
-  Session,
   failureResponse,
   handler,
   httpErrorResponse,
@@ -28,7 +21,6 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import {
-  SEARCH_MAX_LIMIT,
   SEARCH_RATE_LIMIT_MAX,
   SEARCH_RATE_LIMIT_WINDOW_MS,
   runSearchEffect,
@@ -37,46 +29,11 @@ import {
 
 export type { SearchRoutesDependencies };
 
-// Replaces `querySchema` (zod): `q` 1..100 raw characters (the handler trims
-// and requires 2..100), optional `chat` 1..256, optional `limit` and `before`
-// coerced from strings like the old `z.coerce.number()`. Strict, so an
-// excess key fails like the old `.strict()`.
-const SearchQuery = Schema.Struct({
-  q: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100)),
-  chat: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
-  limit: Schema.optional(
-    Schema.NumberFromString.check(
-      Schema.isInt(),
-      Schema.isGreaterThanOrEqualTo(1),
-      Schema.isLessThanOrEqualTo(SEARCH_MAX_LIMIT),
-    ),
-  ),
-  before: Schema.optional(Schema.NumberFromString.check(Schema.isInt(), Schema.isGreaterThan(0))),
-});
-
-// Lists every field of `SearchItem` plus the optional cursor: the success
-// schema is an encoder, so an omitted field would silently disappear.
-const SearchItemView = Schema.Struct({
-  chatJid: Schema.String,
-  messageId: Schema.String,
-  senderName: Schema.String,
-  at: Schema.String,
-  snippet: Schema.String,
-  marks: Schema.mutable(Schema.Array(Schema.Tuple([Schema.Number, Schema.Number]))),
-  match: Schema.optional(Schema.Literals(['exact', 'fuzzy'])),
-});
-
-const SearchResultView = Schema.Struct({
-  items: Schema.Array(SearchItemView),
-  nextBefore: Schema.optional(Schema.String),
-});
-
+// The schemas, the group and the middleware tags live in the shared contract
+// (`@zilar/api-contract`, T-0894).
+//
 // Any query decode failure is the fixed text `Invalid search query`, exactly
 // like the old route.
-class SearchSchemaErrors extends HttpApiMiddleware.Service<SearchSchemaErrors>()(
-  'zilar/effect/http/SearchSchemaErrors',
-) {}
-
 function schemaErrorLayer(logger: Logger): Layer.Layer<SearchSchemaErrors> {
   return HttpApiMiddleware.layerSchemaErrorTransform(SearchSchemaErrors, () =>
     Effect.gen(function* () {
@@ -93,10 +50,6 @@ function schemaErrorLayer(logger: Logger): Layer.Layer<SearchSchemaErrors> {
 // The archive and rate-limit guards run before the query is decoded, exactly
 // like the old route's session -> 501 -> limiter -> decode order. `requires:
 // CurrentUser` is satisfied by `Session`.
-class SearchGuards extends HttpApiMiddleware.Service<SearchGuards, { requires: CurrentUser }>()(
-  'zilar/effect/http/SearchGuards',
-) {}
-
 function guardsLayer(
   deps: SearchRoutesDependencies,
   limiter: RateLimiter,
@@ -125,20 +78,6 @@ function guardsLayer(
     ),
   );
 }
-
-const SearchGroup = HttpApiGroup.make('search')
-  .add(
-    HttpApiEndpoint.get('search', '/search', {
-      query: SearchQuery,
-      success: SearchResultView,
-    })
-      .annotate(HttpApi.QueryParseOptions, { onExcessProperty: 'error' })
-      .middleware(SearchGuards),
-  )
-  .middleware(Session)
-  .middleware(SearchSchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
 
 const SearchApi = HttpApi.make('search').add(SearchGroup);
 

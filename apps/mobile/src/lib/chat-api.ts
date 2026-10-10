@@ -1,7 +1,9 @@
 import { Data, Effect, Exit, Schema, SchemaGetter, type Effect as EffectType } from 'effect';
 import { struct } from '@zilar/protocol';
+import { ApiError, runApi, type Contact as ContractContact } from '@zilar/api-contract';
 
 import { API_URL } from './auth';
+import { createApiClient } from './effect/api-client';
 import type { Me } from './auth-api';
 import { errorFieldsOf } from './api-error-body';
 import { parseTopic, type Topic } from './topics-api';
@@ -15,12 +17,7 @@ export type { Me };
  * pipeline, cut back to a `Promise` at the edge with `Effect.runPromise`.
  */
 
-export interface Contact {
-  userId: string;
-  name: string;
-  jid: string;
-  avatarUrl?: string;
-}
+export type Contact = ContractContact;
 
 export type ChatEntry =
   | {
@@ -112,17 +109,9 @@ export interface ChatApi {
   getXmppToken(): Promise<XmppToken>;
 }
 
-export class ChatApiError extends Error {
-  readonly status: number;
-  readonly code: string;
-
-  constructor(status: number, code: string, message: string) {
-    super(message);
-    this.name = 'ChatApiError';
-    this.status = status;
-    this.code = code;
-  }
-}
+/** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
+export const ChatApiError = ApiError;
+export type ChatApiError = ApiError;
 
 // A lenient nullable string: a missing or non-string value decodes to `null`
 // instead of failing the row (the viewer's own JID on `Me`, absent on older
@@ -151,13 +140,6 @@ const MeSchema = struct({
   email: Schema.String,
   name: Schema.String,
   jid: LenientNullStringSchema,
-});
-
-const ContactSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-  jid: Schema.String,
-  avatarUrl: LenientOptionalStringSchema,
 });
 
 const GroupRoleSchema = Schema.Literals(['owner', 'admin', 'member']);
@@ -264,8 +246,6 @@ const ChatsListSchema = struct({
   chats: Schema.mutable(Schema.Array(Schema.Unknown)),
 });
 
-const ContactsListSchema = Schema.mutable(Schema.Array(ContactSchema));
-
 function parseMe(value: unknown): Me | null {
   const decoded = Schema.decodeUnknownExit(MeSchema)(value);
   return Exit.isSuccess(decoded) ? decoded.value : null;
@@ -359,15 +339,6 @@ function parseChatsList(value: unknown): ChatEntry[] | null {
   return chats;
 }
 
-function parseContactsList(value: unknown): Contact[] | null {
-  const decoded = Schema.decodeUnknownExit(ContactsListSchema)(value);
-  if (!Exit.isSuccess(decoded)) return null;
-  return decoded.value.map((contact) => {
-    const { avatarUrl, ...rest } = contact;
-    return avatarUrl === undefined ? rest : { ...rest, avatarUrl };
-  });
-}
-
 function parseXmppToken(value: unknown): XmppToken | null {
   const decoded = Schema.decodeUnknownExit(XmppTokenSchema)(value);
   return Exit.isSuccess(decoded) ? decoded.value : null;
@@ -427,6 +398,7 @@ export function createChatApi(
   fetchImpl: typeof fetch = fetch,
   apiUrl: string = API_URL,
 ): ChatApi {
+  const client = createApiClient({ getToken, fetchImpl, apiUrl });
   const withTokenEffect = Effect.fnUntraced(function* (
     path: string,
     init: RequestInit,
@@ -473,13 +445,16 @@ export function createChatApi(
       return (await withToken('/api/me', { method: 'GET' }, parseMe)) as Me;
     },
     async getChats() {
-      const body = await withToken('/api/chats', { method: 'GET' }, parseChatsList);
-      return body as ChatEntry[];
+      // The contract passes the entries through as `unknown`; they are
+      // validated here, and one malformed entry fails the whole list.
+      const body = await runApi(client.chats.list());
+      const chats = parseChatsList(body);
+      if (chats === null) {
+        throw new ChatApiError(200, 'invalid_response', 'The server sent an unexpected response');
+      }
+      return chats;
     },
-    async getContacts() {
-      const body = await withToken('/api/contacts', { method: 'GET' }, parseContactsList);
-      return body as Contact[];
-    },
+    getContacts: () => runApi(client.contacts.list()).then((rows) => [...rows]),
     async getGroup(groupId) {
       return (await withToken(
         `/api/groups/${encodeURIComponent(groupId)}`,

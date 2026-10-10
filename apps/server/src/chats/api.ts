@@ -2,8 +2,9 @@
 // path and answer as the deleted router (`routes.ts`), mounted by the Effect
 // edge (`apps/server/src/effect/edge.ts`). Its services run on effect/sql.
 
-import { Effect, Layer, Schema } from 'effect';
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { Effect, Layer } from 'effect';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { ChatsGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import { listAis } from '../ais/service';
 import type { Auth } from '../auth/auth';
@@ -13,7 +14,7 @@ import { listContacts } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
 import { listGroupsForUser, type GroupBackground, type GroupRole } from '../groups/service';
 import { toTopicViews, visibleTopics, type TopicView } from '../topics/access';
-import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 
 export type ChatListEntry =
   | {
@@ -61,19 +62,8 @@ export interface ChatsApiDependencies {
 }
 
 // The chat list is a discriminated union already typed by `ChatListEntry`; the
-// schema passes each entry through unchanged, so the wire shape stays exactly
-// what the old route returned (a named Struct would drop keys it does not
-// list).
-const ChatsResult = Schema.Struct({
-  chats: Schema.Array(Schema.Unknown),
-});
-
-const ChatsGroup = HttpApiGroup.make('chats')
-  .add(HttpApiEndpoint.get('list', '/chats', { success: ChatsResult }))
-  .middleware(Session)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
-
+// contract's schema (`@zilar/api-contract`, T-0894) passes each entry through
+// unchanged, so the wire shape stays exactly what the old route returned.
 const ChatsApi = HttpApi.make('chats').add(ChatsGroup);
 
 export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {

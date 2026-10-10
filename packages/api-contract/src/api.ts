@@ -43,6 +43,13 @@ const chainBGroups = [
 // End of chain B.
 
 // Chain C (T-0894) imports: add `import { XGroup } from './x';` lines below.
+import { BlocksGroup } from './blocks';
+import { ChatsGroup } from './chats';
+import { ContactRequestsGroup } from './contact-requests';
+import { ContactsGroup } from './contacts';
+import { DirectoryGroup } from './directory';
+import { HandlesGroup } from './handles';
+import { SearchGroup } from './search';
 // ----------------------------------------------------------------------------
 // End of chain C imports.
 
@@ -50,6 +57,13 @@ const chainBGroups = [
 // ----------------------------------------------------------------------------
 const chainCGroups = [
   // (chain C groups)
+  ContactsGroup,
+  BlocksGroup,
+  ContactRequestsGroup,
+  HandlesGroup,
+  DirectoryGroup,
+  SearchGroup,
+  ChatsGroup,
 ] as const;
 // ----------------------------------------------------------------------------
 // End of chain C.

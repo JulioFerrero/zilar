@@ -3,24 +3,18 @@
 // (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
 // Its store runs on effect/sql.
 
-import { Effect, Layer, Schema } from 'effect';
+import { Effect, Layer } from 'effect';
 import { HttpServerRequest, HttpServerResponse } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-} from 'effect/http-api';
+import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
+import { HandlesCheckRateLimit, HandlesGroup, HandlesSchemaErrors } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
-import { makeRateLimit } from '../effect/rate-limit-middleware';
+import { rateLimitLayer } from '../blocks/chain-c-layers';
 import {
-  Session,
   failureResponse,
   handler,
   httpErrorResponse,
@@ -42,36 +36,12 @@ export const HANDLE_CHECK_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 export const HANDLE_CLAIM_RATE_LIMIT_MAX = 10;
 export const HANDLE_CLAIM_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-// The check query. A decode failure is a success answer, not an error: the
-// middleware below turns it into `{ available: false, reason: 'invalid' }`.
-const HandleCheckQuery = Schema.Struct({
-  handle: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
-  // `kind=group` asks for a public group or channel; absent (or `user`) keeps
-  // the T-0163 user answer.
-  kind: Schema.optional(Schema.Literals(['user', 'group'])),
-});
-
-const HandleCheckResult = Schema.Struct({
-  available: Schema.Boolean,
-  reason: Schema.optional(Schema.Literals(['invalid', 'reserved', 'taken'])),
-});
-
-// The claim body: 1..64 characters; the store re-checks the shape and reserved
-// words. The payload decode is strict (`PayloadParseOptions` below) so an excess
-// key fails.
-const HandleClaimBody = Schema.Struct({
-  handle: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
-});
-
-const HandleClaimResult = Schema.Struct({ handle: Schema.String });
-
+// The schemas, the group and its middleware tags live in the shared contract
+// (`@zilar/api-contract`, T-0894).
+//
 // Applied to the group so a query or payload decode failure renders as the
 // module's typed envelope: an invalid check query is a 200 `invalid` answer,
 // an invalid claim body is a 400 `invalid_request` error.
-class HandlesSchemaErrors extends HttpApiMiddleware.Service<HandlesSchemaErrors>()(
-  'zilar/effect/http/HandlesSchemaErrors',
-) {}
-
 function schemaErrorLayer(logger: Logger): Layer.Layer<HandlesSchemaErrors> {
   return HttpApiMiddleware.layerSchemaErrorTransform(HandlesSchemaErrors, (error) =>
     Effect.gen(function* () {
@@ -92,29 +62,7 @@ function schemaErrorLayer(logger: Logger): Layer.Layer<HandlesSchemaErrors> {
   );
 }
 
-// Runs the check budget before the query is decoded, exactly like the old
-// route's `checkLimiter.allow` -> `safeParse` order: an invalid query still
-// spends budget.
-const HandlesCheckRateLimit = makeRateLimit(
-  'zilar/effect/http/HandlesCheckRateLimit',
-  'Too many attempts, try again later',
-);
-
-const HandlesGroup = HttpApiGroup.make('handles')
-  .add(
-    HttpApiEndpoint.get('check', '/handles/check', {
-      query: HandleCheckQuery,
-      success: HandleCheckResult,
-    }).middleware(HandlesCheckRateLimit.Middleware),
-    HttpApiEndpoint.put('claim', '/me/handle', {
-      payload: HandleClaimBody,
-      success: HandleClaimResult,
-    }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
-  )
-  .middleware(Session)
-  .middleware(HandlesSchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
+const RATE_LIMITED_MESSAGE = 'Too many attempts, try again later';
 
 const HandlesApi = HttpApi.make('handles').add(HandlesGroup);
 
@@ -205,7 +153,10 @@ export function createHandlesApi(deps: HandlesApiDependencies): EffectApiMount {
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayer(logger)),
-    Layer.provide(HandlesCheckRateLimit.layer(checkLimiter)),
+    // The check budget runs before the query is decoded, exactly like the old
+    // route's `checkLimiter.allow` -> `safeParse` order: an invalid query
+    // still spends budget.
+    Layer.provide(rateLimitLayer(HandlesCheckRateLimit, checkLimiter, RATE_LIMITED_MESSAGE)),
   );
 
   return mountApi(HandlesApi, apiLayer);

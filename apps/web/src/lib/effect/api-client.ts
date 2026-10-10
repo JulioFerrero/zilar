@@ -9,7 +9,13 @@
 // once, so a later `vi.stubGlobal('fetch')` still reaches its stub.
 import { Effect } from 'effect';
 import { HttpClient } from 'effect/http';
-import { makeZilarClient, runApi, withFetch, type ZilarClient } from '@zilar/api-contract';
+import {
+  makeZilarClient,
+  runApi,
+  toApiError,
+  withFetch,
+  type ZilarClient,
+} from '@zilar/api-contract';
 import { isMockApiEnabled } from '@/mock/gate';
 import { mockRequest } from '@/mock/api';
 import { webRuntime } from './runtime';
@@ -39,4 +45,38 @@ function zilarClient(): ZilarClient {
 /** Runs one contract call; it rejects with the shared `ApiError` only. */
 export function callApi<A, E>(call: (client: ZilarClient) => Effect.Effect<A, E>): Promise<A> {
   return runApi(Effect.suspend(() => call(zilarClient())));
+}
+
+/**
+ * `callApi` for a call a caller may cancel (message search). An abort
+ * interrupts the request and rejects with the `DOMException` named
+ * `AbortError`, as a `fetch` abort does; every other failure is an `ApiError`.
+ */
+export async function callApiAbortable<A, E>(
+  call: (client: ZilarClient) => Effect.Effect<A, E>,
+  signal?: AbortSignal,
+): Promise<A> {
+  // A function, not a direct read, so TypeScript does not narrow `aborted` to
+  // `false` after the first check: the signal can still fire mid-request.
+  const isAborted = () => signal?.aborted === true;
+  const abortError = () => new DOMException('Aborted', 'AbortError');
+  if (isAborted()) {
+    throw abortError();
+  }
+  let value: A;
+  try {
+    value = await Effect.runPromise(
+      Effect.mapError(
+        Effect.suspend(() => call(zilarClient())),
+        toApiError,
+      ),
+      signal === undefined ? undefined : { signal },
+    );
+  } catch (error) {
+    throw isAborted() ? abortError() : error;
+  }
+  if (isAborted()) {
+    throw abortError();
+  }
+  return value;
 }

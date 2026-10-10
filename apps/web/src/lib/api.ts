@@ -1,6 +1,19 @@
 import { Effect, Exit, Schema } from 'effect';
 import { ApiError, apiErrorFromBody, type Pin, type PinKind } from '@zilar/api-contract';
 import {
+  HANDLE_CHECK_MAX,
+  HANDLE_CHECK_MIN,
+  type BlockedPerson,
+  type Contact,
+  type ContactRequestPerson,
+  type ContactRequestRow,
+  type ContactRequestStatus,
+  type ContactRequestView,
+  type DirectoryEntry,
+  type HandleCheck,
+  type HandleCheckReason,
+  type HandleProfile,
+  type SearchItem,
   omitUndefined,
   type BackgroundPreset,
   type ChatBackgroundChoice,
@@ -30,7 +43,7 @@ import {
 } from '@zilar/api-contract';
 import type { FolderChatType, FolderIcon } from '@zilar/chat-core';
 import { struct } from '@zilar/protocol';
-import { callApi } from '@/lib/effect/api-client';
+import { callApi, callApiAbortable } from '@/lib/effect/api-client';
 import { isMockApiEnabled } from '@/mock/gate';
 import { loadMockRequest } from '@/mock/load';
 
@@ -70,17 +83,7 @@ const meSchema = struct({
 
 export type Me = typeof meSchema.Type;
 
-const contactSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-  jid: Schema.String,
-  avatarUrl: Schema.optional(Schema.String),
-  // T-0163: the contact's `@username`. Optional so payloads from an older
-  // server still parse (treated as none).
-  handle: Schema.optional(Schema.NullOr(Schema.String)),
-});
-
-export type Contact = typeof contactSchema.Type;
+export type { Contact };
 
 const dmEntrySchema = struct({
   kind: Schema.Literal('dm'),
@@ -235,12 +238,18 @@ export function updateMe(name: string): Promise<Me> {
 }
 
 export async function getChats(): Promise<ChatEntry[]> {
-  const { chats } = await request('/chats', chatsSchema);
-  return chats;
+  // The contract passes the entries through as `unknown`; they are validated
+  // here, and one malformed entry fails the whole list.
+  const body = await callApi((client) => client.chats.list());
+  const parsed = decodeResponse(chatsSchema, body);
+  if (!parsed.ok) {
+    throw new ApiError(200, 'invalid_response', 'The server sent an unexpected response');
+  }
+  return parsed.value.chats;
 }
 
 export async function getContacts(): Promise<Contact[]> {
-  return request('/contacts', Schema.mutable(Schema.Array(contactSchema)));
+  return callApi((client) => client.contacts.list()).then((rows) => [...rows]);
 }
 
 export function createGroup(input: {
@@ -1283,32 +1292,11 @@ export async function revokeApprovalRule(id: string): Promise<void> {
 }
 
 // --- Message search (T-0117) -----------------------------------------------
-// The wire contract lives in apps/server/src/search/routes.ts. Snippets
+// The wire contract lives in packages/api-contract/src/search.ts. Snippets
 // arrive as plain text plus `marks` ranges; the client highlights with
 // spans and never renders HTML.
 
-const searchMarkSchema = Schema.mutable(
-  Schema.Tuple([
-    Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
-    Schema.Int.pipe(Schema.check(Schema.isGreaterThanOrEqualTo(0))),
-  ]),
-);
-
-const searchItemSchema = struct({
-  chatJid: Schema.String,
-  messageId: Schema.String,
-  senderName: Schema.String,
-  at: Schema.String,
-  snippet: Schema.String,
-  marks: Schema.mutable(Schema.Array(searchMarkSchema)),
-});
-
-export type SearchItem = typeof searchItemSchema.Type;
-
-const searchPageSchema = struct({
-  items: Schema.mutable(Schema.Array(searchItemSchema)),
-  nextBefore: Schema.optional(Schema.String),
-});
+export type { SearchItem };
 
 export interface SearchMessagesInput {
   q: string;
@@ -1318,65 +1306,23 @@ export interface SearchMessagesInput {
   signal?: AbortSignal;
 }
 
-async function searchRequest<T>(
-  params: URLSearchParams,
-  schema: ResponseSchema<T>,
-  signal?: AbortSignal,
-): Promise<T> {
-  let response: Response;
-  if (isMockApiEnabled()) {
-    response = await (await loadMockRequest())(`/search?${params.toString()}`, { method: 'GET' });
-  } else {
-    if (signal?.aborted === true) {
-      throw new DOMException('Aborted', 'AbortError');
-    }
-    try {
-      response = await fetch(`${API_BASE}/search?${params.toString()}`, {
-        credentials: 'same-origin',
-        headers: { Accept: 'application/json' },
-        ...(signal === undefined ? {} : { signal }),
-      });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        throw error;
-      }
-      throw new ApiError(0, 'network_error', 'Could not reach the server');
-    }
-  }
-  if (signal?.aborted === true) {
-    throw new DOMException('Aborted', 'AbortError');
-  }
-
-  const raw: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw apiErrorFromBody(response.status, raw);
-  }
-  const parsed = decodeResponse(schema, raw);
-  if (!parsed.ok) {
-    throw new ApiError(
-      response.status,
-      'invalid_response',
-      'The server sent an unexpected response',
-    );
-  }
-  return parsed.value;
-}
-
 export function searchMessages(
   input: SearchMessagesInput,
 ): Promise<{ items: SearchItem[]; nextBefore?: string | undefined }> {
-  const params = new URLSearchParams();
-  params.set('q', input.q);
-  if (input.chat !== undefined && input.chat !== '') {
-    params.set('chat', input.chat);
-  }
-  if (input.limit !== undefined) {
-    params.set('limit', String(input.limit));
-  }
-  if (input.before !== undefined && input.before !== '') {
-    params.set('before', input.before);
-  }
-  return searchRequest(params, searchPageSchema, input.signal);
+  // The cursor travels as a string in the app and decodes to a number in the
+  // contract; an empty `chat` or `before` is left out, like before.
+  const query = {
+    q: input.q,
+    ...(input.chat === undefined || input.chat === '' ? {} : { chat: input.chat }),
+    ...(input.limit === undefined ? {} : { limit: input.limit }),
+    ...(input.before === undefined || input.before === '' ? {} : { before: Number(input.before) }),
+  };
+  return callApiAbortable((client) => client.search.search({ query }), input.signal).then(
+    (page) => ({
+      items: [...page.items],
+      ...(page.nextBefore === undefined ? {} : { nextBefore: page.nextBefore }),
+    }),
+  );
 }
 
 // --- Stickers (T-0120) -----------------------------------------------------
@@ -2004,139 +1950,72 @@ export function postSetup(input: SetupInput): Promise<SetupResult> {
 // contact request the other person must accept. Handles are stored with the
 // typed casing but compared case-insensitively; there is no prefix search.
 
-export type HandleCheckReason = 'invalid' | 'reserved' | 'taken';
+export type { HandleCheck, HandleCheckReason };
 
-const handleCheckSchema = struct({
-  available: Schema.Boolean,
-  reason: Schema.optional(Schema.Literals(['invalid', 'reserved', 'taken'])),
-});
-
-export interface HandleCheck {
-  available: boolean;
-  reason?: HandleCheckReason | undefined;
+// The server answers a handle outside 1..64 characters with a success body
+// (`invalid`), but the derived client encodes the query before it sends it.
+// So the same answer is given here, without the round trip.
+function checkHandleKind(handle: string, kind?: 'group'): Promise<HandleCheck> {
+  if (handle.length < HANDLE_CHECK_MIN || handle.length > HANDLE_CHECK_MAX) {
+    return Promise.resolve({ available: false, reason: 'invalid' });
+  }
+  return callApi((client) =>
+    client.handles.check({ query: kind === undefined ? { handle } : { handle, kind } }),
+  );
 }
 
 export function checkHandle(handle: string): Promise<HandleCheck> {
-  const params = new URLSearchParams();
-  params.set('handle', handle);
-  return request(`/handles/check?${params.toString()}`, handleCheckSchema);
+  return checkHandleKind(handle);
 }
 
-const claimedHandleSchema = struct({ handle: Schema.String });
-
 export function claimHandle(handle: string): Promise<{ handle: string }> {
-  return request('/me/handle', claimedHandleSchema, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ handle }),
-  });
+  return callApi((client) => client.handles.claim({ payload: { handle } }));
 }
 
 export type ContactRelation =
   'none' | 'contact' | 'request_sent' | 'request_received' | 'self' | 'blocked';
 
-const handleProfileSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-  handle: Schema.String,
-  image: Schema.NullOr(Schema.String),
-  relation: Schema.Literals([
-    'none',
-    'contact',
-    'request_sent',
-    'request_received',
-    'self',
-    'blocked',
-  ]),
-});
-
-export type HandleProfile = typeof handleProfileSchema.Type;
+export type {
+  ContactRequestPerson,
+  ContactRequestRow,
+  ContactRequestStatus,
+  ContactRequestView,
+  HandleProfile,
+};
 
 export function lookupByHandle(handle: string): Promise<HandleProfile> {
-  return request(`/users/by-handle/${encodeURIComponent(handle)}`, handleProfileSchema);
+  return callApi((client) => client.contactRequests.byHandle({ params: { handle } }));
 }
-
-export type ContactRequestStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
-
-export const contactRequestPersonSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-  handle: Schema.NullOr(Schema.String),
-  image: Schema.NullOr(Schema.String),
-});
-
-export type ContactRequestPerson = typeof contactRequestPersonSchema.Type;
-
-export const contactRequestViewSchema = struct({
-  id: Schema.String,
-  status: Schema.Literals(['pending', 'accepted', 'declined', 'cancelled']),
-  createdAt: Schema.String,
-  other: contactRequestPersonSchema,
-});
-
-export type ContactRequestView = typeof contactRequestViewSchema.Type;
-
-const contactRequestListSchema = struct({
-  incoming: Schema.mutable(Schema.Array(contactRequestViewSchema)),
-  outgoing: Schema.mutable(Schema.Array(contactRequestViewSchema)),
-});
 
 export interface ContactRequestList {
   incoming: ContactRequestView[];
   outgoing: ContactRequestView[];
 }
 
-const contactRequestRowSchema = struct({
-  id: Schema.String,
-  fromUserId: Schema.String,
-  toUserId: Schema.String,
-  status: Schema.Literals(['pending', 'accepted', 'declined', 'cancelled']),
-  createdAt: Schema.String,
-  decidedAt: Schema.optional(Schema.String),
-});
-
-export type ContactRequestRow = typeof contactRequestRowSchema.Type;
-
-const createdRequestSchema = struct({
-  request: contactRequestRowSchema,
-  // Present when the other side already asked: the web offers "Accept" on
-  // the existing request instead of creating a second row.
-  incoming: Schema.optional(Schema.Boolean),
-});
-
 export function sendContactRequest(handle: string): Promise<{
   request: ContactRequestRow;
   incoming?: boolean | undefined;
 }> {
-  return request('/contact-requests', createdRequestSchema, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ handle }),
-  });
+  return callApi((client) => client.contactRequests.create({ payload: { handle } }));
 }
 
 export function listContactRequests(): Promise<ContactRequestList> {
-  return request('/contact-requests', contactRequestListSchema);
+  return callApi((client) => client.contactRequests.list()).then((body) => ({
+    incoming: [...body.incoming],
+    outgoing: [...body.outgoing],
+  }));
 }
 
-const decidedRequestSchema = struct({ request: contactRequestRowSchema });
-
 export function acceptContactRequest(id: string): Promise<{ request: ContactRequestRow }> {
-  return request(`/contact-requests/${encodeURIComponent(id)}/accept`, decidedRequestSchema, {
-    method: 'POST',
-  });
+  return callApi((client) => client.contactRequests.accept({ params: { id } }));
 }
 
 export function declineContactRequest(id: string): Promise<{ request: ContactRequestRow }> {
-  return request(`/contact-requests/${encodeURIComponent(id)}/decline`, decidedRequestSchema, {
-    method: 'POST',
-  });
+  return callApi((client) => client.contactRequests.decline({ params: { id } }));
 }
 
 export function cancelContactRequest(id: string): Promise<{ request: ContactRequestRow }> {
-  return request(`/contact-requests/${encodeURIComponent(id)}`, decidedRequestSchema, {
-    method: 'DELETE',
-  });
+  return callApi((client) => client.contactRequests.cancel({ params: { id } }));
 }
 
 // --- Blocked people (T-0235) -------------------------------------------------
@@ -2144,35 +2023,19 @@ export function cancelContactRequest(id: string): Promise<{ request: ContactRequ
 // requests never reach the blocker. Writes answer `{ blocked: true/false }`,
 // the list answers newest first.
 
-const blockResultSchema = struct({ blocked: Schema.Boolean });
-
-const blockedPersonSchema = struct({
-  userId: Schema.String,
-  name: Schema.String,
-  handle: Schema.NullOr(Schema.String),
-  image: Schema.NullOr(Schema.String),
-  jid: Schema.NullOr(Schema.String),
-});
-
-export type BlockedPerson = typeof blockedPersonSchema.Type;
-
-const blockedListSchema = struct({ blocked: Schema.mutable(Schema.Array(blockedPersonSchema)) });
+export type { BlockedPerson };
 
 export function blockUser(userId: string): Promise<{ blocked: boolean }> {
-  return request(`/blocks/${encodeURIComponent(userId)}`, blockResultSchema, {
-    method: 'PUT',
-  });
+  return callApi((client) => client.blocks.block({ params: { userId } }));
 }
 
 export function unblockUser(userId: string): Promise<{ blocked: boolean }> {
-  return request(`/blocks/${encodeURIComponent(userId)}`, blockResultSchema, {
-    method: 'DELETE',
-  });
+  return callApi((client) => client.blocks.unblock({ params: { userId } }));
 }
 
 export async function listBlockedUsers(): Promise<BlockedPerson[]> {
-  const { blocked } = await request('/blocks', blockedListSchema);
-  return blocked;
+  const { blocked } = await callApi((client) => client.blocks.list());
+  return [...blocked];
 }
 
 // --- Public groups and channels (T-0164) -----------------------------------
@@ -2180,25 +2043,7 @@ export async function listBlockedUsers(): Promise<BlockedPerson[]> {
 // `@username`s), appears in the directory, and joins with one tap. A
 // private group stays invisible and invite-only, exactly as before.
 
-export const directoryEntrySchema = struct({
-  id: Schema.String,
-  kind: Schema.Literals(['group', 'channel']),
-  title: Schema.String,
-  handle: Schema.String,
-  description: Schema.NullOr(Schema.String),
-  memberCount: Schema.Number,
-  joined: Schema.Boolean,
-  // T-0165: the group's picture, when it has one. Optional so older
-  // payloads parse (treated as none).
-  avatarUrl: Schema.optional(Schema.String),
-});
-
-export type DirectoryEntry = typeof directoryEntrySchema.Type;
-
-const directoryPageSchema = struct({
-  entries: Schema.mutable(Schema.Array(directoryEntrySchema)),
-  next: Schema.NullOr(Schema.String),
-});
+export type { DirectoryEntry };
 
 export interface DirectoryPage {
   entries: DirectoryEntry[];
@@ -2212,24 +2057,22 @@ export interface SearchDirectoryInput {
 }
 
 export function searchDirectory(input: SearchDirectoryInput = {}): Promise<DirectoryPage> {
-  const params = new URLSearchParams();
-  if (input.q !== undefined && input.q !== '') {
-    params.set('q', input.q);
-  }
-  if (input.kind !== undefined) {
-    params.set('kind', input.kind);
-  }
-  if (input.cursor !== undefined && input.cursor !== '') {
-    params.set('cursor', input.cursor);
-  }
-  const suffix = params.size === 0 ? '' : `?${params.toString()}`;
-  return request(`/directory${suffix}`, directoryPageSchema);
+  // An empty `q` or `cursor` is left out, like before.
+  const query = {
+    ...(input.q === undefined || input.q === '' ? {} : { q: input.q }),
+    ...(input.kind === undefined ? {} : { kind: input.kind }),
+    ...(input.cursor === undefined || input.cursor === '' ? {} : { cursor: input.cursor }),
+  };
+  return callApi((client) => client.directory.search({ query })).then((page) => ({
+    entries: [...page.entries],
+    next: page.next,
+  }));
 }
 
 // Exact match of one public group by `@handle` (case-insensitive). A
 // private group and an unknown handle answer the same 404.
 export function lookupGroupByHandle(handle: string): Promise<DirectoryEntry> {
-  return request(`/groups/by-handle/${encodeURIComponent(handle)}`, directoryEntrySchema);
+  return callApi((client) => client.directory.byHandle({ params: { handle } }));
 }
 
 export type PublicJoinResult = GroupJoinResult;
@@ -2257,10 +2100,7 @@ export function setGroupVisibility(
 // shape, reserved words and uniqueness as `@username`s; the asker's own
 // group reservation counts as available).
 export function checkGroupHandle(handle: string): Promise<HandleCheck> {
-  const params = new URLSearchParams();
-  params.set('handle', handle);
-  params.set('kind', 'group');
-  return request(`/handles/check?${params.toString()}`, handleCheckSchema);
+  return checkHandleKind(handle, 'group');
 }
 
 // --- Avatars (T-0165) ------------------------------------------------------
