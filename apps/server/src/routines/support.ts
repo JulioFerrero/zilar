@@ -8,12 +8,12 @@ import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
+import { firstIssueMessage } from '../effect/schema-issues';
 import { enforceRoutineLimit, toPublicRoutine } from './queries';
 import { nextRunAfter, parseRoutineSchedule } from './schedule';
 import {
   MAX_ROUTINE_INPUT_BYTES,
   RoutineServiceError,
-  firstIssueMessage,
   titleSchema,
   type CreateRoutineInput,
   type DeleteRoutineResult,

@@ -1,5 +1,4 @@
-import { SchemaIssue } from 'effect';
-
+// effect-plain: pure ejabberd error-text helpers; the schema-issue walker moved to effect/schema-issues
 // Every failure coming from ejabberd (HTTP status or an error body) is wrapped
 // in this type. Messages never include the admin credentials.
 export class EjabberdApiError extends Error {
@@ -48,28 +47,4 @@ export function isErrorBody(body: unknown): boolean {
 export function mentionsAlreadyExists(body: unknown): boolean {
   const text = errorText(body).toLowerCase();
   return text.includes('already registered') || text.includes('already exists');
-}
-
-export function firstIssueMessage(issue: SchemaIssue.Issue): string | undefined {
-  switch (issue._tag) {
-    case 'Composite':
-    case 'AnyOf':
-      for (const child of issue.issues) {
-        const message = firstIssueMessage(child);
-        if (message !== undefined) {
-          return message;
-        }
-      }
-      return undefined;
-    case 'Pointer':
-    case 'Filter':
-    case 'Encoding':
-      return firstIssueMessage(issue.issue);
-    case 'InvalidValue': {
-      const message = issue.annotations?.message;
-      return typeof message === 'string' && message.length > 0 ? message : undefined;
-    }
-    default:
-      return undefined;
-  }
 }

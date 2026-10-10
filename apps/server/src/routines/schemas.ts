@@ -1,6 +1,6 @@
 // T-0984: size split of `routines/service.ts`. The routine limits, service
 // error, types and title schema live here; the old path stays the barrel.
-import { Schema, SchemaIssue } from 'effect';
+import { Schema } from 'effect';
 import type { RoutineRow } from '../db/rows';
 import type { RoutineSchedule } from './schedule';
 
@@ -115,30 +115,3 @@ export const titleSchema = Schema.String.pipe(
     }),
   ),
 );
-
-// The first decode failure's message, like the old `issues[0]?.message`: a
-// `makeFilter` text when the failing check set one, else the generic fallback.
-export function firstIssueMessage(issue: SchemaIssue.Issue): string | undefined {
-  switch (issue._tag) {
-    case 'Composite':
-    case 'AnyOf': {
-      for (const child of issue.issues) {
-        const message = firstIssueMessage(child);
-        if (message !== undefined) {
-          return message;
-        }
-      }
-      return undefined;
-    }
-    case 'Pointer':
-    case 'Filter':
-    case 'Encoding':
-      return firstIssueMessage(issue.issue);
-    case 'InvalidValue': {
-      const message = issue.annotations?.message;
-      return typeof message === 'string' && message.length > 0 ? message : undefined;
-    }
-    default:
-      return undefined;
-  }
-}

@@ -9,7 +9,7 @@
 // `updateUser` -> session read again -> roster refresh. No decode text
 // changes: every failure answers byte-identical codes and messages.
 
-import { Effect, Exit, Layer, Schema, SchemaIssue } from 'effect';
+import { Effect, Exit, Layer, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { AuthGroup, AuthInvitesPublicGroup, UpdateMePayload } from '@zilar/api-contract';
@@ -18,6 +18,7 @@ import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerConfig } from '../config';
 import { refreshRosterNicknames } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
+import { firstIssueMessage } from '../effect/schema-issues';
 import { runSql } from '../effect/sql';
 import {
   handler,
@@ -59,42 +60,11 @@ interface SessionUserLookupRow {
 // unknown keys are stripped.
 const UpdateMeBody = UpdateMePayload;
 
-// The first decode message, like the old `parsed.error.issues[0]?.message`.
-// Walks the issue tree depth-first: a filter that returned a string carries
-// it on the `InvalidValue` message annotation (the control-character case).
-// In Effect v4 the `{ message }` option on `isMinLength`/`isMaxLength` does
-// NOT reach those annotations, but the `SchemaError.message` first line
-// already carries the exact text (empty / overlong names). A missing key or
-// a non-string name falls back to `Invalid name`.
 const NAME_MESSAGES = new Set([
   'name must not be empty',
   'name must be at most 64 characters',
   'name must not contain control characters',
 ]);
-function firstIssueMessage(issue: SchemaIssue.Issue): string | undefined {
-  switch (issue._tag) {
-    case 'Composite':
-    case 'AnyOf':
-      for (const child of issue.issues) {
-        const message = firstIssueMessage(child);
-        if (message !== undefined) {
-          return message;
-        }
-      }
-      return undefined;
-    case 'Pointer':
-    case 'Filter':
-    case 'Encoding':
-      return firstIssueMessage(issue.issue);
-    case 'InvalidValue': {
-      const message = issue.annotations?.message;
-      return typeof message === 'string' && message.length > 0 ? message : undefined;
-    }
-    default:
-      return undefined;
-  }
-}
-
 function updateMeMessage(body: unknown): string {
   const exit = Schema.decodeUnknownExit(UpdateMeBody, { errors: 'all' })(body);
   if (Exit.isSuccess(exit)) {
