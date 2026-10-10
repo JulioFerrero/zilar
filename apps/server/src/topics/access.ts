@@ -160,19 +160,6 @@ export async function canSeeTopic(
   return holdsTopicRole(db, topic.id, userId);
 }
 
-// The same check starting from an id, or false when the topic does not exist.
-export async function canSeeTopicById(
-  db: ServerDatabase,
-  topicId: string,
-  userId: string,
-): Promise<boolean> {
-  const topic = await getTopic(db, topicId);
-  if (!topic) {
-    return false;
-  }
-  return canSeeTopic(db, topic, userId);
-}
-
 export async function requireVisibleTopic(
   db: ServerDatabase,
   topicId: string,

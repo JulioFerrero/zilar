@@ -83,15 +83,6 @@ function stateFor(scenario: ConnectionsMockScenario): ProviderConnection[] {
 
 let sequence = 0;
 
-/**
- * Clears the per-scenario state and the id sequence. Tests call this between
- * cases so they do not depend on the order they run in.
- */
-export function resetConnectionsMock(): void {
-  states.clear();
-  sequence = 0;
-}
-
 /** A `ConnectionsApi` backed by the mock data, for offline UI work and screenshots. */
 export function createMockConnectionsApi(
   scenario: ConnectionsMockScenario = 'default',

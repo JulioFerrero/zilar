@@ -4,7 +4,6 @@ import { useColorScheme } from 'nativewind';
 import { Pressable, View } from 'react-native';
 
 import { AiBadge } from '@/components/chat/ai-badge';
-import { Avatar } from '@/components/chat/avatar';
 import { plainPreviewBody } from '@/components/chat/markdown-decision';
 import { Ticks } from '@/components/chat/ticks';
 import { PulseDot } from '@/components/chat/typing-dots';
@@ -174,9 +173,4 @@ export function TopicRow({
       </View>
     </Pressable>
   );
-}
-
-/** The glyph tile avatar for group headers on the topics screen. */
-export function GroupAvatar({ id, title }: { id: string; title: string }) {
-  return <Avatar id={id} name={title} size={52} />;
 }

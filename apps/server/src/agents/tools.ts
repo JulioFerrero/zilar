@@ -88,9 +88,6 @@ export const RequestActionArgsSchema = struct({
   args: Schema.Record(Schema.String, Schema.Unknown),
 });
 
-export type UpdatePersonaArgs = Schema.Schema.Type<typeof UpdatePersonaArgsSchema>;
-export type RequestActionArgs = Schema.Schema.Type<typeof RequestActionArgsSchema>;
-
 export type ParsedToolArguments =
   | { ok: true; tool: typeof UPDATE_PERSONA_TOOL; persona: string; summary: string }
   | { ok: true; tool: typeof REVERT_PERSONA_TOOL }

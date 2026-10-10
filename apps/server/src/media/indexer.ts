@@ -14,7 +14,6 @@ import type { ArchivePool, ArchiveRow } from '../search/service';
 // per chat so a room cannot grow unbounded.
 export const MEDIA_INDEX_MAX_ROWS = 5000;
 export const MEDIA_ITEMS_CAP_PER_CHAT = 20000;
-export const MEDIA_WINDOW_MONTHS = 12;
 const MEDIA_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 
 export type MediaKind = 'image' | 'file' | 'gif' | 'voice' | 'link';

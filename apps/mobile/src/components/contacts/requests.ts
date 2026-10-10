@@ -6,7 +6,6 @@ import { ContactsApiError, type ContactsApi } from '@/lib/contacts-api';
  * UI-free so the screen tests can import them without pulling in
  * `react-native`.
  */
-export type RequestsState = 'loading' | 'ready' | 'error';
 
 export type RequestAction = 'accept' | 'decline' | 'cancel';
 

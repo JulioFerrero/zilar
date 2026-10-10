@@ -125,21 +125,6 @@ const existingSubscription = (
     ? Effect.succeed(undefined)
     : Effect.promise(() => registration.pushManager.getSubscription());
 
-export function currentSubscription(browser: PushBrowser): Promise<DeviceSubscription | null> {
-  return runWeb(currentSubscriptionEffect(browser));
-}
-
-const currentSubscriptionEffect = Effect.fnUntraced(function* (
-  browser: PushBrowser,
-): Effect.fn.Return<DeviceSubscription | null, Error> {
-  const registration = yield* Effect.promise(() => browser.serviceWorker.getRegistration());
-  const subscription = yield* existingSubscription(registration);
-  if (subscription === undefined || subscription === null) {
-    return null;
-  }
-  return { endpoint: subscription.endpoint, ...(yield* subscriptionKeys(subscription)) };
-});
-
 export function subscribeBrowser(
   browser: PushBrowser,
   vapidPublicKey: string,

@@ -84,8 +84,6 @@ export const IsoDateTimeSchema = Schema.String.pipe(
   Schema.check(Schema.isPattern(ISO_DATETIME_PATTERN)),
 );
 
-export type IsoDateTime = typeof IsoDateTimeSchema.Type;
-
 // Same shape but no numeric offset, mirroring zod's default `z.iso.datetime()`.
 const ISO_DATETIME_ZULU_PATTERN = new RegExp(
   `^${ISO_DATE_SOURCE}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?Z$`,
@@ -96,8 +94,6 @@ export const IsoDateTimeZuluSchema = Schema.String.pipe(
 );
 
 export const CurrencySchema = Schema.Literals(['EUR', 'USD']);
-
-export type Currency = typeof CurrencySchema.Type;
 
 export const MoneySchema = struct({
   currency: CurrencySchema,
@@ -121,8 +117,6 @@ export const ArtifactKindSchema = Schema.Literals([
   'file',
   'report',
 ]);
-
-export type ArtifactKind = typeof ArtifactKindSchema.Type;
 
 // The protocol package's lib is ES2023 only, so the DOM `URL` type is absent;
 // reach the runtime constructor through `globalThis` without widening the lib.
@@ -158,5 +152,3 @@ export const ArtifactRefSchema = struct({
   kind: ArtifactKindSchema,
   ref: Schema.Union([IdSchema, HttpUrlSchema]),
 });
-
-export type ArtifactRef = typeof ArtifactRefSchema.Type;

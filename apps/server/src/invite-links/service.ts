@@ -14,7 +14,6 @@ import type { TopicRow } from '../topics/access';
 import { MAX_GROUP_MEMBERS, type InviteLogger } from '../groups/service';
 
 export const INVITE_LINK_TOKEN_BYTES = 32;
-export const INVITE_LINK_TOKEN_HEX_LENGTH = INVITE_LINK_TOKEN_BYTES * 2;
 export const INVITE_LINK_LABEL_MAX = 60;
 export const INVITE_LINK_CREATE_MAX_USES = 10000;
 export const INVITE_LINK_CREATE_MAX_EXPIRY_HOURS = 8760;

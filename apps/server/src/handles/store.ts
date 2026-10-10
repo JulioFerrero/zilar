@@ -43,18 +43,6 @@ function runSql<A, E>(
   return sqlRuntimeFor(db).runPromise(effect);
 }
 
-export async function findHandle(db: ServerDatabase, handle: string): Promise<HandleRow | null> {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<HandleRow>`SELECT * FROM handles
-        WHERE handle_lower = ${normalizeHandle(handle)} LIMIT 1`;
-    }),
-  );
-  return row ?? null;
-}
-
 export async function handleForUser(db: ServerDatabase, userId: string): Promise<string | null> {
   const [row] = await runSql(
     db,
@@ -65,33 +53,6 @@ export async function handleForUser(db: ServerDatabase, userId: string): Promise
     }),
   );
   return row?.handle ?? null;
-}
-
-export async function handleUserIdFor(
-  db: ServerDatabase,
-  userIds: string[],
-): Promise<Map<string, string>> {
-  if (userIds.length === 0) {
-    return new Map();
-  }
-  const rows = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{
-        userId: string | null;
-        handle: string;
-      }>`SELECT user_id, handle FROM handles
-        WHERE user_id IN ${sql.in([...new Set(userIds)])}`;
-    }),
-  );
-  const byUser = new Map<string, string>();
-  for (const row of rows) {
-    if (row.userId !== null) {
-      byUser.set(row.userId, row.handle);
-    }
-  }
-  return byUser;
 }
 
 // Whether a handle is free for `userId` to take: shape and reserved words
@@ -360,23 +321,4 @@ export async function reapExpiredRetiredHandles(
   } catch {
     // Best effort only.
   }
-}
-
-export async function displayNameFor(
-  db: ServerDatabase,
-  userId: string,
-): Promise<{ name: string; image: string | null }> {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ name: string; image: string | null }>`SELECT name, image FROM "user"
-        WHERE id = ${userId} LIMIT 1`;
-    }),
-  );
-  return { name: row?.name ?? '', image: row?.image ?? null };
-}
-
-export function isHandleChangeTooSoon(error: unknown): error is HttpError {
-  return error instanceof HttpError && error.code === 'handle_change_too_soon';
 }

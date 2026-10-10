@@ -6,8 +6,6 @@ import { DirectoryApiError, type DirectoryEntry } from '@/lib/directory-api';
  * text, never a dead-link message for a live group.
  */
 
-export type ExploreStatus = 'idle' | 'loading' | 'ready' | 'error';
-
 export function describeDirectoryError(error: unknown, fallback: string): string {
   if (error instanceof DirectoryApiError) {
     // Reads are rate limited (30 per 10 minutes): the 429 names the wait.

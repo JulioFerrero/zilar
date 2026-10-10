@@ -13,7 +13,6 @@ export const STICKER_PREP_MAX_DIM = 512;
 export const STICKER_PREP_MAX_BYTES = 512 * 1024;
 /** WebP qualities tried from first to last; the first result under the cap wins. */
 export const STICKER_PREP_QUALITY_STEPS = [0.92, 0.8, 0.7, 0.6, 0.5] as const;
-export const STICKER_MAX_PER_PACK = 120;
 
 export interface PickedStickerImage {
   uri: string;

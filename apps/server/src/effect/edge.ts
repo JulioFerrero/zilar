@@ -148,10 +148,6 @@ export function logPath(path: string): string {
   return path.startsWith('/api/invites/') ? '/api/invites/:code' : path;
 }
 
-export function statusFor(error: unknown): number {
-  return error instanceof HttpError ? error.status : 500;
-}
-
 export function durationSince(start: number): number {
   return Math.round(performance.now() - start);
 }

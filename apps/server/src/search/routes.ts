@@ -28,7 +28,6 @@ export const SEARCH_MAX_LIMIT = 50;
 export const SEARCH_DEFAULT_LIMIT = 20;
 // No expression index is possible in the ejabberd database, so every search
 // scans only the last 12 months and at most 5 000 candidate rows.
-export const SEARCH_WINDOW_MONTHS = 12;
 export const SEARCH_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 export const SEARCH_MAX_CANDIDATES = 5000;
 

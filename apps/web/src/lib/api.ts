@@ -560,8 +560,6 @@ export const groupRoleMemberSchema = struct({
   name: Schema.String,
 });
 
-export type GroupRoleMember = typeof groupRoleMemberSchema.Type;
-
 export const groupRoleSchema = struct({
   id: Schema.String,
   name: Schema.String,
@@ -681,7 +679,6 @@ export function setGroupBackground(
 // through the existing per-group list (each row carries its `topicId`).
 // Declared as a type alias (not a const) because the approval schemas are
 // defined further below in this file.
-export type TopicApprovalRule = typeof approvalRuleSchema.Type;
 
 // --- Channels (T-0124) -------------------------------------------------------
 // One-way broadcast feeds: only owner/admins post (the room is moderated and
@@ -723,10 +720,6 @@ export function removeGroupMember(groupId: string, userId: string): Promise<Grou
     groupDetailSchema,
     { method: 'DELETE' },
   );
-}
-
-export function listTopicApprovalRules(groupId: string): Promise<TopicApprovalRule[]> {
-  return listGroupApprovalRules(groupId);
 }
 
 export const topicToolSchema = struct({

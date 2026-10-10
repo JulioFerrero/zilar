@@ -9,5 +9,3 @@ export const WakeReasonSchema = struct({
   reason: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(300))),
   message_ids: Schema.mutable(Schema.Array(IdSchema)).pipe(Schema.check(Schema.isMaxLength(50))),
 });
-
-export type WakeReason = typeof WakeReasonSchema.Type;

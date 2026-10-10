@@ -139,13 +139,6 @@ function decodeEntry(entry: AuditEntry): AuditEntry {
   throw new Error('Invalid audit entry: unknown');
 }
 
-export interface AuditRecorderDeps {
-  db: ServerDatabase;
-  logger?: AuditLogger;
-  /** Override `now` in tests. Defaults to the wall clock. */
-  now?: () => Date;
-}
-
 // Minimal slice of pino's Logger the recorder needs. Real call sites pass the
 // server's own logger; tests can pass a captor.
 export interface AuditLogger {

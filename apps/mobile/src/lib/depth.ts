@@ -1,4 +1,4 @@
-import type { TextStyle, ViewStyle } from 'react-native';
+import type { ViewStyle } from 'react-native';
 
 import { depth, palette } from '@zilar/ui-tokens';
 
@@ -43,18 +43,6 @@ export const BUBBLE_OUT_SHADOW = depth.bubbleOutShadow;
 export const BUBBLE_IN_GRADIENT = depth.bubbleInGradient;
 export const BUBBLE_IN_SHADOW = depth.bubbleInShadow;
 export const BUBBLE_GEN_SHADOW = depth.bubbleGenShadow;
-
-export const TEXT_SHADOW_LIGHT: TextStyle = {
-  textShadowColor: 'rgba(255,255,255,0.7)',
-  textShadowOffset: { width: 0, height: 1 },
-  textShadowRadius: 0,
-};
-
-export const TEXT_SHADOW_DARK: TextStyle = {
-  textShadowColor: 'rgba(0,0,0,0.7)',
-  textShadowOffset: { width: 0, height: -1 },
-  textShadowRadius: 0,
-};
 
 export const primaryKey: ViewStyle = {
   backgroundColor: ACCENT,

@@ -264,19 +264,6 @@ export interface TestContextOptions {
   adminClient?: FakeAdminClient;
 }
 
-export function testXmppConfig(overrides: Partial<XmppConfig> = {}): XmppConfig {
-  return {
-    apiUrl: 'http://127.0.0.1:5280/api',
-    adminJid: 'admin@zilar.localhost',
-    adminPassword: 'admin-password',
-    domain: TEST_XMPP_DOMAIN,
-    mucDomain: TEST_XMPP_MUC_DOMAIN,
-    wsPublicUrl: TEST_XMPP_WS_URL,
-    jwtSecret: TEST_XMPP_JWT_SECRET,
-    ...overrides,
-  };
-}
-
 export function expectedJid(userId: string): string {
   return `${localpartFor(userId)}@${TEST_XMPP_DOMAIN}`;
 }

@@ -129,9 +129,6 @@ const serverToRunnerSchemas = {
   'tunnel.resume': TunnelResumeSchema,
 } as const;
 
-export type RunnerToServerType = keyof typeof runnerToServerSchemas;
-export type ServerToRunnerType = keyof typeof serverToRunnerSchemas;
-
 export type ControlMessage =
   | typeof HelloSchema.Type
   | typeof ChallengeSchema.Type

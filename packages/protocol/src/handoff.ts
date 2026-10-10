@@ -16,5 +16,3 @@ export const HandoffSchema = struct({
   return_format: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
   reply_to: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
 });
-
-export type Handoff = typeof HandoffSchema.Type;

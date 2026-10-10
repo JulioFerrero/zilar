@@ -59,8 +59,6 @@ export const xmppEnvSchema = Schema.Struct({
   ),
 });
 
-export type XmppEnv = Schema.Schema.Type<typeof xmppEnvSchema>;
-
 export type XmppConfig = {
   apiUrl: string;
   adminJid: string;

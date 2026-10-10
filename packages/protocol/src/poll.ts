@@ -8,8 +8,6 @@ export const PollOptionSchema = struct({
   label: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(100))),
 });
 
-export type PollOption = typeof PollOptionSchema.Type;
-
 export const PollSchema = struct({
   id: IdSchema,
   question: Schema.String.pipe(Schema.check(Schema.isMinLength(1), Schema.isMaxLength(300))),
@@ -28,8 +26,6 @@ export const PollSchema = struct({
   closes_at: Schema.optional(IsoDateTimeSchema),
 });
 
-export type Poll = typeof PollSchema.Type;
-
 export const PollVoteSchema = struct({
   poll_id: IdSchema,
   option_ids: Schema.mutable(Schema.Array(IdSchema)).pipe(
@@ -43,5 +39,3 @@ export const PollVoteSchema = struct({
   ),
   voter: JidSchema,
 });
-
-export type PollVote = typeof PollVoteSchema.Type;

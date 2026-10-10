@@ -32,10 +32,6 @@ export function resolveSheetTab(
   return remembered ?? 'emoji';
 }
 
-export type EmojiSheetTabBodyProps = {
-  tab: EmojiSheetTab;
-};
-
 type EmojiSheetProps = {
   open: boolean;
   /** The session-remembered tab; the composer owns it. */

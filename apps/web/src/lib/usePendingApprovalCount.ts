@@ -4,12 +4,6 @@ import { listApprovals } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { useAction } from '@/lib/effect/use-action';
 
-/** A pending count plus the pending approval ids (handy for callers/tests). */
-export interface PendingApprovalCount {
-  count: number;
-  ids: string[];
-}
-
 /**
  * Returns the current count of approvals waiting for the viewer. `null` means
  * "unknown or failed" — the caller shows no badge in that case. The hook only

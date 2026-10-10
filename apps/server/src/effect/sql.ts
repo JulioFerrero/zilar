@@ -19,7 +19,7 @@ import { PgClient } from '@effect/sql-pg';
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Config, Effect, Layer, ManagedRuntime, Redacted } from 'effect';
+import { Effect, Layer, ManagedRuntime, Redacted } from 'effect';
 import { Migrator, SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 
@@ -65,17 +65,6 @@ function pgliteLayer(client: PGlite): Layer.Layer<SqlClient.SqlClient, SqlError.
 // `transformResultNames` camelCases column names to match the row types in
 // `db/rows.ts`, but a jsonb value is data: its keys must read back exactly as
 // they were written, so `transformJson: false` stops the driver renaming them too.
-//
-// Production: one pool of `SQL_POOL_MAX` from `DATABASE_URL`.
-export const SqlLive: Layer.Layer<SqlClient.SqlClient, Config.ConfigError | SqlError.SqlError> =
-  PgClient.layerConfig(
-    Config.all({
-      url: Config.Redacted('DATABASE_URL'),
-      maxConnections: Config.succeed(SQL_POOL_MAX),
-      transformResultNames: Config.succeed(snakeToCamel),
-      transformJson: Config.succeed(false),
-    }),
-  );
 
 // The layer behind a database key. Tests hand over their raw PGlite, production
 // a `DATABASE_URL`; either way modules read through this layer and no route or
