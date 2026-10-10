@@ -12,6 +12,9 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-0901: the mobile sign-out privacy fix;
   - T-0902: store core T1.
 - **Store core, running:** T-0903 (T2, lifetime) and T-0904 (T3, ledger; web `realStore.ts` 1,550 → 479 lines), both bringing main in. T4 to T6 follow.
+- **Bug found by T-0904's new real-store test, already on main:** in a group, when my own echo arrives before the send resolves, the ack's origin id overwrites the room's stanza id. A reaction to that message then names the wrong id.
+  - **Who it affects:** Zilar clients still match it. Other XMPP clients may not, since XEP-0444 expects the stanza id in groups.
+  - **Fix:** T-0904 fixes it tests first. Mobile gets checked for the same race, and T5 carries any mobile fix.
 
 **2026-10-10 06:00 local: wave 6 running (T-0896 to T-0900)**
 - **T-0896 (Opus):** the store core design, Phase 4.3. It writes `docs/STORE_CORE_PLAN.md` with the task split; no code changes.
