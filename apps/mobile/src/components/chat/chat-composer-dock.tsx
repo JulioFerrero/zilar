@@ -5,10 +5,12 @@ import { ChannelComposerBar } from '@/components/chat/channel-composer-bar';
 import { Composer } from '@/components/chat/composer';
 import { SelectionBar } from '@/components/chat/selection-bar';
 import type { ChatScreen } from '@/components/chat/use-chat-screen';
+import { useStickersApi } from '@/components/stickers/use-stickers-api';
+import { API_URL } from '@/lib/auth';
 import type { PickedFile } from '@/lib/attachment-ports';
+import { createGifsApi, type GifsApi } from '@/lib/gifs-api';
 import { mockDemoAttachments } from '@/mock/attachments';
-import { mockDemoGifs } from '@/mock/gifs';
-import { mockDemoStickerPacks } from '@/mock/stickers';
+import { mockToken } from '@/mock/gate';
 import { useChatStore } from '@/store/chat-store-provider';
 import { isMentionOfMe, type MentionMember, type UiMention } from '@zilar/chat-core';
 import type { ChatSummary } from '@/lib/types';
@@ -20,6 +22,20 @@ type ChatComposerDockProps = {
   /** `composer` is the full composer with the `@` picker; `channel` the feed bar. */
   variant: 'composer' | 'channel';
 };
+
+/**
+ * Builds the mock-mode `GifsApi` on the shared mock backend, behind a literal
+ * build-time condition: Metro folds it to `false` in a release build, so the
+ * mock module stays out of the bundle.
+ */
+function createMockGifs(): GifsApi {
+  if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
+    return createGifsApi(mockToken, mockFetch, API_URL);
+  }
+  throw new Error('The mock API is not part of this build');
+}
 
 /**
  * The bottom bar: the selection bar while forwarding, otherwise the full
@@ -64,16 +80,10 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
     // loads: `groupMembers` resolves from the same cache.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mentionChatKind, mentionChatId, groupMembers, groupDetailForMentions, meJid]);
-  // Demo packs in mock mode, so the sticker panel works without a server
-  // (real mode loads the user's packs from the API instead).
-  const demoPacks = useMemo(
-    () =>
-      process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_ZILAR_MOCK === '1'
-        ? mockDemoStickerPacks()
-        : undefined,
-    [],
-  );
-  // This `useMemo` sits above the `!chat` early return, like `demoPacks`:
+  // Stickers: `useStickersApi` returns the mock-backed adapter in mock mode
+  // and the real one otherwise, so the panel loads the same way in both.
+  const { api: stickersApi, mock: mockActive } = useStickersApi();
+  // This `useMemo` sits above the `!chat` early return, like the API hooks:
   // every hook runs on every render (enforced by the oxlint
   // `react/rules-of-hooks` rule on `src/app`).
   const demoAttachments = useMemo(
@@ -83,15 +93,9 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
         : undefined,
     [],
   );
-  // Demo GIFs in mock mode, so the GIF tab works without a server (real
-  // mode searches the provider through the proxy instead).
-  const demoGifs = useMemo(
-    () =>
-      process.env.NODE_ENV === 'test' || process.env.EXPO_PUBLIC_ZILAR_MOCK === '1'
-        ? mockDemoGifs()
-        : undefined,
-    [],
-  );
+  // GIFs: the shared mock backend serves trending and search, so mock mode
+  // gets the mock-backed client; real mode falls back to the panel's own.
+  const gifsApi = useMemo(() => (mockActive ? createMockGifs() : undefined), [mockActive]);
 
   const sendAttachmentNow = (file: PickedFile, options?: SendAttachmentOptions) => {
     sendAttachment(chat.id, file, options);
@@ -152,9 +156,9 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
           replyTo={replyTo}
           onCancelReply={cancelReply}
           onTyping={() => sendTyping(chat.id)}
-          demoPacks={demoPacks}
+          stickersApi={stickersApi}
           demoAttachments={demoAttachments}
-          demoGifs={demoGifs}
+          gifsApi={gifsApi}
         />
       ) : (
         <ChannelComposerBar
@@ -167,9 +171,9 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
           replyTo={replyTo}
           onCancelReply={cancelReply}
           onTyping={() => sendTyping(chat.id)}
-          demoPacks={demoPacks}
+          stickersApi={stickersApi}
           demoAttachments={demoAttachments}
-          demoGifs={demoGifs}
+          gifsApi={gifsApi}
         />
       )}
     </>

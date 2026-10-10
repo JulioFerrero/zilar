@@ -1,6 +1,6 @@
 import { StickerSchema, isValid } from '@zilar/protocol';
 import { Effect } from 'effect';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Keyboard } from 'react-native';
 
 import { step } from '@/components/chat/composer-media';
@@ -17,10 +17,11 @@ import {
   type CaretSelection,
   type EmojiCategoryId,
 } from '@/lib/emoji-data';
-import { gifsAvailability, type GifItem } from '@/lib/gifs';
+import { gifsAvailability } from '@/lib/gifs';
+import type { GifsApi } from '@/lib/gifs-api';
+import type { StickersApi } from '@/lib/stickers-api';
 import type { RecentStickerEntry, StickerChoice, StickerPack } from '@/lib/stickers';
 import { RECENTS_STORAGE, readStoredRecents } from '@/lib/stickers-storage';
-import { mockDemoGifs } from '@/mock/gifs';
 import type { SendStickerChoice } from '@/store/types';
 
 /**
@@ -33,8 +34,8 @@ export function useComposerSheet({
   setText,
   selection,
   setSelection,
-  demoPacks,
-  demoGifs,
+  stickersApi,
+  gifsApi,
   onSendSticker,
   trackEmojiChange,
 }: {
@@ -42,13 +43,13 @@ export function useComposerSheet({
   setText: (text: string) => void;
   selection: CaretSelection | undefined;
   setSelection: (selection: CaretSelection) => void;
-  demoPacks: StickerPack[] | undefined;
-  demoGifs: GifItem[] | undefined;
+  stickersApi: StickersApi | undefined;
+  gifsApi: GifsApi | undefined;
   onSendSticker: (sticker: SendStickerChoice) => void;
   trackEmojiChange: (previousText: string, nextText: string, caret: number) => void;
 }) {
-  // The sticker panel: the user's packs from the server (demo packs in mock
-  // mode), a per-device Recent row, tap-to-send. Loading, error + retry, and
+  // The sticker panel: the user's packs from the server (the shared mock
+  // backend in mock mode), a per-device Recent row, tap-to-send. Loading, error + retry, and
   // the "create on web" empty state live in `StickerGrid` (shown inside the
   // emoji sheet's Stickers tab).
   const [packs, setPacks] = useState<StickerPack[] | undefined>(undefined);
@@ -59,7 +60,7 @@ export function useComposerSheet({
   // The latest load wins: a Retry while an older load runs replaces it.
   const [, loadPacks] = useAction<void, StickerPack[] | void, never>(
     () =>
-      step(() => loadStickerPacks()).pipe(
+      step(() => loadStickerPacks(stickersApi)).pipe(
         Effect.tap((loaded) =>
           Effect.sync(() => {
             setPacks(loaded);
@@ -79,29 +80,13 @@ export function useComposerSheet({
   );
 
   const loadPanel = useCallback(() => {
-    setActivePackId((current) =>
-      current !== undefined && (demoPacks ?? []).some((pack) => pack.id === current)
-        ? current
-        : undefined,
-    );
-    if (demoPacks !== undefined) {
-      setPacks(demoPacks);
-      setPanelState(demoPacks.length === 0 ? 'empty' : 'ready');
-      return;
-    }
     setPanelState('loading');
     loadPacks();
-  }, [demoPacks, loadPacks]);
+  }, [loadPacks]);
 
-  // The GIF tab: hidden once the server answers 501 (provider off),
-  // probed once per session. Mock mode serves demo GIFs without a server.
-  const [gifAvailable, setGifAvailable] = useState<boolean | undefined>(() =>
-    demoGifs === undefined ? gifsAvailability() : true,
-  );
-  const demoGifItems = useMemo(
-    () => demoGifs ?? (process.env.EXPO_PUBLIC_ZILAR_MOCK === '1' ? mockDemoGifs() : undefined),
-    [demoGifs],
-  );
+  // The GIF tab: hidden once the server answers 501 (provider off), probed
+  // once per session. Mock mode probes the shared backend the same way.
+  const [gifAvailable, setGifAvailable] = useState<boolean | undefined>(() => gifsAvailability());
 
   // The one emoji sheet (T-0175): tabs Emoji | Stickers | GIFs. Emoji first
   // and selected by default; the last tab is remembered for the session.
@@ -131,7 +116,7 @@ export function useComposerSheet({
             Effect.ignore,
           ),
           probeGifs
-            ? step(() => probeGifsAvailability()).pipe(
+            ? step(() => probeGifsAvailability(gifsApi)).pipe(
                 Effect.tap((available) => Effect.sync(() => setGifAvailable(available))),
                 Effect.ignore,
               )
@@ -148,7 +133,7 @@ export function useComposerSheet({
     Keyboard.dismiss();
     setSheetOpen(true);
     loadPanel();
-    hydrateSheet(demoGifItems === undefined && gifsAvailability() === undefined);
+    hydrateSheet(gifsAvailability() === undefined);
   };
 
   const closeSheet = () => setSheetOpen(false);
@@ -217,7 +202,6 @@ export function useComposerSheet({
     activePackId,
     setActivePackId,
     gifAvailable,
-    demoGifItems,
     loadPanel,
     openSheet,
     closeSheet,
