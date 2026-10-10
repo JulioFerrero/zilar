@@ -1,7 +1,7 @@
 ---
 id: T-1047
 title: "Mobile mock mode: a no-network mock uploader, so voice notes and attachments send instead of failing"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1047-mobile-mock-uploader
 model: auto
@@ -53,4 +53,59 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+- Added `apps/mobile/src/mock/uploader.ts` exporting `createMockUploader(): AttachmentUploader` (typed against the port in `apps/mobile/src/lib/attachment-ports.ts:55-73`).
+  - `upload` reports progress `0.5`, waits a short timer, reports `1`, waits again, then resolves — no network. `onProgress` is optional. The work runs as an `Effect` (`Effect.sleep` + `Effect.sync`), run through `Effect.runPromise`, like `apps/mobile/src/lib/attachment-uploader.ts`.
+  - `cancel(messageId)` marks that message's pending upload so its `upload` rejects with `new Error('cancelled')` (the shape `apps/mobile/src/lib/attachment-uploader.ts:45` uses) and clears its slot. Each upload is keyed by message id (falling back to the file URI), so other messages' uploads keep running.
+- Wired it in `mockStoreDeps()` in `apps/mobile/src/store/chat-store-provider.tsx`: added `uploader: createMockUploader()` (line 78) after `...sharedDeps()`, loaded with the same guarded `require('../mock/uploader')` as `../mock/backend` (line 72). No other app or package change.
+
+### Acceptance evidence
+
+- `realStoreDeps()` still uses the real uploader: it spreads `sharedDeps()`, whose `uploader: createAttachmentUploader()` is at `apps/mobile/src/store/chat-store-provider.tsx:52`; `realStoreDeps()` (line 89+) does not override `uploader`.
+- The mock uploader is reached only through `mockStoreDeps()`: `createMockUploader` appears only at line 72 (the guarded `require`) and line 78 (inside the `mockStoreDeps()` body), both inside the `if (process.env.NODE_ENV === 'test' || __DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK)` block.
+
+### Files changed
+
+- `apps/mobile/src/mock/uploader.ts` (new)
+- `apps/mobile/src/store/chat-store-provider.tsx` (mock wiring only)
+- `work/T-1047-mobile-mock-uploader.md` (status + this Report)
+
+### Commands and results
+
+- `pnpm install`: done (1172 packages, 18.7s; one pre-existing peer-dependency warning for `@types/react-dom`).
+- `pnpm --filter @zilar/mobile typecheck`: passed (no output from `tsc --noEmit`).
+- `pnpm gate` (from repo root, base `main`) summary:
+
+  ```
+  gate: 3 changed file(s) against main
+  PASS  install (frozen)  (1.5s)
+  PASS  format  (1.2s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (4.4s)
+  PASS  effect  (1.7s)
+  PASS  tests @zilar/mobile  (3.9s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+- Single test files run while working: none. The change is mock wiring plus a new `apps/mobile/src/mock/` file (no existing test targets either; tests in `mock/` are exempt by policy). The gate's `tests @zilar/mobile` step ran the mobile suite once and passed.
+
+### Problems / deviations
+
+- None. The spec offered "Effect or plain timers"; I used Effect to match the real uploader (`apps/mobile/src/lib/attachment-uploader.ts`) and the project's Effect style. The file is under `mock/`, which the effect ratchet treats as exempt, so the `effect` step is unaffected either way.
+- No test was added: this is dev-only mock/UI code (AGENTS.md: UI code gets no tests; the lead's phone smoke covers it).
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved. The pre-review is clean, with 1 nit.**
+- **The change:** a new `apps/mobile/src/mock/uploader.ts` (`createMockUploader`) reports progress `0.5` and `1` on short sleeps, with a per-message cancel that rejects with `new Error('cancelled')`.
+  - It is wired only in `mockStoreDeps()`, behind the same guarded `require` as `../mock/backend`.
+  - `sharedDeps()` and `realStoreDeps()` keep `createAttachmentUploader()`.
+  - The voice port takes the uploader from the same deps (`store/effects/ports.ts:123-130`).
+- **The nit:** cosmetic.
+- **The lead's phone smoke** (mock, Ana's chat):
+  - a 2.5 s mic hold now sends: the bubble shows Play voice message, 0:02 and 1x, with no "Could not send";
+  - the demo `tickets.pdf`, attached and sent, also shows no send error.
+- **Still a mock gap:** the sent file reads "Not loaded: untrusted address", because the fake slot's `getUrl` is a `data:` URL. The seeded attachments read the same. It is a mock follow-up.
+- **Check:** the gate passed.
