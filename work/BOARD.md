@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0997](T-0997-split-mobile-voice-message.md) | Size split T51: mobile voice-message.tsx (631) | in-progress | auto | T-0936 | size-plan |
 
 ## Follow-ups
 
@@ -1029,3 +1028,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0998](T-0998-split-web-chat-background-dialog.md) | Size split T66: apps/web/src/components/ChatBackgroundDialog.tsx (555 lines) into components/background/{backg | 2026-10-10 |
 | [T-0999](T-0999-split-web-notifications-page.md) | Size split T67: apps/web/src/routes/NotificationsPage.tsx (551 lines) into lib/push/{deviceStorage,pageActions | 2026-10-10 |
 | [T-1000](T-1000-split-web-integrations-page.md) | Size split T69: apps/web/src/routes/IntegrationsPage.tsx (548 lines) into components/settings/{integrationErro | 2026-10-10 |
+| [T-0997](T-0997-split-mobile-voice-message.md) | Size split T51: apps/mobile/src/components/chat/voice-message.tsx (631 lines) into chat/{voice-playback-source | 2026-10-10 |
