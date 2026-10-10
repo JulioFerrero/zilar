@@ -2,6 +2,27 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 07:40 local: usage limit reached, handoff; nothing deployed**
+- **Merged on main:**
+  - T-0905 (T4, mobile on the core lifetime);
+  - T-0906 (T5, mobile on the core ledger: `real-store.ts` 1,805 → 957 lines, Q1 mentions, the mobile group echo race fix).
+- **Reviewed, waiting for a combined check, then merge (squash method):**
+  - T-0907 (T6: incoming, actions and reads in the core). It edits `ledger.ts`, so it brings main in first.
+  - T-0910 (lenient contract rows; mobile gifs, media and stickers derive from the contract).
+- **Done, needs a Review:** T-0908 (one `runSql`, −219 lines, server tests green).
+- **In flight when the limit hit:**
+  - T-0909 round 1 (a `pnpm-workspace.yaml` peer rule to drop PGlite from the prod deploy). Add `pnpm-workspace.yaml` to its Allowed list when you review.
+  - T-0911 (test sleeps). Check its worktree and branch for its state.
+- **Next:**
+  - T-0912 (T6b history plus the `loadOlder` overlap bug, tests first). Its spec is on main; branch it from main after T-0907 merges.
+  - Then T7 and T8 of `docs/STORE_CORE_PLAN.md`.
+- **Unowned flakes at high load:**
+  - `packages/devtools/src/lead/watch-app.test.tsx` (overlap guard);
+  - `packages/runner-tunnel/src/server.effect.test.ts` (heartbeat timing);
+  - `apps/server/src/sandbox/run-tool.test.ts` (timeouts).
+
+  They pass alone; candidates for a fake-timer fix.
+
 **2026-10-10 07:00 local: store core T2 and T3 merged (T-0903, T-0904, main `c29784ea`); nothing deployed**
 - **T-0903 (T2):** the lifetime is in `packages/client-core`, with web `runtime.ts` as an 18-line adapter.
 - **T-0904 (T3):** the message ledger is in the core, web `realStore.ts` went from 1,550 to 479 lines, and the group echo race is fixed on web, tests first.
