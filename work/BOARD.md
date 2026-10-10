@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0936](T-0936-size-dup-audit.md) | Audit: 400-line limit and duplicated code | in-progress | deepseek-flash | — | Julio 10-10 |
 | [T-0949](T-0949-mobile-mock-cutover-store.md) | Mock cutover H1: mobile mock mode on the real store, fake session | in-progress | deepseek-flash | T-0946 | mock-plan H |
-| [T-0950](T-0950-unread-clears-on-refocus.md) | Unread clears on refocus with the chat open (core, web + mobile) | in-progress | deepseek-flash | — | lead QA, live |
 
 ## Follow-ups
 
@@ -977,3 +976,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0946](T-0946-web-mock-cutover.md) | Mock cutover G (web): mock mode runs the real web store on @zilar/mock-backend | 2026-10-10 |
 | [T-0947](T-0947-delete-web-mock-store.md) | Mock sweep O: delete the web mock store (apps/web/src/store/mockStore.ts, 1,294 lines), its production stub an | 2026-10-10 |
 | [T-0948](T-0948-mock-backend-polish.md) | Mock backend polish: real-format AI JIDs (ai-<id>@zilar.test) so AI markdown renders, read markers clear unrea | 2026-10-10 |
+| [T-0950](T-0950-unread-clears-on-refocus.md) | Unread clears on refocus: when the app or tab comes back to the foreground with a chat open, that chat is mark | 2026-10-10 |

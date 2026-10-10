@@ -1,4 +1,5 @@
 import type { ChatMessage } from '@zilar/xmpp-core';
+import { Effect } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { editMessage, react } from './actions';
 import {
@@ -9,6 +10,7 @@ import {
   handleTyping,
   TYPING_CLEAR_MS,
 } from './incoming';
+import { startChatsPolling, type PollingCtx } from './polling';
 import { LAST_READ_PREFIX } from './reads';
 import { ANA, dm, ME, NOW, TEAM, team, testCtx } from './test-ctx';
 
@@ -269,5 +271,40 @@ describe('the outgoing echo re-applies edits and reactions (core)', () => {
     expect(state().messagesByChat[TEAM]?.map((item) => [item.id, item.reactions?.length])).toEqual([
       ['room-1', 1],
     ]);
+  });
+});
+
+describe('clearing the open chat on refocus (core)', () => {
+  it('drops the open chat unread and sends the read marker when focus returns', () => {
+    vi.useFakeTimers();
+    let visible = false;
+    let focus: (() => void) | undefined;
+    const visibility = {
+      isVisible: () => visible,
+      onFocus: (handler: () => void) => {
+        focus = handler;
+        return () => {};
+      },
+    };
+    const { ctx, core, fx, rt } = testCtx({
+      ports: { visibility, isVisible: () => visible },
+      state: { activeChatId: ANA },
+    });
+    const hooks = ctx.fx as unknown as { refreshChats: () => void };
+    hooks.refreshChats = vi.fn();
+    Effect.runSync(startChatsPolling(ctx as unknown as PollingCtx, rt.beginSession()));
+
+    // A message arrives while hidden: the open chat keeps it as unread.
+    handleMessage(ctx, message({ id: 'ana-1' }));
+    expect(ctx.get().chats.find((chat) => chat.id === ANA)?.unread).toBe(1);
+    expect(core.markDisplayed).not.toHaveBeenCalled();
+
+    // The app comes back with the same chat open: it is read at once.
+    visible = true;
+    focus?.();
+
+    expect(ctx.get().chats.find((chat) => chat.id === ANA)?.unread).toBe(0);
+    expect(core.markDisplayed).toHaveBeenCalledWith(ANA, 'chat', 'ana-1');
+    expect(fx.dismissChatNotifications).toHaveBeenCalledWith(ANA);
   });
 });
