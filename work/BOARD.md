@@ -10,9 +10,13 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1062](T-1062-web-mock-delete-covered-routes-1.md) | Mock sweep W1+W2: delete web mock/api.ts routes the backend answers | in-progress | auto | T-1059 | mock-sweep-status §1a |
+| [T-1063](T-1063-mobile-ais-on-mock-backend.md) | Mock H2-1: mobile AIs, memory, audit, tools on the shared backend | in-progress | auto | T-1061 | fixes "Could not load the rules" |
+| [T-1064](T-1064-mobile-machines-connections-directory-on-mock-backend.md) | Mock H2-3: mobile machines, connections, directory on the shared backend | in-progress | auto | T-1061 | contacts waits |
 
 ## Follow-ups
 
+- **Mobile approvals: "Could not load the rules." when every AI with no rules succeeds but one AI fails (found 2026-10-10, T-1061 smoke).** `apps/mobile/src/components/approvals/rows.ts:86` returns the error state when `succeeded.length === 0` and any fetch was rejected. This applies to real builds too, for example an AI deleted between the list and the rules fetch. It should show the empty list, plus a note for the failed AI.
+- **Mock backend lacks contact requests, blocks, `users/by-handle`, `handles/check`, `PUT /me/handle`, avatars, push and voice transcription (`docs/audit/mock-sweep-status.md` §1b).** These block mobile H2 for contacts and profile, and web sweep W10.
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile.
 - **Mock: attachments show "Not loaded: untrusted address" on mobile (found 2026-10-10, T-1047 smoke).** Sends work now (T-1047), but the fake slot's `getUrl` is a `data:` URL (`packages/mock-backend/src/xmpp/core.ts:229`), and the seeded `Stage.png` and `tickets.pdf` read the same.
 - **Mock: sticker and GIF images are blank on mobile (found 2026-10-10, T-1046 smoke).** The panels list packs and results, but no image draws:
