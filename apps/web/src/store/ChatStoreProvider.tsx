@@ -49,3 +49,12 @@ export function useChatStoreApi(): StoreApi<ChatStoreState> {
 export function useChatStore(): ChatStoreState {
   return useAtomValue(useChatStoreApi().atom);
 }
+
+/**
+ * Subscribes to one slice of the store. The component re-renders only when the
+ * selected value changes (`Object.is`), so selectors must return stable values:
+ * select raw slices and derive with `useMemo`, never build arrays or objects.
+ */
+export function useChatSelector<T>(selector: (state: ChatStoreState) => T): T {
+  return useAtomValue(useChatStoreApi().atom, selector);
+}

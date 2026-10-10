@@ -5,7 +5,7 @@ import {
   type UiMessage,
 } from '@zilar/chat-core';
 import { ArrowDown } from 'lucide-react';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DateSeparator } from './DateSeparator';
 import { MessageBubble } from './MessageBubble';
 import { MessageListSkeleton } from './Skeleton';
@@ -15,9 +15,21 @@ import { Badge } from './ui/badge';
 import { StateMessage } from './ui/state-message';
 import { isBlockedSender, useBlockedJids } from '@/lib/blockedJids';
 import { chatBackgroundStyle, effectiveBackground } from '@/lib/chatBackground';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const NEAR_BOTTOM_PX = 80;
+const EMPTY_MESSAGES: UiMessage[] = [];
+
+/** A callback whose identity never changes but always calls the latest `fn`. */
+function useLatestCallback<A extends unknown[]>(
+  fn: ((...args: A) => void) | undefined,
+): (...args: A) => void {
+  const latest = useRef(fn);
+  useEffect(() => {
+    latest.current = fn;
+  });
+  return useCallback((...args: A) => latest.current?.(...args), []);
+}
 
 export function MessageList({
   chat,
@@ -38,51 +50,73 @@ export function MessageList({
   /** True while select mode is active (drives the checkbox UI). */
   selecting?: boolean;
 }) {
-  const store = useChatStore();
   const storeApi = useChatStoreApi();
-  // T-0461/T-0466: the chat's own background, else the group's shared one,
-  // else the caller's default, else slate (which paints no inline style).
-  const backgroundStyle = chatBackgroundStyle(
-    effectiveBackground(
-      store.chatPrefs[chat.id.toLowerCase()],
-      store.defaultBackground,
-      chat.groupBackground,
-    ),
-  );
-  const messages = store.messages(chat.id);
+  const chatId = chat.id;
+  const chatTitle = chat.title;
+  const chatPref = useChatSelector((s) => s.chatPrefs[chatId.toLowerCase()]);
+  const defaultBackground = useChatSelector((s) => s.defaultBackground);
+  const storedMessages = useChatSelector((s) => s.messagesByChat[chatId]);
+  const messages = storedMessages ?? EMPTY_MESSAGES;
   // Unknown means never requested, which the real store reports as loading:
   // first paint (before ChatView's openChat effect runs) must never flash
   // the empty state.
-  const history = store.historyStateFor(chat.id);
-  const draft = store.drafts[chat.id];
+  const history = useChatSelector((s) => s.historyStateFor(chatId));
+  const draft = useChatSelector((s) => s.drafts[chatId]);
+  const finishedDraftMessages = useChatSelector((s) => s.finishedDraftMessages);
+  const meId = useChatSelector((s) => s.currentUserId);
+  const meJid = useChatSelector((s) => s.me?.jid ?? undefined);
+  // T-0461/T-0466: the chat's own background, else the group's shared one,
+  // else the caller's default, else slate (which paints no inline style).
+  const backgroundStyle = chatBackgroundStyle(
+    effectiveBackground(chatPref, defaultBackground, chat.groupBackground),
+  );
   const draftText = draft?.text.trim() ?? '';
+  const draftTurnId = draft?.turnId;
   const blockedJids = useBlockedJids();
-  const meId = store.currentUserId;
   const hideBlocked = chat.kind === 'group' && chat.isAI !== true && blockedJids.size > 0;
-  const visibleMessages = hideBlocked
-    ? messages.filter(
-        (message) => message.senderId === meId || !isBlockedSender(message.senderId, blockedJids),
-      )
-    : messages;
+  const visibleMessages = useMemo(
+    () =>
+      hideBlocked
+        ? messages.filter(
+            (message) =>
+              message.senderId === meId || !isBlockedSender(message.senderId, blockedJids),
+          )
+        : messages,
+    [hideBlocked, messages, meId, blockedJids],
+  );
   // The draft is rendered as the AI's next message, so grouping, styles and
   // size are identical to the final message that replaces it.
-  const draftMessage: UiMessage | undefined =
-    draft !== undefined && draftText.length > 0
-      ? {
-          id: `draft-${draft.turnId}`,
-          chatId: chat.id,
-          senderId: chat.id,
-          senderName: chat.title,
-          text: draftText,
-          createdAt: new Date(
-            Math.max(new Date().getTime(), (messages.at(-1)?.createdAt.getTime() ?? 0) + 1),
-          ),
-          status: 'read',
-        }
-      : undefined;
-  const items = groupMessages(
-    draftMessage === undefined ? visibleMessages : [...visibleMessages, draftMessage],
+  const draftMessage = useMemo<UiMessage | undefined>(
+    () =>
+      draftTurnId !== undefined && draftText.length > 0
+        ? {
+            id: `draft-${draftTurnId}`,
+            chatId,
+            senderId: chatId,
+            senderName: chatTitle,
+            text: draftText,
+            createdAt: new Date(
+              Math.max(new Date().getTime(), (messages.at(-1)?.createdAt.getTime() ?? 0) + 1),
+            ),
+            status: 'read',
+          }
+        : undefined,
+    [draftTurnId, draftText, chatId, chatTitle, messages],
   );
+  const items = useMemo(
+    () =>
+      groupMessages(
+        draftMessage === undefined ? visibleMessages : [...visibleMessages, draftMessage],
+      ),
+    [visibleMessages, draftMessage],
+  );
+  // ChatView passes fresh callbacks on every render; the bubbles are memoised,
+  // so hand them wrappers whose identity never changes.
+  const handleReply = useLatestCallback(onReply);
+  const handleForward = useLatestCallback(onForward);
+  const handleToggleSelect = useLatestCallback(selection?.onToggle);
+  const handleStartSelect = useLatestCallback(selection?.onStart);
+  const selectedIds = selection?.ids;
   const [initialUnread] = useState(() => chat.unread);
   const dividerIndex = unreadDividerIndex(items, initialUnread);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -179,6 +213,7 @@ export function MessageList({
     if (nearBottom) {
       setPending(0);
     }
+    const store = storeApi.getState();
     if (element.scrollTop < NEAR_BOTTOM_PX && store.hasMore(chat.id)) {
       prependScrollHeight.current = element.scrollHeight;
       store.loadOlder(chat.id);
@@ -255,7 +290,7 @@ export function MessageList({
                 ? undefined
                 : isDraft
                   ? draft?.turnId
-                  : store.finishedDraftMessages[item.message.id];
+                  : finishedDraftMessages[item.message.id];
             const key =
               item.kind === 'separator'
                 ? item.id
@@ -273,17 +308,17 @@ export function MessageList({
                     chat={chat}
                     firstInGroup={item.firstInGroup}
                     lastInGroup={item.lastInGroup}
-                    currentUserId={store.currentUserId}
-                    meJid={store.me?.jid ?? undefined}
-                    onReply={onReply}
-                    {...(onForward === undefined ? {} : { onForward })}
+                    currentUserId={meId}
+                    meJid={meJid}
+                    onReply={handleReply}
+                    {...(onForward === undefined ? {} : { onForward: handleForward })}
                     selecting={selecting}
-                    selected={selection !== undefined && selection.ids.has(item.message.id)}
+                    selected={selectedIds !== undefined && selectedIds.has(item.message.id)}
                     {...(selection === undefined
                       ? {}
                       : {
-                          onToggleSelect: selection.onToggle,
-                          onStartSelect: selection.onStart,
+                          onToggleSelect: handleToggleSelect,
+                          onStartSelect: handleStartSelect,
                         })}
                     draft={isDraft}
                     {...(revealTurnId === undefined ? {} : { revealTurnId })}

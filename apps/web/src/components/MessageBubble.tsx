@@ -13,7 +13,7 @@ import {
 } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { MoreHorizontal } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import { AiBadge } from './AiBadge';
 import { ApprovalCard } from './ApprovalCard';
 import { Avatar } from './Avatar';
@@ -37,7 +37,7 @@ import { copyText } from '@/lib/clipboard';
 import { runWeb } from '@/lib/effect/runtime';
 import { useSmoothText } from '@/lib/useSmoothText';
 import { cn } from '@/lib/utils';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 /** Monochrome-friendly sender name colors (ui-style.md §5). */
 const SENDER_COLORS = ['#d4d4d4', '#a1a1a1', '#8a8a8a', '#ededed'] as const;
@@ -216,7 +216,7 @@ export interface MessageBubbleProps {
   revealTurnId?: string | undefined;
 }
 
-export function MessageBubble({
+export const MessageBubble = memo(function MessageBubble({
   message,
   chat,
   firstInGroup,
@@ -236,7 +236,10 @@ export function MessageBubble({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const storeApi = useChatStoreApi();
-  const store = useChatStore();
+  const mediaTrustedHosts = useChatSelector((s) => s.mediaTrustedHosts);
+  const chatId = chat.id;
+  const chatCanPin = useChatSelector((s) => s.canPin(chatId));
+  const pin = useChatSelector((s) => s.pinFor(chatId, message.id));
   const own = message.senderId === currentUserId;
   const deleted = message.deleted === true;
   const markdown = shouldRenderMarkdown(chat, message, currentUserId);
@@ -274,7 +277,7 @@ export function MessageBubble({
   // GIF-origin videos render inline only on a trusted media URL (the store
   // sanitizer renames untrusted `gif-` attachments first; the URL check here
   // is the second layer, so a hostile absolute URL never auto-loads).
-  const mediaHosts = store.mediaTrustedHosts ?? EMPTY_HOSTS;
+  const mediaHosts = mediaTrustedHosts ?? EMPTY_HOSTS;
   const gifVideo =
     message.attachment !== undefined &&
     message.attachment.kind === 'file' &&
@@ -306,8 +309,7 @@ export function MessageBubble({
     message.attachment === undefined &&
     canEditMessage(message, currentUserId, new Date());
   const canDelete = !generating && !deleted && canDeleteMessage(message, currentUserId);
-  const canPin = !generating && !deleted && store.canPin(chat.id);
-  const pin = store.pinFor(chat.id, message.id);
+  const canPin = !generating && !deleted && chatCanPin;
 
   // A retracted message keeps its place as a slim tombstone and has no actions.
   if (deleted) {
@@ -835,4 +837,4 @@ export function MessageBubble({
       </div>
     </div>
   );
-}
+});

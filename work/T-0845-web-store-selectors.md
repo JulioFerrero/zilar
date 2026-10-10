@@ -1,7 +1,7 @@
 ---
 id: T-0845
 title: "Web store selector hook; MessageBubble, ChatListItem, MessageList and ChatList subscribe only to what they read and are memoised"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0845-web-store-selectors
 model: auto
@@ -62,4 +62,27 @@ Run the tests 3 times after the last commit.
 
 ## Report (written by the worker when done)
 
+**What changed**
+- `ChatStoreProvider.tsx`: new `useChatSelector(selector)` using `useAtomValue(atom, selector)` (checked in `@effect/atom-react` 4.0.2 `Hooks.js`: it memoises the selected value per source state and `useSyncExternalStore` compares with `Object.is`). `useChatStore()` is kept.
+- `MessageBubble`: wrapped in `memo`; subscribes only to `mediaTrustedHosts`, `canPin(chat.id)` (boolean) and `pinFor(chat.id, message.id)`.
+- `ChatListItem`: wrapped in `memo`; subscribes to `messagesByChat[id]` (module-level empty fallback), `currentUserId`, `typing[id]?.names` (empty fallback), and a boolean for the draft.
+- `MessageList`: narrow selectors (chat pref, default background, messages, history state, draft, finished drafts, user id, `me.jid`); `visibleMessages`, `draftMessage` and `items` are `useMemo`; `hasMore/loadOlder` are read from `storeApi.getState()` at call time. ChatView (not an Allowed file) passes fresh `onReply/onForward/selection` callbacks every render, so a local `useLatestCallback` hands the memoised bubbles wrappers with a fixed identity.
+- `ChatList`: one `createRowsSelector()` (per instance, `useMemo`) derives `visibleChats`, `groupChats` and `archivedChats` and caches them on `chats/search/activeFolder/folders`; the rest are scalar selectors. `signOut` is called through `storeApi.getState()`.
+- New test `MessageBubble.selectors.test.tsx` (3 tests, `Profiler` commit counts): a typing event in another chat commits 0 extra renders for a `MessageBubble`, a `MessageList` and a `ChatListItem`; a typing event in the item's own chat re-renders it and shows `typing…`; texts render the same.
+
+**Numbers**
+- New test against the old code (components stashed): 3 of 3 fail, the subtree commits twice (expected 1 render, got 2) for an unrelated typing event. With the change: 0 extra commits.
+- Web tests for the Check filter: 22 files, 287 tests pass (284 before + 3 new). Typecheck clean, oxlint clean, prettier clean.
+- Spec facts: all cited lines matched (call sites, `messages(chatId)` returns `messagesByChat[chatId] ?? []`).
+
+**Behaviour differences:** none intended. One note: the draft message `createdAt` (`new Date()`) is now computed when the draft text or messages change, not on every render; it only orders the draft after the last message.
+
+**Unsure:** `ChatView` still uses `useChatStore()` (whole state), so `MessageList` itself still re-renders with it; the bubbles no longer do. Fixing ChatView is outside the Allowed files. `GroupHeaderRow` is not memoised (not in scope).
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.**
+- **What changed:** `useChatSelector` plus memoised `MessageBubble`, `ChatListItem`, `MessageList` and `ChatList`. Render-count tests prove that a typing event elsewhere no longer re-renders the list.
+- **Checks:** the combined wave 3 check (full web suite) is clean.
+- **Still open:** ChatView and the other `useChatStore()` sites go to T-0879.
+- **Live check for Julio:** an AI reply streaming in a long chat on web.

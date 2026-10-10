@@ -1,6 +1,6 @@
 import { Data, Effect } from 'effect';
 import { Archive, Loader2, Menu as MenuIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ChatListItem } from './ChatListItem';
 import { EmptyState } from './EmptyState';
@@ -25,9 +25,9 @@ import { StateMessage } from './ui/state-message';
 import { Menu, MenuItem } from './ui/menu';
 import { useInstallPrompt } from '@/lib/push';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { useChatStore, useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
-import { groupChats, visibleChats } from '@/store/store';
+import { groupChats, visibleChats, type ChatStoreState } from '@/store/store';
 import { cn } from '@/lib/utils';
 import {
   readArchivedOpen,
@@ -45,6 +45,52 @@ const APPROVAL_BADGE_CAP = 9;
 /** The install prompt failed or was refused; the menu then offers a retry. */
 class InstallFailed extends Data.TaggedError('InstallFailed') {}
 
+interface ChatRows {
+  chats: ReturnType<typeof visibleChats>;
+  groups: ReturnType<typeof groupChats>;
+  archived: ReturnType<ChatStoreState['archivedChats']>;
+}
+
+/**
+ * Derives the sidebar rows. The result is cached on the slices that feed it,
+ * so a typing or presence update returns the same object and does not re-render.
+ */
+function createRowsSelector(): (state: ChatStoreState) => ChatRows {
+  let last:
+    | {
+        chats: ChatStoreState['chats'];
+        search: string;
+        activeFolder: ChatStoreState['activeFolder'];
+        folders: ChatStoreState['folders'];
+        rows: ChatRows;
+      }
+    | undefined;
+  return (state) => {
+    if (
+      last !== undefined &&
+      last.chats === state.chats &&
+      last.search === state.search &&
+      last.activeFolder === state.activeFolder &&
+      last.folders === state.folders
+    ) {
+      return last.rows;
+    }
+    const rows = {
+      chats: visibleChats(state),
+      groups: groupChats(state),
+      archived: state.archivedChats(),
+    };
+    last = {
+      chats: state.chats,
+      search: state.search,
+      activeFolder: state.activeFolder,
+      folders: state.folders,
+      rows,
+    };
+    return rows;
+  };
+}
+
 function statusLabel(status: string): string | undefined {
   switch (status) {
     case 'connecting':
@@ -58,12 +104,15 @@ function statusLabel(status: string): string | undefined {
 }
 
 export function ChatList({ activeChatId }: { activeChatId: string | undefined }) {
-  const store = useChatStore();
   const storeApi = useChatStoreApi();
   const navigate = useNavigate();
-  const chats = visibleChats(store);
-  const groups = groupChats(store);
-  const archived = store.archivedChats();
+  const selectRows = useMemo(() => createRowsSelector(), []);
+  const { chats, groups, archived } = useChatSelector(selectRows);
+  const storeChatCount = useChatSelector((s) => s.chats.length);
+  const storeStatus = useChatSelector((s) => s.status);
+  const chatsState = useChatSelector((s) => s.chatsState);
+  const search = useChatSelector((s) => s.search);
+  const searchChat = useChatSelector((s) => s.searchChat);
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   // T-0164: the Explore overlay (public groups and channels to join).
@@ -73,24 +122,24 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsedGroups());
   const [archivedOpen, setArchivedOpen] = useState<Set<string>>(() => readArchivedOpen());
   const isWide = useMediaQuery('(min-width: 900px)');
-  const connection = useDelayed(statusLabel(store.status), CONNECTION_BANNER_DELAY_MS);
+  const connection = useDelayed(statusLabel(storeStatus), CONNECTION_BANNER_DELAY_MS);
   // A retry keeps the list that is already painted: the store's `loading` flag
   // means "pending" there, not "nothing to show". Only a list that has never
   // arrived is blanked with skeletons.
-  const hasAnyChats = store.chats.length > 0;
+  const hasAnyChats = storeChatCount > 0;
   // Set on a manual retry so the button can show a pending state. A keep-alive
   // refresh never sets it, so background loading does not disable the button.
   const [retryingChats, setRetryingChats] = useState(false);
   // Reset during render (not in an effect) when the retry settles, so a later
   // background `loading` with rows cannot leave the button stuck pending.
-  const [lastChatsState, setLastChatsState] = useState(store.chatsState);
-  if (store.chatsState !== lastChatsState) {
-    setLastChatsState(store.chatsState);
-    if (retryingChats && store.chatsState !== 'loading') {
+  const [lastChatsState, setLastChatsState] = useState(chatsState);
+  if (chatsState !== lastChatsState) {
+    setLastChatsState(chatsState);
+    if (retryingChats && chatsState !== 'loading') {
       setRetryingChats(false);
     }
   }
-  const retrying = retryingChats && store.chatsState === 'loading';
+  const retrying = retryingChats && chatsState === 'loading';
   const retryChats = (): void => {
     setRetryingChats(true);
     storeApi.getState().retryChats();
@@ -98,7 +147,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
 
   const signOut = (): void => {
     setMenuOpen(false);
-    void store.signOut();
+    void storeApi.getState().signOut();
   };
 
   // The badge fetches only when the menu opens; `null` is "unknown or failed",
@@ -323,9 +372,9 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
           isWide ? 'gap-0.5 px-2' : 'gap-0',
         )}
       >
-        {store.chatsState === 'loading' && !hasAnyChats ? (
+        {chatsState === 'loading' && !hasAnyChats ? (
           <ChatListSkeleton />
-        ) : store.chatsState === 'error' && !hasAnyChats ? (
+        ) : chatsState === 'error' && !hasAnyChats ? (
           <div className="flex h-full flex-col items-center justify-center p-8">
             <StateMessage
               kind="error"
@@ -335,7 +384,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
           </div>
         ) : (
           <>
-            {(store.chatsState === 'error' || retrying) && (
+            {(chatsState === 'error' || retrying) && (
               <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
                 <p className="text-[13px] text-muted-foreground">
                   {retrying ? 'Retrying…' : "Couldn't load chats"}
@@ -361,7 +410,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
             )}
             {/* People hits come first: `@handle` shows one row for that
                 person, above the chat-name matches and the message hits. */}
-            {store.search.trim().startsWith('@') && <PeopleSearchResult query={store.search} />}
+            {search.trim().startsWith('@') && <PeopleSearchResult query={search} />}
             {chats.length === 0 && archived.length === 0 ? (
               <EmptyState
                 variant="no-chats"
@@ -435,10 +484,10 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
             )}
             {/* Message hits come after the chat-name matches. `searchChat`
                 scopes "Search only in this chat" from a chat header. */}
-            {store.search.trim().length >= 2 && (
+            {search.trim().length >= 2 && (
               <MessageSearchResults
-                query={store.search}
-                {...(store.searchChat === undefined ? {} : { chatFilter: store.searchChat })}
+                query={search}
+                {...(searchChat === undefined ? {} : { chatFilter: searchChat })}
                 onNotFound={() => {}}
               />
             )}

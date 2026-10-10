@@ -5,9 +5,10 @@ import {
   previewPrefix,
   shouldRenderMarkdown,
   type ChatSummary,
+  type UiMessage,
 } from '@zilar/chat-core';
 import { Megaphone, MoreHorizontal, Pin, VolumeX } from 'lucide-react';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Link } from 'react-router';
 import { AiBadge } from './AiBadge';
 import { Avatar } from './Avatar';
@@ -15,13 +16,16 @@ import { ChatActionsMenu } from './ChatActionsMenu';
 import { MessageTicks } from './MessageTicks';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { useChatStore } from '@/store/ChatStoreProvider';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 import { useBlockedJids } from '@/lib/blockedJids';
 import { typingLabel } from '@/lib/format';
 import { previewMessage } from '@/lib/preview-message';
 import { cn } from '@/lib/utils';
 
-export function ChatListItem({
+const EMPTY_MESSAGES: UiMessage[] = [];
+const EMPTY_NAMES: string[] = [];
+
+export const ChatListItem = memo(function ChatListItem({
   chat,
   selected,
   isWide = true,
@@ -30,23 +34,26 @@ export function ChatListItem({
   selected: boolean;
   isWide?: boolean;
 }) {
-  const store = useChatStore();
+  const chatId = chat.id;
+  const messages = useChatSelector((s) => s.messagesByChat[chatId]) ?? EMPTY_MESSAGES;
+  const currentUserId = useChatSelector((s) => s.currentUserId);
+  const typingNames = useChatSelector((s) => s.typing[chatId]?.names) ?? EMPTY_NAMES;
+  const hasDraft = useChatSelector((s) => s.drafts[chatId] !== undefined);
   const last = chat.lastMessage;
   const blockedJids = useBlockedJids();
-  const preview = previewMessage(chat, store.messages(chat.id), blockedJids, store.currentUserId);
-  const options = { isGroup: chat.kind === 'group', currentUserId: store.currentUserId };
+  const preview = previewMessage(chat, messages, blockedJids, currentUserId);
+  const options = { isGroup: chat.kind === 'group', currentUserId };
   const prefix = previewPrefix(preview, options);
   const rawBody = previewBody(preview);
   // Only an incoming AI reply is Markdown (shouldRenderMarkdown), in an AI
   // chat or in a group; your own message previews literally, exactly as its
   // bubble shows it.
   const body =
-    preview !== undefined && shouldRenderMarkdown(chat, preview, store.currentUserId)
+    preview !== undefined && shouldRenderMarkdown(chat, preview, currentUserId)
       ? markdownToPlain(rawBody)
       : rawBody;
-  const own = last !== undefined && last.senderId === store.currentUserId;
-  const typing = typingLabel(chat, store.typing[chat.id]?.names ?? []);
-  const hasDraft = store.drafts[chat.id] !== undefined;
+  const own = last !== undefined && last.senderId === currentUserId;
+  const typing = typingLabel(chat, typingNames);
   // `writing…` is the AI's reveal; people keep D23's wording (with the new dot).
   const writing = chat.isAI && (hasDraft || typing !== undefined);
   const typingText = typing === undefined ? undefined : `${typing}…`;
@@ -171,4 +178,4 @@ export function ChatListItem({
       {menuOpen && <ChatActionsMenu chat={chat} onClose={() => setMenuOpen(false)} />}
     </div>
   );
-}
+});
