@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | [T-0913](T-0913-load-flakes.md) | Four timing tests that fail combined checks under load become deterministic | in-progress | sonnet-5.5 | | test stability |
 | [T-0917](T-0917-store-core-t7b-mobile-history.md) | Store core T7b: mobile on core history, loadOlder overlap fix | in-progress | deepseek-flash | T-0912, T-0914 | phase 4.3 |
-| [T-0915](T-0915-store-core-t8-lifecycle.md) | Store core T8: polling, drafts, lifecycle in core; web on them | in-progress | opus-5.5 | T-0912 | phase 4.3, live |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
@@ -946,3 +945,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0912](T-0912-store-core-t6b-history.md) | Store core T6b: web history (first page, older pages, open at message) in packages/client-core, tests first, w | 2026-10-10 |
 | [T-0914](T-0914-store-core-t7a-mobile-incoming.md) | Store core T7a: the mobile store on the core incoming events, message actions and reads (history stays for T7b | 2026-10-10 |
 | [T-0916](T-0916-core-echo-refresh.md) | Core echo re-applies pending edits and reactions: an edit made between the ack and the echo keeps its new text | 2026-10-10 |
+| [T-0915](T-0915-store-core-t8-lifecycle.md) | Store core T8: polling, drafts and lifecycle (boot, connect with retry, resume, stop/reset) in packages/client | 2026-10-10 |

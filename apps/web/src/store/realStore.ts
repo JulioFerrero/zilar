@@ -23,7 +23,6 @@ import {
   setPushPair,
   unpinMessage,
 } from './effects/pins';
-import { dismissNotificationsInBackground, syncBadgeInBackground } from './effects/badge';
 import type { SendRun, StoreCtx } from './effects/ctx';
 import { loadGroupMembersInBackground } from './effects/groupMembers';
 import { clearDraftTimeout, markTurnFinished } from './effects/polling';
@@ -73,7 +72,20 @@ import {
   sendText,
   sendVoice,
 } from './effects/send';
-import { retryBoot, signOutStore, startStore, stopStore } from './effects/lifecycle';
+import {
+  applyBoot,
+  applyStop,
+  joinGroupsNow,
+  prepareStart,
+  refreshActiveChatPinsNow,
+  refreshChatsNow,
+  rememberGroupIds as rememberGroupIdsHook,
+  retryBoot,
+  signOutStore,
+  startStore,
+  stopStore,
+} from './effects/lifecycle';
+import { saveChatList as saveChatListHook } from './effects/reads';
 import { portsLayer, readPorts, type RealStoreDeps } from './effects/ports';
 import { makeLifetime } from './effects/runtime';
 import { createAtomStore, type StoreApi } from './atomStore';
@@ -190,10 +202,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         rememberGroupIds,
         nick,
       },
-      // The web code the core modules call (`CoreHooks`).
+      // The web code the core modules call (`CoreHooks` and `StoreAppHooks`).
       fx: {
-        syncBadge: () => syncBadgeInBackground(ctx),
-        dismissChatNotifications: (chatId) => dismissNotificationsInBackground(ctx, chatId),
+        syncBadge: () => ports.notifications.syncBadge(get().chats),
+        dismissChatNotifications: (chatId) => ports.notifications.dismissChat(chatId),
         loadGroupMembers: (chatId) => loadGroupMembersInBackground(ctx, chatId),
         finishDraftTurn: (chatId, turnId) => {
           markTurnFinished(ctx, turnId);
@@ -203,6 +215,21 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           pendingVoices.delete(messageId);
           pendingAttachments.delete(messageId);
         },
+        prepareStart: () => prepareStart(ctx),
+        setStatus: (status) => set({ status }),
+        setChatsLoad: (load) => set({ chatsState: load }),
+        applyBoot: (input) => applyBoot(ctx, input),
+        rememberGroupIds: (entries) => rememberGroupIdsHook(ctx, entries),
+        scheduleChatsRefresh: () => scheduleChatsRefresh(ctx),
+        refreshChats: () => refreshChatsNow(ctx),
+        refreshActiveChatPins: (chatId) => refreshActiveChatPinsNow(ctx, chatId),
+        joinGroups: (core, me) => joinGroupsNow(ctx, core, me),
+        saveChatList: () => saveChatListHook(ctx),
+        refreshDefaultBackground: () => {
+          void ctx.get().refreshDefaultBackground();
+        },
+        setMediaTrustedHosts: (hosts) => set({ mediaTrustedHosts: hosts }),
+        applyStop: () => applyStop(ctx),
       },
       get core() {
         return core;
@@ -241,6 +268,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         lastReadUserId = value;
       },
       cachedUserId: undefined,
+      started: false,
+      boot: undefined,
       connectRetryAttempt: 0,
       connectRetryPending: false,
       groupIds,

@@ -4,7 +4,12 @@
 // the core context (`@zilar/client-core/store`), so web modules and core
 // modules take the same value.
 import type { EditAuthor, MentionMember } from '@zilar/chat-core';
-import type { HistoryCtx, MessageLedger } from '@zilar/client-core/store';
+import type {
+  HistoryCtx,
+  LifecycleBoot,
+  MessageLedger,
+  StoreAppHooks,
+} from '@zilar/client-core/store';
 import type { Deferred } from 'effect';
 import type { ChatEntry, GroupDetail, Me } from '@/lib/api';
 import type { MediaTokenShape } from '@/lib/attachments';
@@ -38,6 +43,13 @@ export interface StoreCtx extends HistoryCtx {
   readonly ports: PortsShape;
   readonly rt: Lifetime;
   readonly k: Kernel;
+  /** The app hooks the core polling and lifecycle call (T-0915). */
+  readonly fx: StoreAppHooks;
+
+  /** True from `start()` until `stop()`: a second `start()` is a no-op (R9). */
+  started: boolean;
+  /** The boot in flight, so `stop()` and a resume can reach it (T-0915). */
+  boot: LifecycleBoot | undefined;
 
   /** The token the latest session connected with, for the media allow-list. */
   mediaToken: MediaTokenShape | undefined;

@@ -3,10 +3,11 @@
 // bookkeeping the store keeps beside its state. Each app's own context extends
 // this one, so an app module and a core module take the same value.
 import { Effect } from 'effect';
-import type { XmppCore } from '@zilar/xmpp-core';
+import type { ChatSummary } from '@zilar/chat-core';
+import type { ConnectionStatus, XmppCore } from '@zilar/xmpp-core';
 import type { LedgerPatch, LedgerState, MessageLedger } from './ledger';
 import type { Lifetime } from './lifetime';
-import type { CorePorts } from './ports';
+import type { CoreContact, CoreMe, CorePorts } from './ports';
 
 /** The people typing in one chat. */
 export interface CoreTyping {
@@ -61,6 +62,52 @@ export interface CoreHooks {
   readonly finishDraftTurn: (chatId: string, turnId: string) => void;
   /** Drops the bytes kept for a Retry of this message id, if any. */
   readonly forgetRetryBytes: (messageId: string) => void;
+}
+
+/** What the lifecycle hands the app to write into its own state on boot. */
+export interface BootInput {
+  readonly me: CoreMe;
+  readonly freshRows: ChatSummary[];
+  readonly previousChats: ChatSummary[];
+  /** True while the boot's user is the one whose list was painted on start. */
+  readonly sameUser: boolean;
+  readonly contacts: readonly CoreContact[];
+  readonly prefs: readonly unknown[];
+}
+
+/**
+ * The app hooks the T8 polling and lifecycle modules call, beside `CoreHooks`.
+ * Every one returns at once; the app forks the work itself (web does), so the
+ * core never needs the app's own `Ports` service to run them.
+ */
+export interface StoreAppHooks extends CoreHooks {
+  /** Writes the XMPP connection status into the app's state. */
+  readonly setStatus: (status: ConnectionStatus) => void;
+  /** Paints the cached chat list and arms `pagehide`, once per store (web). */
+  readonly prepareStart: () => void;
+  /** Shows the chat list as loading/ready/error (web `chatsState`, mobile `chatsLoad`). */
+  readonly setChatsLoad: (load: 'loading' | 'ready' | 'error') => void;
+  /** Writes the boot result into the app's state: me, chats, contacts, prefs. */
+  readonly applyBoot: (input: BootInput) => void;
+  /** Records the group id of every chat row (web Kernel). */
+  readonly rememberGroupIds: (entries: readonly unknown[]) => void;
+  /** Schedules the debounced chat-list refresh (web history). */
+  readonly scheduleChatsRefresh: () => void;
+  /** Re-fetches the chat list now (web history). */
+  readonly refreshChats: () => void;
+  /** Refreshes the open chat's pins now (web pins). */
+  readonly refreshActiveChatPins: (chatId: string) => void;
+  /** Joins new group rooms and loads their members (web groupMembers).
+   * Resolves once the joins are done, so group history waits for them. */
+  readonly joinGroups: (core: XmppCore, me: unknown) => Promise<void>;
+  /** Saves the painted chat list to storage and syncs the badge (web reads). */
+  readonly saveChatList: () => void;
+  /** Loads the default chat background (web prefs), fire and forget. */
+  readonly refreshDefaultBackground: () => void;
+  /** Publishes the media hosts trusted from the latest XMPP token. */
+  readonly setMediaTrustedHosts: (hosts: ReadonlySet<string> | undefined) => void;
+  /** Clears the app's per-session state on `stop()` (web `sendRuns`, ...). */
+  readonly applyStop: () => void;
 }
 
 export interface CoreCtx {

@@ -27,6 +27,8 @@ export * from './history';
 // End of T6.
 
 // T8 (polling, lifecycle): add `export * from './<x>';` lines below.
+export * from './polling';
+export * from './lifecycle';
 // ----------------------------------------------------------------------------
 // End of T8.
 

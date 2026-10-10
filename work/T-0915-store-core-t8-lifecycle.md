@@ -1,7 +1,7 @@
 ---
 id: T-0915
 title: "Store core T8: polling, drafts and lifecycle (boot, connect with retry, resume, stop/reset) in packages/client-core, the web store on them, tests first"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0915-store-core-t8-lifecycle
 model: auto
@@ -79,4 +79,63 @@ Run the `realStore*.test.tsx` files, `reload.test.tsx` and `effects/runtime.test
 
 ## Report (written by the worker when done)
 
+**Commits, in order**
+1. `2c2cf013`: tests first. New `apps/web/src/store/realStore.lifecycle.test.tsx` (3 tests), run on the old code: 2 guard tests passed, the new `start()` expectation failed (`getMe` called twice).
+2. The move: core `polling.ts` + `lifecycle.ts` with tests, web on them, no existing test edited.
+
+**Core (`packages/client-core/src/store/`)**
+- New `polling.ts`: the chat-list and pins polls, the AI draft stream and its timers, `markTurnFinished`, `clearFinishedTurns`, `clearDraftTimeout`, `DRAFT_END_FALLBACK_MS`, `DRAFT_IDLE_MS`, `TOPIC_REFRESH_INTERVAL_MS`, `PINS_REFRESH_INTERVAL_MS`. The polls read the app through `ports.visibility` and `fx.refreshChats` / `fx.refreshActiveChatPins`.
+- New `lifecycle.ts`: `readLastRead`, `startStore`, `retryBoot`, `stopStore`, `reset`, `reconnect`, `boot`, `connectXmpp`, `scheduleConnectRetry`, `subscribeToCore`, `CONNECT_RETRY_DELAYS_MS`. The XMPP attempt Scope stays (`Scope.fork(session.scope)` + finalizer). All API calls go through `fromPromise` (R=never), so the core never needs the app's `Ports` service.
+- `ports.ts`: gained `api` (`CoreApi`), `rows` (`ChatRows`), `createXmpp`, `visibility`, `drafts`, `notifications` and `flags`; `testCorePorts` fills inert defaults.
+- `ctx.ts`: new `StoreAppHooks` (extends `CoreHooks`) and `BootInput`, plus `CoreMe`/`CoreContact`/`CoreXmppToken`/`ChatRows`/`Visibility`/`DraftHubEvent`/`Notifications`/`StoreFlags` in `ports.ts`. `CoreHooks` and `CoreCtx` are unchanged, so `test-ctx.ts` and mobile compile without edits.
+- Tests: `polling.test.ts` (7) and `lifecycle.test.ts` (6). One `index.ts` line each in the T8 section.
+
+**Web**
+- `effects/polling.ts`: now a 13-line binding (re-exports the core functions). `effects/lifecycle.ts`: bindings for `startStore`/`retryBoot`/`stopStore`, plus the adapter code that stays web-only: `signOutStore` (unchanged behaviour, now calls `reset(ctx)`), the cached paint + `pagehide` (`prepareStart`), the boot state write (`applyBoot`), `applyStop`, and the small bridges that fork the web refreshes. It drops 355 → 155 lines.
+- `effects/ports.ts`: builds `visibility` (window focus + `document.visibilityState`), `rows` (web `summariesFor`), `drafts`/`notifications`/`flags`.
+- `effects/ctx.ts`: `StoreCtx` now has `fx: StoreAppHooks`, `started` and `boot`.
+- `realStore.ts`: the `fx` bag carries the new hooks (badge now delegates to `ports.notifications`); `start`/`stop` still call the web bindings.
+
+**Lines per side**
+- Core source: new `polling.ts` 205, `lifecycle.ts` 379; `ctx.ts` +49/−2, `ports.ts` +118/−5, `index.ts` +2. Core tests: `polling.test.ts` 176, `lifecycle.test.ts` 187 (13 tests).
+- Web source: `lifecycle.ts` +82/−282, `polling.ts` +13/−199, `ports.ts` +46, `realStore.ts` +34/−5, `constants.ts` +12/−20, `ctx.ts` +13/−1. Web tests: `realStore.lifecycle.test.tsx` +115 (3 tests).
+
+**Behaviour on web: R9 only.** R10 is the core contract and does not change web.
+- **R9:** `start()` is idempotent. Core `startStore` returns at once when `ctx.started`; before, a second `start()` without `stop()` began another session and booted again (two cores, double subscriptions). This is the new failing-then-passing expectation.
+- **R10:** `stop()` closes the lifetime and clears the ephemeral session state (drafts, finished turns, `fx.applyStop`) but **keeps the message ledger**; `reset()` clears the ledger and the per-session maps. Web already behaved this way: `stop()` kept messages and `signOutStore` reset them, so its visible behaviour is unchanged (it now calls `reset(ctx)` for the ledger).
+
+**How mobile keeps its sign-out reset (T-0901):** T-0901 made mobile `stop()` reset all user state because mobile's store lives across sign-ins. The core keeps the same guarantee as two explicit steps: `stopStore(ctx)` (close the lifetime, drop session state) and `reset(ctx)` (clear the ledger and last-read). Mobile's sign-out calls `stop()` then `reset()`, so on a device the same fields are cleared as after T-0901; a normal resume (which does not call `stop()`) still keeps state. The flag `flags.reconnectOnResume` gates the core `reconnect()` that awaits the in-flight boot, ready for T9.
+
+**Deviations from the spec (with reasons)**
+- `ports.ts` gained `api`, `rows` and `createXmpp` beside the four the spec names: the boot and connect moved into the core, so it needs the API, the `/api/chats` row mapping and the XMPP factory (plan section 4's `CoreApi`/`ChatRows`/`createXmpp`).
+- `notifications` is built on web, but the live badge path still goes through `fx`/`effects/badge.ts` (T6 put it there because it needs the store) so an un-editable `incoming.ts` keeps working; `realStore`'s `fx.syncBadge`/`dismissChatNotifications` now delegate to the port.
+- The app-specific boot side effects stay per-app through the new `StoreAppHooks` on `ctx.fx`: `prepareStart`, `setChatsLoad`, `applyBoot`, `rememberGroupIds`, `scheduleChatsRefresh`, `refreshChats`, `refreshActiveChatPins`, `joinGroups`, `saveChatList`, `refreshDefaultBackground`, `setMediaTrustedHosts`, `setStatus`, `applyStop`. `signOutStore` stays in `effects/lifecycle.ts` as the spec says.
+- `reconnect()` (resume) lands in the core behind `flags.reconnectOnResume`, but web leaves the flag off and does not call it; T9 wires mobile.
+
+**Checks (real results)**
+- `pnpm gate` (repo root): `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS effect`, `PASS tests @zilar/client-core`, `PASS tests @zilar/web`; `scope: every changed file is inside the Allowed files`; `GATE PASS`.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/store`: 20 files, 239 passed.
+- `realStore*` + `reload.test.tsx` + `effects/runtime.test.ts`, 3 runs: 10 files, 201 passed each run.
+- `pnpm --filter @zilar/client-core test --maxWorkers=2 --reporter=dot`: 12 files, 130 passed (117 before + 13 new).
+- `@zilar/client-core`, `@zilar/web` and `@zilar/mobile` typechecks: clean.
+
+**Live check for Julio (web):** AI drafts streaming; a network drop and its reconnect (the delay ladder); hide and show the tab; sign out.
+
+**Round (fix round, 2026-10-10)**
+- **Finding 1 (must-fix) — fixed** (`d8aaec87`): `signOutStore` in `apps/web/src/store/effects/lifecycle.ts` clears `messageAuthors`, `messageOriginIds` and `messageBaseTexts` again, right after `groupMembers`/`groupInfos`, restoring the old sign-out tail.
+- **Finding 2 (should-fix) — fixed** (`9ba1740d`): the sign-out test in `apps/web/src/store/realStore.lifecycle.test.tsx` now also asserts `edits`/`reactions` are empty, and proves the per-message caches are gone with a two-session probe: session A learns the XEP-0308 wire target `origin-a` for `ana-1` (its edit sends a correction), sign-out runs, then a second session on the same store sees `ana-1` without an origin id and an edit sends no correction. With finding 1 reverted the test fails (`sendCorrection` called with `origin-a`); with the fix it passes.
+- **Note:** the three maps are not part of web's public `ChatStoreState`, so the test proves they are empty through the ledger behaviour they drive (a surviving origin id still names a wire target) rather than by reading the maps directly.
+- **Finding 3 (nit) — not touched:** the eager badge snapshot is in `realStore.ts:207` and `effects/ports.ts:285-287`, lines this round does not change.
+- **Checks:** single test `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/store/realStore.lifecycle.test.tsx`: 1 file, 3 passed. `pnpm gate` (repo root): `PASS install (frozen)`, `PASS format`, `PASS lint`, `PASS typecheck`, `PASS effect`, `PASS tests @zilar/client-core`, `PASS tests @zilar/web`; `scope: every changed file is inside the Allowed files`; `GATE PASS`.
+- `status` stays `review`.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved. Clean after 1 automatic round, with 1 nit.**
+- **The move:** polling, drafts and the lifecycle are in `packages/client-core/src/store/{polling,lifecycle}.ts`, with 13 core tests. Web `effects/polling.ts` is a 13-line binding, and `effects/lifecycle.ts` keeps only the web adapter (`signOutStore`, the cached paint, `pagehide`). The XMPP attempt Scope and the connect retry ladder stay.
+- **Tests first:** `realStore.lifecycle.test.tsx` (connect reject retries, `start()` twice, sign-out), committed before the move.
+- **Behaviour:** R9 only on web: `start()` is idempotent, and before, a second `start()` booted twice. R10 is the core contract (`stop()` keeps the ledger, `reset()` clears it). Mobile keeps T-0901's sign-out reset as `stopStore()` then `reset()`. `reconnect()` sits behind `flags.reconnectOnResume`, which T9 wires on mobile.
+- **Tests:** no existing test was edited, and the realStore files pass 3 runs.
+- **Nit for T9:** `reset()` does not clear `finishedTurns`. That is unreachable today, because every sign-out path calls `stopStore` first.
+- **Check:** the combined check passes.
+- **Live check for Julio:** on web, AI drafts streaming, a network drop and its reconnect, a hidden tab shown again, and sign-out.

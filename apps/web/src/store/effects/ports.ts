@@ -5,6 +5,7 @@
 // supply with an inert one, so no test reaches the network by accident.
 import { Context, Effect, Layer } from 'effect';
 import { createXmppCore, type XmppCore, type XmppCoreOptions } from '@zilar/xmpp-core';
+import type { ChatRows, Notifications, StoreFlags, Visibility } from '@zilar/client-core/store';
 import {
   addGroupAi as addGroupAiRequest,
   archiveTopic as archiveTopicRequest,
@@ -86,6 +87,9 @@ import {
 import { subscribeToDrafts, type OpenDraftStream } from '@/lib/drafts';
 import { defaultVoicePort, type VoicePort } from '@/lib/voice';
 import { defaultAttachmentPort, type AttachmentPort } from '@/lib/attachments';
+import { dismissChatNotifications, totalBadgeUnread, updateAppBadge } from '@/lib/push';
+import { summariesFor } from './chatRows';
+import { fromPromise } from './util';
 
 export interface ApiClient {
   getMe(): Promise<Me>;
@@ -193,6 +197,12 @@ export interface PortsShape {
   readonly attachments: AttachmentPort;
   readonly openDrafts: OpenDraftStream;
   readonly goToLogin: () => void;
+  // T-0915: what the core lifecycle, polling and connection retry read.
+  readonly rows: ChatRows;
+  readonly visibility: Visibility;
+  readonly drafts: OpenDraftStream;
+  readonly notifications: Notifications;
+  readonly flags: StoreFlags;
 }
 
 export class Ports extends Context.Service<Ports, PortsShape>()('zilar/web/store/Ports') {}
@@ -256,6 +266,32 @@ function defaultVisible(): boolean {
   return typeof document === 'undefined' || document.visibilityState === 'visible';
 }
 
+function defaultOnFocus(handler: () => void): () => void {
+  if (typeof window === 'undefined') {
+    return () => {};
+  }
+  window.addEventListener('focus', handler);
+  return () => window.removeEventListener('focus', handler);
+}
+
+const realRows: ChatRows = {
+  summariesFor: (entry) => summariesFor(entry as ChatEntry),
+};
+
+const webFlags: StoreFlags = { connectRetry: true, reconnectOnResume: false };
+
+// The app badge and the push dismiss, best effort (mirrors `effects/badge.ts`).
+const liveNotifications: Notifications = {
+  syncBadge: (chats) => {
+    Effect.runFork(
+      fromPromise(() => updateAppBadge(totalBadgeUnread([...chats]))).pipe(Effect.ignore),
+    );
+  },
+  dismissChat: (chatId) => {
+    Effect.runFork(fromPromise(() => dismissChatNotifications(chatId)).pipe(Effect.ignore));
+  },
+};
+
 // A reload gives the next user a fresh store and XMPP connection.
 function defaultGoToLogin(): void {
   if (typeof window !== 'undefined') {
@@ -275,6 +311,11 @@ export function resolvePorts(deps: RealStoreDeps = {}): PortsShape {
     attachments: deps.attachments ?? defaultAttachmentPort,
     openDrafts: deps.openDrafts ?? subscribeToDrafts,
     goToLogin: deps.goToLogin ?? defaultGoToLogin,
+    rows: realRows,
+    visibility: { isVisible: deps.documentVisible ?? defaultVisible, onFocus: defaultOnFocus },
+    drafts: deps.openDrafts ?? subscribeToDrafts,
+    notifications: liveNotifications,
+    flags: webFlags,
   };
 }
 
@@ -314,6 +355,11 @@ export function testPorts(fakes: RealStoreDeps = {}): PortsShape {
     },
     openDrafts: fakes.openDrafts ?? (() => () => undefined),
     goToLogin: fakes.goToLogin ?? ((): void => undefined),
+    rows: { summariesFor: () => [] },
+    visibility: { isVisible: () => true, onFocus: () => () => undefined },
+    drafts: fakes.openDrafts ?? (() => () => undefined),
+    notifications: { syncBadge: () => undefined, dismissChat: () => undefined },
+    flags: { connectRetry: true, reconnectOnResume: false },
   };
 }
 
