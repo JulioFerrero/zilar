@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1078](T-1078-mock-backend-integrations-and-mobile-switch.md) | Mock F6 + H2-5: backend integrations domain; mobile integrations on it | in-progress | auto | T-1076 | no secrets stored |
 
 ## Follow-ups
 
@@ -1125,3 +1124,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1075](T-1075-dither-avatars.md) | Dither avatars: every avatar without a picture shows dither-avatar's coloured SVG (web and mobile, AIs too) in | 2026-10-10 |
 | [T-1076](T-1076-mock-backend-avatars.md) | Mock backend F5: avatars domain (PUT/DELETE /avatars/:kind/:ownerId) whose urls show without a server; /me car | 2026-10-10 |
 | [T-1077](T-1077-mobile-profile-on-mock-backend.md) | Mock H2-6 (mobile): profile runs on @zilar/mock-backend through mockFetch; delete mock/profile.ts | 2026-10-10 |
+| [T-1078](T-1078-mock-backend-integrations-and-mobile-switch.md) | Mock backend F6 + H2-5: integrations domain in @zilar/mock-backend; mobile integrations run on it; delete inte | 2026-10-10 |

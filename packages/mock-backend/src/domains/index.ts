@@ -22,6 +22,7 @@ import type { Domain } from './domain';
 import { gifsDomain } from './gifs';
 import { groupsDomain } from './groups';
 import { handlesDomain } from './handles';
+import { integrationsDomain } from './integrations';
 import { inviteLinksDomain } from './invite-links';
 import { machinesDomain } from './machines';
 import { meDomain } from './me';
@@ -58,6 +59,7 @@ export const domains: readonly Domain[] = [
   gifsDomain,
   groupsDomain,
   handlesDomain,
+  integrationsDomain,
   inviteLinksDomain,
   machinesDomain,
   meDomain,
