@@ -39,10 +39,21 @@ if (!existsSync(emptyModule)) {
   );
 }
 
+// expo-router's Android native-tabs icon converter imports expo-symbols, whose
+// Material weights import @expo-google-fonts/material-symbols. Metro bundles
+// that 967 KB icon font even though the app never renders a Material Symbol
+// (nothing in src or app imports expo-symbols or @expo/vector-icons; icons come
+// from lucide). Stub the font package so the file is not bundled.
+const UNUSED_ICON_FONT = '@expo-google-fonts/material-symbols';
+
 const previousResolveRequest = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform, realModuleName) => {
-  if (STUBBED.has(moduleName)) {
+  if (
+    STUBBED.has(moduleName) ||
+    moduleName === UNUSED_ICON_FONT ||
+    moduleName.startsWith(`${UNUSED_ICON_FONT}/`)
+  ) {
     return { type: 'sourceFile', filePath: emptyModule };
   }
   if (previousResolveRequest) {
