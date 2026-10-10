@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0929](T-0929-store-core-t10b-mobile-send.md) | Store core T10b: mobile send on core | todo | auto | T-0933 | phase 4.3, live |
 
 ## Follow-ups
 
@@ -961,3 +960,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0933](T-0933-cut-mobile-tests.md) | Cut the mobile tests: delete every UI test and every non-crucial test; keep auth/session and the message-pipel | 2026-10-10 |
 | [T-0931](T-0931-cut-server-tests.md) | Cut the server tests to the crucial ones (auth and keys, permissions and money): keep a fixed list, delete eve | 2026-10-10 |
 | [T-0930](T-0930-test-memory-cap.md) | Test memory: cap the web vmThreads pool (memory limit, worker count) and the lead's combined check, measured p | 2026-10-10 |
+| [T-0929](T-0929-store-core-t10b-mobile-send.md) | Store core T10b: the mobile store on the core send pipeline (R6 deadline, R18 sticker retry, R20 banner), mobi | 2026-10-10 |

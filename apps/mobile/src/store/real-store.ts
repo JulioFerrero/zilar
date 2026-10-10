@@ -1,5 +1,4 @@
 import type { ChatSummary, MentionMember, UiMessage } from '@zilar/chat-core';
-import { forwardedPayloadFor, forwardedUiFieldsFor } from '@zilar/chat-core';
 import {
   clearFailure,
   coreKind,
@@ -15,7 +14,6 @@ import {
 } from '@zilar/client-core/store';
 import { Effect } from 'effect';
 import { type ChatMessage, type XmppCore } from '@zilar/xmpp-core';
-import { ForwardOriginSchema, isValid, type ForwardOrigin } from '@zilar/protocol';
 import { createAtomStore, type StoreApi } from './atomStore';
 
 import type { ChatEntry, GroupDetail, Me } from '../lib/chat-api';
@@ -35,7 +33,7 @@ import type { MediaTokenShape } from '../lib/attachments';
 import type { PickedFile } from '../lib/attachment-ports';
 import type { RecordedVoice } from '../lib/voice';
 import type { VoiceFailureReason } from '../lib/voice-native';
-import { CURRENT_USER_ID, mobileUploadOf, type MobileMessage } from '../lib/types';
+import { CURRENT_USER_ID } from '../lib/types';
 import type { ChatStoreState } from './types';
 
 export { MESSAGE_JUMP_MAX_PAGES, MESSAGE_JUMP_WAIT_MS } from './effects/history';
@@ -204,6 +202,8 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       loadingOlder,
       groupIds,
       pendingOutgoing,
+      sequence: 0,
+      sendRuns: new Map(),
       pendingUploads,
       pendingVoices,
       groupDetails,
@@ -268,8 +268,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     });
     const {
       aliasRoot,
-      authorFor,
-      correctionTargetFor,
       ingestHistoryEdits,
       ingestHistoryReactions,
       isEditStanza,
@@ -301,41 +299,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }));
     }
 
-    function setUploadProgress(chatId: string, messageId: string, progress: number): void {
-      set((state) => ({
-        messagesByChat: {
-          ...state.messagesByChat,
-          [chatId]: listFor(state, chatId).map((item) =>
-            sameMessage(item.id, messageId)
-              ? {
-                  ...item,
-                  uploadProgress: Math.min(1, Math.max(0, progress)),
-                }
-              : item,
-          ),
-        },
-      }));
-    }
-
-    function clearUploadProgress(chatId: string, messageId: string): void {
-      set((state) => ({
-        messagesByChat: {
-          ...state.messagesByChat,
-          [chatId]: listFor(state, chatId).map((item) => {
-            if (
-              !sameMessage(item.id, messageId) ||
-              mobileUploadOf(item).uploadProgress === undefined
-            ) {
-              return item;
-            }
-            const next: UiMessage = { ...item };
-            delete (next as Partial<MobileMessage>).uploadProgress;
-            return next;
-          }),
-        },
-      }));
-    }
-
     // A failed voice send (T-0154, review round 1): the bubble keeps its
     // local recording and shows a Retry with the plain reason, never a
     // silent "sending". The reason rides the message in a subset of the
@@ -359,43 +322,9 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       }));
     }
 
-    // The room identity a forward may carry (T-0432): only a public group or
-    // topic has a room JID safe to reveal. A DM/AI chat has no room JID, and a
-    // private topic (or private group) must omit both so the target never
-    // learns a room it may not see (forwarding plan §3.1/§3.6).
-    function forwardPublicRoomFor(source: ChatSummary | undefined): ChatSummary | undefined {
-      if (source === undefined || source.kind !== 'group') {
-        return undefined;
-      }
-      const visibility = source.topic?.visibility ?? source.visibility;
-      return visibility === 'public' ? source : undefined;
-    }
-
-    // The origin header of one forwarded copy. Reusing a message's own
-    // `forward` keeps the first author on a forward of a forward. Otherwise it
-    // is built from the source message; `ForwardOriginSchema` caps over-long
-    // names and rejects a bad timestamp, and such a message is skipped instead
-    // of putting junk on the wire.
-    function forwardOriginFor(message: UiMessage): ForwardOrigin | undefined {
-      if (message.forward !== undefined) {
-        return isValid(ForwardOriginSchema)(message.forward) ? message.forward : undefined;
-      }
-      const createdAt = message.createdAt.getTime();
-      if (Number.isNaN(createdAt)) {
-        return undefined;
-      }
-      const author = authorFor(message.id);
-      const room = forwardPublicRoomFor(get().chats.find((entry) => entry.id === message.chatId));
-      const originalId = correctionTargetFor(message.id);
-      const candidate = {
-        sender_id: author?.jid ?? message.senderId,
-        sender_name: message.senderName,
-        ...(room === undefined ? {} : { chat_id: room.id, chat_name: room.title }),
-        ...(originalId === undefined ? {} : { original_id: originalId }),
-        original_at: new Date(createdAt).toISOString(),
-      };
-      return isValid(ForwardOriginSchema)(candidate) ? candidate : undefined;
-    }
+    // The room identity of a forward and the origin header live in the core
+    // (`forwardOriginFor` in `@zilar/client-core/store`), so the mobile store no
+    // longer keeps its own copy.
 
     function rememberGroupIds(entries: ChatEntry[]): void {
       for (const entry of entries) {
@@ -602,11 +531,6 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         clearAttachmentFailure,
         updateMessageAttachment,
         updateMessageVoice,
-        setUploadProgress,
-        clearUploadProgress,
-        forwardOriginFor,
-        forwardedPayloadFor,
-        forwardedUiFieldsFor,
         teardown,
       },
       fx: {
@@ -710,6 +634,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       groupMembers.clear();
       loadingOlder.clear();
       pendingOutgoing.clear();
+      s.sendRuns.clear();
       pendingVoices.clear();
       groupDetails.clear();
       loadingGroupDetails.clear();
