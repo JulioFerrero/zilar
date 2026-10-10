@@ -9,6 +9,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-1083](T-1083-web-mock-sticker-files-dev-middleware.md) | Web mock: dev-only vite middleware serves seed sticker files | in-progress | auto | T-1082 | audit slice 1 |
+| [T-1084](T-1084-mobile-mock-dead-files.md) | Mock cleanup: delete mobile drafts/time, trim web ids.ts | in-progress | auto | T-1082 | dead files |
 
 ## Follow-ups
 
