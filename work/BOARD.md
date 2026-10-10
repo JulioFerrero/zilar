@@ -8,6 +8,10 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
+| [T-0908](T-0908-one-run-sql.md) | One runSql: delete the 21 module-local copies | in-progress | haiku-5.5 | | follow-up |
+| [T-0909](T-0909-pglite-dev-only.md) | PGlite out of the production install | in-progress | sonnet-5.5 | | follow-up, image size |
+| [T-0910](T-0910-contract-lenient-rows.md) | Lenient row schemas; mobile gifs, media, stickers derive from the contract | in-progress | sonnet-5.5 | | follow-up |
+| [T-0911](T-0911-test-sleeps-followup.md) | Remaining real sleeps in web and mobile tests | in-progress | haiku-5.5 | | follow-up, test-only |
 | [T-0906](T-0906-store-core-t5-mobile-ledger.md) | Store core T5: mobile on the core ledger, group echo race fix, received mentions | in-progress | sonnet-5.5 | T-0904 | phase 4.3 |
 | [T-0907](T-0907-store-core-t6-incoming-history.md) | Store core T6: incoming, actions, reads, history in core; web on them | in-progress | opus-5.5 | T-0903, T-0904 | phase 4.3 |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
