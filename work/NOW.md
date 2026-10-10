@@ -2,6 +2,17 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 06:25 local: wave 6 merged (T-0896 to T-0902), main `6fb2c224`; nothing deployed**
+- **Checks:** the combined check of the six code tasks passed, and main equals the checked tree. The phone smoke (chats, settings, machines) is clean.
+- **Merged:**
+  - T-0900: the dependency catalog, so one `effect` version resolves;
+  - T-0899: shared test wait helpers and a one-tick guard, test-only, −917 lines;
+  - T-0898: mobile source-pinning tests replaced by render tests, and the oxlint `rules-of-hooks` rule on `src/app`;
+  - T-0897: the contract tidy-up, −440 lines;
+  - T-0901: the mobile sign-out privacy fix;
+  - T-0902: store core T1.
+- **Store core, running:** T-0903 (T2, lifetime) and T-0904 (T3, ledger; web `realStore.ts` 1,550 → 479 lines), both bringing main in. T4 to T6 follow.
+
 **2026-10-10 06:00 local: wave 6 running (T-0896 to T-0900)**
 - **T-0896 (Opus):** the store core design, Phase 4.3. It writes `docs/STORE_CORE_PLAN.md` with the task split; no code changes.
 - **T-0897:** the contract tidy-up. Wave 5's per-chain leftovers are merged, and the hand-decoded endpoints get declared and served with `handleRaw`.
