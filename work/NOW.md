@@ -2,6 +2,16 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 23:20 local: T-1056 to T-1058 merged; T-1045 in pre-review; the mock sweep audit running**
+- **Merged:**
+  - **T-1056:** the approvals AI list goes through `useAisApi`. The lead's phone smoke showed the spec's premise was wrong: the mobile approvals mock returns no rules at all. The review and the board are corrected;
+  - **T-1057:** one `firstIssueMessage`, identical to auth's by diff; server tests passed;
+  - **T-1058:** the `boot-check.mjs` split. The line check shows no difference, `--help` is identical, and `--device NOPE` fails cleanly.
+- **Running:**
+  - **T-1045:** the pre-review after the lead's fix round (rebase resolved, tests dropped);
+  - **T-1059:** an audit of what still uses the old mock code (the web `mock/api.ts` fallback, mobile `use-*-api` switches such as approvals, the mobile mock store), to slice H2 and the deletion sweep.
+- **Holding:** dedup S12-S14 (the web API facades onto the derived client) wait for the audit's order. The security slices wait for Julio.
+
 **2026-10-10 23:10 local: 6 more merged; T-1045 in its fix round; 3 new tasks running**
 - **Merged since 22:55:**
   - **dedups, each read line by line:**
