@@ -4,6 +4,7 @@ import { act, createElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import RootLayout from '@/app/_layout';
+import { settle } from '@/test/wait';
 
 // The root layout is rendered through `react-dom/client` (jsdom) with the
 // native modules stubbed: fonts, splash screen, navigation and the session
@@ -101,12 +102,6 @@ const preventedAtImport = state.prevent.mock.calls.length;
 
 let root: { render(node: ReactNode): void; unmount(): void } | undefined;
 let container: HTMLDivElement | undefined;
-
-async function settle(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-}
 
 async function mount(): Promise<void> {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

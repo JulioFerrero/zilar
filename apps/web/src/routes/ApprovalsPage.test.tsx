@@ -6,17 +6,13 @@ import { createChatStore } from '@/store/store';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { renderApp } from '@/test/renderApp';
 import { ApprovalsPage } from '@/routes/ApprovalsPage';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const auth: AuthState = {
   status: 'authenticated',
   user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
   refetch: async () => {},
 };
-
-function jsonResponse(status: number, body: unknown): Response {
-  // A real `Response`: the derived contract client reads headers and bytes.
-  return new Response(status === 204 ? null : JSON.stringify(body), { status });
-}
 
 function errorResponse(status: number, code: string, message: string): Response {
   return jsonResponse(status, { error: { code, message } });

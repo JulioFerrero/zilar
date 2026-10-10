@@ -44,6 +44,7 @@ import {
   PeopleSearchController,
   peopleHandleFor,
 } from './people-search';
+import { flushTasks as flush } from '@/test/wait';
 
 interface ManualClock {
   frames: SearchScheduler;
@@ -124,10 +125,6 @@ function fakeApi(respond: (handle: string) => Promise<HandleProfile>): {
     },
   };
   return { api, calls };
-}
-
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe('peopleHandleFor', () => {

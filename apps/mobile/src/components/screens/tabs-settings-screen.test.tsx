@@ -4,6 +4,7 @@ import { act, createElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SettingsTabScreen from '@/app/(tabs)/settings';
+import { settle } from '@/test/wait';
 
 // The Settings tab is rendered through `react-dom/client` (jsdom). The profile
 // card and the hub rows are small stand-ins that show their text and count and
@@ -138,12 +139,6 @@ vi.mock('@/lib/colors', () => ({
 
 let root: { render(node: ReactNode): void; unmount(): void } | undefined;
 let container: HTMLDivElement | undefined;
-
-async function settle(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-}
 
 async function mount(): Promise<void> {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

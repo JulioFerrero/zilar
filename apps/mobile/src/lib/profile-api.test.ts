@@ -8,13 +8,7 @@ import {
   parseApiErrorBody,
   ProfileApiError,
 } from './profile-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/wait';
 
 function api(fetchImpl: ReturnType<typeof vi.fn>) {
   return createProfileApi(async () => 'session-token', fetchImpl as unknown as typeof fetch);

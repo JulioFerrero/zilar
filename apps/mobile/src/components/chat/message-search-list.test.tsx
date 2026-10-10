@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SearchApi, SearchItem } from '@/lib/search-api';
 
 import { MessageSearchList } from './message-search-list';
+import { settle } from '@/test/wait';
 
 const { holder } = vi.hoisted(() => ({
   holder: {
@@ -133,14 +134,6 @@ function mount(element: ReactElement): void {
 }
 
 // Lets the jump promise and its follow-up settle, inside act.
-async function settle(): Promise<void> {
-  await act(async () => {
-    for (let index = 0; index < 10; index += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-  });
-}
-
 function render(onNotFound = vi.fn()): void {
   mount(createElement(MessageSearchList, { searchApi, query: 'terrace', onNotFound }));
 }
@@ -215,7 +208,7 @@ describe('MessageSearchList', () => {
     expect(container.textContent).toContain('the terrace');
 
     click('Open message from Ana in Ana');
-    await settle();
+    await settle(10);
 
     expect(holder.openAtMessage).toHaveBeenCalledWith('ana', 'm-1');
     expect(holder.push).toHaveBeenCalledWith({ pathname: '/chat/[id]', params: { id: 'ana' } });
@@ -237,7 +230,7 @@ describe('MessageSearchList', () => {
     render(onNotFound);
 
     click('Open message from Ana in Ana');
-    await settle();
+    await settle(10);
 
     expect(holder.push).toHaveBeenCalledWith({
       pathname: '/chat/[id]',
@@ -253,7 +246,7 @@ describe('MessageSearchList', () => {
     render(onNotFound);
 
     click('Open message from Ana in Ana');
-    await settle();
+    await settle(10);
 
     expect(onNotFound).toHaveBeenCalledWith('ana');
     expect(holder.push).not.toHaveBeenCalled();

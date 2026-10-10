@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Effect } from 'effect';
 import { FetchHttpClient, HttpClient } from 'effect/http';
 import { makeZilarClient, runApi, withFetch } from '@zilar/api-contract';
+import { flushTasks } from '@/test/wait';
 
 // polyfills.ts installs its shims at import time, so every test re-imports it
 // after it has set up the globals it needs.
@@ -74,7 +75,7 @@ describe('polyfill installation (T-0811)', () => {
 
     nextTick(() => order.push('tick'));
     order.push('sync');
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushTasks(1);
 
     expect(order).toEqual(['sync', 'tick']);
   });

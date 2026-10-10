@@ -6,19 +6,13 @@ import { createChatStore } from '@/store/store';
 import { CodeBlock, TruncatedText } from './CodeBlock';
 import { ToolsSection } from './ToolsSection';
 import { RoutinesSection } from './RoutinesSection';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const auth: AuthState = {
   status: 'authenticated',
   user: { id: 'u-you', name: 'You', email: 'you@zilar.test' },
   refetch: async () => {},
 };
-
-function jsonResponse(status: number, body: unknown): Response {
-  if (status === 204) {
-    return new Response(null, { status });
-  }
-  return new Response(JSON.stringify(body), { status });
-}
 
 function errorResponse(status: number, code: string, message: string): Response {
   return jsonResponse(status, { error: { code, message } });

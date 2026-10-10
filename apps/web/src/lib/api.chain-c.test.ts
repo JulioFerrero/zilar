@@ -16,12 +16,9 @@ import {
   sendContactRequest,
 } from '@/lib/api';
 import { isMockApiEnabled } from '@/mock/gate';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const mockEnabled = vi.mocked(isMockApiEnabled);
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status });
-}
 
 function stubFetch(response: () => Response | Promise<Response>) {
   const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => response());

@@ -10,10 +10,7 @@ import {
   PinsApiError,
   type Pin,
 } from './pins-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status });
-}
+import { jsonResponse } from '@/test/wait';
 
 const ROW: Pin = {
   id: 'pin-1',

@@ -7,6 +7,7 @@ import { VoiceError } from '../lib/voice';
 import { voiceErrorCopy } from '../lib/voice-native';
 import { createRealChatStore } from './real-store';
 import type { SendVoiceRecording } from './types';
+import { flushTasks as flush, waitFor } from '@/test/wait';
 
 function message(overrides: Partial<ChatMessage> & { chatJid: string; body: string }): ChatMessage {
   return {
@@ -117,17 +118,6 @@ function fakeVoice(): VoicePort {
   };
 }
 
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-async function flushUntil(predicate: () => boolean): Promise<void> {
-  for (let round = 0; round < 50 && !predicate(); round += 1) {
-    await flush();
-  }
-}
-
 const ANA = 'ana@zilar.test';
 
 const RECORDING: SendVoiceRecording = {
@@ -173,7 +163,7 @@ describe('real store sends voice messages (T-0154)', () => {
     expect(optimistic?.voice?.url).toBe('file:///cache/rec.m4a');
     expect(optimistic?.status).toBe('sending');
 
-    await flushUntil(
+    await waitFor(
       () =>
         store.getState().messages(ANA).at(-1)?.voice?.url ===
         'https://upload.zilar.test/get/voice.m4a',
@@ -207,7 +197,7 @@ describe('real store sends voice messages (T-0154)', () => {
 
     store.getState().sendVoice(ANA, RECORDING);
     const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
-    await flushUntil(
+    await waitFor(
       () =>
         store
           .getState()
@@ -228,8 +218,8 @@ describe('real store sends voice messages (T-0154)', () => {
     );
 
     store.getState().retryVoice(ANA, localId);
-    await flushUntil(() => vi.mocked(voice.convert).mock.calls.length > 1);
-    await flushUntil(
+    await waitFor(() => vi.mocked(voice.convert).mock.calls.length > 1);
+    await waitFor(
       () =>
         store
           .getState()
@@ -283,7 +273,7 @@ describe('real store sends voice messages (T-0154)', () => {
     store.getState().stop();
     store.getState().sendVoice(ANA, RECORDING);
     const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
-    await flushUntil(
+    await waitFor(
       () =>
         store
           .getState()
@@ -304,7 +294,7 @@ describe('real store sends voice messages (T-0154)', () => {
     const { store } = await setup(voice);
     store.getState().sendVoice(ANA, RECORDING);
     const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
-    await flushUntil(
+    await waitFor(
       () =>
         store
           .getState()
@@ -326,7 +316,7 @@ describe('real store sends voice messages (T-0154)', () => {
     const { store } = await setup(voice);
     store.getState().sendVoice(ANA, RECORDING);
     const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
-    await flushUntil(
+    await waitFor(
       () =>
         store
           .getState()
@@ -348,7 +338,7 @@ describe('real store sends voice messages (T-0154)', () => {
 
     store.getState().sendVoice(ANA, RECORDING);
     const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
-    await flushUntil(
+    await waitFor(
       () =>
         store
           .getState()
@@ -357,9 +347,9 @@ describe('real store sends voice messages (T-0154)', () => {
     );
 
     store.getState().retryVoice(ANA, localId);
-    await flushUntil(() => vi.mocked(xmpp.core.sendMessage).mock.calls.length > 1);
+    await waitFor(() => vi.mocked(xmpp.core.sendMessage).mock.calls.length > 1);
     expect(vi.mocked(voice.convert)).toHaveBeenCalledTimes(2);
-    await flushUntil(
+    await waitFor(
       () =>
         store
           .getState()
@@ -371,7 +361,7 @@ describe('real store sends voice messages (T-0154)', () => {
   it('merges the echo instead of duplicating the bubble', async () => {
     const { store, xmpp } = await setup();
     store.getState().sendVoice(ANA, RECORDING);
-    await flushUntil(() => vi.mocked(xmpp.core.sendMessage).mock.calls.length > 0);
+    await waitFor(() => vi.mocked(xmpp.core.sendMessage).mock.calls.length > 0);
 
     xmpp.emit(
       'message',
@@ -470,7 +460,7 @@ describe('real store sends voice messages (T-0154)', () => {
     const { store } = await setup(voice);
     store.getState().sendVoice(ANA, RECORDING);
     const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
-    await flushUntil(() => vi.mocked(voice.upload).mock.calls.length > 0);
+    await waitFor(() => vi.mocked(voice.upload).mock.calls.length > 0);
 
     store.getState().cancelVoice(ANA, localId);
     release();

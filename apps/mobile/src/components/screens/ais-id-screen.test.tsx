@@ -6,6 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import EditAiScreen from '@/app/ais/[id]';
 import { AisApiError, type Connection, type PublicAi } from '@/lib/ais-api';
 import type { Machine } from '@/lib/machines-api';
+import { waitForAct as waitFor } from '@/test/wait';
 
 // The route is rendered for real in jsdom, so its effects, state and save
 // actions all run. Only native primitives, the picker components and the API
@@ -302,20 +303,6 @@ async function mount(): Promise<void> {
     mounted.render(createElement(EditAiScreen));
   });
 }
-
-const waitFor = async (check: () => void): Promise<void> => {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    try {
-      check();
-      return;
-    } catch {
-      await act(async () => {
-        await new Promise<void>((resolve) => setTimeout(resolve, 5));
-      });
-    }
-  }
-  check();
-};
 
 // Lets the pending promises of the last action finish, so the next click is
 // not dropped by a busy guard.

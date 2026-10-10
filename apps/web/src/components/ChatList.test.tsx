@@ -135,16 +135,32 @@ describe('ChatList', () => {
   });
 
   it('shows the connecting bar only when connecting takes a while', async () => {
-    renderApp('/', { status: 'connecting' });
-    // A fast connect never paints the bar.
-    expect(screen.queryByText('Connecting…')).toBeNull();
-    expect(await screen.findByText('Connecting…', {}, { timeout: 2500 })).toBeTruthy();
+    vi.useFakeTimers();
+    try {
+      renderApp('/', { status: 'connecting' });
+      // A fast connect never paints the bar.
+      expect(screen.queryByText('Connecting…')).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      expect(screen.getByText('Connecting…')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows the waiting-for-network bar when offline for a while', async () => {
-    renderApp('/', { status: 'offline' });
-    expect(screen.queryByText('Waiting for network…')).toBeNull();
-    expect(await screen.findByText('Waiting for network…', {}, { timeout: 2500 })).toBeTruthy();
+    vi.useFakeTimers();
+    try {
+      renderApp('/', { status: 'offline' });
+      expect(screen.queryByText('Waiting for network…')).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+      expect(screen.getByText('Waiting for network…')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows skeletons and no empty state while chats load', () => {

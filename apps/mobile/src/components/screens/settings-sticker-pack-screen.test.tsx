@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { formErrorFor } from '@/components/stickers/pack-editor';
 import type { StickerItem, StickerPack } from '@/lib/stickers';
+import { flushTasks } from '@/test/wait';
 
 // Settings → sticker pack editor (`app/settings/sticker-pack.tsx`) as a
 // screen. The body calls `useState` twenty times in a fixed order (status,
@@ -249,14 +250,6 @@ async function renderEditor(params: ParamsValue, state: Forced): Promise<string>
 }
 
 // Lets the Effect fibers started by a press or a focus run to the end.
-async function settle(): Promise<void> {
-  for (let turn = 0; turn < 10; turn += 1) {
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 0);
-    });
-  }
-}
-
 function press(label: string): void {
   const handler = handlers.get(label);
   if (handler === undefined) {
@@ -293,7 +286,7 @@ describe('Settings → sticker pack editor', () => {
     forcedApi = { listStickerPacks: async () => [] };
     await renderEditor({ id: 'pack-x' }, { status: 'loading' });
     focusCallback?.();
-    await settle();
+    await flushTasks(10);
     expect(setterLog).toContain('not-found');
   });
 
@@ -301,7 +294,7 @@ describe('Settings → sticker pack editor', () => {
     forcedApi = { listStickerPacks: async () => [{ ...OWN_PACK, ownerId: 'other' }] };
     await renderEditor({ id: 'pack-own' }, { status: 'loading' });
     focusCallback?.();
-    await settle();
+    await flushTasks(10);
     expect(setterLog).toContain('forbidden');
   });
 
@@ -313,7 +306,7 @@ describe('Settings → sticker pack editor', () => {
     };
     await renderEditor({ id: 'pack-own' }, { status: 'loading' });
     focusCallback?.();
-    await settle();
+    await flushTasks(10);
     expect(setterLog).toContain('load-error');
   });
 
@@ -325,7 +318,7 @@ describe('Settings → sticker pack editor', () => {
       { title: 'Renamed', initialTitle: 'Mine', saved: OWN_PACK.stickers },
     );
     press('Save');
-    await settle();
+    await flushTasks(10);
     expect(patch).toHaveBeenCalledWith('pack-own', { title: 'Renamed', visibility: 'private' });
     expect(backCalls).toBe(1);
   });
@@ -338,7 +331,7 @@ describe('Settings → sticker pack editor', () => {
       { title: '   ', initialTitle: 'Mine', saved: OWN_PACK.stickers },
     );
     press('Save');
-    await settle();
+    await flushTasks(10);
     expect(setterLog).toContain('Name the pack first.');
     expect(patch).not.toHaveBeenCalled();
   });
@@ -348,7 +341,7 @@ describe('Settings → sticker pack editor', () => {
     forcedApi = { createStickerPack: create };
     await renderEditor({}, { title: 'New' });
     press('Create pack');
-    await settle();
+    await flushTasks(10);
     expect(setterLog).toContain('Add at least one sticker first.');
     expect(create).not.toHaveBeenCalled();
   });
@@ -364,7 +357,7 @@ describe('Settings → sticker pack editor', () => {
       { title: 'Renamed', initialTitle: 'Mine', saved: OWN_PACK.stickers },
     );
     press('Save');
-    await settle();
+    await flushTasks(10);
     expect(setterLog).toContain(formErrorFor(new Error('boom')));
     expect(backCalls).toBe(0);
   });
@@ -374,7 +367,7 @@ describe('Settings → sticker pack editor', () => {
     forcedApi = { deleteStickerPack: remove };
     await renderEditor({ id: 'pack-own' }, { title: 'Mine', saved: OWN_PACK.stickers });
     dialogs.get('Delete this pack?')?.onConfirm();
-    await settle();
+    await flushTasks(10);
     expect(remove).toHaveBeenCalledWith('pack-own');
     expect(backCalls).toBe(1);
   });
@@ -387,7 +380,7 @@ describe('Settings → sticker pack editor', () => {
     };
     await renderEditor({ id: 'pack-own' }, { title: 'Mine', saved: OWN_PACK.stickers });
     dialogs.get('Delete this pack?')?.onConfirm();
-    await settle();
+    await flushTasks(10);
     expect(setterLog).toContain('Could not delete the pack. Try again.');
     expect(backCalls).toBe(0);
   });

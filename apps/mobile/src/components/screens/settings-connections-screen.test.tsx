@@ -5,6 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import ConnectionsScreen from '@/app/settings/connections';
 import { ConnectionsApiError, type ProviderConnection } from '@/lib/connections-api';
+import { settle } from '@/test/wait';
 
 // `react-dom/client` ships no bundled types and mobile has no testing library,
 // so the screen renders through a typed require handle (the media-sheet and
@@ -220,14 +221,6 @@ afterEach(() => {
   }
 });
 
-async function settle(): Promise<void> {
-  for (let turn = 0; turn < 5; turn += 1) {
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-  }
-}
-
 async function mount(): Promise<HTMLDivElement> {
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -239,7 +232,7 @@ async function mount(): Promise<HTMLDivElement> {
   await act(async () => {
     root.render(createElement(ConnectionsScreen));
   });
-  await settle();
+  await settle(5);
   return container;
 }
 
@@ -259,7 +252,7 @@ async function click(element: HTMLElement): Promise<void> {
   act(() => {
     element.click();
   });
-  await settle();
+  await settle(5);
 }
 
 async function typeInto(input: HTMLElement, text: string): Promise<void> {
@@ -268,7 +261,7 @@ async function typeInto(input: HTMLElement, text: string): Promise<void> {
     setter?.call(input, text);
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
-  await settle();
+  await settle(5);
 }
 
 describe('Settings → Connections screen', () => {

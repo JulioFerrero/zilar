@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createRealChatStore, type RealStoreDeps } from './real-store';
 import { fakeApi, fakeAppState } from './test-support';
+import { flushTasks as flush } from '@/test/wait';
 
 function topicRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -168,11 +169,6 @@ function fakeTopics(): TopicsApi & { bodies: unknown[] } {
     setMembersCanCreateTopics: vi.fn(async () => true),
   };
   return api as unknown as TopicsApi & { bodies: unknown[] };
-}
-
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function setup(deps: Partial<RealStoreDeps> = {}) {

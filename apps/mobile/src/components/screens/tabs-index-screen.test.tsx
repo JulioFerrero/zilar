@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatSummary } from '@zilar/chat-core';
 
 import ChatsScreen from '@/app/(tabs)/index';
+import { settle } from '@/test/wait';
 
 // The Chats tab is rendered through `react-dom/client` (jsdom). The list rows,
 // the action sheet and the banners are small stand-ins; the store is a plain
@@ -262,12 +263,6 @@ function chat(id: string, title: string, extra: Partial<ChatSummary> = {}): Chat
 
 let root: { render(node: ReactNode): void; unmount(): void } | undefined;
 let container: HTMLDivElement | undefined;
-
-async function settle(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-}
 
 async function mount(): Promise<void> {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

@@ -7,6 +7,7 @@ import type { PickResult, PickedFile } from '@/lib/attachment-ports';
 import type { GifItem } from '@/lib/gifs';
 import type { RecentStickerEntry, StickerChoice, StickerPack } from '@/lib/stickers';
 import { Composer } from './composer';
+import { waitForAct as waitFor } from '@/test/wait';
 
 // The mobile app has no React Native testing library. The primitives are
 // mocked with small DOM components and the two sheets are replaced by stubs
@@ -308,20 +309,6 @@ function type(container: Element, value: string): void {
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
 }
-
-const waitFor = async (check: () => void): Promise<void> => {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    try {
-      check();
-      return;
-    } catch {
-      await act(async () => {
-        await new Promise<void>((resolve) => setTimeout(resolve, 5));
-      });
-    }
-  }
-  check();
-};
 
 describe('Composer text', () => {
   it('shows the placeholder with the title and no send button until there is text', () => {

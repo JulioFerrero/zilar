@@ -1,15 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { RoutinesSection } from './RoutinesSection';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 type Route = () => Response | Promise<Response>;
-
-function jsonResponse(status: number, body: unknown): Response {
-  if (status === 204) {
-    return new Response(null, { status });
-  }
-  return new Response(JSON.stringify(body), { status });
-}
 
 function errorResponse(status: number, code: string, message: string): Response {
   return jsonResponse(status, { error: { code, message } });

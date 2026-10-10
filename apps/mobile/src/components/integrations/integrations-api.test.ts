@@ -6,13 +6,7 @@ import {
   createIntegrationsApi,
   IntegrationsApiError,
 } from '../../lib/integrations-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/wait';
 
 function bodyOf(call: unknown[]): unknown {
   const init = call[1] as RequestInit | undefined;

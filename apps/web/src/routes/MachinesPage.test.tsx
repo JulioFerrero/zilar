@@ -5,11 +5,7 @@ import { AuthProvider, type AuthState } from '@/auth/AuthProvider';
 import { createChatStore } from '@/store/store';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { MachinesPage } from '@/routes/MachinesPage';
-
-function jsonResponse(status: number, body: unknown): Response {
-  // A real `Response`: the derived contract client reads headers and bytes.
-  return new Response(status === 204 ? null : JSON.stringify(body), { status });
-}
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const auth: AuthState = {
   status: 'authenticated',

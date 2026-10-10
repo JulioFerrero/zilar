@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ChatApi } from '../../lib/chat-api';
 import { createRealChatStore } from '../real-store';
 import { fakeApi } from '../test-support';
+import { flushTasks as flush } from '@/test/wait';
 
 const ANA = 'ana@zilar.test';
 
@@ -30,8 +31,6 @@ function core(sendMessage: XmppCore['sendMessage']): XmppCore {
     on: () => () => {},
   } as unknown as XmppCore;
 }
-
-const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 async function started(sendMessage: XmppCore['sendMessage']) {
   const store = createRealChatStore({

@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AddMachineDialog } from './AddMachineDialog';
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status });
-}
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 function createFetch(responses: Array<{ match: RegExp; respond: () => Response }>) {
   return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {

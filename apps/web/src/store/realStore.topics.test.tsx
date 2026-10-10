@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Schema } from 'effect';
 import type { XmppCoreOptions } from '@zilar/xmpp-core';
 import { fakeXmpp as baseFakeXmpp } from '@/test/storeHarness';
+import { flushTasks as flush } from '@/test/wait';
 import {
   TOPIC_REFRESH_INTERVAL_MS,
   createRealChatStore,
@@ -162,10 +163,14 @@ function topicApi(overrides: Partial<ApiClient> = {}): ApiClient {
   };
 }
 
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
-}
+// The store's refresh and poll timers run on the fake clock.
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 async function setup(overrides: Partial<ApiClient> = {}) {
   const api = topicApi(overrides);
@@ -269,7 +274,7 @@ describe('topics store mapping (T-0111)', () => {
       }),
     ]);
     store.getState().refreshChats();
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await vi.advanceTimersByTimeAsync(600);
     await flush();
     const ids = store.getState().chats.map((chat) => chat.id);
     expect(ids).toContain('new-topic@rooms.zilar.test');
@@ -286,7 +291,7 @@ describe('topics store mapping (T-0111)', () => {
       groupEntry({ topics: [topic()] }),
     ]);
     store.getState().refreshChats();
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await vi.advanceTimersByTimeAsync(600);
     await flush();
     expect(store.getState().activeChatId).toBe('team@rooms.zilar.test');
     expect(store.getState().topicNotice?.chatId).toBe('team@rooms.zilar.test');
@@ -333,7 +338,7 @@ describe('topics store mapping (T-0111)', () => {
     // The open chat is stranded on a missing row; the quiet mark (set by
     // the self-archive) is consumed by the very next refresh.
     store.getState().refreshChats();
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await vi.advanceTimersByTimeAsync(600);
     await flush();
     expect(store.getState().topicNotice).toBeUndefined();
   });
@@ -521,7 +526,7 @@ describe('topics store mapping (T-0111)', () => {
     // must be dropped by the hop to General.
     store.getState().openChat(generalId);
     store.getState().refreshChats();
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await vi.advanceTimersByTimeAsync(600);
     await flush();
     // The bug topic is back on the server; open it and lose it genuinely.
     store.getState().openChat(bugId);
@@ -529,7 +534,7 @@ describe('topics store mapping (T-0111)', () => {
       groupEntry({ topics: [topic()] }),
     ]);
     store.getState().refreshChats();
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await vi.advanceTimersByTimeAsync(600);
     await flush();
     expect(store.getState().activeChatId).toBe(generalId);
     expect(store.getState().topicNotice?.message).toBe('This topic is no longer available.');
@@ -552,7 +557,7 @@ describe('topics store mapping (T-0111)', () => {
     store.getState().openChat(bugId);
     await store.getState().patchTopic(bugId, { archived: true });
     store.getState().refreshChats();
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await vi.advanceTimersByTimeAsync(600);
     await flush();
     expect(store.getState().activeChatId).toBeUndefined();
   });
@@ -571,19 +576,19 @@ describe('topics store mapping (T-0111)', () => {
     store.getState().openChat(bugId);
     await store.getState().patchTopic(bugId, { archived: true });
     store.getState().refreshChats();
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await vi.advanceTimersByTimeAsync(600);
     await flush();
     // Re-open the bug topic (list has it again), then lose it genuinely.
     (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([groupEntry()]);
     store.getState().refreshChats();
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await vi.advanceTimersByTimeAsync(600);
     await flush();
     store.getState().openChat(bugId);
     (apiMock.getChats as ReturnType<typeof vi.fn>).mockResolvedValue([
       groupEntry({ topics: [topic()] }),
     ]);
     store.getState().refreshChats();
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    await vi.advanceTimersByTimeAsync(600);
     await flush();
     expect(store.getState().activeChatId).toBe('team@rooms.zilar.test');
     expect(store.getState().topicNotice?.message).toBe('This topic is no longer available.');

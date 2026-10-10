@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { BlockedPerson } from '@/lib/contacts-api';
+import { flushTasks as flush } from '@/test/wait';
 
 // Settings → Blocked people. The screen body is the default export wrapped in
 // `RequireAuth`. `renderToStaticMarkup` never runs effects, so the body state
@@ -161,8 +162,6 @@ async function renderScreen(input: {
 }
 
 // Lets the press handler's promise chain and any Effect run finish.
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
 describe('BlockedScreen', () => {
   it('shows loading while the list loads', async () => {
     const html = await renderScreen({ status: 'loading' });

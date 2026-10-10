@@ -3,10 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ChatFolder } from '@zilar/chat-core';
 
 import { createChatFoldersApi, parseChatFolder, type ChatFoldersApi } from './chat-folders-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status });
-}
+import { jsonResponse } from '@/test/wait';
 
 const FOLDER: ChatFolder = {
   id: 'f-personal',

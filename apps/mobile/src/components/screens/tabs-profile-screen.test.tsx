@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ProfileTabScreen from '@/app/(tabs)/profile';
 import { ProfileApiError, type MyProfile } from '@/lib/profile-api';
+import { settle } from '@/test/wait';
 
 // The Profile tab is rendered through `react-dom/client` (jsdom). The profile
 // card is a stand-in that shows its props and exposes its handlers as
@@ -161,12 +162,6 @@ state.view.mockImplementation((raw: unknown) => {
 
 let root: { render(node: ReactNode): void; unmount(): void } | undefined;
 let container: HTMLDivElement | undefined;
-
-async function settle(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-}
 
 async function mount(): Promise<void> {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

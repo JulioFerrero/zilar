@@ -7,13 +7,7 @@ import {
   joinFailureMessage,
   resolveGroupChat,
 } from './invite-links-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/wait';
 
 function apiFor(fetchImpl: (url: string, init?: RequestInit) => Promise<Response>) {
   return createInviteLinksApi(

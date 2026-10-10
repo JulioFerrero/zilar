@@ -14,7 +14,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0902](T-0902-store-core-t1-rows.md) | Store core T1 pilot: client-core/store subpath, pure row helpers | in-progress | sonnet-5.5 | T-0896, T-0900 | wave 6, phase 4.3 |
 | [T-0897](T-0897-contract-tidy.md) | api-contract tidy: one middleware file, one schema-error layer, handleRaw payloads, no duplicate groups | in-progress | sonnet-5.5 | | wave 6 |
 | [T-0898](T-0898-source-pinning-tests.md) | Mobile source-pinning tests become render tests or a lint rule (5.6) | in-progress | sonnet-5.5 | | wave 6 |
-| [T-0899](T-0899-test-wait-helpers.md) | One flush/waitFor/jsonResponse per package, fake timers, one-tick guard (5.5) | in-progress | sonnet-5.5 | | wave 6 |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
@@ -933,3 +932,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0895](T-0895-contract-chain-d-media.md) | api-contract chain D: move the stickers, gifs, machines, integrations, push, backgrounds, voice, media, auth g | 2026-10-10 |
 | [T-0896](T-0896-store-core-design.md) | Store core design: docs/STORE_CORE_PLAN.md, 10-task split, lead decisions Q1-Q4 | 2026-10-10 |
 | [T-0900](T-0900-deps-catalog.md) | Dependency alignment: effect ^4.0.2 everywhere and a pnpm catalog for the repeated packages (simplify plan 6.5 | 2026-10-10 |
+| [T-0899](T-0899-test-wait-helpers.md) | One flush/waitFor/jsonResponse per package, real sleeps replaced with fake timers, and a guard against one-tic | 2026-10-10 |

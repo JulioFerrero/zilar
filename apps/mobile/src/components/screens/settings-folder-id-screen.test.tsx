@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { ChatFolder } from '@zilar/chat-core';
 import { ChatFoldersApiError } from '@/lib/chat-folders-api';
+import { flushTasks as flush } from '@/test/wait';
 
 // Settings → Chat folders → editor. The folder comes from the chat store (the
 // selector is stubbed) and the route id from `useLocalSearchParams`. The form's
@@ -185,8 +186,6 @@ async function renderScreen(input: {
 }
 
 // Lets the press handler's promise chain and any Effect run finish.
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
 describe('FolderEditorScreen', () => {
   it('shows loading while an existing folder is not synced yet', async () => {
     const html = await renderScreen({ id: 'f1', folders: [], foldersLoaded: false });

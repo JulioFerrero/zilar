@@ -1,13 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createInvitesApi, InvitesApiError } from './invites-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/wait';
 
 const INVITE = {
   code: 'abc123',

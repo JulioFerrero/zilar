@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { fakeApi, fakeXmpp as baseFakeXmpp } from '@/test/storeHarness';
+import { flushTasks as flush } from '@/test/wait';
 import {
   createRealChatStore,
   type ApiClient,
@@ -55,10 +56,6 @@ function source(overrides: Partial<UiMessage> & { chatId: string }): UiMessage {
     status: 'read',
   };
   return { ...base, ...overrides };
-}
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 // Two DMs and a group to forward into, so a target never equals the source.

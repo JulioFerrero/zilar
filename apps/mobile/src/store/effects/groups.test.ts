@@ -4,8 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ChatApi } from '../../lib/chat-api';
 import { createRealChatStore } from '../real-store';
 import { fakeApi } from '../test-support';
-
-const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+import { flushTasks as flush } from '@/test/wait';
 
 function groupApi(getGroup: ChatApi['getGroup']): ChatApi {
   return fakeApi({ getGroup }) as unknown as ChatApi;

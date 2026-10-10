@@ -5,6 +5,7 @@ import type { ChatEntry, GroupMember } from '../lib/chat-api';
 import type { GroupsApi } from '../lib/groups-api';
 import { createRealChatStore, type RealStoreDeps } from './real-store';
 import { fakeApi, fakeAppState } from './test-support';
+import { flushTasks as flush } from '@/test/wait';
 
 function newGroupApi() {
   return fakeApi({
@@ -32,11 +33,6 @@ function fakeGroups(): GroupsApi & {
     changeGroupMemberRole: vi.fn(async () => {}),
     removeGroupMember: vi.fn(async () => {}),
   };
-}
-
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function setup(deps: Partial<RealStoreDeps> = {}) {

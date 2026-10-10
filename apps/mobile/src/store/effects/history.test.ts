@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatApi } from '../../lib/chat-api';
 import { createRealChatStore, MESSAGE_JUMP_WAIT_MS } from '../real-store';
 import { fakeApi } from '../test-support';
+import { flushTasks } from '@/test/wait';
 
 const ANA = 'ana@zilar.test';
 
@@ -67,14 +68,14 @@ describe('history on the effect fibers', () => {
     const core = hangingCore();
     const store = createRealChatStore({ api: anaApi(), createXmpp: () => core });
     store.getState().start();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushTasks(1);
     store.getState().openChat(ANA);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushTasks(1);
     expect(store.getState().historyLoad[ANA]).toBe('loading');
 
     store.getState().stop();
     store.getState().start();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushTasks(1);
     // The new session can load the chat again: the stale load did not keep
     // the in-flight marker.
     store.getState().retryHistory(ANA);

@@ -1,7 +1,7 @@
 ---
 id: T-0899
 title: "One flush/waitFor/jsonResponse per package, real sleeps replaced with fake timers, and a guard against one-tick waits (simplify plan 5.5, F-F8)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0899-test-wait-helpers
 model: auto
@@ -64,4 +64,52 @@ Run the web and mobile suites 3 times at the end, because flakiness is the targe
 
 ## Report (written by the worker when done)
 
+### What I did (one commit per package, test files only, no production code)
+- Web `e01e8d58`: new `apps/web/src/test/wait.ts` (`flushMicrotasks`, `flushTasks`, `waitFor`, `jsonResponse`, `jsonResponseAt`) and the guard `apps/web/src/test/noRawTimeoutWaits.test.ts` (Vite glob, because the web tsconfig has no `readdir`).
+- Mobile `0c9d1833`: new `apps/mobile/src/test/wait.ts` (adds `settle` = `flushTasks` inside `act`, and `waitForAct`) and the guard `apps/mobile/src/test/noRawTimeoutWaits.test.ts` (`node:fs` walk). The nine T-0898 files were not touched (none of them had a local copy).
+- Server `f488f7da`: new `apps/server/src/test-support/wait.ts` and `apps/server/src/test-support/noRawTimeoutWaits.test.ts`. The directory sits next to `test-support.ts`; `../test-support` still resolves to the file.
+
+### Copy counts (local definitions in test files, before -> after)
+- Web: `flush` 4 -> 0, `jsonResponse` 40 -> 7.
+- Mobile: `flush` 25, `settle` 19, `waitFor` 12, `flushUntil` 3, `sleep` 1 (60) -> 8 left; `jsonResponse` 37 -> 4.
+- Server: `waitFor` 3 -> 0, `jsonResponse` 6 -> 0.
+
+### Real sleeps and one-tick waits
+- `realStore.topics.test.tsx`: all ten 600 ms waits now `vi.advanceTimersByTimeAsync(600)`, with fake timers in `beforeEach`/`afterEach`.
+- `realStore.test.tsx`: the 600 ms `waitForRefresh` is fake-timer based (the three tests that use it call `vi.useFakeTimers()` first); `waitForState` (10 ms real polling) became the shared `waitFor`.
+- `ChatList.test.tsx`: the two connecting/offline bar tests advance 1500 ms of fake time instead of waiting up to 2.5 s each.
+- `TypingIndicator.test.tsx`: already used fake timers, nothing to change. `Composer.voice.test.tsx` has no 500 ms sleeps any more (fixed earlier), left alone.
+- `flushUntil` (3 mobile files) became `waitFor`: it now throws on timeout instead of giving up silently after 50 rounds.
+- Under fake timers `flushTasks` and `waitFor` advance the fake clock, so they work in both modes.
+
+### Web suite wall time (one `vitest run --reporter=dot` each, noisy shared machine)
+- Before any change: 33.06 s (1918 tests). After: 17.34 s on the first run after the web commit; later 3 runs 41.4 s / 14.0 s / 12.2 s (first one hit a busy machine). The saving from the sleeps themselves is the ~10 x 0.6 s of topics plus ~3 s of ChatList; the rest is machine load.
+
+### The guard
+Each package has `noRawTimeoutWaits.test.ts`: it fails on `setTimeout(resolve|res|r|done|ok, 0)` in any test file except that package's `wait.ts` (and itself). No oxlint rule used (the repo config has no `no-restricted-syntax`).
+
+### Checks run (real results)
+- Web: `vitest run --reporter=dot` 3 runs: 186 files / 1920 tests passed each (baseline 1918 + 2 guard tests). `pnpm --filter @zilar/web typecheck` clean.
+- Mobile: `vitest run --reporter=dot` 3 runs: 292 files passed, 2684 passed, 2 skipped each (15.8 s, 15.8 s, 16.0 s). `typecheck` clean.
+- Server (changed files + guard): `vitest run ... src/test-support src/agents src/ai/litellm-client.test.ts src/drafts src/machines src/voice-transcription src/xmpp/admin-client.test.ts`: 39 files passed, 604 passed, 1 skipped (one run). `typecheck` clean.
+- `prettier --check` and `oxlint` on all changed files: clean. I did not run `pnpm gate` (wave mode).
+
+### Deviations and things left alone
+- Signatures: the spec says `jsonResponse(body, init)`. Web/mobile/server export that (init = status number or `ResponseInit`; 204/205 get a null body), plus `jsonResponseAt(status, body)` because 37 web, 3 mobile and 1 server test files call it as `(status, body)`; those import it as `jsonResponseAt as jsonResponse` so no call site changed. The mobile and server `jsonResponse` always set `content-type: application/json` (most local copies did; four mobile copies did not, which is harmless).
+- Server `waitFor(check, options | timeoutMs, label?)` accepts the positional form the machine hub tests use, to avoid editing about a dozen multi-line calls.
+- Left alone (not provable or a different semantic): web `AiMemoryDialog`, `AiMemorySection`, `usePendingApprovalCount`, `useApprovalPolling`, `voice` (set JSON headers or custom init), `VoiceMessage`, `useVoiceTranscription`; mobile fake-object `jsonResponse` in `media-api`, `pins-api.effect`, `stickers-api` and header-taking `auth.test`; mobile 10 ms real sleeps/settles that wait for real timers (`NameForm`, `settings-machines-screen`, `settings-profile-screen`, `group-id-screen` `settle`, `use-people-search` `settle(ms)`, `ais-id-screen` `settle`), and `store/integration.test.ts` (infra-gated, real sleeps). Web `ExplorePage` (450 ms), `MessageSearch` (500 ms), `ChatBackgroundDialog` (20 ms), `MachinesPage` (50 ms), `reload` (10 ms) are real sleeps not on the spec list; left for a follow-up. Web `PeopleSearchResult` `flushTimers` and `ApprovalsPage` `flushFakeTimers` are fake-timer helpers, kept.
+- The "one tick is enough" `await flush()` call sites were not rewritten to `findBy*`; the helper now flushes consistently, and the guard stops new raw ticks.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.**
+- **Helpers:** one `wait.ts` per package (web, mobile, server), with `flushMicrotasks`, `waitFor` and `jsonResponse`/`jsonResponseAt`.
+- **Copies removed:** local copies drop from 60 to 8 on mobile, and from 40 to 7 `jsonResponse` copies on web.
+- **Sleeps:** fake timers replace the listed real sleeps.
+- **Guard:** a `noRawTimeoutWaits` guard in each package.
+- **Size and runs:** the change is test-only, net −917 lines, and the suites passed 3 runs.
+- **Deviations accepted:**
+  - `jsonResponseAt` keeps call sites unchanged;
+  - `flushUntil` becoming `waitFor` now fails loudly on timeout.
+- **Follow-ups:** the listed 10 ms settles and the extra real sleeps in `ExplorePage`, `MessageSearch` and three other files.
+- **Check:** the combined wave 6 check passes.

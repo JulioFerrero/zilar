@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { AiMemoryApiError, createAiMemoryApi } from './ai-memory-api';
+import { jsonResponse } from '@/test/wait';
 
 const CHAT = 'ai-a-1@zilar.test';
 const AI = 'a-1';
@@ -12,13 +13,6 @@ const MEMORY = {
   lines: ['#0-15 Summary: the team agreed on the launch plan and pricing.'],
   canChange: true,
 };
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
 
 describe('createAiMemoryApi', () => {
   it('GETs the memory with chat and ai and the bearer header', async () => {

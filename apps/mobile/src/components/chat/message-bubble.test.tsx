@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UiMessage } from '@zilar/chat-core';
 
 import { MessageBubble } from './message-bubble';
+import { flushTasks } from '@/test/wait';
 
 // The mobile app has no React Native testing library, so the bubble is
 // rendered with `react-dom/server`. The render records the props of the
@@ -206,7 +207,7 @@ describe('MessageBubble', () => {
     seen.impactAsync.mockRejectedValueOnce(new Error('no haptics'));
     render({ message: TEXT_MESSAGE });
     expect(() => seen.longPresses[0]?.()).not.toThrow();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushTasks(1);
     expect(seen.impactAsync).toHaveBeenCalledWith('light');
   });
 });

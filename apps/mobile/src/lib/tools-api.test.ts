@@ -2,13 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createMockToolsApi } from '@/mock/tools';
 import { ToolsApiError, createToolsApi, type Routine, type ToolListItem } from './tools-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/wait';
 
 const TOOL: ToolListItem = {
   id: 'tool-1',

@@ -4,6 +4,7 @@ import { act, createElement, type ReactNode } from 'react';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ChannelScreen } from './channel-screen';
+import { settle } from '@/test/wait';
 
 // Mounted with react-dom/client under jsdom (the use-action.test pattern): the
 // screen's effects and clicks run for real, and only the native edges and the
@@ -211,12 +212,6 @@ function mountScreen(): HTMLElement {
 function unmountScreen(): void {
   unmountLatest();
 }
-
-// Lets the pending store promises settle and their state updates land.
-const settle = () =>
-  act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
 
 async function click(container: HTMLElement, label: string): Promise<void> {
   const control = container.querySelector<HTMLElement>(`[aria-label="${label}"]`);

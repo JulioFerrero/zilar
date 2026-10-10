@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { ApprovalRule, PublicApproval } from '@/lib/approvals-api';
+import { flushTasks as flush } from '@/test/wait';
 
 // Settings → Approvals. The body keeps its own state, forced through the
 // `useState` mock in call order: pending rows, the load status, the load error,
@@ -212,8 +213,6 @@ async function renderScreen(input: {
 }
 
 // Lets the press handler's promise chain and any Effect run finish.
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
 describe('ApprovalsScreen', () => {
   it('shows loading while the list loads, without the rules section', async () => {
     const html = await renderScreen({ status: 'loading' });

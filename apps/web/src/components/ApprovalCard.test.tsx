@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ApprovalRequestSchema, decodeOrThrow } from '@zilar/protocol';
 import { ApprovalCard } from './ApprovalCard';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const request = decodeOrThrow(ApprovalRequestSchema)({
   id: 'apr-42',
@@ -59,13 +60,6 @@ function approvalFixture({
     alwaysEligible,
     approverNames,
   };
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  if (status === 204) {
-    return new Response(null, { status });
-  }
-  return new Response(JSON.stringify(body), { status });
 }
 
 function errorResponse(status: number, code: string, message: string): Response {

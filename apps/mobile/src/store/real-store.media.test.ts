@@ -5,6 +5,7 @@ import type { ChatEntry } from '../lib/chat-api';
 import type { MediaApi, MediaItem } from '../lib/media-api';
 import { createRealChatStore, type RealStoreDeps } from './real-store';
 import { fakeApi, fakeAppState } from './test-support';
+import { flushTasks as flush } from '@/test/wait';
 
 function dmEntry(chatJid: string, title: string): ChatEntry {
   return { kind: 'dm', chatJid, title, userId: `u-${chatJid}` };
@@ -38,11 +39,6 @@ function mediaRow(overrides: Partial<MediaItem> = {}): MediaItem {
 
 function fakeMedia(items: MediaItem[], next: string | null = null): MediaApi {
   return { listChatMedia: vi.fn(async () => ({ items, next })) } as unknown as MediaApi;
-}
-
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function setup(media: MediaApi, service = 'ws://files.zilar.test', domain = 'zilar.test') {

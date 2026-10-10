@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AisScreen from '@/app/(tabs)/ais';
 import { AisApiError, type PublicAi } from '@/lib/ais-api';
+import { settle } from '@/test/wait';
 
 // The AIs tab is rendered through `react-dom/client` (jsdom). The AI api is a
 // set of spies and the list, sheet and dialog are small stand-ins that expose
@@ -157,12 +158,6 @@ vi.mock('@/lib/depth', () => ({
 
 let root: { render(node: ReactNode): void; unmount(): void } | undefined;
 let container: HTMLDivElement | undefined;
-
-async function settle(): Promise<void> {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-}
 
 async function mount(): Promise<void> {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;

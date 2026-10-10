@@ -8,21 +8,12 @@ import {
   type TestApp,
   type TestContext,
 } from '../test-support';
+import { waitFor } from '../test-support/wait';
 import { createDraftHub, type DraftHub } from './hub';
 import { createDraftsApi, DRAFT_SSE_HEARTBEAT_MS } from './api';
 
 const CHAT_JID = 'ai-abc@zilar.localhost';
 const decoder = new TextDecoder();
-
-async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!condition()) {
-    if (Date.now() > deadline) {
-      throw new Error('timed out waiting for the condition');
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-}
 
 interface SseEvent {
   event: string;

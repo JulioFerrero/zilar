@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fakeApi, fakeXmpp } from '@/test/storeHarness';
+import { flushTasks as flush } from '@/test/wait';
 import type { MediaPage } from '@/lib/api';
 import { createRealChatStore, type ApiClient, type StorageLike } from './realStore';
 
@@ -22,11 +23,6 @@ function memoryStorage(): StorageLike {
       data.delete(key);
     },
   };
-}
-
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 async function setup(overrides: Partial<ApiClient> = {}) {

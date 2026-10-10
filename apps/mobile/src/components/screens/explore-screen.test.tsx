@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import { DirectoryApiError, type DirectoryEntry } from '@/lib/directory-api';
 import ExploreScreen from '@/app/explore';
+import { waitForAct as waitFor } from '@/test/wait';
 
 // The Explore route is rendered with its native pieces mocked as DOM
 // elements, so the test drives the debounced search, paging and joins the way
@@ -193,23 +194,6 @@ const mount = async (): Promise<void> => {
   const root = createRoot(container);
   unmount = () => act(() => root.unmount());
   await act(async () => root.render(createElement(ExploreScreen)));
-};
-
-const waitFor = async (check: () => void, timeout = 3000): Promise<void> => {
-  const started = Date.now();
-  for (;;) {
-    try {
-      check();
-      return;
-    } catch (error) {
-      if (Date.now() - started > timeout) {
-        throw error;
-      }
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      });
-    }
-  }
 };
 
 const labelled = (label: string): HTMLElement => {

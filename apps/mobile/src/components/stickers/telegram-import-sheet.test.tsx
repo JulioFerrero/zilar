@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { StickersApiError, type TelegramImportResult } from '@/lib/stickers-api';
+import { flushTasks as flush } from '@/test/wait';
 
 // The sheet is rendered with `renderToStaticMarkup` (effects never run), so
 // each case forces the sheet state through the `useState` mock, in hook
@@ -213,13 +214,6 @@ function press(label: string): void {
   for (const handler of handlers) {
     handler();
   }
-}
-
-/** Flushes the sheet's promise chain so `observedError` settles. */
-async function flush(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe('TelegramImportSheet', () => {

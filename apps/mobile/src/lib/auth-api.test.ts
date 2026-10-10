@@ -1,13 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { AuthApiError, checkInvite, fetchMe, updateMe } from './auth-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/wait';
 
 const ME = { id: 'u1', email: 'you@example.com', name: 'Ada', jid: 'you@zilar.localhost' };
 

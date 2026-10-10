@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import type { ChatSummary } from '@/lib/types';
 import { ChannelComposerBar } from './channel-composer-bar';
+import { waitForAct as waitFor } from '@/test/wait';
 
 // The mobile app has no React Native testing library: the primitives are
 // mocked with small DOM components and the composer with a marker (the
@@ -115,20 +116,6 @@ function button(container: Element, label: string): HTMLButtonElement {
   }
   return element;
 }
-
-const waitFor = async (check: () => void): Promise<void> => {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    try {
-      check();
-      return;
-    } catch {
-      await act(async () => {
-        await new Promise<void>((resolve) => setTimeout(resolve, 5));
-      });
-    }
-  }
-  check();
-};
 
 describe('ChannelComposerBar', () => {
   it('shows the composer to owners and admins', () => {

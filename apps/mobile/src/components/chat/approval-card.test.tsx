@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApprovalsApiError, type ApprovalsApi, type PublicApproval } from '@/lib/approvals-api';
 
 import { ApprovalCard } from './approval-card';
+import { settle } from '@/test/wait';
 
 // The card reads its API through `useApprovalsApi`; each test sets the fake.
 const { apiHolder } = vi.hoisted(() => ({ apiHolder: { api: null as unknown } }));
@@ -136,14 +137,6 @@ function mount(element: ReactElement): void {
 }
 
 // Lets promises and Effect fibers settle: several macrotasks, inside act.
-async function settle(): Promise<void> {
-  await act(async () => {
-    for (let index = 0; index < 10; index += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-  });
-}
-
 function button(label: string): HTMLButtonElement | null {
   return container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
 }
@@ -159,7 +152,7 @@ function click(label: string): void {
 async function renderCard(api: ApprovalsApi): Promise<void> {
   apiHolder.api = api;
   mount(createElement(ApprovalCard, { data: REQUEST }));
-  await settle();
+  await settle(10);
 }
 
 beforeEach(() => {
@@ -185,7 +178,7 @@ describe('ApprovalCard', () => {
   it('shows a placeholder and no buttons until the first answer arrives', async () => {
     apiHolder.api = fakeApi({ getApproval: () => new Promise<PublicApproval>(() => {}) });
     mount(createElement(ApprovalCard, { data: REQUEST }));
-    await settle();
+    await settle(10);
 
     expect(button('Approve')).toBeNull();
     expect(container.textContent).not.toContain('Waiting for a decision');
@@ -197,7 +190,7 @@ describe('ApprovalCard', () => {
     await renderCard(fakeApi({ getApproval: async () => PENDING, decideApproval }));
 
     click('Approve');
-    await settle();
+    await settle(10);
 
     expect(decideApproval).toHaveBeenCalledWith('apr-1', 'approve_once');
     expect(container.textContent).toContain('Approved');
@@ -210,7 +203,7 @@ describe('ApprovalCard', () => {
     await renderCard(fakeApi({ getApproval: async () => PENDING, decideApproval }));
 
     click('Deny');
-    await settle();
+    await settle(10);
 
     expect(container.textContent).toContain('Denying');
     expect(button('Deny')?.disabled).toBe(true);
@@ -224,7 +217,7 @@ describe('ApprovalCard', () => {
     await renderCard(fakeApi({ getApproval: async () => PENDING, decideApproval }));
 
     click('Deny');
-    await settle();
+    await settle(10);
 
     expect(container.textContent).toContain('Could not save the decision');
     expect(button('Deny')?.disabled).toBe(false);
@@ -242,7 +235,7 @@ describe('ApprovalCard', () => {
     await renderCard(fakeApi({ getApproval, decideApproval }));
 
     click('Approve');
-    await settle();
+    await settle(10);
 
     expect(getApproval).toHaveBeenCalledTimes(2);
     expect(container.textContent).toContain('Denied');
@@ -260,7 +253,7 @@ describe('ApprovalCard', () => {
     expect(button('Approve')).toBeNull();
 
     click('Retry');
-    await settle();
+    await settle(10);
 
     expect(getApproval).toHaveBeenCalledTimes(2);
     expect(container.textContent).not.toContain('Could not load the decision state');

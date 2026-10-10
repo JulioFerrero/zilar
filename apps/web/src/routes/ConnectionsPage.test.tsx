@@ -3,11 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { renderApp } from '@/test/renderApp';
 import { ConnectionsPage } from './ConnectionsPage';
-
-function jsonResponse(status: number, body: unknown): Response {
-  // A real `Response`: the derived contract client reads headers and bytes.
-  return new Response(status === 204 ? null : JSON.stringify(body), { status });
-}
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const openaiConnection = {
   id: 'c-1',

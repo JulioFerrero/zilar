@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { ChatFolder } from '@zilar/chat-core';
+import { flushTasks as flush } from '@/test/wait';
 
 // Settings → Chat folders. The list comes from the chat store, so the store
 // selector is stubbed. The body's only own state is the error text, forced
@@ -180,8 +181,6 @@ async function renderScreen(input: { folders: ChatFolder[]; error?: string }): P
 }
 
 // Lets the press handler's promise chain and any Effect run finish.
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
 describe('FoldersSettingsScreen', () => {
   it('shows the empty state when there are no folders', async () => {
     const html = await renderScreen({ folders: [] });

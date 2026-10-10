@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { fakeApi, fakeXmpp, type FakeXmpp } from '@/test/storeHarness';
+import { flushTasks as flush, waitFor as pollUntil } from '@/test/wait';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { MessageBubble } from '@/components/MessageBubble';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
@@ -133,14 +134,14 @@ function retractionMessage(overrides: {
   return result;
 }
 
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
-}
+afterEach(() => {
+  vi.useRealTimers();
+});
 
-// The store debounces chat-list refreshes by 500 ms.
+// The store debounces chat-list refreshes by 500 ms. The test must call
+// `vi.useFakeTimers()` before it triggers the refresh.
 async function waitForRefresh(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  await vi.advanceTimersByTimeAsync(600);
   await flush();
 }
 
@@ -1419,6 +1420,7 @@ describe('createRealChatStore', () => {
       calls += 1;
       return calls === 1 ? base : [...base, invited];
     });
+    vi.useFakeTimers();
     const { store, xmpp } = await setup({ getChats });
 
     xmpp.emit('invited', {
@@ -1448,6 +1450,7 @@ describe('createRealChatStore', () => {
       calls += 1;
       return calls === 1 ? base : added;
     });
+    vi.useFakeTimers();
     const { store, xmpp } = await setup({ getChats });
 
     xmpp.emit('roster', { jid: 'carla@zilar.test', subscription: 'both', name: 'Carla' });
@@ -1461,6 +1464,7 @@ describe('createRealChatStore', () => {
       { kind: 'dm' as const, chatJid: 'ana@zilar.test', title: 'Ana', userId: 'u-ana' },
     ];
     const getChats = vi.fn(async () => base);
+    vi.useFakeTimers();
     const { xmpp } = await setup({ getChats });
     getChats.mockClear();
 
@@ -2182,19 +2186,6 @@ describe('message edits and deletes (T-0061)', () => {
 });
 
 describe('loading states (T-0042)', () => {
-  async function waitForState(check: () => boolean, timeoutMs = 2000): Promise<void> {
-    const start = Date.now();
-    for (;;) {
-      if (check()) {
-        return;
-      }
-      if (Date.now() - start > timeoutMs) {
-        throw new Error('timed out waiting for store state');
-      }
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-  }
-
   function pageLoads(xmpp: FakeXmpp, chatJid: string): number {
     return vi
       .mocked(xmpp.core.loadHistory)
@@ -2239,7 +2230,7 @@ describe('loading states (T-0042)', () => {
     expect(store.getState().chatsState).toBe('loading');
 
     store.getState().start();
-    await waitForState(() => store.getState().chatsState === 'ready');
+    await pollUntil(() => store.getState().chatsState === 'ready');
 
     expect(store.getState().chats.map((chat) => chat.id)).toContain('ana@zilar.test');
   });
@@ -2256,10 +2247,10 @@ describe('loading states (T-0042)', () => {
     expect(store.getState().chatsState).toBe('loading');
 
     store.getState().start();
-    await waitForState(() => store.getState().chatsState === 'error');
+    await pollUntil(() => store.getState().chatsState === 'error');
 
     store.getState().retryChats();
-    await waitForState(() => store.getState().chatsState === 'ready');
+    await pollUntil(() => store.getState().chatsState === 'ready');
     expect(store.getState().chats.map((chat) => chat.id)).toEqual(['ana@zilar.test']);
   });
 
@@ -2268,7 +2259,7 @@ describe('loading states (T-0042)', () => {
 
     store.getState().openChat('ana@zilar.test');
     store.getState().start();
-    await waitForState(() => store.getState().messages('ana@zilar.test').length > 0);
+    await pollUntil(() => store.getState().messages('ana@zilar.test').length > 0);
 
     expect(
       store
@@ -2321,14 +2312,14 @@ describe('loading states (T-0042)', () => {
     );
 
     store.getState().start();
-    await waitForState(() => store.getState().chatsState === 'ready');
+    await pollUntil(() => store.getState().chatsState === 'ready');
     store.getState().openChat('ana@zilar.test');
     await flush();
     expect(pageLoads(xmpp, 'ana@zilar.test')).toBe(0);
     expect(store.getState().historyState['ana@zilar.test']).toBe('loading');
 
     finishConnect();
-    await waitForState(() => store.getState().historyState['ana@zilar.test'] === 'ready');
+    await pollUntil(() => store.getState().historyState['ana@zilar.test'] === 'ready');
     expect(pageLoads(xmpp, 'ana@zilar.test')).toBe(1);
   });
 
@@ -2345,12 +2336,12 @@ describe('loading states (T-0042)', () => {
 
     store.getState().openChat('team@rooms.zilar.test');
     store.getState().start();
-    await waitForState(() => store.getState().status === 'online');
+    await pollUntil(() => store.getState().status === 'online');
     await flush();
     expect(pageLoads(xmpp, 'team@rooms.zilar.test')).toBe(0);
 
     finishJoin();
-    await waitForState(() => store.getState().historyState['team@rooms.zilar.test'] === 'ready');
+    await pollUntil(() => store.getState().historyState['team@rooms.zilar.test'] === 'ready');
     expect(pageLoads(xmpp, 'team@rooms.zilar.test')).toBe(1);
   });
 
@@ -2360,7 +2351,7 @@ describe('loading states (T-0042)', () => {
     store.getState().openChat('ana@zilar.test');
     store.getState().openChat('team@rooms.zilar.test');
     store.getState().start();
-    await waitForState(() => store.getState().messages('team@rooms.zilar.test').length > 0);
+    await pollUntil(() => store.getState().messages('team@rooms.zilar.test').length > 0);
     await flush();
 
     expect(pageLoads(xmpp, 'team@rooms.zilar.test')).toBe(1);
@@ -2372,7 +2363,7 @@ describe('loading states (T-0042)', () => {
 
     store.getState().openChat('ana@zilar.test');
     store.getState().openChat('ana@zilar.test');
-    await waitForState(() => store.getState().messages('ana@zilar.test').length > 0);
+    await pollUntil(() => store.getState().messages('ana@zilar.test').length > 0);
     await flush();
 
     expect(pageLoads(xmpp, 'ana@zilar.test')).toBe(1);
@@ -2385,7 +2376,7 @@ describe('loading states (T-0042)', () => {
     expect(store.getState().historyState['ana@zilar.test']).toBe('loading');
 
     store.getState().start();
-    await waitForState(() => store.getState().historyState['ana@zilar.test'] === 'ready');
+    await pollUntil(() => store.getState().historyState['ana@zilar.test'] === 'ready');
   });
 
   it('marks per-chat history error when the page load fails', async () => {
@@ -2393,7 +2384,7 @@ describe('loading states (T-0042)', () => {
     vi.mocked(xmpp.core.loadHistory).mockRejectedValueOnce(new Error('mam failed'));
 
     store.getState().openChat('ana@zilar.test');
-    await waitForState(() => store.getState().historyState['ana@zilar.test'] === 'error');
+    await pollUntil(() => store.getState().historyState['ana@zilar.test'] === 'error');
   });
 
   it('clears the loading marker of a superseded pending chat', async () => {
@@ -2407,7 +2398,7 @@ describe('loading states (T-0042)', () => {
     expect(store.getState().historyState['team@rooms.zilar.test']).toBe('loading');
 
     store.getState().start();
-    await waitForState(() => store.getState().messages('team@rooms.zilar.test').length > 0);
+    await pollUntil(() => store.getState().messages('team@rooms.zilar.test').length > 0);
     expect(pageLoads(xmpp, 'team@rooms.zilar.test')).toBe(1);
     expect(pageLoads(xmpp, 'ana@zilar.test')).toBe(0);
   });

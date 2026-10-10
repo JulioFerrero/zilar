@@ -4,13 +4,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { silentVerificationWav, transcribeAudio, transcriptionEndpointFor } from './provider';
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponseAt as jsonResponse } from '../test-support/wait';
 
 describe('transcriptionEndpointFor', () => {
   it('appends the path without doubling slashes', () => {

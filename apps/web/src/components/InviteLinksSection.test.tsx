@@ -6,6 +6,7 @@ import type { GroupDetail } from '@/lib/api';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { createChatStore, type ChatStoreSeed } from '@/store/store';
 import { GroupPanel } from './GroupPanel';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const auth: AuthState = {
   status: 'authenticated',
@@ -36,13 +37,6 @@ function detail(overrides: Partial<GroupDetail> = {}): GroupDetail {
     ais: [],
     ...overrides,
   };
-}
-
-function jsonResponse(status: number, body: unknown): Response {
-  if (status === 204) {
-    return new Response(null, { status });
-  }
-  return new Response(JSON.stringify(body), { status });
 }
 
 function linkFixture(overrides: Record<string, unknown> = {}): Record<string, unknown> {

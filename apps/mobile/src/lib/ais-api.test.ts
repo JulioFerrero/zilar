@@ -1,13 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { AisApiError, buildCreateBody, createAisApi, type CreateAiInput } from './ais-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/wait';
 
 const createdAi = {
   id: 'a-1',

@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 
 import CreateAiScreen from '@/app/ais/new';
 import { AisApiError, type Connection } from '@/lib/ais-api';
+import { waitForAct as waitFor } from '@/test/wait';
 
 // The route is rendered for real in jsdom, so its effects, state and the
 // wizard steps all run. Only the native primitives, the picker components and
@@ -256,20 +257,6 @@ async function mount(): Promise<void> {
     mounted.render(createElement(CreateAiScreen));
   });
 }
-
-const waitFor = async (check: () => void): Promise<void> => {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    try {
-      check();
-      return;
-    } catch {
-      await act(async () => {
-        await new Promise<void>((resolve) => setTimeout(resolve, 5));
-      });
-    }
-  }
-  check();
-};
 
 const text = (): string => container.textContent ?? '';
 

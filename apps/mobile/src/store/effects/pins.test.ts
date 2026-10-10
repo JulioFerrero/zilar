@@ -5,10 +5,9 @@ import type { ChatApi } from '../../lib/chat-api';
 import type { PinsApi } from '../../lib/pins-api';
 import { createRealChatStore } from '../real-store';
 import { fakeApi } from '../test-support';
+import { flushTasks as flush } from '@/test/wait';
 
 const ANA = 'ana@zilar.test';
-const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
-
 function anaApi(): ChatApi {
   return fakeApi({
     getChats: vi.fn(async () => [

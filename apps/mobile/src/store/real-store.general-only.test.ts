@@ -11,6 +11,7 @@ import { parseTopic, type Topic } from '../lib/topics-api';
 
 import { createRealChatStore, type RealStoreDeps } from './real-store';
 import { fakeApiWithMembers, fakeAppState } from './test-support';
+import { flushTasks as flush } from '@/test/wait';
 
 function topicWire(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -78,11 +79,6 @@ function fakePins(): PinsApi {
       throw new Error('no pins here');
     }),
   } as unknown as PinsApi;
-}
-
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe('real store General-only group (T-0139)', () => {

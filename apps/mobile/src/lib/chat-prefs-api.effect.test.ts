@@ -1,13 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createChatPrefsApi, parseChatPref } from './chat-prefs-api';
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+import { jsonResponse } from '@/test/wait';
 
 describe('chat-prefs schema', () => {
   it('drops an unknown extra field', () => {

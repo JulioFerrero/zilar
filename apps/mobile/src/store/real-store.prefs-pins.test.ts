@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createRealChatStore, type RealStoreDeps } from './real-store';
 import { fakeApiWithMembers, fakeAppState } from './test-support';
+import { flushTasks as flush } from '@/test/wait';
 
 function dmEntry(chatJid: string, title: string): ChatEntry {
   return { kind: 'dm', chatJid, title, userId: `u-${chatJid}` };
@@ -143,11 +144,6 @@ function fakePins(rows: ReturnType<typeof pinRow>[] = []) {
     ),
     unpinMessage: vi.fn(async (id: string) => pinRow({ id })),
   } as unknown as PinsApi;
-}
-
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe('real store chat prefs (T-0135)', () => {

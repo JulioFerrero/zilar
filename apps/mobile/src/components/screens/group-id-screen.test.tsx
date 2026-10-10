@@ -6,6 +6,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import GroupTopicsScreen from '@/app/group/[id]';
 import type { GroupDetail } from '@/lib/chat-api';
 import type { ChatSummary } from '@/lib/types';
+import { waitForAct as waitFor } from '@/test/wait';
 
 // The route is rendered for real in jsdom, so its effects, state and actions
 // all run. The chat store, the directory API and the sheets are replaced by
@@ -435,20 +436,6 @@ async function mount(): Promise<void> {
     mounted.render(createElement(GroupTopicsScreen));
   });
 }
-
-const waitFor = async (check: () => void): Promise<void> => {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    try {
-      check();
-      return;
-    } catch {
-      await act(async () => {
-        await new Promise<void>((resolve) => setTimeout(resolve, 5));
-      });
-    }
-  }
-  check();
-};
 
 // Lets the pending promises of the last action finish, so the next click is
 // not dropped by a busy guard.

@@ -40,6 +40,7 @@ import {
 } from '@/lib/api';
 import { isMockApiEnabled } from '@/mock/gate';
 import { mockRequest, resetMockApi, setMockDelay } from './api';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const mockEnabled = vi.mocked(isMockApiEnabled);
 
@@ -48,10 +49,6 @@ const errorCodeSchema = Schema.Struct({ error: Schema.Struct({ code: Schema.Stri
 const errorCodeMessageSchema = Schema.Struct({
   error: Schema.Struct({ code: Schema.String, message: Schema.String }),
 });
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status });
-}
 
 beforeEach(() => {
   resetMockApi();

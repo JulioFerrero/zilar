@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { StickerItem, StickerPack } from '@/lib/stickers';
+import { flushTasks } from '@/test/wait';
 
 // Settings → Stickers (`app/settings/stickers.tsx`) as a screen. The body
 // calls `useState` fifteen times in a fixed order (tab, packs, favorites,
@@ -235,14 +236,6 @@ async function renderScreen(state: BodyState): Promise<string> {
 }
 
 // Lets the Effect fibers started by a press or a focus run to the end.
-async function settle(): Promise<void> {
-  for (let turn = 0; turn < 10; turn += 1) {
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 0);
-    });
-  }
-}
-
 function press(label: string): void {
   const handler = handlers.get(label);
   if (handler === undefined) {
@@ -296,7 +289,7 @@ describe('Settings → Stickers screen', () => {
     };
     await renderScreen({ packs: [CATS] });
     focusCallback?.();
-    await settle();
+    await flushTasks(10);
     expect(setterLog).toContain('error');
   });
 
@@ -305,7 +298,7 @@ describe('Settings → Stickers screen', () => {
     forcedApi = { removeStickerFavorite: removeFavorite };
     await renderScreen({ tab: 'favorites', favorites: [FAVORITE] });
     press('Remove favorite');
-    await settle();
+    await flushTasks(10);
     expect(removeFavorite).toHaveBeenCalledWith('fav-1');
   });
 
@@ -317,7 +310,7 @@ describe('Settings → Stickers screen', () => {
     };
     await renderScreen({ tab: 'favorites', favorites: [FAVORITE] });
     press('Remove favorite');
-    await settle();
+    await flushTasks(10);
     expect(setterLog).toContain('Could not remove the favorite. Try again.');
   });
 
@@ -326,7 +319,7 @@ describe('Settings → Stickers screen', () => {
     forcedApi = { reorderStickerPanelPacks: reorder };
     await renderScreen({ packs: [CATS, MOODS] });
     press('Move Moods up');
-    await settle();
+    await flushTasks(10);
     expect(reorder).toHaveBeenCalledWith(['p-moods', 'p-cats']);
   });
 
@@ -338,7 +331,7 @@ describe('Settings → Stickers screen', () => {
     };
     await renderScreen({ packs: [CATS, MOODS] });
     press('Move Moods up');
-    await settle();
+    await flushTasks(10);
     expect(setterLog).toContain('Could not reorder your packs. Try again.');
   });
 
@@ -348,7 +341,7 @@ describe('Settings → Stickers screen', () => {
     forcedApi = { removeStickerPanelPack: removePack, listStickerPacks: listPacks };
     await renderScreen({ packs: [CATS, MOODS], confirming: CATS });
     dialogs.get('Remove this pack?')?.onConfirm();
-    await settle();
+    await flushTasks(10);
     expect(removePack).toHaveBeenCalledWith('p-cats');
     expect(listPacks).toHaveBeenCalled();
   });
@@ -361,7 +354,7 @@ describe('Settings → Stickers screen', () => {
     };
     await renderScreen({ packs: [CATS, MOODS], confirming: CATS });
     dialogs.get('Remove this pack?')?.onConfirm();
-    await settle();
+    await flushTasks(10);
     expect(setterLog).toContain('Could not remove the pack. Try again.');
   });
 
@@ -371,7 +364,7 @@ describe('Settings → Stickers screen', () => {
     forcedApi = { addStickerPanelPack: addPack, listStickerPacks: listPacks };
     await renderScreen({ tab: 'discover', packs: [CATS], discover: [MOODS] });
     press('Add Moods');
-    await settle();
+    await flushTasks(10);
     expect(addPack).toHaveBeenCalledWith('p-moods');
     expect(listPacks).toHaveBeenCalled();
   });
@@ -385,7 +378,7 @@ describe('Settings → Stickers screen', () => {
     };
     await renderScreen({ tab: 'discover', packs: [CATS], discover: [MOODS] });
     press('Add Moods');
-    await settle();
+    await flushTasks(10);
     expect(setterLog).toContain('Could not add the pack. Try again.');
   });
 });

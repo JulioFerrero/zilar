@@ -7,6 +7,7 @@ vi.mock('@/mock/gate', () => ({
 import { ApiError, listPins, pinMessage, unpinMessage, type Pin } from '@/lib/api';
 import { isMockApiEnabled } from '@/mock/gate';
 import { resetMockApi, setMockDelay } from '@/mock/api';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const mockEnabled = vi.mocked(isMockApiEnabled);
 
@@ -20,10 +21,6 @@ const PIN: Pin = {
   pinnedBy: 'u-1',
   pinnedAt: '2026-10-09T10:00:00.000Z',
 };
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status });
-}
 
 function stubFetch(response: () => Response | Promise<Response>) {
   const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => response());

@@ -2,10 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ActivitySection, AiActivity, describeAuditEntry, formatRelativeAudit } from './AiActivity';
 import type { PublicAuditEntry } from '@/lib/api';
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status });
-}
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const aiId = 'a-1';
 const groupId = 'g-devteam';

@@ -6,6 +6,7 @@ import {
   MessageSearchController,
   type SearchScheduler,
 } from './message-search';
+import { flushTasks as flush } from '@/test/wait';
 
 interface ManualClock {
   frames: SearchScheduler;
@@ -79,10 +80,6 @@ function fakeApi(
     },
   };
   return { api, calls, signals };
-}
-
-async function flush(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe('MessageSearchController', () => {

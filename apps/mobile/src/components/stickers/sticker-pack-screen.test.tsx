@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { StickerItem, StickerPack } from '@/lib/stickers';
+import { flushTasks } from '@/test/wait';
 
 // The editor screen renders `sticker-pack.tsx` through the same `useState`
 // forcing pattern as `stickers-screen.test.tsx`: `renderToStaticMarkup`
@@ -417,8 +418,8 @@ describe('StickerPackScreen', () => {
     expect(press).toBeDefined();
     expect(observedBefore).toBe('');
     press?.();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushTasks(1);
+    await flushTasks(1);
     // The Add handler routes the picker's error message into the form
     // error state; the setter the screen holds is a forced no-op, so the
     // wrapper records it and a second render reads it back as HTML.
@@ -434,8 +435,8 @@ describe('StickerPackScreen', () => {
     capturedAddPress = undefined;
     expect(press).toBeDefined();
     press?.();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await flushTasks(1);
+    await flushTasks(1);
     const html = await renderEditor({ title: 'Mine', formError: observedFormError });
     expect(observedFormError).toBe('');
     expect(html).not.toContain(PICKER_DENIED);

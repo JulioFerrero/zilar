@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { resetIsServerOwnerCache, useIsServerOwner } from './useIsServerOwner';
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status });
-}
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 function Probe() {
   const isOwner = useIsServerOwner();

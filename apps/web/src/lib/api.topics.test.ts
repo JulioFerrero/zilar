@@ -24,15 +24,9 @@ import {
   topicSchema,
 } from '@/lib/api';
 import { isMockApiEnabled } from '@/mock/gate';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const mockEnabled = vi.mocked(isMockApiEnabled);
-
-function jsonResponse(status: number, body: unknown): Response {
-  if (status === 204) {
-    return new Response(null, { status });
-  }
-  return new Response(JSON.stringify(body), { status });
-}
 
 beforeEach(() => {
   mockEnabled.mockReturnValue(false);

@@ -6,6 +6,7 @@ import {
   DirectoryApiError,
   type DirectoryEntry,
 } from './directory-api';
+import { jsonResponseAt as jsonResponse } from '@/test/wait';
 
 const ENTRY: DirectoryEntry = {
   id: 'group-hiking',
@@ -16,10 +17,6 @@ const ENTRY: DirectoryEntry = {
   memberCount: 42,
   joined: false,
 };
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status });
-}
 
 function apiFor(body: unknown, status = 200, seen?: { url?: string; init?: RequestInit }) {
   const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {

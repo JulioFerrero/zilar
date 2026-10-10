@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { ContactRequestView } from '@/lib/contacts-api';
+import { flushTasks as flush } from '@/test/wait';
 
 // Settings → Contact requests. The screen body is the default export wrapped
 // in `RequireAuth`. `renderToStaticMarkup` never runs effects, so the body
@@ -179,8 +180,6 @@ async function renderScreen(input: {
 }
 
 // Lets the press handler's promise chain and any Effect run finish.
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
 describe('RequestsScreen', () => {
   it('shows loading while the requests load', async () => {
     const html = await renderScreen({ status: 'loading' });
