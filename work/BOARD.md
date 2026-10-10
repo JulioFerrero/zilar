@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-0981](T-0981-split-web-pack-editor.md) | Size split T31: web PackEditor.tsx (783) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0982](T-0982-split-web-stickers-page.md) | Size split T35: web StickersPage.tsx (765) | in-progress | deepseek-flash | T-0936 | size-plan |
-| [T-0983](T-0983-split-server-contact-requests.md) | Size split T40: server contact-requests/service.ts (730) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0984](T-0984-split-server-routines-service.md) | Size split T47: server routines/service.ts (657) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0985](T-0985-split-lead-watch-app.md) | Size split T39: devtools lead/watch-app.tsx (735) | in-progress | deepseek-flash | T-0936 | size-plan |
 
@@ -1012,3 +1011,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0974](T-0974-split-mobile-group-screen.md) | Size split T26: apps/mobile/src/app/group/[id].tsx (835 lines) into components/chat/{group-header,group-topic- | 2026-10-10 |
 | [T-0979](T-0979-split-mobile-tool-detail-sheet.md) | Size split T28: apps/mobile/src/components/ais/tool-detail-sheet.tsx (808 lines) into ais/{tool-run-blocks,too | 2026-10-10 |
 | [T-0980](T-0980-split-mobile-sticker-pack.md) | Size split T24: apps/mobile/src/app/settings/sticker-pack.tsx (859 lines) into components/stickers/{use-pack-e | 2026-10-10 |
+| [T-0983](T-0983-split-server-contact-requests.md) | Size split T40: apps/server/src/contact-requests/service.ts (730 lines) into contact-requests/{queries,reads,e | 2026-10-10 |
