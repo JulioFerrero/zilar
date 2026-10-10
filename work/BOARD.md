@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-0971](T-0971-split-web-message-bubble.md) | Size split T25: web MessageBubble.tsx (846) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0973](T-0973-split-web-ai-panel.md) | Size split T23: web AiPanel.tsx (870) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0974](T-0974-split-mobile-group-screen.md) | Size split T26: mobile group/[id].tsx (835) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0975](T-0975-split-lead-watch.md) | Size split T27: devtools lead/watch.ts (818) | in-progress | deepseek-flash | T-0936 | size-plan |
@@ -1005,3 +1004,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0969](T-0969-split-store-send.md) | Size split T33: packages/client-core/src/store/send.ts (883 lines) into store/send/{context,pipeline,text,voic | 2026-10-10 |
 | [T-0972](T-0972-ai-reply-crucial-tests.md) | Crucial tests for the AI reply pipeline: failure-to-reply mapping, secret redaction, and the tool-loop call ca | 2026-10-10 |
 | [T-0970](T-0970-split-lead-batch.md) | Size split T22: packages/devtools/src/lead/batch.ts (913 lines) into lead/batch/{types,text,wave,parsers,check | 2026-10-10 |
+| [T-0971](T-0971-split-web-message-bubble.md) | Size split T25: apps/web/src/components/MessageBubble.tsx (846 lines) into components/message/{SendFailure,Mes | 2026-10-10 |

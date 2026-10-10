@@ -1,195 +1,32 @@
 import {
   canDeleteMessage,
   canEditMessage,
-  formatFullDateTime,
-  formatTime,
-  isAiJid,
   isBigEmoji,
-  sendFailureLabel,
   shouldRenderMarkdown,
   type ChatSummary,
-  type SendFailureReason,
   type UiMessage,
 } from '@zilar/chat-core';
-import { Effect } from 'effect';
-import { MoreHorizontal } from 'lucide-react';
-import { lazy, memo, Suspense, useRef, useState } from 'react';
-import { AiBadge } from './AiBadge';
-import { ApprovalCard } from './ApprovalCard';
+import { memo, useRef, useState } from 'react';
 import { Avatar } from './Avatar';
-import { ConfirmDialog } from './ConfirmDialog';
-import { FileMessage } from './FileMessage';
 import { ForwardedHeader } from './ForwardedHeader';
-import { GifMessage, isGifVideoAttachment } from './GifMessage';
-import { ImageMessage } from './ImageMessage';
-import { LinkText } from './LinkText';
-import { MessageActionsMenu } from './MessageActionsMenu';
-import { MessageTicks } from './MessageTicks';
-import { ProgressCard } from './ProgressCard';
+import { isGifVideoAttachment } from './GifMessage';
+import { AttachmentBody } from './message/AttachmentBody';
+import { BigEmoji } from './message/BigEmoji';
+import { MessageActionsButton, MessageMenu } from './message/MessageMenu';
+import { MessageSender } from './message/MessageMeta';
+import { MessageTextBody } from './message/MessageTextBody';
 import { ReactionChips } from './ReactionChips';
 import { ReplyQuote } from './ReplyQuote';
 import { StickerMessage } from './StickerMessage';
-import { VoiceMessage } from './VoiceMessage';
-import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
-import { copyText } from '@/lib/clipboard';
-import { runWeb } from '@/lib/effect/runtime';
 import { useSmoothText } from '@/lib/useSmoothText';
 import { cn } from '@/lib/utils';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
-/** The markdown stack loads on the first AI reply; the plain text shows meanwhile. */
-const MarkdownText = lazy(() =>
-  import('./MarkdownText').then((m) => ({ default: m.MarkdownText })),
-);
-
-/** Monochrome-friendly sender name colors (ui-style.md §5). */
-const SENDER_COLORS = ['#d4d4d4', '#a1a1a1', '#8a8a8a', '#ededed'] as const;
+export { SendFailure } from './message/SendFailure';
 
 /** No known media host (mock store, signed out): every absolute URL is untrusted. */
 const EMPTY_HOSTS: ReadonlySet<string> = new Set();
-
-/**
- * Runs a store call the user does not wait for (pin, unpin). Any failure is
- * dropped, as the old empty handler did.
- */
-function runDetached(call: () => Promise<unknown>): void {
-  void runWeb(Effect.promise(call).pipe(Effect.ignore));
-}
-
-function senderColor(id: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < id.length; index += 1) {
-    hash ^= id.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return SENDER_COLORS[(hash >>> 0) % SENDER_COLORS.length] ?? SENDER_COLORS[0];
-}
-
-/**
- * The "Not sent" row under a failed own message (T-0168): a red label with
- * the fixed reason, a Retry button that re-runs the same pipeline from the
- * retained blob, and a Delete button that removes the local bubble. All
- * three are plain buttons, keyboard reachable with accessible names.
- */
-export function SendFailure({
-  chatId,
-  messageId,
-  reason,
-  onRetry,
-}: {
-  chatId: string;
-  messageId: string;
-  reason: SendFailureReason | undefined;
-  onRetry: () => void;
-}) {
-  const storeApi = useChatStoreApi();
-  return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-2 px-0.5 text-[12px]">
-      <span className="font-semibold text-danger">
-        Not sent{reason === undefined ? '' : `: ${sendFailureLabel(reason)}`}
-      </span>
-      <button
-        type="button"
-        aria-label="Retry sending message"
-        onClick={onRetry}
-        className="font-semibold text-muted-foreground underline"
-      >
-        Retry
-      </button>
-      <button
-        type="button"
-        aria-label="Delete unsent message"
-        onClick={() => storeApi.getState().deleteFailedMessage(chatId, messageId)}
-        className="font-semibold text-muted-foreground underline"
-      >
-        Delete
-      </button>
-    </div>
-  );
-}
-
-function MessageMeta({
-  message,
-  showTicks,
-  edited = false,
-  className,
-}: {
-  message: UiMessage;
-  showTicks: boolean;
-  edited?: boolean;
-  className?: string;
-}) {
-  return (
-    <span
-      title={formatFullDateTime(message.createdAt)}
-      className={cn(
-        'font-mono inline-flex items-center gap-0.5 text-[10px] tabular-nums',
-        className,
-      )}
-    >
-      {edited && <span>edited</span>}
-      {formatTime(message.createdAt)}
-      {showTicks && <MessageTicks status={message.status} />}
-    </span>
-  );
-}
-
-function BigEmoji({
-  message,
-  text,
-  own,
-  generating = false,
-}: {
-  message: UiMessage;
-  text: string;
-  own: boolean;
-  generating?: boolean;
-}) {
-  return (
-    <div className={cn('flex flex-col', own ? 'items-end' : 'items-start')}>
-      <span className="px-2 py-1 text-[48px] leading-none break-words">
-        {text}
-        {generating && <DraftCaret />}
-      </span>
-      <span
-        className={cn(
-          'raised-pill mt-1 rounded-full px-2 py-0.5 text-muted-foreground',
-          generating && 'invisible',
-        )}
-      >
-        <MessageMeta
-          message={message}
-          showTicks={own && !generating}
-          edited={message.edited === true}
-        />
-      </span>
-    </div>
-  );
-}
-
-/**
- * A soft blinking caret at the end of a live draft. It has zero layout width
- * and paints into the trailing space, so swapping the draft for the final
- * message never moves the text.
- */
-function DraftCaret() {
-  return (
-    <span aria-hidden="true" className="relative inline-block h-[1em] w-0 align-[-0.15em]">
-      <span className="absolute inset-y-0 left-0 w-0.5 animate-pulse bg-[#bdbdbd] motion-reduce:animate-none" />
-    </span>
-  );
-}
-
-/** The recessed `generating` label under a reply that is still being written. */
-function GeneratingLabel() {
-  return (
-    <span className="font-mono flex items-center gap-1.5 px-3 pt-1 pb-2 text-[11px] text-subtle-foreground">
-      <span className="pulse-dot size-1.5 rounded-full bg-subtle-foreground" aria-hidden="true" />
-      generating
-    </span>
-  );
-}
 
 export interface MessageBubbleProps {
   message: UiMessage;
@@ -237,7 +74,6 @@ export const MessageBubble = memo(function MessageBubble({
   revealTurnId,
 }: MessageBubbleProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const storeApi = useChatStoreApi();
   const mediaTrustedHosts = useChatSelector((s) => s.mediaTrustedHosts);
@@ -274,9 +110,6 @@ export const MessageBubble = memo(function MessageBubble({
   // A big-emoji message is shown without its bubble, so the sender name would
   // float on its own; a classic messenger shows only the avatar in that case.
   const showSender = !own && chat.kind === 'group' && firstInGroup && !bigEmoji;
-  // In a group, an incoming AI reply (recognisable from its `ai-` JID) carries
-  // the small AI badge next to its name (T-0055).
-  const senderIsAi = showSender && isAiJid(message.senderId);
   const attachmentImage = message.attachment?.kind === 'image';
   // GIF-origin videos render inline only on a trusted media URL (the store
   // sanitizer renames untrusted `gif-` attachments first; the URL check here
@@ -397,15 +230,7 @@ export const MessageBubble = memo(function MessageBubble({
       <div className={cn('flex min-w-0 flex-col', own ? 'items-end' : 'items-start')}>
         {sticker !== undefined ? (
           <div className={cn('relative flex flex-col', own ? 'items-end' : 'items-start')}>
-            {showSender && (
-              <div
-                className="flex items-center gap-1.5 pb-1 text-[14px] leading-5 font-semibold"
-                style={{ color: senderColor(message.senderId) }}
-              >
-                <span className="truncate">{message.senderName}</span>
-                {senderIsAi && <AiBadge />}
-              </div>
-            )}
+            {showSender && <MessageSender message={message} className="pb-1" />}
             {message.forward !== undefined && (
               <div className="mb-1">
                 <ForwardedHeader origin={message.forward} />
@@ -432,78 +257,31 @@ export const MessageBubble = memo(function MessageBubble({
             ) : (
               !generating &&
               !selecting && (
-                <Button
-                  ref={menuButtonRef}
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Message actions"
-                  aria-haspopup="menu"
-                  aria-expanded={menuOpen}
-                  onClick={() => setMenuOpen(true)}
-                  className="absolute top-0.5 right-0.5 z-10 size-6 rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                >
-                  <MoreHorizontal className="size-4" aria-hidden="true" />
-                </Button>
+                <MessageActionsButton
+                  buttonRef={menuButtonRef}
+                  open={menuOpen}
+                  onOpen={() => setMenuOpen(true)}
+                />
               )
             )}
-            {!generating && message.failed !== true && !selecting && menuOpen && (
-              <MessageActionsMenu
-                canCopy={false}
-                canEdit={false}
-                canDelete={canDelete}
-                canPin={canPin}
-                isPinned={pin !== undefined}
-                canForward={canForward}
-                onReact={(emoji) => {
-                  setMenuOpen(false);
-                  handleReact(emoji);
-                }}
-                onReply={() => {
-                  setMenuOpen(false);
-                  onReply(message);
-                }}
-                onForward={() => {
-                  setMenuOpen(false);
-                  onForward?.(message);
-                }}
-                onSelectMessages={() => {
-                  setMenuOpen(false);
-                  onStartSelect?.(message);
-                }}
-                onEdit={() => setMenuOpen(false)}
-                onCopy={() => setMenuOpen(false)}
-                onDelete={() => {
-                  setMenuOpen(false);
-                  menuButtonRef.current?.focus();
-                  setConfirmOpen(true);
-                }}
-                onPin={() => {
-                  setMenuOpen(false);
-                  runDetached(() => storeApi.getState().pinMessage(chat.id, message.id));
-                }}
-                onUnpin={() => {
-                  setMenuOpen(false);
-                  if (pin !== undefined) {
-                    runDetached(() => storeApi.getState().unpinMessage(chat.id, pin.id));
-                  }
-                }}
-                onClose={() => setMenuOpen(false)}
-                align={own ? 'right' : 'left'}
-              />
-            )}
-            {confirmOpen && (
-              <ConfirmDialog
-                title="Delete message?"
-                body="This deletes it for everyone in the chat."
-                confirmLabel="Delete"
-                onCancel={() => setConfirmOpen(false)}
-                onConfirm={() => {
-                  setConfirmOpen(false);
-                  storeApi.getState().deleteForEveryone(chat.id, message.id);
-                }}
-              />
-            )}
+            <MessageMenu
+              open={menuOpen && !generating && message.failed !== true && !selecting}
+              message={message}
+              chatId={chat.id}
+              pinId={pin?.id}
+              menuButtonRef={menuButtonRef}
+              canCopy={false}
+              canEdit={false}
+              canDelete={canDelete}
+              canPin={canPin}
+              canForward={canForward}
+              align={own ? 'right' : 'left'}
+              onReply={() => onReply(message)}
+              onForward={() => onForward?.(message)}
+              onSelectMessages={() => onStartSelect?.(message)}
+              onReact={handleReact}
+              onClose={() => setMenuOpen(false)}
+            />
           </div>
         ) : (
           <div
@@ -524,15 +302,7 @@ export const MessageBubble = memo(function MessageBubble({
                   ),
             )}
           >
-            {showSender && (
-              <div
-                className="flex items-center gap-1.5 px-3 pt-2 text-[14px] leading-5 font-semibold"
-                style={{ color: senderColor(message.senderId) }}
-              >
-                <span className="truncate">{message.senderName}</span>
-                {senderIsAi && <AiBadge />}
-              </div>
-            )}
+            {showSender && <MessageSender message={message} className="px-3 pt-2" />}
 
             {message.forward !== undefined && (
               <div className="px-3 pt-2">
@@ -550,293 +320,60 @@ export const MessageBubble = memo(function MessageBubble({
               <BigEmoji message={message} text={text} own={own} generating={generating} />
             ) : (
               <>
-                {message.image !== undefined && (
-                  <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
-                    <ImageMessage
-                      chatId={message.chatId}
-                      url={message.image.url}
-                      alt="Photo"
-                      width={message.image.width}
-                      height={message.image.height}
-                    />
-                    {imageOnly && (
-                      <MessageMeta
-                        message={message}
-                        showTicks={own}
-                        className="raised-pill absolute right-2.5 bottom-2.5 rounded-full px-1.5 py-0.5 text-muted-foreground"
-                      />
-                    )}
-                  </div>
-                )}
+                <AttachmentBody
+                  message={message}
+                  chat={chat}
+                  own={own}
+                  hasText={hasText}
+                  imageOnly={imageOnly}
+                  attachmentImage={attachmentImage}
+                  attachmentFile={attachmentFile}
+                  gifVideo={gifVideo}
+                  sendFailed={sendFailed}
+                  failed={failed}
+                  isSending={isSending}
+                />
 
-                {attachmentImage && message.attachment !== undefined && (
-                  <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
-                    <ImageMessage
-                      chatId={message.chatId}
-                      url={message.attachment.url}
-                      alt={message.attachment.name}
-                      width={message.attachment.width}
-                      height={message.attachment.height}
-                    />
-                    {sendFailed ? (
-                      <SendFailure
-                        chatId={chat.id}
-                        messageId={message.id}
-                        reason={message.failureReason}
-                        onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-                      />
-                    ) : failed ? (
-                      <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[12px] text-danger">
-                        <span>Upload failed</span>
-                        <button
-                          type="button"
-                          aria-label="Retry upload"
-                          onClick={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-                          className="font-semibold underline"
-                        >
-                          Retry
-                        </button>
-                      </div>
-                    ) : (
-                      imageOnly && (
-                        <MessageMeta
-                          message={message}
-                          showTicks={own}
-                          className="raised-pill absolute right-2.5 bottom-2.5 rounded-full px-1.5 py-0.5 text-muted-foreground"
-                        />
-                      )
-                    )}
-                  </div>
-                )}
-
-                {attachmentFile && message.attachment !== undefined && (
-                  <div className="px-3 py-1.5">
-                    <FileMessage
-                      chatId={message.chatId}
-                      attachment={message.attachment}
-                      own={own}
-                      uploading={isSending && !failed}
-                      failed={failed && !sendFailed}
-                      onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-                    />
-                    {sendFailed && (
-                      <SendFailure
-                        chatId={chat.id}
-                        messageId={message.id}
-                        reason={message.failureReason}
-                        onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-                      />
-                    )}
-                  </div>
-                )}
-
-                {gifVideo && message.attachment !== undefined && (
-                  <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
-                    <GifMessage chatId={message.chatId} attachment={message.attachment} />
-                    {sendFailed ? (
-                      <SendFailure
-                        chatId={chat.id}
-                        messageId={message.id}
-                        reason={message.failureReason}
-                        onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-                      />
-                    ) : failed ? (
-                      <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[12px] text-danger">
-                        <span>Upload failed</span>
-                        <button
-                          type="button"
-                          aria-label="Retry upload"
-                          onClick={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-                          className="font-semibold underline"
-                        >
-                          Retry
-                        </button>
-                      </div>
-                    ) : (
-                      imageOnly && (
-                        <MessageMeta
-                          message={message}
-                          showTicks={own}
-                          className="raised-pill absolute right-2.5 bottom-2.5 rounded-full px-1.5 py-0.5 text-muted-foreground"
-                        />
-                      )
-                    )}
-                  </div>
-                )}
-
-                {message.voice !== undefined && (
-                  <div className="px-3 py-1.5">
-                    <VoiceMessage chatId={message.chatId} voice={message.voice} own={own} />
-                    {sendFailed && (
-                      <SendFailure
-                        chatId={chat.id}
-                        messageId={message.id}
-                        reason={message.failureReason}
-                        onRetry={() => storeApi.getState().retryVoice(chat.id, message.id)}
-                      />
-                    )}
-                  </div>
-                )}
-
-                {message.card !== undefined && (
-                  <div className="px-3 py-1.5">
-                    {message.card.type === 'progress' && (
-                      <ProgressCard progress={message.card.data} />
-                    )}
-                    {message.card.type === 'approval.request' && (
-                      <ApprovalCard
-                        request={message.card.data}
-                        {...(chat.topic !== undefined ? { topicName: chat.title } : {})}
-                      />
-                    )}
-                  </div>
-                )}
-
-                {hasText && markdown && (
-                  <div className={cn('md break-words', own ? 'px-3 py-2' : 'px-3 py-2.5')}>
-                    <Suspense fallback={<span className="whitespace-pre-wrap">{text}</span>}>
-                      <MarkdownText text={text} />
-                    </Suspense>
-                    <span className="md-tail">
-                      {generating && <DraftCaret />}
-                      <MessageMeta
-                        message={message}
-                        showTicks={own && !generating}
-                        edited={message.edited === true}
-                        className={cn(
-                          'float-right ml-1.5 translate-y-[4px]',
-                          own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
-                          // Keeps the width the final message will have, so the
-                          // swap does not move anything.
-                          generating && 'invisible',
-                        )}
-                      />
-                    </span>
-                  </div>
-                )}
-
-                {hasText && !markdown && (
-                  <p
-                    className={cn(
-                      'break-words whitespace-pre-wrap',
-                      own ? 'px-3 py-2' : 'px-3 py-2.5',
-                    )}
-                  >
-                    <LinkText text={text} mentions={message.mentions} meJid={meJid} />
-                    {generating && <DraftCaret />}
-                    <MessageMeta
-                      message={message}
-                      showTicks={own && !generating}
-                      edited={message.edited === true}
-                      className={cn(
-                        'float-right ml-1.5 translate-y-[4px]',
-                        own ? 'text-bubble-out-meta' : 'text-bubble-in-meta',
-                        // Keeps the width the final message will have, so the
-                        // swap does not move anything.
-                        generating && 'invisible',
-                      )}
-                    />
-                  </p>
-                )}
-
-                {generating && hasText && <GeneratingLabel />}
-
-                {!hasText &&
-                  (message.voice !== undefined || message.card !== undefined || attachmentFile) && (
-                    <div className="flex justify-end px-3 pb-2">
-                      <MessageMeta
-                        message={message}
-                        showTicks={own}
-                        className={own ? 'text-bubble-out-meta' : 'text-bubble-in-meta'}
-                      />
-                    </div>
-                  )}
+                <MessageTextBody
+                  message={message}
+                  text={text}
+                  own={own}
+                  generating={generating}
+                  markdown={markdown}
+                  meJid={meJid}
+                  hasText={hasText}
+                />
               </>
             )}
 
             {!generating && !selecting && (
-              <Button
-                ref={menuButtonRef}
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Message actions"
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
-                onClick={() => setMenuOpen(true)}
-                className="absolute top-0.5 right-0.5 z-10 size-6 rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-              >
-                <MoreHorizontal className="size-4" aria-hidden="true" />
-              </Button>
+              <MessageActionsButton
+                buttonRef={menuButtonRef}
+                open={menuOpen}
+                onOpen={() => setMenuOpen(true)}
+              />
             )}
           </div>
         )}
 
-        {!generating && sticker === undefined && !selecting && menuOpen && (
-          <MessageActionsMenu
-            canCopy={hasText}
-            canEdit={canEdit}
-            canDelete={canDelete}
-            canPin={canPin}
-            isPinned={pin !== undefined}
-            canForward={canForward}
-            onReact={(emoji) => {
-              setMenuOpen(false);
-              handleReact(emoji);
-            }}
-            onReply={() => {
-              setMenuOpen(false);
-              onReply(message);
-            }}
-            onForward={() => {
-              setMenuOpen(false);
-              onForward?.(message);
-            }}
-            onSelectMessages={() => {
-              setMenuOpen(false);
-              onStartSelect?.(message);
-            }}
-            onEdit={() => {
-              setMenuOpen(false);
-              storeApi.getState().startEdit(chat.id, message.id);
-            }}
-            onCopy={() => {
-              setMenuOpen(false);
-              void copyText(message.text ?? '');
-            }}
-            onDelete={() => {
-              setMenuOpen(false);
-              // Focus the opener so the dialog can restore it on close.
-              menuButtonRef.current?.focus();
-              setConfirmOpen(true);
-            }}
-            onPin={() => {
-              setMenuOpen(false);
-              runDetached(() => storeApi.getState().pinMessage(chat.id, message.id));
-            }}
-            onUnpin={() => {
-              setMenuOpen(false);
-              if (pin !== undefined) {
-                runDetached(() => storeApi.getState().unpinMessage(chat.id, pin.id));
-              }
-            }}
-            onClose={() => setMenuOpen(false)}
-            align={own ? 'right' : 'left'}
-          />
-        )}
-
-        {sticker === undefined && confirmOpen && (
-          <ConfirmDialog
-            title="Delete message?"
-            body="This deletes it for everyone in the chat."
-            confirmLabel="Delete"
-            onCancel={() => setConfirmOpen(false)}
-            onConfirm={() => {
-              setConfirmOpen(false);
-              storeApi.getState().deleteForEveryone(chat.id, message.id);
-            }}
-          />
-        )}
+        <MessageMenu
+          open={menuOpen && !generating && !selecting}
+          message={message}
+          chatId={chat.id}
+          pinId={pin?.id}
+          menuButtonRef={menuButtonRef}
+          canCopy={hasText}
+          canEdit={canEdit}
+          canDelete={canDelete}
+          canPin={canPin}
+          canForward={canForward}
+          align={own ? 'right' : 'left'}
+          onReply={() => onReply(message)}
+          onForward={() => onForward?.(message)}
+          onSelectMessages={() => onStartSelect?.(message)}
+          onReact={handleReact}
+          onClose={() => setMenuOpen(false)}
+        />
         {!generating && message.reactions !== undefined && message.reactions.length > 0 && (
           <ReactionChips reactions={message.reactions} own={own} onToggle={handleReact} />
         )}
