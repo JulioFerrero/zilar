@@ -1,4 +1,4 @@
-import { parseUrl } from '@zilar/chat-core';
+import { cleanFilename, parseUrl } from '@zilar/chat-core';
 import { Duration, Effect } from 'effect';
 import { runWeb } from '@/lib/effect/runtime';
 import type { UploadSlotRequester } from './voice';
@@ -14,8 +14,14 @@ const IMAGE_MIME_TYPES: ReadonlySet<string> = new Set([
   'image/webp',
 ]);
 
-const FALLBACK_NAME = 'file';
-const MAX_NAME_LENGTH = 255;
+export {
+  cleanFilename,
+  formatFileSize,
+  gifBlobType,
+  isTrustedMediaUrl,
+  trustedMediaHosts,
+  type MediaTokenShape,
+} from '@zilar/chat-core';
 
 export class AttachmentError extends Error {
   readonly code: string;
@@ -34,44 +40,6 @@ export class AttachmentError extends Error {
  */
 export function classify(file: File): 'image' | 'file' {
   return IMAGE_MIME_TYPES.has(file.type) ? 'image' : 'file';
-}
-
-/**
- * Strips directory parts, control characters and surrounding whitespace from a
- * file name and caps it at 255 characters. An empty result becomes `file`.
- */
-export function cleanFilename(name: string): string {
-  const withoutPath = name.split(/[/\\]/).pop() ?? '';
-  const withoutControl = Array.from(withoutPath)
-    .filter((character) => {
-      const code = character.charCodeAt(0);
-      return code > 0x1f && code !== 0x7f;
-    })
-    .join('');
-  const trimmed = withoutControl.trim();
-  if (trimmed.length === 0) {
-    return FALLBACK_NAME;
-  }
-  return trimmed.slice(0, MAX_NAME_LENGTH);
-}
-
-/** Human size for preview bars and file cards, e.g. `2.4 MB`. */
-export function formatFileSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) {
-    return '';
-  }
-  if (bytes < 1024) {
-    return `${Math.round(bytes)} B`;
-  }
-  const units = ['KB', 'MB', 'GB', 'TB'] as const;
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
-  return `${rounded} ${units[unit]}`;
 }
 
 /** The URL to follow only when it is http(s); anything else (`javascript:`, `data:`) is not. */
@@ -105,51 +73,6 @@ export function mediaSrc(
     return url;
   }
   return `/api/files?chat=${encodeURIComponent(chatId)}&url=${encodeURIComponent(url)}`;
-}
-
-/**
- * Just enough of the XMPP token to build the trusted media set: the WebSocket
- * service URL and the XMPP domain the server issued for this session. Both are
- * where the upload service answers in dev and production.
- */
-export interface MediaTokenShape {
-  service: string;
-  domain: string;
-}
-
-/**
- * The hostnames the renderer auto-loads images from. Anything else becomes a
- * file card that only loads on click, so a chat peer cannot make every viewer's
- * browser fetch a tracking pixel from a third-party host.
- */
-export function trustedMediaHosts(token: MediaTokenShape): ReadonlySet<string> {
-  const hosts = new Set<string>();
-  // A malformed service URL just means we trust nothing from it; the domain
-  // below still covers the production case.
-  const serviceHost = parseUrl(token.service)?.hostname.toLowerCase();
-  if (serviceHost !== undefined && serviceHost !== '') {
-    hosts.add(serviceHost);
-  }
-  const domain = token.domain.trim().toLowerCase();
-  if (domain !== '') {
-    hosts.add(domain);
-    hosts.add(`upload.${domain}`);
-  }
-  return hosts;
-}
-
-/**
- * Whether `url` is http(s) and its hostname matches one of `trustedHosts`
- * (case-insensitive, scheme- and port-agnostic). Anything that does not parse
- * as an http(s) URL — `javascript:`, `data:`, relative paths, garbage — is
- * untrusted.
- */
-export function isTrustedMediaUrl(url: string, trustedHosts: ReadonlySet<string>): boolean {
-  const parsed = parseUrl(url);
-  if (parsed === undefined || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')) {
-    return false;
-  }
-  return trustedHosts.has(parsed.hostname.toLowerCase());
 }
 
 /** A best-effort object URL; test environments without it get `undefined`. */
@@ -280,32 +203,6 @@ export const uploadAttachmentEffect = Effect.fnUntraced(function* (
   }
   return slot.getUrl;
 });
-
-/**
- * The mime and file extension for GIF-tab bytes (T-0122), taken from the
- * proxied blob's real content type and validated against the four types the
- * media proxy serves. An unexpected type (e.g. mock-mode art) falls back to
- * the search result's kind so mock sends keep working.
- */
-export function gifBlobType(
-  blobType: string,
-  kind: 'image' | 'video',
-): { mime: string; extension: string } {
-  switch (blobType) {
-    case 'image/gif':
-      return { mime: 'image/gif', extension: 'gif' };
-    case 'image/webp':
-      return { mime: 'image/webp', extension: 'webp' };
-    case 'video/mp4':
-      return { mime: 'video/mp4', extension: 'mp4' };
-    case 'video/webm':
-      return { mime: 'video/webm', extension: 'webm' };
-    default:
-      return kind === 'video'
-        ? { mime: 'video/mp4', extension: 'mp4' }
-        : { mime: 'image/gif', extension: 'gif' };
-  }
-}
 
 /** A file chosen in the composer, before it is sent. */
 export interface PendingAttachment {

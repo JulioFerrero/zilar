@@ -9,9 +9,10 @@
  * `createImageBitmap` (a GIF decodes to its first frame: a still) and a
  * `<canvas>` encode.
  */
+import { fitStickerSize, STICKER_PREP_MAX_DIM } from '@zilar/chat-core';
 import { Data, Effect } from 'effect';
 
-export const STICKER_PREP_MAX_DIM = 512;
+export { fitStickerSize, STICKER_PREP_MAX_DIM };
 export const STICKER_PREP_MAX_BYTES = 512 * 1024;
 /** WebP qualities tried from first to last; the first result under the cap wins. */
 export const STICKER_PREP_QUALITY_STEPS = [0.92, 0.8, 0.7, 0.6, 0.5] as const;
@@ -66,19 +67,6 @@ export interface PrepResult {
   width: number;
   height: number;
   bytes: number;
-}
-
-/** Fits a size inside 512 x 512 keeping the ratio; small images stay as-is. */
-export function fitStickerSize(width: number, height: number): { width: number; height: number } {
-  const longest = Math.max(width, height);
-  if (longest <= STICKER_PREP_MAX_DIM) {
-    return { width, height };
-  }
-  const scale = STICKER_PREP_MAX_DIM / longest;
-  return {
-    width: Math.max(1, Math.round(width * scale)),
-    height: Math.max(1, Math.round(height * scale)),
-  };
 }
 
 function isAcceptedType(type: string): boolean {

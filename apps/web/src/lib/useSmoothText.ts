@@ -1,3 +1,4 @@
+import { commonPrefixLength, safeCut } from '@zilar/chat-core';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 /** A frame scheduler seam so tests can drive the reveal deterministically. */
@@ -45,15 +46,6 @@ function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
     ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
     : false;
-}
-
-function commonPrefixLength(left: string, right: string): number {
-  const max = Math.min(left.length, right.length);
-  let index = 0;
-  while (index < max && left[index] === right[index]) {
-    index += 1;
-  }
-  return index;
 }
 
 export interface SmoothTextOptions {
@@ -191,12 +183,4 @@ export function useSmoothText(
 
   const text = animate ? shown : target;
   return { text, done: text.length >= target.length };
-}
-
-// Never cut between the two halves of a surrogate pair (most emoji): a half
-// renders as a replacement glyph for a frame.
-function safeCut(text: string, progress: number): number {
-  const end = Math.floor(progress);
-  const last = text.charCodeAt(end - 1);
-  return end > 0 && end < text.length && last >= 0xd800 && last <= 0xdbff ? end + 1 : end;
 }

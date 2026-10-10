@@ -23,6 +23,7 @@ import {
   mergeEdits,
   mergeTargets,
   resolveEdits,
+  sanitizeIncomingAttachment,
   sortFolders,
   summarize,
 } from '@zilar/chat-core';
@@ -115,71 +116,6 @@ export { sendFailureReasonFor } from './effects/sendFailure';
 export { DRAFT_END_FALLBACK_MS, DRAFT_IDLE_MS } from './effects/constants';
 
 export type { ApiClient, RealStoreDeps, StorageLike } from './effects/ports';
-
-/**
- * An incoming image attachment on an untrusted host would auto-fetch from
- * whatever URL a chat peer put in the payload, leaking the viewer's IP to that
- * host. Downgrade it to a file card so the bytes are only loaded on click.
- * The same holds for a GIF-video file attachment (`gif-` name, video mime):
- * `GifMessage` auto-plays it, so on an untrusted host the `gif-` prefix is
- * stripped (breaking the inline-video match) and the dimensions dropped —
- * the card keeps the working download link but loads nothing by itself.
- * Other file attachments stay files: they never auto-load.
- */
-function sanitizeIncomingAttachment(
-  attachment: Attachment,
-  token: MediaTokenShape | undefined,
-): Attachment {
-  if (attachment.kind !== 'image' && !isGifVideoName(attachment)) {
-    return attachment;
-  }
-  const trusted = token === undefined ? undefined : trustedMediaHosts(token);
-  if (trusted !== undefined && isTrustedMediaUrl(attachment.url, trusted)) {
-    return attachment;
-  }
-  if (attachment.kind === 'image') {
-    // A downgraded GIF-video (`gif-` name, video mime — the GIF send path
-    // sometimes emits kind `image` with the real blob mime) must not keep
-    // the prefix: `isGifVideoAttachment` is then the only remaining guard,
-    // so strip it here too and let either layer alone stop the auto-play.
-    // Other image names keep theirs (a bare `gif-` becomes `file`).
-    const downgraded: Attachment = {
-      ...attachment,
-      kind: 'file',
-      name: attachment.name.startsWith('gif-')
-        ? unprefixedGifName(attachment.name)
-        : attachment.name,
-    };
-    delete downgraded.width;
-    delete downgraded.height;
-    return downgraded;
-  }
-  const renamed: Attachment = { ...attachment, name: unprefixedGifName(attachment.name) };
-  delete renamed.width;
-  delete renamed.height;
-  return renamed;
-}
-
-/** A file attachment the GIF send path would render as an inline video. */
-function isGifVideoName(attachment: Attachment): boolean {
-  if (attachment.kind !== 'file') {
-    return false;
-  }
-  if (attachment.mime !== 'video/mp4' && attachment.mime !== 'video/webm') {
-    return false;
-  }
-  return attachment.name.startsWith('gif-');
-}
-
-/**
- * Strips the `gif-` prefix the inline-video match looks for, so an untrusted
- * GIF-video attachment renders as a click-to-load file card. Never empty:
- * a bare `gif-` name becomes `file`.
- */
-function unprefixedGifName(name: string): string {
-  const stripped = name.slice('gif-'.length);
-  return stripped === '' ? 'file' : stripped;
-}
 
 /**
  * An incoming voice message on an untrusted host would make `<audio
