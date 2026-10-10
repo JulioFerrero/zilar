@@ -2,30 +2,22 @@
 // paths, limiter order and answers as the old router, mounted by the Effect
 // edge (`apps/server/src/effect/edge.ts`). Its store runs on effect/sql.
 
-import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
-import {
-  HttpApi,
-  HttpApiBuilder,
-  HttpApiEndpoint,
-  HttpApiGroup,
-  HttpApiMiddleware,
-} from 'effect/http-api';
+import { Layer, Schema } from 'effect';
+import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
-import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { makeRateLimit } from '../effect/rate-limit-middleware';
 import {
-  CurrentUser,
+  SchemaErrors,
   Session,
-  httpErrorResponse,
-  requestIdOf,
+  handler,
+  mountApi,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import { blockUser, listBlockedUsers, unblockUser } from './service';
 
@@ -64,79 +56,36 @@ const BlockedList = Schema.Struct({ blocked: Schema.Array(BlockedUser) });
 // The write budget runs before the service, exactly like the old route's
 // `writeLimiter.allow` -> `blockUser` order. `requires: CurrentUser` is
 // satisfied by `Session`.
-class BlocksWriteRateLimit extends HttpApiMiddleware.Service<
-  BlocksWriteRateLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/BlocksWriteRateLimit') {}
-
-class BlocksReadRateLimit extends HttpApiMiddleware.Service<
-  BlocksReadRateLimit,
-  { requires: CurrentUser }
->()('zilar/effect/http/BlocksReadRateLimit') {}
-
-function writeRateLimitLayer(limiter: RateLimiter): Layer.Layer<BlocksWriteRateLimit> {
-  return Layer.succeed(
-    BlocksWriteRateLimit,
-    BlocksWriteRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many attempts, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
-
-function readRateLimitLayer(limiter: RateLimiter): Layer.Layer<BlocksReadRateLimit> {
-  return Layer.succeed(
-    BlocksReadRateLimit,
-    BlocksReadRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many attempts, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
+const RATE_LIMIT_MESSAGE = 'Too many attempts, try again later';
+const BlocksWriteRateLimit = makeRateLimit(
+  'zilar/effect/http/BlocksWriteRateLimit',
+  RATE_LIMIT_MESSAGE,
+);
+const BlocksReadRateLimit = makeRateLimit(
+  'zilar/effect/http/BlocksReadRateLimit',
+  RATE_LIMIT_MESSAGE,
+);
 
 const BlocksGroup = HttpApiGroup.make('blocks')
   .add(
     HttpApiEndpoint.put('block', '/blocks/:userId', {
       params: { userId: Schema.String },
       success: BlockResult,
-    }).middleware(BlocksWriteRateLimit),
+    }).middleware(BlocksWriteRateLimit.Middleware),
     HttpApiEndpoint.delete('unblock', '/blocks/:userId', {
       params: { userId: Schema.String },
       success: BlockResult,
-    }).middleware(BlocksWriteRateLimit),
+    }).middleware(BlocksWriteRateLimit.Middleware),
     HttpApiEndpoint.get('list', '/blocks', {
       success: BlockedList,
-    }).middleware(BlocksReadRateLimit),
+    }).middleware(BlocksReadRateLimit.Middleware),
   )
   .middleware(Session)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
 const BlocksApi = HttpApi.make('blocks').add(BlocksGroup);
-
-export const BLOCKS_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'PUT', path: '/api/blocks/:userId' },
-  { method: 'DELETE', path: '/api/blocks/:userId' },
-  { method: 'GET', path: '/api/blocks' },
-];
 
 function serviceFor(deps: BlocksRoutesDependencies): {
   db: ServerDatabase;
@@ -170,58 +119,29 @@ export function createBlocksApi(deps: BlocksApiDependencies): EffectApiMount {
   const groupLayer = HttpApiBuilder.group(BlocksApi, 'blocks', (handlers) =>
     handlers
       // Blocks `:userId`, idempotent. Unknown users answer 404, yourself 400.
-      .handle('block', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            return yield* Effect.promise(() => blockUser(service, user.id, request.params.userId));
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'block',
+        handler(logger, (request, user) => blockUser(service, user.id, request.params.userId)),
+      )
       // Unblocks `:userId`, idempotent.
-      .handle('unblock', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            return yield* Effect.promise(() =>
-              unblockUser(service, user.id, request.params.userId),
-            );
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'unblock',
+        handler(logger, (request, user) => unblockUser(service, user.id, request.params.userId)),
+      )
       // The blocker's list, newest first.
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            return yield* Effect.promise(() => listBlockedUsers(service, user.id));
-          }),
-          logger,
-          requestId,
-        );
-      }),
+      .handle(
+        'list',
+        handler(logger, (_request, user) => listBlockedUsers(service, user.id)),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(BlocksApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(writeRateLimitLayer(writeLimiter)),
-    Layer.provide(readRateLimitLayer(readLimiter)),
+    Layer.provide(schemaErrorLayer(logger)),
+    Layer.provide(BlocksWriteRateLimit.layer(writeLimiter)),
+    Layer.provide(BlocksReadRateLimit.layer(readLimiter)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: BLOCKS_API_ROUTES };
+  return mountApi(BlocksApi, apiLayer);
 }

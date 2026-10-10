@@ -4,14 +4,13 @@
 // module still owns the other `/groups/...` routes, so only these exact paths
 // mount. Its service runs on effect/sql.
 
-import { Effect, Layer, Schema } from 'effect';
-import { HttpServer, HttpServerRequest, HttpServerResponse, HttpRouter } from 'effect/http';
+import { Layer, Schema } from 'effect';
+import { HttpServerResponse } from 'effect/http';
 import {
   HttpApi,
   HttpApiBuilder,
   HttpApiEndpoint,
   HttpApiGroup,
-  HttpApiMiddleware,
   HttpApiSchema,
 } from 'effect/http-api';
 import type { Logger } from 'pino';
@@ -19,16 +18,14 @@ import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { HttpError } from '../errors';
 import {
-  CurrentUser,
+  SchemaErrors,
   Session,
-  failureResponse,
-  requestIdOf,
+  handler,
+  mountApi,
+  schemaErrorLayer,
   sessionLayer,
-  withErrorEnvelope,
   type EffectApiMount,
-  type EffectApiRoute,
 } from '../effect/http-core';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
@@ -87,26 +84,6 @@ const GroupRole = Schema.Struct({
 
 const RoleList = Schema.Struct({ roles: Schema.Array(GroupRole) });
 
-// Applied to the group so a payload decode failure renders like the old zod
-// path: 400 `invalid_request`. No test asserts the exact text, so the Effect
-// Schema message is used (the old text was the first zod issue).
-class RolesSchemaErrors extends HttpApiMiddleware.Service<RolesSchemaErrors>()(
-  'zilar/effect/http/RolesSchemaErrors',
-) {}
-
-function schemaErrorLayer(logger: Logger): Layer.Layer<RolesSchemaErrors> {
-  return HttpApiMiddleware.layerSchemaErrorTransform(RolesSchemaErrors, (error) =>
-    Effect.gen(function* () {
-      const request = yield* HttpServerRequest.HttpServerRequest;
-      return failureResponse(
-        logger,
-        requestIdOf(request),
-        new HttpError(400, 'invalid_request', error.cause.message),
-      );
-    }),
-  );
-}
-
 const GroupIdParams = Schema.Struct({ id: Schema.String });
 const RoleParams = Schema.Struct({ id: Schema.String, roleId: Schema.String });
 
@@ -137,7 +114,7 @@ const RolesGroup = HttpApiGroup.make('roles')
     }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
   )
   .middleware(Session)
-  .middleware(RolesSchemaErrors)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the router keeps the `/api` prefix.
   .prefix('/api');
 
@@ -151,14 +128,6 @@ export interface RolesApiDependencies {
   logger: Logger;
   audit?: AuditRecorder;
 }
-
-export const ROLES_API_ROUTES: ReadonlyArray<EffectApiRoute> = [
-  { method: 'GET', path: '/api/groups/:id/roles' },
-  { method: 'POST', path: '/api/groups/:id/roles' },
-  { method: 'PATCH', path: '/api/groups/:id/roles/:roleId' },
-  { method: 'DELETE', path: '/api/groups/:id/roles/:roleId' },
-  { method: 'PUT', path: '/api/groups/:id/roles/:roleId/members' },
-];
 
 export function createRolesApi(deps: RolesApiDependencies): EffectApiMount {
   const logger = deps.logger;
@@ -176,89 +145,55 @@ export function createRolesApi(deps: RolesApiDependencies): EffectApiMount {
   const groupLayer = HttpApiBuilder.group(RolesApi, 'roles', (handlers) =>
     handlers
       // The group's roles with their holders; any member may read.
-      .handle('list', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const roles = yield* Effect.promise(() =>
-              listRoles(deps.db, request.params.id, user.id),
-            );
-            return { roles };
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'list',
+        handler(logger, async (request, user) => ({
+          roles: await listRoles(deps.db, request.params.id, user.id),
+        })),
+      )
       // Creates a role (owner/admin only); capped at `MAX_ROLES_PER_GROUP`.
-      .handle('create', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            const role = yield* Effect.promise(() =>
-              createRole(serviceDeps(), request.params.id, user.id, request.payload.name),
-            );
-            return HttpServerResponse.jsonUnsafe(role, { status: 201 });
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'create',
+        handler(logger, async (request, user) =>
+          HttpServerResponse.jsonUnsafe(
+            await createRole(serviceDeps(), request.params.id, user.id, request.payload.name),
+            { status: 201 },
+          ),
+        ),
+      )
       // Renames a role (owner/admin only).
-      .handle('rename', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            return yield* Effect.promise(() =>
-              renameRole(
-                serviceDeps(),
-                request.params.id,
-                request.params.roleId,
-                user.id,
-                request.payload.name,
-              ),
-            );
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'rename',
+        handler(logger, (request, user) =>
+          renameRole(
+            serviceDeps(),
+            request.params.id,
+            request.params.roleId,
+            user.id,
+            request.payload.name,
+          ),
+        ),
+      )
       // Deletes a role (owner/admin only), 204 with no body.
-      .handle('remove', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            yield* Effect.promise(() =>
-              deleteRole(serviceDeps(), request.params.id, request.params.roleId, user.id),
-            );
-          }),
-          logger,
-          requestId,
-        );
-      })
+      .handle(
+        'remove',
+        handler(logger, async (request, user) => {
+          await deleteRole(serviceDeps(), request.params.id, request.params.roleId, user.id);
+        }),
+      )
       // Replaces a role's member set (owner/admin only), last write wins.
-      .handle('setMembers', (request) => {
-        const requestId = requestIdOf(request.request);
-        return withErrorEnvelope(
-          Effect.gen(function* () {
-            const user = yield* CurrentUser;
-            return yield* Effect.promise(() =>
-              setRoleMembers(
-                serviceDeps(),
-                request.params.id,
-                request.params.roleId,
-                user.id,
-                request.payload.userIds,
-              ),
-            );
-          }),
-          logger,
-          requestId,
-        );
-      }),
+      .handle(
+        'setMembers',
+        handler(logger, (request, user) =>
+          setRoleMembers(
+            serviceDeps(),
+            request.params.id,
+            request.params.roleId,
+            user.id,
+            request.payload.userIds,
+          ),
+        ),
+      ),
   );
 
   const apiLayer = HttpApiBuilder.layer(RolesApi).pipe(
@@ -267,12 +202,5 @@ export function createRolesApi(deps: RolesApiDependencies): EffectApiMount {
     Layer.provide(schemaErrorLayer(logger)),
   );
 
-  // The edge keeps the request log (redacted path); the router's own logger prints
-  // full URLs, so it stays off. Failures are logged by the envelope instead.
-  const { handler } = HttpRouter.toWebHandler(
-    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
-    { disableLogger: true },
-  );
-
-  return { handler, routes: ROLES_API_ROUTES };
+  return mountApi(RolesApi, apiLayer);
 }

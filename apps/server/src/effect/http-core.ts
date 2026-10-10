@@ -11,8 +11,8 @@
 // header so both branches can carry it.
 
 import { Context, Effect, Layer } from 'effect';
-import { HttpServerRequest, HttpServerResponse } from 'effect/http';
-import { HttpApiMiddleware } from 'effect/http-api';
+import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from 'effect/http';
+import { HttpApi, HttpApiMiddleware, type HttpApiGroup } from 'effect/http-api';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { HttpError } from '../errors';
@@ -76,6 +76,29 @@ export function sessionLayer(auth: Auth, logger: Logger): Layer.Layer<Session> {
         return yield* Effect.provideService(httpEffect, CurrentUser, { id: session.user.id });
       }),
     ),
+  );
+}
+
+/**
+ * Schema-error middleware, shared by every module: a params, query or payload
+ * decode failure renders as 400 `invalid_request` through the shared envelope.
+ * A group declares it with `.middleware(SchemaErrors)` and the module provides
+ * `schemaErrorLayer(logger)`.
+ */
+export class SchemaErrors extends HttpApiMiddleware.Service<SchemaErrors>()(
+  'zilar/effect/http/SchemaErrors',
+) {}
+
+export function schemaErrorLayer(logger: Logger): Layer.Layer<SchemaErrors> {
+  return HttpApiMiddleware.layerSchemaErrorTransform(SchemaErrors, (error) =>
+    Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      return failureResponse(
+        logger,
+        requestIdOf(request),
+        new HttpError(400, 'invalid_request', error.cause.message),
+      );
+    }),
   );
 }
 
@@ -163,6 +186,38 @@ export function withErrorEnvelope<A, R>(
   );
 }
 
+/**
+ * The endpoint handler every module repeats: reads the request id, the signed-in
+ * user, runs `body(request, user)` and renders every defect through the shared
+ * envelope. `body` may return a Promise (a rejection is a defect, like
+ * `Effect.promise`) or an Effect that cannot fail. Use it as
+ * `.handle('name', handler(logger, (request, user) => service(user.id, request.params.id)))`.
+ * The group must declare `Session`, which provides `CurrentUser`.
+ */
+export function handler<
+  Req extends { readonly request: HttpServerRequest.HttpServerRequest },
+  A,
+  R = never,
+>(
+  logger: Logger,
+  body: (request: Req, user: SessionUser) => Promise<A> | Effect.Effect<A, never, R>,
+): (
+  request: Req,
+) => Effect.Effect<A | HttpServerResponse.HttpServerResponse, never, R | CurrentUser> {
+  return (request) =>
+    withErrorEnvelope(
+      Effect.gen(function* () {
+        const user = yield* CurrentUser;
+        return yield* Effect.suspend(() => {
+          const out = body(request, user);
+          return Effect.isEffect(out) ? out : Effect.promise(() => out);
+        });
+      }),
+      logger,
+      requestIdOf(request.request),
+    );
+}
+
 export type EffectApiMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 export interface EffectApiRoute {
@@ -176,4 +231,42 @@ export type EffectApiWebHandler = (request: Request) => Promise<Response>;
 export interface EffectApiMount {
   readonly handler: EffectApiWebHandler;
   readonly routes: ReadonlyArray<EffectApiRoute>;
+}
+
+/**
+ * The routes of an `HttpApi`, in the `{ method, path }` shape the edge routes
+ * by. The group's `.prefix('/api')` is already part of each endpoint path.
+ */
+export function reflectRoutes<Id extends string, Groups extends HttpApiGroup.Constraint>(
+  api: HttpApi.HttpApi<Id, Groups>,
+): ReadonlyArray<EffectApiRoute> {
+  const routes: Array<EffectApiRoute> = [];
+  HttpApi.reflect(api, {
+    onGroup: () => undefined,
+    onEndpoint: ({ endpoint }) => {
+      routes.push({ method: endpoint.method as EffectApiMethod, path: endpoint.path });
+    },
+  });
+  return routes;
+}
+
+/**
+ * The shared mount: serves the API layer as a web handler and lists its routes
+ * from the API itself, so a module keeps no hand-written route array. The
+ * edge keeps the request log (redacted path); the router's own logger prints
+ * full URLs, so it stays off. Failures are logged by the envelope instead.
+ */
+export function mountApi<Id extends string, Groups extends HttpApiGroup.Constraint>(
+  api: HttpApi.HttpApi<Id, Groups>,
+  apiLayer: Layer.Layer<
+    never,
+    never,
+    HttpRouter.HttpRouter | Layer.Success<typeof HttpServer.layerServices>
+  >,
+): EffectApiMount {
+  const { handler: webHandler } = HttpRouter.toWebHandler(
+    apiLayer.pipe(Layer.provide(HttpServer.layerServices)),
+    { disableLogger: true },
+  );
+  return { handler: webHandler, routes: reflectRoutes(api) };
 }

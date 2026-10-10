@@ -115,6 +115,17 @@ export function sqlRuntimeFor(db: ServerDatabase): SqlRuntime {
   return runtime;
 }
 
+/**
+ * Runs an effect that needs the SQL client on the runtime registered for `db`.
+ * One shared copy for every module's service.
+ */
+export function runSql<A, E>(
+  db: ServerDatabase,
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
+): Promise<A> {
+  return sqlRuntimeFor(db).runPromise(effect);
+}
+
 // Disposes the runtime for one database and forgets it, so a later
 // `sqlRuntimeFor(db)` throws instead of handing back a closed pool. The entry
 // is removed first: a second dispose call is a no-op (idempotent), and no

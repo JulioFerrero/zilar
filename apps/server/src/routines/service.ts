@@ -13,7 +13,7 @@ import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { nextRunAfter, parseRoutineSchedule, type RoutineSchedule } from './schedule';
 
 export const MAX_ROUTINES_PER_TOPIC = 10;
@@ -86,13 +86,6 @@ export interface PublicRoutine {
   approvedHosts: string[];
   /** `personal` means the owner's DM with the AI; `group` a group topic. */
   scope: 'personal' | 'group';
-}
-
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 const TITLE_CONTROL_CHARS = String.fromCharCode(

@@ -30,7 +30,7 @@ import type { TopicRow } from '../topics/access';
 import { allowedTopicAiIds } from '../topics/access';
 import { runToolVersion, ToolServiceError } from '../tools/service';
 import type { ToolRunner } from '../tools/types';
-import { runSql } from './db';
+import { runSql } from '../effect/sql';
 
 export const MAX_POST_TEXT_CHARS = 4_000;
 export const MAX_CONSECUTIVE_FAILURES = 3;

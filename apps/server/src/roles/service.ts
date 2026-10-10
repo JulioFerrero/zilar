@@ -4,7 +4,7 @@ import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { GroupRoleRow, TopicRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql, sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import type { InviteLogger } from '../groups/service';
@@ -51,16 +51,6 @@ function toMissingGroup(): HttpError {
 
 function toMissingRole(): HttpError {
   return new HttpError(ROLE_NOT_FOUND.status, ROLE_NOT_FOUND.code, ROLE_NOT_FOUND.message);
-}
-
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // The group row plus the actor's membership. A non-member sees the same 404

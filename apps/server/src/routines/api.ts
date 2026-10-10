@@ -41,7 +41,7 @@ import {
   type PublicRoutine,
   type RoutineRow,
 } from './service';
-import { runSql } from './db';
+import { runSql } from '../effect/sql';
 
 const RoutineStatus = Schema.Literals(['active', 'paused', 'needs_approval']);
 const RoutinePausedReason = Schema.NullOr(Schema.Literals(['user', 'failures', 'hosts_changed']));
