@@ -16,6 +16,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0955](T-0955-split-server-tools-service.md) | Size split T10: server tools/service.ts (1,200) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0956](T-0956-split-server-ais-service.md) | Size split T7: server ais/service.ts (1,390) | in-progress | deepseek-flash | T-0936 | size-plan |
 | [T-0957](T-0957-split-server-topics-service.md) | Size split T14: server topics/service.ts (1,127) | in-progress | deepseek-flash | T-0936 | size-plan |
+| [T-0958](T-0958-split-server-stickers-service.md) | Size split T8: server stickers/service.ts (1,388) | in-progress | deepseek-flash | T-0936 | size-plan |
 
 ## Follow-ups
 
