@@ -5,7 +5,7 @@ import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { PinnedMessageRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql, sqlRuntimeFor } from '../effect/sql';
 import { HttpError } from '../errors';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import {
@@ -36,16 +36,6 @@ export interface PinsServiceDeps {
   audit?: AuditRecorder;
 }
 
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition.
-function runSql<A>(
-  deps: PinsServiceDeps,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(deps.db).runPromise(effect);
-}
-
 export function toPinView(row: PinRow, chat: string): PinView {
   return {
     id: row.id,
@@ -73,7 +63,7 @@ export async function listPins(
     mucDomain: deps.mucDomain,
   });
   const rows = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<PinRow>`SELECT * FROM pinned_messages
@@ -107,7 +97,7 @@ export async function pinMessage(deps: PinsServiceDeps, input: PinMessageInput):
   // transaction under a per-chat advisory lock: two concurrent pins past the
   // cap would otherwise both read under 20 and both insert.
   const [existing] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<{ id: string }>`SELECT id FROM pinned_messages
@@ -140,7 +130,7 @@ export async function pinMessage(deps: PinsServiceDeps, input: PinMessageInput):
     throw error instanceof HttpError ? error : mapPinError(error);
   }
   const [row] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<PinRow>`SELECT * FROM pinned_messages WHERE id = ${id} LIMIT 1`;
@@ -161,7 +151,7 @@ export async function unpinMessage(
   userId: string,
 ): Promise<PinView> {
   const [row] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<PinRow>`SELECT * FROM pinned_messages WHERE id = ${pinId} LIMIT 1`;
@@ -176,7 +166,7 @@ export async function unpinMessage(
   const chat = await requirePinVisible(deps.db, row.chatJid, userId, deps.domain);
   await requirePinManager(deps.db, chat, userId);
   await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* sql`DELETE FROM pinned_messages WHERE id = ${pinId}`;

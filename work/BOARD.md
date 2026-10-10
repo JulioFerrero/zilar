@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | [T-0913](T-0913-load-flakes.md) | Four timing tests that fail combined checks under load become deterministic | in-progress | sonnet-5.5 | | test stability |
 | [T-0912](T-0912-store-core-t6b-history.md) | Store core T6b: web history in core, loadOlder overlap fix | todo | | T-0907 | phase 4.3 |
-| [T-0908](T-0908-one-run-sql.md) | One runSql: delete the 21 module-local copies | in-progress | haiku-5.5 | | follow-up |
 | [T-0909](T-0909-pglite-dev-only.md) | PGlite out of the production install | in-progress | sonnet-5.5 | | follow-up, image size |
 | [T-0911](T-0911-test-sleeps-followup.md) | Remaining real sleeps in web and mobile tests | in-progress | haiku-5.5 | | follow-up, test-only |
 | [T-0907](T-0907-store-core-t6-incoming-history.md) | Store core T6: incoming, actions, reads, history in core; web on them | in-progress | opus-5.5 | T-0903, T-0904 | phase 4.3 |
@@ -942,3 +941,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0905](T-0905-store-core-t4-mobile-lifetime.md) | Store core T4: the mobile store on the core lifetime (makeLife and makeRunners as adapters, keyed fibers for t | 2026-10-10 |
 | [T-0906](T-0906-store-core-t5-mobile-ledger.md) | Store core T5: the mobile store on the core ledger, tests first, with the group echo race fix (linkAckToServer | 2026-10-10 |
 | [T-0910](T-0910-contract-lenient-rows.md) | Lenient row schemas in the api-contract, so the mobile gifs, media and stickers clients derive from it and sti | 2026-10-10 |
+| [T-0908](T-0908-one-run-sql.md) | One runSql: delete the 21 module-local copies of runSql and import the shared one from apps/server/src/effect/ | 2026-10-10 |

@@ -11,9 +11,9 @@
 
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
-import { sqlRuntimeFor } from '../../effect/sql';
+import { runSql } from '../../effect/sql';
 
 // Caps from the plan §4.4: over-long text is cut, never rejected, and extra
 // list items are dropped. The empty objective is the one hard rejection.
@@ -81,13 +81,6 @@ export interface FinishDelegationInput {
   status: FinishStatus;
   resultSummary?: string;
   artifacts?: string[];
-}
-
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // Trim, drop empty items and keep the first ten, each cut to the item cap.

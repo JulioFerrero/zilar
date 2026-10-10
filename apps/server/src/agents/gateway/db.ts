@@ -1,19 +1,12 @@
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { ActiveAiForGateway } from '../../ais/service';
 import type { ServerDatabase } from '../../db/client';
-import { sqlRuntimeFor } from '../../effect/sql';
+import { runSql } from '../../effect/sql';
 import type { GroupRole } from '../../groups/service';
 import { allowedTopicAiIds } from '../../topics/access';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import { normBareJid } from '../context';
-
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
 
 interface OwnerNameRow {
   name: string;

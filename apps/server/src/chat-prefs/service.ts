@@ -8,7 +8,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { ChatPrefRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { canSeeTopic, type TopicRow } from '../topics/access';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -41,13 +41,6 @@ export interface ChatPrefView extends BackgroundFields {
   archived: boolean;
   pinnedAt: string | null;
   updatedAt: string;
-}
-
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // A MUC room JID (`localpart@mucDomain`) is visible to the caller when any

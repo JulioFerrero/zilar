@@ -1,8 +1,8 @@
 import { access, constants, mkdir, readdir, stat } from 'node:fs/promises';
 import { Effect } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from './db/client';
-import { sqlRuntimeFor } from './effect/sql';
+import { runSql } from './effect/sql';
 
 // Startup helpers shared by `index.ts` (T-0120).
 
@@ -157,16 +157,6 @@ export async function warnOnContainerLayerStorage(input: {
 async function deviceOf(dir: string): Promise<number> {
   const info = await stat(dir);
   return info.dev;
-}
-
-// Every query runs on the `effect/sql` client registered for this database
-// (see `./effect/sql`). The exported functions stay `async` so callers and
-// tests keep their shape during the transition.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 /**

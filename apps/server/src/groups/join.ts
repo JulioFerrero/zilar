@@ -8,7 +8,7 @@ import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { GroupRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { syncPublicTopicsByLink, type InviteLinkServiceDeps } from '../invite-links/service';
 import type { InviteLogger } from './service';
@@ -31,16 +31,6 @@ export interface JoinPublicGroupResult {
   alreadyMember: boolean;
 }
 
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported function stays `async` so routes and
-// tests keep their shape during the transition.
-function runSql<A, E>(
-  deps: JoinPublicGroupDeps,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(deps.db).runPromise(effect);
-}
-
 // Unknown and private groups answer the same 404, so group ids cannot be
 // probed from here. A user already in the group gets the same answer as a
 // success (idempotent). Beyond the cap (people and AIs share it — one
@@ -59,7 +49,7 @@ export async function joinPublicGroup(
 ): Promise<JoinPublicGroupResult> {
   const maxMembers = deps.maxMembers ?? PUBLIC_GROUP_MAX_MEMBERS;
   const [group] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`;
@@ -70,7 +60,7 @@ export async function joinPublicGroup(
     throw new HttpError(404, 'not_found', 'Group not found');
   }
   const [existing] = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<{ userId: string }>`SELECT user_id FROM group_members
@@ -83,7 +73,7 @@ export async function joinPublicGroup(
   // The pre-transaction refusal, so a full group answers 409 before any
   // write, like the link flow; the locked count inside the transaction is
   // the authority.
-  if ((await runSql(deps, countOccupants(groupId))) + 1 > maxMembers) {
+  if ((await runSql(deps.db, countOccupants(groupId))) + 1 > maxMembers) {
     throw new HttpError(409, 'group_full', 'This group is full');
   }
 
@@ -95,7 +85,7 @@ export async function joinPublicGroup(
     ...(deps.audit === undefined ? {} : { audit: deps.audit }),
   };
   const joined = await runSql(
-    deps,
+    deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql.withTransaction(

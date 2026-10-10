@@ -5,7 +5,7 @@ import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { GroupInviteLinkRow, GroupRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -144,16 +144,6 @@ export interface CreatedInviteLink {
   /** The raw token, shown once. Never stored, logged or audited. */
   token: string;
   url: string;
-}
-
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition.
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 function serviceNow(deps: InviteLinkServiceDeps): Date {

@@ -1,12 +1,12 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
-import { SqlClient, type SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import { GROUP_MEMBERS_MAX } from '@zilar/api-contract';
 import { findOwnedAi } from '../ais/service';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
 import type { GroupMemberRow, GroupRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -26,13 +26,6 @@ import { handleForGroup, type GroupVisibility } from './visibility';
 // The `removeGroupAi` transaction below runs on the `effect/sql` client
 // registered for this database (see `../effect/sql`), through the phase-1
 // Effects of the rules, tools, routines and memory helpers.
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError | E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
-
 export const MAX_GROUP_MEMBERS = GROUP_MEMBERS_MAX;
 export const ROOM_LOCALPART_LENGTH = 16;
 

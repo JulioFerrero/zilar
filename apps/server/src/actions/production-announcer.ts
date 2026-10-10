@@ -1,9 +1,9 @@
 import { Effect } from 'effect';
-import { SqlClient, type SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { Payload } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
 import type { ApprovalRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { approvalCardBody, buildApprovalCardPayload, type ActionAnnouncer } from './announce';
 
@@ -37,15 +37,6 @@ export interface PostToChatInput {
   topicId?: string;
   text: string;
   payload?: Payload;
-}
-
-// Every read runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported surface stays the same.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // The production announcer (T-0092, topic wiring T-0110): turns a tier-2

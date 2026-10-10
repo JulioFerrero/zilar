@@ -6,10 +6,10 @@
 // `topics` and `group_members` columns into `TopicRow` and the row types here.
 
 import { Effect, Schema } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { GroupMemberRow, GroupRoleRow, TopicRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { holdsTopicRole, rolesOfTopic, topicRoleHolderIds } from '../roles/service';
 
@@ -81,13 +81,6 @@ export const TOPIC_NOT_FOUND = {
 
 export function toMissingTopic(): HttpError {
   return new HttpError(TOPIC_NOT_FOUND.status, TOPIC_NOT_FOUND.code, MISSING_TOPIC_MESSAGE);
-}
-
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 export async function getTopic(db: ServerDatabase, topicId: string): Promise<TopicRow | null> {

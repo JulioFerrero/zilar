@@ -9,10 +9,10 @@
 // tests keep their shape.
 
 import { Effect } from 'effect';
-import { SqlClient, SqlError, type Statement } from 'effect/sql';
+import { SqlClient, type Statement } from 'effect/sql';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 
 export const DIRECTORY_PAGE_SIZE = 20;
@@ -82,13 +82,6 @@ interface DirectoryRow {
   handle: string | null;
   description: string | null;
   createdAt: Date;
-}
-
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
 }
 
 // Newest first when `q` is empty, so Explore shows fresh groups; with a

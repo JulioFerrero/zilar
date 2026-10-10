@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { MachinePairingCodeRow, MachineRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import {
   generatePairingCode,
   hashPairingCode,
@@ -18,16 +18,6 @@ export const MAX_PENDING_MACHINES_PER_USER = 5;
 
 export type { MachineRow };
 export type MachineStatus = 'pending' | 'approved' | 'revoked';
-
-// Every query runs on the `effect/sql` client registered for this database
-// (see `../effect/sql`). The exported functions stay `async` so routes and
-// tests keep their shape during the transition.
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
 
 // The owner-facing shape. The public key is never returned: `fingerprint`
 // (the first 16 hex chars of sha256(public key bytes)) lets the owner compare

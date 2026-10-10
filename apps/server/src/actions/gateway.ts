@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { Effect, Schedule, type Fiber } from 'effect';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
 import { ARGS_HASH_PATTERN } from '@zilar/protocol';
 import type { AuditEntry, AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { AisRow, ApprovalRow, GroupAiRow, PendingActionRow, TopicRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql, sqlRuntimeFor } from '../effect/sql';
 import { createApprovalEffect, verifyApproval } from '../approvals/service';
 import { allowedTopicAiIds } from '../topics/access';
 import { findActiveRule } from '../approvals/rules';
@@ -116,17 +116,6 @@ export type DeniedReason = PolicyDenialReason;
 // Internal row shapes. Extracted so the implementation does not lean on the
 // schema inference for places where we hand-pick columns.
 type AiStatusRow = Pick<AisRow, 'id' | 'status'>;
-
-// Every statement below runs on the `effect/sql` client registered for this
-// database (see `../effect/sql`), matching the pins pilot. The exported
-// functions stay `async` so routes, the approvals route and the tests keep
-// their shape during the transition.
-function runSql<A>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
 
 export function createActionGateway(deps: ActionGatewayDependencies): ActionGateway {
   const now = deps.now ?? (() => new Date());

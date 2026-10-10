@@ -9,7 +9,7 @@ import { SqlClient, SqlError } from 'effect/sql';
 import type { FolderChatType, FolderIcon } from '@zilar/api-contract';
 import type { ServerDatabase } from '../db/client';
 import type { ChatFolderRow } from '../db/rows';
-import { sqlRuntimeFor } from '../effect/sql';
+import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 
 // The icon list, chat types and the name and chat-list limits live in the
@@ -69,13 +69,6 @@ const DEFAULT_FOLDER_SEEDS: DefaultFolderSeed[] = [
   { name: 'Personal', icon: 'user', includeTypes: ['dm'] },
   { name: 'AIs', icon: 'bot', includeTypes: ['ai'] },
 ];
-
-function runSql<A, E>(
-  db: ServerDatabase,
-  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
-): Promise<A> {
-  return sqlRuntimeFor(db).runPromise(effect);
-}
 
 // A one-dimensional `text[]` value built from scalar placeholders. The
 // effect/sql pg driver cannot infer the type of an empty JS array, so every
