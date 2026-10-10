@@ -1,7 +1,7 @@
 ---
 id: T-1066
 title: "Mock sweep M2+R2 (mobile): delete the seven old mocks the H2 adapters replaced (ais, ai-memory, audit, tools, approvals, machines-mock, connections-mock)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1066-delete-mobile-replaced-mocks
 model: auto
@@ -57,4 +57,67 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+1. Ran `pnpm install` in the worktree: `Done in 10.4s using pnpm v10.32.1` (peer-dep warning for `@types/react-dom` on mobile, pre-existing).
+2. Grepped each of the seven modules across `apps/mobile` before deleting, including `import(`/`require(`/`typeof import(` forms (quote-terminated module specifiers, so dynamic forms are covered) and test files. Per file:
+   - `mock/ais` (`./ais`): **no matches**.
+   - `mock/ai-memory` (`./ai-memory`): **no matches**.
+   - `mock/audit` (`./audit`): **no matches**.
+   - `mock/tools` (`./tools`): **no matches**.
+   - `mock/approvals` (`./approvals`): **no matches**.
+   - `machines-mock`: one match, a doc comment in `components/stickers/stickers-mock.ts:13` (not an import).
+   - `connections-mock`: one match, a doc comment in `components/integrations/integrations-mock.ts:12` (not an import).
+   - A repo-wide re-grep after deletion found references only in docs and other task files (`docs/audit/*.md`, `work/T-*.md`), never in importable code.
+3. Confirmed the seven files were tracked and totalled 1,172 lines (matching the spec), then removed them with `git rm`:
+   `mock/ais.ts` (251), `mock/ai-memory.ts` (38), `mock/audit.ts` (83), `mock/tools.ts` (369), `mock/approvals.ts` (129), `components/machines/machines-mock.ts` (172), `components/connections/connections-mock.ts` (130).
+4. Reworded the two now-dangling doc comments that named deleted files (comments only, no code change):
+   - `components/stickers/stickers-mock.ts`: dropped the `components/machines/machines-mock.ts` name.
+   - `components/integrations/integrations-mock.ts`: dropped the `components/connections/connections-mock.ts` name.
+
+### Files changed
+
+- Deleted: the seven files above.
+- Edited (comment only): `apps/mobile/src/components/stickers/stickers-mock.ts`, `apps/mobile/src/components/integrations/integrations-mock.ts`.
+- Edited: `work/T-1066-delete-mobile-replaced-mocks.md` (status + this Report).
+
+### Commands and results
+
+- `pnpm install`: Done, 10.4s.
+- Greps above: as listed (no importers).
+- `pnpm gate` (from repo root), real output summary:
+  ```
+  gate: 10 changed file(s) against main
+  PASS  install (frozen)  (1.6s)
+  PASS  format  (1.2s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (3.7s)
+  PASS  effect  (1.6s)
+  SKIP tests @zilar/mobile (no nearby test files)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+- Single tests run while working: none (deletion-only change; gate skipped mobile as there are no nearby test files).
+
+### Deviations / problems
+
+- None. The two comment rewordings are explicitly allowed by the spec and touch no code.
+- Tests `@zilar/mobile` was SKIPped by the gate (no nearby test files), not failed.
+
+### Blocked / needs a decision
+
+- None.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-11: approved. The pre-review is clean, with no nits.**
+- **The change:** deleted the seven old mobile mocks the H2 adapters replaced: `mock/{ais,ai-memory,audit,tools,approvals}.ts`, `components/machines/machines-mock.ts` and `components/connections/connections-mock.ts`. In total, 1,176 lines removed.
+  - Two doc comments, in `stickers-mock.ts` and `integrations-mock.ts`, no longer name the deleted files.
+  - No code changed.
+- **What the lead checked:** with grep on main before the spec, none of the seven had an importer.
+- **The lead's phone smoke** (mock):
+  - **the AIs tab** lists Dev-1, QA-1 and Marketing AI;
+  - **Dev-1's page** shows the backend persona and the connection keys;
+  - **Settings › Approvals** loads;
+  - **Settings › Machines** shows office-linux waiting for approval, dev-mac with Rename and Revoke, and "Revoked (1)".
+- **Check:** the gate passed.

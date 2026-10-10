@@ -9,7 +9,7 @@ import {
 /**
  * Mock integrations API for `EXPO_PUBLIC_ZILAR_MOCK=1` or `?mock=<scenario>`.
  * It lives beside the hook (not in `src/mock/`) so this task touches only its
- * allowed files; the pattern mirrors `components/connections/connections-mock.ts`.
+ * allowed files; other adjacent component mocks follow the same pattern.
  *
  * Secrets are write-only, exactly like the server: saving a bot token only
  * flips `configured`/`source`, and saving email keeps `from` but drops the

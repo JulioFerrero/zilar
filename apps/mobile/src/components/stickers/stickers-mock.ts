@@ -9,8 +9,8 @@ import { mockDemoStickerPacks } from '../../mock/stickers';
 /**
  * Mock sticker packs and favorites for `EXPO_PUBLIC_ZILAR_MOCK=1` or
  * `?mock=<scenario>`. It lives beside the hook (not in `src/mock/`) so
- * T-0187 touches only its allowed files; the pattern otherwise mirrors
- * `components/machines/machines-mock.ts`.
+ * T-0187 touches only its allowed files; other adjacent component mocks
+ * follow the same beside-the-hook pattern.
  */
 
 export type StickersMockScenario = 'default' | 'empty' | 'error';
