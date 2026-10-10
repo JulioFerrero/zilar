@@ -2,6 +2,24 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-10 22:30 local: wave 9 merged; last splits, the lint rule and mock wave 2 running**
+- **Merged, 11 tasks:**
+  - **server, by a line check against main:** T-1028 (routine execute), T-1029 (agent tools; the lead ran `reply.test.ts`), T-1033 (voice transcription API), T-1036 (routines API);
+  - **mobile, with phone smokes:** T-1030 (voice-native), T-1031 (message search), T-1032 (voice player). T-1032 swapped two module variables for getters and setters, so the lead read every call site against main and ran play on main too;
+  - **web:** T-1034 (voice lib; recorded with a headless fake microphone, branch against main), T-1035 (media panel), T-1038 (folder editor: create, icon, include, save);
+  - **site:** T-1037 (instruments; headless, the text matches main).
+- **Running, 8 workers:**
+  - T-1039, T-1040 and T-1041: the last 3 mobile splits. T-1040's packet is ready, and its phone smoke waits for the other two;
+  - T-1042: the oxlint `max-lines` warning at 400;
+  - T-1043: dedup F6a, shared `errorName`/`errorClassName`/`isUniqueViolation`. The copies differ, so `isUniqueViolation` is deliberately widened to the `handles/store.ts` version;
+  - T-1044 to T-1046: mock wave 2 (prefs and pins; folders, backgrounds and media; stickers and GIFs).
+- **Found:** mobile mock mode has no request fallback (`apps/mobile/src/mock/backend.ts:8`), so every domain not yet in `@zilar/mock-backend` answers 404. That causes the "Could not save", "Could not load pins" and "Could not load media" errors.
+- **Next:**
+  - fake XMPP upload slots, so voice and attachment sends work in mock mode;
+  - the F dedups one at a time;
+  - then flip `max-lines` to error once the remaining deferred files are split.
+- **Deferred files still over 400:** the stores, `main.ts`, `app.ts`, `topics/access.ts`, `group-turn.ts`, the runner-tunnel files, `litellm-client.ts`, `approvals/api.ts`, `search/routes.ts`, the lead CLI files, `config.ts`, `setup/api.ts`, `effect/edge.ts`, `auth/sql-adapter.ts`, `machines/api.ts`, `db/rows.ts`, `chat-api.ts`, `client-core lifecycle.ts`, `sandbox/tool-worker.ts` and `mux.ts`.
+
 **2026-10-10 21:50 local: wave 8 merged; wave 9 running**
 - **Merged, 8 tasks:**
   - **mobile, with phone smokes:** T-1020 (chats tab: list, search, long-press), T-1021 (attachments: the demo PDF stages), T-1022 (topic info and topic actions sheets);
