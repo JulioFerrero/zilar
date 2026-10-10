@@ -20,7 +20,7 @@ This is the second part of mock wave 2: task C in `docs/audit/mock-plan.md` §4.
 Mobile mock mode answers 404 for any route the shared backend lacks (`apps/mobile/src/mock/backend.ts:8-10`). On 2026-10-10 the lead saw the "Media, files and links" sheet show "Could not load media" in a mobile mock phone smoke, and the web panel show the same in Chrome.
 
 ### What to build
-1. **New domains**, each a folder under `packages/mock-backend/src/domains/` plus one alphabetical line in `src/domains/index.ts`.
+1. **New domains**, each a folder under `packages/mock-backend/src/domains/` plus one alphabetical line in `packages/mock-backend/src/domains/index.ts`.
    - **`chat-folders`:** list, create, `PUT /chat-folders/order`, `PATCH /chat-folders/:id` and `DELETE /chat-folders/:id`.
      - Contract: `packages/api-contract/src/chat-folders.ts:138-154`.
      - Web mock: `apps/web/src/mock/api.ts:2736-2835`, with the same bodies and mutations.
@@ -43,7 +43,7 @@ Mobile mock mode answers 404 for any route the shared backend lacks (`apps/mobil
 ### Allowed files
 `packages/mock-backend/**`, `work/T-1045-mock-backend-folders-media.md`.
 
-T-1044 (prefs and pins) and T-1046 (stickers and GIFs) work in the same package in parallel. Touch only your own domain folders and your lines in `src/domains/index.ts`.
+T-1044 (prefs and pins) and T-1046 (stickers and GIFs) work in the same package in parallel. Touch only your own domain folders and your lines in `packages/mock-backend/src/domains/index.ts`.
 
 ### Checks
 ```bash

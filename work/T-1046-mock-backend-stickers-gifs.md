@@ -20,7 +20,7 @@ This is the third part of mock wave 2: task F in `docs/audit/mock-plan.md` §4. 
 Mobile mock mode answers 404 for any route the shared backend lacks (`apps/mobile/src/mock/backend.ts:8-10`). On 2026-10-10 the lead's mobile mock smoke showed six GIF cells but no images.
 
 ### What to build
-1. **New domains**, each a folder under `packages/mock-backend/src/domains/` plus one alphabetical line in `src/domains/index.ts`.
+1. **New domains**, each a folder under `packages/mock-backend/src/domains/` plus one alphabetical line in `packages/mock-backend/src/domains/index.ts`.
    - **`stickers`:** the `stickers` contract group (`packages/api-contract/src/stickers.ts:140-197`). That covers packs (list, create, patch, delete), stickers (upload, delete, `GET /stickers/:stickerId/file`), discover, the panel (reorder, add, remove) and favorites (list, add, remove).
      - Web mock: `apps/web/src/mock/api.ts:2326-2482`, with the same bodies and mutations.
      - Mobile cross-check: `apps/mobile/src/mock/stickers.ts` and `apps/mobile/src/components/stickers/stickers-mock.ts`.
@@ -41,7 +41,7 @@ Mobile mock mode answers 404 for any route the shared backend lacks (`apps/mobil
 ### Allowed files
 `packages/mock-backend/**`, `work/T-1046-mock-backend-stickers-gifs.md`.
 
-T-1044 (prefs and pins) and T-1045 (folders, backgrounds and media) work in the same package in parallel. Touch only your own domain folders and your lines in `src/domains/index.ts`.
+T-1044 (prefs and pins) and T-1045 (folders, backgrounds and media) work in the same package in parallel. Touch only your own domain folders and your lines in `packages/mock-backend/src/domains/index.ts`.
 
 ### Checks
 ```bash

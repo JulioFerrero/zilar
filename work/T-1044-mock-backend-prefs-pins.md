@@ -22,7 +22,7 @@ Mobile mock mode has no request fallback (`apps/mobile/src/mock/backend.ts:8-10`
 - every chat shows "Could not load pins."
 
 ### What to build
-1. **New domains**, each a folder under `packages/mock-backend/src/domains/` plus one alphabetical line in `src/domains/index.ts`, as T-0942 set up. Each answers its contract group with the same bodies and mutations as the web mock.
+1. **New domains**, each a folder under `packages/mock-backend/src/domains/` plus one alphabetical line in `packages/mock-backend/src/domains/index.ts`, as T-0942 set up. Each answers its contract group with the same bodies and mutations as the web mock.
    - **`chat-prefs`:** `GET /chat-prefs` and `PUT /chat-prefs/:chatJid` (pinned, muted until, archived), plus `GET` and `PUT /chat-background`.
      - Contract: `packages/api-contract/src/chat-prefs.ts:99-110`.
      - Web mock: `apps/web/src/mock/api.ts:2502-2530` (chat-prefs) and `:2508`, `:2634-2684` (chat-background).
@@ -45,7 +45,7 @@ Mobile mock mode has no request fallback (`apps/mobile/src/mock/backend.ts:8-10`
 ### Allowed files
 `packages/mock-backend/**`, `work/T-1044-mock-backend-prefs-pins.md`.
 
-T-1045 (folders, backgrounds and media) and T-1046 (stickers and GIFs) work in the same package in parallel. Touch only your own domain folders and your lines in `src/domains/index.ts`.
+T-1045 (folders, backgrounds and media) and T-1046 (stickers and GIFs) work in the same package in parallel. Touch only your own domain folders and your lines in `packages/mock-backend/src/domains/index.ts`.
 
 ### Checks
 ```bash
