@@ -1,7 +1,7 @@
 ---
 id: T-0852
 title: "Approvals list: preload what canDecide needs instead of 3-6 queries per row"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0852-approvals-list-n-plus-1
 model: auto
@@ -55,3 +55,13 @@ Run the tests 3 times after the last commit.
 ## Report (written by the worker when done)
 
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved.** `canDecideMany` preloads everything in at most 6 queries per list call, where it used to take 3-6 per row. A row-by-row equality test against `canDecide` covers every role. The combined wave 3 check is clean.
+
+### Report
+- Added `canDecideMany(db, rows, userId)` in `apps/server/src/approvals/service.ts`; `listDecidableApprovals` uses it. `canDecide` is unchanged (still used by decide and single read).
+- Queries per list call: at most 6 (AI owners, topics, user's group memberships, topic_members, topic_role_access, approver-role holdings), down from 3-6 per row (up to 600 for 100 rows). Measured by reading the code, not by a query counter.
+- Tests: approvals folder 127 before, 128 after (new: canDecideMany equals canDecide for owner, group admin, plain member, approver-role holder, outsider; hidden private topic, approver-gated topic, DM, foreign AI). 3 of 3 runs pass.
+- Typecheck and oxlint clean.
+- Behaviour differences: none. Cited lines were right (list loop :656, canDecide :723).
+- Unsure: the machine load was ~55, so 30s hook timeouts failed on PGlite startup; the 3 runs used `--testTimeout=120000 --hookTimeout=120000`. Also used sed once to add an import line.

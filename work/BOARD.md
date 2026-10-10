@@ -32,7 +32,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0885](T-0885-web-store-fakes.md) | Web store tests share one fakeApi/fakeXmpp harness (159-line copies today) | in-progress | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0886](T-0886-gateway-test-split.md) | Split apps/server/src/agents/gateway.test.ts (7,242 lines, 100 s) into feature files aro… | todo | sonnet-5.5 |  | wave 4, simplify plan |
 | [T-0887](T-0887-slow-loop-tests.md) | Server: cut the loop-driven slow tests (600 real requests for a 429, 200 sticker uploads… | todo | haiku-5.5 |  | wave 4, simplify plan |
-| [T-0852](T-0852-approvals-list-n-plus-1.md) | Approvals list: preload what canDecide needs instead of 3-6 queries per row | in-progress | sonnet-5.5 | | wave 3, simplify plan |
 | [T-0853](T-0853-stickers-prefs-n-plus-1.md) | Sticker discover page and chat-prefs room check: batch the per-row queries | in-progress | haiku-5.5 | | wave 3, simplify plan |
 | [T-0854](T-0854-mobile-fonts.md) | Mobile bundles only the 5 font faces it loads (not 36) and drops the unused Material… | in-progress | haiku-5.5 | | wave 3, simplify plan |
 | [T-0855](T-0855-drizzle-leftovers.md) | Remove the unused drizzle migration snapshots (apps/server/drizzle/meta, 3.7 MB) and… | in-progress | haiku-5.5 | | wave 3, simplify plan |
@@ -918,3 +917,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0849](T-0849-membership-indexes.md) | One migration: indexes for lookups by user_id / ai_id on membership tables,… | 2026-10-10 |
 | [T-0850](T-0850-tools-list-n-plus-1.md) | Tools list endpoints: batch the per-tool queries (no N+1), select only the columns the… | 2026-10-10 |
 | [T-0851](T-0851-topic-views-n-plus-1.md) | Topic list: batch toTopicViews (4 queries per topic today) into a few grouped queries | 2026-10-10 |
+| [T-0852](T-0852-approvals-list-n-plus-1.md) | Approvals list: preload what canDecide needs instead of 3-6 queries per row | 2026-10-10 |

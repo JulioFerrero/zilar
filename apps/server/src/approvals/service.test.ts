@@ -6,6 +6,7 @@ import { createTestContext, testSql, type TestContext } from '../test-support';
 import {
   ApprovalServiceError,
   canDecide,
+  canDecideMany,
   createApproval,
   decideApproval,
   expireStale,
@@ -1154,6 +1155,80 @@ describe('approvals service', () => {
         now,
       );
       expect(await canDecide(context.db, row, strangerId)).toBe(false);
+    });
+
+    it('canDecideMany equals per-row canDecide for a mixed set of rows (T-0852)', async () => {
+      const ownerId = await seedUser(context, { name: 'AiOwner' });
+      const adminId = await seedUser(context, { name: 'Admin' });
+      const memberId = await seedUser(context, { name: 'Member' });
+      const approverId = await seedUser(context, { name: 'Approver' });
+      const outsiderId = await seedUser(context, { name: 'Outsider' });
+      const { aiId } = await seedAi(context, ownerId);
+      const { aiId: otherAiId } = await seedAi(context, outsiderId);
+      const { groupId, generalTopicId } = await seedGroup(
+        context,
+        adminId,
+        [
+          { userId: adminId, role: 'admin' },
+          { userId: ownerId, role: 'member' },
+          { userId: memberId, role: 'member' },
+          { userId: approverId, role: 'member' },
+        ],
+        [aiId],
+      );
+      const roleId = randomUUID();
+      const hiddenTopicId = randomUUID();
+      const approverTopicId = randomUUID();
+      const roomPart = () => `t${randomUUID().replaceAll('-', '').slice(0, 15)}`;
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO group_ais ${sql.insert({ group_id: groupId, ai_id: otherAiId, added_by: adminId })}`;
+          yield* sql`INSERT INTO group_roles (id, group_id, name, created_by) VALUES (${roleId}, ${groupId}, 'Approvers', ${adminId})`;
+          yield* sql`INSERT INTO group_member_roles (role_id, user_id, assigned_by) VALUES (${roleId}, ${approverId}, ${adminId})`;
+          // Private topic nobody but the member sees; the admin is blind to it.
+          yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by) VALUES (${hiddenTopicId}, ${groupId}, 'Hidden', 'H', ${roomPart()}, 'private', 'chat', 'open', false, ${memberId})`;
+          yield* sql`INSERT INTO topic_members (topic_id, user_id, added_by) VALUES (${hiddenTopicId}, ${memberId}, ${memberId})`;
+          // Private topic with an approver role; the holder reaches it through the role.
+          yield* sql`INSERT INTO topics (id, group_id, name, glyph, room_localpart, visibility, kind, status, is_general, created_by, approver_role_id) VALUES (${approverTopicId}, ${groupId}, 'Gated', 'G', ${roomPart()}, 'private', 'chat', 'open', false, ${adminId}, ${roleId})`;
+          yield* sql`INSERT INTO topic_role_access (topic_id, role_id) VALUES (${approverTopicId}, ${roleId})`;
+        }),
+      );
+      const rows = [];
+      let seed = 900;
+      for (const scope of [
+        { aiId },
+        { aiId, groupId, topicId: generalTopicId },
+        { aiId, groupId, topicId: hiddenTopicId },
+        { aiId, groupId, topicId: approverTopicId },
+        { aiId: otherAiId, groupId, topicId: generalTopicId },
+      ]) {
+        seed += 1;
+        rows.push(
+          await createApproval(
+            context.db,
+            approvalInput({
+              ...scope,
+              hash: argsHash(seed),
+              expiresAt: futureExpiresAt(now, 60_000),
+            }),
+            now,
+          ),
+        );
+      }
+      for (const userId of [ownerId, adminId, memberId, approverId, outsiderId]) {
+        const many = await canDecideMany(context.db, rows, userId);
+        for (const row of rows) {
+          expect(many.get(row.id)).toBe(await canDecide(context.db, row, userId));
+        }
+      }
+      // Sanity: the set is mixed, not all one answer.
+      const adminMany = await canDecideMany(context.db, rows, adminId);
+      expect([...adminMany.values()]).toContain(true);
+      expect([...adminMany.values()]).toContain(false);
+      const approverMany = await canDecideMany(context.db, rows, approverId);
+      expect(approverMany.get(rows[3]?.id ?? '')).toBe(true);
+      expect(await canDecideMany(context.db, [], ownerId)).toEqual(new Map());
     });
 
     it('agrees with the decide route on an already-decided row', async () => {
