@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1022](T-1022-split-mobile-topic-sheets.md) | Size split T100: mobile topic-sheets.tsx (442) | in-progress | auto | T-0936 | size-plan |
 
 ## Follow-ups
 
@@ -1056,3 +1055,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1026](T-1026-split-site-scene.md) | Size split T80: apps/site/src/scene.ts (515 lines) into scene/{config,textures,geometry,backdrop,mark,post,loo | 2026-10-10 |
 | [T-1020](T-1020-split-mobile-chats-tab.md) | Size split T72: apps/mobile/src/app/(tabs)/index.tsx (537 lines) into components/chat/{search-header,chat-sear | 2026-10-10 |
 | [T-1021](T-1021-split-mobile-attachment-native.md) | Size split T75: apps/mobile/src/lib/attachment-native.ts (528 lines) into lib/{attachment-picker,attachment-up | 2026-10-10 |
+| [T-1022](T-1022-split-mobile-topic-sheets.md) | Size split T100: apps/mobile/src/components/chat/topic-sheets.tsx (442 lines) into chat/{topic-actions-sheet,t | 2026-10-10 |
