@@ -1,7 +1,7 @@
 ---
 id: T-1058
 title: "Size split: apps/mobile/scripts/boot-check.mjs (805 lines) into boot-check-{proc,steps,launch}.mjs, moved unchanged"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1058-split-mobile-boot-check
 model: auto
@@ -53,4 +53,120 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: done. All bodies moved unchanged; only `export` keywords and the import
+blocks differ.
+
+### Files and sizes
+
+`wc -l` on main and on this branch:
+
+```
+old apps/mobile/scripts/boot-check.mjs (main): 805
+new apps/mobile/scripts/boot-check.mjs:        270
+new apps/mobile/scripts/boot-check-proc.mjs:   134
+new apps/mobile/scripts/boot-check-steps.mjs:  130
+new apps/mobile/scripts/boot-check-launch.mjs: 305
+```
+
+Every file is under 400 lines and no `max-lines` warning appears.
+
+### Export list before and after
+
+Old file had no `export` lines (it is a script). After the split, the barrel
+`boot-check.mjs` still exports nothing and the three new modules export the
+moved names:
+
+- `boot-check-proc.mjs`: `mobileRoot`, `BootCheckError`, `spawned`, `say`,
+  `runCapture`, `runStreamed`, `runToFile`, `spawnToLog`, `stopSpawned`,
+  `delay`, `tailFile`.
+- `boot-check-steps.mjs`: `readAutolinkingPods`, `missingNativePods`,
+  `checkNativeProject`, `checkJsDependencies`, `findSimulator`, `ensureBooted`.
+- `boot-check-launch.mjs`: `isPidAlive`, `assertPortFree`, `tryConnect`,
+  `waitForMetro`, `readAppJson`, `verifyBakedMetroPort`, `launchApp`,
+  `queryAppLog`, `createLineReader`, `watchBoot`, `isBundledIn`.
+
+`grep -E "^export"` on main prints `(none)`; on the four new files it prints the
+list above (the barrel has none). Constants stay unexported because only the
+module that owns them uses them; `mobileRoot` is shared and is exported from
+`boot-check-proc.mjs` (the one module both other modules can import without a
+cycle). `spawned` is the single array in `boot-check-proc.mjs`; the SIGINT
+handler in the barrel imports it and stops it, so there is still exactly one.
+
+### Line comparison
+
+Sorted comparison of the non-import lines, old file against the four new files,
+after stripping a leading `export ` (so "moved + export" matches "moved") and
+dropping blank/import lines:
+
+```
+old lines: 731 new lines: 731
+SORTED-NON-IMPORT-NON-BLANK-LINES-IDENTICAL
+```
+
+So every non-import, non-blank line is accounted for; the only textual
+differences are the added `export` keywords and the `import` blocks (and blank
+lines around them).
+
+### Commands and real results
+
+- `pnpm install`: `Done in 11.1s using pnpm v10.32.1` (warnings: one unmet peer
+  `@types/react-dom`), exit 0.
+- `node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON apps/mobile/scripts/boot-check.mjs --help`:
+  printed the usage text (below), exit 0. The same command fed main's file from
+  `git show` (run from `apps/mobile/scripts`) printed byte-identical usage, so
+  `--help` is unchanged:
+  ```
+  Usage: pnpm --filter @zilar/mobile boot:ios --device <udid> [options]
+
+  Build, install and launch the Zilar iOS app on a simulator and fail loudly if
+  it does not come up.
+
+  Options:
+    --device <udid>    Simulator UDID to boot, install and launch on (required).
+    --port <n>         Metro port (default 8082; 8081 is refused).
+    --timeout <s>      Seconds to wait for the bundle (default 90).
+    --settle <s>       Seconds to watch after the bundle loaded (default 5).
+    -h, --help         Show this help.
+  ```
+- `pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot scripts/log-watch.test.ts scripts/pods.test.ts`:
+  `Test Files 2 passed (2)`, `Tests 26 passed (26)`.
+- `pnpm gate` (repo root): summary lines
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (2.0s)
+  PASS  format  (1.6s)
+  PASS  lint  (1.2s)
+  PASS  typecheck  (5.7s)
+  SKIP effect (no source files changed)
+  SKIP tests @zilar/mobile (no nearby test files)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Deviations / notes
+
+- No new tests were written (spec: move unchanged; no behaviour change).
+- Each new file starts directly with its imports; the barrel keeps the shebang
+  and the T-0031 header comment exactly as on main.
+- `METRO_READY_TIMEOUT_MS`, `APP_LOG_WINDOW_SECONDS` and `APP_LOG_POLL_MS` moved
+  with `waitForMetro`/`watchBoot` into `boot-check-launch.mjs`;
+  `DEFAULT_PORT`/`DEFAULT_TIMEOUT_SECONDS`/`DEFAULT_SETTLE_SECONDS`/`FORBIDDEN_PORT`
+  stayed in the barrel with `usage`/`parseArgs`. None is defined twice.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved. The pre-review is clean, with 1 nit.**
+- **The split:** `apps/mobile/scripts/boot-check.mjs` (805 lines) is now four files:
+  - `boot-check.mjs`, 270 lines;
+  - `boot-check-proc.mjs`, 134;
+  - `boot-check-steps.mjs`, 130;
+  - `boot-check-launch.mjs`, 305.
+
+  Each one is under 400.
+- **The lead's line check:** a sorted comparison of the non-import lines, main's file against the four new files, shows no difference in either direction.
+- **The shared array:** `spawned` is one array, exported from `boot-check-proc.mjs:14`. `spawnToLog` pushes to it, and the SIGINT cleanup in `boot-check.mjs:255` reads it.
+- **The lead ran it:**
+  - `--help` prints exactly the same text as on main;
+  - `--device NOPE` runs through steps 1 and 2 and fails cleanly with "simulator NOPE was not found";
+  - the worktree stayed clean.
+- **Check:** the gate passed.

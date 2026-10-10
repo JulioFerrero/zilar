@@ -11,7 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds, media gallery | in-progress | auto | T-0949 | mock wave 2 |
 | [T-1057](T-1057-server-schema-issues.md) | Dedup S4: one firstIssueMessage (audit keeps its own) | in-progress | auto | T-1051 | dedup-status §6.4 |
-| [T-1058](T-1058-split-mobile-boot-check.md) | Size split: mobile boot-check.mjs (805) into 4 files, moved unchanged | in-progress | auto | T-1042 | last new max-lines warning |
 
 ## Follow-ups
 
@@ -22,6 +21,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
   - **GIFs:** `apps/mobile/src/lib/gifs-api.ts` `toGifItem` wraps every `data:` token in `/api/gifs/media/<token>`, and the token is SVG too.
 
   The fix needs raster (PNG) art, plus a mock path the native image can reach.
+- **Mobile mock approvals have no rules (corrected 2026-10-10, T-1056).** "Always allowed" is always empty in mock mode, because `apps/mobile/src/mock/approvals.ts:119-121` returns `[]` and the "Always" decision records no rule. On real builds the rules load for every owned AI (`use-approvals.ts:117-160`). The fix belongs with the approvals domain of the shared mock backend (`docs/audit/mock-plan.md`).
 - **Mock: `GET /groups/:id/topics` returns `[]` for groups whose General exists only in `/chats` (T-1048 follow-up).**
 - **Mobile: about 9 more `Effect.runFork(Fiber.interrupt(...))` sites in `components/chat` could use `interruptFiber` (`lib/effect/timers.ts`, T-1050).** The `runSync` ones differ and stay.
 - **Dedup slices that need a lead decision (`docs/audit/dedup-status.md` §8):** S6 crypto envelope (keys), S7-S9 rate limiters, S10-S11 `groups/access.ts` (permissions), S15 web settings facade (keys). S4 (schema-issue walker) must keep audit's two extra cases.
@@ -1096,3 +1096,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1055](T-1055-server-pins-handler.md) | Dedup F2 (S2): pins/api.ts uses the shared handler() instead of three hand-written withErrorEnvelope blocks | 2026-10-10 |
 | [T-1053](T-1053-server-jid-truncate-helpers.md) | Dedup F6 (S3): one server bareJid/ownBareJid (apps/server/src/jid.ts) and one truncateChars (apps/server/src/t | 2026-10-10 |
 | [T-1056](T-1056-mobile-approvals-ai-list-mock.md) | Mobile approvals: list AIs through useAisApi, so 'Always allowed' keeps its rules in mock mode when nothing is | 2026-10-10 |
+| [T-1058](T-1058-split-mobile-boot-check.md) | Size split: apps/mobile/scripts/boot-check.mjs (805 lines) into boot-check-{proc,steps,launch}.mjs, moved unch | 2026-10-10 |
