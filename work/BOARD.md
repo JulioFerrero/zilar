@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds, media gallery | in-progress | auto | T-0949 | mock wave 2 |
-| [T-1056](T-1056-mobile-approvals-ai-list-mock.md) | Mobile approvals: AI list through useAisApi (mock "Always allowed") | in-progress | auto | T-1004 | the follow-up's real cause |
 | [T-1057](T-1057-server-schema-issues.md) | Dedup S4: one firstIssueMessage (audit keeps its own) | in-progress | auto | T-1051 | dedup-status §6.4 |
 | [T-1058](T-1058-split-mobile-boot-check.md) | Size split: mobile boot-check.mjs (805) into 4 files, moved unchanged | in-progress | auto | T-1042 | last new max-lines warning |
 
@@ -1096,3 +1095,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1048](T-1048-mock-backend-group-general-topics.md) | Mock backend: every seeded group and channel gets its General topic in /chats, like the real server, so the mo | 2026-10-10 |
 | [T-1055](T-1055-server-pins-handler.md) | Dedup F2 (S2): pins/api.ts uses the shared handler() instead of three hand-written withErrorEnvelope blocks | 2026-10-10 |
 | [T-1053](T-1053-server-jid-truncate-helpers.md) | Dedup F6 (S3): one server bareJid/ownBareJid (apps/server/src/jid.ts) and one truncateChars (apps/server/src/t | 2026-10-10 |
+| [T-1056](T-1056-mobile-approvals-ai-list-mock.md) | Mobile approvals: list AIs through useAisApi, so 'Always allowed' keeps its rules in mock mode when nothing is | 2026-10-10 |
