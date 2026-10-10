@@ -1,7 +1,7 @@
 ---
 id: T-0846
 title: "Mobile message list: memoised bubbles, AI draft outside the list entries, then real windowing"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0846-mobile-message-list-perf
 model: auto
@@ -59,3 +59,18 @@ Run the tests 3 times after the last commit.
 ## Report (written by the worker when done)
 
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved (step 1 only).**
+- **Done:** memoised bubbles with stable handlers. A draft token now re-renders only the draft bubble, and a new jsdom test proves it.
+- **Skipped:** steps 2 (draft outside the entries) and 3 (windowing). The spec allows this fallback, because they need device checks of the reveal animation and of `scrollToIndex`; they are a follow-up.
+- **Checks:** the combined check is clean and the phone smoke of the wave branch passes.
+- **Live check for Julio:** an AI reply streaming in a long chat on the phone.
+
+- Done (step 1): `MessageBubble` is now `memo(MessageBubbleImpl)` (`message-bubble.tsx`). `MessageList` passes stable handlers: `useStableHandler`/`useStableReact` keep one identity per handler (latest closure in a ref, updated in an effect) and stay `undefined` when the screen passes none, so the bubble still hides the matching action. Selection toggle/start use the same hook. `isPinned`, `selecting`, `selected` are primitives per row. No change was needed in `chat/[id].tsx`.
+- Test: `message-list.test.tsx` now runs in jsdom. The store mock returns the same message objects each read and `LinkText` records each text render. New test: a draft text update re-renders only the draft bubble (m1 and m2 do not re-render). Verified red without the memo (m1 and m2 re-rendered), green with it.
+- NOT done, step 2 (draft as separate footer): a footer bubble is a different parent than the list row, so when the final message replaces the draft (same key `draft-<turn>`, `revealTurnId`) the bubble would remount and lose the shown-length reveal (`initial: 'full'` snaps in). I could not check that on a device in wave mode, so I left the draft as a list entry. With the memo, a draft token now re-renders only the draft bubble; remaining per-token cost is `groupMessages` plus the FlatList diff.
+- NOT done, step 3 (drop `initialNumToRender`): mount scroll to the unread divider, `scrollToEnd`, search jump and pin jump all use `scrollToIndex` without `getItemLayout` and rely on measured rows. I cannot verify reliability without the emulator, so the spec's fallback applies: step 3 stays out.
+- Spec facts checked: `initialNumToRender={Math.max(entries.length, 1)}` and the 15 store selectors are as the audit said; the inline `renderItem` closure is still there but is now cheap because bubbles are memoised.
+- Tests: `src/components/chat` + `src/components/screens/chat-id`: 70 files, 514 passed after, 3 of 3 runs (513 before, plus the new test). Typecheck and oxlint clean.
+- Behaviour differences: none intended. A handler is called through a ref updated in an effect, so a tap in the instant between render and effect uses the previous closure.
+- Unsure: nothing measured on a device (no render timings taken, only render counts in the test).

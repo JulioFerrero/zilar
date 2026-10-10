@@ -1,8 +1,24 @@
-import { createElement } from 'react';
+// @vitest-environment jsdom
+import { createRequire } from 'node:module';
+import { act, createElement } from 'react';
 import type { ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
+
+// `react-dom/client` ships no bundled types and mobile has no `@types/react-dom`.
+const nodeRequire = createRequire(import.meta.url);
+const { createRoot } = nodeRequire('react-dom/client') as {
+  createRoot: (container: Element) => { render(node: ReactNode): void; unmount(): void };
+};
+
+// The mocked store hands out the same message objects on every read (as the real
+// store does until a message changes) and `LinkText` records each render of a
+// bubble's text, so a test can count which bubbles re-rendered.
+const probe = vi.hoisted(() => ({
+  drafts: {} as Record<string, { turnId: string; text: string }>,
+  textRenders: [] as string[],
+}));
 
 import { filterBlockedMessages } from '@/lib/blocked-users';
 
@@ -26,8 +42,12 @@ function resetPressables(): void {
 
 vi.mock('react-native', async () => {
   const { createElement: h } = await import('react');
+  // Style-free host stand-ins: jsdom rejects React Native style arrays.
+  const Host = (props: { children?: ReactNode }) => h('div', null, props.children);
   return {
     Animated: {
+      Text: Host,
+      View: Host,
       Value: class {
         setValue() {}
       },
@@ -57,8 +77,8 @@ vi.mock('react-native', async () => {
     },
     ScrollView: 'ScrollView',
     StyleSheet: { absoluteFill: {} },
-    Text: 'RNText',
-    View: 'View',
+    Text: Host,
+    View: Host,
   };
 });
 
@@ -80,6 +100,26 @@ vi.mock('nativewind', () => ({
 
 vi.mock('@/store/chat-store-provider', () => {
   const first = new Date(Date.UTC(2026, 8, 28, 10, 0));
+  const stored = [
+    {
+      id: 'm1',
+      chatId: 'g1',
+      senderId: 'bea@zilar.test',
+      senderName: 'Bea',
+      text: 'message m1',
+      createdAt: first,
+      status: 'read',
+    },
+    {
+      id: 'm2',
+      chatId: 'g1',
+      senderId: 'you@zilar.test',
+      senderName: 'You',
+      text: 'message m2',
+      createdAt: new Date(first.getTime() + 60_000),
+      status: 'read',
+    },
+  ];
   const state = {
     currentUserId: 'you@zilar.test',
     chats: [
@@ -94,31 +134,14 @@ vi.mock('@/store/chat-store-provider', () => {
       },
     ],
     me: { jid: 'you@zilar.test' },
-    messages: () => [
-      {
-        id: 'm1',
-        chatId: 'g1',
-        senderId: 'bea@zilar.test',
-        senderName: 'Bea',
-        text: 'message m1',
-        createdAt: first,
-        status: 'read',
-      },
-      {
-        id: 'm2',
-        chatId: 'g1',
-        senderId: 'you@zilar.test',
-        senderName: 'You',
-        text: 'message m2',
-        createdAt: new Date(first.getTime() + 60_000),
-        status: 'read',
-      },
-    ],
+    messages: () => stored,
     jumpTarget: undefined,
     clearJumpTarget: () => {},
     historyLoad: { g1: 'ready' },
     retryHistory: () => {},
-    drafts: {},
+    get drafts() {
+      return probe.drafts;
+    },
     finishedDraftMessages: {},
     loadOlder: () => {},
     hasMore: () => false,
@@ -155,7 +178,12 @@ vi.mock('@/components/chat/avatar', () => ({ Avatar: 'Avatar' }));
 vi.mock('@/components/chat/attachment-body', () => ({ AttachmentBody: 'AttachmentBody' }));
 vi.mock('@/components/chat/forwarded-header', () => ({ ForwardedHeader: 'ForwardedHeader' }));
 vi.mock('@/components/chat/image-message', () => ({ ImageMessage: 'ImageMessage' }));
-vi.mock('@/components/chat/link-text', () => ({ LinkText: 'LinkText' }));
+vi.mock('@/components/chat/link-text', () => ({
+  LinkText: (props: { text: string }) => {
+    probe.textRenders.push(props.text);
+    return props.text;
+  },
+}));
 vi.mock('@/components/chat/markdown-text', () => ({ MarkdownText: 'MarkdownText' }));
 vi.mock('@/components/chat/payload-card', () => ({
   PayloadCard: 'PayloadCard',
@@ -324,5 +352,27 @@ describe('MessageList selection (T-0445)', () => {
     expect(
       pressables().filter((props) => props['accessibilityLabel'] === 'Select message'),
     ).toHaveLength(0);
+  });
+});
+
+describe('MessageList renders (T-0846)', () => {
+  it('a draft update re-renders only the draft bubble, not the settled ones', () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    const view = () =>
+      createElement(MessageList, { chat: group, onReply: () => {}, pinnedIds: [] });
+    probe.drafts = { g1: { turnId: 't1', text: 'draft one' } };
+    act(() => root.render(view()));
+    probe.textRenders.length = 0;
+
+    probe.drafts = { g1: { turnId: 't1', text: 'draft one two' } };
+    act(() => root.render(view()));
+    act(() => root.unmount());
+    probe.drafts = {};
+
+    expect(probe.textRenders).not.toContain('message m1');
+    expect(probe.textRenders).not.toContain('message m2');
+    expect(probe.textRenders.some((text) => text.startsWith('draft one two'))).toBe(true);
   });
 });

@@ -79,6 +79,39 @@ type MessageListProps = {
 const runLater = (ms: number, run: () => void): Fiber.Fiber<void> =>
   Effect.runFork(Effect.sleep(ms).pipe(Effect.andThen(Effect.sync(run))));
 
+type MessageHandler = (message: UiMessage) => void;
+
+// A handler that keeps its identity while the screen hands over a new closure
+// each render, so the memoised bubbles do not re-render for it. It stays
+// `undefined` while the screen passes none, because the bubble hides the
+// matching action then.
+function useStableHandler(handler: MessageHandler | undefined): MessageHandler | undefined {
+  const latest = useRef(handler);
+  useEffect(() => {
+    latest.current = handler;
+  });
+  const present = handler !== undefined;
+  return useMemo(
+    () => (present ? (message: UiMessage) => latest.current?.(message) : undefined),
+    [present],
+  );
+}
+
+type ReactHandler = (message: UiMessage, emoji: string) => void;
+
+function useStableReact(handler: ReactHandler | undefined): ReactHandler | undefined {
+  const latest = useRef(handler);
+  useEffect(() => {
+    latest.current = handler;
+  });
+  const present = handler !== undefined;
+  return useMemo(
+    () =>
+      present ? (message: UiMessage, emoji: string) => latest.current?.(message, emoji) : undefined,
+    [present],
+  );
+}
+
 /**
  * Message list grouped by sender and day. Opening a chat with unread messages
  * scrolls to the "Unread messages" divider instead of the bottom.
@@ -105,6 +138,21 @@ export function MessageList({
   voiceHost,
   selection,
 }: MessageListProps) {
+  const stableReply = useStableHandler(onReply);
+  const stableReact = useStableReact(onReact);
+  const stableEdit = useStableHandler(onEdit);
+  const stableDelete = useStableHandler(onDelete);
+  const stableForward = useStableHandler(onForward);
+  const stablePin = useStableHandler(onPin);
+  const stableUnpin = useStableHandler(onUnpin);
+  const stableRetrySticker = useStableHandler(onRetrySticker);
+  const stableRetryAttachment = useStableHandler(onRetryAttachment);
+  const stableCancelAttachment = useStableHandler(onCancelAttachment);
+  const stableRetryVoice = useStableHandler(onRetryVoice);
+  const stableCancelVoice = useStableHandler(onCancelVoice);
+  const stableOpenAttachment = useStableHandler(onOpenAttachment);
+  const stableToggle = useStableHandler(selection?.onToggle);
+  const stableStart = useStableHandler(selection?.onStart);
   const currentUserId = useChatStore((state) => state.currentUserId);
   const messages = useChatStore((state) => state.messages(chat.id));
   const { api: contactsApi } = useContactsApi();
@@ -333,30 +381,35 @@ export function MessageList({
             isFirstInGroup={item.item.firstInGroup}
             isLastInGroup={item.item.lastInGroup}
             currentUserId={currentUserId}
-            onReply={onReply}
-            {...(onReact === undefined ? {} : { onReact })}
-            {...(onEdit === undefined ? {} : { onEdit })}
-            {...(onDelete === undefined ? {} : { onDelete })}
-            {...(onForward === undefined ? {} : { onForward })}
+            onReply={stableReply ?? onReply}
+            {...(stableReact === undefined ? {} : { onReact: stableReact })}
+            {...(stableEdit === undefined ? {} : { onEdit: stableEdit })}
+            {...(stableDelete === undefined ? {} : { onDelete: stableDelete })}
+            {...(stableForward === undefined ? {} : { onForward: stableForward })}
             canPin={canPinChat}
             isPinned={pinnedIds.includes(item.item.message.id)}
-            {...(onPin === undefined ? {} : { onPin })}
-            {...(onUnpin === undefined ? {} : { onUnpin })}
+            {...(stablePin === undefined ? {} : { onPin: stablePin })}
+            {...(stableUnpin === undefined ? {} : { onUnpin: stableUnpin })}
             draft={item.isDraft}
             revealTurnId={item.revealTurnId}
-            {...(onRetrySticker === undefined ? {} : { onRetrySticker })}
-            {...(onRetryAttachment === undefined ? {} : { onRetryAttachment })}
-            {...(onCancelAttachment === undefined ? {} : { onCancelAttachment })}
-            {...(onRetryVoice === undefined ? {} : { onRetryVoice })}
-            {...(onCancelVoice === undefined ? {} : { onCancelVoice })}
-            {...(onOpenAttachment === undefined ? {} : { onOpenAttachment })}
+            {...(stableRetrySticker === undefined ? {} : { onRetrySticker: stableRetrySticker })}
+            {...(stableRetryAttachment === undefined
+              ? {}
+              : { onRetryAttachment: stableRetryAttachment })}
+            {...(stableCancelAttachment === undefined
+              ? {}
+              : { onCancelAttachment: stableCancelAttachment })}
+            {...(stableRetryVoice === undefined ? {} : { onRetryVoice: stableRetryVoice })}
+            {...(stableCancelVoice === undefined ? {} : { onCancelVoice: stableCancelVoice })}
+            {...(stableOpenAttachment === undefined
+              ? {}
+              : { onOpenAttachment: stableOpenAttachment })}
             {...(openingAttachmentId === undefined ? {} : { openingAttachmentId })}
             {...(voiceHost === undefined ? {} : { voiceHost })}
             selecting={selection !== undefined && selection.ids.length > 0}
             selected={selection !== undefined && selection.ids.includes(item.item.message.id)}
-            {...(selection === undefined
-              ? {}
-              : { onToggleSelect: selection.onToggle, onStartSelect: selection.onStart })}
+            {...(stableToggle === undefined ? {} : { onToggleSelect: stableToggle })}
+            {...(stableStart === undefined ? {} : { onStartSelect: stableStart })}
           />
         );
       }}

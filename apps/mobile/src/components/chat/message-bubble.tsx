@@ -8,7 +8,7 @@ import {
 import { Effect } from 'effect';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Animated, AppState, Pressable, StyleSheet, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
@@ -243,7 +243,7 @@ type MessageBubbleProps = {
   onUnpin?: (message: UiMessage) => void;
 };
 
-export function MessageBubble({
+function MessageBubbleImpl({
   message,
   isGroup,
   isFirstInGroup,
@@ -752,3 +752,10 @@ export function MessageBubble({
     </>
   );
 }
+
+/**
+ * Memoised (T-0846): the list passes stable handlers, so a bubble re-renders
+ * only when its own message, selection or flags change, not on every draft
+ * token or store update elsewhere in the list.
+ */
+export const MessageBubble = memo(MessageBubbleImpl);
