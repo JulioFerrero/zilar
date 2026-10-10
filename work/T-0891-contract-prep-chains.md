@@ -1,7 +1,7 @@
 ---
 id: T-0891
 title: "api-contract prep for parallel group moves: one Session/CurrentUser (no pins bridge), per-chain blocks in the shared lists, per-group smoke test files"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-0891-contract-prep-chains
 model: auto
@@ -74,4 +74,39 @@ pnpm exec oxlint <your changed files>
 
 ## Report (written by the worker when done)
 
+### What I did
+- `apps/server/src/effect/http-core.ts` now imports and re-exports `CurrentUser`, `Session`, `SessionUser` from `@zilar/api-contract`. `sessionLayer` and its T-0858 cookie-cache logic are unchanged and now provide the contract tag. `contractSessionLayer` is deleted from `apps/server/src/pins/api.ts`, which uses `sessionLayer` directly. The comment in `middleware.ts` says there is no bridge.
+- `packages/api-contract/src/api.ts`: `chainAGroups` .. `chainDGroups` (`[] as const`, each with comment lines around it), spread into `HttpApi.make('zilar').add(PinsGroup, ...chainAGroups, ...)`. `HttpApi.add` is variadic (`HttpApi.d.ts:59`), so the type keeps each group; the pins smoke test still compiles `client.pins.*`. `index.ts` has four commented chain blocks.
+- `apps/server/src/contract-smoke-support.ts` has `createSmokeHarness()` (`cookieClient`, `bearerClient`, `requestCount`, `context`, `app`). `apps/server/src/pins/contract.smoke.test.ts` holds the 2 pins cases; `contract-smoke.test.ts` is deleted.
+- `docs/API_CONTRACT_RECIPE.md` is new: the T-0864 recipe plus the three rules.
+
+### Sample diff: a chain adds a group (chain A)
+```diff
+ const chainAGroups = [
++  UsersGroup,
+ ] as const;
+```
+```diff
+ // Chain A (T-0892): add `export * from './<x>';` lines below.
++export * from './users';
+```
+(plus one `import { UsersGroup } from './users';` line in the "Chain A (T-0892) imports" area of `api.ts`, which sits apart from the other chains' areas, so no chain edits the top of the file)
+
+### Commands run (wave mode; no `pnpm gate`)
+- api-contract vitest: 8 passed (8).
+- server vitest (the Checks list): 188 passed, 2 skipped (22 files passed, 1 skipped), pins smoke included.
+- web `src/lib`: 358 passed (37 files). mobile `src/lib`: 767 passed (85 files). Counts are lower than the pilot's 413/821 because main changed since then; nothing here touches them.
+- typecheck api-contract, server, web, mobile: all exit 0.
+- prettier --write, oxlint on the changed .ts files: clean.
+
+### Deviations
+- Arrays hold a placeholder comment instead of being empty lines; adding a group is one line plus one import. Round 1: each chain has its own imports area in `api.ts`.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-10: approved after round 1.**
+- **One session:** `Session`, `CurrentUser` and `SessionUser` come from `@zilar/api-contract`. `sessionLayer`, with its T-0858 cache logic, provides them, and `contractSessionLayer` is gone.
+- **Chain areas:** `api.ts` has four chain areas, each with its own imports and group array spread into `ZilarApi`. `index.ts` has four export blocks.
+- **Smoke files:** smoke cases now live per group on `contract-smoke-support.ts`.
+- **Recipe:** `docs/API_CONTRACT_RECIPE.md` is the recipe for chains T-0892 to T-0895.
+- **Merge:** it goes through the full gate, because every server module uses `Session`.

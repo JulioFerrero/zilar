@@ -10,7 +10,8 @@
 // branch. The request id Hono generated is forwarded as the `x-request-id`
 // header so both branches can carry it.
 
-import { Context, Effect, Layer } from 'effect';
+import { CurrentUser, Session, type SessionUser } from '@zilar/api-contract';
+import { Effect, Layer } from 'effect';
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from 'effect/http';
 import { HttpApi, HttpApiMiddleware, type HttpApiGroup } from 'effect/http-api';
 import type { Logger } from 'pino';
@@ -20,27 +21,11 @@ import { HttpError } from '../errors';
 export const REQUEST_ID_HEADER = 'x-request-id';
 export const SOCKET_ADDRESS_HEADER = 'x-zilar-socket-address';
 
-/** The slice of the signed-in user an Effect handler may read. */
-export interface SessionUser {
-  readonly id: string;
-}
-
-/** Provided by the session middleware; handlers read the current user id. */
-export class CurrentUser extends Context.Service<CurrentUser, SessionUser>()(
-  'zilar/effect/http/CurrentUser',
-) {}
-
-/**
- * Session middleware: every endpoint of a group that declares it requires a
- * signed-in user. An absent session short-circuits with the same body as
- * `requireSession`, before any query or body decoding runs.
- */
-export class Session extends HttpApiMiddleware.Service<
-  Session,
-  {
-    provides: CurrentUser;
-  }
->()('zilar/effect/http/Session') {}
+// The session middleware tags live in the shared contract (T-0891), so a group
+// moved there and a server module use the same classes. An absent session
+// short-circuits with the same body as `requireSession`, before any query or
+// body decoding runs.
+export { CurrentUser, Session, type SessionUser };
 
 export function sessionLayer(auth: Auth, logger: Logger): Layer.Layer<Session> {
   return Layer.succeed(

@@ -9,13 +9,7 @@
 import { Effect, Layer } from 'effect';
 import { HttpServer, HttpServerRequest, HttpRouter } from 'effect/http';
 import { HttpApi, HttpApiBuilder, HttpApiMiddleware } from 'effect/http-api';
-import {
-  CurrentUser,
-  PinsGroup,
-  PinsSchemaErrors,
-  PinsWriteRateLimit,
-  Session,
-} from '@zilar/api-contract';
+import { CurrentUser, PinsGroup, PinsSchemaErrors, PinsWriteRateLimit } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
@@ -24,8 +18,6 @@ import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import {
-  CurrentUser as CoreCurrentUser,
-  Session as CoreSession,
   failureResponse,
   httpErrorResponse,
   requestIdOf,
@@ -38,27 +30,6 @@ import { listPins, pinMessage, unpinMessage, type PinsServiceDeps } from './serv
 
 export const PINS_WRITE_RATE_LIMIT_MAX = 60;
 export const PINS_WRITE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-
-// The contract's `Session` served by the core session layer. Both tags carry
-// the same keys, so this only reconciles the two TypeScript classes; it goes
-// once `effect/http-core.ts` takes its tags from the contract.
-function contractSessionLayer(auth: Auth, logger: Logger): Layer.Layer<Session> {
-  return Layer.effect(
-    Session,
-    Effect.gen(function* () {
-      const core = yield* CoreSession;
-      return Session.of((httpEffect, options) =>
-        core(
-          Effect.gen(function* () {
-            const user = yield* CoreCurrentUser;
-            return yield* Effect.provideService(httpEffect, CurrentUser, user);
-          }),
-          options,
-        ),
-      );
-    }),
-  ).pipe(Layer.provide(sessionLayer(auth, logger)));
-}
 
 // Applied to the group so a query or payload decode failure renders like the
 // old zod path: 400 `invalid_request`. No test asserts the exact text, so the
@@ -186,7 +157,7 @@ export function createPinsApi(deps: PinsApiDependencies): EffectApiMount {
 
   const apiLayer = HttpApiBuilder.layer(PinsApi).pipe(
     Layer.provide(groupLayer),
-    Layer.provide(contractSessionLayer(deps.auth, logger)),
+    Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayer(logger)),
     Layer.provide(writeRateLimitLayer(writeLimiter)),
   );

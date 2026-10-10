@@ -8,7 +8,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
-| [T-0891](T-0891-contract-prep-chains.md) | api-contract prep: one Session/CurrentUser, per-chain blocks, per-group smoke files | in-progress | sonnet-5.5 | | wave 5 prep, simplify plan phase 3 |
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 
 ## Follow-ups
@@ -920,3 +919,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-0885](T-0885-web-store-fakes.md) | Web store tests share one fakeApi/fakeXmpp harness (159-line copies today) | 2026-10-10 |
 | [T-0886](T-0886-gateway-test-split.md) | Split apps/server/src/agents/gateway.test.ts (7,242 lines, 100 s) into feature files around one extracted harn | 2026-10-10 |
 | [T-0887](T-0887-slow-loop-tests.md) | Server: cut the loop-driven slow tests (600 real requests for a 429, 200 sticker uploads) without weakening th | 2026-10-10 |
+| [T-0891](T-0891-contract-prep-chains.md) | api-contract prep: one Session/CurrentUser, per-chain blocks, per-group smoke files | 2026-10-10 |

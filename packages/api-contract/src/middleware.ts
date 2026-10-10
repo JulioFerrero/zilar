@@ -4,8 +4,8 @@
 //
 // A tag's identity is its key. `Session` and `CurrentUser` keep the keys of
 // the tags in `apps/server/src/effect/http-core.ts`, so at runtime they are
-// the same services; until that file takes its tags from here, a server
-// module bridges the two classes (see `apps/server/src/pins/api.ts`).
+// the same services; that file re-exports these two classes, so a server
+// module uses them directly (no bridge).
 
 import { Context } from 'effect';
 import { HttpApiMiddleware } from 'effect/http-api';
