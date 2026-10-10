@@ -10,6 +10,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1045](T-1045-mock-backend-folders-media.md) | Mock backend C2: chat-folders, backgrounds, media gallery | in-progress | auto | T-0949 | mock wave 2 |
+| [T-1059](T-1059-audit-mock-sweep-status.md) | Audit: what still uses the old mock code, with H2 and sweep slices | in-progress | auto | T-0949 | mock-plan §4 |
 
 ## Follow-ups
 
