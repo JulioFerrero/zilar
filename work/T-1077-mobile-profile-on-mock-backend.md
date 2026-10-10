@@ -34,7 +34,7 @@ The lead read main (2026-10-11):
 1. **Probe first,** with a throwaway script that you do not commit. Call `createMockBackend({ delayMs: 0 }).http(path, init)` for every method and path `createProfileApi` uses. For the avatar, send a `Uint8Array` body. If any call gets no `Response`, stop and report.
 2. **`use-profile-api.ts`** follows the machines pattern. The mock branch builds `createProfileApi(mockToken, mockFetch, API_URL)` and wraps only `uploadAvatar`:
    - when an `uploader` is passed, skip it;
-   - instead `mockFetch` a `PUT /api/avatars/user/<ownerId>` with body `new Uint8Array([0x89, 0x50, 0x4e, 0x47])` and `content-type: blob.type || 'image/png'`;
+   - instead `mockFetch` a `PUT /api/avatars/:kind/:ownerId` (kind `user`, the path from `avatarPutPath(ownerId)`) with body `new Uint8Array([0x89, 0x50, 0x4e, 0x47])` and `content-type: blob.type || 'image/png'`;
    - return the `{ url }` it answers.
 
    The backend then stores the viewer's `avatarUrl`. That `data:` url is not a real picture, so the screens fall back to the dither, as the old mock fell back to initials. Say so in a comment.
