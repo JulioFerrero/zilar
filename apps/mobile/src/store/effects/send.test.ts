@@ -82,10 +82,15 @@ describe('sending on the effect fibers', () => {
     const store = await started(sendMessage);
 
     store.getState().sendText(ANA, 'hola');
-    const before = store.getState().messages(ANA);
     store.getState().stop();
+    // stop() leaves no messages behind; the late ack must write nothing.
+    expect(store.getState().messages(ANA)).toHaveLength(0);
+    const writes = vi.fn();
+    const unsubscribe = store.subscribe(writes);
     ack({ id: 'srv-late' });
     await flush();
-    expect(store.getState().messages(ANA)).toBe(before);
+    unsubscribe();
+    expect(writes).not.toHaveBeenCalled();
+    expect(store.getState().messages(ANA)).toHaveLength(0);
   });
 });

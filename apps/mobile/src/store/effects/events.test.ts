@@ -89,8 +89,13 @@ describe('events on the effect fibers', () => {
     await vi.advanceTimersByTimeAsync(10);
     core.emit('typing', { chatJid: ANA, fromJid: ANA, state: 'composing', outgoing: false });
     store.getState().stop();
+    expect(store.getState().typing).toEqual({});
+    const writes = vi.fn();
+    const unsubscribe = store.subscribe(writes);
     vi.advanceTimersByTime(TYPING_CLEAR_MS * 2);
-    // The line stays as it was: nothing ran after stop.
-    expect(store.getState().typing[ANA]).toEqual({ names: ['Ana'] });
+    unsubscribe();
+    // No timer writes state after stop.
+    expect(writes).not.toHaveBeenCalled();
+    expect(store.getState().typing).toEqual({});
   });
 });

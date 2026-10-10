@@ -165,6 +165,21 @@ async function writeTranscript(
   }
 }
 
+/**
+ * Forgets every transcript (sign-out, T-0901): the file is plain text on the
+ * phone and is not keyed by user. A failing storage resolves without throwing.
+ */
+export async function clearTranscripts(file?: TranscriptFile): Promise<void> {
+  return chainWrite(async () => {
+    const backend = file ?? defaultTranscriptFile();
+    try {
+      await backend.write('{}');
+    } catch {
+      // A blocked storage must never break sign-out.
+    }
+  });
+}
+
 /** Forgets one transcript; a failing storage resolves without throwing. */
 export async function deleteTranscript(id: string, file?: TranscriptFile): Promise<void> {
   return chainWrite(async () => {

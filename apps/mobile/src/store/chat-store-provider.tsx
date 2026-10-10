@@ -19,6 +19,7 @@ import { createPinsApi } from '../lib/pins-api';
 import { createAttachmentUploader, createSizeReader } from '../lib/attachment-native';
 import { getSessionToken } from '../lib/session-token';
 import { API_URL } from '../lib/auth';
+import { clearTranscripts } from '../lib/voice-transcripts';
 import type { ChatStoreState } from './types';
 import type { StoreApi } from './atomStore';
 
@@ -83,6 +84,13 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     store.getState().start();
     return () => store.getState().stop();
   }, [store, status]);
+
+  // Signing out also forgets the user scoped files on the phone (T-0901).
+  useEffect(() => {
+    if (status === 'guest') {
+      void clearTranscripts();
+    }
+  }, [status]);
 
   return <ChatStoreContext.Provider value={store}>{children}</ChatStoreContext.Provider>;
 }

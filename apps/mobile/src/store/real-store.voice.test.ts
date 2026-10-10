@@ -269,8 +269,22 @@ describe('real store sends voice messages (T-0154)', () => {
   });
 
   it('an offline failure ends failed with the network reason', async () => {
-    const { store } = await setup();
-    store.getState().stop();
+    // Offline: the chats load but the XMPP token fetch fails, so no core exists.
+    const api = fakeApi();
+    api.getXmppToken = vi.fn(async () => {
+      throw new Error('offline');
+    });
+    const store = createRealChatStore({
+      api,
+      appState: { current: () => 'active', subscribe: () => () => {} },
+      now: () => new Date('2026-09-28T12:00:00Z'),
+      createXmpp: () => fakeXmpp().core,
+      uploader: uploaderFor(),
+      voice: fakeVoice(),
+    });
+    store.getState().start();
+    await flush();
+    expect(store.getState().status).toBe('offline');
     store.getState().sendVoice(ANA, RECORDING);
     const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
     await waitFor(

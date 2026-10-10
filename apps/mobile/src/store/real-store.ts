@@ -1753,29 +1753,34 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     const events = makeEvents(ctx);
     const pins = makePins(ctx);
 
-    // What `stop()` clears besides the scopes: timers, caches, per-session maps.
-    function teardown(): void {
-      events.clearTimers();
-      polling.clearDraftState();
-      groupDetails.clear();
-      loadingGroupDetails.clear();
-      groupRolesById.clear();
-      loadingGroupRoles.clear();
-      topicRolesById.clear();
-      loadingTopicRoles.clear();
-      set({ drafts: {}, finishedDraftMessages: {}, edits: {}, reactions: {} });
-      loadingHistory.clear();
-      messageAliases.clear();
-      messageAuthors.clear();
-      messageOriginIds.clear();
-      messageServerIds.clear();
-      pendingUploads.clear();
-    }
-
-    return {
+    // The user scoped fields and their values before any user signed in. The
+    // store starts from them and `stop()` returns to them, so the next user
+    // never sees the previous user's chats, contacts or messages.
+    const initialUserState = (): Pick<
+      ChatStoreState,
+      | 'currentUserId'
+      | 'me'
+      | 'chatsLoad'
+      | 'chats'
+      | 'contacts'
+      | 'messagesByChat'
+      | 'historyLoad'
+      | 'activeChatId'
+      | 'historyComplete'
+      | 'search'
+      | 'activeFolder'
+      | 'folders'
+      | 'foldersLoaded'
+      | 'typing'
+      | 'editTarget'
+      | 'actionError'
+      | 'jumpTarget'
+      | 'topicNotice'
+      | 'pinsError'
+      | 'ownedAis'
+    > => ({
       currentUserId: CURRENT_USER_ID,
       me: undefined,
-      status: 'offline',
       chatsLoad: 'loading',
       chats: [],
       contacts: [],
@@ -1788,18 +1793,62 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       folders: [],
       foldersLoaded: false,
       typing: {},
+      editTarget: undefined,
+      actionError: undefined,
+      jumpTarget: undefined,
+      topicNotice: undefined,
+      pinsError: undefined,
+      ownedAis: ports.ownedAis ?? [],
+    });
+
+    // What `stop()` clears besides the scopes: timers, caches, per-session maps,
+    // and every user scoped field of the state.
+    function teardown(): void {
+      events.clearTimers();
+      polling.clearDraftState();
+      for (const chatId of Object.keys(cursors)) {
+        delete cursors[chatId];
+      }
+      lastRead = {};
+      chatPrefRows = [];
+      groupIds.clear();
+      groupMembers.clear();
+      loadingOlder.clear();
+      pendingOutgoing.clear();
+      pendingVoices.clear();
+      groupDetails.clear();
+      loadingGroupDetails.clear();
+      groupRolesById.clear();
+      loadingGroupRoles.clear();
+      topicRolesById.clear();
+      loadingTopicRoles.clear();
+      set({
+        ...initialUserState(),
+        drafts: {},
+        finishedDraftMessages: {},
+        edits: {},
+        reactions: {},
+      });
+      loadingHistory.clear();
+      messageAliases.clear();
+      messageAuthors.clear();
+      messageOriginIds.clear();
+      messageServerIds.clear();
+      pendingUploads.clear();
+    }
+
+    return {
+      ...initialUserState(),
+      status: 'offline',
       edits: {},
       reactions: {},
       drafts: {},
       finishedDraftMessages: {},
-      editTarget: undefined,
-      actionError: undefined,
       mediaTrustedHosts: undefined,
       messages: (chatId) => get().messagesByChat[chatId] ?? EMPTY_MESSAGES,
       hasMore: (chatId) => get().historyComplete[chatId] !== true && cursors[chatId] !== undefined,
       groupMembers: (chatId) => mentionMembersFor(chatId),
       groupIdForChat: (chatId) => groupIdForChat(chatId),
-      jumpTarget: undefined,
       openChat: (chatId) => history.openChat(chatId),
       reloadChats: () => history.reloadChats(),
       retryHistory: (chatId) => history.retryHistory(chatId),
@@ -1808,13 +1857,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       clearJumpTarget: () => set({ jumpTarget: undefined }),
       ...send,
       ...events.actions,
-      topicNotice: undefined,
       dismissTopicNotice: () => set({ topicNotice: undefined }),
       groupDetailsRevision: 0,
       ...groups.actions,
-      ownedAis: ports.ownedAis ?? [],
       ...pins.actions,
-      pinsError: undefined,
       stopPinsPoll: () => {
         polling.stopPinsPolling();
       },
