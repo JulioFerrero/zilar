@@ -2,27 +2,31 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-**2026-10-10 03:55 local: wave 3 merged (25 tasks, `e42dd220`); wave 4 integrating; nothing deployed**
+**2026-10-10 04:45 local: waves 3 and 4 merged (48 tasks, main `b9aa5d98`); nothing deployed**
 - **The plan:** `docs/audit/simplify-plan.md`. Julio chose "everything, test once" on 2026-10-09: the whole plan lands on main, then he does one live test before any deploy.
-- **Wave 3, merged:** T-0843 to T-0865, plus T-0888 (the voice test is deterministic) and T-0889 (the scope glob). The combined check was green on all 25.
+- **Wave 3, merged:** T-0843 to T-0865, T-0888 (the voice test is deterministic), T-0889 (the scope glob) and T-0890 (main CI green again; `lead batch check` now runs `prettier --check` as CI does).
   - **Headline numbers:**
     - web entry chunk 1,437 → 740 kB;
     - mobile assets 4.5 → 0.5 MB;
     - server image runs bundled JS (start CPU 1.75 → 1.1 s, about 50 MB less RAM);
     - list endpoints lose their N+1 queries;
     - about 4 MB of dead drizzle snapshots and 357 dead lines removed.
-  - **Main CI at `e42dd220`:**
-    - build, typecheck and all 4 test shards pass;
-    - "Format and lint" fails on prettier for `packages/devtools/src/gate/gate.test.ts`;
-    - T-0890 (running) fixes it, and makes `lead batch check` run `prettier --check` as CI does.
-  - **Lead check still open:** a visual phone pass on main. The automated phone smoke passed with no crashes, but the emulator was too starved by host load to give usable screenshots.
-- **Wave 4 (T-0866 to T-0887, 22 tasks):** all are done and at review.
-  - **Server:** 8 sweeps onto T-0863's helpers with truthful statuses (about −1,800 lines).
-  - **Shared code:** chat-core, protocol and the new `packages/client-core`.
-  - **Web:** selectors part 2 and lazy markdown (startup JS −46 kB gzip).
-  - **Mobile:** dark-only (−287 source lines).
+- **Wave 4, merged:** T-0866 to T-0887, with a green combined check and main identical to the checked tree.
+  - **Server:** 8 sweeps onto the shared HTTP helpers with truthful 201/204 statuses (about −1,800 lines).
+  - **Shared code:** protocol (JIDs and handles), chat-core (format, media, prefs, routines, AI forms, the store ledger) and the new `packages/client-core` (React and Effect glue).
+  - **Web:** every store read uses a narrow selector, and markdown is lazy (startup JS 401 → 355 kB gzip).
+  - **Mobile:** dark-only.
   - **Tests:** shared fakes, the gateway test split into 8 files, and lighter loop tests.
-  - **Now:** each branch is merging main. I resolved the conflicts in task files, and 12 workers are resolving code conflicts. Next come the Reviews, one combined check, a batch merge and the phone pass.
+- **Phone:** main after wave 3 and the combined wave 4 tree both pass the phone smoke with clean screenshots: chats, settings, explore, AIs and whistle.
+  - **Nit:** the icons on the Whistle screen's white buttons are almost invisible; that is a follow-up.
+- **Merge method:**
+  - Branches that had merged other unmerged branches could not be rebased, because their original commits clash with the squashed copies on main.
+  - Each branch was merged with main and collapsed into one commit with an identical tree (backup refs `backup/T-XXXX-premerge`).
+  - Then `lead merge --skip-gate` ran for each, since the combined check had already passed.
+- **Next:**
+  - Phase 3 group moves into `packages/api-contract`, using T-0864's recipe.
+  - Phase 4: the client-core store core.
+  - Follow-ups listed in the task Reviews, for example a mobile bearer session cache, server JID sites, the topics/access `runSql` copy, the `makeRateLimit` `Pick` type and the image size.
 - **Live-check list for Julio's single test** (it grows with each wave):
   - sign in and out and back in, on web and mobile (session cookie cache, T-0858);
   - AI DMs on mobile show as AI (T-0843);
