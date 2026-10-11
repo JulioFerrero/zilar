@@ -173,7 +173,7 @@ export function AuthFlow({
                 onSubmitEditing={submitEmail}
                 placeholder="you@example.com"
               />
-              {error !== undefined && (
+              {inviteStep === false && error !== undefined && (
                 <Text accessibilityRole="alert" className="text-[14px] text-danger">
                   {error}
                 </Text>
@@ -182,6 +182,11 @@ export function AuthFlow({
                 <Text className="text-[14px] text-muted-foreground">{inviteHint}</Text>
               )}
               {inviteStep && <InviteCodeField value={inviteCode} onChange={setInviteCode} />}
+              {inviteStep && error !== undefined && (
+                <Text accessibilityRole="alert" className="text-[14px] text-danger">
+                  {error}
+                </Text>
+              )}
               <Button
                 accessibilityLabel="Continue"
                 disabled={busy}

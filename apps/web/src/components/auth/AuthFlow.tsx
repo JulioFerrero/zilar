@@ -204,7 +204,7 @@ export function AuthFlow({
               onChange={(event) => changeEmail(event.target.value)}
               placeholder="you@example.com"
             />
-            {error !== undefined && (
+            {inviteStep === false && error !== undefined && (
               <p role="alert" className="text-[14px] text-danger">
                 {error}
               </p>
@@ -213,6 +213,11 @@ export function AuthFlow({
               <p className="text-[14px] text-muted-foreground">{inviteHint}</p>
             )}
             {inviteStep && <InviteCodeField value={inviteCode} onChange={setInviteCode} />}
+            {inviteStep && error !== undefined && (
+              <p role="alert" className="text-[14px] text-danger">
+                {error}
+              </p>
+            )}
             <Button type="submit" disabled={busy} size="lg" className="mt-1">
               Continue
             </Button>

@@ -1,7 +1,7 @@
 ---
 id: T-1114
 title: "Invite step polish: no autocorrect/spellcheck on the invite code field; the email-step error shows under the invite field when the invite step is open (web + mobile)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1114-invite-field-polish
 model: auto
@@ -55,4 +55,48 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- **Mobile `InviteCodeField`** (`apps/mobile/src/auth/InviteCodeField.tsx`): added `autoCorrect={false}` and `spellCheck={false}` to the `TextField`, so Android/iOS no longer autocorrect codes like `WRONGCODE` to `WRONG CODE`.
+- **Web `InviteCodeField`** (`apps/web/src/components/auth/InviteCodeField.tsx`): added `autoCorrect="off"`, `autoCapitalize="none"` and `spellCheck={false}` to the `TextInput`. Checked `apps/web/src/components/ui/text-input.tsx:56-87`: the kit `TextInput` destructures its own props and spreads `...props` onto the native `<input>`, so these three reach the DOM element. `spellCheck={false}` is valid on `ComponentProps<'input'>`.
+- **Both `AuthFlow`s, email step** (`apps/mobile/src/auth/AuthFlow.tsx:176-189`, `apps/web/src/components/auth/AuthFlow.tsx:207-220`): reordered so that when `inviteStep` is true the order is hint → field → error; when `inviteStep === false` the error keeps its old position directly under the email field. The error element (`<Text>`/`<p>`), its classes and `accessibilityRole="alert"`/`role="alert"` are unchanged; only its position changed. `inviteStep` is a `boolean` (`useState(false)`), so the `inviteStep === false` guard is type-safe and exclusive with the `inviteStep` branch.
+
+No other changes. No tests: UI-only change, per AGENTS.md "UI code gets no tests".
+
+### Files changed
+- `apps/mobile/src/auth/InviteCodeField.tsx`
+- `apps/mobile/src/auth/AuthFlow.tsx`
+- `apps/web/src/components/auth/InviteCodeField.tsx`
+- `apps/web/src/components/auth/AuthFlow.tsx`
+- `work/T-1114-invite-field-polish.md`
+
+### Commands run
+- `pnpm install`: Done in 10.8s.
+- `pnpm gate` (from the repo root), real output:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.7s)
+  PASS  format  (0.9s)
+  PASS  lint  (1.2s)
+  PASS  typecheck  (4.7s)
+  PASS  effect  (1.0s)
+  PASS  tests @zilar/mobile  (2.4s)
+  SKIP tests @zilar/web (no nearby test files)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+- I ran no single test file on its own: the change is UI-only with no near test files, so there was nothing to run besides the gate.
+
+### Problems / deviations
+- None.
+
+### Blocked / needs a decision
+- None.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-11: approved. The pre-review is clean, with no nits.**
+- **The invite code fields:**
+  - mobile gets `autoCorrect={false}` and `spellCheck={false}`;
+  - web gets `autoCorrect="off"`, `autoCapitalize="none"` and `spellCheck={false}`.
+- **The error position:** in both `AuthFlow`s, the email-step error renders under the invite field while `inviteStep` is true, and under the email otherwise. It keeps the same element, classes and alert role. The lead read every changed line.
+- **The gate passed.** The lead checks this on the APK built from this merge.

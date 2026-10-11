@@ -24,6 +24,8 @@ export function InviteCodeField({
       accessibilityLabel="Invite code"
       autoCapitalize="none"
       autoComplete="off"
+      autoCorrect={false}
+      spellCheck={false}
       value={value}
       onChangeText={(text) => onChange(parseInviteCode(text))}
       placeholder="Paste your invite code or link"

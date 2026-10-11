@@ -24,6 +24,9 @@ export function InviteCodeField({
       label="Invite code"
       value={value}
       autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="none"
+      spellCheck={false}
       placeholder="Paste your invite code or link"
       onChange={(event) => onChange(parseInviteCode(event.target.value))}
     />
