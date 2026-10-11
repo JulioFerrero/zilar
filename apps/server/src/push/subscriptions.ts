@@ -21,3 +21,12 @@ export const WebPushSubscriptionSchema = struct({
 });
 
 export type WebPushSubscription = Schema.Schema.Type<typeof WebPushSubscriptionSchema>;
+
+// A native device token (an FCM registration token or an APNs device token),
+// validated at the route boundary before it is stored in the clear. Task 4 uses
+// it to decode the native subscribe body; this only defines the shape.
+export const NativePushTokenSchema = Schema.String.pipe(
+  Schema.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
+);
+
+export type NativePushToken = Schema.Schema.Type<typeof NativePushTokenSchema>;

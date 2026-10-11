@@ -39,14 +39,21 @@ export function toPushDeviceView(row: PushDeviceRow, now: Date): PushDeviceView 
   };
 }
 
-export interface SaveDeviceInput {
+interface SaveDeviceBase {
   id: string;
   userId: string;
   node: string;
-  subscription: WebPushSubscription;
   userAgent: string | null;
   now: Date;
 }
+
+// A Web Push registration carries the browser subscription; a native one
+// carries the FCM/APNs device token. The kind picks which identity dedupes the
+// row: `(user_id, endpoint)` for Web Push, `(user_id, token)` for native.
+export type SaveDeviceInput = SaveDeviceBase &
+  (
+    { kind: 'webpush'; subscription: WebPushSubscription } | { kind: 'fcm' | 'apns'; token: string }
+  );
 
 export interface SaveDeviceAdmin {
   /**
@@ -58,13 +65,13 @@ export interface SaveDeviceAdmin {
   disablePushPair: (userId: string, node: string) => Promise<void>;
 }
 
-// Stores one browser subscription. A re-registration of the same endpoint
-// replaces the older row for that user (an endpoint identifies one browser
-// subscription), so enabling twice does not pile up devices. The stale
-// enable-pair behind the replaced row is dropped by the caller (see
-// `SaveDeviceAdmin` above): the row delete is scoped by user id AND
-// endpoint in the same transaction as the insert, so two racing
-// re-registrations cannot leave a duplicate behind.
+// Stores one device. A re-registration of the same endpoint (Web Push) or the
+// same token (native) replaces the older row for that user — an endpoint
+// identifies one browser subscription and a token one app install — so
+// enabling twice does not pile up devices. The stale enable-pair behind the
+// replaced row is dropped by the caller (see `SaveDeviceAdmin` above): the row
+// delete is scoped by user id AND that identity in the same transaction as the
+// insert, so two racing re-registrations cannot leave a duplicate behind.
 export async function saveDevice(
   db: ServerDatabase,
   cipher: PushCipher,
@@ -86,6 +93,38 @@ export async function saveDevice(
               new HttpError(409, 'too_many_devices', 'Too many push devices'),
             );
           }
+          if (input.kind !== 'webpush') {
+            // Read the stale rows (same user, same token, any node) INSIDE the
+            // transaction: the read, the deletes and the insert serialize under
+            // the per-user lock, so concurrent re-registrations agree on the
+            // same set.
+            const stale = yield* sql<{ node: string }>`SELECT node FROM push_subscriptions
+              WHERE user_id = ${input.userId} AND token = ${input.token}`;
+            staleNodes = stale.map((entry) => entry.node).filter((node) => node !== input.node);
+            yield* sql`DELETE FROM push_subscriptions
+              WHERE user_id = ${input.userId} AND token = ${input.token}`;
+            const [saved] = yield* sql<PushDeviceRow>`INSERT INTO push_subscriptions
+                (id, user_id, node, kind, endpoint, p256dh, auth, token, user_agent, created_at)
+              VALUES (
+                ${input.id},
+                ${input.userId},
+                ${input.node},
+                ${input.kind},
+                ${null},
+                ${null},
+                ${null},
+                ${input.token},
+                ${input.userAgent},
+                ${input.now}
+              )
+              RETURNING *`;
+            if (!saved) {
+              return yield* Effect.fail(
+                new HttpError(500, 'internal_error', 'Could not save the push device'),
+              );
+            }
+            return saved;
+          }
           // Read the stale rows (same user, same endpoint, any node) INSIDE the
           // transaction: the read, the deletes and the insert serialize under the
           // per-user lock, so concurrent re-registrations agree on the same set.
@@ -95,14 +134,16 @@ export async function saveDevice(
           yield* sql`DELETE FROM push_subscriptions
             WHERE user_id = ${input.userId} AND endpoint = ${input.subscription.endpoint}`;
           const [saved] = yield* sql<PushDeviceRow>`INSERT INTO push_subscriptions
-              (id, user_id, node, endpoint, p256dh, auth, user_agent, created_at)
+              (id, user_id, node, kind, endpoint, p256dh, auth, token, user_agent, created_at)
             VALUES (
               ${input.id},
               ${input.userId},
               ${input.node},
+              'webpush',
               ${input.subscription.endpoint},
               ${cipher.encrypt(input.subscription.keys.p256dh)},
               ${cipher.encrypt(input.subscription.keys.auth)},
+              ${null},
               ${input.userAgent},
               ${input.now}
             )
@@ -280,4 +321,15 @@ export function openDevice(
     endpoint: row.endpoint,
     keys: { p256dh: cipher.decrypt(row.p256dh), auth: cipher.decrypt(row.auth) },
   };
+}
+
+// Opens one stored native device for sending: the FCM/APNs token is stored in
+// the clear (`token` is a delivery address, not a credential), so there is
+// nothing to decrypt. A row that is not native is a programming error — the
+// caller branches on `kind` first.
+export function openNativeDevice(row: PushDeviceRow): { kind: 'fcm' | 'apns'; token: string } {
+  if (row.kind === 'webpush' || row.token === null) {
+    throw new Error('The push device is not a native device');
+  }
+  return { kind: row.kind, token: row.token };
 }

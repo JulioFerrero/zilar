@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account; superseded by T-1129's plan |
-| [T-1132](T-1132-push-device-kind.md) | Native push 1/6: device kind + token (migration 0047) | in-progress | auto | T-1129 | the only schema task |
 
 ## Follow-ups
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile. This is a new feature, so it needs Julio's OK.
@@ -1174,3 +1173,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1131](T-1131-split-tool-worker.md) | Size split: apps/server/src/sandbox/tool-worker.ts (616) — one failRun() replaces the repeated error finish li | 2026-10-11 |
 | [T-1133](T-1133-fcm-sender.md) | Native push 2/6: FCM HTTP v1 sender — OAuth token minted with node:crypto (RS256 JWT, cached ~55 min, one shar | 2026-10-11 |
 | [T-1134](T-1134-split-web-real-store.md) | Size split: apps/web/src/store/realStore.ts (524) — the closure's mutable locals, the ctx build and the store  | 2026-10-11 |
+| [T-1132](T-1132-push-device-kind.md) | Native push 1/6: push_subscriptions gets a device kind (webpush | fcm | apns) and a token column — hand-writte | 2026-10-11 |

@@ -82,6 +82,7 @@ export function createSubscribeHandler(
               id: randomUUID(),
               userId: user.id,
               node,
+              kind: 'webpush',
               subscription: {
                 endpoint: body.endpoint,
                 keys: { p256dh: body.keys.p256dh, auth: body.keys.auth },

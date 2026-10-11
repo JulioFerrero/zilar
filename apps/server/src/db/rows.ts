@@ -218,14 +218,26 @@ export interface AvatarRow {
   createdAt: Date;
 }
 
-// Row of the `push_subscriptions` table.
+// Which transport a push device speaks. `webpush` rows carry the Web Push
+// endpoint and sealed keys; `fcm`/`apns` rows carry a plaintext device token.
+export type PushDeviceKind = 'webpush' | 'fcm' | 'apns';
+
+// Row of the `push_subscriptions` table. A row is either a Web Push row
+// (`kind = 'webpush'`, endpoint and sealed keys set, `token` empty) or a native
+// row (`kind = 'fcm' | 'apns'`, `token` set, the Web Push columns empty);
+// migration 0047's `shape_check` enforces that pair. The Web Push columns stay
+// typed non-null for the Web Push readers that predate `kind`; a native row's
+// values are NULL at runtime, so task 4 reads a native row through
+// `openNativeDevice` and never off the raw columns.
 export interface PushSubscriptionRow {
   id: string;
   userId: string;
   node: string;
+  kind: PushDeviceKind;
   endpoint: string;
   p256dh: string;
   auth: string;
+  token: string | null;
   userAgent: string | null;
   createdAt: Date;
   lastUsedAt: Date | null;
