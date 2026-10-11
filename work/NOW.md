@@ -2,6 +2,37 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 11:20 local: Julio away ("dont stop working"); 5 workers**
+- **Coolify:** the old `zilar` service, its volumes and the "Zilar test" project were deleted. The project "Zilar" now holds `landing` and `zilar-chat`, and the 3 GitHub secrets were removed.
+- **The missing email was not a bug:** it was invite-only sign-up, where an unknown email got a silent fake success. Julio asked for a visible invite-code field instead (T-1104, server and web; T-1105, mobile).
+- **Running:**
+  - T-1104 (invite code: server and web);
+  - T-1106 (Android App Links, in a fix round: bare paths must keep the in-app routes);
+  - T-1107 (S6 crypto envelope);
+  - T-1108 (S7 rate-limit layers);
+  - T-1109 (one `xmppUnavailable()`, 503).
+- **The pin codes stay as they are:** `pin_limit` is for pinned messages and `too_many_pins` for pinned chats. They mean different things, which the lead's morning question had blurred.
+- **Every code merge deploys live.** After each one, the lead watches the Coolify deployment and `/health`.
+
+**2026-10-11 10:35 local: LIVE on the new setup (`16aca821`)**
+- **The setup:** `chat.zilar.app` is the Coolify Application `zilar-chat` (`qccydpow4rw0zcel9yisk44s`), built from git on every push, like movabase (T-1102, T-1103). The GitHub webhook deploys pushes that touch a watch path.
+- **A clean install** (Julio: the old data was only test chats). The old service `zilar` is stopped and will be deleted later. GitHub `AUTO_DEPLOY=off`; the 3 `COOLIFY_*` secrets can be removed.
+- **The lead's checks:** `/health` is ok, commit `16aca821`, db ok; web 200; `/api/me` 401; `/xmpp-ws/ws` 200. Sign-in and chat are for Julio (`docs/LIVE_CHECKS_2026-10-11.md`).
+- **Phone:** the APK (`5af8d5b6`, with no app changes up to `16aca821`) waits for Julio's vivo to be plugged in again.
+- **Merges are no longer held for the deploy,** but every code merge now goes live. The clean-up slices (S15, error codes, security dedups) can start once Julio's live test passes.
+
+**2026-10-11 10:00 local: ready for Julio's live test**
+- **Julio's morning answers** (memory `decisions-1011-morning`):
+  - move S15 (the web calls) unchanged;
+  - unify the error codes (503, one pin code);
+  - run the security dedups unchanged;
+  - **do the live test today**.
+- **Release blocker, fixed:** T-1101. The web image had failed since T-1091, because `apps/web/Dockerfile` did not copy `packages/ball-avatar`. On GitHub "Production images" for `5af8d5b6`, all four images are green. The deploy was skipped because no secrets are set ("Auto-deploy skipped: set COOLIFY_URL…").
+- **Live now:** `73fae1bf` (2026-10-09), and `main` is 704 commits ahead.
+- **The checklist:** `docs/LIVE_CHECKS_2026-10-11.md` (a backup first, then the 3 secrets, the deploy, `/health`, and the checks).
+- **Phone:** a release APK from `5af8d5b6` is built with `https://chat.zilar.app` baked in and no mock seed. It is kept in the lead's scratchpad (`apk/zilar-5af8d5b6.apk`). Julio asked to install it on his vivo (V2454A, over USB) **after the deploy**.
+- **Merges are held:** once the secrets exist, every green main deploys, so the clean-up merges wait until the live test passes.
+
 **2026-10-11 07:45 local: store splits merged; a web topic bug found**
 - **Merged:** T-1094, T-1095, T-1096 and T-1097 (the four store splits: relocation only, with the lead's line comparison, every body identical) and T-1098 (the search constants).
   - **Main, the lead's run:** web and mobile typecheck pass, and the store tests pass (web 41, mobile 40).

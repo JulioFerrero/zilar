@@ -18,7 +18,23 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "category": ["BROWSABLE", "DEFAULT"],
+          "data": [
+            { "scheme": "https", "host": "chat.zilar.app", "pathPrefix": "/c/" },
+            { "scheme": "https", "host": "chat.zilar.app", "pathPrefix": "/invite/" },
+            { "scheme": "https", "host": "chat.zilar.app", "pathPrefix": "/j/" },
+            { "scheme": "https", "host": "chat.zilar.app", "pathPrefix": "/u/" },
+            { "scheme": "https", "host": "chat.zilar.app", "pathPrefix": "/settings/" },
+            { "scheme": "https", "host": "chat.zilar.app", "pathPrefix": "/@" },
+            { "scheme": "https", "host": "chat.zilar.app", "path": "/" }
+          ]
+        }
+      ]
     },
     "web": {
       "bundler": "metro",

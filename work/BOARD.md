@@ -9,6 +9,11 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-1104](T-1104-signup-invite-code-server-web.md) | Sign-up invite code: server invite_required + web field | in-progress | auto | T-1103 | Julio 10-11 |
+| [T-1105](T-1105-signup-invite-code-mobile.md) | Sign-up invite code: mobile field | todo | auto | T-1104 | after T-1104 |
+| [T-1107](T-1107-shared-crypto-envelope.md) | Dedup S6: one crypto envelope (keys, moved unchanged) | in-progress | auto | T-1103 | Julio OK 10-11 |
+| [T-1108](T-1108-rate-limit-layers-to-factory.md) | Dedup S7: rate-limit layers on the shared factory | in-progress | auto | T-1103 | Julio OK 10-11 |
+| [T-1109](T-1109-xmpp-unavailable-constructor.md) | Error codes: one xmppUnavailable() (503) | in-progress | auto | T-1103 | Julio OK 10-11; pin codes stay (different meanings) |
 
 ## Follow-ups
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile. This is a new feature, so it needs Julio's OK.
@@ -1136,3 +1141,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1099](T-1099-web-new-topic-from-group-header.md) | Web bug: New topic from a group header's + fails ('Could not create the topic', blank group name): the header  | 2026-10-11 |
 | [T-1100](T-1100-mock-new-room-occupants.md) | Mock XMPP: a room with no posts takes its occupants from its group's members, not every seeded person (new top | 2026-10-11 |
 | [T-1101](T-1101-web-dockerfile-ball-avatar.md) | Release blocker: the web Docker image fails ('failed to resolve import @zilar/ball-avatar'); the Dockerfile mu | 2026-10-11 |
+| [T-1102](T-1102-coolify-app-compose.md) | Deploy: deploy/coolify/docker-compose.app.yml, the Coolify stack built from git (build: contexts instead of GH | 2026-10-11 |
+| [T-1103](T-1103-coolify-app-compose-contexts.md) | Deploy fix: docker-compose.app.yml build contexts are relative to the repo root (Coolify passes --project-dire | 2026-10-11 |
+| [T-1106](T-1106-android-app-links.md) | Android App Links: https://chat.zilar.app links open the Zilar app (intent filter + assetlinks.json + web→app  | 2026-10-11 |
