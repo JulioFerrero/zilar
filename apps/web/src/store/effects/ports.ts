@@ -93,10 +93,18 @@ import {
 } from '@/lib/api';
 import { subscribeToDrafts, type OpenDraftStream } from '@/lib/drafts';
 import { defaultVoicePort, type VoicePort } from '@/lib/voice';
-import { defaultAttachmentPort, cleanFilename, type AttachmentPort } from '@/lib/attachments';
-import { dismissChatNotifications, totalBadgeUnread, updateAppBadge } from '@/lib/push';
-import { summariesFor } from './chatRows';
-import { fromPromise } from './util';
+import { defaultAttachmentPort, type AttachmentPort } from '@/lib/attachments';
+import {
+  bytesFromAttachmentPort,
+  defaultGoToLogin,
+  defaultOnFocus,
+  defaultStorage,
+  defaultVisible,
+  liveNotifications,
+  realRows,
+  voiceFromPort,
+  webFlags,
+} from './portAdapters';
 
 export interface ApiClient {
   getMe(): Promise<Me>;
@@ -264,86 +272,6 @@ const realApi: ApiClient = {
   pinMessage: pinMessageRequest,
   unpinMessage: unpinMessageRequest,
 };
-
-// The browser storage, or null where it is blocked or missing.
-function defaultStorage(): StorageLike | null {
-  return Effect.runSync(
-    Effect.try(() => window.localStorage).pipe(Effect.orElseSucceed(() => null)),
-  );
-}
-
-function defaultVisible(): boolean {
-  return typeof document === 'undefined' || document.visibilityState === 'visible';
-}
-
-function defaultOnFocus(handler: () => void): () => void {
-  if (typeof window === 'undefined') {
-    return () => {};
-  }
-  window.addEventListener('focus', handler);
-  return () => window.removeEventListener('focus', handler);
-}
-
-const realRows: ChatRows = {
-  summariesFor: (entry) => summariesFor(entry as ChatEntry),
-};
-
-const webFlags: StoreFlags = { connectRetry: true, reconnectOnResume: false };
-
-// The app badge and the push dismiss, best effort (mirrors `effects/badge.ts`).
-const liveNotifications: Notifications = {
-  syncBadge: (chats) => {
-    Effect.runFork(
-      fromPromise(() => updateAppBadge(totalBadgeUnread([...chats]))).pipe(Effect.ignore),
-    );
-  },
-  dismissChat: (chatId) => {
-    Effect.runFork(fromPromise(() => dismissChatNotifications(chatId)).pipe(Effect.ignore));
-  },
-};
-
-// A reload gives the next user a fresh store and XMPP connection.
-function defaultGoToLogin(): void {
-  if (typeof window !== 'undefined') {
-    window.location.assign('/login');
-  }
-}
-
-// `URL.createObjectURL` is missing in some test environments.
-function objectUrlFor(blob: Blob): string | undefined {
-  return Effect.runSync(
-    Effect.try(() => URL.createObjectURL(blob)).pipe(Effect.orElseSucceed(() => undefined)),
-  );
-}
-
-// The core `bytes` port over web's attachment port (T10): classification, the
-// image size and the XEP-0363 upload. Web has no cancel and ignores progress.
-function bytesFromAttachmentPort(port: AttachmentPort): OutgoingBytes {
-  return {
-    describe: (file) => {
-      const picked = file as File;
-      const kind = port.classify(picked);
-      return {
-        kind,
-        name: cleanFilename(picked.name),
-        size: picked.size,
-        mime: picked.type === '' ? 'application/octet-stream' : picked.type,
-        ...(kind === 'image' ? { localUrl: objectUrlFor(picked) } : {}),
-      };
-    },
-    measure: (file) => fromPromise(() => port.readImageSize(file as File)),
-    upload: (core, file) => fromPromise(() => port.upload(core, file as File)),
-  };
-}
-
-// The core `voice` port over web's voice port (T10). The recording's bytes are
-// opaque to the core, so this unwraps them.
-function voiceFromPort(port: VoicePort): VoiceOut {
-  return {
-    convert: (recording) => fromPromise(() => port.convert(recording.bytes as Blob)),
-    upload: (core, audio) => fromPromise(() => port.upload(core, audio as Blob)),
-  };
-}
 
 /** The live ports, with any field of `deps` replacing its real counterpart. */
 export function resolvePorts(deps: RealStoreDeps = {}): PortsShape {

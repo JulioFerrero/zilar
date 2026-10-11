@@ -2,6 +2,18 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 ~13:00 local: live `5f647b60`**
+- **Merged since 11:30:**
+  - T-1113 (voice calls into the contract);
+  - T-1114 (invite field: no autocorrect, error under the field; checked by the lead on the emulator);
+  - T-1115 and T-1116 (`groups/access.ts` adopted by tools, routines, approvals and `groups/queries`);
+  - T-1117 (shared debounce constants);
+  - T-1118 to T-1123 (size splits): approvals/api 562→367, search/routes 531→303, setup/api 441→283, topics/access 688→382, litellm-client 589→285, edge 434→272.
+- **Kept on purpose** (`docs/audit/simplify-status.md` 2.3 and 3.3):
+  - the ~31 inline rate-limit checks, because their order of answers would change;
+  - `/setup` and the avatar delete as hand-written web calls.
+- **Waiting:** APK `scratchpad/apk/zilar-fdbfa28d.apk`, to install on the vivo once it is plugged in. Mobile windowing (0.4) is left for a phone test with Julio.
+
 **2026-10-11 ~11:30 local: merged T-1104 to T-1112 (except T-1105's old flow, replaced by T-1112)**
 - **Sign-in, Julio's flow (T-1112):** the email goes first. A known email goes to the code step; a new email gets the Invite code input, pre-filled from an `/invite/<code>` link. No up-front invite check.
   - The lead checked live (curl): `invite_required` (403) and `invite_invalid` (400).

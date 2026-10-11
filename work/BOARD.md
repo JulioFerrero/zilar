@@ -1152,3 +1152,13 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1115](T-1115-tools-routines-membership.md) | Dedup S11 (slice 1): tools and routines use groups/access.ts — delete their two private findMembership copies  | 2026-10-11 |
 | [T-1116](T-1116-approvals-membership.md) | Dedup S11 (slice 2): approvals and groups/queries use groups/access.ts — one isGroupManager() replaces the two | 2026-10-11 |
 | [T-1117](T-1117-shared-timing-constants.md) | Drift 0.2: the GIF search, people search and chat refresh debounce constants (copied in web and mobile, same v | 2026-10-11 |
+| [T-1120](T-1120-split-setup-api.md) | Size split: apps/server/src/setup/api.ts (441) — the body schemas to setup/schema.ts and the invite/mail helpe | 2026-10-11 |
+| [T-1119](T-1119-split-search-routes.md) | Size split: apps/server/src/search/routes.ts (531) — snippet/stanza helpers to search/snippet.ts and the SQL b | 2026-10-11 |
+| [T-1118](T-1118-split-approvals-api.md) | Size split: apps/server/src/approvals/api.ts (562) — the read helpers after createApprovalsApi move unchanged  | 2026-10-11 |
+| [T-1121](T-1121-split-topics-access.md) | Size split: apps/server/src/topics/access.ts (688) — the topic view builders move unchanged to topics/views.ts | 2026-10-11 |
+| [T-1123](T-1123-split-edge.md) | Size split: apps/server/src/effect/edge.ts (434) — route matching, request id, CORS and body helpers move unch | 2026-10-11 |
+| [T-1122](T-1122-split-litellm-client.md) | Size split: apps/server/src/ai/litellm-client.ts (589) — public types to ai/litellm-types.ts and the wire sche | 2026-10-11 |
+| [T-1126](T-1126-split-db-rows.md) | Size split: apps/server/src/db/rows.ts (426) — the approval, tool, routine and media row types move unchanged  | 2026-10-11 |
+| [T-1127](T-1127-split-machines-api.md) | Size split: apps/server/src/machines/api.ts (404) — toMachineView, invalidCode, toConflict and INVALID_JSON mo | 2026-10-11 |
+| [T-1124](T-1124-split-mobile-chat-api.md) | Size split: apps/mobile/src/lib/chat-api.ts (439) — the wire schemas and parse functions move unchanged to lib | 2026-10-11 |
+| [T-1125](T-1125-split-web-ports.md) | Size split: apps/web/src/store/effects/ports.ts (427) — the browser default adapters move unchanged to store/e | 2026-10-11 |

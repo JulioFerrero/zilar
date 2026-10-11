@@ -17,7 +17,6 @@ import {
   MachinesPairingCodeRateLimit,
   PairMachinePayload,
   RenameMachinePayload,
-  type Machine,
 } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
@@ -35,6 +34,7 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import { createRateLimiter } from '../rate-limit';
+import { INVALID_JSON, invalidCode, toConflict, toMachineView } from './api-helpers';
 import { hashPairingCode, normalizePairingCode } from './codes';
 import { createDbMachineRegistry, type DbMachineRegistry } from './registry';
 import {
@@ -46,8 +46,6 @@ import {
   findOwnedMachine,
   insertPendingMachine,
   listMachines,
-  MachineServiceError,
-  type PublicMachine,
   renameMachine,
   revokeMachine,
   toPublicMachine,
@@ -91,32 +89,6 @@ const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 // answers every failure with the same `invalid_code`), so the error order
 // stays.
 const MachinesApi = HttpApi.make('machines').add(MachinesGroup);
-
-// The wire form of a `PublicMachine`: the dates as the ISO strings
-// `JSON.stringify` produced on the old route.
-function toMachineView(machine: PublicMachine): Machine {
-  return {
-    ...machine,
-    createdAt: machine.createdAt.toISOString(),
-    approvedAt: machine.approvedAt?.toISOString() ?? null,
-    lastSeenAt: machine.lastSeenAt?.toISOString() ?? null,
-  };
-}
-
-function invalidCode(): HttpError {
-  return new HttpError(400, 'invalid_code', 'Invalid or expired pairing code');
-}
-
-function toConflict(error: unknown): unknown {
-  if (error instanceof MachineServiceError) {
-    return new HttpError(409, error.errorCode, error.message);
-  }
-  throw error;
-}
-
-// Used to tell a malformed JSON body from a shape violation after the sentinel
-// has been replaced by the decoded value.
-const INVALID_JSON = Symbol('invalid-json');
 
 export function createMachinesApi(deps: MachinesApiDependencies): EffectApiMount {
   const logger = deps.logger;
