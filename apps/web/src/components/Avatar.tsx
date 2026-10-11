@@ -1,4 +1,4 @@
-import { ditherAvatarDataUri } from '@zilar/chat-core';
+import { avatarDataUri } from '@zilar/chat-core';
 import { cn } from '@/lib/utils';
 
 export interface AvatarProps {
@@ -6,7 +6,7 @@ export interface AvatarProps {
   name: string;
   size?: number;
   online?: boolean;
-  /** Kept for callers; the dither avatar no longer changes for AIs. */
+  /** Kept for callers; the ball avatar no longer changes for AIs. */
   ai?: boolean;
   avatarUrl?: string | undefined;
   className?: string;
@@ -20,7 +20,7 @@ export function Avatar({ id, size = 54, online = false, avatarUrl, className }: 
     >
       {avatarUrl === undefined ? (
         <img
-          src={ditherAvatarDataUri(id)}
+          src={avatarDataUri(id)}
           alt=""
           aria-hidden="true"
           className="h-full w-full rounded-full object-cover"

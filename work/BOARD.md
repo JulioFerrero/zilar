@@ -12,19 +12,12 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 ## Follow-ups
 
-- **Planned late: our own "ball avatar" library to replace the dither avatars (Julio, 2026-10-11).** Queue it near the end of the current plan: after the mock rebuild and the remaining cleanups, but before Julio's single live test and the deploy.
-  - **What it is:** like `dither-avatar`, a deterministic avatar from a seed (the id), but rendered as a **3D-looking ball**. Each seed gives its own colours and light direction (highlight, shading, maybe a rim light).
-  - **What it outputs:** SVG, so web shows it as `<img>` and mobile through `SvgXml` (react-native-svg), exactly where T-1075 plugged in `ditherAvatarSvg`/`ditherAvatarDataUri` (`packages/chat-core/src/avatar.ts`).
-  - **Where it lives:** a small workspace package with zero dependencies, like `dither-avatar`.
-  - **Before the spec:** show Julio a preview page of a few seeds, as for the dither pick.
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile. This is a new feature, so it needs Julio's OK.
 - **Mock images (waiting for Julio's choice, NOW.md 2026-10-11 05:00).** Web seed stickers are fixed (T-1083, a dev-only vite plugin), and web GIFs were never blank. Still broken:
   - **mobile sticker and GIF images are blank:** native `Image` fetches over the network, never through `mockFetch`, and the seed art is SVG;
   - **a sent attachment or GIF has no bytes:** it is a file row on web and "Not loaded: untrusted address" on mobile, because the fake slot is an empty `data:` url (`packages/mock-backend/src/xmpp/core.ts:227-231`).
 
   Load paths and options: `docs/audit/mock-sweep-status.md` §3-§4. Any fix sits next to `isTrustedMediaUrl` (`packages/chat-core/src/media.ts:82`).
-- **Mobile mock "Always allowed": re-check on the next approvals smoke.** The old `mock/approvals.ts`, which returned no rules, was deleted in T-1061. Approvals now run on the backend's `approval-rules` domain, and nobody has looked at the list since.
-- **Mock: `GET /groups/:id/topics` returns `[]` for groups whose General exists only in `/chats` (T-1048 follow-up).**
 - **Mobile: about 9 more `Effect.runFork(Fiber.interrupt(...))` sites in `components/chat` could use `interruptFiber` (`lib/effect/timers.ts`, T-1050).** The `runSync` ones differ and stay.
 - **Dedup slices that need a lead decision (`docs/audit/dedup-status.md` §8):** S6 crypto envelope (keys), S7-S9 rate limiters, S10-S11 `groups/access.ts` (permissions), S15 web settings facade (keys). S4 (schema-issue walker) must keep audit's two extra cases.
 
@@ -1133,3 +1126,5 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1088](T-1088-voice-transcription-contract-schemas.md) | api-contract: share the voice-transcription response schemas (EnabledStatus, TranscriptResult) with the server | 2026-10-10 |
 | [T-1089](T-1089-gif-mock-props-and-voice-client-schemas.md) | Cleanup: delete the unused mobile GifSheet and GifPanel's mockItems prop; web and mobile clients decode voice  | 2026-10-11 |
 | [T-1090](T-1090-mock-general-topics-in-topics-seed.md) | Mock backend: seed every group's General as a real topics row, so GET /groups/:id/topics lists it (not only De | 2026-10-11 |
+| [T-1091](T-1091-ball-avatar-package.md) | Ball avatars: a zero-dependency @zilar/ball-avatar package (glossy 3D ball SVG from a seed) replaces dither-av | 2026-10-11 |
+| [T-1092](T-1092-cleanup-avatar-comments-me-setters.md) | Cleanup: 'dither' comments now say ball avatar; mobile mock/load.ts header; mock me state gets handle/avatar s | 2026-10-11 |

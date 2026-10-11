@@ -48,7 +48,7 @@ function putAvatar(
   }
   data.putAvatarUrl(avatarKey(kind, ownerId), url);
   if (isViewer(kind, ownerId, data)) {
-    Object.assign(data.me, { avatarUrl: url });
+    data.setMeAvatarUrl(url);
   }
   return jsonResponse({ url });
 }
@@ -56,10 +56,9 @@ function putAvatar(
 function removeAvatar(data: MockData, kind: string, ownerId: string): Response {
   data.removeAvatarUrl(avatarKey(kind, ownerId));
   if (isViewer(kind, ownerId, data)) {
-    // An undefined value is dropped by `JSON.stringify`, so `GET /me` no
-    // longer carries `avatarUrl`, the shape the contract's optional field
-    // wants after a remove.
-    Object.assign(data.me, { avatarUrl: undefined });
+    // Passing `undefined` drops the key, so `GET /me` no longer carries
+    // `avatarUrl`, the shape the contract's optional field wants after a remove.
+    data.setMeAvatarUrl(undefined);
   }
   return jsonResponse({ ok: true });
 }

@@ -1,4 +1,4 @@
-import { ditherAvatarSvg } from '@zilar/chat-core';
+import { avatarSvg } from '@zilar/chat-core';
 import { Image } from 'expo-image';
 import { Camera, Copy, Pencil, Settings } from 'lucide-react-native';
 import { useState } from 'react';
@@ -110,7 +110,7 @@ export function ProfileViewContent({
               overflow: 'hidden',
             }}
           >
-            <SvgXml xml={ditherAvatarSvg(profile.id)} width={104} height={104} />
+            <SvgXml xml={avatarSvg(profile.id)} width={104} height={104} />
           </View>
         ) : (
           <Image
@@ -255,7 +255,7 @@ export function PhotoEditRow({ edit, stagedName }: { edit: PhotoEdit; stagedName
 export function ProfileView(props: ProfileViewProps & { photoEdit?: PhotoEdit | undefined }) {
   // The failed url, not a boolean: a 404 for a stale url clears itself when
   // `setProfile` carries the new `avatarUrl`, instead of sticking on the
-  // dither until remount.
+  // ball avatar until remount.
   const [failedUrl, setFailedUrl] = useState<string | undefined>(undefined);
   return (
     <ProfileViewContent

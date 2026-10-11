@@ -1,4 +1,4 @@
-import { ditherAvatarSvg } from '@zilar/chat-core';
+import { avatarSvg } from '@zilar/chat-core';
 import { View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 
@@ -9,12 +9,12 @@ type AvatarProps = {
   name: string;
   size?: number;
   online?: boolean;
-  /** Kept for callers; the dither avatar no longer changes for AIs. */
+  /** Kept for callers; the ball avatar no longer changes for AIs. */
   ai?: boolean;
   className?: string;
 };
 
-/** The dither avatar circle and the online dot. */
+/** The ball avatar circle and the online dot. */
 export function Avatar({ id, size = 54, online = false, className }: AvatarProps) {
   const dotSize = Math.max(10, Math.round(size * 0.22));
   return (
@@ -27,7 +27,7 @@ export function Avatar({ id, size = 54, online = false, className }: AvatarProps
           overflow: 'hidden',
         }}
       >
-        <SvgXml xml={ditherAvatarSvg(id)} width={size} height={size} />
+        <SvgXml xml={avatarSvg(id)} width={size} height={size} />
       </View>
       {online ? (
         <View
