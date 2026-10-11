@@ -1,26 +1,39 @@
-// General topics for the seeded groups that carry none of their own. The real
-// server creates a General topic in the group's own room for every group
-// (`apps/server/src/groups/service.ts:157-171`) and `GET /chats` attaches the
-// visible topics, General first (`apps/server/src/chats/api.ts:50`). Dev team's
-// seven rows come from the topics seed; every other group builds its General
-// here, so the mobile group and channel screens can open (T-1048).
-import type { GroupChatEntry, Topic } from '@zilar/api-contract';
+// General topics and the seeded groups' rooms. The real server creates a General
+// topic in the group's own room for every group
+// (`apps/server/src/groups/service.ts:157-171`), so the mock seeds one such row
+// per group in the topics table (`domains/topics/seed.ts`) and both
+// `/groups/:id/topics` and the topics attached to `/chats` list it (T-1090).
+// Dev team's row is one of its seven seeded rows; every other group's is built
+// here from the groups seed.
 import type { MockTopic } from '../topics/tables';
-import { buildTopicView, type TopicViewSource } from '../topics/view';
+
+/**
+ * The room JID of the seeded groups whose room is not the group id without its
+ * `g-` prefix (`g-devteam` is `dev-team@rooms.zilar.test`). Every other group
+ * follows the plain scheme (`g-acme` is `acme@rooms.zilar.test`).
+ */
+const GROUP_ROOM_JIDS: Readonly<Record<string, string>> = {
+  'g-devteam': 'dev-team@rooms.zilar.test',
+};
+
+/** The room JID of a group: its own room, where its General topic lives. */
+export function groupRoomJid(groupId: string): string {
+  return GROUP_ROOM_JIDS[groupId] ?? `${groupId.replace(/^g-/, '')}@rooms.zilar.test`;
+}
 
 /** The General topic's stable mock id, mirroring the Dev team seed's scheme. */
-function generalTopicId(entry: GroupChatEntry): string {
-  return `t-${entry.groupId.replace(/^g-/, '')}-general`;
+function generalTopicId(groupId: string): string {
+  return `t-${groupId.replace(/^g-/, '')}-general`;
 }
 
 /** The live-shaped General row: the same fields the server inserts on create. */
-function generalTopicRow(entry: GroupChatEntry): MockTopic {
+export function generalTopicRow(groupId: string, chatJid: string): MockTopic {
   return {
-    id: generalTopicId(entry),
-    groupId: entry.groupId,
+    id: generalTopicId(groupId),
+    groupId,
     name: 'General',
     glyph: 'G',
-    chatJid: entry.chatJid,
+    chatJid,
     visibility: 'public',
     kind: 'chat',
     status: 'open',
@@ -34,27 +47,4 @@ function generalTopicRow(entry: GroupChatEntry): MockTopic {
     roleIds: [],
     approverRoleId: null,
   };
-}
-
-/**
- * One group's visible General topic, built through the topics domain's
- * `buildTopicView` so it matches a live row. General is public and role-less, so
- * its member count is the group's whole count, the number the entry shows.
- */
-export function generalTopicView(entry: GroupChatEntry): Topic {
-  const source: TopicViewSource = {
-    groupMemberCount: () => entry.memberCount,
-    role: () => undefined,
-    aiName: () => 'An AI',
-  };
-  return buildTopicView(generalTopicRow(entry), source);
-}
-
-/**
- * The same group entry with its General topic attached, for groups the topics
- * seed leaves empty. The chat route keeps this list only while the live topics
- * table has none for the group, so a later topic edit still replaces it.
- */
-export function withGeneralTopic(entry: GroupChatEntry): GroupChatEntry {
-  return { ...entry, topics: [generalTopicView(entry)] };
 }

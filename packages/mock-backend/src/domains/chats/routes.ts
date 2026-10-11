@@ -16,8 +16,9 @@ export function handleChats(data: MockData, request: MockHttpRequest): Response 
 
 /**
  * A group's `topics` is rebuilt from the live topics table, so a topic created
- * or archived through `/groups/:id/topics` shows up here right away. A group
- * with no topics keeps its single legacy row (the `summariesFor` fallback).
+ * or archived through `/groups/:id/topics` shows up here right away. Every
+ * seeded group has its General row there (T-1090); a group with no live topics
+ * (one joined from the directory) keeps the seed entry without them.
  */
 function withTopics(data: MockData, entry: ChatEntry): ChatEntry {
   if (entry.kind !== 'group') {

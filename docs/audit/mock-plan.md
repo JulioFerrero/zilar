@@ -1,5 +1,10 @@
 # Mock mode plan: one shared fake backend for both apps
 
+> **Status (lead, 2026-10-11): this plan is carried out, and the rest of this file is historical.**
+> - **Done:** both apps run their real stores and API factories on `@zilar/mock-backend`. Web's `dispatch` is backend-only (T-1074). The mobile hooks pass `mockFetch` (T-1060 to T-1085). Every old mock file listed in §1 is deleted.
+> - **Stale:** most of the `file:line` citations below point to files that no longer exist.
+> - **Current state:** what is left, and the blank-image plan, are in [`mock-sweep-status.md`](mock-sweep-status.md) (T-1082). Its §5 lists the lines here that are out of date.
+
 Audit for T-0935. Read-only: no code or test was changed. Every claim below is
 backed by a `path:line` I opened and checked. "Web" means `apps/web`, "mobile"
 means `apps/mobile`, "the contract" means `packages/api-contract`.
