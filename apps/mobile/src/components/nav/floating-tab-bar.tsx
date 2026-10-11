@@ -43,7 +43,7 @@ export const FLOATING_TABS: FloatingTab[] = [
 /**
  * Whether the avatar picture failed to load for the *current* url. The
  * failed url is stored instead of a boolean flag, so a fresh `avatarUrl`
- * (e.g. after Set photo saves) clears the dither fallback instead of
+ * (e.g. after Set photo saves) clears the ball avatar fallback instead of
  * sticking on it until remount.
  */
 export function avatarFailedFor(
@@ -64,7 +64,7 @@ export interface TabProfile {
 type FloatingTabBarProps = {
   /** Total unread of non-muted chats (the All folder total); hidden at 0. */
   unreadTotal: number;
-  /** The signed-in profile for the Profile tab avatar; a dither face when present. */
+  /** The signed-in profile for the Profile tab avatar; a ball avatar when present. */
   profile?: TabProfile | undefined;
 };
 
@@ -102,7 +102,7 @@ function TabIcon({
 }
 
 /**
- * The Profile tab face: the resolved picture, or the dither fallback when
+ * The Profile tab face: the resolved picture, or the ball avatar fallback when
  * there is no picture or the load fails. The server's `avatarUrl` is a
  * relative `/api/avatars/<id>` path, resolved against the API origin with
  * the bearer on same-origin only (the `profile-view` pattern); a bare
@@ -153,10 +153,10 @@ function FloatingTabButton({
 }) {
   const { trigger, triggerProps } = useTabTrigger({ name: tab.name });
   const selected = trigger?.isFocused ?? false;
-  // The tab-bar avatar falls back to a dither face when the picture 404s (a
+  // The tab-bar avatar falls back to a ball avatar when the picture 404s (a
   // removed picture keeps its stale url until the next focus reload). The
   // failed url is stored, not a flag, so a fresh `avatarUrl` clears the
-  // fallback instead of sticking on the dither until remount.
+  // fallback instead of sticking on the ball avatar until remount.
   const [failedUrl, setFailedUrl] = useState<string | undefined>(undefined);
   return (
     <TabTrigger

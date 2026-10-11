@@ -30,7 +30,7 @@ function createMockProfile(): ProfileApi {
       // `expo-file-system` PUT) that no mock backend can serve, so in mock mode
       // we skip it and PUT the bytes through the shared backend instead. The
       // stored url's bytes are not a real picture, so the screens fall back to
-      // the dither, like the old mock fell back to initials.
+      // the ball avatar, like the old mock fell back to initials.
       async uploadAvatar(ownerId, blob, uploader) {
         if (uploader === undefined) {
           return api.uploadAvatar(ownerId, blob);

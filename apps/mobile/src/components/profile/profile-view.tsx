@@ -255,7 +255,7 @@ export function PhotoEditRow({ edit, stagedName }: { edit: PhotoEdit; stagedName
 export function ProfileView(props: ProfileViewProps & { photoEdit?: PhotoEdit | undefined }) {
   // The failed url, not a boolean: a 404 for a stale url clears itself when
   // `setProfile` carries the new `avatarUrl`, instead of sticking on the
-  // dither until remount.
+  // ball avatar until remount.
   const [failedUrl, setFailedUrl] = useState<string | undefined>(undefined);
   return (
     <ProfileViewContent

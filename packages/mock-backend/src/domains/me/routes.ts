@@ -45,8 +45,7 @@ function putMeHandle(data: MockData, request: MockHttpRequest): Response {
           : 'handle_taken';
     return conflict(code, 'That username is not available');
   }
-  // The me state exposes no handle setter, so the claim writes the viewer row
-  // in place; `renameMe` copies the row, so the handle survives a later rename.
-  Object.assign(data.me, { handle: raw });
+  // The me state's setter copies the row, so the handle survives a later rename.
+  data.setMeHandle(raw);
   return jsonResponse({ handle: raw });
 }

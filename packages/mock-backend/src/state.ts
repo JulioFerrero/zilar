@@ -49,8 +49,12 @@ export interface MockData {
   stickerPanel: string[];
   stickerFavorites: string[];
   nextStickerSequence: number;
-  /** Rename the viewer (`PATCH /me`); the only mutator task A needs. */
+  /** Rename the viewer (`PATCH /me`). */
   renameMe(name: string): void;
+  /** Set the viewer's handle (`PUT /me/handle`). */
+  setMeHandle(handle: string): void;
+  /** Set the viewer's picture url, or remove it when `undefined` (`PUT`/`DELETE /avatars/user/:id`). */
+  setMeAvatarUrl(url: string | undefined): void;
 
   findAi(id: string): PublicAi | undefined;
   /** The next `ai-mock-N` id, matching web's `nextAiSequence`. */

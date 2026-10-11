@@ -6,7 +6,7 @@ export interface AvatarProps {
   name: string;
   size?: number;
   online?: boolean;
-  /** Kept for callers; the dither avatar no longer changes for AIs. */
+  /** Kept for callers; the ball avatar no longer changes for AIs. */
   ai?: boolean;
   avatarUrl?: string | undefined;
   className?: string;

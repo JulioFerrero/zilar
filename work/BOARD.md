@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1092](T-1092-cleanup-avatar-comments-me-setters.md) | Cleanup: ball-avatar comments, load.ts header, me handle/avatar setters | in-progress | auto | T-1091 | small |
 
 ## Follow-ups
 
@@ -1128,3 +1127,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1089](T-1089-gif-mock-props-and-voice-client-schemas.md) | Cleanup: delete the unused mobile GifSheet and GifPanel's mockItems prop; web and mobile clients decode voice  | 2026-10-11 |
 | [T-1090](T-1090-mock-general-topics-in-topics-seed.md) | Mock backend: seed every group's General as a real topics row, so GET /groups/:id/topics lists it (not only De | 2026-10-11 |
 | [T-1091](T-1091-ball-avatar-package.md) | Ball avatars: a zero-dependency @zilar/ball-avatar package (glossy 3D ball SVG from a seed) replaces dither-av | 2026-10-11 |
+| [T-1092](T-1092-cleanup-avatar-comments-me-setters.md) | Cleanup: 'dither' comments now say ball avatar; mobile mock/load.ts header; mock me state gets handle/avatar s | 2026-10-11 |
