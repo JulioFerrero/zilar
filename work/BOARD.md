@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1100](T-1100-mock-new-room-occupants.md) | Mock XMPP: new rooms take their group's members as occupants | in-progress | auto | T-1099 | mock-only |
 
 ## Follow-ups
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile. This is a new feature, so it needs Julio's OK.
@@ -1135,3 +1134,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1097](T-1097-split-mobile-store-effects-groups.md) | Split apps/mobile/src/store/effects/groups.ts (586 lines): the GroupActions object moves to group-actions.ts b | 2026-10-11 |
 | [T-1096](T-1096-split-web-store-effects-groups.md) | Split apps/web/src/store/effects/groups.ts (548 lines) into topics + group create + group settings, pure reloc | 2026-10-11 |
 | [T-1099](T-1099-web-new-topic-from-group-header.md) | Web bug: New topic from a group header's + fails ('Could not create the topic', blank group name): the header  | 2026-10-11 |
+| [T-1100](T-1100-mock-new-room-occupants.md) | Mock XMPP: a room with no posts takes its occupants from its group's members, not every seeded person (new top | 2026-10-11 |

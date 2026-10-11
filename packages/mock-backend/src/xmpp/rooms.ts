@@ -1,8 +1,31 @@
 // Room membership and occupants for the fake XMPP core. The seed does not list a
 // room's members, so they are the bare JIDs that posted in the room's thread,
-// with the viewer excluded. The fake reply to a room send comes from them.
+// with the viewer excluded. A room with no posts (a new topic) takes its
+// members from its topic's group instead. The fake reply to a room send comes
+// from them.
 import type { Occupant } from '@zilar/xmpp-core';
 import type { MockData } from '../state';
+
+/**
+ * The bare JIDs of the room's group members, the viewer excluded, or
+ * `undefined` when no topic or group matches `roomJid`.
+ */
+function groupMembers(data: MockData, roomJid: string): string[] | undefined {
+  const topic = data.topics.find((entry) => entry.chatJid === roomJid);
+  const group = topic === undefined ? undefined : data.findGroup(topic.groupId);
+  if (group === undefined) {
+    return undefined;
+  }
+  const mine = data.me.jid;
+  const members: string[] = [];
+  for (const member of group.members) {
+    const person = data.people.find((entry) => entry.id === member.userId);
+    if (person !== undefined && person.jid !== mine) {
+      members.push(person.jid);
+    }
+  }
+  return members;
+}
 
 /** The distinct bare JIDs of the seeded members who posted in `roomJid`. */
 export function seededMembers(data: MockData, roomJid: string): string[] {
@@ -14,9 +37,16 @@ export function seededMembers(data: MockData, roomJid: string): string[] {
     }
   }
   if (members.size === 0) {
-    for (const person of data.people) {
-      if (person.jid !== mine) {
-        members.add(person.jid);
+    const fromGroup = groupMembers(data, roomJid);
+    if (fromGroup === undefined) {
+      for (const person of data.people) {
+        if (person.jid !== mine) {
+          members.add(person.jid);
+        }
+      }
+    } else {
+      for (const jid of fromGroup) {
+        members.add(jid);
       }
     }
   }
