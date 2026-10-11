@@ -70,7 +70,7 @@ the web API facade (Phase 3.3).
 | --- | --- | --- | --- | --- |
 | 3.1 | Make the contract truthful | done | 14 `HttpApiSchema.status(201)` in `packages/api-contract/src`; no `Schema.Void`; deletes declare a result (`chat-folders.ts:134,154`) and handlers send it (`apps/server/src/chat-folders/api.ts:152` `{ deleted: true }`) | none |
 | 3.2 | `TextDecoder` polyfill for Hermes | done | `apps/mobile/src/lib/polyfills.ts:118` `Utf8TextDecoder`, installed at `:146-152`; T-0864 | none |
-| 3.3 | `packages/api-contract` + derived clients | partly | package with 41 files; `packages/api-contract/src/client.ts:18,70` (`ZilarClient`, `makeZilarClient`); server mounts it, mobile derives from it | the web transports are still hand-written: `apps/web/src/lib/api/*.ts` (1,785 lines, dedup-status §7, S12-S15). ~1,380 lines. **security: keys** for the settings/http modules |
+| 3.3 | `packages/api-contract` + derived clients | partly | package with 41 files; `packages/api-contract/src/client.ts:18,70` (`ZilarClient`, `makeZilarClient`); server mounts it, mobile derives from it; **web, lead re-check 2026-10-11:** `apps/web/src/lib/api/*.ts` already calls `callApi((client) => …)` 135 times | only 8 hand-written `request(` calls are left: `chats.ts:101` (`/xmpp/token`) and `settings.ts:70,74,91,99,158,175,204` (voice, voice-transcription settings, `/setup`, avatar delete), plus `http.ts` itself. These are the XMPP credential and keys/setup paths, which is slice S15: **security: auth, keys. Julio's decision.** S12-S14 have nothing left. |
 | 3.4 | One mobile transport and one error class | done | `apps/mobile/src/lib/effect/api-client.ts:19` `createApiClient`; `packages/api-contract/src/client.ts:95` `ApiError`; 0 mobile `*-api.ts` call `fetch` directly; T-0864 | none |
 
 ## Phase 4: one client core
@@ -127,6 +127,15 @@ inspection only: every reachable path to `@/mock/backend` is a `require` inside
 `RequireAuth.tsx:13`), which Metro folds away in a release build.
 
 ## Next slices
+
+> **Lead, 2026-10-11:**
+> - **N2** is T-1098.
+> - **N3-N5 are dropped:** the web facade is already on the derived client (see 3.3).
+> - **N7 is dropped:** chaining the schema-error layer in `mountApi` needs a logger parameter there and touches 27 modules, `auth/api.ts` among them, with no real line cut.
+> - **N1 waits for Julio,** because it changes client-visible error codes.
+> - **N6** is large churn with no visible gain, so it waits too.
+> - **The store splits,** which were deferred until the mock rebuild, run now: T-1094 to T-1097.
+> - **Still deferred:** the two `createRealChatStore` closures (`apps/web/src/store/realStore.ts`, `apps/mobile/src/store/real-store.ts`), which are the message pipeline core.
 
 Open or partly-done items that are low risk and need no decision from Julio, in
 order. Each is at most about 800 changed lines. Files are full repo paths.
