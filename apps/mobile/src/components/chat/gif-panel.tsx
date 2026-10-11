@@ -20,7 +20,6 @@ import { fetchGifPageEffect } from './gif-paging';
 
 export { GifCell, isPanelGifUrl } from './gif-cells';
 export { fetchGifPage, probeGifsAvailability } from './gif-paging';
-export { GifSheet } from './gif-panel-sheet';
 
 /**
  * Runs an Effect for as long as the component's effect lasts: the returned
@@ -40,8 +39,6 @@ function cancelWait(fiber: Fiber.Fiber<void> | undefined): void {
 
 export type GifPanelProps = {
   open: boolean;
-  /** Mock mode serves generated placeholders without a server. */
-  mockItems?: GifItem[] | undefined;
   /** Injected API client; tests hand a fake, production builds the real one. */
   api?: GifsApi | undefined;
   onPick: (gif: GifItem) => void;
@@ -54,12 +51,12 @@ export type GifPanelProps = {
  * `pos` cursor, and the provider attribution. Empty, error-with-retry and
  * rate-limited states included.
  */
-export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
+export function GifPanel({ open, api, onPick }: GifPanelProps) {
   const [token, setToken] = useState<string | undefined>(undefined);
   const [query, setQuery] = useState('');
-  const [items, setItems] = useState<GifItem[]>(() => mockItems ?? []);
+  const [items, setItems] = useState<GifItem[]>([]);
   const [nextPos, setNextPos] = useState<string | undefined>(undefined);
-  const [loading, setLoading] = useState(mockItems === undefined);
+  const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [rateLimited, setRateLimited] = useState(false);
@@ -77,9 +74,6 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
 
   const load = useCallback(
     (search: string, pos: string | undefined, append: boolean): void => {
-      if (mockItems !== undefined) {
-        return;
-      }
       // A new query supersedes the in-flight one: abort it so its late
       // answer never lands (the guard below drops it anyway).
       inflight.current?.abort();
@@ -152,7 +146,7 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
         ),
       );
     },
-    [mockItems, client],
+    [client],
   );
 
   // Trending on open, then debounced search: opening the sheet fires the
@@ -172,22 +166,20 @@ export function GifPanel({ open, mockItems, api, onPick }: GifPanelProps) {
         ),
       ),
     ];
-    if (mockItems === undefined) {
-      // The first page fires from a later tick, never synchronously in the
-      // effect body (the `set-state-in-effect` rule).
-      stops.push(
-        runUntilCleanup(
-          Effect.yieldNow.pipe(Effect.andThen(Effect.sync(() => load('', undefined, false)))),
-        ),
-      );
-    }
+    // The first page fires from a later tick, never synchronously in the
+    // effect body (the `set-state-in-effect` rule).
+    stops.push(
+      runUntilCleanup(
+        Effect.yieldNow.pipe(Effect.andThen(Effect.sync(() => load('', undefined, false)))),
+      ),
+    );
     return () => {
       stops.forEach((stop) => stop());
       inflight.current?.abort();
       cancelWait(debounceWait.current);
       debounceWait.current = undefined;
     };
-  }, [open, mockItems, load]);
+  }, [open, load]);
 
   if (!open) {
     return null;

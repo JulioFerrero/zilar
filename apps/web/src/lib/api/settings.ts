@@ -1,6 +1,8 @@
 import { Schema } from 'effect';
 import {
   BackgroundImage as BackgroundImageSchema,
+  EnabledStatus,
+  TranscriptResult,
   type BackgroundImage,
   type BackgroundListItem,
   type IntegrationsStatus,
@@ -65,11 +67,11 @@ export interface SaveVoiceTranscriptionInput {
 }
 
 export function getVoiceTranscriptionStatus(): Promise<{ enabled: boolean }> {
-  return request('/voice/transcription', struct({ enabled: Schema.Boolean }));
+  return request('/voice/transcription', EnabledStatus);
 }
 
 export function getVoiceTranscript(url: string): Promise<{ text: string }> {
-  return request('/voice/transcript', struct({ text: Schema.String }), {
+  return request('/voice/transcript', TranscriptResult, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),

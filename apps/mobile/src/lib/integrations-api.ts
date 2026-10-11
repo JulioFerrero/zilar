@@ -1,5 +1,5 @@
 import { Schema } from 'effect';
-import { ApiError, runApi, type IntegrationsStatus } from '@zilar/api-contract';
+import { ApiError, EnabledStatus, runApi, type IntegrationsStatus } from '@zilar/api-contract';
 import { struct } from '@zilar/protocol';
 
 import { API_URL } from './auth';
@@ -30,8 +30,6 @@ export type {
 } from '@zilar/api-contract';
 
 const OkSchema = struct({ ok: Schema.Boolean });
-
-const VoiceTranscriptionStatusSchema = struct({ enabled: Schema.Boolean });
 
 export interface SaveEmailSettingsInput {
   from: string;
@@ -120,7 +118,7 @@ export function createIntegrationsApi(
         }),
       ).then(() => {}),
     getVoiceTranscriptionStatus: () =>
-      voiceRequest('/api/voice/transcription', VoiceTranscriptionStatusSchema, { method: 'GET' }),
+      voiceRequest('/api/voice/transcription', EnabledStatus, { method: 'GET' }),
     saveVoiceTranscriptionSettings: (input) => voicePut(buildSaveVoiceBody(input)),
     removeVoiceTranscriptionSettings: () =>
       voiceRequest('/api/settings/integrations/voice-transcription', OkSchema, {
