@@ -13,7 +13,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1095](T-1095-split-mobile-store-types.md) | Split mobile store/types.ts (507) | in-progress | auto | T-1093 | relocation |
 | [T-1096](T-1096-split-web-store-effects-groups.md) | Split web store/effects/groups.ts (548) | in-progress | auto | T-1093 | relocation |
 | [T-1097](T-1097-split-mobile-store-effects-groups.md) | Split mobile store/effects/groups.ts (586) | in-progress | auto | T-1093 | relocation |
-| [T-1098](T-1098-shared-message-search-constants.md) | Search debounce + min length in chat-core | in-progress | auto | T-1093 | simplify 0.2 |
 
 ## Follow-ups
 
@@ -1134,3 +1133,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1091](T-1091-ball-avatar-package.md) | Ball avatars: a zero-dependency @zilar/ball-avatar package (glossy 3D ball SVG from a seed) replaces dither-av | 2026-10-11 |
 | [T-1092](T-1092-cleanup-avatar-comments-me-setters.md) | Cleanup: 'dither' comments now say ball avatar; mobile mock/load.ts header; mock me state gets handle/avatar s | 2026-10-11 |
 | [T-1093](T-1093-simplify-plan-status.md) | Audit: status of every docs/audit/simplify-plan.md item on main (done / partly / open), with evidence and the  | 2026-10-11 |
+| [T-1098](T-1098-shared-message-search-constants.md) | Message search debounce and min length: one copy in @zilar/chat-core, used by web and mobile | 2026-10-11 |

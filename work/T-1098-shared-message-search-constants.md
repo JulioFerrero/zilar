@@ -1,7 +1,7 @@
 ---
 id: T-1098
 title: "Message search debounce and min length: one copy in @zilar/chat-core, used by web and mobile"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1098-shared-message-search-constants
 model: auto
@@ -43,4 +43,46 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+- Added `packages/chat-core/src/search.ts` exporting `MESSAGE_SEARCH_DEBOUNCE_MS = 250` and `MESSAGE_SEARCH_MIN_LENGTH = 2`, each with a one-line doc comment, and re-exported it from `packages/chat-core/src/index.ts` (`export * from './search';`).
+- Web: `apps/web/src/lib/useMessageSearch.ts` now imports both constants from `@zilar/chat-core`, keeps `MESSAGE_SEARCH_DEBOUNCE_MS` as a re-export (`export { MESSAGE_SEARCH_DEBOUNCE_MS };`), and the minimum length at line 66 uses `MESSAGE_SEARCH_MIN_LENGTH` instead of the `2` literal.
+- Mobile: `apps/mobile/src/components/chat/message-search-format.ts` imports both constants from `@zilar/chat-core` and re-exports them under the same names, so `message-search.ts` is unchanged.
+- No tests added (per the spec); no other files changed.
+
+### Files changed
+- `packages/chat-core/src/search.ts` (new)
+- `packages/chat-core/src/index.ts`
+- `apps/web/src/lib/useMessageSearch.ts`
+- `apps/mobile/src/components/chat/message-search-format.ts`
+- `work/T-1098-shared-message-search-constants.md` (status + this Report)
+
+### Commands run
+- `pnpm install` — Done in 26.5s.
+- `pnpm gate` — summary:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (1.2s)
+  PASS  format  (0.7s)
+  PASS  lint  (1.2s)
+  PASS  typecheck  (6.8s)
+  PASS  effect  (1.0s)
+  PASS  tests @zilar/chat-core  (1.8s)
+  SKIP tests @zilar/mobile (no nearby test files)
+  SKIP tests @zilar/web (no nearby test files)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+- Single test files: none ran separately — no test file is near this change (grep for `MESSAGE_SEARCH_`/`message-search`/`useMessageSearch` in `*.test.*` found nothing), and the spec says no tests.
+
+### Problems / deviations
+- None. No deviation from the spec.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-11: approved. The pre-review is clean, with no nits.**
+- **The change:**
+  - `packages/chat-core/src/search.ts` holds `MESSAGE_SEARCH_DEBOUNCE_MS = 250` and `MESSAGE_SEARCH_MIN_LENGTH = 2`;
+  - web `useMessageSearch.ts` and mobile `message-search-format.ts` import them and re-export them under the old names;
+  - web `:66` uses the constant instead of a literal `2`.
+- **The lead read the diff:** the values are identical, so behaviour does not change, and the lead ran no UI check.
+- **Check:** the gate passed.
