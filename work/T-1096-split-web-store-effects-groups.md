@@ -1,7 +1,7 @@
 ---
 id: T-1096
 title: "Split apps/web/src/store/effects/groups.ts (548 lines) into topics + group create + group settings, pure relocation"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1096-split-web-store-effects-groups
 model: auto
@@ -56,4 +56,71 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**Status:** review. Pure relocation, no behavior change.
+
+### What I did
+Split `apps/web/src/store/effects/groups.ts` (548 lines) into three topic modules plus a shared module, and
+turned `groups.ts` into a re-export barrel:
+
+- `groupShared.ts` — the shared helpers from `:47-100`.
+- `topics.ts` — the topic effects (`:103-256`).
+- `groupCreate.ts` — `repaintCreatedGroup`, `openCreatedGroup`, `createChannel`, `createGroup`, `createInvite`
+  (`:258-379` and `:544-548`), plus the `CreateOptions` type it is the only user of.
+- `groupSettings.ts` — `leaveChannel` … `removeGroupAi` (`:384-542`).
+- `groups.ts` — barrel re-exporting every name it exported before. `realStore.ts` (the only importer) is unchanged.
+
+### Line counts (before → after)
+| file | before | after |
+| --- | --- | --- |
+| `groups.ts` | 548 | 27 |
+| `topics.ts` | – | 176 |
+| `groupCreate.ts` | – | 151 |
+| `groupSettings.ts` | – | 177 |
+| `groupShared.ts` | – | 73 |
+
+Every file is ≤ 400 lines.
+
+### Exported names
+`grep -c "^export"`:
+- before: `groups.ts` = 22 (all `export const`).
+- after: `groups.ts` = 3 (`export { … } from` statements re-exporting the same 22 names).
+
+Before and after name sets are identical (verified by diffing the sorted names):
+`addGroupAi, addTopicAi, addTopicMember, changeChannelRole, createChannel, createGroup, createInvite, createTopic,
+joinPublicGroup, leaveChannel, leaveTopic, patchTopic, refreshGeneralTopic, refreshTopicRow, removeGroupAi,
+removeTopicAi, removeTopicMember, setGroupBackground, setGroupListener, setGroupVisibility,
+setMembersCanCreateTopics, setTopicRoles`.
+
+`groupShared.ts` additionally exports the helpers shared across the new modules: `groupIdOf`, `groupChangeStore`,
+`applyTopicRow`, `actionStore`, `joinRoomQuietly`. `groupTarget` and `topicRowStore` are used only inside
+`groupShared.ts`, so they stay module-private (spec: "put a helper in a single file when only that file uses it").
+
+### Commands (real results)
+- `pnpm install` — ok, 1172 packages, done in 25s.
+- `pnpm --filter @zilar/web test --maxWorkers=2 --reporter=dot src/store/realStore.lifecycle.test.tsx` —
+  `Test Files 1 passed (1)`, `Tests 3 passed (3)`.
+- `pnpm gate` — summary lines:
+  ```
+  gate: 6 changed file(s) against main
+  PASS  install (frozen)  (1.1s)
+  PASS  format  (0.8s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (4.0s)
+  PASS  effect  (0.9s)
+  PASS  tests @zilar/web  (4.2s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The 6 changed files are the 5 effect modules plus this task file; nothing outside Allowed files.
+
+### Deviations / notes
+- `docs/audit/size-plan.md` §2.3 #64 maps the helpers into `topics.ts` / `groupSettings.ts` with no
+  `groupShared.ts`; the task spec names `groupShared.ts` and lists it under Allowed files, so I followed the task
+  spec and put the cross-module helpers there. No importer changes, no dedup, no renames.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-11: approved. The pre-review is clean, with no nits.**
+- **The change:** web `effects/groups.ts` goes from 548 lines to a 27-line barrel, with `topics.ts` (176), `groupCreate.ts` (151), `groupSettings.ts` (177) and `groupShared.ts` (73). Every old export is still available from `groups.ts`.
+- **The lead's line check,** sorted and ignoring indentation: the only differences are the new header comments, the shared helpers gaining `export`, and the import lists. Every function body is identical.
+- **Tests:** the lead ran `vitest run src/store` on the branch, and all 41 tests pass. The gate passed too.

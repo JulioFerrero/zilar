@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1096](T-1096-split-web-store-effects-groups.md) | Split web store/effects/groups.ts (548) | in-progress | auto | T-1093 | relocation |
 
 ## Follow-ups
 
@@ -1134,3 +1133,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1094](T-1094-split-web-store-ts.md) | Split apps/web/src/store/store.ts (555 lines) into types + selectors + chat groups, pure relocation | 2026-10-11 |
 | [T-1095](T-1095-split-mobile-store-types.md) | Split apps/mobile/src/store/types.ts (507 lines): list-view helpers and send option types out, ChatStoreState  | 2026-10-11 |
 | [T-1097](T-1097-split-mobile-store-effects-groups.md) | Split apps/mobile/src/store/effects/groups.ts (586 lines): the GroupActions object moves to group-actions.ts b | 2026-10-11 |
+| [T-1096](T-1096-split-web-store-effects-groups.md) | Split apps/web/src/store/effects/groups.ts (548 lines) into topics + group create + group settings, pure reloc | 2026-10-11 |
