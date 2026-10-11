@@ -9,6 +9,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - It also fails on `93aa01e4` (before T-1090), so it is older than tonight's work.
   - **Cause, as the lead read it:** the header passes the server group id, and the dialog and the store look it up as a chat id. It may affect the live app too.
   - **Merged, T-1099:** the header now passes its General topic row id. The worker confirmed the live app had the same bug. The lead checked the fix in the browser: "in Familia", "Night check" is created and opens, and Dev team works too. It is on the live-check list.
+- **Merged, T-1100:** a new mock topic takes its group's members as occupants, so Familia's new topic shows 2 members, not 9.
 - **Running:** nothing. The decision-free queue is empty; what is left waits for Julio (see 07:00).
 
 **2026-10-11 07:00 local: store splits running (5 workers)**
