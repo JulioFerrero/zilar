@@ -163,4 +163,5 @@ None.
 - **The lead's web check** (`?mock=1`):
   - the chat list still shows Familia › General at `familia@rooms.zilar.test`;
   - the chat opens, and Topic info shows "All 2 members of Familia can read and write here.".
+- **Noted, accepted:** the General topics' `memberCount` on `/chats` now follows each group's seeded member list (Acme 120→3, Familia 4→2, and so on), so `/chats` and `/groups/:id/topics` agree. The group entries' own counts (for example "120 subscribers") are not part of this.
 - **Check:** the gate passed.
