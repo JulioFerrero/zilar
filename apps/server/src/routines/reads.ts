@@ -69,15 +69,3 @@ export async function findOwnedAiRow(db: ServerDatabase, aiId: string, ownerId: 
   );
   return row ?? null;
 }
-
-export async function findMembership(db: ServerDatabase, groupId: string, userId: string) {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ role: 'owner' | 'admin' | 'member' }>`SELECT role FROM group_members
-        WHERE group_id = ${groupId} AND user_id = ${userId} LIMIT 1`;
-    }),
-  );
-  return row ?? null;
-}

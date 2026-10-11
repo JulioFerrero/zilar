@@ -3,6 +3,7 @@ import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
+import { findGroupMembership, isGroupManagerRole } from '../groups/access';
 import { canSeeTopic, getTopic, type TopicRow } from '../topics/access';
 import { getTool, getVersion, listRuns, listTools, listVersions, type PublicTool } from './service';
 
@@ -41,11 +42,11 @@ export async function toolAccess(
   if (ai.owner === userId) {
     return { tool, manager: true };
   }
-  const membership = await findMembership(db, tool.groupId as string, userId);
+  const membership = await findGroupMembership(db, tool.groupId as string, userId);
   if (!membership) {
     return null;
   }
-  return { tool, manager: membership.role === 'owner' || membership.role === 'admin' };
+  return { tool, manager: isGroupManagerRole(membership.role) };
 }
 
 // Same manager check as `toolAccess`, but on the raw tool row — including
@@ -106,11 +107,11 @@ export async function toolAccessIncludingDeleted(
   if (row.groupId === null) {
     return null;
   }
-  const membership = await findMembership(db, row.groupId, userId);
+  const membership = await findGroupMembership(db, row.groupId, userId);
   if (!membership) {
     return null;
   }
-  return { tool: row, manager: membership.role === 'owner' || membership.role === 'admin' };
+  return { tool: row, manager: isGroupManagerRole(membership.role) };
 }
 
 export async function requireReadableTool(db: ServerDatabase, toolId: string, userId: string) {
@@ -226,18 +227,6 @@ export async function findOwnedAiRow(db: ServerDatabase, aiId: string, ownerId: 
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<{ id: string }>`SELECT id FROM ais
         WHERE id = ${aiId} AND owner = ${ownerId} LIMIT 1`;
-    }),
-  );
-  return row ?? null;
-}
-
-export async function findMembership(db: ServerDatabase, groupId: string, userId: string) {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ role: 'owner' | 'admin' | 'member' }>`SELECT role FROM group_members
-        WHERE group_id = ${groupId} AND user_id = ${userId} LIMIT 1`;
     }),
   );
   return row ?? null;

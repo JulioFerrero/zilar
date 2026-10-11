@@ -19,9 +19,10 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import { HttpError } from '../errors';
+import { findGroupMembership } from '../groups/access';
 import { canSeeTopic } from '../topics/access';
 import { routineAccess, routineAccessIncludingDeleted } from './access';
-import { findMembership, findOwnedAiRow, findTopicById, listTopicsByGroup } from './reads';
+import { findOwnedAiRow, findTopicById, listTopicsByGroup } from './reads';
 import {
   deleteRoutine,
   getRoutine,
@@ -80,7 +81,7 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
         'listForGroup',
         handler(logger, async (request, user) => {
           const groupId = request.params.id;
-          const membership = await findMembership(deps.db, groupId, user.id);
+          const membership = await findGroupMembership(deps.db, groupId, user.id);
           if (!membership) {
             throw new HttpError(404, 'not_found', 'Group not found');
           }

@@ -4,8 +4,9 @@ import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import type { ApprovalInsert, ApprovalRow } from '../db/rows';
-import { createRuleEffect, isGroupAdmin } from './rules';
+import { createRuleEffect } from './rules';
 import { canDecide, decisionToStatus, safeHashEquals } from './access';
+import { isGroupManager } from '../groups/access';
 import { toApprovalRow, type ApprovalSqlRow } from './queries';
 import {
   ApprovalServiceError,
@@ -219,7 +220,7 @@ export async function decideApproval(
         `Action "${row.action}" cannot be always-allowed`,
       );
     }
-    if (row.groupId !== null && !(await isGroupAdmin(db, row.groupId, params.userId))) {
+    if (row.groupId !== null && !(await isGroupManager(db, row.groupId, params.userId))) {
       throw new ApprovalServiceError(
         'always_requires_admin',
         'Only a group admin can always allow an action in this group',

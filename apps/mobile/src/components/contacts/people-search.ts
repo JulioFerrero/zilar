@@ -1,4 +1,5 @@
 import { Effect, Fiber } from 'effect';
+import { PEOPLE_SEARCH_DEBOUNCE_MS } from '@zilar/chat-core';
 import { ContactsApiError, type ContactsApi, type HandleProfile } from '../../lib/contacts-api';
 import type { SearchScheduler } from '../chat/message-search';
 import { addContactHandle } from './add-contact';
@@ -19,8 +20,7 @@ import { addContactHandle } from './add-contact';
  * message.
  */
 
-/** How long the hook waits after the last keystroke before looking up. */
-export const PEOPLE_SEARCH_DEBOUNCE_MS = 900;
+export { PEOPLE_SEARCH_DEBOUNCE_MS };
 
 /** The single plain "no user" line for an unknown handle. */
 export const NO_PERSON_MESSAGE = 'No one with that username.';

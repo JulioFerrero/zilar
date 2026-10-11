@@ -1,12 +1,12 @@
 import { Effect } from 'effect';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { PEOPLE_SEARCH_DEBOUNCE_MS } from '@zilar/chat-core';
 import { lookupByHandle, type HandleProfile } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { useAction } from '@/lib/effect/use-action';
 import { isValidHandleShape } from '@/lib/handles';
 
-/** 900 ms of no typing before the lookup fires (the lookup is rate limited). */
-export const PEOPLE_SEARCH_DEBOUNCE_MS = 900;
+export { PEOPLE_SEARCH_DEBOUNCE_MS };
 
 export type PeopleSearchState =
   | { status: 'idle' }

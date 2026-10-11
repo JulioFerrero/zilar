@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { GIF_SEARCH_DEBOUNCE_MS } from '@zilar/chat-core';
 import { gifMediaUrl, searchGifs, trendingGifs, type GifPage, type GifResult } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
@@ -33,7 +34,6 @@ interface MorePages {
   readonly nextPos: string | undefined;
 }
 
-const SEARCH_DEBOUNCE_MS = 300;
 const ATTRIBUTION = 'Powered by Giphy';
 const LOAD_ERROR = 'Could not load GIFs. Try again.';
 
@@ -212,7 +212,7 @@ export function GifPanel({ onPick }: GifPanelProps) {
   const latestTyped = useRef('');
   useQuery(
     () =>
-      Effect.sleep(SEARCH_DEBOUNCE_MS).pipe(
+      Effect.sleep(GIF_SEARCH_DEBOUNCE_MS).pipe(
         Effect.andThen(
           Effect.sync(() => {
             if (latestTyped.current !== typed) {

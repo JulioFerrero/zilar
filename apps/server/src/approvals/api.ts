@@ -32,13 +32,13 @@ import {
   toPublicApproval,
 } from './service';
 import {
-  isGroupAdmin,
   listActiveRulesForAi,
   listActiveRulesForTopic,
   revokeRule,
   toPublicRule,
   type PublicApprovalRule,
 } from './rules';
+import { isGroupManager } from '../groups/access';
 
 // The minimum slice of pino the route needs to log a hook failure. The
 // server wires its own logger; tests can pass a captor.
@@ -159,7 +159,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
             const isManager =
               approval.groupId === null ||
               (yield* Effect.promise(() =>
-                isGroupAdmin(deps.db, approval.groupId as string, user.id),
+                isGroupManager(deps.db, approval.groupId as string, user.id),
               ));
             return decoratePublic(
               {
@@ -274,7 +274,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
               alwaysEligibleFn,
               updated.groupId === null ||
                 (yield* Effect.promise(() =>
-                  isGroupAdmin(deps.db, updated.groupId as string, user.id),
+                  isGroupManager(deps.db, updated.groupId as string, user.id),
                 )),
             );
           }),
@@ -323,7 +323,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
         handler(logger, (request, user) =>
           Effect.gen(function* () {
             const groupId = request.params.id;
-            const allowed = yield* Effect.promise(() => isGroupAdmin(deps.db, groupId, user.id));
+            const allowed = yield* Effect.promise(() => isGroupManager(deps.db, groupId, user.id));
             if (!allowed) {
               throw new HttpError(404, 'not_found', 'Group not found');
             }
@@ -493,7 +493,7 @@ async function canManageRuleFor(
     // Personal rule and the caller is not the AI owner: not allowed.
     return false;
   }
-  return isGroupAdmin(db, rule.groupId, userId);
+  return isGroupManager(db, rule.groupId, userId);
 }
 
 // Re-runs `toPublicApproval` with the always-eligible flag filled in.

@@ -4,6 +4,7 @@ import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import type { ApprovalRow, TopicRow } from '../db/rows';
+import { isGroupManager, isGroupManagerRole } from '../groups/access';
 import { canSeeTopic, getTopic } from '../topics/access';
 import type { ApprovalDecision } from './schemas';
 
@@ -65,15 +66,7 @@ export async function canDecide(
     return false;
   }
   const groupId = row.groupId;
-  const [membership] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ role: string }>`SELECT role FROM group_members
-        WHERE group_id = ${groupId} AND user_id = ${userId} LIMIT 1`;
-    }),
-  );
-  return membership !== undefined && (membership.role === 'owner' || membership.role === 'admin');
+  return isGroupManager(db, groupId, userId);
 }
 
 // The same rules as `canDecide` for many rows at once: the AI owners, the
@@ -218,7 +211,7 @@ export async function canDecideMany(
       continue;
     }
     const role = row.groupId === null ? undefined : memberRoles.get(row.groupId);
-    decisions.set(row.id, role === 'owner' || role === 'admin');
+    decisions.set(row.id, role !== undefined && isGroupManagerRole(role));
   }
   return decisions;
 }

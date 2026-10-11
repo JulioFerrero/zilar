@@ -68,8 +68,7 @@ export function resetGifsAvailability(): void {
   gifsAvailabilityCache.value = undefined;
 }
 
-/** How long the panel waits after the last keystroke before searching. */
-export const GIF_SEARCH_DEBOUNCE_MS = 300;
+export { GIF_SEARCH_DEBOUNCE_MS } from '@zilar/chat-core';
 
 /** The provider attribution line, as the provider requires. */
 export const GIF_ATTRIBUTION = 'Powered by Giphy';

@@ -23,6 +23,17 @@ export async function findGroupMembership(
   return membership;
 }
 
-export function isGroupManagerRole(role: 'owner' | 'admin' | 'member'): boolean {
+export function isGroupManagerRole(role: string): boolean {
   return role === 'owner' || role === 'admin';
+}
+
+// Whether the user is an owner/admin of `groupId`. False for a non-member and
+// for a plain member, and for a group that has no such row.
+export async function isGroupManager(
+  db: ServerDatabase,
+  groupId: string,
+  userId: string,
+): Promise<boolean> {
+  const membership = await findGroupMembership(db, groupId, userId);
+  return membership !== undefined && isGroupManagerRole(membership.role);
 }

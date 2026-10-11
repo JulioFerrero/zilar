@@ -275,24 +275,6 @@ export function revokeActiveRulesForAiInGroupEffect(input: {
   });
 }
 
-// Whether the user is an owner/admin of `groupId`. Used by the routes for
-// `GET /api/groups/:id/approval-rules` and to gate the revoke route.
-export async function isGroupAdmin(
-  db: ServerDatabase,
-  groupId: string,
-  userId: string,
-): Promise<boolean> {
-  const [membership] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ role: string }>`SELECT role FROM group_members
-        WHERE group_id = ${groupId} AND user_id = ${userId} LIMIT 1`;
-    }),
-  );
-  return membership !== undefined && (membership.role === 'owner' || membership.role === 'admin');
-}
-
 // Maps a row to the public shape. `scope` is derived from `group_id`:
 // null means personal chat, anything else means a group topic. `topicName`
 // is left null here; the route fills it in for topics the viewer can see.

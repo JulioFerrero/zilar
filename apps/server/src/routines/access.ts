@@ -1,8 +1,9 @@
 // effect-plain: moved unchanged from apps/server/src/routines/api.ts (size split)
 
 import type { ServerDatabase } from '../db/client';
+import { findGroupMembership, isGroupManagerRole } from '../groups/access';
 import { canSeeTopic } from '../topics/access';
-import { findAiOwner, findMembership, findRoutineById, findTopicById } from './reads';
+import { findAiOwner, findRoutineById, findTopicById } from './reads';
 import { getRoutine } from './service';
 
 export interface RoutineAccess {
@@ -65,11 +66,11 @@ async function accessFor(
   if (ai.owner === userId) {
     return { routine, manager: true };
   }
-  const membership = await findMembership(db, routine.groupId as string, userId);
+  const membership = await findGroupMembership(db, routine.groupId as string, userId);
   if (!membership) {
     return null;
   }
-  return { routine, manager: membership.role === 'owner' || membership.role === 'admin' };
+  return { routine, manager: isGroupManagerRole(membership.role) };
 }
 
 async function deletedAccessFor(
@@ -95,9 +96,9 @@ async function deletedAccessFor(
       return null;
     }
   }
-  const membership = await findMembership(db, routine.groupId, userId);
+  const membership = await findGroupMembership(db, routine.groupId, userId);
   if (!membership) {
     return null;
   }
-  return { routine, manager: membership.role === 'owner' || membership.role === 'admin' };
+  return { routine, manager: isGroupManagerRole(membership.role) };
 }

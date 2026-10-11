@@ -21,6 +21,9 @@ import {
 /** A typing line clears this long after the last composing event. */
 export const TYPING_CLEAR_MS = 5000;
 
+/** How long a chat refresh waits after the last update event. */
+export const CHAT_REFRESH_DEBOUNCE_MS = 500;
+
 const typingKey = (chatId: string): string => `typing:${chatId}`;
 
 const clearTyping = (ctx: CoreCtx, chatId: string): void => {

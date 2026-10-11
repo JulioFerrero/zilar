@@ -8,6 +8,7 @@ import { HttpError } from '../errors';
 import { roleHoldersByGroup } from '../roles/service';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { handleForGroup } from './visibility';
+import { isGroupManagerRole } from './access';
 import {
   ROOM_ROLES,
   type ChatGroup,
@@ -152,7 +153,7 @@ export async function listMembersForViewer(
   if (!group) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
-  const isAdmin = viewer.role === 'owner' || viewer.role === 'admin';
+  const isAdmin = isGroupManagerRole(viewer.role);
   const all = await listGroupMembers(db, groupId);
   if (group.kind === 'channel' && !isAdmin) {
     return { members: all.filter((member) => member.role !== 'member'), isAdmin };

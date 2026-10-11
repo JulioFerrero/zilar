@@ -15,6 +15,7 @@ import {
 } from '../effect/http-core';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
+import { findGroupMembership } from '../groups/access';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import { canSeeTopic, getTopic } from '../topics/access';
 import type { ToolRunner } from './types';
@@ -27,7 +28,6 @@ import {
   type PublicTool,
 } from './service';
 import {
-  findMembership,
   findOwnedAiRow,
   listToolsForGroup,
   requireReadableRuns,
@@ -122,7 +122,7 @@ export function createToolsApi(deps: ToolsApiDependencies): EffectApiMount {
           Effect.gen(function* () {
             const groupId = request.params.id;
             const membership = yield* Effect.promise(() =>
-              findMembership(deps.db, groupId, user.id),
+              findGroupMembership(deps.db, groupId, user.id),
             );
             if (!membership) {
               throw new HttpError(404, 'not_found', 'Group not found');

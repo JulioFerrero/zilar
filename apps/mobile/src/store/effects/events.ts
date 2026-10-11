@@ -1,5 +1,6 @@
 import { Effect } from 'effect';
 import {
+  CHAT_REFRESH_DEBOUNCE_MS,
   deleteForEveryone,
   editMessage,
   react,
@@ -15,7 +16,7 @@ import type { ChatStoreState } from '../types';
 import { lift, type StoreCtx } from './runtime';
 
 export { TYPING_CLEAR_MS } from '@zilar/client-core/store';
-export const CHAT_REFRESH_DEBOUNCE_MS = 500;
+export { CHAT_REFRESH_DEBOUNCE_MS };
 
 export type EventActions = Pick<
   ChatStoreState,

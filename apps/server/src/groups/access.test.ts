@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { findGroupMembership, isGroupManagerRole } from './access';
+import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
+import { findGroupMembership, isGroupManager, isGroupManagerRole } from './access';
 import {
   bootstrapUser,
   contactOf,
   createTestContext,
   testApp,
+  testSql,
   TEST_BASE_URL,
   type TestApp,
   type TestContext,
@@ -59,5 +62,25 @@ describe('group access (T-1110)', () => {
     expect(isGroupManagerRole('owner')).toBe(true);
     expect(isGroupManagerRole('admin')).toBe(true);
     expect(isGroupManagerRole('member')).toBe(false);
+  });
+
+  it('reads a group manager through the membership row', async () => {
+    const owner = await bootstrapUser(context, app, 'manager-owner@example.com');
+    const admin = await contactOf(context, app, owner.id, 'manager-admin@example.com');
+    const member = await contactOf(context, app, owner.id, 'manager-member@example.com');
+    const stranger = await bootstrapUser(context, app, 'manager-stranger@example.com');
+    const group = await createGroup(owner.cookie, 'Managers', [admin.id, member.id]);
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE group_members SET role = 'admin'
+          WHERE group_id = ${group.id} AND user_id = ${admin.id}`;
+      }),
+    );
+
+    expect(await isGroupManager(context.db, group.id, owner.id)).toBe(true);
+    expect(await isGroupManager(context.db, group.id, admin.id)).toBe(true);
+    expect(await isGroupManager(context.db, group.id, member.id)).toBe(false);
+    expect(await isGroupManager(context.db, group.id, stranger.id)).toBe(false);
   });
 });
