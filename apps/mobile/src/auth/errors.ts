@@ -3,6 +3,12 @@ import type { AuthError } from './session-store';
 /** Mirrors the web copy for the errors the server can return (T-0015/T-0024). */
 export function errorMessageFor(error: AuthError | undefined): string {
   const code = error?.code ?? '';
+  if (code === 'invite_required') {
+    return 'This email has no account yet. Enter your invite code to sign up.';
+  }
+  if (code === 'invite_invalid') {
+    return 'This invite code is invalid, expired or already used.';
+  }
   if (code === 'TOO_MANY_ATTEMPTS' || error?.status === 429) {
     return 'Too many attempts, try again later';
   }

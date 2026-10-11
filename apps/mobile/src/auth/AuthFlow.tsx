@@ -13,6 +13,7 @@ import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 
 import { errorMessageFor, isEmailValid } from './errors';
+import { InviteCodeField } from './InviteCodeField';
 import { OtpInput } from './OtpInput';
 import { requestSignInCode, useAuthStore } from './session';
 import { safeTarget } from './guard';
@@ -24,7 +25,7 @@ const RESEND_INTERVAL_MS = 1000;
 
 /** Shared email → code flow for the invite and login screens. */
 export function AuthFlow({
-  inviteCode,
+  inviteCode: inviteCodeProp,
   heading,
   subheading,
 }: {
@@ -38,8 +39,17 @@ export function AuthFlow({
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
+  const [inviteCode, setInviteCode] = useState(inviteCodeProp ?? '');
+  const [inviteFieldTapped, setInviteFieldTapped] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
   const [secondsLeft, setSecondsLeft] = useState(0);
+
+  // The invite field shows on the login screen (no invite in the link) once the
+  // user asks for it, or once the server says an invite is needed or unusable.
+  const inviteFieldVisible =
+    inviteCodeProp === undefined &&
+    (inviteFieldTapped || errorCode === 'invite_required' || errorCode === 'invite_invalid');
 
   // The resend countdown: one sleep per second left, interrupted when the
   // count changes or the screen goes away.
@@ -57,12 +67,14 @@ export function AuthFlow({
   const [requestState, sendCode] = useAction<void, void, never>(() =>
     Effect.gen(function* () {
       setError(undefined);
+      setErrorCode(undefined);
       const result = yield* Effect.tryPromise({
         try: () => requestSignInCode(email.trim(), inviteCode),
         catch: (cause) => cause,
       }).pipe(Effect.orElseSucceed((): { error?: AuthError } => ({ error: {} })));
       if (result.error !== undefined) {
         setError(errorMessageFor(result.error));
+        setErrorCode(result.error.code);
         return;
       }
       setCode('');
@@ -144,15 +156,25 @@ export function AuthFlow({
                 onSubmitEditing={submitEmail}
                 placeholder="you@example.com"
               />
-              {inviteCode === undefined && (
-                <Text className="text-[13px] text-muted-foreground">
-                  New here? Open the invite link you were sent first, then sign in.
-                </Text>
-              )}
               {error !== undefined && (
                 <Text accessibilityRole="alert" className="text-[14px] text-danger">
                   {error}
                 </Text>
+              )}
+              {inviteFieldVisible ? (
+                <InviteCodeField value={inviteCode} onChange={setInviteCode} />
+              ) : (
+                inviteCodeProp === undefined && (
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="self-start px-0"
+                    accessibilityLabel="I have an invite code"
+                    onPress={() => setInviteFieldTapped(true)}
+                  >
+                    <Text className="text-[13px] text-accent">I have an invite code</Text>
+                  </Button>
+                )
               )}
               <Button
                 accessibilityLabel="Continue"
@@ -170,12 +192,6 @@ export function AuthFlow({
               <Text className="text-center text-[15px] text-muted-foreground">
                 Enter the 6-digit code we sent to <Text className="text-foreground">{email}</Text>
               </Text>
-              {inviteCode === undefined && (
-                <Text className="text-center text-[13px] text-muted-foreground">
-                  No email after a minute? Check spam, and if you are new here you need an invite
-                  link from whoever runs this server.
-                </Text>
-              )}
               <OtpInput
                 value={code}
                 onChange={setCode}
