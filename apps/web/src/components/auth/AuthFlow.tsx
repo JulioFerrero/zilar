@@ -42,8 +42,8 @@ function isEmailValid(email: string): boolean {
 
 /**
  * Shared email → code → session flow for both the invite and the login pages.
- * An invite in the URL seeds the code; on the login page the user can reveal an
- * invite-code field, and every auth request carries the code when there is one.
+ * An invite in the URL seeds the code; the invite field appears only once the
+ * server says the email has no account, and the code rides along from then on.
  */
 export function AuthFlow({
   inviteCode: inviteCodeProp,
@@ -67,20 +67,23 @@ export function AuthFlow({
   const [email, setEmail] = useState(initialEmail ?? '');
   const [code, setCode] = useState('');
   const [inviteCode, setInviteCode] = useState(inviteCodeProp ?? '');
-  const [inviteFieldTapped, setInviteFieldTapped] = useState(false);
+  const [inviteStep, setInviteStep] = useState(false);
+  const [inviteHint, setInviteHint] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
-  const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
   // `busy` is a state the two actions below set and clear themselves, so the
   // buttons re-enable the moment the server answers (before the session
   // reads and the redirect), exactly as before.
   const [busy, setBusy] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
 
-  // The invite field shows on a login page (no invite in the URL) once the user
-  // asks for it, or once the server says an invite is needed or unusable.
-  const inviteFieldVisible =
-    inviteCodeProp === undefined &&
-    (inviteFieldTapped || errorCode === 'invite_required' || errorCode === 'invite_invalid');
+  // The invite a request carries. On an email-first flow it rides only once the
+  // server has asked for one; the code-start flow (the first-run setup) already
+  // holds the invite the caller supplied.
+  const requestInvite = (): string | undefined => {
+    const raw = inviteStep ? inviteCode : initialStep === 'code' ? inviteCodeProp : '';
+    const trimmed = (raw ?? '').trim();
+    return trimmed === '' ? undefined : trimmed;
+  };
 
   // One second per value of `secondsLeft`: each tick (or a new 30s) restarts
   // the wait, and an unmount interrupts it.
@@ -100,13 +103,17 @@ export function AuthFlow({
         setBusy(true);
         setError(undefined);
       });
-      const result = yield* Effect.promise(() => sendSignInCode(address, inviteCode));
+      const result = yield* Effect.promise(() => sendSignInCode(address, requestInvite()));
       yield* Effect.sync(() => setBusy(false));
       if (result.error) {
         yield* Effect.sync(() => {
           const authError = result.error as AuthErrorLike;
+          if (authError.code === 'invite_required') {
+            setInviteStep(true);
+            setInviteHint(errorMessageFor(authError));
+            return;
+          }
           setError(errorMessageFor(authError));
-          setErrorCode(authError.code);
         });
         return;
       }
@@ -117,6 +124,13 @@ export function AuthFlow({
       });
     }),
   );
+
+  const changeEmail = (value: string): void => {
+    setEmail(value);
+    setInviteStep(false);
+    setError(undefined);
+    setInviteHint(undefined);
+  };
 
   const submitEmail = (event: React.FormEvent): void => {
     event.preventDefault();
@@ -134,7 +148,7 @@ export function AuthFlow({
         setError(undefined);
       });
       const result = yield* Effect.promise(() =>
-        verifySignInCode(attempt.address, attempt.value, inviteCode),
+        verifySignInCode(attempt.address, attempt.value, requestInvite()),
       );
       yield* Effect.sync(() => setBusy(false));
       if (result.error) {
@@ -187,7 +201,7 @@ export function AuthFlow({
               type="email"
               autoComplete="email"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => changeEmail(event.target.value)}
               placeholder="you@example.com"
             />
             {error !== undefined && (
@@ -195,21 +209,10 @@ export function AuthFlow({
                 {error}
               </p>
             )}
-            {inviteFieldVisible ? (
-              <InviteCodeField value={inviteCode} onChange={setInviteCode} />
-            ) : (
-              inviteCodeProp === undefined && (
-                <Button
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  onClick={() => setInviteFieldTapped(true)}
-                  className="h-auto self-start px-0 text-[13px] text-accent"
-                >
-                  I have an invite code
-                </Button>
-              )
+            {inviteStep && inviteHint !== undefined && (
+              <p className="text-[14px] text-muted-foreground">{inviteHint}</p>
             )}
+            {inviteStep && <InviteCodeField value={inviteCode} onChange={setInviteCode} />}
             <Button type="submit" disabled={busy} size="lg" className="mt-1">
               Continue
             </Button>

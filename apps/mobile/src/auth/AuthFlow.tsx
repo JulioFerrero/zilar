@@ -23,7 +23,10 @@ export const RESEND_SECONDS = 30;
 
 const RESEND_INTERVAL_MS = 1000;
 
-/** Shared email → code flow for the invite and login screens. */
+/**
+ * Shared email → code flow for the invite and login screens. The invite field
+ * appears only once the server says the email has no account.
+ */
 export function AuthFlow({
   inviteCode: inviteCodeProp,
   heading,
@@ -40,16 +43,20 @@ export function AuthFlow({
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [inviteCode, setInviteCode] = useState(inviteCodeProp ?? '');
-  const [inviteFieldTapped, setInviteFieldTapped] = useState(false);
+  const [inviteStep, setInviteStep] = useState(false);
+  const [inviteHint, setInviteHint] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
-  const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
   const [secondsLeft, setSecondsLeft] = useState(0);
 
-  // The invite field shows on the login screen (no invite in the link) once the
-  // user asks for it, or once the server says an invite is needed or unusable.
-  const inviteFieldVisible =
-    inviteCodeProp === undefined &&
-    (inviteFieldTapped || errorCode === 'invite_required' || errorCode === 'invite_invalid');
+  // The invite a request carries: none before the server asks for one, then the
+  // trimmed field value (or none when the field is empty).
+  const requestInvite = (): string | undefined => {
+    if (!inviteStep) {
+      return undefined;
+    }
+    const trimmed = inviteCode.trim();
+    return trimmed === '' ? undefined : trimmed;
+  };
 
   // The resend countdown: one sleep per second left, interrupted when the
   // count changes or the screen goes away.
@@ -67,14 +74,17 @@ export function AuthFlow({
   const [requestState, sendCode] = useAction<void, void, never>(() =>
     Effect.gen(function* () {
       setError(undefined);
-      setErrorCode(undefined);
       const result = yield* Effect.tryPromise({
-        try: () => requestSignInCode(email.trim(), inviteCode),
+        try: () => requestSignInCode(email.trim(), requestInvite()),
         catch: (cause) => cause,
       }).pipe(Effect.orElseSucceed((): { error?: AuthError } => ({ error: {} })));
       if (result.error !== undefined) {
+        if (result.error.code === 'invite_required') {
+          setInviteStep(true);
+          setInviteHint(errorMessageFor(result.error));
+          return;
+        }
         setError(errorMessageFor(result.error));
-        setErrorCode(result.error.code);
         return;
       }
       setCode('');
@@ -87,7 +97,7 @@ export function AuthFlow({
     Effect.gen(function* () {
       setError(undefined);
       const outcome = yield* Effect.tryPromise({
-        try: () => signIn({ email: email.trim(), otp: value, inviteCode }),
+        try: () => signIn({ email: email.trim(), otp: value, inviteCode: requestInvite() }),
         catch: (cause) => cause,
       }).pipe(Effect.orElseSucceed((): SignInOutcome => ({ ok: false, error: {} })));
       if (!outcome.ok) {
@@ -107,6 +117,13 @@ export function AuthFlow({
   );
 
   const busy = isWaiting(requestState) || isWaiting(verifyState);
+
+  const changeEmail = (value: string): void => {
+    setEmail(value);
+    setInviteStep(false);
+    setError(undefined);
+    setInviteHint(undefined);
+  };
 
   const submitEmail = (): void => {
     if (!isEmailValid(email)) {
@@ -152,7 +169,7 @@ export function AuthFlow({
                 returnKeyType="go"
                 editable={!busy}
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={changeEmail}
                 onSubmitEditing={submitEmail}
                 placeholder="you@example.com"
               />
@@ -161,21 +178,10 @@ export function AuthFlow({
                   {error}
                 </Text>
               )}
-              {inviteFieldVisible ? (
-                <InviteCodeField value={inviteCode} onChange={setInviteCode} />
-              ) : (
-                inviteCodeProp === undefined && (
-                  <Button
-                    variant="link"
-                    size="sm"
-                    className="self-start px-0"
-                    accessibilityLabel="I have an invite code"
-                    onPress={() => setInviteFieldTapped(true)}
-                  >
-                    <Text className="text-[13px] text-accent">I have an invite code</Text>
-                  </Button>
-                )
+              {inviteStep && inviteHint !== undefined && (
+                <Text className="text-[14px] text-muted-foreground">{inviteHint}</Text>
               )}
+              {inviteStep && <InviteCodeField value={inviteCode} onChange={setInviteCode} />}
               <Button
                 accessibilityLabel="Continue"
                 disabled={busy}

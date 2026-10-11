@@ -1,7 +1,7 @@
 ---
 id: T-1112
 title: "Sign-in: email first; only an email with no account gets the Invite code input (pre-filled from an invite link); no upfront invite check or link (web + mobile)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1112-signup-email-first-invite-step
 model: auto
@@ -75,4 +75,117 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Email-first sign-in on web and mobile: the invite field now appears only when
+the server says the email has no account, and an invite from a link only
+pre-fills that field.
+
+Web `apps/web/src/components/auth/AuthFlow.tsx` and mobile
+`apps/mobile/src/auth/AuthFlow.tsx`:
+
+- Removed `inviteFieldTapped`, the "I have an invite code" link and
+  `inviteFieldVisible` (and the now-unused `errorCode` state).
+- Added `inviteStep` (starts `false`) and `inviteHint`. The invite field renders
+  only while `inviteStep`, with the muted hint above it.
+- The email **Continue** sends no invite before the invite step; on a send that
+  fails with `invite_required` it sets `inviteStep = true`, fills the muted hint
+  with that message, and shows `InviteCodeField` (seeded from the `inviteCode`
+  prop, i.e. empty on `/login` and the link's code on `/invite/<code>`).
+- While `inviteStep`, **Continue** sends the trimmed field value (an empty field
+  sends `undefined`). `invite_invalid` shows the red error and keeps the field;
+  success moves to the code step.
+- Editing the email resets `inviteStep` and clears the error/hint (the field
+  value is kept).
+- The code step's verify (and Resend) carry the invite through one
+  `requestInvite()` helper: the field value once `inviteStep`, otherwise
+  `undefined` — see the setup deviation below.
+- `InviteCodeField.tsx` was not changed on either app.
+
+The invite pages dropped the up-front check and the "Checking your invite…" /
+"Invite not valid" cards, and now just render
+`<AuthFlow inviteCode={code} heading="You're invited to Zilar" />` (a missing
+code is `undefined`, so the field starts empty). `getInvite` (web, `lib/api`)
+and `checkInvite` (mobile, `lib/auth-api`) are untouched. Unused imports removed.
+
+### Behaviour per app
+
+Web (`/login` = `LoginPage`, `/invite/<code>` = `InvitePage`):
+
+- **Known email → the code.** Continue sends with no invite; the known email
+  passes the server check, so the code step shows and no invite is ever needed.
+- **Unknown email → the field.** The send answers `invite_required`; the
+  "Invite code" field appears under the email with the muted hint "This email
+  has no account yet. Enter your invite code to sign up." It is **empty on
+  `/login`** and **pre-filled with the URL code on `/invite/<code>`**.
+- **Wrong code → the invalid message.** Continue at the invite step with a bad
+  code answers `invite_invalid` and shows "This invite code is invalid, expired
+  or already used." in the error colour, keeping the field.
+
+Mobile (`login.tsx`, `invite/[code].tsx`): identical flow and messages.
+
+### Deviation from the spec (first-run setup)
+
+The spec says the code step verifies with the invite `undefined` unless
+`inviteStep`. On web, `SetupPage` renders this same `AuthFlow` **starting at the
+code step** with the setup's invite (`initialStep="code"`), and the server
+requires the `x-zilar-invite` header when it creates that first account
+(`apps/server/src/auth/auth.ts` `databaseHooks.user.create.before`, and
+`sendSetupTestCode` only issues the OTP). So sending `undefined` there would
+break first-run setup with "An invite is required to create an account."
+
+To keep setup working without touching any non-Allowed file, the web helper is
+`inviteStep ? field : initialStep === 'code' ? inviteCodeProp : undefined`, i.e.
+the code-start flow (only setup) keeps its invite, while every email-first page
+follows the spec exactly. Mobile has no code-start flow, so its helper is the
+plain `inviteStep ? trimmedField : undefined`. Flagging this as the one
+deliberate deviation; if you would rather keep setup's invite in the prop only,
+say so and I will adjust.
+
+### Files changed
+
+`apps/web/src/components/auth/AuthFlow.tsx` (273 lines),
+`apps/web/src/routes/InvitePage.tsx` (8),
+`apps/mobile/src/auth/AuthFlow.tsx` (258),
+`apps/mobile/src/app/invite/[code].tsx` (10), and this task file. All are in the
+Allowed files; every file is under 400 lines. No server, test or dependency
+changes.
+
+### Commands
+
+- `pnpm install`: done, no errors (1 deprecation warning on a transitive `uuid`).
+- `pnpm gate` (repo root), after the install:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)  (0.9s)
+  PASS  format  (0.9s)
+  PASS  lint  (0.7s)
+  PASS  typecheck  (2.5s)
+  PASS  effect  (0.4s)
+  PASS  tests @zilar/mobile  (1.1s)
+  SKIP tests @zilar/web (no nearby test files)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+- No single test file was run: this is UI code with no nearby tests (web SKIP;
+  the mobile suite is the one the gate ran). The lead's live (web) and phone
+  (mobile) checks cover the flows.
+
+### Problems / open questions
+
+- The setup deviation above is the only deviation; no other problems.
+- I did not run the live/phone checks (the lead does those).
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-11: approved. The pre-review is clean, with no nits.**
+- **Julio's flow, on web and mobile:**
+  - the email goes first, sent **without** an invite;
+  - a known email goes to the code step;
+  - `invite_required` sets `inviteStep`, shows the server text as a muted hint, and shows `InviteCodeField`, pre-filled from the `inviteCode` prop (the invite link) or empty;
+  - from then on the trimmed field value rides on the send and the verify;
+  - editing the email resets the step.
+  - The "I have an invite code" link is gone.
+- **Invite pages:** no up-front check and no "Invite not valid" card. Both render `AuthFlow inviteCode={code}`.
+- **Web keeps the setup page's code-first start,** where `initialStep === 'code'` uses the given invite. The lead read every changed line in both `AuthFlow`s.
+- **The gate passed.** The lead's phone check comes with the next APK.
