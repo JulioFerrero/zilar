@@ -1,7 +1,7 @@
 ---
 id: T-1104
 title: "Sign-up: an unknown email gets 'invite_required' instead of a silent fake success; web sign-in shows an Invite code field (server + web)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1104-signup-invite-code-server-web
 model: auto
@@ -68,4 +68,131 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+Status: done, `status: review`.
+
+### What I did
+
+**Server** — `apps/server/src/auth/auth.ts`, the send-OTP `before` hook:
+- an unknown email with no `x-zilar-invite` header now fails
+  `403 { code: 'invite_required', message: 'This email has no account yet. Enter your invite code to sign up.' }`
+  instead of the old fake `{ success: true }`;
+- an unknown email whose invite header is present but unusable (invalid, expired,
+  revoked or used up) now fails
+  `400 { code: 'invite_invalid', message: 'This invite code is invalid, expired or already used.' }`;
+- a known email, or an unknown one with a usable invite, sends the code as before;
+- the hook comment was updated. No other behaviour changed.
+
+**Server tests** — `apps/server/src/auth/auth.test.ts`:
+- rewrote the old `does not send a code to an unknown email without an invite`
+  test (it pinned the fake success) into
+  `rejects an unknown email without an invite with invite_required and sends nothing`
+  (403, `context.mailer.sent` empty);
+- added `rejects an unknown email with an unusable invite with invite_invalid and sends nothing`
+  (400, nothing sent, while a usable invite in the same test still sends);
+- fixed `trusts only WEB_ORIGINS in Better Auth origin checks`: its trusted-origin
+  request now carries a usable invite so it still reaches the handler (it used to
+  pass on the old fake success).
+
+**Web** — `apps/web/src/components/auth/AuthFlow.tsx` and the new
+`apps/web/src/components/auth/InviteCodeField.tsx`:
+- an `inviteCode` state is seeded from the prop, and `sendSignInCode` /
+  `verifySignInCode` send it;
+- on the email step the "Invite code" field appears when the prop is undefined and
+  either the user taps a small "I have an invite code" link or the last send failed
+  with `invite_required` / `invite_invalid` (the error shows above the field);
+- `InviteCodeField` accepts a bare code, or a pasted `…/invite/<code>` link, reduced
+  to the code;
+- both old "open the invite link" hints were replaced by this flow;
+- `errorMessageFor` maps `invite_required` and `invite_invalid` to the fixed
+  sentences above.
+
+### Files changed
+- `apps/server/src/auth/auth.ts`
+- `apps/server/src/auth/auth.test.ts`
+- `apps/web/src/components/auth/AuthFlow.tsx`
+- `apps/web/src/components/auth/InviteCodeField.tsx` (new)
+- `work/T-1104-signup-invite-code-server-web.md` (this report)
+
+### Commands and real results
+- `pnpm --filter @zilar/server exec vitest run src/auth/auth.test.ts --reporter=dot`
+  → `Test Files 1 passed (1)`, `Tests 36 passed (36)`.
+- `pnpm gate` (from the repo root), summary lines:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)
+  PASS  format
+  PASS  lint
+  PASS  typecheck
+  PASS  effect
+  PASS  tests @zilar/server
+  SKIP tests @zilar/web (no nearby test files)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
+### Web flow proof (step 4)
+A live `?mock=1` run cannot reach the new server error: the shared mock backend serves
+no `/api/auth/*` path, and a real browser session needs a long-running dev server, which
+the worker rules disallow. I therefore verified the flow with a temporary component test
+(`apps/web/src/components/auth/__tmp_authflow.test.tsx`) that renders `AuthFlow` with
+`sendSignInCode` mocked. It passed `Test Files 1 passed (1)`, `Tests 5 passed (5)` and was
+deleted before commit, so the change set stays inside the Allowed files. It verified:
+- an unknown email → `invite_required` → the "Invite code" field appears, with the
+  "…no account yet…" message above it;
+- a wrong code → `invite_invalid` → the "…invalid, expired or already used." message, and
+  the request carries the entered code;
+- a pasted `https://…/invite/CODE-1` is reduced to `CODE-1` before sending;
+- with the `inviteCode` prop set (InvitePage) neither the field nor the link shows.
+
+I did **not** run the app in a live browser or `?mock=1` session.
+
+### Deviations / notes
+- The spec said "next to (b) and (c)". I placed the two new send-OTP tests next to the
+  other send-OTP tests and named them descriptively, to avoid colliding with the existing
+  sign-up `(b)` / `(c)` labels.
+- `InviteCodeField` is a plain component (no Effect import). The Effect ratchet first
+  failed it for a `try`/`catch`, so `parseInviteCode` no longer URL-decodes the code
+  (invite codes are URL-safe).
+
+### Open questions / blocked
+None.
+
+### Round (fix round 1)
+
+Fixed PREREVIEW finding 1 (should-fix; finding 2 is a nit outside any changed line, left alone):
+- `apps/server/src/auth/auth.test.ts` — the untrusted-origin request in
+  `trusts only WEB_ORIGINS in Better Auth origin checks` now sends
+  `[INVITE_HEADER]: invite.code`, so the new `invite_required` hook cannot be the
+  source of its 403; only the origin check can reject it.
+- Test added/adjusted: that same test (the finding named it).
+- Single test: `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/auth/auth.test.ts`
+  → `Test Files 1 passed (1)`, `Tests 36 passed (36)`.
+- `pnpm gate` summary:
+  ```
+  gate: 5 changed file(s) against main
+  PASS  install (frozen)
+  PASS  format
+  PASS  lint
+  PASS  typecheck
+  PASS  effect
+  PASS  tests @zilar/server
+  SKIP tests @zilar/web (no nearby test files)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-11: approved. The pre-review is clean after 1 auto round, with 3 nits.**
+- **The server change, as the lead read it:**
+  - in the send-code hook, an unknown email with no `x-zilar-invite` header now fails with 403 `invite_required`;
+  - with an unusable invite it fails with 400 `invite_invalid`;
+  - a known email, or a usable invite, sends as before.
+  - The silent fake success is gone. Julio accepted that the endpoint now tells whether an email has an account.
+- **Web:** `AuthFlow` holds the invite code in state, and a new `InviteCodeField` opens from "I have an invite code" or after either error. A pasted `…/invite/<code>` link is reduced to the code.
+- **Tests:** the lead ran `src/auth/auth.test.ts` on the branch: 36 green, including the two new cases. The gate passed.
+- **The nits, accepted:**
+  - the invite state is seeded from the prop once (`InvitePage` remounts per code);
+  - the web proof was a throwaway component test;
+  - `auth.test.ts` is 851 lines (tests are exempt).
+- **The lead checks the field on the live site after the deploy,** with a made-up email: it creates no account and sends no mail.

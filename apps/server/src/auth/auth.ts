@@ -136,9 +136,7 @@ export function createAuth({
             }
 
             // No transport can send while unconfigured (T-0161): fail every
-            // code request loudly with 503 `mail_not_configured` instead of
-            // the fake success below. Uniform for every email, so nothing
-            // about accounts leaks.
+            // code request loudly with 503 `mail_not_configured`.
             if (!isTransportConfigured(mailer)) {
               return yield* Effect.fail(mailNotConfiguredError());
             }
@@ -156,13 +154,30 @@ export function createAuth({
               return;
             }
 
+            // An unknown email with no invite used to answer a fake success and
+            // send nothing, so the app could not tell the user why no code
+            // arrived (T-1104). Answer plainly instead, so the app can ask for
+            // an invite code. Julio accepted that this reveals whether an email
+            // already has an account.
             const code = ctx.headers?.get(INVITE_HEADER)?.trim();
-            const invite = code ? yield* Effect.promise(() => findUsableInvite(db, code)) : null;
-            if (invite) {
-              return;
+            if (!code) {
+              return yield* Effect.fail(
+                new APIError(403, {
+                  code: 'invite_required',
+                  message: 'This email has no account yet. Enter your invite code to sign up.',
+                }),
+              );
             }
 
-            return ctx.json({ success: true });
+            const invite = yield* Effect.promise(() => findUsableInvite(db, code));
+            if (!invite) {
+              return yield* Effect.fail(
+                new APIError(400, {
+                  code: 'invite_invalid',
+                  message: 'This invite code is invalid, expired or already used.',
+                }),
+              );
+            }
           }),
         ),
       ),

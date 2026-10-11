@@ -471,14 +471,30 @@ describe('auth flows', () => {
     ).toHaveLength(0);
   });
 
-  it('does not send a code to an unknown email without an invite', async () => {
+  it('rejects an unknown email without an invite with invite_required and sends nothing', async () => {
     const app = appFor(context);
 
     const response = await sendSignInOtp(app, 'stranger@example.com');
 
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: 'invite_required' });
     expect(context.mailer.sent).toHaveLength(0);
+  });
+
+  it('rejects an unknown email with an unusable invite with invite_invalid and sends nothing', async () => {
+    const app = appFor(context);
+    const usable = await createInvite(context.db, { createdBy: null });
+    const revoked = await createInvite(context.db, { createdBy: null });
+    await revokeInvite(context.db, revoked.code);
+
+    const response = await sendSignInOtp(app, 'stranger@example.com', revoked.code);
+    const sent = await sendSignInOtp(app, 'invited-stranger@example.com', usable.code);
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'invite_invalid' });
+    expect(sent.status).toBe(200);
+    // Only the usable invite sends; the unusable one sends nothing.
+    expect(context.mailer.sent).toHaveLength(1);
   });
 
   it('sends a code to an unknown email with a usable invite and does not consume it', async () => {
@@ -604,6 +620,7 @@ describe('auth flows', () => {
   });
 
   it('trusts only WEB_ORIGINS in Better Auth origin checks', async () => {
+    const invite = await createInvite(context.db, { createdBy: null });
     const sendBody = JSON.stringify({ email: 'origin@example.com', type: 'sign-in' });
     const untrusted = await context.auth.handler(
       new Request(`${BASE_URL}/api/auth/email-otp/send-verification-otp`, {
@@ -612,6 +629,7 @@ describe('auth flows', () => {
           'content-type': 'application/json',
           cookie: 'better-auth.session_token=fake',
           origin: 'https://evil.example',
+          [INVITE_HEADER]: invite.code,
         },
         body: sendBody,
       }),
@@ -625,6 +643,7 @@ describe('auth flows', () => {
           'content-type': 'application/json',
           cookie: 'better-auth.session_token=fake',
           origin: 'http://localhost:5173',
+          [INVITE_HEADER]: invite.code,
         },
         body: sendBody,
       }),

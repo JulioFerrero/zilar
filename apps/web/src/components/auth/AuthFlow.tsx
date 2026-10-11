@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Effect } from 'effect';
 import { useLocation, useNavigate } from 'react-router';
 import { OtpInput } from './OtpInput';
+import { InviteCodeField } from './InviteCodeField';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 import { useAuth } from '@/auth/AuthProvider';
@@ -20,6 +21,12 @@ interface AuthErrorLike {
 
 function errorMessageFor(error: AuthErrorLike | null | undefined): string {
   const code = error?.code ?? '';
+  if (code === 'invite_required') {
+    return 'This email has no account yet. Enter your invite code to sign up.';
+  }
+  if (code === 'invite_invalid') {
+    return 'This invite code is invalid, expired or already used.';
+  }
   if (code === 'TOO_MANY_ATTEMPTS' || error?.status === 429) {
     return 'Too many attempts, try again later';
   }
@@ -35,10 +42,11 @@ function isEmailValid(email: string): boolean {
 
 /**
  * Shared email → code → session flow for both the invite and the login pages.
- * On an invite, every auth request carries the invite code header.
+ * An invite in the URL seeds the code; on the login page the user can reveal an
+ * invite-code field, and every auth request carries the code when there is one.
  */
 export function AuthFlow({
-  inviteCode,
+  inviteCode: inviteCodeProp,
   heading,
   subheading,
   initialEmail,
@@ -58,12 +66,21 @@ export function AuthFlow({
   const [step, setStep] = useState<'email' | 'code'>(initialStep ?? 'email');
   const [email, setEmail] = useState(initialEmail ?? '');
   const [code, setCode] = useState('');
+  const [inviteCode, setInviteCode] = useState(inviteCodeProp ?? '');
+  const [inviteFieldTapped, setInviteFieldTapped] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
   // `busy` is a state the two actions below set and clear themselves, so the
   // buttons re-enable the moment the server answers (before the session
   // reads and the redirect), exactly as before.
   const [busy, setBusy] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
+
+  // The invite field shows on a login page (no invite in the URL) once the user
+  // asks for it, or once the server says an invite is needed or unusable.
+  const inviteFieldVisible =
+    inviteCodeProp === undefined &&
+    (inviteFieldTapped || errorCode === 'invite_required' || errorCode === 'invite_invalid');
 
   // One second per value of `secondsLeft`: each tick (or a new 30s) restarts
   // the wait, and an unmount interrupts it.
@@ -86,7 +103,11 @@ export function AuthFlow({
       const result = yield* Effect.promise(() => sendSignInCode(address, inviteCode));
       yield* Effect.sync(() => setBusy(false));
       if (result.error) {
-        yield* Effect.sync(() => setError(errorMessageFor(result.error as AuthErrorLike)));
+        yield* Effect.sync(() => {
+          const authError = result.error as AuthErrorLike;
+          setError(errorMessageFor(authError));
+          setErrorCode(authError.code);
+        });
         return;
       }
       yield* Effect.sync(() => {
@@ -169,15 +190,25 @@ export function AuthFlow({
               onChange={(event) => setEmail(event.target.value)}
               placeholder="you@example.com"
             />
-            {inviteCode === undefined && (
-              <p className="text-[13px] text-muted-foreground">
-                New here? Open the invite link you were sent first, then sign in.
-              </p>
-            )}
             {error !== undefined && (
               <p role="alert" className="text-[14px] text-danger">
                 {error}
               </p>
+            )}
+            {inviteFieldVisible ? (
+              <InviteCodeField value={inviteCode} onChange={setInviteCode} />
+            ) : (
+              inviteCodeProp === undefined && (
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  onClick={() => setInviteFieldTapped(true)}
+                  className="h-auto self-start px-0 text-[13px] text-accent"
+                >
+                  I have an invite code
+                </Button>
+              )
             )}
             <Button type="submit" disabled={busy} size="lg" className="mt-1">
               Continue
@@ -188,12 +219,6 @@ export function AuthFlow({
             <p className="text-center text-[15px] text-muted-foreground">
               Enter the 6-digit code we sent to <span className="text-foreground">{email}</span>
             </p>
-            {inviteCode === undefined && (
-              <p className="text-center text-[13px] text-muted-foreground">
-                No email after a minute? Check spam, and if you are new here you need an invite link
-                from whoever runs this server.
-              </p>
-            )}
             <OtpInput
               value={code}
               onChange={setCode}
