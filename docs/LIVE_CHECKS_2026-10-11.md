@@ -4,16 +4,20 @@ This is Julio's single live test after the simplify programme (2026-10-09 to 11)
 
 Everything here was merged with a green gate and reviewed by the lead, but **not yet tried by a person on the real site**. Each line says what to do and what "good" looks like.
 
-## 0. Before the deploy
+## 0. The deploy (done, 2026-10-11)
 
-**Live now** (`/health`, read by the lead on 2026-10-11): commit `73fae1bf` ("T-0751: drizzle out of the server", 2026-10-09). `main` is **704 commits ahead**, so this deploy carries the whole programme.
+The whole programme is live. Since the move to the Coolify Application `zilar-chat` (project "Zilar"), **every push to `main` that touches the apps deploys itself** from git (the movabase model; `docs/deploy/coolify-app-plan.md`). The database was started clean, as Julio chose ("was just some testing chats").
 
-1. **Back up the database by hand.** Migrations run when the server starts, and an image rollback does not undo them (`docs/RELEASING.md` §9, "Roll back"). The nightly B2 backup exists, but take a fresh one: in Coolify, on postgres, run **Backup now**.
-2. **Add the three repository secrets** in GitHub, under Settings → Secrets → Actions: `COOLIFY_URL`, `COOLIFY_TOKEN` and `COOLIFY_SERVICE_UUID` (`docs/RELEASING.md` §9). From then on, **every green push to `main` deploys itself**. To pause that, set the repository variable `AUTO_DEPLOY=off`.
-3. **Trigger the deploy.** Re-run the latest green "Production images" run on `main`, or let the lead push a docs commit and re-run.
-4. **Good:** the deploy job ends green, and `https://chat.zilar.app/health` answers `"ok": true` with `"commit"` equal to the main sha. The lead checks this.
+- **Check the live version:** `https://chat.zilar.app/health` shows `"commit"`. The lead checks it after each merge.
+- **A deploy causes a few seconds of 503** while the container is swapped.
+
+**Added the same day:**
+- **Sign-in is email first** (T-1112, T-1114). A new email gets the **Invite code** input, pre-filled when you came from an `/invite/<code>` link.
+- **`chat.zilar.app` links open the Android app** (T-1106).
 
 ## 1. Sign-in and sessions
+- Sign in with your email: you go straight to the code. Open an invite link in a private window with a new email: the Invite code is filled in, and the account is created (T-1112).
+- On the phone, tap a `https://chat.zilar.app/...` link in another app: it opens Zilar, not the browser (T-1106, needs the new APK).
 - Sign out and sign back in, on web and on mobile (session cookie cache, T-0858).
 - On the phone, sign out, then sign in as another user (T-0901).
 - **Good:** the right chats appear each time, with no stale data from the previous user.
@@ -45,5 +49,5 @@ Everything here was merged with a green gate and reviewed by the lead, but **not
 - Mobile is dark everywhere (T-0881), and money and topic order look the same on web and mobile (T-0844).
 
 ## 7. If something breaks
-- **The web or server image:** in Coolify, set `IMAGE_TAG` back to the tag that is live now and restart (`docs/RELEASING.md` §9). **Before the deploy, note the current `IMAGE_TAG` and the live `/health` commit** in step 0.1.
-- **A destructive migration:** restore the backup from step 0.1.
+- **A bad merge:** revert the commit on `main` and push; the revert deploys itself. Or, in Coolify, redeploy an earlier deployment of `zilar-chat`.
+- **A destructive migration:** restore the nightly B2 database backup.
