@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import { runSql } from '../effect/sql';
 import { emitTopicAi } from '../groups/events';
 import {
@@ -166,9 +166,7 @@ export async function setTopicRoles(
   try {
     await syncTopicRoom(deps, updated);
   } catch (error) {
-    throw error instanceof HttpError
-      ? error
-      : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw error instanceof HttpError ? error : xmppUnavailable();
   }
   return updated;
 }

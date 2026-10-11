@@ -1,7 +1,7 @@
 import { Effect, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { runSql } from '../effect/sql';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import { type StickerRow, type StickersServiceDeps, type StickerView } from './schemas';
 import { toStickerView } from './storage';
 
@@ -112,7 +112,7 @@ export async function addFavorite(
     if (error instanceof HttpError) {
       throw error;
     }
-    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw xmppUnavailable();
   }
   return toStickerView(deps, row);
 }

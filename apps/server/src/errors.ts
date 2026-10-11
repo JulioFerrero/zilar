@@ -21,3 +21,8 @@ export class HttpError extends Error {
     this.detail = detail;
   }
 }
+
+/** The chat service cannot be reached: answers 503 with code `xmpp_unavailable`. */
+export function xmppUnavailable(): HttpError {
+  return new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+}

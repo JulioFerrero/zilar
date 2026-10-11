@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { HttpError } from '../errors';
+import { xmppUnavailable } from '../errors';
 import { runSql } from '../effect/sql';
 import { randomRoomLocalpart } from '../groups/service';
 import { topicRoleHolderIds } from '../roles/service';
@@ -34,7 +34,7 @@ export async function uniqueRoomLocalpart(
     });
     return { localpart, roomCreated: created.created };
   }
-  throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  throw xmppUnavailable();
 }
 
 // Removes a half-created topic: its member rows first, then the topic row.

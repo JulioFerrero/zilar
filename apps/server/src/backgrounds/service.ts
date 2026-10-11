@@ -6,7 +6,7 @@ import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { ChatBackgroundRow } from '../db/rows';
 import { runSql } from '../effect/sql';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import { probeStickerBytes, type StickerImageInfo } from '../stickers/image';
 import { resolveStorageDir } from '../stickers/service';
 
@@ -178,7 +178,7 @@ export async function uploadBackground(
     if (error instanceof HttpError) {
       throw error;
     }
-    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw xmppUnavailable();
   }
   return { id, url: backgroundUrlFor(id), width: info.width, height: info.height };
 }

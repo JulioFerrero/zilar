@@ -7,7 +7,7 @@ import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { AvatarOwnerKind, AvatarRow } from '../db/rows';
 import { runSql } from '../effect/sql';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import { probeStickerBytes, type StickerImageInfo } from '../stickers/image';
 import { resolveStorageDir } from '../stickers/service';
 
@@ -197,7 +197,7 @@ export async function uploadAvatar(
     await mkdir(storageDir, { recursive: true });
     await writeFile(join(storageDir, storageKey), bytes);
   } catch {
-    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw xmppUnavailable();
   }
   // Read the replaced row inside the same advisory-locked transaction that
   // swaps it, so the old file removed below is exactly the replaced one.
@@ -236,7 +236,7 @@ export async function uploadAvatar(
     if (error instanceof HttpError) {
       throw error;
     }
-    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw xmppUnavailable();
   }
   if (oldStorageKey !== null && oldStorageKey !== storageKey) {
     // Best effort: the row already points at the new file, so a leftover

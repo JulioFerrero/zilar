@@ -4,7 +4,7 @@ import { SqlClient } from 'effect/sql';
 import type { TopicRow } from '../db/rows';
 import { isUniqueViolation } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import { syncTopicRoom } from '../topics/rooms';
 import { requireGroupManager, requireRoleInGroup } from './access';
 import { toRoleDetail } from './queries';
@@ -32,7 +32,7 @@ function mapRoleError(error: unknown): HttpError {
   if (isUniqueViolation(error)) {
     return new HttpError(409, 'role_exists', 'A role with that name already exists');
   }
-  return new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  return xmppUnavailable();
 }
 
 function auditEntry(
@@ -116,7 +116,7 @@ export async function createRole(
     }),
   );
   if (!role) {
-    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw xmppUnavailable();
   }
   if (deps.audit) {
     await deps.audit.record(auditEntry(groupId, 'group.role_created', actorId, role.id));

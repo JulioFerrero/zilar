@@ -7,7 +7,7 @@ import type { ServerDatabase } from '../db/client';
 import type { PinnedMessageRow } from '../db/rows';
 import { isUniqueViolation } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import {
   requirePinManager,
@@ -138,7 +138,7 @@ export async function pinMessage(deps: PinsServiceDeps, input: PinMessageInput):
     }),
   );
   if (!row) {
-    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw xmppUnavailable();
   }
   if (deps.audit) {
     await deps.audit.record(toAuditEntry(chat, 'message.pinned', input.actorId, row));
@@ -220,5 +220,5 @@ function mapPinError(error: unknown): HttpError {
   if (isUniqueViolation(error)) {
     return new HttpError(409, 'pin_exists', 'That message is already pinned');
   }
-  return new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  return xmppUnavailable();
 }

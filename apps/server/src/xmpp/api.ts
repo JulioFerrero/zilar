@@ -9,7 +9,7 @@ import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { syncRoster } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
-import { HttpError } from '../errors';
+import { xmppUnavailable } from '../errors';
 import { createRateLimiter } from '../rate-limit';
 import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { makeRateLimit } from '../effect/rate-limit-middleware';
@@ -86,11 +86,7 @@ export function createXmppApi(deps: XmppApiDependencies): EffectApiMount {
           );
           if (!provisioned) {
             logger.warn({ userId: user.id }, 'xmpp account could not be provisioned');
-            throw new HttpError(
-              503,
-              'xmpp_unavailable',
-              'The chat service is temporarily unavailable',
-            );
+            throw xmppUnavailable();
           }
 
           // Retry any roster items a failed sign-up could not push. A failure

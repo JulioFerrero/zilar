@@ -1,6 +1,6 @@
 // effect-plain: moved unchanged from apps/server/src/topics/rooms.ts (size split)
 import { errorClassName } from '../effect/error-utils';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import type { RoomAffiliation } from '../xmpp/admin-client';
 import type { TopicRow } from './access';
 import type { TopicRoomDeps } from './rooms';
@@ -91,5 +91,5 @@ function mapRoomError(error: unknown): HttpError {
   if (error instanceof HttpError) {
     return error;
   }
-  return new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  return xmppUnavailable();
 }

@@ -4,7 +4,7 @@ import { GROUP_MEMBERS_MAX } from '@zilar/api-contract';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import type { GroupVisibility } from './visibility';
 
 // The `removeGroupAi` transaction below runs on the `effect/sql` client
@@ -232,5 +232,5 @@ export function mapXmppError(error: unknown): HttpError {
   if (error instanceof HttpError) {
     return error;
   }
-  return new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  return xmppUnavailable();
 }

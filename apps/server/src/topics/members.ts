@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import { runSql } from '../effect/sql';
 import { topicRoleHolderIds } from '../roles/service';
 import {
@@ -137,9 +137,7 @@ export async function addTopicMember(
   try {
     await syncTopicRoom(deps, updated);
   } catch (error) {
-    throw error instanceof HttpError
-      ? error
-      : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw error instanceof HttpError ? error : xmppUnavailable();
   }
   if (deps.audit) {
     await deps.audit.record(
@@ -227,9 +225,7 @@ export async function removeTopicMember(
     try {
       await syncTopicRoom(deps, updated);
     } catch (error) {
-      throw error instanceof HttpError
-        ? error
-        : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+      throw error instanceof HttpError ? error : xmppUnavailable();
     }
     if (deps.audit) {
       await deps.audit.record(toAuditEntry(updated, 'topic.archived', actorId));
@@ -240,9 +236,7 @@ export async function removeTopicMember(
   try {
     await syncTopicRoom(deps, updated);
   } catch (error) {
-    throw error instanceof HttpError
-      ? error
-      : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw error instanceof HttpError ? error : xmppUnavailable();
   }
   // The removed user may own AIs in this topic: any AI whose owner can no
   // longer see it drops out of the room (rows stay, so re-adding the owner

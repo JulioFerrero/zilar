@@ -3,7 +3,7 @@ import { SqlClient } from 'effect/sql';
 import { deleteRoomMemoryEffect } from '../agents/memory/store';
 import { revokeActiveRulesForAiInTopic } from '../approvals/rules';
 import { runSql } from '../effect/sql';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import { emitTopicAi } from '../groups/events';
 import { deleteRoutinesForAiInTopic } from '../routines/service';
 import { deleteToolsForAiInTopicEffect } from '../tools/service';
@@ -85,9 +85,7 @@ export async function addTopicAi(
   try {
     await syncTopicRoom(deps, updated);
   } catch (error) {
-    throw error instanceof HttpError
-      ? error
-      : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw error instanceof HttpError ? error : xmppUnavailable();
   }
   if (deps.audit) {
     await deps.audit.record(
@@ -167,9 +165,7 @@ export async function removeTopicAi(
   try {
     await syncTopicRoom(deps, updated);
   } catch (error) {
-    throw error instanceof HttpError
-      ? error
-      : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw error instanceof HttpError ? error : xmppUnavailable();
   }
   if (deps.audit) {
     await deps.audit.record(toAuditEntry(updated, 'topic.ai_removed', actorId, { aiId }));

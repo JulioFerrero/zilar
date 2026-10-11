@@ -10,7 +10,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1105](T-1105-signup-invite-code-mobile.md) | Sign-up invite code: mobile field | todo | auto | T-1104 | after T-1104 |
-| [T-1109](T-1109-xmpp-unavailable-constructor.md) | Error codes: one xmppUnavailable() (503) | in-progress | auto | T-1103 | Julio OK 10-11; pin codes stay (different meanings) |
 
 ## Follow-ups
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile. This is a new feature, so it needs Julio's OK.
@@ -1144,3 +1143,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1108](T-1108-rate-limit-layers-to-factory.md) | Dedup S7: the hand-written per-user rate-limit layers in groups, topics, invite-links (and integrations if ide | 2026-10-11 |
 | [T-1107](T-1107-shared-crypto-envelope.md) | Dedup S6: one shared AES-GCM/HKDF envelope for the push, connections and setup ciphers, moved unchanged (each  | 2026-10-11 |
 | [T-1104](T-1104-signup-invite-code-server-web.md) | Sign-up: an unknown email gets 'invite_required' instead of a silent fake success; web sign-in shows an Invite | 2026-10-11 |
+| [T-1109](T-1109-xmpp-unavailable-constructor.md) | Error codes: one xmppUnavailable() constructor (always 503) replaces the 33 inline HttpError(502|503, 'xmpp_un | 2026-10-11 |

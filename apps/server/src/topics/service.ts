@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { isUniqueViolation } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   canCreateTopic,
@@ -139,16 +139,14 @@ export async function createTopic(
     if (roomLocalpart !== '') {
       await destroyQuietly(deps.adminClient, roomLocalpart);
     }
-    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw xmppUnavailable();
   }
   try {
     await syncTopicRoom(deps, topic);
   } catch (error) {
     await destroyQuietly(deps.adminClient, roomLocalpart);
     await deleteTopicRows(deps.db, topicId);
-    throw error instanceof HttpError
-      ? error
-      : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw error instanceof HttpError ? error : xmppUnavailable();
   }
   if (deps.audit) {
     await deps.audit.record(toAuditEntry(topic, 'topic.created', input.actorId));
@@ -320,9 +318,7 @@ export async function patchTopic(
   try {
     await syncTopicRoom(deps, updated);
   } catch (error) {
-    throw error instanceof HttpError
-      ? error
-      : new HttpError(502, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw error instanceof HttpError ? error : xmppUnavailable();
   }
   // A public-to-private change may leave AIs whose owner is not in
   // `memberIds`: they drop out of the room here (rows stay). Live sessions
@@ -366,7 +362,7 @@ function mapXmppError(error: unknown): HttpError {
   if (isUniqueViolation(error)) {
     return new HttpError(409, 'topic_exists', 'A topic with that name already exists');
   }
-  return new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  return xmppUnavailable();
 }
 
 async function destroyQuietly(

@@ -8,7 +8,7 @@ import {
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { StickerPackRow, StickerRow } from '../db/rows';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 
 export const STICKER_PACKS_MAX_PER_USER = 100;
 // The pack, title and panel limits are part of the wire contract
@@ -60,9 +60,7 @@ export interface StickersServiceDeps {
 // its `HttpError` instance (the pins pattern), so a 400 never becomes a 503.
 // Exported for the packs and panel modules; not part of the barrel's surface.
 export function mapStickerError(error: unknown): HttpError {
-  return error instanceof HttpError
-    ? error
-    : new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+  return error instanceof HttpError ? error : xmppUnavailable();
 }
 
 // The pack title, trimmed before the length checks, exactly like the old

@@ -9,7 +9,7 @@ import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import { syncPublicTopicsByLink, type InviteLinkServiceDeps } from '../invite-links/service';
 import type { InviteLogger } from './service';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -109,14 +109,7 @@ export async function joinPublicGroup(
                 jidFor(localpartFor(userId), deps.domain),
                 'member',
               ),
-            catch: (error) =>
-              error instanceof HttpError
-                ? error
-                : new HttpError(
-                    503,
-                    'xmpp_unavailable',
-                    'The chat service is temporarily unavailable',
-                  ),
+            catch: (error) => (error instanceof HttpError ? error : xmppUnavailable()),
           });
           const inserted = yield* sql<{
             groupId: string;

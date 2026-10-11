@@ -3,7 +3,7 @@ import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import { MAX_GROUP_MEMBERS } from '../groups/service';
 import type { TopicRow } from '../topics/access';
 import { syncTopicRoom } from '../topics/rooms';
@@ -134,14 +134,7 @@ export async function joinByInviteLink(
                 jidFor(localpartFor(userId), deps.domain),
                 'member',
               ),
-            catch: (error) =>
-              error instanceof HttpError
-                ? error
-                : new HttpError(
-                    503,
-                    'xmpp_unavailable',
-                    'The chat service is temporarily unavailable',
-                  ),
+            catch: (error) => (error instanceof HttpError ? error : xmppUnavailable()),
           });
           const inserted = yield* sql<{ userId: string }>`INSERT INTO group_members
               (group_id, user_id, role)

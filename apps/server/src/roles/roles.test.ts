@@ -929,9 +929,9 @@ describe('group roles (T-0116)', () => {
       roleIds: [role.id],
       approverRoleId: role.id,
     });
-    // The room is stale, so the caller sees the 502 — but the database
+    // The room is stale, so the caller sees the 503 — but the database
     // committed, and the audit rows are there anyway.
-    expect(attached.status).toBe(502);
+    expect(attached.status).toBe(503);
     const rows = await testSql(context)(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;

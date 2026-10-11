@@ -4,7 +4,7 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { STICKERS_MAX_PER_PACK } from '@zilar/api-contract';
 import { runSql } from '../effect/sql';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import {
   DISCOVER_PAGE_SIZE,
   mapStickerError,
@@ -121,7 +121,7 @@ export async function createPack(
     }),
   );
   if (!pack) {
-    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw xmppUnavailable();
   }
   if (deps.audit) {
     await deps.audit.record(toAuditEntry('sticker_pack.created', userId, id));

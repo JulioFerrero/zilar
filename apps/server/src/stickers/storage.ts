@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { runSql } from '../effect/sql';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import { probeErrorCode, probeStickerBytes, STICKER_MAX_BYTES } from './image';
 import type { StickerImageInfo } from './image';
 import {
@@ -240,7 +240,7 @@ export async function uploadSticker(
     if (error instanceof HttpError) {
       throw error;
     }
-    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw xmppUnavailable();
   }
   const storageDir = resolveStorageDir(deps.storageDir);
   try {
@@ -256,9 +256,7 @@ export async function uploadSticker(
         yield* sql`DELETE FROM stickers WHERE id = ${id}`;
       }),
     ).catch(() => {});
-    throw error instanceof HttpError
-      ? error
-      : new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw error instanceof HttpError ? error : xmppUnavailable();
   }
   const [row] = await runSql(
     deps.db,
@@ -268,7 +266,7 @@ export async function uploadSticker(
     }),
   );
   if (!row) {
-    throw new HttpError(503, 'xmpp_unavailable', 'The chat service is temporarily unavailable');
+    throw xmppUnavailable();
   }
   return toStickerView(deps, row);
 }
