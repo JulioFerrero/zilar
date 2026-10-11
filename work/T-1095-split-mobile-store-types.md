@@ -113,6 +113,8 @@ Pure relocation of `apps/mobile/src/store/types.ts`, no dedup, no renames, no im
 ### Open questions
 - None.
 
+## Review (written by Claude)
+
 **Lead, 2026-10-11: approved. The pre-review is clean, with no nits.**
 - **The change:** mobile `store/types.ts` goes from 507 to 237 lines, with `list-views.ts`, `send-types.ts` and `types-groups.ts`. `ChatStoreState extends ChatStoreGroups`, and every name is re-exported from `types.ts`.
 - **The lead's line check:** sorted removed lines against sorted added lines. The only differences are the new header comments and the `interface … extends` line. No member and no function body changed.
