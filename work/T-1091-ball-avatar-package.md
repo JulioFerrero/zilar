@@ -30,7 +30,7 @@ Julio, 2026-10-11:
 **The package layout to copy:** `packages/ui-tokens/` (`package.json` with `"exports": { ".": "./src/index.ts" }`, and a `tsconfig.json` that extends `../../tsconfig.base.json`).
 
 ### What to build
-1. **A new package `packages/ball-avatar/`** (`package.json` with the name `@zilar/ball-avatar`, private, `type: module`, the same scripts as ui-tokens, no dependencies; `tsconfig.json`; `src/index.ts`, under 150 lines). It exports `ballAvatarSvg(seed: string): string`, a deterministic SVG with `viewBox="0 0 100 100"` and no `width` or `height`, so it scales to any box. The algorithm is the lead's preview, which Julio approved:
+1. **A new package `packages/ball-avatar/`** (`package.json` with the name `@zilar/ball-avatar`, private, `type: module`, the same scripts as ui-tokens, no dependencies, `"exports": { ".": "./index.ts" }`; `tsconfig.json` with `"include": ["index.ts"]`; and `index.ts` at the package root, under 150 lines. The root, not `src/`, keeps the Allowed paths inside one new folder). It exports `ballAvatarSvg(seed: string): string`, a deterministic SVG with `viewBox="0 0 100 100"` and no `width` or `height`, so it scales to any box. The algorithm is the lead's preview, which Julio approved:
    - **The PRNG:** FNV-1a 32-bit hash the seed, then use it to seed a xorshift32 PRNG. Draw in this order:
      - `hue = r()*360`;
      - `hue2 = (hue + 30 + r()*120) % 360`;
@@ -64,7 +64,7 @@ The lead checks:
 `AGENTS.md`, `packages/ui-tokens/`, `packages/chat-core/src/avatar.ts`, `packages/chat-core/package.json`, the four caller files, and `docs/design/ui-style.md`.
 
 ### Allowed files
-`packages/ball-avatar/package.json`, `packages/ball-avatar/tsconfig.json`, `packages/ball-avatar/src/index.ts`, `packages/chat-core/package.json`, `packages/chat-core/src/avatar.ts`, `pnpm-lock.yaml`, `apps/web/src/components/Avatar.tsx`, `apps/mobile/src/components/chat/avatar.tsx`, `apps/mobile/src/components/nav/floating-tab-bar.tsx`, `apps/mobile/src/components/profile/profile-view.tsx`, `docs/design/ui-style.md`, `work/T-1091-ball-avatar-package.md`.
+`packages/ball-avatar/package.json`, `packages/ball-avatar/tsconfig.json`, `packages/ball-avatar/index.ts`, `packages/chat-core/package.json`, `packages/chat-core/src/avatar.ts`, `pnpm-lock.yaml`, `apps/web/src/components/Avatar.tsx`, `apps/mobile/src/components/chat/avatar.tsx`, `apps/mobile/src/components/nav/floating-tab-bar.tsx`, `apps/mobile/src/components/profile/profile-view.tsx`, `docs/design/ui-style.md`, `work/T-1091-ball-avatar-package.md`.
 
 ### Checks
 ```bash
