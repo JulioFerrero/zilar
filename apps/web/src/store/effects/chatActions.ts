@@ -18,7 +18,7 @@ import {
   openHistory as openHistoryEffect,
   scheduleChatsRefresh,
 } from './history';
-import { retryBoot, signOutStore, startStore, stopStore } from './lifecycle';
+import { resetUserState, retryBoot, signOutStore, startStore, stopStore } from './lifecycle';
 import type { StoreLocals } from './locals';
 import {
   loadChatMedia,
@@ -83,6 +83,7 @@ export type ChatActions = Pick<
   | 'retrySticker'
   | 'retryAttachment'
   | 'signOut'
+  | 'switchUser'
   | 'start'
   | 'stop'
   | 'setSearch'
@@ -184,6 +185,7 @@ export function makeChatActions(deps: ChatActionsDeps): ChatActions {
       retryAttachment(ctx, chatId, messageId);
     },
     signOut: () => rt.runPromise(signOutStore(ctx)),
+    switchUser: () => rt.runPromise(resetUserState(ctx)),
     start: () => {
       rt.runDetached(startStore(ctx));
     },

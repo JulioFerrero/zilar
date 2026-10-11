@@ -1,5 +1,5 @@
 import { RegistryContext, useAtomValue } from '@effect/atom-react';
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '@/auth/AuthProvider';
 import type { StoreApi } from '@/store/atomStore';
 import { isMockMode } from '@/mock/gate';
@@ -43,14 +43,34 @@ export function ChatStoreProvider({
   }, [store]);
 
   const value = store ?? created;
+  const userId = auth.user?.id;
+  // The user the store was started for. A different id on a later run means an
+  // account switch (T-1136): the previous account's state must reset first.
+  const startedUserId = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (store !== undefined || value === undefined || auth.status !== 'authenticated') {
       return;
     }
-    value.getState().start();
-    return () => value.getState().stop();
-  }, [store, value, auth.status]);
+    const previousUserId = startedUserId.current;
+    let cancelled = false;
+    void (async () => {
+      if (userId !== undefined && previousUserId !== undefined && userId !== previousUserId) {
+        // `switchUser` resets and stops the old session, so it must settle
+        // before `start` boots the new one.
+        await value.getState().switchUser();
+      }
+      if (cancelled) {
+        return;
+      }
+      startedUserId.current = userId;
+      value.getState().start();
+    })();
+    return () => {
+      cancelled = true;
+      value.getState().stop();
+    };
+  }, [store, value, auth.status, userId]);
 
   if (value === undefined) {
     return null;

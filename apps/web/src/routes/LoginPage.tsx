@@ -1,5 +1,6 @@
 import { AsyncResult } from 'effect/reactivity';
-import { Link } from 'react-router';
+import { Link, Navigate } from 'react-router';
+import { useAuth } from '@/auth/AuthProvider';
 import { AuthFlow } from '@/components/auth/AuthFlow';
 import { Button } from '@/components/ui/button';
 import { getSetupStatus } from '@/lib/api';
@@ -12,9 +13,17 @@ import { useQuery } from '@/lib/effect/use-query';
  * show a "Finish setting up this server" link to `/setup` instead.
  */
 export function LoginPage() {
+  const auth = useAuth();
   // While the status loads, and if it fails, the sign-in form shows.
   const [setupState] = useQuery(() => fromApi(() => getSetupStatus()), []);
   const needsSetup = AsyncResult.isSuccess(setupState) && setupState.value.needsSetup;
+
+  // A signed-in person never sees the form: signing in as someone else needs
+  // a sign-out first, as in Telegram (T-1136). While the status loads the form
+  // stays, so a session restore does not flash a redirect.
+  if (auth.status === 'authenticated') {
+    return <Navigate to="/" replace />;
+  }
 
   if (needsSetup) {
     return (

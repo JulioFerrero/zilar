@@ -38,9 +38,15 @@ export const retryBoot = (ctx: StoreCtx): Effect.Effect<void> => coreRetryBoot(c
 /** Closes the store Scope; the message ledger stays (R10). */
 export const stopStore = (ctx: StoreCtx): Effect.Effect<void> => coreStopStore(ctx);
 
-export const signOutStore = (ctx: StoreCtx): Effect.Effect<void, never, Ports> =>
+/**
+ * Clears every piece of per-user state: the store session, the message ledger,
+ * the caches and the sign-in gate dismissals. `signOutStore` calls it on the
+ * way out, and `switchUser` calls it when a different account signs in, so the
+ * previous account's chats and per-message caches cannot leak into the new one.
+ */
+export const resetUserState = (ctx: StoreCtx): Effect.Effect<void, never, Ports> =>
   Effect.gen(function* () {
-    const { storage, goToLogin } = yield* Ports;
+    const { storage } = yield* Ports;
     ctx.get().stop();
     reset(ctx);
     clearChatListCache(storage);
@@ -87,6 +93,12 @@ export const signOutStore = (ctx: StoreCtx): Effect.Effect<void, never, Ports> =
     ctx.messageAuthors.clear();
     ctx.messageOriginIds.clear();
     ctx.messageBaseTexts.clear();
+  });
+
+export const signOutStore = (ctx: StoreCtx): Effect.Effect<void, never, Ports> =>
+  Effect.gen(function* () {
+    const { goToLogin } = yield* Ports;
+    yield* resetUserState(ctx);
     // The app still clears local state even if sign-out fails.
     yield* fromPromise(() => authClient.signOut()).pipe(Effect.ignore);
     goToLogin();

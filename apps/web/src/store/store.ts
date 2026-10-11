@@ -322,6 +322,12 @@ export interface ChatStore {
   ) => Promise<string>;
   createInvite: () => Promise<string>;
   signOut: () => Promise<void>;
+  /**
+   * Clears the previous account's state when a different user signs in on the
+   * same store (T-1136): the chat list and the per-message caches must not
+   * carry over. Unlike `signOut`, the session and the route stay put.
+   */
+  switchUser: () => Promise<void>;
   start: () => void;
   stop: () => void;
   search: string;
