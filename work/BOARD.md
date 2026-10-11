@@ -19,7 +19,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
   - **a sent attachment or GIF has no bytes:** it is a file row on web and "Not loaded: untrusted address" on mobile, because the fake slot is an empty `data:` url (`packages/mock-backend/src/xmpp/core.ts:227-231`).
 
   Load paths and options: `docs/audit/mock-sweep-status.md` §3-§4. Any fix sits next to `isTrustedMediaUrl` (`packages/chat-core/src/media.ts:82`).
-- **Mobile mock "Always allowed": re-check on the next approvals smoke.** The old `mock/approvals.ts`, which returned no rules, was deleted in T-1061. Approvals now run on the backend's `approval-rules` domain, and nobody has looked at the list since.
 - **Mobile: about 9 more `Effect.runFork(Fiber.interrupt(...))` sites in `components/chat` could use `interruptFiber` (`lib/effect/timers.ts`, T-1050).** The `runSync` ones differ and stay.
 - **Dedup slices that need a lead decision (`docs/audit/dedup-status.md` §8):** S6 crypto envelope (keys), S7-S9 rate limiters, S10-S11 `groups/access.ts` (permissions), S15 web settings facade (keys). S4 (schema-issue walker) must keep audit's two extra cases.
 
