@@ -6,11 +6,11 @@
 // The schemas and the group live in the shared contract (`@zilar/api-contract`,
 // T-0892); this file keeps the handlers and layers.
 
-import { Effect, Layer, Option, Schema } from 'effect';
+import { Layer, Option, Schema } from 'effect';
 import { HttpServerRequest } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
-import { CurrentUser, InviteLinksGroup, InviteLinksPreviewRateLimit } from '@zilar/api-contract';
+import { InviteLinksGroup, InviteLinksPreviewRateLimit } from '@zilar/api-contract';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
@@ -18,14 +18,13 @@ import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
   handler,
-  httpErrorResponse,
   mountApi,
-  requestIdOf,
   schemaErrorLayer,
   sessionLayer,
   socketAddressOf,
   type EffectApiMount,
 } from '../effect/http-core';
+import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { clientIpFrom } from '../http/client-ip';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
@@ -76,27 +75,6 @@ const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
 // The shape check still answers the same 404 `invalid_link`, so it runs inside
 // the handler where the old decode did; the contract keeps `:token` a string.
 const InviteToken = Schema.String.check(Schema.isPattern(TOKEN_PATTERN));
-
-// The join preview limiter runs before the token is decoded, exactly like the
-// old route's `previewLimiter.allow` -> token check order.
-function previewRateLimitLayer(limiter: RateLimiter): Layer.Layer<InviteLinksPreviewRateLimit> {
-  return Layer.succeed(
-    InviteLinksPreviewRateLimit,
-    InviteLinksPreviewRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many join attempts, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
 
 const InviteLinksApi = HttpApi.make('invite-links').add(InviteLinksGroup);
 
@@ -219,7 +197,15 @@ export function createInviteLinksApi(deps: InviteLinksApiDependencies): EffectAp
   const apiLayer = HttpApiBuilder.layer(InviteLinksApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(previewRateLimitLayer(previewLimiter)),
+    // The join preview limiter runs before the token is decoded, exactly like
+    // the old route's `previewLimiter.allow` -> token check order.
+    Layer.provide(
+      rateLimitLayer(
+        InviteLinksPreviewRateLimit,
+        previewLimiter,
+        'Too many join attempts, try again later',
+      ),
+    ),
     Layer.provide(schemaErrorLayer(logger)),
   );
 

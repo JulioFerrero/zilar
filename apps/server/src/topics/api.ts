@@ -7,25 +7,22 @@
 // (`@zilar/api-contract`, T-0892); this file keeps the handlers and layers.
 
 import { Effect, Layer } from 'effect';
-import { HttpServerRequest } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
-import { CurrentUser, TopicsCreateRateLimit, TopicsGroup } from '@zilar/api-contract';
+import { TopicsCreateRateLimit, TopicsGroup } from '@zilar/api-contract';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { HttpError } from '../errors';
 import {
   handler,
-  httpErrorResponse,
   mountApi,
-  requestIdOf,
   schemaErrorLayer,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
-import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { rateLimitLayer } from '../effect/rate-limit-middleware';
+import { createRateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   listTopicAis,
@@ -50,28 +47,6 @@ import {
 
 export const TOPIC_CREATE_RATE_LIMIT_MAX = 30;
 export const TOPIC_CREATE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
-
-// T-0108: topic creation hits ejabberd, so it is capped per user. The budget
-// runs before the payload is decoded, exactly like the old route's
-// `createLimiter.allow` -> decode order.
-function createRateLimitLayer(limiter: RateLimiter): Layer.Layer<TopicsCreateRateLimit> {
-  return Layer.succeed(
-    TopicsCreateRateLimit,
-    TopicsCreateRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many topics, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
 
 const TopicsApi = HttpApi.make('topics').add(TopicsGroup);
 
@@ -297,7 +272,12 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(TopicsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(createRateLimitLayer(createLimiter)),
+    // T-0108: topic creation hits ejabberd, so it is capped per user. The
+    // budget runs before the payload is decoded, exactly like the old route's
+    // `createLimiter.allow` -> decode order.
+    Layer.provide(
+      rateLimitLayer(TopicsCreateRateLimit, createLimiter, 'Too many topics, try again later'),
+    ),
     Layer.provide(schemaErrorLayer(logger)),
   );
 

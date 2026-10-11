@@ -6,16 +6,10 @@
 // The schemas, the group and its middleware tags live in the shared contract
 // (`@zilar/api-contract`, T-0892); this file keeps the handlers and layers.
 
-import { Effect, Layer } from 'effect';
-import { HttpServerRequest } from 'effect/http';
+import { Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
-import {
-  CurrentUser,
-  GroupsGroup,
-  GroupsJoinRateLimit,
-  GroupsRoleRateLimit,
-} from '@zilar/api-contract';
+import { GroupsGroup, GroupsJoinRateLimit, GroupsRoleRateLimit } from '@zilar/api-contract';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
@@ -23,13 +17,12 @@ import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
   handler,
-  httpErrorResponse,
   mountApi,
-  requestIdOf,
   schemaErrorLayer,
   sessionLayer,
   type EffectApiMount,
 } from '../effect/http-core';
+import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
@@ -57,49 +50,9 @@ export const PUBLIC_JOIN_RATE_LIMIT_MAX = 30;
 export const PUBLIC_JOIN_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
 // T-0124: role changes hit ejabberd (one affiliation write per call), so they
-// are capped per owner like topic creation is capped per user. The budget runs
-// before the payload is decoded, exactly like the old route's
-// `roleLimiter.allow` -> decode order.
-function roleRateLimitLayer(limiter: RateLimiter): Layer.Layer<GroupsRoleRateLimit> {
-  return Layer.succeed(
-    GroupsRoleRateLimit,
-    GroupsRoleRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many role changes, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
-
-// T-0164: the join budget runs before the path is decoded, exactly like the old
-// route's `joinLimiter.allow` -> `joinPublicGroup` order.
-function joinRateLimitLayer(limiter: RateLimiter): Layer.Layer<GroupsJoinRateLimit> {
-  return Layer.succeed(
-    GroupsJoinRateLimit,
-    GroupsJoinRateLimit.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        const user = yield* CurrentUser;
-        if (!limiter.allow(user.id)) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(429, 'rate_limited', 'Too many join attempts, try again later'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
-
+// are capped per owner like topic creation is capped per user. T-0164: open
+// joins of public groups share the same shape. Both budgets run before the
+// payload is decoded, exactly like the old routes' `allow` -> service order.
 const GroupsApi = HttpApi.make('groups').add(GroupsGroup);
 
 export interface GroupsApiDependencies {
@@ -361,8 +314,12 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(GroupsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(roleRateLimitLayer(roleLimiter)),
-    Layer.provide(joinRateLimitLayer(joinLimiter)),
+    Layer.provide(
+      rateLimitLayer(GroupsRoleRateLimit, roleLimiter, 'Too many role changes, try again later'),
+    ),
+    Layer.provide(
+      rateLimitLayer(GroupsJoinRateLimit, joinLimiter, 'Too many join attempts, try again later'),
+    ),
     Layer.provide(schemaErrorLayer(logger)),
   );
 

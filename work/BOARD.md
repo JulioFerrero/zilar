@@ -11,8 +11,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
 | [T-1104](T-1104-signup-invite-code-server-web.md) | Sign-up invite code: server invite_required + web field | in-progress | auto | T-1103 | Julio 10-11 |
 | [T-1105](T-1105-signup-invite-code-mobile.md) | Sign-up invite code: mobile field | todo | auto | T-1104 | after T-1104 |
-| [T-1107](T-1107-shared-crypto-envelope.md) | Dedup S6: one crypto envelope (keys, moved unchanged) | in-progress | auto | T-1103 | Julio OK 10-11 |
-| [T-1108](T-1108-rate-limit-layers-to-factory.md) | Dedup S7: rate-limit layers on the shared factory | in-progress | auto | T-1103 | Julio OK 10-11 |
 | [T-1109](T-1109-xmpp-unavailable-constructor.md) | Error codes: one xmppUnavailable() (503) | in-progress | auto | T-1103 | Julio OK 10-11; pin codes stay (different meanings) |
 
 ## Follow-ups
@@ -1144,3 +1142,5 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1102](T-1102-coolify-app-compose.md) | Deploy: deploy/coolify/docker-compose.app.yml, the Coolify stack built from git (build: contexts instead of GH | 2026-10-11 |
 | [T-1103](T-1103-coolify-app-compose-contexts.md) | Deploy fix: docker-compose.app.yml build contexts are relative to the repo root (Coolify passes --project-dire | 2026-10-11 |
 | [T-1106](T-1106-android-app-links.md) | Android App Links: https://chat.zilar.app links open the Zilar app (intent filter + assetlinks.json + web→app  | 2026-10-11 |
+| [T-1108](T-1108-rate-limit-layers-to-factory.md) | Dedup S7: the hand-written per-user rate-limit layers in groups, topics, invite-links (and integrations if ide | 2026-10-11 |
+| [T-1107](T-1107-shared-crypto-envelope.md) | Dedup S6: one shared AES-GCM/HKDF envelope for the push, connections and setup ciphers, moved unchanged (each  | 2026-10-11 |
