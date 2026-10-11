@@ -3,15 +3,17 @@
 // the unified JIDs (`dev-team@rooms.zilar.test` for General, `ai-dev-1` for
 // Dev-1). The private Hiring topic carries the Designers role; the pricing page
 // names Designers as its approver, like both old mocks.
-import type { Topic } from '@zilar/api-contract';
+//
+// Every other seeded group gets a General topic row of its own (T-1090), built
+// by `generalTopicRow`, so `/groups/:id/topics` lists General for all of them,
+// not only Dev team. It is the same row the real server creates on group create
+// and keeps the group's room JID as its `chatJid`.
 import type { MockSeed } from '../../data';
-import { mockAis } from '../ais/seed';
+import { generalTopicRow, groupRoomJid } from '../chats/general-topics';
 import { mockGroups } from '../groups/seed';
-import { mockGroupRoles } from '../roles/seed';
-import { buildTopicView, type TopicViewSource } from './view';
 import type { MockTopic } from './tables';
 
-export const mockTopics: readonly MockTopic[] = [
+const devTeamTopics: readonly MockTopic[] = [
   {
     id: 't-devteam-general',
     groupId: 'g-devteam',
@@ -147,30 +149,16 @@ export const mockTopics: readonly MockTopic[] = [
   },
 ];
 
-// The seed's own view source, built from the seed constants of the neighbouring
-// domains (the routes use one built from the live `MockData` instead).
-const SEED_SOURCE: TopicViewSource = {
-  groupMemberCount: (groupId) =>
-    mockGroups.find((group) => group.id === groupId)?.members.length ?? 0,
-  role: (roleId) => {
-    const role = mockGroupRoles.find((item) => item.id === roleId);
-    return role === undefined
-      ? undefined
-      : { id: role.id, name: role.name, memberIds: role.memberIds };
-  },
-  aiName: (aiId) => mockAis.find((ai) => ai.id === aiId)?.name ?? 'An AI',
-};
-
 /**
- * The Dev team's visible topics as contract rows, for the `chats` seed's
- * `ChatEntry.topics`; the route rebuilds the same rows from the live tables.
+ * The seeded groups' General rows: one for every group the Dev team's seven
+ * rows do not already cover, in the group's own room.
  */
-export function seedTopicViews(): Topic[] {
-  return mockTopics
-    .filter((topic) => !topic.archived)
-    .sort((a, b) => (a.isGeneral === b.isGeneral ? 0 : a.isGeneral ? -1 : 1))
-    .map((topic) => buildTopicView(topic, SEED_SOURCE));
-}
+const generalTopics: readonly MockTopic[] = mockGroups
+  .filter((group) => !devTeamTopics.some((topic) => topic.groupId === group.id))
+  .map((group) => generalTopicRow(group.id, groupRoomJid(group.id)));
+
+/** Every live topic row: Dev team's seven plus one General per other group. */
+export const mockTopics: readonly MockTopic[] = [...devTeamTopics, ...generalTopics];
 
 /** The topics domain's rows for the combined seed. */
 export function seedTopics(): Partial<MockSeed> {
