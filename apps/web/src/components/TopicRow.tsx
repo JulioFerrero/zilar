@@ -197,8 +197,13 @@ export const GroupHeaderRow = memo(function GroupHeaderRow({
   archivedOpen: boolean;
   onToggleArchived: (groupId: string) => void;
   isWide?: boolean;
-  onOpenNewTopic?: (groupId: string) => void;
+  /** Opens the new-topic dialog for this group; the value is a chat row id. */
+  onOpenNewTopic?: (chatId: string) => void;
 }) {
+  // The dialog and the store resolve the group from a chat row id, not the
+  // group id: pass the General topic's row id (every group has one since
+  // T-1090). The first row covers a legacy group whose topics have not loaded.
+  const newTopicChatId = (topics.find((topic) => topic.topic?.isGeneral === true) ?? topics[0])?.id;
   const active = topics.filter(
     (topic) => topic.topic?.archived !== true && topic.archived !== true,
   );
@@ -269,12 +274,12 @@ export const GroupHeaderRow = memo(function GroupHeaderRow({
             </span>
           </span>
         </button>
-        {onOpenNewTopic !== undefined && (
+        {onOpenNewTopic !== undefined && newTopicChatId !== undefined && (
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
-            onClick={() => onOpenNewTopic(groupId)}
+            onClick={() => onOpenNewTopic(newTopicChatId)}
             aria-label={`New topic in ${groupTitle}`}
             title={`New topic in ${groupTitle}`}
             className="shrink-0 rounded-full text-muted-foreground"

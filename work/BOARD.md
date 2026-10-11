@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1099](T-1099-web-new-topic-from-group-header.md) | Web bug: New topic from the group header fails (group id passed as chat id) | in-progress | auto | T-1096 | may affect live |
 
 ## Follow-ups
 
@@ -1135,3 +1134,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1095](T-1095-split-mobile-store-types.md) | Split apps/mobile/src/store/types.ts (507 lines): list-view helpers and send option types out, ChatStoreState  | 2026-10-11 |
 | [T-1097](T-1097-split-mobile-store-effects-groups.md) | Split apps/mobile/src/store/effects/groups.ts (586 lines): the GroupActions object moves to group-actions.ts b | 2026-10-11 |
 | [T-1096](T-1096-split-web-store-effects-groups.md) | Split apps/web/src/store/effects/groups.ts (548 lines) into topics + group create + group settings, pure reloc | 2026-10-11 |
+| [T-1099](T-1099-web-new-topic-from-group-header.md) | Web bug: New topic from a group header's + fails ('Could not create the topic', blank group name): the header  | 2026-10-11 |

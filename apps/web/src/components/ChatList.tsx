@@ -44,7 +44,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   // T-0164: the Explore overlay (public groups and channels to join).
   const [exploreOpen, setExploreOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const [newTopicGroup, setNewTopicGroup] = useState<string | undefined>(undefined);
+  const [newTopicChatId, setNewTopicChatId] = useState<string | undefined>(undefined);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsedGroups());
   const [archivedOpen, setArchivedOpen] = useState<Set<string>>(() => readArchivedOpen());
   const toggleCollapse = useCallback(
@@ -174,13 +174,13 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
         onToggleShowArchived={() => setShowArchived((value) => !value)}
         onInvite={() => setInviteOpen(true)}
         onExplore={() => setExploreOpen(true)}
-        onOpenNewTopic={setNewTopicGroup}
+        onOpenNewTopic={setNewTopicChatId}
       />
       <NewChatButton onExplore={() => setExploreOpen(true)} />
       {inviteOpen && <InviteDialog onClose={() => setInviteOpen(false)} />}
       {exploreOpen && <ExplorePage onClose={() => setExploreOpen(false)} />}
-      {newTopicGroup !== undefined && (
-        <NewTopicDialog groupId={newTopicGroup} onClose={() => setNewTopicGroup(undefined)} />
+      {newTopicChatId !== undefined && (
+        <NewTopicDialog groupId={newTopicChatId} onClose={() => setNewTopicChatId(undefined)} />
       )}
     </div>
   );
