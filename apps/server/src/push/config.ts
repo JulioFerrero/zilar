@@ -65,6 +65,12 @@ const pushEnvSchema = Schema.Struct({
   // existing rows: the component drops (never sends from) undecryptable
   // devices, and the device list invites re-enabling.
   PUSH_STORAGE_KEY: Schema.optional(Schema.String.pipe(Schema.check(Schema.isMinLength(32)))),
+  // FCM HTTP v1 (native-push-plan.md §2.3). The service account is a secret
+  // (the whole downloaded JSON as a one-line string); `FCM_PROJECT_ID` may be
+  // omitted and read from the JSON's `project_id`. Both are optional: with
+  // neither set the server boots exactly as before.
+  FCM_SERVICE_ACCOUNT_JSON: Schema.optional(nonEmptyStringSchema),
+  FCM_PROJECT_ID: Schema.optional(nonEmptyStringSchema),
 });
 
 export type PushConfig = Schema.Schema.Type<typeof pushEnvSchema>;
@@ -102,13 +108,14 @@ function failedKeysOf(
 }
 
 // Docker Compose renders an unset optional as an empty string (`${VAR:-}`),
-// which the schema would reject: an empty `PUSH_*` value means "not set".
+// which the schema would reject: an empty `PUSH_*`/`FCM_*` value means "not
+// set".
 function emptyPushSettingsAsUnset(
   env: Record<string, string | undefined>,
 ): Record<string, string | undefined> {
   const normalized = { ...env };
   for (const key of Object.keys(normalized)) {
-    if (key.startsWith('PUSH_') && normalized[key] === '') {
+    if ((key.startsWith('PUSH_') || key.startsWith('FCM_')) && normalized[key] === '') {
       delete normalized[key];
     }
   }
@@ -155,10 +162,77 @@ export function loadPushConfigOrExit(env: Record<string, string | undefined>): P
   }
 }
 
+const fcmServiceAccountSchema = Schema.Struct({
+  client_email: nonEmptyStringSchema,
+  private_key: nonEmptyStringSchema,
+  project_id: Schema.optional(nonEmptyStringSchema),
+});
+
+export type FcmServiceAccount = {
+  clientEmail: string;
+  privateKey: string;
+};
+
+export type FcmConfig = {
+  serviceAccount: FcmServiceAccount;
+  projectId: string;
+};
+
+// Decodes `FCM_SERVICE_ACCOUNT_JSON`. Returns null for anything that is not
+// JSON or lacks `client_email`/`private_key`; the raw value is never echoed.
+function parseFcmServiceAccount(
+  raw: string,
+): { serviceAccount: FcmServiceAccount; projectId: string | null } | null {
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const exit = Schema.decodeUnknownExit(fcmServiceAccountSchema)(json);
+  if (!Exit.isSuccess(exit)) {
+    return null;
+  }
+  return {
+    serviceAccount: { clientEmail: exit.value.client_email, privateKey: exit.value.private_key },
+    projectId: exit.value.project_id ?? null,
+  };
+}
+
+// The FCM service account and its resolved project id, or null when FCM is not
+// configured. `FCM_PROJECT_ID` wins over the JSON's `project_id`. The wiring
+// (Task 4) builds the token provider and sender from this and nothing else.
+export function readFcmConfig(config: PushConfig): FcmConfig | null {
+  const raw = config.FCM_SERVICE_ACCOUNT_JSON;
+  if (raw === undefined) {
+    return null;
+  }
+  const parsed = parseFcmServiceAccount(raw);
+  if (parsed === null) {
+    return null;
+  }
+  const projectId = config.FCM_PROJECT_ID ?? parsed.projectId;
+  if (projectId === null) {
+    return null;
+  }
+  return { serviceAccount: parsed.serviceAccount, projectId };
+}
+
 // The enabled config, or null with the reason named when `PUSH_ENABLED=true`
 // but a required value is missing. Values are never echoed: the reason names
-// the variable, not its content.
+// the variable, not its content. FCM is checked first and independently of
+// `PUSH_ENABLED`, because an invalid service account must be caught whenever
+// it is present, not only when web push is on.
 export function pushConfigError(config: PushConfig): string | null {
+  if (config.FCM_SERVICE_ACCOUNT_JSON !== undefined) {
+    const parsed = parseFcmServiceAccount(config.FCM_SERVICE_ACCOUNT_JSON);
+    if (parsed === null) {
+      return 'push is misconfigured: FCM_SERVICE_ACCOUNT_JSON';
+    }
+    if ((config.FCM_PROJECT_ID ?? parsed.projectId) === null) {
+      return 'push is misconfigured: FCM_PROJECT_ID';
+    }
+  }
   if (!config.PUSH_ENABLED) {
     return null;
   }
