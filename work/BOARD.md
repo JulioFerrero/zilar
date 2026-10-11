@@ -9,14 +9,10 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-1091](T-1091-ball-avatar-package.md) | Ball avatars: @zilar/ball-avatar (glossy) replaces dither-avatar | in-progress | auto | T-1090 | Julio picked A, glossy, 10-11 |
 
 ## Follow-ups
 
-- **Planned late: our own "ball avatar" library to replace the dither avatars (Julio, 2026-10-11).** Queue it near the end of the current plan: after the mock rebuild and the remaining cleanups, but before Julio's single live test and the deploy.
-  - **What it is:** like `dither-avatar`, a deterministic avatar from a seed (the id), but rendered as a **3D-looking ball**. Each seed gives its own colours and light direction (highlight, shading, maybe a rim light).
-  - **What it outputs:** SVG, so web shows it as `<img>` and mobile through `SvgXml` (react-native-svg), exactly where T-1075 plugged in `ditherAvatarSvg`/`ditherAvatarDataUri` (`packages/chat-core/src/avatar.ts`).
-  - **Where it lives:** a small workspace package with zero dependencies, like `dither-avatar`.
-  - **Before the spec:** show Julio a preview page of a few seeds, as for the dither pick.
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile. This is a new feature, so it needs Julio's OK.
 - **Mock images (waiting for Julio's choice, NOW.md 2026-10-11 05:00).** Web seed stickers are fixed (T-1083, a dev-only vite plugin), and web GIFs were never blank. Still broken:
   - **mobile sticker and GIF images are blank:** native `Image` fetches over the network, never through `mockFetch`, and the seed art is SVG;
