@@ -1,7 +1,7 @@
 ---
 id: T-1131
 title: "Size split: apps/server/src/sandbox/tool-worker.ts (616) — one failRun() replaces the repeated error finish literals, and the fetch bridge and VM helpers move to sandbox/tool-worker-*.ts; sandbox tests unedited"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1131-split-tool-worker
 model: auto
@@ -56,4 +56,70 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Split `apps/server/src/sandbox/tool-worker.ts` (616 → 275 lines) with no behaviour change.
+
+- **`failRun(kind, message)`** added inside `run`, defined right after `let fetchCount = 0`. It calls `finish({ type: 'error', kind, message, fetchCount, durationMs: Date.now() - startedAt })`, so `fetchCount` is still read at call time.
+- **New `tool-worker-vm.ts` (150 lines):** `WorkerErrorKind`, `dumpVmError`, `logToParent`, `nextImmediate`, `disposeQuietly`, `interruptedResult`, plus the CPU tracker (`createCpuTracker`) and the VM entry points (`createVmTools` → `pumpJobs`, `evalInVm`, `callInVm`, `track`/`handles`, `settleVm`, `rejectWith`). They take the runtime/context/CPU state as parameters; the bodies are the original code. Call sites in `run` keep the same names.
+- **New `tool-worker-fetch.ts` (205 lines):** `WorkerFetchPayload`, `waitForFetchResponse` (moved byte-for-byte) and `createFetchBridge`, the old `fetchEffect`/`fetchImpl` moved verbatim except `fetchCount` now goes through `readFetchCount()`/`addFetch()` callbacks.
+- `tool-worker.ts` keeps `WorkerParams`, `finish`, `failRun`, the `run` generator control flow and `disposeVm`. Files: `tool-worker.ts` 275, `tool-worker-fetch.ts` 205, `tool-worker-vm.ts` 150 — all under 400.
+
+### Every `finish` call, before → after
+
+Before (`git show main:…tool-worker.ts`), 16 `finish({…})` calls, all with `durationMs: Date.now() - startedAt` except the first:
+
+| Before | Shape | After |
+|---|---|---|
+| :136 | `invalid_output`, `'tool source is too large'`, `fetchCount: 0, durationMs: 0` | kept, `tool-worker.ts:48` (different shape) |
+| :396 | `{ ...interrupted, fetchCount, durationMs }` | kept, `:127` |
+| :400 | `runtime`, `'imports are not allowed'` | `failRun('runtime', 'imports are not allowed')` `:131` |
+| :409 | `syntax`, `dumped.message.slice(0, 300)` | `failRun('syntax', …)` `:134` |
+| :422 | `invalid_output`, `'tool must default-export a function'` | `failRun('invalid_output', …)` `:141` |
+| :436 | `runtime`, `dumped.message.slice(0, 300)` | `failRun('runtime', …)` `:149` |
+| :454 | `{ ...interrupted, fetchCount, durationMs }` | kept, `:161` |
+| :457 | `runtime`, `${dumped.name}: ${dumped.message}`.slice(0,300)` | `failRun('runtime', …)` `:164` |
+| :486 | same runtime message | `failRun('runtime', …)` `:187` |
+| :496 | `timeout`, `'tool timed out'` | `failRun('timeout', 'tool timed out')` `:191` |
+| :514 | `{ ...interrupted, fetchCount, durationMs }` | kept, `:203` |
+| :518 | `fetch_denied`, `dumped.message.slice(0, 300)` | `failRun('fetch_denied', …)` `:207` |
+| :527 | same runtime message | `failRun('runtime', …)` `:210` |
+| :560 | `invalid_output`, `'tool must return a string or { text, data }'` | `failRun('invalid_output', …)` `:237` |
+| :570 | `output_too_large`, `'tool output is too large'` | `failRun('output_too_large', …)` `:241` |
+| :579 | `type: 'result'` | kept, `:244` |
+
+After: 5 direct `finish` calls (`:48`, `:127`, `:161`, `:203`, `:244`) + the single literal inside `failRun` (`:64`), and 12 `failRun` call sites (the 11 above plus one extra, below).
+
+**Deviation (one extra site):** the terminal `Effect.catchCause` handler previously did a raw `parentPort?.postMessage({ type: 'error', kind: 'runtime', message: 'tool failed', fetchCount, durationMs: Date.now() - startedAt })` — not a `finish` call, so it was not in the spec's list, but its payload had exactly the deduplicated shape. I replaced it with `failRun('runtime', 'tool failed')` (`:268`), identical behaviour (`finish` also posts to `parentPort`). It is outside the generator's control flow and does not change it.
+
+### Commands and real results
+
+- `pnpm install` — done, no errors (one pre-existing peer-dep warning in `apps/mobile`).
+- `pnpm --filter @zilar/server test --maxWorkers=2 --reporter=dot src/sandbox/run-tool.test.ts src/sandbox/host-fetch.test.ts src/sandbox/ip-guard.test.ts` — **3 files passed, 108 tests passed**. No test file edited.
+- `pnpm gate` — first run `FAIL format` on `tool-worker-fetch.ts`; fixed with `pnpm exec prettier --write` on that one file, then:
+  ```
+  gate: 4 changed file(s) against main
+  PASS  install (frozen)  (1.3s)
+  PASS  format  (1.1s)
+  PASS  lint  (1.0s)
+  PASS  typecheck  (2.9s)
+  PASS  effect  (0.6s)
+  PASS  tests @zilar/server  (28.7s)
+  scope: every changed file is inside the Allowed files
+  GATE PASS
+  ```
+  The 4 changed files are the three allowed sandbox files plus this task file.
+
+### Notes / open questions
+
+- No behaviour change intended: same limits, error kinds/messages, order of checks, messages to the parent, and CPU accounting (the tracker state moved into `createCpuTracker` unchanged).
+- I did not edit the three test files.
+- `tool-worker.ts` reached 275 lines, so I did not need to stop at "smallest safe size".
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-11: approved. The pre-review is clean, with 1 nit (a stale line count in the Report).**
+- **The split:** `sandbox/tool-worker.ts` goes from 616 to 275 lines. The fetch bridge moves to `tool-worker-fetch.ts` (214), and the VM helpers to `tool-worker-vm.ts` (150).
+- **`failRun(kind, message)`** (`tool-worker.ts:63`) posts the same `{ type: 'error', kind, message, fetchCount, durationMs }` and reads `fetchCount` at call time. It replaces 12 identical literals; the `...interrupted`, early-exit and result calls keep their own shape.
+- **The lead's string check:** every error kind (`syntax`, `runtime`, `fetch_denied`, `output_too_large`) and every message from main is still present in the new files.
+- **Tests:** the lead ran `run-tool`, `host-fetch` and `ip-guard` on the branch: 108 green, with no test edited. The gate passed.

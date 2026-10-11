@@ -1,7 +1,7 @@
 ---
 id: T-1130
 title: "Size split: apps/mobile/src/store/real-store.ts (693) — chat-row mapping, the closure's helpers, initial state and teardown move into store/effects/ modules; the message-pipeline tests stay green unedited"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1130-split-mobile-real-store
 model: auto
@@ -68,4 +68,55 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+**What I did** — split `apps/mobile/src/store/real-store.ts` (693 lines) into four new `store/effects/` modules. No behaviour change; no test file edited.
+
+- `effects/chat-rows.ts` (61): `isUpdateStanza`, `summaryFor` and `summariesFor` moved byte-for-byte (only the `../lib/...` imports became `../../lib/...`). `real-store.ts` re-exports `isUpdateStanza` and `summariesFor`.
+- `effects/locals.ts` (105): `createStoreLocals()` returns one object holding every mutable local (`core`, `lastRead`, `cursors`, `pendingOutgoing`, `groupIds`, `groupDetails`, the role maps, `chatPrefRows`, `groupMembers`, the loading sets, `pendingOpenChatId`, `groupsJoined`, `pinsPollEnabled`, plus `mediaToken`, `mediaTrustedHosts`, `pendingUploads`, `pendingVoices`). The explaining comments moved next to each property.
+- `effects/helpers.ts` (193): `makeStoreHelpers({ locals, get, set, appState })` returns the helpers (`isVisible`, the message `ledger` and its members, `clearAttachmentFailure`, `markVoiceFailed`, `rememberGroupIds`, `groupIdForChat`, `rememberTopicRoles`, `rememberMembers`, `mentionMembersFor`, `setChatMessage`, `nick`). Bodies unchanged apart from `x` → `locals.x`. `coreApi`/`corePorts`/`coreCtx` stayed in `real-store.ts` (they need `ctx`/`lifecycle`, the spec's allowance).
+- `effects/user-state.ts` (117): `makeUserState({ locals, s, set, ownedAis, ledger, events })` returns `initialUserState` and `teardown`; bodies unchanged apart from renames.
+- `real-store.ts` (306): keeps `createRealChatStore`. It builds `locals`, the `StoreState` bridge (getters now read `locals`), the helpers, `ctx` and the `make*` modules, then assigns the late-bound `userState` (`teardown` calls `events.clearTimers()`, so it is created after `makeEvents`; same late-bind idiom as `effects/lifecycle.ts`). Public exports unchanged.
+
+Deviations / notes:
+- `makeStoreHelpers` deps are `{ locals, get, set, appState }` rather than `s`/`ports`: no moved helper reads `s` or another port, and passing `appState` directly keeps `isVisible`'s body identical. `ctx.h` spreads `helpers`, so every ledger member still reaches the effect modules.
+- `makeUserState` takes `ownedAis: ports.ownedAis` instead of `ports` (the only port `initialUserState` reads).
+- Ran `prettier --write` on the five files so the gate's format step is green.
+
+**Tests I ran** (no test file edited):
+`pnpm --filter @zilar/mobile test --maxWorkers=2 --reporter=dot src/store/real-store.history.test.ts src/store/real-store.incoming.test.ts src/store/real-store.ledger.test.ts src/store/real-store.lifecycle.test.ts src/store/real-store.send.test.ts src/store/real-store.sign-out.test.ts src/store/effects/send.test.ts`
+Result: `Test Files 7 passed (7)` / `Tests 40 passed (40)`.
+
+**Line counts** (`wc -l`, every file ≤ 400):
+```
+306 apps/mobile/src/store/real-store.ts
+ 61 apps/mobile/src/store/effects/chat-rows.ts
+105 apps/mobile/src/store/effects/locals.ts
+193 apps/mobile/src/store/effects/helpers.ts
+117 apps/mobile/src/store/effects/user-state.ts
+```
+
+**`pnpm gate`** (repo root):
+```
+PASS  install (frozen)  (1.0s)
+PASS  format  (1.0s)
+PASS  lint  (0.8s)
+PASS  typecheck  (3.0s)
+PASS  effect  (0.7s)
+PASS  tests @zilar/mobile  (2.8s)
+scope: every changed file is inside the Allowed files
+GATE PASS
+```
+
+**Files changed**: `apps/mobile/src/store/real-store.ts`, `apps/mobile/src/store/effects/chat-rows.ts`, `apps/mobile/src/store/effects/locals.ts`, `apps/mobile/src/store/effects/helpers.ts`, `apps/mobile/src/store/effects/user-state.ts`, `work/T-1130-split-mobile-real-store.md`. Nothing outside Allowed files.
+
+**Blocked / needs a decision**: none.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-11: approved. The pre-review is clean, with 1 nit (a type import kept only for one cast).**
+- **The split:** mobile `store/real-store.ts` goes from 693 to 306 lines. `effects/chat-rows.ts` (61), `effects/locals.ts` (105, every mutable local on one object), `effects/helpers.ts` (193) and `effects/user-state.ts` (117) hold the moved code. The public exports are unchanged (`isUpdateStanza` and `summariesFor` are re-exported).
+- **Behaviour, as the pre-review checked it:**
+  - the `s` getters and setters bridge the former `let`s onto `locals`;
+  - `coreCtx.k` uses the same ledger instance;
+  - `teardown` clears the same locals in the same order.
+- **Tests:** the lead ran the 6 `real-store.*.test.ts` files and `effects/send.test.ts` on the branch: 7 files, 40 green. No test file was edited.
+- **The emulator check is not done:** it needs a sign-in, and the lead does not sign in on the live site. Nothing deploys (mobile only). The real check is Julio's phone with the next APK.

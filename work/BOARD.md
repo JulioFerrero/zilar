@@ -9,8 +9,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account; superseded by T-1129's plan |
-| [T-1131](T-1131-split-tool-worker.md) | Size split: sandbox/tool-worker.ts (616) + failRun() | in-progress | auto | T-1128 | Julio 10-11 leftovers |
-| [T-1130](T-1130-split-mobile-real-store.md) | Size split: mobile store/real-store.ts (693), pipeline tests unedited | in-progress | auto | T-1128 | Julio 10-11 leftovers |
+| [T-1132](T-1132-push-device-kind.md) | Native push 1/6: device kind + token (migration 0047) | in-progress | auto | T-1129 | the only schema task |
+| [T-1133](T-1133-fcm-sender.md) | Native push 2/6: FCM token minting + sender | in-progress | auto | T-1129 | keys: tests |
 
 ## Follow-ups
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile. This is a new feature, so it needs Julio's OK.
@@ -1171,3 +1171,5 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1125](T-1125-split-web-ports.md) | Size split: apps/web/src/store/effects/ports.ts (427) — the browser default adapters move unchanged to store/e | 2026-10-11 |
 | [T-1128](T-1128-mobile-interrupt-fiber.md) | Mobile dedup: the 18 inline Effect.runFork(Fiber.interrupt(x)) calls use interruptFiber from lib/effect/timers | 2026-10-11 |
 | [T-1129](T-1129-native-push-plan.md) | Audit: plan for native push (Android FCM now, iPhone APNs + publisher relay next), content-free, on top of the | 2026-10-11 |
+| [T-1130](T-1130-split-mobile-real-store.md) | Size split: apps/mobile/src/store/real-store.ts (693) — chat-row mapping, the closure's helpers, initial state | 2026-10-11 |
+| [T-1131](T-1131-split-tool-worker.md) | Size split: apps/server/src/sandbox/tool-worker.ts (616) — one failRun() replaces the repeated error finish li | 2026-10-11 |

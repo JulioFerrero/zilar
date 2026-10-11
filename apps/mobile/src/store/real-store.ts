@@ -1,8 +1,7 @@
-import type { ChatSummary, MentionMember, UiMessage } from '@zilar/chat-core';
+import type { UiMessage } from '@zilar/chat-core';
 import {
   clearFailure,
   coreKind,
-  createMessageLedger,
   recordRead,
   signatureFor,
   sortByRecency,
@@ -13,14 +12,9 @@ import {
   type CorePorts,
 } from '@zilar/client-core/store';
 import { Effect } from 'effect';
-import { type ChatMessage, type XmppCore } from '@zilar/xmpp-core';
 import { createAtomStore, type StoreApi } from './atomStore';
 
-import type { ChatEntry, GroupDetail, Me } from '../lib/chat-api';
-import type { ChatPref } from '../lib/chat-prefs-api';
-import { type ApproverRole, type Topic, type TopicRole } from '../lib/topics-api';
-import type { CustomGroupRole } from '../lib/roles-api';
-import { summariesForTopicsEntry } from '../lib/topics';
+import type { ChatEntry } from '../lib/chat-api';
 import { makeEvents } from './effects/events';
 import { makeGroups } from './effects/groups';
 import { makeHistory } from './effects/history';
@@ -29,11 +23,10 @@ import { makePins } from './effects/pins';
 import { makeSend } from './effects/send';
 import { Ports, PortsLive, type RealStoreDeps } from './effects/ports';
 import { makeLife, makeRunners, type StoreCtx, type StoreState } from './effects/runtime';
-import type { MediaTokenShape } from '../lib/attachments';
-import type { PickedFile } from '../lib/attachment-ports';
-import type { RecordedVoice } from '../lib/voice';
-import type { VoiceFailureReason } from '../lib/voice-native';
-import { CURRENT_USER_ID } from '../lib/types';
+import { createStoreLocals } from './effects/locals';
+import { makeStoreHelpers } from './effects/helpers';
+import { makeUserState, type UserState } from './effects/user-state';
+import { isUpdateStanza, summariesFor } from './effects/chat-rows';
 import type { ChatStoreState } from './types';
 
 export { MESSAGE_JUMP_MAX_PAGES, MESSAGE_JUMP_WAIT_MS } from './effects/history';
@@ -43,373 +36,105 @@ export {
   PINS_REFRESH_INTERVAL_MS,
   TOPIC_REFRESH_INTERVAL_MS,
 } from './effects/polling';
+export { isUpdateStanza, summariesFor };
 
 export type { AppStateLike, RealStoreDeps } from './effects/ports';
 
-/**
- * XEP-0308 corrections, XEP-0424 retractions and XEP-0444 reactions arrive as
- * their own stanzas. They are never chat messages: an edit carries the new
- * full body, a retraction is empty, and a reaction-only update carries no body.
- * The store applies them through `ingestEdit` / `ingestReaction` instead of
- * adding them as their own bubble or preview row.
- */
-export function isUpdateStanza(message: ChatMessage): boolean {
-  return (
-    message.correction !== undefined ||
-    message.retraction !== undefined ||
-    message.reactions !== undefined
-  );
-}
-
-function summaryFor(entry: ChatEntry): ChatSummary {
-  const base = {
-    id: entry.chatJid,
-    title: entry.title,
-    isAI: entry.kind === 'dm' && entry.isAi === true,
-    space: 'personal' as const,
-    unread: 0,
-    muted: false,
-  };
-  if (entry.kind === 'dm') {
-    return {
-      ...base,
-      kind: 'dm',
-      ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
-      online: false,
-    };
-  }
-  return {
-    ...base,
-    kind: 'group',
-    memberCount: entry.memberCount,
-    onlineCount: 0,
-  };
-}
-
-/**
- * One `/api/chats` entry to its chat rows (T-0112): DMs map to one row; a
- * group with `topics` maps to one row per visible topic (General keeps the
- * group's old chat id); a group without the field keeps its single legacy
- * row. Malformed topic rows are dropped by `chatEntryTopics`, never rendered.
- */
-export function summariesFor(entry: ChatEntry): ChatSummary[] {
-  if (entry.kind !== 'group') {
-    return [summaryFor(entry)];
-  }
-  const rows = summariesForTopicsEntry(entry);
-  // `summariesForTopicsEntry` already falls back to the legacy row for an
-  // older server; `summariesFor` only keeps the export beside `summaryFor`.
-  return rows;
-}
+// One shared empty list: a selector must return the same reference while
+// nothing changed, or React re-renders forever ("Maximum update depth").
+const EMPTY_MESSAGES: UiMessage[] = [];
 
 /**
  * The real store: the same behaviour as the web (`apps/web/src/store/realStore.ts`)
  * with mobile storage/AppState seams. It loads chats and contacts over HTTP,
  * connects `xmpp-core`, and turns its events into store updates.
  */
-// One shared empty list: a selector must return the same reference while
-// nothing changed, or React re-renders forever ("Maximum update depth").
-const EMPTY_MESSAGES: UiMessage[] = [];
-
 export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStoreState> {
   // Every outside dependency comes from the `Ports` layer (injected or live).
   const ports = Effect.runSync(Ports.use(Effect.succeed).pipe(Effect.provide(PortsLive(deps))));
   const { appState } = ports;
-  // The trusted media hosts (T-0150): the service host, the XMPP domain and
-  // `upload.<domain>`, from the latest XMPP token. Incoming image (and
-  // GIF-video) attachments auto-load only from these hosts; anything else is
-  // downgraded to a file row that never fetches without a tap.
-  let mediaToken: MediaTokenShape | undefined;
-  let mediaTrustedHosts: ReadonlySet<string> = new Set();
-
-  // The local bytes of an outgoing attachment, kept for a Retry after a
-  // failed upload (like web's `pendingAttachments`).
-  const pendingUploads = new Map<string, PickedFile>();
-  // A finished voice recording per optimistic message, kept for a Retry after
-  // a failed convert/upload/send (like web's `pendingVoices`, T-0154).
-  const pendingVoices = new Map<string, RecordedVoice>();
 
   return createAtomStore<ChatStoreState>((set, get) => {
-    let core: XmppCore | undefined;
-    let lastRead: Record<string, string> = {};
-    const cursors: Record<string, string | undefined> = {};
-    const pendingOutgoing = new Map<string, string[]>();
-    const groupIds = new Map<string, string>();
-    // groupId -> the group detail (people + roles + AIs), loaded on demand by
-    // the topics screen and the task strip owner picker. Keyed by group id
-    // (not chat id) so every topic row of a group shares one entry; the one
-    // exception is a legacy group row, whose own chat id doubles as the key
-    // until the server answers (see `rememberGroupIds`).
-    const groupDetails = new Map<string, GroupDetail>();
-    const loadingGroupDetails = new Set<string>();
-    // groupId -> the custom roles (T-0137), loaded on demand by the group
-    // screen. Keyed by group id like `groupDetails` so every topic row of a
-    // group shares one entry; published through `set()` (the
-    // `groupDetailsRevision` bump) so selectors re-fire. Replaced wholesale
-    // on every successful load or role write.
-    const groupRolesById = new Map<string, CustomGroupRole[]>();
-    const loadingGroupRoles = new Set<string>();
-    // topicId -> the attached roles + approver role (T-0137), loaded on
-    // demand by the topic info sheet. Replaced wholesale from every full
-    // topic response, so a private-to-public flip never leaves stale roles
-    // behind (the server clears them, and the response carries none).
-    const topicRolesById = new Map<
-      string,
-      { roles: TopicRole[]; approverRole: ApproverRole | null }
-    >();
-    const loadingTopicRoles = new Set<string>();
-    // Per-user chat prefs (T-0135), keyed by lowercase chat JID. Loaded with
-    // the chat list at boot and after every background refresh. The API
-    // client is injected by the app (`RealStoreDeps.chatPrefsApi`); tests
-    // that never touch prefs inject nothing and read empty rows.
-    let chatPrefRows: ChatPref[] = [];
-
-    // The user's chat folders (T-0248), sorted by position, are loaded with
-    // the chats (`effects/history.ts`) and written in `effects/events.ts`; a
-    // missing client keeps `[]`.
-    // chatId -> (lowercased userId -> display name)
-    const groupMembers = new Map<string, Map<string, string>>();
-    const loadingOlder = new Set<string>();
-    // First-page history loads currently in flight, by chat id (T-0067).
-    const loadingHistory = new Set<string>();
-    // A chat opened before the core was connected or before the chats had
-    // arrived. Only the latest one counts; it loads once both are ready.
-    let pendingOpenChatId: string | undefined;
-    // True once the group rooms are joined; a MAM query for a group before that
-    // fails, so a pending group history waits for it (T-0067).
-    let groupsJoined = false;
-    // The open chat's pins poll (T-0135): `openChat` starts it and the chat
-    // screen's `stopPinsPoll` ends it, as the per-chat poll did on mobile.
-    let pinsPollEnabled = false;
+    // The closure's mutable locals (the handles, caches and per-session maps),
+    // owned by one object so the helpers below share them.
+    const locals = createStoreLocals();
 
     // The state the effect modules share. The members that code in this
     // closure still reads by their old names are bridged to those names.
     const life = makeLife();
     const s: StoreState = {
       get core() {
-        return core;
+        return locals.core;
       },
       set core(value) {
-        core = value;
+        locals.core = value;
       },
       started: false,
       firstToken: undefined,
       boot: undefined,
-      cursors,
+      cursors: locals.cursors,
       finishedTurns: new Set<string>(),
       finishedTurnOrder: [],
-      loadingHistory,
-      loadingOlder,
-      groupIds,
-      pendingOutgoing,
+      loadingHistory: locals.loadingHistory,
+      loadingOlder: locals.loadingOlder,
+      groupIds: locals.groupIds,
+      pendingOutgoing: locals.pendingOutgoing,
       sequence: 0,
       sendRuns: new Map(),
-      pendingUploads,
-      pendingVoices,
-      groupDetails,
-      loadingGroupDetails,
-      groupRolesById,
-      loadingGroupRoles,
-      topicRolesById,
-      loadingTopicRoles,
-      groupMembers,
+      pendingUploads: locals.pendingUploads,
+      pendingVoices: locals.pendingVoices,
+      groupDetails: locals.groupDetails,
+      loadingGroupDetails: locals.loadingGroupDetails,
+      groupRolesById: locals.groupRolesById,
+      loadingGroupRoles: locals.loadingGroupRoles,
+      topicRolesById: locals.topicRolesById,
+      loadingTopicRoles: locals.loadingTopicRoles,
+      groupMembers: locals.groupMembers,
       get groupsJoined() {
-        return groupsJoined;
+        return locals.groupsJoined;
       },
       set groupsJoined(value) {
-        groupsJoined = value;
+        locals.groupsJoined = value;
       },
       get pendingOpenChatId() {
-        return pendingOpenChatId;
+        return locals.pendingOpenChatId;
       },
       set pendingOpenChatId(value) {
-        pendingOpenChatId = value;
+        locals.pendingOpenChatId = value;
       },
       get mediaToken() {
-        return mediaToken;
+        return locals.mediaToken;
       },
       set mediaToken(value) {
-        mediaToken = value;
+        locals.mediaToken = value;
       },
       get mediaTrustedHosts() {
-        return mediaTrustedHosts;
+        return locals.mediaTrustedHosts;
       },
       set mediaTrustedHosts(value) {
-        mediaTrustedHosts = value;
+        locals.mediaTrustedHosts = value;
       },
       get lastRead() {
-        return lastRead;
+        return locals.lastRead;
       },
       set lastRead(value) {
-        lastRead = value;
+        locals.lastRead = value;
       },
       get chatPrefRows() {
-        return chatPrefRows;
+        return locals.chatPrefRows;
       },
       set chatPrefRows(value) {
-        chatPrefRows = value;
+        locals.chatPrefRows = value;
       },
     };
 
-    function isVisible(): boolean {
-      return appState.current() === 'active';
-    }
+    // The plain helpers (the ledger, the row and group caches, the failure
+    // markers), built from the locals and the set/get pair.
+    const helpers = makeStoreHelpers({ locals, get, set, appState });
 
-    // Message ids and aliases, edits, reactions, mentions, sender names and
-    // the message mutators (`@zilar/client-core/store`).
-    const ledger = createMessageLedger({
-      get,
-      set,
-      memberName: (chatId, localpart) => groupMembers.get(chatId)?.get(localpart),
-      occupantNick: (chatId, fromJid) =>
-        core?.occupants(chatId).find((item) => item.realJid === fromJid || item.jid === fromJid)
-          ?.nick,
-      mediaToken: () => mediaToken,
-    });
-    const {
-      aliasRoot,
-      ingestHistoryEdits,
-      ingestHistoryReactions,
-      isEditStanza,
-      isReactionOnly,
-      linkMessageIds,
-      listFor,
-      myJid,
-      previewFor,
-      refreshEdits,
-      rememberAuthor,
-      rememberOriginId,
-      resolvePendingEdits,
-      sameMessage,
-      toUiMessage,
-      updateMessageAttachment,
-      updateMessageStatus,
-      updateMessageVoice,
-      withEdits,
-    } = ledger;
-
-    function clearAttachmentFailure(chatId: string, messageId: string): void {
-      set((state) => ({
-        messagesByChat: {
-          ...state.messagesByChat,
-          [chatId]: listFor(state, chatId).map((item) =>
-            sameMessage(item.id, messageId) ? clearFailure(item) : item,
-          ),
-        },
-      }));
-    }
-
-    // A failed voice send (T-0154, review round 1): the bubble keeps its
-    // local recording and shows a Retry with the plain reason, never a
-    // silent "sending". The reason rides the message in a subset of the
-    // shared `SendFailureReason` buckets plus `other` (a subset so the
-    // message keeps exactly the shared type); the bubble renders the
-    // matching copy.
-    function markVoiceFailed(
-      chatId: string,
-      messageId: string,
-      reason: VoiceFailureReason = 'server_unavailable',
-    ): void {
-      set((state) => ({
-        messagesByChat: {
-          ...state.messagesByChat,
-          [chatId]: listFor(state, chatId).map((item): UiMessage =>
-            sameMessage(item.id, messageId)
-              ? { ...item, failed: true, failureReason: reason }
-              : item,
-          ),
-        },
-      }));
-    }
-
-    // The room identity of a forward and the origin header live in the core
-    // (`forwardOriginFor` in `@zilar/client-core/store`), so the mobile store no
-    // longer keeps its own copy.
-
-    function rememberGroupIds(entries: ChatEntry[]): void {
-      for (const entry of entries) {
-        if (entry.kind === 'group') {
-          groupIds.set(entry.chatJid, entry.groupId);
-          for (const row of summariesFor(entry)) {
-            groupIds.set(row.id, entry.groupId);
-          }
-        }
-      }
-    }
-
-    // The group id behind one chat row: topic rows carry it directly
-    // (T-0139: the live row first, so a deep-linked topic works before any
-    // entry flowed through `rememberGroupIds`), legacy group rows resolve it
-    // through the remembered `/api/chats` entries.
-    function groupIdForChat(chatId: string): string | undefined {
-      return get().chats.find((entry) => entry.id === chatId)?.groupId ?? groupIds.get(chatId);
-    }
-
-    // Remembers the roles of one full topic response (create/patch/roles),
-    // replacing whatever was cached. The response is the server truth, so a
-    // private-to-public flip clears the entry instead of leaving it stale.
-    function rememberTopicRoles(topic: Topic): void {
-      topicRolesById.set(topic.id, { roles: topic.roles, approverRole: topic.approverRole });
-      set((state) => ({ groupDetailsRevision: state.groupDetailsRevision + 1 }));
-    }
-
-    // Remembers the member names of a group for one chat row (the loader is
-    // `ensureGroupMembers` in `effects/groups.ts`).
-    function rememberMembers(chatId: string, detail: GroupDetail): void {
-      const members = new Map<string, string>();
-      for (const member of detail.members) {
-        members.set(member.userId.toLowerCase(), member.name);
-      }
-      groupMembers.set(chatId, members);
-    }
-
-    // The mention members behind one chat row (T-0227, built like web's
-    // `applyGroupDetail`): people as `{ jid: localpart@domain, name, handle?
-    // }` plus the group's AIs as `{ jid, name }`, never yourself. Self is
-    // excluded by `userId` against `currentUserId` (T-0227 S2): `me?.jid`
-    // is undefined before boot and in the mock store, while `currentUserId`
-    // is always set (`me.id` after boot). The sender-name map above keeps
-    // working from the same detail. Reads the shared detail cache (so
-    // every topic row of a group agrees) and never fetches on its own.
-    function mentionMembersFor(chatId: string): MentionMember[] {
-      const groupId = groupIdForChat(chatId);
-      if (groupId === undefined) {
-        return [];
-      }
-      const detail = groupDetails.get(groupId);
-      if (detail === undefined) {
-        return [];
-      }
-      const mine = myJid();
-      const domain = mine === undefined ? undefined : mine.slice(mine.indexOf('@') + 1);
-      const meId = get().currentUserId;
-      const members: MentionMember[] = [];
-      for (const member of detail.members) {
-        if (member.userId === meId) {
-          continue;
-        }
-        const localpart = member.userId.toLowerCase();
-        members.push({
-          jid: domain === undefined ? member.userId : `${localpart}@${domain}`,
-          name: member.name,
-          ...(member.handle === undefined || member.handle === '' ? {} : { handle: member.handle }),
-        });
-      }
-      for (const ai of detail.ais) {
-        members.push({ jid: ai.jid, name: ai.name });
-      }
-      return members;
-    }
-
-    // An optimistic bubble also records its text as the base text, which the
-    // ledger restores when an edit is reverted (the web send pipeline does the
-    // same). Without it a revert would strip the text of an unechoed message.
-    function setChatMessage(chatId: string, message: UiMessage, clearUnread: boolean): void {
-      ledger.setChatMessage(chatId, message, clearUnread);
-      if (message.text !== undefined) {
-        ledger.rememberBaseText(message.id, message.text);
-      }
-    }
+    // Late-bound: the effect modules are built from the context below, and the
+    // teardown they call needs them, so it is assigned once they exist.
+    let userState!: UserState;
 
     // The core's view of this store (`@zilar/client-core/store`): the incoming
     // handlers, the message actions, the reads and history run on it. Mobile
@@ -427,7 +152,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     };
     const corePorts: CorePorts = {
       now: ports.now,
-      isVisible,
+      isVisible: helpers.isVisible,
       // Mobile keeps no last-read map on disk (T-0915): in memory only.
       storage: null,
       api: coreApi,
@@ -445,7 +170,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       set,
       ports: corePorts,
       rt: life.lifetime,
-      k: ledger,
+      k: helpers.ledger,
       fx: {
         syncBadge: () => {},
         dismissChatNotifications: () => {},
@@ -456,33 +181,25 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
           lifecycle.finishDraftTurn(chatId, turnId);
         },
         forgetRetryBytes: (messageId) => {
-          pendingUploads.delete(messageId);
-          pendingVoices.delete(messageId);
+          locals.pendingUploads.delete(messageId);
+          locals.pendingVoices.delete(messageId);
         },
       },
       get core() {
-        return core;
+        return locals.core;
       },
       set core(value) {
-        core = value;
+        locals.core = value;
       },
       get lastRead() {
-        return lastRead;
+        return locals.lastRead;
       },
       set lastRead(value) {
-        lastRead = value;
+        locals.lastRead = value;
       },
       lastReadUserId: undefined,
-      pendingOutgoing,
+      pendingOutgoing: locals.pendingOutgoing,
     };
-
-    function nick(me: Me): string {
-      const name = me.name.trim();
-      if (name.length > 0) {
-        return name;
-      }
-      return me.jid?.split('@')[0] ?? 'me';
-    }
 
     // The effect modules, built once the closure's helpers exist. `fx` bridges
     // the concerns that still live in this closure as Promise functions.
@@ -495,43 +212,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       h: {
         sortByRecency,
         summariesFor,
-        rememberGroupIds,
-        nick,
+        ...helpers,
         coreKind,
-        isReactionOnly,
-        isEditStanza,
         sortMessages,
-        ingestHistoryReactions,
-        ingestHistoryEdits,
-        toUiMessage,
-        resolvePendingEdits,
-        withEdits,
-        previewFor,
-        refreshEdits,
         recordRead: (chatId, messageId) => recordRead(coreCtx, chatId, messageId),
-        sameMessage,
-        listFor,
-        groupIdForChat,
-        rememberTopicRoles,
-        rememberMembers,
-        myJid,
-        aliasRoot,
-        rememberAuthor,
-        rememberOriginId,
-        linkMessageIds,
-        linkAckToServer: ledger.linkAckToServer,
-        updateMessageStatus,
         signatureFor,
         stickerSignatureFor,
-        setChatMessage,
-        markStickerFailed: ledger.markStickerFailed,
-        markAttachmentFailed: ledger.markAttachmentFailed,
-        markVoiceFailed,
         clearFailure,
-        clearAttachmentFailure,
-        updateMessageAttachment,
-        updateMessageVoice,
-        teardown,
+        teardown: () => userState.teardown(),
       },
       fx: {
         get loadPrefRows() {
@@ -552,10 +240,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         // The core's own pins poll (started at boot) refreshes the active chat;
         // `openChat` starts it for the chat it opens, `stopPinsPoll` stops it.
         startPinsPolling: () => {
-          pinsPollEnabled = true;
+          locals.pinsPollEnabled = true;
         },
         refreshActiveChatPins: (chatId) => {
-          if (pinsPollEnabled) {
+          if (locals.pinsPollEnabled) {
             ctx.forkSession(pins.loadPins(chatId, false));
           }
         },
@@ -571,93 +259,17 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     const events = makeEvents(ctx);
     const pins = makePins(ctx);
 
-    // The user scoped fields and their values before any user signed in. The
-    // store starts from them and `stop()` returns to them, so the next user
-    // never sees the previous user's chats, contacts or messages.
-    const initialUserState = (): Pick<
-      ChatStoreState,
-      | 'currentUserId'
-      | 'me'
-      | 'chatsLoad'
-      | 'chats'
-      | 'contacts'
-      | 'messagesByChat'
-      | 'historyLoad'
-      | 'activeChatId'
-      | 'historyComplete'
-      | 'search'
-      | 'activeFolder'
-      | 'folders'
-      | 'foldersLoaded'
-      | 'typing'
-      | 'editTarget'
-      | 'actionError'
-      | 'jumpTarget'
-      | 'topicNotice'
-      | 'pinsError'
-      | 'ownedAis'
-    > => ({
-      currentUserId: CURRENT_USER_ID,
-      me: undefined,
-      chatsLoad: 'loading',
-      chats: [],
-      contacts: [],
-      messagesByChat: {},
-      historyLoad: {},
-      activeChatId: null,
-      historyComplete: {},
-      search: '',
-      activeFolder: 'all',
-      folders: [],
-      foldersLoaded: false,
-      typing: {},
-      editTarget: undefined,
-      actionError: undefined,
-      jumpTarget: undefined,
-      topicNotice: undefined,
-      pinsError: undefined,
-      ownedAis: ports.ownedAis ?? [],
+    userState = makeUserState({
+      locals,
+      s,
+      set,
+      ownedAis: ports.ownedAis,
+      ledger: helpers.ledger,
+      events,
     });
 
-    // What `stop()` clears besides the scopes: timers, caches, per-session maps,
-    // and every user scoped field of the state.
-    function teardown(): void {
-      events.clearTimers();
-      pinsPollEnabled = false;
-      s.core = undefined;
-      for (const chatId of Object.keys(cursors)) {
-        delete cursors[chatId];
-      }
-      lastRead = {};
-      chatPrefRows = [];
-      groupIds.clear();
-      groupMembers.clear();
-      loadingOlder.clear();
-      pendingOutgoing.clear();
-      s.sendRuns.clear();
-      pendingVoices.clear();
-      groupDetails.clear();
-      loadingGroupDetails.clear();
-      groupRolesById.clear();
-      loadingGroupRoles.clear();
-      topicRolesById.clear();
-      loadingTopicRoles.clear();
-      set({
-        ...initialUserState(),
-        status: 'offline',
-        mediaTrustedHosts: undefined,
-        drafts: {},
-        finishedDraftMessages: {},
-        edits: {},
-        reactions: {},
-      });
-      loadingHistory.clear();
-      ledger.reset();
-      pendingUploads.clear();
-    }
-
     return {
-      ...initialUserState(),
+      ...userState.initialUserState(),
       status: 'offline',
       edits: {},
       reactions: {},
@@ -665,9 +277,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       finishedDraftMessages: {},
       mediaTrustedHosts: undefined,
       messages: (chatId) => get().messagesByChat[chatId] ?? EMPTY_MESSAGES,
-      hasMore: (chatId) => get().historyComplete[chatId] !== true && cursors[chatId] !== undefined,
-      groupMembers: (chatId) => mentionMembersFor(chatId),
-      groupIdForChat: (chatId) => groupIdForChat(chatId),
+      hasMore: (chatId) =>
+        get().historyComplete[chatId] !== true && locals.cursors[chatId] !== undefined,
+      groupMembers: (chatId) => helpers.mentionMembersFor(chatId),
+      groupIdForChat: (chatId) => helpers.groupIdForChat(chatId),
       openChat: (chatId) => history.openChat(chatId),
       reloadChats: () => history.reloadChats(),
       retryHistory: (chatId) => history.retryHistory(chatId),
@@ -682,7 +295,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       ...pins.actions,
       // Stop the open chat's pins poll (the core's poll reads this switch).
       stopPinsPoll: () => {
-        pinsPollEnabled = false;
+        locals.pinsPollEnabled = false;
       },
       setSearch: (value) => set({ search: value }),
       setActiveFolder: (folder) => set({ activeFolder: folder }),
