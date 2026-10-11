@@ -12,6 +12,8 @@
 
 import { Effect, Fiber } from 'effect';
 
+import { interruptFiber } from '../../lib/effect/timers';
+
 /** The retry delays, mirroring the mount scroll above the jump effect. */
 export const JUMP_SCROLL_RETRY_MS: readonly number[] = [80, 200, 400];
 
@@ -26,7 +28,7 @@ const defaultTimers: JumpScrollTimers = {
   setTimeout: (callback, ms) =>
     Effect.runFork(Effect.sleep(ms).pipe(Effect.andThen(Effect.sync(callback)))),
   clearTimeout: (handle) => {
-    Effect.runFork(Fiber.interrupt(handle as Fiber.Fiber<void>));
+    interruptFiber(handle as Fiber.Fiber<void>);
   },
 };
 

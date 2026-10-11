@@ -1,4 +1,4 @@
-import { Effect, Fiber } from 'effect';
+import { Effect } from 'effect';
 import { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,6 +7,7 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 import { getSessionToken } from '@/lib/session-token';
+import { interruptFiber } from '@/lib/effect/timers';
 import {
   isSameOriginStickerUrl,
   recentChoiceFor,
@@ -66,7 +67,7 @@ export function isPanelStickerUrl(url: string, apiUrl: string): boolean {
 function runUntilCleanup(effect: Effect.Effect<void>): () => void {
   const fiber = Effect.runFork(effect);
   return () => {
-    Effect.runFork(Fiber.interrupt(fiber));
+    interruptFiber(fiber);
   };
 }
 

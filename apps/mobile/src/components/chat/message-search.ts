@@ -1,6 +1,7 @@
 import { Effect, Fiber } from 'effect';
 
 import { SearchApiError, type SearchApi } from '../../lib/search-api';
+import { interruptFiber } from '../../lib/effect/timers';
 
 import {
   activeQuery,
@@ -56,7 +57,7 @@ const defaultScheduler: SearchScheduler = {
   setTimeout: (callback, ms) =>
     Effect.runFork(Effect.sleep(ms).pipe(Effect.andThen(Effect.sync(callback)))),
   clearTimeout: (handle) => {
-    Effect.runFork(Fiber.interrupt(handle as Fiber.Fiber<void>));
+    interruptFiber(handle as Fiber.Fiber<void>);
   },
 };
 

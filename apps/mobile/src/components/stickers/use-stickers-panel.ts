@@ -1,10 +1,11 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useWindowDimensions } from 'react-native';
-import { Effect, Fiber } from 'effect';
+import { Effect } from 'effect';
 
 import { useAuthStore } from '@/auth/session';
 import { fromApi } from '@/lib/effect/api-effect';
+import { interruptFiber } from '@/lib/effect/timers';
 import { getSessionToken } from '@/lib/session-token';
 import type { StickerItem, StickerPack } from '@/lib/stickers';
 import { movedOrder, panelIdSet } from '@/components/stickers/order';
@@ -64,7 +65,7 @@ export function useStickersPanel() {
       ),
     );
     return () => {
-      Effect.runFork(Fiber.interrupt(fiber));
+      interruptFiber(fiber);
     };
   }, []);
 

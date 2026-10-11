@@ -1,4 +1,4 @@
-import { Effect, Fiber } from 'effect';
+import { Effect } from 'effect';
 import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { DirectoryApiError, type GroupVisibility } from '@/lib/directory-api';
+import { interruptFiber } from '@/lib/effect/timers';
 import { useAction } from '@/lib/effect/use-action';
 
 /**
@@ -116,7 +117,7 @@ export function VisibilitySheet({
       Effect.sleep(0).pipe(Effect.andThen(Effect.sync(() => setCopied(false)))),
     );
     return () => {
-      Effect.runFork(Fiber.interrupt(pending));
+      interruptFiber(pending);
     };
   }, [visible]);
 

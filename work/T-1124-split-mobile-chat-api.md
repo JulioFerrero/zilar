@@ -96,7 +96,7 @@ GATE PASS
 
 ## Review (written by Claude)
 
-**Lead, 2026-10-11: approved. The pre-review is clean, with 1 nit (the comment at `chat-api.ts:30-31` still says "(below)").**
+**Lead, 2026-10-11: approved. The pre-review is clean, with 1 nit (the comment at `chat-api.ts:30-31`; the worker already reworded "(below)" to "(in `chat-api-schemas`)").**
 - **The split:** mobile `lib/chat-api.ts` goes from 439 to 191 lines. The wire schemas and parse functions move to `lib/chat-api-schemas.ts` (252), which imports only types from `./chat-api` (`import type`, so there is no runtime cycle). The export surface of `chat-api.ts` is unchanged.
 - **The lead's line check:** the removed lines missing from the new file are the parse declarations (now `export`), import lines, and the T-0924 comment, which stays in `chat-api.ts`, reworded.
 - **The gate passed.**

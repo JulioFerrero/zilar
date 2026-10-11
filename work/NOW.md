@@ -2,6 +2,16 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 ~13:40 local: size splits T-1124 to T-1127 merged**
+- **Merged:** mobile `chat-api` 439→191, web `ports` 427→355, `db/rows` 426→266, `machines/api` 404→376.
+- **Still over 400, left on purpose:**
+  - **deferred:** mobile `store/real-store.ts` (693) and web `store/realStore.ts` (524), the message pipeline; `agents/gateway/group-turn.ts` (571);
+  - **would need a restructure:** `sandbox/tool-worker.ts` (616), which is one big `run` generator;
+  - **not while the autopilot runs:** `packages/devtools/src/lead/*` (autopilot 664, client 421, cli 419);
+  - **data:** `mobile/lib/emoji-data.ts` (435);
+  - **pipeline and auth, a few lines over:** `client-core/store/lifecycle.ts` (405) and `auth/sql-adapter.ts` (404).
+- **The lead's call:** these need Julio's go, or a careful spec with a phone test.
+
 **2026-10-11 ~13:00 local: live `5f647b60`**
 - **Merged since 11:30:**
   - T-1113 (voice calls into the contract);

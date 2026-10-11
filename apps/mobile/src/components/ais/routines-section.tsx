@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
-import { Effect, Fiber } from 'effect';
+import { Effect } from 'effect';
 
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
@@ -12,6 +12,7 @@ import {
   routineLastText,
   routineStatusText,
 } from '@/lib/routines-format';
+import { interruptFiber } from '@/lib/effect/timers';
 import { ToolsApiError, type AiToolsApi, type Routine, type ToolsApi } from '@/lib/tools-api';
 
 /** Fixed user-facing line when the routines list fails to load. */
@@ -292,7 +293,7 @@ export function RoutinesSection({ api, aiId }: { api: AiToolsApi; aiId: string }
     );
     const fiber = Effect.runFork(load);
     return () => {
-      Effect.runFork(Fiber.interrupt(fiber));
+      interruptFiber(fiber);
     };
   }, [api, aiId, reloadTick]);
 

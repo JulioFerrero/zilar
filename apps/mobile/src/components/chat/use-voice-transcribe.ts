@@ -1,9 +1,10 @@
 import type { VoiceMeta } from '@zilar/protocol';
-import { Effect, Fiber } from 'effect';
+import { Effect } from 'effect';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { isPromiseLike } from './voice-playback-source';
 import { voiceAudioSource } from '@/lib/voice-native';
+import { interruptFiber } from '@/lib/effect/timers';
 import {
   readTranscripts,
   saveTranscript,
@@ -88,7 +89,7 @@ export function useVoiceTranscribe(input: {
       ),
     );
     return () => {
-      Effect.runFork(Fiber.interrupt(reading));
+      interruptFiber(reading);
     };
   }, [transcripts, messageId]);
 

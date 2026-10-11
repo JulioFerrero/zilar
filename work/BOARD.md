@@ -17,8 +17,13 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
   - **a sent attachment or GIF has no bytes:** it is a file row on web and "Not loaded: untrusted address" on mobile, because the fake slot is an empty `data:` url (`packages/mock-backend/src/xmpp/core.ts:227-231`).
 
   Load paths and options: `docs/audit/mock-sweep-status.md` §3-§4. Any fix sits next to `isTrustedMediaUrl` (`packages/chat-core/src/media.ts:82`).
-- **Mobile: about 9 more `Effect.runFork(Fiber.interrupt(...))` sites in `components/chat` could use `interruptFiber` (`lib/effect/timers.ts`, T-1050).** The `runSync` ones differ and stay.
-- **Dedup slices that need a lead decision (`docs/audit/dedup-status.md` §8):** S6 crypto envelope (keys), S7-S9 rate limiters, S10-S11 `groups/access.ts` (permissions), S15 web settings facade (keys). S4 (schema-issue walker) must keep audit's two extra cases.
+- **The `interruptFiber` follow-up is now T-1128,** which covers 18 sites.
+- **The dedup decisions are resolved** (Julio, 2026-10-11: "move unchanged"):
+  - S6 is T-1107;
+  - S7 is T-1108, and S8/S9 are kept, because moving them would change the answer order;
+  - S10/S11 are T-1110, T-1115 and T-1116;
+  - S15 is T-1111 and T-1113, with `/setup` and the avatar delete kept.
+  - Status: `docs/audit/simplify-status.md` 2.3, 2.6 and 3.3.
 
 - **M5 plan (2026-09-29): see [`docs/ROADMAP_M5.md`](../docs/ROADMAP_M5.md)** for the order, the waves for tonight, what only Julio can provide, and the decisions the lead made in the specs.
 - **AI-built tools and routines (Julio, 2026-09-29: server sandbox first).** T-0102 sandbox (QuickJS/WASM, allowlisted SSRF-safe fetch), T-0103 versioned tools store + routes, T-0104 scheduler/routines (pinned to approved hosts, auto-pause after failures), T-0105 tool/routine actions for the action gateway (routine.schedule needs a card and can never be always-allowed) + wiring the sandbox (`TOOLS_ENABLED`), T-0106 model side (prompt guide, more rounds per turn, "working on it" line, scripted-model e2e), T-0107 web Tools & Routines in the AI/group panel.
@@ -1162,3 +1167,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1127](T-1127-split-machines-api.md) | Size split: apps/server/src/machines/api.ts (404) — toMachineView, invalidCode, toConflict and INVALID_JSON mo | 2026-10-11 |
 | [T-1124](T-1124-split-mobile-chat-api.md) | Size split: apps/mobile/src/lib/chat-api.ts (439) — the wire schemas and parse functions move unchanged to lib | 2026-10-11 |
 | [T-1125](T-1125-split-web-ports.md) | Size split: apps/web/src/store/effects/ports.ts (427) — the browser default adapters move unchanged to store/e | 2026-10-11 |
+| [T-1128](T-1128-mobile-interrupt-fiber.md) | Mobile dedup: the 18 inline Effect.runFork(Fiber.interrupt(x)) calls use interruptFiber from lib/effect/timers | 2026-10-11 |

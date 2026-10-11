@@ -1,8 +1,9 @@
-import { Effect, Fiber } from 'effect';
+import { Effect } from 'effect';
 import { useEffect, useState } from 'react';
 import { Animated, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
+import { interruptFiber } from '@/lib/effect/timers';
 import { cn } from '@/lib/utils';
 
 /**
@@ -24,7 +25,7 @@ export function useDelayedVisible(delayMs = SKELETON_DELAY_MS): boolean {
       Effect.sleep(delayMs).pipe(Effect.andThen(Effect.sync(() => setVisible(true)))),
     );
     return () => {
-      Effect.runFork(Fiber.interrupt(fiber));
+      interruptFiber(fiber);
     };
   }, [delayMs]);
   return visible;

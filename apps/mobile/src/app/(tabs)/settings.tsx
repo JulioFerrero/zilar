@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Effect, Fiber } from 'effect';
+import { Effect } from 'effect';
 import {
   Ban,
   ChevronRight,
@@ -25,6 +25,7 @@ import { ListRow } from '@/components/ui/list-row';
 import { Text } from '@/components/ui/text';
 import { ACCENT, ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { fromApi } from '@/lib/effect/api-effect';
+import { interruptFiber } from '@/lib/effect/timers';
 import type { MyProfile } from '@/lib/profile-api';
 
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
@@ -151,7 +152,7 @@ function SettingsHub() {
         ),
       );
       return () => {
-        Effect.runFork(Fiber.interrupt(load));
+        interruptFiber(load);
       };
     }, [api]),
   );
@@ -170,7 +171,7 @@ function SettingsHub() {
         ),
       );
       return () => {
-        Effect.runFork(Fiber.interrupt(count));
+        interruptFiber(count);
       };
     }, [contactsApi]),
   );

@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Effect, Fiber } from 'effect';
+import { Effect } from 'effect';
 
 import { useAuthStore } from '@/auth/session';
 import {
@@ -16,6 +16,7 @@ import {
 } from '@/components/stickers/sticker-native';
 import { useStickersApi } from '@/components/stickers/use-stickers-api';
 import { usePackItems, type PackVisibility } from '@/components/stickers/use-pack-items';
+import { interruptFiber } from '@/lib/effect/timers';
 import { getSessionToken } from '@/lib/session-token';
 import type { StickerItem } from '@/lib/stickers';
 
@@ -111,7 +112,7 @@ export function usePackEditor({ picker, preparer }: PackEditorDeps): PackEditor 
       ),
     );
     return () => {
-      Effect.runFork(Fiber.interrupt(fiber));
+      interruptFiber(fiber);
     };
   }, []);
 

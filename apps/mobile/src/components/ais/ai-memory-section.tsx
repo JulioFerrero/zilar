@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { Brain, Trash2 } from 'lucide-react-native';
-import { Effect, Fiber } from 'effect';
+import { Effect } from 'effect';
 
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { AiMemoryApiError, type AiMemory, type AiMemoryApi } from '@/lib/ai-memory-api';
+import { interruptFiber } from '@/lib/effect/timers';
 
 // The cover lines carry a leading block reference (`#16` or `#0-15`) that is
 // only meaningful to the server; the section strips it before showing a line.
@@ -295,7 +296,7 @@ export function AiMemorySection({
     );
     const fiber = Effect.runFork(load);
     return () => {
-      Effect.runFork(Fiber.interrupt(fiber));
+      interruptFiber(fiber);
     };
   }, [open, chat, aiId, api, reloadTick]);
 

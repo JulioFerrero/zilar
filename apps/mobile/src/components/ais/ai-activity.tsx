@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { RefreshCw } from 'lucide-react-native';
-import { Effect, Fiber } from 'effect';
+import { Effect } from 'effect';
 
 import { describeAuditEntry, formatRelativeAudit } from '@zilar/chat-core';
 
@@ -10,6 +10,7 @@ import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import type { AuditApi, PublicAuditEntry } from '@/lib/audit-api';
 import { ICON } from '@/lib/colors';
+import { interruptFiber } from '@/lib/effect/timers';
 
 /** Fixed user-facing line when the first activity page fails to load. */
 export const ACTIVITY_LOAD_FAILED_MESSAGE = 'Could not load activity.';
@@ -222,7 +223,7 @@ export function AiActivity({ api, aiId }: { api: AuditApi; aiId: string }) {
     );
     const fiber = Effect.runFork(load);
     return () => {
-      Effect.runFork(Fiber.interrupt(fiber));
+      interruptFiber(fiber);
     };
   }, [api, aiId, reloadTick]);
 

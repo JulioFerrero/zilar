@@ -5,6 +5,7 @@ import { Pressable, View, type GestureResponderHandlers } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
+import { interruptFiber } from '@/lib/effect/timers';
 import { ACCENT_FOREGROUND, primaryKey } from '@/lib/depth';
 import { VOICE_MAX_DURATION_MS } from '@/lib/voice';
 import {
@@ -99,7 +100,7 @@ export function VoiceRecorderButton({
       Effect.sleep(ERROR_VISIBLE_MS).pipe(Effect.andThen(Effect.sync(() => setError(undefined)))),
     );
     return () => {
-      Effect.runFork(Fiber.interrupt(hide));
+      interruptFiber(hide);
     };
   }, [error]);
   const timerRef: TickerRef = useRef<Fiber.Fiber<unknown, unknown> | undefined>(undefined);

@@ -1,6 +1,7 @@
 import { Effect, Fiber } from 'effect';
 import { PEOPLE_SEARCH_DEBOUNCE_MS } from '@zilar/chat-core';
 import { ContactsApiError, type ContactsApi, type HandleProfile } from '../../lib/contacts-api';
+import { interruptFiber } from '../../lib/effect/timers';
 import type { SearchScheduler } from '../chat/message-search';
 import { addContactHandle } from './add-contact';
 
@@ -63,7 +64,7 @@ const defaultScheduler: SearchScheduler = {
   setTimeout: (callback, ms) =>
     Effect.runFork(Effect.sleep(ms).pipe(Effect.andThen(Effect.sync(callback)))),
   clearTimeout: (handle) => {
-    Effect.runFork(Fiber.interrupt(handle as Fiber.Fiber<unknown, unknown>));
+    interruptFiber(handle as Fiber.Fiber<unknown, unknown>);
   },
 };
 

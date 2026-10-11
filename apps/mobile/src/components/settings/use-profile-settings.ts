@@ -1,8 +1,9 @@
 import { useFocusEffect } from 'expo-router';
-import { Data, Effect, Fiber } from 'effect';
+import { Data, Effect } from 'effect';
 import { useCallback, useEffect, useState } from 'react';
 
 import { useAuthStore } from '@/auth/session';
+import { interruptFiber } from '@/lib/effect/timers';
 import { useAction } from '@/lib/effect/use-action';
 import { type MyProfile } from '@/lib/profile-api';
 import { getSessionToken } from '@/lib/session-token';
@@ -173,7 +174,7 @@ export function useProfileSettings() {
     );
     const fiber = Effect.runFork(check);
     return () => {
-      Effect.runFork(Fiber.interrupt(fiber));
+      interruptFiber(fiber);
     };
   }, [api, trimmed, ownHandle]);
 

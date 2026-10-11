@@ -1,5 +1,5 @@
 import { Tabs, TabSlot, TabList, TabTrigger } from 'expo-router/ui';
-import { Effect, Fiber } from 'effect';
+import { Effect } from 'effect';
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { View } from 'react-native';
@@ -7,6 +7,7 @@ import { View } from 'react-native';
 import { FloatingTabBar, FLOATING_TABS } from '@/components/nav/floating-tab-bar';
 import { useProfileApi } from '@/components/settings/use-profile-api';
 import { fromApi } from '@/lib/effect/api-effect';
+import { interruptFiber } from '@/lib/effect/timers';
 import { unreadCount } from '@/lib/filter';
 import { getSessionToken } from '@/lib/session-token';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -50,7 +51,7 @@ export default function TabsLayout() {
       );
       const fiber = Effect.runFork(load);
       return () => {
-        Effect.runFork(Fiber.interrupt(fiber));
+        interruptFiber(fiber);
       };
     }, [api]),
   );

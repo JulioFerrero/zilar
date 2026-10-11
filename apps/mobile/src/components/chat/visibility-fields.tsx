@@ -1,10 +1,11 @@
-import { Effect, Fiber } from 'effect';
+import { Effect } from 'effect';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { DirectoryApiError, type HandleCheck } from '@/lib/directory-api';
+import { interruptFiber } from '@/lib/effect/timers';
 import { GroupsApiError } from '@/lib/groups-api';
 import { visibilityReasonText } from '@/components/chat/visibility-sheet';
 
@@ -173,7 +174,7 @@ export function useHandleCheck(
       ),
     );
     return () => {
-      Effect.runFork(Fiber.interrupt(pending));
+      interruptFiber(pending);
     };
   }, [visibility, trimmed]);
 
