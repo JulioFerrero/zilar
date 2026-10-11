@@ -3,11 +3,8 @@ import type {
   EditsState,
   MentionMember,
   ReactionsState,
-  ReplyRef,
-  UiMention,
   UiMessage,
 } from '@zilar/chat-core';
-import { folderMatches, folderUnreadTotal, sortTopics } from '@zilar/chat-core';
 import type { ChatFolder } from '@zilar/chat-core';
 import type {
   ChatBackgroundChoice,
@@ -33,54 +30,17 @@ import {
   sortPinnedFirst,
 } from '@/lib/chatPrefs';
 import type { MuteDurationId } from '@/lib/chatPrefs';
-
-export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
-
-/** Whether the chat list has arrived: `loading` until the first
- * successful `/api/chats` merge, `error` when that first load fails. */
-export type ChatsState = 'loading' | 'ready' | 'error';
-
-/** Whether a chat's first history page has arrived. */
-export type HistoryState = 'loading' | 'ready' | 'error';
-
-export interface TypingState {
-  names: string[];
-}
-
-/** The live AI draft of one chat: the latest cumulative reply text. */
-export interface DraftState {
-  turnId: string;
-  text: string;
-}
-
-export interface SendTextOptions {
-  replyTo?: ReplyRef;
-  mentions?: UiMention[];
-}
-
-/** A finished recording on its way to the server and then to XEP-0363. */
-export interface VoiceRecording {
-  blob: Blob;
-  durationMs: number;
-  waveform: number[];
-}
-
-/** What the composer passes when it sends a file or image attachment. */
-export interface SendAttachmentOptions {
-  caption?: string;
-  replyTo?: ReplyRef;
-}
-
-/** What the sticker panel passes when it sends a sticker (T-0120). */
-export interface SendStickerInput {
-  stickerId: string;
-  packId: string;
-  url: string;
-  emoji?: string | undefined;
-  width: number;
-  height: number;
-  mime: 'image/webp' | 'image/png';
-}
+import type {
+  ChatsState,
+  ConnectionStatus,
+  DraftState,
+  HistoryState,
+  SendAttachmentOptions,
+  SendStickerInput,
+  SendTextOptions,
+  TypingState,
+  VoiceRecording,
+} from './storeOptions';
 
 export interface ChatStore {
   currentUserId: string;
@@ -404,152 +364,19 @@ export type ChatStoreState = ChatStore & {
   groupInfos: Record<string, GroupDetail>;
 };
 
-/** True when the chat belongs to the active folder: `undefined` (unknown id)
- * and `'all'` both match everything, like the old hard-coded All tab. */
-export function matchesFolder(chat: ChatSummary, folder: ChatFolder | undefined): boolean {
-  if (folder === undefined) {
-    return true;
-  }
-  return folderMatches(folder, chat);
-}
-
-function activeFolderOf(state: ChatStoreState): ChatFolder | undefined {
-  if (state.activeFolder === 'all') {
-    return undefined;
-  }
-  return state.folders.find((folder) => folder.id === state.activeFolder);
-}
-
-export function visibleChats(state: ChatStoreState): ChatSummary[] {
-  const query = state.search.trim().toLowerCase();
-  // Unused by the list itself (it renders `groupChats`), but kept for callers
-  // that need the flat visible rows: per-user archived DMs/AIs are out (they
-  // live in the Archived list); topics stay, grouped or filtered by search.
-  return state.chats.filter((chat) => {
-    if (chat.topic === undefined && chat.archived === true) {
-      return false;
-    }
-    if (!matchesFolder(chat, activeFolderOf(state))) {
-      return false;
-    }
-    return (
-      query.length === 0 ||
-      chat.title.toLowerCase().includes(query) ||
-      (chat.groupTitle !== undefined && chat.groupTitle.toLowerCase().includes(query))
-    );
-  });
-}
-
-/**
- * One sidebar group (T-0111): the group's title plus its topic rows. DMs and
- * AI chats are singleton groups with a stable key.
- */
-export interface ChatGroup {
-  key: string;
-  title: string;
-  /** The group's id for avatar + collapse state; undefined for DMs/AIs. */
-  groupId: string | undefined;
-  /** T-0165: the group's picture, from its first topic row. */
-  avatarUrl?: string | undefined;
-  topics: ChatSummary[];
-}
-
-function groupTitleOf(chat: ChatSummary): string {
-  return chat.groupTitle ?? chat.title;
-}
-
-/**
- * Folds the flat chat list into sidebar groups: every topic of a group nests
- * under its group header; DMs and AI chats stand alone. Per-user archived
- * chats are hidden here (they live in the Archived section). Pinned singles
- * and pinned groups (via the General room's pref) float to the top, newer
- * pins first; inside a group, pinned topics float above the rest with
- * General first among the unpinned. Search keeps a group header when any of
- * its topics matches by name, or when the group's own name contains the
- * query (then it shows all its topics). Folders treat a topic like its group (a topic
- * matches when its own row does).
- */
-export function groupChats(state: ChatStoreState): ChatGroup[] {
-  const query = state.search.trim().toLowerCase();
-  const byGroup = new Map<string, ChatSummary[]>();
-  const singles: ChatSummary[] = [];
-  for (const chat of state.chats) {
-    // Manager-archived topics never reach the client (the server excludes
-    // them); per-user archived topics stay in their group so the group's own
-    // Archived toggle shows them. Per-user archived DMs/AIs live in the
-    // bottom Archived list instead.
-    if (chat.topic === undefined && chat.archived === true) {
-      continue;
-    }
-    if (!matchesFolder(chat, activeFolderOf(state))) {
-      continue;
-    }
-    if (chat.topic !== undefined && chat.groupId !== undefined) {
-      const list = byGroup.get(chat.groupId) ?? [];
-      list.push(chat);
-      byGroup.set(chat.groupId, list);
-    } else {
-      if (query.length > 0 && !chat.title.toLowerCase().includes(query)) {
-        continue;
-      }
-      singles.push(chat);
-    }
-  }
-  const groups: ChatGroup[] = [];
-  for (const [groupId, topics] of byGroup) {
-    const groupMatches = query.length > 0 && groupTitleOf(topics[0]!).toLowerCase().includes(query);
-    const matching =
-      query.length === 0 || groupMatches
-        ? topics
-        : topics.filter((topic) => topic.title.toLowerCase().includes(query));
-    if (matching.length === 0) {
-      continue;
-    }
-    const title = groupTitleOf(matching[0] ?? topics[0]!);
-    groups.push({
-      key: `group:${groupId}`,
-      title,
-      groupId,
-      // T-0165: every topic row carries the group's picture, so the first
-      // one paints the header.
-      ...(matching[0]?.avatarUrl === undefined ? {} : { avatarUrl: matching[0].avatarUrl }),
-      topics: sortTopics(matching),
-    });
-  }
-  for (const chat of singles) {
-    groups.push({ key: `chat:${chat.id}`, title: chat.title, groupId: undefined, topics: [chat] });
-  }
-  return sortGroupsPinnedFirst(groups);
-}
-
-// A group's pin stamp: the General topic's (the pref lives on the General
-// room JID). A singleton group's is its own row's.
-function groupPinTime(group: ChatGroup): number {
-  const general = group.topics.find((topic) => topic.topic?.isGeneral === true);
-  const row = general ?? group.topics[0];
-  return row?.pinnedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
-}
-
-function sortGroupsPinnedFirst(groups: ChatGroup[]): ChatGroup[] {
-  if (!groups.some((group) => groupPinTime(group) !== Number.NEGATIVE_INFINITY)) {
-    return groups;
-  }
-  return [...groups].sort((left, right) => {
-    const time = groupPinTime(right) - groupPinTime(left);
-    return time !== 0 ? time : left.title.localeCompare(right.title);
-  });
-}
-
-export function folderUnread(state: ChatStoreState, folderId: string): number {
-  if (folderId === 'all') {
-    return folderUnreadTotal('all', state.chats);
-  }
-  const folder = state.folders.find((entry) => entry.id === folderId);
-  if (folder === undefined) {
-    return 0;
-  }
-  return folderUnreadTotal(folder, state.chats);
-}
-
+export type {
+  ChatsState,
+  ConnectionStatus,
+  DraftState,
+  HistoryState,
+  SendAttachmentOptions,
+  SendStickerInput,
+  SendTextOptions,
+  TypingState,
+  VoiceRecording,
+} from './storeOptions';
+export { matchesFolder, visibleChats } from './selectors';
+export { groupChats, folderUnread } from './chatGroups';
+export type { ChatGroup } from './chatGroups';
 export { MUTE_DURATIONS, applyChatPrefs, effectivePrefFor, mutedUntilFor, sortPinnedFirst };
 export type { MuteDurationId };
