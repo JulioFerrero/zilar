@@ -21,7 +21,7 @@ estimate: 0.2 day
 - type a name, then click Create topic;
 - the result is "Could not create the topic. Try again.".
 
-The mock backend itself creates the topic: `POST /api/groups/g-familia/topics` answers 201.
+The mock backend itself creates the topic: `POST /api/groups/:groupId/topics` with `g-familia` answers 201.
 
 **What the lead read:**
 - `apps/web/src/components/TopicRow.tsx:277` calls `onOpenNewTopic(groupId)`. That id is `group.groupId`, the **server group id** (`apps/web/src/store/chatGroups.ts:75`, filled from `chat.groupId` at `:50-53`), and it is passed through `apps/web/src/components/chatList/ChatListBody.tsx:130` and `apps/web/src/components/ChatList.tsx:177,183`.
