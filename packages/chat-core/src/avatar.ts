@@ -1,4 +1,4 @@
-import { generateDitherAvatar, SIZE } from 'dither-avatar';
+import { ballAvatarSvg } from '@zilar/ball-avatar';
 
 import { graphemes } from './text';
 
@@ -59,15 +59,12 @@ export function initials(name: string): string {
   return ((characters[0] ?? '') + (characters[1] ?? '')).toUpperCase();
 }
 
-/**
- * The dither-avatar SVG for a seed, with a `viewBox` added to the root so it
- * scales to any avatar box (the package ships a fixed 200 px size).
- */
-export function ditherAvatarSvg(seed: string): string {
-  return generateDitherAvatar(seed).replace('<svg ', `<svg viewBox="0 0 ${SIZE} ${SIZE}" `);
+/** The glossy 3D ball avatar SVG for a seed, scalable to any box. */
+export function avatarSvg(seed: string): string {
+  return ballAvatarSvg(seed);
 }
 
-/** The dither avatar as an SVG `data:` URI, ready for an image source. */
-export function ditherAvatarDataUri(seed: string): string {
-  return 'data:image/svg+xml,' + encodeURIComponent(ditherAvatarSvg(seed));
+/** The ball avatar as an SVG `data:` URI, ready for an image source. */
+export function avatarDataUri(seed: string): string {
+  return 'data:image/svg+xml,' + encodeURIComponent(avatarSvg(seed));
 }

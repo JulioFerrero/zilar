@@ -12,6 +12,6 @@
   },
   "dependencies": {
     "@zilar/protocol": "workspace:*",
-    "dither-avatar": "1.0.0"
+    "@zilar/ball-avatar": "workspace:*"
   }
 }

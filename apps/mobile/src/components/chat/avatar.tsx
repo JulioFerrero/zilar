@@ -1,4 +1,4 @@
-import { ditherAvatarSvg } from '@zilar/chat-core';
+import { avatarSvg } from '@zilar/chat-core';
 import { View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 
@@ -27,7 +27,7 @@ export function Avatar({ id, size = 54, online = false, className }: AvatarProps
           overflow: 'hidden',
         }}
       >
-        <SvgXml xml={ditherAvatarSvg(id)} width={size} height={size} />
+        <SvgXml xml={avatarSvg(id)} width={size} height={size} />
       </View>
       {online ? (
         <View

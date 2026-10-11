@@ -1,4 +1,4 @@
-import { ditherAvatarSvg } from '@zilar/chat-core';
+import { avatarSvg } from '@zilar/chat-core';
 import { Bot, MessagesSquare, Settings } from 'lucide-react-native';
 import { Image, Keyboard, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -90,7 +90,7 @@ function TabIcon({
             <Text className="text-[13px] font-semibold text-foreground">?</Text>
           ) : (
             <View style={{ width: 20, height: 20, borderRadius: 10, overflow: 'hidden' }}>
-              <SvgXml xml={ditherAvatarSvg(profile.id)} width={20} height={20} />
+              <SvgXml xml={avatarSvg(profile.id)} width={20} height={20} />
             </View>
           )
         }
