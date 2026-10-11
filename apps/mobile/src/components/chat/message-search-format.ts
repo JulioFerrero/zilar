@@ -1,10 +1,7 @@
+import { MESSAGE_SEARCH_DEBOUNCE_MS, MESSAGE_SEARCH_MIN_LENGTH } from '@zilar/chat-core';
 import type { SearchItem } from '../../lib/search-api';
 
-/** How long the hook waits after the last keystroke before searching. */
-export const MESSAGE_SEARCH_DEBOUNCE_MS = 250;
-
-/** The server needs at least 2 characters; shorter text never searches. */
-export const MESSAGE_SEARCH_MIN_LENGTH = 2;
+export { MESSAGE_SEARCH_DEBOUNCE_MS, MESSAGE_SEARCH_MIN_LENGTH };
 
 /** Null until the first debounce settles, so the first keystrokes wait too. */
 export type DebouncedQuery = string | null;

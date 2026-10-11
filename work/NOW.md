@@ -2,6 +2,30 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 07:00 local: store splits running (5 workers)**
+- **Merged:** T-1093. `docs/audit/simplify-status.md` gives 32 of the 41 plan items done.
+  - The web release build has no mock backend: the worker's `vite build` plus a grep.
+  - The lead corrected 3.3: the web facade is already on the derived client. Only the XMPP token and the `settings.ts` voice, setup and avatar-delete calls are left, which is S15, Julio's call.
+- **Running:**
+  - T-1094 (web `store.ts`), T-1095 (mobile `store/types.ts`), T-1096 (web `effects/groups.ts`) and T-1097 (mobile `effects/groups.ts`): 400-line splits, relocation only, unblocked by the mock rebuild;
+  - T-1098: the search debounce and min length move to chat-core.
+- **Waits for Julio:**
+  - N1, the error-code constructors, because they change client-visible codes;
+  - S15 (the XMPP token, setup and voice-transcription keys on web);
+  - the security dedups;
+  - mobile markdown tables;
+  - the live test.
+- **Deferred until after the live test:**
+  - the two `createRealChatStore` closures, which are the pipeline core;
+  - real windowing in the mobile message list (0.4), which needs an inverted list.
+
+**2026-10-11 06:30 local: ball avatars live in both apps; the simplify-plan status audit is running**
+- **Merged since 05:40:**
+  - **T-1091:** `@zilar/ball-avatar` (glossy) replaces dither-avatar. Checked in the browser (list, header, messages) and on the phone (chats, AIs, profile, tab face);
+  - **T-1092:** cleanup: the comments say ball avatar, and the mock me state has handle and avatar setters.
+- **Re-checked on main (phone, mock):** in Approvals, Always creates a rule, and "Always allowed" lists Dev-1 · merge_pull_request with Revoke. That BOARD item is closed.
+- **Running:** T-1093, a docs-only audit of `docs/audit/simplify-plan.md`. For each item it records done, partly or open, with evidence, and it lists the next low-risk slices. It also checks whether the mock backend is out of the release bundles (plan item 0.5).
+
 **2026-10-11 05:40 local: Julio asleep; the ball avatars are running**
 - **Julio's answers (05:30):**
   - **ball avatars:** style **A, glossy**, picked from the preview;

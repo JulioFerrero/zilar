@@ -30,3 +30,4 @@ export * from './ai-errors';
 export * from './ai-activity';
 export * from './topics';
 export * from './money';
+export * from './search';
