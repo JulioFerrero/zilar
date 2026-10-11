@@ -7,7 +7,7 @@
 // The app-specific work (cached paint, the boot state write, joining rooms,
 // saving the list) goes through `ctx.fx` hooks, so the core never needs the
 // app's own `Ports` service.
-import { Effect, Exit, Fiber, Schema, Scope } from 'effect';
+import { Effect, Exit, Fiber, Scope } from 'effect';
 import { trustedMediaHosts, type MediaTokenShape } from '@zilar/chat-core';
 import type { ConnectionStatus, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 import { fromPromise, type StoreAppHooks } from './ctx';
@@ -19,6 +19,7 @@ import {
   handlePresence,
   handleTyping,
 } from './incoming';
+import { readLastRead } from './last-read';
 import type { Fibers } from './lifetime';
 import {
   clearFinishedTurns,
@@ -27,11 +28,10 @@ import {
   startPinsPolling,
   type DraftTurns,
 } from './polling';
-import { type CoreMe, type KeyValue } from './ports';
-import { LAST_READ_PREFIX } from './reads';
+import { type CoreMe } from './ports';
 import { sortByRecency } from './rows';
 
-const parseJson = Schema.decodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
+export { readLastRead } from './last-read';
 
 // Waits between XMPP connect attempts after a failed token or login.
 export const CONNECT_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
@@ -58,40 +58,6 @@ export interface LifecycleCtx extends HistoryCtx, DraftTurns {
   /** The boot in flight, so a resume can wait for it (R8, mobile). */
   boot: LifecycleBoot | undefined;
 }
-
-/** The last-read message ids saved for a user; anything unusable reads as none. */
-export const readLastRead = (
-  storage: KeyValue | null,
-  userId: string,
-): Effect.Effect<Record<string, string>> => {
-  const none: Record<string, string> = {};
-  if (storage === null) {
-    return Effect.succeed(none);
-  }
-  return Effect.try(() => storage.getItem(`${LAST_READ_PREFIX}${userId}`)).pipe(
-    Effect.map((raw) => {
-      if (raw === null) {
-        return none;
-      }
-      const parsed = parseJson(raw);
-      if (Exit.isFailure(parsed)) {
-        return none;
-      }
-      const value = parsed.value;
-      if (value === null || typeof value !== 'object') {
-        return none;
-      }
-      const result: Record<string, string> = {};
-      for (const [chatId, messageId] of Object.entries(value)) {
-        if (typeof messageId === 'string') {
-          result[chatId] = messageId;
-        }
-      }
-      return result;
-    }),
-    Effect.orElseSucceed(() => none),
-  );
-};
 
 /** Opens a session, paints the cached list and boots (R9: idempotent). */
 export const startStore = (ctx: LifecycleCtx): Effect.Effect<void> =>

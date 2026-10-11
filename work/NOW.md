@@ -2,6 +2,22 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 ~15:15 local: live `6ab3eee4c`; push 1-2 merged; the two store splits merged**
+- **Merged since 13:40:**
+  - T-1129: the native push plan, `docs/audit/native-push-plan.md`;
+  - T-1130: mobile `real-store` 693→306; the 40 pipeline tests pass. **It still needs a phone test with the next APK.**
+  - T-1131: sandbox `tool-worker` 616→275; 108 tests;
+  - T-1132: the push device kind, with migration 0047, live with `db: ok`;
+  - T-1133: the FCM sender, not wired yet;
+  - T-1134: web `realStore` 524→103. The lead checked it on a local stack with two local test accounts: send, receive, react, edit, typing, unread and sign-out.
+- **Bug found in that check, also on main:** signing in at `/login` while another account is signed in keeps the old account's chat session until a reload. T-1136 is fixing it.
+- **Running:** T-1135 (push delivery by kind) and T-1136.
+- **Next for push:**
+  - Task 4: the contract, the subscribe kind and the `main.ts` wiring;
+  - then mobile Tasks 5-6, which need Julio's `google-services.json` and the service-account key (the Firebase steps were given to him).
+- **Still over 400 lines:** `agents/gateway/group-turn.ts` (571), held back because its tests are gone; `lifecycle.ts` (405); `sql-adapter.ts` (404); the devtools lead files; `emoji-data`.
+- **Local stack:** the Docker infra is still up, because worker tests use its Postgres.
+
 **2026-10-11 ~13:40 local: size splits T-1124 to T-1127 merged**
 - **Merged:** mobile `chat-api` 439→191, web `ports` 427→355, `db/rows` 426→266, `machines/api` 404→376.
 - **Still over 400, left on purpose:**
