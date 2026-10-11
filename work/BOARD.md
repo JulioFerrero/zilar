@@ -9,10 +9,9 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-1100](T-1100-mock-new-room-occupants.md) | Mock XMPP: new rooms take their group's members as occupants | in-progress | auto | T-1099 | mock-only |
 
 ## Follow-ups
-
-- **Mock: a newly created topic's header says "9 members, 9 online" in Familia, a 2-member group (found 2026-10-11, T-1099 check).** **The cause, as the lead read it:** `packages/client-core/src/store/incoming.ts:225-226` sets `memberCount = max(memberCount, occupants.length)` and `onlineCount` from the room's occupant event, and the fake XMPP gives a new mock room its default occupant list. Real ejabberd reports only the members who actually joined, so this is mock-only and low priority. The fix is in the fake XMPP's occupants for new rooms.
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile. This is a new feature, so it needs Julio's OK.
 - **Mock images (waiting for Julio's choice, NOW.md 2026-10-11 05:00).** Web seed stickers are fixed (T-1083, a dev-only vite plugin), and web GIFs were never blank. Still broken:
   - **mobile sticker and GIF images are blank:** native `Image` fetches over the network, never through `mockFetch`, and the seed art is SVG;
