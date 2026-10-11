@@ -9,6 +9,11 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-1094](T-1094-split-web-store-ts.md) | Split web store.ts (555) | in-progress | auto | T-1093 | relocation |
+| [T-1095](T-1095-split-mobile-store-types.md) | Split mobile store/types.ts (507) | in-progress | auto | T-1093 | relocation |
+| [T-1096](T-1096-split-web-store-effects-groups.md) | Split web store/effects/groups.ts (548) | in-progress | auto | T-1093 | relocation |
+| [T-1097](T-1097-split-mobile-store-effects-groups.md) | Split mobile store/effects/groups.ts (586) | in-progress | auto | T-1093 | relocation |
+| [T-1098](T-1098-shared-message-search-constants.md) | Search debounce + min length in chat-core | in-progress | auto | T-1093 | simplify 0.2 |
 
 ## Follow-ups
 
