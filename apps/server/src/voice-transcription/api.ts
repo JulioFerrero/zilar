@@ -6,13 +6,12 @@
 // provider API key, which never appears in a response, log line or error text.
 
 import { Effect, Layer } from 'effect';
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { VoiceTranscriptionGroup } from '@zilar/api-contract';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
-  SchemaErrors,
-  Session,
   handler,
   mountApi,
   schemaErrorLayer,
@@ -21,12 +20,7 @@ import {
 } from '../effect/http-core';
 import { runSql } from '../effect/sql';
 import { createRateLimiter } from '../rate-limit';
-import {
-  TranscriptConfigured,
-  VoiceSettingsOwnerLimit,
-  transcriptConfiguredLayer,
-  voiceSettingsOwnerLimitLayer,
-} from './middleware';
+import { transcriptConfiguredLayer, voiceSettingsOwnerLimitLayer } from './middleware';
 import {
   defaultAudioFetcher,
   defaultTranscriber,
@@ -46,13 +40,6 @@ import {
   type VoiceTranscriptionRoutesDependencies,
 } from './routes';
 import {
-  EnabledStatus,
-  OkResult,
-  TranscriptBody,
-  TranscriptResult,
-  VoiceSettingsBody,
-} from './schemas';
-import {
   deleteVoiceTranscriptionSettings,
   getVoiceTranscriptionSettings,
   saveVoiceTranscriptionSettings,
@@ -60,32 +47,6 @@ import {
   type VoiceTranscriptionSettings,
 } from './settings';
 import { settingsCipherFor } from '../setup/settings';
-
-const VoiceTranscriptionGroup = HttpApiGroup.make('voiceTranscription')
-  .add(
-    HttpApiEndpoint.get('status', '/voice/transcription', {
-      success: EnabledStatus,
-    }),
-    HttpApiEndpoint.post('transcript', '/voice/transcript', {
-      payload: TranscriptBody,
-      success: TranscriptResult,
-    })
-      .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
-      .middleware(TranscriptConfigured),
-    HttpApiEndpoint.put('setSettings', '/settings/integrations/voice-transcription', {
-      payload: VoiceSettingsBody,
-      success: OkResult,
-    })
-      .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
-      .middleware(VoiceSettingsOwnerLimit),
-    HttpApiEndpoint.delete('removeSettings', '/settings/integrations/voice-transcription', {
-      success: OkResult,
-    }),
-  )
-  .middleware(Session)
-  .middleware(SchemaErrors)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
 
 const VoiceTranscriptionApi = HttpApi.make('voiceTranscription').add(VoiceTranscriptionGroup);
 

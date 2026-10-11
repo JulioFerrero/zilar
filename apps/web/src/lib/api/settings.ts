@@ -1,8 +1,6 @@
 import { Schema } from 'effect';
 import {
   BackgroundImage as BackgroundImageSchema,
-  EnabledStatus,
-  TranscriptResult,
   type BackgroundImage,
   type BackgroundListItem,
   type IntegrationsStatus,
@@ -67,38 +65,29 @@ export interface SaveVoiceTranscriptionInput {
 }
 
 export function getVoiceTranscriptionStatus(): Promise<{ enabled: boolean }> {
-  return request('/voice/transcription', EnabledStatus);
+  return callApi((client) => client.voiceTranscription.status());
 }
 
 export function getVoiceTranscript(url: string): Promise<{ text: string }> {
-  return request('/voice/transcript', TranscriptResult, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
-  });
+  return callApi((client) => client.voiceTranscription.transcript({ payload: { url } }));
 }
 
 export async function saveVoiceTranscriptionSettings(
   input: SaveVoiceTranscriptionInput,
 ): Promise<void> {
-  const body: Record<string, string> = { baseUrl: input.baseUrl };
-  if (input.apiKey !== undefined) {
-    body['apiKey'] = input.apiKey;
-  }
-  if (input.model !== undefined) {
-    body['model'] = input.model;
-  }
-  await request('/settings/integrations/voice-transcription', struct({ ok: Schema.Boolean }), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  await callApi((client) =>
+    client.voiceTranscription.setSettings({
+      payload: {
+        baseUrl: input.baseUrl,
+        ...(input.apiKey === undefined ? {} : { apiKey: input.apiKey }),
+        ...(input.model === undefined ? {} : { model: input.model }),
+      },
+    }),
+  );
 }
 
 export async function removeVoiceTranscriptionSettings(): Promise<void> {
-  await request('/settings/integrations/voice-transcription', struct({ ok: Schema.Boolean }), {
-    method: 'DELETE',
-  });
+  await callApi((client) => client.voiceTranscription.removeSettings());
 }
 
 // --- Audit log (T-0079, T-0084) --------------------------------------------

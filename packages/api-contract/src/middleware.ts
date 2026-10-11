@@ -244,3 +244,26 @@ export class XmppTokenRateLimit extends HttpApiMiddleware.Service<
   XmppTokenRateLimit,
   { requires: CurrentUser }
 >()('zilar/effect/http/XmppTokenRateLimit') {}
+
+// ---------------------------------------------------------------------------
+// Voice transcription (T-1113). Both run after `Session`.
+// ---------------------------------------------------------------------------
+
+/**
+ * The transcript route answers 501 when the owner never configured an
+ * endpoint, before the payload is decoded. `requires: CurrentUser` keeps the
+ * session 401 first.
+ */
+export class TranscriptConfigured extends HttpApiMiddleware.Service<
+  TranscriptConfigured,
+  { requires: CurrentUser }
+>()('zilar/effect/http/TranscriptConfigured') {}
+
+/**
+ * The owner settings answer 404 for non-owners and 429 over budget before the
+ * payload is decoded. `requires: CurrentUser` keeps the session 401 first.
+ */
+export class VoiceSettingsOwnerLimit extends HttpApiMiddleware.Service<
+  VoiceSettingsOwnerLimit,
+  { requires: CurrentUser }
+>()('zilar/effect/http/VoiceSettingsOwnerLimit') {}

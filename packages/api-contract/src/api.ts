@@ -28,6 +28,7 @@ import { SearchGroup } from './search';
 import { StickersGroup } from './stickers';
 import { ToolsGroup } from './tools';
 import { TopicsGroup } from './topics';
+import { VoiceTranscriptionGroup } from './voice-transcription';
 import { XmppGroup } from './xmpp';
 
 /**
@@ -66,5 +67,6 @@ export const ZilarApi = HttpApi.make('zilar').add(
   StickersGroup,
   ToolsGroup,
   TopicsGroup,
+  VoiceTranscriptionGroup,
   XmppGroup,
 );

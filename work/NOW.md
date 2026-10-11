@@ -2,6 +2,18 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 ~11:30 local: merged T-1104 to T-1112 (except T-1105's old flow, replaced by T-1112)**
+- **Sign-in, Julio's flow (T-1112):** the email goes first. A known email goes to the code step; a new email gets the Invite code input, pre-filled from an `/invite/<code>` link. No up-front invite check.
+  - The lead checked live (curl): `invite_required` (403) and `invite_invalid` (400).
+- **App Links (T-1106):** `assetlinks.json` is live, and Google's checker lists `app.zilar.chat`.
+  - On the emulator: `pm get-app-links` shows `chat.zilar.app: verified`, `/invite/...` opens the app, and `/login` stays in Chrome.
+- **Dedups merged:** T-1107 (crypto envelope; the old stored blob still decrypts), T-1108 (rate-limit layers), T-1109 (`xmppUnavailable`, 503), T-1110 (`groups/access.ts`) and T-1111 (`/xmpp/token` in the contract).
+- **Each deploy gives a few seconds of 503** while the container swaps; the lead hit one.
+- **Waiting:**
+  - the APK from `97525fa2` (`scratchpad/apk/`), to install once the vivo is plugged in;
+  - S15 part 2 (the 4 voice calls into the contract);
+  - S11 (the other `group_members` readers onto `groups/access.ts`).
+
 **2026-10-11 11:20 local: Julio away ("dont stop working"); 5 workers**
 - **Coolify:** the old `zilar` service, its volumes and the "Zilar test" project were deleted. The project "Zilar" now holds `landing` and `zilar-chat`, and the 3 GitHub secrets were removed.
 - **The missing email was not a bug:** it was invite-only sign-up, where an unknown email got a silent fake success. Julio asked for a visible invite-code field instead (T-1104, server and web; T-1105, mobile).
