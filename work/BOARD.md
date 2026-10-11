@@ -9,6 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
+| [T-1099](T-1099-web-new-topic-from-group-header.md) | Web bug: New topic from the group header fails (group id passed as chat id) | in-progress | auto | T-1096 | may affect live |
 
 ## Follow-ups
 
