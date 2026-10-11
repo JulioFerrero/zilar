@@ -18,17 +18,13 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
   - **What it outputs:** SVG, so web shows it as `<img>` and mobile through `SvgXml` (react-native-svg), exactly where T-1075 plugged in `ditherAvatarSvg`/`ditherAvatarDataUri` (`packages/chat-core/src/avatar.ts`).
   - **Where it lives:** a small workspace package with zero dependencies, like `dither-avatar`.
   - **Before the spec:** show Julio a preview page of a few seeds, as for the dither pick.
-- **Mobile approvals: "Could not load the rules." when every AI with no rules succeeds but one AI fails (found 2026-10-10, T-1061 smoke).** `apps/mobile/src/components/approvals/rows.ts:86` returns the error state when `succeeded.length === 0` and any fetch was rejected. This applies to real builds too, for example an AI deleted between the list and the rules fetch. It should show the empty list, plus a note for the failed AI.
-- **Mock backend lacks contact requests, blocks, `users/by-handle`, `handles/check`, `PUT /me/handle`, avatars, push and voice transcription (`docs/audit/mock-sweep-status.md` §1b).** These block mobile H2 for contacts and profile, and web sweep W10.
-- **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile.
-- **Mock: attachments show "Not loaded: untrusted address" on mobile (found 2026-10-10, T-1047 smoke).** Sends work now (T-1047), but the fake slot's `getUrl` is a `data:` URL (`packages/mock-backend/src/xmpp/core.ts:229`), and the seeded `Stage.png` and `tickets.pdf` read the same.
-- **Mock: sticker and GIF images are blank on mobile (found 2026-10-10, T-1046 smoke).** The panels list packs and results, but no image draws:
-  - **stickers:** native `Image` fetches `/api/stickers/<id>/file` from `API_URL` over the network, which `mockFetch` never sees, and the art is SVG, which React Native's `Image` cannot draw;
-  - **GIFs:** `apps/mobile/src/lib/gifs-api.ts` `toGifItem` wraps every `data:` token in `/api/gifs/media/<token>`, and the token is SVG too.
+- **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile. This is a new feature, so it needs Julio's OK.
+- **Mock images (waiting for Julio's choice, NOW.md 2026-10-11 05:00).** Web seed stickers are fixed (T-1083, a dev-only vite plugin), and web GIFs were never blank. Still broken:
+  - **mobile sticker and GIF images are blank:** native `Image` fetches over the network, never through `mockFetch`, and the seed art is SVG;
+  - **a sent attachment or GIF has no bytes:** it is a file row on web and "Not loaded: untrusted address" on mobile, because the fake slot is an empty `data:` url (`packages/mock-backend/src/xmpp/core.ts:227-231`).
 
-  The fix needs raster (PNG) art, plus a mock path the native image can reach.
-  - **Web stickers: fixed by T-1083 (2026-10-11).** A dev-only vite plugin, `apps/web/src/mock/dev-sticker-files.ts`, serves the seed sticker files. Stickers uploaded during a session are not served. Web GIFs were never blank. The plan for the rest is `docs/audit/mock-sweep-status.md` §3-§4: raster art, a mock-only mobile image allowance, and attachment bytes.
-- **Mobile mock approvals have no rules (corrected 2026-10-10, T-1056).** "Always allowed" is always empty in mock mode, because `apps/mobile/src/mock/approvals.ts:119-121` returns `[]` and the "Always" decision records no rule. On real builds the rules load for every owned AI (`use-approvals.ts:117-160`). The fix belongs with the approvals domain of the shared mock backend (`docs/audit/mock-plan.md`).
+  Load paths and options: `docs/audit/mock-sweep-status.md` §3-§4. Any fix sits next to `isTrustedMediaUrl` (`packages/chat-core/src/media.ts:82`).
+- **Mobile mock "Always allowed": re-check on the next approvals smoke.** The old `mock/approvals.ts`, which returned no rules, was deleted in T-1061. Approvals now run on the backend's `approval-rules` domain, and nobody has looked at the list since.
 - **Mock: `GET /groups/:id/topics` returns `[]` for groups whose General exists only in `/chats` (T-1048 follow-up).**
 - **Mobile: about 9 more `Effect.runFork(Fiber.interrupt(...))` sites in `components/chat` could use `interruptFiber` (`lib/effect/timers.ts`, T-1050).** The `runSync` ones differ and stay.
 - **Dedup slices that need a lead decision (`docs/audit/dedup-status.md` §8):** S6 crypto envelope (keys), S7-S9 rate limiters, S10-S11 `groups/access.ts` (permissions), S15 web settings facade (keys). S4 (schema-issue walker) must keep audit's two extra cases.
