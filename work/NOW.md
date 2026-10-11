@@ -2,6 +2,20 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 05:40 local: Julio asleep; the ball avatars are running**
+- **Julio's answers (05:30):**
+  - **ball avatars:** style **A, glossy**, picked from the preview;
+  - **mock images:** **leave them blank**. No service worker and no trust-check allowance.
+- **Merged since 05:00:**
+  - **T-1087:** mobile approvals shows the rules error only when every AI failed (a real-build bug, 1 test);
+  - **T-1088 and T-1089:** the voice-transcription response schemas are in `@zilar/api-contract`, and both clients use them. The unused `GifSheet` and the `mockItems` props are gone;
+  - **T-1090:** every seeded group's General is a real topics row. In the browser, Familia's topic info works.
+- **Running:** T-1091, `@zilar/ball-avatar` (glossy) replacing dither-avatar in chat-core, web and mobile.
+- **Waits for Julio:**
+  - the dedup slices (S6 crypto, S7-S9 rate limiters, S10-S11 `groups/access`, S15 web settings facade);
+  - mobile markdown tables (a new feature);
+  - the single live test (3 Coolify secrets).
+
 **2026-10-11 05:00 local: no screen reads local mock data any more; the images are next**
 - **Merged since 04:10:**
   - **T-1081:** your own sticker packs are editable in mobile mock mode (after a lead fix round);
