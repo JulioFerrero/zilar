@@ -65,13 +65,11 @@ export interface SaveDeviceAdmin {
   disablePushPair: (userId: string, node: string) => Promise<void>;
 }
 
-// Stores one device. A re-registration of the same endpoint (Web Push) or the
-// same token (native) replaces the older row for that user — an endpoint
-// identifies one browser subscription and a token one app install — so
-// enabling twice does not pile up devices. The stale enable-pair behind the
-// replaced row is dropped by the caller (see `SaveDeviceAdmin` above): the row
-// delete is scoped by user id AND that identity in the same transaction as the
-// insert, so two racing re-registrations cannot leave a duplicate behind.
+// Stores one device, idempotently: a re-registration of the same endpoint
+// (Web Push) or the same token (native) keeps the existing row's id and node
+// and refreshes its fields, so the caller answers the same `{ id, node }` and
+// its enable-pair keeps working (T-1150). Legacy duplicates lose: the oldest
+// is kept and the rest go to `staleNodes`, all in one locked transaction.
 export async function saveDevice(
   db: ServerDatabase,
   cipher: PushCipher,
@@ -86,23 +84,53 @@ export async function saveDevice(
       return yield* sql.withTransaction(
         Effect.gen(function* () {
           yield* sql`SELECT pg_advisory_xact_lock(hashtext(${input.userId}))`;
-          const [devices] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
-            FROM push_subscriptions WHERE user_id = ${input.userId}`;
-          if (Number(devices?.total ?? 0) >= PUSH_MAX_DEVICES_PER_USER) {
-            return yield* Effect.fail(
-              new HttpError(409, 'too_many_devices', 'Too many push devices'),
-            );
-          }
           if (input.kind !== 'webpush') {
-            // Read the stale rows (same user, same token, any node) INSIDE the
-            // transaction: the read, the deletes and the insert serialize under
-            // the per-user lock, so concurrent re-registrations agree on the
-            // same set.
-            const stale = yield* sql<{ node: string }>`SELECT node FROM push_subscriptions
-              WHERE user_id = ${input.userId} AND token = ${input.token}`;
-            staleNodes = stale.map((entry) => entry.node).filter((node) => node !== input.node);
+            // Read this token's rows INSIDE the transaction: the read, the
+            // deletes and the write serialize under the per-user lock, so
+            // concurrent re-registrations agree on the same set.
+            const existing = yield* sql<PushDeviceRow>`SELECT * FROM push_subscriptions
+              WHERE user_id = ${input.userId} AND token = ${input.token}
+              ORDER BY created_at, id`;
+            // A native token is per app install, so it can belong to one
+            // account only: drop any row another user holds for it, so a
+            // failed sign-out cannot send the previous account's wakes to this
+            // phone. The token-only DELETE is atomic and those rows are not
+            // this user's pairs, so they stay out of `staleNodes`.
             yield* sql`DELETE FROM push_subscriptions
-              WHERE user_id = ${input.userId} AND token = ${input.token}`;
+              WHERE token = ${input.token} AND user_id <> ${input.userId}`;
+            const kept = existing[0];
+            if (kept !== undefined) {
+              // Keep the row's id and node (T-1150): a re-registration must
+              // not mint a new node, or the enable it replaces fails on
+              // ejabberd's (username, session-timestamp) key. Legacy
+              // duplicates lose; their nodes are stale.
+              staleNodes = existing
+                .slice(1)
+                .map((row) => row.node)
+                .filter((node) => node !== kept.node);
+              yield* sql`DELETE FROM push_subscriptions
+                WHERE user_id = ${input.userId} AND token = ${input.token} AND id <> ${kept.id}`;
+              const [updated] = yield* sql<PushDeviceRow>`UPDATE push_subscriptions
+                  SET kind = ${input.kind}, endpoint = NULL, p256dh = NULL, auth = NULL,
+                      token = ${input.token}, user_agent = ${input.userAgent}
+                WHERE id = ${kept.id}
+                RETURNING *`;
+              if (!updated) {
+                return yield* Effect.fail(
+                  new HttpError(500, 'internal_error', 'Could not save the push device'),
+                );
+              }
+              return updated;
+            }
+            // A new device counts against the cap; a re-registration does not.
+            const [devices] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+              FROM push_subscriptions
+              WHERE user_id = ${input.userId} AND token IS DISTINCT FROM ${input.token}`;
+            if (Number(devices?.total ?? 0) >= PUSH_MAX_DEVICES_PER_USER) {
+              return yield* Effect.fail(
+                new HttpError(409, 'too_many_devices', 'Too many push devices'),
+              );
+            }
             const [saved] = yield* sql<PushDeviceRow>`INSERT INTO push_subscriptions
                 (id, user_id, node, kind, endpoint, p256dh, auth, token, user_agent, created_at)
               VALUES (
@@ -125,14 +153,43 @@ export async function saveDevice(
             }
             return saved;
           }
-          // Read the stale rows (same user, same endpoint, any node) INSIDE the
-          // transaction: the read, the deletes and the insert serialize under the
-          // per-user lock, so concurrent re-registrations agree on the same set.
-          const stale = yield* sql<{ node: string }>`SELECT node FROM push_subscriptions
-            WHERE user_id = ${input.userId} AND endpoint = ${input.subscription.endpoint}`;
-          staleNodes = stale.map((entry) => entry.node).filter((node) => node !== input.node);
-          yield* sql`DELETE FROM push_subscriptions
-            WHERE user_id = ${input.userId} AND endpoint = ${input.subscription.endpoint}`;
+          // Read this endpoint's rows INSIDE the transaction, as in the native
+          // branch.
+          const existing = yield* sql<PushDeviceRow>`SELECT * FROM push_subscriptions
+            WHERE user_id = ${input.userId} AND endpoint = ${input.subscription.endpoint}
+            ORDER BY created_at, id`;
+          const kept = existing[0];
+          if (kept !== undefined) {
+            staleNodes = existing
+              .slice(1)
+              .map((row) => row.node)
+              .filter((node) => node !== kept.node);
+            yield* sql`DELETE FROM push_subscriptions
+              WHERE user_id = ${input.userId} AND endpoint = ${input.subscription.endpoint} AND id <> ${kept.id}`;
+            const [updated] = yield* sql<PushDeviceRow>`UPDATE push_subscriptions
+                SET kind = 'webpush', token = NULL,
+                    endpoint = ${input.subscription.endpoint},
+                    p256dh = ${cipher.encrypt(input.subscription.keys.p256dh)},
+                    auth = ${cipher.encrypt(input.subscription.keys.auth)},
+                    user_agent = ${input.userAgent}
+              WHERE id = ${kept.id}
+              RETURNING *`;
+            if (!updated) {
+              return yield* Effect.fail(
+                new HttpError(500, 'internal_error', 'Could not save the push device'),
+              );
+            }
+            return updated;
+          }
+          // A new device counts against the cap; a re-registration does not.
+          const [devices] = yield* sql<{ total: number }>`SELECT count(*)::int AS total
+            FROM push_subscriptions
+            WHERE user_id = ${input.userId} AND endpoint IS DISTINCT FROM ${input.subscription.endpoint}`;
+          if (Number(devices?.total ?? 0) >= PUSH_MAX_DEVICES_PER_USER) {
+            return yield* Effect.fail(
+              new HttpError(409, 'too_many_devices', 'Too many push devices'),
+            );
+          }
           const [saved] = yield* sql<PushDeviceRow>`INSERT INTO push_subscriptions
               (id, user_id, node, kind, endpoint, p256dh, auth, token, user_agent, created_at)
             VALUES (
@@ -310,13 +367,17 @@ export async function setShowPreviewsForUser(
   return row?.showPreviews ?? showPreviews;
 }
 
-// Opens one stored device for sending: decrypts the sealed keys. A row that
-// no longer decrypts (rotated storage key) is unusable — the caller drops it
-// and answers the IQ with `result` like any other send failure.
+// Opens one stored Web Push device for sending: decrypts the sealed keys. A
+// row that is not a Web Push row (its endpoint or keys are NULL — a native
+// device) or that no longer decrypts (rotated storage key) is unusable — the
+// caller drops it and answers the IQ with `result` like any other send failure.
 export function openDevice(
   cipher: PushCipher,
   row: PushDeviceRow,
 ): { endpoint: string; keys: { p256dh: string; auth: string } } {
+  if (row.endpoint === null || row.p256dh === null || row.auth === null) {
+    throw new Error('The push device is not a Web Push device');
+  }
   return {
     endpoint: row.endpoint,
     keys: { p256dh: cipher.decrypt(row.p256dh), auth: cipher.decrypt(row.auth) },

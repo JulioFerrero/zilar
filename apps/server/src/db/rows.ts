@@ -225,18 +225,18 @@ export type PushDeviceKind = 'webpush' | 'fcm' | 'apns';
 // Row of the `push_subscriptions` table. A row is either a Web Push row
 // (`kind = 'webpush'`, endpoint and sealed keys set, `token` empty) or a native
 // row (`kind = 'fcm' | 'apns'`, `token` set, the Web Push columns empty);
-// migration 0047's `shape_check` enforces that pair. The Web Push columns stay
-// typed non-null for the Web Push readers that predate `kind`; a native row's
-// values are NULL at runtime, so task 4 reads a native row through
-// `openNativeDevice` and never off the raw columns.
+// migration 0047's `shape_check` enforces that pair. The Web Push columns are
+// nullable because a native row leaves them NULL; a Web Push reader opens a row
+// through `openDevice`, and a native row through `openNativeDevice`, never off
+// the raw columns unchecked.
 export interface PushSubscriptionRow {
   id: string;
   userId: string;
   node: string;
   kind: PushDeviceKind;
-  endpoint: string;
-  p256dh: string;
-  auth: string;
+  endpoint: string | null;
+  p256dh: string | null;
+  auth: string | null;
   token: string | null;
   userAgent: string | null;
   createdAt: Date;

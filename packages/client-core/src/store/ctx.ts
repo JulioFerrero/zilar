@@ -3,7 +3,7 @@
 // bookkeeping the store keeps beside its state. Each app's own context extends
 // this one, so an app module and a core module take the same value.
 import { Effect } from 'effect';
-import type { ChatSummary } from '@zilar/chat-core';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { ConnectionStatus, XmppCore } from '@zilar/xmpp-core';
 import type { LedgerPatch, LedgerState, MessageLedger } from './ledger';
 import type { Lifetime } from './lifetime';
@@ -64,6 +64,11 @@ export interface CoreHooks {
   readonly finishDraftTurn: (chatId: string, turnId: string) => void;
   /** Drops the bytes kept for a Retry of this message id, if any. */
   readonly forgetRetryBytes: (messageId: string) => void;
+  /**
+   * Shows an in-tab browser notification for an unread incoming message (web,
+   * T-1145). Mobile leaves it unset, so it does nothing there.
+   */
+  readonly notifyIncoming?: (chatId: string, message: UiMessage) => void;
 }
 
 /** What the lifecycle hands the app to write into its own state on boot. */

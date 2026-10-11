@@ -53,6 +53,7 @@ import { createPushCipher } from './push/crypto';
 import { loadPushConfigOrExit, pushConfigError, type PushConfig } from './push/config';
 import { startPushComponent, type PushComponentHandle } from './push/component';
 import { createWebPushSender } from './push/sender';
+import { createNativeSender } from './push/native-sender';
 import { reconcileRoomSubscriptionOptions } from './topics/rooms';
 import { sharedDraftHub } from './drafts/hub';
 import { createLogger } from './logger';
@@ -491,6 +492,7 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
               PUSH_VAPID_PRIVATE_KEY: push.PUSH_VAPID_PRIVATE_KEY as string,
               PUSH_VAPID_SUBJECT: push.PUSH_VAPID_SUBJECT as string,
             });
+            const nativeSender = createNativeSender(push, logger);
             const cipher = createPushCipher(push.PUSH_STORAGE_KEY as string);
             running.pushComponent = startPushComponent({
               domain: push.PUSH_COMPONENT_JID as string,
@@ -503,6 +505,7 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
                 archive: archivePool,
                 cipher,
                 sender,
+                ...(nativeSender === undefined ? {} : { nativeSender }),
                 logger,
                 recentlyNotified: new Map(),
               },

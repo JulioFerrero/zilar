@@ -185,6 +185,12 @@ export class ContactRequestByHandleRateLimit extends HttpApiMiddleware.Service<
   { requires: CurrentUser }
 >()('zilar/effect/http/ContactRequestByHandleRateLimit') {}
 
+/** The people prefix-search budget. */
+export class UserSearchRateLimit extends HttpApiMiddleware.Service<
+  UserSearchRateLimit,
+  { requires: CurrentUser }
+>()('zilar/effect/http/UserSearchRateLimit') {}
+
 /** The handle-check budget; it runs before the query is decoded. */
 export class HandlesCheckRateLimit extends HttpApiMiddleware.Service<
   HandlesCheckRateLimit,

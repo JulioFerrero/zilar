@@ -33,5 +33,8 @@ yarn-error.*
 # local env files
 .env*.local
 
+# firebase (T-1139): each self-hoster brings their own file
+google-services.json
+
 # typescript
 *.tsbuildinfo

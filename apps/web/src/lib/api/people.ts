@@ -55,6 +55,14 @@ export function lookupByHandle(handle: string): Promise<HandleProfile> {
   return callApi((client) => client.contactRequests.byHandle({ params: { handle } }));
 }
 
+// Telegram-style prefix search over `@username` and display name: up to 10
+// people. A leading `@` in `q` is stripped server-side.
+export function searchUsers(q: string): Promise<{ entries: HandleProfile[] }> {
+  return callApi((client) => client.contactRequests.search({ query: { q } })).then((body) => ({
+    entries: [...body.entries],
+  }));
+}
+
 export interface ContactRequestList {
   incoming: ContactRequestView[];
   outgoing: ContactRequestView[];

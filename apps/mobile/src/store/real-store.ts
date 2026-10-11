@@ -20,6 +20,7 @@ import { makeGroups } from './effects/groups';
 import { makeHistory } from './effects/history';
 import { makeLifecycle } from './effects/lifecycle';
 import { makePins } from './effects/pins';
+import { makePushPair } from './effects/push-pair';
 import { makeSend } from './effects/send';
 import { Ports, PortsLive, type RealStoreDeps } from './effects/ports';
 import { makeLife, makeRunners, type StoreCtx, type StoreState } from './effects/runtime';
@@ -258,6 +259,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
     const groups = makeGroups(ctx);
     const events = makeEvents(ctx);
     const pins = makePins(ctx);
+    const pushPair = makePushPair(ctx);
 
     userState = makeUserState({
       locals,
@@ -282,6 +284,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       groupMembers: (chatId) => helpers.mentionMembersFor(chatId),
       groupIdForChat: (chatId) => helpers.groupIdForChat(chatId),
       openChat: (chatId) => history.openChat(chatId),
+      closeChat: (chatId) => {
+        if (get().activeChatId === chatId) {
+          set({ activeChatId: null });
+        }
+      },
       reloadChats: () => history.reloadChats(),
       retryHistory: (chatId) => history.retryHistory(chatId),
       loadOlder: (chatId) => history.loadOlder(chatId),
@@ -293,6 +300,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       groupDetailsRevision: 0,
       ...groups.actions,
       ...pins.actions,
+      ...pushPair.actions,
       // Stop the open chat's pins poll (the core's poll reads this switch).
       stopPinsPoll: () => {
         locals.pinsPollEnabled = false;

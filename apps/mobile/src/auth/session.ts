@@ -53,7 +53,21 @@ const verifyCode = (email: string, otp: string, inviteCode: string | undefined) 
 const api: AuthApi = {
   sendCode: (email, inviteCode) => runMobile(sendCode(email, inviteCode)),
   verifyCode: (email, otp, inviteCode) => runMobile(verifyCode(email, otp, inviteCode)),
-  signOut: () => runMobile(attempt(() => signOutSession(authClient)).pipe(Effect.asVoid)),
+  signOut: () =>
+    runMobile(
+      // Remove the device row while the bearer token is still valid (T-1139).
+      // The push module is dynamic, like `session-token.ts`: it loads
+      // `expo-notifications`, which Node (Vitest) cannot import.
+      Effect.gen(function* () {
+        yield* Effect.ignore(
+          attempt(async () => {
+            const { unregisterNativePush } = await import('../lib/push/native');
+            await unregisterNativePush();
+          }),
+        );
+        yield* attempt(() => signOutSession(authClient));
+      }),
+    ),
   fetchMe: (token) => fetchMe(API_URL, token),
   updateMe: (token, name) => updateMe(API_URL, token, name),
 };

@@ -116,18 +116,54 @@ export const newestMessageForUserEffect = Effect.fnUntraced(function* (
   return { newest: undefined, notify: [], saw: everSawRows ? 'duplicate' : 'no-message' };
 });
 
-function buildNewestQuery(allowed: SearchOwner): { text: string; values: unknown[] } {
-  const values: unknown[] = [];
-  const next = (value: unknown): string => {
-    values.push(value);
-    return `$${values.length}`;
-  };
+// The columns every candidate read returns, in the shape `ArchiveCandidate`
+// names them.
+const CANDIDATE_COLUMNS =
+  'username AS owner, peer, bare_peer AS "barePeer", kind, nick, origin_id AS "originId", timestamp, txt AS text, xml';
+
+// The scope predicate shared by every candidate read: the user's visible rooms
+// plus their own DM archive. Values are bound in order (`next`), so callers
+// keep appending their own placeholders after the three it consumes.
+function scopePredicate(allowed: SearchOwner, next: (value: unknown) => string): string {
   const rooms = next(allowed.rooms);
   const ownLocalpart = next(allowed.ownLocalpart);
   const dmPeers = next(allowed.dmPeers);
+  return `(username = ANY(${rooms}) OR (username = ${ownLocalpart} AND bare_peer = ANY(${dmPeers})))`;
+}
+
+function binder(): { values: unknown[]; next: (value: unknown) => string } {
+  const values: unknown[] = [];
+  return {
+    values,
+    next: (value: unknown) => {
+      values.push(value);
+      return `$${values.length}`;
+    },
+  };
+}
+
+function buildNewestQuery(allowed: SearchOwner): { text: string; values: unknown[] } {
+  const { values, next } = binder();
+  const scope = scopePredicate(allowed, next);
   const cap = next(ARCHIVE_CANDIDATES);
   return {
-    text: `SELECT username AS owner, peer, bare_peer AS "barePeer", kind, nick, origin_id AS "originId", timestamp, txt AS text, xml FROM archive WHERE (username = ANY(${rooms}) OR (username = ${ownLocalpart} AND bare_peer = ANY(${dmPeers}))) ORDER BY timestamp DESC LIMIT ${cap}`,
+    text: `SELECT ${CANDIDATE_COLUMNS} FROM archive WHERE ${scope} ORDER BY timestamp DESC LIMIT ${cap}`,
+    values,
+  };
+}
+
+// One archived message by its origin id, restricted to the caller's scope. A
+// row outside the scope matches nothing, so the caller cannot tell an unknown
+// id from a message in a chat they may not see.
+function buildOriginIdQuery(
+  allowed: SearchOwner,
+  originId: string,
+): { text: string; values: unknown[] } {
+  const { values, next } = binder();
+  const scope = scopePredicate(allowed, next);
+  const id = next(originId);
+  return {
+    text: `SELECT ${CANDIDATE_COLUMNS} FROM archive WHERE ${scope} AND origin_id = ${id} ORDER BY timestamp DESC LIMIT 1`,
     values,
   };
 }
@@ -139,4 +175,14 @@ async function readNewestCandidates(
   const built = buildNewestQuery(allowed);
   const rows = (await archive.query(built.text, built.values)) as unknown as ArchiveCandidate[];
   return rows;
+}
+
+export async function readCandidateByOriginId(
+  archive: ArchivePool,
+  allowed: SearchOwner,
+  originId: string,
+): Promise<ArchiveCandidate | undefined> {
+  const built = buildOriginIdQuery(allowed, originId);
+  const rows = (await archive.query(built.text, built.values)) as unknown as ArchiveCandidate[];
+  return rows[0];
 }

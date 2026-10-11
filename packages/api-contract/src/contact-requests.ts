@@ -11,6 +11,7 @@ import {
   ContactRequestReadRateLimit,
   ContactRequestsSchemaErrors,
   Session,
+  UserSearchRateLimit,
 } from './middleware';
 
 export const ContactRequestStatus = Schema.Literals([
@@ -98,6 +99,17 @@ export const HandleProfile = Schema.Struct({
 
 export type HandleProfile = typeof HandleProfile.Type;
 
+// The people prefix search: `q` is 1..64 characters (a leading `@` is
+// stripped server-side). The answer is up to 10 matches, each a
+// `HandleProfile` with its `relation`.
+export const UserSearchQuery = Schema.Struct({
+  q: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
+});
+
+export const UserSearchResult = Schema.Struct({ entries: Schema.Array(HandleProfile) });
+
+export type UserSearchResult = typeof UserSearchResult.Type;
+
 const RequestIdParams = Schema.Struct({ id: Schema.String });
 const HandleParams = Schema.Struct({ handle: Schema.String });
 
@@ -128,6 +140,10 @@ export const ContactRequestsGroup = HttpApiGroup.make('contactRequests')
       params: HandleParams,
       success: HandleProfile,
     }).middleware(ContactRequestByHandleRateLimit),
+    HttpApiEndpoint.get('search', '/users/search', {
+      query: UserSearchQuery,
+      success: UserSearchResult,
+    }).middleware(UserSearchRateLimit),
   )
   .middleware(Session)
   .middleware(ContactRequestsSchemaErrors)

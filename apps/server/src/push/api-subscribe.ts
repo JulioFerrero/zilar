@@ -1,11 +1,13 @@
 // The push subscribe handler, split out of `./api` by T-1017 (size split).
-// Moved unchanged: the device's push keys are still sealed and stored the same
-// way, and the route keeps its exact step order (requirePush, then decode,
-// then limiter) and its retry-on-node-collision loop.
+// T-1138 adds the native body: a `{ kind: 'fcm', token }` row stores the token
+// in the clear (a delivery address, not a credential) beside the Web Push body,
+// whose keys are still sealed. The route keeps its exact step order
+// (requirePush, then decode, then limiter) and its retry-on-node-collision
+// loop; ids only ever reach the logs, never the token.
 
 import { randomUUID } from 'node:crypto';
 import { Effect, Option, Schema } from 'effect';
-import { RegisterPushDevicePayload } from '@zilar/api-contract';
+import { SubscribePushDevicePayload } from '@zilar/api-contract';
 import { errorClassName, isUniqueViolation } from '../effect/error-utils';
 import { handler } from '../effect/http-core';
 import { HttpError } from '../errors';
@@ -28,7 +30,7 @@ export function createSubscribeHandler(
       const raw = yield* request.request.json.pipe(
         Effect.catchCause(() => Effect.succeed<unknown>(undefined)),
       );
-      const decoded = Schema.decodeUnknownOption(RegisterPushDevicePayload)(raw);
+      const decoded = Schema.decodeUnknownOption(SubscribePushDevicePayload)(raw);
       if (Option.isNone(decoded)) {
         throw new HttpError(400, 'invalid_subscription', 'The push subscription is invalid');
       }
@@ -78,21 +80,31 @@ export function createSubscribeHandler(
           saveDevice(
             deps.db,
             cipher,
-            {
-              id: randomUUID(),
-              userId: user.id,
-              node,
-              kind: 'webpush',
-              subscription: {
-                endpoint: body.endpoint,
-                keys: { p256dh: body.keys.p256dh, auth: body.keys.auth },
-                ...(body.expirationTime === undefined
-                  ? {}
-                  : { expirationTime: body.expirationTime }),
-              },
-              userAgent: body.userAgent ?? null,
-              now: new Date(now()),
-            },
+            'kind' in body
+              ? {
+                  id: randomUUID(),
+                  userId: user.id,
+                  node,
+                  kind: 'fcm',
+                  token: body.token,
+                  userAgent: body.userAgent ?? null,
+                  now: new Date(now()),
+                }
+              : {
+                  id: randomUUID(),
+                  userId: user.id,
+                  node,
+                  kind: 'webpush',
+                  subscription: {
+                    endpoint: body.endpoint,
+                    keys: { p256dh: body.keys.p256dh, auth: body.keys.auth },
+                    ...(body.expirationTime === undefined
+                      ? {}
+                      : { expirationTime: body.expirationTime }),
+                  },
+                  userAgent: body.userAgent ?? null,
+                  now: new Date(now()),
+                },
             {
               disablePushPair: (_userId, _node) => Effect.runPromise(dropStalePushPairs([_node])),
             },

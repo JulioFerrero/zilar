@@ -205,6 +205,10 @@ services:
       # server itself, where nothing listens on 5347).
       PUSH_COMPONENT_HOST: ejabberd
       PUSH_STORAGE_KEY: ${PUSH_STORAGE_KEY:-}
+      # Native (Android FCM) push, optional (T-1138): the Firebase service
+      # account JSON on one line. Empty = native push off.
+      FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
       TOOLS_ENABLED: ${TOOLS_ENABLED:-false}
       ROUTINES_ENABLED: ${ROUTINES_ENABLED:-false}
       WEB_TOOLS_ENABLED: ${WEB_TOOLS_ENABLED:-false}

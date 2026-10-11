@@ -49,6 +49,7 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
   const sendVoice = useChatStore((state) => state.sendVoice);
   const sendSticker = useChatStore((state) => state.sendSticker);
   const sendTyping = useChatStore((state) => state.sendTyping);
+  const stopTyping = useChatStore((state) => state.stopTyping);
   // The `@` picker members (T-0227, like web): group and topic chats read
   // the group's members and AIs, minus me; DMs pass nothing (no picker).
   // Scalar deps only — `chat` itself is still loading above this line.
@@ -120,6 +121,9 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
             ...(mentions === undefined || mentions.length === 0 ? {} : { mentions }),
           },
     );
+    // The receiver clears the line on the message itself; the paused stanza is
+    // the backstop for a slow echo or another device.
+    stopTyping(chat.id);
     cancelReply();
   };
 
@@ -156,6 +160,7 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
           replyTo={replyTo}
           onCancelReply={cancelReply}
           onTyping={() => sendTyping(chat.id)}
+          onStopTyping={() => stopTyping(chat.id)}
           stickersApi={stickersApi}
           demoAttachments={demoAttachments}
           gifsApi={gifsApi}

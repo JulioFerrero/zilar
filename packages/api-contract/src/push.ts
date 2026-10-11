@@ -46,6 +46,24 @@ export type PushSettings = typeof PushSettings.Type;
 
 export const PushTestResult = Schema.Struct({ sent: Schema.Boolean });
 
+/**
+ * The notification text for one archived message, built by the server with the
+ * same resolver and preview rules Web Push uses. Native clients fetch this from
+ * the background task instead of opening an XMPP connection.
+ */
+export const PushPreview = Schema.Struct({
+  title: Schema.String,
+  body: Schema.String,
+  chatId: Schema.String,
+});
+
+export type PushPreview = typeof PushPreview.Type;
+
+/** The preview query: the archive origin id of one message. */
+export const PushPreviewQuery = Schema.Struct({
+  messageId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
+});
+
 function isUrl(value: string): boolean {
   try {
     new URL(value);
@@ -78,6 +96,33 @@ export const RegisterPushDevicePayload = Schema.Struct({
 
 export type RegisterPushDevicePayload = typeof RegisterPushDevicePayload.Type;
 
+/**
+ * A native (FCM) registration: an app install's device token plus an optional
+ * label. Only `fcm` is accepted for now; `apns` comes later. The server decodes
+ * it by hand (extra keys are ignored) and never logs the token.
+ */
+export const RegisterNativePushDevicePayload = Schema.Struct({
+  kind: Schema.Literal('fcm'),
+  token: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
+  userAgent: Schema.optional(
+    Schema.NullOr(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
+  ),
+});
+
+export type RegisterNativePushDevicePayload = typeof RegisterNativePushDevicePayload.Type;
+
+/**
+ * The subscribe body: the Web Push `PushSubscription` JSON (no `kind`, so the
+ * web client is unchanged) or a native `{ kind: 'fcm', token }`. An unknown
+ * `kind` or an empty token matches neither member and is a 400.
+ */
+export const SubscribePushDevicePayload = Schema.Union([
+  RegisterPushDevicePayload,
+  RegisterNativePushDevicePayload,
+]);
+
+export type SubscribePushDevicePayload = typeof SubscribePushDevicePayload.Type;
+
 /** Strict when decoded by the server: an excess key is a 400. */
 export const PushSettingsPayload = Schema.Struct({ showPreviews: Schema.Boolean });
 
@@ -92,7 +137,7 @@ export const PushGroup = HttpApiGroup.make('push')
       success: PushConfig,
     }),
     HttpApiEndpoint.post('subscribe', '/push/subscriptions', {
-      payload: RegisterPushDevicePayload,
+      payload: SubscribePushDevicePayload,
       success: RegisteredDevice,
     }),
     HttpApiEndpoint.get('list', '/push/subscriptions', {
@@ -104,6 +149,10 @@ export const PushGroup = HttpApiGroup.make('push')
     }),
     HttpApiEndpoint.get('settings', '/push/settings', {
       success: PushSettings,
+    }),
+    HttpApiEndpoint.get('preview', '/push/preview', {
+      query: PushPreviewQuery,
+      success: PushPreview,
     }),
     HttpApiEndpoint.put('updateSettings', '/push/settings', {
       payload: PushSettingsPayload,

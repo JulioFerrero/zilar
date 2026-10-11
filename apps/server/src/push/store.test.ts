@@ -109,14 +109,54 @@ describe('push device store', () => {
     expect(rows).toHaveLength(PUSH_MAX_DEVICES_PER_USER);
   });
 
-  it('collapses two registrations of the same token into one row', async () => {
+  it('keeps one row, node and id across two registrations of the same token', async () => {
     const userId = await seedUser(context);
-    await saveDevice(context.db, cipher, nativeInput(userId, 'same-token', 'fcm'));
+    const first = await saveDevice(context.db, cipher, nativeInput(userId, 'same-token', 'fcm'));
     const second = await saveDevice(context.db, cipher, nativeInput(userId, 'same-token', 'fcm'));
 
     const rows = await rowsForUser(context, userId);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.id).toBe(second.id);
+    expect(rows[0]?.id).toBe(first.id);
+    expect(second.id).toBe(first.id);
+    expect(second.node).toBe(first.node);
+  });
+
+  it('keeps one row, node and id across two registrations of the same endpoint', async () => {
+    const userId = await seedUser(context);
+    const first = await saveDevice(context.db, cipher, webPushInput(userId, 7));
+    const second = await saveDevice(context.db, cipher, webPushInput(userId, 7));
+
+    const rows = await rowsForUser(context, userId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.id).toBe(first.id);
+    expect(second.id).toBe(first.id);
+    expect(second.node).toBe(first.node);
+  });
+
+  it('moves a token to the second account that registers it', async () => {
+    const userA = await seedUser(context);
+    const userB = await seedUser(context);
+    await saveDevice(context.db, cipher, nativeInput(userA, 'shared-token', 'fcm'));
+
+    const saved = await saveDevice(context.db, cipher, nativeInput(userB, 'shared-token', 'fcm'));
+
+    expect(await rowsForUser(context, userA)).toHaveLength(0);
+    const rowsB = await rowsForUser(context, userB);
+    expect(rowsB).toHaveLength(1);
+    expect(rowsB[0]?.id).toBe(saved.id);
+  });
+
+  it("leaves the first account's other tokens untouched", async () => {
+    const userA = await seedUser(context);
+    const userB = await seedUser(context);
+    await saveDevice(context.db, cipher, nativeInput(userA, 'kept-token', 'fcm'));
+    await saveDevice(context.db, cipher, nativeInput(userA, 'shared-token', 'fcm'));
+
+    await saveDevice(context.db, cipher, nativeInput(userB, 'shared-token', 'fcm'));
+
+    const rowsA = await rowsForUser(context, userA);
+    expect(rowsA).toHaveLength(1);
+    expect(rowsA[0]?.token).toBe('kept-token');
   });
 
   it('rejects a row whose kind and shape disagree', async () => {

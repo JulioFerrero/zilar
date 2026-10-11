@@ -31,9 +31,22 @@ import {
   runPageAction,
   withPermissionAnswer,
 } from '@/lib/push/pageActions';
+import { setInTabPreviews } from '@/lib/push/inTab';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 
 type PageStatus = 'loading' | 'ready' | 'unsupported' | 'server-off';
+
+// A browser without a push service rejects `PushManager.subscribe` with an
+// `AbortError` (Chromium: "Registration failed - push service error"). The
+// permission was still granted, so in-tab notifications work while open.
+const PUSH_SERVICE_UNAVAILABLE =
+  "This browser can't receive notifications when Zilar is closed. You'll still get them while a Zilar tab is open.";
+
+function isPushServiceError(error: unknown): boolean {
+  return (
+    error instanceof Error && (error.name === 'AbortError' || /push service/i.test(error.message))
+  );
+}
 
 export interface PushEnable {
   status: PageStatus;
@@ -44,6 +57,7 @@ export interface PushEnable {
   busy: boolean;
   testing: boolean;
   testSent: boolean;
+  onlyWhileOpen: boolean;
   errorMessage: string;
   enableOnThisDevice: () => void;
   disableOnThisDevice: () => void;
@@ -65,6 +79,7 @@ export function usePushEnable(): PushEnable {
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testSent, setTestSent] = useState(false);
+  const [onlyWhileOpen, setOnlyWhileOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   const supported =
@@ -108,6 +123,7 @@ export function usePushEnable(): PushEnable {
       yield* Effect.sync(() => {
         setDevices(loadedDevices);
         setShowPreviews(settings.showPreviews);
+        setInTabPreviews(settings.showPreviews);
         setPermission(permissionNow);
         setStoredDevice(kept);
         setStatus('ready');
@@ -131,6 +147,7 @@ export function usePushEnable(): PushEnable {
     setBusy(true);
     setErrorMessage('');
     setTestSent(false);
+    setOnlyWhileOpen(false);
     const browser = realPushBrowser();
     if (browser === undefined) {
       setStatus('unsupported');
@@ -143,9 +160,20 @@ export function usePushEnable(): PushEnable {
     runPageAction(
       Effect.gen(function* () {
         const config = yield* fromApi(() => getPushConfig());
-        const { subscription } = yield* attempt(() =>
+        const subscribed = yield* attempt(() =>
           subscribeBrowser(asked, config.vapidPublicKey),
-        );
+        ).pipe(Effect.catchIf(isPushServiceError, () => Effect.succeed(undefined)));
+        if (subscribed === undefined) {
+          // No push service here (Helium and other forks), but the permission
+          // was granted: in-tab notifications still work while a tab is open.
+          yield* Effect.sync(() => {
+            setPermission('granted');
+            setOnlyWhileOpen(true);
+            setErrorMessage(PUSH_SERVICE_UNAVAILABLE);
+          });
+          return;
+        }
+        const { subscription } = subscribed;
         const registered: RegisteredDevice = yield* fromApi(() =>
           registerPushDevice({
             endpoint: subscription.endpoint,
@@ -252,6 +280,7 @@ export function usePushEnable(): PushEnable {
     setShowPreviews(value);
     runPageAction(
       fromApi(() => setPushSettings(value)).pipe(
+        Effect.tap(() => Effect.sync(() => setInTabPreviews(value))),
         Effect.tapError(() => Effect.sync(() => setShowPreviews(previous))),
       ),
       setErrorMessage,
@@ -284,6 +313,7 @@ export function usePushEnable(): PushEnable {
     busy,
     testing,
     testSent,
+    onlyWhileOpen,
     errorMessage,
     enableOnThisDevice,
     disableOnThisDevice,

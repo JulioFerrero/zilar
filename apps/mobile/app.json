@@ -63,7 +63,8 @@
         {
           "microphonePermission": "Allow Zilar to access your microphone to record voice messages."
         }
-      ]
+      ],
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -121,6 +121,11 @@ export interface ChatStoreState extends ChatStoreGroups {
   hasMore: (chatId: string) => boolean;
   openChat: (chatId: string) => void;
   /**
+   * Clears `activeChatId` when the leaving chat is still the open one, so a
+   * message arriving while the list is on screen counts as unread (T-1147).
+   */
+  closeChat: (chatId: string) => void;
+  /**
    * Opens a chat and waits until `messageId` is loaded, paging backwards at
    * most `MESSAGE_JUMP_MAX_PAGES` history pages (T-0138, like web's
    * `openAtMessage`). Returns the message once it is loaded so the screen
@@ -141,6 +146,7 @@ export interface ChatStoreState extends ChatStoreGroups {
   retryHistory: (chatId: string) => void;
   sendText: (chatId: string, text: string, options?: SendTextOptions) => void;
   sendTyping: (chatId: string) => void;
+  stopTyping: (chatId: string) => void;
   /** Sends a picked file as an attachment payload in the chat (T-0150). */
   sendAttachment: (chatId: string, file: PickedFile, options?: SendAttachmentOptions) => void;
   /** Retries a failed attachment send (the bytes are kept for the retry). */
@@ -234,6 +240,11 @@ export interface ChatStoreState extends ChatStoreGroups {
   deleteFolder: (id: string) => Promise<void>;
   /** Saves a new order and takes the server's returned list. Rejects on failure. */
   reorderFolders: (ids: string[]) => Promise<void>;
+  /**
+   * Enables or disables this device's push pair over the user's own session
+   * (XEP-0357, T-1139). Rejects when the connection cannot send the IQ.
+   */
+  setPushPair: (input: { pushJid: string; node: string; enable: boolean }) => Promise<void>;
   start: () => void;
   stop: () => void;
 }

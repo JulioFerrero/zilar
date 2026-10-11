@@ -178,3 +178,10 @@ export function sendTyping(ctx: CoreCtx, chatId: string): void {
     ctx.core.sendTyping(chatId, coreKind(chat), 'composing');
   }
 }
+
+export function stopTyping(ctx: CoreCtx, chatId: string): void {
+  const chat = ctx.get().chats.find((entry) => entry.id === chatId);
+  if (ctx.core !== undefined && chat !== undefined) {
+    ctx.core.sendTyping(chatId, coreKind(chat), 'paused');
+  }
+}

@@ -14,8 +14,12 @@ import type { PushServiceDeps } from './service';
 type CandidateVerdict =
   { status: 'ok'; message: ResolvedPushMessage } | { status: 'muted' | 'hidden' | 'skip' };
 
+// Resolution only reads the database, the config and the clock, so the preview
+// route can call it without the push component's cipher, sender or logger.
+type CandidateDeps = Pick<PushServiceDeps, 'db' | 'config' | 'now'>;
+
 export async function resolveCandidate(
-  deps: PushServiceDeps,
+  deps: CandidateDeps,
   userId: string,
   allowed: SearchOwner,
   row: ArchiveCandidate,
@@ -39,7 +43,7 @@ export async function resolveCandidate(
 }
 
 async function resolveRoomCandidate(
-  deps: PushServiceDeps,
+  deps: CandidateDeps,
   userId: string,
   row: ArchiveCandidate,
   text: string | undefined,
@@ -100,7 +104,7 @@ async function resolveRoomCandidate(
 }
 
 async function resolveDmCandidate(
-  deps: PushServiceDeps,
+  deps: CandidateDeps,
   userId: string,
   allowed: SearchOwner,
   row: ArchiveCandidate,
@@ -135,7 +139,7 @@ async function resolveDmCandidate(
 // `effectivePrefFor`: a chat with its own row uses that row; a topic without
 // one inherits its group General room's mute.
 async function isMuted(
-  deps: PushServiceDeps,
+  deps: CandidateDeps,
   userId: string,
   chatJid: string,
   generalJid: string | undefined,
@@ -170,6 +174,6 @@ async function isMuted(
   return false;
 }
 
-function topicRoomGeneralJid(deps: PushServiceDeps, groupRoomLocalpart: string): string {
+function topicRoomGeneralJid(deps: CandidateDeps, groupRoomLocalpart: string): string {
   return `${groupRoomLocalpart}@${deps.config.xmpp.mucDomain}`.toLowerCase();
 }

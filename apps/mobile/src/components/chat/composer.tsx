@@ -1,5 +1,5 @@
 import { type Attachment } from '@zilar/protocol';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -45,6 +45,8 @@ type ComposerProps = {
   replyTo?: ReplyRef;
   onCancelReply: () => void;
   onTyping?: () => void;
+  /** Called when the text empties or a send clears it (T-1149). */
+  onStopTyping?: () => void;
   /** Group members (and AIs) for the `@` picker; absent in DMs (T-0227). */
   mentionMembers?: MentionMember[] | undefined;
   /** Used for the `Message <title>` placeholder, like the web composer. */
@@ -66,6 +68,7 @@ export function Composer({
   replyTo,
   onCancelReply,
   onTyping,
+  onStopTyping,
   title,
   mentionMembers,
   chatKey,
@@ -88,6 +91,9 @@ export function Composer({
     return state.messages(target.chatId).find((message) => message.id === target.messageId)?.text;
   });
   const [text, setText] = useState('');
+  // Whether a composing event was sent for the current text: the emptiness
+  // effect below only stops a line we actually started (T-1149).
+  const typingActiveRef = useRef(false);
   const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
   // The caret for emoji insertion: tracked from the TextInput's
   // `onSelectionChange`; `undefined` until the first selection event (an
@@ -118,8 +124,24 @@ export function Composer({
     setText,
     selection,
     setSelection,
-    onTyping,
+    onTyping:
+      onTyping === undefined
+        ? undefined
+        : () => {
+            typingActiveRef.current = true;
+            onTyping();
+          },
   });
+
+  // The line stops as soon as the text empties, whether the last keystroke
+  // removed it or a send cleared the composer (T-1149).
+  useEffect(() => {
+    if (text.trim().length > 0 || !typingActiveRef.current) {
+      return;
+    }
+    typingActiveRef.current = false;
+    onStopTyping?.();
+  }, [text, onStopTyping]);
 
   const sheet = useComposerSheet({
     text,
@@ -174,6 +196,9 @@ export function Composer({
       return;
     }
     onSend(text, mentions.mentions.length === 0 ? undefined : [...mentions.mentions]);
+    // The dock already sent the paused stanza with the message; drop the flag
+    // so the emptiness effect does not send a second one.
+    typingActiveRef.current = false;
     setText('');
     mentions.clearMentions();
     setInputHeight(MIN_INPUT_HEIGHT);

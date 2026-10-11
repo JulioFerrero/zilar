@@ -124,7 +124,7 @@ export const ChatListItem = memo(function ChatListItem({
               )}
             </span>
           </div>
-          <div className="mt-0.5 flex items-center gap-1.5">
+          <div className="relative mt-0.5 flex items-center gap-1.5">
             {writing ? (
               <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
                 <span className="pulse-dot size-1.5 shrink-0 rounded-full bg-muted-foreground" />
@@ -168,7 +168,7 @@ export const ChatListItem = memo(function ChatListItem({
                 event.stopPropagation();
                 setMenuOpen((value) => !value);
               }}
-              className="size-6 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              className="absolute top-1/2 right-0 size-6 shrink-0 -translate-y-1/2 bg-surface-raised text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
             >
               <MoreHorizontal className="size-4" aria-hidden="true" />
             </Button>

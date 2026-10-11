@@ -22,6 +22,7 @@ import { createMediaApi } from '../lib/media-api';
 import { createChatPrefsApi } from '../lib/chat-prefs-api';
 import { createChatFoldersApi } from '../lib/chat-folders-api';
 import { createPinsApi } from '../lib/pins-api';
+import { registerNativePush, watchPushTokenRolls } from '../lib/push/native';
 import { createAttachmentUploader, createSizeReader } from '../lib/attachment-native';
 import { getSessionToken } from '../lib/session-token';
 import { API_URL } from '../lib/auth';
@@ -134,6 +135,31 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
       void clearTranscripts();
     }
   }, [status]);
+
+  // Native push (T-1139): once the store first reaches `online` after a
+  // sign-in, register the FCM token once per signed-in session; mock mode
+  // registers nothing. The token-roll listener goes with the session.
+  useEffect(() => {
+    if (!active || mock) {
+      return;
+    }
+    const setPushPair = store.getState().setPushPair;
+    let registered = false;
+    const onStatus = () => {
+      if (registered || store.getState().status !== 'online') {
+        return;
+      }
+      registered = true;
+      void registerNativePush({ setPushPair });
+    };
+    const unsubscribe = store.subscribe(onStatus);
+    const tokenRolls = watchPushTokenRolls({ setPushPair });
+    onStatus();
+    return () => {
+      unsubscribe();
+      tokenRolls.remove();
+    };
+  }, [store, active, mock]);
 
   return <ChatStoreContext.Provider value={store}>{children}</ChatStoreContext.Provider>;
 }

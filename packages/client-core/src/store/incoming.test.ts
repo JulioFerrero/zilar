@@ -166,6 +166,18 @@ describe('handleTyping (core)', () => {
     expect(state().typing).toEqual({});
     expect(fx.loadGroupMembers).not.toHaveBeenCalled();
   });
+
+  it("clears the line the moment that peer's message arrives", () => {
+    vi.useFakeTimers();
+    const { ctx, rt, state } = testCtx();
+    handleTyping(ctx, { chatJid: ANA, fromJid: ANA, state: 'composing', outgoing: false });
+    expect(state().typing[ANA]?.names).toEqual(['Ana']);
+
+    handleMessage(ctx, message({ id: 'ana-1' }));
+
+    expect(state().typing[ANA]).toBeUndefined();
+    expect(rt.has(`typing:${ANA}`)).toBe(false);
+  });
 });
 
 describe('markers, occupants and presence (core)', () => {

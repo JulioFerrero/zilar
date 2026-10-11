@@ -123,6 +123,20 @@ describe('a live message and the read state', () => {
     expect(store.getState().chats.find((chat) => chat.id === ANA)?.unread).toBe(1);
     expect(xmpp.core.markDisplayed).not.toHaveBeenCalled();
   });
+
+  it('counts a message as unread after the open chat is closed', async () => {
+    const { store, xmpp } = await setup();
+    store.getState().openChat(ANA);
+    await flush();
+    store.getState().closeChat(ANA);
+    expect(store.getState().activeChatId).toBeUndefined();
+    vi.mocked(xmpp.core.markDisplayed).mockClear();
+
+    xmpp.emit('message', message({ id: 'ana-2', chatJid: ANA }));
+
+    expect(store.getState().chats.find((chat) => chat.id === ANA)?.unread).toBe(1);
+    expect(xmpp.core.markDisplayed).not.toHaveBeenCalled();
+  });
 });
 
 describe('room occupants and presence', () => {

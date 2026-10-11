@@ -124,6 +124,12 @@ export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
     return;
   }
 
+  // A peer's message proves they stopped typing: the line must go with the
+  // bubble, not up to five seconds after it. Cancel the clearing fiber and the
+  // line in the same update as the message.
+  ctx.rt.cancel(typingKey(chatId));
+  clearTyping(ctx, chatId);
+
   const active = ctx.get().activeChatId === chatId && ctx.ports.isVisible();
   const isRead = active;
   // Only the AI's own message in its DM finishes the draft. A message from my
@@ -161,6 +167,7 @@ export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
   k.refreshEdits(chatId);
   if (!isRead) {
     ctx.fx.syncBadge();
+    ctx.fx.notifyIncoming?.(chatId, ui);
   }
   if (isRead && ctx.core !== undefined) {
     const chat = ctx.get().chats.find((entry) => entry.id === chatId);

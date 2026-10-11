@@ -1,6 +1,6 @@
 import { Effect, type Effect as EffectType } from 'effect';
 import { newestMessageForUserEffect } from './archive-scan';
-import { buildPushPayload, type PushPayload } from './payload';
+import { buildNativeWakePayload, buildPushPayload, type ResolvedPushMessage } from './payload';
 import type { PushNotification } from './protocol';
 import {
   ArchiveUnavailable,
@@ -14,6 +14,7 @@ import {
   markDeviceFailed,
   markDeviceUsed,
   openDevice,
+  openNativeDevice,
   removeDeviceByNode,
   showPreviewsForUser,
   type PushDeviceRow,
@@ -102,12 +103,33 @@ const openDeviceEffect = Effect.fnUntraced(function* (
   });
 });
 
+// Opens a native device: the token is stored in the clear, so there is
+// nothing to decrypt. A row whose kind and token disagree (impossible under
+// migration 0047's `shape_check`, but a programming error if seen) is
+// unusable and dropped like an undecryptable Web Push row.
+const openNativeDeviceEffect = Effect.fnUntraced(function* (
+  device: PushDeviceRow,
+): EffectType.fn.Return<ReturnType<typeof openNativeDevice>, Undecryptable> {
+  return yield* Effect.try({
+    try: () => openNativeDevice(device),
+    catch: () => new Undecryptable(),
+  });
+});
+
+// The part of `NewestScan` (`archive-scan.ts`) the delivery half reads: the
+// newest acceptable message (or none) and what made the scan stay silent.
+// Declared structurally so this module stays independent of the scan.
+export interface ScanResult {
+  newest: { message: ResolvedPushMessage } | undefined;
+  notify: string[];
+  saw: 'muted' | 'hidden' | 'duplicate' | 'no-message';
+}
+
 const resolveAndSendEffect = Effect.fnUntraced(function* (
   deps: PushServiceDeps,
   device: PushDeviceRow,
   node: string,
 ): EffectType.fn.Return<PushOutcome, DeliveryError> {
-  const subscription = yield* openDeviceEffect(deps, device);
   const scan = yield* newestMessageForUserEffect(deps, device.userId, node).pipe(
     // The old Promise version wrapped this whole call in a try/catch: any
     // throw from the scan — including a synchronous one in its own loop
@@ -116,6 +138,19 @@ const resolveAndSendEffect = Effect.fnUntraced(function* (
     // defect is caught here so `handleIncomingPush` still never rejects.
     Effect.catchDefect(() => Effect.fail(new ArchiveUnavailable())),
   );
+  return yield* deliverToDevice(deps, device, scan);
+});
+
+// The post-scan half of the pipeline, split out (and exported) so both
+// delivery branches can be tested without the MAM archive. The scan already
+// decided *whether* to notify — mute, visibility and the already-notified
+// dedupe all ran there — so this only decides *how*: open the device for its
+// kind, build that kind's payload, send, then remember the origin ids.
+export const deliverToDevice = Effect.fnUntraced(function* (
+  deps: PushServiceDeps,
+  device: PushDeviceRow,
+  scan: ScanResult,
+): EffectType.fn.Return<PushOutcome, DeliveryError> {
   const newest = scan.newest;
   if (newest === undefined) {
     // Nothing acceptable to show: persistent emptiness (the trigger may be
@@ -130,15 +165,37 @@ const resolveAndSendEffect = Effect.fnUntraced(function* (
   }
 
   const showPreviews = yield* awaitDb(() => showPreviewsForUser(deps.db, device.userId));
-  const payload = buildPushPayload(newest.message, {
-    muted: false,
-    visible: true,
-    showPreviews,
-  });
-  if (payload === undefined) {
-    return dropped(device, 'muted');
+  // Mute and visibility were already resolved by the scan, so both kinds pass
+  // the same always-visible filter; only the preview setting differs, and only
+  // the Web Push payload reads it.
+  const filter = { muted: false, visible: true, showPreviews };
+  if (device.kind === 'webpush') {
+    const subscription = yield* openDeviceEffect(deps, device);
+    const payload = buildPushPayload(newest.message, filter);
+    if (payload === undefined) {
+      return dropped(device, 'muted');
+    }
+    yield* sendWithCleanupEffect(deps, device, () =>
+      deps.sender.send(subscription, JSON.stringify(payload)),
+    );
+  } else {
+    const nativeSender = deps.nativeSender;
+    // No APNs sender exists yet, and FCM may be unconfigured: drop the wake
+    // rather than guess. Ids only in the log.
+    if (device.kind === 'apns' || nativeSender === undefined) {
+      deps.logger.warn(
+        { userId: device.userId, deviceId: device.id },
+        'native push not configured; dropping the notification',
+      );
+      return dropped(device, 'send-failed');
+    }
+    const native = yield* openNativeDeviceEffect(device);
+    const data = buildNativeWakePayload(newest.message, filter, deps.config.xmpp.domain);
+    if (data === undefined) {
+      return dropped(device, 'muted');
+    }
+    yield* sendWithCleanupEffect(deps, device, () => nativeSender.send(native.token, data));
   }
-  yield* sendPayloadEffect(deps, device, subscription, payload);
   // Marked only after a successful send. Per-node serialization keeps
   // concurrent IQs for one node ordered, so a retry cannot double-buzz:
   // the retry finds the origin id already seen and drops as `duplicate`.
@@ -146,11 +203,14 @@ const resolveAndSendEffect = Effect.fnUntraced(function* (
   return { kind: 'sent', userId: device.userId, deviceId: device.id };
 });
 
-const sendPayloadEffect = Effect.fnUntraced(function* (
+// Sends through one transport and runs the shared post-send bookkeeping: a
+// `gone` result removes the device, and any throw stamps `failed_at` and
+// answers the IQ with `SendFailed`. Both kinds share this one block, so Web
+// Push and native cleanup cannot drift apart.
+const sendWithCleanupEffect = Effect.fnUntraced(function* (
   deps: PushServiceDeps,
   device: PushDeviceRow,
-  subscription: OpenDevice,
-  payload: PushPayload,
+  send: () => Promise<{ gone: boolean }>,
 ): EffectType.fn.Return<void, SendFailed> {
   const now = (deps.now ?? (() => new Date()))();
   // The send and the `gone` cleanup share one `try`, exactly like the old
@@ -159,7 +219,7 @@ const sendPayloadEffect = Effect.fnUntraced(function* (
   // IQ for the same message still notifies.
   yield* Effect.tryPromise({
     try: async () => {
-      const result = await deps.sender.send(subscription, JSON.stringify(payload));
+      const result = await send();
       if (result.gone) {
         await removeDeviceByNode(deps.db, device.node);
         deps.logger.info(
@@ -173,8 +233,9 @@ const sendPayloadEffect = Effect.fnUntraced(function* (
     Effect.catchTag('SendFailed', () =>
       Effect.gen(function* () {
         yield* awaitDb(() => markDeviceFailed(deps.db, device.id, now));
-        // Ids only: the error may echo the request, which carries the endpoint.
-        // The boundary logs the failure and returns the dropped outcome.
+        // Ids only: the error may echo the request, which carries the token
+        // or the endpoint. The boundary logs the failure and returns the
+        // dropped outcome.
         return yield* new SendFailed();
       }),
     ),

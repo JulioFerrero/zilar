@@ -2,6 +2,71 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 evening: push works only for the server test; real messages are blocked on ejabberd**
+- **Live:** `PUSH_ENABLED`, VAPID and storage key set in Coolify (Julio OK'd it).
+  - T-1144: FCM env added to the Coolify compose; production deploys `deploy/coolify/docker-compose.app.yml`.
+  - T-1145: web in-tab notifications, Telegram-style; work in Helium.
+  - T-1147: leaving a chat clears the open chat, so there's no false "seen". The web part is live as `8593b9b39`; mobile needs a new APK.
+- **Found:**
+  - Phone Firefox "Send test" works, but real messages never push. The XEP-0357 `<enable/>` gets `internal-server-error` from ejabberd, so ejabberd has no push session.
+  - Helium and desktop Chrome can't Web Push: the lead showed it on the local stack with a fresh VAPID key (AbortError, push service error).
+  - Desktop banners are silent even for `new Notification`. That's a macOS setting; Julio is checking.
+- **Running:**
+  - T-1146, the ejabberd enable audit (docs only; local repro; suspects the push_session single-host vs multi-host schema);
+  - T-1148, Telegram-style people search (prefix, top 10, public groups), which Julio chose.
+- **Julio's decisions:** keep the inviter auto-contact on sign-up; prefix search.
+
+**2026-10-11 ~17:40 local: Android push is code-complete (T-1132 to T-1143 merged); the final APK is building**
+- **Merged:** T-1142 (`GET /api/push/preview`, live; 401 when signed out) and T-1143 (the background wake → preview → local notification → tap opens `/chat/[id]`).
+- **APK build recipe now:**
+  1. `cp ~/Downloads/google-services.json apps/mobile/` (gitignored);
+  2. `CI=1 npx expo prebuild --platform android --clean`;
+  3. `./gradlew assembleRelease "-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1536m"`. The default Metaspace runs out of memory after a clean prebuild.
+  - The signing cert is unchanged (`FA:C6:17:45…`), so App Links still verify.
+- **Julio's phone test:**
+  1. install the APK and sign in (allow notifications);
+  2. kill the app;
+  3. send a message from another account;
+  4. expect the sender and text (or "New message" with previews off);
+  5. tap it: the chat opens.
+- **Not done:** iPhone (APNs and the relay, waiting for the Apple account). The worker didn't run the server-side "FCM sender on" log check, and Coolify's MCP shows only the caddy logs.
+
+**2026-10-11 ~17:00 local: the FCM secret is live; the phone registers; one task left for Android push**
+- **Firebase:** Julio made project `zilar-db993`. He had to override the org policy "Disable service account key creation" on the project to make the key.
+  - `google-services.json` is **kept out of git** (Julio: the repo is public). It sits in `~/Downloads`; copy it into `apps/mobile` before each APK prebuild.
+  - `FCM_SERVICE_ACCOUNT_JSON` is set in Coolify (literal, runtime-only, stored length checked, never printed). T-1140 passes it into the container. Live is `16e22ba6f`, with `db: ok`.
+  - The "native sender on" log line can't be seen: the Coolify MCP only shows the caddy logs.
+- **Merged:**
+  - T-1139: the phone registers its FCM token after sign-in and deletes it on sign-out;
+  - T-1140: the env in compose;
+  - T-1141: one owner per token.
+- **Running:** T-1142, `GET /api/push/preview?messageId=`, which gives the phone notification `{ title, body, chatId }` with the same rules as Web Push.
+- **Next:** T-1143 (mobile), the background task: on a wake, call the preview, post a local notification, and open `/chat/[id]` on tap.
+- **Then:** build the APK (copy `google-services.json`, run `expo prebuild`), and Julio installs it and tests on the vivo.
+- The key file is still in `~/Downloads`. Ask Julio before deleting it.
+
+**2026-10-11 ~16:10 local: the server side of Android push is done (T-1138 merged); live `3405c2291`, with `db: ok`**
+- `POST /push/subscriptions` accepts `{ kind: 'fcm', token }`. The FCM sender is off until `FCM_SERVICE_ACCOUNT_JSON` is set in Coolify.
+- **Blocked on Julio's Firebase files:**
+  - mobile Task 5 (expo-notifications, `google-services.json`, registering the token after sign-in, unregistering on sign-out);
+  - mobile Task 6 (the background wake, the local notification and the tap deep link).
+- **Nothing else is queued.** Left over:
+  - `group-turn.ts` (571), which has no tests (AI area, not crucial);
+  - 2.4, the typed errors (low value);
+  - mobile windowing (needs the phone);
+  - the devtools lead files (not while the autopilot runs).
+
+**2026-10-11 ~15:45 local: push 3 and the account-switch fix merged; push 4 running**
+- **Merged:**
+  - T-1135: delivery branches by kind; FCM devices get an ids-only wake;
+  - T-1136: `/login` redirects when signed in, and the chat store resets when the signed-in user changes. The lead checked it on the local stack; on main the old session had leaked.
+  - T-1137: `lifecycle.ts` 405→371 and `sql-adapter.ts` 404→279.
+- **Running:** T-1138, the subscribe route accepting `{ kind: 'fcm', token }` plus the FCM sender wiring. It stays off until the secret is set.
+- **APK** `scratchpad/apk/zilar-8ed9d218.apk`, with the T-1130 store split: it starts cleanly to sign-in on the emulator. Install it on the vivo for the real test.
+- **Waiting for Julio:** the Firebase files, `google-services.json` and the service-account key (the steps were given in chat).
+  - Then the lead sets `FCM_SERVICE_ACCOUNT_JSON` in Coolify without printing it;
+  - then mobile tasks 5 and 6.
+
 **2026-10-11 ~15:15 local: live `6ab3eee4c`; push 1-2 merged; the two store splits merged**
 - **Merged since 13:40:**
   - T-1129: the native push plan, `docs/audit/native-push-plan.md`;

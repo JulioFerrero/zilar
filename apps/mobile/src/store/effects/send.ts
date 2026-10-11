@@ -14,6 +14,7 @@ import {
   sendText as sendTextCore,
   sendTyping,
   sendVoice as sendVoiceCore,
+  stopTyping,
   type SendCtx,
 } from '@zilar/client-core/store';
 
@@ -25,6 +26,7 @@ import type { StoreCtx } from './runtime';
 export type Send = Pick<
   ChatStoreState,
   | 'sendTyping'
+  | 'stopTyping'
   | 'sendText'
   | 'sendSticker'
   | 'forwardMessages'
@@ -107,6 +109,7 @@ export function makeSend(ctx: StoreCtx): Send {
 
   return {
     sendTyping: (chatId) => sendTyping(ctx.coreCtx, chatId),
+    stopTyping: (chatId) => stopTyping(ctx.coreCtx, chatId),
     sendText: (chatId, text, options) => sendTextCore(sendCtx, chatId, text, options),
     sendSticker: (chatId, sticker, options) => sendStickerCore(sendCtx, chatId, sticker, options),
     forwardMessages: (targets, messages, options) =>

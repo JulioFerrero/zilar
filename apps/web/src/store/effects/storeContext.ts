@@ -3,6 +3,7 @@
 // mutable locals, ports, lifetime and state accessors.
 import { createMessageLedger, type MessageLedger } from '@zilar/client-core/store';
 import type { ChatEntry, Me } from '@/lib/api';
+import { loadInTabPreviews, showInTabNotification } from '@/lib/push/inTab';
 import type { SetState } from '../atomStore';
 import type { ChatStoreState } from '../store';
 import { summariesFor } from './chatRows';
@@ -107,10 +108,20 @@ export function makeStoreContext(deps: StoreContextDeps): {
         locals.pendingVoices.delete(messageId);
         locals.pendingAttachments.delete(messageId);
       },
+      notifyIncoming: (chatId, message) => {
+        const chat = get().chats.find((entry) => entry.id === chatId);
+        showInTabNotification(chat, {
+          ...message,
+          originId: ctx.messageOriginIds.get(message.id),
+        });
+      },
       prepareStart: () => prepareStart(ctx),
       setStatus: (status) => set({ status }),
       setChatsLoad: (load) => set({ chatsState: load }),
-      applyBoot: (input) => applyBoot(ctx, input),
+      applyBoot: (input) => {
+        applyBoot(ctx, input);
+        loadInTabPreviews();
+      },
       rememberGroupIds: (entries) => rememberGroupIdsHook(ctx, entries),
       scheduleChatsRefresh: () => scheduleChatsRefresh(ctx),
       refreshChats: () => refreshChatsNow(ctx),

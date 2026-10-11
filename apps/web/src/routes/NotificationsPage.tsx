@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router';
+import { Bell } from 'lucide-react';
 import { isIosDevice, isStandaloneDisplay } from '@/lib/push';
 import { usePushEnable } from '@/lib/push/usePushEnable';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
@@ -21,6 +22,7 @@ export function NotificationsPage() {
     busy,
     testing,
     testSent,
+    onlyWhileOpen,
     errorMessage,
     enableOnThisDevice,
     disableOnThisDevice,
@@ -34,13 +36,13 @@ export function NotificationsPage() {
   // The "This device" card names the state in words (T-0153): the support
   // check already splits unsupported browsers and servers into their own
   // page states above, so here only permission and registration remain.
-  const deviceState: 'Enabled' | 'Not enabled' | 'Blocked by the browser' =
+  const cardState: 'Enabled' | 'Not enabled' | 'Blocked by the browser' =
     thisDevice !== undefined
       ? 'Enabled'
       : permission === 'denied'
         ? 'Blocked by the browser'
         : 'Not enabled';
-  const deviceStateDetail =
+  const cardDetail =
     thisDevice !== undefined
       ? thisDevice.inactive
         ? 'On, but inactive — nothing received in 90 days.'
@@ -105,14 +107,34 @@ export function NotificationsPage() {
                 “Add to Home Screen”, then open Zilar from the home screen and enable below.
               </p>
             )}
-            <ThisDeviceCard
-              state={deviceState}
-              detail={deviceStateDetail}
-              enabled={thisDevice !== undefined}
-              busy={busy}
-              onEnable={enableOnThisDevice}
-              onDisable={disableOnThisDevice}
-            />
+            {onlyWhileOpen ? (
+              <section aria-label="Notifications on this device" className="flex flex-col gap-2">
+                <SectionLabel>This device</SectionLabel>
+                <Card className="divide-divider">
+                  <div className="flex flex-wrap items-center gap-3 px-3 py-2.5">
+                    <span className="min-w-0 flex-1 basis-40">
+                      <span className="block text-[15px] font-medium">Only while open</span>
+                      <span className="mt-0.5 block text-[13px] text-muted-foreground">
+                        Notifications show while a Zilar tab is open.
+                      </span>
+                    </span>
+                    <Button type="button" onClick={enableOnThisDevice} disabled={busy}>
+                      <Bell className="size-4" aria-hidden="true" />
+                      {busy ? 'Enabling…' : 'Enable on this device'}
+                    </Button>
+                  </div>
+                </Card>
+              </section>
+            ) : (
+              <ThisDeviceCard
+                state={cardState}
+                detail={cardDetail}
+                enabled={thisDevice !== undefined}
+                busy={busy}
+                onEnable={enableOnThisDevice}
+                onDisable={disableOnThisDevice}
+              />
+            )}
             <DevicesSection
               devices={devices}
               storedDevice={storedDevice}

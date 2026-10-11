@@ -239,6 +239,11 @@ export interface ChatStore {
    */
   finishedDraftMessages: Record<string, string>;
   openChat: (chatId: string) => void;
+  /**
+   * Clears `activeChatId` when the leaving chat is still the open one, so a
+   * message arriving while the list is on screen counts as unread (T-1147).
+   */
+  closeChat: (chatId: string) => void;
   loadOlder: (chatId: string) => void;
   hasMore: (chatId: string) => boolean;
   /**
@@ -310,6 +315,7 @@ export interface ChatStore {
    */
   mediaTrustedHosts: ReadonlySet<string> | undefined;
   sendTyping: (chatId: string) => void;
+  stopTyping: (chatId: string) => void;
   createGroup: (
     title: string,
     memberIds: string[],

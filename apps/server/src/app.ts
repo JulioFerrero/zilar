@@ -371,6 +371,7 @@ export function createApp({
     push: push ?? loadPushConfig({}),
     adminClient,
     logger,
+    ...(archive === undefined ? {} : { archive }),
   });
   mounts.push(pushApi);
   // Message search (T-0117) mounts always: without an archive pool every

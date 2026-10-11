@@ -25,6 +25,7 @@ export function useChatScreen() {
   const chat = useChatStore((state) => state.chats.find((item) => item.id === chatId));
   const chatsLoad = useChatStore((state) => state.chatsLoad);
   const openChat = useChatStore((state) => state.openChat);
+  const closeChat = useChatStore((state) => state.closeChat);
   const canPinChat = useChatStore((state) => state.canPin(chatId));
   const pinFor = useChatStore((state) => state.pinFor);
   const pins = useChatStore((state) => state.pins(chatId));
@@ -93,10 +94,16 @@ export function useChatScreen() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   useEffect(() => {
-    if (chatId) {
-      openChat(chatId);
+    if (!chatId) {
+      return;
     }
-  }, [chatId, openChat]);
+    openChat(chatId);
+    // Leaving the chat (or switching to another one) clears the open chat, so
+    // a message arriving on the list is not marked seen (T-1147).
+    return () => {
+      closeChat(chatId);
+    };
+  }, [chatId, openChat, closeChat]);
 
   // Leaving the chat stops its 60 s pins poll. `openChat` of another chat
   // stops it too; this effect only covers the leave/unmount case. The

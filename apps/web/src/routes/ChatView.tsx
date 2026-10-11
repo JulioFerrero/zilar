@@ -88,6 +88,11 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
 
   useEffect(() => {
     storeApi.getState().openChat(chat.id);
+    // Leaving the chat (or switching to another one) clears the open chat, so
+    // a message arriving on the list is not marked seen (T-1147).
+    return () => {
+      storeApi.getState().closeChat(chat.id);
+    };
   }, [storeApi, chat.id]);
 
   // The message list is memoised, so every callback and prop it gets here has a

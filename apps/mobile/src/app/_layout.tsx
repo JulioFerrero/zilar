@@ -1,4 +1,6 @@
 import '@/lib/polyfills';
+// Defines and registers the headless FCM wake task before any route mounts.
+import '@/lib/push/background';
 import '@/global.css';
 
 // Each face is imported from its own file: the package index requires all 36
@@ -21,6 +23,7 @@ import { Effect } from 'effect';
 
 import { useAuthStore } from '@/auth/session';
 import { mobileRuntime } from '@/lib/effect/runtime';
+import { NotificationRouter } from '@/lib/push/tap';
 import { NAV_THEME } from '@/lib/theme';
 import { ChatStoreProvider } from '@/store/chat-store-provider';
 
@@ -78,6 +81,7 @@ export default function RootLayout() {
       <ThemeProvider value={NAV_THEME.dark}>
         <StatusBar style="light" />
         <SessionBootstrap />
+        <NotificationRouter />
         <ChatStoreProvider>
           <Stack screenOptions={{ headerShown: false }} />
         </ChatStoreProvider>

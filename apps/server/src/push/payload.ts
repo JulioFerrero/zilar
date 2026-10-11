@@ -1,3 +1,5 @@
+import type { FcmWakeData } from './fcm';
+
 // The encrypted Web Push payload the service worker decrypts and shows.
 // The payload JSON is encrypted end to end by `web-push` (RFC 8291) between
 // our server and the browser, so Google/Mozilla/Apple relays only see
@@ -39,14 +41,19 @@ export type PushFilterInput = {
   showPreviews: boolean;
 };
 
-// Builds the payload, or undefined when the notification must be dropped.
 // Mute and visibility win over everything: a muted chat or a private topic
-// the user lost access to never produces a push, even for a mention.
+// the user lost access to never produces a push, even for a mention. Shared by
+// both transports so a change to the rule can never drift between them.
+function passesFilters(input: PushFilterInput): boolean {
+  return !input.muted && input.visible;
+}
+
+// Builds the payload, or undefined when the notification must be dropped.
 export function buildPushPayload(
   message: ResolvedPushMessage,
   input: PushFilterInput,
 ): PushPayload | undefined {
-  if (input.muted || !input.visible) {
+  if (!passesFilters(input)) {
     return undefined;
   }
   const title = truncateChars(titleFor(message), 140);
@@ -65,6 +72,26 @@ export function buildPushPayload(
     payload.title = truncateUtf8(payload.title, 128);
   }
   return payload;
+}
+
+// Builds the FCM data-only wake, or undefined when the notification must be
+// dropped. It carries ids only — the chat JID, the message id and the server
+// id — never the text or the sender name: the app fetches and enriches the
+// message itself. The mute/visibility guard is the same one the Web Push
+// payload uses, so both kinds drop together. `messageId` is left out when the
+// archive row carried none.
+export function buildNativeWakePayload(
+  message: ResolvedPushMessage,
+  input: PushFilterInput,
+  serverId: string,
+): FcmWakeData | undefined {
+  if (!passesFilters(input)) {
+    return undefined;
+  }
+  if (message.messageId === undefined) {
+    return { chatId: message.chatJid, serverId };
+  }
+  return { chatId: message.chatJid, messageId: message.messageId, serverId };
 }
 
 // DMs read as just the name ("Ana"); groups read as who plus where

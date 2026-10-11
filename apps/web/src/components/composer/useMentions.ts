@@ -8,6 +8,7 @@ import {
   type UiMention,
 } from '@zilar/chat-core';
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -63,6 +64,9 @@ export function useMentions({
   // after the controlled value has been committed to the textarea.
   const pendingCaretRef = useRef<number | undefined>(undefined);
   const lastTypingRef = useRef(0);
+  // The chat a composing event was last sent for, cleared on every stop, so a
+  // paused stanza never goes to a chat we never composed in.
+  const typingChatRef = useRef<string | undefined>(undefined);
 
   const members = isGroup
     ? storeApi
@@ -87,15 +91,43 @@ export function useMentions({
     textareaRef.current?.setSelectionRange(caret, caret);
   }, [value, textareaRef]);
 
+  // Tells the chat the composing line is over: one paused stanza for the chat
+  // we last composed in, then the throttle resets so the next keystroke
+  // composes again at once.
+  const stopTypingNow = useCallback((): void => {
+    const sent = typingChatRef.current;
+    if (sent === undefined) {
+      return;
+    }
+    typingChatRef.current = undefined;
+    lastTypingRef.current = 0;
+    storeApi.getState().stopTyping(sent);
+  }, [storeApi]);
+
+  // A send clears the composer with `setValue('')` without going through
+  // `onChange`, so the value itself is watched: the line stops whenever the
+  // text empties, by backspace or by a send.
+  useEffect(() => {
+    if (value.trim().length > 0) {
+      return;
+    }
+    stopTypingNow();
+  }, [value, stopTypingNow]);
+
   const onChange = (next: string, caret: number): void => {
     setMentions((previous) => rebaseMentions(value, next, previous));
     setValue(next);
     setPicker(isGroup ? findMentionQuery(next, caret) : undefined);
     setActiveIndex(0);
     const timestamp = Date.now();
-    if (next.trim().length > 0 && timestamp - lastTypingRef.current > 2000) {
-      lastTypingRef.current = timestamp;
-      storeApi.getState().sendTyping(chatId);
+    if (next.trim().length > 0) {
+      if (timestamp - lastTypingRef.current > 2000) {
+        lastTypingRef.current = timestamp;
+        typingChatRef.current = chatId;
+        storeApi.getState().sendTyping(chatId);
+      }
+    } else {
+      stopTypingNow();
     }
   };
 

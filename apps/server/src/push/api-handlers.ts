@@ -8,10 +8,14 @@ import { HttpApiBuilder, type HttpApi } from 'effect/http-api';
 import { PushGroup, PushSettingsPayload, PushTestPayload } from '@zilar/api-contract';
 import { errorClassName } from '../effect/error-utils';
 import { handler } from '../effect/http-core';
-import { HttpError } from '../errors';
+import { HttpError, xmppUnavailable } from '../errors';
 import type { RateLimiter } from '../rate-limit';
+import { allowedArchives } from '../search/service';
 import { syncPushSubscriptionsForUser } from '../topics/rooms';
+import { readCandidateByOriginId } from './archive-scan';
+import { resolveCandidate } from './candidates';
 import { createPushCipher } from './crypto';
+import { buildPushPayload } from './payload';
 import { createWebPushSender, isExpiredSubscription } from './sender';
 import {
   devicesForUser,
@@ -29,7 +33,12 @@ import type { PushApiDependencies } from './api';
 export function createPushGroupLayer(
   api: HttpApi.HttpApi<'push', typeof PushGroup>,
   deps: PushApiDependencies,
-  limiters: { subscribe: RateLimiter; settings: RateLimiter; test: RateLimiter },
+  limiters: {
+    subscribe: RateLimiter;
+    settings: RateLimiter;
+    test: RateLimiter;
+    preview: RateLimiter;
+  },
 ) {
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
@@ -128,6 +137,63 @@ export function createPushGroupLayer(
           }),
         ),
       )
+      .handle(
+        'preview',
+        handler(logger, (request, user) =>
+          Effect.gen(function* () {
+            if (!limiters.preview.allow(user.id)) {
+              throw new HttpError(429, 'rate_limited', 'Too many preview lookups, try again later');
+            }
+            const archive = deps.archive;
+            if (archive === undefined) {
+              throw xmppUnavailable();
+            }
+            const userId = user.id;
+            // A failed archive read is a defect (`orDie`) so the shared error
+            // envelope renders it, exactly like the search route.
+            const allowed = yield* Effect.tryPromise({
+              try: () => allowedArchives(deps.db, deps.config, userId),
+              catch: () => xmppUnavailable(),
+            }).pipe(Effect.orDie);
+            const row = yield* Effect.tryPromise({
+              try: () => readCandidateByOriginId(archive, allowed, request.query.messageId),
+              catch: () => xmppUnavailable(),
+            }).pipe(Effect.orDie);
+            // An unknown id and a message in a chat the caller may not see both
+            // match no row; muted, hidden and skipped rows also answer the same
+            // 404, so the route never reveals whether a message exists.
+            if (row === undefined) {
+              throw new HttpError(404, 'not_found', 'Notification not found');
+            }
+            const verdict = yield* Effect.promise(() =>
+              resolveCandidate(
+                { db: deps.db, config: deps.config, now: () => new Date(now()) },
+                userId,
+                allowed,
+                row,
+              ),
+            );
+            if (verdict.status !== 'ok') {
+              throw new HttpError(404, 'not_found', 'Notification not found');
+            }
+            const showPreviews = yield* Effect.promise(() => showPreviewsForUser(deps.db, userId));
+            const payload = buildPushPayload(verdict.message, {
+              muted: false,
+              visible: true,
+              showPreviews,
+            });
+            if (payload === undefined) {
+              throw new HttpError(404, 'not_found', 'Notification not found');
+            }
+            // Ids only: the derived text is returned, never logged.
+            return {
+              title: payload.title,
+              body: payload.body,
+              chatId: verdict.message.chatJid,
+            };
+          }),
+        ),
+      )
       .handleRaw(
         'updateSettings',
         handler(logger, (request, user) =>
@@ -184,6 +250,12 @@ export function createPushGroupLayer(
               });
             let subscription: { endpoint: string; keys: { p256dh: string; auth: string } };
             try {
+              // A native row has no Web Push endpoint or keys: it cannot take a
+              // Web Push test, and answers the same 410 as a row that no longer
+              // decrypts.
+              if (target.endpoint === null || target.p256dh === null || target.auth === null) {
+                throw new Error('The push device is not a Web Push device');
+              }
               subscription = {
                 endpoint: target.endpoint,
                 keys: { p256dh: cipher.decrypt(target.p256dh), auth: cipher.decrypt(target.auth) },

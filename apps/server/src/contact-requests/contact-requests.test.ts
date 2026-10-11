@@ -13,6 +13,7 @@ import {
   MAX_PENDING_OUTGOING,
   type ContactRequestsDeps,
 } from './service';
+import { searchUsers } from './search';
 
 describe('contact request permissions (T-0994)', () => {
   let context: TestContext;
@@ -147,5 +148,60 @@ describe('contact request permissions (T-0994)', () => {
       status: 429,
       code: 'too_many_requests',
     });
+  });
+
+  it('returns handle and name-word prefix matches, excludes the viewer and caps at 10', async () => {
+    const viewer = await seedUser(context, { name: 'Julio Viewer' });
+    await seedHandle(viewer, 'julio_viewer');
+    const byHandle = await seedUser(context, { name: 'Handle Match' });
+    await seedHandle(byHandle, 'julio_handle');
+    const byNamePrefix = await seedUser(context, { name: 'Juliana' });
+    await seedHandle(byNamePrefix, 'juliana_name');
+    const byNameWord = await seedUser(context, { name: 'Ana Julieta' });
+    await seedHandle(byNameWord, 'ana_julieta');
+    // No handle row: Telegram-style search never returns a user without one.
+    const withoutHandle = await seedUser(context, { name: 'Julia No Handle' });
+
+    const matches = await searchUsers(deps.db, viewer, 'jul');
+    const ids = matches.map((entry) => entry.userId);
+    expect(ids).toContain(byHandle);
+    expect(ids).toContain(byNamePrefix);
+    expect(ids).toContain(byNameWord);
+    expect(ids).not.toContain(viewer);
+    expect(ids).not.toContain(withoutHandle);
+    expect(matches.find((entry) => entry.userId === byHandle)?.relation).toBe('none');
+
+    for (let index = 0; index < 12; index += 1) {
+      const capped = await seedUser(context, { name: `Cap Match ${index}` });
+      await seedHandle(capped, `capped_${index}`);
+    }
+    expect(await searchUsers(deps.db, viewer, 'capped')).toHaveLength(10);
+  });
+
+  it('does not return a user who blocked the viewer', async () => {
+    const viewer = await seedUser(context, { name: 'Viewer' });
+    await seedHandle(viewer, 'viewer_x');
+    const blocker = await seedUser(context, { name: 'Julio Blocker' });
+    await seedHandle(blocker, 'julio_blocker');
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO user_blocks (user_id, blocked_user_id) VALUES (${blocker}, ${viewer})`;
+      }),
+    );
+
+    const matches = await searchUsers(deps.db, viewer, 'jul');
+    expect(matches.map((entry) => entry.userId)).not.toContain(blocker);
+  });
+
+  it('returns nothing for a query under 3 characters after stripping @', async () => {
+    const viewer = await seedUser(context, { name: 'Viewer' });
+    await seedHandle(viewer, 'viewer_y');
+    const target = await seedUser(context, { name: 'Jo' });
+    await seedHandle(target, 'jo');
+
+    expect(await searchUsers(deps.db, viewer, 'jo')).toEqual([]);
+    expect(await searchUsers(deps.db, viewer, '@jo')).toEqual([]);
+    expect(await searchUsers(deps.db, viewer, '  @jo  ')).toEqual([]);
   });
 });

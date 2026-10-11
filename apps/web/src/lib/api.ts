@@ -234,6 +234,7 @@ export {
   listBlockedUsers,
   listContactRequests,
   lookupByHandle,
+  searchUsers,
   sendContactRequest,
   unblockUser,
 } from './api/people';

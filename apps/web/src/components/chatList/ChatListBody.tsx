@@ -10,6 +10,7 @@ import { ChatListSkeleton } from '../Skeleton';
 import { TopicKeyboardNav } from '../TopicKeyboardNav';
 import { Button } from '../ui/button';
 import { StateMessage } from '../ui/state-message';
+import { normalizePeopleQuery, PEOPLE_SEARCH_MIN_LENGTH } from '@/lib/usePeopleSearch';
 import type { ChatRows } from './rowsSelector';
 
 export interface ChatListBodyProps {
@@ -54,6 +55,9 @@ export function ChatListBody({
   onOpenNewTopic,
 }: ChatListBodyProps) {
   const { chats, groups, archived } = rows;
+  // People and public-group hits show for any query of 3+ characters once one
+  // leading `@` is stripped, not only for `@`-queries.
+  const showPeopleSearch = normalizePeopleQuery(search).length >= PEOPLE_SEARCH_MIN_LENGTH;
   return (
     <nav
       aria-label="Chats"
@@ -98,9 +102,10 @@ export function ChatListBody({
               </Button>
             </div>
           )}
-          {/* People hits come first: `@handle` shows one row for that
-              person, above the chat-name matches and the message hits. */}
-          {search.trim().startsWith('@') && <PeopleSearchResult query={search} />}
+          {/* People hits come first: 3+ characters (after stripping `@`) show
+              matching people and public groups, above the chat-name matches
+              and the message hits. */}
+          {showPeopleSearch && <PeopleSearchResult query={search} />}
           {chats.length === 0 && archived.length === 0 ? (
             <EmptyState variant="no-chats" onInvite={onInvite} onExplore={onExplore} />
           ) : (

@@ -28,6 +28,7 @@ import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { mountApi, schemaErrorLayer, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import type { ArchivePool } from '../search/service';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import type { PushConfig } from './config';
 import { createPushGroupLayer } from './api-handlers';
@@ -39,6 +40,8 @@ export const PUSH_SETTINGS_RATE_LIMIT_MAX = 60;
 export const PUSH_SETTINGS_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 export const PUSH_TEST_RATE_LIMIT_MAX = 5;
 export const PUSH_TEST_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+export const PUSH_PREVIEW_RATE_LIMIT_MAX = 120;
+export const PUSH_PREVIEW_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 export interface PushRoutesDependencies {
   auth: Auth;
@@ -48,6 +51,10 @@ export interface PushRoutesDependencies {
   push: PushConfig;
   adminClient: EjabberdAdminClient;
   logger: Logger;
+  /** Read-only MAM archive, used to resolve one message by origin id for the
+   * native preview route. Absent = the route answers 503 `xmpp_unavailable`,
+   * like search does. */
+  archive?: ArchivePool;
   /** Injected in tests so the rate-limit windows can advance without waiting. */
   now?: () => number;
   /** Injected in tests so no real push relay is ever called. */
@@ -58,6 +65,7 @@ export interface PushApiDependencies extends PushRoutesDependencies {
   subscribeLimiter?: RateLimiter;
   settingsLimiter?: RateLimiter;
   testLimiter?: RateLimiter;
+  previewLimiter?: RateLimiter;
 }
 
 const PushApi = HttpApi.make('push').add(PushGroup);
@@ -86,11 +94,19 @@ export function createPushApi(deps: PushApiDependencies): EffectApiMount {
       windowMs: PUSH_TEST_RATE_LIMIT_WINDOW_MS,
       now,
     });
+  const previewLimiter =
+    deps.previewLimiter ??
+    createRateLimiter({
+      max: PUSH_PREVIEW_RATE_LIMIT_MAX,
+      windowMs: PUSH_PREVIEW_RATE_LIMIT_WINDOW_MS,
+      now,
+    });
 
   const groupLayer = createPushGroupLayer(PushApi, deps, {
     subscribe: subscribeLimiter,
     settings: settingsLimiter,
     test: testLimiter,
+    preview: previewLimiter,
   });
 
   const apiLayer = HttpApiBuilder.layer(PushApi).pipe(

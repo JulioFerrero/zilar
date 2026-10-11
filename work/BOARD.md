@@ -9,7 +9,6 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account; superseded by T-1129's plan |
-| [T-1135](T-1135-push-delivery-by-kind.md) | Native push 3/6: delivery branches by device kind | in-progress | auto | T-1132, T-1133 | message pipeline: tests |
 
 ## Follow-ups
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile. This is a new feature, so it needs Julio's OK.
@@ -1177,3 +1176,17 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1132](T-1132-push-device-kind.md) | Native push 1/6: push_subscriptions gets a device kind (webpush | fcm | apns) and a token column — hand-writte | 2026-10-11 |
 | [T-1137](T-1137-trim-lifecycle-sql-adapter.md) | Size: client-core store/lifecycle.ts (405) and server auth/sql-adapter.ts (404) under 400 — readLastRead moves | 2026-10-11 |
 | [T-1136](T-1136-web-account-switch.md) | Web: signing in as another account while one is still signed in kept the old account's chat session until relo | 2026-10-11 |
+| [T-1135](T-1135-push-delivery-by-kind.md) | Native push 3/6: delivery branches by device kind — a native (fcm) device gets a data-only, ids-only wake thro | 2026-10-11 |
+| [T-1138](T-1138-push-native-subscribe.md) | Native push 4/6: POST /push/subscriptions accepts { kind: 'fcm', token } beside the Web Push body, and the ser | 2026-10-11 |
+| [T-1139](T-1139-mobile-push-register.md) | Native push 5/6 (mobile): expo-notifications + google-services.json; after sign-in the app gets its FCM token, | 2026-10-11 |
+| [T-1140](T-1140-compose-fcm-env.md) | Deploy: pass FCM_SERVICE_ACCOUNT_JSON and FCM_PROJECT_ID to the server container; documented in deploy/.env.example | 2026-10-11 |
+| [T-1141](T-1141-push-token-one-owner.md) | Push: a native token belongs to one account — registering an fcm/apns token deletes every other user's row wit | 2026-10-11 |
+| [T-1142](T-1142-push-preview-route.md) | Push: GET /api/push/preview?messageId= returns the notification { title, body, chatId } for one archived messa | 2026-10-11 |
+| [T-1143](T-1143-mobile-push-wake.md) | Native push 6/6 (mobile): a headless task handles the FCM wake — GET /api/push/preview, then a local notificat | 2026-10-11 |
+| [T-1144](T-1144-coolify-compose-fcm-env.md) | Deploy: pass FCM_SERVICE_ACCOUNT_JSON and FCM_PROJECT_ID to the server in deploy/coolify/docker-compose.app.ym | 2026-10-11 |
+| [T-1145](T-1145-web-in-tab-notifications.md) | Web: in-tab notifications — while a Zilar tab is open but hidden, an incoming unread message in an unmuted cha | 2026-10-11 |
+| [T-1147](T-1147-close-chat-clears-active.md) | Web + mobile: leaving a chat clears the open chat, so a message arriving while you are on the chat list stays  | 2026-10-11 |
+| [T-1148](T-1148-people-prefix-search.md) | Web + server: Telegram-style people search — the chat-list search shows people whose @username or name starts  | 2026-10-11 |
+| [T-1146](T-1146-ejabberd-push-enable-audit.md) | Audit: why XEP-0357 <enable/> to ejabberd answers internal-server-error in production, so no real message ever | 2026-10-11 |
+| [T-1149](T-1149-typing-stop-and-badge.md) | Typing: a received message clears that chat's typing line at once, and the sender sends 'paused' on send or wh | 2026-10-11 |
+| [T-1150](T-1150-push-register-idempotent.md) | Push: re-registering the same device keeps its node (server), and the Android app registers its token once per | 2026-10-11 |

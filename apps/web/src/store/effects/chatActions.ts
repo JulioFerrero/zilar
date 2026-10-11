@@ -7,6 +7,7 @@ import {
   react,
   sendTyping,
   setFolders as setFoldersCore,
+  stopTyping,
 } from '@zilar/client-core/store';
 import type { SetState } from '../atomStore';
 import type { ChatStoreState } from '../store';
@@ -57,6 +58,7 @@ export type ChatActions = Pick<
   | 'dismissPinsError'
   | 'refreshChats'
   | 'openChat'
+  | 'closeChat'
   | 'retryChats'
   | 'retryHistory'
   | 'loadOlder'
@@ -72,6 +74,7 @@ export type ChatActions = Pick<
   | 'editMessage'
   | 'deleteForEveryone'
   | 'sendTyping'
+  | 'stopTyping'
   | 'setPushPair'
   | 'sendText'
   | 'sendVoice'
@@ -122,6 +125,11 @@ export function makeChatActions(deps: ChatActionsDeps): ChatActions {
     openChat: (chatId) => {
       openChatInStore(ctx, chatId);
     },
+    closeChat: (chatId) => {
+      if (get().activeChatId === chatId) {
+        set({ activeChatId: undefined });
+      }
+    },
     retryChats: () => {
       rt.runDetached(retryBoot(ctx));
     },
@@ -155,6 +163,9 @@ export function makeChatActions(deps: ChatActionsDeps): ChatActions {
     },
     sendTyping: (chatId) => {
       sendTyping(ctx, chatId);
+    },
+    stopTyping: (chatId) => {
+      stopTyping(ctx, chatId);
     },
     setPushPair: (input) => rt.runPromise(setPushPair(ctx, input)),
     sendText: (chatId, text, options) => {

@@ -3,6 +3,7 @@ import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import type { ArchivePool } from '../search/service';
 import type { PushCipher } from './crypto';
+import type { FcmSender } from './fcm';
 import type { WebPushDelivery } from './sender';
 
 // The push service used to live here. It is split into `delivery.ts`
@@ -26,6 +27,10 @@ export interface PushServiceDeps {
   archive: ArchivePool;
   cipher: PushCipher;
   sender: WebPushDelivery;
+  /** The FCM sender for native (`fcm`) devices. Optional because the server
+   * may run without Firebase configured: a native wake is then dropped as
+   * `send-failed` instead of guessed. Task 4 fills it from the config. */
+  nativeSender?: FcmSender;
   logger: PushLogger;
   /** Per-process record of notified message origin ids per device node, so
    * a retried publish IQ or a re-scan never buzzes twice. Capped per node.

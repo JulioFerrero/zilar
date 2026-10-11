@@ -9,7 +9,7 @@ const FCM_HOST = 'https://fcm.googleapis.com';
 
 export interface FcmWakeData {
   chatId: string;
-  messageId: string;
+  messageId?: string;
   serverId: string;
 }
 
@@ -39,16 +39,20 @@ export class FcmSendError extends Error {
 }
 
 // Exported so the test can assert the exact wire body: data only, ids only,
-// `priority: "high"`, `ttl: "3600s"`, and no `notification` block.
+// `priority: "high"`, `ttl: "3600s"`, and no `notification` block. A wake with
+// no message id (the archive row carried none) leaves `messageId` out entirely.
 export function fcmMessageBody(token: string, data: FcmWakeData) {
+  const messageData: { chatId: string; messageId?: string; serverId: string } = {
+    chatId: data.chatId,
+    serverId: data.serverId,
+  };
+  if (data.messageId !== undefined) {
+    messageData.messageId = data.messageId;
+  }
   return {
     message: {
       token,
-      data: {
-        chatId: data.chatId,
-        messageId: data.messageId,
-        serverId: data.serverId,
-      },
+      data: messageData,
       android: { priority: 'high' as const, ttl: '3600s' as const },
     },
   };

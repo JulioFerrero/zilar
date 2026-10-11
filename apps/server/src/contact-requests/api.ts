@@ -14,6 +14,7 @@ import {
   ContactRequestReadRateLimit,
   ContactRequestsGroup,
   ContactRequestsSchemaErrors,
+  UserSearchRateLimit,
 } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
@@ -40,6 +41,7 @@ import {
   type ContactRequestRow,
   type ContactRequestsDeps,
 } from './service';
+import { searchUsers } from './search';
 
 export const CONTACT_REQUEST_CREATE_RATE_LIMIT_MAX = 20;
 export const CONTACT_REQUEST_CREATE_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -47,6 +49,8 @@ export const CONTACT_REQUEST_READ_RATE_LIMIT_MAX = 60;
 export const CONTACT_REQUEST_READ_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 export const BY_HANDLE_RATE_LIMIT_MAX = 30;
 export const BY_HANDLE_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+export const USER_SEARCH_RATE_LIMIT_MAX = 120;
+export const USER_SEARCH_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
 const RATE_LIMITED_MESSAGE = 'Too many attempts, try again later';
 
@@ -64,6 +68,7 @@ export interface ContactRequestsApiDependencies {
   createLimiter?: RateLimiter;
   readLimiter?: RateLimiter;
   byHandleLimiter?: RateLimiter;
+  userSearchLimiter?: RateLimiter;
 }
 
 function toJson(row: ContactRequestRow) {
@@ -100,6 +105,13 @@ export function createContactRequestsApi(deps: ContactRequestsApiDependencies): 
     createRateLimiter({
       max: BY_HANDLE_RATE_LIMIT_MAX,
       windowMs: BY_HANDLE_RATE_LIMIT_WINDOW_MS,
+      now,
+    });
+  const userSearchLimiter =
+    deps.userSearchLimiter ??
+    createRateLimiter({
+      max: USER_SEARCH_RATE_LIMIT_MAX,
+      windowMs: USER_SEARCH_RATE_LIMIT_WINDOW_MS,
       now,
     });
 
@@ -170,6 +182,14 @@ export function createContactRequestsApi(deps: ContactRequestsApiDependencies): 
       .handle(
         'byHandle',
         handler(logger, (request, user) => profileForHandle(db, user.id, request.params.handle)),
+      )
+      // Telegram-style prefix search by `@username` or display name: up to 10
+      // matching people. The query itself is never logged.
+      .handle(
+        'search',
+        handler(logger, async (request, user) => ({
+          entries: await searchUsers(db, user.id, request.query.q),
+        })),
       ),
   );
 
@@ -194,6 +214,7 @@ export function createContactRequestsApi(deps: ContactRequestsApiDependencies): 
     Layer.provide(
       rateLimitLayer(ContactRequestByHandleRateLimit, byHandleLimiter, RATE_LIMITED_MESSAGE),
     ),
+    Layer.provide(rateLimitLayer(UserSearchRateLimit, userSearchLimiter, RATE_LIMITED_MESSAGE)),
   );
 
   return mountApi(ContactRequestsApi, apiLayer);
