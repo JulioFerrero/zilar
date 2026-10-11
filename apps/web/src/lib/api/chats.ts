@@ -12,11 +12,12 @@ import {
   type ChatPref,
   type Contact,
   type Topic,
+  type XmppTokenResult,
 } from '@zilar/api-contract';
 import type { FolderChatType, FolderIcon } from '@zilar/chat-core';
 import { struct } from '@zilar/protocol';
 import { callApi } from '@/lib/effect/api-client';
-import { decodeResponse, request } from './http';
+import { decodeResponse } from './http';
 
 // The profile and invite schemas live in `@zilar/api-contract` (`auth.ts`,
 // T-0895); their later fields (`handle`, `avatarUrl`, `jid`) are optional so
@@ -54,16 +55,8 @@ const chatsSchema = struct({ chats: Schema.mutable(Schema.Array(chatEntrySchema)
 
 export type Invite = AuthInvite;
 
-const xmppTokenSchema = struct({
-  jid: Schema.String,
-  token: Schema.String,
-  expiresAt: Schema.String,
-  service: Schema.String,
-  domain: Schema.String,
-  mucDomain: Schema.String,
-});
-
-export type XmppToken = typeof xmppTokenSchema.Type;
+// The schema lives in `@zilar/api-contract` (`xmpp.ts`, T-1111).
+export type XmppToken = XmppTokenResult;
 
 export function getMe(): Promise<Me> {
   return callApi((client) => client.auth.me());
@@ -98,7 +91,7 @@ export function getInvite(code: string): Promise<{ valid: boolean }> {
 }
 
 export function getXmppToken(): Promise<XmppToken> {
-  return request('/xmpp/token', xmppTokenSchema, { method: 'POST' });
+  return callApi((client) => client.xmpp.token());
 }
 
 // --- Chat preferences (T-0113) -------------------------------------------------

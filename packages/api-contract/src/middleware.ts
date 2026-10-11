@@ -235,3 +235,12 @@ export class MachinesPairingCodeRateLimit extends HttpApiMiddleware.Service<
   MachinesPairingCodeRateLimit,
   { requires: CurrentUser }
 >()('zilar/effect/http/MachinesPairingCodeRateLimit') {}
+
+/**
+ * The XMPP token budget: every page load, tab and reconnect mints a token, so
+ * the route is capped per user. It runs before provisioning, after `Session`.
+ */
+export class XmppTokenRateLimit extends HttpApiMiddleware.Service<
+  XmppTokenRateLimit,
+  { requires: CurrentUser }
+>()('zilar/effect/http/XmppTokenRateLimit') {}

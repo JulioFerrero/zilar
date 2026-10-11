@@ -28,6 +28,7 @@ import { SearchGroup } from './search';
 import { StickersGroup } from './stickers';
 import { ToolsGroup } from './tools';
 import { TopicsGroup } from './topics';
+import { XmppGroup } from './xmpp';
 
 /**
  * The whole HTTP API as one contract. Clients derive from it
@@ -65,4 +66,5 @@ export const ZilarApi = HttpApi.make('zilar').add(
   StickersGroup,
   ToolsGroup,
   TopicsGroup,
+  XmppGroup,
 );

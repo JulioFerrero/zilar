@@ -37,3 +37,4 @@ export * from './search';
 export * from './stickers';
 export * from './tools';
 export * from './topics';
+export * from './xmpp';

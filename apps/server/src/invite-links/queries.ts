@@ -5,6 +5,7 @@ import type { ServerDatabase } from '../db/client';
 import type { GroupInviteLinkRow, GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
+import { findGroupMembership, isGroupManagerRole } from '../groups/access';
 import {
   MAX_ACTIVE_INVITE_LINKS,
   generateInviteToken,
@@ -35,22 +36,13 @@ async function requireGroupManager(
       return yield* sql<GroupRow>`SELECT * FROM groups WHERE id = ${groupId} LIMIT 1`;
     }),
   );
-  const [membership] = group
-    ? await runSql(
-        db,
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          return yield* sql<{ role: string }>`SELECT role FROM group_members
-            WHERE group_id = ${groupId} AND user_id = ${actorId} LIMIT 1`;
-        }),
-      )
-    : [];
+  const membership = group ? await findGroupMembership(db, groupId, actorId) : undefined;
   // A non-member sees the same 404 as a missing group, so group ids cannot
   // be probed.
   if (!group || !membership) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
-  if (membership.role === 'member') {
+  if (!isGroupManagerRole(membership.role)) {
     throw new HttpError(403, 'forbidden', 'Only owners and admins can manage invite links');
   }
   return { id: group.id, title: group.title };

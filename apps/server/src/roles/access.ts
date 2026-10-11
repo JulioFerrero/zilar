@@ -4,24 +4,17 @@ import type { ServerDatabase } from '../db/client';
 import type { GroupRoleRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
+import { findGroupMembership, isGroupManagerRole } from '../groups/access';
 import { toMissingGroup, toMissingRole } from './schemas';
 
-// The group row plus the actor's membership. A non-member sees the same 404
-// as a missing group, so group ids cannot be probed.
+// The actor's membership. A non-member sees the same 404 as a missing group,
+// so group ids cannot be probed.
 export async function requireGroupMembership(
   db: ServerDatabase,
   groupId: string,
   actorId: string,
 ): Promise<{ groupId: string; userId: string; role: 'owner' | 'admin' | 'member' }> {
-  const [membership] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ groupId: string; userId: string; role: 'owner' | 'admin' | 'member' }>`
-        SELECT group_id, user_id, role FROM group_members
-        WHERE group_id = ${groupId} AND user_id = ${actorId} LIMIT 1`;
-    }),
-  );
+  const membership = await findGroupMembership(db, groupId, actorId);
   if (!membership) {
     throw toMissingGroup();
   }
@@ -34,7 +27,7 @@ export async function requireGroupManager(
   actorId: string,
 ): Promise<void> {
   const membership = await requireGroupMembership(db, groupId, actorId);
-  if (membership.role === 'member') {
+  if (!isGroupManagerRole(membership.role)) {
     throw new HttpError(403, 'forbidden', 'Only group owners and admins can manage roles');
   }
 }

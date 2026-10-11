@@ -3,16 +3,17 @@
 // (`routes.ts`), mounted by the Effect edge (`apps/server/src/effect/edge.ts`).
 // Its services run on effect/sql.
 
-import { Effect, Layer, Schema } from 'effect';
-import { HttpApi, HttpApiBuilder, HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { Effect, Layer } from 'effect';
+import { HttpApi, HttpApiBuilder } from 'effect/http-api';
+import { XmppGroup, XmppTokenRateLimit } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { syncRoster } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
 import { xmppUnavailable } from '../errors';
 import { createRateLimiter } from '../rate-limit';
-import { Session, handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
-import { makeRateLimit } from '../effect/rate-limit-middleware';
+import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
+import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import type { EjabberdAdminClient } from './admin-client';
 import type { XmppConfig } from './config';
 import { ensureXmppAccount } from './provisioning';
@@ -35,32 +36,10 @@ export interface XmppApiDependencies {
   logger: Logger;
 }
 
-const TokenResult = Schema.Struct({
-  jid: Schema.String,
-  token: Schema.String,
-  expiresAt: Schema.String,
-  service: Schema.String,
-  domain: Schema.String,
-  mucDomain: Schema.String,
-});
-
 // The token budget runs before provisioning, exactly like the old route's
-// `limiter.allow` -> `ensureXmppAccount` order. `requires: CurrentUser` is
-// satisfied by `Session`.
-const TokenRateLimit = makeRateLimit(
-  'zilar/effect/http/XmppTokenRateLimit',
-  'Too many token requests',
-);
-
-const XmppGroup = HttpApiGroup.make('xmpp')
-  .add(
-    HttpApiEndpoint.post('token', '/xmpp/token', { success: TokenResult }).middleware(
-      TokenRateLimit.Middleware,
-    ),
-  )
-  .middleware(Session)
-  // The edge forwards the full request path, so the router keeps the `/api` prefix.
-  .prefix('/api');
+// `limiter.allow` -> `ensureXmppAccount` order. The schema, the group and the
+// tag live in the shared contract (`@zilar/api-contract`, T-1111).
+const RATE_LIMIT_MESSAGE = 'Too many token requests';
 
 const XmppApi = HttpApi.make('xmpp').add(XmppGroup);
 
@@ -76,7 +55,7 @@ export function createXmppApi(deps: XmppApiDependencies): EffectApiMount {
   const groupLayer = HttpApiBuilder.group(XmppApi, 'xmpp', (handlers) =>
     handlers.handle(
       'token',
-      // The token budget was already charged by `TokenRateLimit`.
+      // The token budget was already charged by `XmppTokenRateLimit`.
       handler(logger, (_request, user) =>
         Effect.gen(function* () {
           const { jid, provisioned } = yield* Effect.promise(() =>
@@ -119,7 +98,7 @@ export function createXmppApi(deps: XmppApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(XmppApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(TokenRateLimit.layer(limiter)),
+    Layer.provide(rateLimitLayer(XmppTokenRateLimit, limiter, RATE_LIMIT_MESSAGE)),
   );
 
   return mountApi(XmppApi, apiLayer);

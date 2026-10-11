@@ -9,7 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account |
-| [T-1110](T-1110-groups-access-membership-read.md) | Dedup S10 slice 1: groups/access.ts membership read | in-progress | auto | T-1109 | Julio OK 10-11; answers unchanged |
+| [T-1112](T-1112-signup-email-first-invite-step.md) | Sign-in: email first, invite input only for a new email (pre-filled from link) | in-progress | auto | T-1105 | Julio 10-11 correction |
 
 ## Follow-ups
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile. This is a new feature, so it needs Julio's OK.
@@ -1145,3 +1145,5 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1104](T-1104-signup-invite-code-server-web.md) | Sign-up: an unknown email gets 'invite_required' instead of a silent fake success; web sign-in shows an Invite | 2026-10-11 |
 | [T-1109](T-1109-xmpp-unavailable-constructor.md) | Error codes: one xmppUnavailable() constructor (always 503) replaces the 33 inline HttpError(502|503, 'xmpp_un | 2026-10-11 |
 | [T-1105](T-1105-signup-invite-code-mobile.md) | Mobile sign-in: Invite code field for new accounts (shows on invite_required / invite_invalid, accepts a code  | 2026-10-11 |
+| [T-1110](T-1110-groups-access-membership-read.md) | Dedup S10 (slice 1): apps/server/src/groups/access.ts with findGroupMembership + isGroupManagerRole, adopted b | 2026-10-11 |
+| [T-1111](T-1111-xmpp-token-into-contract.md) | S15 (part 1): the /xmpp/token endpoint moves into @zilar/api-contract unchanged; web getXmppToken uses callApi | 2026-10-11 |
