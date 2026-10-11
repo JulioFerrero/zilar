@@ -25,6 +25,7 @@ COPY packages/protocol/package.json packages/protocol/
 COPY packages/client-core/package.json packages/client-core/
 COPY packages/xmpp-core/package.json packages/xmpp-core/
 COPY packages/chat-core/package.json packages/chat-core/
+COPY packages/ball-avatar/package.json packages/ball-avatar/
 COPY packages/ui-tokens/package.json packages/ui-tokens/
 
 RUN pnpm install --frozen-lockfile
@@ -39,6 +40,7 @@ COPY packages/protocol packages/protocol
 COPY packages/client-core packages/client-core
 COPY packages/xmpp-core packages/xmpp-core
 COPY packages/chat-core packages/chat-core
+COPY packages/ball-avatar packages/ball-avatar
 COPY packages/ui-tokens packages/ui-tokens
 
 RUN pnpm --filter @zilar/web build
