@@ -2,6 +2,15 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-11 07:45 local: store splits merged; a web topic bug found**
+- **Merged:** T-1094, T-1095, T-1096 and T-1097 (the four store splits: relocation only, with the lead's line comparison, every body identical) and T-1098 (the search constants).
+  - **Main, the lead's run:** web and mobile typecheck pass, and the store tests pass (web 41, mobile 40).
+- **Bug found while checking on main (`?mock=1`):** "New topic" from a group header's **+** fails with "Could not create the topic", and the dialog shows no group name.
+  - It also fails on `93aa01e4` (before T-1090), so it is older than tonight's work.
+  - **Cause, as the lead read it:** the header passes the server group id, and the dialog and the store look it up as a chat id. It may affect the live app too.
+  - **Running:** T-1099, a diagnosis and fix.
+- **Running:** T-1099 only.
+
 **2026-10-11 07:00 local: store splits running (5 workers)**
 - **Merged:** T-1093. `docs/audit/simplify-status.md` gives 32 of the 41 plan items done.
   - The web release build has no mock backend: the worker's `vite build` plus a grep.

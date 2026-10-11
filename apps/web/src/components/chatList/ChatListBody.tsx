@@ -30,7 +30,7 @@ export interface ChatListBodyProps {
   onToggleShowArchived: () => void;
   onInvite: () => void;
   onExplore: () => void;
-  onOpenNewTopic: (groupId: string) => void;
+  onOpenNewTopic: (chatId: string) => void;
 }
 
 export function ChatListBody({
