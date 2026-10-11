@@ -12,6 +12,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 
 ## Follow-ups
 
+- **Mock: a newly created topic's header says "9 members, 9 online" in Familia, a 2-member group (found 2026-10-11, T-1099 check).** It probably comes from the mock room occupants or the topic view's count. It is low priority and mock-only, until it is checked against the real app.
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile. This is a new feature, so it needs Julio's OK.
 - **Mock images (waiting for Julio's choice, NOW.md 2026-10-11 05:00).** Web seed stickers are fixed (T-1083, a dev-only vite plugin), and web GIFs were never blank. Still broken:
   - **mobile sticker and GIF images are blank:** native `Image` fetches over the network, never through `mockFetch`, and the seed art is SVG;

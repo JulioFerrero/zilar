@@ -8,8 +8,8 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 - **Bug found while checking on main (`?mock=1`):** "New topic" from a group header's **+** fails with "Could not create the topic", and the dialog shows no group name.
   - It also fails on `93aa01e4` (before T-1090), so it is older than tonight's work.
   - **Cause, as the lead read it:** the header passes the server group id, and the dialog and the store look it up as a chat id. It may affect the live app too.
-  - **Running:** T-1099, a diagnosis and fix.
-- **Running:** T-1099 only.
+  - **Merged, T-1099:** the header now passes its General topic row id. The worker confirmed the live app had the same bug. The lead checked the fix in the browser: "in Familia", "Night check" is created and opens, and Dev team works too. It is on the live-check list.
+- **Running:** nothing. The decision-free queue is empty; what is left waits for Julio (see 07:00).
 
 **2026-10-11 07:00 local: store splits running (5 workers)**
 - **Merged:** T-1093. `docs/audit/simplify-status.md` gives 32 of the 41 plan items done.
@@ -536,7 +536,9 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - the settings pages load (T-0862 lazy routes);
   - the server starts and stops from the bundled image (T-0861);
   - forwarding, reactions and edits (T-0877);
-  - mobile looks the same everywhere (T-0881 dark-only).
+  - mobile looks the same everywhere (T-0881 dark-only);
+  - web: the **+** next to a group name creates a topic (T-1099, a live bug before this fix);
+  - no-picture avatars are glossy balls on web and mobile (T-1091).
 - **Incident:** two workers' `git stash` pops swapped each other's changes, since the stash list is shared across worktrees. Both recovered, and `docs/EFFECT_BRIEF.md` now forbids `git stash`.
 - **Docker Desktop:** restarted after the reboot; the local stack (postgres, ejabberd, litellm) is up.
 
