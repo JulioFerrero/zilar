@@ -4,6 +4,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 
 import { MessageActionsSheet } from '@/components/chat/message-actions-sheet';
+import { useChatStore } from '@/store/chat-store-provider';
 
 type BubbleActionsSheetProps = {
   visible: boolean;
@@ -65,12 +66,37 @@ export function BubbleActionsSheet({
   setMenuOpen,
   setConfirmOpen,
 }: BubbleActionsSheetProps) {
+  // The failed-text Retry/Delete read straight from the store (like
+  // `chat-thread.tsx` reads `retrySticker`): passing them down would need
+  // `message-list.tsx` and `message-bubble.tsx`, which this task does not own.
+  const retryText = useChatStore((state) => state.retryText);
+  const deleteFailedMessage = useChatStore((state) => state.deleteFailedMessage);
+  const currentUserId = useChatStore((state) => state.currentUserId);
+  // A failed own text (the core's `retryText` guard, mirrored): attachments,
+  // stickers, voice notes and images keep their own retry paths.
+  const failedText =
+    message.senderId === currentUserId &&
+    message.status === 'failed' &&
+    message.text !== undefined &&
+    message.voice === undefined &&
+    message.attachment === undefined &&
+    message.image === undefined &&
+    message.card === undefined;
   return (
     <MessageActionsSheet
       visible={visible}
       canCopy={canCopy}
       canEdit={canEdit}
       canDelete={canDelete}
+      failed={failedText}
+      onRetry={() => {
+        setMenuOpen(false);
+        retryText(message.chatId, message.id);
+      }}
+      onDeleteLocal={() => {
+        setMenuOpen(false);
+        deleteFailedMessage(message.chatId, message.id);
+      }}
       canForward={canForward}
       canPin={canPin}
       isPinned={isPinned}

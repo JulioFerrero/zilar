@@ -10,6 +10,7 @@ import {
   type WorkspacePackage,
 } from './plan.js';
 import { allowedTokens, scopeReport, tokenMatcher } from './scope.js';
+import { checkMigrations, migrationNumber, parseMigrationDiff } from './migrations.js';
 
 const workspace: WorkspacePackage[] = [
   { name: '@zilar/mobile', dir: 'apps/mobile', hasTests: true },
@@ -99,6 +100,40 @@ describe('scopeReport', () => {
 
   it('is unchecked when the task names no paths', () => {
     expect(scopeReport('## Spec', ['a.ts'])).toEqual({ outside: [], unchecked: true });
+  });
+});
+
+describe('migration check', () => {
+  const added = (...numbers: number[]): string[] =>
+    numbers.map((number) => `apps/server/drizzle/${String(number).padStart(4, '0')}_x.sql`);
+  const check = (diff: { added: string[]; modified: string[] }, baseMax = 47) =>
+    checkMigrations(diff, baseMax);
+
+  it('accepts the next number after the base and rejects a duplicate or a gap', () => {
+    expect(check({ added: added(48), modified: [] })).toEqual({ failures: [], warnings: [] });
+    expect(check({ added: added(47), modified: [] }).failures).toEqual([
+      'apps/server/drizzle/0047_x.sql: expected 0048, found 0047',
+    ]);
+    expect(check({ added: added(49), modified: [] }).failures).toEqual([
+      'apps/server/drizzle/0049_x.sql: expected 0048, found 0049',
+    ]);
+  });
+
+  it('continues a run of added migrations and warns for a modified one', () => {
+    expect(check({ added: added(48, 49), modified: [] }).failures).toEqual([]);
+    const report = check({ added: [], modified: added(46) });
+    expect(report.failures).toEqual([]);
+    expect(report.warnings).toHaveLength(1);
+  });
+
+  it('parses only NNNN_*.sql under apps/server/drizzle', () => {
+    expect(migrationNumber('apps/server/drizzle/0048_x.sql')).toBe(48);
+    expect(migrationNumber('apps/server/src/effect/sql.ts')).toBeUndefined();
+  });
+
+  it('treats a rename into a migration path as added', () => {
+    const diff = parseMigrationDiff('R100\told.md\tapps/server/drizzle/0046_x.sql');
+    expect(checkMigrations(diff, 47).failures).toHaveLength(1);
   });
 });
 

@@ -1,8 +1,12 @@
-import { Effect } from 'effect';
-import { useMemo, useRef, useState } from 'react';
+import { Effect, type Fiber } from 'effect';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { interruptFiber } from '@/lib/effect/timers';
 import { topicsOfGroup } from '@/lib/topics';
 import { useChatStore } from '@/store/chat-store-provider';
+
+// T-1218: how long a failed swipe keeps its line above the chat list.
+const SWIPE_ERROR_MS = 4000;
 
 // Returns a copy of `keys` with `key` added (on) or removed (off).
 function withKey(keys: ReadonlySet<string>, key: string, on: boolean): ReadonlySet<string> {
@@ -28,6 +32,19 @@ export function useChatActions() {
   const [actionMuteOpen, setActionMuteOpen] = useState(false);
   const setChatPref = useChatStore((state) => state.setChatPref);
   const [actionError, setActionError] = useState('');
+  // T-1218: one timer clears the swipe-failure line; a new save or unmount
+  // cancels it. A sheet error is cleared by its own close, never by this.
+  const swipeErrorTimer = useRef<Fiber.Fiber<unknown, unknown> | undefined>(undefined);
+  const cancelSwipeErrorTimer = () => {
+    interruptFiber(swipeErrorTimer.current);
+    swipeErrorTimer.current = undefined;
+  };
+  useEffect(
+    () => () => {
+      interruptFiber(swipeErrorTimer.current);
+    },
+    [],
+  );
   // One change per chat at a time (one action per row): a second tap on the
   // same chat while its change saves is dropped; other chats are not blocked.
   // The ref is read only in handlers; the state drives the busy display.
@@ -64,6 +81,9 @@ export function useChatActions() {
 
   const actionChatId = actionContext?.chat?.id;
   const actionBusy = actionChatId !== undefined && prefBusy.has(actionChatId);
+  // T-1218: while no sheet is open, a save failure belongs to the swipe that
+  // caused it and shows on its own line; with a sheet open the sheet shows it.
+  const swipeError = actionFor === null ? actionError : '';
 
   // A chat change that saves closes its sheet; a failure keeps it open with
   // the message.
@@ -73,6 +93,7 @@ export function useChatActions() {
     }
     prefInFlight.current.add(chatId);
     setPrefBusy((busy) => withKey(busy, chatId, true));
+    cancelSwipeErrorTimer();
     setActionError('');
     Effect.runFork(
       Effect.tryPromise({
@@ -88,6 +109,14 @@ export function useChatActions() {
         Effect.catch(() =>
           Effect.sync(() => {
             setActionError('Could not save. Try again.');
+            // A swipe has no sheet to show it in: keep the line for a beat.
+            if (actionFor === null) {
+              swipeErrorTimer.current = Effect.runFork(
+                Effect.sleep(SWIPE_ERROR_MS).pipe(
+                  Effect.andThen(Effect.sync(() => setActionError(''))),
+                ),
+              );
+            }
           }),
         ),
         Effect.ensuring(
@@ -112,6 +141,7 @@ export function useChatActions() {
     actionContext,
     actionBusy,
     actionError,
+    swipeError,
     actionMuteOpen,
     setActionMuteOpen,
     openActions,

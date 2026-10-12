@@ -75,6 +75,9 @@ export async function listContacts(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
+      // Belt and braces until old rows are gone: a block deletes the pair,
+      // but a contact accepted between blocks (or written by an older
+      // version) must still not show on either side.
       return yield* sql<ContactListRow>`SELECT c.contact_user_id AS user_id, u.name, u.image,
           x.jid, h.handle
         FROM contacts c
@@ -82,6 +85,9 @@ export async function listContacts(
         LEFT JOIN xmpp_accounts x ON x.user_id = c.contact_user_id
         LEFT JOIN handles h ON h.user_id = c.contact_user_id
         WHERE c.user_id = ${userId}
+          AND NOT EXISTS (SELECT 1 FROM user_blocks b
+            WHERE (b.user_id = ${userId} AND b.blocked_user_id = c.contact_user_id)
+               OR (b.user_id = c.contact_user_id AND b.blocked_user_id = ${userId}))
         ORDER BY u.name ASC`;
     }),
   );

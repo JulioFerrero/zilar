@@ -4,6 +4,7 @@ import { bareJid } from '../jid';
 import {
   CORRECTION_NAMESPACE,
   DELAY_NAMESPACE,
+  FALLBACK_NAMESPACE,
   REACTIONS_NAMESPACE,
   REFERENCE_NAMESPACE,
   REPLY_NAMESPACE,
@@ -36,12 +37,53 @@ export function timestamp(
   return ctx.now();
 }
 
-export function parseReply(stanza: XmppElement): ReplyRef | undefined {
+export function parseReply(stanza: XmppElement): (ReplyRef & { text?: string }) | undefined {
   const reply = stanza.getChild('reply', REPLY_NAMESPACE);
   const id = reply?.attrs['id'];
   if (reply === undefined || id === undefined) return undefined;
   const to = reply.attrs['to'];
-  return to === undefined ? { id } : { id, to };
+  const text = replyFallbackText(stanza);
+  return {
+    id,
+    ...(to === undefined ? {} : { to }),
+    ...(text === undefined ? {} : { text }),
+  };
+}
+
+// XEP-0461 backs a reply with an XEP-0428 fallback: the quoted text is the
+// head of the body, marked by a `<fallback for="urn:xmpp:reply:0"><body
+// start end/></fallback>` range. It is lifted here (bounds-checked like a
+// mention) so the quote still shows when the replied-to message is not loaded.
+function replyFallbackRange(stanza: XmppElement): { start: number; end: number } | undefined {
+  const fallback = stanza.getChild('fallback', FALLBACK_NAMESPACE);
+  if (fallback === undefined || fallback.attrs['for'] !== REPLY_NAMESPACE) return undefined;
+  const range = fallback.getChild('body');
+  const start = parseOffset(range?.attrs['start']);
+  const end = parseOffset(range?.attrs['end']);
+  if (start === undefined || end === undefined || start >= end) return undefined;
+  return { start, end };
+}
+
+function replyFallbackText(stanza: XmppElement): string | undefined {
+  const body = stanza.getChild('body')?.text();
+  if (body === undefined) return undefined;
+  const range = replyFallbackRange(stanza);
+  if (range === undefined || range.end > codePointLength(body)) return undefined;
+  const quote = Array.from(body).slice(range.start, range.end).join('');
+  return quote === '' ? undefined : quote;
+}
+
+// XEP-0461: removes the fallback quote line from the body. The range names
+// the quoted text (start and end are code points, bounds-checked as
+// `replyFallbackText` does); the `> ` marker before it and the trailing
+// newline go with it, so what is left is the reply text. A body that was
+// only the quote comes back empty; anything without a usable range comes
+// back unchanged.
+export function stripReplyFallback(body: string, stanza: XmppElement): string {
+  const range = replyFallbackRange(stanza);
+  if (range === undefined || range.end > codePointLength(body)) return body;
+  const rest = Array.from(body).slice(range.end).join('');
+  return rest.startsWith('\n') ? rest.slice(1) : rest;
 }
 
 // XEP-0372: the URI is `xmpp:<bare-jid>`. Anything else is ignored. The bare

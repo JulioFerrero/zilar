@@ -32,7 +32,11 @@ export async function resolveCandidate(
   if (row.xml.includes('urn:xmpp:message-retract:1')) {
     return { status: 'skip' };
   }
-  const text = row.text === null || row.text === '' ? undefined : row.text;
+  const rawText = row.text === null || row.text === '' ? undefined : row.text;
+  // A reply archives with its XEP-0461 fallback quote as the head of the
+  // text (`> quote\n…`); the push preview shows the reply text, not the
+  // quote, so the marked range leaves the text.
+  const text = rawText === undefined ? undefined : textWithoutReplyFallback(rawText, row.xml);
   if (text === undefined && row.xml.includes('urn:xmpp:reactions:0')) {
     return { status: 'skip' };
   }
@@ -145,33 +149,61 @@ async function isMuted(
   generalJid: string | undefined,
   now: Date,
 ): Promise<boolean> {
-  const [own] = await runSql(
+  // One read covers both candidate rows (T-1184, PERF-5). The chat's own row
+  // wins when present; a topic without one falls back to its group's General
+  // row.
+  const jids =
+    generalJid !== undefined && generalJid !== chatJid ? [chatJid, generalJid] : [chatJid];
+  const rows = await runSql(
     deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ mutedUntil: Date | null }>`SELECT muted_until FROM chat_prefs
-        WHERE user_id = ${userId} AND chat_jid = ${chatJid} LIMIT 1`;
+      return yield* sql<{
+        chatJid: string;
+        mutedUntil: Date | null;
+      }>`SELECT chat_jid, muted_until FROM chat_prefs
+        WHERE user_id = ${userId} AND chat_jid IN ${sql.in(jids)}`;
     }),
   );
-  if (own !== undefined) {
-    return own.mutedUntil !== null && own.mutedUntil.getTime() > now.getTime();
+  const chosen =
+    rows.find((row) => row.chatJid === chatJid) ?? rows.find((row) => row.chatJid === generalJid);
+  return (
+    chosen !== undefined &&
+    chosen.mutedUntil !== null &&
+    chosen.mutedUntil.getTime() > now.getTime()
+  );
+}
+
+// A reply's XEP-0461 fallback quote is the head of the archived text, marked
+// by `<fallback for="urn:xmpp:reply:0"><body start end/></fallback>` in the
+// row's XML (start and end are code points into the text). The archive XML is
+// read defensively with regexes, the way `search/snippet.ts` reads it
+// (`stanzaFrom`, `correctionTarget`): a row whose XML does not parse keeps
+// today's text.
+function textWithoutReplyFallback(text: string, xml: string): string {
+  if (!xml.includes('urn:xmpp:reply:0')) {
+    return text;
   }
-  if (generalJid !== undefined && chatJid !== generalJid) {
-    const [general] = await runSql(
-      deps.db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* sql<{ mutedUntil: Date | null }>`SELECT muted_until FROM chat_prefs
-          WHERE user_id = ${userId} AND chat_jid = ${generalJid} LIMIT 1`;
-      }),
-    );
-    return (
-      general !== undefined &&
-      general.mutedUntil !== null &&
-      general.mutedUntil.getTime() > now.getTime()
-    );
+  const fallback = xml.match(
+    /<fallback\b[^>]*\bfor\s*=\s*(["'])urn:xmpp:reply:0\1[^>]*>([\s\S]*?)<\/fallback\s*>/,
+  );
+  const bodyTag = fallback?.[2]?.match(/<body\b[^>]*>/);
+  const start = bodyTag?.[0].match(/\bstart\s*=\s*(["'])(\d+)\1/)?.[2];
+  const end = bodyTag?.[0].match(/\bend\s*=\s*(["'])(\d+)\1/)?.[2];
+  if (start === undefined || end === undefined) {
+    return text;
   }
-  return false;
+  const startPoint = Number.parseInt(start, 10);
+  const endPoint = Number.parseInt(end, 10);
+  if (!Number.isSafeInteger(startPoint) || !Number.isSafeInteger(endPoint)) {
+    return text;
+  }
+  const chars = Array.from(text);
+  if (startPoint >= endPoint || endPoint > chars.length) {
+    return text;
+  }
+  const rest = chars.slice(endPoint).join('');
+  return rest.startsWith('\n') ? rest.slice(1) : rest;
 }
 
 function topicRoomGeneralJid(deps: CandidateDeps, groupRoomLocalpart: string): string {

@@ -36,12 +36,6 @@ import { useChatStoreApi } from '@/store/ChatStoreProvider';
 
 type PageStatus = 'loading' | 'ready' | 'unsupported' | 'server-off';
 
-// A browser without a push service rejects `PushManager.subscribe` with an
-// `AbortError` (Chromium: "Registration failed - push service error"). The
-// permission was still granted, so in-tab notifications work while open.
-const PUSH_SERVICE_UNAVAILABLE =
-  "This browser can't receive notifications when Zilar is closed. You'll still get them while a Zilar tab is open.";
-
 function isPushServiceError(error: unknown): boolean {
   return (
     error instanceof Error && (error.name === 'AbortError' || /push service/i.test(error.message))
@@ -59,6 +53,8 @@ export interface PushEnable {
   testSent: boolean;
   onlyWhileOpen: boolean;
   errorMessage: string;
+  /** Where the message renders: the device card, or next to the Test button. */
+  errorScope: 'card' | 'test';
   enableOnThisDevice: () => void;
   disableOnThisDevice: () => void;
   removeOtherDevice: (id: string) => void;
@@ -81,6 +77,18 @@ export function usePushEnable(): PushEnable {
   const [testSent, setTestSent] = useState(false);
   const [onlyWhileOpen, setOnlyWhileOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [errorScope, setErrorScope] = useState<'card' | 'test'>('card');
+
+  // The page has one message; its scope decides where it renders: the device
+  // card for its own actions, next to the Test button for a test.
+  const showCardError = (message: string): void => {
+    setErrorScope('card');
+    setErrorMessage(message);
+  };
+  const showTestError = (message: string): void => {
+    setErrorScope('test');
+    setErrorMessage(message);
+  };
 
   const supported =
     pushSupport({
@@ -166,10 +174,10 @@ export function usePushEnable(): PushEnable {
         if (subscribed === undefined) {
           // No push service here (Helium and other forks), but the permission
           // was granted: in-tab notifications still work while a tab is open.
+          // That is information, not an error, so no message is set.
           yield* Effect.sync(() => {
             setPermission('granted');
             setOnlyWhileOpen(true);
-            setErrorMessage(PUSH_SERVICE_UNAVAILABLE);
           });
           return;
         }
@@ -208,7 +216,7 @@ export function usePushEnable(): PushEnable {
         });
         yield* refreshDevices;
       }).pipe(Effect.ensuring(Effect.sync(() => setBusy(false)))),
-      setErrorMessage,
+      showCardError,
     );
   };
 
@@ -249,7 +257,7 @@ export function usePushEnable(): PushEnable {
         setStoredDevice(null);
         yield* refreshDevices;
       }).pipe(Effect.ensuring(Effect.sync(() => setBusy(false)))),
-      setErrorMessage,
+      showCardError,
     );
   };
 
@@ -270,7 +278,7 @@ export function usePushEnable(): PushEnable {
         ),
         Effect.andThen(refreshDevices),
       ),
-      setErrorMessage,
+      showCardError,
     );
   };
 
@@ -283,7 +291,7 @@ export function usePushEnable(): PushEnable {
         Effect.tap(() => Effect.sync(() => setInTabPreviews(value))),
         Effect.tapError(() => Effect.sync(() => setShowPreviews(previous))),
       ),
-      setErrorMessage,
+      showCardError,
     );
   };
 
@@ -300,7 +308,7 @@ export function usePushEnable(): PushEnable {
         Effect.tap(() => Effect.sync(() => setTestSent(true))),
         Effect.ensuring(Effect.sync(() => setTesting(false))),
       ),
-      setErrorMessage,
+      showTestError,
     );
   };
 
@@ -315,6 +323,7 @@ export function usePushEnable(): PushEnable {
     testSent,
     onlyWhileOpen,
     errorMessage,
+    errorScope,
     enableOnThisDevice,
     disableOnThisDevice,
     removeOtherDevice,

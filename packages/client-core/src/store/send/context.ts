@@ -21,6 +21,9 @@ export interface SendCtx extends CoreCtx {
   readonly pendingAttachments: Map<string, unknown>;
   /** An outgoing voice recording's bytes, kept for a Retry after a failed send. */
   readonly pendingVoices: Map<string, unknown>;
+  /** Texts waiting for their ack or their resend (F4, `send/outbox.ts`);
+   * memory only. Lives on the core context the apps create with the store. */
+  readonly outbox?: import('./outbox').TextOutbox | undefined;
   /** Whether a plain text send (no reply, no mentions) passes no options at all
    * (`undefined`, mobile) instead of an empty object (`{}`, web, the default). */
   readonly omitEmptyTextOptions?: boolean | undefined;

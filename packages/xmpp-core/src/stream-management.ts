@@ -73,15 +73,34 @@ export function createStreamManagementAck(): StreamManagementAck {
 
 // Installs the corrected counter on a client created by @xmpp/client. It reads
 // every incoming element, patches the `h` of the outgoing <a/> and <resume/>
-// elements, and does nothing when the client has no stream management
-// (unit tests use a small fake without it).
-export function installStreamManagementAck(client: XmppClient): void {
+// elements, and forwards the library's own delivery confirmations: when stream
+// management acks or loses an outgoing `<message/>` stanza it calls `onAcked`
+// / `onUnacked` with the stanza's `id` attribute. It does nothing when the
+// client has no stream management (unit tests use a small fake without it).
+export function installStreamManagementAck(
+  client: XmppClient,
+  handlers?: {
+    onAcked?: (stanzaId: string) => void;
+    onUnacked?: (stanzaId: string) => void;
+    /** <enabled/> or <resumed/>: this stream now tracks outgoing stanzas (T-1220). */
+    onReady?: () => void;
+  },
+): void {
   const sm = (client as XmppClient & { streamManagement?: unknown }).streamManagement;
   if (sm === undefined || sm === null) return;
 
   const ack = createStreamManagementAck();
   client.on('element', (element) => {
     ack.observe(element);
+    // A stream that is not (yet) stream-managed does not track an outgoing
+    // stanza, and the server's <a h/> never covers it. Callers that must write
+    // after <enable/> wait for this.
+    if (
+      element.is('enabled', STREAM_MANAGEMENT_NS) ||
+      element.is('resumed', STREAM_MANAGEMENT_NS)
+    ) {
+      handlers?.onReady?.();
+    }
   });
   client.on('disconnect', () => {
     ack.stop();
@@ -89,6 +108,25 @@ export function installStreamManagementAck(client: XmppClient): void {
   client.on('offline', () => {
     ack.stop();
   });
+
+  // The library's stream-management middleware (`@xmpp/stream-management`,
+  // `index.js` `ackQueue`/`failQueue`) emits `ack` with the confirmed stanza
+  // and `fail` with the lost one on its `streamManagement` object. Only
+  // `<message/>` stanzas with an `id` are reported: the `<a/>`, `<r/>`,
+  // `<enable/>` and presence/iq stanzas never carry one of our send ids.
+  const report = (event: 'ack' | 'fail', stanza: XmppElement): void => {
+    if (!stanza.is('message')) return;
+    const id = stanza.attrs['id'];
+    if (id === undefined) return;
+    if (event === 'ack') {
+      handlers?.onAcked?.(id);
+    } else {
+      handlers?.onUnacked?.(id);
+    }
+  };
+  const emitter = sm as { on?: (event: string, listener: (stanza: XmppElement) => void) => void };
+  emitter.on?.('ack', (stanza) => report('ack', stanza));
+  emitter.on?.('fail', (stanza) => report('fail', stanza));
 
   const send = client.send.bind(client);
   client.send = (element) => {

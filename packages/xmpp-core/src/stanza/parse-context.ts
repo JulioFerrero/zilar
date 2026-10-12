@@ -38,6 +38,8 @@ export type MucPresence = {
   occupantId?: string;
   affiliation?: string;
   role?: string;
+  /** MUC status codes from `<x xmlns="...#user"><status code/>` (321, 307, 301: removal). */
+  statusCodes?: number[];
 };
 
 export type SenderResolution = {

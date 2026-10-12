@@ -109,14 +109,29 @@ function createFakeClient(withStreamManagement: boolean): {
   client: XmppClient;
   sent: XmppElement[];
   emit: (event: string, argument?: unknown) => void;
+  emitSm: (event: 'ack' | 'fail', stanza: XmppElement) => void;
 } {
   const listeners = new Map<string, Set<Listener>>();
+  const smListeners = new Map<string, Set<(stanza: XmppElement) => void>>();
   const sent: XmppElement[] = [];
   const client = {
     jid: null,
     status: 'offline',
     reconnect: { delay: 1000, on: () => client },
-    ...(withStreamManagement ? { streamManagement: {} } : {}),
+    ...(withStreamManagement
+      ? {
+          streamManagement: {
+            on(event: string, listener: (stanza: XmppElement) => void) {
+              let set = smListeners.get(event);
+              if (set === undefined) {
+                set = new Set();
+                smListeners.set(event, set);
+              }
+              set.add(listener);
+            },
+          },
+        }
+      : {}),
     async start() {},
     async stop() {},
     async disconnect() {},
@@ -150,7 +165,16 @@ function createFakeClient(withStreamManagement: boolean): {
         else listener(argument);
       }
     },
+    emitSm(event, stanza) {
+      for (const listener of smListeners.get(event) ?? []) {
+        listener(stanza);
+      }
+    },
   };
+}
+
+function message(id: string): XmppElement {
+  return xml('message', { xmlns: 'jabber:client', id });
 }
 
 describe('installStreamManagementAck', () => {
@@ -177,5 +201,49 @@ describe('installStreamManagementAck', () => {
     await client.send(a);
     expect(sent[0]).toBe(a);
     expect(a.attrs['h']).toBeUndefined();
+  });
+
+  it('reports a library ack for a message as acked with its stanza id', () => {
+    const { client, emitSm } = createFakeClient(true);
+    const acked: string[] = [];
+    const unacked: string[] = [];
+    installStreamManagementAck(client, {
+      onAcked: (id) => acked.push(id),
+      onUnacked: (id) => unacked.push(id),
+    });
+
+    emitSm('ack', message('m-1'));
+    expect(acked).toEqual(['m-1']);
+    expect(unacked).toEqual([]);
+  });
+
+  it('reports a library fail for a message as unacked with its stanza id', () => {
+    const { client, emitSm } = createFakeClient(true);
+    const acked: string[] = [];
+    const unacked: string[] = [];
+    installStreamManagementAck(client, {
+      onAcked: (id) => acked.push(id),
+      onUnacked: (id) => unacked.push(id),
+    });
+
+    emitSm('fail', message('m-2'));
+    expect(acked).toEqual([]);
+    expect(unacked).toEqual(['m-2']);
+  });
+
+  it('ignores acks for non-message stanzas and messages without an id', () => {
+    const { client, emitSm } = createFakeClient(true);
+    const acked: string[] = [];
+    const unacked: string[] = [];
+    installStreamManagementAck(client, {
+      onAcked: (id) => acked.push(id),
+      onUnacked: (id) => unacked.push(id),
+    });
+
+    emitSm('ack', stanza('presence'));
+    emitSm('ack', stanza('message'));
+    emitSm('fail', stanza('iq'));
+    expect(acked).toEqual([]);
+    expect(unacked).toEqual([]);
   });
 });

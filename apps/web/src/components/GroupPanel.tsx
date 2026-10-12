@@ -1,4 +1,5 @@
 import type { ChatSummary } from '@zilar/chat-core';
+import { groupSeed, personSeed } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { Image, X } from 'lucide-react';
@@ -9,7 +10,7 @@ import { runWeb } from '@/lib/effect/runtime';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-import { HandleSuffix } from './HandleSuffix';
+import { GroupMembersSection } from './GroupMembersSection';
 import { ActivitySection } from './ais/AiActivity';
 import { AiMemoryDialog } from './ais/AiMemoryDialog';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
@@ -31,18 +32,27 @@ import { GroupRolesSection } from './panels/GroupRolesSection';
 import { GroupListenerSetting, GroupTopicSetting } from './panels/GroupSettingSwitch';
 import { apiStep, loadLinks, loadRoles, messageOf, rolesViewOf } from './panels/groupPanelOps';
 import type { PanelFailure } from './panels/groupPanelOps';
-import { roleLabel } from './panels/role-label';
 
 /**
  * The group info panel: the people, the AIs (with their owner), add one of my
  * AIs, remove one. It slides in from the right on wide screens and fills the
  * screen on narrow ones, opened with `?panel=group` (T-0055).
+ * The header avatar is the group's ball: the General topic's room JID
+ * resolved from the painted chats, else the open row's id.
  */
 export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => void }) {
   const storeApi = useChatStoreApi();
 
   const info = useChatSelector((s) => s.groupInfo(chat.id));
+  const chats = useChatSelector((s) => s.chats);
   const me = useChatSelector((s) => s.currentUserId);
+  // T-1209: member balls are seeded by the bare JID, derived from the user
+  // id the way the mention builder does (the domain from my own JID); the
+  // members list carries no JID, so this is the only form available here.
+  const ownJid = useChatSelector((s) => s.me?.jid);
+  const domain = ownJid?.slice(ownJid.indexOf('@') + 1);
+  const seedFor = (userId: string): string =>
+    domain === undefined || domain === '' ? userId : personSeed(userId, domain);
   const meRole = info?.members.find((member) => member.userId === me)?.role;
   const isManager = meRole === 'owner' || meRole === 'admin';
   const memberCount =
@@ -144,11 +154,18 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
   const ownerName = (ai: GroupAi): string =>
     info?.members.find((member) => member.userId === ai.ownerId)?.name ?? 'someone';
   const isOwner = meRole === 'owner';
+  // T-1209: the header ball is the group's ball: the General topic's room
+  // JID from the painted chats, else the open row's id.
+  const topicsOfGroup = chats.filter((entry) => entry.groupId === chat.groupId);
+  const generalId = (
+    topicsOfGroup.find((entry) => entry.topic?.isGeneral === true) ?? topicsOfGroup[0]
+  )?.id;
+  const headerSeed = chat.groupId === undefined ? chat.id : (generalId ?? chat.id);
 
   return (
     <Sheet open onClose={onClose} ariaLabel={`${chat.title} info`}>
       <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
-        <Avatar id={chat.id} name={chat.title} size={44} avatarUrl={chat.avatarUrl} />
+        <Avatar id={groupSeed(headerSeed)} name={chat.title} size={44} avatarUrl={chat.avatarUrl} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-[16px] font-semibold">{chat.title}</div>
           <p className="text-[13px] text-muted-foreground">
@@ -179,47 +196,16 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                 title={info.title}
                 currentUrl={info.avatarUrl}
                 chatId={chat.id}
+                generalRoomJid={generalId}
               />
             )}
-            <section aria-label="Members" className="flex flex-col gap-1">
-              <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Members</h2>
-              {info.members.map((member) => {
-                const label = roleLabel(member.role);
-                // Role chips for everyone (T-0116): the fresh roles list
-                // wins over the group detail's snapshot when both name a
-                // holder, so the chips stay right after an assignment.
-                const chipRoles = rolesByUser.get(member.userId) ?? member.roles ?? [];
-                return (
-                  <div
-                    key={member.userId}
-                    className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
-                  >
-                    <Avatar
-                      id={member.userId}
-                      name={member.name}
-                      size={32}
-                      avatarUrl={member.avatarUrl}
-                    />
-                    <span className="min-w-0 flex-1 truncate text-[14px]">
-                      {member.name} <HandleSuffix handle={member.handle} />
-                    </span>
-                    {chipRoles.map((role) => (
-                      <span
-                        key={role.id}
-                        className="font-mono rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground"
-                      >
-                        {role.name}
-                      </span>
-                    ))}
-                    {label !== undefined && (
-                      <span className="font-mono rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
-                        {label}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </section>
+            <GroupMembersSection
+              chatId={chat.id}
+              info={info}
+              me={me}
+              rolesByUser={rolesByUser}
+              onClose={onClose}
+            />
 
             {/* T-0116: custom group roles — managers only. Everyone sees
                   the chips next to the member names above. */}
@@ -233,6 +219,7 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                 }))}
                 rolesState={rolesState}
                 onReload={refreshRoles}
+                seedFor={seedFor}
               />
             )}
 

@@ -12,6 +12,7 @@ import {
   flushPending as flushCore,
   loadOlder as loadOlderCore,
   loadPreview as loadPreviewCore,
+  mergeUnread,
   openAtMessage as openAtMessageCore,
   openHistory,
   type HistoryCtx,
@@ -166,17 +167,20 @@ export function makeHistory(ctx: StoreCtx): History {
     );
   });
 
-  // Merges a fresh chat list, preserving the local last message, unread
-  // count, mute flag and presence of the chats already shown. Topic entries
-  // (T-0112) expand to one row per visible topic; rows that disappeared
-  // (made private, archived, or I was removed) vanish here, and the open
-  // topic moves to the topics screen with a short, name-free notice.
+  // Merges a fresh chat list: the shared `mergeUnread` rule decides per row,
+  // so a server row at least as new as memory takes the server's `unread` and
+  // `lastMessage` (a read on another device clears here), while a newer
+  // in-memory preview wins. Mute, presence and prefs apply as before.
+  // Topic entries (T-0112) expand to one row per visible topic; rows that
+  // disappeared (made private, archived, or I was removed) vanish here, and
+  // the open topic moves to the topics screen with a short, name-free notice.
   // Chat prefs (T-0135) are applied after the merge so server rows pin,
   // mute and archive the summaries; a pref whose chat is gone is ignored.
   // Returns the previous chats so the caller can tell which rows are new.
   function mergeChatEntries(entries: ChatEntry[]): Map<string, ChatSummary> {
     const previous = get().chats;
     const known = new Map(previous.map((chat) => [chat.id, chat]));
+    const activeChatId = get().activeChatId;
     const rows = entries.flatMap((entry) => h.summariesFor(entry));
     const wanted = new Set(rows.map((row) => row.id));
     const fresh = rows.filter((row) => !known.has(row.id));
@@ -187,11 +191,11 @@ export function makeHistory(ctx: StoreCtx): History {
         if (existing === undefined) {
           return row;
         }
+        const merged = mergeUnread(row, existing, activeChatId);
         return {
-          ...row,
-          ...(existing.lastMessage === undefined ? {} : { lastMessage: existing.lastMessage }),
-          unread: existing.unread,
+          ...merged,
           ...(existing.online === undefined ? {} : { online: existing.online }),
+          ...(existing.lastSeenAt === undefined ? {} : { lastSeenAt: existing.lastSeenAt }),
           ...(existing.onlineCount === undefined ? {} : { onlineCount: existing.onlineCount }),
         };
       });

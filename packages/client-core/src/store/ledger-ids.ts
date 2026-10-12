@@ -22,6 +22,7 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     aliases: messageAliases,
     serverIds: messageServerIds,
     originIds: messageOriginIds,
+    originClaims: messageOriginClaims,
     authors: messageAuthors,
     baseTexts: messageBaseTexts,
   } = deps.maps;
@@ -159,9 +160,47 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     messageAuthors.set(aliasRoot(messageId), author);
   }
 
-  function rememberOriginId(messageId: string, originId: string): void {
+  // Remembers the sender-generated origin id of a message and, when the chat
+  // and sender are known, uses it to link two ids that name one message. A
+  // text whose delivery is unknown is resent with the same origin id (T-1216),
+  // and the server can archive it twice with two different stanza-ids
+  // (`resolve-sender.ts` `messageId`); aliasing the second id to the first
+  // makes `sameMessage` true, so the page dedupe in `history.ts` drops the
+  // second copy. The scope is `chatId` and `sender` because origin ids are
+  // client-generated: another sender can reuse one, and must never merge with
+  // it. Incoming and history messages record it here (`toUiMessage`,
+  // `ledger-incoming.ts`). A correction or a retraction names its target by
+  // origin id but is never a second copy: `isEditStanza` keeps it out of this
+  // path (`ledger-signatures.ts`, and its callers in `incoming.ts` and
+  // `history.ts`), so it only updates edit state.
+  function rememberOriginId(
+    messageId: string,
+    originId: string,
+    chatId?: string,
+    sender?: string,
+  ): void {
     messageOriginIds.set(messageId, originId);
     messageOriginIds.set(aliasRoot(messageId), originId);
+    if (chatId === undefined || sender === undefined) {
+      return;
+    }
+    const key = `${chatId}|${originId}`;
+    const claim = messageOriginClaims.get(key);
+    if (claim === undefined) {
+      // The first message of this origin id in this chat: link its two ids.
+      if (originId !== messageId) {
+        linkMessageIds(originId, messageId);
+      }
+    } else if (claim.sender === sender) {
+      // A resend of the same sender's message: alias it to the first copy.
+      if (!sameMessage(claim.root, messageId)) {
+        linkMessageIds(claim.root, messageId);
+      }
+    } else {
+      // Another sender reused this origin id: never alias across senders.
+      return;
+    }
+    messageOriginClaims.set(key, { sender, root: aliasRoot(messageId) });
   }
 
   function rememberBaseText(messageId: string, text: string): void {

@@ -2,7 +2,8 @@ import { useRouter } from 'expo-router';
 import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import type { ContactsApi } from '@/lib/contacts-api';
+import { domainOfJid, type ContactsApi } from '@/lib/contacts-api';
+import { personSeed } from '@zilar/chat-core';
 
 import { ProfileCard } from './profile-card';
 import { NO_PERSON_MESSAGE, PEOPLE_RATE_LIMITED_MESSAGE, peopleHandleFor } from './people-search';
@@ -38,6 +39,12 @@ export function PeopleSearchResult({
 }) {
   const router = useRouter();
   const search = usePeopleSearch({ api, text, chats, myJid, onMessage, submitRequest });
+  // T-1212: the card ball is seeded by the bare JID (the lookup profile
+  // carries no JID), derived from the user id the way the mention builder
+  // does (the domain from my own JID).
+  const domain = domainOfJid(myJid);
+  const seedFor =
+    domain === undefined ? undefined : (userId: string): string => personSeed(userId, domain);
   if (peopleHandleFor(text) === null) {
     return null;
   }
@@ -74,6 +81,7 @@ export function PeopleSearchResult({
             sent={view.sent}
             busy={search.busy}
             error={search.actionError}
+            seed={seedFor?.(view.profile.userId)}
             onSend={search.send}
             onCancel={search.cancelRequest}
             onAccept={search.acceptRequest}

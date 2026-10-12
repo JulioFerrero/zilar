@@ -45,6 +45,12 @@ export interface CoreApi {
   getXmppToken(): Promise<CoreXmppToken>;
   /** Optional: an app without it reads no prefs (mobile `chatPrefs` is optional). */
   listChatPrefs?(): Promise<readonly unknown[]>;
+  /**
+   * Optional: stores the caller's read mark (`PUT /api/chats/:jid/read`).
+   * The id must be numeric (an archive id); the core only calls it with
+   * all-digit ids. Best effort: failures are ignored.
+   */
+  markChatRead?(jid: string, messageId: string): Promise<unknown>;
 }
 
 /** How an app maps its own `/api/chats` entry to the shared chat summaries. */

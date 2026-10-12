@@ -40,6 +40,13 @@ type ProfileViewProps = ProfileViewHandlers & {
   profile: MyProfile;
   /** The bearer for the same-origin picture load, if any. */
   token?: string | undefined;
+  /**
+   * T-1212: the own bare JID, the ball seed (the same ball as the chat
+   * list and header). Absent paints the user id the way the mention
+   * builder does (the domain from the own JID); without a domain the raw
+   * id is the seed.
+   */
+  seedFor?: ((userId: string) => string) | undefined;
 };
 
 function ActionKey({
@@ -80,6 +87,7 @@ function ActionKey({
 export function ProfileViewContent({
   profile,
   token,
+  seedFor,
   imageFailed,
   onImageError,
   photoEdit,
@@ -97,6 +105,10 @@ export function ProfileViewContent({
     profile.avatarUrl === undefined || imageFailed
       ? null
       : avatarImageSource(profile.avatarUrl, API_URL, token);
+  // T-1212: the ball is seeded by the own bare JID (the chat list and the
+  // chat header seed the same way), derived from the user id when no JID
+  // reached this view.
+  const seed = seedFor === undefined ? profile.id : seedFor(profile.id);
   return (
     <View className="gap-4">
       <View className="items-center gap-1 pt-4">
@@ -110,7 +122,7 @@ export function ProfileViewContent({
               overflow: 'hidden',
             }}
           >
-            <SvgXml xml={avatarSvg(profile.id)} width={104} height={104} />
+            <SvgXml xml={avatarSvg(seed)} width={104} height={104} />
           </View>
         ) : (
           <Image

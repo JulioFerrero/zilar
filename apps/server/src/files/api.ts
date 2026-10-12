@@ -119,13 +119,38 @@ function encodeRfc5987(value: string): string {
     .replaceAll('*', '%2A');
 }
 
+// Only these sender-declared types may render inline on the app origin:
+// raster images, mp4/webm video, and any audio (voice notes are audio/mp4
+// and audio/mpeg). Everything else — SVG and HTML included — is an
+// attachment, because script in it would run with the user's session (SEC-1).
+const INLINE_MEDIA_TYPES: ReadonlySet<string> = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'video/mp4',
+  'video/webm',
+]);
+
+function isInlineMediaType(mime: string): boolean {
+  if (INLINE_MEDIA_TYPES.has(mime)) {
+    return true;
+  }
+  return mime.startsWith('audio/');
+}
+
 // Only these upstream headers reach the client; everything else (cookies,
 // server banners, ejabberd internals) stays behind. `Content-Type` falls back
-// to the indexed mime, then to a generic binary type.
+// to the indexed mime, then to a generic binary type. The effective type is
+// the sender's word (stanza payload or upstream header), so SVG and HTML are
+// forced to `application/octet-stream` and served as attachments, and every
+// reply carries a sandbox CSP so even an inline type cannot run script.
 function passthroughHeaders(upstream: Headers, row: FilesItemRow): Headers {
   const headers = new Headers();
-  const contentType = upstream.get('content-type') ?? row.mime ?? 'application/octet-stream';
-  headers.set('content-type', contentType);
+  const declared = upstream.get('content-type') ?? row.mime ?? 'application/octet-stream';
+  const mime = declared.split(';')[0]?.trim().toLowerCase() ?? 'application/octet-stream';
+  const active = mime === 'image/svg+xml' || mime === 'text/html';
+  headers.set('content-type', active ? 'application/octet-stream' : declared);
   for (const name of [
     'content-length',
     'content-range',
@@ -140,7 +165,8 @@ function passthroughHeaders(upstream: Headers, row: FilesItemRow): Headers {
   }
   headers.set('cache-control', 'private, max-age=3600');
   headers.set('x-content-type-options', 'nosniff');
-  if (row.kind === 'file') {
+  headers.set('content-security-policy', "default-src 'none'; sandbox");
+  if (row.kind === 'file' || active || !isInlineMediaType(mime)) {
     const name = row.name ?? 'file';
     headers.set('content-disposition', `attachment; filename*=UTF-8''${encodeRfc5987(name)}`);
   }

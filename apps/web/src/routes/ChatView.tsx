@@ -7,6 +7,7 @@ import { ChannelPanel } from '@/components/ChannelPanel';
 import { ChatHeader } from '@/components/ChatHeader';
 import { ChatMediaPanel } from '@/components/ChatMediaPanel';
 import { Composer } from '@/components/Composer';
+import { focusComposer } from '@/components/composer/useComposerFocus';
 import { ForwardPicker } from '@/components/ForwardPicker';
 import { Button } from '@/components/ui/button';
 import { GroupPanel } from '@/components/GroupPanel';
@@ -94,6 +95,26 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
       storeApi.getState().closeChat(chat.id);
     };
   }, [storeApi, chat.id]);
+
+  // Typing with nothing focused lands in the composer (WUX-6), as in Telegram:
+  // only a printable key aimed at the page body, with no Ctrl/Meta/Alt, forwards
+  // the focus so the key itself lands in the textarea.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.target !== document.body) {
+        return;
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      if (event.key.length !== 1) {
+        return;
+      }
+      focusComposer();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // The message list is memoised, so every callback and prop it gets here has a
   // stable identity until the thing it depends on changes.

@@ -55,9 +55,14 @@ export function typingLabel(chat: ChatSummary, names: readonly string[]): string
     return undefined;
   }
   if (chat.kind === 'group') {
-    return names.length > 1
-      ? `${firstName(first)} and others are typing`
-      : `${firstName(first)} is typing`;
+    if (names.length === 1) {
+      return `${firstName(first)} is typing`;
+    }
+    const second = names[1];
+    if (names.length === 2 && second !== undefined) {
+      return `${firstName(first)} and ${firstName(second)} are typing`;
+    }
+    return `${names.length} people are typing`;
   }
   return 'typing';
 }

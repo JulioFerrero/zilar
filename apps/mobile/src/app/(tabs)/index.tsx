@@ -218,6 +218,8 @@ function ChatsList() {
           router.push({ pathname: '/group/[id]', params: { id: groupId } })
         }
         onLongPress={actions.openActions}
+        onPref={actions.saveChatPref}
+        swipeError={actions.swipeError}
       />
       <ChatActionsHost
         actions={actions}

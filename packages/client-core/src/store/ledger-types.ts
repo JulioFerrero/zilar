@@ -62,16 +62,28 @@ export interface MessageLedgerDeps {
 }
 
 /**
+ * The message id that first claimed an origin id in one chat, and the sender
+ * that claimed it. A resend reuses its origin id, so a second archive row of
+ * the same sender aliases to the first; another sender's reused origin id must
+ * not (`rememberOriginId`, `ledger-ids.ts`).
+ */
+export interface OriginClaim {
+  readonly sender: string;
+  readonly root: string;
+}
+
+/**
  * The id side tables the ledger keeps for a store's lifetime: the optimistic
  * local id to server id aliases, the resolved server ids, the sender-generated
- * origin ids, the authors as their stanzas described them, and the base texts a
- * reverted edit restores. They are created by `createMessageLedger` and shared
- * with the moved id module.
+ * origin ids and their per-chat claims, the authors as their stanzas described
+ * them, and the base texts a reverted edit restores. They are created by
+ * `createMessageLedger` and shared with the moved id module.
  */
 export interface LedgerMaps {
   readonly aliases: Map<string, string>;
   readonly serverIds: Map<string, string>;
   readonly originIds: Map<string, string>;
+  readonly originClaims: Map<string, OriginClaim>;
   readonly authors: Map<string, EditAuthor>;
   readonly baseTexts: Map<string, string>;
 }

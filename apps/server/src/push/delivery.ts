@@ -1,4 +1,5 @@
 import { Effect, type Effect as EffectType } from 'effect';
+import { markPushFailed, markPushSent } from '../health-status';
 import { newestMessageForUserEffect } from './archive-scan';
 import { buildNativeWakePayload, buildPushPayload, type ResolvedPushMessage } from './payload';
 import type { PushNotification } from './protocol';
@@ -70,6 +71,7 @@ export async function handleIncomingPush(
           }),
         ArchiveUnavailable: () =>
           Effect.sync(() => {
+            markPushFailed('archive-unavailable');
             deps.logger.warn(
               { userId: device.userId, deviceId: device.id },
               'push archive lookup failed; dropping the notification',
@@ -78,6 +80,7 @@ export async function handleIncomingPush(
           }),
         SendFailed: () =>
           Effect.sync(() => {
+            markPushFailed('send-failed');
             deps.logger.warn(
               { userId: device.userId, deviceId: device.id },
               'push send failed; answered the publish IQ with result anyway',
@@ -88,6 +91,7 @@ export async function handleIncomingPush(
     ),
   );
   if (outcome.kind === 'sent') {
+    markPushSent();
     await markDeviceUsed(deps.db, device.id, now);
   }
   return outcome;

@@ -12,6 +12,8 @@ export interface StreamedToolCall {
 export interface ChatStreamResult {
   content: string | null;
   toolCalls: StreamedToolCall[];
+  /** AI-5: `length` when the provider cut the reply at `max_tokens`. */
+  finishReason?: string;
 }
 
 // The stream broke before `data: [DONE]`: a truncated body, a socket error,
@@ -26,11 +28,14 @@ export class ChatStreamInterruptedError extends Error {
 
 // One `data:` line off a `stream: true` chat-completions response. LiteLLM
 // passes the OpenAI shape through: `choices[0].delta` carries `content` or
-// `tool_calls` pieces. Unknown fields (role, finish_reason, ids) are ignored.
+// `tool_calls` pieces, and `choices[0].finish_reason` (AI-5) says whether the
+// reply ended naturally or was cut. Other unknown fields (role, ids) are
+// ignored.
 const StreamDeltaSchema = Schema.Struct({
   choices: Schema.optional(
     Schema.Array(
       Schema.Struct({
+        finish_reason: Schema.optional(Schema.NullOr(Schema.String)),
         delta: Schema.optional(
           Schema.Struct({
             content: Schema.optional(Schema.NullOr(Schema.String)),
@@ -69,6 +74,7 @@ export async function consumeChatCompletionStream(
   let buffer = '';
   let content = '';
   let finished = false;
+  let finishReason: string | undefined;
   const toolSlots = new Map<number, { id: string; name: string; args: string }>();
 
   const applyData = (data: string): void => {
@@ -90,6 +96,10 @@ export async function consumeChatCompletionStream(
       throw new ChatStreamInterruptedError('a data line had an unexpected shape');
     }
     for (const choice of exit.value.choices ?? []) {
+      // AI-5: keep the last non-null reason; most chunks carry none.
+      if (choice.finish_reason !== undefined && choice.finish_reason !== null) {
+        finishReason = choice.finish_reason;
+      }
       const delta = choice.delta;
       if (delta === undefined) {
         continue;
@@ -176,5 +186,6 @@ export async function consumeChatCompletionStream(
     toolCalls: [...toolSlots.entries()]
       .sort(([a], [b]) => a - b)
       .map(([, slot]) => ({ id: slot.id, name: slot.name, argsJson: slot.args })),
+    ...(finishReason === undefined ? {} : { finishReason }),
   };
 }

@@ -24,6 +24,7 @@ export function NotificationsPage() {
     testSent,
     onlyWhileOpen,
     errorMessage,
+    errorScope,
     enableOnThisDevice,
     disableOnThisDevice,
     removeOtherDevice,
@@ -47,9 +48,7 @@ export function NotificationsPage() {
       ? thisDevice.inactive
         ? 'On, but inactive — nothing received in 90 days.'
         : 'Push is on for this device.'
-      : permission === 'denied'
-        ? 'Allow notifications for this site in the browser settings, then come back and enable.'
-        : 'Turn on push for this browser.';
+      : 'Turn on push for this browser.';
   const showIosHint =
     status === 'ready' &&
     isIosDevice() &&
@@ -57,6 +56,9 @@ export function NotificationsPage() {
       matchMedia: (query) => window.matchMedia(query),
       standalone: (window.navigator as { standalone?: boolean }).standalone,
     });
+  // The device card and the "only while open" card share the device message;
+  // a test failure stays next to the Test button instead.
+  const cardError = errorScope === 'card' && errorMessage !== '';
 
   return (
     <SettingsShell
@@ -111,17 +113,24 @@ export function NotificationsPage() {
               <section aria-label="Notifications on this device" className="flex flex-col gap-2">
                 <SectionLabel>This device</SectionLabel>
                 <Card className="divide-divider">
-                  <div className="flex flex-wrap items-center gap-3 px-3 py-2.5">
-                    <span className="min-w-0 flex-1 basis-40">
-                      <span className="block text-[15px] font-medium">Only while open</span>
-                      <span className="mt-0.5 block text-[13px] text-muted-foreground">
-                        Notifications show while a Zilar tab is open.
+                  <div className="px-3 py-2.5">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="min-w-0 flex-1 basis-40">
+                        <span className="block text-[15px] font-medium">Only while open</span>
+                        <span className="mt-0.5 block text-[13px] text-muted-foreground">
+                          Notifications show while a Zilar tab is open.
+                        </span>
                       </span>
-                    </span>
-                    <Button type="button" onClick={enableOnThisDevice} disabled={busy}>
-                      <Bell className="size-4" aria-hidden="true" />
-                      {busy ? 'Enabling…' : 'Enable on this device'}
-                    </Button>
+                      <Button type="button" onClick={enableOnThisDevice} disabled={busy}>
+                        <Bell className="size-4" aria-hidden="true" />
+                        {busy ? 'Enabling…' : 'Enable on this device'}
+                      </Button>
+                    </div>
+                    {cardError && (
+                      <p role="alert" className="mt-2 text-[14px] text-danger">
+                        {errorMessage}
+                      </p>
+                    )}
                   </div>
                 </Card>
               </section>
@@ -131,6 +140,7 @@ export function NotificationsPage() {
                 detail={cardDetail}
                 enabled={thisDevice !== undefined}
                 busy={busy}
+                errorMessage={cardError ? errorMessage : ''}
                 onEnable={enableOnThisDevice}
                 onDisable={disableOnThisDevice}
               />
@@ -158,12 +168,12 @@ export function NotificationsPage() {
                   Sent — close this tab to see it.
                 </p>
               )}
+              {errorScope === 'test' && errorMessage !== '' && (
+                <p role="alert" className="text-[14px] text-danger">
+                  {errorMessage}
+                </p>
+              )}
             </section>
-            {errorMessage !== '' && (
-              <p role="alert" className="text-[14px] text-danger">
-                {errorMessage}
-              </p>
-            )}
           </div>
         )}
       </div>

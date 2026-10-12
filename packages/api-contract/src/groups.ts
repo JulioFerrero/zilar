@@ -6,7 +6,13 @@
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
 import { CHAT_BACKGROUND_PRESET_IDS } from './chat-prefs';
-import { GroupsJoinRateLimit, GroupsRoleRateLimit, SchemaErrors, Session } from './middleware';
+import {
+  GroupsCreateRateLimit,
+  GroupsJoinRateLimit,
+  GroupsRoleRateLimit,
+  SchemaErrors,
+  Session,
+} from './middleware';
 import { mutableStruct } from './mutable-struct';
 
 export const GROUP_MEMBERS_MAX = 50;
@@ -50,6 +56,11 @@ export const AddGroupAiPayload = Schema.Struct({
 });
 
 export const ChangeGroupRolePayload = Schema.Struct({ role: ChangeableRole });
+
+/** SG-4 (T-1187): the member the owner hands the group over to. */
+export const TransferGroupOwnerPayload = Schema.Struct({
+  userId: Schema.String.check(Schema.isMinLength(1)),
+});
 
 /** Strict at the top level and on `background`: `undefined` keeps a field, `null` clears it. */
 export const GroupBackgroundPatch = Schema.Struct({
@@ -156,7 +167,7 @@ export const GroupsGroup = HttpApiGroup.make('groups')
     HttpApiEndpoint.post('create', '/groups', {
       payload: CreateGroupPayload,
       success: GroupDetail.pipe(HttpApiSchema.status(201)),
-    }),
+    }).middleware(GroupsCreateRateLimit),
     HttpApiEndpoint.get('detail', '/groups/:id', {
       params: GroupIdParams,
       success: GroupDetail,
@@ -172,6 +183,11 @@ export const GroupsGroup = HttpApiGroup.make('groups')
     })
       .annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' })
       .middleware(GroupsRoleRateLimit),
+    HttpApiEndpoint.put('transferOwner', '/groups/:id/owner', {
+      params: GroupIdParams,
+      payload: TransferGroupOwnerPayload,
+      success: GroupDetail,
+    }).middleware(GroupsRoleRateLimit),
     HttpApiEndpoint.post('addMembers', '/groups/:id/members', {
       params: GroupIdParams,
       payload: AddGroupMembersPayload,

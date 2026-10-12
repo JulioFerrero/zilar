@@ -6,6 +6,8 @@ import { View } from 'react-native';
 
 import { FloatingTabBar, FLOATING_TABS } from '@/components/nav/floating-tab-bar';
 import { useProfileApi } from '@/components/settings/use-profile-api';
+import { domainOfJid } from '@/lib/contacts-api';
+import { personSeed } from '@zilar/chat-core';
 import { fromApi } from '@/lib/effect/api-effect';
 import { interruptFiber } from '@/lib/effect/timers';
 import { unreadCount } from '@/lib/filter';
@@ -28,6 +30,7 @@ const sessionTokenEffect = Effect.tryPromise({
  */
 export default function TabsLayout() {
   const chats = useChatStore((state) => state.chats);
+  const ownJid = useChatStore((state) => state.me?.jid ?? undefined);
   const { api } = useProfileApi();
   const [profile, setProfile] = useState<TabProfile | undefined>(undefined);
 
@@ -40,10 +43,18 @@ export default function TabsLayout() {
       }).pipe(
         Effect.tap(([me, sessionToken]) =>
           Effect.sync(() => {
+            // T-1212: the tab ball is seeded like the profile screen (the
+            // own bare JID, or the user id derived the mention-builder way
+            // when no JID is known yet).
+            const domain = domainOfJid(ownJid);
+            const seedFor =
+              domain === undefined
+                ? undefined
+                : (userId: string): string => personSeed(userId, domain);
             const next: TabProfile =
               me.avatarUrl === undefined
-                ? { id: me.id, name: me.name }
-                : { id: me.id, name: me.name, avatarUrl: me.avatarUrl };
+                ? { id: me.id, name: me.name, seedFor }
+                : { id: me.id, name: me.name, avatarUrl: me.avatarUrl, seedFor };
             setProfile(sessionToken === undefined ? next : { ...next, token: sessionToken });
           }),
         ),
@@ -53,7 +64,7 @@ export default function TabsLayout() {
       return () => {
         interruptFiber(fiber);
       };
-    }, [api]),
+    }, [api, ownJid]),
   );
 
   return (

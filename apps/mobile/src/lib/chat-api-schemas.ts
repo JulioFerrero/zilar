@@ -1,9 +1,9 @@
 import { Effect, Exit, Schema, SchemaGetter } from 'effect';
 import { struct } from '@zilar/protocol';
-import { GroupBackground } from '@zilar/api-contract';
+import { ChatLastMessage, GroupBackground } from '@zilar/api-contract';
 
 import type { ChatEntry, GroupAi, GroupDetail, GroupMember, Me, XmppToken } from './chat-api';
-import { parseTopic, type Topic } from './topics-api';
+import { parseTopic } from './topics-api';
 
 // A lenient nullable string: a missing or non-string value decodes to `null`
 // instead of failing the row (the viewer's own JID on `Me`, absent on older
@@ -46,6 +46,11 @@ const DmEntrySchema = struct({
   avatarUrl: LenientOptionalStringSchema,
   // Set on the caller's AIs; absent or false for human contacts (as web).
   isAi: Schema.optional(Schema.Boolean),
+  // T-1214: the server's unread count and preview (T-1198). Absent on older
+  // servers (still parses); they ride the entry so `summariesFor` maps them
+  // onto the row.
+  unread: Schema.optional(Schema.Number),
+  lastMessage: Schema.optional(ChatLastMessage),
 });
 
 const GroupEntryRawSchema = struct({
@@ -71,6 +76,11 @@ const GroupEntryRawSchema = struct({
   // (still parses, as before); a non-array rejects the entry, while
   // malformed rows inside a valid array are dropped by `parseTopic`.
   topics: Schema.optional(Schema.Array(Schema.Unknown)),
+  // T-1214: the entry-level unread count and preview (T-1198, the General
+  // row's fields). Absent on older servers (still parses); they ride the
+  // entry so `summariesFor` maps them onto the General row.
+  unread: Schema.optional(Schema.Number),
+  lastMessage: Schema.optional(ChatLastMessage),
 });
 
 const RoleChipSchema = struct({
@@ -163,14 +173,18 @@ function parseChatEntry(value: unknown): ChatEntry | null {
   const raw = group.value;
   // T-0139: keep the server's `topics` on the entry (validated with
   // `parseTopic`, the same shape the topics API uses — never trust the
-  // wire; malformed rows are dropped, never rendered).
-  let topics: Topic[] | undefined;
+  // wire; malformed rows are dropped, never rendered). T-1214: the raw
+  // objects are kept, not the decoded `Topic`s, so each topic's `unread`
+  // and `lastMessage` still read — that is what `chatEntryTopics`
+  // (`@zilar/client-core/store`, `chat-rows.ts:138`) expects: it decodes
+  // each raw object with `Topic` itself, while `summariesFor` reads the
+  // two fields off the same raw objects.
+  let topics: unknown[] | undefined;
   if (raw.topics !== undefined) {
     topics = [];
     for (const entry of raw.topics) {
-      const topic = parseTopic(entry);
-      if (topic !== null) {
-        topics.push(topic);
+      if (parseTopic(entry) !== null) {
+        topics.push(entry);
       }
     }
   }
@@ -191,6 +205,11 @@ function parseChatEntry(value: unknown): ChatEntry | null {
     ...(raw.handle === undefined ? {} : { handle: raw.handle }),
     ...(raw.avatarUrl === undefined ? {} : { avatarUrl: raw.avatarUrl }),
     ...(raw.background === undefined ? {} : { background: raw.background }),
+    // T-1214: carry the entry-level unread count and preview, so
+    // `summariesFor` maps them onto the General row. Absent on older
+    // servers, so they stay absent here.
+    ...(raw.unread === undefined ? {} : { unread: raw.unread }),
+    ...(raw.lastMessage === undefined ? {} : { lastMessage: raw.lastMessage }),
   };
 }
 

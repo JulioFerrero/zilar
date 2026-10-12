@@ -73,6 +73,18 @@ export function createPresence(runtime: CoreRuntime): PresenceApi {
       if (roster.delete(presence.occupantJid)) {
         emitOccupants(presence.roomJid);
       }
+      // The server removed me: my own unavailable self-presence carries
+      // status 110 with 307 (kicked), 301 (banned) or 321 (the affiliation
+      // changed to none). An unavailable presence from someone else only
+      // means they left, never me.
+      const codes = presence.statusCodes ?? [];
+      if (
+        codes.includes(110) &&
+        (codes.includes(307) || codes.includes(301) || codes.includes(321)) &&
+        runtime.joinedRooms.get(presence.roomJid) === presence.nick
+      ) {
+        runtime.emitEvent('removed', { roomJid: presence.roomJid });
+      }
       return;
     }
 

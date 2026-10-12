@@ -146,6 +146,19 @@ describe('push device store', () => {
     expect(rowsB[0]?.id).toBe(saved.id);
   });
 
+  it('moves a Web Push endpoint to the second account that registers it', async () => {
+    const userA = await seedUser(context);
+    const userB = await seedUser(context);
+    await saveDevice(context.db, cipher, webPushInput(userA, 9));
+
+    const saved = await saveDevice(context.db, cipher, webPushInput(userB, 9));
+
+    expect(await rowsForUser(context, userA)).toHaveLength(0);
+    const rowsB = await rowsForUser(context, userB);
+    expect(rowsB).toHaveLength(1);
+    expect(rowsB[0]?.id).toBe(saved.id);
+  });
+
   it("leaves the first account's other tokens untouched", async () => {
     const userA = await seedUser(context);
     const userB = await seedUser(context);

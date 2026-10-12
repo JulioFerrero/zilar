@@ -29,6 +29,17 @@ const CHANNEL_ID = 'messages';
 const GENERIC_TITLE = 'Zilar';
 const GENERIC_BODY = 'New message';
 
+/** A test wake (`chatId: 'zilar:test'`) draws its own fixed text, no preview. */
+const TEST_WAKE_CHAT_ID = 'zilar:test';
+const TEST_WAKE_BODY = 'Push notifications work on this device.';
+
+/**
+ * The identifier the test-wake post carries, so the foreground handler can
+ * tell it apart from chat posts (which carry none) and show only it while the
+ * app is open.
+ */
+export const TEST_WAKE_IDENTIFIER = 'zilar-test';
+
 /** A mock build has no real server: define nothing and post nothing. */
 const MOCK_MODE = ENV_MOCK === '1';
 
@@ -78,6 +89,18 @@ function post(title: string, body: string, chatId: string): Promise<string> {
   });
 }
 
+/** Posts the test-wake notification: the fixed text, and no `chatId`, so a
+ * tap opens the app without opening a chat (`tap.ts` ignores a missing one).
+ * The identifier marks it as the test wake (see `isTestWake` below), because a
+ * locally scheduled post has no `data.chatId` to match on. */
+function postTest(): Promise<string> {
+  return Notifications.scheduleNotificationAsync({
+    identifier: TEST_WAKE_IDENTIFIER,
+    content: { title: GENERIC_TITLE, body: TEST_WAKE_BODY, data: {} },
+    trigger: { channelId: CHANNEL_ID },
+  });
+}
+
 /**
  * Fetches the preview for one message and posts it. A 404 means the message is
  * muted, hidden or gone, so nothing is shown; any other failure (network, 5xx,
@@ -87,6 +110,12 @@ function post(title: string, body: string, chatId: string): Promise<string> {
 async function handleWake(payload: WakePayload, deps: Required<WakeDeps>): Promise<void> {
   const token = await deps.getToken();
   if (token === undefined) {
+    return;
+  }
+  // A test wake proves the pipe works: it draws its own fixed text and never
+  // fetches a preview (the tap opens the app, not a chat).
+  if (payload.chatId === TEST_WAKE_CHAT_ID) {
+    await postTest();
     return;
   }
   if (payload.messageId === undefined) {
@@ -108,12 +137,31 @@ async function handleWake(payload: WakePayload, deps: Required<WakeDeps>): Promi
 }
 
 /**
- * The wake handler, exported for tests. Skips while the app is open (the live
- * chat already shows the message) and in mock mode. Never logs the title, the
- * body or the token, and never throws out of the headless task.
+ * True when the incoming notification is the test wake. The identifier is the
+ * primary match; the fixed title and body are the fallback for wakes scheduled
+ * before the identifier existed. A chat post never matches: bodies are message
+ * text or the shorter generic "New message", and they carry no identifier.
+ */
+export function isTestWake(notification: Notifications.Notification): boolean {
+  if (notification.request.identifier === TEST_WAKE_IDENTIFIER) {
+    return true;
+  }
+  const content = notification.request.content;
+  return content.title === GENERIC_TITLE && content.body === TEST_WAKE_BODY;
+}
+
+/**
+ * The wake handler, exported for tests. A test wake is posted even while the
+ * app is open (the settings test is always tapped from the open app); other
+ * wakes are skipped then (the live chat already shows the message). Never logs
+ * the title, the body or the token, and never throws out of the headless task.
  */
 export async function onWake(payload: WakePayload, deps: WakeDeps = {}): Promise<void> {
-  if (MOCK_MODE || AppState.currentState === 'active') {
+  if (MOCK_MODE) {
+    return;
+  }
+  const isTest = payload.chatId === TEST_WAKE_CHAT_ID;
+  if (!isTest && AppState.currentState === 'active') {
     return;
   }
   const resolved: Required<WakeDeps> = {
@@ -150,5 +198,29 @@ if (!MOCK_MODE) {
   // Best effort: a failed registration is warned, not thrown.
   void Notifications.registerTaskAsync(WAKE_TASK).catch((error) => {
     console.warn('native push: the wake task could not be registered', error);
+  });
+
+  // Shows a locally scheduled notification even while the app is open, but
+  // only the test wake: chat posts stay silent then (the live chat already
+  // shows them). Without a handler nothing scheduled while the app runs is
+  // presented, so the settings test — always tapped from the open app — would
+  // never be seen.
+  Notifications.setNotificationHandler({
+    handleNotification: (notification) =>
+      Promise.resolve(
+        isTestWake(notification)
+          ? {
+              shouldShowBanner: true,
+              shouldShowList: true,
+              shouldPlaySound: false,
+              shouldSetBadge: false,
+            }
+          : {
+              shouldShowBanner: false,
+              shouldShowList: false,
+              shouldPlaySound: false,
+              shouldSetBadge: false,
+            },
+      ),
   });
 }

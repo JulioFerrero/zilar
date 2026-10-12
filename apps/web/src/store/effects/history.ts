@@ -11,7 +11,7 @@ import {
 } from '@zilar/client-core/store';
 import { ApiError, type ChatPref } from '@/lib/api';
 import { applyChatPrefs } from '@/lib/chatPrefs';
-import { sortByRecency, summariesFor } from './chatRows';
+import { mergeUnread, sortByRecency, summariesFor } from './chatRows';
 import { CHAT_REFRESH_DEBOUNCE_MS } from './constants';
 import type { StoreCtx } from './ctx';
 import { loadGroupMembersInBackground } from './groupMembers';
@@ -125,11 +125,15 @@ export const refreshChatsOrThrow = (ctx: StoreCtx): Effect.Effect<void, unknown,
         if (existing === undefined) {
           return row;
         }
+        // The shared `mergeUnread` rule decides per row (the same call
+        // `chatRows.ts` makes): a server row at least as new as memory takes
+        // the server's `unread` and `lastMessage` (a read on another device
+        // clears here), while a newer in-memory preview wins.
+        const merged = mergeUnread(row, existing, activeChatId);
         return {
-          ...row,
-          ...(existing.lastMessage === undefined ? {} : { lastMessage: existing.lastMessage }),
-          unread: existing.unread,
+          ...merged,
           ...(existing.online === undefined ? {} : { online: existing.online }),
+          ...(existing.lastSeenAt === undefined ? {} : { lastSeenAt: existing.lastSeenAt }),
           ...(existing.onlineCount === undefined ? {} : { onlineCount: existing.onlineCount }),
         };
       });

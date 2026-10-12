@@ -12,6 +12,8 @@ import { trustedMediaHosts, type MediaTokenShape } from '@zilar/chat-core';
 import type { ConnectionStatus, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 import { fromPromise, type StoreAppHooks } from './ctx';
 import { flushPending, loadPreview, type HistoryCtx } from './history';
+import { flushOnline, markReboundOutbox, wakeAndResend } from './online';
+import { ackText, unackText, type SendCtx } from './send';
 import {
   handleDisplayed,
   handleMessage,
@@ -32,6 +34,11 @@ import { type CoreMe } from './ports';
 import { sortByRecency } from './rows';
 
 export { readLastRead } from './last-read';
+// The background-lifecycle helpers live beside the lifecycle (T-1151), as
+// does the online-flush helper (T-1197): the module is at its line budget,
+// so they are re-exported from here.
+export { suspendStore, wakeCore } from './suspend';
+export { flushOnline } from './online';
 
 // Waits between XMPP connect attempts after a failed token or login.
 export const CONNECT_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
@@ -122,6 +129,7 @@ export const stopStore = (ctx: LifecycleCtx): Effect.Effect<void> =>
  * its sign-out after `stop()`; web resets in its own `signOutStore` adapter. */
 export function reset(ctx: LifecycleCtx): void {
   ctx.pendingOutgoing.clear();
+  ctx.outbox?.clear();
   for (const chatId of Object.keys(ctx.cursors)) {
     delete ctx.cursors[chatId];
   }
@@ -167,20 +175,22 @@ export const reconnect = (ctx: LifecycleCtx): Effect.Effect<void> =>
     if (current === undefined) {
       return retryBoot(ctx);
     }
-    if (ctx.get().status === 'online') {
-      return Effect.void;
-    }
-    return fromPromise(() => current.connect()).pipe(
+    // A resume from the background: wake the suspended core (F1) instead of
+    // trusting a stale `online` status (MP-1): the socket may be dead while
+    // the status still says `online`. After a `rebound` (a new session) the
+    // resume path below rejoins the groups, as it does today.
+    return wakeAndResend(ctx, current).pipe(
       Effect.andThen(
         Effect.gen(function* () {
           ctx.fx.setStatus('online');
-          flushPending(ctx);
+          flushOnline(ctx);
           const me = ctx.get().me;
           if (me !== undefined && me !== null) {
             yield* fromPromise(() => ctx.fx.joinGroups(current, me)).pipe(Effect.ignore);
           }
           ctx.groupsJoined = true;
           flushPending(ctx);
+          // F3: catch up the messages missed while suspended here.
         }),
       ),
       Effect.catchCause(() => Effect.sync(() => ctx.fx.setStatus('offline'))),
@@ -276,14 +286,30 @@ const scheduleConnectRetry = (
 
 // Listeners are plain callbacks: the core calls them synchronously, in the
 // order it emits, which the store (and its tests) rely on.
-function subscribeToCore(ctx: LifecycleCtx, current: XmppCore): () => void {
+function subscribeToCore(
+  ctx: LifecycleCtx,
+  current: XmppCore,
+  session: Fibers<never>,
+  me: CoreMe,
+): () => void {
   const unsubscribers = [
     current.on('status', (status: ConnectionStatus) => {
       ctx.fx.setStatus(status);
       if (status === 'online') {
-        flushPending(ctx);
+        flushOnline(ctx);
       }
     }),
+    // A token that fails for good (both fetches 401/403) stopped the core
+    // offline: run the connect retry ladder instead of staying offline until
+    // the app restarts (F7, MP-10). The app's session layer still decides when
+    // the session is gone and sends the user to login.
+    current.on('authFailed', () => {
+      ctx.rt.runDetached(scheduleConnectRetry(ctx, session, me));
+    }),
+    current.on('acked', ({ stanzaId }) => ackText(ctx as unknown as SendCtx, stanzaId)),
+    current.on('unacked', ({ stanzaId }) => unackText(ctx as unknown as SendCtx, stanzaId)),
+    // A fresh session (a `rebound`) may have lost in-flight texts: mark them to resend.
+    current.on('rebound', () => markReboundOutbox(ctx)),
     current.on('message', (message) => handleMessage(ctx, message)),
     current.on('typing', (event) => handleTyping(ctx, event)),
     current.on('displayed', (event) => handleDisplayed(ctx, event)),
@@ -293,6 +319,9 @@ function subscribeToCore(ctx: LifecycleCtx, current: XmppCore): () => void {
     // server: refetch it, join any new group rooms and load their preview.
     current.on('invited', () => ctx.fx.scheduleChatsRefresh()),
     current.on('roster', () => ctx.fx.scheduleChatsRefresh()),
+    // The server removed me from a room (kick, ban or affiliation change):
+    // the chat list changed on the server, the same as above.
+    current.on('removed', () => ctx.fx.scheduleChatsRefresh()),
   ];
   return () => {
     for (const unsubscribe of unsubscribers) {
@@ -337,7 +366,7 @@ const connectXmpp = (ctx: LifecycleCtx, session: Fibers<never>, me: CoreMe): Eff
     const attempt = yield* Scope.fork(session.scope);
     const current = createXmpp(options);
     ctx.core = current;
-    const unsubscribe = subscribeToCore(ctx, current);
+    const unsubscribe = subscribeToCore(ctx, current, session, me);
     yield* Scope.addFinalizer(
       attempt,
       Effect.sync(() => {

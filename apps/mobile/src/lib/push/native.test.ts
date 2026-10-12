@@ -25,6 +25,7 @@ vi.mock('expo-secure-store', () => secureStore);
 vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));
 
 import {
+  ensurePushPair,
   PUSH_REGISTRATION_KEY,
   registerNativePush,
   unregisterNativePush,
@@ -144,6 +145,34 @@ describe('registerNativePush (T-1139)', () => {
 
     expect(calls.filter((call) => call.method === 'POST')).toHaveLength(1);
     expect(setPushPair).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ensurePushPair (T-1152)', () => {
+  it('re-sends the enable with the saved node, and does nothing with no saved registration', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      vi.mocked(secureStore.getItemAsync).mockResolvedValue(JSON.stringify(REGISTRATION));
+      const setPushPair = vi.fn(async () => undefined);
+
+      await ensurePushPair({ setPushPair });
+
+      expect(setPushPair).toHaveBeenCalledTimes(1);
+      expect(setPushPair).toHaveBeenCalledWith({
+        pushJid: REGISTRATION.jid,
+        node: REGISTRATION.node,
+        enable: true,
+      });
+
+      vi.mocked(secureStore.getItemAsync).mockResolvedValue(null);
+      const idlePair = vi.fn(async () => undefined);
+
+      await ensurePushPair({ setPushPair: idlePair });
+
+      expect(idlePair).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

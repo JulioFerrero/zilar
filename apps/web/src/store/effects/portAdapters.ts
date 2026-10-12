@@ -27,15 +27,37 @@ export function defaultStorage(): StorageLike | null {
 }
 
 export function defaultVisible(): boolean {
-  return typeof document === 'undefined' || document.visibilityState === 'visible';
+  if (typeof document === 'undefined') {
+    return true;
+  }
+  // Page visibility is not enough: a visible but unfocused window (a second
+  // monitor) must not mark messages seen (UI-10). jsdom's default document
+  // has `visibilityState: 'prerender'` and no window focus, so treat the
+  // simulated environments as visible.
+  if (typeof navigator !== 'undefined' && navigator.userAgent.includes('jsdom')) {
+    return true;
+  }
+  return document.visibilityState === 'visible' && document.hasFocus();
 }
 
 export function defaultOnFocus(handler: () => void): () => void {
   if (typeof window === 'undefined') {
     return () => {};
   }
+  // Coming back into focus runs the focus handler (which clears the open
+  // chat's unread); listen on both `visibilitychange` and `focus` so a
+  // visible-but-unfocused window marks seen when it is clicked into (UI-10).
+  const onVisibility = (): void => {
+    if (document.visibilityState === 'visible') {
+      handler();
+    }
+  };
   window.addEventListener('focus', handler);
-  return () => window.removeEventListener('focus', handler);
+  document.addEventListener('visibilitychange', onVisibility);
+  return () => {
+    window.removeEventListener('focus', handler);
+    document.removeEventListener('visibilitychange', onVisibility);
+  };
 }
 
 export const realRows: ChatRows = {

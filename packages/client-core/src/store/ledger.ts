@@ -49,6 +49,7 @@ export function createMessageLedger(deps: MessageLedgerDeps) {
     aliases: new Map(),
     serverIds: new Map(),
     originIds: new Map(),
+    originClaims: new Map(),
     authors: new Map(),
     baseTexts: new Map(),
   };
@@ -73,6 +74,7 @@ export function createMessageLedger(deps: MessageLedgerDeps) {
     maps.aliases.clear();
     maps.serverIds.clear();
     maps.originIds.clear();
+    maps.originClaims.clear();
     maps.authors.clear();
     maps.baseTexts.clear();
   }

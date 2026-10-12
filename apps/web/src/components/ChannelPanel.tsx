@@ -1,4 +1,5 @@
 import type { ChatSummary } from '@zilar/chat-core';
+import { personSeed } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useState } from 'react';
@@ -55,6 +56,13 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
 
   const info = useChatSelector((s) => s.groupInfo(chat.id));
   const me = useChatSelector((s) => s.currentUserId);
+  // T-1209: member balls are seeded by the bare JID, derived from the user
+  // id the way the mention builder does (the domain from my own JID); the
+  // members list carries no JID, so this is the only form available here.
+  const ownJid = useChatSelector((s) => s.me?.jid);
+  const domain = ownJid?.slice(ownJid.indexOf('@') + 1);
+  const seedFor = (userId: string): string =>
+    domain === undefined || domain === '' ? userId : personSeed(userId, domain);
   const meRole = info?.members.find((member) => member.userId === me)?.role;
   const isManager = meRole === 'owner' || meRole === 'admin';
   const isOwner = meRole === 'owner';
@@ -245,6 +253,7 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
               adminsLoaded={adminsLoaded}
               adminsFailure={adminsFailure}
               admins={admins}
+              seedFor={seedFor}
             />
 
             <section aria-label="AIs" className="flex flex-col gap-1">

@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { createTestContext, testSql, type TestContext } from '../test-support';
+import {
+  createTestContext,
+  bootstrapUser,
+  testApp,
+  testSql,
+  TEST_BASE_URL,
+  type TestContext,
+} from '../test-support';
+import { AUTH_INVITE_RATE_LIMIT_MAX } from './api';
 import {
   DEFAULT_INVITE_MAX_USES,
   consumeInvite,
@@ -102,5 +110,26 @@ describe('invites', () => {
     expect(revoked?.revokedAt).toBeInstanceOf(Date);
     expect(await revokeInvite(context.db, invite.code)).toBeNull();
     expect(await consumeInvite(context.db, invite.code)).toBeNull();
+  });
+
+  it('answers 429 on the 11th invite in a day (T-1174, SEC-7)', async () => {
+    const app = testApp(context);
+    const user = await bootstrapUser(context, app, 'invite-limit@example.com');
+
+    for (let attempt = 0; attempt < AUTH_INVITE_RATE_LIMIT_MAX; attempt += 1) {
+      const response = await app.request(`${TEST_BASE_URL}/api/invites`, {
+        method: 'POST',
+        headers: { cookie: user.cookie },
+      });
+      expect(response.status).toBe(200);
+      await response.text();
+    }
+
+    const limited = await app.request(`${TEST_BASE_URL}/api/invites`, {
+      method: 'POST',
+      headers: { cookie: user.cookie },
+    });
+    expect(limited.status).toBe(429);
+    expect(((await limited.json()) as { error: { code: string } }).error.code).toBe('rate_limited');
   });
 });

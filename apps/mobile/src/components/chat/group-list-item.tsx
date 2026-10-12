@@ -1,4 +1,4 @@
-import { formatListTime, previewMessage } from '@zilar/chat-core';
+import { formatListTime, previewMessage, groupSeed } from '@zilar/chat-core';
 import { Megaphone, Pin } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
@@ -85,6 +85,11 @@ export function GroupListItem({
       ? channelSubscriberLabel(row.subscriberCount ?? row.memberCount ?? 0)
       : topicCountLabel(row.topicCount);
   const anyPinned = row.topics.some((topic) => topic.pinnedAt !== undefined);
+  // T-1212: the group ball is seeded by the General topic's room JID (the
+  // group's old chat id), like the group screen's header; a group with no
+  // loaded topics yet keeps its group id.
+  const seed =
+    (topics.find((topic) => topic.topic?.isGeneral === true) ?? topics[0])?.id ?? groupId;
   return (
     <Pressable
       accessibilityRole="button"
@@ -93,7 +98,7 @@ export function GroupListItem({
       {...(onLongPress === undefined ? {} : { onLongPress })}
       className="h-[76px] flex-row items-center bg-background pl-4 active:bg-surface-raised"
     >
-      <Avatar id={groupId} name={row.title} size={52} />
+      <Avatar id={groupSeed(seed)} name={row.title} size={52} />
       <View className="ml-3 h-full flex-1 flex-row items-center border-b border-[#1a1a1a] pr-4">
         <View className="flex-1 justify-center">
           <View className="flex-row items-center justify-between">

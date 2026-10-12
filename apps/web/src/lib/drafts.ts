@@ -39,9 +39,17 @@ export const DRAFT_STREAM_URL = '/api/drafts/stream';
 
 /** The slice of `EventSource` the client uses. Tests inject a fake. */
 export interface DraftEventSource {
-  addEventListener(type: 'draft' | 'end', listener: (event: MessageEvent) => void): void;
+  /** `EventSource.readyState`: 2 means the browser stopped reconnecting. */
+  readonly readyState: number;
+  addEventListener(type: 'draft' | 'end' | 'error', listener: (event: MessageEvent) => void): void;
   close(): void;
 }
+
+/** Reconnect backoff: first retry after 1 s, doubling up to 30 s. */
+export const DRAFT_RECONNECT_BASE_MS = 1_000;
+export const DRAFT_RECONNECT_MAX_MS = 30_000;
+
+const EVENT_SOURCE_CLOSED = 2;
 
 function defaultDraftSource(url: string): DraftEventSource {
   return new EventSource(url);
@@ -66,34 +74,86 @@ function parseEvent<S extends Schema.ConstraintDecoder<unknown>>(
 
 /**
  * Subscribes to the signed-in user's own AI drafts. Events that fail
- * validation are dropped silently; nothing here throws. `EventSource`
- * reconnects on its own, so there is no retry loop. The returned function
- * closes the stream.
+ * validation are dropped silently; nothing here throws. An `EventSource` only
+ * reconnects on its own after a dropped connection: a non-2xx response (a
+ * deploy's 502, a 401) closes it for good, so those are reopened with a
+ * jittered backoff (1 s -> 30 s). The returned function cancels a pending
+ * retry and closes the current source.
  */
 export function subscribeToDrafts(
   onEvent: DraftEventListener,
   createSource: (url: string) => DraftEventSource = defaultDraftSource,
+  random: () => number = Math.random,
 ): () => void {
-  let source: DraftEventSource;
-  try {
-    source = createSource(DRAFT_STREAM_URL);
-  } catch {
-    // No usable `EventSource`: the app simply behaves as without drafts.
-    return () => {};
+  let closed = false;
+  let source: DraftEventSource | undefined;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let attempt = 0;
+
+  function clearRetry(): void {
+    if (retryTimer !== undefined) {
+      clearTimeout(retryTimer);
+      retryTimer = undefined;
+    }
   }
 
-  source.addEventListener('draft', (event) => {
-    const parsed = parseEvent(draftEventSchema, event.data);
-    if (parsed !== undefined) {
-      onEvent(parsed);
+  function scheduleRetry(): void {
+    if (closed || retryTimer !== undefined) {
+      return;
     }
-  });
-  source.addEventListener('end', (event) => {
-    const parsed = parseEvent(endEventSchema, event.data);
-    if (parsed !== undefined) {
-      onEvent(parsed);
-    }
-  });
+    const base = Math.min(DRAFT_RECONNECT_MAX_MS, DRAFT_RECONNECT_BASE_MS * 2 ** attempt);
+    attempt += 1;
+    // Full jitter: half the base plus up to half again.
+    const delay = Math.round(base / 2 + (base / 2) * random());
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      open();
+    }, delay);
+  }
 
-  return () => source.close();
+  function open(): void {
+    if (closed) {
+      return;
+    }
+    let next: DraftEventSource;
+    try {
+      next = createSource(DRAFT_STREAM_URL);
+    } catch {
+      // No usable `EventSource`: the app simply behaves as without drafts.
+      return;
+    }
+    source = next;
+
+    // A frame proves the stream is healthy, so the next retry starts at 1 s.
+    next.addEventListener('draft', (event) => {
+      attempt = 0;
+      const parsed = parseEvent(draftEventSchema, event.data);
+      if (parsed !== undefined) {
+        onEvent(parsed);
+      }
+    });
+    next.addEventListener('end', (event) => {
+      attempt = 0;
+      const parsed = parseEvent(endEventSchema, event.data);
+      if (parsed !== undefined) {
+        onEvent(parsed);
+      }
+    });
+    next.addEventListener('error', () => {
+      // CONNECTING means the browser will reconnect by itself; only a CLOSED
+      // source (a non-2xx response) needs a fresh `EventSource`.
+      if (next.readyState === EVENT_SOURCE_CLOSED) {
+        next.close();
+        scheduleRetry();
+      }
+    });
+  }
+
+  open();
+
+  return () => {
+    closed = true;
+    clearRetry();
+    source?.close();
+  };
 }

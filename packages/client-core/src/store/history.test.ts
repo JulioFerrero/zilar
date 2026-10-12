@@ -2,6 +2,7 @@ import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
 import { Effect } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 import type { CoreState } from './ctx';
+import type { CorePorts } from './ports';
 import {
   PAGE_HISTORY_MAX,
   canLoadHistory,
@@ -13,6 +14,7 @@ import {
   openAtMessage,
   openHistory,
   type HistoryCtx,
+  type HistoryPatch,
   type HistoryState,
 } from './history';
 import { ANA, TEAM, dm, team, testCtx } from './test-ctx';
@@ -51,12 +53,18 @@ function serverOver(list: ChatMessage[]): LoadHistory {
 
 /** A history context over the core test context, online, with the groups joined. */
 function historyCtx(
-  options: { loadHistory?: LoadHistory; state?: Partial<HistoryState>; noCore?: boolean } = {},
+  options: {
+    loadHistory?: LoadHistory;
+    state?: Partial<HistoryState>;
+    ports?: Partial<CorePorts>;
+    noCore?: boolean;
+  } = {},
 ) {
   const openChat = vi.fn();
   const loadHistory = vi.fn(options.loadHistory ?? serverOver(anaHistory(60)));
   const base = testCtx({
     core: { loadHistory },
+    ...(options.ports === undefined ? {} : { ports: options.ports }),
     state: {
       status: 'online',
       historyState: {},
@@ -94,7 +102,7 @@ describe('canLoadHistory (core)', () => {
 
 describe('openHistory (core)', () => {
   it('loads the newest page, marks it read and sets the cursor', async () => {
-    const { ctx, core, state, shown } = historyCtx();
+    const { ctx, core, state, shown } = historyCtx({ state: { activeChatId: ANA } });
 
     await Effect.runPromise(openHistory(ctx, ANA));
 
@@ -109,7 +117,9 @@ describe('openHistory (core)', () => {
   });
 
   it('remembers a chat that cannot load yet, and flushPending loads it later', async () => {
-    const { ctx, state, shown, rt } = historyCtx({ state: { status: 'connecting' } });
+    const { ctx, state, shown, rt } = historyCtx({
+      state: { status: 'connecting', activeChatId: ANA },
+    });
 
     await Effect.runPromise(openHistory(ctx, ANA));
     expect(ctx.pendingOpenChatId).toBe(ANA);
@@ -128,6 +138,7 @@ describe('openHistory (core)', () => {
 
   it('marks the chat error when the page fails', async () => {
     const { ctx, state } = historyCtx({
+      state: { activeChatId: ANA },
       loadHistory: async () => {
         throw new Error('mam down');
       },
@@ -138,11 +149,55 @@ describe('openHistory (core)', () => {
     expect(state().historyState[ANA]).toBe('error');
     expect(ctx.loadingHistory.size).toBe(0);
   });
+
+  it('a page that lands after closeChat sends no marker and keeps unread', async () => {
+    const chats = [{ ...dm, unread: 3 }];
+    const { ctx, core, state, shown } = historyCtx({ state: { activeChatId: ANA, chats } });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const gated: LoadHistory = async (...args) => {
+      await gate;
+      return serverOver(anaHistory(60))(...args);
+    };
+    const gatedLoad = vi.fn(gated);
+    ctx.core = { ...(ctx.core as XmppCore), loadHistory: gatedLoad } as XmppCore;
+
+    const run = Effect.runPromise(openHistory(ctx, ANA));
+    await vi.waitFor(() => {
+      expect(ctx.loadingHistory.has(ANA)).toBe(true);
+    });
+    // The user leaves before the page lands: the deferred open is dropped.
+    // `activeChatId` is not part of `HistoryPatch`, so the cast mirrors what
+    // the apps' own `set` accepts for their full state.
+    ctx.set({ activeChatId: undefined } as unknown as HistoryPatch);
+    ctx.pendingOpenChatId = undefined;
+    clearSupersededMarker(ctx, ANA);
+    release();
+    await run;
+
+    expect(shown()).toHaveLength(50);
+    expect(state().historyState[ANA]).toBe('ready');
+    expect(core.markDisplayed).not.toHaveBeenCalled();
+    expect(ctx.lastRead[ANA]).toBeUndefined();
+    expect(state().chats.find((chat) => chat.id === ANA)?.unread).toBe(3);
+  });
+
+  it('a page for the open, visible chat still marks seen', async () => {
+    const { ctx, core, state } = historyCtx({ state: { activeChatId: ANA } });
+
+    await Effect.runPromise(openHistory(ctx, ANA));
+
+    expect(state().historyState[ANA]).toBe('ready');
+    expect(ctx.lastRead[ANA]).toBe('ana-59');
+    expect(core.markDisplayed).toHaveBeenCalledWith(ANA, 'chat', 'ana-59');
+  });
 });
 
 describe('loadOlderPage (core)', () => {
   it('prepends the older page and moves the cursor back', async () => {
-    const { ctx, shown, state } = historyCtx();
+    const { ctx, shown, state } = historyCtx({ state: { activeChatId: ANA } });
     await Effect.runPromise(openHistory(ctx, ANA));
 
     await Effect.runPromise(loadOlderPage(ctx, ANA, 'ana-10'));
@@ -153,7 +208,7 @@ describe('loadOlderPage (core)', () => {
   });
 
   it('keeps each message once when the page overlaps what is loaded', async () => {
-    const { ctx, shown } = historyCtx();
+    const { ctx, shown } = historyCtx({ state: { activeChatId: ANA } });
     await Effect.runPromise(openHistory(ctx, ANA));
 
     // The boot preview's cursor is the newest message: this page is ana-9..58.
@@ -205,13 +260,13 @@ describe('loadOlder (core)', () => {
 });
 
 describe('loadPreview (core)', () => {
-  it('sets the preview, a first last-read mark and the cursor', async () => {
+  it('sets the preview and the cursor, and never marks read', async () => {
     const { ctx, state } = historyCtx();
 
     await Effect.runPromise(loadPreview(ctx, ctx.core as XmppCore, dm));
 
     expect(state().chats.find((chat) => chat.id === ANA)?.lastMessage?.id).toBe('ana-59');
-    expect(ctx.lastRead[ANA]).toBe('ana-59');
+    expect(ctx.lastRead[ANA]).toBeUndefined();
     expect(ctx.cursors[ANA]).toBe('ana-59');
     expect(state().historyComplete[ANA]).toBe(false);
     expect(state().messagesByChat[ANA]).toBeUndefined();
@@ -240,7 +295,7 @@ describe('openAtMessage (core)', () => {
   });
 
   it('fails with message_not_found once history is complete', async () => {
-    const { ctx } = historyCtx();
+    const { ctx } = historyCtx({ state: { activeChatId: ANA } });
     await Effect.runPromise(openHistory(ctx, ANA));
 
     const error = await Effect.runPromise(Effect.flip(openAtMessage(ctx, ANA, 'ghost')));

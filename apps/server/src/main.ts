@@ -52,6 +52,7 @@ import { createArchivePool } from './search/service';
 import { createPushCipher } from './push/crypto';
 import { loadPushConfigOrExit, pushConfigError, type PushConfig } from './push/config';
 import { startPushComponent, type PushComponentHandle } from './push/component';
+import { startGroupNotifier } from './push/group-notifier';
 import { createWebPushSender } from './push/sender';
 import { createNativeSender } from './push/native-sender';
 import { reconcileRoomSubscriptionOptions } from './topics/rooms';
@@ -494,23 +495,29 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
             });
             const nativeSender = createNativeSender(push, logger);
             const cipher = createPushCipher(push.PUSH_STORAGE_KEY as string);
-            running.pushComponent = startPushComponent({
+            const service = {
+              db,
+              config,
+              archive: archivePool,
+              cipher,
+              sender,
+              ...(nativeSender === undefined ? {} : { nativeSender }),
+              logger,
+              recentlyNotified: new Map<string, Set<string>>(),
+            };
+            const groupNotifier = startGroupNotifier({ service, admin: adminClient, logger });
+            const component = startPushComponent({
               domain: push.PUSH_COMPONENT_JID as string,
               secret: push.PUSH_COMPONENT_SECRET as string,
               host: push.PUSH_COMPONENT_HOST,
               port: push.PUSH_COMPONENT_PORT,
-              service: {
-                db,
-                config,
-                archive: archivePool,
-                cipher,
-                sender,
-                ...(nativeSender === undefined ? {} : { nativeSender }),
-                logger,
-                recentlyNotified: new Map(),
-              },
+              service,
               logger,
             });
+            // Starts next to the component; stops with it, one handle.
+            running.pushComponent = {
+              stop: () => Promise.all([component.stop(), groupNotifier.stop()]).then(() => {}),
+            };
           },
           catch: (error) => error,
         });

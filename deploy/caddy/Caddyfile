@@ -28,18 +28,31 @@
     reverse_proxy server:3000
   }
 
-  # XMPP over WebSocket (RFC 7395) straight to ejabberd. The /xmpp-ws
-  # prefix is stripped so ejabberd sees the /ws path its request_handlers
-  # expect.
-  handle /xmpp-ws/* {
+  # XMPP over WebSocket (RFC 7395) straight to ejabberd. Only the exact
+  # /ws path is proxied: the /xmpp-ws prefix is stripped so ejabberd sees
+  # the /ws path its request_handlers expect. Every other /xmpp-ws/* path
+  # answers 404 so ejabberd's admin REST API (/api on the same :5280
+  # listener) is never reachable from the Internet (SEC-2).
+  handle /xmpp-ws/ws {
     uri strip_prefix /xmpp-ws
     reverse_proxy ejabberd:5280
+  }
+
+  handle /xmpp-ws/* {
+    respond 404
   }
 
   # File uploads (XEP-0363) straight to ejabberd. No strip here: ejabberd
   # registers the handler at /upload and hands out slot URLs of the form
   # https://<domain>/upload/<slot>/<file>, so the path must arrive intact.
+  # Uploaded files are served straight from ejabberd: no MIME sniffing, no
+  # script execution from them, HSTS like everywhere else (F1).
   handle /upload/* {
+    header {
+      X-Content-Type-Options nosniff
+      Content-Security-Policy "default-src 'none'; sandbox"
+      Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
     reverse_proxy ejabberd:5280
   }
 }

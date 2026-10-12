@@ -39,6 +39,7 @@ import {
   listGroupTopics as listGroupTopicsRequest,
   lookupGroupByHandle as lookupGroupByHandleRequest,
   listPins as listPinsRequest,
+  markChatRead as markChatReadRequest,
   listChatMedia as listChatMediaRequest,
   listTopicAis as listTopicAisRequest,
   listTopicMembers as listTopicMembersRequest,
@@ -112,6 +113,9 @@ export interface ApiClient {
   getContacts(): Promise<Contact[]>;
   getGroup(groupId: string): Promise<GroupDetail>;
   getXmppToken(): Promise<XmppToken>;
+  /** Stores the caller's read mark (T-1207); the id must be numeric. Optional
+   * so existing fakes keep working; the core only calls it when present. */
+  markChatRead?(jid: string, messageId: string): Promise<void>;
   createGroup(input: {
     title: string;
     memberIds: string[];
@@ -231,6 +235,7 @@ const realApi: ApiClient = {
   getContacts,
   getGroup,
   getXmppToken,
+  markChatRead: markChatReadRequest,
   createGroup: createGroupRequest,
   listGroupMembers: listGroupMembersRequest,
   setGroupVisibility: setGroupVisibilityRequest,

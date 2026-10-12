@@ -193,7 +193,7 @@ export function NewGroupDialog({
                   onCheckedChange={() => toggle(contact.userId)}
                 />
                 <Avatar
-                  id={contact.userId}
+                  id={contact.jid}
                   name={contact.name}
                   size={28}
                   avatarUrl={contact.avatarUrl}

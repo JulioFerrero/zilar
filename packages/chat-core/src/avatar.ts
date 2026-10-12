@@ -1,4 +1,5 @@
 import { ballAvatarSvg } from '@zilar/ball-avatar';
+import { normalizeJid } from '@zilar/protocol';
 
 import { graphemes } from './text';
 
@@ -61,7 +62,7 @@ export function initials(name: string): string {
 
 /** The glossy 3D ball avatar SVG for a seed, scalable to any box. */
 export function avatarSvg(seed: string): string {
-  return ballAvatarSvg(seed);
+  return ballAvatarSvg(normalizeJid(seed));
 }
 
 /** The ball avatar as an SVG `data:` URI, ready for an image source. */

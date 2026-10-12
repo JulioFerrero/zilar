@@ -1,26 +1,25 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
+import { personSeed } from '@zilar/chat-core';
 import { StateMessage } from '@/components/ui/state-message';
 import type { DirectoryEntry, HandleProfile } from '@/lib/api';
 import { useGroupSearch, usePeopleSearch } from '@/lib/usePeopleSearch';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { Avatar } from './Avatar';
-import { ContactProfileRow } from './ContactProfileRow';
 
 // The People and Public-groups sections above the chat-name and message
 // results (3+ characters, after one leading `@`).
 export function PeopleSearchResult({ query }: { query: string }) {
-  const { state, updateProfile } = usePeopleSearch(query);
+  const { state } = usePeopleSearch(query);
   const groups = useGroupSearch(query);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const hadAt = query.trim().startsWith('@');
   const groupEntries = groups.status === 'results' ? groups.entries : [];
-  // An empty result shows nothing without `@`, the muted "no one" line with it.
+  // The section is only mounted for a 3+ character query, so an empty result
+  // always shows the "No people found" line, with or without `@`.
   const showPeople =
     state.status === 'loading' ||
     state.status === 'rate_limited' ||
     state.status === 'error' ||
-    (state.status === 'results' && (state.entries.length > 0 || hadAt));
+    state.status === 'results';
 
   if (!showPeople && groupEntries.length === 0) {
     return null;
@@ -37,9 +36,7 @@ export function PeopleSearchResult({ query }: { query: string }) {
             </div>
           )}
           {state.status === 'results' && state.entries.length === 0 && (
-            <p className="px-[10px] pb-2 text-[13px] text-muted-foreground">
-              No one with that username.
-            </p>
+            <p className="px-[10px] pb-2 text-[13px] text-muted-foreground">No people found</p>
           )}
           {state.status === 'rate_limited' && (
             <div className="px-[10px] pb-2">
@@ -56,17 +53,7 @@ export function PeopleSearchResult({ query }: { query: string }) {
             </div>
           )}
           {state.status === 'results' &&
-            state.entries.map((entry) => (
-              <PersonRow
-                key={entry.userId}
-                entry={entry}
-                expanded={expandedId === entry.userId}
-                onToggle={() =>
-                  setExpandedId((current) => (current === entry.userId ? null : entry.userId))
-                }
-                onRelationChange={updateProfile}
-              />
-            ))}
+            state.entries.map((entry) => <PersonRow key={entry.userId} entry={entry} />)}
         </div>
       )}
       {groupEntries.length > 0 && (
@@ -83,46 +70,51 @@ export function PeopleSearchResult({ query }: { query: string }) {
   );
 }
 
-// A compact chat-list-style person row (no border card); a click toggles the
-// shared profile card in place.
-function PersonRow({
-  entry,
-  expanded,
-  onToggle,
-  onRelationChange,
-}: {
-  entry: HandleProfile;
-  expanded: boolean;
-  onToggle: () => void;
-  onRelationChange: (profile: HandleProfile) => void;
-}) {
+// A compact chat-list-style person row: a click opens the DM with a contact,
+// or the person's `/@handle` card, and clears the search. Marked
+// `data-topic-row` so the chat-list arrow keys reach it, and a link so Enter
+// on a focused row activates it.
+function PersonRow({ entry }: { entry: HandleProfile }) {
+  const contacts = useChatSelector((s) => s.contacts);
+  const chats = useChatSelector((s) => s.chats);
+  const setSearch = useChatSelector((s) => s.setSearch);
+  const me = useChatSelector((s) => s.me);
+  const storeApi = useChatStoreApi();
+
+  // The lookup profile carries no JID; the store's contact does. A contact
+  // with no chat row yet (the list has not refreshed since it was added) gets
+  // a refresh, and the shell opens the DM once the row lands. T-1209: the
+  // ball is seeded by that same bare JID, else by the user id derived the
+  // way the mention builder does (the domain from my own JID).
+  const contact = contacts.find((row) => row.userId === entry.userId);
+  const ownDomain = me?.jid?.slice(me.jid.indexOf('@') + 1);
+  const seed =
+    contact?.jid ?? (ownDomain === undefined ? entry.userId : personSeed(entry.userId, ownDomain));
+  const href =
+    contact === undefined ? `/@${entry.handle}` : `/c/${encodeURIComponent(contact.jid)}`;
+
+  const open = (): void => {
+    if (contact !== undefined && !chats.some((chat) => chat.id === contact.jid)) {
+      storeApi.getState().refreshChats();
+    }
+    setSearch('');
+  };
+
   return (
-    <div className="flex flex-col">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="flex w-full items-center gap-3 rounded-[12px] px-[10px] py-2 text-left transition-colors hover:bg-surface-raised"
-      >
-        <Avatar
-          id={entry.userId}
-          name={entry.name}
-          avatarUrl={entry.image ?? undefined}
-          size={40}
-        />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[14px] leading-5 font-semibold text-foreground">
-            {entry.name}
-          </span>
-          <span className="block truncate text-[13px] text-muted-foreground">@{entry.handle}</span>
+    <Link
+      to={href}
+      data-topic-row=""
+      onClick={open}
+      className="flex w-full items-center gap-3 rounded-[12px] px-[10px] py-2 text-left transition-colors hover:bg-surface-raised"
+    >
+      <Avatar id={seed} name={entry.name} avatarUrl={entry.image ?? undefined} size={40} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[14px] leading-5 font-semibold text-foreground">
+          {entry.name}
         </span>
-      </button>
-      {expanded && (
-        <div className="px-[10px] pb-2">
-          <ContactProfileRow profile={entry} onRelationChange={onRelationChange} />
-        </div>
-      )}
-    </div>
+        <span className="block truncate text-[13px] text-muted-foreground">@{entry.handle}</span>
+      </span>
+    </Link>
   );
 }
 

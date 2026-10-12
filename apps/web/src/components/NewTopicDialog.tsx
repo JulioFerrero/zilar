@@ -2,6 +2,7 @@ import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { personSeed } from '@zilar/chat-core';
 import { fromApi } from '@/lib/effect/api-effect';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
@@ -79,6 +80,13 @@ export function NewTopicDialog({
   // with, so that exact key is the one to read.
   const detail: GroupDetail | undefined = useChatSelector((s) => s.groupInfo(groupId));
   const me = useChatSelector((s) => s.currentUserId);
+  // T-1209: member balls are seeded by the bare JID, derived from the user
+  // id the way the mention builder does (the domain from my own JID); the
+  // members list carries no JID, so this is the only form available here.
+  const ownJid = useChatSelector((s) => s.me?.jid);
+  const domain = ownJid?.slice(ownJid.indexOf('@') + 1);
+  const seedFor = (userId: string): string =>
+    domain === undefined || domain === '' ? userId : personSeed(userId, domain);
 
   useEffect(() => {
     storeApi.getState().refreshGroupInfo(groupId);
@@ -265,7 +273,7 @@ export function NewTopicDialog({
                   onCheckedChange={() => toggleMember(member.userId)}
                 />
                 <Avatar
-                  id={member.userId}
+                  id={seedFor(member.userId)}
                   name={member.name}
                   size={28}
                   avatarUrl={member.avatarUrl}

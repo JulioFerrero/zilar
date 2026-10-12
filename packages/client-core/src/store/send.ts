@@ -23,8 +23,10 @@ export type {
 } from './send/context';
 export { deleteFailedMessage } from './send/failed';
 export { forwardMessages } from './send/forward';
+export { createTextOutbox, flushOutbox, type TextOutbox } from './send/outbox';
 export { disarmSend, SEND_TIMEOUT_MS } from './send/pipeline';
 export { retrySticker, sendSticker } from './send/sticker';
-export { sendText } from './send/text';
+export { ackText, sendText, unackText } from './send/text';
+export { retryText } from './send/retry-text';
 export { retryAttachment, sendAttachment } from './send/attachment';
 export { retryVoice, sendVoice } from './send/voice';

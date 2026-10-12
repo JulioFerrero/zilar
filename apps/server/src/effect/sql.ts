@@ -181,6 +181,13 @@ export function sqlFileLoader(directory: string): Migrator.Loader {
         const migration = Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient;
           const contents = yield* Effect.promise(() => readFile(join(directory, entry), 'utf8'));
+          // OPS-5: Migrator.make runs the migrations it was given in one
+          // transaction (`sql.withTransaction`, effect Migrator.ts:315) and
+          // `migrateSql` calls it once per id (sql.ts:274), so each migration
+          // has its own transaction. `SET LOCAL` therefore scopes the lock wait
+          // to this migration and is reset at its commit or rollback; a plain
+          // `SET` would leak the timeout onto the session's later queries.
+          yield* sql.unsafe("SET LOCAL lock_timeout = '5s'");
           for (const raw of contents.split('--> statement-breakpoint')) {
             const statement = raw.trim().replace(/;\s*$/, '');
             if (statement.length > 0) {
@@ -251,6 +258,41 @@ function adoptDrizzleJournal(): Effect.Effect<
   });
 }
 
+// OPS-6: the migrator skips every id at or below the latest applied one
+// (`currentId <= latestMigrationId`, effect Migrator.ts:258), so an on-disk file
+// numbered below the tip that is not in the journal never runs. Warn for each
+// one so the gap is visible at start. The journal is `effect_sql_migrations`
+// (SQL_MIGRATIONS_TABLE, sql.ts:27; the effect default at Migrator.ts:118) and
+// its id column is `migration_id` (Migrator.ts:170 and sql.ts:239).
+function warnSkippedMigrations(
+  migrations: ReadonlyArray<Migrator.ResolvedMigration>,
+): Effect.Effect<void, SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const [journal] = yield* sql<{ present: boolean }>`
+      SELECT to_regclass(${SQL_MIGRATIONS_TABLE}) IS NOT NULL AS present`;
+    if (journal?.present !== true) {
+      return;
+    }
+    const rows = yield* sql<{ migrationId: number; name: string }>`
+      SELECT migration_id, name FROM ${sql(SQL_MIGRATIONS_TABLE)} ORDER BY migration_id DESC`;
+    const applied = new Set(rows.map((row) => row.migrationId));
+    // Adoption seeds one row at the drizzle tip (adoptDrizzleJournal) whose id
+    // is the highest already applied; every id up to it was applied by drizzle
+    // and is not journaled row by row, so that prefix is not a gap.
+    const adopted = rows.find((row) => row.name === 'adopted-from-drizzle');
+    const appliedThrough = adopted?.migrationId ?? 0;
+    const latest = Math.max(0, ...applied);
+    for (const [id, name] of migrations) {
+      if (id <= latest && id > appliedThrough && !applied.has(id)) {
+        yield* Effect.logWarning(
+          `migrations: ${String(id - 1).padStart(4, '0')}_${name}.sql (id ${id}) is at or below the latest applied id ${latest} and is not journaled; it will not run`,
+        );
+      }
+    }
+  });
+}
+
 // The server's migrator (D3). It adopts a drizzle-migrated database, then runs
 // each committed migration in id order. `runSqlMigrations` skips every id at
 // or below the journal's latest and locks the journal table inside its own
@@ -269,6 +311,12 @@ export function migrateSql(
       yield* Effect.logInfo(`migrations: adopted ${adopted} drizzle migrations`);
     }
     const migrations = yield* sqlFileLoader(directory);
+    // A read-only warning must never keep the server from starting: a transient
+    // journal probe failure is logged once and ignored, while the migrations
+    // below still fail loudly.
+    yield* warnSkippedMigrations(migrations).pipe(
+      Effect.catchCause(() => Effect.logWarning('migrations: could not check for skipped files')),
+    );
     const applied: Array<readonly [id: number, name: string]> = [];
     for (const [id] of migrations) {
       const migrated = yield* runSqlMigrations({

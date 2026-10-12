@@ -1,7 +1,8 @@
-import { Check, CheckCheck, Clock } from 'lucide-react-native';
+import { Check, CheckCheck, CircleAlert, Clock } from 'lucide-react-native';
 import { View } from 'react-native';
 
 import type { MessageStatus } from '@/lib/types';
+import { DANGER } from '@/lib/colors';
 
 type TicksProps = {
   status: MessageStatus;
@@ -9,9 +10,12 @@ type TicksProps = {
   size?: number;
 };
 
-/** `✓` sent, `✓✓` read, a clock while sending (and on a failed send). */
+/** `✓` sent, `✓✓` read, a clock while sending, a red alert on a failed send. */
 export function Ticks({ status, color, size = 15 }: TicksProps) {
-  if (status === 'sending' || status === 'failed') {
+  if (status === 'failed') {
+    return <CircleAlert size={size - 2} color={DANGER} />;
+  }
+  if (status === 'sending') {
     return <Clock size={size - 2} color={color} />;
   }
   const Icon = status === 'read' ? CheckCheck : Check;

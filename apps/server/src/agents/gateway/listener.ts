@@ -32,11 +32,22 @@ interface RoomListenerContext {
   sessions: Map<string, AiSession>;
   roomRounds: Map<string, RoomRound>;
   sessionIsLive: (session: AiSession) => boolean;
+  isStarted: () => boolean;
   pumpRoom: (session: AiSession, roomJid: string) => Promise<void>;
 }
 
 export function createRoomListener(ctx: RoomListenerContext) {
-  const { deps, logger, baseUrl, secretsFor, sessions, roomRounds, sessionIsLive, pumpRoom } = ctx;
+  const {
+    deps,
+    logger,
+    baseUrl,
+    secretsFor,
+    sessions,
+    roomRounds,
+    sessionIsLive,
+    isStarted,
+    pumpRoom,
+  } = ctx;
 
   // T-0475: the listener's per-room debounce windows (see RoomListenerState).
   const roomListeners = new Map<string, RoomListenerState>();
@@ -214,6 +225,11 @@ export function createRoomListener(ctx: RoomListenerContext) {
     state: RoomListenerState,
     wakeIds: readonly string[],
   ): void {
+    // T-1168: a gateway that is stopping (or stopped) refuses new turns, so a
+    // listener wake must not start a room turn mid-drain.
+    if (!isStarted()) {
+      return;
+    }
     const latest = state.window[state.window.length - 1];
     if (latest === undefined) {
       return;

@@ -20,6 +20,7 @@ import { Ticks } from '@/components/chat/ticks';
 import { VoiceMessage } from '@/components/chat/voice-message';
 import type { VoicePlayerHost } from '@/components/chat/voice-player';
 import { Text } from '@/components/ui/text';
+import { DANGER } from '@/lib/colors';
 import { raisedPill, senderColor } from '@/lib/depth';
 
 type MessageBubbleContentProps = {
@@ -67,6 +68,16 @@ export function BubbleInlineMeta({
       {'  '}
       {message.edited === true ? 'edited ' : ''}
       {formatTime(message.createdAt)}
+      {/* A failed own text names the failure, like the voice and card meta
+          does (`BubbleMeta`): a red "Not sent" next to the red alert icon. */}
+      {outgoing && message.status === 'failed' ? (
+        <>
+          {'  '}
+          <Text className="font-mono text-[10px]" color={DANGER}>
+            Not sent
+          </Text>
+        </>
+      ) : null}
       {/* A no-break space then a word joiner: the tick
           view stays on the time's line and cannot wrap
           alone onto a second line. */}

@@ -9,7 +9,12 @@
 import { Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
-import { GroupsGroup, GroupsJoinRateLimit, GroupsRoleRateLimit } from '@zilar/api-contract';
+import {
+  GroupsCreateRateLimit,
+  GroupsGroup,
+  GroupsJoinRateLimit,
+  GroupsRoleRateLimit,
+} from '@zilar/api-contract';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
@@ -40,6 +45,7 @@ import {
 } from './service';
 import { setGroupVisibility } from './visibility';
 import { joinPublicGroup } from './join';
+import { transferGroupOwner } from './ownership';
 
 export const ROLE_CHANGE_RATE_LIMIT_MAX = 30;
 export const ROLE_CHANGE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
@@ -48,6 +54,10 @@ export const ROLE_CHANGE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 // speed. Directory + by-handle reads below share the same clock.
 export const PUBLIC_JOIN_RATE_LIMIT_MAX = 30;
 export const PUBLIC_JOIN_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+// T-1174 (SEC-7): creating a group or channel creates a MUC room, so it is
+// capped per user.
+export const GROUP_CREATE_RATE_LIMIT_MAX = 20;
+export const GROUP_CREATE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
 // T-0124: role changes hit ejabberd (one affiliation write per call), so they
 // are capped per owner like topic creation is capped per user. T-0164: open
@@ -66,6 +76,7 @@ export interface GroupsApiDependencies {
   now?: () => number;
   roleLimiter?: RateLimiter;
   joinLimiter?: RateLimiter;
+  createLimiter?: RateLimiter;
 }
 
 export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
@@ -92,6 +103,13 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
     createRateLimiter({
       max: PUBLIC_JOIN_RATE_LIMIT_MAX,
       windowMs: PUBLIC_JOIN_RATE_LIMIT_WINDOW_MS,
+      now,
+    });
+  const groupCreateLimiter =
+    deps.createLimiter ??
+    createRateLimiter({
+      max: GROUP_CREATE_RATE_LIMIT_MAX,
+      windowMs: GROUP_CREATE_RATE_LIMIT_WINDOW_MS,
       now,
     });
 
@@ -186,6 +204,24 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
               actorId: user.id,
               targetUserId: request.params.userId,
               role: request.payload.role,
+              domain,
+              logger,
+              ...(deps.audit === undefined ? {} : { audit: deps.audit }),
+            }),
+          ),
+        ),
+      )
+      // SG-4 (T-1187): the owner hands the group to another member; the two
+      // roles swap in one transaction and the old owner becomes an admin (and
+      // can then leave). The limiter middleware already charged the budget.
+      .handle(
+        'transferOwner',
+        handler(logger, async (request, user) =>
+          withListenerAvailability(
+            await transferGroupOwner(deps.db, deps.adminClient, {
+              groupId: request.params.id,
+              actorId: user.id,
+              targetUserId: request.payload.userId,
               domain,
               logger,
               ...(deps.audit === undefined ? {} : { audit: deps.audit }),
@@ -319,6 +355,13 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
     ),
     Layer.provide(
       rateLimitLayer(GroupsJoinRateLimit, joinLimiter, 'Too many join attempts, try again later'),
+    ),
+    Layer.provide(
+      rateLimitLayer(
+        GroupsCreateRateLimit,
+        groupCreateLimiter,
+        'Too many group creations, try again later',
+      ),
     ),
     Layer.provide(schemaErrorLayer(logger)),
   );

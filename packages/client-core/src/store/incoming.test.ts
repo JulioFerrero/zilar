@@ -43,6 +43,19 @@ describe('handleMessage (core)', () => {
     expect(core.markDisplayed).not.toHaveBeenCalled();
   });
 
+  it('drops a live resend with the same origin id: one bubble, unread 1', () => {
+    const { ctx, fx, state } = testCtx();
+    handleMessage(ctx, message({ id: 'stanza-a', originId: 'o-1', body: 'hello' }));
+    handleMessage(ctx, message({ id: 'stanza-b', originId: 'o-1', body: 'hello' }));
+
+    expect(state().messagesByChat[ANA]?.map((item) => item.id)).toEqual(['stanza-a']);
+    expect(state().chats.find((chat) => chat.id === ANA)).toMatchObject({
+      unread: 1,
+      lastMessage: expect.objectContaining({ id: 'stanza-a' }),
+    });
+    expect(fx.syncBadge).toHaveBeenCalledTimes(1);
+  });
+
   it('reads a message in the open, visible chat and saves the last read', () => {
     const setItem = vi.fn();
     const storage = { getItem: () => null, setItem, removeItem: vi.fn() };
@@ -102,6 +115,22 @@ describe('handleMessage (core)', () => {
     expect(fx.syncBadge).not.toHaveBeenCalled();
   });
 
+  it('clears the chat unread on an echo with no local id (another device)', () => {
+    const { ctx, fx, state } = testCtx({
+      state: { chats: [{ ...dm, unread: 2 }, team] },
+    });
+    expect(state().chats.find((chat) => chat.id === ANA)?.unread).toBe(2);
+
+    handleMessage(
+      ctx,
+      message({ id: 'srv-9', body: 'from my phone', fromJid: ME, outgoing: true }),
+    );
+
+    expect(state().chats.find((chat) => chat.id === ANA)?.unread).toBe(0);
+    expect(fx.dismissChatNotifications).toHaveBeenCalledWith(ANA);
+    expect(fx.syncBadge).toHaveBeenCalled();
+  });
+
   it("finishes the AI's draft with its final message, in one update", () => {
     const { ctx, fx, state } = testCtx({
       state: { drafts: { [ANA]: { turnId: 'turn-1', text: 'Hel' } } },
@@ -124,6 +153,39 @@ describe('handleMessage (core)', () => {
 
     expect(state().messagesByChat[ANA]?.map((item) => item.id)).toEqual(['ana-1']);
     expect(state().reactions[ANA]?.targets['ana-1']?.[ANA]?.emojis).toEqual(['👍']);
+  });
+});
+
+describe('handleMessage reply quotes (core)', () => {
+  it('resolves a reply that names the quoted message by its origin id', () => {
+    const { ctx, state } = testCtx();
+    // The quoted message is stored under this side's archive id, aliased to
+    // its origin id, which is what the wire reply carries.
+    handleMessage(ctx, message({ id: 'a-1', originId: 'o-1', body: 'the original' }));
+    handleMessage(ctx, message({ id: 'a-2', body: 'my reply', replyTo: { id: 'o-1' } }));
+    expect(state().messagesByChat[ANA]?.find((item) => item.id === 'a-2')?.replyTo).toEqual({
+      id: 'o-1',
+      senderName: 'Ana',
+      text: 'the original',
+    });
+  });
+
+  it('falls back to the quoted text when the target is not loaded', () => {
+    const { ctx, state } = testCtx();
+    // The body arrives with the fallback line already stripped by the decoder.
+    handleMessage(
+      ctx,
+      message({ id: 'a-3', body: 'my reply', replyTo: { id: 'o-9', text: 'old' } }),
+    );
+    const reply = state().messagesByChat[ANA]?.find((item) => item.id === 'a-3');
+    expect(reply?.replyTo).toEqual({ id: 'o-9', senderName: '', text: 'old' });
+    expect(reply?.text).toBe('my reply');
+  });
+
+  it('keeps a hand-typed quote line, which the decoder leaves alone', () => {
+    const { ctx, state } = testCtx();
+    handleMessage(ctx, message({ id: 'a-4', body: '> x\nmy text', replyTo: { id: 'o-9' } }));
+    expect(state().messagesByChat[ANA]?.[0]?.text).toBe('> x\nmy text');
   });
 });
 
@@ -155,7 +217,7 @@ describe('handleTyping (core)', () => {
     handleTyping(ctx, typing('paused'));
 
     expect(state().typing[TEAM]).toBeUndefined();
-    expect(rt.has(`typing:${TEAM}`)).toBe(false);
+    expect(rt.has(`typing:${TEAM}:${ANA}`)).toBe(false);
   });
 
   it('ignores my own reflection', () => {
@@ -169,14 +231,32 @@ describe('handleTyping (core)', () => {
 
   it("clears the line the moment that peer's message arrives", () => {
     vi.useFakeTimers();
-    const { ctx, rt, state } = testCtx();
+    const { ctx, state } = testCtx();
     handleTyping(ctx, { chatJid: ANA, fromJid: ANA, state: 'composing', outgoing: false });
     expect(state().typing[ANA]?.names).toEqual(['Ana']);
 
     handleMessage(ctx, message({ id: 'ana-1' }));
 
     expect(state().typing[ANA]).toBeUndefined();
-    expect(rt.has(`typing:${ANA}`)).toBe(false);
+  });
+
+  it('keeps the other typer when one sender pauses in a group', () => {
+    vi.useFakeTimers();
+    const { ctx, rt, state } = testCtx();
+    handleTyping(ctx, { chatJid: TEAM, fromJid: ANA, state: 'composing', outgoing: false });
+    handleTyping(ctx, {
+      chatJid: TEAM,
+      fromJid: 'ben@zilar.test',
+      state: 'composing',
+      outgoing: false,
+    });
+    expect(state().typing[TEAM]?.names).toHaveLength(2);
+
+    handleTyping(ctx, { chatJid: TEAM, fromJid: ANA, state: 'paused', outgoing: false });
+
+    expect(state().typing[TEAM]?.names).toHaveLength(1);
+    expect(rt.has(`typing:${TEAM}:ana@zilar.test`)).toBe(false);
+    expect(rt.has(`typing:${TEAM}:ben@zilar.test`)).toBe(true);
   });
 });
 
@@ -217,6 +297,17 @@ describe('markers, occupants and presence (core)', () => {
       online: false,
       lastSeenAt: NOW,
     });
+  });
+
+  it('reads last seen from the delay stamp of an unavailable presence', () => {
+    const { ctx, state } = testCtx();
+    const stamp = new Date('2026-09-20T08:00:00Z').getTime();
+    handlePresence(ctx, { jid: ANA, available: false, delayedAt: stamp });
+
+    expect(state().chats.find((chat) => chat.id === ANA)).toMatchObject({ online: false });
+    expect(state().chats.find((chat) => chat.id === ANA)?.lastSeenAt).toEqual(
+      new Date('2026-09-20T08:00:00Z'),
+    );
   });
 });
 

@@ -164,6 +164,16 @@ export interface ChatStoreState extends ChatStoreGroups {
   /** Retries a failed sticker send (the payload is already on the message). */
   retrySticker: (chatId: string, messageId: string) => void;
   /**
+   * Retries a failed text send (re-sends the stored body with the same id).
+   * Removes nothing: only a failed own text may relaunch the send.
+   */
+  retryText: (chatId: string, messageId: string) => void;
+  /**
+   * Removes a failed local bubble (the send never reached the server, so
+   * there is nothing to retract). Only a `failed` message may go.
+   */
+  deleteFailedMessage: (chatId: string, messageId: string) => void;
+  /**
    * Forwards copies of `messages` into each target chat (T-0432): one
    * optimistic copy per message per target with a validated forward origin,
    * then the optional `comment` as one text message per target that queued a

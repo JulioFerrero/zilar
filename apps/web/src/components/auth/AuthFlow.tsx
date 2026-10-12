@@ -200,6 +200,7 @@ export function AuthFlow({
               label="Email"
               type="email"
               autoComplete="email"
+              autoFocus
               value={email}
               onChange={(event) => changeEmail(event.target.value)}
               placeholder="you@example.com"

@@ -4,6 +4,7 @@ import type { FetchLike } from '../ai/litellm-client';
 import type { ChatCompletionMessage } from './context';
 import type { DmTurnOutcome } from './dm-turn';
 import { clearProgressQuietly, runToolLoop } from './dm-tool-turn';
+import { cutShortSuffix } from './replies';
 import {
   actionOfCall,
   executeToolCalls,
@@ -322,7 +323,10 @@ async function runGroupToolTurn(
         messages: loop.messages,
         ...(maxRounds <= 1 ? { tools } : {}),
       });
-      text = (last.content ?? TRANSIENT_FAILURE_REPLY) + loop.notices.join('');
+      text =
+        last.content === null
+          ? TRANSIENT_FAILURE_REPLY + loop.notices.join('')
+          : last.content + cutShortSuffix(last.finishReason) + loop.notices.join('');
     } catch (error) {
       const failure = mapFailureToReply(error);
       deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');

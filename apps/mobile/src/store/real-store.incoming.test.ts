@@ -188,6 +188,8 @@ describe('mobile incoming events, actions and reads', () => {
   it('keeps an edit made after the ack when the echo arrives', async () => {
     const { store, core } = await setup();
     store.getState().sendText(ANA, 'hello');
+    await flush();
+    core.emit('acked', { stanzaId: 'srv-1' });
     await waitFor(() => expect(store.getState().messages(ANA).at(-1)?.status).toBe('sent'));
     const localId = store.getState().messages(ANA).at(-1)?.id ?? '';
 
@@ -210,6 +212,8 @@ describe('mobile incoming events, actions and reads', () => {
   it('keeps a reaction made after the ack when the group echo arrives', async () => {
     const { store, core } = await setup();
     store.getState().sendText(TEAM, 'hi team');
+    await flush();
+    core.emit('acked', { stanzaId: 'srv-1' });
     await waitFor(() => expect(store.getState().messages(TEAM).at(-1)?.status).toBe('sent'));
     const localId = store.getState().messages(TEAM).at(-1)?.id ?? '';
 

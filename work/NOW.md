@@ -2,6 +2,309 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-12 09:02 local: offline sending fixed end to end. APK `zilar-805873ce.apk` (in ~/Downloads) checked on the emulator against production**
+- **Merged:**
+  - T-1221: history shows a resent message once (same chat, sender and origin id);
+  - T-1222: the same for live arrivals;
+  - T-1220: the core holds `online` until SM is enabled, so resends get acked; the watchdog always re-arms after a replace.
+- **Emulator:**
+  - "Offline two" now shows **once** in history;
+  - a 30 s airplane gap with "Offline four" sent offline: the header said **"online" within 20 s** (it was 2 to 3 min), the bubble got **✓ within 30 s** in the live session, and the server stored it **once** (06:59:43Z, 12 s after the network; unread went from 4 to 5).
+- `extra-1220.md` (the hung HTTP call) wasn't needed for the reconnect. A mobile HTTP call with no timeout is still possible; that's a candidate audit, unconfirmed.
+- **Nothing is running.**
+
+**2026-10-12 08:01 local: T-1216 merged; emulator check of APK `zilar-745be24c.apk` (in ~/Downloads)**
+- **Passed:**
+  - the voice hint reads "Hold to record, release to send" in full (T-1215);
+  - "Send test notification" with the app open shows "Zilar — Push notifications work on this device." (T-1215, the whole FCM path);
+  - "Offline three", sent in airplane mode with a 31 s gap, reached the server **once** (Julio's unread went from 3 to 4), so T-1216's resend works without a duplicate.
+- **Bugs found:**
+  - **T-1220 (running):** after a gap of 20 s or more, "Connecting…" lasts **2 to 3 minutes** although the device network works (ping OK). The resent bubble kept its clock in the live session; it showed ✓ only after a cold start. A swipe Unpin during "Connecting…" hung silently. The lead holds extra evidence (`extra-1220.md`) to send after the worker's first report.
+  - **T-1221 (running):** history shows "Offline two" **twice**. The two archive rows have different stanza-ids and the same origin id; the ledger never links them.
+- **Not checked:** the swipe error line (T-1218). Airplane mode didn't produce a clean HTTP failure; the call hung instead.
+
+**2026-10-12 07:22 local**
+- **Merged:**
+  - T-1218: a failed swipe shows an error line for 4 s;
+  - T-1219: arrow keys reach the open Archived rows (checked on the web mock).
+- **T-1216 is in auto fix round 1.** The pre-review must-fix: a stanza sent mid-reconnect isn't SM-tracked, so after a fresh session on the same client it gets no `unacked`, and the new gate would never resend it. The should-fix: `unacked` must not revert an echo-settled bubble.
+  - **The lead's rule for the fix:** after a fresh session (rebound), resend every entry still waiting for an ack, once, with the same id; after a true resume, never resend; never resend an entry whose bubble is already `sent`. T-1217 makes the server count any duplicate once.
+- **After T-1216:** the APK and the emulator re-check: offline send, hint, test push and the swipe error.
+
+**2026-10-12 06:43 local**
+- **T-1217 merged and live:** the server's unread counts a resent message (same sender and origin id) once. Julio's Claude Test DM went from 4 to 3, the duplicated "Offline two" counted once. `/api/chats` answers 200.
+- **T-1216 fix round 1 is in pre-review.** The lead corrected the root cause: the watchdog `restartStuckClient` drops the old client with its SM queue, so a queued stanza never gets `ack` or `fail`. The library's `disconnect` doesn't clear the queue. Now the core emits `unacked` for each queued message before dropping the client, and the store resends once with the same id. A true resume never resends.
+
+**2026-10-12 06:09 local**
+- **Merged:**
+  - T-1215: the hint width, and the test push shows while the app is open;
+  - T-1214: unread is finished; the preview's `archiveId` is the read mark, and the origin id stays for XMPP markers.
+- **Live after the T-1214 deploy:** `/api/chats` answers 200, and both DMs carry `unread`, `lastMessage` and a numeric `archiveId`. `/health` ok.
+- **The lead's full test run on main at `12c7e6cc1`: every test passes.**
+  - chat-core 62, xmpp-core 134, client-core 102, server 501, mobile 187 and web 60;
+  - api-contract has no tests.
+- **Running:** T-1216, the lost ack and the duplicate resend.
+- **Next:** a server dedupe on `origin_id` (from T-1216's finding, now that T-1214 has left `unread.ts`), then the APK and the emulator re-check.
+
+**2026-10-12 05:53 local: emulator check of APK `zilar-86f8eef2.apk` (in ~/Downloads), against production**
+- **Passed:**
+  - **swipe:** Pin, Mute and Archive; Pin shows the icon, and the swipe then offers Unpin;
+  - **one ball colour:** Julio is green in the list, the header and the profile (it was purple on the profile before T-1212);
+  - **Settings → Notifications:** Enabled, the preview switch and the test button;
+  - **offline sending:** "Connecting…" shows in airplane mode, and the earlier "Offline test" was delivered.
+- **Bugs found, each with a task:**
+  - **T-1215:** the "Hold to record" hint is squeezed to the mic's width (it shows "H…"), and "Send test notification" never shows anything. FCM arrives, but the wake handler skips while the app is open.
+  - **T-1216:** a text sent as the network dropped reached the server (03:42:46Z), but its ack was lost. The bubble stayed "sending" for minutes, then a resend about 4 minutes later was stored as a **second copy** (03:46:58Z; Julio's unread went from 3 to 4).
+    - It needs the root cause, then a resend only on a new session.
+    - It also needs a server dedupe on `origin_id`, as a follow-up.
+- **Not checked:** media, the image viewer, the failed-send Retry (it needs the 10-minute cap) and jump-to-bottom with a long chat.
+- **T-1214 fix round 1:** the preview's archive id broke the XMPP displayed marker on focus-clear (the peer's seen ticks wouldn't update). Now it keeps two ids: the origin id for XMPP, the archive id for the HTTP mark.
+
+**2026-10-12 05:32 local**
+- **Main is clean:** `tsc` gives 0 errors on client-core, web and mobile, and the web send tests pass 10 of 10.
+- **Merged:**
+  - T-1213: the typecheck fix;
+  - T-1210: the stale web tests;
+  - T-1211: SG-5, a removal reaches other devices at once (the server sets the affiliation to `none`, so ejabberd sends 321);
+  - T-1207: the apps read the server's unread and preview, and send read marks.
+- **Live web, read-only:** after a reload the list shows the server's unread counts (Claude Test 2, JULITO 17); before, every reload started at 0. No console errors; `/health` ok.
+- **Running:**
+  - T-1212: mobile avatar seeds, rebased by the lead, in pre-review;
+  - T-1214: finishing unread. The preview gets `archiveId` (valid read marks), mobile's decoder keeps the fields, and web's live refresh merges.
+- **Process:** the lead's merge helper now runs the gate. The `lead merge` step kills the calling shell (exit 144) after the commit lands, so the lead verifies main by hand after each merge.
+
+**2026-10-12 05:21 local: main typecheck broken, fix running** (headings from here up were corrected to their commit times at 09:02; they had been about 2 hours ahead)
+- **What's broken:** `packages/client-core/src/store/send/retry-text.ts` (T-1196) calls `outboxFailed` with the old 8-argument shape, but T-1197 changed it. client-core, web and mobile fail `tsc` with 3 TS2554 errors.
+- **Why it slipped through:** the lead's merge helper used `lead merge --skip-gate`, so no gate ran on the combined tree. **Fixed:** the helper now merges with the gate.
+- **Runtime effect:** only the new mobile Retry is affected, and no APK has it yet. A retried text would get no outbox entry.
+- **Fix:** **T-1213** (urgent, running). T-1210 waits for it.
+- **Also:** the main checkout's `node_modules` lacked `expo-notifications`. The lead ran a frozen install there.
+
+**2026-10-12 ~06:30 local**
+- **Merged:** T-1203 (the avatar seed audit), T-1206 (mobile notifications, badge and tray), T-1208 (test push to a phone; deployed, routes 200), T-1209 (web avatar seeds), T-1197 (the outbox resend fix).
+- **The lead's full test run on main:**
+  - client-core 95, xmpp-core 133, chat-core 62, mobile 186 and server 501, all passing;
+  - **web 58 of 60.** The 2 failures in `realStore.send.test.tsx` have been stale since T-1153 (bisected) and are fixed in T-1210.
+- **Running:** T-1207 (the client server-unread), T-1210, T-1211 (SG-5 removal), T-1212 (mobile avatar seeds).
+- **Next APK** after T-1207 and T-1212, then the emulator check:
+  - an offline send;
+  - Not sent, Retry and Delete;
+  - swipe actions;
+  - Settings → Notifications and Send test;
+  - the image viewer;
+  - the voice hint;
+  - one ball colour.
+
+**2026-10-12 ~05:30 local**
+- **T-1205 merged:** the server unread redo.
+  - **Before the merge,** the lead probed the same query shape against the local dev Postgres through postgres.js: string marks work, and a `BigInt` array fails exactly like the production 500.
+  - **Live after deploy:** `/api/chats` answers 200, both DMs carry `unread` and `lastMessage`, and `/health` is ok.
+- **Next:** the F3 client half (the apps use the server's unread and preview, and call `PUT /api/chats/:jid/read`), after T-1197.
+
+**2026-10-12 ~05:00 local**
+- **Merged since 04:35:**
+  - T-1200: the reply fallback is stripped from pushes and the AI context; deployed, routes 200;
+  - T-1196: a mobile failed text shows "Not sent", with Retry and Delete;
+  - T-1202: mobile voice hints and haptics;
+  - T-1204: swipe actions on mobile chat rows.
+- **Running:** T-1197 (the outbox resend), T-1203 (the avatar seed audit), T-1205 (the server unread redo) and T-1206 (mobile notification settings, badge and tray).
+- **Next:** SG-5 (a removal propagates through the MUC 321/307 status), after T-1197; then the F3 client half, after T-1205.
+- **Questions for Julio:**
+  1. **MP-F8, the "delivered" tick:** keep Telegram's two states, or add delivered? (Recommended: keep.)
+  2. **Parity fix #4, markdown for human messages** (bold, italic, code, strike): it changes how every human message renders, so it's your call. Not started.
+
+**2026-10-12 ~04:35 local: INCIDENT, fixed**
+- **What broke:** T-1198 (server unread) deployed around 04:15. **`GET /api/chats` then answered 500 for every user**, so the chat list wouldn't load on web or mobile. The lead's live check after the deploy caught it.
+- **The fix:** the lead **reverted the code** (`6904f5900`) and kept migration 0048 (the table is live and empty, which is harmless). Since the revert was deployed: `/api/chats` answers 200 and `/health` is ok. **The outage lasted about 15 minutes.**
+- **The likely cause:** a `BigInt` array parameter bound to postgres.js. The test fake stringified every value, so the tests passed.
+- **The redo is T-1205**, with three changes:
+  - no `BigInt` parameters;
+  - an unread failure omits the fields instead of failing the list;
+  - a strict fake.
+- **Julio's call:** since this was a revert in production, he may want to look at it.
+
+**2026-10-12 03:55 local**
+- **Merged since 03:29:**
+  - T-1193: the token 401 is retried, and an auth stop runs the retry ladder;
+  - T-1201: the mobile image viewer on reanimated.
+- **Running:**
+  - T-1196: mobile failed text Retry;
+  - T-1197: the outbox resend (the emulator bug), plus T-1193's missing store test;
+  - T-1198: server unread, in pre-review;
+  - T-1200: the reply fallback strip, in pre-review.
+- **Lead's note:** the times in the headings below were wrong guesses at first (they read 05:00 to 10:15). They're now corrected to the commit times.
+- **Julio's phone checks with the next APK:**
+  - offline send, after T-1197;
+  - the image viewer: pinch, pan, double-tap, swipe down;
+  - photos load (T-1185);
+  - a long chat and jump-to-bottom;
+  - "Not sent" and Retry, after T-1196.
+
+**2026-10-12 03:29 local**
+- **Merged:** T-1199 (web older page and keys). The lead checked `n` and the arrow keys on the mock build.
+- **Decision for Julio: MP-F8, the "delivered" tick, is on hold.**
+  - Telegram has no delivered state: one tick means it reached the server, two mean read, and in groups two mean anyone read it. That's how Zilar works now (T-1153 made one tick honest);
+  - adding delivered (XEP-0184) would be WhatsApp-style;
+  - **the lead's recommendation:** keep the Telegram semantics, and drop F8 and the group part of MP-9.
+
+**2026-10-12 03:19 local**
+- **Merged:** T-1194 (reply ids and the XEP-0461 fallback). Its follow-ups: (1) went into T-1197; (2) is T-1200.
+- **Running:** T-1193 (fix round), T-1196, T-1198 (schema), T-1199, T-1200. T-1197 waits for T-1193.
+- **The lead slipped again:** it used `sed` to flip T-1196's BOARD row from todo to in-progress. The edit is correct, but the rule says Edit only; the second slip tonight.
+
+**2026-10-12 03:10 local: wave 5**
+- **Merged:** T-1192 (mobile photos, DM header, connection label), T-1186 (migration safety; deployed, `/health` ok), T-1195 (web confirms, quote jump, sign-in focus).
+- **APK `~/Downloads/zilar-c6591e1f.apk`** (main at T-1192).
+  - **Emulator check against production:**
+    - the list, opening at the bottom, the DM header opening the profile, "Connecting…" in the header in airplane mode, and dragging closing the keyboard all pass;
+    - an online send gets its tick;
+    - **the bug: a text sent in airplane mode is never resent after reconnecting** (it stays on the clock and never arrives). That's spec T-1197, after T-1193.
+  - **Not checkable with the test account:** media (the chat has none) and jump-to-bottom (too few messages).
+  - **Small follow-up:** the profile ball's colour differs from the list ball (different seeds).
+- **Running:** T-1193 (token retry, pre-review), T-1194 (reply ids, pre-review), T-1198 (server unread, the schema task).
+- **Waiting on others:**
+  - T-1196 (mobile failed text Retry), after T-1194;
+  - T-1197 (the outbox resend), after T-1193;
+  - the client half of F3, after T-1198 and T-1193.
+- **For Julio:** the APK is fine to install, but **an offline text can stay "sending"** until T-1197 is in. Send online for now.
+
+**2026-10-12 02:55 local: night wave 4**
+- **Merged since 06:30:**
+  - T-1181: mobile drafts;
+  - T-1183: web group members;
+  - T-1187: owner transfer API;
+  - T-1185: mobile media through `/api/files`;
+  - T-1188: mobile row memo;
+  - **T-1153: honest ticks and the outbox**, wired and rebased;
+  - T-1190: web Make owner;
+  - T-1189: one badge edge, checked on the lead's mock build;
+  - T-1191: mobile jump-to-bottom and keyboard.
+- **Running:**
+  - T-1186: migration safety, last fix (the probe can't block startup);
+  - T-1192: mobile photos, DM header, connection label;
+  - T-1193: MP-F7 token retry;
+  - T-1194: UI-F1 reply ids;
+  - T-1195: web confirm, quote jump, sign-in focus.
+- **Next:**
+  - MP-F3: catch-up and server unread, schema, after T-1193;
+  - MP-F8: the delivered tick, after T-1193 and T-1194;
+  - MUX-3: failed send and Retry, after T-1192.
+- **Before 11:00:** build the APK once T-1192 merges, and check it on the emulator against production: photos, GIFs and voice load through `/api/files`, a long chat opens at the bottom, jump-to-bottom works, drafts work. Then copy it to `~/Downloads`.
+
+**2026-10-12 02:40 local: night wave 3**
+- **Merged since 05:00:**
+  - T-1170: web drafts and focus;
+  - T-1175: batched topics, from about 105 queries to 13 or fewer;
+  - T-1177: web search. Live: "No people found", "No chats match" and Esc are all checked, and message search answers after the REVOKE;
+  - T-1178: the Notifications page;
+  - T-1180: topic-room sync retry;
+  - T-1179: redaction and stop grace;
+  - T-1176: AI group notice and reply-wake, with the stanza-id match;
+  - T-1182: AI follow-ups;
+  - T-1174: SEC-7 and SEC-8. The lead overrode an auto round that had hidden public group pictures;
+  - T-1184: fewer push queries.
+- **Live checked:** New message filters contacts, and `/api/chats` gives 200.
+- **Running:**
+  - T-1153: outbox, auto round 2;
+  - T-1181: mobile drafts, removing a test;
+  - T-1183: web group members;
+  - T-1185: mobile media through `/api/files` (SEC-3 step 1);
+  - T-1186: migration safety;
+  - T-1187: owner transfer.
+- **SEC-3 step 2** (the edge stops `GET /upload/*`) waits until Julio's phone runs the APK with T-1185, because old APKs load `/upload/` directly.
+- **Lead slip:** one `sed` edit to a task status line (T-1180). It was correct; no repeat.
+
+**2026-10-12 02:22 local: night wave 2, 8 workers**
+- **Merged since 03:30:**
+  - T-1166: the web draft stream reconnects;
+  - T-1165: AI context applies edits and deletes;
+  - T-1168: the AI drains on deploy;
+  - T-1169: `/health` reports ejabberd and push, plus the GitHub Uptime check. Live: `ejabberd: ok`, `push: online`, and a manual Uptime run is green;
+  - T-1171: web New message;
+  - T-1164: the plan page with all findings and the Telegram matrix;
+  - T-1172: the mobile list keeps its place;
+  - T-1173: mobile Sign out and Back;
+  - T-1167: honest AI errors.
+- **Running:**
+  - T-1153: lead fix round. **The outbox was never wired into production**; the round also covers resend with the same id (origin-id);
+  - T-1170: lead fix round, per-user edit stash;
+  - T-1174: SEC-7/8;
+  - T-1175: PERF-4;
+  - T-1176: AI-7/8;
+  - T-1177: WUX-1/2;
+  - T-1178: WUX-5;
+  - T-1179: OPS-16/17.
+- **Next, after T-1153:** MP-F7 token retry, MP-F3 catch-up and server unread (schema), UI-F1 reply ids, MUX-3 failed-send retry, then the APK.
+
+**2026-10-12 02:02 local: Julio asleep until ~11:00 ("use all the computer"); 8 workers**
+- **Merged since 01:30:**
+  - T-1163: the public Fix plan page;
+  - T-1151: mobile suspends in the background;
+  - T-1160: seen only when seen;
+  - T-1161: unread, last seen, typing;
+  - T-1159: contacts-only DMs, `mod_block_strangers`. Live: health is ok, the ws upgrade gives 101, and web loads Julio's chats.
+- **Julio, 02:20:** keep everything public, including the open security items. The page shows every finding (T-1164).
+- **Running:**
+  - T-1153: outbox;
+  - T-1164: plan page v2;
+  - AI fixes: T-1165 (AI-6), T-1166 (AI-2/12), T-1167 (AI-3/4/5), T-1168 (AI-1);
+  - T-1169: OPS-2 health and the uptime alert;
+  - T-1170: WUX-3/6 drafts and focus.
+- **Next, once T-1153 merges:**
+  - MP-F7 (token retry; overlaps T-1153's xmpp-core config);
+  - MP-F3 (catch-up and server unread, schema);
+  - UI-F1 (reply ids);
+  - then an APK to `~/Downloads`.
+- **Julio's morning list:**
+  1. install the APK and test background push, the false "seen" and typing;
+  2. send one DM between two contacts (post T-1159);
+  3. check the B2 bucket has the new backup;
+  4. web message search still works after the REVOKE;
+  5. turn on Coolify notifications (deploy, backup and task failed): needs his OK.
+
+**2026-10-12 ~01:30 local: ten audits in; backups re-created; waves 1-3 running**
+- **Audits:** ten docs in `docs/audit/`: eight by Fable (MP, SG, SEC, UI, PERF, MUX, WUX, TG) and two by Opus (AI, OPS). Never run more than one Fable at a time: Julio's 5-hour limit was hit.
+- **Backups (OPS-1, P0):** zilar-chat had no dump task and no volume backups after the 10-11 move. Re-created with Julio's OK: the `pg-dump-nightly` task at 03:30, and volume backups for postgres-data, sticker-data, avatar-data and ejabberd-uploads to B2 `zilar-s3`. A first `postgres-data` backup was run by hand. Julio checks the B2 bucket.
+- **Merged:**
+  - T-1154: group push;
+  - T-1156: deploy hardening. Live: `/xmpp-ws/api/status` gives 404 and the ws upgrade gives 101. Julio ran the search-role REVOKE;
+  - T-1152: push enable on every session;
+  - T-1157: safe file types;
+  - T-1158: blocking really blocks;
+  - T-1162: one owner per web-push endpoint.
+- **Running:**
+  - T-1151, MP-F1, fix round: `wake` listener stacking;
+  - T-1153, MP-F4;
+  - T-1160: seen only when seen;
+  - T-1161: unread, last seen, typing;
+  - T-1163: the public Fix plan page from `docs/plan/plan.json`. **The lead keeps `plan.json` current; sensitive items stay generic until merged.**
+- **Next:**
+  - T-1159: `mod_block_strangers`, after T-1151 merges (yml);
+  - MP-F3: catch-up and server unread (schema);
+  - MP-F7, MP-F8, UI-F1;
+  - OPS alerts.
+  - One APK once T-1151 and T-1153 merge, then the phone test.
+
+**2026-10-11 night: four Fable audits are in; wave 1 and wave 2 fixes are running (8 workers)**
+- **Audits** (docs only, committed): `docs/audit/message-pipeline-audit.md`, `social-graph-audit.md`, `security-audit.md` and `features-ui-audit.md`. The combined plan is `docs/audit/fix-plan-2026-10-11.md`.
+- **Wave 1** (message pipeline P0s):
+  - T-1151, MP-F1: mobile background suspend and wake;
+  - T-1152, MP-F2: push enable on every session;
+  - T-1153, MP-F4: honest ticks and an outbox;
+  - T-1154, MP-F5: group push notifier;
+  - T-1155, MP-F6: `notify_on` messages and oldest-first.
+- **Wave 2:**
+  - T-1156: Caddy proxies only `/xmpp-ws/ws`. Live `/xmpp-ws/api/status` answers 403 from ejabberd today, so the admin API is reachable; it must become 404. Plus the search role REVOKE, which Julio runs;
+  - T-1157: safe inline file types;
+  - T-1158: block really blocks.
+- **Next:**
+  - T-1159: `mod_block_strangers`, contacts-only DMs (Julio's decision). Launch after T-1151 and T-1155 merge, because of the yml overlap;
+  - then wave 3: MP-F3 catch-up and server unread (schema), MP-F7, MP-F8 the delivered tick, and UI-F1 to F5.
+- **Fixed earlier tonight and live:**
+  - T-1150: the real push cause, from Julio's prod `error.log` (`push_session_pkey` on (username, timestamp), a double registration with new nodes). Push now arrives, but late and only the first of a burst, which is MP-1 and MP-2;
+  - T-1147, T-1148, T-1149.
+  - Julio's phone runs APK `zilar-77160344`.
+
 **2026-10-11 evening: push works only for the server test; real messages are blocked on ejabberd**
 - **Live:** `PUSH_ENABLED`, VAPID and storage key set in Coolify (Julio OK'd it).
   - T-1144: FCM env added to the Coolify compose; production deploys `deploy/coolify/docker-compose.app.yml`.

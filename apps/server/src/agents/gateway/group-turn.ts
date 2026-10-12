@@ -14,11 +14,9 @@ import { finishDelegation } from '../delegation/service';
 import { mapFailureToReply, runGroupTurn, type ExecuteToolCall } from '../reply';
 import { buildGroupTools } from '../tools';
 import {
-  GROUP_RATE_WINDOW_MS,
-  GROUP_TURNS_PER_WINDOW,
-  ROUND_MAX_AI_TURNS,
   errorName,
   isAiSender,
+  rememberRoomSentId,
   toRedactedError,
   type AgentGatewayDeps,
   type AiSession,
@@ -26,6 +24,7 @@ import {
   type RoomPendingMessage,
   type RoomRound,
 } from './contracts';
+import { checkRoomLimits, sendRoomRateNotice } from './room-limits';
 import {
   loadActiveAi,
   loadDelegationFlags,
@@ -232,39 +231,29 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       return;
     }
 
+    // T-1176 (AI-7): the rate window and the per-message round budget live in
+    // `room-limits.ts`. A rate drop tells the asker once per window; a round
+    // drop never does (AIs answering each other is expected).
     const atMs = nowMs();
-    const recent = (session.roomTurns.get(roomJid) ?? []).filter(
-      (stamp) => stamp > atMs - GROUP_RATE_WINDOW_MS,
-    );
-    if (recent.length >= GROUP_TURNS_PER_WINDOW) {
-      session.roomTurns.set(roomJid, recent);
+    const limit = checkRoomLimits({ roomTurns: session.roomTurns, roomRounds, roomJid, atMs });
+    if (limit !== 'ok') {
+      if (limit === 'rate') {
+        yield* sendRoomRateNotice({
+          notices: session.roomRateNotices,
+          roomJid,
+          atMs,
+          askerName: displayNameOf({ fromJid: trigger.fromJid, fromNick: trigger.fromNick }),
+          send: (text) => liveSendMessage(session, roomJid, 'groupchat', text),
+        }).pipe(Effect.catchDefect(() => Effect.void));
+      }
       logger.warn(
         { aiId: session.aiId, groupId: room.groupId, messageId: trigger.id },
-        'AI group rate limit reached; dropping the turn',
+        limit === 'rate'
+          ? 'AI group rate limit reached; dropping the turn'
+          : 'AI round budget spent; dropping the turn',
       );
       yield* failDelegationQuietly(trigger.delegationId);
       return;
-    }
-    recent.push(atMs);
-    session.roomTurns.set(roomJid, recent);
-
-    // T-0479: at most ROUND_MAX_AI_TURNS AI turns per human message per room,
-    // across every AI that message woke. The rate stamp just pushed is
-    // refunded so a dropped turn does not consume rate budget. A missing round
-    // (for example right after a restart) counts as a fresh one.
-    const round = roomRounds.get(roomJid);
-    if (round !== undefined && round.aiTurns >= ROUND_MAX_AI_TURNS) {
-      recent.pop();
-      session.roomTurns.set(roomJid, recent);
-      logger.warn(
-        { aiId: session.aiId, groupId: room.groupId, messageId: trigger.id },
-        'AI round budget spent; dropping the turn',
-      );
-      yield* failDelegationQuietly(trigger.delegationId);
-      return;
-    }
-    if (round !== undefined) {
-      round.aiTurns += 1;
     }
 
     // T-0479: a pure listener wake (every eligible item is a wake, no mention
@@ -490,7 +479,13 @@ export function createGroupTurn(ctx: GroupTurnContext) {
           // T-0156: the per-turn counts line (ids and counts only), like the
           // DM path below.
           turnLogger,
-          sendMessage: (to, kind, text, opts) => liveSendMessage(session, to, kind, text, opts),
+          sendMessage: async (to, kind, text, opts) => {
+            const sent = await liveSendMessage(session, to, kind, text, opts);
+            // T-1176 (AI-8): remember the id so a reply quoting this message
+            // wakes the AI without a mention.
+            rememberRoomSentId(session, roomJid, sent.id);
+            return sent;
+          },
           sendTyping: (to, kind, state) => {
             liveSendTyping(session, to, kind, state);
           },

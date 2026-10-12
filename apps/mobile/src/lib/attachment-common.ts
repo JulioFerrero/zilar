@@ -6,7 +6,10 @@
  * never import the barrel.
  */
 
+import { parseUrl } from '@zilar/chat-core';
 import { Data, Effect, type Effect as EffectType } from 'effect';
+
+import { API_URL } from './auth';
 
 export const TOO_LARGE_MESSAGE = 'That file is larger than 50 MB.';
 export const EMPTY_MESSAGE = 'That file is empty.';
@@ -61,3 +64,34 @@ export const authHeadersFor = Effect.fnUntraced(function* (
   }).pipe(Effect.orElseSucceed(() => undefined));
   return token === undefined ? undefined : { authorization: `Bearer ${token}` };
 });
+
+/** Whether a URL is on our own API origin — the only host that gets the bearer. */
+export function isApiOriginUrl(url: string, apiUrl: string | undefined = API_URL): boolean {
+  const apiOrigin = apiUrl === undefined ? undefined : parseUrl(apiUrl)?.origin;
+  return apiOrigin !== undefined && parseUrl(url)?.origin === apiOrigin;
+}
+
+/**
+ * The URL the app should load a file from (T-1185), the native twin of web's
+ * `mediaSrc` (`apps/web/src/lib/attachments.ts`): an `/upload/` file on our own
+ * API origin is routed through `GET /api/files` (T-0454), where the server
+ * checks the session and the chat membership. Every other URL — another origin
+ * (dev's ejabberd on `:5280`), `file://`, `blob:` or garbage — is returned
+ * untouched so it keeps loading directly. The chat id is the message's chat
+ * (`UiMessage.chatId`).
+ */
+export function mediaUrl(
+  chatId: string,
+  url: string,
+  apiUrl: string | undefined = API_URL,
+): string {
+  const parsed = parseUrl(url);
+  const apiOrigin = apiUrl === undefined ? undefined : parseUrl(apiUrl)?.origin;
+  if (parsed === undefined || apiOrigin === undefined || parsed.origin !== apiOrigin) {
+    return url;
+  }
+  if (!parsed.pathname.startsWith('/upload/') || parsed.pathname.length <= '/upload/'.length) {
+    return url;
+  }
+  return `${apiOrigin}/api/files?chat=${encodeURIComponent(chatId)}&url=${encodeURIComponent(url)}`;
+}

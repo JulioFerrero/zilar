@@ -66,6 +66,16 @@ export function SearchBar() {
           // one; the results list (a separate subtree) listens for this.
           if (event.key === 'Enter') {
             window.dispatchEvent(new Event('zilar:search-enter'));
+            return;
+          }
+          // Esc clears the query first, then blurs the box.
+          if (event.key === 'Escape') {
+            if (search !== '') {
+              event.preventDefault();
+              setSearch('');
+            } else {
+              inputRef.current?.blur();
+            }
           }
         }}
         placeholder={

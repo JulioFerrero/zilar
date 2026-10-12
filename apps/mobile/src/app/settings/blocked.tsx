@@ -182,7 +182,7 @@ function BlockedRow({
   const [state, unblock] = useAction<void, void, never>(() => onUnblock(person.userId));
   return (
     <View className="flex-row items-center gap-3 px-3 py-2.5">
-      <Avatar id={person.userId} name={person.name} size={44} />
+      <Avatar id={person.jid ?? person.userId} name={person.name} size={44} />
       <View className="min-w-0 flex-1">
         <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">
           {person.name}

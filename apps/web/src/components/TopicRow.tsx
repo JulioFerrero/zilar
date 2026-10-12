@@ -105,7 +105,7 @@ export function TopicRow({
                 <VolumeX aria-label="Muted" className="size-4 text-subtle-foreground" />
               )}
               {last !== undefined && (
-                <span className="font-mono text-[11px] text-subtle-foreground">
+                <span className="font-mono text-[11px] text-subtle-foreground transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
                   {formatListTime(last.createdAt, new Date())}
                 </span>
               )}
@@ -143,25 +143,28 @@ export function TopicRow({
                 </span>
               )
             )}
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`Chat actions for ${chat.title}`}
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                setMenuOpen((value) => !value);
-              }}
-              className="size-6 shrink-0 text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-            >
-              <MoreHorizontal className="size-4" aria-hidden="true" />
-            </Button>
           </span>
         </span>
       </Link>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`Chat actions for ${chat.title}`}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setMenuOpen((value) => !value);
+        }}
+        className={cn(
+          'pointer-events-none absolute top-1.5 size-6 shrink-0 bg-surface-raised text-subtle-foreground opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100',
+          isWide ? 'right-[10px]' : 'right-4',
+        )}
+      >
+        <MoreHorizontal className="size-4" aria-hidden="true" />
+      </Button>
       {menuOpen && <ChatActionsMenu chat={chat} onClose={() => setMenuOpen(false)} />}
     </div>
   );
@@ -177,6 +180,7 @@ export function TopicRow({
 export const GroupHeaderRow = memo(function GroupHeaderRow({
   groupTitle,
   groupId,
+  avatarSeed,
   avatarUrl,
   topics,
   selectedId,
@@ -189,6 +193,8 @@ export const GroupHeaderRow = memo(function GroupHeaderRow({
 }: {
   groupTitle: string;
   groupId: string;
+  /** T-1209: the General topic's room JID (the header ball seed). */
+  avatarSeed: string;
   avatarUrl?: string | undefined;
   topics: ChatSummary[];
   selectedId: string | undefined;
@@ -220,12 +226,15 @@ export const GroupHeaderRow = memo(function GroupHeaderRow({
     .reduce((best, time) => Math.max(best, time), Number.NEGATIVE_INFINITY);
   const selectedInside = topics.some((topic) => topic.id === selectedId);
   const Chevron = collapsed ? ChevronRight : ChevronDown;
+  // The "+" (new topic) button overlays the time on hover/focus, like the row
+  // "more" button: the time hides while the button is shown.
+  const showNewTopic = onOpenNewTopic !== undefined && newTopicChatId !== undefined;
 
   return (
     <div className="flex flex-col">
       <div
         className={cn(
-          'flex items-center gap-3',
+          'group relative flex items-center gap-3',
           isWide ? 'rounded-[12px] p-[10px]' : 'px-4 py-2.5',
           selectedInside && collapsed && isWide && 'bg-surface-raised',
         )}
@@ -237,7 +246,7 @@ export const GroupHeaderRow = memo(function GroupHeaderRow({
           aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${groupTitle}, ${active.length} topics`}
           className="flex min-w-0 flex-1 items-center gap-3 rounded-[12px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         >
-          <Avatar id={groupId} name={groupTitle} size={isWide ? 44 : 52} avatarUrl={avatarUrl} />
+          <Avatar id={avatarSeed} name={groupTitle} size={isWide ? 44 : 52} avatarUrl={avatarUrl} />
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5">
               <span className="truncate text-[14px] leading-5 font-semibold text-foreground">
@@ -246,7 +255,12 @@ export const GroupHeaderRow = memo(function GroupHeaderRow({
               <Chevron className="size-4 shrink-0 text-subtle-foreground" aria-hidden="true" />
               <span className="ml-auto flex shrink-0 items-center gap-2 pl-1.5">
                 {newest !== Number.NEGATIVE_INFINITY && (
-                  <span className="font-mono text-[11px] text-subtle-foreground">
+                  <span
+                    className={cn(
+                      'font-mono text-[11px] text-subtle-foreground transition-opacity',
+                      showNewTopic && 'group-hover:opacity-0 group-focus-within:opacity-0',
+                    )}
+                  >
                     {formatListTime(new Date(newest), new Date())}
                   </span>
                 )}
@@ -282,7 +296,10 @@ export const GroupHeaderRow = memo(function GroupHeaderRow({
             onClick={() => onOpenNewTopic(newTopicChatId)}
             aria-label={`New topic in ${groupTitle}`}
             title={`New topic in ${groupTitle}`}
-            className="shrink-0 rounded-full text-muted-foreground"
+            className={cn(
+              'pointer-events-none absolute top-1.5 size-6 shrink-0 rounded-full text-muted-foreground opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100',
+              isWide ? 'right-[10px]' : 'right-4',
+            )}
           >
             <Plus className="size-4" aria-hidden="true" />
           </Button>

@@ -16,11 +16,12 @@ import {
   REFERENCE_NAMESPACE,
   REPLY_NAMESPACE,
   RETRACTION_NAMESPACE,
+  STANZA_ID_NAMESPACE,
   STANZA_NAMESPACE,
   ZILAR_FORWARD_NAMESPACE,
 } from '../namespaces';
 import type { ChatKind, MentionInput, UploadSlot } from '../types';
-import { MAX_MENTIONS, codePointOffset, sanitizeReactions, type ReplyRef } from './reactions';
+import { MAX_MENTIONS, codePointLength, codePointOffset, sanitizeReactions } from './reactions';
 
 // ---------------------------------------------------------------------------
 // Outgoing stanzas
@@ -45,6 +46,41 @@ function forwardElement(origin: ForwardOrigin): XmppElement {
   return xml('forward', attrs, ...children);
 }
 
+// XEP-0461/XEP-0428: a reply quotes the replied-to message as a leading "> …"
+// line in the body when its text is known, so a client that cannot resolve the
+// `<reply/>` id still shows the quote. The fallback range names that line: the
+// "> " marker is two code points and the trailing newline is not part of it.
+function replyQuotePrefix(quote: string | undefined): string {
+  if (quote === undefined || quote === '') {
+    return '';
+  }
+  return `> ${quote.split('\n')[0] ?? ''}\n`;
+}
+
+function replyFallbackElement(prefix: string): XmppElement {
+  return xml(
+    'fallback',
+    { xmlns: FALLBACK_NAMESPACE, for: REPLY_NAMESPACE },
+    xml('body', { start: '2', end: String(codePointLength(prefix) - 1) }),
+  );
+}
+
+// The fallback quote sits at the head of the body, so mention offsets (UTF-16
+// code units into the text) shift by the prefix's own length.
+function shiftMentions(
+  mentions: MentionInput[] | undefined,
+  shift: number,
+): MentionInput[] | undefined {
+  if (mentions === undefined || shift === 0) {
+    return mentions;
+  }
+  return mentions.map((mention) => ({
+    jid: mention.jid,
+    begin: mention.begin + shift,
+    end: mention.end + shift,
+  }));
+}
+
 export function buildMessage(options: {
   id: string;
   to: string;
@@ -52,10 +88,13 @@ export function buildMessage(options: {
   text: string;
   payload?: Payload | undefined;
   forward?: ForwardOrigin | undefined;
-  replyTo?: ReplyRef | undefined;
+  replyTo?: { id: string; to?: string; text?: string } | undefined;
   mentions?: MentionInput[] | undefined;
 }): XmppElement {
-  const children: XmppElement[] = [xml('body', {}, options.text)];
+  const replyTo = options.replyTo;
+  const replyPrefix = replyQuotePrefix(replyTo?.text);
+  const body = `${replyPrefix}${options.text}`;
+  const children: XmppElement[] = [xml('body', {}, body)];
 
   if (options.payload !== undefined) {
     children.push(xml('agent', { xmlns: AGENT_NAMESPACE }, encodePayload(options.payload)));
@@ -73,18 +112,25 @@ export function buildMessage(options: {
     children.push(forwardElement(options.forward));
   }
 
-  if (options.replyTo !== undefined) {
+  if (replyTo !== undefined) {
     const attrs: Record<string, string> = {
       xmlns: REPLY_NAMESPACE,
-      id: options.replyTo.id,
+      id: replyTo.id,
     };
-    if (options.replyTo.to !== undefined) {
-      attrs['to'] = options.replyTo.to;
+    if (replyTo.to !== undefined) {
+      attrs['to'] = replyTo.to;
     }
     children.push(xml('reply', attrs));
+    if (replyPrefix !== '') {
+      children.push(replyFallbackElement(replyPrefix));
+    }
   }
 
-  pushMentionReferences(children, options.text, options.mentions);
+  pushMentionReferences(children, body, shiftMentions(options.mentions, replyPrefix.length));
+
+  // XEP-0359: the sender-generated id stays the same across resends, so a
+  // retried stanza dedupes on the receiver and in the archive.
+  children.push(xml('origin-id', { xmlns: STANZA_ID_NAMESPACE, id: options.id }));
 
   return xml('message', { type: options.kind, to: options.to, id: options.id }, ...children);
 }

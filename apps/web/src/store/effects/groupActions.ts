@@ -29,6 +29,7 @@ import {
   setMembersCanCreateTopics,
   setTopicRoles,
 } from './groups';
+import { addGroupMembers, removeGroupMember, transferGroupOwner } from './groupSettings';
 import type { StoreLocals } from './locals';
 import type { PortsShape } from './ports';
 import type { Lifetime } from './runtime';
@@ -51,6 +52,9 @@ export type GroupActions = Pick<
   | 'createChannel'
   | 'leaveChannel'
   | 'changeChannelRole'
+  | 'addGroupMembers'
+  | 'removeGroupMember'
+  | 'transferGroupOwner'
   | 'setMembersCanCreateTopics'
   | 'setGroupBackground'
   | 'setGroupListener'
@@ -118,6 +122,13 @@ export function makeGroupActions(deps: GroupActionsDeps): GroupActions {
     // other membership change in the app.
     changeChannelRole: (chatId, userId, role) =>
       rt.runPromise(changeChannelRole(ctx, chatId, userId, role)),
+    // T-1183: owners/admins add contacts to the group, or remove a member.
+    // Both refresh the detail and the chat list.
+    addGroupMembers: (chatId, userIds) => rt.runPromise(addGroupMembers(ctx, chatId, userIds)),
+    removeGroupMember: (chatId, userId) => rt.runPromise(removeGroupMember(ctx, chatId, userId)),
+    // T-1190: the owner hands the group over; the detail refreshes (the caller
+    // is now an admin) and the list refreshes, so Leave group appears.
+    transferGroupOwner: (chatId, userId) => rt.runPromise(transferGroupOwner(ctx, chatId, userId)),
     setMembersCanCreateTopics: (chatId, allowed) =>
       rt.runPromise(setMembersCanCreateTopics(ctx, chatId, allowed)),
     // T-0466: owners/admins set the group's shared background; the detail

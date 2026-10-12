@@ -11,6 +11,7 @@ import { useQuery } from '@/lib/effect/use-query';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 import { AvatarUploader } from './AvatarUploader';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 
 type HandleCheck =
   { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined };
@@ -49,6 +50,9 @@ function ProfilePictureSection() {
   const [, refetchUser] = useAction<void, void, ApiFailure>(() => fromApi(() => auth.refetch()), {
     mode: 'replace',
   });
+  // T-1212: the ball is seeded by the own bare JID (the same ball as the
+  // chat list and the contact profile row), the way T-1209 reads it.
+  const ownJid = useChatSelector((s) => s.me?.jid);
   if (user === undefined) {
     return null;
   }
@@ -59,6 +63,7 @@ function ProfilePictureSection() {
         kind="user"
         ownerId={user.id}
         ownerName={user.name}
+        ownerSeed={ownJid ?? undefined}
         currentUrl={shown}
         onChanged={(next) => {
           setChangedUrl(next);

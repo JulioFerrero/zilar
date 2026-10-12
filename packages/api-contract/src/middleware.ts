@@ -127,6 +127,36 @@ export class GroupsJoinRateLimit extends HttpApiMiddleware.Service<
 >()('zilar/effect/http/GroupsJoinRateLimit') {}
 
 /**
+ * The invite-minting budget (T-1174): a personal invite mints a one-use
+ * sign-up code, so it is capped per user. It runs before the service, after
+ * `Session`.
+ */
+export class AuthInviteRateLimit extends HttpApiMiddleware.Service<
+  AuthInviteRateLimit,
+  { requires: CurrentUser }
+>()('zilar/effect/http/AuthInviteRateLimit') {}
+
+/**
+ * The profile-edit budget (T-1174): a name change refreshes the nickname in
+ * every contact's roster through ejabberd, so it is capped per user. It runs
+ * before the body is read, after `Session`.
+ */
+export class AuthMeRateLimit extends HttpApiMiddleware.Service<
+  AuthMeRateLimit,
+  { requires: CurrentUser }
+>()('zilar/effect/http/AuthMeRateLimit') {}
+
+/**
+ * The group-creation budget (T-1174): creating a group or channel creates a
+ * MUC room, so it is capped per user. It runs before the payload is decoded,
+ * so an invalid body still spends budget.
+ */
+export class GroupsCreateRateLimit extends HttpApiMiddleware.Service<
+  GroupsCreateRateLimit,
+  { requires: CurrentUser }
+>()('zilar/effect/http/GroupsCreateRateLimit') {}
+
+/**
  * The topic-creation budget (T-0108): creating a topic hits ejabberd, so it is
  * capped per user. It runs before the payload is decoded, so an invalid body
  * still spends budget.

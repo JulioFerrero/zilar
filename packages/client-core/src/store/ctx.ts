@@ -136,6 +136,14 @@ export interface CoreCtx {
   lastReadUserId: string | undefined;
   /** Optimistic ids waiting for their server echo, by echo signature. */
   readonly pendingOutgoing: Map<string, string[]>;
+  /**
+   * Texts waiting for their ack or their resend (F4, honest ticks): one per
+   * store instance, memory only. The apps create it with the store; the core
+   * lifecycle flushes it on online and `reset()` clears it on sign-out, so
+   * one user's queue never goes out as another user. Undefined on contexts
+   * that never send text through the core.
+   */
+  outbox?: import('./send/outbox').TextOutbox | undefined;
 }
 
 /** One Promise call as an Effect; a rejection (or a sync throw) keeps its value as the failure. */

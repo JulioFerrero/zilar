@@ -6,6 +6,7 @@ import {
   type ChatSummary,
   type UiMessage,
 } from '@zilar/chat-core';
+import { Effect } from 'effect';
 import { memo, useRef, useState } from 'react';
 import { Avatar } from './Avatar';
 import { ForwardedHeader } from './ForwardedHeader';
@@ -19,6 +20,9 @@ import { ReactionChips } from './ReactionChips';
 import { ReplyQuote } from './ReplyQuote';
 import { StickerMessage } from './StickerMessage';
 import { Checkbox } from './ui/checkbox';
+import { fromApi } from '@/lib/effect/api-effect';
+import { useAction } from '@/lib/effect/use-action';
+import { scrollToMessage } from '@/lib/scrollToMessage';
 import { useSmoothText } from '@/lib/useSmoothText';
 import { cn } from '@/lib/utils';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -132,6 +136,19 @@ export const MessageBubble = memo(function MessageBubble({
     message.voice === undefined &&
     !attachmentFile;
 
+  // A reply quote click: scroll when loaded, else load around it then scroll (PinnedBanner.tsx:40-55).
+  const [, openQuote] = useAction((messageId: string) =>
+    Effect.suspend(() =>
+      scrollToMessage(messageId)
+        ? Effect.void
+        : fromApi(() => storeApi.getState().openAtMessage(chatId, messageId)).pipe(
+            Effect.tap(() =>
+              Effect.sync(() => window.requestAnimationFrame(() => scrollToMessage(messageId))),
+            ),
+          ),
+    ),
+  );
+
   const handleReact = (emoji: string): void => {
     storeApi.getState().react(chat.id, message.id, emoji);
   };
@@ -238,7 +255,7 @@ export const MessageBubble = memo(function MessageBubble({
             )}
             {message.replyTo !== undefined && (
               <div className="mb-1 w-full max-w-[200px]">
-                <ReplyQuote quote={message.replyTo} />
+                <ReplyQuote quote={message.replyTo} onOpen={() => openQuote(message.replyTo!.id)} />
               </div>
             )}
             <StickerMessage sticker={sticker} message={message} own={own} />
@@ -312,7 +329,7 @@ export const MessageBubble = memo(function MessageBubble({
 
             {message.replyTo !== undefined && (
               <div className="px-3 pt-2">
-                <ReplyQuote quote={message.replyTo} />
+                <ReplyQuote quote={message.replyTo} onOpen={() => openQuote(message.replyTo!.id)} />
               </div>
             )}
 

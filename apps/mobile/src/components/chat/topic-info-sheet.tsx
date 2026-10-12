@@ -74,6 +74,7 @@ export function TopicInfoSheet({
   onRetryRoles,
   onRetryGroupRoles,
   onOpenAiMemory,
+  seedFor,
 }: {
   chat: ChatSummary | null;
   groupTitle: string;
@@ -108,6 +109,11 @@ export function TopicInfoSheet({
   /** Opens the "What <AI> remembers" sheet for an AI. When unset the AI
    * rows show no memory button. */
   onOpenAiMemory?: (ai: { id: string; name: string }) => void;
+  /**
+   * T-1212: the member ball seed for a user id (the bare JID derived the
+   * mention-builder way). Absent paints the raw user id.
+   */
+  seedFor?: ((userId: string) => string) | undefined;
 }) {
   const topic = chat?.topic;
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -152,7 +158,11 @@ export function TopicInfoSheet({
             {topic.visibility === 'private'
               ? members.map((member) => (
                   <View key={member.userId} className="flex-row items-center gap-2 py-1.5">
-                    <Avatar id={member.userId} name={member.name} size={28} />
+                    <Avatar
+                      id={seedFor === undefined ? member.userId : seedFor(member.userId)}
+                      name={member.name}
+                      size={28}
+                    />
                     <Text numberOfLines={1} className="flex-1 text-[15px] text-foreground">
                       {member.name}
                     </Text>

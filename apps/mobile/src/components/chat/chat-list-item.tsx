@@ -10,6 +10,7 @@ import { PulseDot } from '@/components/chat/typing-dots';
 import { Text } from '@/components/ui/text';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { MUTED_FOREGROUND } from '@/lib/colors';
+import { useComposerDraft } from '@/lib/composer-drafts';
 import { primaryKey, raisedPill } from '@/lib/depth';
 import { useBlockedJids } from '@/lib/blocked-users';
 import { previewParts, typingLabel } from '@/lib/format';
@@ -48,6 +49,12 @@ function UnreadBadge({ count, muted }: { count: number; muted: boolean }) {
 export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) {
   const names = useChatStore((state) => state.typing[chat.id]?.names);
   const hasDraft = useChatStore((state) => state.drafts[chat.id] !== undefined);
+  // T-1181 (MUX-4): a chat the user typed in but did not send shows its
+  // composer draft instead of the last message, as Telegram does. `hasDraft`
+  // above is the AI reply draft, a different thing.
+  const composerDraft = useComposerDraft(chat.id);
+  const draftLine = composerDraft.trimStart().split('\n')[0] ?? '';
+  const showDraft = composerDraft.trim().length > 0;
   const last = chat.lastMessage;
   const messages = useChatStore((state) => state.messages(chat.id));
   const currentUserId = useChatStore((state) => state.currentUserId);
@@ -73,7 +80,14 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
       {...(onLongPress === undefined ? {} : { onLongPress })}
       className="h-[76px] flex-row items-center bg-background pl-4 active:bg-surface-raised"
     >
-      <Avatar id={chat.id} name={chat.title} size={52} online={chat.online} ai={chat.isAI} />
+      <Avatar
+        id={chat.id}
+        name={chat.title}
+        size={52}
+        online={chat.online}
+        avatarUrl={chat.avatarUrl}
+        ai={chat.isAI}
+      />
       <View className="ml-3 h-full flex-1 flex-row items-center border-b border-[#1a1a1a] pr-4">
         <View className="flex-1 justify-center">
           <View className="flex-row items-center justify-between">
@@ -107,6 +121,10 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
                   {label}
                 </Text>
               </View>
+            ) : showDraft ? (
+              <Text numberOfLines={1} className="mr-2 flex-1 text-[14px] text-muted-foreground">
+                <Text className="text-danger">Draft:</Text> {draftLine}
+              </Text>
             ) : deletedPreview !== undefined ? (
               <Text
                 numberOfLines={1}

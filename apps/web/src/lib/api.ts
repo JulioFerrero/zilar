@@ -15,6 +15,7 @@ export {
   getXmppToken,
   listChatFolders,
   listChatPrefs,
+  markChatRead,
   patchChatFolder,
   putChatBackgroundDefault,
   putChatPref,

@@ -31,6 +31,7 @@ import type {
   EjabberdAdminClient,
   FetchLike,
   SendDirectInvitationOptions,
+  UserResource,
 } from './types';
 
 // MUC/Sub nodes a push device subscribes to: room messages only. Presence,
@@ -144,6 +145,21 @@ export function createEjabberdAdminClient(
         fail('check_account', response, `unexpected result: ${errorText(result)}`);
       }
       return parsed.value === 0;
+    },
+
+    // The sessions ejabberd holds for the user, as resource strings (the
+    // command answers `[resource...]`; an offline user answers `[]`). A
+    // non-empty list only says "a session exists": pending and hibernated
+    // sessions show too, and those are the ones ejabberd itself pushes.
+    async userResources(localpart: string): Promise<UserResource[]> {
+      const user = parseName(localpart, 'localpart');
+      const response = await call('user_resources', { user, host: config.domain });
+      const result = expectOk('user_resources', response);
+      const parsed = Schema.decodeUnknownExit(Schema.mutable(Schema.Array(Schema.String)))(result);
+      if (Exit.isFailure(parsed)) {
+        fail('user_resources', response, `unexpected result: ${errorText(result)}`);
+      }
+      return parsed.value;
     },
 
     async changePassword(localpart: string, password: string): Promise<void> {

@@ -29,6 +29,12 @@ const ACCEPTED_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 interface AvatarUploaderProps {
   kind: AvatarKind;
   ownerId: string;
+  /**
+   * T-1209: the ball seed (the rule's JID); undefined paints the raw
+   * `ownerId` (the uploader call sites below carry no JID today, so the
+   * ball there keeps the old seed and only `avatarSvg` normalizes it).
+   */
+  ownerSeed?: string | undefined;
   ownerName: string;
   /** The current picture URL, if any. */
   currentUrl?: string | undefined;
@@ -49,6 +55,7 @@ interface AvatarUploaderProps {
 export function AvatarUploader({
   kind,
   ownerId,
+  ownerSeed,
   ownerName,
   currentUrl,
   onChanged,
@@ -200,7 +207,13 @@ export function AvatarUploader({
   return (
     <section aria-label={`${ownerName} picture`} className="flex flex-col gap-2">
       <div className="flex items-center gap-3">
-        <Avatar id={ownerId} name={ownerName} size={64} ai={kind === 'ai'} avatarUrl={currentUrl} />
+        <Avatar
+          id={ownerSeed ?? ownerId}
+          name={ownerName}
+          size={64}
+          ai={kind === 'ai'}
+          avatarUrl={currentUrl}
+        />
         <div className="flex flex-wrap gap-2">
           <Button type="button" onClick={() => fileRef.current?.click()} disabled={busy}>
             {currentUrl === undefined ? 'Add picture' : 'Change picture'}

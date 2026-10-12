@@ -101,6 +101,14 @@ export const SETTINGS_ITEMS = [
     href: '/settings/folders',
     group: 'chats',
   },
+  {
+    id: 'notifications',
+    title: 'Notifications',
+    subtitle: 'Push on this phone, previews and a test.',
+    icon: 'notifications',
+    href: '/settings/notifications',
+    group: 'account',
+  },
 ] as const satisfies readonly SettingsItemShape[];
 
 export type SettingsItem = (typeof SETTINGS_ITEMS)[number];

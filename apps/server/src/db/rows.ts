@@ -275,4 +275,12 @@ export interface MachinePairingCodeRow {
   createdAt: Date;
 }
 
+// Row of the `chat_reads` table.
+export interface ChatReadRow {
+  userId: string;
+  chatJid: string;
+  lastReadId: string;
+  updatedAt: Date;
+}
+
 export * from './rows-agents';

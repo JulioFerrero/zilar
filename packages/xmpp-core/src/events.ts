@@ -9,8 +9,24 @@ import type {
   RosterEvent,
   TypingEvent,
 } from './types';
+import './types-ack';
 
-export type EventPayload = {
+/** The server removed me from the room: my own unavailable MUC presence
+ * carried status 110 (self-presence) with 307 (kicked), 301 (banned) or
+ * 321 (affiliation changed). The store refreshes the chat list at once, so
+ * every device drops the group or topic instead of waiting for the poll. */
+export interface RemovedEvent {
+  roomJid: string;
+}
+
+declare module './types' {
+  interface XmppCore {
+    /** My own unavailable MUC presence carried 307, 301 or 321: the server removed me. */
+    on(event: 'removed', cb: (e: RemovedEvent) => void): () => void;
+  }
+}
+
+export interface EventPayloadMap {
   status: ConnectionStatus;
   message: ChatMessage;
   typing: TypingEvent;
@@ -20,8 +36,12 @@ export type EventPayload = {
   invited: InvitedEvent;
   roster: RosterEvent;
   error: ErrorEvent;
+  removed: RemovedEvent;
   replaced: void;
-};
+}
+// New events join the map through interface merging in their own module (see
+// `types-ack.ts`), so this file stays the only place the map is listed.
+export type EventPayload = EventPayloadMap;
 export type EventName = keyof EventPayload;
 export type StoredListener = (payload: never) => void;
 

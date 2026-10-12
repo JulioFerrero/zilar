@@ -14,6 +14,7 @@ import { syncTopicRoom } from '../topics/rooms';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { emitGroupAi, emitTopicAi } from './events';
 import { getGroupDetail, getMembership, requireGroup } from './queries';
+import { notePendingGroupSync } from './room-sync-retry';
 import {
   MAX_GROUP_MEMBERS,
   mapXmppError,
@@ -283,6 +284,7 @@ export async function syncGroupTopicRooms(
   logger: InviteLogger,
 ): Promise<void> {
   const rows = await groupTopicRows(db, groupId);
+  let failed = false;
   for (const topic of rows) {
     if (topic.archivedAt !== null) {
       continue;
@@ -290,8 +292,15 @@ export async function syncGroupTopicRooms(
     try {
       await syncTopicRoom({ db, adminClient, domain, logger }, topic);
     } catch {
+      failed = true;
       logger.warn({ groupId }, 'could not sync a topic room after a group membership change');
     }
+  }
+  // T-1180: remember the group so the failed sync is retried until every topic
+  // room matches the database again, instead of waiting for the next
+  // membership change of the group.
+  if (failed) {
+    notePendingGroupSync(groupId, { db, adminClient, domain, logger });
   }
 }
 

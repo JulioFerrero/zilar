@@ -11,6 +11,7 @@ import type { PublicAi } from '../../lib/ais-api';
 import { formatLimit } from './limits';
 import { runStateLabel } from './run-state';
 import { templateLabel } from './templates';
+import { aiSeed } from '@zilar/chat-core';
 
 /** One row of the My AIs list: avatar, name, template, model and limits. */
 export function AiRow({
@@ -32,7 +33,7 @@ export function AiRow({
         highlighted ? 'border-accent bg-surface-raised' : 'border-transparent',
       )}
     >
-      <Avatar id={ai.id} name={ai.name} size={44} ai />
+      <Avatar id={aiSeed(ai.jid)} name={ai.name} size={44} ai />
       <View className="min-w-0 flex-1">
         <View className="flex-row items-center gap-1.5">
           <Text numberOfLines={1} className="shrink text-[16px] font-semibold text-foreground">

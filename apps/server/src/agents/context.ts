@@ -1,5 +1,6 @@
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { bareJid } from '../jid';
+import { applyEdits } from './context-edits';
 
 export { bareJid };
 
@@ -219,7 +220,7 @@ export function buildGroupMessages(input: GroupContextInput): ChatCompletionMess
   const aiBare = bareJid(input.aiJid);
   const sender = input.senderName.trim() === '' ? 'a member' : input.senderName.trim();
 
-  const recent = input.history.slice(-DM_HISTORY_MESSAGE_LIMIT);
+  const recent = applyEdits(input.history).slice(-DM_HISTORY_MESSAGE_LIMIT);
   const turns: Array<{ id: string; role: 'user' | 'assistant'; content: string }> = [];
   for (const message of recent) {
     const turn = toGroupTurn(message, aiBare);
@@ -265,7 +266,7 @@ export function buildDmMessages(input: DmContextInput): ChatCompletionMessage[] 
   const aiBare = bareJid(input.aiJid);
   const ownerBare = bareJid(input.ownerJid);
 
-  const recent = input.history.slice(-DM_HISTORY_MESSAGE_LIMIT);
+  const recent = applyEdits(input.history).slice(-DM_HISTORY_MESSAGE_LIMIT);
   const turns: Array<{ id: string; role: 'user' | 'assistant'; content: string }> = [];
   for (const message of recent) {
     const turn = toTurn(message, aiBare, ownerBare);

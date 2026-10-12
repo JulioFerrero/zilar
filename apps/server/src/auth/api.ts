@@ -12,14 +12,22 @@
 import { Effect, Exit, Layer, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
-import { AuthGroup, AuthInvitesPublicGroup, UpdateMePayload } from '@zilar/api-contract';
+import {
+  AuthGroup,
+  AuthInviteRateLimit,
+  AuthInvitesPublicGroup,
+  AuthMeRateLimit,
+  UpdateMePayload,
+} from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerConfig } from '../config';
 import { refreshRosterNicknames } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
+import { rateLimitLayer } from '../effect/rate-limit-middleware';
 import { firstIssueMessage } from '../effect/schema-issues';
 import { runSql } from '../effect/sql';
+import { createRateLimiter } from '../rate-limit';
 import {
   handler,
   mountApi,
@@ -35,12 +43,19 @@ import { findXmppAccount } from '../xmpp/provisioning';
 import type { Auth } from './auth';
 import { createInvite, findInviteByCode, findUsableInvite, revokeInvite } from './invites';
 
+export const AUTH_INVITE_RATE_LIMIT_MAX = 10;
+export const AUTH_INVITE_RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const AUTH_ME_RATE_LIMIT_MAX = 10;
+export const AUTH_ME_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+
 export interface AuthApiDependencies {
   auth: Auth;
   db: ServerDatabase;
   config: ServerConfig;
   adminClient: EjabberdAdminClient;
   logger: Logger;
+  /** Injected in tests so the rate-limit window can advance. */
+  now?: () => number;
 }
 
 interface HandleLookupRow {
@@ -97,6 +112,17 @@ const AuthApi = HttpApi.make('auth').add(AuthGroup, AuthInvitesPublicGroup);
 
 export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
   const logger = deps.logger;
+  const now = deps.now ?? Date.now;
+  const inviteLimiter = createRateLimiter({
+    max: AUTH_INVITE_RATE_LIMIT_MAX,
+    windowMs: AUTH_INVITE_RATE_LIMIT_WINDOW_MS,
+    now,
+  });
+  const meLimiter = createRateLimiter({
+    max: AUTH_ME_RATE_LIMIT_MAX,
+    windowMs: AUTH_ME_RATE_LIMIT_WINDOW_MS,
+    now,
+  });
 
   const groupLayer = HttpApiBuilder.group(AuthApi, 'auth', (handlers) =>
     handlers
@@ -208,6 +234,12 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
   const apiLayer = HttpApiBuilder.layer(AuthApi).pipe(
     Layer.provide(Layer.merge(groupLayer, publicGroupLayer)),
     Layer.provide(sessionLayer(deps.auth, logger)),
+    Layer.provide(
+      rateLimitLayer(AuthInviteRateLimit, inviteLimiter, 'Too many invites, try again later'),
+    ),
+    Layer.provide(
+      rateLimitLayer(AuthMeRateLimit, meLimiter, 'Too many profile changes, try again later'),
+    ),
     Layer.provide(schemaErrorLayer(logger)),
   );
 

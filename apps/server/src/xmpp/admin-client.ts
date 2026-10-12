@@ -23,6 +23,7 @@ export type {
   EjabberdAdminClient,
   FetchLike,
   SendDirectInvitationOptions,
+  UserResource,
 } from './admin/types';
 export { EjabberdApiError } from './admin/errors';
 export { createEjabberdAdminClient } from './admin/client';

@@ -2,6 +2,7 @@
 // one wraps an effect module with the store's `StoreCtx`, lifetime and state
 // accessors; `realStore.ts` spreads the returned slice into the store state.
 import {
+  clearSupersededMarker,
   deleteForEveryone,
   editMessage,
   react,
@@ -128,6 +129,13 @@ export function makeChatActions(deps: ChatActionsDeps): ChatActions {
     closeChat: (chatId) => {
       if (get().activeChatId === chatId) {
         set({ activeChatId: undefined });
+      }
+      // A deferred open must not fire later for a chat that was left: drop
+      // the pending open and its `loading` marker (UI-2, via the existing
+      // `clearSupersededMarker` helper).
+      if (ctx.pendingOpenChatId === chatId) {
+        ctx.pendingOpenChatId = undefined;
+        clearSupersededMarker(ctx, chatId);
       }
     },
     retryChats: () => {

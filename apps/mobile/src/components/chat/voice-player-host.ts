@@ -38,6 +38,8 @@ import {
   setActiveMessageId,
   setSharedPlayer,
 } from '@/components/chat/voice-player-registry';
+import { isApiOriginUrl, mediaUrl } from '@/lib/attachment-common';
+import { getSessionToken } from '@/lib/session-token';
 import { createVoicePlayback, VOICE_SPEEDS } from '@/lib/voice-native';
 import type { VoicePlayback } from '@/lib/voice-native';
 
@@ -56,11 +58,24 @@ export interface VoicePlayerControls {
 export type VoicePlayerHost = {
   playback: VoicePlayback;
   controls: VoicePlayerControls;
+  /**
+   * Keeps the live chat id (T-1185): the voice URL is routed through
+   * `GET /api/files?chat=…` per play, and the screen may be reused for
+   * another chat.
+   */
+  setChatId(chatId: string): void;
 };
 
-/** Creates the shared registry + controls; stops playback on unmount. */
-export function useVoicePlayerHost(): VoicePlayerHost {
+/**
+ * Creates the shared registry + controls for one chat; stops playback on
+ * unmount. The chat id (T-1185) is pushed in from the screen so the voice URL
+ * is proxied for the right chat.
+ */
+export function useVoicePlayerHost(chatId: string): VoicePlayerHost {
   const [host] = useState<VoicePlayerHost>(() => createVoicePlayerHost());
+  useEffect(() => {
+    host.setChatId(chatId);
+  }, [host, chatId]);
   useEffect(() => {
     return () => {
       host.playback.stopAll();
@@ -73,7 +88,8 @@ export function useVoicePlayerHost(): VoicePlayerHost {
 /**
  * A host whose player is injected (tests inject a fake; production lazily
  * creates the real `expo-audio` player). Every bubble of one chat shares
- * one host, so only one voice plays at a time.
+ * one host, so only one voice plays at a time. The chat id is set per play
+ * so the voice URL can be routed through `GET /api/files` (T-1185).
  */
 export interface HostPlayer {
   play(): void;
@@ -112,6 +128,7 @@ export type NativePlayer = {
 function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost {
   const playback = createVoicePlayback();
   livePlaybacks.add(playback);
+  let chatId = '';
   const subscribeStatus = (player: NativePlayer, messageId: string): void => {
     const injected = (player as Partial<HostPlayer>).__emitStatus;
     if (injected !== undefined || player.addListener === undefined) {
@@ -136,6 +153,19 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
   };
   const controls: VoicePlayerControls = {
     play(messageId, source, resumeMs?: number) {
+      // A trusted `/upload/` file on our API origin is routed through
+      // `GET /api/files` (T-1185); the bearer goes only to that origin.
+      const target = mediaUrl(chatId, source.uri);
+      const needsToken =
+        source.headers === undefined && (target !== source.uri || isApiOriginUrl(target));
+      const sourceWith = (
+        token: string | undefined,
+      ): { uri: string; headers?: Record<string, string> } => {
+        const headers =
+          source.headers ??
+          (token === undefined ? undefined : { authorization: `Bearer ${token}` });
+        return headers === undefined ? { uri: target } : { uri: target, headers };
+      };
       // Resuming the paused message on its own live player: continue from
       // the paused position instead of restarting at zero (finding 2,
       // round 3). Pause keeps the instance alive, so the shared player is
@@ -211,17 +241,20 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
         return;
       }
       Effect.runFork(
-        Effect.tryPromise(() => import('expo-audio')).pipe(
-          Effect.flatMap(({ createAudioPlayer }) =>
-            Effect.try(() =>
-              startWith(
-                createAudioPlayer(source, { updateInterval: 120 }) as NativePlayer,
-                resumeMs,
-              ),
+        Effect.gen(function* () {
+          const token = needsToken
+            ? yield* Effect.tryPromise(() => getSessionToken()).pipe(
+                Effect.orElseSucceed(() => undefined),
+              )
+            : undefined;
+          const { createAudioPlayer } = yield* Effect.tryPromise(() => import('expo-audio'));
+          yield* Effect.try(() =>
+            startWith(
+              createAudioPlayer(sourceWith(token), { updateInterval: 120 }) as NativePlayer,
+              resumeMs,
             ),
-          ),
-          Effect.catch(() => reportFailure),
-        ),
+          );
+        }).pipe(Effect.catch(() => reportFailure)),
       );
     },
     pause() {
@@ -260,7 +293,13 @@ function createVoicePlayerHost(createPlayer?: () => HostPlayer): VoicePlayerHost
       }
     },
   };
-  return { playback, controls };
+  return {
+    playback,
+    controls,
+    setChatId(value) {
+      chatId = value;
+    },
+  };
 }
 
 /** Test seam: a host with an injected player factory (finding 1). */

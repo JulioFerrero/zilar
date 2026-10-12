@@ -3,7 +3,7 @@ import { decodePayload, type Payload } from '@zilar/protocol';
 import { bareJid } from '../jid';
 import { AGENT_NAMESPACE, CHAT_MARKERS_NAMESPACE, CHAT_STATES_NAMESPACE } from '../namespaces';
 import { capBody } from '../text';
-import type { ChatKind, ChatMessage, DisplayedEvent, TypingEvent } from '../types';
+import type { ChatKind, ChatMessage, DisplayedEvent, Mention, TypingEvent } from '../types';
 import {
   parseCorrection,
   parseForward,
@@ -11,6 +11,7 @@ import {
   parseReactions,
   parseRetraction,
   parseReply,
+  stripReplyFallback,
   timestamp,
   originIdOf,
 } from './parse-fields';
@@ -53,8 +54,14 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
   const bodyElement = inner.getChild('body');
   // A retraction carries a fallback body for clients without XEP-0424 support:
   // it is not this message's text, so it is dropped.
-  const body =
+  const wireBody =
     retraction !== undefined || bodyElement === undefined ? undefined : capBody(bodyElement.text());
+  // A XEP-0461 reply fallback quotes the replied-to text as a leading "> …"
+  // line; it belongs to the quote, not the message, so it leaves the decoded
+  // body. A reply whose body was only the quote (a voice or sticker reply)
+  // reads as a message with no body.
+  const strippedBody = wireBody === undefined ? undefined : stripReplyFallback(wireBody, inner);
+  const body = strippedBody === '' ? undefined : strippedBody;
 
   const agent = inner.getChild('agent', AGENT_NAMESPACE);
   let payload: Payload | undefined;
@@ -100,7 +107,11 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
     }
     const replyTo = parseReply(inner);
     if (replyTo !== undefined) message.replyTo = replyTo;
-    const mentions = parseMentions(inner, body);
+    // XEP-0372 offsets count from the wire body, so they are parsed against
+    // it, then moved past the stripped fallback prefix into the decoded body.
+    const wireMentions =
+      wireBody === undefined || body === undefined ? undefined : parseMentions(inner, wireBody);
+    const mentions = shiftMentionsPastReply(wireMentions, wireBody, body);
     if (mentions !== undefined) message.mentions = mentions;
     decoded.message = message;
   }
@@ -112,6 +123,29 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
   if (displayed !== undefined) decoded.displayed = displayed;
 
   return decoded;
+}
+
+// A reply's fallback quote was stripped from `body`, so the parsed mention
+// offsets (relative to the wire body) shift back by the prefix's length. A
+// mention that pointed into the quote keeps its JID and loses its offsets,
+// like any other unusable range.
+function shiftMentionsPastReply(
+  mentions: Mention[] | undefined,
+  wireBody: string | undefined,
+  body: string | undefined,
+): Mention[] | undefined {
+  if (mentions === undefined || wireBody === undefined || body === undefined) return mentions;
+  const shift = wireBody.length - body.length;
+  if (shift === 0) return mentions;
+  return mentions.map((mention) => {
+    if (mention.begin === undefined || mention.end === undefined) return mention;
+    const begin = mention.begin - shift;
+    const end = mention.end - shift;
+    if (begin < 0 || begin >= end || end > body.length) {
+      return { jid: mention.jid };
+    }
+    return { jid: mention.jid, begin, end };
+  });
 }
 
 function parseTyping(

@@ -1,5 +1,5 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useAiMemoryApi } from '@/components/ais/use-ai-memory-api';
 import { runInBackground } from '@/lib/effect/run-in-background';
@@ -93,17 +93,22 @@ export function useChatScreen() {
   // SelectionBar replaces the composer.
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  useEffect(() => {
-    if (!chatId) {
-      return;
-    }
-    openChat(chatId);
-    // Leaving the chat (or switching to another one) clears the open chat, so
-    // a message arriving on the list is not marked seen (T-1147).
-    return () => {
-      closeChat(chatId);
-    };
-  }, [chatId, openChat, closeChat]);
+  // The chat is open only while its screen is focused: a screen pushed over
+  // it (group info, profile) blurs it, so incoming messages stay unread and
+  // unmarked until the user comes back (UI-11). Mount alone is not enough.
+  useFocusEffect(
+    useCallback(() => {
+      if (!chatId) {
+        return;
+      }
+      openChat(chatId);
+      // Leaving the chat (or switching to another one) clears the open chat,
+      // so a message arriving on the list is not marked seen (T-1147).
+      return () => {
+        closeChat(chatId);
+      };
+    }, [chatId, openChat, closeChat]),
+  );
 
   // Leaving the chat stops its 60 s pins poll. `openChat` of another chat
   // stops it too; this effect only covers the leave/unmount case. The

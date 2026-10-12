@@ -15,12 +15,15 @@ import { syncPushSubscriptionsForUser } from '../topics/rooms';
 import { readCandidateByOriginId } from './archive-scan';
 import { resolveCandidate } from './candidates';
 import { createPushCipher } from './crypto';
+import type { FcmSender } from './fcm';
+import { createNativeSender } from './native-sender';
 import { buildPushPayload } from './payload';
 import { createWebPushSender, isExpiredSubscription } from './sender';
 import {
   devicesForUser,
   markDeviceFailed,
   markDeviceUsed,
+  openNativeDevice,
   removeDevice,
   setShowPreviewsForUser,
   showPreviewsForUser,
@@ -29,6 +32,11 @@ import {
 import { STRICT_DECODE, createRequirePush } from './api-util';
 import { createSubscribeHandler } from './api-subscribe';
 import type { PushApiDependencies } from './api';
+
+// The test wake's chat id, shared with the mobile handler: the data-only
+// FCM wake `{ chatId: 'zilar:test', serverId }` draws the fixed "Push
+// notifications work on this device." text on the phone.
+export const TEST_WAKE_CHAT_ID = 'zilar:test';
 
 export function createPushGroupLayer(
   api: HttpApi.HttpApi<'push', typeof PushGroup>,
@@ -43,6 +51,10 @@ export function createPushGroupLayer(
   const logger = deps.logger;
   const now = deps.now ?? Date.now;
   const requirePush = createRequirePush(deps);
+  // The native sender for the test route: injected in tests, otherwise built
+  // once here from the push config (undefined without the FCM config).
+  const nativeSender: FcmSender | undefined =
+    deps.nativeSender ?? createNativeSender(deps.push, logger);
 
   return HttpApiBuilder.group(api, 'push', (handlers) =>
     handlers
@@ -241,6 +253,47 @@ export function createPushGroupLayer(
               throw new HttpError(404, 'not_found', 'Push device not found');
             }
             const cipher = createPushCipher(storageKey);
+            // A native row speaks FCM, not Web Push: it carries the plaintext
+            // device token instead of the sealed endpoint and keys.
+            if (target.token !== null) {
+              if (nativeSender === undefined) {
+                throw new HttpError(
+                  503,
+                  'push_unavailable',
+                  'Push notifications are not configured for this device',
+                );
+              }
+              const native = openNativeDevice(target);
+              // A send rejection surfaces as a defect, which `yield*` does
+              // not throw into a surrounding `try`; map it to a value instead.
+              // `gone` is a value, not a throw: keep it, and stamp `failed_at`
+              // only for a real failure, like the Web Push path below.
+              const nativeOutcome = yield* Effect.promise(() =>
+                nativeSender.send(native.token, {
+                  chatId: TEST_WAKE_CHAT_ID,
+                  serverId: deps.config.xmpp.domain,
+                }),
+              ).pipe(
+                Effect.map((result) => ({ sent: true as const, gone: result.gone })),
+                Effect.catchDefect(() => Effect.succeed({ sent: false as const, gone: false })),
+              );
+              if (!nativeOutcome.sent) {
+                // Like the Web Push failure path: a failed send stamps
+                // `failed_at`, and the route answers `push_failed`.
+                yield* Effect.promise(() => markDeviceFailed(deps.db, target.id, new Date(now())));
+                throw new HttpError(502, 'push_failed', 'The test notification could not be sent');
+              }
+              if (nativeOutcome.gone) {
+                // The token is dead: remove the row (scoped by id AND userId,
+                // like the Web Push expired path) before answering 410.
+                yield* Effect.promise(() => removeDevice(deps.db, user.id, target.id));
+                throw new HttpError(410, 'device_gone', 'The push device is no longer usable');
+              }
+              // A successful test proves receipt, so it counts for the 90-day
+              // inactivity rule like a real notification (N1).
+              yield* Effect.promise(() => markDeviceUsed(deps.db, target.id, new Date(now())));
+              return { sent: true };
+            }
             const sender =
               deps.sender ??
               createWebPushSender({

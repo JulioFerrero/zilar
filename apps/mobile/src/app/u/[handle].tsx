@@ -10,6 +10,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
+import { goBackOrHome } from '@/lib/navigation';
 import {
   contactChatId,
   domainOfJid,
@@ -27,6 +28,7 @@ import { ProfileCard } from '@/components/contacts/profile-card';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
+import { personSeed } from '@zilar/chat-core';
 
 /**
  * Lifts a *-api.ts call into an Effect that fails with the thrown error
@@ -58,6 +60,12 @@ function HandleProfileView() {
   const { api } = useContactsApi();
   const chats = useChatStore((state) => state.chats);
   const me = useChatStore((state) => state.me);
+  // T-1212: the card ball is seeded by the bare JID (the lookup profile
+  // carries no JID), derived from the user id the way the mention builder
+  // does (the domain from my own JID).
+  const domain = domainOfJid(me?.jid);
+  const seedFor =
+    domain === undefined ? undefined : (userId: string): string => personSeed(userId, domain);
 
   const [profile, setProfile] = useState<HandleProfile | null>(null);
   const [sent, setSent] = useState(false);
@@ -216,7 +224,7 @@ function HandleProfileView() {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View className="flex-row items-center gap-1 px-2 py-2">
-        <IconButton label="Back" onPress={() => router.back()}>
+        <IconButton label="Back" onPress={() => goBackOrHome(router)}>
           <ChevronLeft size={24} color={ICON} />
         </IconButton>
         <View className="min-w-0 flex-1">
@@ -252,6 +260,10 @@ function HandleProfileView() {
               sent={sent}
               busy={actionBusy}
               error={actionError}
+              // T-1212: the ball is seeded by the bare JID (the lookup
+              // profile carries no JID), derived from the user id the way
+              // the mention builder does (the domain from my own JID).
+              seed={seedFor?.(profile.userId)}
               onSend={send}
               onCancel={() => actOnRequest((id) => api.cancelContactRequest(id))}
               onAccept={() => actOnRequest((id) => api.acceptContactRequest(id))}

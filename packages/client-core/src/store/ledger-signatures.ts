@@ -10,6 +10,10 @@ export function mentionLocalpart(jid: string): string {
   return jidLocal(jid);
 }
 
+// The echo signature is over the logical text: the sender queues the typed
+// text, and the echo arrives with the XEP-0461 fallback quote already
+// stripped by the decoder, so the two agree. A body that itself starts with
+// "> " matches its own echo the same way on both sides.
 export function signatureFor(chatId: string, body: string, replyTo: ReplyRef | undefined): string {
   return `${chatId}|${body}|${replyTo?.id ?? ''}`;
 }

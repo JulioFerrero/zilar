@@ -1,6 +1,11 @@
 import type { XmppElement } from '@xmpp/client';
 import { bareJid, jidDomain, jidResource } from '../jid';
-import { CONFERENCE_NAMESPACE, MUC_USER_NAMESPACE, OCCUPANT_ID_NAMESPACE } from '../namespaces';
+import {
+  CONFERENCE_NAMESPACE,
+  DELAY_NAMESPACE,
+  MUC_USER_NAMESPACE,
+  OCCUPANT_ID_NAMESPACE,
+} from '../namespaces';
 import type { ChatKind, InvitedEvent, PresenceEvent } from '../types';
 import type { MucPresence, ParseContext } from './parse-context';
 
@@ -54,12 +59,24 @@ export function parseMucPresence(stanza: XmppElement, mucDomain: string): MucPre
   if (affiliation !== undefined) presence.affiliation = affiliation;
   const role = item?.attrs['role'];
   if (role !== undefined) presence.role = role;
+  // The room's self-presence carries status codes (321 affiliation change,
+  // 307 kick, 301 ban): an unavailable self-presence with one of them means
+  // the server removed me, so the core can drop the chat at once.
+  const statuses = stanza.getChild('x', MUC_USER_NAMESPACE)?.getChildren('status') ?? [];
+  const codes: number[] = [];
+  for (const status of statuses) {
+    const code = Number(status.attrs['code']);
+    if (Number.isInteger(code)) codes.push(code);
+  }
+  if (codes.length > 0) presence.statusCodes = codes;
   return presence;
 }
 
 // A contact's presence is a bare-JID stanza from our own domain. MUC presence
 // (resources on the MUC domain) is handled by `parseMucPresence`; subscription
-// requests and errors are not availability and are ignored.
+// requests and errors are not availability and are ignored. An unavailable
+// presence may carry a `<delay/>` stamp saying when the contact went offline,
+// so the header shows when they were last seen instead of "just now".
 export function parseContactPresence(
   stanza: XmppElement,
   domain: string,
@@ -71,7 +88,17 @@ export function parseContactPresence(
   if (type !== undefined && type !== 'unavailable') return undefined;
   const jid = bareJid(from);
   if (!jid.includes('@')) return undefined;
-  return { jid, available: type === undefined };
+  const event: PresenceEvent = { jid, available: type === undefined };
+  if (!event.available) {
+    const stamp = stanza.getChild('delay', DELAY_NAMESPACE)?.attrs['stamp'];
+    if (stamp !== undefined) {
+      const at = new Date(stamp).getTime();
+      if (!Number.isNaN(at)) {
+        event.delayedAt = at;
+      }
+    }
+  }
+  return event;
 }
 
 // A XEP-0249 direct invitation is a message with a `jabber:x:conference`

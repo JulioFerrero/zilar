@@ -10,6 +10,8 @@ import {
   type TestContext,
 } from '../test-support';
 import { loadPushConfig } from './config';
+import { createPushApi } from './api';
+import type { FcmSender, FcmWakeData } from './fcm';
 
 // Push must clear `requirePush`: the flag, the VAPID keys, the component
 // credentials and a 32+ character storage key. None of these are real.
@@ -147,5 +149,140 @@ describe('POST /api/push/subscriptions', () => {
     const { status } = await subscribe(undefined, { kind: 'fcm', token: 'fcm-token-1' });
 
     expect(status).toBe(401);
+  });
+});
+
+// The native test route (T-1208): `POST /api/push/test` on an fcm row sends
+// a data-only `{ chatId: 'zilar:test', serverId }` wake through the injected
+// native sender and answers `{ sent: true }`; a `{ gone: true }` answer
+// removes the row and answers 410 `device_gone`.
+//
+// Both tests build the push API directly with `createPushApi({ ...,
+// nativeSender: fake })` and call its handler, the way
+// `apps/server/src/files/routes.test.ts:166-188` builds `createFilesApi` and
+// calls `api.handler(new Request(...))`. The session still comes from the
+// full app: user sign-up and the subscribes below need the auth routes.
+describe('POST /api/push/test on a native device', () => {
+  let context: TestContext;
+  let app: ReturnType<typeof createApp>;
+
+  interface PushRequest {
+    request(url: string, init?: RequestInit): Promise<Response>;
+  }
+
+  interface NativeCall {
+    token: string;
+    data: FcmWakeData;
+  }
+
+  function fakeNativeSender(result: { gone: boolean } = { gone: false }): {
+    sender: FcmSender;
+    calls: NativeCall[];
+  } {
+    const calls: NativeCall[] = [];
+    return {
+      sender: {
+        send: (token, data) => {
+          calls.push({ token, data });
+          return Promise.resolve(result);
+        },
+      },
+      calls,
+    };
+  }
+
+  // The push API mounted on its own, with the fake native sender injected.
+  function nativePushApp(fake: FcmSender): PushRequest {
+    const api = createPushApi({
+      auth: context.auth,
+      db: context.db,
+      config: context.config,
+      push: loadPushConfig(PUSH_ENV),
+      adminClient: context.adminClient,
+      logger: context.logger,
+      nativeSender: fake,
+    });
+    return {
+      request(url: string, init?: RequestInit): Promise<Response> {
+        return api.handler(new Request(url, init));
+      },
+    };
+  }
+
+  async function deviceIdFor(cookie: string, token: string): Promise<string> {
+    const response = await app.request(`${TEST_BASE_URL}/api/push/subscriptions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ kind: 'fcm', token }),
+    });
+    expect(response.status).toBe(200);
+    return ((await response.json()) as { id: string }).id;
+  }
+
+  async function testPush(target: PushRequest, cookie: string | undefined, subscriptionId: string) {
+    const response = await target.request(`${TEST_BASE_URL}/api/push/test`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(cookie === undefined ? {} : { cookie }),
+      },
+      body: JSON.stringify({ subscriptionId }),
+    });
+    const json: unknown = await response.json().catch(() => null);
+    return { status: response.status, json };
+  }
+
+  beforeEach(async () => {
+    context = await createTestContext();
+    app = createApp({
+      db: context.db,
+      logger: context.logger,
+      config: context.config,
+      auth: context.auth,
+      adminClient: context.adminClient,
+      push: loadPushConfig(PUSH_ENV),
+    });
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  it('sends a zilar:test wake and answers { sent: true }', async () => {
+    const { sender, calls } = fakeNativeSender();
+    const target = nativePushApp(sender);
+    const user = await bootstrapUser(context, app, 'alice@example.com');
+    const subscriptionId = await deviceIdFor(user.cookie, 'fcm-token-1');
+
+    const { status, json } = await testPush(target, user.cookie, subscriptionId);
+
+    expect(status).toBe(200);
+    expect(json).toEqual({ sent: true });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.token).toBe('fcm-token-1');
+    expect(calls[0]?.data).toEqual({
+      chatId: 'zilar:test',
+      serverId: context.config.xmpp.domain,
+    });
+  });
+
+  it('removes the row and answers 410 device_gone when the token is gone', async () => {
+    const { sender } = fakeNativeSender({ gone: true });
+    const target = nativePushApp(sender);
+    const user = await bootstrapUser(context, app, 'alice@example.com');
+    const subscriptionId = await deviceIdFor(user.cookie, 'fcm-token-2');
+
+    const { status, json } = await testPush(target, user.cookie, subscriptionId);
+
+    expect(status).toBe(410);
+    expect((json as { error: { code: string } }).error.code).toBe('device_gone');
+    const rows = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string }>`SELECT id FROM push_subscriptions
+          WHERE id = ${subscriptionId}`;
+      }),
+    );
+    expect([...rows]).toHaveLength(0);
   });
 });

@@ -13,6 +13,8 @@ import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
+import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import { removeBlockRosterItems, type BlockRosterLogger } from './roster';
 
 // The list endpoint caps server-side; nobody should keep 500 blocks, but
 // the cap keeps the response bounded.
@@ -23,6 +25,16 @@ export interface BlocksDeps {
   audit?: AuditRecorder;
   /** Override the clock in tests. Defaults to the wall clock. */
   now?: () => Date;
+  /**
+   * After a block commits, both roster items of the pair are removed, best
+   * effort. When absent (production wiring lives in the caller, outside this
+   * task's scope), the pair delete and the block filters still apply.
+   */
+  adminClient?: EjabberdAdminClient | undefined;
+  /** The XMPP domain the roster JIDs are built on. */
+  domain?: string | undefined;
+  /** Warns on a failed roster removal. Defaults to silence. */
+  logger?: BlockRosterLogger | undefined;
 }
 
 export interface BlockedUserView {
@@ -87,9 +99,11 @@ export async function isDmBlocked(
 
 // Blocks `targetId` for `userId`. Idempotent: blocking twice keeps one row.
 // Unknown users answer 404, yourself answers 400. Every pending contact
-// request between the two (either direction) becomes `cancelled` in the
-// same transaction, serialized against contact-request creates through the
-// advisory locks taken below.
+// request between the two (either direction) becomes `cancelled`, and both
+// `contacts` rows of the pair are deleted, in the same transaction,
+// serialized against contact-request creates through the advisory locks
+// taken below. Unblocking leaves the pair gone: re-adding goes through a
+// contact request.
 export async function blockUser(
   deps: BlocksDeps,
   userId: string,
@@ -131,6 +145,12 @@ export async function blockUser(
           WHERE status = 'pending'
             AND ((from_user_id = ${userId} AND to_user_id = ${targetId})
               OR (from_user_id = ${targetId} AND to_user_id = ${userId}))`;
+        // The pair is gone in both directions, even when the block row
+        // already existed: a contact accepted between blocks must not
+        // survive a re-block.
+        yield* sql`DELETE FROM contacts
+          WHERE (user_id = ${userId} AND contact_user_id = ${targetId})
+            OR (user_id = ${targetId} AND contact_user_id = ${userId})`;
         return rows.length > 0;
       }),
     );
@@ -141,12 +161,25 @@ export async function blockUser(
   if (inserted) {
     auditFor(deps, 'user.blocked', userId, targetId);
   }
+  // Best effort, after the commit: the `both` subscriptions would otherwise
+  // keep the blocked person seeing the blocker online. A failure only warns.
+  if (deps.adminClient !== undefined && deps.domain !== undefined) {
+    await removeBlockRosterItems({
+      db: deps.db,
+      adminClient: deps.adminClient,
+      domain: deps.domain,
+      logger: deps.logger,
+      userId,
+      targetId,
+    });
+  }
   return { blocked: true };
 }
 
 // Unblocks `targetId` for `userId`. Idempotent: unblocking twice (or
 // unblocking someone never blocked, unknown or not) still answers success
-// and deletes only the row `(userId, targetId)`.
+// and deletes only the row `(userId, targetId)`. The contact pair stays
+// gone: re-adding goes through a contact request.
 export async function unblockUser(
   deps: BlocksDeps,
   userId: string,

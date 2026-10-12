@@ -7,6 +7,10 @@ import {
   leaveChannel as leaveChannelAction,
 } from '@zilar/client-core/store';
 import type { GroupBackground, GroupDetail, SetGroupListenerInput } from '@/lib/api';
+import {
+  addGroupMembers as addGroupMembersRequest,
+  transferGroupOwner as transferGroupOwnerRequest,
+} from '@/lib/api/groups';
 import type { StoreCtx } from './ctx';
 import { groupChangeStore, groupIdOf } from './groupShared';
 import { refreshChatsOrThrow } from './history';
@@ -28,6 +32,59 @@ export const leaveChannel = (ctx: StoreCtx, chatId: string): Effect.Effect<void,
       },
       refreshChatsOrThrow(ctx),
       chatId,
+    );
+  });
+
+// T-1183: owners and admins add contacts to a group. The detail refreshes from
+// the server's answer and the list refreshes too, so member counts match.
+export const addGroupMembers = (
+  ctx: StoreCtx,
+  chatId: string,
+  userIds: string[],
+): Effect.Effect<void, unknown, Ports> =>
+  Effect.gen(function* () {
+    yield* changeGroupCore<GroupDetail, Ports>(
+      groupChangeStore(ctx, groupIdOf(ctx, chatId)),
+      chatId,
+      'This group is not available yet.',
+      (groupId) => addGroupMembersRequest(groupId, userIds),
+      true,
+    );
+  });
+
+// T-1183: owners and admins remove another member through the member route
+// (removing yourself is `leaveChannel`). The detail and the list refresh.
+export const removeGroupMember = (
+  ctx: StoreCtx,
+  chatId: string,
+  userId: string,
+): Effect.Effect<void, unknown, Ports> =>
+  Effect.gen(function* () {
+    const { api } = yield* Ports;
+    yield* changeGroupCore<GroupDetail, Ports>(
+      groupChangeStore(ctx, groupIdOf(ctx, chatId)),
+      chatId,
+      'This group is not available yet.',
+      (groupId) => api.removeGroupMember(groupId, userId),
+      true,
+    );
+  });
+
+// T-1190: the owner hands the group to another member through the owner route.
+// The detail refreshes from the server's answer, so the caller (now an admin)
+// sees Leave group; the list refreshes too, so myRole matches server truth.
+export const transferGroupOwner = (
+  ctx: StoreCtx,
+  chatId: string,
+  userId: string,
+): Effect.Effect<void, unknown, Ports> =>
+  Effect.gen(function* () {
+    yield* changeGroupCore<GroupDetail, Ports>(
+      groupChangeStore(ctx, groupIdOf(ctx, chatId)),
+      chatId,
+      'This group is not available yet.',
+      (groupId) => transferGroupOwnerRequest(groupId, userId),
+      true,
     );
   });
 

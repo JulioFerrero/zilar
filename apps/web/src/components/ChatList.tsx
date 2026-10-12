@@ -9,6 +9,7 @@ import {
   InstallFailed,
   statusLabel,
 } from './chatList/rowsSelector';
+import { ConfirmDialog } from './ConfirmDialog';
 import { ExplorePage } from './ExplorePage';
 import { FolderTabs } from './FolderTabs';
 import { InviteDialog } from './InviteDialog';
@@ -41,6 +42,7 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
   const searchChat = useChatSelector((s) => s.searchChat);
   const [menuOpen, setMenuOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   // T-0164: the Explore overlay (public groups and channels to join).
   const [exploreOpen, setExploreOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -79,9 +81,11 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
     storeApi.getState().retryChats();
   };
 
+  // Sign out asks first: the menu closes and the confirmation opens, and only
+  // its confirm runs the sign out (WUX-9).
   const signOut = (): void => {
     setMenuOpen(false);
-    void storeApi.getState().signOut();
+    setConfirmingSignOut(true);
   };
 
   // The badge fetches only when the menu opens; `null` is "unknown or failed",
@@ -181,6 +185,18 @@ export function ChatList({ activeChatId }: { activeChatId: string | undefined })
       {exploreOpen && <ExplorePage onClose={() => setExploreOpen(false)} />}
       {newTopicChatId !== undefined && (
         <NewTopicDialog groupId={newTopicChatId} onClose={() => setNewTopicChatId(undefined)} />
+      )}
+      {confirmingSignOut && (
+        <ConfirmDialog
+          title="Sign out of Zilar in this browser?"
+          body="You'll need to sign in again to chat."
+          confirmLabel="Sign out"
+          onConfirm={() => {
+            setConfirmingSignOut(false);
+            void storeApi.getState().signOut();
+          }}
+          onCancel={() => setConfirmingSignOut(false)}
+        />
       )}
     </div>
   );

@@ -15,8 +15,9 @@ import {
 import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
-import { useChatSelector } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { refreshBlockedJids } from '@/lib/blockedJids';
+import { personSeed } from '@zilar/chat-core';
 import { Button } from '@/components/ui/button';
 import { Avatar } from './Avatar';
 
@@ -56,8 +57,10 @@ export function ContactProfileRow({
   onRelationChange: (profile: HandleProfile) => void;
 }) {
   const navigate = useNavigate();
+  const storeApi = useChatStoreApi();
   const contacts = useChatSelector((s) => s.contacts);
   const chats = useChatSelector((s) => s.chats);
+  const me = useChatSelector((s) => s.me);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [confirmingBlock, setConfirmingBlock] = useState(false);
@@ -128,22 +131,26 @@ export function ContactProfileRow({
     runAction(action);
   };
 
-  // The DM chat id is the contact's JID; the lookup profile carries no
-  // JID, so the row finds the DM two ways: the contact list (userId ->
-  // jid) first, then a chat whose id matches that JID. No DM yet means no
-  // Message button (only the status line shows).
-  const dmChatId = (() => {
-    const contact = contacts.find((entry) => entry.userId === profile.userId);
-    if (contact === undefined) {
-      return undefined;
-    }
-    return chats.some((chat) => chat.id === contact.jid) ? contact.jid : undefined;
-  })();
+  // The DM chat id is the contact's JID from the store (the lookup profile
+  // carries no JID). Every contact has a DM row on the server, so a missing
+  // row only means the chat list has not refreshed since the contact was
+  // added: refresh it, and the shell opens the chat once the row lands.
+  // T-1209: the ball is seeded by that same bare JID, else by the user id
+  // derived the way the mention builder does (the domain from my own JID).
+  const contact = contacts.find((entry) => entry.userId === profile.userId);
+  const ownDomain = me?.jid?.slice(me.jid.indexOf('@') + 1);
+  const seed =
+    contact?.jid ??
+    (ownDomain === undefined ? profile.userId : personSeed(profile.userId, ownDomain));
 
   const openChat = (): void => {
-    if (dmChatId !== undefined) {
-      navigate(`/c/${encodeURIComponent(dmChatId)}`);
+    if (contact === undefined) {
+      return;
     }
+    if (!chats.some((chat) => chat.id === contact.jid)) {
+      storeApi.getState().refreshChats();
+    }
+    navigate(`/c/${encodeURIComponent(contact.jid)}`);
   };
 
   const sentLabel = sent && profile.relation === 'none';
@@ -151,12 +158,7 @@ export function ContactProfileRow({
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface px-3 py-2.5">
       <div className="flex items-center gap-3">
-        <Avatar
-          id={profile.userId}
-          name={profile.name}
-          size={40}
-          avatarUrl={profile.image ?? undefined}
-        />
+        <Avatar id={seed} name={profile.name} size={40} avatarUrl={profile.image ?? undefined} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-medium">
             {profile.name}{' '}
@@ -197,7 +199,7 @@ export function ContactProfileRow({
             {busy ? 'Unblocking…' : 'Unblock'}
           </Button>
         ) : profile.relation === 'self' ? null : profile.relation === 'contact' &&
-          dmChatId !== undefined ? (
+          contact !== undefined ? (
           <Button type="button" onClick={openChat} size="sm" className="shrink-0">
             <MessageSquare className="size-3.5" aria-hidden="true" />
             Message

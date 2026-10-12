@@ -12,11 +12,14 @@ export function GroupPictureSection({
   title,
   currentUrl,
   chatId,
+  generalRoomJid,
 }: {
   groupId: string;
   title: string;
   currentUrl?: string | undefined;
   chatId: string;
+  /** T-1209: the General topic's room JID (the group's ball seed). */
+  generalRoomJid?: string | undefined;
 }) {
   const storeApi = useChatStoreApi();
   // The uploader reports the new url (or undefined after a remove) through
@@ -27,6 +30,7 @@ export function GroupPictureSection({
     <AvatarUploader
       kind="group"
       ownerId={groupId}
+      ownerSeed={generalRoomJid ?? chatId}
       ownerName={title}
       currentUrl={shown}
       onChanged={(next) => {

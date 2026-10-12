@@ -29,6 +29,12 @@ function booleanFlagSchema() {
 
 const nonEmptyStringSchema = Schema.String.pipe(Schema.check(Schema.isMinLength(1)));
 
+// The documented placeholder both compose stacks used to default to. It is
+// public, so the two sides agreeing on it would authenticate the component
+// with a known secret (SEC-5): it counts as missing, and push stays off
+// with the usual `push stays off` log line naming PUSH_COMPONENT_SECRET.
+const PLACEHOLDER_PUSH_COMPONENT_SECRET = 'CHANGE_ME_PUSH_COMPONENT_SECRET';
+
 const pushEnvSchema = Schema.Struct({
   PUSH_ENABLED: booleanFlagSchema(),
   PUSH_VAPID_PUBLIC_KEY: Schema.optional(nonEmptyStringSchema),
@@ -249,7 +255,12 @@ export function pushConfigError(config: PushConfig): string | null {
   if (config.PUSH_COMPONENT_JID === undefined) {
     missing.push('PUSH_COMPONENT_JID');
   }
-  if (config.PUSH_COMPONENT_SECRET === undefined) {
+  // The public placeholder is not a secret: agreeing on it would let anyone
+  // authenticate the component, so it counts as missing (SEC-5).
+  if (
+    config.PUSH_COMPONENT_SECRET === undefined ||
+    config.PUSH_COMPONENT_SECRET === PLACEHOLDER_PUSH_COMPONENT_SECRET
+  ) {
     missing.push('PUSH_COMPONENT_SECRET');
   }
   if (config.PUSH_STORAGE_KEY === undefined) {

@@ -1,4 +1,5 @@
 import type { ChatSummary, MessageItem, UiMessage } from '@zilar/chat-core';
+import { memo } from 'react';
 
 import { DateSeparator } from '@/components/chat/date-separator';
 import { MessageBubble } from '@/components/chat/message-bubble';
@@ -49,7 +50,7 @@ type MessageListRowProps = {
   onStartSelect: MessageHandler | undefined;
 };
 
-export function MessageListRow({
+function MessageListRowImpl({
   item,
   chat,
   currentUserId,
@@ -113,3 +114,66 @@ export function MessageListRow({
     />
   );
 }
+
+/** Whether two list entries would render the same row. */
+function isSameEntry(a: ListEntry, b: ListEntry): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (a.type !== b.type || a.key !== b.key) {
+    return false;
+  }
+  if (a.type === 'separator' && b.type === 'separator') {
+    return a.date.getTime() === b.date.getTime();
+  }
+  if (a.type === 'message' && b.type === 'message') {
+    return (
+      a.item.message === b.item.message &&
+      a.item.firstInGroup === b.item.firstInGroup &&
+      a.item.lastInGroup === b.item.lastInGroup &&
+      a.isDraft === b.isDraft &&
+      a.revealTurnId === b.revealTurnId
+    );
+  }
+  return true;
+}
+
+/**
+ * Whether the row can skip a render. `item` is rebuilt by `groupMessages` on
+ * every list rebuild (a draft frame is one every ~150 ms) even when the row did
+ * not change, so it is compared field by field; every other prop is compared by
+ * identity and the list keeps those stable via `useCallback`/`useStableHandler`.
+ */
+function areRowPropsEqual(prev: MessageListRowProps, next: MessageListRowProps): boolean {
+  return (
+    isSameEntry(prev.item, next.item) &&
+    prev.chat === next.chat &&
+    prev.currentUserId === next.currentUserId &&
+    prev.canPinChat === next.canPinChat &&
+    prev.pinnedIds === next.pinnedIds &&
+    prev.openingAttachmentId === next.openingAttachmentId &&
+    prev.voiceHost === next.voiceHost &&
+    prev.selection === next.selection &&
+    prev.onReply === next.onReply &&
+    prev.onReact === next.onReact &&
+    prev.onEdit === next.onEdit &&
+    prev.onDelete === next.onDelete &&
+    prev.onForward === next.onForward &&
+    prev.onPin === next.onPin &&
+    prev.onUnpin === next.onUnpin &&
+    prev.onRetrySticker === next.onRetrySticker &&
+    prev.onRetryAttachment === next.onRetryAttachment &&
+    prev.onCancelAttachment === next.onCancelAttachment &&
+    prev.onRetryVoice === next.onRetryVoice &&
+    prev.onCancelVoice === next.onCancelVoice &&
+    prev.onOpenAttachment === next.onOpenAttachment &&
+    prev.onToggleSelect === next.onToggleSelect &&
+    prev.onStartSelect === next.onStartSelect
+  );
+}
+
+/**
+ * Memoised (T-1188): with the list's stable handlers, a store tick such as a
+ * draft frame only re-renders the row whose entry changed, not every loaded row.
+ */
+export const MessageListRow = memo(MessageListRowImpl, areRowPropsEqual);

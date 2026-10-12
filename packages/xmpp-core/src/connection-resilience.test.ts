@@ -8,6 +8,8 @@ import {
   type XmppStatus,
 } from '@xmpp/client';
 import { PING_NAMESPACE } from './namespaces';
+import { SM_ENABLE_TIMEOUT_MS } from './core-effect/config';
+import { STREAM_MANAGEMENT_NS } from './stream-management';
 import { createCore, type ClientOptions } from './client';
 import type { ConnectionStatus, XmppCore, XmppCoreOptions } from './types';
 
@@ -15,7 +17,24 @@ type FakeClient = XmppClient & {
   sent: XmppElement[];
   stopCalls: number;
   disconnectCalls: number;
+  socketEndCalls: number;
+  socket: { end(): void };
+  driverRunning: boolean;
+  driverStartCalls: number;
+  reconnectRuns: number;
+  streamManagement: {
+    id: string;
+    enabled: boolean;
+    on(event: string, listener: () => void): unknown;
+    emitResumed(): void;
+    enqueue(stanza: XmppElement): void;
+  };
   emitOnline(jid: string): void;
+  /** The `online` event with stream management still disabled (the real bind order). */
+  emitOnlineRaw(jid: string): void;
+  /** One incoming element (what stream-management observes for <enabled/>). */
+  emitElement(element: XmppElement): void;
+  emitResumed(): void;
   emitStatus(status: XmppStatus): void;
   emitStanza(stanza: XmppElement): void;
   emitClientError(error: Error): void;
@@ -38,13 +57,81 @@ function createFakeClient(): FakeClient {
     }
   }
 
+  // Faithful to @xmpp/reconnect: the driver is one `disconnect` listener,
+  // added by `start()` and removed by `stop()`. Starting twice without a
+  // stop stacks a second listener, so one drop reconnects twice.
+  function reconnectHandler(): void {
+    fake.reconnectRuns += 1;
+  }
+  function driverListeners(): Set<(...args: never[]) => void> {
+    let set = listeners.get('disconnect');
+    if (set === undefined) {
+      set = new Set();
+      listeners.set('disconnect', set);
+    }
+    return set;
+  }
+
   const fake = {
     jid: null as XmppJid | null,
     status: 'offline' as XmppStatus,
-    reconnect: { delay: 1000, on: () => fake },
     sent,
     stopCalls: 0,
     disconnectCalls: 0,
+    // F1 suspend/wake: the `socket` the suspend ends directly (an abrupt
+    // close at the transport, no framing `</stream>`), the library's
+    // reconnect driver it stops/starts, and the stream-management state
+    // (`id` survives the suspend; a failed resume replaces it).
+    socketEndCalls: 0,
+    driverRunning: true,
+    driverStartCalls: 0,
+    reconnectRuns: 0,
+    socket: {
+      end() {
+        fake.socketEndCalls += 1;
+        fake.status = 'disconnect';
+        emit('status', 'disconnect');
+        emit('disconnect');
+      },
+    },
+    reconnect: {
+      delay: 1000,
+      on: () => fake,
+      start() {
+        fake.driverRunning = true;
+        fake.driverStartCalls += 1;
+        // Like the library's `start()`: the listener stacks when started
+        // twice without a stop.
+        driverListeners().add(reconnectHandler as (...args: never[]) => void);
+      },
+      stop() {
+        fake.driverRunning = false;
+        driverListeners().delete(reconnectHandler as (...args: never[]) => void);
+      },
+    },
+    streamManagement: {
+      id: 'sm-1',
+      enabled: false,
+      outbound_q: [] as { stanza: XmppElement }[],
+      on(event: string, listener: () => void) {
+        let set = listeners.get(`sm:${event}`);
+        if (set === undefined) {
+          set = new Set();
+          listeners.set(`sm:${event}`, set);
+        }
+        set.add(listener as (...args: never[]) => void);
+        return fake;
+      },
+      emitResumed() {
+        for (const listener of listeners.get('sm:resumed') ?? []) {
+          (listener as () => void)();
+        }
+      },
+      enqueue(stanza: XmppElement) {
+        const queue = fake.streamManagement.outbound_q;
+        queue.push({ stanza });
+      },
+    },
     on(event: string, listener: (...args: never[]) => void) {
       let set = listeners.get(event);
       if (set === undefined) {
@@ -86,8 +173,28 @@ function createFakeClient(): FakeClient {
       const parsed = makeJid(jid);
       fake.jid = parsed;
       fake.status = 'online';
+      fake.streamManagement.enabled = true;
       emit('status', 'online');
       emit('online', parsed);
+    },
+    // The real order: xmpp.js binds and reports `online` before it sends
+    // <enable/>, so stream management is still inactive at the `online` event.
+    emitOnlineRaw(jid: string): void {
+      const parsed = makeJid(jid);
+      fake.jid = parsed;
+      fake.status = 'online';
+      fake.streamManagement.enabled = false;
+      emit('status', 'online');
+      emit('online', parsed);
+    },
+    emitElement(element: XmppElement): void {
+      emit('element', element);
+    },
+    // A stream-management resume: silent, like xmpp.js (`_ready(true)`) — no
+    // `online` event, only the `resumed` the core listens for.
+    emitResumed(): void {
+      fake.status = 'online';
+      fake.streamManagement.emitResumed();
     },
     emitStatus(status: XmppStatus): void {
       fake.status = status;
@@ -100,6 +207,10 @@ function createFakeClient(): FakeClient {
       emit('error', error);
     },
   };
+
+  // Like the real client, whose factory starts the reconnect driver: one
+  // `disconnect` listener from creation.
+  driverListeners().add(reconnectHandler as (...args: never[]) => void);
 
   return fake as unknown as FakeClient;
 }
@@ -249,28 +360,70 @@ describe('connection resilience: transient versus fatal token errors', () => {
     },
   );
 
-  it.each([401, 403])('a token failure with status %i is fatal', async (status) => {
-    const fake = createFakeClient();
-    const { core, captured } = await connectedCore(fake, async () => {
-      throw errorWithStatus(status, 'the session is gone');
-    });
-    const errors: string[] = [];
-    core.on('error', (event) => errors.push(event.message));
+  it.each([401, 403])(
+    'a token failure with status %i is fatal after the one retry',
+    async (status) => {
+      const fake = createFakeClient();
+      let calls = 0;
+      const { core, captured } = await connectedCore(fake, async () => {
+        calls += 1;
+        throw errorWithStatus(status, 'the session is gone');
+      });
+      const errors: string[] = [];
+      core.on('error', (event) => errors.push(event.message));
 
-    // Reported once, then offline for good.
-    fake.emitStatus('disconnect');
-    await expect(
-      authenticateThrough(
+      // Two fatal answers in a row, then reported once and offline for good.
+      fake.emitStatus('disconnect');
+      const reauth = authenticateThrough(
         captured()!,
         fake,
         vi.fn(async () => {}),
-      ),
-    ).rejects.toThrow('the session is gone');
-    await flush();
+      );
+      const rejection = expect(reauth).rejects.toThrow('the session is gone');
+      await flush();
+      await vi.advanceTimersByTimeAsync(2_000);
+      await rejection;
+      await flush();
 
-    expect(core.status()).toBe('offline');
-    expect(fake.stopCalls).toBe(1);
-    expect(errors.filter((message) => message.includes('the session is gone'))).toHaveLength(1);
+      expect(calls).toBe(2);
+      expect(core.status()).toBe('offline');
+      expect(fake.stopCalls).toBe(1);
+      expect(errors.filter((message) => message.includes('the session is gone'))).toHaveLength(1);
+    },
+  );
+
+  it('a single 401 on reconnect is retried once, then the core goes online', async () => {
+    const fake = createFakeClient();
+    let calls = 0;
+    const { core, captured } = await connectedCore(fake, async () => {
+      calls += 1;
+      if (calls === 2) throw errorWithStatus(401, 'the session is gone');
+      return { jid: 'bob@zilar.localhost', token: `tok-${calls}` };
+    });
+    const authenticate = vi.fn(async () => {});
+    await authenticateThrough(captured()!, fake, authenticate);
+
+    // The drop: the first per-reconnect fetch answers 401, the retry after the
+    // wait answers fine, and the connection comes back online.
+    fake.emitStatus('disconnect');
+    const reauth = authenticateThrough(captured()!, fake, authenticate);
+    await flush();
+    expect(core.status()).toBe('reconnecting');
+    expect(authenticate).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    await reauth;
+    fake.emitOnline('bob@zilar.localhost');
+
+    expect(core.status()).toBe('online');
+    expect(fake.stopCalls).toBe(0);
+    expect(calls).toBe(3);
+    expect(authenticate).toHaveBeenCalledTimes(2);
+    expect(authenticate).toHaveBeenNthCalledWith(
+      2,
+      { username: 'bob', password: 'tok-3' },
+      'PLAIN',
+    );
   });
 
   it('a SASL authentication error stays fatal', async () => {
@@ -514,6 +667,31 @@ describe('connection resilience: reconnect watchdog', () => {
     expect(core.status()).toBe('online');
   });
 
+  it('a replaced client reports its queued stanzas as unacked', async () => {
+    // T-1216: a stanza sent just before the drop sits in the old client's
+    // stream-management queue (`outbound_q`, which the library's
+    // `disconnect` handler leaves alone). The watchdog replaces the client,
+    // so the queued stanza gets neither `ack` nor `fail` — the replacement
+    // reports it as `unacked` (the event a `fail` maps to), so the store
+    // resends it once under the same id on the next online.
+    const { core, clients } = await onlineThenWedged();
+    const unacked: string[] = [];
+    core.on('unacked', ({ stanzaId }) => unacked.push(stanzaId));
+
+    clients[0]?.streamManagement.enqueue(
+      xml('message', { xmlns: 'jabber:client', id: 'm-offline-two' }),
+    );
+    clients[0]?.streamManagement.enqueue(
+      xml('presence', { xmlns: 'jabber:client', id: 'not-a-message' }),
+    );
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await flush();
+
+    expect(clients).toHaveLength(2);
+    expect(unacked).toEqual(['m-offline-two']);
+  });
+
   it('keeps trying: a replacement that also wedges is replaced again', async () => {
     const { clients } = await onlineThenWedged();
     // The waits grow: 5 s, then 8 s, then 12 s, then 20 s.
@@ -554,6 +732,42 @@ describe('connection resilience: reconnect watchdog', () => {
     expect(core.status()).toBe('online');
   });
 
+  it('a replacement racing an explicit connect never leaves the core watchdog', async () => {
+    // T-1220: if an explicit connect() lands while the watchdog is stopping
+    // the old client, the replacement used to return early without re-arming —
+    // the core was left with no watchdog, and xmpp.js's own backoff (up to a
+    // 30 s wait per retry, about 2 minutes cumulatively) drove the reconnect.
+    const { core, clients } = await onlineThenWedged({ reconnectWatchdogFirstMs: 15_000 });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    clients[0]!.stop = () => gate;
+
+    // The watchdog fires and blocks inside stale.stop().
+    await vi.advanceTimersByTimeAsync(15_000);
+    await flush();
+    expect(core.status()).toBe('reconnecting');
+
+    // An explicit connect() builds a fresh client while the old one stops.
+    const reconnecting = core.connect().catch(() => undefined);
+    await flush();
+    expect(clients).toHaveLength(2);
+
+    release();
+    await flush();
+    const before = clients.length;
+
+    // The new client wedges: the watchdog must still replace it.
+    await vi.advanceTimersByTimeAsync(8_100);
+    await flush();
+    expect(clients.length).toBeGreaterThan(before);
+
+    clients.at(-1)?.emitOnline('bob@zilar.localhost');
+    await reconnecting;
+    expect(core.status()).toBe('online');
+  });
+
   it('can be disabled with 0', async () => {
     const { clients } = await onlineThenWedged({ reconnectWatchdogMs: 0 });
     await vi.advanceTimersByTimeAsync(120_000);
@@ -572,5 +786,176 @@ describe('connection resilience: reconnect watchdog', () => {
     await core.disconnect();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(clients).toHaveLength(1);
+  });
+});
+
+// T-1220: the store flushes its text outbox on the `online` status, and a
+// stanza written before the library sends <enable/> is never queued by stream
+// management and never covered by the server's <a h/>, so its `ack` never
+// arrives. The resent text kept its clock in the live session and ticked only
+// after a cold restart (from history). A fresh bind must therefore report
+// `online` only once stream management is active.
+describe('connection resilience: online only after stream management', () => {
+  function bindCore(): { core: XmppCore; fake: FakeClient } {
+    const fake = createFakeClient();
+    const core = createCore(
+      tokenOptions(async () => ({ jid: 'bob@zilar.localhost', token: 'tok' })),
+      { createClient: () => fake },
+    );
+    return { core, fake };
+  }
+
+  it('a fresh bind reports online only once <enabled/> arrives', async () => {
+    const { core, fake } = bindCore();
+    const statuses: ConnectionStatus[] = [];
+    core.on('status', (status) => statuses.push(status));
+
+    const connecting = core.connect();
+    // The real order: bind -> `online`, with <enable/> still to come.
+    fake.emitOnlineRaw('bob@zilar.localhost');
+    await flush();
+    expect(core.status()).toBe('connecting');
+    expect(statuses).not.toContain('online');
+
+    fake.emitElement(xml('enabled', { xmlns: STREAM_MANAGEMENT_NS, id: 'sm-1', resume: 'true' }));
+    await connecting;
+    expect(core.status()).toBe('online');
+    expect(statuses.at(-1)).toBe('online');
+  });
+
+  it('a fresh bind that never enables stream management still comes online', async () => {
+    const { core, fake } = bindCore();
+    const connecting = core.connect();
+    fake.emitOnlineRaw('bob@zilar.localhost');
+    await flush();
+    expect(core.status()).toBe('connecting');
+
+    // A server that offers no stream management (or a lost <enabled/>) falls
+    // back after the wait instead of staying offline for ever.
+    await vi.advanceTimersByTimeAsync(SM_ENABLE_TIMEOUT_MS);
+    await connecting;
+    expect(core.status()).toBe('online');
+  });
+
+  it('a resume reports online without waiting for <enabled/>', async () => {
+    const fake = createFakeClient();
+    const { core } = await connectedCore(fake);
+    // A resume replays the queued stanzas: the session is already managed, so
+    // the transition must not be gated.
+    fake.streamManagement.enabled = false;
+    fake.emitResumed();
+    await flush();
+    expect(core.status()).toBe('online');
+  });
+});
+
+// F1 (MP-1, MP-12): the mobile background lifecycle. `suspend()` parks the
+// session without the framing `</stream>` so ejabberd keeps it pending and
+// pushes; `wake()` reconnects, resuming when the server still holds it.
+describe('background lifecycle: suspend and wake', () => {
+  it('suspend keeps the SM id and closes without </stream>', async () => {
+    const fake = createFakeClient();
+    const { core } = await connectedCore(fake);
+    const statuses: ConnectionStatus[] = [];
+    core.on('status', (status) => statuses.push(status));
+
+    await core.suspend?.();
+    await flush();
+
+    // The socket ended below the stream layer: `disconnect()` (the framing
+    // `</stream>`) never ran, and the stream-management id survived for a
+    // resume. The driver stopped, so nothing reconnects while suspended.
+    expect(fake.socketEndCalls).toBe(1);
+    expect(fake.disconnectCalls).toBe(0);
+    expect(fake.driverRunning).toBe(false);
+    expect(fake.streamManagement.id).toBe('sm-1');
+    expect(core.status()).toBe('offline');
+    expect(statuses).toEqual(['offline']);
+  });
+
+  it('a failing socket close still leaves the status offline', async () => {
+    const fake = createFakeClient();
+    const { core } = await connectedCore(fake);
+
+    // The exact error-path case: suspend racing an already-dead socket whose
+    // `end()` throws. `suspend()` must still resolve and report offline, so a
+    // later `wake()` really connects instead of reporting a phantom resume.
+    fake.socket.end = () => {
+      throw new Error('already closed');
+    };
+    await core.suspend?.();
+    await flush();
+
+    expect(core.status()).toBe('offline');
+    expect(fake.driverRunning).toBe(false);
+  });
+
+  it('wake after suspend resumes and reports resumed', async () => {
+    const fake = createFakeClient();
+    const { core } = await connectedCore(fake);
+
+    await core.suspend?.();
+    const waking = core.wake?.();
+    // The driver restarts; the library steps back from `disconnect` so
+    // `start()` runs on the same client, with the SM id intact.
+    expect(fake.driverRunning).toBe(true);
+    fake.emitResumed();
+    expect(await waking).toBe('resumed');
+    await flush();
+
+    expect(core.status()).toBe('online');
+    expect(core.me()).toBe('bob@zilar.localhost');
+  });
+
+  it('a failed resume reports rebound', async () => {
+    const fake = createFakeClient();
+    const { core } = await connectedCore(fake);
+
+    await core.suspend?.();
+    const waking = core.wake?.();
+    // Resume failed: the server bound a fresh session with a new SM id.
+    fake.streamManagement.id = 'sm-2';
+    fake.emitOnline('bob@zilar.localhost');
+    expect(await waking).toBe('rebound');
+    await flush();
+
+    expect(core.status()).toBe('online');
+  });
+
+  it('a fresh bind after a live session reports rebound; a resume does not', async () => {
+    // T-1216: the store needs to tell a rebound from a resume. A fresh bind
+    // replaced the stream, so its unacked stanzas may be lost and the store
+    // resends each in-flight text once; a resume carried them, so it must not.
+    const fake = createFakeClient();
+    const { core } = await connectedCore(fake);
+    const rebounds: number[] = [];
+    core.on('rebound', () => rebounds.push(1));
+
+    fake.streamManagement.id = 'sm-2';
+    fake.emitOnline('bob@zilar.localhost');
+    expect(rebounds).toHaveLength(1);
+
+    fake.emitResumed();
+    expect(rebounds).toHaveLength(1);
+  });
+
+  it('wake without suspend does not stack reconnect listeners', async () => {
+    const fake = createFakeClient();
+    const { core } = await connectedCore(fake);
+
+    // Three foregrounds with no background between them: the driver was
+    // never stopped, so `wake()` must not start it again.
+    for (let round = 0; round < 3; round += 1) {
+      const waking = core.wake?.();
+      fake.emitResumed();
+      expect(await waking).toBe('resumed');
+    }
+    await flush();
+    expect(fake.driverStartCalls).toBe(0);
+
+    // One drop now runs the driver's listener exactly once.
+    fake.socket.end();
+    await flush();
+    expect(fake.reconnectRuns).toBe(1);
   });
 });

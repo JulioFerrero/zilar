@@ -66,7 +66,7 @@ export function friendlyError(error: unknown): string {
       return 'The browser did not grant permission. Allow notifications for this site, then try again.';
     }
     if (error.message.includes('cannot toggle push')) {
-      return 'The chat connection is offline. Open Zilar, wait for it to connect, then try again.';
+      return 'Not connected yet. Wait a moment and try again.';
     }
     return error.message;
   }

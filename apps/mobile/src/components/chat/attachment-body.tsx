@@ -55,6 +55,7 @@ export function AttachmentBody({
     attachment.kind === 'image' && !gifVideo ? (
       <AttachmentImage
         attachment={attachment}
+        chatId={message.chatId}
         trustedHosts={hosts}
         localUri={upload.localUri}
         uploading={uploading}
@@ -77,6 +78,7 @@ export function AttachmentBody({
     ) : (
       <AttachmentVideo
         attachment={attachment}
+        chatId={message.chatId}
         trustedHosts={hosts}
         localUri={upload.localUri}
         uploading={uploading}
@@ -113,6 +115,7 @@ export function AttachmentBody({
       </View>
       {attachment.kind === 'image' && !gifVideo && !failed && !uploading ? (
         <AttachmentViewer
+          chatId={message.chatId}
           url={viewerOpen ? viewableUrl(attachment.url, hosts) : undefined}
           name={attachment.name}
           onClose={() => setViewerOpen(false)}

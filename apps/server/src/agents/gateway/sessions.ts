@@ -137,6 +137,8 @@ export function createSessionLifecycle(ctx: SessionLifecycleContext) {
       roomPending: new Map(),
       roomBusy: new Set(),
       roomTurns: new Map(),
+      roomRateNotices: new Map(),
+      roomSentIds: new Map(),
     };
     sessions.set(aiId, session);
     session.unsubs.push(
@@ -296,6 +298,8 @@ export function createSessionLifecycle(ctx: SessionLifecycleContext) {
     session.roomBusy.delete(roomJid);
     // A re-added AI starts with a fresh rate budget.
     session.roomTurns.delete(roomJid);
+    session.roomRateNotices.delete(roomJid);
+    session.roomSentIds.delete(roomJid);
     dropRoomListenerIfUnused(roomJid);
     const left = yield* attempt(() => session.core.leaveRoom(roomJid)).pipe(
       Effect.as(true),

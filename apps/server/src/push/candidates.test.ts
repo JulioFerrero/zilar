@@ -239,4 +239,52 @@ describe('resolveCandidate', () => {
       },
     });
   });
+
+  it('previews a reply without its fallback quote line', async () => {
+    const userId = await seedUser(context);
+    const peer = `ana@${context.config.xmpp.domain}`;
+    // The archived text keeps the wire `> quote` head; the row's XML marks
+    // it with the XEP-0461 fallback range (start and end in code points).
+    const row: ArchiveCandidate = {
+      owner: localpartFor(userId),
+      barePeer: peer,
+      kind: 'chat',
+      nick: '',
+      originId: 'origin-reply',
+      timestamp: 0,
+      text: '> old\nmy reply',
+      xml: `<message from="${peer}/phone"><body>&gt; old\nmy reply</body><reply xmlns="urn:xmpp:reply:0" id="m-1"/><fallback xmlns="urn:xmpp:fallback:0" for="urn:xmpp:reply:0"><body start="2" end="5"/></fallback></message>`,
+    };
+    const allowed: SearchOwner = { ...ownerFor(userId), peerNames: new Map([[peer, 'Ana']]) };
+    expect(await resolveCandidate(deps, userId, allowed, row)).toEqual({
+      status: 'ok',
+      message: {
+        chatJid: peer,
+        senderName: 'Ana',
+        place: 'Ana',
+        text: 'my reply',
+        messageId: 'origin-reply',
+      },
+    });
+  });
+
+  it('keeps the text when the reply fallback range does not parse', async () => {
+    const userId = await seedUser(context);
+    const peer = `ana@${context.config.xmpp.domain}`;
+    const row: ArchiveCandidate = {
+      owner: localpartFor(userId),
+      barePeer: peer,
+      kind: 'chat',
+      nick: '',
+      originId: 'origin-broken',
+      timestamp: 0,
+      text: '> old\nmy reply',
+      xml: `<message from="${peer}/phone"><body>&gt; old\nmy reply</body><fallback xmlns="urn:xmpp:fallback:0" for="urn:xmpp:reply:0"><body start="nope"/></fallback></message>`,
+    };
+    const allowed: SearchOwner = { ...ownerFor(userId), peerNames: new Map([[peer, 'Ana']]) };
+    expect(await resolveCandidate(deps, userId, allowed, row)).toMatchObject({
+      status: 'ok',
+      message: { text: '> old\nmy reply' },
+    });
+  });
 });

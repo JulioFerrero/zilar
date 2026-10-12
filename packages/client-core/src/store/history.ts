@@ -5,7 +5,7 @@ import { Effect } from 'effect';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { XmppCore } from '@zilar/xmpp-core';
 import { fromPromise, type CoreCtx, type CorePatch, type CoreState } from './ctx';
-import { persistLastRead, recordRead } from './reads';
+import { recordRead } from './reads';
 import { coreKind, sortMessages } from './rows';
 
 export const PREVIEW_HISTORY_MAX = 1;
@@ -38,6 +38,26 @@ export interface HistoryPatch extends CorePatch {
 }
 
 export type HistorySet = (update: HistoryPatch | ((state: HistoryState) => HistoryPatch)) => void;
+
+/**
+ * Keeps the first copy of each message of one history page. When the server
+ * archived a resend twice, both rows carry one origin id and the ledger aliases
+ * them, so `sameMessage` reports the second (`rememberOriginId`,
+ * `ledger-ids.ts`); dropping it here is what leaves one bubble for a page that
+ * holds both rows. A page whose rows are unrelated is returned unchanged.
+ */
+export const dedupePage = <T extends { readonly id: string }>(
+  sameMessage: (left: string, right: string) => boolean,
+  messages: readonly T[],
+): T[] => {
+  const kept: T[] = [];
+  for (const message of messages) {
+    if (!kept.some((item) => sameMessage(item.id, message.id))) {
+      kept.push(message);
+    }
+  }
+  return kept;
+};
 
 /** The core context plus the bookkeeping history keeps beside the state. */
 export interface HistoryCtx extends CoreCtx {
@@ -130,7 +150,10 @@ export const loadOlderPage = (
         .filter((message) => !k.isReactionOnly(message) && !k.isEditStanza(message))
         .map((message) => k.toUiMessage(message, ctx.get().currentUserId));
       k.resolvePendingEdits(chatId);
-      const withEditsApplied = older.map((message) => k.withEdits(message, chatId));
+      const withEditsApplied = dedupePage(
+        k.sameMessage,
+        older.map((message) => k.withEdits(message, chatId)),
+      );
       ctx.set((state) => {
         const loaded = k.listFor(state, chatId);
         const added = withEditsApplied.filter(
@@ -182,10 +205,9 @@ export const loadPreview = (
           : entry,
       ),
     }));
-    if (ctx.lastRead[chat.id] === undefined) {
-      ctx.lastRead[chat.id] = ui.id;
-      persistLastRead(ctx);
-    }
+    // The boot preview only fills the list row; it never marks read, so the
+    // first open of a chat that was never opened on this device still shows
+    // its unread divider (UI-9).
     ctx.cursors[chat.id] = page.first;
     ctx.set((state) => ({
       historyComplete: { ...state.historyComplete, [chat.id]: page.complete },
@@ -252,7 +274,10 @@ export const openHistory = (ctx: HistoryCtx, chatId: string): Effect.Effect<void
           .filter((message) => !k.isReactionOnly(message) && !k.isEditStanza(message))
           .map((message) => k.toUiMessage(message, ctx.get().currentUserId));
         k.resolvePendingEdits(chatId);
-        const withEditsApplied = loaded.map((message) => k.withEdits(message, chatId));
+        const withEditsApplied = dedupePage(
+          k.sameMessage,
+          loaded.map((message) => k.withEdits(message, chatId)),
+        );
         const newest = withEditsApplied.at(-1);
         ctx.set((state) => {
           const live = k
@@ -276,15 +301,33 @@ export const openHistory = (ctx: HistoryCtx, chatId: string): Effect.Effect<void
         });
         ctx.cursors[chatId] = page.first;
         k.refreshEdits(chatId);
-        const last = withEditsApplied.at(-1);
-        if (last !== undefined) {
-          recordRead(ctx, chatId, last.id);
-          current.markDisplayed(chatId, coreKind(chat), last.id);
+        // The displayed marker goes out only for a chat that is open,
+        // visible and focused: a page that lands after leaving must not
+        // mark seen (UI-2).
+        if (ctx.get().activeChatId === chatId && ctx.ports.isVisible()) {
+          const last = withEditsApplied.at(-1);
+          if (last !== undefined) {
+            recordRead(ctx, chatId, last.id);
+            current.markDisplayed(chatId, coreKind(chat), last.id);
+          }
         }
         setHistoryState(ctx, chatId, 'ready');
       }).pipe(
-        // Keep whatever live messages we have; the view offers a retry.
-        Effect.catchCause(() => Effect.sync(() => setHistoryState(ctx, chatId, 'error'))),
+        // Keep whatever live messages we have; the view offers a retry. When
+        // the page fails but live messages are on screen in the open,
+        // visible chat, still mark the newest one seen (UI-9).
+        Effect.catchCause(() =>
+          Effect.sync(() => {
+            setHistoryState(ctx, chatId, 'error');
+            if (ctx.get().activeChatId === chatId && ctx.ports.isVisible()) {
+              const live = ctx.k.listFor(ctx.get(), chatId).at(-1);
+              if (live !== undefined) {
+                recordRead(ctx, chatId, live.id);
+                current.markDisplayed(chatId, coreKind(chat), live.id);
+              }
+            }
+          }),
+        ),
         Effect.ensuring(Effect.sync(() => ctx.loadingHistory.delete(chatId))),
       );
       flushPending(ctx);

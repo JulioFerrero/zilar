@@ -16,13 +16,18 @@ import {
 import { stageForToolCall } from './tool-guide';
 import {
   BUDGET_EXCEEDED_REPLY,
-  ChatCompletionError,
+  CONTEXT_TOO_LONG_REPLY,
+  MODEL_NOT_FOUND_REPLY,
   PROVIDER_KEY_REJECTED_REPLY,
+  RATE_LIMITED_REPLY,
+  TRANSIENT_FAILURE_REPLY,
+} from './replies';
+import {
+  ChatCompletionError,
   TOOL_CAPPED_RESULT,
   TOOL_REPEAT_RESULT,
   TOOL_RESULT_MAX_CHARS,
   TOOL_TURN_MAX_CALLS,
-  TRANSIENT_FAILURE_REPLY,
   type ChatCompletionResult,
   type ChatToolCall,
   type ExecuteToolCall,
@@ -42,13 +47,24 @@ function statusAndDetail(error: unknown): { status: number; detail: string } {
 }
 
 // Maps any turn failure to the exact DM text. Never the raw provider body.
+// Order matters: a LiteLLM hard cap arrives as a 400 with "Budget has been
+// exceeded" (AI-4), so the budget test comes before the status ones.
 export function mapFailureToReply(error: unknown): string {
   const { status, detail } = statusAndDetail(error);
-  if (status === 429 || /budget_exceeded/i.test(detail)) {
+  if (/budget/i.test(detail)) {
     return BUDGET_EXCEEDED_REPLY;
   }
   if (status === 401 || status === 403) {
     return PROVIDER_KEY_REJECTED_REPLY;
+  }
+  if (status === 429) {
+    return RATE_LIMITED_REPLY;
+  }
+  if ((status === 400 || status === 404) && /model/i.test(detail)) {
+    return MODEL_NOT_FOUND_REPLY;
+  }
+  if (/context|too long|maximum context|token limit/i.test(detail)) {
+    return CONTEXT_TOO_LONG_REPLY;
   }
   return TRANSIENT_FAILURE_REPLY;
 }

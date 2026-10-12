@@ -11,11 +11,14 @@ import type { PickedPicture } from '@/components/settings/avatar-native';
 import { friendlyAvatarError } from '@/components/settings/profile-logic';
 import { Text } from '@/components/ui/text';
 import { StateMessage } from '@/components/ui/state-message';
+import { domainOfJid } from '@/lib/contacts-api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { getSessionToken } from '@/lib/session-token';
 import { ProfileApiError, type MyProfile } from '@/lib/profile-api';
 import { useProfileApi } from '@/components/settings/use-profile-api';
+import { useChatStore } from '@/store/chat-store-provider';
+import { personSeed } from '@zilar/chat-core';
 
 type ProfileStatus = 'loading' | 'ready' | 'error';
 
@@ -51,6 +54,13 @@ function ProfileTab() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { api } = useProfileApi();
+  // T-1212: the profile ball is seeded by the own bare JID (the chat list
+  // and the chat header seed the same way), derived from the user id when
+  // no JID is known yet.
+  const ownJid = useChatStore((state) => state.me?.jid ?? undefined);
+  const domain = domainOfJid(ownJid);
+  const seedFor =
+    domain === undefined ? undefined : (userId: string): string => personSeed(userId, domain);
   const [status, setStatus] = useState<ProfileStatus>('loading');
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [token, setToken] = useState<string | undefined>(undefined);
@@ -231,6 +241,7 @@ function ProfileTab() {
               <ProfileView
                 profile={profile}
                 token={token}
+                seedFor={seedFor}
                 photoEdit={{
                   ...(staged === null ? {} : { stagedUri: staged.uri }),
                   busy: photoBusy,

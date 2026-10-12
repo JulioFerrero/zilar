@@ -8,6 +8,7 @@
 import { Effect } from 'effect';
 import { HttpClient, HttpClientRequest } from 'effect/http';
 import { ApiError, makeZilarClient, withFetch, type ZilarClient } from '@zilar/api-contract';
+import { API_TIMEOUT_MS, fetchWithTimeout } from './fetch-timeout';
 import { mobileRuntime } from './runtime';
 
 export interface ApiTransport {
@@ -18,10 +19,15 @@ export interface ApiTransport {
 
 export function createApiClient({ getToken, fetchImpl, apiUrl }: ApiTransport): ZilarClient {
   const adapter: typeof fetch = (input, init = {}) =>
-    fetchImpl(String(input), {
-      ...init,
-      headers: { ...(init.headers as Record<string, string>) },
-    });
+    fetchWithTimeout(
+      fetchImpl,
+      String(input),
+      {
+        ...init,
+        headers: { ...(init.headers as Record<string, string>) },
+      },
+      API_TIMEOUT_MS,
+    );
   const withBearer = HttpClient.mapRequestEffect((request: HttpClientRequest.HttpClientRequest) =>
     Effect.flatMap(Effect.promise(getToken), (token) =>
       token === undefined

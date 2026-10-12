@@ -42,6 +42,11 @@ function runVoiceSend(
     ctx.k.markSendFailed(chat.id, localId, 'network');
     return;
   }
+  // The shared wire id (origin id in a DM, room stanza-id in a group).
+  const wireReply =
+    replyTo === undefined
+      ? undefined
+      : { ...replyTo, id: ctx.k.wireTargetFor(replyTo.id) ?? replyTo.id };
   const run = newRun();
   armSendTimeout(ctx, chat.id, localId, run);
   ctx.rt.fork(
@@ -74,7 +79,14 @@ function runVoiceSend(
       const sent = yield* fromPromise(() =>
         current.sendMessage(chat.id, coreKind(chat), '', {
           payload: { v: 0, type: 'voice', data: voice },
-          ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
+          ...(wireReply === undefined
+            ? {}
+            : {
+                replyTo: {
+                  id: wireReply.id,
+                  ...(wireReply.text === undefined ? {} : { text: wireReply.text }),
+                },
+              }),
         }),
       );
       linkSent(ctx, chat, localId, sent.id);
@@ -130,7 +142,17 @@ export function sendVoice(
     ...(replyTo === undefined ? {} : { replyTo }),
   };
   clearActionError(ctx, chatId);
-  queueOutgoing(ctx, ctx.k.signatureFor(chatId, '', replyTo), localId);
+  queueOutgoing(
+    ctx,
+    ctx.k.signatureFor(
+      chatId,
+      '',
+      replyTo === undefined
+        ? undefined
+        : { ...replyTo, id: ctx.k.wireTargetFor(replyTo.id) ?? replyTo.id },
+    ),
+    localId,
+  );
   ctx.k.setChatMessage(chatId, message, true);
   ctx.pendingVoices.set(localId, recording.bytes);
   rememberMyAuthor(ctx, localId);

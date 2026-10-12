@@ -88,6 +88,12 @@ export interface PortsShape {
   /** The core lifecycle's visibility port (T-0918): built from `AppState`. */
   readonly isVisible: () => boolean;
   readonly visibility: Visibility;
+  /**
+   * The AppState background subscription (F1): `handler` runs on `background`
+   * only (`inactive` is an iOS transition and does nothing). Returns the
+   * unsubscribe. Built from `appState`, beside `visibility`.
+   */
+  readonly onBackground: (handler: () => void) => () => void;
 }
 
 export class Ports extends Context.Service<Ports, PortsShape>()('zilar/mobile/store/Ports') {}
@@ -111,6 +117,67 @@ function visibilityFor(appState: AppStateLike): Visibility {
         }
       }),
   };
+}
+
+// The AppState background subscription beside `visibilityFor` (F1): the store
+// suspends the XMPP session after a 10 s grace in `background`; the resume
+// runs through the existing `onFocus` path. `inactive` (an iOS transition)
+// does nothing.
+function onBackground(appState: AppStateLike, handler: () => void): () => void {
+  return appState.subscribe((state) => {
+    if (state === 'background') {
+      handler();
+    }
+  });
+}
+
+// The phone's XMPP core (F4, closes MP-11): the reconnect watchdog gets a 15 s
+// first step, so a slow network gets one long chance before a stuck client is
+// replaced, and the resource is stable per install (`zilar-<install id>`), so
+// a replacement kicks the ghost session instead of doubling it. The install
+// id is generated once and kept in SecureStore under `zilar.xmpp.resource`
+// (see `auth/secure-session-storage.ts`); the `expo-secure-store` import is
+// dynamic so this module can be loaded under Vitest (Node), which cannot
+// import the native module. Tests inject `createXmpp` and never touch this
+// path. Web builds no options here, so it is unchanged.
+const XMPP_RESOURCE_KEY = 'zilar.xmpp.resource';
+
+const MOBILE_WATCHDOG_FIRST_MS = 15_000;
+
+let cachedResource: string | undefined;
+
+async function secureStore(): Promise<typeof import('expo-secure-store')> {
+  return import('expo-secure-store');
+}
+
+async function readInstallId(): Promise<string | undefined> {
+  const raw = await (await secureStore()).getItemAsync(XMPP_RESOURCE_KEY);
+  return raw === null || raw === '' ? undefined : raw;
+}
+
+function createMobileXmpp(options: XmppCoreOptions): XmppCore {
+  if (cachedResource === undefined) {
+    // The install id read is async while `createXmpp` is sync: start it now
+    // and fall back to a per-process random resource for this one core. Every
+    // later core (including the watchdog's replacements) binds the stable id.
+    cachedResource = `zilar-${Math.random().toString(36).slice(2, 10)}`;
+    void readInstallId().then(async (existing) => {
+      if (existing !== undefined) {
+        cachedResource = `zilar-${existing}`;
+        return;
+      }
+      const bytes = new Uint8Array(8);
+      crypto.getRandomValues(bytes);
+      const id = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      await (await secureStore()).setItemAsync(XMPP_RESOURCE_KEY, id);
+      cachedResource = `zilar-${id}`;
+    });
+  }
+  return createXmppCore({
+    ...options,
+    reconnectWatchdogFirstMs: MOBILE_WATCHDOG_FIRST_MS,
+    resource: options.resource ?? cachedResource,
+  });
 }
 
 // The voice pipeline (T-0154): conversion through `POST /api/voice` when the
@@ -229,7 +296,7 @@ export function resolvePorts(deps: RealStoreDeps): PortsShape {
     chatPrefs: deps.chatPrefsApi,
     chatFolders: deps.chatFoldersApi,
     ownedAis: deps.ownedAis,
-    createXmpp: deps.createXmpp ?? ((options: XmppCoreOptions) => createXmppCore(options)),
+    createXmpp: deps.createXmpp ?? createMobileXmpp,
     uploader: deps.uploader,
     statSize: deps.statSize,
     bytes: bytesFor(deps),
@@ -238,6 +305,7 @@ export function resolvePorts(deps: RealStoreDeps): PortsShape {
     appState,
     isVisible: () => appState.current() === 'active',
     visibility: visibilityFor(appState),
+    onBackground: (handler) => onBackground(appState, handler),
     openDrafts:
       deps.openDrafts ??
       ((onEvent) =>
@@ -285,6 +353,7 @@ export const PortsTest = (overrides: Partial<PortsShape> = {}): Layer.Layer<Port
     appState: alwaysActive,
     isVisible: () => true,
     visibility: visibilityFor(alwaysActive),
+    onBackground: (handler) => onBackground(alwaysActive, handler),
     openDrafts: () => () => {},
     ...overrides,
   });

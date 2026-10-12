@@ -17,6 +17,7 @@ import {
   mamResultQueryId,
   originIdOf,
   parseCorrection,
+  parseMucPresence,
   parseReactions,
   parseRetraction,
   parseUploadSlot,
@@ -466,6 +467,53 @@ describe('decodeMessageStanza: replies, typing and displayed', () => {
       messageId: 'm-1',
       outgoing: false,
     });
+  });
+});
+
+describe('decodeMessageStanza: XEP-0461 reply fallback', () => {
+  function replyStanza(...children: Array<string | XmppElement>): XmppElement {
+    return xml(
+      'message',
+      { from: 'bob@zilar.localhost', to: 'alice@zilar.localhost', type: 'chat', id: 'm-40' },
+      ...children,
+    );
+  }
+
+  it('strips the fallback line from the body and keeps the quote', () => {
+    const built = buildMessage({
+      id: 'm-40',
+      to: 'alice@zilar.localhost',
+      kind: 'chat',
+      text: 'my reply',
+      replyTo: { id: 'm-1', text: 'old' },
+    });
+    const { message } = decodeMessageStanza(replyStanza(...built.children), ctx);
+    expect(message?.body).toBe('my reply');
+    expect(message?.replyTo).toEqual({ id: 'm-1', text: 'old' });
+  });
+
+  it('leaves the body undefined when it was only the quote', () => {
+    const built = buildMessage({
+      id: 'm-41',
+      to: 'alice@zilar.localhost',
+      kind: 'chat',
+      text: '',
+      payload: progress,
+      replyTo: { id: 'm-1', text: 'old' },
+    });
+    const { message } = decodeMessageStanza(replyStanza(...built.children), ctx);
+    expect(message?.body).toBeUndefined();
+    expect(message?.payload).toEqual(progress);
+    expect(message?.replyTo).toEqual({ id: 'm-1', text: 'old' });
+  });
+
+  it('keeps a hand-typed leading quote line that has no fallback', () => {
+    const { message } = decodeMessageStanza(
+      replyStanza(xml('body', {}, '> not a quote\nmy text')),
+      ctx,
+    );
+    expect(message?.body).toBe('> not a quote\nmy text');
+    expect(message?.replyTo).toBeUndefined();
   });
 });
 
@@ -1338,5 +1386,32 @@ describe('XEP-0308 corrections and XEP-0424 retractions', () => {
     expect(message?.body).toBeUndefined();
     expect(message?.retraction).toEqual({ targetId: 'sid-1' });
     expect(message?.fromJid).toBe('alice@zilar.localhost');
+  });
+});
+
+describe('parseMucPresence: status codes', () => {
+  it('reads the status codes of an unavailable self-presence', () => {
+    // A removal: the server sets the affiliation to none, and the room sends
+    // my own unavailable presence with status 110 (self-presence) and 321
+    // (affiliation changed).
+    const stanza = xml(
+      'presence',
+      {
+        from: 'project@rooms.zilar.localhost/bob',
+        to: 'bob@zilar.localhost/x',
+        type: 'unavailable',
+      },
+      xml(
+        'x',
+        { xmlns: MUC_USER_NAMESPACE },
+        xml('item', { affiliation: 'none', role: 'none' }),
+        xml('status', { code: '110' }),
+        xml('status', { code: '321' }),
+      ),
+    );
+    const presence = parseMucPresence(stanza, 'rooms.zilar.localhost');
+    expect(presence?.available).toBe(false);
+    expect(presence?.roomJid).toBe('project@rooms.zilar.localhost');
+    expect(presence?.statusCodes).toEqual([110, 321]);
   });
 });

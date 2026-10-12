@@ -20,6 +20,8 @@ import { clearChatListCache, readChatListCache } from '../chatListCache';
 import { mergeWithPainted } from './chatRows';
 import { LAST_READ_PREFIX } from './constants';
 import type { StoreCtx } from './ctx';
+import { disableSessionPush } from '@/lib/push/sessionEnable';
+import { writeStoredDevice } from '@/lib/push/deviceStorage';
 import { joinGroups } from './groupMembers';
 import { refreshChats, scheduleChatsRefresh } from './history';
 import { refreshPinsFor } from './pins';
@@ -55,6 +57,11 @@ export const resetUserState = (ctx: StoreCtx): Effect.Effect<void, never, Ports>
     // dismissal so the next user is asked again.
     resetHandleGateDismissal();
     ctx.cachedUserId = undefined;
+    // A new sign-in is a new user for the push handle too (T-1152): the stored
+    // device belongs to the previous account's server row, so the next account
+    // must re-register instead of re-enabling it. A blocked storage reads as
+    // none either way, and clearing never blocks the reset.
+    yield* Effect.try(() => writeStoredDevice(null)).pipe(Effect.ignore);
     const lastReadUserId = ctx.lastReadUserId;
     if (storage !== null && lastReadUserId !== undefined) {
       // Ignore storage failures on the way out.
@@ -98,6 +105,13 @@ export const resetUserState = (ctx: StoreCtx): Effect.Effect<void, never, Ports>
 export const signOutStore = (ctx: StoreCtx): Effect.Effect<void, never, Ports> =>
   Effect.gen(function* () {
     const { goToLogin } = yield* Ports;
+    // The stored pair outlives the session otherwise (T-1152): disable it
+    // before the store disconnects, best effort with the 2 s timeout inside.
+    yield* Effect.promise(() =>
+      Effect.runPromise(
+        disableSessionPush({ setPushPair: (input) => ctx.get().setPushPair(input) }),
+      ),
+    ).pipe(Effect.ignore);
     yield* resetUserState(ctx);
     // The app still clears local state even if sign-out fails.
     yield* fromPromise(() => authClient.signOut()).pipe(Effect.ignore);

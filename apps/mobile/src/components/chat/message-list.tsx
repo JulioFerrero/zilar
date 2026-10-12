@@ -4,9 +4,10 @@ import {
   type ChatSummary,
   type UiMessage,
 } from '@zilar/chat-core';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { FlatList, View } from 'react-native';
 
+import { JumpToBottom } from '@/components/chat/jump-to-bottom';
 import { LoadError } from '@/components/chat/load-error';
 import { MessageListRow, type ListEntry } from '@/components/chat/message-list-row';
 import { MessageListSkeleton } from '@/components/chat/skeleton';
@@ -59,6 +60,11 @@ type MessageListProps = {
       }
     | undefined;
 };
+
+/** Whether the list's last row is a message the current user sent. */
+function isOutgoingMessage(entry: ListEntry | undefined, currentUserId: string): boolean {
+  return entry?.type === 'message' && entry.item.message.senderId === currentUserId;
+}
 
 /**
  * Message list grouped by sender and day. Opening a chat with unread messages
@@ -181,16 +187,79 @@ export function MessageList({
     return list;
   }, [items, dividerIndex, draftMessage, draft, finishedDraftMessages]);
 
-  const { listRef, atBottomRef } = useMessageListScroll({
+  const { listRef, atBottomRef, atBottom, unseenCount, setAtBottom } = useMessageListScroll({
     chatId: chat.id,
     dividerIndex,
     jumpTarget,
     jumpToMessageId,
     entries,
-    visibleCount: visibleMessages.length,
+    lastEntryKey: entries.at(-1)?.key,
+    lastEntryOutgoing: isOutgoingMessage(entries.at(-1), currentUserId),
     clearJumpTarget,
     onJumped,
   });
+
+  const jumpToBottom = useCallback(() => {
+    listRef.current?.scrollToEnd({ animated: true });
+  }, [listRef]);
+
+  // Stable so a re-render of the list does not hand the FlatList a new
+  // `renderItem` and re-render every visible row (T-1188). The memoised row and
+  // the reused entry objects do the rest.
+  const renderItem = useCallback(
+    ({ item }: { item: ListEntry }) => (
+      <MessageListRow
+        item={item}
+        chat={chat}
+        currentUserId={currentUserId}
+        canPinChat={canPinChat}
+        pinnedIds={pinnedIds}
+        openingAttachmentId={openingAttachmentId}
+        voiceHost={voiceHost}
+        selection={selection}
+        onReply={stableReply ?? onReply}
+        onReact={stableReact}
+        onEdit={stableEdit}
+        onDelete={stableDelete}
+        onForward={stableForward}
+        onPin={stablePin}
+        onUnpin={stableUnpin}
+        onRetrySticker={stableRetrySticker}
+        onRetryAttachment={stableRetryAttachment}
+        onCancelAttachment={stableCancelAttachment}
+        onRetryVoice={stableRetryVoice}
+        onCancelVoice={stableCancelVoice}
+        onOpenAttachment={stableOpenAttachment}
+        onToggleSelect={stableToggle}
+        onStartSelect={stableStart}
+      />
+    ),
+    [
+      chat,
+      currentUserId,
+      canPinChat,
+      pinnedIds,
+      openingAttachmentId,
+      voiceHost,
+      selection,
+      stableReply,
+      onReply,
+      stableReact,
+      stableEdit,
+      stableDelete,
+      stableForward,
+      stablePin,
+      stableUnpin,
+      stableRetrySticker,
+      stableRetryAttachment,
+      stableCancelAttachment,
+      stableRetryVoice,
+      stableCancelVoice,
+      stableOpenAttachment,
+      stableToggle,
+      stableStart,
+    ],
+  );
 
   // Loading, error and empty are three different states: the empty text and
   // the Retry only appear once the first page has settled. Live messages that
@@ -211,71 +280,59 @@ export function MessageList({
   }
 
   return (
-    <FlatList
-      ref={listRef}
-      className="flex-1"
-      data={entries}
-      keyExtractor={(entry) => entry.key}
-      initialNumToRender={Math.max(entries.length, 1)}
-      onScrollToIndexFailed={(info) => {
-        listRef.current?.scrollToOffset({
-          offset: info.averageItemLength * info.index,
-          animated: false,
-        });
-        runLater(50, () =>
-          listRef.current?.scrollToIndex({
-            index: info.index,
-            viewPosition: 0.5,
+    <View className="flex-1">
+      <FlatList
+        ref={listRef}
+        className="flex-1"
+        data={entries}
+        keyExtractor={(entry) => entry.key}
+        initialNumToRender={Math.max(entries.length, 1)}
+        windowSize={11}
+        maxToRenderPerBatch={10}
+        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        onScrollToIndexFailed={(info) => {
+          listRef.current?.scrollToOffset({
+            offset: info.averageItemLength * info.index,
             animated: false,
-          }),
-        );
-      }}
-      contentContainerStyle={{ paddingVertical: 8 }}
-      showsVerticalScrollIndicator={false}
-      scrollEventThrottle={16}
-      onContentSizeChange={() => {
-        // Frame-by-frame reveal growth raises the content height; keep the view
-        // pinned only while the user is already at the bottom.
-        if (atBottomRef.current) {
-          listRef.current?.scrollToEnd({ animated: false });
-        }
-      }}
-      onScroll={(event) => {
-        const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-        atBottomRef.current =
-          contentSize.height - (contentOffset.y + layoutMeasurement.height) < 40;
-        // Scrolling to the top asks for the previous page of history.
-        if (hasMore && contentOffset.y <= 24) {
-          loadOlder(chat.id);
-        }
-      }}
-      renderItem={({ item }) => (
-        <MessageListRow
-          item={item}
-          chat={chat}
-          currentUserId={currentUserId}
-          canPinChat={canPinChat}
-          pinnedIds={pinnedIds}
-          openingAttachmentId={openingAttachmentId}
-          voiceHost={voiceHost}
-          selection={selection}
-          onReply={stableReply ?? onReply}
-          onReact={stableReact}
-          onEdit={stableEdit}
-          onDelete={stableDelete}
-          onForward={stableForward}
-          onPin={stablePin}
-          onUnpin={stableUnpin}
-          onRetrySticker={stableRetrySticker}
-          onRetryAttachment={stableRetryAttachment}
-          onCancelAttachment={stableCancelAttachment}
-          onRetryVoice={stableRetryVoice}
-          onCancelVoice={stableCancelVoice}
-          onOpenAttachment={stableOpenAttachment}
-          onToggleSelect={stableToggle}
-          onStartSelect={stableStart}
-        />
-      )}
-    />
+          });
+          runLater(50, () =>
+            listRef.current?.scrollToIndex({
+              index: info.index,
+              viewPosition: 0.5,
+              animated: false,
+            }),
+          );
+        }}
+        contentContainerStyle={{ paddingVertical: 8 }}
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onContentSizeChange={() => {
+          // Frame-by-frame reveal growth raises the content height; keep the view
+          // pinned only while the user is already at the bottom.
+          if (atBottomRef.current) {
+            listRef.current?.scrollToEnd({ animated: false });
+          }
+        }}
+        onLayout={() => {
+          // The keyboard changes the list's layout, not its content, so the
+          // content-size handler above never fires: re-pin here (MUX-7).
+          if (atBottomRef.current) {
+            listRef.current?.scrollToEnd({ animated: false });
+          }
+        }}
+        onScroll={(event) => {
+          const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+          setAtBottom(contentSize.height - (contentOffset.y + layoutMeasurement.height) < 40);
+          // Scrolling to the top asks for the previous page of history.
+          if (hasMore && contentOffset.y <= 24) {
+            loadOlder(chat.id);
+          }
+        }}
+        renderItem={renderItem}
+      />
+      <JumpToBottom atBottom={atBottom} count={unseenCount} onPress={jumpToBottom} />
+    </View>
   );
 }

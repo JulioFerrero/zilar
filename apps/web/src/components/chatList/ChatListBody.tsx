@@ -107,36 +107,44 @@ export function ChatListBody({
               and the message hits. */}
           {showPeopleSearch && <PeopleSearchResult query={search} />}
           {chats.length === 0 && archived.length === 0 ? (
-            <EmptyState variant="no-chats" onInvite={onInvite} onExplore={onExplore} />
+            search.trim() === '' ? (
+              <EmptyState variant="no-chats" onInvite={onInvite} onExplore={onExplore} />
+            ) : (
+              <p className="px-[10px] py-2 text-[13px] text-muted-foreground">No chats match</p>
+            )
           ) : (
-            <>
-              <TopicKeyboardNav>
-                {groups.map((group) =>
-                  group.groupId === undefined ? (
-                    <ChatListItem
-                      key={group.key}
-                      chat={group.topics[0]!}
-                      selected={group.topics[0]!.id === activeChatId}
-                      isWide={isWide}
-                    />
-                  ) : (
-                    <GroupHeaderRow
-                      key={group.key}
-                      groupTitle={group.title}
-                      groupId={group.groupId}
-                      avatarUrl={group.avatarUrl}
-                      topics={group.topics}
-                      selectedId={activeChatId}
-                      collapsed={collapsed.has(group.groupId)}
-                      onToggleCollapse={onToggleCollapse}
-                      archivedOpen={archivedOpen.has(group.groupId)}
-                      onToggleArchived={onToggleArchived}
-                      isWide={isWide}
-                      onOpenNewTopic={onOpenNewTopic}
-                    />
-                  ),
-                )}
-              </TopicKeyboardNav>
+            <TopicKeyboardNav>
+              {groups.map((group) =>
+                group.groupId === undefined ? (
+                  <ChatListItem
+                    key={group.key}
+                    chat={group.topics[0]!}
+                    selected={group.topics[0]!.id === activeChatId}
+                    isWide={isWide}
+                  />
+                ) : (
+                  <GroupHeaderRow
+                    key={group.key}
+                    groupTitle={group.title}
+                    groupId={group.groupId}
+                    avatarSeed={
+                      (
+                        group.topics.find((topic) => topic.topic?.isGeneral === true) ??
+                        group.topics[0]
+                      )?.id ?? group.groupId
+                    }
+                    avatarUrl={group.avatarUrl}
+                    topics={group.topics}
+                    selectedId={activeChatId}
+                    collapsed={collapsed.has(group.groupId)}
+                    onToggleCollapse={onToggleCollapse}
+                    archivedOpen={archivedOpen.has(group.groupId)}
+                    onToggleArchived={onToggleArchived}
+                    isWide={isWide}
+                    onOpenNewTopic={onOpenNewTopic}
+                  />
+                ),
+              )}
               {/* Per-user archived chats (T-0113): topics hide inside their
                   group's own Archived toggle instead; this row covers DMs,
                   AI chats and legacy groups. */}
@@ -167,7 +175,7 @@ export function ChatListBody({
                     ))}
                 </>
               )}
-            </>
+            </TopicKeyboardNav>
           )}
           {/* Message hits come after the chat-name matches. `searchChat`
               scopes "Search only in this chat" from a chat header. */}

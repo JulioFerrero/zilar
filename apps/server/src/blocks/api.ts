@@ -8,8 +8,10 @@ import { BlocksGroup, BlocksReadRateLimit, BlocksWriteRateLimit } from '@zilar/a
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
+import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import {
   handler,
   mountApi,
@@ -18,7 +20,7 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import { rateLimitLayer } from '../effect/rate-limit-middleware';
-import { blockUser, listBlockedUsers, unblockUser } from './service';
+import { blockUser, listBlockedUsers, unblockUser, type BlocksDeps } from './service';
 
 export const BLOCK_WRITE_RATE_LIMIT_MAX = 30;
 export const BLOCK_WRITE_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
@@ -29,6 +31,10 @@ export interface BlocksRoutesDependencies {
   auth: Auth;
   db: ServerDatabase;
   audit?: AuditRecorder;
+  /** The app config (for the XMPP domain) and admin client, so a block can
+   * remove both roster items after the commit. Optional in tests. */
+  config?: ServerConfig;
+  adminClient?: EjabberdAdminClient;
   /** Injected in tests so the rate window can advance without waiting. */
   now?: () => number;
   writeLimiter?: RateLimiter;
@@ -46,13 +52,12 @@ const RATE_LIMIT_MESSAGE = 'Too many attempts, try again later';
 
 const BlocksApi = HttpApi.make('blocks').add(BlocksGroup);
 
-function serviceFor(deps: BlocksRoutesDependencies): {
-  db: ServerDatabase;
-  audit?: AuditRecorder;
-} {
+function serviceFor(deps: BlocksRoutesDependencies): BlocksDeps {
   return {
     db: deps.db,
     ...(deps.audit === undefined ? {} : { audit: deps.audit }),
+    ...(deps.adminClient === undefined ? {} : { adminClient: deps.adminClient }),
+    ...(deps.config === undefined ? {} : { domain: deps.config.xmpp.domain }),
   };
 }
 
@@ -75,12 +80,18 @@ export function createBlocksApi(deps: BlocksApiDependencies): EffectApiMount {
     });
   const service = serviceFor(deps);
 
+  // Roster cleanup after a block warns, never fails; the warn needs the
+  // request logger, which only exists here.
+  const serviceWithLogger = { ...service, logger };
+
   const groupLayer = HttpApiBuilder.group(BlocksApi, 'blocks', (handlers) =>
     handlers
       // Blocks `:userId`, idempotent. Unknown users answer 404, yourself 400.
       .handle(
         'block',
-        handler(logger, (request, user) => blockUser(service, user.id, request.params.userId)),
+        handler(logger, (request, user) =>
+          blockUser(serviceWithLogger, user.id, request.params.userId),
+        ),
       )
       // Unblocks `:userId`, idempotent.
       .handle(

@@ -7,8 +7,8 @@ import { useNavigate } from 'react-router';
  * links, so this only moves DOM focus; activation stays native.
  *
  * The wrapper takes no props: it navigates whatever topic rows are rendered
- * inside it. Only rows marked `data-topic-row` — group topics, never DM or
- * group singleton rows — take part, and only inside the chat list
+ * inside it. Every chat row — group topics, DM rows and single-group rows —
+ * carries `data-topic-row` and takes part, and only inside the chat list
  * (`nav[aria-label="Chats"]`): message links, search hits and the empty
  * state never take part, even though they share the `/c/` prefix.
  */

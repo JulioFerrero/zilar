@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { Avatar } from '@/components/chat/avatar';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { Text } from '@/components/ui/text';
+import { aiSeed } from '@zilar/chat-core';
 
 import type { PublicAi } from '../../lib/ais-api';
 import { runAction, type RunAction } from './run-state';
@@ -48,7 +49,7 @@ export function AiActionsSheet({
       header={
         ai === null ? undefined : (
           <View className="flex-row items-center gap-3 px-4 py-3">
-            <Avatar id={ai.id} name={ai.name} size={36} />
+            <Avatar id={aiSeed(ai.jid)} name={ai.name} size={36} />
             <Text numberOfLines={1} className="min-w-0 flex-1 text-[16px] font-semibold">
               {ai.name}
             </Text>

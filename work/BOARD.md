@@ -1190,3 +1190,77 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1146](T-1146-ejabberd-push-enable-audit.md) | Audit: why XEP-0357 <enable/> to ejabberd answers internal-server-error in production, so no real message ever | 2026-10-11 |
 | [T-1149](T-1149-typing-stop-and-badge.md) | Typing: a received message clears that chat's typing line at once, and the sender sends 'paused' on send or wh | 2026-10-11 |
 | [T-1150](T-1150-push-register-idempotent.md) | Push: re-registering the same device keeps its node (server), and the Android app registers its token once per | 2026-10-11 |
+| [T-1155](T-1155-precise-push-triggers.md) | F6 (audit MP-7): mod_push notify_on: messages (typing/presence no longer trigger pushes), and the archive scan | 2026-10-11 |
+| [T-1157](T-1157-safe-file-serving.md) | Security wave 2 (SEC-1, SEC-9): /api/files serves inline only an allowlist of safe media types (png/jpeg/gif/w | 2026-10-11 |
+| [T-1154](T-1154-group-push-notifier.md) | F5 (audit MP-3, P0): server-side group push notifier | 2026-10-11 |
+| [T-1156](T-1156-deploy-hardening.md) | Security wave 2 (SEC-2, SEC-4, SEC-5/6/10): Caddy proxies only /xmpp-ws/ws to ejabberd (admin /api no longer p | 2026-10-11 |
+| [T-1152](T-1152-push-pair-every-session.md) | F2 (audit MP-2b, MP-8, MP-13): the XEP-0357 <enable/> is sent on EVERY new XMPP session (each transition to on | 2026-10-11 |
+| [T-1158](T-1158-block-really-blocks.md) | SG-1 (P0): blocking really blocks | 2026-10-11 |
+| [T-1162](T-1162-webpush-endpoint-one-owner.md) | Push: a Web Push endpoint belongs to one account | 2026-10-11 |
+| [T-1163](T-1163-plan-page.md) | GitHub Pages: a 'Fix plan' page next to the Code map, generated from docs/plan/plan.json plus each task's stat | 2026-10-11 |
+| [T-1151](T-1151-mobile-background-lifecycle.md) | F1 (audit MP-1, MP-12): mobile background lifecycle — after 10 s in background the app suspends its XMPP socke | 2026-10-11 |
+| [T-1160](T-1160-seen-only-when-seen.md) | UI-2/9/10/11: the displayed ('seen') marker goes out only for a chat that is open, visible and focused — not f | 2026-10-11 |
+| [T-1161](T-1161-incoming-unread-lastseen-typing.md) | UI-3/4/5 in the core incoming path: my own message from another device clears that chat's unread; 'last seen'  | 2026-10-11 |
+| [T-1159](T-1159-block-strangers.md) | SG-2 (P0): contacts-only DMs — ejabberd mod_block_strangers drops chat messages from JIDs without a roster sub | 2026-10-11 |
+| [T-1166](T-1166-web-draft-stream-reconnect.md) | AI-2 + AI-12: the web AI draft stream reopens with jittered backoff after an HTTP error (deploy 502, 401) inst | 2026-10-12 |
+| [T-1165](T-1165-ai-context-edits.md) | AI-6: the AI's context applies edits and deletes before it is cut to 50 — a correction replaces its target's t | 2026-10-12 |
+| [T-1168](T-1168-ai-drain-on-deploy.md) | AI-1: on shutdown the AI gateway drains — refuse new turns, wait up to 8 s for running DM and room turns to fi | 2026-10-12 |
+| [T-1171](T-1171-web-new-message-dialog.md) | WUX-7: web 'New message' lists your contacts with a filter and opens the DM at once; the contact card shows Me | 2026-10-12 |
+| [T-1164](T-1164-plan-page-all-findings.md) | Plan page v2: list EVERY finding of every audit (P0–P3, id, severity, platform, one line, 'fixed by' chip), th | 2026-10-12 |
+| [T-1172](T-1172-mobile-list-keep-position.md) | MUX-1 + MUX-7: the mobile message list keeps the reading position — loading an older page or a new message no  | 2026-10-12 |
+| [T-1169](T-1169-health-and-uptime-alert.md) | OPS-2 (P0): /health also reports ejabberd (admin ping), the push component (online/offline) and the last push  | 2026-10-12 |
+| [T-1173](T-1173-mobile-sign-out-and-back.md) | MUX-5 + MUX-6: a Sign out row (with confirm) at the bottom of the mobile settings hub; the header back on a ch | 2026-10-12 |
+| [T-1167](T-1167-ai-error-replies.md) | AI-3/4/5: honest AI failure replies — a 429 is 'my provider is busy' (one retry first), budget only when the d | 2026-10-12 |
+| [T-1170](T-1170-web-composer-drafts-focus.md) | WUX-3 + WUX-6: web keeps a composer draft per chat (survives chat switches and reloads, 'Draft:' in red in the | 2026-10-12 |
+| [T-1175](T-1175-chats-topics-batched.md) | PERF-4: GET /api/chats loads every group's visible topics and topic views in one batched pass (a fixed handful | 2026-10-12 |
+| [T-1177](T-1177-web-search-results.md) | WUX-1 + WUX-2: web search — a people row opens the DM (contact) or the @handle card instead of expanding inlin | 2026-10-12 |
+| [T-1178](T-1178-web-notifications-page.md) | WUX-5: web Notifications page — 'only while open' is information, not a red error shown twice; 'Blocked by the | 2026-10-12 |
+| [T-1180](T-1180-topic-room-sync-retry.md) | SG-3: a topic-room affiliation sync that fails after a group membership change (ejabberd unreachable) is retri | 2026-10-12 |
+| [T-1179](T-1179-log-redaction-and-grace.md) | OPS-16 + OPS-17: the log redaction list covers every server secret (FCM JSON, private_key, VAPID private key,  | 2026-10-12 |
+| [T-1176](T-1176-ai-group-limits-and-replies.md) | AI-7 + AI-8: in groups, a turn dropped by the room rate limit or the round budget tells the asker once per win | 2026-10-12 |
+| [T-1182](T-1182-ai-followups.md) | AI follow-ups from T-1167/T-1168: a plain (no-tools) DM reply cut by max_tokens also says so; a listener wake  | 2026-10-12 |
+| [T-1174](T-1174-rate-limits-and-group-avatars.md) | SEC-7 + SEC-8: per-user budgets on invite creation (10/day), profile edits (10/10 min), group creation (20/h)  | 2026-10-12 |
+| [T-1184](T-1184-push-scan-batched.md) | PERF-5 (first step): the per-push archive scan computes the user's allowed rooms with one batched topic-visibi | 2026-10-12 |
+| [T-1181](T-1181-mobile-composer-drafts.md) | MUX-4: mobile keeps a composer draft per chat (survives leaving the chat and app restarts, per signed-in user) | 2026-10-12 |
+| [T-1183](T-1183-web-group-members.md) | WUX-8: web group panel — a members section with Add members (contact picker, owners/admins), Remove on each ro | 2026-10-12 |
+| [T-1187](T-1187-group-owner-transfer.md) | SG-4 (part 1): PUT /api/groups/:id/owner — the owner hands the group to another member (roles swap in one tran | 2026-10-12 |
+| [T-1185](T-1185-mobile-media-via-proxy.md) | SEC-3 step 1: mobile loads every chat file (image, GIF/video, voice, file viewer/open) through GET /api/files? | 2026-10-12 |
+| [T-1188](T-1188-mobile-list-render-cost.md) | PERF-2 (first step): the mobile message row is memoised and renderItem is stable, with windowSize/maxToRenderP | 2026-10-12 |
+| [T-1153](T-1153-honest-ticks-outbox.md) | F4 (audit MP-4, MP-11): honest 'sent' tick from stream-management acks, an outbox that resends texts that fail | 2026-10-12 |
+| [T-1190](T-1190-web-owner-transfer.md) | SG-4 web UI: the group owner gets 'Make owner' on each member row (inline confirm), calling PUT /api/groups/:i | 2026-10-12 |
+| [T-1189](T-1189-web-row-badge-layout.md) | WUX-4: web chat list rows put the time and the unread badge on one right edge for DM, topic and group rows; th | 2026-10-12 |
+| [T-1191](T-1191-mobile-jump-and-keyboard.md) | MUX-8 + MUX-9: mobile chat shows a round jump-to-bottom button (with the count of messages that arrived while  | 2026-10-12 |
+| [T-1192](T-1192-mobile-avatars-header.md) | MUX-11/12/15: mobile shows people's and groups' profile photos (ball as fallback) in chat rows, the chat heade | 2026-10-12 |
+| [T-1186](T-1186-migration-safety.md) | OPS-5 + OPS-6: migration safety — the gate rejects a new apps/server/drizzle/NNNN_*.sql whose number is not ex | 2026-10-12 |
+| [T-1195](T-1195-web-confirm-quote-focus.md) | WUX-9/13/15: web asks before Sign out and 'Archive topic for everyone'; a reply quote is clickable and jumps t | 2026-10-12 |
+| [T-1194](T-1194-reply-ids.md) | UI-F1 (UI-1, UI-6): a reply names the quoted message by an id both sides share (the same wire id reactions use | 2026-10-12 |
+| [T-1199](T-1199-web-older-and-keys.md) | WUX-11/12: web keeps the viewport fixed when older messages load (layout effect), shows a small loading line a | 2026-10-12 |
+| [T-1193](T-1193-token-401-retry.md) | MP-F7: a 401/403 from the XMPP token fetch during an automatic reconnect is retried once after 2 s before it c | 2026-10-12 |
+| [T-1201](T-1201-mobile-image-viewer.md) | MUX-13 (first step): the mobile full-screen image viewer moves to its own file on reanimated + Gesture API: sm | 2026-10-12 |
+| [T-1198](T-1198-server-unread.md) | MP-F3 server half (MP-6): a chat_reads table and PUT /api/chats/:jid/read store each user's last-read archive  | 2026-10-12 |
+| [T-1200](T-1200-reply-fallback-strip.md) | T-1194 follow-up: the XEP-0461 reply fallback line ('> quote') is removed from the decoded body in xmpp-core,  | 2026-10-12 |
+| [T-1196](T-1196-mobile-failed-text-retry.md) | MUX-3: a failed text on mobile shows a red alert icon and 'Not sent' instead of the sending clock, and its lon | 2026-10-12 |
+| [T-1202](T-1202-mobile-voice-hints.md) | MUX-14 (first step): a too-short press on the mobile mic shows 'Hold to record, release to send' for 1.5 s ins | 2026-10-12 |
+| [T-1204](T-1204-mobile-chat-swipe.md) | MUX-10: swiping a mobile chat row left reveals Pin/Unpin, Mute/Unmute and Archive/Unarchive buttons that call  | 2026-10-12 |
+| [T-1205](T-1205-server-unread-again.md) | T-1198 again, after a production 500: re-apply the server unread/lastMessage work, pass every archive paramete | 2026-10-12 |
+| [T-1203](T-1203-avatar-seed-audit.md) | Audit: every ball-avatar call site on web and mobile, the seed it passes (user id, JID, group id, chat id) and | 2026-10-12 |
+| [T-1206](T-1206-mobile-notifications.md) | Mobile notifications (parity fix #9): Settings → Notifications shows the permission state (with a way to the s | 2026-10-12 |
+| [T-1208](T-1208-native-test-push.md) | T-1206 follow-up: 'Send test notification' works on a phone — the push test route (POST /push/test) sends a da | 2026-10-12 |
+| [T-1209](T-1209-web-avatar-seeds.md) | Avatar seeds, web + shared part: avatarSvg normalizes every seed (bare JID, lowercase); a shared personSeed/ai | 2026-10-12 |
+| [T-1197](T-1197-outbox-flush-on-resume.md) | Outbox fix (found by the lead on the emulator): a text sent in airplane mode on mobile never goes out after th | 2026-10-12 |
+| [T-1213](T-1213-retry-text-outbox-args.md) | URGENT: main does not typecheck — retry-text.ts (T-1196) calls outboxFailed with the old 8-argument shape afte | 2026-10-12 |
+| [T-1210](T-1210-web-send-tests-honest-tick.md) | Two web send-pipeline tests have failed since T-1153 (honest sent tick): update them to the new rule — a text  | 2026-10-12 |
+| [T-1211](T-1211-muc-removal-event.md) | SG-5: when the server removes me from a room (my own unavailable MUC presence with status 307 kicked, 301 bann | 2026-10-12 |
+| [T-1207](T-1207-client-server-unread.md) | MP-F3 client half: web and mobile take unread counts and the last-message preview from /api/chats (fresher ser | 2026-10-12 |
+| [T-1212](T-1212-mobile-avatar-seeds.md) | Avatar seeds, mobile: every mobile Avatar/avatarSvg call site in docs/audit/avatar-seeds.md §4 passes the rule | 2026-10-12 |
+| [T-1215](T-1215-voice-hint-and-test-push.md) | Two bugs the lead found on the emulator (APK 86f8eef2): the mobile 'Hold to record' hint is squeezed to the mi | 2026-10-12 |
+| [T-1214](T-1214-unread-follow-ups.md) | MP-F3 finish (T-1207 follow-ups): the server preview also carries its archive id and the client uses it as the | 2026-10-12 |
+| [T-1217](T-1217-unread-dedupe-origin-id.md) | Server unread counts a resent message once: rows of one chat with the same sender and origin id (a client rese | 2026-10-12 |
+| [T-1219](T-1219-archived-rows-keyboard-nav.md) | Web: arrow keys in the chat list also reach the open Archived rows — move the Archived section inside the Topi | 2026-10-12 |
+| [T-1218](T-1218-swipe-failure-line.md) | Mobile: a failed swipe action (pin, mute or archive) shows 'Could not save. Try again.' in a line above the ch | 2026-10-12 |
+| [T-1216](T-1216-delivered-but-stuck-sending.md) | Emulator find (APK 86f8eef2): a text sent as the network drops reaches the server, but its bubble stays 'sendi | 2026-10-12 |
+| [T-1221](T-1221-history-dedupe-origin-id.md) | Clients show a resent message once: two archived rows of one chat with the same sender and origin id (a by-des | 2026-10-12 |
+| [T-1223](T-1223-revoked-session-to-login.md) | A revoked session goes to login (authFailed → /api/me 401 → sign out) | in-progress | auto | T-1193 | T-1193 F2 |
+| [T-1222](T-1222-live-dedupe-origin-id.md) | A resent message that arrives live shows once: the live incoming path drops a message the ledger links to one  | 2026-10-12 |
+| [T-1220](T-1220-resend-tick-after-replace.md) | Emulator find (APK 745be24c): after a long airplane-mode gap the app reconnects about 2 minutes late, and a re | 2026-10-12 |
+| [T-1224](T-1224-mobile-http-timeout.md) | Mobile HTTP calls time out after 20 s: the two shared transports (raw-request.ts, api-client.ts) add an abort  | 2026-10-12 |

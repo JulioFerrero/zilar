@@ -72,10 +72,13 @@ export function clearActiveChatRead(ctx: CoreCtx): void {
   if (chat === undefined || chat.unread === 0) {
     return;
   }
-  const newest = chat.lastMessage?.id;
-  recordRead(ctx, chatId, newest);
-  if (newest !== undefined && ctx.core !== undefined) {
-    ctx.core.markDisplayed(chatId, coreKind(chat), newest);
+  const lastMessage = chat.lastMessage;
+  // The read mark is the archive id when the preview came from the server
+  // (its `id` is the origin id, which the server answers 400 for); the
+  // displayed marker keeps the origin id, as before.
+  recordRead(ctx, chatId, lastMessage?.archiveId ?? lastMessage?.id);
+  if (lastMessage !== undefined && ctx.core !== undefined) {
+    ctx.core.markDisplayed(chatId, coreKind(chat), lastMessage.id);
   }
 }
 

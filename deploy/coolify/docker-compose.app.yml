@@ -69,6 +69,7 @@ services:
       context: deploy
       dockerfile: ejabberd/Dockerfile
     restart: unless-stopped
+    stop_grace_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,12 +89,13 @@ services:
       EJABBERD_MACRO_SQL_PASSWORD: ${SERVICE_PASSWORD_EJABBERDDB}
       # Push component (T-0145, XEP-0114): the secret the server's component
       # authenticates with. Must equal the server's PUSH_COMPONENT_SECRET
-      # below. The placeholder default matches the placeholder in the image:
-      # with it the component handshake fails (wrong secret) and push stays
-      # non-functional until a real password is generated. `doctor` (plain
-      # stack) flags the placeholder in plain words; on Coolify confirm
+      # below. No placeholder default: an unset
+      # SERVICE_PASSWORD_PUSHCOMPONENT stays empty, the handshake fails and
+      # push stays non-functional until a real password is generated (the
+      # server also refuses the documented placeholder, so the two sides
+      # can never agree on a known secret). On Coolify confirm
       # SERVICE_PASSWORD_PUSHCOMPONENT holds a generated value.
-      EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSHCOMPONENT:-CHANGE_ME_PUSH_COMPONENT_SECRET}
+      EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSHCOMPONENT}
       # push.<XMPP domain> is derived at container start from ZILAR_DOMAIN
       # (see deploy/ejabberd/push-entrypoint.sh): set it to the same value
       # as XMPP_DOMAIN so the entrypoint writes push.<XMPP_DOMAIN>, matching
@@ -120,6 +122,7 @@ services:
       args:
         ZILAR_COMMIT: ${SOURCE_COMMIT:-unknown}
     restart: unless-stopped
+    stop_grace_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
@@ -140,6 +143,12 @@ services:
       BETTER_AUTH_SECRET: ${SERVICE_PASSWORD_BETTERAUTH}
       # The API shares the web app's domain, so the allowed origin is that domain.
       WEB_ORIGINS: ${SERVICE_URL_WEB}
+      # Client IP for the per-IP limiters (setup, join, invite preview):
+      # Coolify's Traefik and the web Caddy above both append
+      # X-Forwarded-For, so the client is the 2nd address from the right
+      # (`clientIpFrom` in apps/server/src/http/client-ip.ts). With 0 every
+      # visitor would share one proxy-address budget, lockable by anyone.
+      TRUSTED_PROXY_HOPS: 2
       EJABBERD_API_URL: http://ejabberd:5280/api
       EJABBERD_ADMIN_JID: admin@${SERVICE_FQDN_WEB}
       EJABBERD_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERDADMIN}
@@ -168,7 +177,9 @@ services:
       # module treats "no master key" as "no gateway" and the placeholder is
       # never called.
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://127.0.0.1:9}
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-@empty@}
+      # Empty means unset (the server treats it as no gateway); never a
+      # placeholder that passes the non-empty check.
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
       AGENT_GATEWAY_ENABLED: ${AGENT_GATEWAY_ENABLED:-false}
       ACTION_DEMO_ENABLED: ${ACTION_DEMO_ENABLED:-false}
       RUNNER_HUB_ENABLED: ${RUNNER_HUB_ENABLED:-false}
@@ -199,7 +210,9 @@ services:
       # value as XMPP_DOMAIN so the entrypoint derives it.
       PUSH_COMPONENT_JID: push.${SERVICE_FQDN_WEB}
       # Must equal ejabberd's EJABBERD_MACRO_PUSH_COMPONENT_SECRET above.
-      PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSHCOMPONENT:-CHANGE_ME_PUSH_COMPONENT_SECRET}
+      # No placeholder default (see above): unset stays empty and the
+      # server boots with push off.
+      PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSHCOMPONENT}
       # Host of ejabberd's XEP-0114 component listener (T-0172): the Compose
       # service name, not 127.0.0.1 (inside this container loopback is the
       # server itself, where nothing listens on 5347).

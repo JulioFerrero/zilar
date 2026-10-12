@@ -1,9 +1,10 @@
 import { Plus } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExplorePage } from './ExplorePage';
 import { InviteDialog } from './InviteDialog';
 import { NewAiDialog } from './ais/NewAiDialog';
 import { NewGroupDialog } from './NewGroupDialog';
+import { NewMessageDialog } from './NewMessageDialog';
 import { NewTopicDialog } from './NewTopicDialog';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
@@ -37,6 +38,31 @@ export function NewChatButton({
   const groupInfos = useChatSelector((s) => s.groupInfos);
 
   const toggleMenu = (): void => setMenuOpen((value) => !value);
+
+  // The wide button shows a `kbd N`: plain `n` (outside inputs) opens the
+  // same menu the button opens.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'n' && event.key !== 'N') {
+        return;
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setMenuOpen((value) => !value);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const focusTrigger = (): void => triggerRef.current?.focus();
 
@@ -217,32 +243,7 @@ export function NewChatButton({
           </Dialog>
         ))}
       {dialog === 'message' && (
-        <Dialog
-          open
-          onClose={closeDialog}
-          title="New message"
-          description="Invite a friend to start a conversation, or type their @username in the search bar above."
-          size="sm"
-          actions={
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={closeDialog}
-                className="h-9 rounded-full px-4"
-              >
-                Close
-              </Button>
-              <Button
-                type="button"
-                onClick={() => openDialog('invite')}
-                className="h-9 rounded-full px-4"
-              >
-                Invite a friend
-              </Button>
-            </>
-          }
-        />
+        <NewMessageDialog onClose={closeDialog} onInvite={() => openDialog('invite')} />
       )}
     </div>
   );

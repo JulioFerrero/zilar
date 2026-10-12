@@ -64,6 +64,7 @@ services:
       context: .
       dockerfile: ejabberd/Dockerfile
     restart: unless-stopped
+    stop_grace_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,12 +83,12 @@ services:
       EJABBERD_MACRO_SQL_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required}
       # Push component (T-0145, XEP-0114): the secret the server's component
       # authenticates with. Must equal the server's PUSH_COMPONENT_SECRET.
-      # The placeholder default matches the placeholder in the yml: with it
-      # the component handshake fails (wrong secret) and the server answers
-      # its push routes from an unconfigured component — push stays
-      # non-functional until a real secret is set on both sides. `doctor`
-      # flags the placeholder in plain words.
-      EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET:-CHANGE_ME_PUSH_COMPONENT_SECRET}
+      # No placeholder default: an unset PUSH_COMPONENT_SECRET stays empty,
+      # the handshake fails and push stays non-functional until a real
+      # secret is set on both sides (the server also refuses the documented
+      # placeholder, so the two sides can never agree on a known secret).
+      # `doctor` flags an unset or placeholder secret in plain words.
+      EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET}
       ZILAR_DOMAIN: ${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
       ZILAR_XMPP_JWT_SECRET: ${ZILAR_XMPP_JWT_SECRET:?ZILAR_XMPP_JWT_SECRET is required}
       EJABBERD_MACRO_UPLOAD_URL: https://${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}/upload
@@ -106,6 +107,7 @@ services:
   server:
     image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-server:${IMAGE_TAG:-latest}
     restart: unless-stopped
+    stop_grace_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
@@ -157,7 +159,9 @@ services:
       # and with no key every AI route answers 503, so the placeholder URL
       # is never called. Set both LITELLM_* variables for real AI features.
       LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://127.0.0.1:9}
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-@empty@}
+      # Empty means unset (the server treats it as no gateway); never a
+      # placeholder that passes the non-empty check.
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
       AGENT_GATEWAY_ENABLED: ${AGENT_GATEWAY_ENABLED:-false}
       ACTION_DEMO_ENABLED: ${ACTION_DEMO_ENABLED:-false}
       RUNNER_HUB_ENABLED: ${RUNNER_HUB_ENABLED:-false}
@@ -190,7 +194,9 @@ services:
       # the ejabberd_service listener (see deploy/ejabberd/push-entrypoint.sh).
       PUSH_COMPONENT_JID: push.${ZILAR_DOMAIN:?ZILAR_DOMAIN is required}
       # Must equal ejabberd's EJABBERD_MACRO_PUSH_COMPONENT_SECRET above.
-      PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET:-CHANGE_ME_PUSH_COMPONENT_SECRET}
+      # No placeholder default (see above): unset stays empty and the
+      # server boots with push off.
+      PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET}
       # Host of ejabberd's XEP-0114 component listener (T-0172): the Compose
       # service name, not 127.0.0.1 (inside this container loopback is the
       # server itself, where nothing listens on 5347).

@@ -400,6 +400,7 @@ function formatIssues(details: ReadonlyArray<ConfigDetail>): string {
 // them exactly as zod's `?? default` did.
 const EMPTY_MEANS_UNSET_KEYS = [
   'ZILAR_KEY_ENCRYPTION_KEY',
+  'LITELLM_MASTER_KEY',
   'MAIL_TRANSPORT',
   'SMTP_HOST',
   'SMTP_USER',

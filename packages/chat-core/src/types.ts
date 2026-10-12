@@ -82,6 +82,8 @@ export interface UiMessage {
   failureReason?: SendFailureReason;
   /** XEP-0444 reaction chips, newest state first-used; empty/absent means none. */
   reactions?: UiReaction[];
+  /** The archive id (decimal microsecond timestamp) of a server chat-list preview, the read mark for it. */
+  archiveId?: string;
   /** True when the message was corrected (XEP-0308) after it was sent. */
   edited?: boolean;
   /**

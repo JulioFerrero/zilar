@@ -9,6 +9,7 @@ import { HandleField } from '@/components/settings/handle-field';
 import { NameField } from '@/components/settings/name-field';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { LOAD_ERROR, useProfileSettings } from '@/components/settings/use-profile-settings';
+import { useChatStore } from '@/store/chat-store-provider';
 
 export default function ProfileSettingsScreen() {
   return (
@@ -47,6 +48,9 @@ function ProfileSettings() {
     onHandleChange,
     saveHandle,
   } = useProfileSettings();
+  // T-1212: the ball is seeded by the own bare JID (the same ball as the
+  // chat list and the profile screen).
+  const ownJid = useChatStore((state) => state.me?.jid ?? undefined);
 
   return (
     <SettingsScreenShell
@@ -69,6 +73,7 @@ function ProfileSettings() {
           <AvatarControl
             ownerId={profile.id}
             ownerName={profile.name}
+            ownerSeed={ownJid}
             currentUrl={profile.avatarUrl}
             token={avatarToken}
             phase={avatarPhase}

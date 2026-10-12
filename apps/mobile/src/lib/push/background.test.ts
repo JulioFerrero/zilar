@@ -5,6 +5,7 @@ import { jsonResponse } from '@/test/wait';
 const notifications = vi.hoisted(() => ({
   scheduleNotificationAsync: vi.fn(async () => 'notification-1'),
   registerTaskAsync: vi.fn(async () => null),
+  setNotificationHandler: vi.fn(),
   BackgroundNotificationTaskResult: { NewData: 0, NoData: 1, Failed: 2 },
 }));
 
@@ -91,5 +92,22 @@ describe('onWake (T-1143)', () => {
     );
 
     expect(notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('posts the test wake even while the app is in the foreground', async () => {
+    appState.currentState = 'active';
+
+    await onWake({ chatId: 'zilar:test' }, { getToken: token, apiUrl: API_URL });
+
+    expect(notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+    expect(notifications.scheduleNotificationAsync).toHaveBeenCalledWith({
+      identifier: 'zilar-test',
+      content: {
+        title: 'Zilar',
+        body: 'Push notifications work on this device.',
+        data: {},
+      },
+      trigger: { channelId: 'messages' },
+    });
   });
 });

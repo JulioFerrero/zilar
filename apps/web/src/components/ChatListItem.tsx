@@ -18,6 +18,7 @@ import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { useBlockedJids } from '@/lib/blockedJids';
+import { useComposerDraft } from '@/lib/composer-drafts';
 import { typingLabel } from '@/lib/format';
 import { previewMessage } from '@/lib/preview-message';
 import { cn } from '@/lib/utils';
@@ -39,6 +40,11 @@ export const ChatListItem = memo(function ChatListItem({
   const currentUserId = useChatSelector((s) => s.currentUserId);
   const typingNames = useChatSelector((s) => s.typing[chatId]?.names) ?? EMPTY_NAMES;
   const hasDraft = useChatSelector((s) => s.drafts[chatId] !== undefined);
+  // T-1170 (WUX-3): a chat that is not open shows its composer draft instead of
+  // the last message, as Telegram does. `hasDraft` above is the AI reply draft.
+  const composerDraft = useComposerDraft(chatId);
+  const draftLine = composerDraft.trimStart().split('\n')[0] ?? '';
+  const showDraft = !selected && composerDraft.trim().length > 0;
   const last = chat.lastMessage;
   const blockedJids = useBlockedJids();
   const preview = previewMessage(chat, messages, blockedJids, currentUserId);
@@ -69,6 +75,7 @@ export const ChatListItem = memo(function ChatListItem({
     <div className="group relative">
       <Link
         to={`/c/${encodeURIComponent(chat.id)}`}
+        data-topic-row=""
         aria-current={selected ? 'page' : undefined}
         className={cn(
           'flex items-center gap-3 transition-colors',
@@ -118,7 +125,7 @@ export const ChatListItem = memo(function ChatListItem({
                 <VolumeX aria-label="Muted" className="size-4 text-subtle-foreground" />
               )}
               {last !== undefined && (
-                <span className="font-mono text-[11px] text-subtle-foreground">
+                <span className="font-mono text-[11px] text-subtle-foreground transition-opacity group-hover:opacity-0 group-focus-within:opacity-0">
                   {formatListTime(last.createdAt, new Date())}
                 </span>
               )}
@@ -134,6 +141,10 @@ export const ChatListItem = memo(function ChatListItem({
               <span className="flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
                 <span className="pulse-dot size-1.5 shrink-0 rounded-full bg-muted-foreground" />
                 <span className="truncate">{typingText}</span>
+              </span>
+            ) : showDraft ? (
+              <span className="truncate text-[13px] leading-5 text-muted-foreground">
+                <span className="text-danger">Draft:</span> {draftLine}
               </span>
             ) : (
               <span className="truncate text-[13px] leading-5 text-muted-foreground">
@@ -156,25 +167,28 @@ export const ChatListItem = memo(function ChatListItem({
                 </span>
               )
             )}
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`Chat actions for ${chat.title}`}
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                setMenuOpen((value) => !value);
-              }}
-              className="absolute top-1/2 right-0 size-6 shrink-0 -translate-y-1/2 bg-surface-raised text-subtle-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-            >
-              <MoreHorizontal className="size-4" aria-hidden="true" />
-            </Button>
           </div>
         </div>
       </Link>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`Chat actions for ${chat.title}`}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setMenuOpen((value) => !value);
+        }}
+        className={cn(
+          'pointer-events-none absolute top-1.5 size-6 shrink-0 bg-surface-raised text-subtle-foreground opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100',
+          isWide ? 'right-[10px]' : 'right-4',
+        )}
+      >
+        <MoreHorizontal className="size-4" aria-hidden="true" />
+      </Button>
       {menuOpen && <ChatActionsMenu chat={chat} onClose={() => setMenuOpen(false)} />}
     </div>
   );

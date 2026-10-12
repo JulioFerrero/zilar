@@ -2,6 +2,7 @@
 // the resume gate (T-0915).
 import { Context, Effect, Fiber } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
+import type { XmppCore } from '@zilar/xmpp-core';
 import type { StoreAppHooks } from './ctx';
 import { makeLifetime } from './lifetime';
 import {
@@ -227,5 +228,82 @@ describe('resume gate (R8)', () => {
 
     Effect.runSync(reconnect(ctx));
     expect(rt.session()).toBeDefined();
+  });
+
+  it('wakes a stale-online core instead of trusting its status (F1)', async () => {
+    let wakes = 0;
+    let connects = 0;
+    const { ctx, fx } = lifecycleCtx({
+      ports: { flags: { connectRetry: true, reconnectOnResume: true } },
+      state: { status: 'online' },
+    });
+    ctx.started = true;
+    // The test ctx carries no `me`: the resume path skips the group joins.
+    ctx.core = {
+      connect: async () => {
+        connects += 1;
+      },
+      wake: async () => {
+        wakes += 1;
+        return 'resumed';
+      },
+    } as unknown as XmppCore;
+
+    await Effect.runPromise(reconnect(ctx));
+
+    // The stale `online` status no longer short-circuits the resume: the
+    // core wakes instead of connecting.
+    expect(wakes).toBe(1);
+    expect(connects).toBe(0);
+    expect(fx.setStatus).toHaveBeenCalledWith('online');
+  });
+
+  it('the core emitting authFailed schedules the connect retry', async () => {
+    // T-1197 (T-1193 follow-up F1): the `authFailed` listener schedules the
+    // connect retry ladder behind `flags.connectRetry`. Booting with a token
+    // fetch that fails for good emits `authFailed` from the fake core, and
+    // the store marks the retry pending instead of staying offline.
+    const { ctx } = lifecycleCtx({
+      ports: {
+        flags: { connectRetry: true, reconnectOnResume: true },
+        api: {
+          getMe: async () => ({ id: 'u-me', name: 'Me' }),
+          getChats: async () => [],
+          getContacts: async () => [],
+          getXmppToken: async () => ({ jid: 'me@x', token: 't', service: 's', domain: 'd' }),
+        },
+        createXmpp: () => {
+          const listeners = new Map<string, (payload: never) => void>();
+          return {
+            on: (event: string, cb: (payload: never) => void) => {
+              listeners.set(event, cb);
+              return () => {
+                listeners.delete(event);
+              };
+            },
+            connect: async () => undefined,
+            disconnect: async () => undefined,
+            emitAuthFailed: () => {
+              listeners.get('authFailed')?.(undefined as never);
+            },
+          } as unknown as XmppCore & { emitAuthFailed: () => void };
+        },
+      },
+    });
+
+    Effect.runSync(startStore(ctx));
+    await Effect.runPromise(
+      Effect.sleep(10).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            const current = ctx.core as unknown as { emitAuthFailed?: () => void } | undefined;
+            current?.emitAuthFailed?.();
+          }),
+        ),
+        Effect.andThen(Effect.sleep(10)),
+      ),
+    );
+
+    expect(ctx.connectRetryPending).toBe(true);
   });
 });

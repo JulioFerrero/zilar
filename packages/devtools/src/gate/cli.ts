@@ -21,6 +21,12 @@ import {
   type WorkspacePackage,
 } from './plan.js';
 import { gatePassDir, treeKey, writePassRecord } from './pass-record.js';
+import {
+  checkMigrations,
+  migrationNumber,
+  parseMigrationDiff,
+  type MigrationDiff,
+} from './migrations.js';
 import { scopeReport } from './scope.js';
 import { gateSlotsDir, release, tryAcquire } from './slots.js';
 
@@ -82,6 +88,40 @@ export function changedFiles(root: string, base: string): string[] {
   const uncommitted = lines(run(root, 'git', ['diff', '--name-only', 'HEAD']).output);
   const untracked = lines(run(root, 'git', ['ls-files', '--others', '--exclude-standard']).output);
   return [...new Set([...committed, ...uncommitted, ...untracked])].sort();
+}
+
+// Added and modified migration files in the diff against the base, so the
+// migration check (migrations.ts) can tell a new file from an edit. A plain
+// `--name-only` list loses that: `--name-status` keeps it, untracked files are
+// new, and a rename or copy lands at a new path, which counts as added.
+function migrationDiff(root: string, base: string): MigrationDiff {
+  const committed = run(root, 'git', ['diff', '--name-status', `${base}...HEAD`]).output;
+  const uncommitted = run(root, 'git', ['diff', '--name-status', 'HEAD']).output;
+  const untracked = lines(run(root, 'git', ['ls-files', '--others', '--exclude-standard']).output)
+    .map((file) => `A\t${file}`)
+    .join('\n');
+  return parseMigrationDiff([committed, uncommitted, untracked].join('\n'));
+}
+
+// The highest migration number on the base branch: what an added file must
+// continue from.
+function baseMigrationMax(root: string, base: string): number {
+  const tree = run(root, 'git', [
+    'ls-tree',
+    '-r',
+    '--name-only',
+    base,
+    '--',
+    'apps/server/drizzle',
+  ]).output;
+  let max = 0;
+  for (const file of lines(tree)) {
+    const number = migrationNumber(file);
+    if (number !== undefined && number > max) {
+      max = number;
+    }
+  }
+  return max;
 }
 
 export function readWorkspace(root: string): WorkspacePackage[] {
@@ -226,6 +266,19 @@ function main(): void {
         for (const file of scope.outside) {
           console.log(`  ${file}`);
         }
+      }
+    }
+    const migration = checkMigrations(migrationDiff(root, base), baseMigrationMax(root, base));
+    for (const warning of migration.warnings) {
+      console.log(`WARN  ${warning}`);
+    }
+    if (migration.failures.length === 0) {
+      console.log('migration: every added migration continues from the base');
+    } else {
+      failed = true;
+      console.log(`FAIL  migrations: ${migration.failures.length} added file(s) out of sequence`);
+      for (const failure of migration.failures) {
+        console.log(`  ${failure}`);
       }
     }
   } finally {

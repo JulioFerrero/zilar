@@ -7,6 +7,7 @@ import { AiBadge } from './AiBadge';
 import { Avatar } from './Avatar';
 import { ChatBackgroundDialog } from './ChatBackgroundDialog';
 import { ChatPrefMenuItems } from './ChatActionsMenu';
+import { ConfirmDialog } from './ConfirmDialog';
 import { TypingDots } from './TypingDots';
 import { IconButton } from './ui/icon-button';
 import { Menu, MenuItem } from './ui/menu';
@@ -79,6 +80,7 @@ export function ChatHeader({
         : `Open ${chat.title} info`;
   const [menuOpen, setMenuOpen] = useState(false);
   const [backgroundOpen, setBackgroundOpen] = useState(false);
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
   // Archiving the topic for everyone: patch it, then leave the dead topic like
   // the topic panel does (to General when it exists, else `/`).
   const [archiveState, runArchive] = useAction<void, void, ArchiveFailed>(() =>
@@ -248,7 +250,7 @@ export function ChatHeader({
                 archiving={archiving}
                 onArchive={() => {
                   setMenuOpen(false);
-                  runArchive();
+                  setConfirmingArchive(true);
                 }}
               />
             </ChatPrefMenuItems>
@@ -295,6 +297,18 @@ export function ChatHeader({
         open={backgroundOpen}
         onClose={() => setBackgroundOpen(false)}
       />
+      {confirmingArchive && (
+        <ConfirmDialog
+          title={`Archive “${chat.title}” for everyone?`}
+          body="The topic disappears from the list for everyone. Its history stays on the server."
+          confirmLabel="Archive"
+          onConfirm={() => {
+            setConfirmingArchive(false);
+            runArchive();
+          }}
+          onCancel={() => setConfirmingArchive(false)}
+        />
+      )}
     </header>
   );
 }

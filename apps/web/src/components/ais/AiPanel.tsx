@@ -215,7 +215,7 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
       <Sheet open onClose={onClose} ariaLabel={`${chat.title} AI settings`}>
         <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
           <Avatar
-            id={ai?.id ?? chat.id}
+            id={ai?.jid ?? chat.id}
             name={ai?.name ?? chat.title}
             size={44}
             ai

@@ -11,9 +11,11 @@ import {
   type ExecuteToolCall,
   type ModelRequestMessage,
 } from './reply';
-// The barrel does not re-export `redactError`; importing it here keeps this
-// task to a new test file with no source change.
+import { CONTEXT_TOO_LONG_REPLY, MODEL_NOT_FOUND_REPLY, RATE_LIMITED_REPLY } from './replies';
+// The barrel does not re-export `redactError` or `requestCompletion`;
+// importing them here keeps this task to tests with no barrel change.
 import { redactError } from './tool-exec';
+import { requestCompletion } from './tool-loop';
 
 // A minimal `200 application/json` chat-completions answer. The loop accepts
 // the plain-JSON shape as well as SSE, so the fakes need no stream plumbing.
@@ -50,11 +52,14 @@ const silentLogger = { warn: () => undefined };
 const silentTurnLogger = { info: () => undefined };
 
 describe('mapFailureToReply', () => {
-  it('maps 429 and budget_exceeded to the budget reply, 401/403 to the key reply, the rest to transient', () => {
+  it('maps 429 to rate limited, the budget, the key, an unknown model and a long context to their own reply', () => {
     expect(mapFailureToReply(new ChatCompletionError(429, 'rate limited'))).toBe(
-      BUDGET_EXCEEDED_REPLY,
+      RATE_LIMITED_REPLY,
     );
     expect(mapFailureToReply(new ChatCompletionError(400, 'error: budget_exceeded'))).toBe(
+      BUDGET_EXCEEDED_REPLY,
+    );
+    expect(mapFailureToReply(new ChatCompletionError(400, 'Budget has been exceeded'))).toBe(
       BUDGET_EXCEEDED_REPLY,
     );
     expect(mapFailureToReply(new ChatCompletionError(401, 'invalid api key'))).toBe(
@@ -63,7 +68,60 @@ describe('mapFailureToReply', () => {
     expect(mapFailureToReply(new ChatCompletionError(403, 'forbidden'))).toBe(
       PROVIDER_KEY_REJECTED_REPLY,
     );
+    expect(mapFailureToReply(new ChatCompletionError(404, 'model not found'))).toBe(
+      MODEL_NOT_FOUND_REPLY,
+    );
+    expect(mapFailureToReply(new ChatCompletionError(400, 'maximum context length exceeded'))).toBe(
+      CONTEXT_TOO_LONG_REPLY,
+    );
     expect(mapFailureToReply(new Error('socket closed'))).toBe(TRANSIENT_FAILURE_REPLY);
+  });
+});
+
+describe('requestCompletion retry', () => {
+  it('retries a 429 once and answers from the second request', async () => {
+    let fetchCalls = 0;
+    const fetchImpl: FetchLike = async () => {
+      fetchCalls += 1;
+      if (fetchCalls === 1) {
+        return new Response(JSON.stringify({ error: { message: 'rate limited' } }), {
+          status: 429,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return textResponse('after the retry');
+    };
+
+    const result = await requestCompletion({
+      baseUrl: 'http://litellm.test',
+      virtualKey: 'sk-virtual',
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'hi' }],
+      fetchImpl,
+    });
+
+    expect(result.content).toBe('after the retry');
+    expect(fetchCalls).toBe(2);
+  });
+
+  it('times out a hung request once, with no budget left to retry it', async () => {
+    let fetchCalls = 0;
+    const fetchImpl: FetchLike = () => {
+      fetchCalls += 1;
+      return new Promise<Response>(() => undefined);
+    };
+
+    await expect(
+      requestCompletion({
+        baseUrl: 'http://litellm.test',
+        virtualKey: 'sk-virtual',
+        model: 'test-model',
+        messages: [{ role: 'user', content: 'hi' }],
+        fetchImpl,
+        timeoutMs: 100,
+      }),
+    ).rejects.toThrow('the request timed out');
+    expect(fetchCalls).toBe(1);
   });
 });
 

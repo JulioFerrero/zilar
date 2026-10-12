@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTestContext, type TestContext } from '../test-support';
 import { seedUser } from '../test-support/seed';
 import { createPushCipher } from './crypto';
-import { deliverToDevice, type ScanResult } from './delivery';
+import type { ArchiveCandidate } from './archive-scan';
+import { deliverToDevice, handleIncomingPush, type ScanResult } from './delivery';
 import type { FcmSender, FcmWakeData } from './fcm';
 import type { ResolvedPushMessage } from './payload';
 import type { PushServiceDeps } from './service';
@@ -76,12 +77,19 @@ function fakeWebSender(result: { gone: boolean } = { gone: false }): {
 // the archive is a stub because the scan already ran.
 function buildDeps(
   context: TestContext,
-  options: { sender?: PushServiceDeps['sender']; nativeSender?: FcmSender } = {},
+  options: {
+    sender?: PushServiceDeps['sender'];
+    nativeSender?: FcmSender;
+    archive?: PushServiceDeps['archive'];
+  } = {},
 ): PushServiceDeps {
   return {
     db: context.db,
     config: context.config,
-    archive: { query: () => Promise.resolve([]), close: () => Promise.resolve() },
+    archive: options.archive ?? {
+      query: () => Promise.resolve([]),
+      close: () => Promise.resolve(),
+    },
     cipher,
     sender: options.sender ?? { send: () => Promise.resolve({ gone: false }) },
     ...(options.nativeSender === undefined ? {} : { nativeSender: options.nativeSender }),
@@ -213,5 +221,87 @@ describe('deliverToDevice', () => {
       deviceId: device.id,
       reason: 'send-failed',
     });
+  });
+});
+
+// Microsecond-stamped DM rows for the archive stub, newest first — the order
+// readNewestCandidates returns them in.
+function archiveRow(originId: string, timestampMicros: bigint): ArchiveCandidate {
+  return {
+    owner: 'ignored',
+    barePeer: 'ana@zilar.localhost',
+    kind: 'chat',
+    nick: '',
+    originId,
+    timestamp: timestampMicros,
+    text: 'hello',
+    xml: '<message from="ana@zilar.localhost" type="chat"><body>hello</body></message>',
+  };
+}
+
+// `ArchivePool.query` is typed on the wider `ArchiveRow`; the scan only
+// reads the `ArchiveCandidate` subset, so the stub widens back.
+function stubArchive(rows: ArchiveCandidate[]): PushServiceDeps['archive'] {
+  return {
+    query: () => Promise.resolve(rows.map((row) => ({ ...row, peer: '', headline: '' }))),
+    close: () => Promise.resolve(),
+  };
+}
+
+function microsAgo(ms: number): bigint {
+  return BigInt(NOW.getTime() - ms) * 1000n;
+}
+
+describe('handleIncomingPush archive scan', () => {
+  let context: TestContext;
+
+  beforeEach(async () => {
+    context = await createTestContext();
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  it('notifies three unseen messages oldest-first across three publish IQs', async () => {
+    const userId = await seedUser(context);
+    const device = await saveDevice(context.db, cipher, webPushInput(userId));
+    const { sender, calls } = fakeWebSender();
+    const rows = [
+      archiveRow('origin-new', microsAgo(60_000)),
+      archiveRow('origin-mid', microsAgo(120_000)),
+      archiveRow('origin-old', microsAgo(180_000)),
+    ];
+    const deps = buildDeps(context, { sender, archive: stubArchive(rows) });
+    const notification = { node: device.node, from: 'ana@zilar.localhost' };
+
+    for (let iq = 0; iq < 3; iq += 1) {
+      const outcome = await handleIncomingPush(deps, notification);
+      expect(outcome).toEqual({ kind: 'sent', userId, deviceId: device.id });
+    }
+    expect(calls.map((call) => JSON.parse(call.payload).messageId)).toEqual([
+      'origin-old',
+      'origin-mid',
+      'origin-new',
+    ]);
+
+    const repeat = await handleIncomingPush(deps, notification);
+    expect(repeat).toEqual({ kind: 'dropped', userId, deviceId: device.id, reason: 'duplicate' });
+    expect(calls).toHaveLength(3);
+  });
+
+  it('never notifies a row older than ten minutes', async () => {
+    const userId = await seedUser(context);
+    const device = await saveDevice(context.db, cipher, webPushInput(userId));
+    const { sender, calls } = fakeWebSender();
+    const deps = buildDeps(context, {
+      sender,
+      archive: stubArchive([archiveRow('origin-stale', microsAgo(20 * 60_000))]),
+    });
+
+    const outcome = await handleIncomingPush(deps, { node: device.node, from: 'ana' });
+
+    expect(outcome.kind).toBe('dropped');
+    expect(calls).toHaveLength(0);
   });
 });

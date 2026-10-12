@@ -4,10 +4,12 @@
 // the mobile-only optimistic fields (`localUri`).
 import { Effect } from 'effect';
 import {
+  deleteFailedMessage as deleteFailedMessageCore,
   disarmSend,
   forwardMessages as forwardMessagesCore,
   retryAttachment as retryAttachmentCore,
   retrySticker as retryStickerCore,
+  retryText as retryTextCore,
   retryVoice as retryVoiceCore,
   sendAttachment as sendAttachmentCore,
   sendSticker as sendStickerCore,
@@ -31,6 +33,8 @@ export type Send = Pick<
   | 'sendSticker'
   | 'forwardMessages'
   | 'retrySticker'
+  | 'retryText'
+  | 'deleteFailedMessage'
   | 'sendAttachment'
   | 'retryAttachment'
   | 'cancelAttachment'
@@ -50,7 +54,11 @@ export function makeSend(ctx: StoreCtx): Send {
 
   // The same store as the core modules see it, plus the send bookkeeping. The
   // sequence and the open runs live on the shared `StoreState`; the kept bytes
-  // are the maps mobile already tears down on `stop()`.
+  // are the maps mobile already tears down on `stop()`. The text outbox (F4,
+  // honest ticks) is one per store instance on the shared `coreCtx`: texts
+  // stay `sending` until the server's ack and the core lifecycle's online
+  // flush resends failures. `teardown()` clears it on sign-out, so one
+  // user's queue never goes out as another user.
   const sendCtx: SendCtx = {
     get,
     set,
@@ -76,6 +84,9 @@ export function makeSend(ctx: StoreCtx): Send {
     sendRuns: s.sendRuns,
     pendingAttachments: s.pendingUploads as Map<string, unknown>,
     pendingVoices: s.pendingVoices as Map<string, unknown>,
+    get outbox() {
+      return ctx.coreCtx.outbox;
+    },
     // Mobile sends `undefined` options for a plain text; web pins `{}`.
     omitEmptyTextOptions: true,
   };
@@ -115,6 +126,8 @@ export function makeSend(ctx: StoreCtx): Send {
     forwardMessages: (targets, messages, options) =>
       forwardMessagesCore(sendCtx, targets, messages, options),
     retrySticker: (chatId, messageId) => retryStickerCore(sendCtx, chatId, messageId),
+    retryText: (chatId, messageId) => retryTextCore(sendCtx, chatId, messageId),
+    deleteFailedMessage: (chatId, messageId) => deleteFailedMessageCore(sendCtx, chatId, messageId),
     sendAttachment: (chatId, file, options) => {
       // R19: an empty or oversized file is refused inline, before any request,
       // exactly like web's composer. Only a REAL zero says "That file is

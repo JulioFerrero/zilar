@@ -1,5 +1,9 @@
 import type { ChatSummary, ReplyRef } from '@zilar/chat-core';
+import type { ChatMessage } from '@zilar/xmpp-core';
+import { Effect } from 'effect';
 import { describe, expect, it } from 'vitest';
+import type { CoreState } from './ctx';
+import { openHistory, type HistoryCtx } from './history';
 import {
   createMessageLedger,
   type LedgerSet,
@@ -8,6 +12,7 @@ import {
   type StoreMessage,
 } from './ledger';
 import { advanceStatus, moveChatToTop, sortMessages } from './rows';
+import { ANA, testCtx } from './test-ctx';
 
 const ME = 'me@zilar.test';
 const BOB = 'bob@zilar.test';
@@ -363,5 +368,72 @@ describe('the message ledger: reset', () => {
     expect(h.ledger.authorFor('local-1')).toBeUndefined();
     expect(h.ledger.correctionTargetFor('local-1')).toBeUndefined();
     expect(h.ledger.messageBaseTexts.size).toBe(0);
+  });
+});
+
+describe('the message ledger: one bubble per origin id', () => {
+  // The shape `history.test.ts` uses: a history context over the core test
+  // context, online, with the groups joined.
+  function historyCtx(page: ChatMessage[]) {
+    const base = testCtx({
+      core: {
+        loadHistory: async () => {
+          const first = page[0]?.id;
+          return { messages: page, complete: true, ...(first === undefined ? {} : { first }) };
+        },
+      },
+      state: {
+        status: 'online',
+        historyState: {},
+        historyComplete: {},
+        openChat: () => {},
+      } as Partial<CoreState>,
+    });
+    const ctx = Object.assign(base.ctx, {
+      groupsJoined: true,
+      pendingOpenChatId: undefined,
+      cursors: {},
+      loadingHistory: new Set<string>(),
+      loadingOlder: new Set<string>(),
+    }) as HistoryCtx;
+    return { ctx, shown: () => (ctx.get().messagesByChat[ANA] ?? []).map((item) => item.id) };
+  }
+
+  const archived = (fields: Partial<ChatMessage> & { id: string }): ChatMessage => ({
+    kind: 'chat',
+    chatJid: ANA,
+    fromJid: ANA,
+    fromResolved: true,
+    outgoing: false,
+    timestamp: new Date(5_000),
+    ...fields,
+  });
+
+  it('shows one bubble for two archived rows of a resend with one origin id', async () => {
+    const { ctx, shown } = historyCtx([
+      archived({ id: 'stanza-a', originId: 'resend-1', body: 'Offline two' }),
+      archived({
+        id: 'stanza-b',
+        originId: 'resend-1',
+        body: 'Offline two',
+        timestamp: new Date(6_000),
+      }),
+    ]);
+    await Effect.runPromise(openHistory(ctx, ANA));
+
+    expect(shown()).toHaveLength(1);
+    expect(ctx.k.sameMessage(shown()[0] ?? '', 'stanza-a')).toBe(true);
+    expect(ctx.k.sameMessage(shown()[0] ?? '', 'stanza-b')).toBe(true);
+  });
+
+  it('shows two bubbles when two senders reuse one origin id', async () => {
+    const { ctx, shown } = historyCtx([
+      archived({ id: 'stanza-a', originId: 'reused-1', body: 'hi' }),
+      archived({ id: 'stanza-b', originId: 'reused-1', body: 'hi', outgoing: true, fromJid: ME }),
+    ]);
+    await Effect.runPromise(openHistory(ctx, ANA));
+
+    expect(shown()).toHaveLength(2);
+    expect(ctx.k.sameMessage('stanza-a', 'stanza-b')).toBe(false);
   });
 });

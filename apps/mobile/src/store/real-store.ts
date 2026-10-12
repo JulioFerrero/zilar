@@ -2,6 +2,7 @@ import type { UiMessage } from '@zilar/chat-core';
 import {
   clearFailure,
   coreKind,
+  createTextOutbox,
   recordRead,
   signatureFor,
   sortByRecency,
@@ -15,6 +16,7 @@ import { Effect } from 'effect';
 import { createAtomStore, type StoreApi } from './atomStore';
 
 import type { ChatEntry } from '../lib/chat-api';
+import { dismissChatNotifications, syncBadge } from '../lib/push/badge';
 import { makeEvents } from './effects/events';
 import { makeGroups } from './effects/groups';
 import { makeHistory } from './effects/history';
@@ -148,6 +150,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       getChats: () => ports.api.getChats(),
       getContacts: () => ports.api.getContacts(),
       getXmppToken: () => ports.api.getXmppToken(),
+      markChatRead:
+        ports.api.markChatRead === undefined
+          ? undefined
+          : (jid, messageId) => ports.api.markChatRead?.(jid, messageId) as Promise<unknown>,
       // The chat prefs ride the boot (T-0135); a missing client reads none.
       listChatPrefs: () => ports.chatPrefs?.listChatPrefs() ?? Promise.resolve([]),
     };
@@ -161,7 +167,14 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       createXmpp: ports.createXmpp,
       visibility: ports.visibility,
       drafts: ports.openDrafts,
-      notifications: { syncBadge: () => {}, dismissChat: () => {} },
+      notifications: {
+        syncBadge: (chats) => {
+          Effect.runFork(syncBadge(chats));
+        },
+        dismissChat: (chatId) => {
+          Effect.runFork(dismissChatNotifications(chatId));
+        },
+      },
       // Q3 (R7) is yes: mobile retries the connection like web, and a resume
       // reconnects (R8). Both are mobile-only switches.
       flags: { connectRetry: true, reconnectOnResume: true },
@@ -173,8 +186,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       rt: life.lifetime,
       k: helpers.ledger,
       fx: {
-        syncBadge: () => {},
-        dismissChatNotifications: () => {},
+        syncBadge: () => {
+          Effect.runFork(syncBadge(coreCtx.get().chats));
+        },
+        dismissChatNotifications: (chatId) => {
+          Effect.runFork(dismissChatNotifications(chatId));
+        },
         loadGroupMembers: (chatId) => {
           ctx.forkSession(ctx.fx.ensureGroupMembers(chatId));
         },
@@ -200,6 +217,12 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       },
       lastReadUserId: undefined,
       pendingOutgoing: locals.pendingOutgoing,
+      // The text outbox (F4, honest ticks): one per store instance. Texts
+      // stay `sending` until the server's stream-management ack marks them
+      // `sent`; the core lifecycle flushes it on online and `teardown()` (via
+      // the core `reset()`) clears it on sign-out, so one user's queue never
+      // goes out as another user.
+      outbox: createTextOutbox(),
     };
 
     // The effect modules, built once the closure's helpers exist. `fx` bridges
@@ -287,6 +310,19 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       closeChat: (chatId) => {
         if (get().activeChatId === chatId) {
           set({ activeChatId: null });
+        }
+        // A deferred open must not fire later for a chat that was left: drop
+        // the pending open and its `loading` marker (UI-2). `real-store.ts`
+        // may only touch `closeChat` in this file (T-1153 owns the XMPP
+        // options), so the marker is dropped the same way `openHistory` sets
+        // it, over the mobile `historyLoad` names.
+        if (locals.pendingOpenChatId === chatId) {
+          locals.pendingOpenChatId = undefined;
+          if (!locals.loadingHistory.has(chatId) && get().historyLoad[chatId] === 'loading') {
+            const next = { ...get().historyLoad };
+            delete next[chatId];
+            set({ historyLoad: next });
+          }
         }
       },
       reloadChats: () => history.reloadChats(),

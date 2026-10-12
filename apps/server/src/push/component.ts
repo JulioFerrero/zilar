@@ -9,6 +9,7 @@ import {
 import { parsePushIq } from './notification';
 import { PUBSUB_NAMESPACE, type PushNotification } from './protocol';
 import { handleIncomingPush, type PushServiceDeps } from './service';
+import { markPushOffline, markPushOnline } from '../health-status';
 
 export type PushComponentOptions = {
   /** XEP-0114 component domain, e.g. `push.zilar.localhost`. */
@@ -46,6 +47,25 @@ export function startPushComponent(options: PushComponentOptions): PushComponent
   // The latest job per node, as a fiber. The next job for that node joins it.
   const chains = new Map<string, Fiber.Fiber<void>>();
 
+  // `@xmpp/component`'s `error` event is not fatal — the connection can stay
+  // up — so track liveness from the `status` event instead. `status` also
+  // carries `online`/`offline`, so separate listeners for those are not needed.
+  // The package ships no types (see `push/xmpp-component.d.ts`); that stub only
+  // lists the events this module used before, so narrow `status` here rather
+  // than widen a file outside this task's scope.
+  const statusEmitter = xmpp as unknown as {
+    on(event: 'status', listener: (status: string) => void): unknown;
+  };
+  statusEmitter.on('status', (status) => {
+    if (status === 'online') {
+      markPushOnline();
+      return;
+    }
+    if (status === 'disconnect' || status === 'offline' || status === 'disconnecting') {
+      markPushOffline(status);
+    }
+  });
+
   xmpp.on('error', (error: Error) => {
     // @xmpp/component reconnects on its own after an error; losing this
     // listener would crash the process on an unhandled 'error' event.
@@ -78,12 +98,13 @@ export function startPushComponent(options: PushComponentOptions): PushComponent
   Effect.runFork(
     Effect.promise(() => xmpp.start()).pipe(
       Effect.catchDefect((error) =>
-        Effect.sync(() =>
+        Effect.sync(() => {
+          markPushOffline('start-failed');
           logger.warn(
             { error: error instanceof Error ? error.message : String(error) },
             'push component failed to start',
-          ),
-        ),
+          );
+        }),
       ),
     ),
   );

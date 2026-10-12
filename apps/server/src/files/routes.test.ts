@@ -231,7 +231,14 @@ describe('GET /api/files', () => {
     return { alice, bob, stranger };
   }
 
-  async function seedMediaItem(own: string, peer: string, messageId: string, name: string) {
+  async function seedMediaItem(
+    own: string,
+    peer: string,
+    messageId: string,
+    name: string,
+    kind = 'file',
+    mime = 'application/pdf',
+  ) {
     await testSql(context)(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
@@ -242,10 +249,10 @@ describe('GET /api/files', () => {
           message_id: messageId,
           at_micros: at('2026-05-01T00:00:00.000Z'),
           sender_jid: `${peer}/phone`,
-          kind: 'file',
+          kind,
           url: UPLOAD_URL,
           name,
-          mime: 'application/pdf',
+          mime,
           size: 11,
           ref: UPLOAD_URL,
           deleted: false,
@@ -582,5 +589,37 @@ describe('GET /api/files', () => {
     const { status, json } = await getFile(target, alice.cookie, params);
     expect(status).toBe(429);
     expect(errorCode(json)).toBe('rate_limited');
+  });
+
+  it('serves an SVG as an attachment with octet-stream and the sandbox CSP', async () => {
+    const { alice, bob } = await setupDm();
+    const own = localpartFor(alice.id);
+    const peer = dmJid(bob.id);
+    await seedMediaItem(own, peer, 'o-svg', 'evil.svg', 'image', 'image/svg+xml');
+    const { fetchImpl } = makeFetch(200, { 'content-type': 'image/svg+xml' }, '<svg/>');
+    const { status, headers } = await getFile(filesApp(fetchImpl), alice.cookie, fileParams(peer));
+    expect(status).toBe(200);
+    expect(headers.get('content-type')).toBe('application/octet-stream');
+    expect(headers.get('content-disposition')).toContain('attachment');
+    expect(headers.get('content-disposition')).toContain('evil.svg');
+    expect(headers.get('content-security-policy')).toBe("default-src 'none'; sandbox");
+  });
+
+  it('keeps an allowlisted PNG inline with the sandbox CSP', async () => {
+    const { alice, bob } = await setupDm();
+    const own = localpartFor(alice.id);
+    const peer = dmJid(bob.id);
+    await seedMediaItem(own, peer, 'o-png', 'photo.png', 'image', 'image/png');
+    const { fetchImpl } = makeFetch(200, { 'content-type': 'image/png' }, 'png-bytes');
+    const { status, headers, text } = await getFile(
+      filesApp(fetchImpl),
+      alice.cookie,
+      fileParams(peer),
+    );
+    expect(status).toBe(200);
+    expect(text).toBe('png-bytes');
+    expect(headers.get('content-type')).toBe('image/png');
+    expect(headers.get('content-disposition')).toBeNull();
+    expect(headers.get('content-security-policy')).toBe("default-src 'none'; sandbox");
   });
 });

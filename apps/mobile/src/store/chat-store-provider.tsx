@@ -22,7 +22,7 @@ import { createMediaApi } from '../lib/media-api';
 import { createChatPrefsApi } from '../lib/chat-prefs-api';
 import { createChatFoldersApi } from '../lib/chat-folders-api';
 import { createPinsApi } from '../lib/pins-api';
-import { registerNativePush, watchPushTokenRolls } from '../lib/push/native';
+import { ensurePushPair, registerNativePush, watchPushTokenRolls } from '../lib/push/native';
 import { createAttachmentUploader, createSizeReader } from '../lib/attachment-native';
 import { getSessionToken } from '../lib/session-token';
 import { API_URL } from '../lib/auth';
@@ -139,18 +139,30 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
   // Native push (T-1139): once the store first reaches `online` after a
   // sign-in, register the FCM token once per signed-in session; mock mode
   // registers nothing. The token-roll listener goes with the session.
+  // Reconnects and wakes run a new XMPP session, whose push pair is missing
+  // (ejabberd binds the pair to the session that sent `<enable/>`); every
+  // later transition into `online` re-sends the saved pair instead (T-1152),
+  // which also retries a failed first enable (MP-13).
   useEffect(() => {
     if (!active || mock) {
       return;
     }
     const setPushPair = store.getState().setPushPair;
     let registered = false;
+    let online = false;
     const onStatus = () => {
-      if (registered || store.getState().status !== 'online') {
+      const nowOnline = store.getState().status === 'online';
+      const entered = nowOnline && !online;
+      online = nowOnline;
+      if (!entered) {
         return;
       }
-      registered = true;
-      void registerNativePush({ setPushPair });
+      if (!registered) {
+        registered = true;
+        void registerNativePush({ setPushPair });
+        return;
+      }
+      void ensurePushPair({ setPushPair });
     };
     const unsubscribe = store.subscribe(onStatus);
     const tokenRolls = watchPushTokenRolls({ setPushPair });

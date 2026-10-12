@@ -5,6 +5,8 @@ import { runInBackground } from '@/lib/effect/run-in-background';
 import { attachedRoleIds, describeRolesError, mayManageRoles } from '@/lib/roles';
 import { useChatStore } from '@/store/chat-store-provider';
 import type { ChatSummary } from '@/lib/types';
+import { domainOfJid } from '@/lib/contacts-api';
+import { personSeed } from '@zilar/chat-core';
 
 type TopicInfoHostProps = {
   screen: ChatScreen;
@@ -18,6 +20,13 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
   const setTopicRoles = useChatStore((state) => state.setTopicRoles);
   const refreshTopicRoles = useChatStore((state) => state.refreshTopicRoles);
   const refreshGroupRoles = useChatStore((state) => state.refreshGroupRoles);
+  // T-1212: member balls are seeded by the bare JID, derived from the user
+  // id the way the mention builder does (the domain from my own JID); the
+  // members list carries no JID, so this is the only form available here.
+  const ownJid = useChatStore((state) => state.me?.jid ?? undefined);
+  const domain = domainOfJid(ownJid);
+  const seedFor =
+    domain === undefined ? undefined : (userId: string): string => personSeed(userId, domain);
 
   const saveTopicRoles = (roleIds: string[], approverRoleId: string | null): void => {
     screen.setInfoRolesError('');
@@ -111,6 +120,7 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
           screen.setInfoOpen(false);
           screen.setMemoryAi(ai);
         }}
+        seedFor={seedFor}
       />
       <AiMemorySheet
         api={screen.memoryApi}

@@ -1,7 +1,11 @@
 import { Effect, type Fiber } from 'effect';
 import { listActiveAisForGateway, onAiLifecycle, type ActiveAiForGateway } from '../../ais/service';
 import { onGroupAi, onTopicAi } from '../../groups/events';
+import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import {
+  AI_DRAIN_MS,
+  AI_DRAIN_POLL_MS,
+  AI_RESTART_REPLY,
   attempt,
   cancelTimer,
   toRedactedError,
@@ -10,7 +14,7 @@ import {
   type AiSession,
   type GatewayLogger,
 } from './contracts';
-import { loadActiveAi } from './db';
+import { loadActiveAi, loadAiOwnerId } from './db';
 
 // T-0562 (plan §3, G9): the gateway lifecycle extracted from
 // `createAgentGateway`. The factory owns `started`, the reconcile timer and
@@ -230,6 +234,68 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
     );
   }
 
+  // T-1168 (AI-1): how many turns are in flight. One per busy DM
+  // (`session.busy`) plus one per busy room (`session.roomBusy`).
+  function runningTurns(): number {
+    let count = 0;
+    for (const session of sessions.values()) {
+      if (session.busy) {
+        count += 1;
+      }
+      count += session.roomBusy.size;
+    }
+    return count;
+  }
+
+  // T-1168: tells one AI's owner, through the session that is still connected,
+  // that its in-flight DM reply was lost. The owner JID is derived the same
+  // way the rest of the gateway derives it; a missing row sends nothing.
+  async function sendRestartToOwner(session: AiSession): Promise<void> {
+    const ownerId = await loadAiOwnerId(deps.db, session.aiId);
+    if (ownerId === null) {
+      return;
+    }
+    await session.core.sendMessage(
+      jidFor(localpartFor(ownerId), deps.xmpp.domain),
+      'chat',
+      AI_RESTART_REPLY,
+    );
+  }
+
+  // T-1168: the drain `stopEffect` runs before it disconnects anyone. Poll
+  // until no turn is in flight or `AI_DRAIN_MS` has passed, log the count
+  // still running, then notify each one — the DM owner's chat and every busy
+  // room — through the session that is still connected. A session with a
+  // leftover turn is marked `stopped` first, so its own late send is skipped
+  // instead of racing the notice and being reported as a reply that went out.
+  const drainEffect = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
+    const deadline = Date.now() + AI_DRAIN_MS;
+    while (runningTurns() > 0 && Date.now() < deadline) {
+      yield* Effect.sleep(AI_DRAIN_POLL_MS);
+    }
+    const remaining = runningTurns();
+    logger.info({ turns: remaining }, 'AI drain finished');
+    if (remaining === 0) {
+      return;
+    }
+    for (const session of sessions.values()) {
+      const busyDm = session.busy;
+      const busyRooms = [...session.roomBusy];
+      if (!busyDm && busyRooms.length === 0) {
+        continue;
+      }
+      session.stopped = true;
+      if (busyDm) {
+        yield* attempt(() => sendRestartToOwner(session)).pipe(Effect.ignore);
+      }
+      for (const roomJid of busyRooms) {
+        yield* attempt(() => session.core.sendMessage(roomJid, 'groupchat', AI_RESTART_REPLY)).pipe(
+          Effect.ignore,
+        );
+      }
+    }
+  });
+
   const stopEffect = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
     started = false;
     superseded.clear();
@@ -240,6 +306,9 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
       Effect.try({ try: unsub, catch: (error) => error }).pipe(Effect.ignore),
     );
     unsubscribes = [];
+    // T-1168 (AI-1): wait for the turns in flight before tearing the sessions
+    // down, so a reply the model already produced is still delivered.
+    yield* drainEffect();
     for (const aiId of sessions.keys()) {
       // Shutdown disconnects everyone; one failure stops nothing else.
       yield* attempt(() => disconnectAi(aiId)).pipe(Effect.ignore);

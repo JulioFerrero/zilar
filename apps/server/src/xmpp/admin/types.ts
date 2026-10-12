@@ -39,10 +39,16 @@ export type SendDirectInvitationOptions = {
   password?: string;
 };
 
+export type UserResource = string;
+
 export type EjabberdAdminClient = {
   registerUser(localpart: string): Promise<CreatedResult>;
   unregisterUser(localpart: string): Promise<void>;
   userExists(localpart: string): Promise<boolean>;
+  // The user's connected XMPP resources (ejabberd `user_resources`). One or
+  // more entries means a session exists — pending and hibernated sessions
+  // show too, and those are the ones ejabberd itself pushes to.
+  userResources(localpart: string): Promise<UserResource[]>;
   changePassword(localpart: string, password: string): Promise<void>;
   createRoom(roomId: string, options?: CreateRoomOptions): Promise<CreatedResult>;
   setAffiliation(roomId: string, jid: string, affiliation: RoomAffiliation): Promise<void>;

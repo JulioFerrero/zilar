@@ -1,0 +1,198 @@
+/* The Findings and Telegram parity sections. Same tokens as style.css, so the
+   two halves of the page look like one. */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+.fgroup {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.flabel {
+  font: 11px/1 var(--f-data);
+  color: var(--soft);
+}
+.fchip {
+  font: 11px/1 var(--f-data);
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--soft);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fchip:hover {
+  color: var(--ink);
+}
+.fchip.on {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+.fchip.sev.p0.on {
+  border-color: var(--red);
+  color: var(--red);
+}
+.fchip.sev.p1.on {
+  border-color: var(--orange);
+  color: var(--orange);
+}
+.fchip.sev.p2.on {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.fchip.sev.p3.on {
+  border-color: var(--green);
+  color: var(--green);
+}
+.findings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.faudit {
+  min-width: 0;
+  padding: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+.faudit > summary {
+  cursor: pointer;
+}
+.faudit > summary h3 {
+  display: inline;
+}
+.fcount {
+  float: right;
+  font: 12px/1.3 var(--f-data);
+  color: var(--soft);
+  font-variant-numeric: tabular-nums;
+}
+.faudit > .meta {
+  margin: 4px 0 6px;
+  font: 12px/1.35 var(--f-data);
+  color: var(--soft);
+  overflow-wrap: anywhere;
+}
+.flist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.finding {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+}
+.finding:last-child {
+  border-bottom: 0;
+}
+.fid {
+  font: 12px/1 var(--f-data);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.fsev {
+  font: 11px/1 var(--f-data);
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  color: var(--soft);
+}
+.fsev.p0 {
+  border-color: var(--red);
+  color: var(--red);
+}
+.fsev.p1 {
+  border-color: var(--orange);
+  color: var(--orange);
+}
+.fsev.p2 {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.fsev.p3 {
+  border-color: var(--green);
+  color: var(--green);
+}
+.fplat {
+  font: 11px/1 var(--f-data);
+  color: var(--soft);
+}
+.ftitle {
+  flex: 1 1 240px;
+  overflow-wrap: anywhere;
+}
+.ffixed {
+  font: 11px/1 var(--f-data);
+  color: var(--green);
+  white-space: nowrap;
+}
+.parity {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.parity-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+.ptable {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 640px;
+  font-size: 13px;
+}
+.ptable th,
+.ptable td {
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.ptable thead th {
+  font: 12px/1.3 var(--f-data);
+  color: var(--soft);
+  white-space: nowrap;
+}
+.ptable tbody th {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.pstat {
+  font: 11px/1.3 var(--f-data);
+  white-space: nowrap;
+}
+.pstat.solid {
+  color: var(--green);
+}
+.pstat.weak {
+  color: var(--orange);
+}
+.pstat.missing {
+  color: var(--red);
+}
+.pstat.na {
+  color: var(--soft);
+}
+.pevidence {
+  color: var(--soft);
+  font: 12px/1.35 var(--f-data);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+  .ftitle {
+    flex-basis: 100%;
+  }
+}

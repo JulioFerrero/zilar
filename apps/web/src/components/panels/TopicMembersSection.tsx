@@ -36,6 +36,7 @@ export function TopicMembersSection({
   removeMember,
   addMember,
   onError,
+  seedFor,
 }: {
   isPrivate: boolean;
   state: MembersState;
@@ -53,6 +54,8 @@ export function TopicMembersSection({
   removeMember: (userId: string) => Effect.Effect<void, ApiFailure>;
   addMember: (userId: string) => Effect.Effect<void, ApiFailure>;
   onError: (message: string) => void;
+  /** T-1209: the ball seed for a member (their bare JID). */
+  seedFor: (userId: string) => string;
 }) {
   return (
     <section aria-label="Members" className="flex flex-col gap-1">
@@ -75,7 +78,7 @@ export function TopicMembersSection({
                   className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
                 >
                   <Avatar
-                    id={member.userId}
+                    id={seedFor(member.userId)}
                     name={member.name}
                     size={32}
                     avatarUrl={detail?.avatarUrl}
@@ -106,6 +109,7 @@ export function TopicMembersSection({
                 <AddMemberButton
                   key={member.userId}
                   member={member}
+                  seed={seedFor(member.userId)}
                   add={addMember}
                   onError={onError}
                 />

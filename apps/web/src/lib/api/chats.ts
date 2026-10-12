@@ -78,6 +78,18 @@ export async function getChats(): Promise<ChatEntry[]> {
   return parsed.value.chats;
 }
 
+/**
+ * Stores the caller's read mark for one chat (T-1207): `messageId` must be
+ * the archive id (a decimal string of microseconds, the same id MAM gives a
+ * message) — the server answers 400 for a non-numeric id, and `lastMessage.id`
+ * is the origin id, not a mark. Best effort: callers ignore failures.
+ */
+export function markChatRead(jid: string, messageId: string): Promise<void> {
+  return callApi((client) =>
+    client.chats.markRead({ params: { jid }, payload: { messageId } }),
+  ).then(() => undefined);
+}
+
 export async function getContacts(): Promise<Contact[]> {
   return callApi((client) => client.contacts.list()).then((rows) => [...rows]);
 }

@@ -44,6 +44,7 @@ function TopicPanelBody({
     storeApi,
     info,
     me,
+    seedFor,
     groupTitle,
     isManager,
     membersState,
@@ -138,6 +139,7 @@ function TopicPanelBody({
             removeMember={removeMember}
             addMember={addMember}
             onError={setErrorMessage}
+            seedFor={seedFor}
           />
 
           <TopicAisSection

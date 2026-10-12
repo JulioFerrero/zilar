@@ -1,0 +1,45 @@
+name: Uptime
+
+# Checks the production /health every 10 minutes. A failing scheduled run is
+# emailed to the owner by GitHub, which is the alert. Deploys return 502s for
+# up to a minute, so one probe is not enough: try three times, 60 s apart, and
+# fail only when every attempt fails. No secrets, no checkout.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    name: Check https://chat.zilar.app/health
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify /health (up to 3 attempts)
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "=== attempt $attempt of 3 ==="
+            if response=$(curl -fsS --max-time 15 https://chat.zilar.app/health 2>&1); then
+              echo "$response" | jq . || echo "$response"
+              ok=$(echo "$response" | jq -r '.ok' 2>/dev/null || true)
+              ejabberd=$(echo "$response" | jq -r '.ejabberd' 2>/dev/null || true)
+              push=$(echo "$response" | jq -r '.push' 2>/dev/null || true)
+              if [ "$ok" = "true" ] && [ "$ejabberd" = "ok" ] && [ "$push" = "online" ]; then
+                echo "healthy"
+                exit 0
+              fi
+              echo "unhealthy: ok=$ok ejabberd=$ejabberd push=$push"
+            else
+              echo "curl error: $response"
+            fi
+            if [ "$attempt" -ne 3 ]; then
+              echo "retrying in 60 s"
+              sleep 60
+            fi
+          done
+          echo "::error::/health is not fully healthy after 3 attempts"
+          exit 1

@@ -174,9 +174,10 @@ export function createOperations(runtime: CoreRuntime): OperationsApi {
   // `send` rejected with.
   const sendStanzaEffect = Effect.fnUntraced(function* (
     build: (id: string) => XmppElement,
+    fixedId?: string,
   ): Effect.fn.Return<{ id: string }, NotOnline | Error> {
     const current = yield* requireOnlineEffect();
-    const id = runtime.generateId();
+    const id = fixedId ?? runtime.generateId();
     yield* attempt(() => current.send(build(id)));
     return { id };
   });
@@ -187,17 +188,19 @@ export function createOperations(runtime: CoreRuntime): OperationsApi {
     text: string,
     opts: SendMessageOptions = {},
   ): Effect.fn.Return<{ id: string }, NotOnline | Error> {
-    return yield* sendStanzaEffect((id) =>
-      buildMessage({
-        id,
-        to,
-        kind,
-        text,
-        payload: opts.payload,
-        forward: opts.forward,
-        replyTo: opts.replyTo,
-        mentions: opts.mentions,
-      }),
+    return yield* sendStanzaEffect(
+      (id) =>
+        buildMessage({
+          id,
+          to,
+          kind,
+          text,
+          payload: opts.payload,
+          forward: opts.forward,
+          replyTo: opts.replyTo,
+          mentions: opts.mentions,
+        }),
+      opts.id,
     );
   });
 

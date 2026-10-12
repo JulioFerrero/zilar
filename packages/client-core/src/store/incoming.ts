@@ -4,7 +4,6 @@
 // updates its state before the next event arrives, so they stay plain
 // callbacks over the shared `ctx`. The timers and the best-effort work they
 // start (the typing clear, the badge) run as fibers.
-import { Effect } from 'effect';
 import type { UiMessage } from '@zilar/chat-core';
 import type { ChatMessage, Occupant, PresenceEvent } from '@zilar/xmpp-core';
 import type { CoreCtx } from './ctx';
@@ -17,22 +16,14 @@ import {
   sortMessages,
   withoutDraft,
 } from './rows';
+import { addTyper, clearChatTyping, removeTyper, TYPING_CLEAR_MS } from './typing';
 
-/** A typing line clears this long after the last composing event. */
-export const TYPING_CLEAR_MS = 5000;
+// A typing line clears this long after the last composing event: still
+// exported from the incoming path, so the apps' re-export keeps working.
+export { TYPING_CLEAR_MS };
 
 /** How long a chat refresh waits after the last update event. */
 export const CHAT_REFRESH_DEBOUNCE_MS = 500;
-
-const typingKey = (chatId: string): string => `typing:${chatId}`;
-
-const clearTyping = (ctx: CoreCtx, chatId: string): void => {
-  ctx.set((state) => {
-    const next = { ...state.typing };
-    delete next[chatId];
-    return { typing: next };
-  });
-};
 
 // Reconciles our optimistic message with the server echo. Sticker echoes carry
 // the sticker id in the payload, so they match the sticker-scoped signature
@@ -95,6 +86,12 @@ function handleOutgoingEcho(ctx: CoreCtx, message: ChatMessage, ui: UiMessage): 
   k.resolvePendingEdits(chatId);
   k.refreshEdits(chatId);
   k.refreshReactions(chatId);
+  // A carbon of my own message from another device (`localId` undefined: no
+  // optimistic bubble on this device) means I read the chat there, so the
+  // badge here goes. Sends no displayed marker.
+  if (localId === undefined) {
+    recordRead(ctx, chatId, ui.id);
+  }
 }
 
 export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
@@ -124,19 +121,37 @@ export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
     return;
   }
 
+  // A resend arrives live with a new stanza-id but the same origin id
+  // (T-1216): `toUiMessage` above already recorded this stanza's origin id
+  // and aliased it to the first copy (`ledger-incoming.ts`), so a chat that
+  // already holds a `sameMessage` with a different id has this bubble. Drop
+  // the copy before any side effect: no second bubble, no unread bump, no
+  // preview move.
+  const existing = k.listFor(ctx.get(), chatId);
+  if (existing.some((item) => item.id !== ui.id && k.sameMessage(item.id, ui.id))) {
+    return;
+  }
+
   // A peer's message proves they stopped typing: the line must go with the
-  // bubble, not up to five seconds after it. Cancel the clearing fiber and the
-  // line in the same update as the message.
-  ctx.rt.cancel(typingKey(chatId));
-  clearTyping(ctx, chatId);
+  // bubble, not up to five seconds after it. In a group only that sender's
+  // name goes; in a DM the whole line goes.
+  const chat = ctx.get().chats.find((entry) => entry.id === chatId);
+  if (chat !== undefined && chat.kind === 'group') {
+    removeTyper(ctx, chatId, message.fromJid);
+  } else {
+    clearChatTyping(ctx, chatId);
+  }
 
   const active = ctx.get().activeChatId === chatId && ctx.ports.isVisible();
   const isRead = active;
   // Only the AI's own message in its DM finishes the draft. A message from my
   // own JID (e.g. my second device) must leave the draft running.
   const fromAi = message.fromJid === chatId && !k.isOwnSender(message.fromJid);
+  // A progress message (a tool round in flight) is not the reply: the draft
+  // must keep streaming while later rounds run.
+  const finishesDraft = fromAi && message.payload?.type !== 'progress';
   const draft = ctx.get().drafts[chatId];
-  if (draft !== undefined && fromAi) {
+  if (draft !== undefined && finishesDraft) {
     ctx.fx.finishDraftTurn(chatId, draft.turnId);
   }
   ctx.set((state) => ({
@@ -154,10 +169,11 @@ export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
     ),
     // The final message replaces the draft in one update: the bubble never
     // leaves the screen, so there is no gap and no duplicate.
-    drafts: draft !== undefined && fromAi ? withoutDraft(state.drafts, chatId) : state.drafts,
+    drafts:
+      draft !== undefined && finishesDraft ? withoutDraft(state.drafts, chatId) : state.drafts,
     // Remember the turn so the bubble keeps revealing on the draft's key.
     finishedDraftMessages:
-      draft !== undefined && fromAi
+      draft !== undefined && finishesDraft
         ? rememberFinishedDraftMessage(state.finishedDraftMessages, ui.id, draft.turnId)
         : state.finishedDraftMessages,
   }));
@@ -196,17 +212,9 @@ export function handleTyping(
     outgoing: false,
   } as ChatMessage);
   if (event.state === 'composing') {
-    ctx.set((state) => ({ typing: { ...state.typing, [chatId]: { names: [name] } } }));
-    // One clearing fiber per chat; a new composing event replaces it.
-    ctx.rt.forkKeyed(
-      typingKey(chatId),
-      Effect.sleep(TYPING_CLEAR_MS).pipe(
-        Effect.andThen(Effect.sync(() => clearTyping(ctx, chatId))),
-      ),
-    );
+    addTyper(ctx, chatId, event.fromJid, name);
   } else {
-    ctx.rt.cancel(typingKey(chatId));
-    clearTyping(ctx, chatId);
+    removeTyper(ctx, chatId, event.fromJid);
   }
 }
 
@@ -242,14 +250,25 @@ export function handleOccupants(
 
 export function handlePresence(ctx: CoreCtx, event: PresenceEvent): void {
   ctx.set((state) => ({
-    chats: state.chats.map((chat) =>
-      chat.id === event.jid
-        ? {
-            ...chat,
-            online: event.available,
-            ...(event.available ? {} : { lastSeenAt: ctx.ports.now() }),
-          }
-        : chat,
-    ),
+    chats: state.chats.map((chat) => {
+      if (chat.id !== event.jid) {
+        return chat;
+      }
+      if (event.available) {
+        return { ...chat, online: true };
+      }
+      // An offline presence with a delay stamp says when the contact went
+      // away, so the header reads that instead of "just now". Without a
+      // stamp, only a real online-to-offline transition re-stamps: a repeated
+      // unavailable (or one for a contact never seen online) keeps the
+      // previous value.
+      if (event.delayedAt !== undefined) {
+        return { ...chat, online: false, lastSeenAt: new Date(event.delayedAt) };
+      }
+      if (chat.online !== true) {
+        return { ...chat, online: false };
+      }
+      return { ...chat, online: false, lastSeenAt: ctx.ports.now() };
+    }),
   }));
 }

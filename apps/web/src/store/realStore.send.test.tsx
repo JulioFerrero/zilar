@@ -91,7 +91,7 @@ describe('web send pipeline (T10 guards)', () => {
     expect(store.getState().messages(ANA)?.at(-1)?.status).toBe('sending');
 
     await flush();
-    expect(store.getState().messages(ANA)?.at(-1)?.status).toBe('sent');
+    expect(store.getState().messages(ANA)?.at(-1)?.status).toBe('sending');
 
     xmpp.emit(
       'message',
@@ -104,6 +104,7 @@ describe('web send pipeline (T10 guards)', () => {
         timestamp: new Date('2026-09-28T12:02:00Z'),
       }),
     );
+    expect(store.getState().messages(ANA)?.at(-1)?.status).toBe('sent');
     const matches = store
       .getState()
       .messages(ANA)
@@ -177,9 +178,10 @@ describe('web send pipeline (T10 guards)', () => {
   });
 
   it('forwards a sent message into another chat', async () => {
-    const { store } = await setup();
+    const { store, xmpp } = await setup();
     store.getState().sendText(ANA, 'forward me');
     await flush();
+    xmpp.emit('acked', { stanzaId: 'srv-1' });
     const source = store
       .getState()
       .messages(ANA)

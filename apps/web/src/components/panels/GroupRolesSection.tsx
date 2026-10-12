@@ -23,11 +23,14 @@ export function GroupRolesSection({
   members,
   rolesState,
   onReload,
+  seedFor,
 }: {
   groupId: string;
   members: Array<{ userId: string; name: string; avatarUrl?: string | undefined }>;
   rolesState: RolesView;
   onReload: () => void;
+  /** T-1209: the ball seed for a member (their bare JID). */
+  seedFor: (userId: string) => string;
 }) {
   const [newName, setNewName] = useState('');
   const [renamingId, setRenamingId] = useState<string | undefined>(undefined);
@@ -232,7 +235,7 @@ export function GroupRolesSection({
                           onCheckedChange={() => toggleHolder(role, member.userId)}
                         />
                         <Avatar
-                          id={member.userId}
+                          id={seedFor(member.userId)}
                           name={member.name}
                           size={28}
                           avatarUrl={member.avatarUrl}

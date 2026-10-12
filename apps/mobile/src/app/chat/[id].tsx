@@ -14,6 +14,7 @@ import { TaskStrip } from '@/components/chat/task-strip';
 import { TopicInfoHost } from '@/components/chat/topic-info-host';
 import { useChatScreen } from '@/components/chat/use-chat-screen';
 import { Text } from '@/components/ui/text';
+import { goBackOrHome } from '@/lib/navigation';
 import { httpsTopicUrl } from '@/lib/topics';
 
 export default function ChatScreen() {
@@ -88,7 +89,7 @@ function Chat() {
         <ChatBackground />
         <ChatHeaderBar
           chat={chat}
-          onBack={() => router.back()}
+          onBack={() => goBackOrHome(router)}
           onSearchInChat={() => router.push({ pathname: '/', params: { searchChat: chat.id } })}
           onOpenMedia={() => setMediaOpen(true)}
           onOpenGroup={openGroup}
@@ -128,7 +129,7 @@ function Chat() {
         <ChatBackground />
         <ChatHeaderBar
           chat={chat}
-          onBack={() => router.back()}
+          onBack={() => goBackOrHome(router)}
           onSearchInChat={() => router.push({ pathname: '/', params: { searchChat: chat.id } })}
           onOpenMedia={() => setMediaOpen(true)}
           onOpenGroup={openGroup}
@@ -164,7 +165,7 @@ function Chat() {
       <ChatBackground />
       <ChatHeaderBar
         chat={chat}
-        onBack={() => router.back()}
+        onBack={() => goBackOrHome(router)}
         onSearchInChat={() => router.push({ pathname: '/', params: { searchChat: chat.id } })}
         onOpenMedia={() => setMediaOpen(true)}
         topicGroupName={groupName}

@@ -2,6 +2,7 @@
 import type { FetchLike } from '../ai/litellm-client';
 import type { DmTurnDeps, DmTurnOutcome } from './dm-turn';
 import type { GroupTurnDeps } from './group-turn';
+import { cutShortSuffix } from './replies';
 import { mapFailureToReply, redactError, runLoopRound, actionOfCall } from './tool-exec';
 import {
   ChatCompletionError,
@@ -132,7 +133,7 @@ export async function runToolLoop(input: {
           };
         }
         return {
-          text: result.content,
+          text: result.content + cutShortSuffix(result.finishReason),
           notices,
           failure: null,
           rounds,
@@ -144,7 +145,10 @@ export async function runToolLoop(input: {
         // No tools were offered on the last call, so anything the model
         // improvises is answered from its text alone.
         return {
-          text: result.content ?? TRANSIENT_FAILURE_REPLY,
+          text:
+            result.content === null
+              ? TRANSIENT_FAILURE_REPLY
+              : result.content + cutShortSuffix(result.finishReason),
           notices,
           failure: null,
           rounds,
@@ -316,7 +320,10 @@ export async function runToolTurn(
         messages: loop.messages,
         ...(maxRounds <= 1 ? { tools } : {}),
       });
-      text = (last.content ?? TRANSIENT_FAILURE_REPLY) + loop.notices.join('');
+      text =
+        last.content === null
+          ? TRANSIENT_FAILURE_REPLY + loop.notices.join('')
+          : last.content + cutShortSuffix(last.finishReason) + loop.notices.join('');
     } catch (error) {
       const failure = mapFailureToReply(error);
       deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');

@@ -27,11 +27,23 @@ function runStickerSend(
     ctx.k.markStickerFailed(chat.id, localId);
     return;
   }
+  // The shared wire id (origin id in a DM, room stanza-id in a group).
+  const wireReply =
+    replyTo === undefined
+      ? undefined
+      : { ...replyTo, id: ctx.k.wireTargetFor(replyTo.id) ?? replyTo.id };
   ctx.rt.fork(
     fromPromise(() =>
       current.sendMessage(chat.id, coreKind(chat), body, {
         payload,
-        ...(replyTo === undefined ? {} : { replyTo: { id: replyTo.id } }),
+        ...(wireReply === undefined
+          ? {}
+          : {
+              replyTo: {
+                id: wireReply.id,
+                ...(wireReply.text === undefined ? {} : { text: wireReply.text }),
+              },
+            }),
       }),
     ).pipe(
       Effect.andThen((sent) =>
@@ -88,7 +100,18 @@ export function sendSticker(
     ...(replyTo === undefined ? {} : { replyTo }),
   };
   clearActionError(ctx, chatId);
-  queueOutgoing(ctx, ctx.k.stickerSignatureFor(chatId, body, sticker.stickerId, replyTo), localId);
+  queueOutgoing(
+    ctx,
+    ctx.k.stickerSignatureFor(
+      chatId,
+      body,
+      sticker.stickerId,
+      replyTo === undefined
+        ? undefined
+        : { ...replyTo, id: ctx.k.wireTargetFor(replyTo.id) ?? replyTo.id },
+    ),
+    localId,
+  );
   ctx.k.setChatMessage(chatId, message, true);
   rememberMyAuthor(ctx, localId);
   if (body.length > 0) {

@@ -104,7 +104,7 @@ function BlockedRow({
   return (
     <li className="flex flex-wrap items-center gap-3 px-3 py-2.5">
       <Avatar
-        id={person.userId}
+        id={person.jid ?? person.userId}
         name={person.name}
         size={36}
         avatarUrl={person.image ?? undefined}

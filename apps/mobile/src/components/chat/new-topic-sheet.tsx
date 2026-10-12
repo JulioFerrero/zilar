@@ -44,6 +44,7 @@ export function NewTopicSheet({
   error,
   onCreate,
   onClose,
+  seedFor,
 }: {
   visible: boolean;
   groupTitle: string;
@@ -54,6 +55,11 @@ export function NewTopicSheet({
   error: string;
   onCreate: (input: NewTopicInput) => void;
   onClose: () => void;
+  /**
+   * T-1212: the member ball seed for a user id (the bare JID derived the
+   * mention-builder way). Absent paints the raw user id.
+   */
+  seedFor?: ((userId: string) => string) | undefined;
 }) {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<TopicKind>('chat');
@@ -202,7 +208,11 @@ export function NewTopicSheet({
                 className="flex-row items-center gap-3 rounded-lg px-2 py-2 active:bg-surface-raised"
               >
                 <Checkbox checked={checked} disabled={locked} />
-                <Avatar id={member.userId} name={member.name} size={28} />
+                <Avatar
+                  id={seedFor === undefined ? member.userId : seedFor(member.userId)}
+                  name={member.name}
+                  size={28}
+                />
                 <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px] text-foreground">
                   {member.name}
                 </Text>

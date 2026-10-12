@@ -1,5 +1,6 @@
 import { Effect, Fiber } from 'effect';
-import { Mic, Trash2 } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import { ChevronLeft, Mic, Trash2 } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, View, type GestureResponderHandlers } from 'react-native';
 
@@ -19,6 +20,7 @@ import type { SendTextOptions, SendVoiceRecording } from '@/store/types';
 import {
   ERROR_VISIBLE_MS,
   LEVEL_TICK_MS,
+  SHORT_PRESS_HINT_MS,
   formatElapsed,
   runRecorderBegin,
   runRecorderBeginEffect,
@@ -27,6 +29,7 @@ import {
   waveformFromLevels,
   type RecorderBeginResult,
   type RecorderDecisionDeps,
+  type RecorderFinishOutcome,
 } from '@/components/chat/voice-recorder-flow';
 import {
   createHoldResponder,
@@ -42,7 +45,7 @@ export {
   runRecorderFinishEffect,
   waveformFromLevels,
 };
-export type { RecorderBeginResult, RecorderDecisionDeps };
+export type { RecorderBeginResult, RecorderDecisionDeps, RecorderFinishOutcome };
 
 type VoiceRecorderProps = {
   /** Sends the finished recording with the optional reply, like web. */
@@ -69,8 +72,8 @@ const TIMER_TICK_MS = 250;
  * input: a red dot, the elapsed time and a hint, with a 5-minute cap that
  * stops the recording automatically. The mic stays mounted under the finger
  * for the whole hold (a remount would drop the touch). Under one second is
- * a miss press: the take is discarded silently, with nothing sent and no
- * hint shown.
+ * a miss press: the take is discarded with nothing sent, and a "Hold to
+ * record, release to send" hint shows above the composer for 1.5 s.
  */
 export function VoiceRecorderButton({
   onSendVoice,
@@ -103,6 +106,22 @@ export function VoiceRecorderButton({
       interruptFiber(hide);
     };
   }, [error]);
+  // A too-short press shows the hold hint for 1.5 s, like the error hide
+  // above: an `Effect.sleep` forked on a fiber, interrupted by the cleanup.
+  const [shortPressHint, setShortPressHint] = useState(false);
+  useEffect(() => {
+    if (!shortPressHint) {
+      return undefined;
+    }
+    const hide = Effect.runFork(
+      Effect.sleep(SHORT_PRESS_HINT_MS).pipe(
+        Effect.andThen(Effect.sync(() => setShortPressHint(false))),
+      ),
+    );
+    return () => {
+      interruptFiber(hide);
+    };
+  }, [shortPressHint]);
   const timerRef: TickerRef = useRef<Fiber.Fiber<unknown, unknown> | undefined>(undefined);
   const recordingRef = useRef(false);
   // Set synchronously before the first await so a double tap cannot create
@@ -133,6 +152,17 @@ export function VoiceRecorderButton({
   const heldRef = useRef(false);
   const cancelRef = useRef(false);
 
+  // A failed haptic is ignored: the press itself still works without it
+  // (the call style of `swipe-to-reply.tsx` and `message-bubble-actions.tsx`).
+  const haptic = (style: Haptics.ImpactFeedbackStyle): void => {
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () => Haptics.impactAsync(style),
+        catch: (error) => error,
+      }).pipe(Effect.ignore),
+    );
+  };
+
   const begin = () => {
     if (recordingRef.current || startingRef.current || disabled) {
       return;
@@ -147,6 +177,7 @@ export function VoiceRecorderButton({
         setError(result.error);
         return;
       }
+      haptic(Haptics.ImpactFeedbackStyle.Light);
       recordingRef.current = true;
       setRecording(true);
       setElapsedMs(0);
@@ -187,6 +218,16 @@ export function VoiceRecorderButton({
     recordingRef.current = false;
     setRecording(false);
     setWillCancel(false);
+    if (cancel) {
+      haptic(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    const onFinished = (outcome: RecorderFinishOutcome): void => {
+      if (outcome.kind === 'refused') {
+        setError(outcome.copy);
+      } else if (outcome.kind === 'too-short') {
+        setShortPressHint(true);
+      }
+    };
     const levels = levelsRef.current;
     Effect.runFork(
       runRecorderFinishEffect(
@@ -199,13 +240,10 @@ export function VoiceRecorderButton({
         },
         cancel,
       ).pipe(
-        Effect.flatMap((copy) =>
-          Effect.sync(() => {
-            if (copy !== undefined) {
-              setError(copy);
-            }
-          }),
+        Effect.flatMap((outcome) =>
+          Effect.try({ try: () => onFinished(outcome), catch: (error) => error }),
         ),
+        Effect.catch(() => Effect.sync(() => setError(MIC_FAILED_MESSAGE))),
       ),
     );
   };
@@ -245,16 +283,21 @@ export function VoiceRecorderButton({
             <Text className="shrink-0 font-mono text-[15px] tabular-nums text-foreground">
               {formatElapsed(elapsedMs)}
             </Text>
-            <Text
-              numberOfLines={1}
-              className={
-                willCancel
-                  ? 'min-w-0 flex-1 text-center text-[13px] text-danger'
-                  : 'min-w-0 flex-1 text-center text-[13px] text-muted-foreground'
-              }
-            >
-              {willCancel ? 'Release to cancel' : '‹ Slide to cancel'}
-            </Text>
+            {willCancel ? (
+              <Text
+                numberOfLines={1}
+                className="min-w-0 flex-1 text-center text-[13px] text-danger"
+              >
+                Release to cancel
+              </Text>
+            ) : (
+              <View className="min-w-0 flex-1 flex-row items-center justify-center gap-1">
+                <ChevronLeft size={14} color={ICON} />
+                <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+                  Slide to cancel
+                </Text>
+              </View>
+            )}
             <Trash2 size={18} color={willCancel ? '#f87171' : ICON} />
           </View>
         ) : null}
@@ -269,6 +312,13 @@ export function VoiceRecorderButton({
           <Mic size={20} color={recording ? ACCENT_FOREGROUND : ICON} />
         </View>
       </View>
+      {shortPressHint ? (
+        <View className="absolute right-0 bottom-full mb-3 w-64 rounded-[10px] bg-surface-raised px-3 py-2">
+          <Text numberOfLines={2} className="text-[12px] text-muted-foreground">
+            Hold to record, release to send
+          </Text>
+        </View>
+      ) : null}
       {error !== undefined ? (
         <Pressable
           accessibilityRole="button"

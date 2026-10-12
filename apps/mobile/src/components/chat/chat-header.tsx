@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { ChevronLeft, Images, Lock, Megaphone, MoreVertical, Search } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
@@ -6,11 +7,31 @@ import { Avatar } from '@/components/chat/avatar';
 import { TypingDots } from '@/components/chat/typing-dots';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
+import type { Contact } from '@/lib/chat-api';
 import { chatSubtitle } from '@/lib/chat';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { connectionLabel } from '@/lib/connection';
 import { typingLabel } from '@/lib/format';
 import type { ChatSummary } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
+
+/**
+ * The `@handle` of a DM's peer, when the contact list knows one (T-1192,
+ * MUX-11). A DM row's id is the peer's bare jid, the same string a contact
+ * carries; a contact whose id needs the server's hash fallback resolves to no
+ * chat and no handle, so the header stays inert.
+ */
+function dmHandleFor(chat: ChatSummary, contacts: Contact[]): string | undefined {
+  if (chat.kind !== 'dm' || chat.isAI) {
+    return undefined;
+  }
+  const local = chat.id.split('@')[0]?.toLowerCase();
+  const contact = contacts.find(
+    (entry) => entry.jid === chat.id || entry.userId.toLowerCase() === local,
+  );
+  const handle = contact?.handle;
+  return handle === undefined || handle === null || handle === '' ? undefined : handle;
+}
 
 type ChatHeaderProps = {
   chat: ChatSummary;
@@ -34,7 +55,8 @@ type ChatHeaderProps = {
  * wires one (topics today); the search row opens the scoped search where
  * the screen wires it; the menu button renders only where the screen wires
  * it to a sheet (topics today: the topic-info sheet; other chats have no
- * menu yet, shown as no button rather than a dead one).
+ * menu yet, shown as no button rather than a dead one). T-1192 (MUX-11) adds
+ * the DM case: with the peer's `@handle` known, the title opens their profile.
  */
 export function ChatHeader({
   chat,
@@ -45,12 +67,20 @@ export function ChatHeader({
   onOpenInfo,
   onOpenGroup,
 }: ChatHeaderProps) {
+  const router = useRouter();
   const iconColor = ICON;
+  const status = useChatStore((state) => state.status);
+  const contacts = useChatStore((state) => state.contacts);
+  const dmHandle = dmHandleFor(chat, contacts);
   const names = useChatStore((state) => state.typing[chat.id]?.names);
   const hasDraft = useChatStore((state) => state.drafts[chat.id] !== undefined);
   const typing = typingLabel(chat, names ?? []);
   const writing = chat.isAI && (typing !== undefined || hasDraft);
-  const subtitle = writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date()));
+  // T-1192 (MUX-15): while the connection is not online the status line wins
+  // over the subtitle and the typing hint, the way the chat list shows it.
+  const connection = connectionLabel(status);
+  const subtitle =
+    connection ?? (writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date())));
   const working = chat.isAI && chat.aiStatus === 'working';
   const isTopic = chat.topic !== undefined;
   const groupTarget = onOpenGroup !== undefined ? (chat.groupId ?? undefined) : undefined;
@@ -95,7 +125,14 @@ export function ChatHeader({
       <IconButton label="Back" onPress={onBack}>
         <ChevronLeft size={24} color={iconColor} />
       </IconButton>
-      <Avatar id={chat.id} name={chat.title} size={36} online={chat.online} ai={chat.isAI} />
+      <Avatar
+        id={chat.id}
+        name={chat.title}
+        size={36}
+        online={chat.online}
+        avatarUrl={chat.avatarUrl}
+        ai={chat.isAI}
+      />
       {isTopic && onOpenInfo !== undefined ? (
         <Pressable
           accessibilityRole="button"
@@ -110,6 +147,15 @@ export function ChatHeader({
           accessibilityRole="button"
           accessibilityLabel={`Open group ${chat.title}`}
           onPress={() => onOpenGroup?.(groupTarget)}
+          className="min-w-0 flex-1"
+        >
+          {title}
+        </Pressable>
+      ) : dmHandle !== undefined ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${chat.title}'s profile`}
+          onPress={() => router.push({ pathname: '/u/[handle]', params: { handle: dmHandle } })}
           className="min-w-0 flex-1"
         >
           {title}

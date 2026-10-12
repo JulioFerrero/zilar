@@ -1,0 +1,105 @@
+{
+  "title": "Zilar fix plan",
+  "updated": "2026-10-12",
+  "intro": "Ten code audits (eight by Claude Fable 5.1, two by Claude Opus 5.5) read the whole app on 2026-10-11 and 2026-10-12. This page tracks the fixes. Status comes from the task files in work/.",
+  "audits": [
+    { "id": "MP", "title": "Message pipeline", "doc": "docs/audit/message-pipeline-audit.md", "model": "Fable 5.1", "counts": { "P0": 4, "P1": 6, "P2": 3 }, "highlights": ["Phone stayed online in the background, so pushes came late", "Group messages never pushed to a closed app", "A lost message could show as sent", "Nothing caught up after a reconnect"] },
+    { "id": "SG", "title": "Contacts, groups and permissions", "doc": "docs/audit/social-graph-audit.md", "model": "Fable 5.1", "counts": { "P0": 2, "P1": 4, "P2": 5 }, "highlights": ["Blocking did not really block", "Group owner cannot leave, hand over or delete", "Removals reach other devices late"] },
+    { "id": "SEC", "title": "Security and privacy", "doc": "docs/audit/security-audit.md", "model": "Fable 5.1", "counts": { "P0": 0, "P1": 4, "P2": 11 }, "highlights": ["Admin API exposure (fixed)", "Unsafe inline file types (fixed)", "Database role scope (fixed)"] },
+    { "id": "UI", "title": "Message features and UI state", "doc": "docs/audit/features-ui-audit.md", "model": "Fable 5.1", "counts": { "P0": 0, "P1": 4, "P2": 11 }, "highlights": ["Reply quotes empty on the other device", "False seen from a late history page", "Last seen lies and flickers", "Group typing shows one person"] },
+    { "id": "PERF", "title": "Performance and battery", "doc": "docs/audit/performance-audit.md", "model": "Fable 5.1", "counts": { "P0": 0, "P1": 6, "P2": 8, "P3": 4 }, "highlights": ["One history query per chat at every reconnect", "About ten queries per group in the chat list, every 60 s", "Mobile renders every message at once"] },
+    { "id": "MUX", "title": "Mobile UX and gestures", "doc": "docs/audit/mobile-ux-audit.md", "model": "Fable 5.1", "counts": { "P1": 7, "P2": 8 }, "highlights": ["List jumps to the bottom while reading older messages", "No Sign out in the app", "Back broken after opening from a notification", "Keyboard hides the latest messages"] },
+    { "id": "WUX", "title": "Web UX and flows", "doc": "docs/audit/web-ux-audit.md", "model": "Fable 5.1", "counts": { "P1": 8, "P2": 7 }, "highlights": ["New message cannot start a DM", "Group panel has no Leave or Add members", "Drafts lost when switching chats", "Composer not focused when opening a chat"] },
+    { "id": "TG", "title": "Telegram parity", "doc": "docs/audit/telegram-parity-audit.md", "model": "Fable 5.1", "counts": { "solid": 54, "weak": 32, "missing": 70 }, "highlights": ["Unread and read state only in client memory", "No link previews", "No delete for me, clear history or leave group", "No sessions list or delete account"] },
+    { "id": "AI", "title": "AI chats and agents", "doc": "docs/audit/ai-features-audit.md", "model": "Opus 5.5", "counts": { "P0": 0, "P1": 8, "P2": 15 }, "highlights": ["Deploys drop AI replies being written", "Web writing stream stops for good after an error", "Rate limits shown as spending limit", "Deleted messages stay in the AI context"] },
+    { "id": "OPS", "title": "Operations and reliability", "doc": "docs/audit/ops-reliability-audit.md", "model": "Opus 5.5", "counts": { "P0": 2, "P1": 12, "P2": 7 }, "highlights": ["Backups were missing after the move (recreated 2026-10-12)", "No alerting anywhere", "Every deploy gives 30-60 s of errors"] }
+  ],
+  "waves": [
+    {
+      "id": "1",
+      "title": "Wave 1: the message pipeline",
+      "goal": "Messages and pushes arrive, on time and in order.",
+      "items": [
+        { "task": "T-1150", "ref": "push root cause", "title": "Push registration keeps its node; the app registers once" },
+        { "task": "T-1151", "ref": "MP-F1", "title": "Mobile suspends its socket in the background and wakes on open", "closes": ["MP-1", "MP-12", "PERF-6"] },
+        { "task": "T-1152", "ref": "MP-F2", "title": "Push enable on every session, mobile and web", "closes": ["MP-2", "MP-8", "MP-13"] },
+        { "task": "T-1153", "ref": "MP-F4", "title": "Honest sent tick and an outbox for offline texts", "closes": ["MP-4", "MP-11"] },
+        { "task": "T-1197", "ref": "MP-F4 fix", "title": "Offline texts go out when the network comes back (found on the emulator)" },
+        { "task": "T-1154", "ref": "MP-F5", "title": "Server-side push for group messages", "closes": ["MP-3"] },
+        { "task": "T-1155", "ref": "MP-F6", "title": "Pushes only for messages, oldest first", "closes": ["MP-7"] }
+      ]
+    },
+    {
+      "id": "2",
+      "title": "Wave 2: security and blocking",
+      "goal": "Close the exposures the audits found.",
+      "items": [
+        { "task": "T-1156", "ref": "SEC-F2/F3/F4", "title": "Deploy hardening: proxy, headers, database role, proxy hops", "closes": ["SEC-2", "SEC-4", "SEC-5", "SEC-6", "SEC-9", "SEC-10"] },
+        { "task": "T-1157", "ref": "SEC-F1", "title": "Only safe file types render inline", "closes": ["SEC-1"] },
+        { "task": "T-1158", "ref": "SG-1", "title": "Blocking really blocks", "closes": ["SG-1"] },
+        { "task": "T-1162", "ref": "push", "title": "A web push endpoint has one owner" },
+        { "task": "T-1159", "ref": "SG-2", "title": "Only contacts can send direct messages", "closes": ["SG-2"] },
+        { "task": "T-1185", "ref": "SEC-3 step 1", "title": "Mobile reads chat files through the checked proxy" },
+        { "ref": "SEC-3 step 2", "title": "Private uploads: the edge stops serving raw upload links", "closes": ["SEC-3"] },
+        { "task": "T-1180", "ref": "SG-3", "title": "Failed topic-room syncs are retried until they succeed", "closes": ["SG-3"] },
+        { "task": "T-1187", "ref": "SG-4", "title": "A group owner can hand the group over (then leave)" },
+        { "task": "T-1179", "ref": "OPS-16/17", "title": "Every secret redacted in logs; graceful stop time", "closes": ["OPS-16", "OPS-17"] },
+        { "task": "T-1186", "ref": "OPS-5/6", "title": "Migration safety: numbering check, lock timeout, startup warning", "closes": ["OPS-6"] },
+        { "ref": "OPS-10", "title": "Release signing and versioning for the Android app", "closes": ["OPS-10"] }
+      ]
+    },
+    {
+      "id": "3",
+      "title": "Wave 3: what you notice every day",
+      "goal": "Unread, seen, typing and replies tell the truth.",
+      "items": [
+        { "task": "T-1160", "ref": "UI-F2", "title": "Seen only when the chat is really open and focused", "closes": ["UI-2", "UI-9", "UI-10", "UI-11"] },
+        { "task": "T-1161", "ref": "UI-F3/F4/F5", "title": "Other-device replies clear unread; stable last seen; group typing per person", "closes": ["UI-3", "UI-4", "UI-5"] },
+        { "task": "T-1205", "ref": "MP-F3 server", "title": "Unread counts and previews kept on the server" },
+        { "task": "T-1207", "ref": "MP-F3 clients", "title": "Catch-up after reconnect; the apps use the server's unread", "closes": ["MP-5", "MP-6"] },
+        { "task": "T-1193", "ref": "MP-F7", "title": "Retry the token on reconnect instead of going offline", "closes": ["MP-10"] },
+        { "ref": "MP-F7 follow-up", "title": "A dead session stops retrying after a while and goes to sign-in" },
+        { "status": "blocked", "ref": "MP-F8", "title": "Delivered tick: sent, delivered, read (on hold: Telegram has no delivered state; Julio decides)" },
+        { "task": "T-1194", "ref": "UI-F1", "title": "Reply quotes show on every device", "closes": ["UI-1", "UI-6"] },
+        { "task": "T-1169", "ref": "OPS-2", "title": "Health reports ejabberd and push; an uptime check emails when something is down", "closes": ["OPS-2"] },
+        { "status": "merged", "ref": "OPS-1", "title": "Backups re-created: nightly dumps and volume backups to B2", "closes": ["OPS-1"] }
+      ]
+    },
+    {
+      "id": "4",
+      "title": "Wave 4: feel and parity",
+      "goal": "Close the gap with Telegram on web and Android.",
+      "items": [
+        { "task": "T-1170", "ref": "WUX-3/6", "title": "Web: per-chat drafts and composer focus", "closes": ["WUX-3", "WUX-6"] },
+        { "task": "T-1181", "ref": "MUX-4", "title": "Mobile: per-chat drafts", "closes": ["MUX-4"] },
+        { "task": "T-1172", "ref": "MUX-1/7", "title": "Mobile list keeps its place: older pages, new messages, keyboard", "closes": ["MUX-1", "MUX-7"] },
+        { "task": "T-1173", "ref": "MUX-5/6", "title": "Mobile Sign out; Back after opening from a notification", "closes": ["MUX-5", "MUX-6"] },
+        { "task": "T-1196", "ref": "MUX-3", "title": "Mobile: a failed text says Not sent, with Retry and Delete", "closes": ["MUX-3"] },
+        { "task": "T-1191", "ref": "MUX-8/9", "title": "Mobile: jump-to-bottom with a count; dragging closes the keyboard", "closes": ["MUX-8", "MUX-9"] },
+        { "task": "T-1192", "ref": "MUX-11/12/15", "title": "Mobile: profile photos, DM header opens the profile, connection state in the chat", "closes": ["MUX-11", "MUX-12", "MUX-15"] },
+        { "ref": "MUX", "title": "Mobile: open chats at the bottom instantly, swipe actions, image viewer, voice lock" },
+        { "task": "T-1189", "ref": "WUX-4", "title": "Web: one right edge for time, badge and ticks; clean hover", "closes": ["WUX-4"] },
+        { "task": "T-1195", "ref": "WUX-9/13/15", "title": "Web: confirm Sign out and archive; reply quotes jump; sign-in focus", "closes": ["WUX-9", "WUX-13", "WUX-15"] },
+        { "task": "T-1199", "ref": "WUX-11/12", "title": "Web: older messages load without a jump; arrow keys on every row; N for New chat", "closes": ["WUX-11", "WUX-12"] },
+        { "task": "T-1190", "ref": "SG-4 web", "title": "Web: Make owner in the group panel" },
+        { "task": "T-1188", "ref": "PERF-2 step 1", "title": "Mobile: a typing or AI tick no longer re-renders every message row" },
+        { "ref": "Avatars", "title": "One ball colour per person or group on every screen (seeds differ today)" },
+        { "task": "T-1171", "ref": "WUX-7", "title": "Web New message lists contacts and opens the DM", "closes": ["WUX-7"] },
+        { "task": "T-1177", "ref": "WUX-1/2", "title": "Web search: people open the chat, honest empty states, Esc", "closes": ["WUX-1", "WUX-2"] },
+        { "task": "T-1178", "ref": "WUX-5", "title": "Web Notifications page: one clear message, no dead Enable", "closes": ["WUX-5"] },
+        { "task": "T-1183", "ref": "WUX-8", "title": "Group panel: Leave group, Add members, Remove", "closes": ["WUX-8"] },
+        { "task": "T-1184", "ref": "PERF-5", "title": "Fewer queries per push notification" },
+        { "task": "T-1175", "ref": "PERF-4", "title": "Chat list loads all group topics in one batched pass", "closes": ["PERF-4"] },
+        { "ref": "PERF", "title": "Fewer queries per reconnect; windowed message lists" },
+        { "task": "T-1174", "ref": "SEC-7/8", "title": "Budgets on invites, profile edits, group create; group pictures for members only", "closes": ["SEC-7", "SEC-8"] },
+        { "task": "T-1176", "ref": "AI-7/8", "title": "AI in groups: says when rate-limited; a reply to it wakes it", "closes": ["AI-7", "AI-8"] },
+        { "task": "T-1168", "ref": "AI-1", "title": "AI replies survive deploys", "closes": ["AI-1"] },
+        { "task": "T-1166", "ref": "AI-2/12", "title": "Web AI writing stream reconnects; tool progress keeps it", "closes": ["AI-2", "AI-12"] },
+        { "task": "T-1167", "ref": "AI-3/4/5", "title": "Honest AI error messages; one retry; cut-short replies say so", "closes": ["AI-3", "AI-4", "AI-5"] },
+        { "task": "T-1165", "ref": "AI-6", "title": "Edited and deleted messages leave the AI's context", "closes": ["AI-6"] },
+        { "ref": "TG", "title": "Link previews, delete for me, clear history, sessions list" },
+        { "ref": "OPS", "title": "Near-zero-downtime deploys and safe migrations" }
+      ]
+    }
+  ]
+}

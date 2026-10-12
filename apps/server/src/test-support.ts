@@ -18,6 +18,7 @@ import type {
   RoomAffiliation,
   RosterEntry,
   SendDirectInvitationOptions,
+  UserResource,
 } from './xmpp/admin-client';
 import type { XmppConfig } from './xmpp/config';
 import { localpartFor } from './xmpp/provisioning';
@@ -84,6 +85,15 @@ export class FakeAdminClient implements EjabberdAdminClient {
   failAffiliationRead = false;
   failDirectInvitation = false;
   failRoster = false;
+  // T-1154: connected resources ejabberd would report, per localpart; a
+  // missing entry means no session. Tests set them through
+  // `setOnlineResources` below.
+  readonly onlineResources: Map<string, string[]> = new Map();
+
+  // Fake the connected resources ejabberd would report for a localpart.
+  setOnlineResources(localpart: string, resources: string[]): void {
+    this.onlineResources.set(localpart, resources);
+  }
 
   registerUser(localpart: string) {
     if (this.failRegister) {
@@ -196,6 +206,11 @@ export class FakeAdminClient implements EjabberdAdminClient {
     if (options.password !== undefined) invitation.password = options.password;
     this.directInvitations.push(invitation);
     return Promise.resolve();
+  }
+
+  // Reports the faked resources (`setOnlineResources` above).
+  userResources(localpart: string): Promise<UserResource[]> {
+    return Promise.resolve(this.onlineResources.get(localpart) ?? []);
   }
 
   addRosterItem(

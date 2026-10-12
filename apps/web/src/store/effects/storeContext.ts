@@ -1,7 +1,11 @@
 // Builds the message ledger, the plain helpers of `realStore.ts` and the
 // `StoreCtx` the effect modules and the actions share, from the store's
 // mutable locals, ports, lifetime and state accessors.
-import { createMessageLedger, type MessageLedger } from '@zilar/client-core/store';
+import {
+  createMessageLedger,
+  createTextOutbox,
+  type MessageLedger,
+} from '@zilar/client-core/store';
 import type { ChatEntry, Me } from '@/lib/api';
 import { loadInTabPreviews, showInTabNotification } from '@/lib/push/inTab';
 import type { SetState } from '../atomStore';
@@ -193,6 +197,11 @@ export function makeStoreContext(deps: StoreContextDeps): {
     pendingAttachments: locals.pendingAttachments,
     pendingVoices: locals.pendingVoices,
     sendRuns: locals.sendRuns,
+    // The text outbox (F4, honest ticks): one per store instance. Texts stay
+    // `sending` until the server's stream-management ack marks them `sent`;
+    // the core lifecycle flushes it on online and `reset()` clears it on
+    // sign-out, so one user's queue never goes out as another user.
+    outbox: createTextOutbox(),
   };
 
   return { ctx, ledger };

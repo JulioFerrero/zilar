@@ -60,6 +60,8 @@ export interface ChatApi {
   getContacts(): Promise<Contact[]>;
   getGroup(groupId: string): Promise<GroupDetail>;
   getXmppToken(): Promise<XmppToken>;
+  /** Stores the caller's read mark (T-1207). Optional so fakes keep working. */
+  markChatRead?(jid: string, messageId: string): Promise<void>;
 }
 
 /** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
@@ -186,6 +188,12 @@ export function createChatApi(
     },
     async getXmppToken() {
       return (await withToken('/api/xmpp/token', { method: 'POST' }, parseXmppToken)) as XmppToken;
+    },
+    // Stores the caller's read mark (T-1207): `messageId` must be the archive
+    // id (numeric) — the server answers 400 otherwise, surfaced as
+    // `ChatApiError`. Best effort: callers ignore failures.
+    async markChatRead(jid: string, messageId: string) {
+      await runApi(client.chats.markRead({ params: { jid }, payload: { messageId } }));
     },
   };
 }

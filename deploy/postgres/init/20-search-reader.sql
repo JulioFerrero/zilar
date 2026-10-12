@@ -41,14 +41,14 @@ GRANT CONNECT ON DATABASE ejabberd TO zilar_archive;
 GRANT USAGE ON SCHEMA public TO zilar_archive;
 -- `archive` is created by ejabberd itself on first start (`update_sql_schema`),
 -- so it usually does not exist yet when this runs. The direct GRANT below
--- covers volumes where it already does; the default privilege covers every
--- table the `ejabberd` role (its owner, created by 10-create-databases.sql)
--- creates afterwards — including a future `archive`.
+-- covers volumes where it already does. No default privileges are granted:
+-- the reader must see only `archive`, never `users`, rosters, rooms or
+-- sessions. On a fresh volume run the manual GRANT from SERVER_CONFIG once
+-- ejabberd has created the table.
 SELECT EXISTS (SELECT FROM pg_class WHERE relname = 'archive') AS has_archive \gset
 \if :has_archive
 GRANT SELECT ON public.archive TO zilar_archive;
 \endif
-ALTER DEFAULT PRIVILEGES FOR ROLE ejabberd IN SCHEMA public GRANT SELECT ON TABLES TO zilar_archive;
 \endif
 \endif
 \endif

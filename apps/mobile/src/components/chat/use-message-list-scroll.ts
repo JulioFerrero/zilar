@@ -1,5 +1,5 @@
 import { Effect, Fiber } from 'effect';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FlatList } from 'react-native';
 
 import { startJumpScroll } from '@/components/chat/jump-scroll';
@@ -14,7 +14,8 @@ type MessageListScrollOptions = {
   jumpTarget: JumpTarget | undefined;
   jumpToMessageId: string | undefined;
   entries: readonly ListEntry[];
-  visibleCount: number;
+  lastEntryKey: string | undefined;
+  lastEntryOutgoing: boolean;
   clearJumpTarget: () => void;
   onJumped: (() => void) | undefined;
 };
@@ -30,15 +31,34 @@ export function useMessageListScroll({
   jumpTarget,
   jumpToMessageId,
   entries,
-  visibleCount,
+  lastEntryKey,
+  lastEntryOutgoing,
   clearJumpTarget,
   onJumped,
 }: MessageListScrollOptions) {
   const listRef = useRef<FlatList<ListEntry>>(null);
-  const previousCount = useRef(visibleCount);
+  const previousLastKey = useRef(lastEntryKey);
   // True while the user is at (or near) the bottom, so a growing draft or a new
   // message keeps the view pinned; someone reading older messages is not moved.
   const atBottomRef = useRef(true);
+  // The ref above tracks every scroll event; the jump-to-bottom button only
+  // re-renders when the boolean flips, so the state is updated through this
+  // helper rather than on every scroll.
+  const [atBottom, setAtBottomState] = useState(true);
+  // New last-entry keys that arrived while the user was scrolled up; the jump
+  // button shows the count and it clears once the user is back at the bottom.
+  const [unseenCount, setUnseenCount] = useState(0);
+
+  const setAtBottom = useCallback((next: boolean) => {
+    if (atBottomRef.current === next) {
+      return;
+    }
+    atBottomRef.current = next;
+    setAtBottomState(next);
+    if (next) {
+      setUnseenCount(0);
+    }
+  }, []);
 
   // Scroll after mount and again a few times while images and the list settle.
   // A search jump owns the scroll instead: the jump effect below lands on the
@@ -61,12 +81,20 @@ export function useMessageListScroll({
 
   useEffect(() => {
     // A search jump owns the scroll while its target is set; a live message
-    // arriving in that window must not yank the view to the bottom.
-    if (jumpTarget === undefined && visibleCount > previousCount.current) {
-      listRef.current?.scrollToEnd({ animated: true });
+    // arriving in that window must not yank the view to the bottom. Scrolling
+    // is keyed on the last entry changing, so prepending an older page (the
+    // last key stays) never moves the view. Even a new last message only
+    // scrolls when the user is at the bottom or the message is mine.
+    if (jumpTarget === undefined && lastEntryKey !== previousLastKey.current) {
+      if (atBottomRef.current || lastEntryOutgoing) {
+        listRef.current?.scrollToEnd({ animated: true });
+      } else {
+        // Scrolled up: count it for the jump-to-bottom badge (MUX-8).
+        setUnseenCount((current) => current + 1);
+      }
     }
-    previousCount.current = visibleCount;
-  }, [visibleCount, jumpTarget]);
+    previousLastKey.current = lastEntryKey;
+  }, [lastEntryKey, lastEntryOutgoing, jumpTarget]);
 
   // A search hit lands here: once the jump target's message is loaded, scroll
   // to it (centered) and confirm the target on the LAST retry so a later
@@ -111,5 +139,5 @@ export function useMessageListScroll({
     return () => Effect.runSync(Fiber.interrupt(timer));
   }, [jumpToMessageId, entries, onJumped]);
 
-  return { listRef, atBottomRef };
+  return { listRef, atBottomRef, atBottom, unseenCount, setAtBottom };
 }

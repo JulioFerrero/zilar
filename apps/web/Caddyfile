@@ -1,7 +1,9 @@
 # Zilar production web app: static file server with SPA fallback.
 #
 # Serves the built Vite app, and forwards the API (`/api/*`), the XMPP
-# WebSocket (`/xmpp-ws/*`) and uploads (`/upload/*`) to the server and ejabberd.
+# WebSocket (`/xmpp-ws/ws` only: every other `/xmpp-ws/*` path answers 404
+# so ejabberd's admin REST API is never public) and uploads (`/upload/*`)
+# to the server and ejabberd.
 # deploy/docker-compose.yml routes those paths before they reach this
 # service; deploy/coolify/docker-compose.yml relies on the forwarding below.
 
@@ -47,12 +49,26 @@
     reverse_proxy server:3000
   }
 
-  handle /xmpp-ws/* {
+  handle /xmpp-ws/ws {
     uri strip_prefix /xmpp-ws
     reverse_proxy ejabberd:5280
   }
 
+  # Everything else under /xmpp-ws is not the WebSocket: ejabberd's :5280
+  # listener also serves its admin REST API at /api (mod_http_api), so those
+  # paths answer 404 instead of reaching it (SEC-2).
+  handle /xmpp-ws/* {
+    respond 404
+  }
+
   handle /upload/* {
+    # Uploaded files are served straight from ejabberd: no MIME sniffing,
+    # no script execution from them, HSTS like everywhere else (F1).
+    header {
+      X-Content-Type-Options nosniff
+      Content-Security-Policy "default-src 'none'; sandbox"
+      Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
     reverse_proxy ejabberd:5280
   }
 

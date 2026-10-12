@@ -214,7 +214,7 @@ export function NewGroupSheetBody({
                     onPress={() => onToggle(contact.userId)}
                     className="flex-row items-center gap-3 rounded-lg px-2 py-2 active:bg-surface-raised"
                   >
-                    <Avatar id={contact.userId} name={contact.name} size={28} />
+                    <Avatar id={contact.jid} name={contact.name} size={28} />
                     <Text className="flex-1 text-[15px] text-foreground">{contact.name}</Text>
                     {checked ? <Check size={18} color={ICON_COLOR} /> : null}
                   </Pressable>

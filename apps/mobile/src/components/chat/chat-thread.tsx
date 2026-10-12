@@ -5,6 +5,7 @@ import { MessageList } from '@/components/chat/message-list';
 import type { ChatScreen } from '@/components/chat/use-chat-screen';
 import { useVoicePlayerHost } from '@/components/chat/voice-player';
 import { API_URL } from '@/lib/auth';
+import { mediaUrl } from '@/lib/attachment-common';
 import { createAttachmentOpener } from '@/lib/attachment-native';
 import type { AttachmentOpener } from '@/lib/attachment-ports';
 import { safeHttpUrl } from '@/lib/attachments';
@@ -52,7 +53,7 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
   // The shared voice playback host (T-0154): one expo-audio player for all
   // bubbles, so only one voice plays at a time. Leaving the chat unmounts
   // the screen and stops playback.
-  const voiceHost = useVoicePlayerHost();
+  const voiceHost = useVoicePlayerHost(chat.id);
 
   const openAttachment = (message: UiMessage) => {
     const attachment = message.attachment;
@@ -61,14 +62,16 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
     }
     // Untrusted or non-http(s) addresses never open: only the server-served
     // upload URL (under the 50 MiB cap, like any attachment) goes to the
-    // system sheet.
+    // system sheet. The upload URL is routed through `GET /api/files` (T-1185)
+    // so the download carries the session bearer; the opener's own origin
+    // guard keeps that bearer off any other host.
     if (safeHttpUrl(attachment.url) === undefined) {
       setOpenError('That file cannot be opened here.');
       return;
     }
     setOpeningId(message.id);
     setOpenError('');
-    runInBackground(() => opener.open(attachment.url, attachment.name), {
+    runInBackground(() => opener.open(mediaUrl(chat.id, attachment.url), attachment.name), {
       onSuccess: (result) => {
         if (result.status === 'error') {
           setOpenError(result.message);

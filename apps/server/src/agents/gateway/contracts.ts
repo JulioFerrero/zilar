@@ -77,6 +77,20 @@ export const RECONCILE_INTERVAL_MS = 60_000;
 export const RETRY_BASE_DELAY_MS = 5_000;
 export const RETRY_MAX_DELAY_MS = 60_000;
 
+// T-1168 (AI-1): on shutdown the gateway drains before it disconnects. It
+// refuses new turns, waits up to `AI_DRAIN_MS` (polling every
+// `AI_DRAIN_POLL_MS`) for every DM and room turn in flight to finish and send,
+// and tells the asker `AI_RESTART_REPLY` for a turn still running at the
+// deadline. Must finish well inside Docker's 10 s SIGTERM kill (`main.ts`
+// FORCE_EXIT_MS is 15 s).
+export const AI_DRAIN_MS = 8_000;
+export const AI_DRAIN_POLL_MS = 200;
+
+// T-1168: the fixed text a turn still running at the drain deadline sends
+// through its still-connected session, so the asker learns the reply was lost
+// to a restart instead of seeing nothing.
+export const AI_RESTART_REPLY = 'I was restarted in the middle of my reply. Please ask again.';
+
 // Fresh-token TTL for each AI login. xmpp-core asks `getToken` on every
 // (re)connect, so no connection ever runs on a stale token.
 export const XMPP_TOKEN_TTL_SECONDS = 300;
@@ -203,6 +217,31 @@ export interface AiSession {
   roomBusy: Set<string>;
   /** Turn timestamps (ms) per room for the rate limit. */
   roomTurns: Map<string, number[]>;
+  /** T-1176 (AI-7): ms stamp of the last rate-limit notice per room, so a
+   * drop inside the same window stays silent. In memory only. */
+  roomRateNotices: Map<string, number>;
+  /** T-1176 (AI-8): ids of the messages this AI last sent per room, newest
+   * last and bounded. Zilar's own clients send no `to` on a reply, so a human
+   * reply quoting one of these ids wakes the AI. In memory only. */
+  roomSentIds: Map<string, string[]>;
+}
+
+// T-1176 (AI-8): how many sent message ids are kept per room. The rate limit
+// already bounds how often an AI posts, so a small window is enough.
+export const ROOM_SENT_ID_LIMIT = 40;
+
+// T-1176 (AI-8): records the id of a message this AI just sent in a room,
+// keeping only the newest `ROOM_SENT_ID_LIMIT` ids.
+export function rememberRoomSentId(session: AiSession, roomJid: string, id: string): void {
+  if (id === '') {
+    return;
+  }
+  const ids = session.roomSentIds.get(roomJid) ?? [];
+  ids.push(id);
+  if (ids.length > ROOM_SENT_ID_LIMIT) {
+    ids.shift();
+  }
+  session.roomSentIds.set(roomJid, ids);
 }
 
 export interface AgentGateway {

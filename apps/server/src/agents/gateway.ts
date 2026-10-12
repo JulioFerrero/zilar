@@ -34,6 +34,8 @@ export type {
   GatewayLogger,
 } from './gateway/contracts';
 export {
+  AI_DRAIN_MS,
+  AI_RESTART_REPLY,
   GATEWAY_RESOURCE,
   GROUP_JOIN_SKEW_MS,
   GROUP_RATE_WINDOW_MS,
@@ -91,6 +93,9 @@ export function createAgentGateway(
     sessions,
     roomRounds,
     sessionIsLive,
+    // T-1168: lazily read like the session lifecycle's gate below; the
+    // lifecycle factory is created later and this arrow runs at event time.
+    isStarted: () => lifecycle.isStarted(),
     pumpRoom: (session, roomJid) => pumpRoom(session, roomJid),
   });
 
@@ -268,6 +273,16 @@ export function createAgentGateway(
     // room: the AI re-answering edits is out of scope. This is the first check,
     // before any routing, pairing, database or model work.
     if (message.correction !== undefined || message.retraction !== undefined) {
+      return;
+    }
+    // T-1168 (AI-1): a gateway that is stopping refuses new turns. `started`
+    // gates the lifecycle event subscriptions (`lifecycle.ts:142,180,196`), but
+    // incoming messages reach `pumpSessionEffect` through the per-session core
+    // listeners, which stay attached until `disconnectAi`; during the drain the
+    // session is still in the map and not stopped, so without this check a
+    // message that lands mid-drain would start a turn the drain never waits on.
+    // `started` is false from the first line of `stopEffect`.
+    if (!lifecycle.isStarted()) {
       return;
     }
     if (session.stopped || sessions.get(session.aiId) !== session) {

@@ -18,6 +18,8 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     occupants: core.occupants,
     connect: () => Effect.runPromise(core.connect()),
     disconnect: () => Effect.runPromise(core.disconnect()),
+    suspend: () => Effect.runPromise(core.suspend?.() ?? Effect.void),
+    wake: () => Effect.runPromise(core.wake?.() ?? Effect.succeed('rebound' as const)),
     joinRoom: (roomJid, nick) => Effect.runPromise(core.joinRoom(roomJid, nick)),
     leaveRoom: (roomJid) => Effect.runPromise(core.leaveRoom(roomJid)),
     sendMessage: (to, kind, text, opts) =>

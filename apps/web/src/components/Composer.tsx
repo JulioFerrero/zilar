@@ -3,6 +3,8 @@ import { Effect, Schedule } from 'effect';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ComposerControls } from './composer/ComposerControls';
 import { useComposerAttachments } from './composer/useComposerAttachments';
+import { useComposerFocus } from './composer/useComposerFocus';
+import { beginEdit, endEdit, useDraftValue } from './composer/useDraftValue';
 import { useMentions } from './composer/useMentions';
 import { stopTimer, useVoiceRecorder } from './composer/useVoiceRecorder';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -23,11 +25,11 @@ export function Composer({
   const chat = useChatSelector((s) => s.chats.find((entry) => entry.id === chatId));
   const meJid = useChatSelector((s) => s.me?.jid ?? undefined);
   const storedActionError = useChatSelector((s) => s.actionError);
-  const [value, setValue] = useState('');
-  // The chat the tracked mentions belong to. Kept in state so a chat switch can
-  // reset them during render (React's "adjust state when a prop changes").
+  const [value, setValue] = useDraftValue(chatId);
+  // The chat the tracked mentions belong to, so a chat switch resets them below.
   const [trackedChatId, setTrackedChatId] = useState(chatId);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useComposerFocus(chatId, textareaRef);
   // The message being edited, in this chat only.
   const editing = useChatSelector((s) => {
     const target = s.editTarget;
@@ -67,11 +69,8 @@ export function Composer({
     onMicPointerMove,
   } = voice;
 
-  // A mention picked in one chat must never be sent into another: when the chat
-  // changes, drop the tracked mentions and any open picker during render. The
-  // draft text itself stays, as it did before.
-  // A sticker picked in one chat must never be sent into another: like the
-  // tracked mentions, the open panel closes on a chat switch.
+  // A mention or sticker picked in one chat must never be sent into another: drop
+  // them and any open panel on a chat switch. The text stays per chat (useDraftValue).
   if (trackedChatId !== chatId) {
     setTrackedChatId(chatId);
     mentions.reset();
@@ -82,13 +81,13 @@ export function Composer({
   const placeholder = title === undefined ? 'Message' : `Message ${title}`;
 
   // Entering edit mode prefills the composer with the message's text (caret at
-  // the end); leaving it clears the composer again.
+  // the end); leaving it restores the draft kept aside (WUX-3).
   useEffect(() => {
     const previous = lastEditingIdRef.current;
     lastEditingIdRef.current = editingId;
     if (editingId === undefined) {
       if (previous !== undefined) {
-        setValue('');
+        endEdit(chatId);
         setMentions([]);
         setPicker(undefined);
       }
@@ -98,12 +97,13 @@ export function Composer({
       return;
     }
     const text = editingText ?? '';
-    setValue(text);
+    beginEdit(chatId, text);
     setMentions(editingMentions ?? []);
     setPicker(undefined);
     setActiveIndex(0);
     pendingCaretRef.current = text.length;
   }, [
+    chatId,
     editingId,
     editingText,
     editingMentions,

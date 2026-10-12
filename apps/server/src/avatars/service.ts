@@ -11,16 +11,17 @@ import { HttpError, xmppUnavailable } from '../errors';
 import { probeStickerBytes, type StickerImageInfo } from '../stickers/image';
 import { resolveStorageDir } from '../stickers/service';
 
-// Profile pictures for people, AIs, groups and channels (T-0165). The
-// browser crops and resizes; the server only validates and stores — one
-// row per owner (`owner_kind` + `owner_id` is unique), a random
-// `<uuid>.<ext>` file on disk, `avatarUrl` = `/api/avatars/<id>`.
+// Profile pictures for people, AIs, groups and channels (T-0165): one row per
+// owner (`owner_kind` + `owner_id` unique), a random `<uuid>.<ext>` on disk.
 
 export const AVATAR_MAX_BYTES = 256 * 1024;
 export const AVATAR_MIN_SIDE = 64;
 export const AVATAR_MAX_SIDE = 512;
 export const AVATAR_UPLOAD_RATE_LIMIT_MAX = 10;
 export const AVATAR_UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+// T-1174 (SEC-7): the read budget, charged per viewer inside `serve`.
+export const AVATAR_READ_RATE_LIMIT_MAX = 600;
+export const AVATAR_READ_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
 export const avatarOwnerKindSchema = Schema.Literals(['user', 'ai', 'group']);
 export type AvatarKind = typeof avatarOwnerKindSchema.Type;
@@ -261,12 +262,10 @@ export async function uploadAvatar(
 }
 
 // Removes the row and the file; idempotent (a missing picture is `{ ok:
-// true }`). The permission check runs first, so strangers cannot probe
-// whether a picture exists. The read and the delete share the owner's
-// advisory lock (the same lock `uploadAvatar` holds) and the delete names
-// the exact row that was read (`ownerKind`, `ownerId`, `storageKey`), so a
-// delete racing a replace removes either the old row with its old file or
-// nothing at all — never the new row while deleting the old file.
+// true }`). The permission check runs first, so strangers cannot probe whether
+// a picture exists. The delete shares the owner's advisory lock with
+// `uploadAvatar` and names the exact row read, so a racing replace removes the
+// old row or nothing — never the new row.
 export async function deleteAvatar(
   deps: AvatarsServiceDeps,
   kind: AvatarKind,
@@ -324,6 +323,7 @@ export interface AvatarFile {
 export async function readAvatarFile(
   deps: AvatarsServiceDeps,
   avatarId: string,
+  userId: string,
 ): Promise<AvatarFile | null> {
   const [row] = await runSql(
     deps.db,
@@ -334,6 +334,27 @@ export async function readAvatarFile(
   );
   if (!row) {
     return null;
+  }
+  // SEC-8 (T-1174): a group's picture is served to a member, and to anyone
+  // when the group is public (Explore, search, the `/@handle` card); a private
+  // group's non-member and an unknown id answer the same `null` (404).
+  if (row.ownerKind === 'group') {
+    const [group] = await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ visibility: 'private' | 'public'; memberId: string | null }>`SELECT
+            groups.visibility,
+            group_members.user_id AS "memberId"
+          FROM groups
+          LEFT JOIN group_members
+            ON group_members.group_id = groups.id AND group_members.user_id = ${userId}
+          WHERE groups.id = ${row.ownerId} LIMIT 1`;
+      }),
+    );
+    if (!group || (group.visibility !== 'public' && group.memberId === null)) {
+      return null;
+    }
   }
   // The path is built from the stored key only (a `<uuid>.<ext>` written at
   // upload); the request id never touches the filesystem, so `..` or a

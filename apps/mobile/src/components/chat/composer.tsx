@@ -11,6 +11,7 @@ import { EditBar } from '@/components/chat/edit-bar';
 import { EmojiSheet } from '@/components/chat/emoji-sheet';
 import { MentionPicker } from '@/components/chat/mention-picker';
 import { useComposerMentions } from '@/components/chat/use-composer-mentions';
+import { useDraftText } from '@/components/chat/use-draft-text';
 import { Text } from '@/components/ui/text';
 import type { AttachmentPicker, GifDownloader, PickedFile } from '@/lib/attachment-ports';
 import { well } from '@/lib/depth';
@@ -90,7 +91,15 @@ export function Composer({
     if (target === undefined) return undefined;
     return state.messages(target.chatId).find((message) => message.id === target.messageId)?.text;
   });
-  const [text, setText] = useState('');
+  // The text is the chat's stored draft (T-1181): leaving the chat and coming
+  // back keeps it, and the chat row can show it. Editing a message shows that
+  // message's text in its place and leaves the draft stored, so cancelling the
+  // edit brings the draft back untouched.
+  const editing = editTarget !== undefined;
+  const [draftText, setDraftText] = useDraftText(chatKey);
+  const [editText, setEditText] = useState('');
+  const text = editing ? editText : draftText;
+  const setText = editing ? setEditText : setDraftText;
   // Whether a composing event was sent for the current text: the emptiness
   // effect below only stops a line we actually started (T-1149).
   const typingActiveRef = useRef(false);
@@ -100,20 +109,16 @@ export function Composer({
   // emoji pick then appends at the end).
   const [selection, setSelection] = useState<CaretSelection | undefined>(undefined);
   // Entering edit mode prefills the input with the message's text; leaving it
-  // restores whatever the user had typed before they tapped Edit. The seeding
-  // runs while rendering, keyed on the message id (a string), instead of in an
-  // effect: a later inbound correction (which only changes `targetText`) does
-  // not clobber the user's typing, and no state is set from an effect.
+  // drops the edit text so the stored draft shows again. The seeding runs while
+  // rendering, keyed on the message id (a string), instead of in an effect: a
+  // later inbound correction (which only changes `targetText`) does not clobber
+  // the user's typing, and no state is set from an effect.
   const editingId =
     editTarget === undefined ? undefined : `${editTarget.chatId}:${editTarget.messageId}`;
   const [seededFor, setSeededFor] = useState<string | undefined>(undefined);
-  const [previousDraft, setPreviousDraft] = useState('');
   if (editingId !== seededFor) {
     setSeededFor(editingId);
-    if (editingId !== undefined) {
-      setPreviousDraft(text);
-      setText(targetText ?? '');
-    }
+    setEditText(editingId === undefined ? '' : (targetText ?? ''));
   }
 
   const mentions = useComposerMentions({
@@ -187,11 +192,10 @@ export function Composer({
     }
     if (editTarget !== undefined) {
       // XEP-0308: replacing the message with a new body sends a correction.
-      // The sender id check and the no-op guard live in the store.
+      // The sender id check and the no-op guard live in the store. The draft is
+      // left stored, so leaving edit mode brings it back.
       editMessage(editTarget.chatId, editTarget.messageId, text);
       cancelEdit();
-      setPreviousDraft('');
-      setText('');
       setInputHeight(MIN_INPUT_HEIGHT);
       return;
     }
@@ -204,16 +208,10 @@ export function Composer({
     setInputHeight(MIN_INPUT_HEIGHT);
   };
 
-  const handleCancelEdit = () => {
-    cancelEdit();
-    setText(previousDraft);
-    setPreviousDraft('');
-  };
-
   return (
     <View className="px-2 pt-1.5" style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
       {editTarget !== undefined ? (
-        <EditBar text={targetText ?? ''} onCancel={handleCancelEdit} />
+        <EditBar text={targetText ?? ''} onCancel={cancelEdit} />
       ) : replyTo !== undefined ? (
         <ReplyBar reply={replyTo} onCancel={onCancelReply} />
       ) : null}

@@ -59,6 +59,12 @@ export interface TabProfile {
   avatarUrl?: string | undefined;
   /** The bearer for the same-origin picture load, if any. */
   token?: string | undefined;
+  /**
+   * T-1212: the ball seed for the own profile (the own bare JID, the same
+   * ball as the chat list and the profile screen). Absent paints the user
+   * id.
+   */
+  seedFor?: ((userId: string) => string) | undefined;
 }
 
 type FloatingTabBarProps = {
@@ -90,7 +96,13 @@ function TabIcon({
             <Text className="text-[13px] font-semibold text-foreground">?</Text>
           ) : (
             <View style={{ width: 20, height: 20, borderRadius: 10, overflow: 'hidden' }}>
-              <SvgXml xml={avatarSvg(profile.id)} width={20} height={20} />
+              <SvgXml
+                xml={avatarSvg(
+                  profile.seedFor === undefined ? profile.id : profile.seedFor(profile.id),
+                )}
+                width={20}
+                height={20}
+              />
             </View>
           )
         }

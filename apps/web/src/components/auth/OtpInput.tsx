@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 
 const LENGTH = 6;
@@ -21,6 +21,12 @@ export function OtpInput({
 }) {
   const refs = useRef<Array<HTMLInputElement | null>>([]);
   const digits = value.padEnd(LENGTH, ' ').slice(0, LENGTH).split('');
+
+  // Focus the first box on mount so the code can be typed (or pasted) right
+  // away (WUX-15).
+  useEffect(() => {
+    refs.current[0]?.focus();
+  }, []);
 
   const commit = (next: string): void => {
     const trimmed = next.replace(/\s+$/, '');

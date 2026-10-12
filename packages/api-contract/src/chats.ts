@@ -9,10 +9,28 @@
 // own.
 
 import { Schema } from 'effect';
-import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
+import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
 import { GroupBackground } from './groups';
-import { Session } from './middleware';
+import { SchemaErrors, Session } from './middleware';
 import { mutableStruct } from './mutable-struct';
+
+/**
+ * The newest archived message of a chat (T-1198): the preview the chat list
+ * shows under the title. `senderName` is the display name ("You" for the
+ * caller's own messages); `at` is an ISO datetime. `archiveId` (T-1214) is
+ * the row's archive timestamp as a decimal string — the read mark for this
+ * preview (`id` is the origin id, not a mark). Optional, so older payloads
+ * still parse.
+ */
+export const ChatLastMessage = mutableStruct({
+  id: Schema.String,
+  text: Schema.String,
+  senderName: Schema.optional(Schema.String),
+  at: Schema.String,
+  archiveId: Schema.optional(Schema.String),
+});
+
+export type ChatLastMessage = typeof ChatLastMessage.Type;
 
 /**
  * One DM: a human contact or the caller's own AI. A field an older server
@@ -26,6 +44,10 @@ export const DmChatEntry = mutableStruct({
   avatarUrl: Schema.optional(Schema.String),
   /** Set on the caller's AIs; absent or false for human contacts. */
   isAi: Schema.optional(Schema.Boolean),
+  /** T-1198: messages after the caller's read mark, absent without archive. */
+  unread: Schema.optional(Schema.Number),
+  /** T-1198: the newest archived message, absent without archive. */
+  lastMessage: Schema.optional(ChatLastMessage),
 });
 
 export type DmChatEntry = typeof DmChatEntry.Type;
@@ -60,6 +82,10 @@ export const GroupChatEntry = mutableStruct({
   avatarUrl: Schema.optional(Schema.String),
   // T-0466: the group's shared background.
   background: Schema.optional(GroupBackground),
+  /** T-1198: messages after the caller's read mark, absent without archive. */
+  unread: Schema.optional(Schema.Number),
+  /** T-1198: the newest archived message, absent without archive. */
+  lastMessage: Schema.optional(ChatLastMessage),
 });
 
 export type GroupChatEntry = typeof GroupChatEntry.Type;
@@ -81,6 +107,14 @@ export type ChatList = typeof ChatList.Type;
 
 export const ChatsGroup = HttpApiGroup.make('chats')
   .add(HttpApiEndpoint.get('list', '/chats', { success: ChatList }))
+  .add(
+    HttpApiEndpoint.put('markRead', '/chats/:jid/read', {
+      params: { jid: Schema.String },
+      payload: Schema.Struct({ messageId: Schema.String }),
+      success: HttpApiSchema.NoContent,
+    }),
+  )
   .middleware(Session)
+  .middleware(SchemaErrors)
   // The edge forwards the full request path, so the group keeps the `/api` prefix.
   .prefix('/api');

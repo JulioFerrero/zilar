@@ -98,6 +98,7 @@ export function ChannelComposerBar({
   if (!isChannelChat(chat) || canPost) {
     return (
       <Composer
+        chatKey={chat.id}
         title={chat.title}
         onSend={onSend}
         onSendSticker={onSendSticker}

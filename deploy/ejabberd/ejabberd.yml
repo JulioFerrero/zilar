@@ -251,6 +251,8 @@ modules:
   mod_http_upload_quota: {}
   mod_stream_mgmt:
     resend_on_timeout: if_offline
+    # T-1151: extends the stream-management resume window from 300 s to 600 s.
+    resume_timeout: 600
   mod_carboncopy: {}
   # Keepalive (T-0174): the server pings idle clients every 60 s so a quiet
   # connection still carries traffic (mobile networks drop idle ones after a
@@ -270,11 +272,30 @@ modules:
   mod_push:
     include_sender: false
     include_body: false
+    # T-1155: only message stanzas publish; typing and presence stay silent.
+    notify_on: messages
   mod_push_keepalive: {}
   mod_http_api: {}
   mod_admin_extra: {}
   mod_adhoc: {}
   mod_blocking: {}
+  # SG-2 / T-1159: DMs are contacts only (Julio decided 2026-10-11). A `chat`
+  # stanza from a JID with no roster subscription is dropped before routing and
+  # archiving, so a stranger — every user's JID is their lower-cased id, and ids
+  # ship in search, member lists and contact-request views — can no longer DM or
+  # write into the recipient's MAM; strangers send a contact request first.
+  # `allow_local_users: false` closes the local-only hole (the default `true`
+  # would let every local stranger through). `allow_transports: false` because
+  # federation is off and no gateway is in any roster, so that escape hatch is
+  # never wanted. Verified on the local stack (T-1159): contacts, group
+  # messages, MUC invitations, AI chats and the push component all still pass
+  # without an allowlist.
+  mod_block_strangers:
+    drop: true
+    log: false
+    allow_local_users: false
+    allow_transports: false
+    captcha: false
   mod_caps: {}
   mod_disco: {}
   mod_last: {}

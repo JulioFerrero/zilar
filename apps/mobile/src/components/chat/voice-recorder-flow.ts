@@ -12,9 +12,10 @@ import type { SendTextOptions, SendVoiceRecording } from '@/store/types';
 /**
  * The recorder button's decision logic, extracted so tests drive the exact
  * behaviour the component runs (finding 5): permission-denied copy with no
- * recorder created, the sub-1s miss press with nothing sent and no hint, the
- * too-long refusal, and the happy path. The component calls the same steps in
- * the same order (`begin` → `finish`), so these tests pin its behaviour.
+ * recorder created, the sub-1s miss press with nothing sent and a `too-short`
+ * outcome the component answers with the hold hint, the too-long refusal,
+ * and the happy path. The component calls the same steps in the same order
+ * (`begin` → `finish`), so these tests pin its behaviour.
  */
 
 export type RecorderDecisionDeps = {
@@ -34,6 +35,8 @@ function flatWaveform(durationMs: number): number[] {
 export const LEVEL_TICK_MS = 100;
 /** An error hint disappears by itself after this long. */
 export const ERROR_VISIBLE_MS = 3000;
+/** A too-short press shows the hold hint for this long. */
+export const SHORT_PRESS_HINT_MS = 1500;
 const WAVEFORM_BARS = 48;
 
 /**
@@ -81,16 +84,24 @@ export function runRecorderBegin(deps: RecorderDecisionDeps): Promise<RecorderBe
 
 /**
  * Runs `finish`: stops (or cancels) and either sends or reports the plain
- * copy. Returns the copy when the recording is refused, so the component
- * can show it; returns undefined when the flow completes, is cancelled, or
- * the press was too short to be a real recording (a miss press records
- * nothing and says nothing). A too-short recording is discarded through the
- * recorder's `cancel`, so no file is left behind.
+ * copy. Returns how the release ended so the component can react: `sent`
+ * when the recording went out, `cancelled` for a slide-left cancel,
+ * `too-short` for a press under `VOICE_MIN_MS` (a miss press records
+ * nothing and says nothing itself; the component shows the hold hint), and
+ * `refused` with the copy when the recording is refused. A too-short
+ * recording is discarded through the recorder's `cancel`, so no file is
+ * left behind.
  */
+export type RecorderFinishOutcome =
+  | { kind: 'sent' }
+  | { kind: 'cancelled' }
+  | { kind: 'too-short' }
+  | { kind: 'refused'; copy: string };
+
 export function runRecorderFinish(
   deps: RecorderDecisionDeps,
   cancel: boolean,
-): Promise<string | undefined> {
+): Promise<RecorderFinishOutcome> {
   return Effect.runPromise(runRecorderFinishEffect(deps, cancel));
 }
 
@@ -98,41 +109,41 @@ export function runRecorderFinish(
 export function runRecorderFinishEffect(
   deps: RecorderDecisionDeps,
   cancel: boolean,
-): Effect.Effect<string | undefined, unknown> {
+): Effect.Effect<RecorderFinishOutcome, unknown> {
   return Effect.gen(function* () {
     const discard = Effect.tryPromise(() => deps.recorder.cancel()).pipe(Effect.ignore);
     if (cancel) {
       yield* discard;
-      return undefined;
+      return { kind: 'cancelled' } as const;
     }
     // A press shorter than the minimum is a miss press, not a recording: the
     // live duration is checked before stopping so the take is discarded with
-    // `cancel` (no file is left behind) instead of `stop`. Nothing is sent and
-    // no hint appears; a failure of the duration read falls through to `stop`
-    // and the post-stop guard below.
+    // `cancel` (no file is left behind) instead of `stop`. Nothing is sent; a
+    // failure of the duration read falls through to `stop` and the post-stop
+    // guard below.
     const liveMs = yield* Effect.try(() => deps.recorder.currentDurationMs()).pipe(
       Effect.orElseSucceed(() => undefined),
     );
     if (liveMs !== undefined && liveMs < VOICE_MIN_MS) {
       yield* discard;
-      return undefined;
+      return { kind: 'too-short' } as const;
     }
     const result = yield* Effect.tryPromise({
       try: () => deps.recorder.stop(),
       catch: (error) => error,
     });
     if (result.status === 'cancelled') {
-      return undefined;
+      return { kind: 'cancelled' } as const;
     }
     if (result.status === 'error') {
-      return result.message;
+      return { kind: 'refused', copy: result.message } as const;
     }
     const finished: FinishedRecording = result.recording;
     if (finished.durationMs < VOICE_MIN_MS) {
-      return undefined;
+      return { kind: 'too-short' } as const;
     }
     if (finished.durationMs > VOICE_MAX_DURATION_MS || finished.size > VOICE_MAX_BYTES) {
-      return RECORD_TOO_LONG_MESSAGE;
+      return { kind: 'refused', copy: RECORD_TOO_LONG_MESSAGE } as const;
     }
     const build = deps.waveformFor ?? flatWaveform;
     deps.onSendVoice(
@@ -146,7 +157,7 @@ export function runRecorderFinishEffect(
       deps.replyTo === undefined ? undefined : { replyTo: deps.replyTo },
     );
     deps.onCancelReply();
-    return undefined;
+    return { kind: 'sent' } as const;
   });
 }
 

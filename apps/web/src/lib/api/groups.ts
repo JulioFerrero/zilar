@@ -177,6 +177,22 @@ export function removeGroupMember(groupId: string, userId: string): Promise<Grou
   return callApi((client) => client.groups.removeMember({ params: { id: groupId, userId } }));
 }
 
+// T-1190: the owner hands the group to another member (the target becomes
+// owner, the actor an admin). The server answers the fresh group detail.
+export function transferGroupOwner(groupId: string, userId: string): Promise<GroupDetail> {
+  return callApi((client) =>
+    client.groups.transferOwner({ params: { id: groupId }, payload: { userId } }),
+  );
+}
+
+// T-1183: owners and admins add contacts to a group. The server answers the
+// fresh group detail.
+export function addGroupMembers(groupId: string, userIds: string[]): Promise<GroupDetail> {
+  return callApi((client) =>
+    client.groups.addMembers({ params: { id: groupId }, payload: { userIds } }),
+  );
+}
+
 // --- Group invite links (T-0115) -------------------------------------------
 // Shareable links that join a group as `member` (`${WEB}/j/<token>` on the
 // web). The token is shown once at creation and never stored — the list

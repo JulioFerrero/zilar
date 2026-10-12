@@ -139,7 +139,7 @@ afterEach(() => {
 });
 
 describe('mobile send pipeline on the core (T10b)', () => {
-  it('sends a plain text with no options and links its echo once', async () => {
+  it('sends a plain text with no options and waits for the ack for sent', async () => {
     const { store, xmpp } = await started();
 
     store.getState().sendText(ANA, 'hello there');
@@ -151,7 +151,12 @@ describe('mobile send pipeline on the core (T10b)', () => {
       undefined,
     );
     await flush();
-    expect(store.getState().messages(ANA).at(-1)?.status).toBe('sent');
+    // The socket write alone does not confirm: the bubble waits for the
+    // server's stream-management ack (the honest tick, F4).
+    expect(store.getState().messages(ANA).at(-1)?.status).toBe('sending');
+
+    xmpp.emit('acked', { stanzaId: 'srv-1' });
+    await waitFor(() => expect(store.getState().messages(ANA).at(-1)?.status).toBe('sent'));
 
     xmpp.emit('message', textEcho('srv-1', 'hello there'));
     await flush();

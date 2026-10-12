@@ -3,18 +3,16 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FileText, RotateCcw, ArrowUpRight } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, View } from 'react-native';
-import {
-  PinchGestureHandler,
-  type PinchGestureHandlerEventPayload,
-} from 'react-native-gesture-handler';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ActivityIndicator, Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { isTrustedMediaUrl, safeHttpUrl } from '@/lib/attachments';
 import { ICON } from '@/lib/colors';
 import { imageGradient } from '@/lib/image-presets';
 import { raisedPill } from '@/lib/depth';
+import { useMediaSource } from '@/lib/media-source';
+
+export { AttachmentViewer } from './image-viewer';
 
 const IMAGE_WIDTH = 240;
 const MAX_IMAGE_HEIGHT = 320;
@@ -34,6 +32,8 @@ export function isLoadableMediaUrl(url: string, trustedHosts: ReadonlySet<string
 
 type AttachmentImageProps = {
   attachment: Attachment;
+  /** The message's chat, for the `GET /api/files` proxy URL (T-1185). */
+  chatId: string;
   /** The store's trusted media hosts (service host, domain, upload.domain). */
   trustedHosts: ReadonlySet<string>;
   /** The local preview URI while the bytes are still uploading. */
@@ -58,6 +58,7 @@ type AttachmentImageProps = {
  */
 export function AttachmentImage({
   attachment,
+  chatId,
   trustedHosts,
   localUri,
   uploading = false,
@@ -72,7 +73,11 @@ export function AttachmentImage({
   // renders the gradient tile below, like `ImageMessage` does for legacy
   // `image` messages.
   const demoGradient = imageGradient(attachment.url);
-  const remoteSource = localUri ?? (trusted && !broken ? attachment.url : undefined);
+  const remote = trusted && !broken;
+  // The bytes go through `GET /api/files` (with the bearer) when this is our
+  // own `/upload/` file; a local preview or another origin loads directly.
+  const loaded = useMediaSource(chatId, attachment.url, remote && localUri === undefined);
+  const source = localUri === undefined ? loaded : { uri: localUri };
   const alt = attachment.name;
   const ratio =
     attachment.width !== undefined && attachment.height !== undefined
@@ -117,7 +122,7 @@ export function AttachmentImage({
     );
   }
 
-  if (remoteSource === undefined) {
+  if (localUri === undefined && !remote) {
     return (
       <View>
         <AttachmentFileRow attachment={attachment} trusted={false} onOpen={undefined} />
@@ -139,7 +144,7 @@ export function AttachmentImage({
       >
         <View style={{ width: IMAGE_WIDTH }}>
           <Image
-            source={{ uri: remoteSource }}
+            source={source ?? null}
             accessibilityLabel={alt}
             onError={() => setBroken(true)}
             style={
@@ -291,91 +296,4 @@ function formatSize(bytes: number): string {
   }
   const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
   return `${rounded} ${units[unit]}`;
-}
-
-type AttachmentViewerProps = {
-  /** The image URL to show full-screen, or undefined when closed. */
-  url: string | undefined;
-  name: string;
-  onClose: () => void;
-};
-
-/**
- * The full-screen image viewer: pinch-to-zoom with a double-tap toggle and
- * a close button. Plain `Image` at device width, so GIF/WebP animate as in
- * the bubble.
- */
-export function AttachmentViewer({ url, name, onClose }: AttachmentViewerProps) {
-  const insets = useSafeAreaInsets();
-  const [scale, setScale] = useState(1);
-  if (url === undefined) {
-    return null;
-  }
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View className="flex-1 bg-black/95" style={{ paddingTop: Math.max(insets.top, 8) }}>
-        <View className="flex-row justify-end px-3 py-2">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Close viewer"
-            onPress={onClose}
-            className="rounded-full bg-surface px-4 py-2 active:opacity-80"
-          >
-            <Text className="text-[15px] font-semibold text-foreground">Close</Text>
-          </Pressable>
-        </View>
-        <View className="flex-1 items-center justify-center px-2">
-          <ZoomableImage uri={url} name={name} scale={scale} onScale={setScale} />
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function ZoomableImage({
-  uri,
-  name,
-  scale,
-  onScale,
-}: {
-  uri: string;
-  name: string;
-  scale: number;
-  onScale: (scale: number) => void;
-}) {
-  // Pinch-to-zoom around 1x, clamped to 1–4x; releasing leaves the zoom where
-  // it is, and a double-tap toggles back to 1x.
-  const [base, setBase] = useState(1);
-  const [lastTapAt, setLastTapAt] = useState(0);
-  const handlePinch = (event: { nativeEvent: PinchGestureHandlerEventPayload }) => {
-    onScale(Math.min(4, Math.max(1, base * event.nativeEvent.scale)));
-  };
-  const handlePinchEnd = () => {
-    setBase(scale);
-  };
-  const handlePress = () => {
-    const now = Date.now();
-    if (now - lastTapAt < 300) {
-      onScale(1);
-      setBase(1);
-    }
-    setLastTapAt(now);
-  };
-  return (
-    <PinchGestureHandler onGestureEvent={handlePinch} onEnded={handlePinchEnd}>
-      <Pressable
-        accessibilityRole="image"
-        accessibilityLabel={name}
-        onPress={handlePress}
-        className="h-full w-full items-center justify-center"
-      >
-        <Image
-          source={{ uri }}
-          accessibilityLabel={name}
-          contentFit="contain"
-          style={{ width: '100%', height: '100%', transform: [{ scale }] }}
-        />
-      </Pressable>
-    </PinchGestureHandler>
-  );
 }

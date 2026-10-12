@@ -25,6 +25,7 @@ import { mayChangeVisibility, VisibilitySheet } from '@/components/chat/visibili
 import { Text } from '@/components/ui/text';
 import { mutedUntilFor } from '@/lib/chat-prefs';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { goBackOrHome } from '@/lib/navigation';
 import {
   mayArchiveTopic,
   mayCreateTopic,
@@ -33,7 +34,9 @@ import {
   topicsOfGroup,
 } from '@/lib/topics';
 import type { ChatSummary } from '@/lib/types';
+import { domainOfJid } from '@/lib/contacts-api';
 import { useChatStore } from '@/store/chat-store-provider';
+import { personSeed } from '@zilar/chat-core';
 
 export default function GroupTopicsScreen() {
   return (
@@ -50,6 +53,12 @@ function GroupTopics() {
 
   const chats = useChatStore((state) => state.chats);
   const chatsLoad = useChatStore((state) => state.chatsLoad);
+  // T-1212: member balls are seeded by the bare JID, derived from the user
+  // id the way the mention builder does (the domain from my own JID); the
+  // member lists carry no JID, so this is the only form available here.
+  const domain = domainOfJid(useChatStore((state) => state.me?.jid ?? undefined));
+  const seedFor =
+    domain === undefined ? undefined : (userId: string): string => personSeed(userId, domain);
   const groupDetail = useChatStore((state) => state.groupDetail(groupId));
   // Mount loads the detail only when nothing fresh is cached: the cached
   // path dedupes in-flight loads too, so the group screen after the chat
@@ -187,7 +196,7 @@ function GroupTopics() {
   };
 
   if (topics.length === 0 && chatsLoad === 'loaded') {
-    router.back();
+    goBackOrHome(router);
     return null;
   }
 
@@ -214,7 +223,7 @@ function GroupTopics() {
         })}
         canManageLinks={canManageLinks}
         canChangeVisibility={canChangeVisibility}
-        onBack={() => router.back()}
+        onBack={() => goBackOrHome(router)}
         onOpenLinks={links.open}
         onOpenVisibility={visibility.open}
         onOpenRoles={roles.open}
@@ -281,6 +290,7 @@ function GroupTopics() {
         error={newTopic.error}
         onCreate={newTopic.create}
         onClose={newTopic.close}
+        seedFor={seedFor}
       />
       <InviteLinksSheet
         visible={links.visible}
@@ -311,6 +321,7 @@ function GroupTopics() {
         onDeleteRole={roles.deleteRole}
         onToggleMember={roles.toggleMember}
         onClose={roles.close}
+        seedFor={seedFor}
       />
       <VisibilitySheet
         visible={visibility.visible}

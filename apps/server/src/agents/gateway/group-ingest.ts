@@ -5,6 +5,7 @@ import {
   GROUP_JOIN_SKEW_MS,
   ROUND_MAX_HOPS,
   isAiSender,
+  rememberRoomSentId,
   toRedactedError,
   type AgentGatewayDeps,
   type AiSession,
@@ -13,6 +14,31 @@ import {
   type RoomRound,
 } from './contracts';
 import type { createRoomListener } from './listener';
+
+// T-1176 (AI-8): a reply to the AI's own message wakes it, like Telegram,
+// even without an `@` mention. Zilar's own clients quote a reply by id only
+// (client-core's send paths carry no `to`), so the quoted id is matched
+// against the ids this AI recently sent in the room. A third-party client
+// that follows XEP-0461's optional `to` names the AI by its bare JID or by
+// its MUC occupant JID (`room/nick`); both forms are matched too.
+export function replyTargetsAi(input: {
+  replyTo: ChatMessage['replyTo'];
+  aiBare: string;
+  aiOccupantJid: string;
+  sentIds?: readonly string[] | undefined;
+}): boolean {
+  const replyTo = input.replyTo;
+  if (replyTo === undefined) {
+    return false;
+  }
+  if (
+    replyTo.to !== undefined &&
+    (normBareJid(replyTo.to) === input.aiBare || replyTo.to === input.aiOccupantJid)
+  ) {
+    return true;
+  }
+  return input.sentIds?.includes(replyTo.id) ?? false;
+}
 
 // T-0549 (plan §3, G8b): the group ingest side extracted from
 // `createAgentGateway`. The factory takes the shared session maps, the room
@@ -63,7 +89,21 @@ export function createGroupIngest(ctx: GroupIngestContext) {
     if (message.correction !== undefined || message.retraction !== undefined) {
       return;
     }
+    // T-1176 (AI-8): the AI's own room reflection comes back as `outgoing`
+    // (xmpp-core's `resolve-sender.ts` marks a room message outgoing when the
+    // sender is the AI's own occupant JID or nick). It is never a new turn,
+    // but its `id` is the archive stanza-id (XEP-0359) that clients quote in
+    // `replyTo.id`, and `originId` is the id the gateway chose when sending.
+    // Remember both so a reply to this message wakes the AI. The turn's own
+    // send records the sent id too; a duplicate is harmless.
     if (message.outgoing) {
+      const ownRoomJid = normBareJid(message.chatJid);
+      if (session.rooms.has(ownRoomJid)) {
+        rememberRoomSentId(session, ownRoomJid, message.id);
+        if (message.originId !== undefined) {
+          rememberRoomSentId(session, ownRoomJid, message.originId);
+        }
+      }
       return;
     }
     const body = message.body?.trim() ?? '';
@@ -96,9 +136,14 @@ export function createGroupIngest(ctx: GroupIngestContext) {
       }
     }
     const aiBare = normBareJid(session.aiJid);
-    const mentioned = (message.mentions ?? []).some(
-      (mention) => normBareJid(mention.jid) === aiBare,
-    );
+    const mentioned =
+      (message.mentions ?? []).some((mention) => normBareJid(mention.jid) === aiBare) ||
+      replyTargetsAi({
+        replyTo: message.replyTo,
+        aiBare,
+        aiOccupantJid: `${roomJid}/${room.nick}`,
+        sentIds: session.roomSentIds.get(roomJid),
+      });
     // T-0475: the listener sees every human room message, mention or not,
     // before the mention early-return below. AI senders never feed it.
     if (deps.listener !== undefined && !isAiSender(normBareJid(message.fromJid))) {

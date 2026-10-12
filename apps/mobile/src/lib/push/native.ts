@@ -146,6 +146,31 @@ async function registerToken(deviceToken: string, deps: NativePushDeps): Promise
 }
 
 /**
+ * Re-sends the XEP-0357 `<enable/>` for the saved registration, without a new
+ * POST (T-1152). ejabberd binds the pair to the session that sent it, so a
+ * reconnect or a wake runs a new session whose pair is missing (MP-2); the
+ * saved registration still holds the server's node and JID for exactly this.
+ * Best effort like the first enable: a failure only reaches `console.warn`
+ * (never the node) and the next online retries (MP-13).
+ */
+export async function ensurePushPair(deps: Pick<NativePushDeps, 'setPushPair'>): Promise<void> {
+  try {
+    const raw = await SecureStore.getItemAsync(PUSH_REGISTRATION_KEY);
+    const registration = parseRegistration(raw);
+    if (registration === undefined) {
+      return;
+    }
+    await deps.setPushPair({
+      pushJid: registration.jid,
+      node: registration.node,
+      enable: true,
+    });
+  } catch (error) {
+    console.warn('native push: the chat session could not re-enable push', error);
+  }
+}
+
+/**
  * Registers this device for native push, best effort. On Android it creates the
  * notification channel before asking for the permission, as the OS needs a
  * channel for the prompt to appear (plan §4.2). It stops quietly when the

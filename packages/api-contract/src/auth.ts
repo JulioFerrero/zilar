@@ -13,7 +13,7 @@
 
 import { Schema } from 'effect';
 import { HttpApiEndpoint, HttpApiGroup } from 'effect/http-api';
-import { SchemaErrors, Session } from './middleware';
+import { AuthInviteRateLimit, AuthMeRateLimit, SchemaErrors, Session } from './middleware';
 
 const CONTROL_CHAR_MAX = 0x1f;
 const CONTROL_CHAR_DEL = 0x7f;
@@ -82,8 +82,13 @@ export const AuthInviteRevoked = Schema.Struct({ revoked: Schema.Boolean });
 export const AuthGroup = HttpApiGroup.make('auth')
   .add(
     HttpApiEndpoint.get('me', '/me', { success: AuthMe }),
-    HttpApiEndpoint.patch('patchMe', '/me', { payload: UpdateMePayload, success: PatchedMe }),
-    HttpApiEndpoint.post('createInvite', '/invites', { success: AuthInvite }),
+    HttpApiEndpoint.patch('patchMe', '/me', {
+      payload: UpdateMePayload,
+      success: PatchedMe,
+    }).middleware(AuthMeRateLimit),
+    HttpApiEndpoint.post('createInvite', '/invites', { success: AuthInvite }).middleware(
+      AuthInviteRateLimit,
+    ),
     HttpApiEndpoint.delete('revokeInvite', '/invites/:code', {
       params: { code: Schema.String },
       success: AuthInviteRevoked,

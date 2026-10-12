@@ -6,7 +6,7 @@ import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { UNNAMED_CONTACT_NAME } from '../contacts/service';
 import { localpartFor } from '../xmpp/provisioning';
-import { visibleTopics } from '../topics/access';
+import { visibleTopicsForGroups } from '../topics/visible-batch';
 import { listGroupsForUser } from '../groups/service';
 
 // A read-only connection to the ejabberd MAM archive. The pool is separate
@@ -88,11 +88,18 @@ export async function allowedArchives(
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
+        // Belt and braces until old rows are gone: a block deletes the pair,
+        // but a contact written by an older version (or re-added between
+        // blocks) must still lose its archive on either side, so push and
+        // search never deliver a blocked peer's DMs.
         return yield* sql<ContactArchiveRow>`SELECT c.contact_user_id, u.name, x.jid
           FROM contacts c
           INNER JOIN "user" u ON u.id = c.contact_user_id
           LEFT JOIN xmpp_accounts x ON x.user_id = c.contact_user_id
-          WHERE c.user_id = ${userId}`;
+          WHERE c.user_id = ${userId}
+            AND NOT EXISTS (SELECT 1 FROM user_blocks b
+              WHERE (b.user_id = ${userId} AND b.blocked_user_id = c.contact_user_id)
+                 OR (b.user_id = c.contact_user_id AND b.blocked_user_id = ${userId}))`;
       }),
     ),
     runSql(
@@ -117,11 +124,18 @@ export async function allowedArchives(
     peerNames.set(ai.jid, ai.name);
   }
 
+  // One batched visibility pass over every group (T-1184, PERF-5), the same
+  // helper `/api/chats` uses (T-1175): the rooms list stays per group — its
+  // General room first, then its visible topics.
+  const visibleByGroup = await visibleTopicsForGroups(
+    db,
+    groups.map((group) => group.id),
+    userId,
+  );
   const rooms: string[] = [];
   for (const group of groups) {
     rooms.push(`${group.roomLocalpart}@${mucDomain}`);
-    const rows = await visibleTopics(db, group.id, userId);
-    for (const topic of rows) {
+    for (const topic of visibleByGroup.get(group.id) ?? []) {
       rooms.push(`${topic.roomLocalpart}@${mucDomain}`);
     }
   }

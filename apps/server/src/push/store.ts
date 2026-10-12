@@ -155,6 +155,10 @@ export async function saveDevice(
           }
           // Read this endpoint's rows INSIDE the transaction, as in the native
           // branch.
+          // One owner per endpoint, as in the native branch: drop rows
+          // another user holds for it. Not this user's pairs: out of staleNodes.
+          yield* sql`DELETE FROM push_subscriptions
+            WHERE endpoint = ${input.subscription.endpoint} AND user_id <> ${input.userId}`;
           const existing = yield* sql<PushDeviceRow>`SELECT * FROM push_subscriptions
             WHERE user_id = ${input.userId} AND endpoint = ${input.subscription.endpoint}
             ORDER BY created_at, id`;

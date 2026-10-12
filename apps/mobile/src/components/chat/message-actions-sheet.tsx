@@ -1,6 +1,16 @@
 import type { UiReaction } from '@zilar/chat-core';
 import { QUICK_REACTIONS } from '@zilar/chat-core';
-import { Copy, Forward, ListChecks, Pencil, Pin, PinOff, Reply, Trash2 } from 'lucide-react-native';
+import {
+  Copy,
+  Forward,
+  ListChecks,
+  Pencil,
+  Pin,
+  PinOff,
+  Reply,
+  RotateCw,
+  Trash2,
+} from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
@@ -13,6 +23,13 @@ type MessageActionsSheetProps = {
   canCopy: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  /** A failed own text: the sheet starts with Retry and Delete (local only),
+   *  and hides Forward, Edit and Delete-for-everyone. */
+  failed?: boolean | undefined;
+  /** Retry a failed text send (undefined hides the row). */
+  onRetry?: (() => void) | undefined;
+  /** Delete a failed send locally, with no confirm (undefined hides the row). */
+  onDeleteLocal?: (() => void) | undefined;
   /** Forward for a forwardable message (undefined/false hides the row). */
   canForward?: boolean | undefined;
   /** Pin/Unpin for those allowed (undefined hides the row). */
@@ -40,13 +57,18 @@ type MessageActionsSheetProps = {
 /**
  * Bottom sheet with the quick-reaction bar and Reply / Edit / Copy text /
  * Delete for everyone. The delete confirm is a kit `ConfirmDialog`; the
- * parent just toggles `confirmOpen`.
+ * parent just toggles `confirmOpen`. A failed own text instead starts with
+ * Retry and (local-only, no-confirm) Delete, and hides Forward, Edit and
+ * Delete for everyone.
  */
 export function MessageActionsSheet({
   visible,
   canCopy,
   canEdit,
   canDelete,
+  failed = false,
+  onRetry,
+  onDeleteLocal,
   canForward,
   canPin,
   isPinned,
@@ -101,8 +123,25 @@ export function MessageActionsSheet({
           </View>
         }
       >
+        {failed ? (
+          <>
+            <ActionSheetItem
+              label="Retry"
+              accessibilityLabel="Retry sending message"
+              onPress={onRetry ?? (() => {})}
+              icon={RotateCw}
+            />
+            <ActionSheetItem
+              label="Delete"
+              accessibilityLabel="Delete unsent message"
+              onPress={onDeleteLocal ?? (() => {})}
+              destructive
+              icon={Trash2}
+            />
+          </>
+        ) : null}
         <ActionSheetItem label="Reply" onPress={onReply} icon={Reply} />
-        {canForward === true ? (
+        {!failed && canForward === true ? (
           <ActionSheetItem
             label="Forward"
             accessibilityLabel="Forward message"
@@ -110,7 +149,7 @@ export function MessageActionsSheet({
             icon={Forward}
           />
         ) : null}
-        {canForward === true && onSelect !== undefined ? (
+        {!failed && canForward === true && onSelect !== undefined ? (
           <ActionSheetItem
             label="Select"
             accessibilityLabel="Select messages"
@@ -118,7 +157,7 @@ export function MessageActionsSheet({
             icon={ListChecks}
           />
         ) : null}
-        {canEdit ? (
+        {!failed && canEdit ? (
           <ActionSheetItem
             label="Edit"
             accessibilityLabel="Edit message"
@@ -127,14 +166,16 @@ export function MessageActionsSheet({
           />
         ) : null}
         <ActionSheetItem label="Copy text" onPress={onCopy} disabled={!canCopy} icon={Copy} />
-        <ActionSheetItem
-          label="Delete for everyone"
-          accessibilityLabel="Delete for everyone"
-          onPress={onDelete}
-          disabled={!canDelete}
-          destructive
-          icon={Trash2}
-        />
+        {!failed ? (
+          <ActionSheetItem
+            label="Delete for everyone"
+            accessibilityLabel="Delete for everyone"
+            onPress={onDelete}
+            disabled={!canDelete}
+            destructive
+            icon={Trash2}
+          />
+        ) : null}
         {canPin === true ? (
           <ActionSheetItem
             label={isPinned === true ? 'Unpin' : 'Pin'}

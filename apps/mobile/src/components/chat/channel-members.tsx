@@ -29,15 +29,25 @@ export function ChannelMemberRow({
   roleText,
   action,
   actionDisabled,
+  seedFor,
 }: {
   member: ChannelMember;
   roleText?: string;
   action?: ChannelMemberAction;
   actionDisabled: boolean;
+  /**
+   * T-1212: the ball seed for the member's user id (the bare JID derived
+   * the mention-builder way). Absent paints the raw user id.
+   */
+  seedFor?: ((userId: string) => string) | undefined;
 }) {
   return (
     <View className="mt-1 flex-row items-center gap-2 py-1.5">
-      <Avatar id={member.userId} name={member.name} size={32} />
+      <Avatar
+        id={seedFor === undefined ? member.userId : seedFor(member.userId)}
+        name={member.name}
+        size={32}
+      />
       <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px] text-foreground">
         {member.name}
       </Text>
@@ -76,6 +86,7 @@ export function ChannelMembers({
   roleBusy,
   roleError,
   onFlipRole,
+  seedFor,
 }: {
   isManager: boolean;
   isOwner: boolean;
@@ -87,6 +98,8 @@ export function ChannelMembers({
   roleBusy: boolean;
   roleError: string;
   onFlipRole: (userId: string, role: 'admin' | 'member') => void;
+  /** T-1212: the ball seed for a member's user id (see `ChannelMemberRow`). */
+  seedFor?: ((userId: string) => string) | undefined;
 }) {
   return (
     <>
@@ -104,6 +117,7 @@ export function ChannelMembers({
           key={member.userId}
           member={member}
           roleText={member.role}
+          seedFor={seedFor}
           action={
             isOwner && member.userId !== currentUserId && member.role === 'admin'
               ? {
@@ -120,6 +134,7 @@ export function ChannelMembers({
         <ChannelMemberRow
           key={member.userId}
           member={member}
+          seedFor={seedFor}
           action={
             isOwner && member.userId !== currentUserId
               ? {

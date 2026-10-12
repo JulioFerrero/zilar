@@ -33,6 +33,7 @@ import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import type { PushConfig } from './config';
 import { createPushGroupLayer } from './api-handlers';
 import type { WebPushDelivery } from './sender';
+import type { FcmSender } from './fcm';
 
 export const PUSH_SUBSCRIBE_RATE_LIMIT_MAX = 30;
 export const PUSH_SUBSCRIBE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -59,6 +60,9 @@ export interface PushRoutesDependencies {
   now?: () => number;
   /** Injected in tests so no real push relay is ever called. */
   sender?: WebPushDelivery;
+  /** Injected in tests so the test route sends no real FCM wake. When absent,
+   * the group layer builds one once with `createNativeSender`. */
+  nativeSender?: FcmSender;
 }
 
 export interface PushApiDependencies extends PushRoutesDependencies {

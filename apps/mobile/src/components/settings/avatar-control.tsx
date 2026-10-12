@@ -13,6 +13,11 @@ import { avatarImageSource, avatarPhaseLabel, type AvatarPhase } from './profile
 type AvatarControlProps = {
   ownerId: string;
   ownerName: string;
+  /**
+   * T-1212: the ball seed (the own bare JID); undefined paints the raw
+   * `ownerId` (the web uploader keeps the same fallback).
+   */
+  ownerSeed?: string | undefined;
   /** The server's picture path (`/api/avatars/<id>`), if any. */
   currentUrl?: string | undefined;
   /** The bearer token for the same-origin picture load, if any. */
@@ -34,6 +39,7 @@ type AvatarControlProps = {
 export function AvatarControl({
   ownerId,
   ownerName,
+  ownerSeed,
   currentUrl,
   token,
   phase,
@@ -56,7 +62,7 @@ export function AvatarControl({
       <View className="flex-row items-center gap-3">
         <AvatarPicture
           source={source}
-          ownerId={ownerId}
+          ownerId={ownerSeed ?? ownerId}
           ownerName={ownerName}
           imageFailed={imageFailed}
           onImageError={() => setImageFailed(true)}

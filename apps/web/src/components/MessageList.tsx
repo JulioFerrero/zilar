@@ -5,7 +5,17 @@ import {
   type UiMessage,
 } from '@zilar/chat-core';
 import { ArrowDown } from 'lucide-react';
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Effect, Fiber } from 'effect';
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { DateSeparator } from './DateSeparator';
 import { MessageBubble } from './MessageBubble';
 import { MessageListSkeleton } from './Skeleton';
@@ -127,6 +137,14 @@ export const MessageList = memo(function MessageList({
   const [atBottom, setAtBottom] = useState(true);
   const atBottomRef = useRef(atBottom);
   const [pending, setPending] = useState(0);
+  // WUX-11: an older page in flight: the ref guards the scroll handler,
+  // the state drives the loading line.
+  const loadingOlderRef = useRef(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const stopLoadingOlder = (): void => {
+    loadingOlderRef.current = false;
+    setLoadingOlder(false);
+  };
 
   useEffect(() => {
     atBottomRef.current = atBottom;
@@ -145,7 +163,9 @@ export const MessageList = memo(function MessageList({
     element.scrollTop = element.scrollHeight;
   }, []);
 
-  useEffect(() => {
+  // WUX-11: compensate for a prepended page before paint so the view
+  // stays fixed instead of jumping for a frame.
+  useLayoutEffect(() => {
     const element = scrollRef.current;
     if (element === null) {
       return;
@@ -156,6 +176,10 @@ export const MessageList = memo(function MessageList({
     if (previousHeight !== undefined) {
       prependScrollHeight.current = undefined;
       element.scrollTop += element.scrollHeight - previousHeight;
+      // The older page landed: stop the loading line.
+      if (added > 0 && loadingOlderRef.current) {
+        stopLoadingOlder();
+      }
       return;
     }
     if (atBottom) {
@@ -164,6 +188,28 @@ export const MessageList = memo(function MessageList({
       setPending((value) => value + added);
     }
   }, [visibleMessages.length, atBottom]);
+
+  // The loading line also stops when there is nothing left to load.
+  const hasMore = useChatSelector((s) => s.hasMore(chatId));
+  useEffect(() => {
+    if (!hasMore && loadingOlderRef.current) {
+      stopLoadingOlder();
+    }
+  }, [hasMore]);
+
+  // Safety net: a stuck older load must not pin the loading line forever
+  // (an Effect fiber per repo rule, no setTimeout).
+  useEffect(() => {
+    if (!loadingOlder) {
+      return;
+    }
+    const timer = Effect.runFork(
+      Effect.sleep(8000).pipe(Effect.andThen(Effect.sync(stopLoadingOlder))),
+    );
+    return () => {
+      Effect.runFork(Fiber.interrupt(timer));
+    };
+  }, [loadingOlder]);
 
   // A growing draft keeps the view pinned to the bottom only when the user is
   // already there; someone who scrolled up to read is never pulled down.
@@ -215,6 +261,11 @@ export const MessageList = memo(function MessageList({
     }
     const store = storeApi.getState();
     if (element.scrollTop < NEAR_BOTTOM_PX && store.hasMore(chat.id)) {
+      if (loadingOlderRef.current) {
+        return;
+      }
+      loadingOlderRef.current = true;
+      setLoadingOlder(true);
       prependScrollHeight.current = element.scrollHeight;
       store.loadOlder(chat.id);
     }
@@ -281,6 +332,9 @@ export const MessageList = memo(function MessageList({
           ref={contentRef}
           className="mx-auto flex w-full max-w-[860px] flex-col px-3 py-4 wide:px-8 wide:py-6"
         >
+          {loadingOlder && (
+            <StateMessage kind="loading" title="Loading older messages" size="inline" />
+          )}
           {items.map((item, index) => {
             const isDraft = item.kind === 'message' && item.message.id === draftMessage?.id;
             // The final message keeps the draft's key so React reuses the same

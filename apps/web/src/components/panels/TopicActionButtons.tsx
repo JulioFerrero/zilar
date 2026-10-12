@@ -49,10 +49,13 @@ export function RemoveMemberButton({
 /** Adds one group member from the picker; one call per row, as RemoveMemberButton. */
 export function AddMemberButton({
   member,
+  seed,
   add,
   onError,
 }: {
   member: GroupMemberRow;
+  /** T-1209: the member's bare JID (the ball seed). */
+  seed: string;
   add: (userId: string) => Effect.Effect<void, ApiFailure>;
   onError: (message: string) => void;
 }) {
@@ -73,7 +76,7 @@ export function AddMemberButton({
       }}
       className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
     >
-      <Avatar id={member.userId} name={member.name} size={28} avatarUrl={member.avatarUrl} />
+      <Avatar id={seed} name={member.name} size={28} avatarUrl={member.avatarUrl} />
       <span className="min-w-0 flex-1 truncate">{member.name}</span>
       {adding && <span className="text-[12px] text-muted-foreground">Adding…</span>}
     </Button>

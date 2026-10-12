@@ -1,4 +1,4 @@
-import { Data, Duration, Effect, Result, Schema, type Effect as EffectType } from 'effect';
+import { Data, Duration, Effect, Result, Schedule, Schema } from 'effect';
 import { redactSecrets, type FetchLike } from '../ai/litellm-client';
 import { consumeChatCompletionStream } from './stream';
 import {
@@ -14,16 +14,15 @@ import {
 } from './tools';
 
 // Cap on every completion request, enforced in code from day one (§8.4).
-export const REPLY_MAX_TOKENS = 1024;
+export const REPLY_MAX_TOKENS = 4096;
 
 // How long one turn waits for LiteLLM before telling the owner to retry.
 export const LITELLM_CHAT_TIMEOUT_MS = 90_000;
 
-export const BUDGET_EXCEEDED_REPLY =
-  "I've reached my spending limit for this period. You can raise it in My AIs.";
-export const PROVIDER_KEY_REJECTED_REPLY =
-  'My provider rejected the API key. Check it under Connections → Test.';
-export const TRANSIENT_FAILURE_REPLY = "I couldn't reply just now. Please try again in a minute.";
+const COMPLETION_RETRY_DELAY_MS = 2_000;
+
+// AI-3/AI-4: the reply texts live in `replies.ts`, re-exported here unchanged.
+export * from './replies';
 
 // A failed `/chat/completions` call. The detail is redacted at construction:
 // it never carries the virtual key, whatever LiteLLM echoed back.
@@ -136,6 +135,8 @@ export interface CompleteChatInput {
 export interface ChatCompletionResult {
   content: string | null;
   toolCalls: ChatToolCall[];
+  /** AI-5: `length` when the provider cut the reply at `max_tokens`. */
+  finishReason?: string;
 }
 
 function errorDetail(body: unknown): string {
@@ -172,8 +173,7 @@ function hasErrorBody(body: unknown): boolean {
 
 // One typed failure per completion failure mode. Each `detail` is redacted
 // where the error is built, so the typed channel never carries a secret; the
-// Promise edge maps every one to the same `ChatCompletionError(status, detail)`
-// the function always threw.
+// Promise edge maps each to the same `ChatCompletionError(status, detail)`.
 class CompletionUnreachable extends Data.TaggedError('CompletionUnreachable')<{
   detail: string;
 }> {}
@@ -195,6 +195,7 @@ class CompletionBodyUnreadable extends Data.TaggedError('CompletionBodyUnreadabl
 
 type CompletionFailure =
   | CompletionUnreachable
+  | CompletionTimeout
   | CompletionNoBody
   | CompletionStreamBroken
   | CompletionBadShape
@@ -202,17 +203,22 @@ type CompletionFailure =
   | CompletionErrorBody
   | CompletionBodyUnreadable;
 
+// AI-3: 429, 5xx, an unreachable gateway and a timeout are worth one retry.
+function isRetryableFailure(failure: CompletionFailure): boolean {
+  return (
+    failure._tag === 'CompletionUnreachable' ||
+    failure._tag === 'CompletionTimeout' ||
+    (failure._tag === 'CompletionHttpError' && (failure.status === 429 || failure.status >= 500))
+  );
+}
+
 // One model call for one turn, authenticated as the AI with its own capped
-// virtual key. Every call streams (`stream: true`): text deltas are reported
-// through `onDelta` as they arrive, and the result has the same shape the
-// tool loop already understands. A stream that breaks midway or times out
-// (the same per-call timeout, now covering the whole stream) counts as a
-// network failure. If the provider ignores `stream` and answers plain JSON,
-// that shape is parsed the way it always was.
+// virtual key. Every call streams (`stream: true`) and reports text deltas
+// through `onDelta`; a broken stream or timeout counts as a network failure.
 const requestCompletionEffect = Effect.fnUntraced(function* (
   input: CompleteChatInput,
   secrets: readonly string[],
-): EffectType.fn.Return<ChatCompletionResult, CompletionFailure> {
+): Effect.fn.Return<ChatCompletionResult, CompletionFailure> {
   const fetchImpl = input.fetchImpl ?? fetch;
   const url = `${input.baseUrl.replace(/\/+$/, '')}/chat/completions`;
   const requestBody = JSON.stringify({
@@ -225,8 +231,7 @@ const requestCompletionEffect = Effect.fnUntraced(function* (
 
   // The controller is held for the whole call: `timeoutOrElse` interrupts this
   // effect, its release aborts the live request (headers, stream and all).
-  // `Effect.tryPromise`'s own signal stops covering the socket once `fetch`
-  // resolves its headers, so it cannot abort the stream read on its own.
+  // `Effect.tryPromise`'s signal stops covering the socket once `fetch` returns.
   return yield* Effect.acquireUseRelease(
     Effect.sync(() => new AbortController()),
     (controller) =>
@@ -276,14 +281,7 @@ const requestCompletionEffect = Effect.fnUntraced(function* (
                 ),
               }),
           });
-          return {
-            content: streamed.content,
-            toolCalls: streamed.toolCalls.map((call) => ({
-              id: call.id,
-              name: call.name,
-              argsJson: call.argsJson,
-            })),
-          };
+          return streamed;
         }
 
         const text = yield* readBodyTextEffect(response);
@@ -318,11 +316,28 @@ const requestCompletionEffect = Effect.fnUntraced(function* (
 export async function requestCompletion(input: CompleteChatInput): Promise<ChatCompletionResult> {
   const secrets = [input.virtualKey, ...(input.secrets ?? [])];
   const timeoutMs = input.timeoutMs ?? LITELLM_CHAT_TIMEOUT_MS;
-  return Effect.runPromise(
-    requestCompletionEffect(input, secrets).pipe(
+  const deadline = Date.now() + timeoutMs;
+  // AI-3: retry once while nothing was streamed; each attempt gets what's left.
+  let streamed = false;
+  const onDelta = (textSoFar: string): void => {
+    streamed = true;
+    input.onDelta?.(textSoFar);
+  };
+  const attempt = () =>
+    requestCompletionEffect({ ...input, onDelta }, secrets).pipe(
       Effect.timeoutOrElse({
-        duration: Duration.millis(timeoutMs),
+        duration: Duration.millis(Math.max(0, deadline - Date.now())),
         orElse: () => Effect.fail(new CompletionTimeout()),
+      }),
+    );
+  return Effect.runPromise(
+    Effect.suspend(attempt).pipe(
+      Effect.retry({
+        schedule: Schedule.max([Schedule.recurs(1), Schedule.spaced(COMPLETION_RETRY_DELAY_MS)]),
+        while: (failure) =>
+          !streamed &&
+          Date.now() + COMPLETION_RETRY_DELAY_MS < deadline &&
+          isRetryableFailure(failure),
       }),
       Effect.catchTags({
         CompletionUnreachable: (error) => Effect.fail(new ChatCompletionError(0, error.detail)),
@@ -342,9 +357,7 @@ export async function requestCompletion(input: CompleteChatInput): Promise<ChatC
   );
 }
 
-function readBodyTextEffect(
-  response: Response,
-): EffectType.Effect<string, CompletionBodyUnreadable> {
+function readBodyTextEffect(response: Response): Effect.Effect<string, CompletionBodyUnreadable> {
   return Effect.tryPromise({
     try: () => response.text(),
     catch: () => new CompletionBodyUnreadable(),

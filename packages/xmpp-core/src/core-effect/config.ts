@@ -18,6 +18,13 @@ import type {
 } from '../types';
 
 const CONNECT_TIMEOUT_MS = 15_000;
+// How long a fresh bind may wait for the server's <enabled/> (stream
+// management) before the core reports `online` anyway. A message written
+// before <enable/> is never tracked by the library and never covered by the
+// server's <a h/>, so the store's online flush must land after it; a server
+// that does not offer stream management (or a lost <enabled/>) falls back to
+// this wait so the app still comes online (T-1220).
+const SM_ENABLE_TIMEOUT_MS = 5_000;
 // How long the client may stay in `connecting` / `reconnecting` before it is
 // torn down and replaced by a fresh one. A normal connect (socket, TLS, token
 // fetch, login) takes a second or two, so the first wait is short and each
@@ -43,6 +50,12 @@ const DEFAULT_KEEPALIVE_TIMEOUT_MS = 15_000;
 // 30 s floor a client attempts about 20 tokens per 10 minutes, far under the
 // token route's rate limit (120 per 10 minutes).
 const RECONNECT_BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000];
+// The wait before the single retry of a token fetch that looked like bad
+// credentials (a 401 or 403). A session refresh that races a deploy, or a
+// stale session cache, can answer 401 once and then succeed, so one such
+// answer must not stop the client for good. `XmppCoreOptions.tokenRetryDelayMs`
+// overrides it (tests pass 0).
+const TOKEN_RETRY_DELAY_MS = 2_000;
 
 export type ClientOptions = {
   service: string;
@@ -205,6 +218,7 @@ export type CoreRuntime = {
 
 export {
   CONNECT_TIMEOUT_MS,
+  SM_ENABLE_TIMEOUT_MS,
   WATCHDOG_SCHEDULE_MS,
   JOIN_TIMEOUT_MS,
   HISTORY_TIMEOUT_MS,
@@ -213,4 +227,34 @@ export {
   DEFAULT_KEEPALIVE_MS,
   DEFAULT_KEEPALIVE_TIMEOUT_MS,
   RECONNECT_BACKOFF_MS,
+  TOKEN_RETRY_DELAY_MS,
 };
+
+// The token step's one retry and the event a store listens for when it does not
+// help live here as module augmentations, the same way `types-ack.ts` adds the
+// stream-management events and the first-watchdog option, so `types.ts` keeps
+// its single re-export line.
+declare module '../events' {
+  interface EventPayloadMap {
+    /**
+     * The token fetch failed for good: both attempts answered 401/403, so the
+     * core stopped. A store can revive the connection with its own retry
+     * ladder instead of staying offline until the app restarts.
+     */
+    authFailed: void;
+  }
+}
+
+declare module '../types' {
+  interface XmppCoreOptions {
+    /**
+     * The wait before the one retry of a token fetch that looked like bad
+     * credentials. Defaults to `TOKEN_RETRY_DELAY_MS` (2 000); tests pass 0.
+     */
+    tokenRetryDelayMs?: number;
+  }
+  interface XmppCore {
+    /** Both token-fetch attempts failed (401/403): the core stopped. */
+    on(event: 'authFailed', cb: () => void): () => void;
+  }
+}

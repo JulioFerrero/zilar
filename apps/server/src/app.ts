@@ -1,7 +1,4 @@
-import { Effect } from 'effect';
-import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
-import { protocolVersion } from '@zilar/protocol';
 import { createLitellmAdminClientFromConfig, type LitellmAdminClient } from './ai/litellm-client';
 import { createAisApi } from './ais/api';
 import type { AiLogger } from './ais/service';
@@ -35,7 +32,7 @@ import { createDirectoryApi } from './directory/api';
 import { createHandlesApi } from './handles/api';
 import type { EffectApiMount } from './effect/http-core';
 import { createEdge, type EdgeHealth, type ZilarEdge } from './effect/edge';
-import { registerSqlRuntime, sqlRuntimeFor } from './effect/sql';
+import { registerSqlRuntime } from './effect/sql';
 import type { ServerDatabase } from './db/client';
 import { createGroupsApi } from './groups/api';
 import { createInviteLinksApi, type TestInviteLinksOverrides } from './invite-links/api';
@@ -52,7 +49,7 @@ import { createStickersApi } from './stickers/api';
 import { createTopicsApi } from './topics/api';
 import { createMachinesApi } from './machines/api';
 import { createDbMachineRegistry, type DbMachineRegistry } from './machines/registry';
-import { serverVersion } from './version';
+import { createHealthCheck } from './health';
 import { createToolsApi, type ToolsApiDependencies } from './tools/api';
 import { createRoutinesApi } from './routines/api';
 import type { ToolRunner } from './tools/types';
@@ -204,7 +201,6 @@ export interface AppDependencies {
   gifNow?: () => number;
 }
 
-const DB_HEALTH_TIMEOUT_MS = 1000;
 const mountsByApp = new WeakMap<ZilarEdge, ReadonlyArray<EffectApiMount>>();
 
 /** The Effect module mounts of an app built by `createApp`, in mount order. */
@@ -302,7 +298,14 @@ export function createApp({
   mounts.push(contactRequestsApi);
   // User blocks (T-0171): session-required, write-rate-limited; the sweep
   // asserts every one of them answers 401 unauthenticated.
-  const blocksApi = createBlocksApi({ auth, db, audit: auditRecorder, logger });
+  const blocksApi = createBlocksApi({
+    auth,
+    db,
+    config,
+    adminClient,
+    audit: auditRecorder,
+    logger,
+  });
   mounts.push(blocksApi);
   // Public groups and channels (T-0164): the Explore directory and the
   // exact `@handle` lookup — public rows only, session-required, rate
@@ -352,7 +355,7 @@ export function createApp({
     audit: auditRecorder,
   });
   mounts.push(topicsApi);
-  const chatsApi = createChatsApi({ auth, db, config, logger });
+  const chatsApi = createChatsApi({ auth, db, config, logger, archive });
   mounts.push(chatsApi);
   // Chat prefs and folders (T-0113/T-0232) on the Effect adapter: session
   // required, one write budget each; the sweep asserts every route answers 401
@@ -572,55 +575,9 @@ export function createApp({
   });
   mounts.push(aisApi);
 
-  const health = async (): Promise<EdgeHealth> => {
-    const up = await isDatabaseUp(db);
-    return {
-      status: up ? 200 : 503,
-      body: {
-        ok: up,
-        name: 'zilar-server',
-        version: serverVersion,
-        commit: process.env.ZILAR_COMMIT ?? 'unknown',
-        protocolVersion,
-        db: up ? 'ok' : 'down',
-      },
-    };
-  };
+  const health = createHealthCheck({ db, adminClient });
 
   const edge = createEdge({ mounts, auth, config, logger, health });
   mountsByApp.set(edge, mounts);
   return edge;
-}
-
-async function isDatabaseUp(db: ServerDatabase): Promise<boolean> {
-  try {
-    await withTimeout(
-      sqlRuntimeFor(db).runPromise(
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          yield* sql`select 1`;
-        }),
-      ),
-      DB_HEALTH_TIMEOUT_MS,
-    );
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('database health check timed out')), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
 }

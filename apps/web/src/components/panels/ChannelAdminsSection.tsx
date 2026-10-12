@@ -28,6 +28,7 @@ export function ChannelAdminsSection({
   adminsLoaded,
   adminsFailure,
   admins,
+  seedFor,
 }: {
   isManager: boolean;
   audience: GroupMember[];
@@ -39,6 +40,8 @@ export function ChannelAdminsSection({
   adminsLoaded: boolean;
   adminsFailure: ApiFailure | undefined;
   admins: GroupMember[];
+  /** T-1209: the ball seed for a member (their bare JID). */
+  seedFor: (userId: string) => string;
 }) {
   return isManager ? (
     <section aria-label="Subscribers" className="flex flex-col gap-1">
@@ -51,7 +54,12 @@ export function ChannelAdminsSection({
             key={member.userId}
             className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
           >
-            <Avatar id={member.userId} name={member.name} size={32} avatarUrl={member.avatarUrl} />
+            <Avatar
+              id={seedFor(member.userId)}
+              name={member.name}
+              size={32}
+              avatarUrl={member.avatarUrl}
+            />
             <span className="min-w-0 flex-1 truncate text-[14px]">{member.name}</span>
             {label !== undefined && (
               <span className="font-mono rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
@@ -99,7 +107,12 @@ export function ChannelAdminsSection({
       )}
       {admins.map((member) => (
         <div key={member.userId} className="flex items-center gap-2 rounded-xl px-2 py-1.5">
-          <Avatar id={member.userId} name={member.name} size={32} avatarUrl={member.avatarUrl} />
+          <Avatar
+            id={seedFor(member.userId)}
+            name={member.name}
+            size={32}
+            avatarUrl={member.avatarUrl}
+          />
           <span className="min-w-0 flex-1 truncate text-[14px]">{member.name}</span>
         </div>
       ))}

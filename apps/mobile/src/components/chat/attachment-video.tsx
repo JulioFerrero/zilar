@@ -1,4 +1,3 @@
-import { parseUrl } from '@zilar/chat-core';
 import type { Attachment } from '@zilar/protocol';
 import { Effect, Fiber } from 'effect';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -8,7 +7,7 @@ import { ActivityIndicator, Pressable, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { Text } from '@/components/ui/text';
-import { API_URL } from '@/lib/auth';
+import { isApiOriginUrl, mediaUrl } from '@/lib/attachment-common';
 import { getSessionToken } from '@/lib/session-token';
 import { ICON } from '@/lib/colors';
 
@@ -19,6 +18,8 @@ const VIDEO_HEIGHT = 180;
 
 type AttachmentVideoProps = {
   attachment: Attachment;
+  /** The message's chat, for the `GET /api/files` proxy URL (T-1185). */
+  chatId: string;
   /** The store's trusted media hosts (service host, domain, upload.domain). */
   trustedHosts: ReadonlySet<string>;
   /** The local preview URI while the bytes are still uploading. */
@@ -44,6 +45,7 @@ type AttachmentVideoProps = {
  */
 export function AttachmentVideo({
   attachment,
+  chatId,
   trustedHosts,
   localUri,
   uploading = false,
@@ -54,11 +56,12 @@ export function AttachmentVideo({
   const reduceMotion = useReducedMotion();
   const [view, setView] = useState(false);
   const trusted = isLoadableMediaUrl(attachment.url, trustedHosts);
-  const uri = localUri ?? (trusted ? attachment.url : undefined);
-  // Auth headers go only to the API origin (the same-origin `/api/` path
-  // case): the upload host serves public URLs, and a header there would
-  // leak the session token cross-origin.
-  const needsToken = localUri === undefined && trusted && isApiOriginUrl(attachment.url);
+  // A trusted `/upload/` file on our API origin goes through `GET /api/files`
+  // with the bearer (T-1185); a local preview or another origin loads directly.
+  const uri = localUri ?? (trusted ? mediaUrl(chatId, attachment.url) : undefined);
+  // Auth headers go only to the API origin: the upload host serves public URLs,
+  // and a header there would leak the session token cross-origin.
+  const needsToken = localUri === undefined && uri !== undefined && isApiOriginUrl(uri);
   const [token, setToken] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (!needsToken || uri === undefined) {
@@ -229,16 +232,6 @@ function isGifOrigin(attachment: Attachment): boolean {
     return false;
   }
   return attachment.name.startsWith('gif-');
-}
-
-/**
- * Whether a trusted URL points at our own API origin (a same-origin `/api/`
- * path the upload URL may take): only there does the player attach the
- * session bearer. Absolute upload-host URLs stay headerless.
- */
-function isApiOriginUrl(url: string): boolean {
-  const apiOrigin = parseUrl(API_URL)?.origin;
-  return apiOrigin !== undefined && parseUrl(url)?.origin === apiOrigin;
 }
 
 function VideoFullscreen({

@@ -3,6 +3,7 @@ import type { ChatKind } from '@zilar/xmpp-core';
 import type { FetchLike } from '../ai/litellm-client';
 import type { ChatCompletionMessage } from './context';
 import { runToolTurn } from './dm-tool-turn';
+import { cutShortSuffix } from './replies';
 import { mapFailureToReply, redactError } from './tool-exec';
 import {
   ChatCompletionError,
@@ -37,7 +38,7 @@ export async function completeChat(input: CompleteChatInput): Promise<string> {
   if (result.content === null) {
     throw new ChatCompletionError(200, 'empty reply from the model');
   }
-  return result.content;
+  return result.content + cutShortSuffix(result.finishReason);
 }
 
 export interface DmTurnDeps {

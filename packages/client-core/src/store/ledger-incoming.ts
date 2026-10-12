@@ -28,7 +28,7 @@ interface LedgerIncomingDeps {
 
 export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
   const { get, set, deps } = ledger;
-  const { linkMessageIds, rememberAuthor, rememberOriginId, rememberBaseText } = ledger.ids;
+  const { rememberAuthor, rememberOriginId, rememberBaseText, sameMessage } = ledger.ids;
   const { senderNameFor, groupMemberNameFor } = ledger.identity;
   const { reactionChips } = ledger.reactions;
 
@@ -72,53 +72,64 @@ export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
     return mapped;
   }
 
-  function mentionsFor(message: LedgerStanza): UiMention[] {
-    const body = message.body;
-    if (body === undefined || message.mentions === undefined) {
+  function mentionsFor(message: LedgerStanza, body: string | undefined): UiMention[] {
+    const mentions = message.mentions;
+    if (body === undefined || mentions === undefined) {
       return [];
     }
-    return mapMentions(message.chatJid, message.mentions, body);
+    // The decoded body already has the reply fallback stripped and the
+    // mention offsets moved past it, so they map as-is.
+    return mapMentions(message.chatJid, mentions, body);
   }
 
   function toUiMessage(message: LedgerStanza, meId: string): StoreMessage {
-    // The stanza id and the sender-generated id name the same message: link
-    // them so a correction (which always names the origin id) resolves even
-    // when the message is stored under its archive stanza-id.
-    if (message.originId !== undefined && message.originId !== message.id) {
-      linkMessageIds(message.originId, message.id);
-    }
+    const senderId = message.outgoing ? meId : message.fromJid;
+    // The stanza id and the sender-generated id name the same message: record
+    // the origin id under the chat and sender so a correction (which always
+    // names the origin id) resolves even when the message is stored under its
+    // archive stanza-id, and so a second archived row of the same resend
+    // aliases to the first copy (`rememberOriginId`).
     rememberAuthor(message.id, authorOfChatMessage(message));
     if (message.originId !== undefined) {
-      rememberOriginId(message.id, message.originId);
+      rememberOriginId(message.id, message.originId, message.chatJid, senderId);
     }
-    if (message.body !== undefined) {
-      rememberBaseText(message.id, message.body);
+    // The decoded body already has the XEP-0461 fallback quote stripped;
+    // the reply bar renders the quote from `replyTo`.
+    const body = message.body;
+    if (body !== undefined) {
+      rememberBaseText(message.id, body);
     }
     const ui: StoreMessage = {
       id: message.id,
       chatId: message.chatJid,
-      senderId: message.outgoing ? meId : message.fromJid,
+      senderId,
       senderName: senderNameFor(message),
       createdAt: message.timestamp,
       status: message.outgoing ? 'sent' : 'read',
     };
-    if (message.body !== undefined) {
-      ui.text = message.body;
+    if (body !== undefined) {
+      ui.text = body;
     }
-    if (message.replyTo !== undefined) {
-      const referenced = get().messagesByChat[message.chatJid]?.find(
-        (item) => item.id === message.replyTo?.id,
+    const replyTo = message.replyTo;
+    if (replyTo !== undefined) {
+      // Alias-aware: a reply names the message by the id both sides share (the
+      // origin id in a DM, the room stanza-id in a group), which may differ
+      // from the id it is stored under here. With no match, the fallback quote
+      // parsed off the wire is used (UI-6).
+      const referenced = get().messagesByChat[message.chatJid]?.find((item) =>
+        sameMessage(item.id, replyTo.id),
       );
+      const text = referenced?.text ?? replyTo.text;
       ui.replyTo = {
-        id: message.replyTo.id,
+        id: replyTo.id,
         senderName: referenced?.senderName ?? '',
-        ...(referenced?.text === undefined ? {} : { text: referenced.text }),
+        ...(text === undefined ? {} : { text }),
       };
     }
     if (message.forward !== undefined) {
       ui.forward = message.forward;
     }
-    const mentions = mentionsFor(message);
+    const mentions = mentionsFor(message, body);
     if (mentions.length > 0) {
       ui.mentions = mentions;
     }

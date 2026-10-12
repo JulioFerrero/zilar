@@ -2,6 +2,7 @@ export * from './types';
 export * from './format';
 export * from './failures';
 export * from './avatar';
+export * from './avatar-seed';
 export * from './messages';
 export * from './text';
 export * from './emoji';

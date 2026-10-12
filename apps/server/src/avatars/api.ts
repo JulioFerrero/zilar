@@ -25,6 +25,8 @@ import { createRateLimiter } from '../rate-limit';
 import type { AvatarsRoutesDependencies } from './routes';
 import {
   AVATAR_MAX_BYTES,
+  AVATAR_READ_RATE_LIMIT_MAX,
+  AVATAR_READ_RATE_LIMIT_WINDOW_MS,
   AVATAR_UPLOAD_RATE_LIMIT_MAX,
   AVATAR_UPLOAD_RATE_LIMIT_WINDOW_MS,
   avatarOwnerKindSchema,
@@ -100,6 +102,12 @@ export function createAvatarsApi(deps: AvatarsApiDependencies): EffectApiMount {
       windowMs: AVATAR_UPLOAD_RATE_LIMIT_WINDOW_MS,
       now,
     });
+  // T-1174 (SEC-7): the read budget, charged in `serve`.
+  const readLimiter = createRateLimiter({
+    max: AVATAR_READ_RATE_LIMIT_MAX,
+    windowMs: AVATAR_READ_RATE_LIMIT_WINDOW_MS,
+    now,
+  });
 
   function serviceDeps(): AvatarsServiceDeps {
     return {
@@ -157,16 +165,22 @@ export function createAvatarsApi(deps: AvatarsApiDependencies): EffectApiMount {
         ),
       )
       // Streams the stored file. The id is a random unguessable uuid and a
-      // signed-in session is required — but the URL is a capability for
-      // signed-in users, not a secret: anyone handed the exact URL who is
-      // signed in can load it. Private-group pictures are therefore not
-      // listed anywhere a stranger can enumerate (no directory, no member
-      // list for non-admins), yet no per-viewer membership check runs here.
+      // signed-in session is required. User and AI pictures are a capability
+      // for signed-in users (the URL is not listed anywhere a stranger can
+      // enumerate). SEC-8 (T-1174): a public group's picture is served to any
+      // signed-in user; a private group's only to a member — `readAvatarFile`
+      // answers `null` for anyone else, so a non-member gets the same 404 as
+      // an unknown id.
       .handle(
         'serve',
-        handler(logger, async (request) => {
+        handler(logger, async (request, user) => {
+          // The read budget (600 per 10 min per user) is spent before the
+          // lookup, so a caller cannot probe ids without paying.
+          if (!readLimiter.allow(user.id)) {
+            throw new HttpError(429, 'rate_limited', 'Too many avatar reads, try again later');
+          }
           const avatarId = decodePathId(request.params.id);
-          const file = await readAvatarFile(serviceDeps(), avatarId);
+          const file = await readAvatarFile(serviceDeps(), avatarId, user.id);
           // An unknown id and a missing file answer the same 404.
           if (!file) {
             throw new HttpError(404, 'not_found', 'Avatar not found');

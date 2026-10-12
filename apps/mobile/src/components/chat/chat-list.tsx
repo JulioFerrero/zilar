@@ -1,6 +1,8 @@
 import type { ChatFolder, ChatSummary } from '@zilar/chat-core';
 import { Archive } from 'lucide-react-native';
+import { useRef } from 'react';
 import { FlatList, Pressable, RefreshControl, View } from 'react-native';
+import type { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import { ChatRow, chatRowKey } from '@/components/chat/chat-rows';
 import { FolderTabs } from '@/components/chat/folder-tabs';
@@ -8,6 +10,7 @@ import { LoadError, LoadErrorBanner } from '@/components/chat/load-error';
 import { ChatListSkeleton } from '@/components/chat/skeleton';
 import { Text } from '@/components/ui/text';
 import type { ChatListRow } from '@/lib/chat-list';
+import type { PutChatPrefInput } from '@/lib/chat-prefs-api';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { chatsListView, emptyChatsText, type LoadState } from '@/store/types';
 
@@ -34,6 +37,8 @@ export function ChatList({
   onPressChat,
   onPressGroup,
   onLongPress,
+  onPref,
+  swipeError,
 }: {
   activeFolder: string;
   folders: ChatFolder[];
@@ -52,8 +57,14 @@ export function ChatList({
   onPressChat: (chatId: string) => void;
   onPressGroup: (groupId: string) => void;
   onLongPress: (id: string) => void;
+  /** T-1204: the chat-pref write behind the swipe actions; unset keeps rows bare. */
+  onPref?: ((chatId: string, input: PutChatPrefInput) => void) | undefined;
+  /** T-1218: a failed swipe's message; empty unless a swipe just failed. */
+  swipeError: string;
 }) {
   const listView = chatsListView(chatsLoad, chatsCount);
+  // Only one swipe row stays open at a time: opening another closes this one.
+  const openSwipeRef = useRef<SwipeableMethods | null>(null);
   return (
     <>
       <FolderTabs
@@ -65,6 +76,13 @@ export function ChatList({
       {connection !== undefined ? (
         <View className="border-b border-divider px-3 py-1">
           <Text className="text-center text-[12px] text-muted-foreground">{connection}</Text>
+        </View>
+      ) : null}
+      {swipeError !== '' ? (
+        <View className="border-b border-divider px-3 py-1">
+          <Text accessibilityLiveRegion="polite" className="text-center text-[12px] text-danger">
+            {swipeError}
+          </Text>
         </View>
       ) : null}
       {chatsLoad === 'error' && chatsCount > 0 ? (
@@ -88,6 +106,8 @@ export function ChatList({
             onPressChat={onPressChat}
             onPressGroup={onPressGroup}
             onLongPress={onLongPress}
+            onPref={onPref}
+            openSwipeRef={openSwipeRef}
           />
         )}
         ListEmptyComponent={
@@ -127,6 +147,8 @@ export function ChatList({
                   onPressChat={onPressChat}
                   onPressGroup={onPressGroup}
                   onLongPress={onLongPress}
+                  onPref={onPref}
+                  openSwipeRef={openSwipeRef}
                 />
               ))
             : null}

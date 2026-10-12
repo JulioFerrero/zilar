@@ -9,16 +9,23 @@ import { makeLifetime } from './lifetime';
 import { testCorePorts } from './ports';
 import {
   SEND_TIMEOUT_MS,
+  ackText,
   deleteFailedMessage,
   forwardMessages,
   retrySticker,
+  retryText,
   sendAttachment,
   sendSticker,
   sendText,
   sendVoice,
+  unackText,
   type SendCtx,
   type SendRun,
 } from './send';
+import { createTextOutbox, flushOutbox, outboxRebound, OUTBOX_MAX_WAIT_MS } from './send/outbox';
+import { flushOnline } from './online';
+import type { HistoryCtx } from './history';
+import { reconnect, type LifecycleCtx } from './lifecycle';
 
 const NOW = new Date('2026-09-28T12:00:00Z');
 const ME = 'me@zilar.test';
@@ -130,6 +137,10 @@ function harness(options: HarnessOptions = {}) {
     sendRuns: new Map<string, SendRun>(),
     pendingAttachments: new Map(),
     pendingVoices: new Map(),
+    // Like mobile, the harness sends `undefined` options for a plain text
+    // (web pins `{}`); the resend tests pin the option shape.
+    omitEmptyTextOptions: true,
+    outbox: createTextOutbox(),
   };
   return { ctx, core, bytes, voice, state: () => state, ledger };
 }
@@ -161,7 +172,11 @@ describe('sendText (core)', () => {
     expect(optimistic?.status).toBe('sending');
 
     await flush();
-    expect(core.sendMessage).toHaveBeenCalledWith(ANA, 'chat', 'hello there', {});
+    expect(core.sendMessage).toHaveBeenCalledWith(ANA, 'chat', 'hello there', undefined);
+    // The socket write alone does not confirm: the bubble waits for the ack.
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sending');
+
+    ackText(ctx, 'srv-1');
     expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sent');
 
     handleMessage(ctx, echo('hello there'));
@@ -178,6 +193,471 @@ describe('sendText (core)', () => {
     await flush();
 
     expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sending');
+  });
+
+  it('resends a text that failed offline once on online, with the same id', async () => {
+    const sendMessage = vi
+      .fn<
+        (to: string, kind: string, text: string, opts?: { id?: string }) => Promise<{ id: string }>
+      >()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockImplementation(
+        async (_to: string, _kind: string, _text: string, opts?: { id?: string }) => ({
+          id: opts?.id ?? 'srv-9',
+        }),
+      );
+    const { ctx, state } = harness({ core: { sendMessage } });
+    sendText(ctx, ANA, 'queued');
+    await flush();
+
+    const bubble = state().messagesByChat[ANA]?.at(-1);
+    expect(bubble?.status).toBe('sending');
+    const localId = bubble?.id ?? '';
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+
+    // The next transition into `online` flushes the outbox.
+    ctx.core = { sendMessage } as unknown as XmppCore;
+    flushOutbox(ctx, NOW.getTime());
+    await flush();
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage).toHaveBeenLastCalledWith(ANA, 'chat', 'queued', undefined);
+    const resent = state().messagesByChat[ANA]?.filter((item) => item.text === 'queued');
+    expect(resent).toHaveLength(1);
+    expect(resent?.[0]?.id).toBe(localId);
+
+    ackText(ctx, 'srv-9');
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sent');
+  });
+
+  it('a resend after going offline reuses the first send stanza id', async () => {
+    // The second send honors the `id` option: the wire id the receiver
+    // dedupes on stays the first send's, so no duplicate arrives.
+    const sendMessage = vi
+      .fn<
+        (to: string, kind: string, text: string, opts?: { id?: string }) => Promise<{ id: string }>
+      >()
+      .mockResolvedValueOnce({ id: 'srv-first' })
+      .mockImplementation(async (_to, _kind, _text, opts) => ({ id: opts?.id ?? 'srv-other' }));
+    const { ctx, state } = harness({ core: { sendMessage } });
+    sendText(ctx, ANA, 'again');
+    await flush();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+
+    unackText(ctx, 'srv-first');
+    flushOutbox(ctx, NOW.getTime());
+    await flush();
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage).toHaveBeenLastCalledWith(ANA, 'chat', 'again', { id: 'srv-first' });
+    expect(state().messagesByChat[ANA]).toHaveLength(1);
+
+    ackText(ctx, 'srv-first');
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sent');
+  });
+
+  it('a failed resend keeps the stable stanza id for the next attempt', async () => {
+    // The first send's id must survive a failed resend: the next `unacked`
+    // retries under the same wire id, so a stanza that did reach the server
+    // is deduped by the receiver instead of arriving twice under two ids.
+    // (One resend clears `awaitingResend`: without a fresh `unacked` the
+    // next flush does not resend — a resume never resends at all, T-1216.)
+    const sendMessage = vi
+      .fn<
+        (to: string, kind: string, text: string, opts?: { id?: string }) => Promise<{ id: string }>
+      >()
+      .mockResolvedValueOnce({ id: 'srv-first' })
+      .mockRejectedValueOnce(new Error('offline again'))
+      .mockImplementation(async (_to, _kind, _text, opts) => ({ id: opts?.id ?? 'srv-other' }));
+    const { ctx, state } = harness({ core: { sendMessage } });
+    sendText(ctx, ANA, 'stable');
+    await flush();
+    expect(sendMessage).toHaveBeenNthCalledWith(1, ANA, 'chat', 'stable', undefined);
+
+    unackText(ctx, 'srv-first');
+    flushOutbox(ctx, NOW.getTime());
+    await flush();
+    expect(sendMessage).toHaveBeenNthCalledWith(2, ANA, 'chat', 'stable', { id: 'srv-first' });
+
+    // The failed attempt kept the id; a fresh `unacked` still retries it.
+    unackText(ctx, 'srv-first');
+    flushOutbox(ctx, NOW.getTime());
+    await flush();
+    expect(sendMessage).toHaveBeenNthCalledWith(3, ANA, 'chat', 'stable', { id: 'srv-first' });
+    expect(state().messagesByChat[ANA]).toHaveLength(1);
+
+    ackText(ctx, 'srv-first');
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sent');
+  });
+
+  it('a text sent while reconnecting goes out once after the client comes back online', async () => {
+    // T-1197: the socket write resolves (xmpp.js queues the stanza) while the
+    // core is `reconnecting`; the stream then rebinds fresh (a rebound), so no
+    // ack or unack ever comes for the first stanza id. The resume path
+    // (`reconnect()`, the AppState-focus path that sets `online` itself
+    // without a fresh `status` event) flushes the outbox, resending once
+    // under the same id. Driving `reconnect()` — not the flush helper —
+    // keeps this test honest: dropping the call from the resume path fails it.
+    const sendMessage = vi
+      .fn<
+        (to: string, kind: string, text: string, opts?: { id?: string }) => Promise<{ id: string }>
+      >()
+      .mockResolvedValueOnce({ id: 'srv-airplane' })
+      .mockImplementation(async (_to, _kind, _text, opts) => ({ id: opts?.id ?? 'srv-other' }));
+    const { ctx, state } = harness({ core: { sendMessage } });
+    sendText(ctx, ANA, 'offline test');
+    await flush();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sending');
+
+    // The network comes back through the resume path: it ends `online`
+    // without a fresh `status` event and must still flush the outbox. The
+    // reconnecting socket rebinds fresh (`rebound`); the core reports the
+    // wake without a new `online` emission.
+    const core = ctx.core as unknown as { wake?: () => Promise<unknown> };
+    core.wake = async () => 'rebound';
+    const resume = {
+      ...ctx,
+      started: true,
+      ports: {
+        ...ctx.ports,
+        flags: { ...ctx.ports.flags, reconnectOnResume: true },
+      },
+      fx: {
+        ...ctx.fx,
+        setStatus: () => {},
+        joinGroups: async () => undefined,
+      },
+    } as unknown as LifecycleCtx;
+    await Effect.runPromise(reconnect(resume));
+    await flush();
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage).toHaveBeenLastCalledWith(ANA, 'chat', 'offline test', {
+      id: 'srv-airplane',
+    });
+    const matches = state().messagesByChat[ANA]?.filter((item) => item.text === 'offline test');
+    expect(matches).toHaveLength(1);
+
+    ackText(ctx, 'srv-airplane');
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sent');
+  });
+
+  it('a resume flush never resends a stanza that went out', async () => {
+    // A resume's `h` covers the queued stanza, so the flush must not resend
+    // it: the resend would archive a second server row under the same id.
+    const sendMessage = vi
+      .fn<
+        (to: string, kind: string, text: string, opts?: { id?: string }) => Promise<{ id: string }>
+      >()
+      .mockResolvedValueOnce({ id: 'srv-resume' })
+      .mockImplementation(async (_to, _kind, _text, opts) => ({ id: opts?.id ?? 'srv-other' }));
+    const { ctx, state } = harness({ core: { sendMessage } });
+    sendText(ctx, ANA, 'Offline two');
+    await flush();
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sending');
+
+    flushOutbox(ctx, NOW.getTime());
+    await flush();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+
+    ackText(ctx, 'srv-resume');
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sent');
+  });
+
+  it('a resent text after a rebound gets the tick when the fresh session acks it', async () => {
+    // T-1220: the device case. "Offline three" was queued while offline (no
+    // stanza id), the stream was replaced, and the flush only ran once the
+    // fresh session was online. The fresh client's ack then settles the live
+    // bubble — a store change that flushes on `rebound` instead of `online`
+    // (or drops the flush) must fail this test.
+    const sendMessage = vi
+      .fn<
+        (to: string, kind: string, text: string, opts?: { id?: string }) => Promise<{ id: string }>
+      >()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockImplementation(async (_to, _kind, _text, opts) => ({ id: opts?.id ?? 'srv-fresh' }));
+    const { ctx, state } = harness({ core: { sendMessage } });
+    sendText(ctx, ANA, 'Offline three');
+    await flush();
+    const bubble = state().messagesByChat[ANA]?.at(-1);
+    expect(bubble?.status).toBe('sending');
+    const localId = bubble?.id ?? '';
+
+    // A fresh session replaced the stream (no stanza id ever went out, so no
+    // `unacked` marks anything): the deferred online runs the flush. Driving
+    // `flushOnline` — the path every transition into `online` runs — keeps
+    // this honest: dropping the outbox flush from it fails this test.
+    outboxRebound(ctx);
+    flushOnline(ctx as unknown as HistoryCtx);
+    await flush();
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage).toHaveBeenLastCalledWith(ANA, 'chat', 'Offline three', undefined);
+    const matches = state().messagesByChat[ANA]?.filter((item) => item.text === 'Offline three');
+    expect(matches).toHaveLength(1);
+    expect(matches?.[0]?.id).toBe(localId);
+
+    // The fresh session stream-manages the resend, so its ack lands and the
+    // live bubble ticks without a cold restart.
+    ackText(ctx, 'srv-fresh');
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sent');
+  });
+
+  it('queues a text sent before a core exists and resends it on the next online', async () => {
+    // A boot in flight (or a failed token) leaves `ctx.core` undefined; the
+    // bubble must still enter the outbox, or it would wait at `sending` for good.
+    const { ctx, core, state } = harness();
+    ctx.core = undefined;
+    sendText(ctx, ANA, 'no core yet');
+    await flush();
+
+    expect(core.sendMessage).not.toHaveBeenCalled();
+    const bubble = state().messagesByChat[ANA]?.at(-1);
+    expect(bubble?.status).toBe('sending');
+    const localId = bubble?.id ?? '';
+
+    ctx.core = core;
+    flushOutbox(ctx, NOW.getTime());
+    await flush();
+
+    expect(core.sendMessage).toHaveBeenCalledTimes(1);
+    const matches = state().messagesByChat[ANA]?.filter((item) => item.text === 'no core yet');
+    expect(matches).toHaveLength(1);
+    expect(matches?.[0]?.id).toBe(localId);
+  });
+
+  it('a resent reply keeps its quote text', async () => {
+    // T-1197 (T-1194 follow-up 1): the entry stores the reply's quote text,
+    // so a resend rebuilds the XEP-0461 fallback like the first send does.
+    const sendMessage = vi
+      .fn<
+        (
+          to: string,
+          kind: string,
+          text: string,
+          opts?: { replyTo?: { id: string; text?: string }; id?: string },
+        ) => Promise<{ id: string }>
+      >()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockImplementation(async (_to, _kind, _text, opts) => ({ id: opts?.id ?? 'srv-r' }));
+    const { ctx, state } = harness({ core: { sendMessage } });
+    sendText(ctx, ANA, 'quoted reply', {
+      replyTo: { id: 'm-0', senderName: 'Ana', text: 'the original' },
+    });
+    await flush();
+
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sending');
+    flushOutbox(ctx, NOW.getTime());
+    await flush();
+
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage).toHaveBeenLastCalledWith(ANA, 'chat', 'quoted reply', {
+      replyTo: { id: 'm-0', text: 'the original' },
+    });
+  });
+
+  it('an entry nobody flushes becomes failed after the wait cap, using the test clock', async () => {
+    // T-1197: the wait cap runs on the store's runtime fork, so even with no
+    // flush the bubble shows "Not sent" once OUTBOX_MAX_WAIT_MS has passed.
+    vi.useFakeTimers();
+    try {
+      const { ctx, state } = harness({
+        core: { sendMessage: vi.fn(async () => Promise.reject(new Error('offline'))) },
+      });
+      sendText(ctx, ANA, 'stuck');
+      await flush();
+      expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sending');
+
+      await vi.advanceTimersByTimeAsync(OUTBOX_MAX_WAIT_MS + 10);
+      const bubble = state().messagesByChat[ANA]?.at(-1);
+      expect(bubble?.status).toBe('failed');
+      expect(bubble?.failed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a context built like the production stores marks sent only after acked', async () => {
+    // The mobile and web stores both create the send context with an outbox
+    // now: the honest tick below is the production path, not a harness-only
+    // branch.
+    const sendMessage = vi.fn(async () => ({ id: 'srv-prod' }));
+    const { ctx, state } = harness({ core: { sendMessage } });
+    sendText(ctx, ANA, 'prod tick');
+    await flush();
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sending');
+
+    ackText(ctx, 'srv-prod');
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sent');
+  });
+
+  it('marks the bubble failed after the outbox attempts run out', async () => {
+    const { ctx, state } = harness({
+      core: { sendMessage: vi.fn(async () => Promise.reject(new Error('offline'))) },
+    });
+    sendText(ctx, ANA, 'doomed');
+    await flush();
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sending');
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      flushOutbox(ctx, NOW.getTime());
+      await flush();
+    }
+    const bubble = state().messagesByChat[ANA]?.at(-1);
+    expect(bubble?.status).toBe('failed');
+    expect(bubble?.failed).toBe(true);
+  });
+
+  it('retryText resends a failed text with the same id', async () => {
+    const { ctx, state } = harness({
+      core: { sendMessage: vi.fn(async () => Promise.reject(new Error('offline'))) },
+    });
+    sendText(ctx, ANA, 'doomed');
+    await flush();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      flushOutbox(ctx, NOW.getTime());
+      await flush();
+    }
+    const failed = state().messagesByChat[ANA]?.at(-1);
+    expect(failed?.status).toBe('failed');
+    const localId = failed?.id ?? '';
+
+    // The network is back: the retry flips the bubble to `sending` and sends
+    // the stored body again under the same message id.
+    const sendMessage = vi.fn(async () => ({ id: 'srv-retry' }));
+    ctx.core = { sendMessage } as unknown as XmppCore;
+    retryText(ctx, ANA, localId);
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sending');
+    expect(state().messagesByChat[ANA]?.at(-1)?.id).toBe(localId);
+    await flush();
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith(ANA, 'chat', 'doomed', { id: localId });
+  });
+
+  it('retryText tracks the retried text in the outbox until its ack', async () => {
+    const { ctx, state } = harness({
+      core: { sendMessage: vi.fn(async () => Promise.reject(new Error('offline'))) },
+    });
+    sendText(ctx, ANA, 'doomed');
+    await flush();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      flushOutbox(ctx, NOW.getTime());
+      await flush();
+    }
+    const localId = state().messagesByChat[ANA]?.at(-1)?.id ?? '';
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('failed');
+
+    // The network is back: the retry queues the text in the outbox under
+    // its stanza id, like a first send does — otherwise the bubble would
+    // sit at `sending` with no resend and no honest tick.
+    const sendMessage = vi.fn(async () => ({ id: 'srv-retry' }));
+    ctx.core = { sendMessage } as unknown as XmppCore;
+    retryText(ctx, ANA, localId);
+    await flush();
+
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sending');
+    expect(ctx.outbox?.get(localId)?.stanzaId).toBe('srv-retry');
+
+    ackText(ctx, 'srv-retry');
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sent');
+  });
+
+  it('requeues a bubble stream management lost, for the next online', async () => {
+    const { ctx, core, state } = harness();
+    sendText(ctx, ANA, 'lost');
+    await flush();
+    expect(core.sendMessage).toHaveBeenCalledTimes(1);
+
+    unackText(ctx, 'srv-1');
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sending');
+
+    flushOutbox(ctx, NOW.getTime());
+    await flush();
+    expect(core.sendMessage).toHaveBeenCalledTimes(2);
+
+    ackText(ctx, 'srv-1');
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sent');
+  });
+
+  it('an echo of the queued stanza settles the bubble within one flush', async () => {
+    // The echo path settles the bubble too (incoming.ts:48-54 marks `sent`
+    // on echo): when the ack itself was lost but the stanza reached the
+    // server, the echo still confirms delivery.
+    const sendMessage = vi
+      .fn<
+        (to: string, kind: string, text: string, opts?: { id?: string }) => Promise<{ id: string }>
+      >()
+      .mockResolvedValueOnce({ id: 'srv-offline-two' })
+      .mockImplementation(async (_to, _kind, _text, opts) => ({ id: opts?.id ?? 'srv-other' }));
+    const { ctx, state } = harness({ core: { sendMessage } });
+    sendText(ctx, ANA, 'Offline two');
+    await flush();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sending');
+
+    handleMessage(ctx, echo('Offline two', ANA, 'srv-offline-two'));
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sent');
+
+    flushOutbox(ctx, NOW.getTime());
+    await flush();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('a stale ack for an echo-settled bubble stays a no-op', async () => {
+    // The echo already marked the bubble `sent`; a late duplicate ack must
+    // not revive or move anything.
+    const sendMessage = vi
+      .fn<
+        (to: string, kind: string, text: string, opts?: { id?: string }) => Promise<{ id: string }>
+      >()
+      .mockResolvedValueOnce({ id: 'srv-echo-first' })
+      .mockImplementation(async (_to, _kind, _text, opts) => ({ id: opts?.id ?? 'srv-other' }));
+    const { ctx, state } = harness({ core: { sendMessage } });
+    sendText(ctx, ANA, 'echo first');
+    await flush();
+
+    handleMessage(ctx, echo('echo first', ANA, 'srv-echo-first'));
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sent');
+
+    ackText(ctx, 'srv-echo-first');
+    const matches = state().messagesByChat[ANA]?.filter((item) => item.text === 'echo first');
+    expect(matches).toHaveLength(1);
+    expect(matches?.[0]?.status).toBe('sent');
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('a lost stanza for an echo-settled bubble neither reverts nor resends', async () => {
+    // T-1216: the echo marked the bubble `sent` but its outbox entry is still
+    // there. A later `unacked` (a replaced client's stream-management queue)
+    // must not flip the settled bubble back to `sending` — that would resend
+    // a stanza the server already has and archive a second row.
+    const sendMessage = vi
+      .fn<
+        (to: string, kind: string, text: string, opts?: { id?: string }) => Promise<{ id: string }>
+      >()
+      .mockResolvedValueOnce({ id: 'srv-echo-unacked' })
+      .mockImplementation(async (_to, _kind, _text, opts) => ({ id: opts?.id ?? 'srv-other' }));
+    const { ctx, state } = harness({ core: { sendMessage } });
+    sendText(ctx, ANA, 'delivered once');
+    await flush();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+
+    handleMessage(ctx, echo('delivered once', ANA, 'srv-echo-unacked'));
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sent');
+
+    unackText(ctx, 'srv-echo-unacked');
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sent');
+
+    flushOutbox(ctx, NOW.getTime());
+    await flush();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    const matches = state().messagesByChat[ANA]?.filter((item) => item.text === 'delivered once');
+    expect(matches).toHaveLength(1);
+    expect(matches?.[0]?.status).toBe('sent');
   });
 });
 

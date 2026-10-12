@@ -26,7 +26,9 @@ import {
   mayManageChannel,
 } from '@/lib/channels';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { domainOfJid } from '@/lib/contacts-api';
 import { useChatStore } from '@/store/chat-store-provider';
+import { personSeed } from '@zilar/chat-core';
 
 type ChannelScreenProps = {
   groupId: string;
@@ -156,6 +158,12 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
   const flipRole = (userId: string, role: 'admin' | 'member') => {
     changeRole({ userId, role });
   };
+  // T-1212: member balls are seeded by the bare JID, derived from the user
+  // id the way the mention builder does (the domain from my own JID); the
+  // member rows carry no JID, so this is the only form available here.
+  const domain = domainOfJid(useChatStore((state) => state.me?.jid ?? undefined));
+  const seedFor =
+    domain === undefined ? undefined : (userId: string): string => personSeed(userId, domain);
 
   const leave = () => {
     if (leaving) {
@@ -208,6 +216,7 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
           roleBusy={roleBusy}
           roleError={roleError}
           onFlipRole={flipRole}
+          seedFor={seedFor}
         />
 
         {isManager ? (

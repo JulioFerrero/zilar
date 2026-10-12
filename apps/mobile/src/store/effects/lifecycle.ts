@@ -13,6 +13,7 @@ import {
   retryBoot as coreRetryBoot,
   startStore as coreStartStore,
   stopStore as coreStopStore,
+  suspendStore as coreSuspendStore,
   type HistoryLoad,
   type HistoryPatch,
   type HistoryState,
@@ -23,6 +24,7 @@ import {
 import type { ChatEntry, Contact, Me } from '../../lib/chat-api';
 import type { ChatPref } from '../../lib/chat-prefs-api';
 import { applyChatPrefs } from '../../lib/chat-prefs';
+import { dismissChatNotifications, syncBadge } from '../../lib/push/badge';
 import type { ChatStoreState, LoadState } from '../types';
 import type { StoreCtx } from './runtime';
 
@@ -37,6 +39,10 @@ export interface Lifecycle {
 
 const toCoreLoad = (load: LoadState): HistoryLoad => (load === 'loaded' ? 'ready' : load);
 const toMobileLoad = (load: HistoryLoad): LoadState => (load === 'ready' ? 'loaded' : load);
+
+// How long the app may sit in `background` before the session suspends (F1):
+// brief switches away keep the socket, longer ones let ejabberd push.
+export const BACKGROUND_SUSPEND_GRACE_MS = 10_000;
 
 /**
  * Runs the mobile store on the core lifecycle. The core owns the store and
@@ -79,8 +85,12 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
   let lifecycleCtx!: LifecycleCtx;
 
   const appHooks: StoreAppHooks = {
-    syncBadge: () => {},
-    dismissChatNotifications: () => {},
+    syncBadge: () => {
+      Effect.runFork(syncBadge(lifecycleCtx.get().chats));
+    },
+    dismissChatNotifications: (chatId) => {
+      Effect.runFork(dismissChatNotifications(chatId));
+    },
     loadGroupMembers: (chatId) => {
       ctx.forkSession(ctx.fx.ensureGroupMembers(chatId));
     },
@@ -96,10 +106,35 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
       if (get().chats.length === 0) {
         set({ chatsLoad: 'loading' });
       }
-      const unsubscribe = ctx.ports.visibility.onFocus(() => {
+      // F1: `background` starts a 10 s grace that suspends the session, so
+      // ejabberd pushes while the app is away; `active` cancels the grace
+      // and the existing resume below wakes the session. `inactive` (an iOS
+      // transition) does nothing: `onBackground` never fires for it.
+      let suspendTimer: ReturnType<typeof setTimeout> | undefined;
+      const clearSuspendTimer = (): void => {
+        if (suspendTimer !== undefined) {
+          clearTimeout(suspendTimer);
+          suspendTimer = undefined;
+        }
+      };
+      const unsubscribeFocus = ctx.ports.visibility.onFocus(() => {
+        clearSuspendTimer();
         life.lifetime.fork(coreReconnect(lifecycleCtx));
       });
-      life.lifetime.onStoreClose(Effect.sync(unsubscribe));
+      const unsubscribeBackground = ctx.ports.onBackground(() => {
+        clearSuspendTimer();
+        suspendTimer = setTimeout(() => {
+          suspendTimer = undefined;
+          life.lifetime.fork(coreSuspendStore(lifecycleCtx));
+        }, BACKGROUND_SUSPEND_GRACE_MS);
+      });
+      life.lifetime.onStoreClose(
+        Effect.sync(() => {
+          clearSuspendTimer();
+          unsubscribeFocus();
+          unsubscribeBackground();
+        }),
+      );
     },
     setChatsLoad: (load) => {
       set({ chatsLoad: load === 'ready' ? 'loaded' : load });
@@ -162,6 +197,17 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
     rt: life.lifetime,
     k: coreCtx.k,
     fx: appHooks,
+    // Shares the text outbox (F4) with the send context: `sendCtx` and the
+    // lifecycle flush/ack listeners write the same map. Set here rather than
+    // constructed here: the send binding creates it with the store, and
+    // `reset()` clears it on sign-out, so one user's queue never goes out
+    // as another user.
+    get outbox() {
+      return coreCtx.outbox;
+    },
+    set outbox(value) {
+      coreCtx.outbox = value;
+    },
     get core() {
       return lifecycleCore;
     },

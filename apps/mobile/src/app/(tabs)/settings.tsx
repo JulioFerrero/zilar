@@ -2,9 +2,11 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Effect } from 'effect';
 import {
   Ban,
+  Bell,
   ChevronRight,
   FolderOpen,
   KeyRound,
+  LogOut,
   Plug,
   Server,
   ShieldCheck,
@@ -20,10 +22,11 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { useAuthStore } from '@/auth/session';
 import { Avatar } from '@/components/chat/avatar';
 import { Card, SectionLabel } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
 import { Text } from '@/components/ui/text';
-import { ACCENT, ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { ACCENT, DANGER, ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { fromApi } from '@/lib/effect/api-effect';
 import { interruptFiber } from '@/lib/effect/timers';
 import type { MyProfile } from '@/lib/profile-api';
@@ -54,6 +57,7 @@ const HUB_ICONS: Record<SettingsIconId, LucideIcon> = {
   integrations: Plug,
   stickers: Sticker,
   folders: FolderOpen,
+  notifications: Bell,
 };
 
 function hubIcon(icon: SettingsIconId) {
@@ -74,6 +78,10 @@ function ProfileHeaderCard({
     return null;
   }
   const handle = profile?.handle ?? null;
+  // T-1212: the ball is seeded by the own bare JID (the same ball as the
+  // chat list and the profile screen). While no JID is known yet no ball
+  // is drawn; the literal `'me'` seed is gone.
+  const seed = me?.jid ?? null;
   return (
     <Pressable
       accessibilityRole="button"
@@ -81,7 +89,11 @@ function ProfileHeaderCard({
       onPress={onPress}
       className="flex-row items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 active:bg-surface-raised"
     >
-      <Avatar id={profile?.id ?? me?.id ?? 'me'} name={name} size={64} />
+      {seed === null ? (
+        <View style={{ width: 64, height: 64 }} />
+      ) : (
+        <Avatar id={seed} name={name} size={64} />
+      )}
       <View className="min-w-0 flex-1">
         <Text numberOfLines={1} className="text-[18px] font-semibold text-foreground">
           {name}
@@ -131,6 +143,9 @@ function SettingsHub() {
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [pendingRequests, setPendingRequests] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const signOut = useAuthStore((state) => state.signOut);
   const groups = settingsHubGroups();
 
   useFocusEffect(
@@ -176,6 +191,17 @@ function SettingsHub() {
     }, [contactsApi]),
   );
 
+  // Signing out flips the session to `guest`; the chat store provider watches
+  // that status and calls `store.stop()`, which ends the XMPP session
+  // (`chat-store-provider.tsx`:124-130 → `coreStopStore` → `closeStore`).
+  // Nothing else has to end it here; the login screen is the last step either way.
+  const confirmSignOut = useCallback(() => {
+    setSigningOut(true);
+    void signOut().finally(() => {
+      router.replace('/login');
+    });
+  }, [router, signOut]);
+
   return (
     <SettingsScreenShell title="Settings" subtitle="Your account, chats and AIs.">
       <View className="gap-6">
@@ -194,7 +220,34 @@ function SettingsHub() {
             onOpen={(href) => router.push(href)}
           />
         ))}
+        <Card>
+          <ListRow
+            icon={
+              <IconTile>
+                <LogOut size={18} color={DANGER} />
+              </IconTile>
+            }
+            title="Sign out"
+            accessibilityLabel="Sign out"
+            onPress={() => {
+              setSigningOut(false);
+              setConfirmingSignOut(true);
+            }}
+          />
+        </Card>
       </View>
+      <ConfirmDialog
+        visible={confirmingSignOut}
+        title="Sign out of Zilar on this phone?"
+        message="You will need a sign-in code to get back in."
+        confirmLabel="Sign out"
+        busyLabel="Signing out…"
+        busy={signingOut}
+        onCancel={() => setConfirmingSignOut(false)}
+        onConfirm={confirmSignOut}
+        confirmAccessibilityLabel="Sign out"
+        accessibilityLabel="Sign out of Zilar on this phone"
+      />
     </SettingsScreenShell>
   );
 }

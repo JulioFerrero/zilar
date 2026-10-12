@@ -8,6 +8,7 @@
 import { Exit, Schema } from 'effect';
 import { ApiError, apiErrorFromBody } from '@zilar/api-contract';
 import type { ApiTransport } from './api-client';
+import { API_TIMEOUT_MS, fetchWithTimeout } from './fetch-timeout';
 
 export async function rawRequest<T>(
   { getToken, fetchImpl, apiUrl }: ApiTransport,
@@ -21,14 +22,19 @@ export async function rawRequest<T>(
   }
   let response: Response;
   try {
-    response = await fetchImpl(`${apiUrl}${path}`, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${token}`,
-        ...init.headers,
+    response = await fetchWithTimeout(
+      fetchImpl,
+      `${apiUrl}${path}`,
+      {
+        ...init,
+        headers: {
+          accept: 'application/json',
+          authorization: `Bearer ${token}`,
+          ...init.headers,
+        },
       },
-    });
+      API_TIMEOUT_MS,
+    );
   } catch {
     throw new ApiError(0, 'network_error', 'Could not reach the server');
   }

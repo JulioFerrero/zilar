@@ -1,6 +1,10 @@
 import type { ForwardOrigin, Payload } from '@zilar/protocol';
 import type { Effect } from 'effect';
 import type { NotOnline, XmppCoreError } from './errors';
+import type { XmppSuspend, XmppSuspendEffect } from './types-suspend';
+
+export type { StreamAckEvent } from './types-ack';
+export type { WakeOutcome } from './types-suspend';
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
 
@@ -65,7 +69,7 @@ export interface ChatMessage {
    * malformed `<forward>` element is dropped, so this is absent when invalid.
    */
   forward?: ForwardOrigin;
-  replyTo?: { id: string; to?: string };
+  replyTo?: { id: string; to?: string; text?: string };
   /**
    * XEP-0444 reactions carried by a body-less message: the target message id
    * and the reactor's complete current set (empty clears it). Present only on
@@ -171,6 +175,8 @@ export interface PresenceEvent {
   /** Bare JID of the contact. */
   jid: string;
   available: boolean;
+  /** The `<delay/>` stamp of an offline (unavailable) presence, when present. */
+  delayedAt?: number;
 }
 
 export interface DisplayedEvent {
@@ -203,9 +209,12 @@ export interface SendMessageOptions {
   payload?: Payload;
   /** Origin to attach when this message is a forward. */
   forward?: ForwardOrigin;
-  replyTo?: { id: string; to?: string };
+  replyTo?: { id: string; to?: string; text?: string };
   /** Offsets are UTF-16 code units; `buildMessage` writes them as code points. */
   mentions?: MentionInput[];
+  /** Stanza `id` to send under; a fresh one is minted when absent. An outbox
+   * resend passes the first send's id, so the receiver dedupes on it. */
+  id?: string;
 }
 
 /** Options for an edit; mentions are rebuilt from the new text, as on a send. */
@@ -245,7 +254,7 @@ export interface ErrorEvent {
   message: string;
 }
 
-export interface XmppCore {
+export interface XmppCore extends XmppSuspend {
   status(): ConnectionStatus;
   /** My bare JID once online. */
   me(): string | undefined;
@@ -336,7 +345,7 @@ export type SendError = NotOnline | Error;
  * what its `XmppCore` namesake does; the Promise form is this API run with
  * `Effect.runPromise`.
  */
-export interface XmppCoreEffect {
+export interface XmppCoreEffect extends XmppSuspendEffect {
   status(): ConnectionStatus;
   /** My bare JID once online. */
   me(): string | undefined;

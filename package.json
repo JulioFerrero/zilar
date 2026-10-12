@@ -22,6 +22,7 @@
     "infra:smoke": "pnpm --filter @zilar/devtools smoke",
     "xmpp:e2e": "pnpm --filter @zilar/devtools xmpp:e2e",
     "code:map": "pnpm --filter @zilar/devtools code:map",
+    "plan:page": "pnpm --filter @zilar/devtools plan:page",
     "lead:watch": "pnpm --filter @zilar/devtools exec tsx src/lead/cli.ts watch",
     "screenshots": "node --experimental-strip-types scripts/screenshots.ts",
     "gate": "pnpm --filter @zilar/devtools exec tsx src/gate/cli.ts --base main",

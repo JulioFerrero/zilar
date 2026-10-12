@@ -144,6 +144,9 @@ export interface ChatStore {
    * the room affiliation follows at once. Rejects on failure.
    */
   changeChannelRole: (chatId: string, userId: string, role: 'admin' | 'member') => Promise<void>;
+  addGroupMembers: (chatId: string, userIds: string[]) => Promise<void>;
+  removeGroupMember: (chatId: string, userId: string) => Promise<void>;
+  transferGroupOwner: (chatId: string, userId: string) => Promise<void>;
   /**
    * T-0164: the owner flips a group public (with a handle) or back to
    * private. The detail refreshes from server truth. Rejects on failure.

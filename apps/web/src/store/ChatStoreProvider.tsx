@@ -6,6 +6,7 @@ import { isMockMode } from '@/mock/gate';
 import { loadMockXmpp } from '@/mock/load';
 import { createRealChatStore } from '@/store/realStore';
 import type { ChatStoreState } from '@/store/store';
+import { startSessionEnable } from '@/lib/push/sessionEnable';
 
 const ChatStoreContext = createContext<StoreApi<ChatStoreState> | null>(null);
 
@@ -71,6 +72,16 @@ export function ChatStoreProvider({
       value.getState().stop();
     };
   }, [store, value, auth.status, userId]);
+
+  // Push pair (T-1152): the stored pair belongs to a dead session after a
+  // reload (MP-8), so re-send `<enable/>` on every transition into `online`.
+  // Mock mode keeps nothing. Cleanup unsubscribes with the provider.
+  useEffect(() => {
+    if (store !== undefined || value === undefined || isMockMode()) {
+      return;
+    }
+    return startSessionEnable(value);
+  }, [store, value]);
 
   if (value === undefined) {
     return null;
