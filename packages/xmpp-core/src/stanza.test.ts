@@ -30,6 +30,7 @@ import { createPresence } from './core-effect/presence';
 import type { CoreRuntime } from './core-effect/config';
 import {
   AGENT_NAMESPACE,
+  ALBUM_NAMESPACE,
   CARBONS_NAMESPACE,
   CHAT_MARKERS_NAMESPACE,
   CHAT_STATES_NAMESPACE,
@@ -804,6 +805,54 @@ describe('decodeMessageStanza: forwards', () => {
     const { message } = decodeMessageStanza(stanza, ctx);
     expect(message?.body).toBe('archived');
     expect(message?.forward).toBeUndefined();
+  });
+});
+
+describe('decodeMessageStanza: albums', () => {
+  it('round trips an album marker through build and parse', () => {
+    const built = buildMessage({
+      id: 'm-album-1',
+      to: 'alice@zilar.localhost',
+      kind: 'chat',
+      text: '',
+      payload: progress,
+      album: { id: 'alb-1', index: 1, count: 3 },
+    });
+
+    const element = built.getChild('album', ALBUM_NAMESPACE);
+    expect(element?.attrs).toMatchObject({ id: 'alb-1', index: '1', count: '3' });
+
+    const { message } = decodeMessageStanza(
+      xml(
+        'message',
+        { from: 'alice@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat', id: 'm-album-1' },
+        ...built.children,
+      ),
+      ctx,
+    );
+    expect(message?.album).toEqual({ id: 'alb-1', index: 1, count: 3 });
+  });
+
+  it('drops an album marker that breaks the invariants', () => {
+    const invalid: Array<Record<string, string>> = [
+      { id: '', index: '0', count: '2' },
+      { id: 'a'.repeat(65), index: '0', count: '2' },
+      { id: 'alb', index: '0', count: '1' },
+      { id: 'alb', index: '0', count: '11' },
+      { id: 'alb', index: '2', count: '2' },
+      { id: 'alb', index: 'x', count: '2' },
+    ];
+
+    for (const attrs of invalid) {
+      const stanza = xml(
+        'message',
+        { from: 'alice@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat', id: 'm-album-2' },
+        xml('body', {}, 'one photo'),
+        xml('agent', { xmlns: AGENT_NAMESPACE }, encodePayload(progress)),
+        xml('album', { xmlns: ALBUM_NAMESPACE, ...attrs }),
+      );
+      expect(decodeMessageStanza(stanza, ctx).message?.album).toBeUndefined();
+    }
   });
 });
 

@@ -1,6 +1,7 @@
-import type { ChatSummary, MessageItem, UiMessage } from '@zilar/chat-core';
+import type { AlbumItem, ChatSummary, MessageItem, UiMessage } from '@zilar/chat-core';
 import { memo } from 'react';
 
+import { AlbumMembersProvider } from '@/components/chat/album-members';
 import { DateSeparator } from '@/components/chat/date-separator';
 import { MessageBubble } from '@/components/chat/message-bubble';
 import { UnreadDivider } from '@/components/chat/unread-divider';
@@ -13,7 +14,7 @@ export type ListEntry =
   | {
       type: 'message';
       key: string;
-      item: MessageItem;
+      item: MessageItem | AlbumItem;
       isDraft: boolean;
       revealTurnId: string | undefined;
     };
@@ -81,37 +82,43 @@ function MessageListRowImpl({
   if (item.type === 'separator') {
     return <DateSeparator date={item.date} />;
   }
+  // An album item renders its head bubble; the grid inside its attachment body
+  // draws exactly this run, handed down so a peer's colliding id or a far
+  // sibling the grouping kept apart cannot merge in (T-1271).
+  const albumMembers = item.item.kind === 'album' ? item.item.messages : null;
   return (
-    <MessageBubble
-      message={item.item.message}
-      isGroup={chat.kind === 'group'}
-      isFirstInGroup={item.item.firstInGroup}
-      isLastInGroup={item.item.lastInGroup}
-      currentUserId={currentUserId}
-      onReply={onReply}
-      {...(onReact === undefined ? {} : { onReact })}
-      {...(onEdit === undefined ? {} : { onEdit })}
-      {...(onDelete === undefined ? {} : { onDelete })}
-      {...(onForward === undefined ? {} : { onForward })}
-      canPin={canPinChat}
-      isPinned={pinnedIds.includes(item.item.message.id)}
-      {...(onPin === undefined ? {} : { onPin })}
-      {...(onUnpin === undefined ? {} : { onUnpin })}
-      draft={item.isDraft}
-      revealTurnId={item.revealTurnId}
-      {...(onRetrySticker === undefined ? {} : { onRetrySticker })}
-      {...(onRetryAttachment === undefined ? {} : { onRetryAttachment })}
-      {...(onCancelAttachment === undefined ? {} : { onCancelAttachment })}
-      {...(onRetryVoice === undefined ? {} : { onRetryVoice })}
-      {...(onCancelVoice === undefined ? {} : { onCancelVoice })}
-      {...(onOpenAttachment === undefined ? {} : { onOpenAttachment })}
-      {...(openingAttachmentId === undefined ? {} : { openingAttachmentId })}
-      {...(voiceHost === undefined ? {} : { voiceHost })}
-      selecting={selection !== undefined && selection.ids.length > 0}
-      selected={selection !== undefined && selection.ids.includes(item.item.message.id)}
-      {...(onToggleSelect === undefined ? {} : { onToggleSelect })}
-      {...(onStartSelect === undefined ? {} : { onStartSelect })}
-    />
+    <AlbumMembersProvider messages={albumMembers}>
+      <MessageBubble
+        message={item.item.message}
+        isGroup={chat.kind === 'group'}
+        isFirstInGroup={item.item.firstInGroup}
+        isLastInGroup={item.item.lastInGroup}
+        currentUserId={currentUserId}
+        onReply={onReply}
+        {...(onReact === undefined ? {} : { onReact })}
+        {...(onEdit === undefined ? {} : { onEdit })}
+        {...(onDelete === undefined ? {} : { onDelete })}
+        {...(onForward === undefined ? {} : { onForward })}
+        canPin={canPinChat}
+        isPinned={pinnedIds.includes(item.item.message.id)}
+        {...(onPin === undefined ? {} : { onPin })}
+        {...(onUnpin === undefined ? {} : { onUnpin })}
+        draft={item.isDraft}
+        revealTurnId={item.revealTurnId}
+        {...(onRetrySticker === undefined ? {} : { onRetrySticker })}
+        {...(onRetryAttachment === undefined ? {} : { onRetryAttachment })}
+        {...(onCancelAttachment === undefined ? {} : { onCancelAttachment })}
+        {...(onRetryVoice === undefined ? {} : { onRetryVoice })}
+        {...(onCancelVoice === undefined ? {} : { onCancelVoice })}
+        {...(onOpenAttachment === undefined ? {} : { onOpenAttachment })}
+        {...(openingAttachmentId === undefined ? {} : { openingAttachmentId })}
+        {...(voiceHost === undefined ? {} : { voiceHost })}
+        selecting={selection !== undefined && selection.ids.length > 0}
+        selected={selection !== undefined && selection.ids.includes(item.item.message.id)}
+        {...(onToggleSelect === undefined ? {} : { onToggleSelect })}
+        {...(onStartSelect === undefined ? {} : { onStartSelect })}
+      />
+    </AlbumMembersProvider>
   );
 }
 
@@ -131,11 +138,26 @@ function isSameEntry(a: ListEntry, b: ListEntry): boolean {
       a.item.message === b.item.message &&
       a.item.firstInGroup === b.item.firstInGroup &&
       a.item.lastInGroup === b.item.lastInGroup &&
+      sameAlbumMembers(a.item, b.item) &&
       a.isDraft === b.isDraft &&
       a.revealTurnId === b.revealTurnId
     );
   }
   return true;
+}
+
+/**
+ * Whether two entries carry the same album members. `groupMessages` rebuilds
+ * the `messages` array on every list rebuild, so the rows are compared element
+ * by element: a sibling arriving from an older page must re-render the grid.
+ */
+function sameAlbumMembers(a: MessageItem | AlbumItem, b: MessageItem | AlbumItem): boolean {
+  const aMembers = a.kind === 'album' ? a.messages : null;
+  const bMembers = b.kind === 'album' ? b.messages : null;
+  if (aMembers === null || bMembers === null) {
+    return aMembers === bMembers;
+  }
+  return aMembers.length === bMembers.length && aMembers.every((m, index) => m === bMembers[index]);
 }
 
 /**

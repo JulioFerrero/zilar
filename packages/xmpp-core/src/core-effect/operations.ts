@@ -199,6 +199,7 @@ export function createOperations(runtime: CoreRuntime): OperationsApi {
           forward: opts.forward,
           replyTo: opts.replyTo,
           mentions: opts.mentions,
+          album: opts.album,
         }),
       opts.id,
     );

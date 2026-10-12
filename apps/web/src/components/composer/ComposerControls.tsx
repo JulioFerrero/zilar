@@ -1,7 +1,7 @@
 import { formatDuration, type ReplyRef } from '@zilar/chat-core';
 import { ArrowUp, Mic, Paperclip, Send, Smile, Trash2, X } from 'lucide-react';
 import { useEffect, type KeyboardEvent, type RefObject } from 'react';
-import { AttachmentPreview } from '../AttachmentPreview';
+import { AttachmentStrip } from './AttachmentStrip';
 import { EditBar } from '../EditBar';
 import { MentionPicker } from '../MentionPicker';
 import { StickerPanel } from '../StickerPanel';
@@ -53,15 +53,15 @@ export function ComposerControls({
   const { pickerOpen, candidates, activeRow, pickMention, setActiveIndex, pendingCaretRef } =
     mentions;
   const {
-    attachment,
-    setAttachment,
+    attachments: staged,
+    previewUrls,
+    removeAttachment,
     attachmentError,
     stickerOpen,
     setStickerOpen,
-    attachmentPreviewUrl,
     fileInputRef,
     stickerWrapRef,
-    acceptFile,
+    acceptFiles,
     sendSticker,
     sendGif,
   } = attachments;
@@ -139,11 +139,11 @@ export function ComposerControls({
           </Well>
         )
       )}
-      {attachment !== undefined && (
-        <AttachmentPreview
-          attachment={attachment}
-          previewUrl={attachmentPreviewUrl}
-          onCancel={() => setAttachment(undefined)}
+      {staged.length > 0 && (
+        <AttachmentStrip
+          attachments={staged}
+          previewUrls={previewUrls}
+          onRemove={removeAttachment}
         />
       )}
       {(voiceError !== undefined || attachmentError !== undefined) && (
@@ -178,11 +178,11 @@ export function ComposerControls({
               ref={fileInputRef}
               type="file"
               className="hidden"
-              multiple={false}
+              multiple
               onChange={(event) => {
-                const chosen = event.target.files?.[0];
-                if (chosen !== undefined) {
-                  acceptFile(chosen);
+                const chosen = event.target.files;
+                if (chosen !== null && chosen.length > 0) {
+                  acceptFiles([...chosen]);
                 }
                 event.target.value = '';
               }}

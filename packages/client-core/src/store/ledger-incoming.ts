@@ -110,6 +110,9 @@ export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
     if (body !== undefined) {
       ui.text = body;
     }
+    if (message.album !== undefined) {
+      ui.album = message.album;
+    }
     const replyTo = message.replyTo;
     if (replyTo !== undefined) {
       // Alias-aware: a reply names the message by the id both sides share (the

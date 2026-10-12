@@ -5,6 +5,8 @@ import { FileText, RotateCcw, ArrowUpRight } from 'lucide-react-native';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 
+import { LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
+import { useOpenMessageMenu } from '@/components/chat/message-menu-context';
 import { Text } from '@/components/ui/text';
 import { isTrustedMediaUrl, safeHttpUrl } from '@/lib/attachments';
 import { ICON } from '@/lib/colors';
@@ -68,6 +70,9 @@ export function AttachmentImage({
   onOpen,
 }: AttachmentImageProps) {
   const [broken, setBroken] = useState(false);
+  const openMenu = useOpenMessageMenu();
+  const longPress =
+    openMenu === undefined ? {} : { onLongPress: openMenu, delayLongPress: LONG_PRESS_MS };
   const trusted = isLoadableMediaUrl(attachment.url, trustedHosts);
   // A `gradient:` URL is a mock-mode demo placeholder (never fetched): it
   // renders the gradient tile below, like `ImageMessage` does for legacy
@@ -100,6 +105,7 @@ export function AttachmentImage({
           onPress={onOpen}
           disabled={onOpen === undefined}
           className="overflow-hidden rounded-xl border border-edge"
+          {...longPress}
         >
           <LinearGradient
             colors={demoGradient}
@@ -141,6 +147,7 @@ export function AttachmentImage({
         onPress={onOpen}
         disabled={onOpen === undefined}
         className="overflow-hidden rounded-xl border border-edge"
+        {...longPress}
       >
         <View style={{ width: IMAGE_WIDTH }}>
           <Image

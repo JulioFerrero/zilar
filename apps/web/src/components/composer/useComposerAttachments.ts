@@ -25,19 +25,42 @@ import {
 import { ComposerFailure, fork } from './useVoiceRecorder';
 
 const GIF_LOAD_FAILED = 'Could not load that GIF. Try another.';
+/** Telegram's cap, and the mobile picker's `selectionLimit` (T-1246). */
+const MAX_ALBUM_PHOTOS = 10;
+const FILE_EMPTY = 'That file is empty.';
+const FILE_TOO_LARGE = 'That file is larger than 50 MB.';
+const ALBUM_TOO_MANY = 'You can send up to 10 photos at once.';
+
+/** The single inline refusal a chosen file gets, before any request. */
+function refusal(file: File): string | undefined {
+  if (file.size === 0) {
+    return FILE_EMPTY;
+  }
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    return FILE_TOO_LARGE;
+  }
+  return undefined;
+}
 
 export interface ComposerAttachments {
+  /** The first staged file, for `canSend` and the single-file preview. */
   attachment: PendingAttachment | undefined;
+  /** Every staged file: several photos are sent as one album. */
+  attachments: PendingAttachment[];
+  /** The object URL of each staged image, aligned with `attachments`. */
+  previewUrls: (string | undefined)[];
   setAttachment: Dispatch<SetStateAction<PendingAttachment | undefined>>;
+  removeAttachment: (index: number) => void;
   attachmentError: string | undefined;
   setAttachmentError: Dispatch<SetStateAction<string | undefined>>;
   stickerOpen: boolean;
   setStickerOpen: Dispatch<SetStateAction<boolean>>;
-  attachmentPreviewUrl: string | undefined;
   fileInputRef: RefObject<HTMLInputElement | null>;
   stickerWrapRef: RefObject<HTMLSpanElement | null>;
   onPaste: (event: ReactClipboardEvent<HTMLDivElement>) => void;
-  acceptFile: (file: File) => void;
+  acceptFiles: (files: readonly File[]) => void;
+  /** Sends every staged file in order; two or more photos share one album id. */
+  sendPending: () => void;
   sendSticker: (sticker: StickerChoice) => void;
   sendGif: (gif: GifChoice) => void;
   reset: () => void;
@@ -56,7 +79,7 @@ export function useComposerAttachments({
   onCancelReply: () => void;
   storeApi: StoreApi<ChatStoreState>;
 }): ComposerAttachments {
-  const [attachment, setAttachment] = useState<PendingAttachment | undefined>(undefined);
+  const [staged, setStaged] = useState<PendingAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | undefined>(undefined);
   const [stickerOpen, setStickerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -64,43 +87,77 @@ export function useComposerAttachments({
   // wrapper closes the panel (the panel itself is viewport-fixed, so the
   // Composer subtree cannot contain it).
   const stickerWrapRef = useRef<HTMLSpanElement>(null);
+  const attachment = staged[0];
 
-  // The picker, paste and drop all funnel a chosen file through here. An empty
-  // or oversized file is refused inline, before any request.
-  const acceptFile = useCallback((file: File): void => {
+  // The picker, paste and drop all funnel their files through here. An empty
+  // or oversized file is refused inline, before any request. An all-photo pick
+  // stages up to ten photos as one album; anything else (a file, or a mixed
+  // pick) keeps the single-attachment behaviour.
+  const acceptFiles = useCallback((files: readonly File[]): void => {
     setAttachmentError(undefined);
-    if (file.size === 0) {
-      setAttachmentError('That file is empty.');
+    const chosen = [...files];
+    const first = chosen[0];
+    if (first === undefined) {
       return;
     }
-    if (file.size > MAX_ATTACHMENT_BYTES) {
-      setAttachmentError('That file is larger than 50 MB.');
+    if (!chosen.every((file) => classify(file) === 'image')) {
+      const error = refusal(first);
+      if (error !== undefined) {
+        setAttachmentError(error);
+        return;
+      }
+      setStaged([{ file: first, kind: classify(first) }]);
       return;
     }
-    setAttachment({ file, kind: classify(file) });
+    for (const file of chosen) {
+      const error = refusal(file);
+      if (error !== undefined) {
+        setAttachmentError(error);
+        return;
+      }
+    }
+    if (chosen.length > MAX_ALBUM_PHOTOS) {
+      setAttachmentError(ALBUM_TOO_MANY);
+    }
+    setStaged(chosen.slice(0, MAX_ALBUM_PHOTOS).map((file) => ({ file, kind: 'image' as const })));
   }, []);
 
-  const attachmentPreviewUrl = useMemo(
-    () =>
-      attachment !== undefined && attachment.kind === 'image'
-        ? objectUrlFor(attachment.file)
-        : undefined,
-    [attachment],
+  // The single-file `setAttachment(undefined)` the composer uses still clears
+  // the whole strip, so Escape and the preview's Remove keep working.
+  const setAttachment: Dispatch<SetStateAction<PendingAttachment | undefined>> = useCallback(
+    (update) => {
+      setStaged((current) => {
+        const next = typeof update === 'function' ? update(current[0]) : update;
+        return next === undefined ? [] : [next];
+      });
+    },
+    [],
   );
 
-  // The preview thumbnail's object URL is revoked when it is replaced or the
-  // composer unmounts, so it never leaks.
+  const removeAttachment = useCallback((index: number): void => {
+    setStaged((current) => current.filter((_, position) => position !== index));
+  }, []);
+
+  const previewUrls = useMemo(
+    () => staged.map((item) => (item.kind === 'image' ? objectUrlFor(item.file) : undefined)),
+    [staged],
+  );
+
+  // The preview thumbnails' object URLs are revoked when they are replaced or
+  // the composer unmounts, so they never leak.
   useEffect(
     () => () => {
-      if (attachmentPreviewUrl !== undefined) {
-        URL.revokeObjectURL(attachmentPreviewUrl);
+      for (const url of previewUrls) {
+        if (url !== undefined) {
+          URL.revokeObjectURL(url);
+        }
       }
     },
-    [attachmentPreviewUrl],
+    [previewUrls],
   );
 
   // A file dropped anywhere on the chat panel (or the page) opens the preview,
-  // exactly like the picker.
+  // exactly like the picker; a multi-file drop stages every photo at once.
   useEffect(() => {
     const onDragOver = (event: DragEvent): void => {
       if (event.dataTransfer?.types.includes('Files') === true) {
@@ -108,12 +165,12 @@ export function useComposerAttachments({
       }
     };
     const onDrop = (event: DragEvent): void => {
-      const file = event.dataTransfer?.files[0];
-      if (file === undefined) {
+      const files = event.dataTransfer?.files;
+      if (files === undefined || files.length === 0) {
         return;
       }
       event.preventDefault();
-      acceptFile(file);
+      acceptFiles([...files]);
     };
     document.addEventListener('dragover', onDragOver);
     document.addEventListener('drop', onDrop);
@@ -121,29 +178,28 @@ export function useComposerAttachments({
       document.removeEventListener('dragover', onDragOver);
       document.removeEventListener('drop', onDrop);
     };
-  }, [acceptFile]);
+  }, [acceptFiles]);
 
   const onPaste = (event: ReactClipboardEvent<HTMLDivElement>): void => {
     const transfer = event.clipboardData;
     if (transfer === undefined) {
       return;
     }
-    let file = transfer.files[0];
-    if (file === undefined) {
+    const files: File[] = [...transfer.files];
+    if (files.length === 0) {
       for (let index = 0; index < transfer.items.length; index += 1) {
         const item = transfer.items[index];
         if (item !== undefined && item.kind === 'file') {
           const fromItem = item.getAsFile();
           if (fromItem !== null) {
-            file = fromItem;
-            break;
+            files.push(fromItem);
           }
         }
       }
     }
-    if (file !== undefined) {
+    if (files.length > 0) {
       event.preventDefault();
-      acceptFile(file);
+      acceptFiles(files);
     }
   };
 
@@ -228,24 +284,53 @@ export function useComposerAttachments({
     [chatId, onCancelReply, replyTo, storeApi, value],
   );
 
+  // Sends every staged file in order. Two or more photos get one album id
+  // (`urn:zilar:album:0`), each with its `index`, and only the first carries
+  // the caption and the reply. Uploads then run in parallel and the list renders
+  // by `index`.
+  const sendPending = useCallback((): void => {
+    const store = storeApi.getState();
+    const caption = value.trim();
+    const count = staged.filter((item) => item.kind === 'image').length;
+    const albumId = count >= 2 ? crypto.randomUUID() : undefined;
+    let imageIndex = 0;
+    staged.forEach((item, index) => {
+      const isImage = item.kind === 'image';
+      store.sendAttachment(chatId, item.file, {
+        ...(index === 0 && caption.length > 0 ? { caption } : {}),
+        ...(index === 0 && replyTo !== undefined ? { replyTo } : {}),
+        ...(isImage && albumId !== undefined
+          ? { album: { id: albumId, index: imageIndex, count } }
+          : {}),
+      });
+      if (isImage) {
+        imageIndex += 1;
+      }
+    });
+    setStaged([]);
+  }, [chatId, replyTo, staged, storeApi, value]);
+
   const reset = (): void => {
-    setAttachment(undefined);
+    setStaged([]);
     setAttachmentError(undefined);
     setStickerOpen(false);
   };
 
   return {
     attachment,
+    attachments: staged,
+    previewUrls,
     setAttachment,
+    removeAttachment,
     attachmentError,
     setAttachmentError,
     stickerOpen,
     setStickerOpen,
-    attachmentPreviewUrl,
     fileInputRef,
     stickerWrapRef,
     onPaste,
-    acceptFile,
+    acceptFiles,
+    sendPending,
     sendSticker,
     sendGif,
     reset,

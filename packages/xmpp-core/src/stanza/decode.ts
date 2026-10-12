@@ -16,6 +16,7 @@ import type {
   Mention,
   TypingEvent,
 } from '../types';
+import { parseAlbum } from './album';
 import {
   parseCorrection,
   parseForward,
@@ -90,6 +91,8 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
 
   const reactions = parseReactions(inner);
 
+  const album = parseAlbum(inner);
+
   const forward = parseForward(inner);
 
   if (
@@ -113,6 +116,7 @@ export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): Dec
     if (sender.occupantId !== undefined) message.occupantId = sender.occupantId;
     if (body !== undefined) message.body = body;
     if (payload !== undefined) message.payload = payload;
+    if (album !== undefined) message.album = album;
     if (forward !== undefined) message.forward = forward;
     if (reactions !== undefined) message.reactions = reactions;
     if (correction !== undefined) message.correction = correction;

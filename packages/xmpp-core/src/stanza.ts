@@ -51,4 +51,6 @@ export {
   originIdOf,
 } from './stanza/parse-fields';
 
+export { albumElement, parseAlbum, ALBUM_ID_MAX, ALBUM_MAX } from './stanza/album';
+
 export { decodeMessageStanza } from './stanza/decode';

@@ -7,6 +7,7 @@ import type { SearchOwner } from '../search/service';
 import { localpartFor } from '../xmpp/provisioning';
 import type { EjabberdAdminClient } from '../xmpp/admin/types';
 import { readGroupchatPage, type GroupchatRow } from './archive-scan';
+import { albumKey } from './album-key';
 import { deliverToDevice } from './delivery';
 import { resolveCandidate } from './candidates';
 import type { PushServiceDeps } from './service';
@@ -150,8 +151,13 @@ async function notifyMemberForRow(
     notify: [row.originId],
     saw: 'duplicate' as const,
   };
+  // One album is one push per device (T-1270): a sibling row whose album
+  // sender key is already remembered stays silent, exactly like a repeated
+  // origin id.
+  const key = albumKey(verdict.message);
   for (const device of devices) {
-    if ((deps.service.recentlyNotified.get(device.node) ?? new Set()).has(row.originId)) {
+    const seen = deps.service.recentlyNotified.get(device.node);
+    if (seen !== undefined && (seen.has(row.originId) || (key !== undefined && seen.has(key)))) {
       continue;
     }
     const outcome = await Effect.runPromise(

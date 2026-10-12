@@ -1,5 +1,6 @@
 import { Effect, type Effect as EffectType } from 'effect';
 import { markPushFailed, markPushSent } from '../health-status';
+import { albumKey } from './album-key';
 import { newestMessageForUserEffect } from './archive-scan';
 import { buildNativeWakePayload, buildPushPayload, type ResolvedPushMessage } from './payload';
 import type { PushNotification } from './protocol';
@@ -203,7 +204,7 @@ export const deliverToDevice = Effect.fnUntraced(function* (
   // Marked only after a successful send. Per-node serialization keeps
   // concurrent IQs for one node ordered, so a retry cannot double-buzz:
   // the retry finds the origin id already seen and drops as `duplicate`.
-  markNotified(deps, device.node, scan.notify);
+  markNotified(deps, device.node, scan.notify, newest.message);
   return { kind: 'sent', userId: device.userId, deviceId: device.id };
 });
 
@@ -252,8 +253,15 @@ const sendWithCleanupEffect = Effect.fnUntraced(function* (
 const NOTIFIED_REMEMBERED = 500;
 
 // Remembers origin ids as notified per device node, so a retried publish
-// IQ or a later re-scan for the same node stays silent. Capped per node.
-function markNotified(deps: PushServiceDeps, node: string, originIds: string[]): void {
+// IQ or a later re-scan for the same node stays silent. A delivered album
+// also remembers its sender key, so a sibling row landing in a later page is
+// deduped too (T-1270). Capped per node.
+function markNotified(
+  deps: PushServiceDeps,
+  node: string,
+  originIds: string[],
+  message: ResolvedPushMessage,
+): void {
   let seen = deps.recentlyNotified.get(node);
   if (seen === undefined) {
     seen = new Set();
@@ -261,6 +269,10 @@ function markNotified(deps: PushServiceDeps, node: string, originIds: string[]):
   }
   for (const originId of originIds) {
     seen.add(originId);
+  }
+  const key = albumKey(message);
+  if (key !== undefined) {
+    seen.add(key);
   }
   if (seen.size > NOTIFIED_REMEMBERED) {
     const fresh = [...seen].slice(seen.size - NOTIFIED_REMEMBERED);

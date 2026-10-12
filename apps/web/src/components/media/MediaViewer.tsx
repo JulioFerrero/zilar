@@ -1,4 +1,4 @@
-import { photosOf, type UiMessage } from '@zilar/chat-core';
+import { photosOf, type UiMessage, type ViewerPhoto } from '@zilar/chat-core';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import {
   createContext,
@@ -19,6 +19,12 @@ import { useChatSelector } from '@/store/ChatStoreProvider';
 export interface MediaViewerTarget {
   chatId: string;
   messageId: string;
+  /**
+   * An album opened from a tile (T-1268): its photo ids, in index order. When
+   * present the viewer steps through the album first, then the rest of the chat
+   * (§4.5). Absent for a single-photo open.
+   */
+  albumIds?: readonly string[] | undefined;
 }
 
 export type OpenMediaViewer = (target: MediaViewerTarget) => void;
@@ -59,7 +65,18 @@ export function MediaViewerProvider({ children }: { children: ReactNode }) {
 function MediaViewer({ target, onClose }: { target: MediaViewerTarget; onClose: () => void }) {
   // The same slice the list renders (MessageList.tsx:68).
   const stored = useChatSelector((state) => state.messagesByChat[target.chatId]);
-  const photos = useMemo(() => photosOf(stored ?? EMPTY_MESSAGES), [stored]);
+  const photos = useMemo(() => {
+    const all = photosOf(stored ?? EMPTY_MESSAGES);
+    const scope = target.albumIds;
+    if (scope === undefined) {
+      return all;
+    }
+    const inScope = new Set(scope);
+    const album = scope
+      .map((id) => all.find((photo) => photo.messageId === id))
+      .filter((photo): photo is ViewerPhoto => photo !== undefined);
+    return [...album, ...all.filter((photo) => !inScope.has(photo.messageId))];
+  }, [stored, target.albumIds]);
   const [index, setIndex] = useState(() =>
     Math.max(
       0,

@@ -9,6 +9,7 @@ import { ProgressCard } from '../ProgressCard';
 import { VoiceMessage } from '../VoiceMessage';
 import { cn } from '@/lib/utils';
 import { mediaSrc } from '@/lib/attachments';
+import { AlbumGrid } from './AlbumGrid';
 import { MessageMeta } from './MessageMeta';
 import { SendFailure } from './SendFailure';
 
@@ -51,6 +52,28 @@ export function AttachmentBody({
     message.attachment !== undefined &&
     message.attachment.mime.startsWith('video/') &&
     isTrustedInlineVideoUrl(message.attachment.url, mediaHosts ?? EMPTY_HOSTS);
+  // An album head draws the whole grid (T-1268) instead of its single photo;
+  // the caption under it is the bubble's text body. A failed tile owns its own
+  // upload-failure Retry, but the fixed "Not sent" row (reason, Retry, Delete
+  // unsent) must still appear for the head, exactly as the single-photo paths
+  // do, so a failed send stays recoverable and deletable (T-0168).
+  if (message.album !== undefined) {
+    return (
+      <>
+        <AlbumGrid message={message} chat={chat} />
+        {sendFailed && (
+          <div className="px-1.5">
+            <SendFailure
+              chatId={chat.id}
+              messageId={message.id}
+              reason={message.failureReason}
+              onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+            />
+          </div>
+        )}
+      </>
+    );
+  }
   return (
     <>
       {message.image !== undefined && (

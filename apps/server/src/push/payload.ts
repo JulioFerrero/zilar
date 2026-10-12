@@ -30,6 +30,10 @@ export type ResolvedPushMessage = {
   place: string;
   text: string | undefined;
   messageId?: string;
+  /** The album a photo of a multi-photo message belongs to (T-1269). */
+  albumId?: string;
+  /** How many photos the album holds, when `albumId` is set. */
+  albumCount?: number;
 };
 
 export type PushFilterInput = {
@@ -57,8 +61,7 @@ export function buildPushPayload(
     return undefined;
   }
   const title = truncateChars(titleFor(message), 140);
-  const preview =
-    input.showPreviews && message.text !== undefined ? previewFor(message.text) : undefined;
+  const preview = input.showPreviews ? previewFor(message) : undefined;
   const payload: PushPayload = {
     title,
     body: preview ?? 'New message',
@@ -103,12 +106,20 @@ function titleFor(message: ResolvedPushMessage): string {
   return `${message.senderName} in ${message.place}`;
 }
 
-function previewFor(text: string): string {
-  const collapsed = text.replace(/\s+/g, ' ').trim();
-  if (collapsed === '') {
-    return 'New message';
+// The preview body: the message text, or "{n} photos" for an album whose
+// photos carry no caption. `undefined` means the generic body is used.
+function previewFor(message: ResolvedPushMessage): string | undefined {
+  if (message.text !== undefined) {
+    const collapsed = message.text.replace(/\s+/g, ' ').trim();
+    if (collapsed === '') {
+      return 'New message';
+    }
+    return truncateChars(collapsed, PushPayloadSchema.PREVIEW_CHARS);
   }
-  return truncateChars(collapsed, PushPayloadSchema.PREVIEW_CHARS);
+  if (message.albumCount !== undefined && message.albumCount >= 2) {
+    return `${message.albumCount} photos`;
+  }
+  return undefined;
 }
 
 function truncateChars(value: string, maxChars: number): string {

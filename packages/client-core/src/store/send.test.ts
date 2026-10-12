@@ -752,6 +752,29 @@ describe('sendAttachment (core)', () => {
     expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sent');
   });
 
+  it('carries an album option into sendMessage and the optimistic bubble', async () => {
+    const { ctx, core, state } = harness();
+    const album = { id: 'album-1', index: 1, count: 3 };
+    sendAttachment(
+      ctx,
+      ANA,
+      { name: 'trip.jpg', size: 3, type: 'image/jpeg' },
+      { caption: 'trip', album },
+    );
+
+    const optimistic = state().messagesByChat[ANA]?.at(-1);
+    expect(optimistic?.album).toEqual(album);
+    expect(optimistic?.text).toBe('trip');
+
+    await flush();
+    expect(core.sendMessage).toHaveBeenCalledWith(
+      ANA,
+      'chat',
+      'trip',
+      expect.objectContaining({ album }),
+    );
+  });
+
   it('marks a failed upload failed with its reason', async () => {
     const { ctx, state } = harness({
       bytes: {
@@ -827,6 +850,45 @@ describe('forwardMessages (core)', () => {
     expect(core.sendMessage).toHaveBeenCalledWith(TEAM, 'groupchat', 'forward me', {
       forward: expect.objectContaining({ sender_name: 'Ana' }),
     });
+  });
+
+  it('regroups a whole forwarded album under one fresh id (T-1273)', async () => {
+    const { ctx, core, state, ledger } = harness();
+    const sources = [0, 1, 2].map((index) => ({
+      id: `srv-album-${index}`,
+      chatId: ANA,
+      senderId: 'u-ana',
+      senderName: 'Ana',
+      text: `photo ${index}`,
+      createdAt: NOW,
+      status: 'sent' as const,
+      album: { id: 'src-album', index, count: 3 },
+    }));
+    for (const message of sources) {
+      ledger.rememberAuthor(message.id, { jid: 'ana@zilar.test', resolved: true });
+    }
+
+    forwardMessages(ctx, [TEAM], sources);
+    await flush();
+
+    const copies = (state().messagesByChat[TEAM] ?? []).filter((item) => item.album !== undefined);
+    expect(copies).toHaveLength(3);
+    const freshId = copies[0]?.album?.id;
+    expect(freshId).toBeTypeOf('string');
+    expect(freshId).not.toBe('src-album');
+    expect(copies.map((copy) => [copy.album?.id, copy.album?.index, copy.album?.count])).toEqual([
+      [freshId, 0, 3],
+      [freshId, 1, 3],
+      [freshId, 2, 3],
+    ]);
+    expect(core.sendMessage).toHaveBeenCalledTimes(3);
+    expect(core.sendMessage).toHaveBeenNthCalledWith(
+      2,
+      TEAM,
+      'groupchat',
+      'photo 1',
+      expect.objectContaining({ album: { id: freshId, index: 1, count: 3 } }),
+    );
   });
 });
 

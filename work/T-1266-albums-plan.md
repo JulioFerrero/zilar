@@ -1,7 +1,7 @@
 ---
 id: T-1266
 title: "Audit (docs only): albums — several photos sent together show as one bubble/grid in both apps, like Telegram's grouped_id; design the wire marker, the client grouping, send/receive/reply/delete/forward rules, then split it into tasks"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1266-albums-plan
 model: auto
@@ -65,4 +65,93 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### What I did
+
+Wrote `docs/audit/albums-plan.md` (docs only, no code), following the spec's five points.
+It cites `file:line` for every claim. The key findings:
+
+- **The wire today:** attachments are **not** XEP-0066 OOB (T-0065 forbade it,
+  `work/T-0065-attachments-web.md:36`; a repo-wide grep for `oob` finds no producer/parser).
+  The attachment is a JSON payload in `<agent xmlns='urn:zilar:agent:0'>`
+  (`packages/xmpp-core/src/stanza/build-outgoing.ts:99-101`, decoded at `decode.ts:82-89`),
+  and the payload union holds **one** attachment (`packages/protocol/src/payload.ts:40-44`).
+  So one message = one attachment = one bubble.
+- **Recommendation (Option A):** one message per photo, each carrying
+  `<album xmlns='urn:zilar:album:0' id index count/>`, a new namespace in
+  `namespaces.ts:1-28`. Rejected Option B (one message with several OOB URLs): it breaks
+  non-Zilar clients and every `message.attachment` reader, and destroys per-photo actions.
+  Weighed the fallback, MAM/page splits (`history.ts:12`), push, unread and previews.
+- **Grouping:** a new album render item in `packages/chat-core/src/messages.ts`
+  (`groupMessages`, `:35-75`) consumed by web (`MessageList.tsx:116-122`, `:338-383`) and
+  mobile (`message-list.tsx:154-160`, `:165-188`, `message-list-row.tsx:84-115`); the task's
+  "client-core grouping" is really `chat-core`.
+- **Rules:** reply/reaction/delete/forward/edits map to one message id today
+  (`actions.ts:22-173`, `forward.ts:102-171`, `build-outgoing.ts:140-176`); "whole album" is
+  a client-side loop over the album ids; the viewer (`photos.ts:18-32`, `MediaViewer.tsx`,
+  `attachment-body.tsx:49-54`) gets scoped to the album when opened on a tile; cap 10.
+- **Sending:** mobile already loops (`composer-media.ts:187-195`); web's picker is single
+  (`useComposerAttachments.ts:70-81`, `Composer.tsx:264-265`); an `album` field on
+  `SendAttachmentOptions` (`send/context.ts:37-40`); parallel uploads, ordered render.
+- **Push:** one push per album via the existing scan (`archive-scan.ts:85-111`, `:100-104`)
+  plus an `albumCount` on `ResolvedPushMessage` (`payload.ts:24-33`) and a "3 photos"
+  preview (`:106-112`); the Web Push summary's `message-count` is not usable
+  (`notification.ts:57-83`, `protocol.ts:23`).
+- **Open decisions** (8, each with a recommendation) and a **4-5 task split**, each with
+  Allowed files and the ≤400-line rule noted (`MessageList.tsx` and `MessageBubble.tsx` are
+  each exactly 400 lines; `build-outgoing.ts` is 380).
+
+### Files changed
+
+- `docs/audit/albums-plan.md` (new).
+- `work/T-1266-albums-plan.md` (this report).
+
+Both are in Allowed files.
+
+### Commands I ran
+
+- `pnpm install` → `Done in 11.2s using pnpm v10.32.1` (1181 packages; the known
+  `@types/react-dom` peer warning in `apps/mobile` only).
+- `pnpm gate` (from the repo root), real output:
+  ```
+  gate: 2 changed file(s) against main
+  PASS  install (frozen)  (1.0s)
+  PASS  format  (1.0s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (1.2s)
+  SKIP effect (no source files changed)
+  scope: every changed file is inside the Allowed files
+  migration: every added migration continues from the base
+  GATE PASS
+  ```
+- No test file was run: this task changes no code, and the spec ends "No code." The gate's
+  changed set was the two docs above and it found no source files.
+
+### Deviations / interpretation
+
+- The spec's split phrase says "xmpp-core marker + client-core grouping with tests"; the
+  message-list grouping helpers actually live in **`packages/chat-core`** (`groupMessages`,
+  `messages.ts:35`), and `client-core` owns the store/unread layer. I named Task 1
+  "xmpp-core marker + chat-core grouping" and put the store-level unread collapse in an
+  optional Task 5.
+- The spec's read list says "XEP-0066 OOB plus our own elements"; the code does not use
+  XEP-0066 (grep), and I documented that as the starting fact.
+- `docs/audit/albums-plan.md` is 433 lines (`wc -l`); it does not count against the
+  400-line code rule, which the task applies to code files.
+
+### Open questions
+
+None that block; the eight design decisions are in `docs/audit/albums-plan.md` §8, each
+with a recommendation.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-12: approved. Pre-review clean (4 nits).**
+- **The plan** (`docs/audit/albums-plan.md`, 433 lines):
+  - Option A on the wire: one message per photo with `<album xmlns='urn:zilar:album:0' id index count/>`, so other XMPP clients still see each photo;
+  - a chat-core album render item;
+  - per-app grids;
+  - per-photo actions, with album-wide actions as client loops;
+  - a cap of 10;
+  - one push per album;
+  - 8 open decisions, each with a recommendation, and a 5-task split with Allowed files.
+- **Next:** the lead starts Task 1 (marker + grouping, with tests) on the recommendations, because they're reversible product defaults. The decisions go to Julio in NOW.md.

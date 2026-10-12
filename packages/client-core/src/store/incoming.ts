@@ -152,6 +152,14 @@ export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
 
   const active = ctx.get().activeChatId === chatId && ctx.ports.isVisible();
   const isRead = active;
+  // An album's first photo bumps the badge; its later photos share the album
+  // id with a message already in the list from the same sender, so they add
+  // nothing — the album counts once (T-1272).
+  const albumId = ui.album?.id;
+  const laterAlbumPhoto =
+    albumId !== undefined &&
+    existing.some((item) => item.album?.id === albumId && item.senderId === ui.senderId);
+  const unreadDelta = isRead || laterAlbumPhoto ? 0 : 1;
   // Only the AI's own message in its DM finishes the draft. A message from my
   // own JID (e.g. my second device) must leave the draft running.
   const fromAi = message.fromJid === chatId && !k.isOwnSender(message.fromJid);
@@ -170,7 +178,7 @@ export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
     chats: moveChatToTop(
       state.chats.map((chat) =>
         chat.id === chatId
-          ? { ...chat, lastMessage: ui, unread: isRead ? 0 : chat.unread + 1 }
+          ? { ...chat, lastMessage: ui, unread: isRead ? 0 : chat.unread + unreadDelta }
           : chat,
       ),
       chatId,

@@ -2,12 +2,14 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { SearchOwner } from '../search/service';
+import type { ArchiveRow, SearchOwner } from '../search/service';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedGroup, seedUser } from '../test-support/seed';
 import { localpartFor } from '../xmpp/provisioning';
-import type { ArchiveCandidate } from './archive-scan';
+import { albumKey } from './album-key';
+import { newestMessageForUserEffect, type ArchiveCandidate } from './archive-scan';
 import { resolveCandidate } from './candidates';
+import { buildPushPayload } from './payload';
 import type { PushServiceDeps } from './service';
 
 // A fixed clock so the mute windows are exact: every `muted_until` is built
@@ -44,6 +46,10 @@ interface RoomRowOverrides {
   xml?: string;
 }
 
+// An archive row as the candidate read selects it: the pool's `ArchiveRow`
+// plus the aliased `text` column (`txt AS text`) the scan reads.
+type AlbumRow = ArchiveRow & { text: string | null };
+
 function roomRow(overrides: RoomRowOverrides): ArchiveCandidate {
   return {
     owner: overrides.owner,
@@ -54,6 +60,23 @@ function roomRow(overrides: RoomRowOverrides): ArchiveCandidate {
     timestamp: 0,
     text: overrides.text ?? 'hello',
     xml: overrides.xml ?? '<message><body>hello</body></message>',
+  };
+}
+
+// One row of a DM multi-photo album: every photo carries the T-1267 marker
+// with the same id and no caption.
+function albumDmRow(userId: string, peer: string, index: number): AlbumRow {
+  return {
+    owner: localpartFor(userId),
+    peer: `${peer}/phone`,
+    barePeer: peer,
+    kind: 'chat',
+    nick: '',
+    originId: `origin-${index}`,
+    timestamp: BigInt(NOW.getTime()) * 1000n,
+    headline: '',
+    text: null,
+    xml: `<message type="chat" from="${peer}/phone"><album xmlns="urn:zilar:album:0" id="alb-1" index="${index}" count="3"/></message>`,
   };
 }
 
@@ -286,5 +309,91 @@ describe('resolveCandidate', () => {
       status: 'ok',
       message: { text: '> old\nmy reply' },
     });
+  });
+
+  it('marks a 3-photo album once: one candidate, both siblings notified', async () => {
+    const userId = await seedUser(context);
+    const peer = `ana@${context.config.xmpp.domain}`;
+    // Newest first, like the archive read; every photo carries the marker.
+    const rows: AlbumRow[] = [2, 1, 0].map((index) => albumDmRow(userId, peer, index));
+    const scanDeps: PushServiceDeps = {
+      ...deps,
+      archive: { query: () => Promise.resolve(rows), close: () => Promise.resolve() },
+    };
+
+    const scan = await Effect.runPromise(newestMessageForUserEffect(scanDeps, userId, 'node-1'));
+
+    expect(scan.newest?.message.albumCount).toBe(3);
+    expect(new Set(scan.notify)).toEqual(new Set(['origin-0', 'origin-1', 'origin-2']));
+  });
+
+  it('shows the photo count as the album body', () => {
+    const payload = buildPushPayload(
+      {
+        chatJid: 'ana@zilar.localhost',
+        senderName: 'Ana',
+        place: 'Ana',
+        text: undefined,
+        messageId: 'origin-1',
+        albumId: 'alb-1',
+        albumCount: 3,
+      },
+      { muted: false, visible: true, showPreviews: true },
+    );
+    expect(payload?.body).toBe('3 photos');
+  });
+
+  it('treats a malformed album marker as a single photo', async () => {
+    const userId = await seedUser(context);
+    const peer = `ana@${context.config.xmpp.domain}`;
+    const row: ArchiveCandidate = {
+      owner: localpartFor(userId),
+      barePeer: peer,
+      kind: 'chat',
+      nick: '',
+      originId: 'origin-broken',
+      timestamp: 0,
+      text: null,
+      // `count="1"` breaks the §1.4 bound, so the marker is dropped.
+      xml: `<message type="chat" from="${peer}/phone"><album xmlns="urn:zilar:album:0" id="alb-1" index="0" count="1"/></message>`,
+    };
+    const allowed: SearchOwner = { ...ownerFor(userId), peerNames: new Map([[peer, 'Ana']]) };
+
+    const verdict = await resolveCandidate(deps, userId, allowed, row);
+
+    expect(verdict.status).toBe('ok');
+    if (verdict.status !== 'ok') {
+      return;
+    }
+    expect(verdict.message.albumCount).toBeUndefined();
+    const payload = buildPushPayload(verdict.message, {
+      muted: false,
+      visible: true,
+      showPreviews: true,
+    });
+    expect(payload?.body).toBe('New message');
+  });
+
+  it('sends nothing for an album sibling that lands after delivery', async () => {
+    const userId = await seedUser(context);
+    const peer = `ana@${context.config.xmpp.domain}`;
+    const row = albumDmRow(userId, peer, 2);
+    const delivered = {
+      chatJid: peer,
+      senderName: 'Someone',
+      place: 'Someone',
+      text: undefined,
+      albumId: 'alb-1',
+    };
+    const scanDeps: PushServiceDeps = {
+      ...deps,
+      archive: { query: () => Promise.resolve([row]), close: () => Promise.resolve() },
+      recentlyNotified: new Map([['node-1', new Set([albumKey(delivered) ?? ''])]]),
+    };
+
+    const scan = await Effect.runPromise(newestMessageForUserEffect(scanDeps, userId, 'node-1'));
+
+    expect(scan.newest).toBeUndefined();
+    expect(scanDeps.recentlyNotified.get('node-1')?.has('origin-2')).toBe(true);
   });
 });

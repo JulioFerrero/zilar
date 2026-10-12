@@ -3,6 +3,7 @@ import { Effect } from 'effect';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 
+import { useAlbumMembers } from '@/components/chat/album-members';
 import { MessageActionsSheet } from '@/components/chat/message-actions-sheet';
 import { useChatStore } from '@/store/chat-store-provider';
 
@@ -85,6 +86,16 @@ export function BubbleActionsSheet({
   const deleteFailedMessage = useChatStore((state) => state.deleteFailedMessage);
   const deleteForMe = useChatStore((state) => state.deleteForMe);
   const currentUserId = useChatStore((state) => state.currentUserId);
+  // T-1274: on an album bubble Delete acts on every photo. The list row hands
+  // the grid its grouped members; with two or more, both confirms loop over all
+  // of them (an album is one sender, so the own/peer rule is unchanged). A lone
+  // photo, or a bubble drawn without a provider, keeps the single-message
+  // action.
+  const members = useAlbumMembers();
+  const albumMembers =
+    message.album !== undefined && members !== null && members.length >= 2 ? members : undefined;
+  const deleteTargets = albumMembers ?? [message];
+  const deleteTitle = albumMembers === undefined ? undefined : 'Delete album?';
   // A failed own text (the core's `retryText` guard, mirrored): attachments,
   // stickers, voice notes and images keep their own retry paths.
   const failedText =
@@ -102,6 +113,7 @@ export function BubbleActionsSheet({
       canEdit={canEdit}
       canDelete={canDelete || canDeleteForMe}
       deleteLabel={isDm ? (own ? 'Delete' : 'Delete for me') : 'Delete for everyone'}
+      deleteTitle={deleteTitle}
       ownDelete={isDm && own}
       dmDelete={isDm}
       senderName={senderName}
@@ -158,12 +170,16 @@ export function BubbleActionsSheet({
       onConfirmDelete={() => {
         setConfirmOpen(false);
         setMenuOpen(false);
-        onDelete?.(message);
+        for (const target of deleteTargets) {
+          onDelete?.(target);
+        }
       }}
       onConfirmDeleteForMe={() => {
         setConfirmOpen(false);
         setMenuOpen(false);
-        void deleteForMe(message.chatId, message.id);
+        for (const target of deleteTargets) {
+          void deleteForMe(target.chatId, target.id);
+        }
       }}
       onReact={(emoji) => {
         setMenuOpen(false);

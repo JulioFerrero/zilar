@@ -1,5 +1,5 @@
 import type { Deferred } from 'effect';
-import type { ChatSummary, ReplyRef, UiMention } from '@zilar/chat-core';
+import type { AlbumRef, ChatSummary, ReplyRef, UiMention } from '@zilar/chat-core';
 import type { CoreCtx } from '../ctx';
 import type { CorePorts, SendPorts } from '../ports';
 
@@ -37,6 +37,8 @@ export interface SendTextOptions {
 export interface SendAttachmentOptions {
   readonly caption?: string | undefined;
   readonly replyTo?: ReplyRef | undefined;
+  /** Album membership (`urn:zilar:album:0`) for a photo sent as part of a pick. */
+  readonly album?: AlbumRef | undefined;
 }
 
 export interface SendStickerInput {

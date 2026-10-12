@@ -16,6 +16,7 @@ export type {
   LoadHistoryOptions,
   Mention,
   MentionInput,
+  MessageAlbum,
   MessageCorrection,
   MessageReactions,
   MessageRetraction,

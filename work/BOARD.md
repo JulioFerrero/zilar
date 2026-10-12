@@ -1301,8 +1301,17 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1261](T-1261-account-deletion-request.md) | Account deletion request/cancel/status with 7-day grace (migration 0053); sign-in cancels; nothing deletes yet | 2026-10-12 |
 | [T-1259](T-1259-mobile-profile-bio.md) | Mobile: Bio field in Profile; bio on the @handle card | 2026-10-12 |
 | [T-1247](T-1247-web-delete-for-me-clear-history.md) | Web: Delete for me on any DM message, Clear history; client-core delete-own | 2026-10-12 |
-| [T-1266](T-1266-albums-plan.md) | Audit: albums plan (wire marker, grouping, rules, task split), docs only | in-progress | auto | T-1246 | parity wave 5 |
 | [T-1264](T-1264-fallback-on-provider-auth.md) | Lead tooling: a provider auth failure (401) falls back like a quota error | 2026-10-12 |
 | [T-1263](T-1263-mobile-delete-for-me-clear-history.md) | Mobile: Delete for me on any DM message, Clear history | 2026-10-12 |
 | [T-1262](T-1262-account-export.md) | Export my messages: streamed JSON of profile, contacts and own archive (caps, fresh session, 1/h) | 2026-10-12 |
 | [T-1265](T-1265-web-export-button.md) | Web: Export my messages button in Profile | 2026-10-12 |
+| [T-1266](T-1266-albums-plan.md) | Audit: albums plan (wire marker, grouping, rules, task split) | 2026-10-12 |
+| [T-1267](T-1267-albums-wire-grouping.md) | Albums 1: album marker in xmpp-core, grouping and N-photos preview in chat-core | 2026-10-12 |
+| [T-1269](T-1269-albums-push.md) | Albums 4: one push per album in DMs, 'N photos' preview | 2026-10-12 |
+| [T-1270](T-1270-albums-push-groups.md) | Albums push: one push per album in groups too; late siblings stay silent | 2026-10-12 |
+| [T-1268](T-1268-albums-web.md) | Albums 2: web multi-select send, album grid, viewer scoped to the album; album kept on the wire | 2026-10-12 |
+| [T-1271](T-1271-albums-mobile.md) | Albums 3: mobile album send, grid and album-first viewer | 2026-10-12 |
+| [T-1272](T-1272-albums-unread.md) | Albums 5: an album counts as 1 unread (server + live); server preview 'N photos' | 2026-10-12 |
+| [T-1273](T-1273-albums-actions-web.md) | Albums: album-wide Delete and Forward on web; a forwarded album stays one album | 2026-10-12 |
+| [T-1274](T-1274-albums-actions-mobile.md) | Albums: album-wide Delete and Forward on mobile | 2026-10-12 |
+| [T-1275](T-1275-photo-long-press-menu.md) | Mobile: long-press on a photo opens the message menu, not the viewer | 2026-10-12 |

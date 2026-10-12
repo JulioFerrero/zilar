@@ -2,11 +2,13 @@ import { Effect } from 'effect';
 import {
   forwardedPayloadFor,
   forwardedUiFieldsFor,
+  type AlbumRef,
   type ChatSummary,
   type UiMessage,
 } from '@zilar/chat-core';
 import type { ForwardOrigin, Payload } from '@zilar/protocol';
 import { ForwardOriginSchema, isValid } from '@zilar/protocol';
+import { forwardedAlbumRefs } from './album';
 import { linkSent, nextLocalId, queueOutgoing, rememberMyAuthor } from './context';
 import type { SendCtx } from './context';
 import { fromPromise } from '../ctx';
@@ -67,6 +69,7 @@ function runForwardSend(
   body: string,
   payload: Payload | undefined,
   origin: ForwardOrigin,
+  album: AlbumRef | undefined,
 ): void {
   const current = ctx.core;
   if (current === undefined) {
@@ -80,6 +83,7 @@ function runForwardSend(
       current.sendMessage(target.id, coreKind(target), body, {
         ...(payload === undefined ? {} : { payload }),
         forward: origin,
+        ...(album === undefined ? {} : { album }),
       }),
     ).pipe(
       Effect.andThen((sent) =>
@@ -106,6 +110,29 @@ export function forwardMessages(
   options?: { comment?: string },
 ): void {
   const comment = options?.comment?.trim();
+  // The copies worth forwarding do not depend on the target: pick them once,
+  // then regroup any source album per target below (T-1273). Grouping the sent
+  // copies (not the input) keeps `count` equal to what actually arrives.
+  const copies = messages.flatMap((message) => {
+    if (
+      message.deleted === true ||
+      message.failed === true ||
+      message.status === 'failed' ||
+      message.status === 'sending'
+    ) {
+      return [];
+    }
+    const origin = forwardOriginFor(ctx, message);
+    if (origin === undefined) {
+      return [];
+    }
+    const payload = forwardedPayloadFor(message);
+    const body = message.text ?? '';
+    if (body.length === 0 && payload === undefined) {
+      return [];
+    }
+    return [{ message, origin, payload, body }];
+  });
   const visited = new Set<string>();
   for (const targetId of targets) {
     if (visited.has(targetId)) {
@@ -117,24 +144,9 @@ export function forwardMessages(
       continue;
     }
     let queued = false;
-    for (const message of messages) {
-      if (
-        message.deleted === true ||
-        message.failed === true ||
-        message.status === 'failed' ||
-        message.status === 'sending'
-      ) {
-        continue;
-      }
-      const origin = forwardOriginFor(ctx, message);
-      if (origin === undefined) {
-        continue;
-      }
-      const payload = forwardedPayloadFor(message);
-      const body = message.text ?? '';
-      if (body.length === 0 && payload === undefined) {
-        continue;
-      }
+    const albums = forwardedAlbumRefs(copies.map((copy) => copy.message));
+    for (const { message, origin, payload, body } of copies) {
+      const album = albums.get(message);
       const localId = nextLocalId(ctx);
       const copy: UiMessage = {
         id: localId,
@@ -146,6 +158,7 @@ export function forwardMessages(
         forward: origin,
         ...(body.length === 0 ? {} : { text: body }),
         ...(payload === undefined ? {} : forwardedUiFieldsFor(payload)),
+        ...(album === undefined ? {} : { album }),
       };
       // Key the echo queue exactly as the matching normal send does, so the
       // server echo links to this bubble instead of duplicating it.
@@ -160,7 +173,7 @@ export function forwardMessages(
         ctx.k.rememberBaseText(localId, body);
       }
       queued = true;
-      runForwardSend(ctx, target, localId, body, payload, origin);
+      runForwardSend(ctx, target, localId, body, payload, origin, album);
     }
     // The comment is a separate normal text message, only when this target
     // received at least one copy.

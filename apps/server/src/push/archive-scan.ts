@@ -1,5 +1,7 @@
 import { Duration, Effect, type Effect as EffectType } from 'effect';
 import { allowedArchives, type ArchivePool, type SearchOwner } from '../search/service';
+import { albumInfoFromXml } from '../xmpp/album-xml';
+import { albumKey } from './album-key';
 import { resolveCandidate } from './candidates';
 import type { ResolvedPushMessage } from './payload';
 import { ArchiveUnavailable, type PushServiceDeps } from './service';
@@ -94,12 +96,36 @@ export const newestMessageForUserEffect = Effect.fnUntraced(function* (
         catch: () => new ArchiveUnavailable(),
       });
       if (verdict.status === 'ok') {
+        // A sibling of an album this node already pushed adds nothing: the
+        // delivery remembered the album's sender key and a later MAM row
+        // (F2) must stay silent. The row is remembered so a later trigger
+        // does not reconsider it either.
+        const key = albumKey(verdict.message);
+        if (key !== undefined && seen.has(key)) {
+          seen.add(row.originId);
+          continue;
+        }
         // The sent message plus every older row this read superseded. Rows
         // skipped as muted/hidden stop the walk instead (see the interface
-        // comment): they are never marked.
+        // comment): they are never marked. An album's photos archive as one
+        // row each, so every scanned row of the same album id and sender is
+        // marked with the winner: the next sibling's IQ then sends nothing.
+        const albumId = verdict.message.albumId;
+        const albums =
+          albumId === undefined
+            ? []
+            : rows
+                .filter(
+                  (sibling) =>
+                    sibling.originId !== row.originId &&
+                    sibling.originId !== '' &&
+                    sameSender(row, sibling) &&
+                    albumInfoFromXml(sibling.xml)?.id === albumId,
+                )
+                .map((sibling) => sibling.originId);
         return {
           newest: { message: verdict.message },
-          notify: [row.originId, ...superseded],
+          notify: [row.originId, ...superseded, ...albums],
           saw: 'duplicate',
         };
       }
@@ -138,6 +164,12 @@ export const newestMessageForUserEffect = Effect.fnUntraced(function* (
 // enough to notify; an older row never is.
 function isFresh(timestamp: ArchiveCandidate['timestamp'], oldestMicros: bigint): boolean {
   return BigInt(timestamp) >= oldestMicros;
+}
+
+// Two rows came from the same sender: the same room and nick in a group, the
+// same peer in a DM. Used to keep an album's sibling rows together (T-1269).
+function sameSender(a: ArchiveCandidate, b: ArchiveCandidate): boolean {
+  return a.owner === b.owner && a.barePeer === b.barePeer && a.nick === b.nick;
 }
 
 // The columns every candidate read returns, in the shape `ArchiveCandidate`

@@ -28,6 +28,13 @@ export interface UiImage {
   height: number;
 }
 
+/** One photo's place in an album: the shared `id`, its `index`, and the total `count`. */
+export interface AlbumRef {
+  id: string;
+  index: number;
+  count: number;
+}
+
 export interface ReplyRef {
   id: string;
   senderName: string;
@@ -68,6 +75,8 @@ export interface UiMessage {
   image?: UiImage;
   /** A file or image sent with the `attachment` payload (T-0065). */
   attachment?: Attachment;
+  /** Album membership (`urn:zilar:album:0`), present on every photo of an album. */
+  album?: AlbumRef;
   card?: Payload;
   /**
    * True when an outgoing attachment could not be uploaded. The message keeps
@@ -219,4 +228,18 @@ export interface MessageItem {
   lastInGroup: boolean;
 }
 
-export type RenderItem = DateSeparatorItem | MessageItem;
+/**
+ * One album in the message list: its loaded photos, in `index` order. `message`
+ * is the album's first photo, so a list that only knows how to draw a message
+ * bubble keeps working until the grid lands (T-1267; the grid comes later).
+ */
+export interface AlbumItem {
+  kind: 'album';
+  message: UiMessage;
+  messages: UiMessage[];
+  count: number;
+  firstInGroup: boolean;
+  lastInGroup: boolean;
+}
+
+export type RenderItem = DateSeparatorItem | MessageItem | AlbumItem;

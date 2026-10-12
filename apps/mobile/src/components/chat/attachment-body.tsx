@@ -1,7 +1,8 @@
-import { formatTime, parseUrl, photosOf, type UiMessage } from '@zilar/chat-core';
+import { formatTime, parseUrl, photosOf, type UiMessage, type ViewerPhoto } from '@zilar/chat-core';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { AlbumGrid } from '@/components/chat/album-grid';
 import {
   AttachmentFileRow,
   AttachmentImage,
@@ -47,11 +48,33 @@ export function AttachmentBody({
   opening = false,
 }: AttachmentBodyProps) {
   const attachment = message.attachment;
-  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewer, setViewer] = useState<{
+    messageId: string;
+    albumIds?: readonly string[];
+  } | null>(null);
   const trustedHosts = useChatStore((state) => state.mediaTrustedHosts);
   const messages = useChatStore((state) => state.messagesByChat[message.chatId]);
   const photos = useMemo(() => photosOf(messages ?? []), [messages]);
-  const startIndex = photos.findIndex((photo) => photo.messageId === message.id);
+  // Opening a tile scopes the viewer to the album (§4.5): the album's photos
+  // first, in `index` order, then the rest of the chat. A single-photo open
+  // keeps the chat's photo order unchanged.
+  const viewerPhotos = useMemo<ViewerPhoto[]>(() => {
+    if (viewer === null || viewer.albumIds === undefined) {
+      return photos;
+    }
+    const inScope = new Set(viewer.albumIds);
+    const album = viewer.albumIds
+      .map((id) => photos.find((photo) => photo.messageId === id))
+      .filter((photo): photo is ViewerPhoto => photo !== undefined);
+    return [...album, ...photos.filter((photo) => !inScope.has(photo.messageId))];
+  }, [photos, viewer]);
+  const startIndex =
+    viewer === null
+      ? 0
+      : Math.max(
+          0,
+          viewerPhotos.findIndex((photo) => photo.messageId === viewer.messageId),
+        );
   const hosts = trustedHosts ?? new Set<string>();
   if (attachment === undefined) {
     return null;
@@ -67,7 +90,17 @@ export function AttachmentBody({
   const failed = message.failed === true;
   const gifVideo = isGifVideoAttachment(attachment, hosts);
   const content =
-    attachment.kind === 'image' && !gifVideo ? (
+    message.album !== undefined ? (
+      <AlbumGrid
+        message={message}
+        onOpen={
+          failed || uploading
+            ? undefined
+            : (messageId, albumIds) => setViewer({ messageId, albumIds })
+        }
+        {...(onRetryAttachment === undefined ? {} : { onRetry: onRetryAttachment })}
+      />
+    ) : attachment.kind === 'image' && !gifVideo ? (
       <AttachmentImage
         attachment={attachment}
         chatId={message.chatId}
@@ -77,7 +110,7 @@ export function AttachmentBody({
         progress={upload.uploadProgress}
         failed={failed}
         onRetry={failed ? () => onRetryAttachment?.(message) : undefined}
-        onOpen={failed || uploading ? undefined : () => setViewerOpen(true)}
+        onOpen={failed || uploading ? undefined : () => setViewer({ messageId: message.id })}
       />
     ) : attachment.kind === 'file' && !gifVideo ? (
       <AttachmentFileRow
@@ -138,13 +171,13 @@ export function AttachmentBody({
           />
         ) : null}
       </View>
-      {attachment.kind === 'image' && !gifVideo && !failed && !uploading && viewerOpen ? (
+      {viewer !== null && !failed && !uploading ? (
         <AttachmentViewer
           chatId={message.chatId}
-          photos={photos}
+          photos={viewerPhotos}
           startIndex={startIndex}
           trustedHosts={hosts}
-          onClose={() => setViewerOpen(false)}
+          onClose={() => setViewer(null)}
         />
       ) : null}
     </View>

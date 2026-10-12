@@ -20,7 +20,8 @@ import {
   STANZA_NAMESPACE,
   ZILAR_FORWARD_NAMESPACE,
 } from '../namespaces';
-import type { ChatKind, MentionInput, UploadSlot } from '../types';
+import type { ChatKind, MentionInput, MessageAlbum, UploadSlot } from '../types';
+import { albumElement } from './album';
 import { MAX_MENTIONS, codePointLength, codePointOffset, sanitizeReactions } from './reactions';
 
 // ---------------------------------------------------------------------------
@@ -90,6 +91,7 @@ export function buildMessage(options: {
   forward?: ForwardOrigin | undefined;
   replyTo?: { id: string; to?: string; text?: string } | undefined;
   mentions?: MentionInput[] | undefined;
+  album?: MessageAlbum | undefined;
 }): XmppElement {
   const replyTo = options.replyTo;
   const replyPrefix = replyQuotePrefix(replyTo?.text);
@@ -111,6 +113,8 @@ export function buildMessage(options: {
   if (options.forward !== undefined) {
     children.push(forwardElement(options.forward));
   }
+
+  if (options.album !== undefined) children.push(albumElement(options.album));
 
   if (replyTo !== undefined) {
     const attrs: Record<string, string> = {

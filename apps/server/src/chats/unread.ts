@@ -13,6 +13,7 @@ import { runSql } from '../effect/sql';
 import { bareJid, ownBareJid } from '../jid';
 import { allowedArchives, type ArchivePool, type SearchOwner } from '../search/service';
 import { stanzaFrom, timestampToIso } from '../search/snippet';
+import { albumInfoFromXml } from '../xmpp/album-xml';
 import { localpartFor } from '../xmpp/provisioning';
 
 export interface ChatUnread {
@@ -57,6 +58,10 @@ function archiveIdOf(timestamp: number | string | bigint): string {
 // A non-text row gets a short label, like the clients' pin fallbacks
 // (apps/web/src/components/PinsPanel.tsx:16-22).
 function labelForRow(text: string | null, xml: string): string {
+  const album = albumInfoFromXml(xml);
+  if (album !== undefined) {
+    return `${album.count} photos`;
+  }
   const trimmed = (text ?? '').trim();
   if (trimmed !== '') {
     return trimmed;
@@ -222,6 +227,66 @@ function buildNewestQuery(
   };
 }
 
+// Turns one chat's batch read into an unread count and a preview. A resent
+// message reaches the archive as a second row under the same origin id (a lost
+// stream-management ack makes the client resend, T-1217); per chat, the
+// identity of a counted row is its sender plus that origin id. An album's
+// photos archive as one row each under distinct origin ids but one album id
+// (T-1267): `album:<id>` replaces the origin id, so the whole album counts
+// once (T-1272). Rows arrive newest-first per chat (the join keeps each chat's
+// order), so the first row kept per chat is its preview. The unread count
+// stops at the cap: rows past it still set the preview but no longer bump the
+// count.
+export function summarizeUnread(
+  page: ArchiveUnreadRow[],
+  chats: ChatThreshold[],
+  allowed: SearchOwner,
+  ownLocalpart: string,
+  ownJid: string,
+  domain: string,
+): Record<string, ChatUnread> {
+  const answer: Record<string, ChatUnread> = {};
+  const counted = new Map<string, Set<string>>();
+  for (const row of page) {
+    const chat = chats.find((entry) => entry.jid.toLowerCase() === row.chatJid.toLowerCase());
+    if (chat === undefined) {
+      continue;
+    }
+    const current = answer[chat.jid];
+    if (current?.lastMessage === undefined) {
+      answer[chat.jid] = {
+        unread: 0,
+        lastMessage: {
+          id: row.originId,
+          text: labelForRow(row.text, row.xml),
+          senderName: senderNameForPreview(row, allowed, ownJid),
+          at: timestampToIso(row.timestamp),
+          archiveId: archiveIdOf(row.timestamp),
+        },
+      };
+    }
+    if (!isOwnRow(row, allowed, ownLocalpart, domain)) {
+      let seen = counted.get(chat.jid);
+      if (seen === undefined) {
+        seen = new Set<string>();
+        counted.set(chat.jid, seen);
+      }
+      const album = albumInfoFromXml(row.xml);
+      const identity = album === undefined ? row.originId : `album:${album.id}`;
+      const key = `${row.kind}\u0000${row.barePeer}\u0000${row.nick}\u0000${identity}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      const entry = answer[chat.jid];
+      if (entry !== undefined && entry.unread < UNREAD_CAP) {
+        entry.unread += 1;
+      }
+    }
+  }
+  return answer;
+}
+
 /**
  * Unread counts and previews for the caller's chats. The input maps each
  * visible chat JID to its archive scope; only scoped chats are read, so a
@@ -289,49 +354,7 @@ export async function unreadForChats(
   }
   const page = (await archive.query(built.text, built.values)) as unknown as ArchiveUnreadRow[];
 
-  const answer: Record<string, ChatUnread> = {};
-  // A resent message reaches the archive as a second row under the same
-  // origin id (a lost stream-management ack makes the client resend, T-1217);
-  // per chat, the identity of a counted row is its sender plus that origin id.
-  const counted = new Map<string, Set<string>>();
-  // Rows arrive newest-first per chat (the join keeps each chat's order), so
-  // the first row kept per chat is its preview. The unread count stops at
-  // the cap: rows past it still set the preview but no longer bump the count.
-  for (const row of page) {
-    const chat = chats.find((entry) => entry.jid.toLowerCase() === row.chatJid.toLowerCase());
-    if (chat === undefined) {
-      continue;
-    }
-    const current = answer[chat.jid];
-    if (current?.lastMessage === undefined) {
-      answer[chat.jid] = {
-        unread: 0,
-        lastMessage: {
-          id: row.originId,
-          text: labelForRow(row.text, row.xml),
-          senderName: senderNameForPreview(row, allowed, ownJid),
-          at: timestampToIso(row.timestamp),
-          archiveId: archiveIdOf(row.timestamp),
-        },
-      };
-    }
-    if (!isOwnRow(row, allowed, ownLocalpart, config.xmpp.domain)) {
-      let seen = counted.get(chat.jid);
-      if (seen === undefined) {
-        seen = new Set<string>();
-        counted.set(chat.jid, seen);
-      }
-      const key = `${row.kind}\u0000${row.barePeer}\u0000${row.nick}\u0000${row.originId}`;
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      const entry = answer[chat.jid];
-      if (entry !== undefined && entry.unread < UNREAD_CAP) {
-        entry.unread += 1;
-      }
-    }
-  }
+  const answer = summarizeUnread(page, chats, allowed, ownLocalpart, ownJid, config.xmpp.domain);
 
   const missing = chats.filter((chat) => answer[chat.jid]?.lastMessage === undefined);
   const newest = buildNewestQuery(allowed, missing);

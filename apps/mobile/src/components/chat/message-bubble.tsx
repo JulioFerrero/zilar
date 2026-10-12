@@ -19,6 +19,7 @@ import {
   SWAP_MS,
 } from '@/components/chat/message-bubble-decor';
 import { MessageTombstone } from '@/components/chat/message-bubble-tombstone';
+import { MessageMenuProvider } from '@/components/chat/message-menu-context';
 import { stickerOf } from '@/components/chat/payload-card';
 import { ReactionChips } from '@/components/chat/reaction-chips';
 import { SwipeToReply } from '@/components/chat/swipe-to-reply';
@@ -293,26 +294,28 @@ function MessageBubbleImpl({
                       ]}
                     />
                   ) : null}
-                  <MessageBubbleContent
-                    message={message}
-                    outgoing={outgoing}
-                    generating={generating}
-                    showSenderName={showSenderName}
-                    hasAttachment={hasAttachment}
-                    showMarkdown={showMarkdown}
-                    text={text}
-                    textColor={textColor}
-                    metaColor={metaColor}
-                    reduceMotion={reduceMotion}
-                    meJid={meJid}
-                    onRetryAttachment={onRetryAttachment}
-                    onCancelAttachment={onCancelAttachment}
-                    onOpenAttachment={onOpenAttachment}
-                    openingAttachmentId={openingAttachmentId}
-                    onRetryVoice={onRetryVoice}
-                    onCancelVoice={onCancelVoice}
-                    voiceHost={voiceHost}
-                  />
+                  <MessageMenuProvider openMenu={generating ? undefined : openMenu}>
+                    <MessageBubbleContent
+                      message={message}
+                      outgoing={outgoing}
+                      generating={generating}
+                      showSenderName={showSenderName}
+                      hasAttachment={hasAttachment}
+                      showMarkdown={showMarkdown}
+                      text={text}
+                      textColor={textColor}
+                      metaColor={metaColor}
+                      reduceMotion={reduceMotion}
+                      meJid={meJid}
+                      onRetryAttachment={onRetryAttachment}
+                      onCancelAttachment={onCancelAttachment}
+                      onOpenAttachment={onOpenAttachment}
+                      openingAttachmentId={openingAttachmentId}
+                      onRetryVoice={onRetryVoice}
+                      onCancelVoice={onCancelVoice}
+                      voiceHost={voiceHost}
+                    />
+                  </MessageMenuProvider>
                 </Pressable>
               )}
               {isLastInGroup ? (

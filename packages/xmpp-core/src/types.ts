@@ -1,9 +1,25 @@
 import type { ForwardOrigin, Payload } from '@zilar/protocol';
 import type { Effect } from 'effect';
 import type { NotOnline, XmppCoreError } from './errors';
-import type { MucPresence } from './stanza/parse-context';
+import type { MessageAlbum } from './stanza/album';
+import type {
+  Mention,
+  MentionInput,
+  MessageCorrection,
+  MessageReactions,
+  MessageRetraction,
+  MucPresence,
+} from './stanza/parse-context';
 import type { XmppSuspend, XmppSuspendEffect } from './types-suspend';
 
+export type { MessageAlbum } from './stanza/album';
+export type {
+  Mention,
+  MentionInput,
+  MessageCorrection,
+  MessageReactions,
+  MessageRetraction,
+} from './stanza/parse-context';
 export type { StreamAckEvent } from './types-ack';
 export type { DeliveredMarkEvent } from './types-delivered';
 export type { WakeOutcome } from './types-suspend';
@@ -66,6 +82,8 @@ export interface ChatMessage {
   body?: string;
   /** Decoded with `decodePayload`; invalid payloads are dropped. */
   payload?: Payload;
+  /** Album membership (`urn:zilar:album:0`); a malformed marker is dropped. */
+  album?: MessageAlbum;
   /**
    * Where the message was forwarded from, captured at forward time. A
    * malformed `<forward>` element is dropped, so this is absent when invalid.
@@ -98,43 +116,6 @@ export interface ChatMessage {
   timestamp: Date;
   /** Sent by me, including room reflections and carbons. */
   outgoing: boolean;
-}
-
-/** One XEP-0308 correction: the target's origin id; the body is the new text. */
-export interface MessageCorrection {
-  /** The original message's sender-generated id (its `id` attribute). */
-  targetId: string;
-}
-
-/** One XEP-0424 retraction: the target's id (stanza-id in groups). */
-export interface MessageRetraction {
-  /** The original message's id: its origin id in DMs, its stanza-id in groups. */
-  targetId: string;
-}
-
-/** One XEP-0444 reaction update: the target's id and the reactor's set. */
-export interface MessageReactions {
-  /** The target message id: its stanza-id in groups, the message id in DMs. */
-  targetId: string;
-  /** The reactor's complete current set; empty means the reaction was cleared. */
-  emojis: string[];
-}
-
-/** One XEP-0372 mention reference, with offsets when they are usable. */
-export interface Mention {
-  /** Bare JID of the mentioned account, lowercased. */
-  jid: string;
-  /** Start offset in UTF-16 code units, when the reference carried one. */
-  begin?: number;
-  /** End offset (exclusive) in UTF-16 code units, when it carried one. */
-  end?: number;
-}
-
-/** A mention to put on an outgoing message. */
-export interface MentionInput {
-  jid: string;
-  begin: number;
-  end: number;
 }
 
 /** One present occupant of a room, tracked from that room's MUC presence. */
@@ -216,6 +197,8 @@ export interface SendMessageOptions {
   replyTo?: { id: string; to?: string; text?: string };
   /** Offsets are UTF-16 code units; `buildMessage` writes them as code points. */
   mentions?: MentionInput[];
+  /** Album marker to attach when this message is one photo of an album. */
+  album?: MessageAlbum;
   /** Stanza `id` to send under; a fresh one is minted when absent. An outbox
    * resend passes the first send's id, so the receiver dedupes on it. */
   id?: string;

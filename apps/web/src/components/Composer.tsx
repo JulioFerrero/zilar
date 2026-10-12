@@ -262,11 +262,7 @@ export function Composer({
 
   const send = (): void => {
     if (attachment !== undefined) {
-      storeApi.getState().sendAttachment(chatId, attachment.file, {
-        ...(value.trim().length === 0 ? {} : { caption: value.trim() }),
-        ...(replyTo === undefined ? {} : { replyTo }),
-      });
-      setAttachment(undefined);
+      attachments.sendPending();
       setValue('');
       setMentions([]);
       setPicker(undefined);

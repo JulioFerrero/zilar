@@ -28,9 +28,31 @@ function startsNewGroup(previous: UiMessage | undefined, message: UiMessage): bo
 }
 
 /**
+ * Whether `message` continues the album run that `previous` is in: the same
+ * non-empty `album.id`, the same sender, the same day and inside the group
+ * window (the run itself already guarantees the last three).
+ */
+function continuesAlbum(previous: UiMessage, message: UiMessage, id: string): boolean {
+  return message.album?.id === id && !startsNewGroup(previous, message);
+}
+
+/** The album's loaded photos, in `index` order; missing siblings are just absent. */
+function albumMembers(sorted: readonly UiMessage[], from: number, to: number): UiMessage[] {
+  const members: UiMessage[] = [];
+  for (let cursor = from; cursor <= to; cursor += 1) {
+    const member = sorted[cursor];
+    if (member !== undefined) {
+      members.push(member);
+    }
+  }
+  return members.sort((a, b) => (a.album?.index ?? 0) - (b.album?.index ?? 0));
+}
+
+/**
  * Serialises messages into render items: consecutive messages from the same
  * sender within five minutes become one group, and a date separator is inserted
- * whenever the calendar day changes.
+ * whenever the calendar day changes. A consecutive run of same-album messages
+ * (same `album.id`, sender, day and window) becomes one `album` item instead.
  */
 export function groupMessages(messages: readonly UiMessage[]): RenderItem[] {
   const sorted = [...messages].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
@@ -55,17 +77,51 @@ export function groupMessages(messages: readonly UiMessage[]): RenderItem[] {
       next = sorted[end + 1];
     }
 
-    for (let cursor = index; cursor <= end; cursor += 1) {
+    let cursor = index;
+    while (cursor <= end) {
       const message = sorted[cursor];
       if (message === undefined) {
+        cursor += 1;
         continue;
       }
+
+      // A message carrying an album marker and the consecutive same-album rows
+      // after it become one album item; a lone marker (siblings not loaded) is
+      // an album of one, so the item does not flip as older pages arrive.
+      const albumId = message.album?.id;
+      let last = cursor;
+      if (albumId !== undefined) {
+        while (last < end) {
+          const previous = sorted[last];
+          const next = sorted[last + 1];
+          if (previous === undefined || next === undefined) break;
+          if (!continuesAlbum(previous, next, albumId)) break;
+          last += 1;
+        }
+      }
+
+      if (albumId !== undefined) {
+        const members = albumMembers(sorted, cursor, last);
+        const head = members[0] ?? message;
+        items.push({
+          kind: 'album',
+          message: head,
+          messages: members,
+          count: head.album?.count ?? 0,
+          firstInGroup: cursor === index,
+          lastInGroup: last === end,
+        });
+        cursor = last + 1;
+        continue;
+      }
+
       items.push({
         kind: 'message',
         message,
         firstInGroup: cursor === index,
         lastInGroup: cursor === end,
       });
+      cursor += 1;
     }
 
     index = end + 1;
@@ -94,6 +150,9 @@ export function previewPrefix(lastMessage: UiMessage | undefined, options: Previ
 export function previewBody(lastMessage: UiMessage | undefined): string {
   if (lastMessage === undefined) {
     return '';
+  }
+  if (lastMessage.album !== undefined) {
+    return `🖼 ${lastMessage.album.count} photos`;
   }
   if (lastMessage.voice !== undefined) {
     return `🎤 Voice message (${formatDuration(lastMessage.voice.duration_ms)})`;
@@ -130,32 +189,39 @@ export function unreadDividerIndex(
   items: readonly RenderItem[],
   anchor: string | number,
 ): number | null {
-  const messagePositions: number[] = [];
+  // One position per photo at that item: an album of three counts as three, so
+  // the count math below matches what the same three single photos would do.
+  const positions: number[] = [];
+  const ids: string[] = [];
   items.forEach((item, index) => {
     if (item.kind === 'message') {
-      messagePositions.push(index);
+      positions.push(index);
+      ids.push(item.message.id);
+    } else if (item.kind === 'album') {
+      const members = item.messages.length > 0 ? item.messages : [item.message];
+      for (const member of members) {
+        positions.push(index);
+        ids.push(member.id);
+      }
     }
   });
 
-  const total = messagePositions.length;
+  const total = positions.length;
   if (total === 0) {
     return null;
   }
 
   if (typeof anchor === 'string') {
-    const found = messagePositions.findIndex((position) => {
-      const item = items[position];
-      return item?.kind === 'message' && item.message.id === anchor;
-    });
+    const found = ids.indexOf(anchor);
     if (found === -1) {
       return null;
     }
-    return messagePositions[found + 1] ?? null;
+    return positions[found + 1] ?? null;
   }
 
   if (!Number.isFinite(anchor) || anchor <= 0) {
     return null;
   }
   const firstUnread = Math.max(0, total - Math.floor(anchor));
-  return messagePositions[firstUnread] ?? null;
+  return positions[firstUnread] ?? null;
 }

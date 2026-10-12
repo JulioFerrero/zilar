@@ -162,6 +162,7 @@ export function createMockXmppCore(data: MockData, options: MockXmppCoreOptions)
           ...(opts?.forward === undefined ? {} : { forward: opts.forward }),
           ...(opts?.replyTo === undefined ? {} : { replyTo: opts.replyTo }),
           ...(opts?.mentions === undefined ? {} : { mentions: opts.mentions }),
+          ...(opts?.album === undefined ? {} : { album: opts.album }),
         };
         data.appendMessage(to, message);
         fake.emit('message', message);
@@ -226,8 +227,14 @@ export function createMockXmppCore(data: MockData, options: MockXmppCoreOptions)
       ),
     requestUploadSlot: (request: UploadRequest) =>
       startAsync('requestUploadSlot', [request], (): UploadSlot => {
-        const url = `data:${request.contentType};base64,`;
-        return { putUrl: url, getUrl: url, headers: {} };
+        // The PUT needs no server: a `data:` URL accepts the bytes. The
+        // download URL is what the message carries and what the client's
+        // media-trust check reads, so it must sit on the host the session
+        // trusts (`upload.<domain>`); a `data:` getUrl would make the echoed
+        // attachment render as a file card instead of an image tile (T-1268).
+        const putUrl = `data:${request.contentType};base64,`;
+        const getUrl = `https://upload.${options.domain}/${encodeURIComponent(request.filename)}`;
+        return { putUrl, getUrl, headers: {} };
       }),
     sendTyping: (to, _kind, state) => {
       start('sendTyping', [to, state]);

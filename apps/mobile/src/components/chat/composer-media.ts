@@ -1,3 +1,4 @@
+import type { AlbumRef } from '@zilar/chat-core';
 import { type Attachment } from '@zilar/protocol';
 import { Data, Effect, Fiber } from 'effect';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -5,8 +6,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AttachmentChoice } from '@/components/chat/attach-sheet';
 import { createAttachmentPicker, createGifDownloader } from '@/lib/attachment-native';
 import type { AttachmentPicker, GifDownloader, PickedFile } from '@/lib/attachment-ports';
+import { classifyMobileFile } from '@/lib/attachments';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import type { GifItem } from '@/lib/gifs';
+import { randomUuid } from '@/lib/polyfills';
 import type { ReplyRef } from '@/lib/types';
 import type { SendAttachmentOptions } from '@/store/types';
 
@@ -54,6 +57,34 @@ export function captionOptions(text: string, replyTo: ReplyRef | undefined): Sen
     ...(caption.length === 0 ? {} : { caption }),
     ...(replyTo === undefined ? {} : { replyTo }),
   };
+}
+
+/** Telegram's album cap (T-1246 picker): only 2..10 picks become one album. */
+const ALBUM_MIN = 2;
+const ALBUM_MAX = 10;
+
+/**
+ * The mobile store's `SendAttachmentOptions` has no `album` field (the mobile
+ * store forwards the object straight to client-core's `sendAttachment`, which
+ * does), so the composer widens it locally here rather than editing the store's
+ * shared type. `send-types.ts` is outside this task's Allowed files.
+ */
+type AlbumSendOptions = SendAttachmentOptions & { album: AlbumRef };
+
+/**
+ * One album id for a pick of 2..10 pictures, or `undefined` when the pick must
+ * send as today (a single file, a mixed pick, a non-image file, or more than
+ * the cap). The image test is `classifyMobileFile` — the same one the send
+ * pipeline uses — so an SVG or HEIC pick is never marked as an album member
+ * that would then render as a dropped tile. The id is the app's own
+ * `randomUuid` (`lib/polyfills`, installed as the runtime's
+ * `crypto.randomUUID` on Hermes), matching the web sender (T-1268).
+ */
+function albumIdForPicks(picks: readonly PickedFile[]): string | undefined {
+  if (picks.length < ALBUM_MIN || picks.length > ALBUM_MAX) {
+    return undefined;
+  }
+  return picks.every((file) => classifyMobileFile(file) === 'image') ? randomUuid() : undefined;
 }
 
 /**
@@ -182,15 +213,27 @@ export function useComposerMedia({
 
   // A pick stages one or more files (T-1246): Send sends one message per
   // item in order, the composer text and the reply quote going on the first
-  // only (web sends the same way). The sheet closes and the composer clears.
-  // Returns whether it handled the send, so the caller falls through to text.
+  // only (web sends the same way). Two to ten photos share one album id, so
+  // they group into one grid bubble (T-1271); a single or mixed pick sends as
+  // today. The sheet closes and the composer clears. Returns whether it
+  // handled the send, so the caller falls through to text.
   const sendPicked = (): boolean => {
     if (picks.length === 0) {
       return false;
     }
     if (onSendAttachment !== undefined) {
+      const albumId = albumIdForPicks(picks);
       picks.forEach((file, index) => {
-        onSendAttachment(file, index === 0 ? captionOptions(text, replyTo) : {});
+        const caption = index === 0 ? captionOptions(text, replyTo) : {};
+        if (albumId === undefined) {
+          onSendAttachment(file, caption);
+          return;
+        }
+        const options: AlbumSendOptions = {
+          ...caption,
+          album: { id: albumId, index, count: picks.length },
+        };
+        onSendAttachment(file, options);
       });
     }
     setPicks([]);

@@ -125,6 +125,23 @@ function groupchatRow(setup: GroupSetup, senderId: string, originId: string): Gr
   };
 }
 
+// One row of a multi-photo album: every photo carries the T-1267 marker with
+// the same id, and no caption, so the payload is "{count} photos".
+function albumRow(setup: GroupSetup, senderId: string, index: number): GroupchatRow {
+  const nick = localpartFor(senderId);
+  return {
+    owner: setup.roomJid,
+    barePeer: '',
+    kind: 'groupchat',
+    nick,
+    originId: `origin-${index}`,
+    timestamp: ROW_MICROS,
+    text: null,
+    xml: `<message type="groupchat" from="${setup.roomJid}/${nick}"><album xmlns="urn:zilar:album:0" id="alb-1" index="${index}" count="3"/></message>`,
+    id: index + 1,
+  };
+}
+
 describe('runGroupNotifierTick', () => {
   let context: TestContext;
 
@@ -206,5 +223,25 @@ describe('runGroupNotifierTick', () => {
     await runGroupNotifierTick(deps, freshState());
 
     expect(sends).toBe(0);
+  });
+
+  it('delivers a 3-photo album once per device', async () => {
+    const senderId = await seedUser(context);
+    const memberId = await seedUser(context);
+    const setup = await setupGroup(context, [senderId, memberId]);
+    const device = await saveDevice(context.db, cipher, webPushInput(memberId));
+    const rows = [0, 1, 2].map((index) => albumRow(setup, senderId, index));
+
+    const deps = buildDeps(context, fakeArchive(rows));
+    const sent: string[] = [];
+    deps.service.sender.send = (subscription: { endpoint: string }) => {
+      sent.push(subscription.endpoint);
+      return Promise.resolve({ gone: false });
+    };
+
+    await runGroupNotifierTick(deps, freshState());
+
+    // The album's first row is delivered; the two siblings stay silent.
+    expect(sent).toEqual([device.endpoint]);
   });
 });

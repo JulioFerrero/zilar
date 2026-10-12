@@ -6,20 +6,9 @@ import {
 } from '@zilar/chat-core';
 import { ArrowDown } from 'lucide-react';
 import { Effect, Fiber } from 'effect';
-import {
-  Fragment,
-  memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { DateSeparator } from './DateSeparator';
-import { MessageBubble } from './MessageBubble';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { MessageListRow, messageRowKey } from './MessageListRow';
 import { MessageListSkeleton } from './Skeleton';
-import { UnreadDivider } from './UnreadDivider';
 import { IconButton } from './ui/icon-button';
 import { Badge } from './ui/badge';
 import { StateMessage } from './ui/state-message';
@@ -335,52 +324,27 @@ export const MessageList = memo(function MessageList({
           {loadingOlder && (
             <StateMessage kind="loading" title="Loading older messages" size="inline" />
           )}
-          {items.map((item, index) => {
-            const isDraft = item.kind === 'message' && item.message.id === draftMessage?.id;
-            // The final message keeps the draft's key so React reuses the same
-            // bubble and its reveal carries on instead of snapping.
-            const revealTurnId =
-              item.kind === 'separator'
-                ? undefined
-                : isDraft
-                  ? draft?.turnId
-                  : finishedDraftMessages[item.message.id];
-            const key =
-              item.kind === 'separator'
-                ? item.id
-                : revealTurnId === undefined
-                  ? item.message.id
-                  : `draft-${revealTurnId}`;
-            return (
-              <Fragment key={key}>
-                {dividerIndex === index && <UnreadDivider ref={dividerRef} />}
-                {item.kind === 'separator' ? (
-                  <DateSeparator date={item.date} />
-                ) : (
-                  <MessageBubble
-                    message={item.message}
-                    chat={chat}
-                    firstInGroup={item.firstInGroup}
-                    lastInGroup={item.lastInGroup}
-                    currentUserId={meId}
-                    meJid={meJid}
-                    onReply={handleReply}
-                    {...(onForward === undefined ? {} : { onForward: handleForward })}
-                    selecting={selecting}
-                    selected={selectedIds !== undefined && selectedIds.has(item.message.id)}
-                    {...(selection === undefined
-                      ? {}
-                      : {
-                          onToggleSelect: handleToggleSelect,
-                          onStartSelect: handleStartSelect,
-                        })}
-                    draft={isDraft}
-                    {...(revealTurnId === undefined ? {} : { revealTurnId })}
-                  />
-                )}
-              </Fragment>
-            );
-          })}
+          {items.map((item, index) => (
+            <MessageListRow
+              key={messageRowKey(item, draftMessage?.id, draft?.turnId, finishedDraftMessages)}
+              item={item}
+              index={index}
+              dividerIndex={dividerIndex}
+              dividerRef={dividerRef}
+              draftMessageId={draftMessage?.id}
+              draftTurnId={draft?.turnId}
+              finishedDraftMessages={finishedDraftMessages}
+              chat={chat}
+              meId={meId}
+              meJid={meJid}
+              onReply={handleReply}
+              onForward={onForward === undefined ? undefined : handleForward}
+              selectionIds={selectedIds}
+              onToggleSelect={selection === undefined ? undefined : handleToggleSelect}
+              onStartSelect={selection === undefined ? undefined : handleStartSelect}
+              selecting={selecting}
+            />
+          ))}
         </div>
       </div>
       {!atBottom && (

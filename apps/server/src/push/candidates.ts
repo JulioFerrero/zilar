@@ -6,6 +6,7 @@ import type { SearchOwner } from '../search/service';
 import { bareJid, ownBareJid } from '../jid';
 import { stanzaFrom } from '../search/routes';
 import { canSeeTopic, type TopicRow } from '../topics/access';
+import { albumInfoFromXml } from '../xmpp/album-xml';
 import { localpartFor } from '../xmpp/provisioning';
 import type { ArchiveCandidate } from './archive-scan';
 import type { ResolvedPushMessage } from './payload';
@@ -40,10 +41,18 @@ export async function resolveCandidate(
   if (text === undefined && row.xml.includes('urn:xmpp:reactions:0')) {
     return { status: 'skip' };
   }
-  if (row.kind === 'groupchat') {
-    return resolveRoomCandidate(deps, userId, row, text);
+  const album = albumInfoFromXml(row.xml);
+  const verdict =
+    row.kind === 'groupchat'
+      ? await resolveRoomCandidate(deps, userId, row, text)
+      : await resolveDmCandidate(deps, userId, allowed, row, text);
+  // One row of an album carries the marker: the payload shows its count and
+  // the scan marks the album's sibling rows with it (T-1269).
+  if (verdict.status === 'ok' && album !== undefined) {
+    verdict.message.albumId = album.id;
+    verdict.message.albumCount = album.count;
   }
-  return resolveDmCandidate(deps, userId, allowed, row, text);
+  return verdict;
 }
 
 async function resolveRoomCandidate(

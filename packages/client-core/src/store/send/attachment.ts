@@ -1,5 +1,5 @@
 import { Effect } from 'effect';
-import type { Attachment, ChatSummary, ReplyRef, UiMessage } from '@zilar/chat-core';
+import type { AlbumRef, Attachment, ChatSummary, ReplyRef, UiMessage } from '@zilar/chat-core';
 import {
   clearActionError,
   clearUploadProgress,
@@ -22,6 +22,29 @@ import {
 import type { OutgoingBytesData } from '../ports';
 import { coreKind } from '../rows';
 
+/** The `urn:zilar:album:0` bounds (`docs/audit/albums-plan.md` §1.4). A marker
+ * outside them is dropped, so the photo is sent as a single message. */
+const ALBUM_MIN_COUNT = 2;
+const ALBUM_MAX_COUNT = 10;
+const ALBUM_ID_MAX = 64;
+
+function validAlbum(album: AlbumRef | undefined): AlbumRef | undefined {
+  if (album === undefined) {
+    return undefined;
+  }
+  const { id, index, count } = album;
+  if (id.length === 0 || id.length > ALBUM_ID_MAX) {
+    return undefined;
+  }
+  if (!Number.isInteger(count) || count < ALBUM_MIN_COUNT || count > ALBUM_MAX_COUNT) {
+    return undefined;
+  }
+  if (!Number.isInteger(index) || index < 0 || index >= count) {
+    return undefined;
+  }
+  return album;
+}
+
 /**
  * The upload steps of an attachment, re-runnable from a Retry: read the image
  * size when it is one, PUT the bytes, then send the payload message.
@@ -34,6 +57,7 @@ function runAttachmentUpload(
   info: OutgoingBytesData,
   caption: string,
   replyTo: ReplyRef | undefined,
+  album: AlbumRef | undefined,
 ): void {
   const current = ctx.core;
   if (current === undefined) {
@@ -85,6 +109,7 @@ function runAttachmentUpload(
                   ...(wireReply.text === undefined ? {} : { text: wireReply.text }),
                 },
               }),
+          ...(album === undefined ? {} : { album }),
         }),
       );
       linkSent(ctx, chat, localId, sent.id);
@@ -124,6 +149,7 @@ export function sendAttachment(
   const localId = nextLocalId(ctx);
   const replyTo = options?.replyTo;
   const caption = options?.caption?.trim() ?? '';
+  const album = validAlbum(options?.album);
   const info = ctx.ports.bytes.describe(file);
   const message: UiMessage = {
     id: localId,
@@ -141,6 +167,7 @@ export function sendAttachment(
     },
     ...(caption.length === 0 ? {} : { text: caption }),
     ...(replyTo === undefined ? {} : { replyTo }),
+    ...(album === undefined ? {} : { album }),
   };
   clearActionError(ctx, chatId);
   queueOutgoing(
@@ -160,7 +187,7 @@ export function sendAttachment(
   if (caption.length > 0) {
     ctx.k.rememberBaseText(localId, caption);
   }
-  runAttachmentUpload(ctx, chat, localId, file, info, caption, replyTo);
+  runAttachmentUpload(ctx, chat, localId, file, info, caption, replyTo, album);
 }
 
 export function retryAttachment(ctx: SendCtx, chatId: string, messageId: string): void {
@@ -188,5 +215,6 @@ export function retryAttachment(ctx: SendCtx, chatId: string, messageId: string)
     ctx.ports.bytes.describe(file),
     message.text ?? '',
     message.replyTo,
+    validAlbum(message.album),
   );
 }

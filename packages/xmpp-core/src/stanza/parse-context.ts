@@ -51,6 +51,47 @@ export type SenderResolution = {
   outgoing: boolean;
 };
 
+// ---------------------------------------------------------------------------
+// Message field shapes
+// ---------------------------------------------------------------------------
+
+/** One XEP-0308 correction: the target's origin id; the body is the new text. */
+export interface MessageCorrection {
+  /** The original message's sender-generated id (its `id` attribute). */
+  targetId: string;
+}
+
+/** One XEP-0424 retraction: the target's id (stanza-id in groups). */
+export interface MessageRetraction {
+  /** The original message's id: its origin id in DMs, its stanza-id in groups. */
+  targetId: string;
+}
+
+/** One XEP-0444 reaction update: the target's id and the reactor's set. */
+export interface MessageReactions {
+  /** The target message id: its stanza-id in groups, the message id in DMs. */
+  targetId: string;
+  /** The reactor's complete current set; empty means the reaction was cleared. */
+  emojis: string[];
+}
+
+/** One XEP-0372 mention reference, with offsets when they are usable. */
+export interface Mention {
+  /** Bare JID of the mentioned account, lowercased. */
+  jid: string;
+  /** Start offset in UTF-16 code units, when the reference carried one. */
+  begin?: number;
+  /** End offset (exclusive) in UTF-16 code units, when it carried one. */
+  end?: number;
+}
+
+/** A mention to put on an outgoing message. */
+export interface MentionInput {
+  jid: string;
+  begin: number;
+  end: number;
+}
+
 type Envelope = {
   inner: XmppElement;
   forwardedDelay?: string;

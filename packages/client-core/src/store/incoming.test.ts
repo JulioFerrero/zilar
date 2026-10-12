@@ -56,6 +56,18 @@ describe('handleMessage (core)', () => {
     expect(fx.syncBadge).toHaveBeenCalledTimes(1);
   });
 
+  it('counts an album once: later photos do not bump the unread badge', () => {
+    const { ctx, state } = testCtx();
+    const photo = (id: string, index: number) =>
+      message({ id, album: { id: 'alb-1', index, count: 3 } });
+    handleMessage(ctx, photo('p-0', 0));
+    handleMessage(ctx, photo('p-1', 1));
+    handleMessage(ctx, photo('p-2', 2));
+
+    expect(state().messagesByChat[ANA]?.map((item) => item.id)).toEqual(['p-0', 'p-1', 'p-2']);
+    expect(state().chats.find((chat) => chat.id === ANA)).toMatchObject({ unread: 1 });
+  });
+
   it('reads a message in the open, visible chat and saves the last read', () => {
     const setItem = vi.fn();
     const storage = { getItem: () => null, setItem, removeItem: vi.fn() };

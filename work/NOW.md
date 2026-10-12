@@ -25,6 +25,34 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 - **Running:**
   - T-1247: web Delete for me / Clear history. Approved and rebased; `store.ts` is being trimmed to 400 lines;
   - T-1262: export my messages (server, read-only, on the recommended caps).
+- **Albums decisions for Julio** (`docs/audit/albums-plan.md` §8; the lead started task 1 on these recommendations, and all of them are reversible):
+  - at most 10 per album;
+  - other XMPP clients see single photos;
+  - an album-wide reply or reaction targets the first photo;
+  - forwarding keeps the album;
+  - one photo can be deleted from an album;
+  - an album counts as 1 unread, with the preview "N photos";
+  - the viewer steps through the album first;
+  - photos only, with no mixed files, in v1.
+- **Albums progress (2026-10-12, evening):**
+  - **Merged:**
+    - T-1267: wire marker + grouping;
+    - T-1268: web multi-photo send + grid + viewer. Checked on the mock: 3 photos make one bubble, the caption sits under the grid, and the viewer shows "2 / 3";
+    - T-1269 and T-1270: one push per album, in DMs and groups.
+  - **Also merged:**
+    - T-1271: mobile albums. Checked on the emulator: picked 3 photos in the system picker, they show as one grid with the caption, and the viewer shows "2 / 3";
+    - T-1272: an album counts as 1 unread (server count + live), and the server preview reads "N photos";
+    - T-1273 and T-1274: album-wide Delete ("Delete album?") and Forward (it arrives as one album), on web and mobile; checked on the mock and the emulator.
+  - **Running:** T-1275, so a long-press on a photo opens the menu instead of the viewer (seen on the emulator).
+  - **Albums left:** a reaction on a whole album (plan §4.4), and a reply quote reading "N photos". Both are small.
+  - **Live, the deletion/export deploy:** deletion status is `{scheduled:false}`, and the export answers 401 without a session.
+  - **For Julio's phone:** a 3-photo album buzzes once (DM and group); send an album from the web and check how it looks on the phone after T-1271.
+  - **Still to do:** album-wide delete, forward and reaction, and the unread collapse (plan Task 5).
+- **Also merged ~22:00-23:00:**
+  - T-1262: export server;
+  - T-1263: mobile Delete for me / Clear history, checked on the emulator;
+  - T-1265: web Export button, checked on the mock;
+  - T-1266: the albums plan.
 - **For Julio: the free Muse credential is failing.** Since about 21:00, `opencode/muse-spark-1.3-contributor-free` answers `provider.auth` 401 "Invalid credential".
   - Pre-reviews stalled. The lead switched them by hand to the paid Muse.
   - T-1264 (merged, autopilot restarted) now makes a 401 fall back automatically, so pre-reviews and the doctor run on the **paid** Muse until the free credential is fixed.

@@ -128,9 +128,26 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
     [storeApi, currentUserId],
   );
 
-  const forwardOne = useCallback((message: UiMessage): void => {
-    setForwarding([message]);
-  }, []);
+  const forwardOne = useCallback(
+    (message: UiMessage): void => {
+      // T-1273: forwarding an album bubble forwards the whole album (its
+      // photos, in `index` order), so it arrives in the target as one grid. A
+      // lone photo, as before, forwards just itself.
+      const album = message.album;
+      if (album === undefined) {
+        setForwarding([message]);
+        return;
+      }
+      setForwarding(
+        storeApi
+          .getState()
+          .messages(chat.id)
+          .filter((item) => item.album?.id === album.id && item.senderId === message.senderId)
+          .sort((a, b) => (a.album?.index ?? 0) - (b.album?.index ?? 0)),
+      );
+    },
+    [storeApi, chat.id],
+  );
 
   const cancelReply = (): void => {
     setReplyTo(undefined);

@@ -29,6 +29,11 @@ type MessageActionsSheetProps = {
    * groups.
    */
   deleteLabel: string;
+  /**
+   * T-1274: the confirm's title when the delete acts on a whole album
+   * ("Delete album?"); undefined keeps the single-message title.
+   */
+  deleteTitle?: string | undefined;
   /** T-1247: my own message in a DM, where the confirm offers both choices. */
   ownDelete: boolean;
   /** T-1247: a DM delete, which uses the DM confirms instead of the group one. */
@@ -84,6 +89,7 @@ export function MessageActionsSheet({
   canEdit,
   canDelete,
   deleteLabel,
+  deleteTitle,
   ownDelete,
   dmDelete,
   senderName,
@@ -212,7 +218,7 @@ export function MessageActionsSheet({
           visible={visible && confirmOpen}
           onClose={onCloseConfirm}
           closeLabel="Cancel delete"
-          title="Delete message?"
+          title={deleteTitle ?? 'Delete message?'}
         >
           <View className="px-4 py-3">
             <Text className="text-[14px] leading-5 text-muted-foreground">
@@ -242,7 +248,7 @@ export function MessageActionsSheet({
       ) : dmDelete ? (
         <ConfirmDialog
           visible={visible && confirmOpen}
-          title="Delete message?"
+          title={deleteTitle ?? 'Delete message?'}
           message={`This removes it from your chat only. ${senderName} still has it.`}
           confirmLabel="Delete for me"
           busyLabel="Deleting…"
@@ -255,7 +261,7 @@ export function MessageActionsSheet({
       ) : (
         <ConfirmDialog
           visible={visible && confirmOpen}
-          title="Delete for everyone?"
+          title={deleteTitle ?? 'Delete for everyone?'}
           message="This deletes it for everyone in the chat."
           confirmLabel="Delete"
           busyLabel="Deleting…"

@@ -7,7 +7,7 @@ import {
   type XmppJid,
   type XmppStatus,
 } from '@xmpp/client';
-import { PING_NAMESPACE } from './namespaces';
+import { ALBUM_NAMESPACE, PING_NAMESPACE } from './namespaces';
 import { SM_ENABLE_TIMEOUT_MS } from './core-effect/config';
 import { STREAM_MANAGEMENT_NS } from './stream-management';
 import { createCore, type ClientOptions } from './client';
@@ -957,5 +957,25 @@ describe('background lifecycle: suspend and wake', () => {
     fake.socket.end();
     await flush();
     expect(fake.reconnectRuns).toBe(1);
+  });
+});
+
+// T-1268 F1: `buildMessage` already carries the album marker, but the core's
+// send effect built the stanza from explicit fields and dropped `opts.album`,
+// so the marker never reached the wire.
+describe('sendMessage: album marker', () => {
+  it('puts the album marker on the outgoing stanza', async () => {
+    const fake = createFakeClient();
+    const { core } = await connectedCore(fake);
+
+    await core.sendMessage('bob@zilar.localhost', 'chat', '', {
+      album: { id: 'alb-1', index: 1, count: 3 },
+    });
+
+    const message = fake.sent.find((stanza) => stanza.is('message'));
+    const album = message?.getChild('album', ALBUM_NAMESPACE);
+    expect(album?.attrs['id']).toBe('alb-1');
+    expect(album?.attrs['index']).toBe('1');
+    expect(album?.attrs['count']).toBe('3');
   });
 });

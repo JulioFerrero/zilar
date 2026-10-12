@@ -11,7 +11,7 @@ import type { AttachmentOpener } from '@/lib/attachment-ports';
 import { safeHttpUrl } from '@/lib/attachments';
 import { runInBackground } from '@/lib/effect/run-in-background';
 import { getSessionToken } from '@/lib/session-token';
-import { useChatStore } from '@/store/chat-store-provider';
+import { useChatStore, useChatStoreApi } from '@/store/chat-store-provider';
 import type { ChatSummary, UiMessage } from '@/lib/types';
 
 type ChatThreadProps = {
@@ -38,6 +38,7 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
     state.actionError?.chatId === chat.id ? state.actionError : undefined,
   );
   const dismissActionError = useChatStore((state) => state.dismissActionError);
+  const storeApi = useChatStoreApi();
   const [pinError, setPinError] = useState('');
   const [openingId, setOpeningId] = useState<string | undefined>(undefined);
   const [openError, setOpenError] = useState('');
@@ -101,6 +102,24 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
     });
   };
 
+  // T-1274: forwarding an album bubble forwards the whole album (its photos,
+  // in `index` order, like web's `forwardOne`), so it arrives in the target as
+  // one grid. A lone photo, as before, forwards just itself.
+  const forward = (message: UiMessage) => {
+    const album = message.album;
+    if (album === undefined) {
+      screen.setForwarding([message]);
+      return;
+    }
+    screen.setForwarding(
+      storeApi
+        .getState()
+        .messages(chat.id)
+        .filter((item) => item.album?.id === album.id && item.senderId === message.senderId)
+        .sort((a, b) => (a.album?.index ?? 0) - (b.album?.index ?? 0)),
+    );
+  };
+
   return (
     <>
       <MessageList
@@ -109,7 +128,7 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
         onReact={(message, emoji) => react(chat.id, message.id, emoji)}
         onEdit={(message) => startEdit(chat.id, message.id)}
         onDelete={(message) => deleteForEveryone(chat.id, message.id)}
-        onForward={(message) => screen.setForwarding([message])}
+        onForward={forward}
         selection={screen.selection}
         onPin={pin}
         onUnpin={unpin}
