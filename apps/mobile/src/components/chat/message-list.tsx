@@ -187,20 +187,37 @@ export function MessageList({
     return list;
   }, [items, dividerIndex, draftMessage, draft, finishedDraftMessages]);
 
-  const { listRef, atBottomRef, atBottom, unseenCount, setAtBottom } = useMessageListScroll({
-    chatId: chat.id,
-    dividerIndex,
-    jumpTarget,
-    jumpToMessageId,
-    entries,
-    lastEntryKey: entries.at(-1)?.key,
-    lastEntryOutgoing: isOutgoingMessage(entries.at(-1), currentUserId),
-    clearJumpTarget,
-    onJumped,
-  });
+  // The list is inverted, so its data runs newest-first: offset 0 is the newest
+  // message at the bottom and a chat opens there with no mount scroll. Every
+  // index below is an index into this reversed data. The divider is inserted at
+  // `dividerIndex` in `entries`, so its reversed position is measured from the
+  // other end. On screen nothing changes: `inverted` flips the reversed data
+  // back into the date order the user sees.
+  const reversedEntries = useMemo(() => [...entries].reverse(), [entries]);
+  // Snapshotted once per chat open, like `dividerIndex` above: the reversed
+  // position shifts as history or a draft grows, so deriving it from the live
+  // `entries.length` would re-run the mount divider scroll on every new message
+  // and yank the view back to the divider.
+  const [reversedDividerIndex] = useState<number | null>(() =>
+    dividerIndex === null ? null : entries.length - 1 - dividerIndex,
+  );
+
+  const { listRef, atBottom, unseenCount, handleScroll, handleContentSizeChange } =
+    useMessageListScroll({
+      chatId: chat.id,
+      dividerIndex: reversedDividerIndex,
+      jumpTarget,
+      jumpToMessageId,
+      entries: reversedEntries,
+      newestEntryKey: reversedEntries[0]?.key,
+      newestEntryOutgoing: isOutgoingMessage(reversedEntries[0], currentUserId),
+      clearJumpTarget,
+      onJumped,
+    });
 
   const jumpToBottom = useCallback(() => {
-    listRef.current?.scrollToEnd({ animated: true });
+    // The inverted list's bottom is offset 0.
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, [listRef]);
 
   // Stable so a re-render of the list does not hand the FlatList a new
@@ -284,12 +301,18 @@ export function MessageList({
       <FlatList
         ref={listRef}
         className="flex-1"
-        data={entries}
+        data={reversedEntries}
+        inverted
         keyExtractor={(entry) => entry.key}
-        initialNumToRender={Math.max(entries.length, 1)}
+        initialNumToRender={20}
         windowSize={11}
         maxToRenderPerBatch={10}
-        maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+        // `minIndexForVisible: 1` anchors on the previous newest row, so a new
+        // message arriving at index 0 does not move someone reading older
+        // messages. `autoscrollToTopThreshold` makes the native adjustment scroll
+        // back to offset 0 (the inverted list's bottom) when the user was already
+        // there, so a new message follows without fighting the anchor.
+        maintainVisibleContentPosition={{ minIndexForVisible: 1, autoscrollToTopThreshold: 40 }}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         onScrollToIndexFailed={(info) => {
@@ -308,28 +331,18 @@ export function MessageList({
         contentContainerStyle={{ paddingVertical: 8 }}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
-        onContentSizeChange={() => {
-          // Frame-by-frame reveal growth raises the content height; keep the view
-          // pinned only while the user is already at the bottom.
-          if (atBottomRef.current) {
-            listRef.current?.scrollToEnd({ animated: false });
-          }
-        }}
-        onLayout={() => {
-          // The keyboard changes the list's layout, not its content, so the
-          // content-size handler above never fires: re-pin here (MUX-7).
-          if (atBottomRef.current) {
-            listRef.current?.scrollToEnd({ animated: false });
-          }
-        }}
-        onScroll={(event) => {
-          const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-          setAtBottom(contentSize.height - (contentOffset.y + layoutMeasurement.height) < 40);
-          // Scrolling to the top asks for the previous page of history.
-          if (hasMore && contentOffset.y <= 24) {
+        // Older pages sit at the inverted list's end, so reaching it asks for the
+        // previous page of history (replacing the top-offset check).
+        onEndReachedThreshold={0.5}
+        onEndReached={() => {
+          if (hasMore) {
             loadOlder(chat.id);
           }
         }}
+        // Re-pins after a followed message's row has rendered, in case the
+        // maintain-visible adjustment moved the offset off the bottom.
+        onContentSizeChange={handleContentSizeChange}
+        onScroll={handleScroll}
         renderItem={renderItem}
       />
       <JumpToBottom atBottom={atBottom} count={unseenCount} onPress={jumpToBottom} />

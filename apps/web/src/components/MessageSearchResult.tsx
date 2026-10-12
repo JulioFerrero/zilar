@@ -93,7 +93,7 @@ export function MessageSearchResult({
           </span>
         </div>
         <div className="mt-0.5 flex items-baseline gap-1.5 text-[13px] leading-5">
-          <span className="shrink-0 text-[#d4d4d4]">{item.senderName}</span>
+          <span className="shrink-0 text-foreground">{item.senderName}</span>
           <span className="min-w-0 flex-1 truncate text-muted-foreground">
             <SearchSnippet snippet={item.snippet} marks={item.marks} />
           </span>

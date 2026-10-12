@@ -1,4 +1,3 @@
-import type { AlbumRef } from '@zilar/chat-core';
 import { type Attachment } from '@zilar/protocol';
 import { Data, Effect, Fiber } from 'effect';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -62,14 +61,6 @@ export function captionOptions(text: string, replyTo: ReplyRef | undefined): Sen
 /** Telegram's album cap (T-1246 picker): only 2..10 picks become one album. */
 const ALBUM_MIN = 2;
 const ALBUM_MAX = 10;
-
-/**
- * The mobile store's `SendAttachmentOptions` has no `album` field (the mobile
- * store forwards the object straight to client-core's `sendAttachment`, which
- * does), so the composer widens it locally here rather than editing the store's
- * shared type. `send-types.ts` is outside this task's Allowed files.
- */
-type AlbumSendOptions = SendAttachmentOptions & { album: AlbumRef };
 
 /**
  * One album id for a pick of 2..10 pictures, or `undefined` when the pick must
@@ -229,7 +220,7 @@ export function useComposerMedia({
           onSendAttachment(file, caption);
           return;
         }
-        const options: AlbumSendOptions = {
+        const options: SendAttachmentOptions = {
           ...caption,
           album: { id: albumId, index, count: picks.length },
         };

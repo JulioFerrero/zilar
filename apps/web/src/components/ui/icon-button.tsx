@@ -15,12 +15,16 @@ export function IconButton({
   radius = 10,
   style,
   type = 'button',
+  title,
   children,
   ...props
 }: IconButtonProps) {
+  // A hover tooltip comes from the accessible name unless the caller sets one.
+  const label = props['aria-label'];
   return (
     <button
       type={type}
+      title={title ?? label}
       data-slot="icon-button"
       className={cn(
         'key-icon inline-flex shrink-0 items-center justify-center disabled:pointer-events-none disabled:opacity-50',

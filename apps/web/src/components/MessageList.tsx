@@ -8,7 +8,9 @@ import { ArrowDown } from 'lucide-react';
 import { Effect, Fiber } from 'effect';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { MessageListRow, messageRowKey } from './MessageListRow';
+import { MessageAnnouncer } from './MessageAnnouncer';
 import { MessageListSkeleton } from './Skeleton';
+import { useMessageWindow } from './useMessageWindow';
 import { IconButton } from './ui/icon-button';
 import { Badge } from './ui/badge';
 import { StateMessage } from './ui/state-message';
@@ -118,6 +120,13 @@ export const MessageList = memo(function MessageList({
   const selectedIds = selection?.ids;
   const [initialUnread] = useState(() => chat.unread);
   const dividerIndex = unreadDividerIndex(items, initialUnread);
+  // PERF-3: draw only the newest window of render items. The unread divider is
+  // the anchor, so it is always drawn; a jump can widen the window (T-1278).
+  const { windowItems, start, hasHidden, reveals, grow } = useMessageWindow(
+    chatId,
+    items,
+    dividerIndex,
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const dividerRef = useRef<HTMLDivElement>(null);
@@ -139,10 +148,16 @@ export const MessageList = memo(function MessageList({
     atBottomRef.current = atBottom;
   }, [atBottom]);
 
+  // A jump target is pending from the first render (search, pin, reply quote):
+  // the window hook draws and scrolls to it, so skip the bottom snap below.
+  const pendingJump = useRef(reveals.size > 0);
   useEffect(() => {
     const element = scrollRef.current;
     const divider = dividerRef.current;
     if (element === null) {
+      return;
+    }
+    if (pendingJump.current) {
       return;
     }
     if (divider !== null) {
@@ -176,7 +191,7 @@ export const MessageList = memo(function MessageList({
     } else if (added > 0) {
       setPending((value) => value + added);
     }
-  }, [visibleMessages.length, atBottom]);
+  }, [windowItems.length, visibleMessages.length, atBottom]);
 
   // The loading line also stops when there is nothing left to load.
   const hasMore = useChatSelector((s) => s.hasMore(chatId));
@@ -249,7 +264,17 @@ export const MessageList = memo(function MessageList({
       setPending(0);
     }
     const store = storeApi.getState();
-    if (element.scrollTop < NEAR_BOTTOM_PX && store.hasMore(chat.id)) {
+    if (element.scrollTop >= NEAR_BOTTOM_PX || prependScrollHeight.current !== undefined) {
+      return;
+    }
+    // Grow the window while older loaded items are hidden; page the archive
+    // only once the window shows everything (T-1278).
+    if (hasHidden) {
+      prependScrollHeight.current = element.scrollHeight;
+      grow();
+      return;
+    }
+    if (store.hasMore(chat.id)) {
       if (loadingOlderRef.current) {
         return;
       }
@@ -310,6 +335,7 @@ export const MessageList = memo(function MessageList({
 
   return (
     <div className="relative min-h-0 flex-1">
+      <MessageAnnouncer messages={visibleMessages} meId={meId} />
       <div
         ref={scrollRef}
         onScroll={handleScroll}
@@ -324,11 +350,11 @@ export const MessageList = memo(function MessageList({
           {loadingOlder && (
             <StateMessage kind="loading" title="Loading older messages" size="inline" />
           )}
-          {items.map((item, index) => (
+          {windowItems.map((item, index) => (
             <MessageListRow
               key={messageRowKey(item, draftMessage?.id, draft?.turnId, finishedDraftMessages)}
               item={item}
-              index={index}
+              index={start + index}
               dividerIndex={dividerIndex}
               dividerRef={dividerRef}
               draftMessageId={draftMessage?.id}

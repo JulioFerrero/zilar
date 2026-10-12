@@ -1,4 +1,5 @@
 import { Effect } from 'effect';
+import { Smile } from 'lucide-react';
 import type { RecentStickerEntry } from '@/lib/stickers';
 import { isPanelStickerUrl, readRecentStickers } from '@/lib/stickers';
 import type { StickerChoice } from '../StickerPanel';
@@ -19,7 +20,11 @@ export function StickerThumb({ sticker, size }: { sticker: StickerChoice; size: 
         className="flex items-center justify-center text-[26px]"
         style={{ width: size, height: size }}
       >
-        {label === 'Sticker' ? '🙂' : label}
+        {label === 'Sticker' ? (
+          <Smile className="size-6 text-muted-foreground" aria-hidden="true" />
+        ) : (
+          label
+        )}
       </span>
     );
   }

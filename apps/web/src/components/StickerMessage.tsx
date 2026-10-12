@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Smile } from 'lucide-react';
 import type { Sticker } from '@zilar/protocol';
 import { isSameOriginStickerUrl } from '@/lib/stickers';
 import { cn } from '@/lib/utils';
@@ -44,7 +45,11 @@ export function StickerMessage({ sticker, message, own }: StickerMessageProps) {
           aria-label={alt}
           className="flex h-[120px] w-[120px] items-center justify-center rounded-[8px] border border-edge bg-well text-[40px]"
         >
-          {alt === 'Sticker' ? '🙂' : alt}
+          {alt === 'Sticker' ? (
+            <Smile className="size-10 text-muted-foreground" aria-hidden="true" />
+          ) : (
+            alt
+          )}
         </div>
       )}
       <span

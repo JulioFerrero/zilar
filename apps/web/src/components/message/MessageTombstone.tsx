@@ -1,0 +1,51 @@
+import { type UiMessage } from '@zilar/chat-core';
+import { Avatar } from '../Avatar';
+import { cn } from '@/lib/utils';
+
+/**
+ * The slim tombstone a retracted message leaves behind (WUX-30 split from
+ * `MessageBubble`, which must stay at 400 lines). It keeps the row's avatar
+ * slot so neighbours line up, and carries no actions.
+ */
+export function MessageTombstone({
+  message,
+  own,
+  showAvatarSlot,
+  firstInGroup,
+  lastInGroup,
+}: {
+  message: UiMessage;
+  own: boolean;
+  /** A group peer's last message shows the avatar; earlier ones keep its slot. */
+  showAvatarSlot: boolean;
+  firstInGroup: boolean;
+  lastInGroup: boolean;
+}) {
+  return (
+    <div
+      data-message-id={message.id}
+      className={cn(
+        'group relative flex items-end gap-1.5',
+        own ? 'flex-row-reverse' : 'flex-row',
+        firstInGroup ? 'mt-2' : 'mt-0.5',
+      )}
+    >
+      {showAvatarSlot &&
+        (lastInGroup ? (
+          <Avatar id={message.senderId} name={message.senderName} size={34} />
+        ) : (
+          <span className="w-[34px] shrink-0" aria-hidden="true" />
+        ))}
+      <div className={cn('flex min-w-0 flex-col', own ? 'items-end' : 'items-start')}>
+        <div
+          className={cn(
+            'tombstone rounded-[14px] px-3 py-1.5 text-[13px] italic',
+            own ? 'rounded-br-[4px]' : 'rounded-bl-[4px]',
+          )}
+        >
+          {own ? 'You deleted this message' : 'This message was deleted'}
+        </div>
+      </div>
+    </div>
+  );
+}

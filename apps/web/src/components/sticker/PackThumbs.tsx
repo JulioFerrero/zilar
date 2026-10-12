@@ -1,3 +1,4 @@
+import { Smile } from 'lucide-react';
 import type { StickerPack } from '@/lib/api';
 
 export interface PackRowThumb {
@@ -10,7 +11,7 @@ export function PackThumbs({ thumbs }: { thumbs: PackRowThumb[] }) {
   if (thumbs.length === 0) {
     return (
       <span className="flex size-14 shrink-0 items-center justify-center rounded-[10px] bg-surface-raised text-[20px]">
-        🙂
+        <Smile className="size-6 text-muted-foreground" aria-hidden="true" />
       </span>
     );
   }

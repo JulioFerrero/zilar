@@ -16,6 +16,7 @@ import { BigEmoji } from './message/BigEmoji';
 import { MessageActionsButton, MessageMenu } from './message/MessageMenu';
 import { MessageSender } from './message/MessageMeta';
 import { MessageTextBody } from './message/MessageTextBody';
+import { MessageTombstone } from './message/MessageTombstone';
 import { ReactionChips } from './ReactionChips';
 import { ReplyQuote } from './ReplyQuote';
 import { StickerMessage } from './StickerMessage';
@@ -78,6 +79,9 @@ export const MessageBubble = memo(function MessageBubble({
   revealTurnId,
 }: MessageBubbleProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  // A right-click opens the menu at the pointer; the "…" button leaves it
+  // undefined so the menu keeps its old corner position.
+  const [menuPoint, setMenuPoint] = useState<{ x: number; y: number } | undefined>(undefined);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const storeApi = useChatStoreApi();
   const mediaTrustedHosts = useChatSelector((s) => s.mediaTrustedHosts);
@@ -168,32 +172,13 @@ export const MessageBubble = memo(function MessageBubble({
   // A retracted message keeps its place as a slim tombstone and has no actions.
   if (deleted) {
     return (
-      <div
-        data-message-id={message.id}
-        className={cn(
-          'group relative flex items-end gap-1.5',
-          own ? 'flex-row-reverse' : 'flex-row',
-          firstInGroup ? 'mt-2' : 'mt-0.5',
-        )}
-      >
-        {!own &&
-          chat.kind === 'group' &&
-          (lastInGroup ? (
-            <Avatar id={message.senderId} name={message.senderName} size={34} />
-          ) : (
-            <span className="w-[34px] shrink-0" aria-hidden="true" />
-          ))}
-        <div className={cn('flex min-w-0 flex-col', own ? 'items-end' : 'items-start')}>
-          <div
-            className={cn(
-              'tombstone rounded-[14px] px-3 py-1.5 text-[13px] italic',
-              own ? 'rounded-br-[4px]' : 'rounded-bl-[4px]',
-            )}
-          >
-            {own ? 'You deleted this message' : 'This message was deleted'}
-          </div>
-        </div>
-      </div>
+      <MessageTombstone
+        message={message}
+        own={own}
+        showAvatarSlot={!own && chat.kind === 'group'}
+        firstInGroup={firstInGroup}
+        lastInGroup={lastInGroup}
+      />
     );
   }
 
@@ -206,6 +191,7 @@ export const MessageBubble = memo(function MessageBubble({
           ? undefined
           : (event) => {
               event.preventDefault();
+              setMenuPoint({ x: event.clientX, y: event.clientY });
               setMenuOpen(true);
             }
       }
@@ -223,7 +209,7 @@ export const MessageBubble = memo(function MessageBubble({
         'group relative flex items-end gap-1.5',
         own ? 'flex-row-reverse' : 'flex-row',
         firstInGroup ? 'mt-2' : 'mt-0.5',
-        isSending && 'animate-in fade-in slide-in-from-bottom-2 duration-150',
+        isSending && 'animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none',
         selecting && 'cursor-pointer',
       )}
     >
@@ -277,7 +263,10 @@ export const MessageBubble = memo(function MessageBubble({
                 <MessageActionsButton
                   buttonRef={menuButtonRef}
                   open={menuOpen}
-                  onOpen={() => setMenuOpen(true)}
+                  onOpen={() => {
+                    setMenuPoint(undefined);
+                    setMenuOpen(true);
+                  }}
                 />
               )
             )}
@@ -293,6 +282,7 @@ export const MessageBubble = memo(function MessageBubble({
               canPin={canPin}
               canForward={canForward}
               align={own ? 'right' : 'left'}
+              point={menuPoint}
               onReply={() => onReply(message)}
               onForward={() => onForward?.(message)}
               onSelectMessages={() => onStartSelect?.(message)}
@@ -367,7 +357,10 @@ export const MessageBubble = memo(function MessageBubble({
               <MessageActionsButton
                 buttonRef={menuButtonRef}
                 open={menuOpen}
-                onOpen={() => setMenuOpen(true)}
+                onOpen={() => {
+                  setMenuPoint(undefined);
+                  setMenuOpen(true);
+                }}
               />
             )}
           </div>
@@ -385,6 +378,7 @@ export const MessageBubble = memo(function MessageBubble({
           canPin={canPin}
           canForward={canForward}
           align={own ? 'right' : 'left'}
+          point={menuPoint}
           onReply={() => onReply(message)}
           onForward={() => onForward?.(message)}
           onSelectMessages={() => onStartSelect?.(message)}

@@ -1,6 +1,6 @@
 import { Effect, Fiber } from 'effect';
 import * as Haptics from 'expo-haptics';
-import { ChevronLeft, Mic, Trash2 } from 'lucide-react-native';
+import { Lock, Mic } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, View, type GestureResponderHandlers } from 'react-native';
 
@@ -21,7 +21,6 @@ import {
   ERROR_VISIBLE_MS,
   LEVEL_TICK_MS,
   SHORT_PRESS_HINT_MS,
-  formatElapsed,
   runRecorderBegin,
   runRecorderBeginEffect,
   runRecorderFinish,
@@ -31,6 +30,7 @@ import {
   type RecorderDecisionDeps,
   type RecorderFinishOutcome,
 } from '@/components/chat/voice-recorder-flow';
+import { VoiceRecordingRow } from '@/components/chat/voice-recording-row';
 import {
   createHoldResponder,
   startTicker,
@@ -68,12 +68,14 @@ const TIMER_TICK_MS = 250;
 
 /**
  * The composer's mic button (T-0154): hold to record, release to send, slide
- * left while holding to cancel. While holding, a timer row replaces the
- * input: a red dot, the elapsed time and a hint, with a 5-minute cap that
- * stops the recording automatically. The mic stays mounted under the finger
- * for the whole hold (a remount would drop the touch). Under one second is
- * a miss press: the take is discarded with nothing sent, and a "Hold to
- * record, release to send" hint shows above the composer for 1.5 s.
+ * left while holding to cancel, slide up while holding to lock. While holding,
+ * a timer row replaces the input: a red dot, the elapsed time and a hint, with
+ * a 5-minute cap that stops the recording automatically. The mic stays mounted
+ * under the finger for the whole unlocked hold (a remount would drop the
+ * touch). Once locked the finger may lift: the row swaps to Cancel and Send and
+ * the timer keeps running. Under one second is a miss press: the take is
+ * discarded with nothing sent, and a "Hold to record, release to send" hint
+ * shows above the composer for 1.5 s.
  */
 export function VoiceRecorderButton({
   onSendVoice,
@@ -91,6 +93,7 @@ export function VoiceRecorderButton({
     onRecordingChange?.(recording);
   }, [recording, onRecordingChange]);
   const [willCancel, setWillCancel] = useState(false);
+  const [locked, setLocked] = useState(false);
   const levelsRef = useRef<number[]>([]);
   const levelTimerRef: TickerRef = useRef<Fiber.Fiber<unknown, unknown> | undefined>(undefined);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -151,6 +154,7 @@ export function VoiceRecorderButton({
   // first start waits on the permission prompt) are replayed when it does.
   const heldRef = useRef(false);
   const cancelRef = useRef(false);
+  const lockedRef = useRef(false);
 
   // A failed haptic is ignored: the press itself still works without it
   // (the call style of `swipe-to-reply.tsx` and `message-bubble-actions.tsx`).
@@ -174,6 +178,12 @@ export function VoiceRecorderButton({
     // (finding 1, round 3): the button shows the failed copy.
     const onBegun = (result: RecorderBeginResult): void => {
       if (!result.started) {
+        // The gesture may have locked while the native start was still in
+        // flight (a slide up before it settles). A failed start must not leave
+        // `locked` set with `recording` false, which would render neither the
+        // row nor the mic and strand the composer until a remount.
+        lockedRef.current = false;
+        setLocked(false);
         setError(result.error);
         return;
       }
@@ -203,7 +213,15 @@ export function VoiceRecorderButton({
         Effect.flatMap((result) =>
           Effect.try({ try: () => onBegun(result), catch: (error) => error }),
         ),
-        Effect.catch(() => Effect.sync(() => setError(MIC_FAILED_MESSAGE))),
+        Effect.catch(() =>
+          Effect.sync(() => {
+            // Same as the `!started` branch: a start that throws must not
+            // strand a lock taken while it was in flight.
+            lockedRef.current = false;
+            setLocked(false);
+            setError(MIC_FAILED_MESSAGE);
+          }),
+        ),
         Effect.ensuring(
           Effect.sync(() => {
             startingRef.current = false;
@@ -218,6 +236,8 @@ export function VoiceRecorderButton({
     recordingRef.current = false;
     setRecording(false);
     setWillCancel(false);
+    lockedRef.current = false;
+    setLocked(false);
     if (cancel) {
       haptic(Haptics.ImpactFeedbackStyle.Medium);
     }
@@ -256,18 +276,29 @@ export function VoiceRecorderButton({
     }
   };
 
+  // A slide up locks the recording hands-free: the finger may lift and the
+  // take keeps running until the row's Cancel or Send (or the 5-minute cap).
+  const lock = () => {
+    setWillCancel(false);
+    setLocked(true);
+    haptic(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   const handlersRef = useRef({
     begin: () => {},
     release: (_cancel: boolean) => {},
+    lock: () => {},
   });
   useEffect(() => {
-    handlersRef.current = { begin, release };
+    handlersRef.current = { begin, release, lock };
   });
 
   // Built in an effect: the responder's handlers read refs, which render may not touch.
   const [panHandlers, setPanHandlers] = useState<GestureResponderHandlers>({});
   useEffect(() => {
-    setPanHandlers(createHoldResponder(handlersRef, heldRef, cancelRef, setWillCancel).panHandlers);
+    setPanHandlers(
+      createHoldResponder(handlersRef, heldRef, cancelRef, lockedRef, setWillCancel).panHandlers,
+    );
   }, []);
 
   if (!recording && canSend) {
@@ -278,40 +309,35 @@ export function VoiceRecorderButton({
     <View className={recording ? 'relative min-w-0 flex-1' : 'relative'}>
       <View className="flex-row items-center gap-3">
         {recording ? (
-          <View className="h-9 min-w-0 flex-1 flex-row items-center gap-3 px-1">
-            <View className="size-2.5 shrink-0 rounded-full bg-danger" />
-            <Text className="shrink-0 font-mono text-[15px] tabular-nums text-foreground">
-              {formatElapsed(elapsedMs)}
-            </Text>
-            {willCancel ? (
-              <Text
-                numberOfLines={1}
-                className="min-w-0 flex-1 text-center text-[13px] text-danger"
-              >
-                Release to cancel
-              </Text>
-            ) : (
-              <View className="min-w-0 flex-1 flex-row items-center justify-center gap-1">
-                <ChevronLeft size={14} color={ICON} />
-                <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
-                  Slide to cancel
-                </Text>
-              </View>
-            )}
-            <Trash2 size={18} color={willCancel ? '#f87171' : ICON} />
-          </View>
+          <VoiceRecordingRow
+            elapsedMs={elapsedMs}
+            willCancel={willCancel}
+            locked={locked}
+            onCancel={() => finish(true)}
+            onSend={() => finish(false)}
+          />
         ) : null}
-        <View
-          accessibilityRole="button"
-          accessibilityLabel="Hold to record voice message"
-          accessibilityHint="Release to send, slide left to cancel"
-          className="h-9 w-9 items-center justify-center rounded-[10px]"
-          style={recording ? [primaryKey, { transform: [{ scale: 1.25 }] }] : undefined}
-          {...panHandlers}
-        >
-          <Mic size={20} color={recording ? ACCENT_FOREGROUND : ICON} />
-        </View>
+        {locked ? null : (
+          <View
+            accessibilityRole="button"
+            accessibilityLabel="Hold to record voice message"
+            accessibilityHint="Release to send, slide left to cancel, slide up to lock"
+            className="h-9 w-9 items-center justify-center rounded-[10px]"
+            style={recording ? [primaryKey, { transform: [{ scale: 1.25 }] }] : undefined}
+            {...panHandlers}
+          >
+            <Mic size={20} color={recording ? ACCENT_FOREGROUND : ICON} />
+          </View>
+        )}
       </View>
+      {recording && !locked ? (
+        <View className="absolute right-0 bottom-full mb-3 flex-row items-center gap-1.5 rounded-[10px] bg-surface-raised px-3 py-2">
+          <Lock size={12} color={ICON} />
+          <Text numberOfLines={1} className="text-[12px] text-muted-foreground">
+            Slide up to lock
+          </Text>
+        </View>
+      ) : null}
       {shortPressHint ? (
         <View className="absolute right-0 bottom-full mb-3 w-64 rounded-[10px] bg-surface-raised px-3 py-2">
           <Text numberOfLines={2} className="text-[12px] text-muted-foreground">

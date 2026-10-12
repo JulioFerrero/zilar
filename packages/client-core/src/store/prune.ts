@@ -1,0 +1,44 @@
+// PERF-3: a chat that is not open keeps at most its newest `KEEP_INACTIVE`
+// messages, so browsing many chats neither keeps their DOM nor grows
+// `messagesByChat` for the life of the session. The open chat and any chat with
+// work in flight are left alone; a pruned chat is marked incomplete so its next
+// open pages the archive again (openHistory resets its cursor from the page).
+import type { StoreMessage } from './ledger-types';
+import type { HistoryCtx } from './history';
+
+/** The newest messages kept for a chat that is not open (PERF-3). */
+export const KEEP_INACTIVE = 300;
+
+/**
+ * Caps every chat but the open one to its newest `KEEP_INACTIVE` messages.
+ * Left alone: the active chat; a chat with a send in flight, detected by a
+ * message at status `sending` (its bubble must keep its retry target); a chat
+ * with a live AI draft, detected by `drafts[chatId]` (it grows the newest
+ * message). Every message list is stored oldest first (`sortMessages`), so the
+ * tail is the newest.
+ */
+export function pruneInactiveChats(ctx: HistoryCtx, activeChatId: string | null | undefined): void {
+  const state = ctx.get();
+  const messagesByChat: Record<string, StoreMessage[]> = {};
+  const historyComplete: Record<string, boolean> = {};
+  for (const [chatId, messages] of Object.entries(state.messagesByChat)) {
+    if (chatId === activeChatId || messages.length <= KEEP_INACTIVE) {
+      continue;
+    }
+    if (state.drafts[chatId] !== undefined) {
+      continue;
+    }
+    if (messages.some((message) => message.status === 'sending')) {
+      continue;
+    }
+    messagesByChat[chatId] = messages.slice(-KEEP_INACTIVE);
+    historyComplete[chatId] = false;
+  }
+  if (Object.keys(messagesByChat).length === 0) {
+    return;
+  }
+  ctx.set((previous) => ({
+    messagesByChat: { ...previous.messagesByChat, ...messagesByChat },
+    historyComplete: { ...previous.historyComplete, ...historyComplete },
+  }));
+}

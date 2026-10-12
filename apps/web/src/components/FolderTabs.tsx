@@ -2,6 +2,7 @@ import type { KeyboardEvent } from 'react';
 import { useRef } from 'react';
 import { LayoutGrid } from 'lucide-react';
 import { folderIconComponent } from './folderIcon';
+import { Badge } from './ui/badge';
 import { folderUnreadTotal } from '@zilar/chat-core';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
@@ -79,14 +80,11 @@ export function FolderTabs() {
             {Icon !== null && <Icon className="h-3.5 w-3.5" aria-hidden="true" />}
             {tab.label}
             {tab.unread > 0 && (
-              <span
-                className={cn(
-                  'font-mono rounded-full px-1 text-[10px] leading-4 font-semibold',
-                  active ? 'bg-accent text-accent-foreground' : 'bg-surface text-muted-foreground',
-                )}
-              >
-                {tab.unread}
-              </span>
+              <Badge
+                count={tab.unread}
+                muted={!active}
+                className="h-4 min-w-4 px-1 text-[10px] leading-4"
+              />
             )}
           </button>
         );

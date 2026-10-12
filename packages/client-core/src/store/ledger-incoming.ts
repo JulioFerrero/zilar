@@ -137,16 +137,19 @@ export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
       ui.mentions = mentions;
     }
     const mediaToken = deps.mediaToken();
-    if (message.payload !== undefined && message.payload.type === 'voice') {
-      ui.voice = sanitizeIncomingVoice(message.payload.data, mediaToken);
-    }
-    if (message.payload !== undefined && message.payload.type === 'attachment') {
-      ui.attachment = sanitizeIncomingAttachment(message.payload.data, mediaToken);
-    }
-    if (message.payload !== undefined && message.payload.type === 'sticker') {
-      // The same-origin check happens at render time (`StickerMessage`);
-      // the payload is kept as-is so the bubble can show a placeholder.
-      ui.card = message.payload;
+    if (message.payload !== undefined) {
+      if (message.payload.type === 'voice') {
+        ui.voice = sanitizeIncomingVoice(message.payload.data, mediaToken);
+      } else if (message.payload.type === 'attachment') {
+        ui.attachment = sanitizeIncomingAttachment(message.payload.data, mediaToken);
+      } else {
+        // Every other payload is a card the bubble renders from `message.card`:
+        // progress, approval request, sticker and the rest. This mirrors the
+        // optimistic send and forward mapping (`forwardedUiFieldsFor`), so a
+        // received card and its own echo land on the same fields. A sticker is
+        // kept as-is; its same-origin check happens at render time.
+        ui.card = message.payload;
+      }
     }
     const reactions = reactionChips(get().reactions[message.chatJid], message.chatJid, message.id);
     if (reactions !== undefined) {

@@ -12,7 +12,8 @@ import { trustedMediaHosts, type MediaTokenShape } from '@zilar/chat-core';
 import type { ConnectionStatus, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 import { fromPromise, type StoreAppHooks } from './ctx';
 import { handleDeliveredMark } from './delivered';
-import { flushPending, loadPreview, type HistoryCtx } from './history';
+import { flushPending, type HistoryCtx } from './history';
+import { loadPreviews } from './previews';
 import { flushOnline, markReboundOutbox, wakeAndResend } from './online';
 import { ackText, unackText, type SendCtx } from './send';
 import {
@@ -391,10 +392,7 @@ const connectXmpp = (ctx: LifecycleCtx, session: Fibers<never>, me: CoreMe): Eff
     yield* fromPromise(() => ctx.fx.joinGroups(current, me)).pipe(Effect.ignore);
     ctx.groupsJoined = true;
     flushPending(ctx);
-    yield* Effect.all(
-      ctx.get().chats.map((chat) => loadPreview(ctx, current, chat)),
-      { concurrency: 'unbounded' },
-    );
+    yield* loadPreviews(ctx, current);
     ctx.set((state) => ({ chats: sortByRecency(state.chats) }));
     ctx.fx.saveChatList();
   });

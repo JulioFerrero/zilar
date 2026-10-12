@@ -6,7 +6,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { ICON } from '@/lib/colors';
 
 type JumpToBottomProps = {
-  /** Whether the list is scrolled to (or within 40 px of) its end. */
+  /** Whether the list is scrolled to (or within 40 px of) the bottom. */
   atBottom: boolean;
   /** New messages that arrived while the user was scrolled up. */
   count: number;

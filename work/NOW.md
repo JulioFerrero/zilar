@@ -34,6 +34,48 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - an album counts as 1 unread, with the preview "N photos";
   - the viewer steps through the album first;
   - photos only, with no mixed files, in v1.
+- **Audit findings waves (from 2026-10-12, 23:00).** Julio: "i see a lot of task still to do, why you stop?". About 100 audit findings were still open beyond the plan's headline items.
+  - **Wave A, running:**
+    - T-1282: WUX-38/10, name in Profile and the menu;
+    - T-1283: WUX-29/30/37, menu at the pointer, toasts, tooltips;
+    - T-1284: web polish batch;
+    - T-1285: WUX-19/20/23/33;
+    - T-1286: SG-7/8/9, server;
+    - T-1287: UI-7/12/13/14;
+    - T-1288: mobile batch 1;
+    - T-1289: mobile batch 2;
+    - T-1290: AI-14/9/10.
+  - **Queued:**
+    - T-1291: AI drafts and PERF-9;
+    - T-1292: AI-20/21, replace a provider key;
+    - T-1293: client PERF-7/11/13;
+    - T-1294: mobile cold start;
+    - T-1295: web bundle and PERF-17;
+    - T-1296: OPS-21 version check and SEC-11.
+  - **Need Julio (production or config):**
+    - OPS-3/4/7/8/9/11/13/14/15/18/19/20: deploys, logging, secrets, backups, disk, restore drill;
+    - PERF-8/16: archive indexes in ejabberd's DB;
+    - PERF-10/18: ejabberd config;
+    - SEC-12: an owner flag, a schema change;
+    - SEC-14: the cipher key, an env var;
+    - AI-15/16: LiteLLM budgets.
+  - **Left as they are, on purpose:**
+    - AI-23: tool rewrites reuse approved hosts. That matches Julio's "hosts approved once per tool" decision; he can say if he wants approval per version;
+    - SG-10: public groups show members' real addresses. By design for groups;
+    - SG-11: a stranger's DM has no chat row, and `apps/web/src/lib/push/inTab.ts:44` skips the notification. Harmless;
+    - UI-15: pins refresh every 60 s. The audit says "later";
+    - WUX-44: a reload prompt for a new web build. To do after T-1296's version banner lands.
+  - **Also running:**
+    - T-1297: scroll memory and select-mode Delete/Copy;
+    - T-1300: muted chats list and emoji search;
+    - T-1301: in-chat search on narrow web;
+    - T-1302: mobile notification channels and double-tap to react.
+    - T-1283 is merged.
+  - **Product calls for Julio, not started:**
+    - WUX-41: a light theme;
+    - WUX-40: account switching;
+    - MUX-19: the system share sheet;
+    - AI-17: a stored time zone, which needs a migration.
 - **Albums progress (2026-10-12, evening):**
   - **Merged:**
     - T-1267: wire marker + grouping;
@@ -43,8 +85,23 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - T-1271: mobile albums. Checked on the emulator: picked 3 photos in the system picker, they show as one grid with the caption, and the viewer shows "2 / 3";
     - T-1272: an album counts as 1 unread (server count + live), and the server preview reads "N photos";
     - T-1273 and T-1274: album-wide Delete ("Delete album?") and Forward (it arrives as one album), on web and mobile; checked on the mock and the emulator.
-  - **Running:** T-1275, so a long-press on a photo opens the menu instead of the viewer (seen on the emulator).
-  - **Albums left:** a reaction on a whole album (plan §4.4), and a reply quote reading "N photos". Both are small.
+  - **Also merged:**
+    - T-1275: a long-press on a photo opens the menu, checked on the emulator;
+    - T-1277: PERF-1, a reconnect skips known chats' preview queries;
+    - T-1278: PERF-3, the web renders the newest 150 rows and background chats keep 300;
+    - T-1279: AI progress and approval cards rendered as empty bubbles in both apps (`toUiMessage` mapped only stickers); fixed and checked on the web mock.
+  - **Albums are done.** A reply quote already reads "N photos" (`replyRef` uses `previewBody`), and a reaction goes to the first photo, as the plan says.
+  - **Also merged:**
+    - T-1276 (MUX-2): mobile chats open at the bottom at once;
+    - T-1280 (MUX-14): lock a voice recording by sliding up, then Cancel or Send.
+    - Both checked on the emulator.
+  - **Plan:** 112/116 merged. What's left needs Julio: the deletion job (his decisions), private uploads, release signing, backups and near-zero-downtime deploys.
+  - **New APK:** `~/Downloads/zilar-fb665bd0.apk` (main at fb665bd0, prod URL, Firebase config included). It has albums, album Delete/Forward, the bottom-open chats, the voice lock and the progress cards. Not installed anywhere.
+  - **Live:** chat.zilar.app is at T-1279 (6b6e9857f); `db` ok.
+  - **For Julio's phone or browser after deploy:**
+    - a long-press on a single photo opens the menu;
+    - a long chat on chat.zilar.app scrolls up smoothly;
+    - AI approval cards in old AI chats look right.
   - **Live, the deletion/export deploy:** deletion status is `{scheduled:false}`, and the export answers 401 without a session.
   - **For Julio's phone:** a 3-photo album buzzes once (DM and group); send an album from the web and check how it looks on the phone after T-1271.
   - **Still to do:** album-wide delete, forward and reaction, and the unread collapse (plan Task 5).

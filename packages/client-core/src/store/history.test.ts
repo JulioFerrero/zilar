@@ -1,10 +1,12 @@
 import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
+import type { UiMessage } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 import type { CoreState } from './ctx';
 import type { CorePorts } from './ports';
 import {
   PAGE_HISTORY_MAX,
+  PREVIEW_HISTORY_MAX,
   canLoadHistory,
   clearSupersededMarker,
   flushPending,
@@ -17,6 +19,7 @@ import {
   type HistoryPatch,
   type HistoryState,
 } from './history';
+import { loadPreviews } from './previews';
 import { ANA, TEAM, dm, team, testCtx } from './test-ctx';
 
 /** `count` messages from Ana, `ana-0` the oldest, one minute apart. */
@@ -279,6 +282,36 @@ describe('loadPreview (core)', () => {
     await Effect.runPromise(loadPreview(ctx, ctx.core as XmppCore, dm));
 
     expect(ctx.lastRead[ANA]).toBe('ana-3');
+  });
+});
+
+describe('loadPreviews (core)', () => {
+  it('a reconnect skips chats whose preview and cursor are already known', async () => {
+    const preview = { id: 'ana-59' } as UiMessage;
+    const { ctx, loadHistory } = historyCtx({
+      state: {
+        chats: [
+          { ...dm, lastMessage: preview },
+          { ...team, lastMessage: preview },
+        ],
+      },
+    });
+    ctx.cursors[ANA] = 'ana-59';
+    ctx.cursors[TEAM] = 'team-59';
+
+    await Effect.runPromise(loadPreviews(ctx, ctx.core as XmppCore));
+
+    expect(loadHistory).not.toHaveBeenCalled();
+  });
+
+  it('still previews a chat whose list row has no lastMessage', async () => {
+    const { ctx, loadHistory, state } = historyCtx({ state: { chats: [dm] } });
+    ctx.cursors[ANA] = 'ana-59';
+
+    await Effect.runPromise(loadPreviews(ctx, ctx.core as XmppCore));
+
+    expect(loadHistory).toHaveBeenCalledWith(ANA, 'chat', { max: PREVIEW_HISTORY_MAX });
+    expect(state().chats.find((chat) => chat.id === ANA)?.lastMessage?.id).toBe('ana-59');
   });
 });
 

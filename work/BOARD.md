@@ -9,6 +9,11 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account; superseded by T-1129's plan |
+| [T-1285](T-1285-web-lists-and-groups.md) | WUX-19/20/23/33: requests row, group search, search selection, Esc | in-progress | auto | — | audit wave A |
+| [T-1286](T-1286-server-social-fixes.md) | SG-7/8/9: joins respect blocks, invite use survives failed sign-up, search by handle | in-progress | auto | — | audit wave A |
+| [T-1287](T-1287-client-ui-fixes.md) | UI-7/12/13/14 shared client fixes | in-progress | auto | — | audit wave A |
+| [T-1288](T-1288-mobile-touch-fixes.md) | Mobile batch 1 (MUX-16/17/22/28/30) | in-progress | auto | — | audit wave A |
+| [T-1289](T-1289-mobile-copy-states.md) | Mobile batch 2 (MUX-25/26/27/29/32) | in-progress | auto | — | audit wave A |
 
 ## Follow-ups
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile. This is a new feature, so it needs Julio's OK.
@@ -1315,3 +1320,12 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1273](T-1273-albums-actions-web.md) | Albums: album-wide Delete and Forward on web; a forwarded album stays one album | 2026-10-12 |
 | [T-1274](T-1274-albums-actions-mobile.md) | Albums: album-wide Delete and Forward on mobile | 2026-10-12 |
 | [T-1275](T-1275-photo-long-press-menu.md) | Mobile: long-press on a photo opens the message menu, not the viewer | 2026-10-12 |
+| [T-1277](T-1277-reconnect-previews.md) | PERF-1: reconnect skips known chats' preview queries; 4 at a time; one store update per preview | 2026-10-12 |
+| [T-1278](T-1278-web-message-window.md) | PERF-3: web renders the newest 150 rows (grows on scroll/jump); background chats pruned to 300 | 2026-10-12 |
+| [T-1279](T-1279-progress-card-empty.md) | Progress and approval cards from history/live render again (toUiMessage mapped only stickers) | 2026-10-12 |
+| [T-1276](T-1276-mobile-inverted-list.md) | MUX-2: mobile chats open at the bottom instantly (inverted list, no mount scrolls) | 2026-10-12 |
+| [T-1280](T-1280-voice-lock.md) | MUX-14: lock a voice recording (slide up), then Cancel or Send | 2026-10-12 |
+| [T-1281](T-1281-mobile-album-type.md) | Mobile: album typed on SendAttachmentOptions | 2026-10-12 |
+| [T-1283](T-1283-web-menu-feedback.md) | WUX-29/30/37: menu at the pointer, Copy/Pin toasts, icon tooltips | 2026-10-12 |
+| [T-1282](T-1282-web-name-and-menu.md) | WUX-38/10: display name in Profile; menu icons, sections, Settings | 2026-10-12 |
+| [T-1284](T-1284-web-polish.md) | Web polish batch: WUX-14/22/24/25/31/35/36/42 | 2026-10-12 |

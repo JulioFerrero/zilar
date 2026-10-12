@@ -5,8 +5,14 @@ import { interruptFiber } from '@/lib/effect/timers';
 
 /** Sliding the finger this far left (negative dx, in px) while holding cancels. */
 const CANCEL_SLIDE_PX = -90;
+/** Sliding the finger this far up (negative dy, in px) while holding locks. */
+const LOCK_SLIDE_PX = -70;
 
-export type HoldHandlers = { begin: () => void; release: (cancel: boolean) => void };
+export type HoldHandlers = {
+  begin: () => void;
+  release: (cancel: boolean) => void;
+  lock: () => void;
+};
 export type FlagRef = { current: boolean };
 export type TickerRef = { current: Fiber.Fiber<unknown, unknown> | undefined };
 
@@ -30,13 +36,17 @@ export function stopTicker(ref: TickerRef): void {
 
 /**
  * The hold gesture on the mic: grant starts, release sends, a slide past
- * `CANCEL_SLIDE_PX` or a lost touch cancels. Built outside the component so
- * the handlers may read refs (they only run in touch events).
+ * `CANCEL_SLIDE_PX` or a lost touch cancels. A slide up past `LOCK_SLIDE_PX`
+ * locks once, and from then on the release neither sends nor cancels: the
+ * finger can lift and the recording keeps running (the row's buttons end it).
+ * Built outside the component so the handlers may read refs (they only run in
+ * touch events).
  */
 export function createHoldResponder(
   handlersRef: { current: HoldHandlers },
   heldRef: FlagRef,
   cancelRef: FlagRef,
+  lockedRef: FlagRef,
   setWillCancel: (value: boolean) => void,
 ) {
   return PanResponder.create({
@@ -47,15 +57,31 @@ export function createHoldResponder(
     onPanResponderGrant: () => {
       heldRef.current = true;
       cancelRef.current = false;
+      lockedRef.current = false;
       handlersRef.current.begin();
     },
     onPanResponderMove: (_event, gesture) => {
-      setWillCancel(gesture.dx < CANCEL_SLIDE_PX);
+      if (lockedRef.current) {
+        return;
+      }
+      const willCancel = gesture.dx < CANCEL_SLIDE_PX;
+      setWillCancel(willCancel);
+      if (!willCancel && gesture.dy < LOCK_SLIDE_PX) {
+        lockedRef.current = true;
+        setWillCancel(false);
+        handlersRef.current.lock();
+      }
     },
     onPanResponderRelease: (_event, gesture) => {
+      if (lockedRef.current) {
+        return;
+      }
       handlersRef.current.release(gesture.dx < CANCEL_SLIDE_PX);
     },
     onPanResponderTerminate: () => {
+      if (lockedRef.current) {
+        return;
+      }
       handlersRef.current.release(true);
     },
   });

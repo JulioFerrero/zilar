@@ -1,4 +1,4 @@
-import type { ReplyRef, UiMention } from '@zilar/chat-core';
+import type { AlbumRef, ReplyRef, UiMention } from '@zilar/chat-core';
 
 /**
  * The send option types of the mobile store, split out of `types.ts` by
@@ -12,10 +12,12 @@ export type SendTextOptions = {
   mentions?: UiMention[];
 };
 
-/** Options for `sendAttachment`: a caption and an optional reply, like web. */
+/** Options for `sendAttachment`: a caption, an optional reply and album membership, like web. */
 export type SendAttachmentOptions = {
   caption?: string;
   replyTo?: ReplyRef;
+  /** Album membership (`urn:zilar:album:0`) for a photo sent as part of a pick. */
+  album?: AlbumRef;
 };
 
 /** A finished voice recording the composer hands to the store (T-0154). */

@@ -96,7 +96,7 @@ export const ChatListItem = memo(function ChatListItem({
           online={chat.online === true}
           ai={chat.isAI}
         />
-        <div className={cn('min-w-0 flex-1', !isWide && 'border-b border-[#1a1a1a] pb-2.5')}>
+        <div className={cn('min-w-0 flex-1', !isWide && 'border-b border-border pb-2.5')}>
           <div className="flex items-center gap-1.5">
             {chat.pinnedAt !== undefined && (
               <Pin aria-label="Pinned" className="size-3.5 shrink-0 text-subtle-foreground" />
@@ -149,7 +149,7 @@ export const ChatListItem = memo(function ChatListItem({
               </span>
             ) : (
               <span className="truncate text-[13px] leading-5 text-muted-foreground">
-                {prefix.length > 0 && <span className="text-[#d4d4d4]">{prefix}</span>}
+                {prefix.length > 0 && <span className="text-foreground">{prefix}</span>}
                 {body}
               </span>
             )}

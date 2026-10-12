@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, CircleAlert, X } from 'lucide-react';
 import { useRef } from 'react';
 import { formatStickerSize } from '@/lib/sticker-images';
 import { Button } from '@/components/ui/button';
@@ -68,7 +68,7 @@ export function PackEditorItems({
             </span>
           ) : (
             <span className="flex size-16 shrink-0 items-center justify-center rounded-lg bg-well text-[20px]">
-              ⚠️
+              <CircleAlert className="size-5 text-danger" aria-hidden="true" />
             </span>
           )}
           <span className="flex min-w-0 flex-1 flex-col gap-1">
@@ -90,7 +90,7 @@ export function PackEditorItems({
                 <TextInput
                   value={item.emoji}
                   maxLength={8}
-                  placeholder="🐱"
+                  placeholder="Emoji"
                   disabled={busy}
                   aria-label={`Emoji for ${item.name}`}
                   onChange={(event) => onSetEmoji(item.key, event.target.value)}

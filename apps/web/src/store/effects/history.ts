@@ -2,12 +2,15 @@
 // first page, older pages, opening at a message) is in
 // `@zilar/client-core/store`; it is re-exported here for the web modules.
 import { Effect } from 'effect';
+import type { UiMessage } from '@zilar/chat-core';
 import {
   applyChatDelivery,
   clearSupersededMarker,
   flushPending,
   loadPreview,
+  openAtMessage as openAtMessageCore,
   openHistory,
+  pruneInactiveChats,
   recordRead,
 } from '@zilar/client-core/store';
 import { applyChatPrefs } from '@/lib/chatPrefs';
@@ -26,9 +29,70 @@ export {
   flushPending,
   loadOlder,
   loadPreview,
-  openAtMessage,
   openHistory,
 } from '@zilar/client-core/store';
+
+/** No ids: the stable empty set the reveal reader returns when a chat has none. */
+const NO_REVEALS: ReadonlySet<string> = new Set();
+
+// Jump targets the list must grow its window to include before it scrolls. A
+// search hit, a pin or a reply quote loads the message (openAtMessage); the
+// list renders only its newest window, so the target is recorded here and the
+// window hook (`useMessageWindow`) subscribes and grows to include it. Ids only,
+// chat-keyed, dropped once the list has scrolled to them.
+const revealTargets = new Map<string, ReadonlySet<string>>();
+const revealListeners = new Set<() => void>();
+
+function notifyRevealListeners(): void {
+  for (const listener of revealListeners) {
+    listener();
+  }
+}
+
+export function requestMessageWindowReveal(chatId: string, messageId: string): void {
+  const current = revealTargets.get(chatId);
+  if (current?.has(messageId) === true) {
+    return;
+  }
+  revealTargets.set(chatId, new Set([...(current ?? []), messageId]));
+  notifyRevealListeners();
+}
+
+export function clearMessageWindowReveal(chatId: string, messageId: string): void {
+  const current = revealTargets.get(chatId);
+  if (current?.has(messageId) !== true) {
+    return;
+  }
+  const next = new Set(current);
+  next.delete(messageId);
+  revealTargets.set(chatId, next);
+  notifyRevealListeners();
+}
+
+export function messageWindowReveals(chatId: string): ReadonlySet<string> {
+  return revealTargets.get(chatId) ?? NO_REVEALS;
+}
+
+export function subscribeMessageWindowReveals(listener: () => void): () => void {
+  revealListeners.add(listener);
+  return () => {
+    revealListeners.delete(listener);
+  };
+}
+
+/**
+ * `openAtMessage` plus the window reveal: after the message is loaded, remember
+ * it so the list grows its window to include it before the jump scrolls. The
+ * Effect contract is unchanged for the store's callers.
+ */
+export const openAtMessage = (
+  ctx: StoreCtx,
+  chatId: string,
+  messageId: string,
+): Effect.Effect<UiMessage, Error> =>
+  openAtMessageCore(ctx, chatId, messageId).pipe(
+    Effect.tap(() => Effect.sync(() => requestMessageWindowReveal(chatId, messageId))),
+  );
 
 /** Makes `chatId` the open chat and starts what it needs: pins, members, history. */
 export function openChat(ctx: StoreCtx, chatId: string): void {
@@ -38,6 +102,10 @@ export function openChat(ctx: StoreCtx, chatId: string): void {
     // previous view); reopening the same chat keeps it.
     topicNotice: state.topicNotice?.chatId === chatId ? state.topicNotice : undefined,
   }));
+  // PERF-3: the chat just opened is now the active one, so every other chat
+  // drops to its newest KEEP_INACTIVE messages. Ids of pruned messages stay in
+  // the ledger (PERF-13's fix is a separate task).
+  pruneInactiveChats(ctx, chatId);
   // Navigating away resolves a pending quiet self-archive: the mark exists so
   // the disappearance refresh moves silently, but leaving first means no
   // silent move is wanted — a leaked mark would silence a later, unrelated

@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { BrowserRouter } from 'react-router';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { AppRoutes } from '@/routes/AppRoutes';
+import { ToastProvider } from '@/components/ui/toast';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { ensureServiceWorker, realPushBrowser } from '@/lib/push';
 import { runWeb } from '@/lib/effect/runtime';
@@ -20,9 +21,11 @@ export function App() {
   return (
     <AuthProvider>
       <ChatStoreProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
+        <ToastProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </ToastProvider>
       </ChatStoreProvider>
     </AuthProvider>
   );

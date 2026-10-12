@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
-import { checkHandle, claimHandle, getMe, updateMeProfile } from '@/lib/api';
+import { checkHandle, claimHandle, getMe, updateMe, updateMeProfile } from '@/lib/api';
 import { useAuth } from '@/auth/AuthProvider';
 import { copyText } from '@/lib/clipboard';
 import { fromApi } from '@/lib/effect/api-effect';
@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 import { AvatarUploader } from './AvatarUploader';
 import { ExportSection } from './ExportSection';
-import { useChatSelector } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 type HandleCheck =
   { state: 'idle' } | { state: 'done'; available: boolean; reason?: string | undefined };
@@ -78,6 +78,7 @@ function ProfilePictureSection() {
 /** Settings → Profile: picture, handle (with live check), bio, share link. */
 export function ProfileSettingsSection() {
   const auth = useAuth();
+  const storeApi = useChatStoreApi();
   const [handle, setHandle] = useState(auth.user?.handle ?? '');
   const [typed, setTyped] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -88,12 +89,23 @@ export function ProfileSettingsSection() {
   const [bio, setBio] = useState('');
   const [bioTyped, setBioTyped] = useState(false);
   const [remoteBio, setRemoteBio] = useState<string | undefined>(undefined);
+  // T-1282: the display name, editable here after onboarding. The session name
+  // is the first value; `GET /me` corrects it (the mock backend keeps no
+  // session) and the store's `me.name` is updated on save so the app agrees.
+  const [name, setName] = useState(auth.user?.name ?? '');
+  const [nameTyped, setNameTyped] = useState(false);
+  const [remoteName, setRemoteName] = useState<string | undefined>(undefined);
   useQuery(
     () =>
       auth.user === undefined
         ? Effect.void
         : fromApi(() => getMe()).pipe(
-            Effect.tap((me) => Effect.sync(() => setRemoteBio(me.bio ?? ''))),
+            Effect.tap((me) =>
+              Effect.sync(() => {
+                setRemoteBio(me.bio ?? '');
+                setRemoteName(me.name);
+              }),
+            ),
             Effect.ignore,
           ),
     [auth.user?.id],
@@ -102,6 +114,8 @@ export function ProfileSettingsSection() {
   const trimmed = handle.trim();
   const current = auth.user?.handle ?? '';
   const currentBio = remoteBio ?? '';
+  const currentName = remoteName ?? auth.user?.name ?? '';
+  const trimmedName = name.trim();
   // The live check skips your own handle in any casing: the server sees its
   // live row and would report "taken", which is misleading next to an
   // enabled Save.
@@ -116,22 +130,33 @@ export function ProfileSettingsSection() {
   if (!bioTyped && bio === '' && remoteBio !== undefined && remoteBio !== '') {
     setBio(remoteBio);
   }
+  // The display name too: seed it from the server while the user has not
+  // typed, so a saved name survives a remount (the mock has no session).
+  if (!nameTyped && remoteName !== undefined && name !== remoteName) {
+    setName(remoteName);
+  }
 
   const [checkResult] = useQuery(() => handleCheck(trimmed, ownHandle), [trimmed, ownHandle]);
   const check: HandleCheck = AsyncResult.isSuccess(checkResult) ? checkResult.value : IDLE_CHECK;
 
   const [saveState, runSave] = useAction<
-    { handle?: string | undefined; bio?: string | undefined },
+    { handle?: string | undefined; name?: string | undefined; bio?: string | undefined },
     void,
     ApiFailure
   >((input) =>
     Effect.gen(function* () {
-      const { handle: nextHandle, bio: nextBio } = input;
+      const { handle: nextHandle, name: nextName, bio: nextBio } = input;
       if (nextHandle !== undefined) {
         yield* fromApi(() => claimHandle(nextHandle));
       }
+      if (nextName !== undefined) {
+        yield* fromApi(() => updateMe(nextName));
+      }
       if (nextBio !== undefined) {
-        yield* fromApi(() => updateMeProfile(auth.user?.name ?? '', nextBio));
+        // `PATCH /me` requires the name: send the new one when the name
+        // changed, otherwise the current one, so a bio-only save never
+        // reverts a rename.
+        yield* fromApi(() => updateMeProfile(nextName ?? currentName, nextBio));
       }
       yield* fromApi(() => auth.refetch());
     }).pipe(
@@ -140,6 +165,16 @@ export function ProfileSettingsSection() {
           setSaved(true);
           if (input.handle !== undefined) {
             setHandle(input.handle);
+          }
+          if (input.name !== undefined) {
+            const savedName = input.name;
+            setName(savedName);
+            setRemoteName(savedName);
+            // Keep the app's own user in step: the store's `me.name` is the
+            // display name the rest of the shell reads.
+            storeApi.setState((state) =>
+              state.me === undefined ? state : { me: { ...state.me, name: savedName } },
+            );
           }
           if (input.bio !== undefined) {
             setRemoteBio(input.bio);
@@ -153,25 +188,33 @@ export function ProfileSettingsSection() {
 
   const bioUnchanged = bio.trim() === currentBio;
   const handleChanged = trimmed !== current;
+  const nameChanged = trimmedName !== currentName;
 
   const save = (): void => {
     if (busy) {
       return;
     }
     // A cleared handle is not a change we apply; an empty handle that was
-    // already empty is fine and lets a bio-only save through.
+    // already empty is fine and lets a name-only or bio-only save through.
     if (handleChanged && trimmed === '') {
       setError('Choose a username');
       return;
     }
+    // The display name must stay 1–64 characters (the server's rule,
+    // `apps/server/src/auth/api.ts:91`), so clearing it is not a change.
+    if (nameChanged && trimmedName === '') {
+      setError('Enter your name');
+      return;
+    }
     const nextHandle = handleChanged ? trimmed : undefined;
+    const nextName = nameChanged ? trimmedName : undefined;
     const nextBio = bioUnchanged ? undefined : bio.trim();
-    if (nextHandle === undefined && nextBio === undefined) {
+    if (nextHandle === undefined && nextName === undefined && nextBio === undefined) {
       return;
     }
     setError(undefined);
     setSaved(false);
-    runSave({ handle: nextHandle, bio: nextBio });
+    runSave({ handle: nextHandle, name: nextName, bio: nextBio });
   };
 
   const [, copyShare] = useAction((url: string) =>
@@ -191,27 +234,41 @@ export function ProfileSettingsSection() {
       <ProfilePictureSection />
       <div className="rounded-xl border border-border bg-surface px-3 py-2.5">
         <TextInput
-          id="profile-handle"
-          label="Your @username"
-          value={handle}
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          maxLength={32}
+          id="profile-name"
+          label="Name"
+          value={name}
+          maxLength={64}
           onChange={(event) => {
-            setHandle(event.target.value);
-            setTyped(true);
+            setName(event.target.value);
+            setNameTyped(true);
             setSaved(false);
           }}
-          placeholder="ada_lovelace"
+          placeholder="Your name"
         />
-        <div aria-live="polite" className="mt-1 min-h-[20px] text-[14px]">
-          {check.state === 'done' &&
-            (check.available ? (
-              <span className="text-muted-foreground">@{trimmed} is available</span>
-            ) : (
-              <span className="text-danger">{reasonText(check.reason)}</span>
-            ))}
+        <div className="mt-3">
+          <TextInput
+            id="profile-handle"
+            label="Your @username"
+            value={handle}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            maxLength={32}
+            onChange={(event) => {
+              setHandle(event.target.value);
+              setTyped(true);
+              setSaved(false);
+            }}
+            placeholder="ada_lovelace"
+          />
+          <div aria-live="polite" className="mt-1 min-h-[20px] text-[14px]">
+            {check.state === 'done' &&
+              (check.available ? (
+                <span className="text-muted-foreground">@{trimmed} is available</span>
+              ) : (
+                <span className="text-danger">{reasonText(check.reason)}</span>
+              ))}
+          </div>
         </div>
         <div className="mt-3">
           <TextInput
@@ -241,7 +298,7 @@ export function ProfileSettingsSection() {
           <Button
             type="button"
             onClick={() => save()}
-            disabled={busy || (!handleChanged && bioUnchanged)}
+            disabled={busy || (!handleChanged && !nameChanged && bioUnchanged)}
           >
             {busy ? 'Saving…' : 'Save'}
           </Button>
@@ -272,7 +329,7 @@ function reasonText(reason: string | undefined): string {
 
 function friendlyError(error: ApiFailure): string {
   if (error.code === 'unknown_error') {
-    return 'Could not save your username. Try again.';
+    return 'Could not save your changes. Try again.';
   }
   switch (error.code) {
     case 'handle_invalid':

@@ -198,20 +198,20 @@ export const loadPreview = (
     const ui = k.toUiMessage(last, ctx.get().currentUserId);
     k.resolvePendingEdits(chat.id);
     const preview = k.previewFor(k.withEdits(ui, chat.id));
+    // One update for the list row and its history flag (PERF-1), so a preview
+    // notifies the store's listeners once.
     ctx.set((state) => ({
       chats: state.chats.map((entry) =>
         entry.id === chat.id && entry.lastMessage === undefined
           ? { ...entry, lastMessage: preview }
           : entry,
       ),
+      historyComplete: { ...state.historyComplete, [chat.id]: page.complete },
     }));
     // The boot preview only fills the list row; it never marks read, so the
     // first open of a chat that was never opened on this device still shows
     // its unread divider (UI-9).
     ctx.cursors[chat.id] = page.first;
-    ctx.set((state) => ({
-      historyComplete: { ...state.historyComplete, [chat.id]: page.complete },
-    }));
   }).pipe(
     // Preview is best-effort; the chat still works when opened.
     Effect.catchCause(() => Effect.void),

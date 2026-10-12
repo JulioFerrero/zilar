@@ -5,17 +5,30 @@ import { useState, type RefObject } from 'react';
 import { ConfirmDialog } from '../ConfirmDialog';
 import { MessageActionsMenu } from '../MessageActionsMenu';
 import { Button } from '../ui/button';
+import { useToast } from '../ui/toast';
 import { useAlbumMembers } from './AlbumGrid';
 import { copyText } from '@/lib/clipboard';
 import { runWeb } from '@/lib/effect/runtime';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 /**
- * Runs a store call the user does not wait for (pin, unpin). Any failure is
- * dropped, as the old empty handler did.
+ * Runs a store call the user does not wait for (pin, unpin). Unlike the old
+ * empty handler, it reports the outcome: `success` on resolve, the fixed pin
+ * error on reject (WUX-30).
  */
-function runDetached(call: () => Promise<unknown>): void {
-  void runWeb(Effect.promise(call).pipe(Effect.ignore));
+function runWithFeedback(
+  call: () => Promise<unknown>,
+  show: (text: string) => void,
+  success: string,
+): void {
+  void runWeb(
+    Effect.promise(call).pipe(
+      Effect.match({
+        onFailure: () => show('Could not pin. Try again.'),
+        onSuccess: () => show(success),
+      }),
+    ),
+  );
 }
 
 /** The hover/focus "Message actions" button that opens the bubble menu. */
@@ -57,6 +70,7 @@ export function MessageMenu({
   canPin,
   canForward,
   align,
+  point,
   onReply,
   onForward,
   onSelectMessages,
@@ -74,6 +88,8 @@ export function MessageMenu({
   canPin: boolean;
   canForward: boolean;
   align: 'left' | 'right';
+  /** A right-click point; the menu opens there instead of at the bubble (WUX-29). */
+  point?: { x: number; y: number } | undefined;
   onReply: () => void;
   onForward: () => void;
   onSelectMessages: () => void;
@@ -81,6 +97,7 @@ export function MessageMenu({
   onClose: () => void;
 }) {
   const storeApi = useChatStoreApi();
+  const show = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const members = useAlbumMembers();
   // T-1273: on an album bubble the menu acts on every photo. The list row hands
@@ -124,6 +141,7 @@ export function MessageMenu({
           canPin={canPin}
           isPinned={pinId !== undefined}
           canForward={canForward}
+          point={point}
           onReact={(emoji) => {
             onClose();
             onReact(emoji);
@@ -146,6 +164,7 @@ export function MessageMenu({
           }}
           onCopy={() => {
             onClose();
+            show('Copied');
             void copyText(message.text ?? '');
           }}
           onDelete={() => {
@@ -156,12 +175,20 @@ export function MessageMenu({
           }}
           onPin={() => {
             onClose();
-            runDetached(() => storeApi.getState().pinMessage(chatId, message.id));
+            runWithFeedback(
+              () => storeApi.getState().pinMessage(chatId, message.id),
+              show,
+              'Pinned',
+            );
           }}
           onUnpin={() => {
             onClose();
             if (pinId !== undefined) {
-              runDetached(() => storeApi.getState().unpinMessage(chatId, pinId));
+              runWithFeedback(
+                () => storeApi.getState().unpinMessage(chatId, pinId),
+                show,
+                'Unpinned',
+              );
             }
           }}
           onClose={onClose}

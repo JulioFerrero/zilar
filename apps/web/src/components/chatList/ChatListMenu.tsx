@@ -1,4 +1,25 @@
-import { Menu as MenuIcon } from 'lucide-react';
+import {
+  Ban,
+  Bell,
+  Bot,
+  Compass,
+  Download,
+  Folder,
+  Inbox,
+  LogOut,
+  Menu as MenuIcon,
+  MonitorSmartphone,
+  Plug,
+  Puzzle,
+  Server,
+  Settings,
+  ShieldCheck,
+  Sticker,
+  UserPlus,
+  UserRound,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 import { createContext, useContext, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import type { BeforeInstallPromptEvent } from '@/lib/push';
@@ -11,15 +32,17 @@ const MenuCloseContext = createContext<(() => void) | null>(null);
 interface NavMenuItemProps {
   to: string;
   label: string;
+  icon: LucideIcon;
   badge?: ReactNode;
 }
 
 /** A menu entry that closes the menu and navigates to `to`. */
-function NavMenuItem({ to, label, badge }: NavMenuItemProps) {
+function NavMenuItem({ to, label, icon, badge }: NavMenuItemProps) {
   const navigate = useNavigate();
   const closeMenu = useContext(MenuCloseContext);
   return (
     <MenuItem
+      icon={icon}
       onSelect={() => {
         closeMenu?.();
         navigate(to);
@@ -35,6 +58,11 @@ function NavMenuItem({ to, label, badge }: NavMenuItemProps) {
       )}
     </MenuItem>
   );
+}
+
+/** A gap between menu sections; purely visual, so it is hidden from AT. */
+function MenuDivider() {
+  return <div aria-hidden="true" className="my-1 border-t border-divider" />;
 }
 
 export interface ChatListMenuProps {
@@ -91,6 +119,7 @@ export function ChatListMenu({
         >
           <MenuCloseContext.Provider value={close}>
             <MenuItem
+              icon={UserPlus}
               onSelect={() => {
                 close();
                 onInvite();
@@ -101,6 +130,7 @@ export function ChatListMenu({
             <NavMenuItem
               to="/settings/requests"
               label="Requests"
+              icon={Inbox}
               badge={
                 incomingRequests !== null && incomingRequests > 0 ? (
                   <span
@@ -112,11 +142,11 @@ export function ChatListMenu({
                 ) : undefined
               }
             />
-            <NavMenuItem to="/settings/folders" label="Chat folders" />
-            <NavMenuItem to="/settings/blocked" label="Blocked people" />
-            <NavMenuItem to="/settings/contacts" label="Contacts" />
-            <NavMenuItem to="/settings/devices" label="Devices" />
+            <NavMenuItem to="/settings/folders" label="Chat folders" icon={Folder} />
+            <NavMenuItem to="/settings/blocked" label="Blocked people" icon={Ban} />
+            <NavMenuItem to="/settings/contacts" label="Contacts" icon={Users} />
             <MenuItem
+              icon={Compass}
               onSelect={() => {
                 close();
                 onExplore();
@@ -124,12 +154,14 @@ export function ChatListMenu({
             >
               Explore groups
             </MenuItem>
-            <NavMenuItem to="/settings/profile" label="Profile" />
-            <NavMenuItem to="/settings/connections" label="Connections" />
-            <NavMenuItem to="/settings/machines" label="Machines" />
+            <NavMenuItem to="/settings/stickers" label="Stickers" icon={Sticker} />
+            <MenuDivider />
+            <NavMenuItem to="/settings/connections" label="Connections" icon={Plug} />
+            <NavMenuItem to="/settings/machines" label="Machines" icon={Server} />
             <NavMenuItem
               to="/settings/approvals"
               label="Approvals"
+              icon={ShieldCheck}
               badge={
                 approvalsBadge !== null ? (
                   <span
@@ -141,10 +173,17 @@ export function ChatListMenu({
                 ) : undefined
               }
             />
-            <NavMenuItem to="/settings/ais" label="My AIs" />
-            <NavMenuItem to="/settings/notifications" label="Notifications" />
+            <NavMenuItem to="/settings/ais" label="My AIs" icon={Bot} />
+            {isServerOwner && (
+              <NavMenuItem to="/settings/integrations" label="Integrations" icon={Puzzle} />
+            )}
+            <MenuDivider />
+            <NavMenuItem to="/settings/devices" label="Devices" icon={MonitorSmartphone} />
+            <NavMenuItem to="/settings/profile" label="Profile" icon={UserRound} />
+            <NavMenuItem to="/settings/notifications" label="Notifications" icon={Bell} />
             {installEvent !== null && (
               <MenuItem
+                icon={Download}
                 onSelect={() => {
                   close();
                   // A click while a prompt waits is dropped before prompt() runs.
@@ -156,9 +195,8 @@ export function ChatListMenu({
                 {installFailed ? 'Install failed — try again' : 'Install app'}
               </MenuItem>
             )}
-            <NavMenuItem to="/settings/stickers" label="Stickers" />
-            {isServerOwner && <NavMenuItem to="/settings/integrations" label="Integrations" />}
-            <MenuItem destructive onSelect={onSignOut}>
+            <NavMenuItem to="/settings/profile" label="Settings" icon={Settings} />
+            <MenuItem icon={LogOut} destructive onSelect={onSignOut}>
               Sign out
             </MenuItem>
           </MenuCloseContext.Provider>

@@ -23,6 +23,8 @@ export * from './reads';
 export * from './incoming';
 export * from './actions';
 export * from './history';
+export * from './prune';
+export * from './previews';
 export * from './delivered';
 export * from './delete-own';
 // ----------------------------------------------------------------------------

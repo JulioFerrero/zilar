@@ -63,7 +63,7 @@ export function ChatListBody({
       aria-label="Chats"
       className={cn(
         'scrollbar-thin flex min-h-0 flex-1 flex-col overflow-y-auto',
-        isWide ? 'gap-0.5 px-2' : 'gap-0',
+        isWide ? 'gap-0.5 px-2' : 'gap-0 pb-20',
       )}
     >
       {chatsState === 'loading' && !hasAnyChats ? (

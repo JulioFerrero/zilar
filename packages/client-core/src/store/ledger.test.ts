@@ -1,4 +1,5 @@
 import type { ChatSummary, ReplyRef } from '@zilar/chat-core';
+import type { Payload } from '@zilar/protocol';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { Effect } from 'effect';
 import { describe, expect, it } from 'vitest';
@@ -449,5 +450,24 @@ describe('the message ledger: one bubble per origin id', () => {
 
     expect(shown()).toHaveLength(2);
     expect(ctx.k.sameMessage('stanza-a', 'stanza-b')).toBe(false);
+  });
+});
+
+describe('the message ledger: payload cards', () => {
+  // The Dev AI's progress message (`packages/mock-backend/.../dev-ai.ts:9`) has
+  // no body, only a `progress` payload. It reached `UiMessage.card` before the
+  // bubble could render it; a missing card left an empty bubble with only a time.
+  it('keeps a received progress payload on UiMessage.card', () => {
+    const progress: Payload = {
+      v: 0,
+      type: 'progress',
+      data: { ai: BOB, stage: 'Reading pull requests' },
+    };
+    const h = harness();
+    h.receive(stanza({ id: 'progress-1', fromJid: BOB, outgoing: false, payload: progress }));
+
+    const [bubble] = h.messages();
+    expect(bubble?.card).toEqual(progress);
+    expect(bubble?.text).toBeUndefined();
   });
 });
