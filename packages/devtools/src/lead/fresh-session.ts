@@ -45,10 +45,9 @@ export async function startFreshWorkerSession(
   input: { task: string; record: TaskRecord; title: string; prompt: string },
 ): Promise<{ sessionId: string; model: string }> {
   const { model: frontMatterModel, effort } = readTaskFrontMatter(deps.repoRoot, input.task);
-  // `model: auto` re-resolves at the time of the fresh session: a fix round in
-  // DeepSeek's peak hours goes to the free Muse even if the first pass ran on
-  // DeepSeek, and the other way around. Other models keep the record's model
-  // (switch-model may have moved it).
+  // `model: auto` re-resolves when the fresh session starts: it always picks
+  // the Go DeepSeek Flash now (T-1242). Other models keep the record's model
+  // (switch-model may have moved it onto the paid fallback).
   const resolved = resolveWorkerModel(frontMatterModel, deps.now?.() ?? new Date());
   const modelString = frontMatterModel === 'auto' ? resolved.model : input.record.model;
   const model = { ...splitModel(modelString), variant: resolved.effortOverride ?? effort };

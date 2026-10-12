@@ -14,6 +14,7 @@ import {
   type TestContext,
 } from '../test-support';
 import { seedGroup, seedUser } from '../test-support/seed';
+import { flushMicrotasks, waitFor } from '../test-support/wait';
 import { localpartFor } from '../xmpp/provisioning';
 
 // PGlite shapes the fake the way the real `archive` table is shaped, copied
@@ -149,6 +150,19 @@ describe('GET /api/push/preview', () => {
     );
   }
 
+  async function deliveredMarks(userId: string) {
+    return testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{
+          chatJid: string;
+          deliveredId: string;
+        }>`SELECT chat_jid AS "chatJid", delivered_id AS "deliveredId"
+          FROM chat_deliveries WHERE user_id = ${userId}`;
+      }),
+    );
+  }
+
   // Alice and Bob are contacts, so Bob's DM archive is in Alice's allowed set.
   async function setupDm() {
     const alice = await bootstrapUser(context, app, 'alice@example.com');
@@ -194,6 +208,58 @@ describe('GET /api/push/preview', () => {
 
     expect(status).toBe(200);
     expect(json).toEqual({ title: 'Bob', body: 'New message', chatId: peer });
+  });
+
+  it('stores the caller’s delivered mark for a DM message it may see', async () => {
+    const { alice, bob, peer } = await setupDm();
+    const aliceJid = dmJid(alice.id);
+    // The message as Alice's device reads it (her own archive, from Bob)…
+    const asRead: SeedRow = {
+      owner: localpartFor(alice.id),
+      peer: `${peer}/phone`,
+      barePeer: peer,
+      kind: 'chat',
+      nick: '',
+      originId: 'origin-dm',
+      txt: 'Hello there',
+      xml: `<message type="chat" from="${peer}/phone"><body>Hello there</body></message>`,
+    };
+    // …and Bob's (the author's) own copy under the same origin id. The mark is
+    // stored in the author's terms, exactly like PUT /chats/:jid/delivered
+    // (deliveries.ts `deliveryScopeForChat`): the author's localpart with the
+    // caller as bare peer.
+    const authorsCopy: SeedRow = {
+      owner: localpartFor(bob.id),
+      peer: aliceJid,
+      barePeer: aliceJid,
+      kind: 'chat',
+      nick: '',
+      originId: 'origin-dm',
+      txt: 'Hello there',
+      xml: `<message type="chat" from="${peer}/phone"><body>Hello there</body></message>`,
+    };
+    await seedArchive(archiveClient, [asRead, authorsCopy]);
+
+    const { status } = await preview(alice.cookie, 'origin-dm');
+
+    expect(status).toBe(200);
+    // The mark is forked off the HTTP answer, so let it land.
+    await waitFor(async () => (await deliveredMarks(alice.id)).length === 1, {
+      label: 'the delivered mark',
+    });
+    const expected = String(Date.parse('2026-06-01T00:00:00.000Z') * 1000);
+    expect(await deliveredMarks(alice.id)).toEqual([{ chatJid: peer, deliveredId: expected }]);
+  });
+
+  it('stores no delivered mark for an unknown id', async () => {
+    const { alice } = await setupDm();
+
+    const { status, json } = await preview(alice.cookie, 'origin-unknown');
+
+    expect(status).toBe(404);
+    expect(errorCode(json)).toBe('not_found');
+    await flushMicrotasks();
+    expect(await deliveredMarks(alice.id)).toEqual([]);
   });
 
   it('answers 404 for a message in a room the caller is not in', async () => {

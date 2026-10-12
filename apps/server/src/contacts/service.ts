@@ -4,12 +4,15 @@
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
+import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import { findInviteByCode } from '../auth/invites';
+import { removePairRosterItems, type RosterLogger } from '../blocks/roster';
 
 // The XMPP roster group every Zilar contact goes into.
 export const ROSTER_GROUP = 'Zilar';
@@ -56,6 +59,70 @@ export async function addContactPair(
         ON CONFLICT DO NOTHING`;
     }),
   );
+}
+
+export interface RemoveContactDeps {
+  db: ServerDatabase;
+  audit?: AuditRecorder;
+  /**
+   * After the pair commits, both roster items of the pair are removed, best
+   * effort. When absent (tests pass nothing), the pair delete and the list
+   * filters still apply.
+   */
+  adminClient?: EjabberdAdminClient | undefined;
+  /** The XMPP domain the roster JIDs are built on. */
+  domain?: string | undefined;
+  /** Warns on a failed roster removal. Defaults to silence. */
+  logger?: RosterLogger | undefined;
+}
+
+// Removes a contact in both directions: the pair rows go in one statement,
+// exactly the shape of a block (`blocks/service.ts`, `blockUser`). A target
+// that is not a contact answers 404 before anything else runs. After the delete
+// commits, both roster items of the pair are removed, best effort, so a `both`
+// subscription is not left behind.
+export async function removeContact(
+  deps: RemoveContactDeps,
+  userId: string,
+  targetId: string,
+): Promise<void> {
+  const deleted = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`DELETE FROM contacts
+        WHERE (user_id = ${userId} AND contact_user_id = ${targetId})
+          OR (user_id = ${targetId} AND contact_user_id = ${userId})
+        RETURNING user_id`;
+    }),
+  );
+  if (deleted.length === 0) {
+    throw new HttpError(404, 'not_found', 'Contact not found');
+  }
+  // Audited once, after the commit; ids only, never names (like the block
+  // audit).
+  void deps.audit?.record({
+    actorUserId: userId,
+    aiId: null,
+    groupId: null,
+    action: 'contact.removed',
+    subjectId: targetId,
+    argsHash: null,
+    costCurrency: null,
+    costAmount: null,
+    result: 'ok',
+    detail: null,
+  });
+  if (deps.adminClient !== undefined && deps.domain !== undefined) {
+    await removePairRosterItems({
+      db: deps.db,
+      adminClient: deps.adminClient,
+      domain: deps.domain,
+      logger: deps.logger,
+      userId,
+      targetId,
+    });
+  }
 }
 
 interface ContactListRow {

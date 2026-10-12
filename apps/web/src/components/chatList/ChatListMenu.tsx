@@ -114,6 +114,8 @@ export function ChatListMenu({
             />
             <NavMenuItem to="/settings/folders" label="Chat folders" />
             <NavMenuItem to="/settings/blocked" label="Blocked people" />
+            <NavMenuItem to="/settings/contacts" label="Contacts" />
+            <NavMenuItem to="/settings/devices" label="Devices" />
             <MenuItem
               onSelect={() => {
                 close();

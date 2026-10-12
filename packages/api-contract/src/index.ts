@@ -23,6 +23,7 @@ export * from './invite-links';
 export * from './iso-datetime';
 export * from './lenient';
 export * from './lenient-nullable-string';
+export * from './link-preview';
 export * from './machines';
 export * from './media';
 export * from './middleware';

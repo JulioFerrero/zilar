@@ -4,7 +4,7 @@ export type ChatKind = 'dm' | 'group' | 'ai';
 
 export type Space = 'personal' | 'work';
 
-export type MessageStatus = 'sending' | 'sent' | 'read' | 'failed';
+export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 /**
  * Why an outgoing voice or attachment send failed (T-0168). Fixed, user-safe
@@ -141,6 +141,11 @@ export interface ChatSummary {
   space: Space;
   avatarUrl?: string;
   unread: number;
+  /**
+   * T-1244: the caller marked this chat unread by hand ("Mark as unread"), so
+   * the row shows an unread dot until the chat is opened. Absent = not marked.
+   */
+  unreadMark?: boolean;
   muted: boolean;
   /**
    * T-0113: per-user archive. Hidden from the main list until unarchived. A
@@ -151,6 +156,11 @@ export interface ChatSummary {
   /** T-0113: server pin stamp; newer pins sort first. Absent means unpinned. */
   pinnedAt?: Date;
   lastMessage?: UiMessage;
+  /**
+   * T-1238: the delivered mark the server reported for this chat, an archive id
+   * in the caller's own-message terms. Absent when nobody confirmed yet.
+   */
+  deliveredUntil?: string;
   online?: boolean;
   onlineCount?: number;
   memberCount?: number;

@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { Effect, Option, Schema } from 'effect';
 import { SubscribePushDevicePayload } from '@zilar/api-contract';
+import { currentSessionId } from '../auth/sessions';
 import { errorClassName, isUniqueViolation } from '../effect/error-utils';
 import { handler } from '../effect/http-core';
 import { HttpError } from '../errors';
@@ -38,6 +39,12 @@ export function createSubscribeHandler(
         throw new HttpError(429, 'rate_limited', 'Too many push registrations, try again later');
       }
       const body = decoded.value;
+      // T-1255: stamp the registering session onto the row, so revoking that
+      // session (T-1235 Devices) cascades its devices away. The middleware
+      // already proved the session; this reads its id only, never a token.
+      const sessionId = yield* Effect.promise(() =>
+        currentSessionId(deps.auth, new Headers(request.request.headers)),
+      );
       const cipher = createPushCipher(storageKey);
       const pushJid = deps.push.PUSH_COMPONENT_JID as string;
       // A replaced node leaves a stale enable-pair behind in ejabberd
@@ -88,6 +95,7 @@ export function createSubscribeHandler(
                   kind: 'fcm',
                   token: body.token,
                   userAgent: body.userAgent ?? null,
+                  sessionId,
                   now: new Date(now()),
                 }
               : {
@@ -103,6 +111,7 @@ export function createSubscribeHandler(
                       : { expirationTime: body.expirationTime }),
                   },
                   userAgent: body.userAgent ?? null,
+                  sessionId,
                   now: new Date(now()),
                 },
             {

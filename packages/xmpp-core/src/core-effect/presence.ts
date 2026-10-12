@@ -7,11 +7,10 @@ import {
   parseContactPresence,
   parseMucPresence,
   stanzaErrorCondition,
-  type MucPresence,
   type ParseContext,
   type RosterPush,
 } from '../stanza';
-import type { Occupant } from '../types';
+import type { Occupant, ParsedMucPresence } from '../types';
 import type { CoreRuntime } from './config';
 
 export type PresenceApi = {
@@ -67,7 +66,7 @@ export function createPresence(runtime: CoreRuntime): PresenceApi {
     }
   }
 
-  function applyPresence(presence: MucPresence): void {
+  function applyPresence(presence: ParsedMucPresence): void {
     const roster = rosterFor(presence.roomJid);
     if (!presence.available) {
       if (roster.delete(presence.occupantJid)) {
@@ -77,11 +76,19 @@ export function createPresence(runtime: CoreRuntime): PresenceApi {
       // status 110 with 307 (kicked), 301 (banned) or 321 (the affiliation
       // changed to none). An unavailable presence from someone else only
       // means they left, never me.
+      const mine = runtime.joinedRooms.get(presence.roomJid) === presence.nick;
       const codes = presence.statusCodes ?? [];
+      // XEP-0045 §10.9: destroying the room sends my own unavailable
+      // self-presence with a <destroy/> child (usually status 110). Drop the
+      // chat at once, like a kick or a ban.
+      if (presence.destroyed === true && (codes.includes(110) || mine)) {
+        runtime.emitEvent('removed', { roomJid: presence.roomJid });
+        return;
+      }
       if (
         codes.includes(110) &&
         (codes.includes(307) || codes.includes(301) || codes.includes(321)) &&
-        runtime.joinedRooms.get(presence.roomJid) === presence.nick
+        mine
       ) {
         runtime.emitEvent('removed', { roomJid: presence.roomJid });
       }

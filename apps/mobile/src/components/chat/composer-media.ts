@@ -86,7 +86,7 @@ export function useComposerMedia({
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [attachOpen, setAttachOpen] = useState(false);
   const [attachError, setAttachError] = useState<string | undefined>(undefined);
-  const [picked, setPicked] = useState<PickedFile | undefined>(undefined);
+  const [picks, setPicks] = useState<PickedFile[]>([]);
   // Production defaults to the real `expo-file-system` stat for unknown
   // picker sizes (T-0157); tests inject a fake picker.
   const picker = useMemo(() => pickerProp ?? createAttachmentPicker(), [pickerProp]);
@@ -113,7 +113,10 @@ export function useComposerMedia({
             setAttachError(result.message);
             return;
           }
-          setPicked(result.file);
+          // A pick stages every file in the composer's strip and closes the
+          // sheet, so the strip and the send button are visible right away.
+          setPicks(result.files);
+          setAttachOpen(false);
         }),
       ),
       Effect.catchTag('ComposerStepFailed', () =>
@@ -122,7 +125,7 @@ export function useComposerMedia({
     ),
   );
   const attachBusy = isWaiting(pickState);
-  const canSend = text.trim().length > 0 || picked !== undefined;
+  const canSend = text.trim().length > 0 || picks.length > 0;
 
   // A GIF pick fetches the media through the proxy, then sends it with the
   // existing attachment path (the composer text is the caption), exactly
@@ -177,29 +180,36 @@ export function useComposerMedia({
     sendGif(gif);
   };
 
-  // A picked file sends with the composer text as the caption (web sends
-  // the same way): the store uploads the bytes, then the attachment
-  // message. The sheet closes and the composer clears, like web. Returns
-  // whether it handled the send, so the caller falls through to text.
+  // A pick stages one or more files (T-1246): Send sends one message per
+  // item in order, the composer text and the reply quote going on the first
+  // only (web sends the same way). The sheet closes and the composer clears.
+  // Returns whether it handled the send, so the caller falls through to text.
   const sendPicked = (): boolean => {
-    if (picked === undefined) {
+    if (picks.length === 0) {
       return false;
     }
     if (onSendAttachment !== undefined) {
-      onSendAttachment(picked, captionOptions(text, replyTo));
+      picks.forEach((file, index) => {
+        onSendAttachment(file, index === 0 ? captionOptions(text, replyTo) : {});
+      });
     }
-    setPicked(undefined);
+    setPicks([]);
     setAttachOpen(false);
     setAttachError(undefined);
     clearDraft();
     return true;
   };
 
+  /** Removes one staged file from the strip. */
+  const removePick = (index: number) => {
+    setPicks((current) => current.filter((_, position) => position !== index));
+  };
+
   const openAttach = () => {
     setAttachError(undefined);
     // In mock mode the sheet lists the generated demo attachments, so the
-    // flow works without a server; tapping one fills the preview row, and
-    // Send uploads it through the mock store like a picked file.
+    // flow works without a server; tapping one stages it, and Send uploads it
+    // through the mock store like a picked file.
     setAttachOpen(true);
   };
 
@@ -213,26 +223,27 @@ export function useComposerMedia({
 
   // One pick attempt from the sheet: permission denials and oversized files
   // show a plain explanation and keep the sheet open; a cancel just closes
-  // the busy state. A picked file stays in the sheet as the preview row, and
-  // the composer's send button sends it with the caption.
+  // the busy state. A picked run stages every file in the composer's strip
+  // and closes the sheet; the composer's send button sends them in order.
   const chooseAttachment = (choice: AttachmentChoice) => {
     setAttachError(undefined);
     pickAttachment(choice);
   };
 
-  // A demo attachment becomes a picked file: the gradient URL is the
-  // preview URI (never fetched), and the store sends the same wire shape.
+  // A demo attachment becomes a staged file: the gradient URL is the preview
+  // URI (never fetched), and the store sends the same wire shape.
   const demoPick = (attachment: Attachment) => {
     setAttachError(undefined);
-    setPicked(demoPickedFile(attachment));
+    setPicks([demoPickedFile(attachment)]);
+    setAttachOpen(false);
   };
 
   return {
     attachOpen,
     attachError,
     setAttachError,
-    picked,
-    setPicked,
+    picks,
+    removePick,
     voiceRecording,
     setVoiceRecording,
     attachBusy,

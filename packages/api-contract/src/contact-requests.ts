@@ -95,6 +95,7 @@ export const HandleProfile = Schema.Struct({
   handle: Schema.String,
   image: Schema.NullOr(Schema.String),
   relation: Schema.Literals(HANDLE_RELATIONS),
+  bio: Schema.optional(Schema.String),
 });
 
 export type HandleProfile = typeof HandleProfile.Type;

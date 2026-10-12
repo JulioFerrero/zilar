@@ -3,20 +3,22 @@
 // `@zilar/client-core/store`; it is re-exported here for the web modules.
 import { Effect } from 'effect';
 import {
+  applyChatDelivery,
   clearSupersededMarker,
   flushPending,
   loadPreview,
   openHistory,
   recordRead,
 } from '@zilar/client-core/store';
-import { ApiError, type ChatPref } from '@/lib/api';
 import { applyChatPrefs } from '@/lib/chatPrefs';
+import { ApiError, type ChatPref } from '@/lib/api';
 import { mergeUnread, sortByRecency, summariesFor } from './chatRows';
 import { CHAT_REFRESH_DEBOUNCE_MS } from './constants';
 import type { StoreCtx } from './ctx';
 import { loadGroupMembersInBackground } from './groupMembers';
 import { refreshPinsFor } from './pins';
 import { Ports } from './ports';
+import { setUnreadMark } from './prefs';
 import { fromPromise, prefsByJid } from './util';
 
 export {
@@ -46,6 +48,18 @@ export function openChat(ctx: StoreCtx, chatId: string): void {
     }
   }
   recordRead(ctx, chatId, ctx.lastRead[chatId]);
+  // T-1244: opening a chat clears its manual unread mark at once; the pref
+  // write keeps the server (and the mock) in step even when no numeric read
+  // mark can be sent (a fresh device holds no last-read id).
+  const opening = ctx.get().chats.find((entry) => entry.id === chatId);
+  if (opening?.unreadMark === true) {
+    ctx.set((state) => ({
+      chats: state.chats.map((chat) =>
+        chat.id === chatId ? { ...chat, unreadMark: false } : chat,
+      ),
+    }));
+    ctx.rt.fork(setUnreadMark(ctx, chatId, false).pipe(Effect.ignore));
+  }
   loadGroupMembersInBackground(ctx, chatId);
   ctx.rt.fork(refreshPinsFor(ctx, chatId));
   if (ctx.pendingOpenChatId !== undefined && ctx.pendingOpenChatId !== chatId) {
@@ -117,6 +131,11 @@ export const refreshChatsOrThrow = (ctx: StoreCtx): Effect.Effect<void, unknown,
     const known = new Map(previous.map((chat) => [chat.id, chat]));
     const activeChatId = ctx.get().activeChatId;
     const freshRows = entries.flatMap((entry) => summariesFor(entry));
+    // T-1238: confirm the newest preview of every row and apply the delivered
+    // mark the server reports to our own loaded messages.
+    for (const row of freshRows) {
+      applyChatDelivery(ctx, row);
+    }
     const fresh = freshRows.filter((row) => !known.has(row.id));
     const kept = freshRows
       .filter((row) => known.has(row.id))

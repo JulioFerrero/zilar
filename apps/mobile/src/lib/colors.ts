@@ -27,6 +27,9 @@ export const MUTED_FOREGROUND: string = palette.mutedForeground;
 
 export const FOREGROUND: string = palette.foreground;
 
+/** The green of seen ticks. */
+export const SEEN: string = palette.online;
+
 /** The icon-key glyph color from ui-style.md §4. */
 export const ICON: string = palette.iconColor;
 

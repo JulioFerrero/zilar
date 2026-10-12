@@ -5,6 +5,7 @@
 import type { Effect } from 'effect';
 import type { ChatSummary } from '@zilar/chat-core';
 import type { XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
+import type { SessionCheck } from './session-check';
 
 /** Synchronous key-value storage (`localStorage` on web), or none. */
 export interface KeyValue {
@@ -51,6 +52,23 @@ export interface CoreApi {
    * all-digit ids. Best effort: failures are ignored.
    */
   markChatRead?(jid: string, messageId: string): Promise<unknown>;
+  /**
+   * Optional: confirms the caller's device holds these messages (`PUT
+   * /api/chats/:jid/delivered`). The ids are origin ids (the wire id,
+   * `docs/plan/delivered-tick.md` §4), 1 to 50 per call. Best effort: failures
+   * are ignored, and the server ignores the caller's own messages.
+   */
+  markChatDelivered?(jid: string, originIds: string[]): Promise<unknown>;
+  /**
+   * Optional: deletes one message from the caller's own copy of a DM (T-1247,
+   * `DELETE /api/chats/:jid/messages/:archiveId`). The id is the archive id.
+   */
+  deleteMessageForMe?(jid: string, archiveId: string): Promise<unknown>;
+  /**
+   * Optional: clears the caller's own copy of a DM's history (T-1247,
+   * `DELETE /api/chats/:jid/history`). The peer's copy is untouched.
+   */
+  clearChatHistory?(jid: string): Promise<unknown>;
 }
 
 /** How an app maps its own `/api/chats` entry to the shared chat summaries. */
@@ -110,6 +128,14 @@ export interface CorePorts {
   readonly drafts: OpenDraftStream;
   readonly notifications: Notifications;
   readonly flags: StoreFlags;
+  /**
+   * Asks `GET /api/me` whether the server session still exists after an
+   * `authFailed` (T-1223): `valid` keeps retrying, `gone` signs out, and
+   * `unknown` (any other status, or a network error) keeps retrying.
+   */
+  checkSession?(): Promise<SessionCheck>;
+  /** Signs out after `checkSession` answered `gone`, so the user lands on login. */
+  sessionGone?(): void;
 }
 
 /** One file on its way out, as the send pipeline describes it (T10). */
@@ -199,5 +225,7 @@ export function testCorePorts(fakes: Partial<CorePorts> = {}): CorePorts {
     drafts: fakes.drafts ?? (() => () => {}),
     notifications: fakes.notifications ?? { syncBadge: () => {}, dismissChat: () => {} },
     flags: fakes.flags ?? { connectRetry: true, reconnectOnResume: false },
+    ...(fakes.checkSession === undefined ? {} : { checkSession: fakes.checkSession }),
+    ...(fakes.sessionGone === undefined ? {} : { sessionGone: fakes.sessionGone }),
   };
 }

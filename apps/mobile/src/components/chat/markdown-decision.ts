@@ -1,4 +1,5 @@
 import {
+  lightToPlain,
   markdownToPlain,
   shouldRenderMarkdown,
   type ChatSummary,
@@ -29,7 +30,7 @@ export function rendersMarkdown(
 /**
  * The chat-list preview body: an incoming AI reply (a DM AI or a group AI
  * reply) is flattened to one plain line, while a human message or your own
- * message in an AI chat is returned as it is.
+ * message in an AI chat shows its light Markdown markers stripped.
  */
 export function plainPreviewBody(
   chat: ChatSummary,
@@ -39,5 +40,5 @@ export function plainPreviewBody(
 ): string {
   return last !== undefined && shouldRenderMarkdown(chat, last, currentUserId)
     ? markdownToPlain(rawBody)
-    : rawBody;
+    : lightToPlain(rawBody);
 }

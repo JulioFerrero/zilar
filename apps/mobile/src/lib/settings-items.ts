@@ -86,11 +86,27 @@ export const SETTINGS_ITEMS = [
     group: 'chats',
   },
   {
+    id: 'contacts',
+    title: 'Contacts',
+    subtitle: 'People you can chat with.',
+    icon: 'contacts',
+    href: '/settings/contacts',
+    group: 'account',
+  },
+  {
     id: 'blocked',
     title: 'Blocked people',
     subtitle: 'People you blocked. They are not told.',
     icon: 'blocked',
     href: '/settings/blocked',
+    group: 'account',
+  },
+  {
+    id: 'devices',
+    title: 'Devices',
+    subtitle: 'Where you are signed in.',
+    icon: 'devices',
+    href: '/settings/devices',
     group: 'account',
   },
   {

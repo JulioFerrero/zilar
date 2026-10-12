@@ -38,8 +38,18 @@ export function newestMessageMs(messages: unknown[]): number {
   return messages.reduce<number>((newest, message) => Math.max(newest, createdMs(message)), 0);
 }
 
-// Recursively looks for a provider quota failure: an object typed
-// `provider.quota`, or a 402 status carried by an error-shaped object.
+// Recursively looks for a provider quota failure. OpenCode classifies its own
+// provider errors, and `provider.quota` also covers OpenCode Go's subscription
+// limit: OpenCode maps `GoUsageLimitError` / a usage-limit message to
+// QuotaExceeded (see the `gousagelimiterror` code and the usage-limit message
+// patterns in the OpenCode 2.0.25 binary). T-1242 also treats a provider rate
+// limit (`provider.rate-limit`), a 429 status, and a `limit`/`quota` message on
+// a provider-typed error as quota, so a Go limit that surfaces one of those
+// ways still moves the worker onto the fallback chain. T-1264 adds an expired
+// or invalid provider credential (`provider.auth`, or a 401 status): that must
+// move work onto the fallback chain like a quota error, or the run stalls
+// silently with nothing to do. The text check only inspects provider-typed
+// objects, so ordinary message or tool text can never match.
 function containsQuotaError(value: unknown, depth: number): boolean {
   if (depth > 8 || !isRecord(value) || Array.isArray(value)) {
     if (Array.isArray(value) && depth <= 8) {
@@ -47,11 +57,22 @@ function containsQuotaError(value: unknown, depth: number): boolean {
     }
     return false;
   }
-  if (value['type'] === 'provider.quota') {
+  const type = value['type'];
+  if (type === 'provider.quota' || type === 'provider.rate-limit' || type === 'provider.auth') {
     return true;
   }
-  if (value['status'] === 402 && ('error' in value || 'message' in value || 'code' in value)) {
+  const status = value['status'];
+  if (
+    (status === 401 || status === 402 || status === 429) &&
+    ('error' in value || 'message' in value || 'code' in value)
+  ) {
     return true;
+  }
+  if (typeof type === 'string' && type.startsWith('provider.')) {
+    const text = `${String(value['message'] ?? '')} ${String(value['code'] ?? '')}`;
+    if (/limit|quota/i.test(text)) {
+      return true;
+    }
   }
   return Object.values(value).some((entry) => containsQuotaError(entry, depth + 1));
 }

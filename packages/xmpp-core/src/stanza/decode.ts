@@ -1,9 +1,21 @@
 import type { XmppElement } from '@xmpp/client';
 import { decodePayload, type Payload } from '@zilar/protocol';
-import { bareJid } from '../jid';
-import { AGENT_NAMESPACE, CHAT_MARKERS_NAMESPACE, CHAT_STATES_NAMESPACE } from '../namespaces';
+import { bareJid, normalizeJid } from '../jid';
+import {
+  AGENT_NAMESPACE,
+  CHAT_MARKERS_NAMESPACE,
+  CHAT_STATES_NAMESPACE,
+  DELIVERED_NAMESPACE,
+} from '../namespaces';
 import { capBody } from '../text';
-import type { ChatKind, ChatMessage, DisplayedEvent, Mention, TypingEvent } from '../types';
+import type {
+  ChatKind,
+  ChatMessage,
+  DeliveredMarkEvent,
+  DisplayedEvent,
+  Mention,
+  TypingEvent,
+} from '../types';
 import {
   parseCorrection,
   parseForward,
@@ -28,13 +40,17 @@ import { CHAT_STATES } from './reactions';
 export function decodeMessageStanza(stanza: XmppElement, ctx: ParseContext): DecodedStanza {
   const envelope = unwrapMessage(stanza);
   const inner = envelope.inner;
+  // A delivered notice is a bodiless headline, which has no chat kind; parse it
+  // before the kind guard so it is not dropped (T-1245).
+  const deliveredMark = parseDeliveredMark(inner, ctx.me);
   const kind = messageKind(inner);
   const from = inner.attrs['from'];
   if (kind === undefined || from === undefined || !domainAllowed(from, kind, ctx)) {
-    return {};
+    return deliveredMark === undefined ? {} : { deliveredMark };
   }
 
   const decoded: DecodedStanza = {};
+  if (deliveredMark !== undefined) decoded.deliveredMark = deliveredMark;
 
   const roomJid = bareJid(from);
   const sender = resolveSender({
@@ -183,4 +199,24 @@ function parseDisplayed(
     messageId,
     outgoing: sender.outgoing,
   };
+}
+
+// The live delivered notice (T-1245): a bodiless headline the server sends
+// from my own bare JID to my own resource. It is trusted only when the `from`
+// bare JID is exactly mine; anything else (a spoofed or foreign stanza) is
+// ignored, so no one can move my ticks.
+function parseDeliveredMark(
+  stanza: XmppElement,
+  me: string | undefined,
+): DeliveredMarkEvent | undefined {
+  if (me === undefined || stanza.attrs['type'] !== 'headline') return undefined;
+  const from = stanza.attrs['from'];
+  if (from === undefined || normalizeJid(from) !== normalizeJid(me)) return undefined;
+  const delivered = stanza.getChild('delivered', DELIVERED_NAMESPACE);
+  const chat = delivered?.attrs['chat'];
+  const until = delivered?.attrs['until'];
+  if (chat === undefined || chat === '' || until === undefined || until === '') {
+    return undefined;
+  }
+  return { chatJid: bareJid(chat), until };
 }

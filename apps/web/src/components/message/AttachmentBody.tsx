@@ -1,14 +1,19 @@
 import { type ChatSummary, type UiMessage } from '@zilar/chat-core';
-import { useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { ApprovalCard } from '../ApprovalCard';
 import { FileMessage } from '../FileMessage';
 import { GifMessage } from '../GifMessage';
 import { ImageMessage } from '../ImageMessage';
+import { isTrustedInlineVideoUrl } from '../media/trusted-media';
 import { ProgressCard } from '../ProgressCard';
 import { VoiceMessage } from '../VoiceMessage';
 import { cn } from '@/lib/utils';
+import { mediaSrc } from '@/lib/attachments';
 import { MessageMeta } from './MessageMeta';
 import { SendFailure } from './SendFailure';
+
+/** No known media host (mock store, signed out): every absolute URL is untrusted. */
+const EMPTY_HOSTS: ReadonlySet<string> = new Set();
 
 export function AttachmentBody({
   message,
@@ -36,12 +41,23 @@ export function AttachmentBody({
   isSending: boolean;
 }) {
   const storeApi = useChatStoreApi();
+  const mediaHosts = useChatSelector((state) => state.mediaTrustedHosts);
+  // A `video/*` file (T-1232) plays inline instead of showing a file card, but
+  // only from a trusted same-origin/media host. A peer can put any URL in the
+  // payload and the player fetches it on render (preload="metadata"), so an
+  // untrusted URL stays a click-to-load card, as the GIF path does.
+  const videoAttachment =
+    attachmentFile &&
+    message.attachment !== undefined &&
+    message.attachment.mime.startsWith('video/') &&
+    isTrustedInlineVideoUrl(message.attachment.url, mediaHosts ?? EMPTY_HOSTS);
   return (
     <>
       {message.image !== undefined && (
         <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
           <ImageMessage
             chatId={message.chatId}
+            messageId={message.id}
             url={message.image.url}
             alt="Photo"
             width={message.image.width}
@@ -61,6 +77,7 @@ export function AttachmentBody({
         <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
           <ImageMessage
             chatId={message.chatId}
+            messageId={message.id}
             url={message.attachment.url}
             alt={message.attachment.name}
             width={message.attachment.width}
@@ -99,14 +116,36 @@ export function AttachmentBody({
 
       {attachmentFile && message.attachment !== undefined && (
         <div className="px-3 py-1.5">
-          <FileMessage
-            chatId={message.chatId}
-            attachment={message.attachment}
-            own={own}
-            uploading={isSending && !failed}
-            failed={failed && !sendFailed}
-            onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-          />
+          {videoAttachment ? (
+            <video
+              controls
+              preload="metadata"
+              src={mediaSrc(message.chatId, message.attachment.url)}
+              className="max-h-[320px] w-full rounded-[12px] border border-edge"
+            />
+          ) : (
+            <FileMessage
+              chatId={message.chatId}
+              attachment={message.attachment}
+              own={own}
+              uploading={isSending && !failed}
+              failed={failed && !sendFailed}
+              onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+            />
+          )}
+          {videoAttachment && failed && !sendFailed && (
+            <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[12px] text-danger">
+              <span>Upload failed</span>
+              <button
+                type="button"
+                aria-label="Retry upload"
+                onClick={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+                className="font-semibold underline"
+              >
+                Retry
+              </button>
+            </div>
+          )}
           {sendFailed && (
             <SendFailure
               chatId={chat.id}

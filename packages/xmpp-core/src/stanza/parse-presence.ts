@@ -6,8 +6,8 @@ import {
   MUC_USER_NAMESPACE,
   OCCUPANT_ID_NAMESPACE,
 } from '../namespaces';
-import type { ChatKind, InvitedEvent, PresenceEvent } from '../types';
-import type { MucPresence, ParseContext } from './parse-context';
+import type { ChatKind, InvitedEvent, ParsedMucPresence, PresenceEvent } from '../types';
+import type { ParseContext } from './parse-context';
 
 export function messageKind(stanza: XmppElement): ChatKind | undefined {
   const type = stanza.attrs['type'];
@@ -32,7 +32,10 @@ export function occupantIdOf(stanza: XmppElement): string | undefined {
 
 // A MUC presence is only trusted when it comes from the room itself: a JID on
 // the MUC domain with a nick. Identity claims from anyone else are ignored.
-export function parseMucPresence(stanza: XmppElement, mucDomain: string): MucPresence | undefined {
+export function parseMucPresence(
+  stanza: XmppElement,
+  mucDomain: string,
+): ParsedMucPresence | undefined {
   if (!stanza.is('presence')) return undefined;
   const from = stanza.attrs['from'];
   if (from === undefined || jidDomain(from) !== mucDomain) return undefined;
@@ -43,8 +46,9 @@ export function parseMucPresence(stanza: XmppElement, mucDomain: string): MucPre
   if (type !== undefined && type !== 'unavailable') return undefined;
 
   const roomJid = bareJid(from);
-  const item = mucUserItem(stanza);
-  const presence: MucPresence = {
+  const userX = stanza.getChild('x', MUC_USER_NAMESPACE);
+  const item = userX?.getChild('item');
+  const presence: ParsedMucPresence = {
     roomJid,
     occupantJid: `${roomJid}/${nick}`,
     nick,
@@ -62,13 +66,17 @@ export function parseMucPresence(stanza: XmppElement, mucDomain: string): MucPre
   // The room's self-presence carries status codes (321 affiliation change,
   // 307 kick, 301 ban): an unavailable self-presence with one of them means
   // the server removed me, so the core can drop the chat at once.
-  const statuses = stanza.getChild('x', MUC_USER_NAMESPACE)?.getChildren('status') ?? [];
+  const statuses = userX?.getChildren('status') ?? [];
   const codes: number[] = [];
   for (const status of statuses) {
     const code = Number(status.attrs['code']);
     if (Number.isInteger(code)) codes.push(code);
   }
   if (codes.length > 0) presence.statusCodes = codes;
+  // XEP-0045 §10.9: a `<destroy/>` child in the muc#user `<x/>` announces the
+  // room is being destroyed. An unavailable self-presence carrying it means the
+  // chat is gone, like a kick or a ban.
+  if (userX?.getChild('destroy') !== undefined) presence.destroyed = true;
   return presence;
 }
 

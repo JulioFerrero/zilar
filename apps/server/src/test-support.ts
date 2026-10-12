@@ -90,6 +90,10 @@ export class FakeAdminClient implements EjabberdAdminClient {
   // `setOnlineResources` below.
   readonly onlineResources: Map<string, string[]> = new Map();
 
+  // T-1245: every raw stanza the server sends through `send_stanza`, so the
+  // live delivered-notice test can assert one send per online resource.
+  readonly sentStanzas: Array<{ from: string; to: string; stanza: string }> = [];
+
   // Fake the connected resources ejabberd would report for a localpart.
   setOnlineResources(localpart: string, resources: string[]): void {
     this.onlineResources.set(localpart, resources);
@@ -211,6 +215,13 @@ export class FakeAdminClient implements EjabberdAdminClient {
   // Reports the faked resources (`setOnlineResources` above).
   userResources(localpart: string): Promise<UserResource[]> {
     return Promise.resolve(this.onlineResources.get(localpart) ?? []);
+  }
+
+  // T-1245: every `send_stanza` the server issues, for the live delivered
+  // notice test to assert on.
+  sendStanza(from: string, to: string, stanza: string): Promise<void> {
+    this.sentStanzas.push({ from, to, stanza });
+    return Promise.resolve();
   }
 
   addRosterItem(

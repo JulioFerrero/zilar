@@ -2,6 +2,7 @@ import { canEditMessage, type ReplyRef } from '@zilar/chat-core';
 import { Effect, Schedule } from 'effect';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ComposerControls } from './composer/ComposerControls';
+import { useFormatShortcut } from './composer/formatShortcut';
 import { useComposerAttachments } from './composer/useComposerAttachments';
 import { useComposerFocus } from './composer/useComposerFocus';
 import { beginEdit, endEdit, useDraftValue } from './composer/useDraftValue';
@@ -48,6 +49,8 @@ export function Composer({
   const isGroup = chat?.kind === 'group';
 
   const mentions = useMentions({ chatId, meJid, isGroup, value, setValue, storeApi, textareaRef });
+  // Ctrl/Cmd+B/+I/+E on the selection; goes through `onChange` so mentions rebase.
+  const onFormatKeyDown = useFormatShortcut(value, textareaRef, mentions.onChange);
   const attachments = useComposerAttachments({ chatId, value, replyTo, onCancelReply, storeApi });
   const canSend = value.trim().length > 0 || attachments.attachment !== undefined;
   const voice = useVoiceRecorder({ chatId, replyTo, onCancelReply, storeApi, canSend });
@@ -319,7 +322,7 @@ export function Composer({
       cancelRecording();
       return;
     }
-    if (mentions.onMentionKeyDown(event)) {
+    if (mentions.onMentionKeyDown(event) || onFormatKeyDown(event)) {
       return;
     }
 

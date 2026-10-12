@@ -100,6 +100,9 @@ export function createStanzaRouter(runtime: CoreRuntime): StanzaRouterApi {
       if (decoded.message !== undefined) runtime.emitEvent('message', decoded.message);
       if (decoded.typing !== undefined) runtime.emitEvent('typing', decoded.typing);
       if (decoded.displayed !== undefined) runtime.emitEvent('displayed', decoded.displayed);
+      if (decoded.deliveredMark !== undefined) {
+        runtime.emitEvent('deliveredMark', decoded.deliveredMark);
+      }
       return;
     }
     if (stanza.is('presence')) {

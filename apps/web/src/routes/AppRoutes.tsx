@@ -12,6 +12,8 @@ import { AisPage } from './AisPage';
 import { InvitePage } from './InvitePage';
 import { JoinPage } from './JoinPage';
 import { BlockedPage } from './BlockedPage';
+import { ContactsPage } from './ContactsPage';
+import { DevicesPage } from './DevicesPage';
 import { RequestsPage } from './RequestsPage';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { NamePage } from './NamePage';
@@ -223,6 +225,22 @@ export function AppRoutes() {
             </RequireAuth>
           }
         />
+        <Route
+          path="/settings/contacts"
+          element={
+            <RequireAuth>
+              <ContactsRoute />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings/devices"
+          element={
+            <RequireAuth>
+              <DevicesRoute />
+            </RequireAuth>
+          }
+        />
         {/* Share links: /@handle opens the group card for a public group or
           the Add contact dialog for a person when logged in, and goes to
           login (returning afterwards) when logged out. react-router matches
@@ -276,6 +294,16 @@ function FoldersRoute() {
 function BlockedRoute() {
   const navigate = useNavigate();
   return <BlockedPage onBack={() => navigate('/')} />;
+}
+
+function ContactsRoute() {
+  const navigate = useNavigate();
+  return <ContactsPage onBack={() => navigate('/')} />;
+}
+
+function DevicesRoute() {
+  const navigate = useNavigate();
+  return <DevicesPage onBack={() => navigate('/')} />;
 }
 
 // The `/@handle` gate: react-router cannot match `/@:handle` (a param must

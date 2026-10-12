@@ -200,6 +200,7 @@ export function ComposerControls({
               onKeyDown={onKeyDown}
               placeholder={placeholder}
               aria-label="Message"
+              title="**bold**, _italic_, `code`, ``` for a block"
               aria-autocomplete="list"
               aria-expanded={pickerOpen}
               {...(pickerOpen ? { 'aria-controls': MENTION_PICKER_ID } : {})}

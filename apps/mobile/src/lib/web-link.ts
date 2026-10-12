@@ -17,6 +17,8 @@ const SETTINGS_PAGES = new Set([
   'approvals',
   'blocked',
   'connections',
+  'contacts',
+  'devices',
   'folders',
   'integrations',
   'machines',

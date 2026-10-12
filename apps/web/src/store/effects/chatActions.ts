@@ -2,8 +2,10 @@
 // one wraps an effect module with the store's `StoreCtx`, lifetime and state
 // accessors; `realStore.ts` spreads the returned slice into the store state.
 import {
+  clearHistory as clearHistoryCore,
   clearSupersededMarker,
   deleteForEveryone,
+  deleteForMe as deleteForMeCore,
   editMessage,
   react,
   sendTyping,
@@ -40,7 +42,9 @@ import {
   setDefaultBackgroundImage,
   setMuted,
   setPinned,
+  setUnreadMark,
 } from './prefs';
+import { recordRead } from './reads';
 import type { Lifetime } from './runtime';
 import {
   deleteFailedMessage,
@@ -74,6 +78,8 @@ export type ChatActions = Pick<
   | 'cancelEdit'
   | 'editMessage'
   | 'deleteForEveryone'
+  | 'deleteForMe'
+  | 'clearHistory'
   | 'sendTyping'
   | 'stopTyping'
   | 'setPushPair'
@@ -99,6 +105,8 @@ export type ChatActions = Pick<
   | 'setPinned'
   | 'setMuted'
   | 'setArchived'
+  | 'setUnreadMark'
+  | 'markChatRead'
   | 'setChatBackground'
   | 'setDefaultBackground'
   | 'setChatBackgroundImage'
@@ -169,6 +177,10 @@ export function makeChatActions(deps: ChatActionsDeps): ChatActions {
     deleteForEveryone: (chatId, messageId) => {
       deleteForEveryone(ctx, chatId, messageId);
     },
+    deleteForMe: (chatId, messageId) => {
+      rt.runDetached(deleteForMeCore(ctx, chatId, messageId));
+    },
+    clearHistory: (chatId) => rt.runPromise(clearHistoryCore(ctx, chatId)),
     sendTyping: (chatId) => {
       sendTyping(ctx, chatId);
     },
@@ -225,6 +237,14 @@ export function makeChatActions(deps: ChatActionsDeps): ChatActions {
     setPinned: (chatId, pinned) => rt.runPromise(setPinned(ctx, chatId, pinned)),
     setMuted: (chatId, duration) => rt.runPromise(setMuted(ctx, chatId, duration)),
     setArchived: (chatId, archived) => rt.runPromise(setArchived(ctx, chatId, archived)),
+    setUnreadMark: (chatId, unreadMark) => rt.runPromise(setUnreadMark(ctx, chatId, unreadMark)),
+    // "Mark as read": the shared `recordRead` clears the count, saves the mark
+    // and sends the server read mark; the pref write clears the manual mark.
+    markChatRead: (chatId) => {
+      const chat = get().chats.find((entry) => entry.id === chatId);
+      recordRead(ctx, chatId, chat?.lastMessage?.archiveId ?? ctx.lastRead[chatId]);
+      return rt.runPromise(setUnreadMark(ctx, chatId, false));
+    },
     setChatBackground: (chatId, presetId) =>
       rt.runPromise(setChatBackground(ctx, chatId, presetId)),
     setDefaultBackground: (presetId) => rt.runPromise(setDefaultBackground(ctx, presetId)),

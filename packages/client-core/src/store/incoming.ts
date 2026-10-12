@@ -7,6 +7,7 @@
 import type { UiMessage } from '@zilar/chat-core';
 import type { ChatMessage, Occupant, PresenceEvent } from '@zilar/xmpp-core';
 import type { CoreCtx } from './ctx';
+import { confirmDelivered } from './delivered';
 import { recordRead } from './reads';
 import {
   advanceStatus,
@@ -46,7 +47,7 @@ function handleOutgoingEcho(ctx: CoreCtx, message: ChatMessage, ui: UiMessage): 
     k.linkMessageIds(localId, ui.id);
     k.linkLocalToServer(localId, ui.id);
     // An echo is proof the stanza reached the server: a bubble the pipeline had
-    // marked `failed` is delivered after all, so it moves to `sent` and its
+    // marked `failed` reached it after all, so it moves to `sent` and its
     // kept retry bytes can go, whichever pipeline stored them. `advanceStatus`
     // below still guards against a later `sending`/`failed` update downgrading
     // it again.
@@ -132,10 +133,17 @@ export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
     return;
   }
 
+  // Holding this received message is proof of delivery (T-1238): confirm it
+  // over HTTP, debounced per chat. An AI-only DM has no peer device, so its
+  // call is skipped to save it (the server ignores the caller's own rows).
+  const chat = ctx.get().chats.find((entry) => entry.id === chatId);
+  if (message.originId !== undefined && chat?.isAI !== true) {
+    confirmDelivered(ctx, chatId, message.originId);
+  }
+
   // A peer's message proves they stopped typing: the line must go with the
   // bubble, not up to five seconds after it. In a group only that sender's
   // name goes; in a DM the whole line goes.
-  const chat = ctx.get().chats.find((entry) => entry.id === chatId);
   if (chat !== undefined && chat.kind === 'group') {
     removeTyper(ctx, chatId, message.fromJid);
   } else {

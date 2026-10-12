@@ -164,6 +164,9 @@ export function ContactProfileRow({
             {profile.name}{' '}
             <span className="font-normal text-muted-foreground">@{profile.handle}</span>
           </p>
+          {profile.bio !== undefined && profile.bio !== '' && (
+            <p className="mt-0.5 text-[13px] text-muted-foreground">{profile.bio}</p>
+          )}
           {profile.relation === 'self' && (
             <p className="mt-0.5 text-[13px] text-muted-foreground">That&apos;s you.</p>
           )}

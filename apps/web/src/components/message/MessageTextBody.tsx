@@ -1,15 +1,31 @@
 // effect-plain: moved unchanged from apps/web/src/components/MessageBubble.tsx (size split)
-import { type UiMessage } from '@zilar/chat-core';
+import { splitLinks, type UiMessage } from '@zilar/chat-core';
 import { lazy, Suspense } from 'react';
 import { LinkText } from '../LinkText';
 import { cn } from '@/lib/utils';
 import { DraftCaret, GeneratingLabel } from './BigEmoji';
+import { LinkPreviewCard } from './LinkPreviewCard';
 import { MessageMeta } from './MessageMeta';
 
 /** The markdown stack loads on the first AI reply; the plain text shows meanwhile. */
 const MarkdownText = lazy(() =>
   import('../MarkdownText').then((m) => ({ default: m.MarkdownText })),
 );
+
+// T-1234: the first https link in the text, unless the message carries an
+// image or an attachment (those fill the bubble already). Only https is
+// unfurled; the server refuses anything else anyway.
+function previewUrl(message: UiMessage, text: string): string | undefined {
+  if (message.image !== undefined || message.attachment !== undefined) {
+    return undefined;
+  }
+  for (const segment of splitLinks(text)) {
+    if (segment.kind === 'link' && segment.href.startsWith('https://')) {
+      return segment.href;
+    }
+  }
+  return undefined;
+}
 
 export function MessageTextBody({
   message,
@@ -28,6 +44,8 @@ export function MessageTextBody({
   meJid: string | undefined;
   hasText: boolean;
 }) {
+  const url = hasText ? previewUrl(message, text) : undefined;
+
   return (
     <>
       {hasText && markdown && (
@@ -55,7 +73,7 @@ export function MessageTextBody({
 
       {hasText && !markdown && (
         <p className={cn('break-words whitespace-pre-wrap', own ? 'px-3 py-2' : 'px-3 py-2.5')}>
-          <LinkText text={text} mentions={message.mentions} meJid={meJid} />
+          <LinkText text={text} mentions={message.mentions} meJid={meJid} formatted />
           {generating && <DraftCaret />}
           <MessageMeta
             message={message}
@@ -73,6 +91,8 @@ export function MessageTextBody({
       )}
 
       {generating && hasText && <GeneratingLabel />}
+
+      {url !== undefined && <LinkPreviewCard url={url} />}
     </>
   );
 }

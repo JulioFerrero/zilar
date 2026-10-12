@@ -5,7 +5,6 @@ import { Pressable, View } from 'react-native';
 import { AttachmentBody } from '@/components/chat/attachment-body';
 import { ForwardedHeader } from '@/components/chat/forwarded-header';
 import { ImageMessage } from '@/components/chat/image-message';
-import { LinkText } from '@/components/chat/link-text';
 import { MarkdownText } from '@/components/chat/markdown-text';
 import {
   BigEmoji,
@@ -14,13 +13,14 @@ import {
   GeneratingLabel,
 } from '@/components/chat/message-bubble-decor';
 import { PayloadCard } from '@/components/chat/payload-card';
+import { BubbleInlineMeta, PlainBubbleBody } from '@/components/chat/plain-bubble-body';
 import { ReplyQuote } from '@/components/chat/reply-quote';
 import { StickerMessage } from '@/components/chat/sticker-message';
 import { Ticks } from '@/components/chat/ticks';
 import { VoiceMessage } from '@/components/chat/voice-message';
 import type { VoicePlayerHost } from '@/components/chat/voice-player';
 import { Text } from '@/components/ui/text';
-import { DANGER } from '@/lib/colors';
+import { SEEN } from '@/lib/colors';
 import { raisedPill, senderColor } from '@/lib/depth';
 
 type MessageBubbleContentProps = {
@@ -43,62 +43,6 @@ type MessageBubbleContentProps = {
   onCancelVoice?: ((message: UiMessage) => void) | undefined;
   voiceHost?: VoicePlayerHost | undefined;
 };
-
-/**
- * The inline time/edited/ticks meta shared by the markdown and plain text
- * branches of a bubble, on the time's own line.
- */
-export function BubbleInlineMeta({
-  message,
-  outgoing,
-  color,
-  generating,
-}: {
-  message: UiMessage;
-  outgoing: boolean;
-  color: string;
-  generating: boolean;
-}) {
-  return (
-    <Text
-      className="font-mono text-[10px]"
-      color={color}
-      style={generating ? { opacity: 0 } : undefined}
-    >
-      {'  '}
-      {message.edited === true ? 'edited ' : ''}
-      {formatTime(message.createdAt)}
-      {/* A failed own text names the failure, like the voice and card meta
-          does (`BubbleMeta`): a red "Not sent" next to the red alert icon. */}
-      {outgoing && message.status === 'failed' ? (
-        <>
-          {'  '}
-          <Text className="font-mono text-[10px]" color={DANGER}>
-            Not sent
-          </Text>
-        </>
-      ) : null}
-      {/* A no-break space then a word joiner: the tick
-          view stays on the time's line and cannot wrap
-          alone onto a second line. */}
-      {outgoing ? '\u00a0\u2060' : null}
-      {outgoing ? (
-        <View
-          style={{
-            width: 14,
-            height: 11,
-            // Nudge the ticks down onto the time's baseline
-            // (they otherwise sit about a third too high).
-            transform: [{ translateY: 2 }],
-            ...(generating ? { opacity: 0 } : undefined),
-          }}
-        >
-          <Ticks status={message.status} color={color} size={11} />
-        </View>
-      ) : null}
-    </Text>
-  );
-}
 
 /** The per-kind body of a bubble, inside the bubble's pressable surface. */
 export function MessageBubbleContent({
@@ -159,7 +103,13 @@ export function MessageBubbleContent({
             <Text className="font-mono text-[10px] text-muted-foreground">
               {formatTime(message.createdAt)}
             </Text>
-            {outgoing ? <Ticks status={message.status} color="#8a8a8a" size={13} /> : null}
+            {outgoing ? (
+              <Ticks
+                status={message.status}
+                color={message.status === 'read' ? SEEN : '#8a8a8a'}
+                size={13}
+              />
+            ) : null}
           </View>
           {message.text ? (
             <Text className="mt-1 px-0.5 text-[15px]" color={textColor}>
@@ -201,25 +151,16 @@ export function MessageBubbleContent({
           {generating ? <GeneratingLabel /> : null}
         </>
       ) : (
-        <>
-          <Text className="text-[15px] leading-5" color={textColor}>
-            <LinkText
-              text={text}
-              color={textColor}
-              mentions={message.mentions}
-              meJid={meJid}
-              outgoing={outgoing}
-            />
-            {generating ? <DraftCaret reduceMotion={reduceMotion} /> : null}
-            <BubbleInlineMeta
-              message={message}
-              outgoing={outgoing}
-              color={metaColor}
-              generating={generating}
-            />
-          </Text>
-          {generating ? <GeneratingLabel /> : null}
-        </>
+        <PlainBubbleBody
+          message={message}
+          outgoing={outgoing}
+          generating={generating}
+          text={text}
+          textColor={textColor}
+          metaColor={metaColor}
+          reduceMotion={reduceMotion}
+          meJid={meJid}
+        />
       )}
     </>
   );

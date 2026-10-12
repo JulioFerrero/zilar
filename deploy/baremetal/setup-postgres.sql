@@ -10,8 +10,9 @@
 -- passwords (letters and digits) because some are embedded in Postgres
 -- connection URLs. Mirrors deploy/postgres/init/10-create-databases.sql
 -- and 20-search-reader.sql: one role and database per service, pgvector
--- in the zilar database, and a read-only zilar_archive role that can
--- only SELECT ejabberd's message archive.
+-- in the zilar database, and a zilar_archive role that can SELECT and
+-- DELETE ejabberd's message archive only (DELETE is for T-1236's clear
+-- history and delete for me).
 --
 -- Needs the pgvector extension installed for your PostgreSQL first
 -- (postgresql-16-pgvector / postgresql-18-pgvector package, or from
@@ -31,10 +32,10 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'ejabberd') \gexec
 \connect zilar
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Read-only role for message search: it can only SELECT the archive
--- table, nothing else, and it cannot write anywhere. Leave
--- archive_password empty to skip search (the server answers 501 and
--- the web hides the feature).
+-- Role for message search (T-0117) and DM clear history / delete for me
+-- (T-1236): it can SELECT and DELETE the archive table, nothing else, and
+-- it cannot write anywhere else. Leave archive_password empty to skip
+-- search (the server answers 501 and the web hides the feature).
 \connect postgres
 SELECT (:'archive_password' <> '') AS has_archive_pw \gset
 \if :has_archive_pw
@@ -44,12 +45,14 @@ WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'zilar_archive') \gexec
 GRANT CONNECT ON DATABASE ejabberd TO zilar_archive;
 GRANT USAGE ON SCHEMA public TO zilar_archive;
 -- ejabberd creates `archive` itself on first start (update_sql_schema),
--- so it usually does not exist yet when this runs. The direct GRANT
--- covers reruns after it exists; the default privilege covers every
--- table the ejabberd role creates afterwards.
+-- so it usually does not exist yet when this runs. The direct GRANTs
+-- cover reruns after it exists; the default privilege covers every
+-- table the ejabberd role creates afterwards. On a fresh volume run
+-- both GRANTs from SERVER_CONFIG once ejabberd has created the table.
 SELECT EXISTS (SELECT FROM pg_class WHERE relname = 'archive') AS has_archive \gset
 \if :has_archive
 GRANT SELECT ON public.archive TO zilar_archive;
+GRANT DELETE ON public.archive TO zilar_archive;
 \endif
 ALTER DEFAULT PRIVILEGES FOR ROLE ejabberd IN SCHEMA public GRANT SELECT ON TABLES TO zilar_archive;
 \endif

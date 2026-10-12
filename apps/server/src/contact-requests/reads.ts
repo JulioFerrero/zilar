@@ -104,6 +104,7 @@ export interface OtherUserProfile {
   name: string;
   handle: string;
   image: string | null;
+  bio?: string;
 }
 
 export async function profileForHandle(
@@ -121,9 +122,11 @@ export async function profileForHandle(
         handle: string;
         name: string;
         image: string | null;
-      }>`SELECT h.user_id, h.handle, u.name, u.image
+        bio: string | null;
+      }>`SELECT h.user_id, h.handle, u.name, u.image, p.bio
         FROM handles h
         INNER JOIN "user" u ON u.id = h.user_id
+        LEFT JOIN user_profiles p ON p.user_id = h.user_id
         WHERE h.handle_lower = ${lower} LIMIT 1`;
       return found ?? null;
     }),
@@ -152,5 +155,6 @@ export async function profileForHandle(
     handle: row.handle,
     image: row.image,
     relation: await relationFor(db, viewerId, row.userId),
+    ...(row.bio === null || row.bio === '' ? {} : { bio: row.bio }),
   };
 }

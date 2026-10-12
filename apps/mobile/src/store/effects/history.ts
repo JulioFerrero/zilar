@@ -8,6 +8,7 @@ import { Effect } from 'effect';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { XmppCore } from '@zilar/xmpp-core';
 import {
+  applyChatDelivery,
   clearSupersededMarker,
   flushPending as flushCore,
   loadOlder as loadOlderCore,
@@ -27,6 +28,7 @@ import type { ChatPref } from '../../lib/chat-prefs-api';
 import { applyChatPrefs } from '../../lib/chat-prefs';
 import { TOPIC_GONE_NOTICE } from '../../lib/topics';
 import type { ChatStoreState, LoadState } from '../types';
+import { clearUnreadMarkOnOpen } from './events';
 import { Ports } from './ports';
 import { detached, isClosed, lift, orElse, recover, type StoreCtx } from './runtime';
 
@@ -182,6 +184,11 @@ export function makeHistory(ctx: StoreCtx): History {
     const known = new Map(previous.map((chat) => [chat.id, chat]));
     const activeChatId = get().activeChatId;
     const rows = entries.flatMap((entry) => h.summariesFor(entry));
+    // T-1238: confirm the newest preview of every row and apply the delivered
+    // mark the server reports to our own loaded messages.
+    for (const row of rows) {
+      applyChatDelivery(historyCtx, row);
+    }
     const wanted = new Set(rows.map((row) => row.id));
     const fresh = rows.filter((row) => !known.has(row.id));
     const kept = rows
@@ -367,6 +374,7 @@ export function makeHistory(ctx: StoreCtx): History {
         };
       });
       h.recordRead(chatId, s.lastRead[chatId]);
+      clearUnreadMarkOnOpen(ctx, chatId);
       // The detail first: it fills the cache, so the member-name fallback
       // shares the same GET on a cold open (T-0147 ordering).
       const groupId = h.groupIdForChat(chatId);

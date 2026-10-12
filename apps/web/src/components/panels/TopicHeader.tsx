@@ -13,6 +13,7 @@ export function TopicHeader({
   visibility,
   groupTitle,
   suffix,
+  onOpenGroup,
   onClose,
 }: {
   chat: ChatSummary;
@@ -20,6 +21,8 @@ export function TopicHeader({
   groupTitle: string;
   /** The member count text after the visibility, or ''. */
   suffix: string;
+  /** Opens the group info panel; when set, the group name is a button. */
+  onOpenGroup?: () => void;
   onClose: () => void;
 }) {
   const isPrivate = visibility === 'private';
@@ -29,7 +32,21 @@ export function TopicHeader({
       <div className="min-w-0 flex-1">
         <div className="truncate text-[16px] font-semibold">
           {groupTitle !== '' && (
-            <span className="font-normal text-muted-foreground">{groupTitle} › </span>
+            <>
+              {onOpenGroup !== undefined ? (
+                <button
+                  type="button"
+                  onClick={onOpenGroup}
+                  aria-label={`Open ${groupTitle} info`}
+                  className="font-normal text-muted-foreground hover:underline"
+                >
+                  {groupTitle}
+                </button>
+              ) : (
+                <span className="font-normal text-muted-foreground">{groupTitle}</span>
+              )}
+              <span className="font-normal text-muted-foreground"> › </span>
+            </>
           )}
           {chat.title}
         </div>

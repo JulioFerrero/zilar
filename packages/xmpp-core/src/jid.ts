@@ -1,8 +1,8 @@
 // Bare/full JID handling for the XMPP stanzas. The shared helpers live in
 // @zilar/protocol; only the resource accessor is XMPP-specific.
-import { bareJid, jidDomain, jidLocal } from '@zilar/protocol';
+import { bareJid, jidDomain, jidLocal, normalizeJid } from '@zilar/protocol';
 
-export { bareJid, jidDomain };
+export { bareJid, jidDomain, normalizeJid };
 export const jidLocalPart = jidLocal;
 
 export function jidResource(value: string): string | undefined {

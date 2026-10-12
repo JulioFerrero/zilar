@@ -3,10 +3,13 @@ import { Data, Effect } from 'effect';
 import { useCallback, useEffect, useState } from 'react';
 
 import { useAuthStore } from '@/auth/session';
+import { API_URL } from '@/lib/auth';
+import { fetchMe, updateBio } from '@/lib/auth-api';
 import { interruptFiber } from '@/lib/effect/timers';
 import { useAction } from '@/lib/effect/use-action';
 import { type MyProfile } from '@/lib/profile-api';
 import { getSessionToken } from '@/lib/session-token';
+import { mockToken } from '@/mock/gate';
 
 import {
   friendlyClaimError,
@@ -26,6 +29,7 @@ export class ProfileFailed extends Data.TaggedError('ProfileFailed')<{
 
 const HANDLE_CHECK_DEBOUNCE_MS = 300;
 const NAME_SAVE_ERROR = 'Could not save your name. Try again.';
+const BIO_SAVE_ERROR = 'Could not save your bio.';
 export const LOAD_ERROR = 'Could not load your profile.';
 
 /**
@@ -42,13 +46,23 @@ function attempt<A>(run: () => Promise<A>, message: (cause: unknown) => string) 
 /** The shape of the shared call wrapper, handed to `useProfileAvatar`. */
 export type ProfileAttempt = typeof attempt;
 
+/** The bio calls' fetch: `mockFetch` in mock mode, else the real one (T-1259). */
+function bioFetch(mock: boolean): typeof fetch {
+  if (mock && (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK)) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
+    return mockFetch;
+  }
+  return fetch;
+}
+
 /**
  * Owns the profile screen's state: the load, the debounced handle check, and
  * the name and handle saves. The avatar lives in `useProfileAvatar`, its bearer
  * coming back through the load.
  */
 export function useProfileSettings() {
-  const { api } = useProfileApi();
+  const { api, mock } = useProfileApi();
   const setName = useAuthStore((state) => state.setName);
 
   const [status, setStatus] = useState<ProfileStatus>('loading');
@@ -64,6 +78,12 @@ export function useProfileSettings() {
   const [handleError, setHandleError] = useState<string | undefined>(undefined);
   const [handleSaved, setHandleSaved] = useState(false);
   const [handleBusy, setHandleBusy] = useState(false);
+
+  const [bio, setBioInput] = useState('');
+  const [savedBio, setSavedBio] = useState('');
+  const [bioError, setBioError] = useState<string | undefined>(undefined);
+  const [bioSaved, setBioSavedFlag] = useState(false);
+  const [bioBusy, setBioBusy] = useState(false);
 
   const setAvatarUrl = useCallback((url: string | undefined): void => {
     setProfile((previous) => (previous === null ? previous : { ...previous, avatarUrl: url }));
@@ -87,14 +107,23 @@ export function useProfileSettings() {
                 () => LOAD_ERROR,
               ),
               attempt(
-                () => getSessionToken(),
+                () => (mock ? mockToken : getSessionToken)(),
                 () => LOAD_ERROR,
               ),
             ],
             { concurrency: 'unbounded' },
           ),
         ),
-        Effect.tap(([me, token]) =>
+        // T-1259: `MyProfile` drops the bio, so read it through `fetchMe`.
+        Effect.flatMap(([me, token]) =>
+          token === undefined
+            ? Effect.fail(new ProfileFailed({ message: LOAD_ERROR }))
+            : attempt(
+                () => fetchMe(API_URL, token, bioFetch(mock)),
+                () => LOAD_ERROR,
+              ).pipe(Effect.map((viewer) => ({ me, token, viewer }))),
+        ),
+        Effect.tap(({ me, token, viewer }) =>
           Effect.sync(() => {
             setProfile(me);
             setNameInput(me.name);
@@ -104,6 +133,10 @@ export function useProfileSettings() {
             setAvailability({ state: 'idle' });
             setHandleError(undefined);
             setHandleSaved(false);
+            setBioInput(viewer.bio ?? '');
+            setSavedBio(viewer.bio ?? '');
+            setBioError(undefined);
+            setBioSavedFlag(false);
             avatar.reset(token);
             setStatus('ready');
           }),
@@ -214,6 +247,40 @@ export function useProfileSettings() {
     { mode: 'ignore' },
   );
 
+  const [, saveBioRun] = useAction(
+    (input: { readonly token: string; readonly name: string; readonly bio: string }) =>
+      Effect.sync(() => {
+        setBioBusy(true);
+        setBioError(undefined);
+        setBioSavedFlag(false);
+      }).pipe(
+        Effect.andThen(
+          attempt(
+            () => updateBio(API_URL, input.token, input.name, input.bio, bioFetch(mock)),
+            () => BIO_SAVE_ERROR,
+          ),
+        ),
+        Effect.tap(() =>
+          Effect.sync(() => {
+            setSavedBio(input.bio.trim());
+            setBioInput(input.bio.trim());
+            setBioSavedFlag(true);
+          }),
+        ),
+        Effect.catch((failure) =>
+          Effect.sync(() => {
+            setBioError(failure.message);
+          }),
+        ),
+        Effect.ensuring(
+          Effect.sync(() => {
+            setBioBusy(false);
+          }),
+        ),
+      ),
+    { mode: 'ignore' },
+  );
+
   const [, claimHandleRun] = useAction(
     (value: string) =>
       Effect.sync(() => {
@@ -256,6 +323,11 @@ export function useProfileSettings() {
     setHandleSaved(false);
   };
 
+  const onBioChange = (value: string): void => {
+    setBioInput(value);
+    setBioSavedFlag(false);
+  };
+
   const saveName = (): void => {
     const value = name.trim();
     if (value.length === 0) {
@@ -273,11 +345,22 @@ export function useProfileSettings() {
     claimHandleRun(trimmed);
   };
 
+  // The saved name (not the pending input) keeps a bio save from renaming.
+  const saveBio = (): void => {
+    const token = avatar.token;
+    if (token === undefined) {
+      setBioError(BIO_SAVE_ERROR);
+      return;
+    }
+    saveBioRun({ token, name: profile?.name ?? name.trim(), bio });
+  };
+
   // Save is disabled only for the exactly equal value; a casing-only change
   // stays enabled — the server applies it (interval rule, casing updated,
   // nothing retired).
   const unchanged = trimmed !== '' && trimmed === current;
   const nameUnchanged = name.trim() !== '' && name.trim() === (profile?.name ?? '');
+  const bioUnchanged = bio.trim() === savedBio;
 
   return {
     status,
@@ -296,6 +379,13 @@ export function useProfileSettings() {
     nameUnchanged,
     onNameChange,
     saveName,
+    bio,
+    bioError,
+    bioSaved,
+    bioBusy,
+    bioUnchanged,
+    onBioChange,
+    saveBio,
     handle,
     currentHandle: current,
     availability,

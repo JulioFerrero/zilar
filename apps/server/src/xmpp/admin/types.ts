@@ -72,6 +72,11 @@ export type EjabberdAdminClient = {
   ): Promise<void>;
   deleteRosterItem(localpart: string, contactJid: string): Promise<void>;
   getRoster(localpart: string): Promise<RosterEntry[]>;
+  /**
+   * Sends one raw stanza from `from` to `to` through the ejabberd
+   * `send_stanza` command (T-1245). Both are JIDs; `to` may carry a resource.
+   */
+  sendStanza(from: string, to: string, stanza: string): Promise<void>;
 };
 
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;

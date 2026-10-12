@@ -1,12 +1,11 @@
 import { Camera, FileText, Image as ImageIcon, Paperclip } from 'lucide-react-native';
-import { useState, type ReactNode } from 'react';
-import { ActivityIndicator, Image, Modal, Pressable, View } from 'react-native';
+import { type ReactNode } from 'react';
+import { ActivityIndicator, Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Attachment } from '@zilar/protocol';
 
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
-import { well } from '@/lib/depth';
 
 export type AttachmentChoice = 'library' | 'camera' | 'file';
 
@@ -14,60 +13,28 @@ type AttachSheetProps = {
   open: boolean;
   busy: boolean;
   error?: string | undefined;
-  preview?: { uri: string; name: string; size?: number | undefined } | undefined;
   /** Demo attachments listed in mock mode, so the flow works without a server. */
   demoAttachments?: Attachment[] | undefined;
   onPick: (choice: AttachmentChoice) => void;
-  /** Fills the preview row with a demo attachment (mock mode only). */
+  /** Stages a demo attachment (mock mode only). */
   onPickDemo?: ((attachment: Attachment) => void) | undefined;
-  onCancelPick?: (() => void) | undefined;
   onClose: () => void;
 };
 
-function PreviewThumb({
-  preview,
-  iconColor,
-}: {
-  preview: { uri: string; name: string };
-  iconColor: string;
-}) {
-  const [failed, setFailed] = useState(false);
-  if (failed) {
-    return (
-      <View className="h-16 w-16 items-center justify-center rounded-[10px] bg-surface-raised">
-        <PreviewFallbackIcon name={preview.name} iconColor={iconColor} />
-      </View>
-    );
-  }
-  return (
-    <View className="h-16 w-16 items-center justify-center overflow-hidden rounded-[10px] bg-surface-raised">
-      <Image
-        source={{ uri: preview.uri }}
-        accessibilityLabel={preview.name}
-        onError={() => setFailed(true)}
-        style={{ width: 64, height: 64 }}
-        resizeMode="cover"
-      />
-    </View>
-  );
-}
-
 /**
  * The paperclip bottom sheet (T-0150): Photo or video from the library, Take
- * a photo, File. A picked file shows a preview row (thumbnail, name, size)
- * with the caption the composer holds; Send uploads it through the store.
- * Permission denials and oversized files show a plain explanation, never a
- * crash. Pure view like `StickerPanel`: the composer owns the picking.
+ * a photo, File. Picking stages the files in the composer's strip (T-1246),
+ * which sends them; permission denials and oversized files show a plain
+ * explanation, never a crash. Pure view like `StickerPanel`: the composer
+ * owns the picking.
  */
 export function AttachSheet({
   open,
   busy,
   error,
-  preview,
   demoAttachments,
   onPick,
   onPickDemo,
-  onCancelPick,
   onClose,
 }: AttachSheetProps) {
   const insets = useSafeAreaInsets();
@@ -96,69 +63,55 @@ export function AttachSheet({
               Attach
             </Text>
           </View>
-          {preview === undefined ? (
-            <>
-              <SheetRow
-                label="Photo or video"
-                hint="From your library"
-                onPress={() => onPick('library')}
-                busy={busy}
-                icon={<ImageIcon size={20} color={iconColor} />}
-              />
-              <SheetRow
-                label="Take a photo"
-                hint="With your camera"
-                onPress={() => onPick('camera')}
-                busy={busy}
-                icon={<Camera size={20} color={iconColor} />}
-              />
-              <SheetRow
-                label="File"
-                hint="Any document"
-                onPress={() => onPick('file')}
-                busy={busy}
-                icon={<FileText size={20} color={iconColor} />}
-              />
-              {(demoAttachments ?? []).length > 0 && onPickDemo !== undefined ? (
-                <View className="pt-1">
-                  <Text className="px-1 py-1 text-[13px] font-semibold text-muted-foreground">
-                    Try one (demo)
+          <SheetRow
+            label="Photo or video"
+            hint="From your library"
+            onPress={() => onPick('library')}
+            busy={busy}
+            icon={<ImageIcon size={20} color={iconColor} />}
+          />
+          <SheetRow
+            label="Take a photo"
+            hint="With your camera"
+            onPress={() => onPick('camera')}
+            busy={busy}
+            icon={<Camera size={20} color={iconColor} />}
+          />
+          <SheetRow
+            label="File"
+            hint="Any document"
+            onPress={() => onPick('file')}
+            busy={busy}
+            icon={<FileText size={20} color={iconColor} />}
+          />
+          {(demoAttachments ?? []).length > 0 && onPickDemo !== undefined ? (
+            <View className="pt-1">
+              <Text className="px-1 py-1 text-[13px] font-semibold text-muted-foreground">
+                Try one (demo)
+              </Text>
+              {(demoAttachments ?? []).map((attachment) => (
+                <Pressable
+                  key={attachment.url}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Attach demo ${attachment.name}`}
+                  disabled={busy}
+                  onPress={() => onPickDemo(attachment)}
+                  className="flex-row items-center gap-3 px-1 py-2 active:bg-surface-raised disabled:opacity-60"
+                >
+                  <View className="h-9 w-9 items-center justify-center rounded-[8px] bg-surface-raised">
+                    {attachment.kind === 'image' ? (
+                      <ImageIcon size={20} color={iconColor} />
+                    ) : (
+                      <FileText size={20} color={iconColor} />
+                    )}
+                  </View>
+                  <Text numberOfLines={1} className="min-w-0 flex-1 text-[15px] text-foreground">
+                    {attachment.name}
                   </Text>
-                  {(demoAttachments ?? []).map((attachment) => (
-                    <Pressable
-                      key={attachment.url}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Attach demo ${attachment.name}`}
-                      disabled={busy}
-                      onPress={() => onPickDemo(attachment)}
-                      className="flex-row items-center gap-3 px-1 py-2 active:bg-surface-raised disabled:opacity-60"
-                    >
-                      <View className="h-9 w-9 items-center justify-center rounded-[8px] bg-surface-raised">
-                        {attachment.kind === 'image' ? (
-                          <ImageIcon size={20} color={iconColor} />
-                        ) : (
-                          <FileText size={20} color={iconColor} />
-                        )}
-                      </View>
-                      <Text
-                        numberOfLines={1}
-                        className="min-w-0 flex-1 text-[15px] text-foreground"
-                      >
-                        {attachment.name}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-            </>
-          ) : (
-            <PickedPreview
-              preview={preview}
-              busy={busy}
-              onCancelPick={onCancelPick}
-              iconColor={iconColor}
-            />
-          )}
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
           {busy ? (
             <View className="flex-row items-center gap-2 px-1 py-3">
               <ActivityIndicator accessibilityLabel="Preparing file" />
@@ -206,78 +159,4 @@ function SheetRow({
       </View>
     </Pressable>
   );
-}
-
-function PickedPreview({
-  preview,
-  busy,
-  onCancelPick,
-  iconColor,
-}: {
-  preview: { uri: string; name: string; size?: number | undefined };
-  busy: boolean;
-  onCancelPick?: (() => void) | undefined;
-  iconColor: string;
-}) {
-  return (
-    <View className="flex-row items-center gap-3 rounded-[10px] px-1 py-2" style={well}>
-      <PreviewThumb preview={preview} iconColor={iconColor} />
-      <View className="min-w-0 flex-1">
-        <Text numberOfLines={1} className="text-[15px] font-semibold text-foreground">
-          {preview.name}
-        </Text>
-        <Text className="text-[13px] text-muted-foreground">
-          {preview.size === undefined
-            ? 'Sending with your message'
-            : formatPreviewSize(preview.size)}
-        </Text>
-      </View>
-      {onCancelPick === undefined ? null : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Remove attachment"
-          disabled={busy}
-          onPress={onCancelPick}
-          className="rounded-[8px] px-3 py-2 active:bg-surface-raised disabled:opacity-60"
-        >
-          <Text className="text-[14px] font-semibold text-muted-foreground">Remove</Text>
-        </Pressable>
-      )}
-    </View>
-  );
-}
-
-function formatPreviewSize(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes < 0) {
-    return 'Sending with your message';
-  }
-  if (bytes < 1024) {
-    return `${Math.round(bytes)} B · sending with your message`;
-  }
-  const units = ['KB', 'MB', 'GB', 'TB'] as const;
-  let value = bytes / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
-  return `${rounded} ${units[unit]} · sending with your message`;
-}
-
-const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif']);
-
-/** Whether a file name looks like an image, for the preview fallback icon. */
-export function isImageName(name: string): boolean {
-  const extension = name.split('.').pop()?.toLowerCase() ?? '';
-  return IMAGE_EXTENSIONS.has(extension);
-}
-
-/**
- * The icon shown instead of the picked-file thumbnail when it fails to
- * load: `Image` for image names, `FileText` for everything else.
- */
-export function PreviewFallbackIcon({ name, iconColor }: { name: string; iconColor: string }) {
-  const Icon = isImageName(name) ? ImageIcon : FileText;
-  return <Icon size={20} color={iconColor} />;
 }

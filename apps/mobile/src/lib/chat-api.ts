@@ -7,6 +7,7 @@ import {
   type GroupAi as ContractGroupAi,
   type GroupDetail as ContractGroupDetail,
   type GroupMember as ContractGroupMember,
+  type LinkPreview as ContractLinkPreview,
 } from '@zilar/api-contract';
 
 import { API_URL } from './auth';
@@ -25,6 +26,9 @@ export type { Me };
  */
 
 export type Contact = ContractContact;
+
+/** The unfurled head of a page (`GET /api/link-preview`, T-1241). */
+export type LinkPreview = ContractLinkPreview;
 
 // T-0924: the entry type comes from the API contract, the same union web
 // decodes. `parseChatEntry` (in `chat-api-schemas`) still decodes each entry on
@@ -60,8 +64,25 @@ export interface ChatApi {
   getContacts(): Promise<Contact[]>;
   getGroup(groupId: string): Promise<GroupDetail>;
   getXmppToken(): Promise<XmppToken>;
+  /** The unfurled head of one https URL (T-1241), or `null` when the page has
+   * nothing (the server answers 204) or the call fails. Optional so fakes keep
+   * working, like `markChatRead`. */
+  linkPreview?(url: string): Promise<LinkPreview | null>;
   /** Stores the caller's read mark (T-1207). Optional so fakes keep working. */
   markChatRead?(jid: string, messageId: string): Promise<void>;
+  /** Confirms the caller holds these messages (T-1238). Optional for fakes. */
+  markChatDelivered?(jid: string, originIds: string[]): Promise<void>;
+  /**
+   * Deletes one message from the caller's own copy of a DM (T-1247,
+   * `DELETE /api/chats/:jid/messages/:archiveId`). Optional so fakes keep
+   * working. The id is the archive id.
+   */
+  deleteMessageForMe?(jid: string, archiveId: string): Promise<void>;
+  /**
+   * Clears the caller's own copy of a DM's history (T-1247,
+   * `DELETE /api/chats/:jid/history`). Optional for fakes.
+   */
+  clearChatHistory?(jid: string): Promise<void>;
 }
 
 /** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
@@ -179,6 +200,11 @@ export function createChatApi(
       return chats;
     },
     getContacts: () => runApi(client.contacts.list()).then((rows) => [...rows]),
+    // T-1241: the server answers 204 (no body) when the page has nothing to
+    // show; the derived client then yields no value, which reads as `null`. A
+    // transport failure still rejects — the card treats that as `null` too.
+    linkPreview: (url) =>
+      runApi(client.linkPreview.get({ query: { url } })).then((value) => value ?? null),
     async getGroup(groupId) {
       return (await withToken(
         `/api/groups/${encodeURIComponent(groupId)}`,
@@ -194,6 +220,20 @@ export function createChatApi(
     // `ChatApiError`. Best effort: callers ignore failures.
     async markChatRead(jid: string, messageId: string) {
       await runApi(client.chats.markRead({ params: { jid }, payload: { messageId } }));
+    },
+    // Confirms the caller holds these messages (T-1238): `originIds` are origin
+    // ids, 1 to 50 per call. Best effort: callers ignore failures.
+    async markChatDelivered(jid: string, originIds: string[]) {
+      await runApi(client.chats.markDelivered({ params: { jid }, payload: { originIds } }));
+    },
+    // Deletes one message from the caller's own copy of a DM (T-1247): the
+    // server rejects a non-numeric archive id, surfaced as `ChatApiError`.
+    async deleteMessageForMe(jid: string, archiveId: string) {
+      await runApi(client.chats.deleteForMe({ params: { jid, archiveId } }));
+    },
+    // Clears the caller's own copy of a DM's history (T-1247).
+    async clearChatHistory(jid: string) {
+      await runApi(client.chats.clearHistory({ params: { jid } }));
     },
   };
 }

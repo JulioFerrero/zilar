@@ -1,3 +1,4 @@
+import { lightToPlain } from '@zilar/chat-core';
 import { Pin } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
@@ -78,7 +79,7 @@ export function PinnedBanner({
   }
 
   const current = pins[Math.min(index, pins.length - 1)] ?? pins[0]!;
-  const label = pinLabel(current);
+  const label = lightToPlain(pinLabel(current));
 
   return (
     <View className="border-b border-divider bg-surface px-3 py-1.5">

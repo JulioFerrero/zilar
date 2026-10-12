@@ -1,3 +1,4 @@
+import { lightToPlain } from '@zilar/chat-core';
 import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
@@ -14,7 +15,7 @@ export function ReplyQuote({ reply }: { reply: ReplyRef }) {
         </Text>
         {reply.text !== undefined ? (
           <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
-            {reply.text}
+            {lightToPlain(reply.text)}
           </Text>
         ) : null}
       </View>

@@ -32,6 +32,7 @@ import {
   type SweepDeps,
 } from './sweeper.js';
 import { extractBlockedText, parseFrontMatter, splitModel } from './task-file.js';
+import { resolveWorkerVariant } from './model-schedule.js';
 import { freshSessionRecord, startFreshWorkerSession } from './fresh-session.js';
 import type { DoctorRecord, StateFile, TaskRecord } from './types.js';
 
@@ -189,8 +190,9 @@ async function applyActions(
         const target = current.sessionId;
         const template: PromptName = 'resume';
         try {
-          const { effort } = readTaskFrontMatter(deps.repoRoot, task);
-          await deps.client.switchModel(target, { ...splitModel(action.model), variant: effort });
+          const { model: frontMatterModel, effort } = readTaskFrontMatter(deps.repoRoot, task);
+          const variant = resolveWorkerVariant(frontMatterModel, effort, new Date());
+          await deps.client.switchModel(target, { ...splitModel(action.model), variant });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           appendLog(deps.statePath, `${task} fallback-model failed: ${message}`);

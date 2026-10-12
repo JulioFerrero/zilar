@@ -3,6 +3,7 @@ import { Fragment, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { personSeed } from '@zilar/chat-core';
 import type { GroupDetail, GroupRole } from '@/lib/api';
+import { deleteGroup } from '@/lib/api/groups';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { FieldError } from './ais/AiPageShell';
@@ -13,6 +14,7 @@ import { roleLabel } from './panels/role-label';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Dialog } from './ui/dialog';
+import { TextInput } from './ui/text-input';
 
 /**
  * Group members (T-1183): role chips, Remove for owners and admins (never on
@@ -45,6 +47,8 @@ export function GroupMembersSection({
   const [confirmingId, setConfirmingId] = useState<string | undefined>(undefined);
   const [transferConfirmingId, setTransferConfirmingId] = useState<string | undefined>(undefined);
   const [leaveConfirming, setLeaveConfirming] = useState(false);
+  const [deleteConfirming, setDeleteConfirming] = useState(false);
+  const [deleteName, setDeleteName] = useState('');
 
   // One action for the section, as in GroupRolesSection: buttons disable while
   // a change runs, and the last failure stays visible.
@@ -108,6 +112,20 @@ export function GroupMembersSection({
       () => storeApi.getState().leaveChannel(chatId),
       'Could not leave the group.',
       () => {
+        onClose();
+        navigate('/');
+      },
+    );
+  };
+
+  // T-1243: the owner deletes the group for everyone. On success the chat
+  // closes, the chat list refreshes (the row drops) and the caller goes home.
+  const deleteGroupNow = (): void => {
+    run(
+      () => deleteGroup(info.id),
+      'Could not delete the group.',
+      () => {
+        storeApi.getState().refreshChats();
         onClose();
         navigate('/');
       },
@@ -232,6 +250,57 @@ export function GroupMembersSection({
         <p className="px-2 text-[13px] text-muted-foreground">
           To leave, make someone else the owner first.
         </p>
+      )}
+      {isOwner && deleteConfirming && (
+        <div className="mx-2 flex flex-col gap-2 rounded-xl border border-danger/40 px-3 py-2">
+          <p className="text-[13px] text-muted-foreground">
+            Delete {info.title} for everyone? All topics and messages go away. This can&apos;t be
+            undone.
+          </p>
+          <TextInput
+            aria-label="Type the group name to confirm"
+            placeholder={info.title}
+            value={deleteName}
+            onChange={(event) => setDeleteName(event.target.value)}
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={busy || deleteName.trim() !== info.title}
+              onClick={deleteGroupNow}
+            >
+              Delete group
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onClick={() => {
+                setDeleteConfirming(false);
+                setDeleteName('');
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+      {isOwner && !deleteConfirming && (
+        <div className="flex items-center gap-2 px-2 pt-1">
+          <Button
+            type="button"
+            variant="destructive"
+            size="lg"
+            className="rounded-full px-4"
+            disabled={busy}
+            onClick={() => setDeleteConfirming(true)}
+          >
+            Delete group
+          </Button>
+        </div>
       )}
       {meRole !== undefined && meRole !== 'owner' && (
         <div className="flex items-center gap-2 px-2 pt-1">

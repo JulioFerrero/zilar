@@ -1,7 +1,7 @@
 // effect-plain: moved unchanged from apps/server/src/media/indexer.ts (size split)
 import { decodePayload, type Payload } from '@zilar/protocol';
 import type { ArchiveRow } from '../search/service';
-import type { ExtractedMediaItem, MediaLink } from './indexer';
+import type { ExtractedMediaItem, MediaKind, MediaLink } from './indexer';
 
 // The agent payload namespace (packages/xmpp-core/src/namespaces.ts). The
 // server cannot import it, so the value is repeated with this pointer.
@@ -154,4 +154,35 @@ function extractMediaItemsUnsafe(row: ArchiveRow): ExtractedMediaItem[] {
     items.push({ kind: 'link', linkUrl: link.url, linkHost: link.host });
   }
   return items;
+}
+
+/** The account export's own `kind` (plan §6a): media kinds collapse to four. */
+export type ExportMessageKind = 'text' | 'image' | 'file' | 'voice';
+
+const EXPORT_KIND: Record<MediaKind, ExportMessageKind> = {
+  image: 'image',
+  // A GIF is an attachment rendered as an image (the same convention as the
+  // media indexer, plan §3a), so the export's `image` covers both.
+  gif: 'image',
+  file: 'file',
+  voice: 'voice',
+  // A link is not a distinction the export's `kind` carries.
+  link: 'text',
+};
+
+/**
+ * One archive row as the export's message content: `body` is the row's `txt`,
+ * and `kind` comes from the same extractor the media indexer uses, so the XML
+ * is parsed in one place. A row with no attachment, voice note or link is text.
+ */
+export function extractMessageContent(row: ArchiveRow): {
+  body: string;
+  kind: ExportMessageKind;
+} {
+  for (const item of extractMediaItems(row)) {
+    if (item.kind !== 'link') {
+      return { body: row.body ?? '', kind: EXPORT_KIND[item.kind] };
+    }
+  }
+  return { body: row.body ?? '', kind: 'text' };
 }

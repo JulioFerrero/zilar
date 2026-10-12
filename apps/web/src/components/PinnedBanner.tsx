@@ -1,3 +1,4 @@
+import { lightToPlain } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { Pin } from 'lucide-react';
 import { useState } from 'react';
@@ -100,7 +101,7 @@ export function PinnedBanner({ chatId }: { chatId: string }) {
           </span>
           <span className="block max-h-10 overflow-hidden text-[13px] leading-5 text-ellipsis text-muted-foreground">
             {snapshot !== '' ? (
-              <LinkText text={snapshot} />
+              <LinkText text={lightToPlain(snapshot)} />
             ) : (
               <span className="italic">{KIND_LABEL[current.kind]}</span>
             )}

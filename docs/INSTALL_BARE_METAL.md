@@ -56,8 +56,23 @@ sudo -u postgres psql \
 
 This creates the `zilar` and `ejabberd` roles/databases, enables
 `vector` in `zilar`, and — unless the archive password is empty —
-creates the read-only `zilar_archive` role for message search (leave it
-empty to disable search; the server answers 501 and the web hides it).
+creates the `zilar_archive` role for message search: it can `SELECT` and
+`DELETE` on `archive` only (DELETE is T-1236's clear history and delete
+for me). Leave the password empty to disable search; the server answers
+501 and the web hides it.
+
+On a fresh install `archive` does not exist yet when this script runs —
+ejabberd creates it on its first start (§3) — so this script skips the
+direct grants. After ejabberd has started, run them once as the
+`postgres` superuser (otherwise clear history and delete for me fail with
+permission denied):
+
+```bash
+sudo -u postgres psql -d ejabberd -c \
+  'GRANT SELECT ON archive TO zilar_archive; GRANT DELETE ON archive TO zilar_archive;'
+```
+
+See `docs/SERVER_CONFIG.md` §"Message search" for the details.
 
 Point the server at it in `/etc/zilar/zilar.env` (copy
 `deploy/baremetal/.env.example` there, mode 0600, owned by `zilar`):

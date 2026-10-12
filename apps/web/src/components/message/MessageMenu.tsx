@@ -7,7 +7,7 @@ import { MessageActionsMenu } from '../MessageActionsMenu';
 import { Button } from '../ui/button';
 import { copyText } from '@/lib/clipboard';
 import { runWeb } from '@/lib/effect/runtime';
-import { useChatStoreApi } from '@/store/ChatStoreProvider';
+import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 /**
  * Runs a store call the user does not wait for (pin, unpin). Any failure is
@@ -81,6 +81,15 @@ export function MessageMenu({
 }) {
   const storeApi = useChatStoreApi();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // T-1247: in a DM (and not an AI chat) every message can be deleted for me.
+  const chat = useChatSelector((s) => s.chats.find((entry) => entry.id === chatId));
+  const meId = useChatSelector((s) => s.currentUserId);
+  const own = message.senderId === meId;
+  const isDm = chat?.kind === 'dm' && chat.isAI !== true;
+  const canDeleteForMe = isDm && message.deleted !== true && message.status !== 'sending';
+  // T-1247: in a DM the item names the action its confirm offers (both for my
+  // own message, "for me" only on the peer's); groups keep the old label.
+  const deleteLabel = isDm ? (own ? 'Delete' : 'Delete for me') : 'Delete for everyone';
 
   return (
     <>
@@ -88,7 +97,8 @@ export function MessageMenu({
         <MessageActionsMenu
           canCopy={canCopy}
           canEdit={canEdit}
-          canDelete={canDelete}
+          canDelete={canDelete || canDeleteForMe}
+          deleteLabel={deleteLabel}
           canPin={canPin}
           isPinned={pinId !== undefined}
           canForward={canForward}
@@ -136,7 +146,36 @@ export function MessageMenu({
           align={align}
         />
       )}
-      {confirmOpen && (
+      {confirmOpen && isDm && own && (
+        <ConfirmDialog
+          title="Delete message?"
+          body="Delete it for you only, or for everyone in the chat."
+          confirmLabel="Delete for everyone"
+          secondLabel="Delete for me"
+          onCancel={() => setConfirmOpen(false)}
+          onSecond={() => {
+            setConfirmOpen(false);
+            storeApi.getState().deleteForMe(chatId, message.id);
+          }}
+          onConfirm={() => {
+            setConfirmOpen(false);
+            storeApi.getState().deleteForEveryone(chatId, message.id);
+          }}
+        />
+      )}
+      {confirmOpen && isDm && !own && (
+        <ConfirmDialog
+          title="Delete message?"
+          body={`This removes it from your chat only. ${message.senderName} still has it.`}
+          confirmLabel="Delete for me"
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={() => {
+            setConfirmOpen(false);
+            storeApi.getState().deleteForMe(chatId, message.id);
+          }}
+        />
+      )}
+      {confirmOpen && !isDm && (
         <ConfirmDialog
           title="Delete message?"
           body="This deletes it for everyone in the chat."

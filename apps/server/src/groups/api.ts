@@ -46,6 +46,7 @@ import {
 import { setGroupVisibility } from './visibility';
 import { joinPublicGroup } from './join';
 import { transferGroupOwner } from './ownership';
+import { deleteGroup } from './delete-group';
 
 export const ROLE_CHANGE_RATE_LIMIT_MAX = 30;
 export const ROLE_CHANGE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
@@ -228,6 +229,21 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
             }),
           ),
         ),
+      )
+      // T-1243: the owner deletes the group; every topic room is destroyed and
+      // the group's rows cascade. The limiter middleware already charged the
+      // budget.
+      .handle(
+        'deleteGroup',
+        handler(logger, async (request, user) => {
+          await deleteGroup(deps.db, deps.adminClient, {
+            groupId: request.params.id,
+            actorId: user.id,
+            mucDomain: deps.config.xmpp.mucDomain,
+            logger,
+            ...(deps.audit === undefined ? {} : { audit: deps.audit }),
+          });
+        }),
       )
       // Adds members (owner/admin only).
       .handle(

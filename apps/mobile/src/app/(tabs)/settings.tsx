@@ -7,12 +7,14 @@ import {
   FolderOpen,
   KeyRound,
   LogOut,
+  MonitorSmartphone,
   Plug,
   Server,
   ShieldCheck,
   Sticker,
   UserPlus,
   UserRound,
+  Users,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
@@ -50,7 +52,9 @@ export default function SettingsScreen() {
 const HUB_ICONS: Record<SettingsIconId, LucideIcon> = {
   profile: UserRound,
   requests: UserPlus,
+  contacts: Users,
   blocked: Ban,
+  devices: MonitorSmartphone,
   approvals: ShieldCheck,
   machines: Server,
   connections: KeyRound,

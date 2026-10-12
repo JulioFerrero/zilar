@@ -139,6 +139,12 @@ function MessageBubbleImpl({
     message.voice === undefined &&
     canEditMessage(message, currentUserId, new Date());
   const canDelete = !draft && message.deleted !== true && canDeleteMessage(message, currentUserId);
+  // T-1247: in a DM (and not an AI chat) every message that is not deleted or
+  // still sending can be deleted from my own copy; my own message can also be
+  // deleted for everyone (`canDelete` above).
+  const chat = useChatStore((state) => state.chats.find((entry) => entry.id === message.chatId));
+  const isDm = chat?.kind === 'dm' && chat.isAI !== true;
+  const canDeleteForMe = !draft && isDm && message.deleted !== true && message.status !== 'sending';
   // A forward copies what is already on screen: tombstones, still-sending
   // copies and my own failed sends have nothing to forward.
   const canForward =
@@ -354,6 +360,10 @@ function MessageBubbleImpl({
         canCopy={hasText && sticker === undefined}
         canEdit={sticker === undefined && message.voice === undefined && canEdit}
         canDelete={canDelete}
+        canDeleteForMe={canDeleteForMe}
+        isDm={isDm}
+        own={outgoing}
+        senderName={message.senderName}
         canForward={onForward !== undefined && canForward}
         canPin={canPin}
         isPinned={isPinned}

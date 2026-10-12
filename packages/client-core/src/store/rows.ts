@@ -43,15 +43,16 @@ export function moveChatToTop(chats: ChatSummary[], chatId: string): ChatSummary
   return next;
 }
 
-// A status only moves forward: sending -> sent -> read. A late echo or send
-// confirmation must never downgrade a message the peer already read. `failed`
-// is outside the ladder: `advanceStatus` never moves into or out of it by
-// accident, only an explicit retry does.
+// A status only moves forward: sending -> sent -> delivered -> read. A late
+// echo or send confirmation must never downgrade a message the peer already
+// read. `failed` is outside the ladder: `advanceStatus` never moves into or
+// out of it by accident, only an explicit retry does.
 const STATUS_RANK: Record<MessageStatus, number> = {
   sending: 0,
   sent: 1,
-  read: 2,
-  failed: 2,
+  delivered: 2,
+  read: 3,
+  failed: 3,
 };
 
 export function advanceStatus(current: MessageStatus, next: MessageStatus): MessageStatus {

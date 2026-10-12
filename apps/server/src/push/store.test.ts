@@ -19,7 +19,7 @@ const STORAGE_KEY = 'test-push-storage-key-0000000000000000';
 const cipher = createPushCipher(STORAGE_KEY);
 const NOW = new Date('2026-06-01T12:00:00Z');
 
-function webPushInput(userId: string, index: number): SaveDeviceInput {
+function webPushInput(userId: string, index: number, sessionId?: string): SaveDeviceInput {
   return {
     id: randomUUID(),
     userId,
@@ -31,10 +31,16 @@ function webPushInput(userId: string, index: number): SaveDeviceInput {
     },
     userAgent: 'test-agent',
     now: NOW,
+    ...(sessionId === undefined ? {} : { sessionId }),
   };
 }
 
-function nativeInput(userId: string, token: string, kind: 'fcm' | 'apns' = 'fcm'): SaveDeviceInput {
+function nativeInput(
+  userId: string,
+  token: string,
+  kind: 'fcm' | 'apns' = 'fcm',
+  sessionId?: string,
+): SaveDeviceInput {
   return {
     id: randomUUID(),
     userId,
@@ -43,6 +49,7 @@ function nativeInput(userId: string, token: string, kind: 'fcm' | 'apns' = 'fcm'
     token,
     userAgent: 'test-agent',
     now: NOW,
+    ...(sessionId === undefined ? {} : { sessionId }),
   };
 }
 
@@ -54,6 +61,44 @@ async function rowsForUser(context: TestContext, userId: string) {
         FROM push_subscriptions WHERE user_id = ${userId} ORDER BY created_at`;
     }),
   );
+}
+
+// A `session` row for the FK behind `push_subscriptions.session_id`. The token
+// is a placeholder (`session.token` is unique, never read here).
+async function seedSession(context: TestContext, userId: string): Promise<string> {
+  const id = randomUUID();
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO "session" (id, expires_at, token, updated_at, user_id)
+        VALUES (${id}, ${NOW}, ${`token-${id}`}, ${NOW}, ${userId})`;
+    }),
+  );
+  return id;
+}
+
+async function deleteSession(context: TestContext, sessionId: string): Promise<void> {
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM "session" WHERE id = ${sessionId}`;
+    }),
+  );
+}
+
+async function sessionIdForToken(
+  context: TestContext,
+  userId: string,
+  token: string,
+): Promise<string | null> {
+  const [row] = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ sessionId: string | null }>`SELECT session_id AS "sessionId"
+        FROM push_subscriptions WHERE user_id = ${userId} AND token = ${token}`;
+    }),
+  );
+  return row?.sessionId ?? null;
 }
 
 describe('push device store', () => {
@@ -202,5 +247,42 @@ describe('push device store', () => {
     const saved = await saveDevice(context.db, cipher, nativeInput(userId, 'apns-token', 'apns'));
     expect(saved.kind).toBe('apns');
     expect(openNativeDevice(saved)).toEqual({ kind: 'apns', token: 'apns-token' });
+  });
+
+  it('cascades a device away when its registering session is deleted', async () => {
+    const userId = await seedUser(context);
+    const sessionA = await seedSession(context, userId);
+    const sessionB = await seedSession(context, userId);
+    await saveDevice(context.db, cipher, nativeInput(userId, 'token-a', 'fcm', sessionA));
+    await saveDevice(context.db, cipher, nativeInput(userId, 'token-b', 'fcm', sessionB));
+
+    await deleteSession(context, sessionA);
+
+    const rows = await rowsForUser(context, userId);
+    expect(rows.map((row) => row.token)).toEqual(['token-b']);
+  });
+
+  it('moves a re-registered device to the session that registered it last', async () => {
+    const userId = await seedUser(context);
+    const sessionA = await seedSession(context, userId);
+    const sessionB = await seedSession(context, userId);
+    await saveDevice(context.db, cipher, nativeInput(userId, 'shared-token', 'fcm', sessionA));
+    await saveDevice(context.db, cipher, nativeInput(userId, 'shared-token', 'fcm', sessionB));
+
+    expect(await sessionIdForToken(context, userId, 'shared-token')).toBe(sessionB);
+    // The device followed its token to B: deleting A leaves it in place.
+    await deleteSession(context, sessionA);
+    expect(await rowsForUser(context, userId)).toHaveLength(1);
+  });
+
+  it('leaves a legacy NULL-session row untouched by a session delete', async () => {
+    const userId = await seedUser(context);
+    const sessionA = await seedSession(context, userId);
+    await saveDevice(context.db, cipher, nativeInput(userId, 'legacy-token', 'fcm'));
+
+    await deleteSession(context, sessionA);
+
+    const rows = await rowsForUser(context, userId);
+    expect(rows.map((row) => row.token)).toEqual(['legacy-token']);
   });
 });

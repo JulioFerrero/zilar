@@ -1,9 +1,12 @@
 import { Effect } from 'effect';
 import {
   CHAT_REFRESH_DEBOUNCE_MS,
+  clearHistory as clearHistoryCore,
   deleteForEveryone,
+  deleteForMe as deleteForMeCore,
   editMessage,
   react,
+  recordRead,
   setFolders as setFoldersCore,
   updatePref as updatePrefCore,
   type PrefsStore,
@@ -25,8 +28,11 @@ export type EventActions = Pick<
   | 'cancelEdit'
   | 'editMessage'
   | 'deleteForEveryone'
+  | 'deleteForMe'
+  | 'clearHistory'
   | 'dismissActionError'
   | 'setChatPref'
+  | 'markChatRead'
   | 'setFolders'
   | 'createFolder'
   | 'updateFolder'
@@ -40,6 +46,29 @@ export interface Events {
   scheduleChatsRefresh(): void;
   /** Ends the typing and refresh timers (`stop()`). */
   clearTimers(): void;
+}
+
+/**
+ * T-1248: opening a chat clears its manual unread mark at once, the same way
+ * the web store does (`apps/web/src/store/effects/history.ts`); the pref write
+ * keeps the server (and the mock) in step even when no numeric read mark can be
+ * sent (a fresh device holds no last-read id).
+ */
+export function clearUnreadMarkOnOpen(ctx: StoreCtx, chatId: string): void {
+  const { get, set } = ctx;
+  const opening = get().chats.find((entry) => entry.id === chatId);
+  if (opening?.unreadMark !== true) {
+    return;
+  }
+  set({
+    chats: get().chats.map((chat) => (chat.id === chatId ? { ...chat, unreadMark: false } : chat)),
+  });
+  ctx.fork(
+    Effect.tryPromise({
+      try: () => get().setChatPref(chatId, { unreadMark: false }),
+      catch: (cause) => cause,
+    }).pipe(Effect.ignore),
+  );
 }
 
 /**
@@ -110,6 +139,10 @@ export function makeEvents(ctx: StoreCtx): Events {
     },
     editMessage: (chatId, messageId, text) => editMessage(ctx.coreCtx, chatId, messageId, text),
     deleteForEveryone: (chatId, messageId) => deleteForEveryone(ctx.coreCtx, chatId, messageId),
+    // T-1247: delete-for-me and clear-history run the shared core effects on
+    // the core ctx and resolve the outcome at the Promise edge.
+    deleteForMe: (chatId, messageId) => ctx.run(deleteForMeCore(ctx.coreCtx, chatId, messageId)),
+    clearHistory: (chatId) => ctx.run(clearHistoryCore(ctx.coreCtx, chatId)),
     dismissActionError: () => {
       set({ actionError: undefined });
     },
@@ -121,6 +154,20 @@ export function makeEvents(ctx: StoreCtx): Events {
             return yield* Effect.fail(new Error('Chat preferences are not available.'));
           }
           yield* updatePrefCore(ctx.coreCtx, api, prefsStore, chatId, input as PutChatPrefInput);
+        }),
+      ),
+    // T-1248: "Mark as read" clears the count and sends the read mark through
+    // the shared `recordRead` (T-1207), then clears the manual unread pref.
+    markChatRead: (chatId) =>
+      ctx.run(
+        Effect.gen(function* () {
+          const chat = get().chats.find((entry) => entry.id === chatId);
+          recordRead(ctx.coreCtx, chatId, chat?.lastMessage?.archiveId ?? s.lastRead[chatId]);
+          const api = ports.chatPrefs;
+          if (api === undefined) {
+            return;
+          }
+          yield* updatePrefCore(ctx.coreCtx, api, prefsStore, chatId, { unreadMark: false });
         }),
       ),
     setFolders: (folders) => {

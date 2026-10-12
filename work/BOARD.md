@@ -1260,7 +1260,49 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1218](T-1218-swipe-failure-line.md) | Mobile: a failed swipe action (pin, mute or archive) shows 'Could not save. Try again.' in a line above the ch | 2026-10-12 |
 | [T-1216](T-1216-delivered-but-stuck-sending.md) | Emulator find (APK 86f8eef2): a text sent as the network drops reaches the server, but its bubble stays 'sendi | 2026-10-12 |
 | [T-1221](T-1221-history-dedupe-origin-id.md) | Clients show a resent message once: two archived rows of one chat with the same sender and origin id (a by-des | 2026-10-12 |
-| [T-1223](T-1223-revoked-session-to-login.md) | A revoked session goes to login (authFailed → /api/me 401 → sign out) | in-progress | auto | T-1193 | T-1193 F2 |
 | [T-1222](T-1222-live-dedupe-origin-id.md) | A resent message that arrives live shows once: the live incoming path drops a message the ledger links to one  | 2026-10-12 |
 | [T-1220](T-1220-resend-tick-after-replace.md) | Emulator find (APK 745be24c): after a long airplane-mode gap the app reconnects about 2 minutes late, and a re | 2026-10-12 |
 | [T-1224](T-1224-mobile-http-timeout.md) | Mobile HTTP calls time out after 20 s: the two shared transports (raw-request.ts, api-client.ts) add an abort  | 2026-10-12 |
+| [T-1226](T-1226-delivered-tick-plan.md) | Plan: a real delivered tick (sent / delivered / seen) | 2026-10-12 |
+| [T-1225](T-1225-light-markdown-web.md) | Light Markdown for human messages: chat-core parser + web | 2026-10-12 |
+| [T-1230](T-1230-web-pinned-light-markdown.md) | Web pins follow light Markdown | 2026-10-12 |
+| [T-1228](T-1228-delivered-status-and-ticks.md) | Delivered tick step 1: status, ladder and icons | 2026-10-12 |
+| [T-1231](T-1231-mobile-seen-green-everywhere.md) | Mobile seen ticks green everywhere | 2026-10-12 |
+| [T-1227](T-1227-light-markdown-mobile.md) | Light Markdown for human messages: mobile | 2026-10-12 |
+| [T-1229](T-1229-delivered-server.md) | Delivered tick: server stores delivery (chat_deliveries, PUT delivered, deliveredUntil) | 2026-10-12 |
+| [T-1233](T-1233-remove-contact-and-web-contacts.md) | Remove a contact (server, both directions + roster) and web Contacts page | 2026-10-12 |
+| [T-1223](T-1223-revoked-session-to-login.md) | A revoked session goes to sign-in (401 on /api/me after authFailed) | 2026-10-12 |
+| [T-1234](T-1234-link-previews-server-web.md) | Link previews: server unfurl (SSRF-guarded, cached) + web card | 2026-10-12 |
+| [T-1232](T-1232-web-media-viewer.md) | Web photo viewer (arrows, Esc, Open original) and inline video | 2026-10-12 |
+| [T-1237](T-1237-mobile-contacts-screen.md) | Mobile Contacts screen with Remove; mock DELETE contacts; web empty-card fix | 2026-10-12 |
+| [T-1238](T-1238-delivered-clients.md) | Delivered tick: apps confirm delivery and apply deliveredUntil | 2026-10-12 |
+| [T-1239](T-1239-web-format-shortcuts.md) | Web composer formatting shortcuts (Cmd+B/I/E) and hint | 2026-10-12 |
+| [T-1240](T-1240-link-preview-ua-partial.md) | Link previews: bot User-Agent and partial read of big pages | 2026-10-12 |
+| [T-1241](T-1241-mobile-link-preview-card.md) | Mobile link preview card; PlainBubbleBody split out; contacts deep link | 2026-10-12 |
+| [T-1236](T-1236-dm-clear-history-delete-for-me-server.md) | DM clear history and delete for me (own archive copy); archive role gets DELETE | 2026-10-12 |
+| [T-1242](T-1242-workers-on-opencode-go.md) | Auto workers on OpenCode Go DeepSeek Flash; fall back to DeepSeek API, then paid Muse | 2026-10-12 |
+| [T-1244](T-1244-mark-as-unread-server-web.md) | Mark as unread: migration 0050, server clears on read, web menu and dot | 2026-10-12 |
+| [T-1243](T-1243-owner-deletes-group.md) | Owner deletes a group: server, destroy presence, web confirm | 2026-10-12 |
+| [T-1235](T-1235-web-devices-page.md) | Web Devices page on our own /me/sessions routes (no tokens to the client) | 2026-10-12 |
+| [T-1246](T-1246-mobile-multi-photo-downscale.md) | Mobile: pick several photos, downscale to 2048 px; readable captions on own photos | 2026-10-12 |
+| [T-1249](T-1249-web-group-panel-reachable.md) | Web: Group info opens the group panel from every group topic | 2026-10-12 |
+| [T-1248](T-1248-mobile-mark-as-unread.md) | Mobile: mark a chat as unread; unreadMark mapping shared in chat-core | 2026-10-12 |
+| [T-1250](T-1250-mobile-devices-screen.md) | Mobile: Devices screen, sign out one or all other sessions; user-agent parser shared in chat-core | 2026-10-12 |
+| [T-1252](T-1252-link-preview-images-proxy.md) | Link preview images served through our server (keyed, image types only, no open proxy); web card thumbnail | 2026-10-12 |
+| [T-1245](T-1245-delivered-live-notice.md) | Live delivered tick: server notice from own bare JID, apps apply it; no push | 2026-10-12 |
+| [T-1251](T-1251-mobile-group-manage.md) | Mobile: Leave group, Make owner, Delete group with typed-name confirm | 2026-10-12 |
+| [T-1254](T-1254-web-topic-header-group-link.md) | Web: the topic header's group name opens the group panel; ?panel=group works on topics | 2026-10-12 |
+| [T-1253](T-1253-mobile-link-preview-image.md) | Mobile: link preview thumbnail through our server path with the bearer | 2026-10-12 |
+| [T-1255](T-1255-push-rows-follow-session.md) | Security: a revoked session's push devices are removed (session_id cascade, migration 0051) | 2026-10-12 |
+| [T-1256](T-1256-mobile-photo-viewer-swipe-save.md) | Mobile: photo viewer swipes between the chat's photos; Save to gallery | 2026-10-12 |
+| [T-1257](T-1257-push-preview-marks-delivered.md) | Delivered tick: a push wake (preview fetch) marks the message delivered | 2026-10-12 |
+| [T-1258](T-1258-profile-bio.md) | Profile bio (140 chars): server + web, migration 0052 | 2026-10-12 |
+| [T-1260](T-1260-account-deletion-audit.md) | Audit: account deletion (7-day grace) + export plan | 2026-10-12 |
+| [T-1261](T-1261-account-deletion-request.md) | Account deletion request/cancel/status with 7-day grace (migration 0053); sign-in cancels; nothing deletes yet | 2026-10-12 |
+| [T-1259](T-1259-mobile-profile-bio.md) | Mobile: Bio field in Profile; bio on the @handle card | 2026-10-12 |
+| [T-1247](T-1247-web-delete-for-me-clear-history.md) | Web: Delete for me on any DM message, Clear history; client-core delete-own | 2026-10-12 |
+| [T-1266](T-1266-albums-plan.md) | Audit: albums plan (wire marker, grouping, rules, task split), docs only | in-progress | auto | T-1246 | parity wave 5 |
+| [T-1264](T-1264-fallback-on-provider-auth.md) | Lead tooling: a provider auth failure (401) falls back like a quota error | 2026-10-12 |
+| [T-1263](T-1263-mobile-delete-for-me-clear-history.md) | Mobile: Delete for me on any DM message, Clear history | 2026-10-12 |
+| [T-1262](T-1262-account-export.md) | Export my messages: streamed JSON of profile, contacts and own archive (caps, fresh session, 1/h) | 2026-10-12 |
+| [T-1265](T-1265-web-export-button.md) | Web: Export my messages button in Profile | 2026-10-12 |

@@ -65,6 +65,14 @@ function splitBareJid(value: string): { user: string; host: string } {
   return { user: value.slice(0, at), host: value.slice(at + 1) };
 }
 
+// A JID that may carry a resource (a full JID), for `send_stanza`.
+function parseJid(value: string, label: string): string {
+  if (!isValid(JidSchema)(value)) {
+    throw new Error(`${label} jid "${value}" is invalid`);
+  }
+  return value;
+}
+
 export function createEjabberdAdminClient(
   config: XmppConfig,
   fetchImpl: FetchLike = fetch,
@@ -367,6 +375,16 @@ export function createEjabberdAdminClient(
         fail('get_roster', response, `unexpected result: ${errorText(result)}`);
       }
       return parsed.value;
+    },
+
+    // One raw stanza, used for the live delivered notice (T-1245). `from` and
+    // `to` may be full JIDs; its answer is the same rescode as the other
+    // mutations (`mod_admin_extra` `send_stanza`, `result = {res, rescode}`).
+    async sendStanza(from: string, to: string, stanza: string): Promise<void> {
+      const sendFrom = parseJid(from, 'from');
+      const sendTo = parseJid(to, 'to');
+      const response = await call('send_stanza', { from: sendFrom, to: sendTo, stanza });
+      expectMutationResult('send_stanza', response);
     },
   };
 }

@@ -90,8 +90,47 @@ export function markChatRead(jid: string, messageId: string): Promise<void> {
   ).then(() => undefined);
 }
 
+/**
+ * Confirms the caller's device holds these messages (T-1238): `originIds` are
+ * origin ids (the wire id), 1 to 50 per call. Best effort: callers ignore
+ * failures, and the server ignores the caller's own messages.
+ */
+export function markChatDelivered(jid: string, originIds: string[]): Promise<void> {
+  return callApi((client) =>
+    client.chats.markDelivered({ params: { jid }, payload: { originIds } }),
+  ).then(() => undefined);
+}
+
+/**
+ * Deletes one message from the caller's own copy of a DM (T-1247): `archiveId`
+ * is the archive id (`DELETE /api/chats/:jid/messages/:archiveId`). Rejects on
+ * failure, so the caller keeps its local row.
+ */
+export function deleteMessageForMe(jid: string, archiveId: string): Promise<void> {
+  return callApi((client) => client.chats.deleteForMe({ params: { jid, archiveId } })).then(
+    () => undefined,
+  );
+}
+
+/**
+ * Clears the caller's own copy of a DM's history (T-1247,
+ * `DELETE /api/chats/:jid/history`). The peer's copy is untouched. Rejects on
+ * failure.
+ */
+export function clearChatHistory(jid: string): Promise<void> {
+  return callApi((client) => client.chats.clearHistory({ params: { jid } })).then(() => undefined);
+}
+
 export async function getContacts(): Promise<Contact[]> {
   return callApi((client) => client.contacts.list()).then((rows) => [...rows]);
+}
+
+/**
+ * Removes `userId` from the caller's contacts in both directions (T-1233).
+ * The server answers 404 when the two are not contacts.
+ */
+export async function removeContact(userId: string): Promise<void> {
+  await callApi((client) => client.contacts.remove({ params: { userId } }));
 }
 
 export function createInvite(): Promise<Invite> {
@@ -121,6 +160,8 @@ export interface PutChatPrefInput {
   mutedUntil?: string | null | undefined;
   archived?: boolean | undefined;
   pinned?: boolean | undefined;
+  /** T-1244: marks the chat unread by hand (true) or clears the mark (false). */
+  unreadMark?: boolean | undefined;
   // T-0462: per-chat background override fields. A null clears that field,
   // an omitted field leaves it untouched; preset and image are exclusive.
   backgroundPreset?: string | null | undefined;

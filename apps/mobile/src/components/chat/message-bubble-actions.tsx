@@ -13,6 +13,14 @@ type BubbleActionsSheetProps = {
   canCopy: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  /** T-1247: any deletable DM message, including the peer's. */
+  canDeleteForMe: boolean;
+  /** T-1247: a DM (not a group or AI chat). */
+  isDm: boolean;
+  /** T-1247: this message is my own. */
+  own: boolean;
+  /** T-1247: the sender's name, for the DM confirm body. */
+  senderName: string;
   canForward: boolean;
   canPin: boolean | undefined;
   isPinned: boolean | undefined;
@@ -51,6 +59,10 @@ export function BubbleActionsSheet({
   canCopy,
   canEdit,
   canDelete,
+  canDeleteForMe,
+  isDm,
+  own,
+  senderName,
   canForward,
   canPin,
   isPinned,
@@ -66,11 +78,12 @@ export function BubbleActionsSheet({
   setMenuOpen,
   setConfirmOpen,
 }: BubbleActionsSheetProps) {
-  // The failed-text Retry/Delete read straight from the store (like
-  // `chat-thread.tsx` reads `retrySticker`): passing them down would need
-  // `message-list.tsx` and `message-bubble.tsx`, which this task does not own.
+  // The failed-text Retry/Delete and the T-1247 delete-for-me read straight
+  // from the store (like `chat-thread.tsx` reads `retrySticker`): threading
+  // them down would need `message-list.tsx`, which this task does not own.
   const retryText = useChatStore((state) => state.retryText);
   const deleteFailedMessage = useChatStore((state) => state.deleteFailedMessage);
+  const deleteForMe = useChatStore((state) => state.deleteForMe);
   const currentUserId = useChatStore((state) => state.currentUserId);
   // A failed own text (the core's `retryText` guard, mirrored): attachments,
   // stickers, voice notes and images keep their own retry paths.
@@ -87,7 +100,11 @@ export function BubbleActionsSheet({
       visible={visible}
       canCopy={canCopy}
       canEdit={canEdit}
-      canDelete={canDelete}
+      canDelete={canDelete || canDeleteForMe}
+      deleteLabel={isDm ? (own ? 'Delete' : 'Delete for me') : 'Delete for everyone'}
+      ownDelete={isDm && own}
+      dmDelete={isDm}
+      senderName={senderName}
       failed={failedText}
       onRetry={() => {
         setMenuOpen(false);
@@ -142,6 +159,11 @@ export function BubbleActionsSheet({
         setConfirmOpen(false);
         setMenuOpen(false);
         onDelete?.(message);
+      }}
+      onConfirmDeleteForMe={() => {
+        setConfirmOpen(false);
+        setMenuOpen(false);
+        void deleteForMe(message.chatId, message.id);
       }}
       onReact={(emoji) => {
         setMenuOpen(false);

@@ -9,6 +9,7 @@ import type {
   ChatRows,
   Notifications,
   OutgoingBytes,
+  SessionCheck,
   StoreFlags,
   Visibility,
   VoiceOut,
@@ -19,10 +20,12 @@ import {
   addTopicAi as addTopicAiRequest,
   addTopicMember as addTopicMemberRequest,
   changeGroupMemberRole as changeGroupMemberRoleRequest,
+  clearChatHistory as clearChatHistoryRequest,
   createGroup as createGroupRequest,
   createGroupInviteLink as createGroupInviteLinkRequest,
   createInvite as createInviteRequest,
   createTopic as createTopicRequest,
+  deleteMessageForMe as deleteMessageForMeRequest,
   getChats,
   getChatBackgroundDefault as getChatBackgroundDefaultRequest,
   getContacts,
@@ -39,6 +42,7 @@ import {
   listGroupTopics as listGroupTopicsRequest,
   lookupGroupByHandle as lookupGroupByHandleRequest,
   listPins as listPinsRequest,
+  markChatDelivered as markChatDeliveredRequest,
   markChatRead as markChatReadRequest,
   listChatMedia as listChatMediaRequest,
   listTopicAis as listTopicAisRequest,
@@ -92,6 +96,10 @@ import {
   type SetTopicRolesInput,
   type XmppToken,
 } from '@/lib/api';
+import {
+  checkSession as checkSessionAdapter,
+  sessionGone as sessionGoneAdapter,
+} from '@/lib/api/sessionGone';
 import { subscribeToDrafts, type OpenDraftStream } from '@/lib/drafts';
 import { defaultVoicePort, type VoicePort } from '@/lib/voice';
 import { defaultAttachmentPort, type AttachmentPort } from '@/lib/attachments';
@@ -116,6 +124,14 @@ export interface ApiClient {
   /** Stores the caller's read mark (T-1207); the id must be numeric. Optional
    * so existing fakes keep working; the core only calls it when present. */
   markChatRead?(jid: string, messageId: string): Promise<void>;
+  /** Confirms the caller's device holds these messages (T-1238); the ids are
+   * origin ids, 1 to 50 per call. Optional so fakes keep working. */
+  markChatDelivered?(jid: string, originIds: string[]): Promise<void>;
+  /** Deletes one message from the caller's own copy of a DM (T-1247).
+   * Optional so fakes keep working. */
+  deleteMessageForMe?(jid: string, archiveId: string): Promise<void>;
+  /** Clears the caller's own copy of a DM's history (T-1247). Optional. */
+  clearChatHistory?(jid: string): Promise<void>;
   createGroup(input: {
     title: string;
     memberIds: string[];
@@ -203,6 +219,10 @@ export interface RealStoreDeps {
   openDrafts?: OpenDraftStream;
   /** Leaves for the sign-in page after sign-out; tests inject a fake. */
   goToLogin?: () => void;
+  /** Asks `GET /api/me` whether the session still exists (T-1223); tests inject a fake. */
+  checkSession?: () => Promise<SessionCheck>;
+  /** Signs out after `checkSession` answered `gone`; tests inject a fake. */
+  sessionGone?: () => void;
 }
 
 /** The resolved ports: every field is present. */
@@ -219,6 +239,14 @@ export interface PortsShape {
   readonly voice: VoiceOut;
   readonly openDrafts: OpenDraftStream;
   readonly goToLogin: () => void;
+  /** Asks `GET /api/me` whether the session still exists after `authFailed` (T-1223). */
+  readonly checkSession: () => Promise<SessionCheck>;
+  /**
+   * Signs out after `checkSession` answered `gone`, so the user lands on
+   * login. Runs the existing `signOutStore` flow's server sign-out plus
+   * `goToLogin` (T-1223); tests inject it through deps.
+   */
+  sessionGone: () => void;
   // T-0915: what the core lifecycle, polling and connection retry read.
   readonly rows: ChatRows;
   readonly visibility: Visibility;
@@ -236,6 +264,9 @@ const realApi: ApiClient = {
   getGroup,
   getXmppToken,
   markChatRead: markChatReadRequest,
+  markChatDelivered: markChatDeliveredRequest,
+  deleteMessageForMe: deleteMessageForMeRequest,
+  clearChatHistory: clearChatHistoryRequest,
   createGroup: createGroupRequest,
   listGroupMembers: listGroupMembersRequest,
   setGroupVisibility: setGroupVisibilityRequest,
@@ -292,6 +323,13 @@ export function resolvePorts(deps: RealStoreDeps = {}): PortsShape {
     bytes: bytesFromAttachmentPort(attachments),
     openDrafts: deps.openDrafts ?? subscribeToDrafts,
     goToLogin: deps.goToLogin ?? defaultGoToLogin,
+    // `checkSession` asks `GET /api/me` whether the session still exists; the
+    // adapter lives in `@/lib/api` so this file stays under its line budget.
+    checkSession: deps.checkSession ?? checkSessionAdapter,
+    // The revoked session lands on the sign-in screen through the persistent
+    // half of the `signOutStore` flow (server sign-out, cache/device clears,
+    // then `/login`); the adapter lives in `@/lib/api` (T-1223).
+    sessionGone: deps.sessionGone ?? (() => sessionGoneAdapter(deps.goToLogin ?? defaultGoToLogin)),
     rows: realRows,
     visibility: { isVisible: deps.documentVisible ?? defaultVisible, onFocus: defaultOnFocus },
     drafts: deps.openDrafts ?? subscribeToDrafts,
@@ -343,6 +381,8 @@ export function testPorts(fakes: RealStoreDeps = {}): PortsShape {
     bytes: bytesFromAttachmentPort(attachments),
     openDrafts: fakes.openDrafts ?? (() => () => undefined),
     goToLogin: fakes.goToLogin ?? ((): void => undefined),
+    checkSession: fakes.checkSession ?? (async () => 'unknown' as const),
+    sessionGone: fakes.sessionGone ?? ((): void => undefined),
     rows: { summariesFor: () => [] },
     visibility: { isVisible: () => true, onFocus: () => () => undefined },
     drafts: fakes.openDrafts ?? (() => () => undefined),

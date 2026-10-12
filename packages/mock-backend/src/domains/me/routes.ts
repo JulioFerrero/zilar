@@ -1,8 +1,18 @@
 import type { MockData } from '../../state';
-import { conflict, jsonResponse, readJsonBody, type MockHttpRequest } from '../../http/shared';
+import type { MeState } from './state';
+import {
+  conflict,
+  jsonResponse,
+  noContent,
+  readJsonBody,
+  type MockHttpRequest,
+} from '../../http/shared';
 import { checkHandle } from '../handles/check';
+import { cancelMockDeletion, mockDeletionStatus, scheduleMockDeletion } from './deletion';
+import { mockExport } from './export';
+import { listMockSessions, revokeMockSession } from './sessions';
 
-/** `GET`/`PATCH /me` (the display name) and `PUT /me/handle`, like web's mock. */
+/** `GET`/`PATCH /me` (the display name), `PUT /me/handle` and `/me/sessions`, like web's mock. */
 export function handleMe(data: MockData, request: MockHttpRequest): Response | undefined {
   const [head, first] = request.segments;
   if (head !== 'me') {
@@ -11,6 +21,17 @@ export function handleMe(data: MockData, request: MockHttpRequest): Response | u
   if (first === 'handle') {
     return request.segments.length === 2 && request.method === 'PUT'
       ? putMeHandle(data, request)
+      : undefined;
+  }
+  if (first === 'sessions') {
+    return handleSessions(data, request);
+  }
+  if (first === 'deletion') {
+    return handleDeletion(data, request);
+  }
+  if (first === 'export') {
+    return request.method === 'GET' && request.segments.length === 2
+      ? jsonResponse(mockExport(data))
       : undefined;
   }
   if (first !== undefined) {
@@ -24,7 +45,42 @@ export function handleMe(data: MockData, request: MockHttpRequest): Response | u
     if (typeof body.name === 'string' && body.name.trim() !== '') {
       data.renameMe(body.name.trim());
     }
+    if (typeof body.bio === 'string') {
+      (data as MockData & MeState).setMeBio(body.bio.trim());
+    }
     return jsonResponse(data.me);
+  }
+  return undefined;
+}
+
+// `GET /me/sessions` and `DELETE /me/sessions/:id` (T-1250): the mobile Devices
+// screen's list and its per-row sign-out. This app is the `current` row.
+function handleSessions(data: MockData, request: MockHttpRequest): Response | undefined {
+  const id = request.segments[2];
+  if (request.segments.length === 2 && request.method === 'GET') {
+    return jsonResponse({ sessions: listMockSessions(data) });
+  }
+  if (request.segments.length === 3 && request.method === 'DELETE' && id !== undefined) {
+    revokeMockSession(data, id);
+    return noContent();
+  }
+  return undefined;
+}
+
+// `GET`/`POST`/`DELETE /me/deletion` (T-1261): read the 7-day grace, schedule
+// it or cancel it, all in memory. No session is deleted here.
+function handleDeletion(data: MockData, request: MockHttpRequest): Response | undefined {
+  if (request.segments.length !== 2) {
+    return undefined;
+  }
+  if (request.method === 'GET') {
+    return jsonResponse(mockDeletionStatus(data));
+  }
+  if (request.method === 'POST') {
+    return jsonResponse(scheduleMockDeletion(data));
+  }
+  if (request.method === 'DELETE') {
+    return jsonResponse(cancelMockDeletion(data));
   }
   return undefined;
 }

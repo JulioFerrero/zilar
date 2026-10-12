@@ -6,6 +6,8 @@ export interface ChatPrefRow {
   mutedUntil: string | null;
   archived: boolean;
   pinnedAt: string | null;
+  /** T-1244: the caller marked this chat unread by hand. */
+  unreadMark?: boolean | undefined;
 }
 
 // T-0113: mute durations offered by the chat menu.
@@ -55,7 +57,8 @@ function prefDate(value: string | null): Date | undefined {
  * `mutedUntil` is in the future; expired mutes read as unmuted (the row
  * itself is cleaned up on the next write). Muting a group mutes all its
  * topics: the pref sits on the General room JID and applies to every topic
- * of the group unless the topic has its own row.
+ * of the group unless the topic has its own row. `unreadMark` maps from the
+ * chat's own row only, never from an inherited group General row (T-1248).
  */
 export function applyChatPrefs(
   chats: ChatSummary[],
@@ -101,17 +104,28 @@ export function applyChatPrefs(
     if (!pref.archived) {
       delete next.archived;
     }
+    if (pref.unreadMark === true) {
+      next.unreadMark = true;
+    } else {
+      delete next.unreadMark;
+    }
     return next;
   });
 }
 
 function stripPref(chat: ChatSummary): ChatSummary {
-  if (chat.muted === false && chat.archived === undefined && chat.pinnedAt === undefined) {
+  if (
+    chat.muted === false &&
+    chat.archived === undefined &&
+    chat.pinnedAt === undefined &&
+    chat.unreadMark === undefined
+  ) {
     return chat;
   }
   const next: ChatSummary = { ...chat, muted: false };
   delete next.archived;
   delete next.pinnedAt;
+  delete next.unreadMark;
   return next;
 }
 

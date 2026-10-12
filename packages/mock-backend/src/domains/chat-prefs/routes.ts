@@ -13,6 +13,7 @@ const PREF_FIELDS = new Set([
   'mutedUntil',
   'archived',
   'pinned',
+  'unreadMark',
   'backgroundPreset',
   'backgroundImageId',
   'backgroundDim',
@@ -67,6 +68,9 @@ function putChatPref(data: MockData, request: MockHttpRequest, chatJid: string):
     : (body.pinned as boolean)
       ? (existing?.pinnedAt ?? new Date().toISOString())
       : null;
+  const unreadMark = !('unreadMark' in body)
+    ? (existing?.unreadMark ?? false)
+    : (body.unreadMark as boolean);
   const backgroundPreset = !('backgroundPreset' in body)
     ? (existing?.backgroundPreset ?? null)
     : (body.backgroundPreset as string | null);
@@ -83,6 +87,7 @@ function putChatPref(data: MockData, request: MockHttpRequest, chatJid: string):
     mutedUntil === null &&
     archived === false &&
     pinnedAt === null &&
+    unreadMark === false &&
     backgroundPreset === null &&
     backgroundImageId === null &&
     backgroundDim === null
@@ -95,6 +100,7 @@ function putChatPref(data: MockData, request: MockHttpRequest, chatJid: string):
     mutedUntil,
     archived,
     pinnedAt,
+    unreadMark,
     updatedAt: new Date().toISOString(),
     backgroundPreset,
     backgroundImageId,
@@ -117,6 +123,7 @@ function isValidPrefBody(body: Record<string, unknown>): boolean {
     ('mutedUntil' in body && body.mutedUntil !== null && typeof body.mutedUntil !== 'string') ||
     ('archived' in body && typeof body.archived !== 'boolean') ||
     ('pinned' in body && typeof body.pinned !== 'boolean') ||
+    ('unreadMark' in body && typeof body.unreadMark !== 'boolean') ||
     ('backgroundPreset' in body &&
       body.backgroundPreset !== null &&
       typeof body.backgroundPreset !== 'string') ||

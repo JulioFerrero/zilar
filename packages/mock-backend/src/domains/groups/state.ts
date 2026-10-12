@@ -36,6 +36,9 @@ export function createGroupsState(seed: MockSeed): Partial<MockData> {
         ? groups.map((item) => (item.id === group.id ? group : item))
         : [...groups, group];
     },
+    removeGroup(id: string): void {
+      groups = groups.filter((group) => group.id !== id);
+    },
     nextGroupId(): string {
       const id = `g-mock-${groupSequence}`;
       groupSequence += 1;

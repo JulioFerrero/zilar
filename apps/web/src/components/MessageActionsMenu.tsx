@@ -9,6 +9,12 @@ export interface MessageActionsMenuProps {
   canEdit: boolean;
   /** True when the message can be deleted for everyone (my own message). */
   canDelete: boolean;
+  /**
+   * The delete item's label. In a DM it is "Delete" on my own message and
+   * "Delete for me" on the peer's; everywhere else it stays
+   * "Delete for everyone" (T-1247).
+   */
+  deleteLabel: string;
   /** True when the caller may pin in this chat (DM either side, topic manager). */
   canPin: boolean;
   /** True when this message can be forwarded (not deleted, failed or sending). */
@@ -35,6 +41,7 @@ export function MessageActionsMenu({
   canCopy,
   canEdit,
   canDelete,
+  deleteLabel,
   canPin,
   canForward,
   isPinned,
@@ -92,7 +99,7 @@ export function MessageActionsMenu({
         Copy text
       </MenuItem>
       <MenuItem onSelect={onDelete} disabled={!canDelete} destructive>
-        Delete for everyone
+        {deleteLabel}
       </MenuItem>
       {canPin &&
         (isPinned ? (

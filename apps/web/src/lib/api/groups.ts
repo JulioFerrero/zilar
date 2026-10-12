@@ -185,6 +185,12 @@ export function transferGroupOwner(groupId: string, userId: string): Promise<Gro
   );
 }
 
+// T-1243: the owner deletes the group for everyone. Every topic room is
+// destroyed and the group's rows cascade; the server answers 204 with no body.
+export async function deleteGroup(groupId: string): Promise<void> {
+  await callApi((client) => client.groups.deleteGroup({ params: { id: groupId } }));
+}
+
 // T-1183: owners and admins add contacts to a group. The server answers the
 // fresh group detail.
 export function addGroupMembers(groupId: string, userIds: string[]): Promise<GroupDetail> {

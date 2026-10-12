@@ -5,6 +5,7 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { StateMessage } from '@/components/ui/state-message';
 
 import { AvatarControl } from '@/components/settings/avatar-control';
+import { BioField } from '@/components/settings/bio-field';
 import { HandleField } from '@/components/settings/handle-field';
 import { NameField } from '@/components/settings/name-field';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
@@ -38,6 +39,13 @@ function ProfileSettings() {
     nameUnchanged,
     onNameChange,
     saveName,
+    bio,
+    bioError,
+    bioSaved,
+    bioBusy,
+    bioUnchanged,
+    onBioChange,
+    saveBio,
     handle,
     currentHandle,
     availability,
@@ -51,6 +59,10 @@ function ProfileSettings() {
   // T-1212: the ball is seeded by the own bare JID (the same ball as the
   // chat list and the profile screen).
   const ownJid = useChatStore((state) => state.me?.jid ?? undefined);
+  // A name Save must wait while a bio save is in flight: the bio PATCH carries
+  // the saved name, so its reply could land last and revert a rename (S2, the
+  // mirror of the bio guard). `unchanged` is NameField's Save-disabled prop.
+  const nameSaveBlocked = nameUnchanged || bioBusy;
 
   return (
     <SettingsScreenShell
@@ -88,9 +100,20 @@ function ProfileSettings() {
             error={nameError}
             saved={nameSaved}
             busy={nameBusy}
-            unchanged={nameUnchanged}
+            unchanged={nameSaveBlocked}
             onChange={onNameChange}
             onSave={saveName}
+          />
+
+          <BioField
+            value={bio}
+            error={bioError}
+            saved={bioSaved}
+            busy={bioBusy}
+            unchanged={bioUnchanged}
+            saveDisabled={nameBusy}
+            onChange={onBioChange}
+            onSave={saveBio}
           />
 
           <HandleField

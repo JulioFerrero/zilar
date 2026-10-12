@@ -21,7 +21,13 @@ export function ChatActionsHost({
     actionError,
     actionMuteOpen,
     setActionMuteOpen,
+    actionClearOpen,
+    openClear,
+    closeClear,
     saveChatPref,
+    markUnread,
+    markRead,
+    clearHistoryFor,
     closeActions,
   } = actions;
   return (
@@ -32,6 +38,7 @@ export function ChatActionsHost({
       busy={actionBusy}
       error={actionError}
       muteOpen={actionMuteOpen}
+      clearOpen={actionClearOpen}
       onOpenMute={() => setActionMuteOpen(true)}
       onMute={(duration) =>
         actionContext?.chat === undefined
@@ -59,6 +66,17 @@ export function ChatActionsHost({
               archived: actionContext.chat.archived !== true,
             })
       }
+      onMarkUnread={() =>
+        actionContext?.chat === undefined ? undefined : markUnread(actionContext.chat.id)
+      }
+      onMarkRead={() =>
+        actionContext?.chat === undefined ? undefined : markRead(actionContext.chat.id)
+      }
+      onOpenClear={openClear}
+      onClearHistory={() =>
+        actionContext?.chat === undefined ? undefined : clearHistoryFor(actionContext.chat.id)
+      }
+      onCancelClear={closeClear}
       onOpenGroup={(groupId) => {
         closeActions();
         onOpenGroup(groupId);

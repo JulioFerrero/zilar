@@ -5,6 +5,7 @@ import type {
   ReactionsState,
   UiMessage,
 } from '@zilar/chat-core';
+import type { DeleteOutcome } from '@zilar/client-core/store';
 
 import type { Contact, Me } from '../lib/chat-api';
 import type { PickedFile } from '../lib/attachment-ports';
@@ -194,6 +195,17 @@ export interface ChatStoreState extends ChatStoreGroups {
   editMessage: (chatId: string, messageId: string, text: string) => void;
   /** Send a XEP-0424 retraction ("delete for everyone"). */
   deleteForEveryone: (chatId: string, messageId: string) => void;
+  /**
+   * T-1247: deletes one message from my own copy of a DM on the server, then
+   * drops it locally. Resolves the shared core outcome; a failure keeps the
+   * message and sets `actionError` to the delete line.
+   */
+  deleteForMe: (chatId: string, messageId: string) => Promise<DeleteOutcome>;
+  /**
+   * T-1247: clears my own copy of a DM's history, keeping the chat row.
+   * Resolves the shared core outcome; a failure changes nothing.
+   */
+  clearHistory: (chatId: string) => Promise<DeleteOutcome>;
   /** Dismiss the current `actionError` inline notice. */
   dismissActionError: () => void;
   /**
@@ -203,6 +215,12 @@ export interface ChatStoreState extends ChatStoreGroups {
    * JID); group mute = a pref on the General row, inherited by its topics.
    */
   setChatPref: (chatId: string, input: PutChatPrefInput) => Promise<void>;
+  /**
+   * T-1248: "Mark as read" from the chat actions sheet. Clears the unread
+   * count and sends the server read mark through the shared `recordRead`,
+   * then clears the manual unread pref. Rejects on failure.
+   */
+  markChatRead: (chatId: string) => Promise<void>;
   /**
    * Pins of one chat, newest first. Loaded when the chat opens (and on
    * focus), refreshed while it is open, optimistic on pin/unpin.

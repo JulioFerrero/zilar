@@ -9,6 +9,7 @@ import {
 } from './launch.js';
 import { loadRulesFile } from './prompts.js';
 import { appendLog, loadState, updateState } from './state.js';
+import { resolveWorkerVariant } from './model-schedule.js';
 import { assertAllowedModel, splitModel } from './task-file.js';
 import type { TaskRecord } from './types.js';
 
@@ -189,11 +190,12 @@ export async function switchModelInPlace(
     throw new Error(`worktree is missing for ${task}: ${worktree}`);
   }
   assertAllowedModel(newModel);
-  const { effort } = readTaskFrontMatter(deps.repoRoot, task);
+  const { model: frontMatterModel, effort } = readTaskFrontMatter(deps.repoRoot, task);
+  const variant = resolveWorkerVariant(frontMatterModel, effort, new Date());
 
   await deps.client.switchModel(previous.sessionId, {
     ...splitModel(newModel),
-    variant: effort,
+    variant,
   });
   const now = new Date().toISOString();
   const previousSessionId = previous.sessionId;

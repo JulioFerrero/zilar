@@ -7,6 +7,8 @@ import { useChatStore } from '@/store/chat-store-provider';
 
 // T-1218: how long a failed swipe keeps its line above the chat list.
 const SWIPE_ERROR_MS = 4000;
+// T-1247: the same fixed line the core sets when a delete call fails.
+const DELETE_ERROR = 'Could not delete. Try again.';
 
 // Returns a copy of `keys` with `key` added (on) or removed (off).
 function withKey(keys: ReadonlySet<string>, key: string, on: boolean): ReadonlySet<string> {
@@ -30,7 +32,11 @@ export function useChatActions() {
   // sheet resolves it to the underlying rows below.
   const [actionFor, setActionFor] = useState<string | null>(null);
   const [actionMuteOpen, setActionMuteOpen] = useState(false);
+  // T-1247: the Clear history in-sheet confirm is showing.
+  const [actionClearOpen, setActionClearOpen] = useState(false);
   const setChatPref = useChatStore((state) => state.setChatPref);
+  const markChatRead = useChatStore((state) => state.markChatRead);
+  const clearHistory = useChatStore((state) => state.clearHistory);
   const [actionError, setActionError] = useState('');
   // T-1218: one timer clears the swipe-failure line; a new save or unmount
   // cancels it. A sheet error is cleared by its own close, never by this.
@@ -53,6 +59,7 @@ export function useChatActions() {
 
   const openActions = (id: string) => {
     setActionMuteOpen(false);
+    setActionClearOpen(false);
     setActionError('');
     setActionFor(id);
   };
@@ -86,8 +93,14 @@ export function useChatActions() {
   const swipeError = actionFor === null ? actionError : '';
 
   // A chat change that saves closes its sheet; a failure keeps it open with
-  // the message.
-  const saveChatPref = (chatId: string, input: Parameters<typeof setChatPref>[1]) => {
+  // the message. `save` is the write itself, so a plain pref patch, the
+  // composite "Mark as read" and Clear history share one path. `errorText` is
+  // the fixed line a failure shows.
+  const runPrefSave = (
+    chatId: string,
+    save: () => Promise<void>,
+    errorText = 'Could not save. Try again.',
+  ) => {
     if (prefInFlight.current.has(chatId)) {
       return;
     }
@@ -97,18 +110,19 @@ export function useChatActions() {
     setActionError('');
     Effect.runFork(
       Effect.tryPromise({
-        try: () => setChatPref(chatId, input),
+        try: save,
         catch: (cause) => cause,
       }).pipe(
         Effect.tap(() =>
           Effect.sync(() => {
             setActionFor((current) => (current === chatId ? null : current));
             setActionMuteOpen(false);
+            setActionClearOpen(false);
           }),
         ),
         Effect.catch(() =>
           Effect.sync(() => {
-            setActionError('Could not save. Try again.');
+            setActionError(errorText);
             // A swipe has no sheet to show it in: keep the line for a beat.
             if (actionFor === null) {
               swipeErrorTimer.current = Effect.runFork(
@@ -129,10 +143,38 @@ export function useChatActions() {
     );
   };
 
+  const saveChatPref = (chatId: string, input: Parameters<typeof setChatPref>[1]) => {
+    runPrefSave(chatId, () => setChatPref(chatId, input));
+  };
+
+  // T-1248: "Mark as unread" sets the manual pref; "Mark as read" runs the
+  // store action (the shared `recordRead` plus clearing the pref).
+  const markUnread = (chatId: string) =>
+    runPrefSave(chatId, () => setChatPref(chatId, { unreadMark: true }));
+  const markRead = (chatId: string) => runPrefSave(chatId, () => markChatRead(chatId));
+
+  // T-1247: Clear history runs the store action (my own copy only) and keeps
+  // the row. An `unavailable` outcome (no port) closes like web; only `failed`
+  // shows the delete line.
+  const clearHistoryFor = (chatId: string) => {
+    setActionClearOpen(false);
+    runPrefSave(
+      chatId,
+      () =>
+        clearHistory(chatId).then((outcome) => {
+          if (outcome === 'failed') {
+            throw new Error('clear_history_failed');
+          }
+        }),
+      DELETE_ERROR,
+    );
+  };
+
   const closeActions = () => {
     if (!actionBusy) {
       setActionFor(null);
       setActionMuteOpen(false);
+      setActionClearOpen(false);
       setActionError('');
     }
   };
@@ -144,9 +186,15 @@ export function useChatActions() {
     swipeError,
     actionMuteOpen,
     setActionMuteOpen,
+    actionClearOpen,
+    openClear: () => setActionClearOpen(true),
+    closeClear: () => setActionClearOpen(false),
     openActions,
     closeActions,
     saveChatPref,
+    markUnread,
+    markRead,
+    clearHistoryFor,
   };
 }
 

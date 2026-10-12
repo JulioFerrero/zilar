@@ -8,6 +8,7 @@ export type {
   ChatKind,
   ChatMessage,
   ConnectionStatus,
+  DeliveredMarkEvent,
   DisplayedEvent,
   ErrorEvent,
   HistoryPage,

@@ -188,6 +188,12 @@ export const GroupsGroup = HttpApiGroup.make('groups')
       payload: TransferGroupOwnerPayload,
       success: GroupDetail,
     }).middleware(GroupsRoleRateLimit),
+    // T-1243: the owner deletes the group and everything under it. Answers 204
+    // with no body; a member or admin gets 403 and an unknown group a 404.
+    HttpApiEndpoint.delete('deleteGroup', '/groups/:id', {
+      params: GroupIdParams,
+      success: HttpApiSchema.NoContent,
+    }).middleware(GroupsRoleRateLimit),
     HttpApiEndpoint.post('addMembers', '/groups/:id/members', {
       params: GroupIdParams,
       payload: AddGroupMembersPayload,

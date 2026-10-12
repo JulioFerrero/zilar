@@ -352,6 +352,20 @@ describe('the message ledger: linkAckToServer', () => {
   });
 });
 
+describe('the `delivered` status ladder', () => {
+  it('delivered then sent stays delivered', () => {
+    expect(advanceStatus('delivered', 'sent')).toBe('delivered');
+  });
+
+  it('delivered then read is read', () => {
+    expect(advanceStatus('delivered', 'read')).toBe('read');
+  });
+
+  it('read then delivered stays read', () => {
+    expect(advanceStatus('read', 'delivered')).toBe('read');
+  });
+});
+
 describe('the message ledger: reset', () => {
   it('forgets aliases, server ids, authors, origin ids and base texts', () => {
     const h = harness();

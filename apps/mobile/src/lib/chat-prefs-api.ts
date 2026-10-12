@@ -18,6 +18,8 @@ export interface ChatPref {
   mutedUntil: string | null;
   archived: boolean;
   pinnedAt: string | null;
+  /** T-1244: the caller marked this chat unread by hand; absent = not marked. */
+  unreadMark?: boolean | undefined;
   updatedAt: string;
 }
 
@@ -25,6 +27,8 @@ export interface PutChatPrefInput {
   mutedUntil?: string | null | undefined;
   archived?: boolean | undefined;
   pinned?: boolean | undefined;
+  /** T-1248: marks the chat unread by hand (true) or clears the mark (false). */
+  unreadMark?: boolean | undefined;
 }
 
 export interface ChatPrefsApi {

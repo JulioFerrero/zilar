@@ -8,7 +8,7 @@ import { Ticks } from '@/components/chat/ticks';
 import { PulseDot } from '@/components/chat/typing-dots';
 import { Text } from '@/components/ui/text';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
-import { MUTED_FOREGROUND } from '@/lib/colors';
+import { MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { primaryKey, raisedPill } from '@/lib/depth';
 import { useBlockedJids } from '@/lib/blocked-users';
 import { previewParts, typingLabel } from '@/lib/format';
@@ -162,7 +162,7 @@ export function TopicRow({
             ) : showTicks && last ? (
               <Ticks
                 status={last.status as MessageStatus}
-                color={last.status === 'read' ? '#ededed' : MUTED_FOREGROUND}
+                color={last.status === 'read' ? SEEN : MUTED_FOREGROUND}
               />
             ) : null}
           </View>

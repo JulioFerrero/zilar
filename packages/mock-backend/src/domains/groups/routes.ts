@@ -9,6 +9,7 @@ import {
   badRequest,
   conflict,
   jsonResponse,
+  noContent,
   notFound,
   readJsonBody,
   type MockHttpRequest,
@@ -45,9 +46,13 @@ export function handleGroups(data: MockData, request: MockHttpRequest): Response
   if (sub === undefined) {
     if (request.method === 'GET') return jsonResponse(group);
     if (request.method === 'PATCH') return patchGroup(data, group, request);
+    if (request.method === 'DELETE') return deleteGroup(data, group);
     return undefined;
   }
   if (sub === 'members') return handleMembers(data, group, request);
+  if (sub === 'owner') {
+    return request.method === 'PUT' ? transferOwner(data, group, request) : undefined;
+  }
   if (sub === 'ais') return handleGroupAis(data, group, request);
   return undefined;
 }
@@ -268,6 +273,51 @@ function removeMember(data: MockData, group: MockGroup, userId: string): Respons
   }
   group.members = group.members.filter((item) => item.userId !== userId);
   return jsonResponse(group);
+}
+
+// T-1190/T-1251: only the owner hands the group over. The target (a member)
+// becomes owner and the actor an admin. A non-owner caller answers 403, an
+// unknown target the member-404, and handing it to yourself a 400, like the
+// server route.
+function transferOwner(data: MockData, group: MockGroup, request: MockHttpRequest): Response {
+  const viewer = group.members.find((member) => member.userId === data.me.id);
+  if (viewer === undefined) {
+    return notFound('Group not found');
+  }
+  if (viewer.role !== 'owner') {
+    return jsonResponse({ error: { code: 'forbidden', message: 'Forbidden' } }, 403);
+  }
+  const body = readJsonBody(request.init);
+  const userId = typeof body.userId === 'string' ? body.userId : '';
+  if (userId === data.me.id) {
+    return badRequest('invalid_request', 'You already own this group');
+  }
+  const target = group.members.find((member) => member.userId === userId);
+  if (target === undefined) {
+    return notFound('That user is not a member of this group');
+  }
+  group.members = group.members.map((member) =>
+    member.userId === userId
+      ? { ...member, role: 'owner' }
+      : member.userId === data.me.id
+        ? { ...member, role: 'admin' }
+        : member,
+  );
+  return jsonResponse(group);
+}
+
+// T-1243: only the owner deletes a group. A member or admin answers 403, and a
+// non-member the same 404 as an unknown group, like the server route.
+function deleteGroup(data: MockData, group: MockGroup): Response {
+  const viewer = group.members.find((member) => member.userId === data.me.id);
+  if (viewer === undefined) {
+    return notFound('Group not found');
+  }
+  if (viewer.role !== 'owner') {
+    return jsonResponse({ error: { code: 'forbidden', message: 'Forbidden' } }, 403);
+  }
+  data.removeGroup(group.id);
+  return noContent();
 }
 
 function handleGroupAis(

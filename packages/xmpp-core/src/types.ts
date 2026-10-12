@@ -1,9 +1,11 @@
 import type { ForwardOrigin, Payload } from '@zilar/protocol';
 import type { Effect } from 'effect';
 import type { NotOnline, XmppCoreError } from './errors';
+import type { MucPresence } from './stanza/parse-context';
 import type { XmppSuspend, XmppSuspendEffect } from './types-suspend';
 
 export type { StreamAckEvent } from './types-ack';
+export type { DeliveredMarkEvent } from './types-delivered';
 export type { WakeOutcome } from './types-suspend';
 
 export type ConnectionStatus = 'offline' | 'connecting' | 'online' | 'reconnecting';
@@ -178,6 +180,8 @@ export interface PresenceEvent {
   /** The `<delay/>` stamp of an offline (unavailable) presence, when present. */
   delayedAt?: number;
 }
+/** The MUC presence the parser returns; `destroyed` marks XEP-0045 room destruction. */
+export type ParsedMucPresence = MucPresence & { destroyed?: true };
 
 export interface DisplayedEvent {
   chatJid: string;

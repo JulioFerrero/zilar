@@ -1,5 +1,11 @@
 import { classifyPermission, type PermissionRequest } from './policy.js';
-import { DEEPSEEK_FLASH, fallbackModel, FREE_MUSE } from './fallback.js';
+import {
+  DEEPSEEK_FLASH,
+  fallbackModel,
+  FREE_MUSE,
+  GO_DEEPSEEK_FLASH,
+  PAID_MUSE,
+} from './fallback.js';
 import type { SessionState } from './session.js';
 import type { PrereviewRecord, TaskRecord } from './types.js';
 
@@ -104,22 +110,29 @@ export function decide(input: DecideInput): Action[] {
     actions.push({ kind: 'escalate', line });
     actions.push({ kind: 'record', patch: { lastEscalation: line } });
   };
-  // Push the in-place worker fallback (free Muse or DeepSeek -> paid Muse) and
-  // its escalation. Used by both the planned-task branch (before the status
-  // gate) and the todo/in-progress quota branch below.
+  // Push the in-place worker fallback (Go DeepSeek -> the metered DeepSeek
+  // API -> paid Muse; the free Muse goes straight to paid Muse) and its
+  // escalation. Used by both the planned-task branch (before the status gate)
+  // and the todo/in-progress quota branch below.
   const label = (model: string): string => {
+    if (model === GO_DEEPSEEK_FLASH) {
+      return 'Go DeepSeek flash';
+    }
     if (model === FREE_MUSE) {
       return 'free Muse';
     }
     if (model === DEEPSEEK_FLASH) {
-      return 'DeepSeek flash';
+      return 'DeepSeek flash (API)';
+    }
+    if (model === PAID_MUSE) {
+      return 'paid Muse';
     }
     return model;
   };
   const pushWorkerFallback = (from: string, to: string): void => {
     actions.push({ kind: 'fallback-model', session: 'worker', model: to });
     escalate(
-      `LEAD: FALLBACK ${input.task} ${label(from)} failed or rate-limited, worker continues on paid Muse`,
+      `LEAD: FALLBACK ${input.task} ${label(from)} failed or rate-limited, worker continues on ${label(to)}`,
     );
   };
 

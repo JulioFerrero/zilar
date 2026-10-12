@@ -4,7 +4,7 @@ import { type OpenCodeClient, type SessionModel } from './client.js';
 import type { GitRunner } from './git.js';
 import { loadPrompt, loadRulesFile, renderPrompt, unfilledPlaceholders } from './prompts.js';
 import { updateState } from './state.js';
-import { isDeepSeekPeak, resolveWorkerModel } from './model-schedule.js';
+import { resolveWorkerModel } from './model-schedule.js';
 import { assertAllowedModel, parseTaskFrontMatter, pickEffort, splitModel } from './task-file.js';
 import { newTaskRecord } from './types.js';
 
@@ -159,7 +159,7 @@ export async function launchTask(
   assertAllowedModel(resolved.model);
   const model = { ...splitModel(resolved.model), variant: resolved.effortOverride ?? effort };
   if (modelString === 'auto') {
-    console.log(`${task} auto -> ${resolved.model} (${isDeepSeekPeak(now) ? 'peak' : 'off-peak'})`);
+    console.log(`${task} auto -> ${resolved.model}`);
   }
   const worktree = worktreeFor(deps.repoRoot, task);
   if (fs.existsSync(worktree)) {

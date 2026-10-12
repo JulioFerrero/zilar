@@ -8,6 +8,7 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { ChannelScreen } from '@/components/chat/channel-screen';
 import { groupAction, rawCall } from '@/components/chat/group-action';
 import { GroupHeader } from '@/components/chat/group-header';
+import { useGroupManage } from '@/components/chat/group-manage-section';
 import { GroupRolesSheet } from '@/components/chat/group-roles-sheet';
 import { GroupTopicList } from '@/components/chat/group-topic-list';
 import { InviteLinksSheet } from '@/components/chat/invite-links-sheet';
@@ -119,6 +120,11 @@ function GroupTopics() {
   });
   const myRole = members.find((member) => member.userId === currentUserId)?.role;
   const canChangeVisibility = mayChangeVisibility(myRole);
+
+  // T-1251: the members-and-roles sheet's manage section (Leave, Make owner,
+  // Delete group). The wiring lives in `useGroupManage` to keep this screen
+  // under the 400-line limit.
+  const manage = useGroupManage({ groupId, groupChatId, isOwner: myRole === 'owner' });
 
   const roles = useGroupRoles(groupId, members);
   const links = useGroupInviteLinks(groupId);
@@ -320,8 +326,13 @@ function GroupTopics() {
         onRenameRole={roles.renameRole}
         onDeleteRole={roles.deleteRole}
         onToggleMember={roles.toggleMember}
-        onClose={roles.close}
+        onClose={() => {
+          if (!manage.busy) {
+            roles.close();
+          }
+        }}
         seedFor={seedFor}
+        manage={manage}
       />
       <VisibilitySheet
         visible={visibility.visible}

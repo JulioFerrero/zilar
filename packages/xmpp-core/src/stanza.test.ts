@@ -26,6 +26,8 @@ import {
   type ParseContext,
 } from './stanza';
 import { MAX_BODY_BYTES, capBody, utf8ByteLength } from './text';
+import { createPresence } from './core-effect/presence';
+import type { CoreRuntime } from './core-effect/config';
 import {
   AGENT_NAMESPACE,
   CARBONS_NAMESPACE,
@@ -33,6 +35,7 @@ import {
   CHAT_STATES_NAMESPACE,
   CORRECTION_NAMESPACE,
   DELAY_NAMESPACE,
+  DELIVERED_NAMESPACE,
   FALLBACK_NAMESPACE,
   FORWARD_NAMESPACE,
   HINTS_NAMESPACE,
@@ -467,6 +470,39 @@ describe('decodeMessageStanza: replies, typing and displayed', () => {
       messageId: 'm-1',
       outgoing: false,
     });
+  });
+
+  it('parses a delivered headline only from my own bare JID', () => {
+    const headline = (from: string) =>
+      xml(
+        'message',
+        { from, to: 'bob@zilar.localhost/web', type: 'headline' },
+        xml('delivered', {
+          xmlns: DELIVERED_NAMESPACE,
+          chat: 'alice@zilar.localhost',
+          until: '1700000000000000',
+        }),
+      );
+
+    // From my own bare JID (`ctx.me`): parsed.
+    const mine = decodeMessageStanza(headline('bob@zilar.localhost'), ctx);
+    expect(mine.message).toBeUndefined();
+    expect(mine.deliveredMark).toEqual({
+      chatJid: 'alice@zilar.localhost',
+      until: '1700000000000000',
+    });
+
+    // A `from` that differs from `ctx.me` only in case is still mine: the
+    // bound JID may arrive with different case than the client joined with.
+    expect(decodeMessageStanza(headline('BOB@Zilar.Localhost'), ctx).deliveredMark).toEqual({
+      chatJid: 'alice@zilar.localhost',
+      until: '1700000000000000',
+    });
+
+    // From anyone else: ignored.
+    expect(
+      decodeMessageStanza(headline('alice@zilar.localhost'), ctx).deliveredMark,
+    ).toBeUndefined();
   });
 });
 
@@ -1413,5 +1449,61 @@ describe('parseMucPresence: status codes', () => {
     expect(presence?.available).toBe(false);
     expect(presence?.roomJid).toBe('project@rooms.zilar.localhost');
     expect(presence?.statusCodes).toEqual([110, 321]);
+  });
+});
+
+describe('room destruction (T-1243)', () => {
+  it('marks a destroyed-room presence', () => {
+    const stanza = xml(
+      'presence',
+      {
+        from: 'project@rooms.zilar.localhost/bob',
+        to: 'bob@zilar.localhost/x',
+        type: 'unavailable',
+      },
+      xml(
+        'x',
+        { xmlns: MUC_USER_NAMESPACE },
+        xml('item', { affiliation: 'none', role: 'none' }),
+        xml('status', { code: '110' }),
+        xml('destroy', {}),
+      ),
+    );
+    expect(parseMucPresence(stanza, 'rooms.zilar.localhost')?.destroyed).toBe(true);
+  });
+
+  it('emits removed when my own destroyed-room self-presence arrives', () => {
+    const removed: string[] = [];
+    const runtime = {
+      options: { domain: 'zilar.localhost' },
+      mucDomain: 'rooms.zilar.localhost',
+      now: () => new Date(0),
+      joinedRooms: new Map([['project@rooms.zilar.localhost', 'bob']]),
+      rosters: new Map(),
+      pendingJoins: new Map(),
+      emitEvent: (event: string, payload: { roomJid: string }) => {
+        if (event === 'removed') removed.push(payload.roomJid);
+      },
+    } as unknown as CoreRuntime;
+
+    createPresence(runtime).handlePresence(
+      xml(
+        'presence',
+        {
+          from: 'project@rooms.zilar.localhost/bob',
+          to: 'bob@zilar.localhost/x',
+          type: 'unavailable',
+        },
+        xml(
+          'x',
+          { xmlns: MUC_USER_NAMESPACE },
+          xml('item', { affiliation: 'none', role: 'none' }),
+          xml('status', { code: '110' }),
+          xml('destroy', {}),
+        ),
+      ),
+    );
+
+    expect(removed).toEqual(['project@rooms.zilar.localhost']);
   });
 });

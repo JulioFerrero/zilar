@@ -1,6 +1,5 @@
-import type { UiMessage } from '@zilar/chat-core';
-import { formatTime, parseUrl } from '@zilar/chat-core';
-import { useState } from 'react';
+import { formatTime, parseUrl, photosOf, type UiMessage } from '@zilar/chat-core';
+import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import {
@@ -10,10 +9,17 @@ import {
 } from '@/components/chat/attachment-message';
 import { AttachmentVideo } from '@/components/chat/attachment-video';
 import { isGifVideoAttachment } from '@/lib/attachments';
+import { BUBBLE_COLORS, FOREGROUND, SEEN } from '@/lib/colors';
 import { Text } from '@/components/ui/text';
 import { Ticks } from '@/components/chat/ticks';
 import { mobileUploadOf } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
+
+/**
+ * The outgoing bubble's text colour, the same literal `MessageBubble` uses
+ * (`message-bubble.tsx:164`): an outgoing bubble is light, so its text is dark.
+ */
+const OUTGOING_TEXT_COLOR = '#0a0a0a';
 
 type AttachmentBodyProps = {
   message: UiMessage;
@@ -43,10 +49,19 @@ export function AttachmentBody({
   const attachment = message.attachment;
   const [viewerOpen, setViewerOpen] = useState(false);
   const trustedHosts = useChatStore((state) => state.mediaTrustedHosts);
+  const messages = useChatStore((state) => state.messagesByChat[message.chatId]);
+  const photos = useMemo(() => photosOf(messages ?? []), [messages]);
+  const startIndex = photos.findIndex((photo) => photo.messageId === message.id);
   const hosts = trustedHosts ?? new Set<string>();
   if (attachment === undefined) {
     return null;
   }
+  // The bubble's own text colours, mirroring `MessageBubble`
+  // (`message-bubble.tsx:150` for the meta shade, `:164` for the text): an
+  // outgoing bubble is light, so the caption and the meta line need the dark
+  // shades the plain text bubble uses, not the app's near-white foreground.
+  const textColor = outgoing ? OUTGOING_TEXT_COLOR : FOREGROUND;
+  const metaColor = outgoing ? BUBBLE_COLORS.outgoingMeta : BUBBLE_COLORS.incomingMeta;
   const upload = mobileUploadOf(message);
   const uploading = message.status === 'sending' && message.failed !== true;
   const failed = message.failed === true;
@@ -102,22 +117,33 @@ export function AttachmentBody({
         ) : null}
       </View>
       {message.text !== undefined && message.text.length > 0 ? (
-        <Text className="mt-1 px-0.5 text-[15px] text-foreground">{message.text}</Text>
+        <Text className="mt-1 px-0.5 text-[15px]" color={textColor}>
+          {message.text}
+        </Text>
       ) : null}
       <View className="mt-1 flex-row items-center justify-end gap-1">
         {message.edited === true ? (
-          <Text className="font-mono text-[10px] text-muted-foreground">edited</Text>
+          <Text className="font-mono text-[10px]" color={metaColor}>
+            edited
+          </Text>
         ) : null}
-        <Text className="font-mono text-[10px] text-muted-foreground">
+        <Text className="font-mono text-[10px]" color={metaColor}>
           {formatTime(message.createdAt)}
         </Text>
-        {outgoing ? <Ticks status={message.status} color="#8a8a8a" size={13} /> : null}
+        {outgoing ? (
+          <Ticks
+            status={message.status}
+            color={message.status === 'read' ? SEEN : metaColor}
+            size={13}
+          />
+        ) : null}
       </View>
-      {attachment.kind === 'image' && !gifVideo && !failed && !uploading ? (
+      {attachment.kind === 'image' && !gifVideo && !failed && !uploading && viewerOpen ? (
         <AttachmentViewer
           chatId={message.chatId}
-          url={viewerOpen ? viewableUrl(attachment.url, hosts) : undefined}
-          name={attachment.name}
+          photos={photos}
+          startIndex={startIndex}
+          trustedHosts={hosts}
           onClose={() => setViewerOpen(false)}
         />
       ) : null}
@@ -141,18 +167,6 @@ function isFileTrusted(url: string, hosts: ReadonlySet<string>): boolean {
     return false;
   }
   return hosts.has(parsed.hostname.toLowerCase());
-}
-
-/** The viewer URL: only a trusted http(s) URL, never user-supplied schemes. */
-function viewableUrl(url: string, hosts: ReadonlySet<string>): string | undefined {
-  const parsed = parseUrl(url);
-  if (parsed === undefined) {
-    return undefined;
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    return undefined;
-  }
-  return hosts.has(parsed.hostname.toLowerCase()) ? url : undefined;
 }
 
 function CancelOrRetry({

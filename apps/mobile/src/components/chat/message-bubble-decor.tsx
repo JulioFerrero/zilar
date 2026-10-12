@@ -6,6 +6,7 @@ import Svg, { Path } from 'react-native-svg';
 import { Ticks } from '@/components/chat/ticks';
 import { PulseDot } from '@/components/chat/typing-dots';
 import { Text } from '@/components/ui/text';
+import { SEEN } from '@/lib/colors';
 import { raisedPill } from '@/lib/depth';
 import type { ActiveSource } from '@/lib/use-smooth-text';
 import { cn } from '@/lib/utils';
@@ -64,6 +65,9 @@ export function BubbleMeta({
   color: string;
   className?: string;
 }) {
+  // Seen ticks render brighter than delivered ones: only `read` keeps the
+  // bright seen color, every earlier state keeps the passed meta color.
+  const ticksColor = message.status === 'read' ? SEEN : color;
   return (
     <View className={cn('flex-row items-center gap-1', className)}>
       <Text className="font-mono text-[10px]" color={color}>
@@ -74,7 +78,7 @@ export function BubbleMeta({
           Not sent
         </Text>
       ) : null}
-      {outgoing ? <Ticks status={message.status} color={color} size={13} /> : null}
+      {outgoing ? <Ticks status={message.status} color={ticksColor} size={13} /> : null}
     </View>
   );
 }
@@ -151,7 +155,13 @@ export function BigEmoji({
           {message.edited === true ? 'edited ' : ''}
           {formatTime(message.createdAt)}
         </Text>
-        {outgoing ? <Ticks status={message.status} color="#8a8a8a" size={13} /> : null}
+        {outgoing ? (
+          <Ticks
+            status={message.status}
+            color={message.status === 'read' ? SEEN : '#8a8a8a'}
+            size={13}
+          />
+        ) : null}
       </View>
     </Pressable>
   );

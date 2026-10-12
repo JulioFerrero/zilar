@@ -254,6 +254,28 @@ export function makeGroupActions(ctx: StoreCtx, helpers: GroupActionHelpers): Gr
           chatId,
         ),
       ),
+    // T-1190: the owner hands the group over; the detail is reloaded (it
+    // publishes and bumps the revision), so the caller's rows repaint with
+    // the caller as an admin and Leave group appears. The list refreshes too,
+    // best-effort.
+    transferGroupOwner: (groupId, userId) =>
+      ctx.run(
+        Effect.gen(function* () {
+          yield* lift(() => groupsApi.transferGroupOwner(groupId, userId));
+          yield* ensureGroupDetail(groupId, true);
+          yield* refreshQuietly;
+        }),
+      ),
+    // T-1243: the owner deletes the group for everyone; the list refresh
+    // drops its rows. The room-destroyed presence drops the chat on every
+    // other device (xmpp-core), and the caller navigates away.
+    deleteGroup: (groupId) =>
+      ctx.run(
+        Effect.gen(function* () {
+          yield* lift(() => groupsApi.deleteGroup(groupId));
+          yield* refreshQuietly;
+        }),
+      ),
     // T-0144: the members slice for the channel screen — the full audience
     // for managers, the owner/admins slice for subscribers (never the
     // audience), 404 for strangers. The server enforces the rule; the

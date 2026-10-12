@@ -1,3 +1,4 @@
+import { lightToPlain } from '@zilar/chat-core';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '../ui/text';
@@ -64,7 +65,7 @@ export function PinsSheet({
             >
               <Text numberOfLines={1} className="text-[13px] text-foreground">
                 <Text className="font-semibold">{pin.senderName}: </Text>
-                {pinLabel(pin)}
+                {lightToPlain(pinLabel(pin))}
               </Text>
             </Pressable>
             {canUnpin ? (

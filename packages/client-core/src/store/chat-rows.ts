@@ -26,6 +26,12 @@ import {
 export interface ServerRowFields {
   readonly unread?: unknown;
   readonly lastMessage?: unknown;
+  /** T-1238: the delivered mark, an archive id in the caller's terms. */
+  readonly deliveredUntil?: unknown;
+}
+
+function deliveredUntilOf(raw: unknown): string | undefined {
+  return typeof raw === 'string' && raw !== '' ? raw : undefined;
 }
 
 function unreadOf(raw: unknown): number {
@@ -176,6 +182,7 @@ function summaryFor(entry: ChatEntry, server: ServerRowFields | undefined): Chat
     server?.lastMessage === undefined
       ? undefined
       : previewMessageOf(entry.chatJid, server.lastMessage);
+  const deliveredUntil = server === undefined ? undefined : deliveredUntilOf(server.deliveredUntil);
   const base = {
     id: entry.chatJid,
     title: entry.title,
@@ -184,6 +191,7 @@ function summaryFor(entry: ChatEntry, server: ServerRowFields | undefined): Chat
     unread,
     muted: false,
     ...(lastMessage === undefined ? {} : { lastMessage }),
+    ...(deliveredUntil === undefined ? {} : { deliveredUntil }),
   };
   if (entry.kind === 'dm') {
     return {
@@ -247,6 +255,7 @@ function summaryForTopic(
     server?.lastMessage === undefined
       ? undefined
       : previewMessageOf(topic.chatJid, server.lastMessage);
+  const deliveredUntil = server === undefined ? undefined : deliveredUntilOf(server.deliveredUntil);
   return {
     id: topic.chatJid,
     title: topic.name,
@@ -266,6 +275,7 @@ function summaryForTopic(
     // T-0466: topic rows keep their group's shared background too.
     ...(groupBackground === undefined ? {} : { groupBackground }),
     ...(lastMessage === undefined ? {} : { lastMessage }),
+    ...(deliveredUntil === undefined ? {} : { deliveredUntil }),
     ...(channel === null
       ? {}
       : {

@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useState } from 'react';
-import { checkHandle, claimHandle } from '@/lib/api';
+import { checkHandle, claimHandle, getMe, updateMeProfile } from '@/lib/api';
 import { useAuth } from '@/auth/AuthProvider';
 import { copyText } from '@/lib/clipboard';
 import { fromApi } from '@/lib/effect/api-effect';
@@ -11,6 +11,7 @@ import { useQuery } from '@/lib/effect/use-query';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
 import { AvatarUploader } from './AvatarUploader';
+import { ExportSection } from './ExportSection';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 
 type HandleCheck =
@@ -74,7 +75,7 @@ function ProfilePictureSection() {
   );
 }
 
-/** Settings → Profile: name, handle (with live check), share link. */
+/** Settings → Profile: picture, handle (with live check), bio, share link. */
 export function ProfileSettingsSection() {
   const auth = useAuth();
   const [handle, setHandle] = useState(auth.user?.handle ?? '');
@@ -82,13 +83,25 @@ export function ProfileSettingsSection() {
   const [error, setError] = useState<string | undefined>(undefined);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  // T-1258: the bio lives on `GET /me`, which `AuthProvider` does not keep, so
+  // this section reads it once; the input owns it after that.
+  const [bio, setBio] = useState('');
+  const [bioTyped, setBioTyped] = useState(false);
+  const [remoteBio, setRemoteBio] = useState<string | undefined>(undefined);
+  useQuery(
+    () =>
+      auth.user === undefined
+        ? Effect.void
+        : fromApi(() => getMe()).pipe(
+            Effect.tap((me) => Effect.sync(() => setRemoteBio(me.bio ?? ''))),
+            Effect.ignore,
+          ),
+    [auth.user?.id],
+  );
 
   const trimmed = handle.trim();
   const current = auth.user?.handle ?? '';
-  // Save is disabled only for the exactly equal value; a casing-only change
-  // stays enabled — the server applies it (interval rule, casing updated,
-  // nothing retired).
-  const unchanged = trimmed !== '' && trimmed === current;
+  const currentBio = remoteBio ?? '';
   // The live check skips your own handle in any casing: the server sees its
   // live row and would report "taken", which is misleading next to an
   // enabled Save.
@@ -99,30 +112,66 @@ export function ProfileSettingsSection() {
   if (!typed && handle === '' && current !== '') {
     setHandle(current);
   }
+  // Same for the bio, which arrives from this section's own `getMe()` read.
+  if (!bioTyped && bio === '' && remoteBio !== undefined && remoteBio !== '') {
+    setBio(remoteBio);
+  }
 
   const [checkResult] = useQuery(() => handleCheck(trimmed, ownHandle), [trimmed, ownHandle]);
   const check: HandleCheck = AsyncResult.isSuccess(checkResult) ? checkResult.value : IDLE_CHECK;
 
-  const [saveState, runSave] = useAction<void, void, ApiFailure>(() =>
-    fromApi(() => claimHandle(trimmed)).pipe(
-      Effect.andThen(fromApi(() => auth.refetch())),
-      Effect.tap(() => Effect.sync(() => setSaved(true))),
+  const [saveState, runSave] = useAction<
+    { handle?: string | undefined; bio?: string | undefined },
+    void,
+    ApiFailure
+  >((input) =>
+    Effect.gen(function* () {
+      const { handle: nextHandle, bio: nextBio } = input;
+      if (nextHandle !== undefined) {
+        yield* fromApi(() => claimHandle(nextHandle));
+      }
+      if (nextBio !== undefined) {
+        yield* fromApi(() => updateMeProfile(auth.user?.name ?? '', nextBio));
+      }
+      yield* fromApi(() => auth.refetch());
+    }).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          setSaved(true);
+          if (input.handle !== undefined) {
+            setHandle(input.handle);
+          }
+          if (input.bio !== undefined) {
+            setRemoteBio(input.bio);
+          }
+        }),
+      ),
       Effect.tapError((failure) => Effect.sync(() => setError(friendlyError(failure)))),
     ),
   );
   const busy = isWaiting(saveState);
 
+  const bioUnchanged = bio.trim() === currentBio;
+  const handleChanged = trimmed !== current;
+
   const save = (): void => {
-    if (trimmed === '') {
+    if (busy) {
+      return;
+    }
+    // A cleared handle is not a change we apply; an empty handle that was
+    // already empty is fine and lets a bio-only save through.
+    if (handleChanged && trimmed === '') {
       setError('Choose a username');
       return;
     }
-    if (busy) {
+    const nextHandle = handleChanged ? trimmed : undefined;
+    const nextBio = bioUnchanged ? undefined : bio.trim();
+    if (nextHandle === undefined && nextBio === undefined) {
       return;
     }
     setError(undefined);
     setSaved(false);
-    runSave();
+    runSave({ handle: nextHandle, bio: nextBio });
   };
 
   const [, copyShare] = useAction((url: string) =>
@@ -164,6 +213,24 @@ export function ProfileSettingsSection() {
               <span className="text-danger">{reasonText(check.reason)}</span>
             ))}
         </div>
+        <div className="mt-3">
+          <TextInput
+            id="profile-bio"
+            label="Bio"
+            value={bio}
+            maxLength={140}
+            onChange={(event) => {
+              setBio(event.target.value);
+              setBioTyped(true);
+              setSaved(false);
+            }}
+            placeholder="A few words about you"
+          />
+          <div className="mt-1 flex items-start justify-between gap-2 text-[13px] text-muted-foreground">
+            <span>A few words about you. Anyone who finds you by username can see it.</span>
+            <span className="shrink-0 tabular-nums">{bio.length} / 140</span>
+          </div>
+        </div>
         {error !== undefined && (
           <p role="alert" className="mt-1 text-[14px] text-danger">
             {error}
@@ -171,8 +238,12 @@ export function ProfileSettingsSection() {
         )}
         {saved && <p className="mt-1 text-[14px] text-muted-foreground">Saved.</p>}
         <div className="mt-2 flex flex-wrap gap-2">
-          <Button type="button" onClick={() => save()} disabled={busy || unchanged}>
-            {busy ? 'Saving…' : 'Save username'}
+          <Button
+            type="button"
+            onClick={() => save()}
+            disabled={busy || (!handleChanged && bioUnchanged)}
+          >
+            {busy ? 'Saving…' : 'Save'}
           </Button>
           {shareUrl !== null && (
             <Button type="button" variant="outline" onClick={() => copyShare(shareUrl)}>
@@ -181,6 +252,7 @@ export function ProfileSettingsSection() {
           )}
         </div>
       </div>
+      <ExportSection />
     </section>
   );
 }

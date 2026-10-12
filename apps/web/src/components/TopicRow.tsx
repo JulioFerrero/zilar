@@ -6,7 +6,7 @@ import { Avatar } from './Avatar';
 import { ChatActionsMenu } from './ChatActionsMenu';
 import { cn } from '@/lib/utils';
 import { formatListTime, previewBody, previewPrefix, shouldRenderMarkdown } from '@zilar/chat-core';
-import { markdownToPlain } from '@zilar/chat-core';
+import { lightToPlain, markdownToPlain } from '@zilar/chat-core';
 import { useBlockedJids } from '@/lib/blockedJids';
 import { typingLabel } from '@/lib/format';
 import { previewMessage } from '@/lib/preview-message';
@@ -32,7 +32,7 @@ function rowPreview(
   const body =
     preview !== undefined && shouldRenderMarkdown(chat, preview, currentUserId)
       ? markdownToPlain(rawBody)
-      : rawBody;
+      : lightToPlain(rawBody);
   return { prefix, body };
 }
 

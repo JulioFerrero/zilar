@@ -6,12 +6,12 @@ import {
   createInvite as createInviteAction,
 } from '@zilar/client-core/store';
 import type { ChatPref, GroupDetail } from '@/lib/api';
-import { applyChatPrefs } from '@/lib/chatPrefs';
 import { sortByRecency, summariesFor } from './chatRows';
 import type { StoreCtx } from './ctx';
 import { ensureGroupMembers } from './groupMembers';
 import { openHistory } from './history';
 import { Ports, type ApiClient } from './ports';
+import { applyPrefsWithUnreadMark } from './prefs';
 import { fromPromise, prefsByJid } from './util';
 
 type CreateOptions = {
@@ -43,7 +43,7 @@ const repaintCreatedGroup = (
     const previous = ctx.get().chats;
     const freshRows = entries.flatMap((entry) => summariesFor(entry));
     ctx.set({
-      chats: applyChatPrefs(
+      chats: applyPrefsWithUnreadMark(
         sortByRecency(
           freshRows.map((row) => {
             const before = previous.find((chat) => chat.id === row.id);

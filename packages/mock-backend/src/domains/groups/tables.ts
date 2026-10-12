@@ -19,6 +19,8 @@ declare module '../../state' {
     findGroup(id: string): MockGroup | undefined;
     /** Replace the group with the same id, or append a new one. */
     putGroup(group: MockGroup): void;
+    /** Drop the group with this id (T-1243). */
+    removeGroup(id: string): void;
     /** The next `g-mock-N` id, the mock's fresh group id. */
     nextGroupId(): string;
   }

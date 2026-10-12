@@ -198,7 +198,7 @@ function PinRowItem({
         <div className="truncate text-[14px] font-semibold">{pin.senderName}</div>
         <div className="line-clamp-2 text-[13px] text-muted-foreground">
           {snapshot !== '' ? (
-            <LinkText text={snapshot} />
+            <LinkText text={snapshot} formatted />
           ) : (
             <span className="italic">{KIND_LABEL[pin.kind]}</span>
           )}

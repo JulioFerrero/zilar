@@ -4,6 +4,7 @@ import { Context, Effect, Fiber } from 'effect';
 import { describe, expect, it, vi } from 'vitest';
 import type { XmppCore } from '@zilar/xmpp-core';
 import type { StoreAppHooks } from './ctx';
+import type { SessionCheck } from './session-check';
 import { makeLifetime } from './lifetime';
 import {
   readLastRead,
@@ -305,5 +306,165 @@ describe('resume gate (R8)', () => {
     );
 
     expect(ctx.connectRetryPending).toBe(true);
+  });
+
+  it("authFailed with checkSession 'gone' signs out without a retry", async () => {
+    // T-1223: a session revoked on the server answers 401 on `GET /api/me`,
+    // so the store signs out (the app's login) instead of retrying for ever.
+    const sessionGone = vi.fn();
+    const { ctx } = lifecycleCtx({
+      ports: {
+        flags: { connectRetry: true, reconnectOnResume: true },
+        api: {
+          getMe: async () => ({ id: 'u-me', name: 'Me' }),
+          getChats: async () => [],
+          getContacts: async () => [],
+          getXmppToken: async () => ({ jid: 'me@x', token: 't', service: 's', domain: 'd' }),
+        },
+        checkSession: async () => 'gone',
+        sessionGone,
+        createXmpp: () => {
+          const listeners = new Map<string, (payload: never) => void>();
+          return {
+            on: (event: string, cb: (payload: never) => void) => {
+              listeners.set(event, cb);
+              return () => {
+                listeners.delete(event);
+              };
+            },
+            connect: async () => undefined,
+            disconnect: async () => undefined,
+            emitAuthFailed: () => {
+              listeners.get('authFailed')?.(undefined as never);
+            },
+          } as unknown as XmppCore & { emitAuthFailed: () => void };
+        },
+      },
+    });
+
+    Effect.runSync(startStore(ctx));
+    await Effect.runPromise(
+      Effect.sleep(10).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            const current = ctx.core as unknown as { emitAuthFailed?: () => void } | undefined;
+            current?.emitAuthFailed?.();
+          }),
+        ),
+        Effect.andThen(Effect.sleep(10)),
+      ),
+    );
+
+    expect(sessionGone).toHaveBeenCalledTimes(1);
+    expect(ctx.connectRetryPending).toBe(false);
+  });
+
+  it("authFailed with checkSession 'unknown' keeps the ladder retry", async () => {
+    // T-1223: anything but a 401 (another status, a network error, a
+    // rejection) must not sign anyone out; the retry ladder runs instead.
+    const sessionGone = vi.fn();
+    const { ctx } = lifecycleCtx({
+      ports: {
+        flags: { connectRetry: true, reconnectOnResume: true },
+        api: {
+          getMe: async () => ({ id: 'u-me', name: 'Me' }),
+          getChats: async () => [],
+          getContacts: async () => [],
+          getXmppToken: async () => ({ jid: 'me@x', token: 't', service: 's', domain: 'd' }),
+        },
+        checkSession: async () => 'unknown' as const,
+        sessionGone,
+        createXmpp: () => {
+          const listeners = new Map<string, (payload: never) => void>();
+          return {
+            on: (event: string, cb: (payload: never) => void) => {
+              listeners.set(event, cb);
+              return () => {
+                listeners.delete(event);
+              };
+            },
+            connect: async () => undefined,
+            disconnect: async () => undefined,
+            emitAuthFailed: () => {
+              listeners.get('authFailed')?.(undefined as never);
+            },
+          } as unknown as XmppCore & { emitAuthFailed: () => void };
+        },
+      },
+    });
+
+    Effect.runSync(startStore(ctx));
+    await Effect.runPromise(
+      Effect.sleep(10).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            const current = ctx.core as unknown as { emitAuthFailed?: () => void } | undefined;
+            current?.emitAuthFailed?.();
+          }),
+        ),
+        Effect.andThen(Effect.sleep(10)),
+      ),
+    );
+
+    expect(sessionGone).not.toHaveBeenCalled();
+    expect(ctx.connectRetryPending).toBe(true);
+  });
+
+  it('a stale check completion never signs out the new session', async () => {
+    // T-1223 finding 1: `stop()` + `start()` (or a sign-in as another user)
+    // while the check is in flight orphans it. The old check resolving
+    // `'gone'` must not clear the new session's token.
+    const sessionGone = vi.fn();
+    const { ctx } = lifecycleCtx({
+      ports: {
+        flags: { connectRetry: true, reconnectOnResume: true },
+        api: {
+          getMe: async () => ({ id: 'u-me', name: 'Me' }),
+          getChats: async () => [],
+          getContacts: async () => [],
+          getXmppToken: async () => ({ jid: 'me@x', token: 't', service: 's', domain: 'd' }),
+        },
+        checkSession: () =>
+          new Promise<SessionCheck>((resolve) => setTimeout(() => resolve('gone'), 20)),
+        sessionGone,
+        createXmpp: () => {
+          const listeners = new Map<string, (payload: never) => void>();
+          return {
+            on: (event: string, cb: (payload: never) => void) => {
+              listeners.set(event, cb);
+              return () => {
+                listeners.delete(event);
+              };
+            },
+            connect: async () => undefined,
+            disconnect: async () => undefined,
+            emitAuthFailed: () => {
+              listeners.get('authFailed')?.(undefined as never);
+            },
+          } as unknown as XmppCore & { emitAuthFailed: () => void };
+        },
+      },
+    });
+
+    Effect.runSync(startStore(ctx));
+    await Effect.runPromise(
+      Effect.sleep(10).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            const current = ctx.core as unknown as { emitAuthFailed?: () => void } | undefined;
+            current?.emitAuthFailed?.();
+          }),
+        ),
+      ),
+    );
+    // A manual sign-out and a fresh start before the old check resolves.
+    Effect.runSync(stopStore(ctx));
+    Effect.runSync(startStore(ctx));
+    expect(ctx.connectRetryPending).toBe(false);
+
+    await Effect.runPromise(Effect.sleep(40));
+
+    expect(sessionGone).not.toHaveBeenCalled();
+    expect(ctx.connectRetryPending).toBe(false);
   });
 });

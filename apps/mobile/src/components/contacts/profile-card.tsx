@@ -4,7 +4,8 @@ import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
-import type { ContactRelation, HandleProfile } from '@/lib/contacts-api';
+import type { ContactRelation } from '@/lib/contacts-api';
+import type { HandleProfile } from '@zilar/api-contract';
 
 import { Avatar } from '../chat/avatar';
 
@@ -91,6 +92,11 @@ export function ProfileCard({
         <Text numberOfLines={1} className="text-[14px] text-muted-foreground">
           @{profile.handle}
         </Text>
+        {profile.bio !== undefined && profile.bio !== '' ? (
+          <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+            {profile.bio}
+          </Text>
+        ) : null}
       </View>
     </View>
   );

@@ -11,6 +11,7 @@ import { Effect, Exit, Fiber, Scope } from 'effect';
 import { trustedMediaHosts, type MediaTokenShape } from '@zilar/chat-core';
 import type { ConnectionStatus, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 import { fromPromise, type StoreAppHooks } from './ctx';
+import { handleDeliveredMark } from './delivered';
 import { flushPending, loadPreview, type HistoryCtx } from './history';
 import { flushOnline, markReboundOutbox, wakeAndResend } from './online';
 import { ackText, unackText, type SendCtx } from './send';
@@ -31,14 +32,14 @@ import {
   type DraftTurns,
 } from './polling';
 import { type CoreMe } from './ports';
+import { onAuthFailed } from './session-check';
 import { sortByRecency } from './rows';
 
 export { readLastRead } from './last-read';
-// The background-lifecycle helpers live beside the lifecycle (T-1151), as
-// does the online-flush helper (T-1197): the module is at its line budget,
-// so they are re-exported from here.
+// The background helpers and the session check are re-exported (line budget).
 export { suspendStore, wakeCore } from './suspend';
 export { flushOnline } from './online';
+export { onAuthFailed, type SessionCheck } from './session-check';
 
 // Waits between XMPP connect attempts after a failed token or login.
 export const CONNECT_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
@@ -299,12 +300,10 @@ function subscribeToCore(
         flushOnline(ctx);
       }
     }),
-    // A token that fails for good (both fetches 401/403) stopped the core
-    // offline: run the connect retry ladder instead of staying offline until
-    // the app restarts (F7, MP-10). The app's session layer still decides when
-    // the session is gone and sends the user to login.
+    // A revoked session (signed out elsewhere) answers 401 here (T-1223):
+    // `sessionGone` signs out to login instead of retrying for ever.
     current.on('authFailed', () => {
-      ctx.rt.runDetached(scheduleConnectRetry(ctx, session, me));
+      onAuthFailed(ctx, session, me, scheduleConnectRetry);
     }),
     current.on('acked', ({ stanzaId }) => ackText(ctx as unknown as SendCtx, stanzaId)),
     current.on('unacked', ({ stanzaId }) => unackText(ctx as unknown as SendCtx, stanzaId)),
@@ -313,6 +312,7 @@ function subscribeToCore(
     current.on('message', (message) => handleMessage(ctx, message)),
     current.on('typing', (event) => handleTyping(ctx, event)),
     current.on('displayed', (event) => handleDisplayed(ctx, event)),
+    current.on('deliveredMark', (event) => handleDeliveredMark(ctx, event)),
     current.on('occupants', (event) => handleOccupants(ctx, event)),
     current.on('presence', (event) => handlePresence(ctx, event)),
     // A group invitation or a roster push means the chat list changed on the

@@ -2,6 +2,176 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-12 ~20:30 local (Julio away)**
+- **Decisions waiting for Julio: account deletion** (plan `docs/audit/account-deletion-plan.md` §8, from T-1260). The lead's recommendation is in brackets.
+  1. Groups you created but no longer own [repoint `created_by` to the current owner].
+  2. Topics you created in others' groups [repoint to the group owner].
+  3. Groups you own at deletion [oldest admin becomes owner, else oldest member; alone → delete].
+  4. Your @username after deletion [reserved 30 days; needs one small FK drop].
+  5. Pins, roles, tools, routines and rules you created in shared groups [repoint to the group owner].
+  6. Sticker packs you own [deleted with you].
+  7. Uploaded message files live in ejabberd's upload folder, which the server can't delete [an ops cleanup script].
+  8. Export [direct streaming download].
+  9. Export freshness [you must have signed in within 30 min].
+  10. Export caps [200k messages / 250 MB / 1 per hour].
+  11. AI provider keys [deleted].
+  12. Pending AI actions [cancelled; past approvals kept].
+  - **The lead may start T-A** (request/cancel + the 7-day table) on these recommendations. **It won't start the deletion job (T-B) without Julio's OK.**
+- **Merged since 19:45:**
+  - T-1258: profile bio, server + web. Live: migrations 0051 and 0052 ran, `/api/me` is 200;
+  - T-1259: mobile bio, checked on the emulator ("Saved.", counter);
+  - T-1260: the deletion audit;
+  - T-1261: deletion request/cancel/status with the 7-day table (migration 0053). Sign-in cancels it, and **it deletes nothing**.
+- **Running:**
+  - T-1247: web Delete for me / Clear history. Approved and rebased; `store.ts` is being trimmed to 400 lines;
+  - T-1262: export my messages (server, read-only, on the recommended caps).
+- **For Julio: the free Muse credential is failing.** Since about 21:00, `opencode/muse-spark-1.3-contributor-free` answers `provider.auth` 401 "Invalid credential".
+  - Pre-reviews stalled. The lead switched them by hand to the paid Muse.
+  - T-1264 (merged, autopilot restarted) now makes a 401 fall back automatically, so pre-reviews and the doctor run on the **paid** Muse until the free credential is fixed.
+- **Also merged:** T-1247 (web Delete for me / Clear history), T-1264.
+- **Running:** T-1262 (export), T-1263 (mobile Delete for me / Clear history).
+- **Held for Julio:** T-B (the deletion job) and the deletion UI (T-D/T-E). A "will be deleted on…" banner shouldn't ship before the job exists.
+
+**2026-10-12 ~19:45 local (Julio away)**
+- **New APK for Julio: `~/Downloads/zilar-fd898878.apk`** (main at T-1256, prod URL, push config included). What to check on the phone:
+  - pick several real photos at once (T-1246);
+  - swipe between a chat's photos and Save one (T-1256);
+  - link preview card plus thumbnail (T-1241/T-1253);
+  - grey double tick live, and as soon as the push arrives (T-1245/T-1257);
+  - Settings → Devices (T-1250);
+  - Mark as unread (T-1248);
+  - Leave group in a group you don't own (T-1251);
+  - Contacts (T-1237).
+- **Merged since 19:05:**
+  - T-1251: mobile group manage;
+  - T-1253: mobile preview thumbnail;
+  - T-1254: web topic-header group link;
+  - T-1255: a revoked session's push devices are removed (migration 0051);
+  - T-1256: mobile photo swipe and Save;
+  - T-1257: a push wake marks the message delivered.
+- **Live (read-only, 19:05 deploy):**
+  - the preview image for github.com is 200 `image/png` with nosniff;
+  - a made-up key is 404;
+  - `/api/me/sessions` is 200.
+- **Running:**
+  - T-1247: web Delete for me / Clear history, in a lead fix round. On the mock, Delete for me removed two messages, and the menu label was wrong;
+  - T-1258: profile bio, server + web (migration 0052).
+
+**2026-10-12 ~19:05 local (Julio away)**
+- **Merged since 17:50:**
+  - T-1249: web Group info. Checked on the mock: the panel opens, Delete group stays disabled until the name is typed;
+  - T-1248: mobile mark as unread. On the emulator: the dot appears, and opening the chat clears it;
+  - T-1250: mobile Devices. On the emulator: This device, Sign out with an in-app confirm, the row goes away;
+  - T-1252: link preview images through our server (keyed, image types only, 2 MB, no open proxy);
+  - T-1245: the live delivered tick (the notice comes from your own JID; no push).
+- **Deploy:** one was in progress at about 19:00 (`/health` gave a brief 502). Live checks follow: the preview image path is 200 `image/*`, a made-up key is 404, and `/api/me/sessions` is 200.
+- **Running:**
+  - T-1247: web delete for me and clear history, fix round 2;
+  - T-1251: mobile group manage, fix round;
+  - T-1253: the mobile preview thumbnail;
+  - T-1254: the web topic-header group link;
+  - T-1255: a revoked session's push devices stop (migration 0051, the only schema task).
+- **For Julio, the next APK checks:**
+  - a real multi-photo pick;
+  - the preview card and its thumbnail;
+  - the live delivered tick;
+  - the Devices, Contacts and mark-as-unread screens.
+
+**2026-10-12 ~17:50 local: Julio left ("continue without me"). The lead keeps the parity waves going.**
+- **For Julio when back:**
+  - the next APK checks: a real multi-photo pick (T-1246), the mobile link preview card (T-1241), the live delivered tick (T-1245, once merged), and the Devices and Contacts screens;
+  - the GRANT is done, and there are no other production changes.
+- **Merged since 17:15:**
+  - T-1235: the web Devices page. Live: `/api/me/sessions` gives 200, 2 sessions, 1 current, no token or IP;
+  - T-1243: the owner deletes a group. Live: deleting an unknown group gives 404;
+  - T-1246: mobile multi-photo plus downscale, and readable captions on your own photos.
+- **Found on the mock:** the web group panel was unreachable for every group (it needs `topic === undefined`, but every group has General), which hid Leave, Add members, Make owner and Delete. T-1249 fixes it.
+- **Running:**
+  - T-1245: the live delivered notice, waiting for a fresh packet after the rebase;
+  - T-1247: web delete for me and clear history;
+  - T-1248, T-1250 and T-1251 on mobile: mark as unread, Devices, and group manage;
+  - T-1249: the web Group info entry;
+  - T-1252: link preview images through the server proxy.
+
+**2026-10-12 ~17:15 local**
+- **Julio ran the GRANT** (`GRANT DELETE ON public.archive TO zilar_archive;` gave `GRANT`). T-1236 merged and is live: clearing an unknown chat answers 404.
+- **Workers are on OpenCode Go** (T-1242 merged, autopilot restarted). T-1247 launched as `opencode-go/deepseek-v4.1-flash`; the fallback is the DeepSeek API, then the paid Muse.
+- **Merged:**
+  - T-1240: link previews for GitHub and Wikipedia, live 200 with titles;
+  - T-1241: mobile link previews, checked on the emulator;
+  - T-1244: mark as unread (migration 0050), with the dot checked on the web mock;
+  - T-1236 and T-1242, above.
+- **T-1235 (Devices):** approved, but its merge hit a rebase conflict with T-1233 in `AppRoutes.tsx` and `ChatListMenu.tsx`. The worker is keeping both sides; the lead then continues the rebase and merges.
+- **Running:**
+  - T-1243: the owner deletes a group;
+  - T-1245: the live delivered notice, unblocked for the `app.ts` line and the fake admin client;
+  - T-1246: mobile multi-photo;
+  - T-1247: web delete for me and clear history;
+  - T-1248: mobile mark as unread.
+
+**2026-10-12 ~15:45 local**
+- **Merged:**
+  - T-1223: a revoked session goes to sign-in;
+  - T-1234: link previews, server + web. Live: OK for example.com, HN, BBC and effect.website; **204 for github.com and wikipedia.org**, so T-1240 adds a User-Agent and partial read;
+  - T-1232: the web photo viewer, after a privacy fix (it steps only through `kind: 'image'`);
+  - T-1237: mobile Contacts. On the emulator: list, confirm, remove, open DM;
+  - T-1238: the apps confirm delivery and apply `deliveredUntil`;
+  - T-1239: Cmd+B/I/E shortcuts. On the mock, after the lead's selection fix round.
+- **Waiting for Julio: one GRANT on production.** In Coolify, postgres → Terminal: `psql -U postgres -d ejabberd -c "GRANT DELETE ON public.archive TO zilar_archive;"`. Julio approved the change ("Allow DELETE") but said "Later" for running it. **T-1236 (clear history, delete for me) is held until it's done**; without it the routes fail with permission denied. T-1236 fix round 2 updates the setup SQL files the same way.
+- **Julio, about the workers:** OpenCode Go is renewed, so use it instead of the DeepSeek API, and fall back to the API when Go runs out. T-1242 changes `model: auto` to Go → DeepSeek API → paid Muse.
+- **T-1235 (Devices page):** Better Auth's list-sessions needs a session younger than 24 h (403 `SESSION_NOT_FRESH`). In the fix round, the worker builds our own `/me/sessions` list and delete by session id; no token reaches the client.
+- **Running:** T-1235, T-1236 (held), T-1240, T-1241, T-1242, T-1243 (the owner deletes a group).
+
+**2026-10-12 afternoon: the Telegram-parity push (after Julio: "a task is 3h now old … plan still at 84%")**
+- **The plan page** now has wave 5 (Telegram parity, from §4 of the parity audit) and wave 6 (the emulator fixes). It counts the real remaining work: 70/95, not 84%.
+- **Merged:**
+  - T-1227: light Markdown on mobile;
+  - T-1229: the delivered tick's server part. It's live; `/api/chats` answers 200, and the delivered route answers 404 for an unknown chat;
+  - T-1233: remove a contact, plus a web Contacts page; the live check after deploy is pending.
+- **Running:**
+  - T-1223: a revoked session goes to login (fix round);
+  - T-1232: the web photo viewer. In fix round 1: it must step through `kind: 'image'` only, because a downgraded untrusted photo must never auto-load;
+  - T-1234: link previews, server plus web, with no images in v1;
+  - T-1235: the web Devices page;
+  - T-1236: clear history and delete for me in DMs (server).
+- **Next specs:**
+  - the delivered tick, step 3: clients report delivery, and a live notice reaches the sender;
+  - the DM menus for T-1236;
+  - mobile Contacts, Devices and link previews;
+  - the composer formatting hint;
+  - mark as unread;
+  - the owner deletes a group.
+- **Follow-ups:**
+  - the mock backend lacks DELETE for contacts;
+  - mock media isn't trusted, so mock photos render as file cards (`sanitizeIncomingAttachment`), and the photo viewer can't be checked in the mock;
+  - nit: `ContactsPage.tsx:75` shows an empty card after the last contact is removed.
+
+**2026-10-12 11:10 local: Julio's answers (AskUserQuestion)**
+- **Ticks:** add **delivered** (sent / delivered / seen). T-1226 writes the plan first (`docs/plan/delivered-tick.md`); the lead specs the implementation from it.
+- **Markdown for human messages: yes, light** (bold, italics, inline code, code blocks, links).
+  - T-1225: the chat-core parser plus web; mention chips and links keep working;
+  - T-1227: mobile, after T-1225 merges.
+- **Coolify alerts: no.**
+- **Live tests with a second account: skip for now.**
+- **Running:** T-1223 (a revoked session goes to login), T-1225 and T-1226.
+
+**2026-10-12 10:25 local: for Julio when he's back**
+- **Install** `~/Downloads/zilar-805873ce.apk`. It's from main at T-1220 and has every mobile fix from tonight. T-1224 (the HTTP timeout) and T-1223 (a revoked session goes to login) came after it.
+- **Checked on the emulator against production:**
+  - offline sending, with no duplicates and the ✓ within 30 s;
+  - reconnect within 20 s;
+  - swipe Pin and Unpin;
+  - one ball colour;
+  - the voice hint;
+  - "Send test notification" shows while the app is open;
+  - Notifications settings.
+- **Tonight's incident:** T-1198 broke `GET /api/chats` for about 15 minutes (a BigInt bind); it was reverted, then redone as T-1205. Details below, at "INCIDENT".
+- **Process fix:** the lead's merge helper had skipped the gate, and main didn't typecheck for about an hour (T-1213 fixed it). Merges run the gate again now.
+- **Test data:** the Claude Test → Julio DM has test texts ("Offline test", "Online test", "Offline two" ×2 on the server, "Offline three", "Offline four"). Julio's unread count from Claude Test is 5.
+- **Merged since 09:02:** T-1224, mobile HTTP calls time out after 20 s.
+- **Running:** T-1223.
+- **The open questions are unchanged:** the MP-F8 delivered tick (recommendation: keep the Telegram semantics), Markdown for human messages, and the earlier morning list below.
+
 **2026-10-12 09:02 local: offline sending fixed end to end. APK `zilar-805873ce.apk` (in ~/Downloads) checked on the emulator against production**
 - **Merged:**
   - T-1221: history shows a resent message once (same chat, sender and origin id);

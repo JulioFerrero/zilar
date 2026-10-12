@@ -1,14 +1,17 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { Data, Effect } from 'effect';
-import { Archive, Bell, BellOff, Pin, PinOff } from 'lucide-react';
+import { Archive, Bell, BellOff, Eraser, Mail, MailOpen, Pin, PinOff } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { MUTE_DURATIONS } from '@/lib/chatPrefs';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
+import { ConfirmDialog } from './ConfirmDialog';
 import { Menu, MenuItem, type MenuItemProps } from './ui/menu';
 
 const SAVE_ERROR = 'Could not save that change';
+/** T-1247: the same fixed line the store sets when a delete call fails. */
+const DELETE_ERROR = 'Could not delete. Try again.';
 
 /** The chat store rejected a change; the menu shows the fixed sentence. */
 class PrefSaveFailed extends Data.TaggedError('PrefSaveFailed') {}
@@ -71,9 +74,13 @@ export function ChatPrefMenuItems({
 }) {
   const storeApi = useChatStoreApi();
   const [muteOpen, setMuteOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const pinned = chat.pinnedAt !== undefined;
   const archived = chat.archived === true;
+  // T-1244: the chat is marked unread by hand, or has unread messages.
+  const marked = chat.unreadMark === true;
+  const showMarkRead = chat.unread > 0 || marked;
   const PinIcon = pinned ? PinOff : Pin;
   const BellIcon = chat.muted ? Bell : BellOff;
 
@@ -128,12 +135,63 @@ export function ChatPrefMenuItems({
       >
         {archived ? 'Unarchive chat' : 'Archive chat'}
       </PrefMenuItem>
+      {showMarkRead ? (
+        <PrefMenuItem
+          icon={MailOpen}
+          ariaLabel={`Mark ${chat.title} as read`}
+          save={() => storeApi.getState().markChatRead(chat.id)}
+          onDone={onDone}
+          onError={setError}
+        >
+          Mark as read
+        </PrefMenuItem>
+      ) : (
+        <PrefMenuItem
+          icon={Mail}
+          ariaLabel={`Mark ${chat.title} as unread`}
+          save={() => storeApi.getState().setUnreadMark(chat.id, true)}
+          onDone={onDone}
+          onError={setError}
+        >
+          Mark as unread
+        </PrefMenuItem>
+      )}
       {error !== undefined && (
         <p role="alert" className="px-3 py-1 text-[13px] text-danger">
           {error}
         </p>
       )}
+      {chat.kind === 'dm' && (
+        <MenuItem
+          icon={Eraser}
+          ariaLabel={`Clear history with ${chat.title}`}
+          onSelect={() => setClearOpen(true)}
+        >
+          Clear history
+        </MenuItem>
+      )}
       {children}
+      {clearOpen && (
+        <ConfirmDialog
+          title="Clear history?"
+          body={`Clear your history with ${chat.title}? This removes every message from your side only. ${chat.title} keeps theirs.`}
+          confirmLabel="Clear history"
+          onCancel={() => setClearOpen(false)}
+          onConfirm={() => {
+            setClearOpen(false);
+            void storeApi
+              .getState()
+              .clearHistory(chat.id)
+              .then((outcome) => {
+                const failed = outcome === 'failed';
+                if (failed) {
+                  setError(DELETE_ERROR);
+                }
+                onDone(failed);
+              });
+          }}
+        />
+      )}
     </>
   );
 }
@@ -160,7 +218,7 @@ export function ChatActionsMenu({
         align === 'right' ? 'right-0' : 'left-0',
       )}
     >
-      <ChatPrefMenuItems chat={chat} onDone={() => onClose()} />
+      <ChatPrefMenuItems chat={chat} onDone={(failed) => !failed && onClose()} />
     </Menu>
   );
 }

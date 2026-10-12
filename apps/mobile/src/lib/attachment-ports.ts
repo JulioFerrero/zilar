@@ -38,9 +38,13 @@ export interface GifDownloader {
   }): Promise<{ status: 'downloaded'; file: PickedFile } | { status: 'error'; message: string }>;
 }
 
-/** Result of one pick attempt: a file, a cancel, or a user-facing error. */
+/**
+ * Result of one pick attempt: the picked files, a cancel, or a user-facing
+ * error. A library pick may return several files (T-1246); `file` stays the
+ * first one, so a single-file caller keeps working unchanged.
+ */
 export type PickResult =
-  | { status: 'picked'; file: PickedFile }
+  | { status: 'picked'; file: PickedFile; files: PickedFile[] }
   | { status: 'cancelled' }
   | { status: 'error'; message: string };
 

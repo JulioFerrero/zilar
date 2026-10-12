@@ -30,6 +30,7 @@ export interface ChatPrefView extends BackgroundFields {
   mutedUntil: string | null;
   archived: boolean;
   pinnedAt: string | null;
+  unreadMark: boolean;
   updatedAt: string;
 }
 
@@ -39,6 +40,7 @@ export function toChatPrefView(row: ChatPrefRow): ChatPrefView {
     mutedUntil: row.mutedUntil === null ? null : row.mutedUntil.toISOString(),
     archived: row.archived,
     pinnedAt: row.pinnedAt === null ? null : row.pinnedAt.toISOString(),
+    unreadMark: row.unreadMark,
     backgroundPreset: row.backgroundPreset,
     backgroundImageId: row.backgroundImageId,
     backgroundDim: row.backgroundDim,
@@ -64,6 +66,8 @@ export interface PutChatPrefInput extends BackgroundFieldsInput {
   mutedUntil?: Date | null | undefined;
   archived?: boolean | undefined;
   pinned?: boolean | undefined;
+  /** T-1244: `undefined` leaves the unread mark; true/false sets it. */
+  unreadMark?: boolean | undefined;
   now: Date;
 }
 
@@ -95,12 +99,15 @@ export async function putChatPref(
       : input.pinned
         ? (existing?.pinnedAt ?? input.now)
         : null;
+  const unreadMark =
+    input.unreadMark === undefined ? (existing?.unreadMark ?? false) : input.unreadMark;
   const background = await resolveBackgroundFields(db, input.userId, existing, input);
 
   if (
     mutedUntil === null &&
     archived === false &&
     pinnedAt === null &&
+    unreadMark === false &&
     background.backgroundPreset === null &&
     background.backgroundImageId === null &&
     background.backgroundDim === null
@@ -150,7 +157,7 @@ export async function putChatPref(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<ChatPrefRow>`INSERT INTO chat_prefs
-          (user_id, chat_jid, muted_until, archived, pinned_at,
+          (user_id, chat_jid, muted_until, archived, pinned_at, unread_mark,
             background_preset, background_image_id, background_dim, updated_at)
         VALUES (
           ${input.userId},
@@ -158,6 +165,7 @@ export async function putChatPref(
           ${mutedUntil === null ? null : mutedUntil.toISOString()},
           ${archived},
           ${pinnedAt === null ? null : pinnedAt.toISOString()},
+          ${unreadMark},
           ${background.backgroundPreset},
           ${background.backgroundImageId},
           ${background.backgroundDim},
@@ -167,6 +175,7 @@ export async function putChatPref(
           muted_until = EXCLUDED.muted_until,
           archived = EXCLUDED.archived,
           pinned_at = EXCLUDED.pinned_at,
+          unread_mark = EXCLUDED.unread_mark,
           background_preset = EXCLUDED.background_preset,
           background_image_id = EXCLUDED.background_image_id,
           background_dim = EXCLUDED.background_dim,

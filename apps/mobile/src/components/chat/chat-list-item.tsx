@@ -9,7 +9,7 @@ import { Ticks } from '@/components/chat/ticks';
 import { PulseDot } from '@/components/chat/typing-dots';
 import { Text } from '@/components/ui/text';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
-import { MUTED_FOREGROUND } from '@/lib/colors';
+import { MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { useComposerDraft } from '@/lib/composer-drafts';
 import { primaryKey, raisedPill } from '@/lib/depth';
 import { useBlockedJids } from '@/lib/blocked-users';
@@ -140,10 +140,21 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
             )}
             {chat.unread > 0 ? (
               <UnreadBadge count={chat.unread} muted={chat.muted} />
+            ) : chat.unreadMark === true ? (
+              // T-1248: a hand-set unread mark shows a plain dot (no count), in
+              // the unread badge's spot and colours. A fresh view per look, like
+              // the badge, so a live view never swaps gradients (see above).
+              <View
+                key={chat.muted ? 'muted' : 'live'}
+                accessibilityRole="image"
+                accessibilityLabel="Marked unread"
+                style={chat.muted ? raisedPill : primaryKey}
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+              />
             ) : showTicks && last ? (
               <Ticks
                 status={last.status as MessageStatus}
-                color={last.status === 'read' ? '#ededed' : MUTED_FOREGROUND}
+                color={last.status === 'read' ? SEEN : MUTED_FOREGROUND}
               />
             ) : null}
           </View>

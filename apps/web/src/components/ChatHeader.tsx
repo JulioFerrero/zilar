@@ -1,5 +1,5 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { ArrowLeft, Lock, MoreVertical, Search } from 'lucide-react';
+import { ArrowLeft, Lock, MoreVertical, Search, Users } from 'lucide-react';
 import { Data, Effect } from 'effect';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -81,6 +81,21 @@ export function ChatHeader({
   const [menuOpen, setMenuOpen] = useState(false);
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   const [confirmingArchive, setConfirmingArchive] = useState(false);
+
+  // T-1249: one info entry, shown in both menus (topics and everything else)
+  // whenever this header can open the group/channel panel.
+  const groupInfoItem =
+    onOpenGroupPanel === undefined ? null : (
+      <MenuItem
+        icon={Users}
+        onSelect={() => {
+          setMenuOpen(false);
+          onOpenGroupPanel();
+        }}
+      >
+        {isChannel ? 'Channel info' : 'Group info'}
+      </MenuItem>
+    );
   // Archiving the topic for everyone: patch it, then leave the dead topic like
   // the topic panel does (to General when it exists, else `/`).
   const [archiveState, runArchive] = useAction<void, void, ArchiveFailed>(() =>
@@ -197,6 +212,7 @@ export function ChatHeader({
             closeLabel="Close chat menu"
             className="top-full right-0 mt-1 min-w-[180px]"
           >
+            {groupInfoItem}
             <MenuItem
               onSelect={() => {
                 setMenuOpen(false);
@@ -264,6 +280,7 @@ export function ChatHeader({
             closeLabel="Close chat menu"
             className="top-full right-0 mt-1 min-w-[196px]"
           >
+            {groupInfoItem}
             <MenuItem
               onSelect={() => {
                 setMenuOpen(false);

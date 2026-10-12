@@ -6,6 +6,7 @@ import {
   MAM_NAMESPACE,
 } from '../namespaces';
 import type { ChatMessage, DisplayedEvent, Occupant, TypingEvent } from '../types';
+import type { DeliveredMarkEvent } from '../types-delivered';
 
 // ---------------------------------------------------------------------------
 // Incoming parsing
@@ -26,6 +27,7 @@ export type DecodedStanza = {
   message?: ChatMessage;
   typing?: TypingEvent;
   displayed?: DisplayedEvent;
+  deliveredMark?: DeliveredMarkEvent;
 };
 
 /** A MUC presence event from a room, trusted only when it comes from the room. */

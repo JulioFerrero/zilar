@@ -7,7 +7,6 @@ import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { requireChatAccess } from '../chat-prefs/access';
 import type { ServerDatabase } from '../db/client';
-import type { ChatReadRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 
@@ -53,23 +52,16 @@ export async function putChatRead(
   if (next < 0n || next > MAX_ARCHIVE_ID) {
     throw new HttpError(400, 'invalid_request', 'messageId must be an archive id');
   }
-  const [existing] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<ChatReadRow>`SELECT * FROM chat_reads
-        WHERE user_id = ${options.userId} AND chat_jid = ${options.bare} LIMIT 1`;
-    }),
-  );
-  // Forward only: an equal or older mark keeps the stored row.
-  if (existing !== undefined && next <= BigInt(existing.lastReadId)) {
-    return;
-  }
   await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // The `WHERE` keeps the forward-only rule atomic: two devices racing
+      // T-1244: opening the chat clears a manual unread mark on every device,
+      // whatever the read mark does — the `unread_mark` guard makes the update
+      // scoped to the caller and skips the row when it is already clear.
+      yield* sql`UPDATE chat_prefs SET unread_mark = false, updated_at = now()
+        WHERE user_id = ${options.userId} AND chat_jid = ${options.bare} AND unread_mark`;
+      // Forward only. The `WHERE` keeps that rule atomic: two devices racing
       // cannot move the mark back between the read above and this write.
       // Stored marks are always numeric (writes validate first), so the
       // bigint cast cannot fail.

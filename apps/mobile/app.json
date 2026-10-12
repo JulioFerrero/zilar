@@ -64,6 +64,12 @@
           "microphonePermission": "Allow Zilar to access your microphone to record voice messages."
         }
       ],
+      [
+        "expo-media-library",
+        {
+          "savePhotosPermission": "Zilar saves photos you choose to your gallery."
+        }
+      ],
       "expo-notifications"
     ],
     "experiments": {

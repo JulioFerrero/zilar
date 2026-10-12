@@ -48,6 +48,12 @@ export const DmChatEntry = mutableStruct({
   unread: Schema.optional(Schema.Number),
   /** T-1198: the newest archived message, absent without archive. */
   lastMessage: Schema.optional(ChatLastMessage),
+  /**
+   * T-1229: the highest delivered mark of another member, an archive id in
+   * the caller's own-message terms. Absent when nobody confirmed yet or
+   * without archive.
+   */
+  deliveredUntil: Schema.optional(Schema.String),
 });
 
 export type DmChatEntry = typeof DmChatEntry.Type;
@@ -86,6 +92,12 @@ export const GroupChatEntry = mutableStruct({
   unread: Schema.optional(Schema.Number),
   /** T-1198: the newest archived message, absent without archive. */
   lastMessage: Schema.optional(ChatLastMessage),
+  /**
+   * T-1229: the highest delivered mark of any other member, an archive id
+   * in the caller's own-message terms. Absent when nobody confirmed yet or
+   * without archive.
+   */
+  deliveredUntil: Schema.optional(Schema.String),
 });
 
 export type GroupChatEntry = typeof GroupChatEntry.Type;
@@ -105,12 +117,44 @@ export const ChatList = Schema.Struct({
 
 export type ChatList = typeof ChatList.Type;
 
+/**
+ * T-1229: the receiving device's delivery confirmation. Origin ids (the wire
+ * id, `docs/plan/delivered-tick.md` §4), 1 to 50 ids, each non-empty and at
+ * most 128 chars.
+ */
+const DeliveredOriginIds = Schema.Array(
+  Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128)),
+).check(Schema.isMinLength(1), Schema.isMaxLength(50));
+
 export const ChatsGroup = HttpApiGroup.make('chats')
   .add(HttpApiEndpoint.get('list', '/chats', { success: ChatList }))
   .add(
     HttpApiEndpoint.put('markRead', '/chats/:jid/read', {
       params: { jid: Schema.String },
       payload: Schema.Struct({ messageId: Schema.String }),
+      success: HttpApiSchema.NoContent,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.put('markDelivered', '/chats/:jid/delivered', {
+      params: { jid: Schema.String },
+      payload: Schema.Struct({ originIds: DeliveredOriginIds }),
+      success: HttpApiSchema.NoContent,
+    }),
+  )
+  // T-1236: the caller deletes their own copy of a DM. `clearHistory` drops
+  // every archive row the caller holds with the peer; `deleteForMe` drops one,
+  // named by its archive id (the row's timestamp). Both are no-content and
+  // only touch the caller's rows.
+  .add(
+    HttpApiEndpoint.delete('clearHistory', '/chats/:jid/history', {
+      params: { jid: Schema.String },
+      success: HttpApiSchema.NoContent,
+    }),
+  )
+  .add(
+    HttpApiEndpoint.delete('deleteForMe', '/chats/:jid/messages/:archiveId', {
+      params: { jid: Schema.String, archiveId: Schema.String },
       success: HttpApiSchema.NoContent,
     }),
   )

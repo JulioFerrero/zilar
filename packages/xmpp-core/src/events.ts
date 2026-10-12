@@ -10,6 +10,7 @@ import type {
   TypingEvent,
 } from './types';
 import './types-ack';
+import './types-delivered';
 
 /** The server removed me from the room: my own unavailable MUC presence
  * carried status 110 (self-presence) with 307 (kicked), 301 (banned) or

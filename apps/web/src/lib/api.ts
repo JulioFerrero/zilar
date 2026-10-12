@@ -1,12 +1,62 @@
 // The web API client is split by feature under `api/` (T-0959). Every importer
 // keeps using `@/lib/api`; this barrel re-exports the same names it always did.
+import { Effect } from 'effect';
+import { callApi } from '@/lib/effect/api-client';
+import { runWeb } from '@/lib/effect/runtime';
+import { isMockApiEnabled } from '@/mock/gate';
+import { loadMockRequest } from '@/mock/load';
+import { API_BASE } from './api/http';
+import type { Me } from './api/chats';
 export { API_BASE, ApiError } from './api/http';
+
+// One export request: in web mock mode the mock backend (T-1262) answers the
+// same path, mirroring `request` in `./api/http`, so the button works on the
+// mock. The real call is a same-origin `fetch` with cookies.
+const exportRequest = (): Effect.Effect<Response, unknown> =>
+  Effect.suspend(() =>
+    isMockApiEnabled()
+      ? Effect.flatMap(
+          Effect.tryPromise({
+            try: () => loadMockRequest(),
+            catch: (cause) => cause,
+          }),
+          (dispatch) =>
+            Effect.tryPromise({
+              try: () => dispatch('/me/export', { method: 'GET' }),
+              catch: (cause) => cause,
+            }),
+        )
+      : Effect.tryPromise({
+          try: () => fetch(`${API_BASE}/me/export`, { credentials: 'include' }),
+          catch: (cause) => cause,
+        }),
+  );
+
+/**
+ * The account export (T-1262, button T-1265). The route answers a streamed JSON
+ * download with a `Content-Disposition` filename, so the caller gets the raw
+ * `Response` to save as a blob; a refused status is the caller's to map. It only
+ * rejects when the server cannot be reached.
+ */
+export function fetchExport(): Promise<Response> {
+  return runWeb(exportRequest());
+}
+
+/**
+ * Save the caller's bio (T-1258). `PATCH /me` still requires the display name,
+ * so it rides along unchanged. The name-only `updateMe` stays in `api/chats.ts`.
+ */
+export function updateMeProfile(name: string, bio: string): Promise<Me> {
+  return callApi((client) => client.auth.patchMe({ payload: { name: name.trim(), bio } }));
+}
 
 export {
   chatEntryTopics,
+  clearChatHistory,
   createChatFolder,
   createInvite,
   deleteChatFolder,
+  deleteMessageForMe,
   getChatBackgroundDefault,
   getChats,
   getContacts,
@@ -15,6 +65,7 @@ export {
   getXmppToken,
   listChatFolders,
   listChatPrefs,
+  markChatDelivered,
   markChatRead,
   patchChatFolder,
   putChatBackgroundDefault,

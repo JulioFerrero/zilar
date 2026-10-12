@@ -26,7 +26,13 @@ import {
 import { createRateLimiter } from '../rate-limit';
 import { HttpError } from '../errors';
 import { httpErrorResponse, requestIdOf } from '../effect/http-core';
+import { ownBareJid } from '../jid';
+import { allowedArchives } from '../search/service';
+import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { putChatRead, requireChatReadAccess } from './reads';
+import { deliveredForChats, mergeTopicMarks, type DeliveryLookup } from './deliveries';
+import { deleteOwnHandlers } from './delete-own';
+import { markDeliveredAndNotify } from './delivered-notice';
 import { unreadForChats, type ChatUnread, type UnreadScope } from './unread';
 
 export const CHAT_READ_RATE_LIMIT_MAX = 600;
@@ -35,6 +41,9 @@ export const CHAT_READ_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 export interface ChatUnreadFields {
   unread?: number;
   lastMessage?: ChatUnread['lastMessage'];
+  /** T-1229: another member's delivered mark, in the caller's own-message
+   * terms. Absent when nobody confirmed yet or without archive. */
+  deliveredUntil?: string;
 }
 
 export type ChatListEntry =
@@ -75,7 +84,27 @@ export type ChatListEntry =
       background: GroupBackground;
     } & ChatUnreadFields);
 
-export type ChatTopicView = TopicView & ChatUnreadFields;
+// The normalised bare JID a mark may be stored under. A malformed param
+// answers the same 404 as an unknown or invisible chat, so JIDs cannot be
+// probed.
+async function chatAccessForMark(
+  deps: ChatsApiDependencies,
+  encodedJid: string,
+  userId: string,
+): Promise<{ bare: string }> {
+  let jid: string;
+  try {
+    jid = decodeURIComponent(encodedJid);
+  } catch {
+    throw new HttpError(404, 'not_found', 'Chat not found');
+  }
+  return requireChatReadAccess(deps.db, {
+    chatJid: jid,
+    userId,
+    domain: deps.config.xmpp.domain,
+    mucDomain: deps.config.xmpp.mucDomain,
+  });
+}
 
 export interface ChatsApiDependencies {
   auth: Auth;
@@ -86,6 +115,9 @@ export interface ChatsApiDependencies {
   // nullable, so `app.ts` passes it straight through with no new lines;
   // undefined = the list keeps its old shape (no unread, no previews).
   archive: ArchivePool | undefined;
+  // T-1245: the ejabberd admin client the live delivered notice sends through.
+  // Optional: with no client the notice is skipped and nothing else changes.
+  adminClient?: EjabberdAdminClient;
   /** Injected in tests so the rate-limit window can advance without waiting. */
   now?: () => number;
 }
@@ -103,6 +135,9 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
     windowMs: CHAT_READ_RATE_LIMIT_WINDOW_MS,
     now,
   });
+  // T-1236: both DM delete handlers (their own limiter + audit recorder live in
+  // `delete-own.ts`), built here so `api.ts` stays inside its 400-line bar.
+  const deleteOwn = deleteOwnHandlers(deps);
 
   const groupLayer = HttpApiBuilder.group(ChatsApi, 'chats', (handlers) =>
     handlers
@@ -110,11 +145,12 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
         'list',
         handler(logger, (_request, user) =>
           Effect.gen(function* () {
-            const [contacts, groups, ais] = yield* Effect.promise(() =>
+            const [contacts, groups, ais, allowed] = yield* Effect.promise(() =>
               Promise.all([
                 listContacts(deps.db, user.id, deps.config.xmpp.domain),
                 listGroupsForUser(deps.db, user.id),
                 listAis(deps.db, user.id),
+                allowedArchives(deps.db, deps.config, user.id),
               ]),
             );
             // T-0165: every list entry that already carries a name gets
@@ -222,17 +258,28 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
             // T-1198: one unread pass over every listed chat (DMs, each group's
             // General jid and every visible topic). Without an archive pool the
             // answer is empty and the list keeps its old shape.
+            // T-1229: one delivery-marks pass over every listed chat and
+            // topic alongside it. A DM entry names its peer's user id (the
+            // mark lives under the caller's own JID); a group or topic entry
+            // names the room (the max over other members). AI DMs carry no
+            // user id, so they never have a mark.
             const scopes = new Map<string, UnreadScope>();
+            const lookups: DeliveryLookup[] = [];
             for (const entry of chats) {
               if (entry.kind === 'dm') {
                 scopes.set(entry.chatJid, {
                   kind: 'dm',
                   peer: entry.chatJid.toLowerCase(),
                 });
+                if (entry.userId !== undefined) {
+                  lookups.push({ chatJid: entry.chatJid, dmPeerUserId: entry.userId });
+                }
               } else {
                 scopes.set(entry.chatJid, { kind: 'room', room: entry.chatJid.toLowerCase() });
+                lookups.push({ chatJid: entry.chatJid, roomJid: entry.chatJid });
                 for (const topic of entry.topics) {
                   scopes.set(topic.chatJid, { kind: 'room', room: topic.chatJid.toLowerCase() });
+                  lookups.push({ chatJid: topic.chatJid, roomJid: topic.chatJid });
                 }
               }
             }
@@ -250,28 +297,38 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
                 return {} as Record<string, ChatUnread>;
               }),
             );
+            // T-1229: the delivery-marks pass. Like unread, a failure is
+            // logged without content and the list answers without the field.
+            const deliveredMarks = yield* Effect.promise(() =>
+              deliveredForChats(deps.db, {
+                userId: user.id,
+                callerJid: ownBareJid(allowed, deps.config.xmpp.domain),
+                lookups,
+              }).catch((error) => {
+                logger.warn(
+                  {
+                    errorClass: error?.constructor?.name,
+                    message: String(error?.message ?? error),
+                  },
+                  'delivered marks failed, answering the list without delivered fields',
+                );
+                return {} as Record<string, string>;
+              }),
+            );
             for (const entry of chats) {
               const fields = unread[entry.chatJid];
+              const delivered = deliveredMarks[entry.chatJid];
+              if (entry.kind === 'group') {
+                entry.topics = mergeTopicMarks(entry.topics, unread, deliveredMarks);
+              }
               if (fields !== undefined) {
-                if (entry.kind === 'group') {
-                  const topics = (entry.topics as ChatTopicView[]).map((topic) => {
-                    const topicFields = unread[topic.chatJid];
-                    return topicFields === undefined
-                      ? topic
-                      : {
-                          ...topic,
-                          unread: topicFields.unread,
-                          ...(topicFields.lastMessage === undefined
-                            ? {}
-                            : { lastMessage: topicFields.lastMessage }),
-                        };
-                  });
-                  entry.topics = topics;
-                }
                 entry.unread = fields.unread;
                 if (fields.lastMessage !== undefined) {
                   entry.lastMessage = fields.lastMessage;
                 }
+              }
+              if (delivered !== undefined) {
+                entry.deliveredUntil = delivered;
               }
             }
 
@@ -287,19 +344,7 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
       .handle(
         'markRead',
         handler(logger, async (request, user) => {
-          let jid: string;
-          try {
-            jid = decodeURIComponent(request.params.jid);
-          } catch {
-            throw new HttpError(404, 'not_found', 'Chat not found');
-          }
-          const access = {
-            chatJid: jid,
-            userId: user.id,
-            domain: deps.config.xmpp.domain,
-            mucDomain: deps.config.xmpp.mucDomain,
-          };
-          const { bare } = await requireChatReadAccess(deps.db, access);
+          const { bare } = await chatAccessForMark(deps, request.params.jid, user.id);
           if (!readLimiter.allow(user.id)) {
             return httpErrorResponse(
               requestIdOf(request.request),
@@ -312,7 +357,33 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
             messageId: request.payload.messageId,
           });
         }),
-      ),
+      )
+      // The receiving device's delivery confirmation. Access is checked
+      // before the write budget is charged, like the read mark, so a probe
+      // of an invisible chat costs nothing and answers the same 404 as an
+      // unknown chat.
+      .handle(
+        'markDelivered',
+        handler(logger, async (request, user) => {
+          const { bare } = await chatAccessForMark(deps, request.params.jid, user.id);
+          if (!readLimiter.allow(user.id)) {
+            return httpErrorResponse(
+              requestIdOf(request.request),
+              new HttpError(429, 'rate_limited', 'Too many delivered updates, try again later'),
+            );
+          }
+          // One call: store the mark and (for a moved DM) tell the author's
+          // online devices, best effort and off the HTTP path (T-1245).
+          await markDeliveredAndNotify(deps, {
+            bare,
+            userId: user.id,
+            originIds: request.payload.originIds,
+          });
+        }),
+      )
+      // T-1236: the caller's own copy of a DM, both bodies in `delete-own.ts`.
+      .handle('clearHistory', deleteOwn.clearHistory)
+      .handle('deleteForMe', deleteOwn.deleteForMe),
   );
 
   const apiLayer = HttpApiBuilder.layer(ChatsApi).pipe(

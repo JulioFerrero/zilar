@@ -31,6 +31,7 @@ import {
 } from './store';
 import { STRICT_DECODE, createRequirePush } from './api-util';
 import { createSubscribeHandler } from './api-subscribe';
+import { forkPreviewDelivered } from './preview-delivered';
 import type { PushApiDependencies } from './api';
 
 // The test wake's chat id, shared with the mobile handler: the data-only
@@ -187,6 +188,19 @@ export function createPushGroupLayer(
             );
             if (verdict.status !== 'ok') {
               throw new HttpError(404, 'not_found', 'Notification not found');
+            }
+            // The preview proves this device received the message, so mark it
+            // delivered. Off the HTTP path and error-swallowed, so the answer
+            // never waits on the mark and never fails with it. Only an `ok`
+            // verdict marks: an unknown id, a message in a chat the caller may
+            // not see, and a muted or hidden chat all answer 404 above and mark
+            // nothing; the test wake marks nothing either.
+            if (verdict.message.chatJid !== TEST_WAKE_CHAT_ID) {
+              forkPreviewDelivered(deps, {
+                chatJid: verdict.message.chatJid,
+                userId,
+                messageId: request.query.messageId,
+              });
             }
             const showPreviews = yield* Effect.promise(() => showPreviewsForUser(deps.db, userId));
             const payload = buildPushPayload(verdict.message, {

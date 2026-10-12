@@ -1,3 +1,4 @@
+import { lightToPlain } from '@zilar/chat-core';
 import { ArrowUp, Paperclip, Smile, X } from 'lucide-react-native';
 import { Pressable, TextInput, View } from 'react-native';
 
@@ -49,7 +50,7 @@ export function ReplyBar({ reply, onCancel }: { reply: ReplyRef; onCancel: () =>
         </Text>
         {reply.text !== undefined ? (
           <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
-            {reply.text}
+            {lightToPlain(reply.text)}
           </Text>
         ) : null}
       </View>

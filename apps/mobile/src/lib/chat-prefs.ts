@@ -45,6 +45,9 @@ export function optimisticPrefRow(
         : input.pinned
           ? now.toISOString()
           : null,
+    // T-1248: keep the saved mark when the patch does not touch it, so it
+    // never flashes off during an unrelated pref write.
+    unreadMark: input.unreadMark ?? existing?.unreadMark ?? false,
     updatedAt: now.toISOString(),
   };
 }

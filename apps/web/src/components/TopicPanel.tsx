@@ -23,21 +23,38 @@ import { Sheet } from './ui/sheet';
  * Make public / Make private (private → public confirms with the
  * history-exposure warning).
  */
-export function TopicPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => void }) {
+export function TopicPanel({
+  chat,
+  onOpenGroup,
+  onClose,
+}: {
+  chat: ChatSummary;
+  onOpenGroup?: () => void;
+  onClose: () => void;
+}) {
   const topic = chat.topic;
   if (topic === undefined) {
     return null;
   }
-  return <TopicPanelBody chat={chat} topic={topic} onClose={onClose} />;
+  return (
+    <TopicPanelBody
+      chat={chat}
+      topic={topic}
+      {...(onOpenGroup !== undefined ? { onOpenGroup } : {})}
+      onClose={onClose}
+    />
+  );
 }
 
 function TopicPanelBody({
   chat,
   topic,
+  onOpenGroup,
   onClose,
 }: {
   chat: ChatSummary;
   topic: NonNullable<ChatSummary['topic']>;
+  onOpenGroup?: () => void;
   onClose: () => void;
 }) {
   const {
@@ -118,6 +135,7 @@ function TopicPanelBody({
           visibility={topic.visibility}
           groupTitle={groupTitle}
           suffix={headerSuffix}
+          {...(onOpenGroup !== undefined ? { onOpenGroup } : {})}
           onClose={onClose}
         />
 

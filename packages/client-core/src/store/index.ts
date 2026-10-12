@@ -23,6 +23,8 @@ export * from './reads';
 export * from './incoming';
 export * from './actions';
 export * from './history';
+export * from './delivered';
+export * from './delete-own';
 // ----------------------------------------------------------------------------
 // End of T6.
 

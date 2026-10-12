@@ -12,10 +12,12 @@ import { well } from '../../lib/depth';
 import { safeLinkTarget } from '../../lib/links';
 import { parseMarkdown, type Block, type InlineNode } from '../../lib/markdown';
 
-const BODY: TextStyle = { fontSize: 15, lineHeight: 20, fontFamily: 'Geist_400Regular' };
-const CODE: TextStyle = { fontSize: 13, lineHeight: 18, fontFamily: 'GeistMono_400Regular' };
+// The bubble text, code and inline-code looks, shared with `link-text.tsx`
+// (T-1227) so the plain path matches the full Markdown renderer.
+export const BODY: TextStyle = { fontSize: 15, lineHeight: 20, fontFamily: 'Geist_400Regular' };
+export const CODE: TextStyle = { fontSize: 13, lineHeight: 18, fontFamily: 'GeistMono_400Regular' };
 const BLOCK_GAP = 6;
-const INLINE_CODE_BACKGROUND = '#0c0c0c';
+export const INLINE_CODE_BACKGROUND = '#0c0c0c';
 const QUOTE_BAR = '#333';
 const RULE = '#333';
 
@@ -105,7 +107,14 @@ function ListBlock({ block, color }: { block: Extract<Block, { type: 'list' }>; 
   );
 }
 
-function CodeBlock({ block, color }: { block: Extract<Block, { type: 'code' }>; color: string }) {
+/** A fenced code block, shared with the plain bubble path (T-1227). */
+export function CodeBlock({
+  block,
+  color,
+}: {
+  block: Extract<Block, { type: 'code' }>;
+  color: string;
+}) {
   return (
     <View style={[well, { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6 }]}>
       <ScrollView

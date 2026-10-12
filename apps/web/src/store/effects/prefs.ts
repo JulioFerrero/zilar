@@ -35,6 +35,7 @@ function optimisticRow(
           ? (previous?.pinnedAt ?? nowDate.toISOString())
           : null
         : (previous?.pinnedAt ?? null),
+    unreadMark: patch.unreadMark !== undefined ? patch.unreadMark : (previous?.unreadMark ?? false),
     backgroundPreset:
       patch.backgroundPreset !== undefined
         ? patch.backgroundPreset
@@ -65,6 +66,13 @@ function prefsStore(ctx: StoreCtx): PrefsStore<PutChatPrefInput, ChatPref> {
     optimisticRow,
   };
 }
+
+/**
+ * T-1248: the hand-set unread mark now maps inside the shared `applyChatPrefs`
+ * (chat-core), so this is a thin alias, not a second overlay. The boot
+ * (`lifecycle.ts`) and group-create callers still import this name.
+ */
+export const applyPrefsWithUnreadMark = applyChatPrefs;
 
 // T-0113: replaces the pref map and merges it into the painted list.
 export function applyPrefs(ctx: StoreCtx, prefs: ChatPref[]): void {
@@ -134,6 +142,14 @@ export const setArchived = (
   archived: boolean,
 ): Effect.Effect<void, unknown, Ports> =>
   updatePref(ctx, chatId, { archived }).pipe(Effect.andThen(Effect.sync(() => saveChatList(ctx))));
+
+// T-1244: marks a chat unread by hand (the row keeps an unread dot), or clears
+// the mark. Optimistic with rollback, like the other prefs.
+export const setUnreadMark = (
+  ctx: StoreCtx,
+  chatId: string,
+  unreadMark: boolean,
+): Effect.Effect<void, unknown, Ports> => updatePref(ctx, chatId, { unreadMark });
 
 // T-0462: pick a preset for one chat (null clears the override, so the chat
 // inherits the caller's global default again).

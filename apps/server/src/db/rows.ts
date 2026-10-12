@@ -155,6 +155,7 @@ export interface ChatPrefRow {
   mutedUntil: Date | null;
   archived: boolean;
   pinnedAt: Date | null;
+  unreadMark: boolean;
   backgroundPreset: string | null;
   backgroundImageId: string | null;
   backgroundDim: number | null;
@@ -233,6 +234,9 @@ export interface PushSubscriptionRow {
   id: string;
   userId: string;
   node: string;
+  // The session that registered the device (T-1255). The FK cascades the row
+  // away when that session is revoked; a NULL row is a legacy registration.
+  sessionId: string | null;
   kind: PushDeviceKind;
   endpoint: string | null;
   p256dh: string | null;
@@ -281,6 +285,37 @@ export interface ChatReadRow {
   chatJid: string;
   lastReadId: string;
   updatedAt: Date;
+}
+
+// Row of the `chat_deliveries` table (T-1229): the caller's confirmed
+// delivery mark per chat, an archive id in the author's terms.
+export interface ChatDeliveryRow {
+  userId: string;
+  chatJid: string;
+  deliveredId: string;
+  updatedAt: Date;
+}
+
+// Row of the `user_profiles` table (T-1258): the short profile bio, in its own
+// table so Better Auth's `user` table stays as Better Auth expects it.
+export interface UserProfileRow {
+  userId: string;
+  bio: string;
+  updatedAt: Date;
+}
+
+// Row of the `user_deletions` table (T-1261): the 7-day grace before the
+// deletion job runs (`docs/audit/account-deletion-plan.md` §5a). `userId`
+// deliberately has no FK: the row must outlive the user delete.
+export type UserDeletionPhase = 'scheduled' | 'running' | 'failed';
+
+export interface UserDeletionRow {
+  userId: string;
+  requestedAt: Date;
+  deleteAfter: Date;
+  phase: UserDeletionPhase;
+  startedAt: Date | null;
+  lastError: string | null;
 }
 
 export * from './rows-agents';

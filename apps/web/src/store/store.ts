@@ -185,6 +185,9 @@ export interface ChatStore {
   setMuted: (chatId: string, duration: MuteDurationId | null) => Promise<void>;
   /** Archives or unarchives a chat/topic. Optimistic with rollback. */
   setArchived: (chatId: string, archived: boolean) => Promise<void>;
+  /** T-1244: sets or clears the unread mark, and marks a chat read (count, server mark and pref). */
+  setUnreadMark: (chatId: string, unreadMark: boolean) => Promise<void>;
+  markChatRead: (chatId: string) => Promise<void>;
   /** T-0462: picks (or clears) a chat's own background preset. Optimistic. */
   setChatBackground: (chatId: string, presetId: string | null) => Promise<void>;
   /** T-0462: picks (or clears) the caller's global background default.
@@ -298,11 +301,11 @@ export interface ChatStore {
    * and reverted when the send fails. An unchanged or empty text sends nothing.
    */
   editMessage: (chatId: string, messageId: string, text: string) => void;
-  /**
-   * Deletes a message for everyone (XEP-0424). Optimistic, reverted on a send
-   * error.
-   */
+  /** Deletes a message for everyone (XEP-0424). Optimistic, reverted on a send error. */
   deleteForEveryone: (chatId: string, messageId: string) => void;
+  /** T-1247: delete one message for me, or clear a DM's history for me. */
+  deleteForMe: (chatId: string, messageId: string) => void;
+  clearHistory: (chatId: string) => Promise<'deleted' | 'unavailable' | 'failed'>;
   /** The inline error of the last edit or delete that failed to send. */
   actionError: { chatId: string; message: string } | undefined;
   /**

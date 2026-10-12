@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AttachSheet } from '@/components/chat/attach-sheet';
 import { ComposerInputRow, MIN_INPUT_HEIGHT, ReplyBar } from '@/components/chat/composer-input-row';
 import { useComposerMedia } from '@/components/chat/composer-media';
+import { PickedStrip } from '@/components/chat/composer-picked-strip';
 import { useComposerSheet } from '@/components/chat/composer-sheet';
 import { EditBar } from '@/components/chat/edit-bar';
 import { EmojiSheet } from '@/components/chat/emoji-sheet';
@@ -179,11 +180,18 @@ export function Composer({
   });
 
   const placeholder = title === undefined ? 'Message' : `Message ${title}`;
+  // The staged files as the strip renders them: a thumbnail, the name and the
+  // size, in the order the user picked them (T-1246).
+  const pickedPreviews = media.picks.map((file) => ({
+    uri: file.uri,
+    name: file.name,
+    size: file.size,
+  }));
 
   const handleSend = () => {
-    // A picked file sends with the composer text as the caption (web sends
-    // the same way): the store uploads the bytes, then the attachment
-    // message. The sheet closes and the composer clears, like web.
+    // The staged files send one message each, the text as the first item's
+    // caption (web sends the same way): the store uploads the bytes, then
+    // the attachment message. The strip clears and the composer clears.
     if (media.sendPicked()) {
       return;
     }
@@ -229,6 +237,7 @@ export function Composer({
       {mentions.pickerOpen ? (
         <MentionPicker members={mentions.candidates} onSelect={mentions.pickMention} />
       ) : null}
+      <PickedStrip previews={pickedPreviews} onRemove={media.removePick} />
       <ComposerInputRow
         placeholder={placeholder}
         text={text}
@@ -272,21 +281,9 @@ export function Composer({
         open={media.attachOpen}
         busy={media.attachBusy}
         error={media.attachError}
-        preview={
-          media.picked === undefined
-            ? undefined
-            : { uri: media.picked.uri, name: media.picked.name, size: media.picked.size }
-        }
         demoAttachments={demoAttachments}
         onPick={media.chooseAttachment}
         onPickDemo={demoAttachments === undefined ? undefined : media.demoPick}
-        onCancelPick={
-          media.picked === undefined
-            ? undefined
-            : () => {
-                media.setPicked(undefined);
-              }
-        }
         onClose={media.closeAttach}
       />
     </View>

@@ -281,7 +281,7 @@ export function createApp({
     ...setup,
   });
   mounts.push(setupApi);
-  const contactsApi = createContactsApi({ auth, db, config, logger });
+  const contactsApi = createContactsApi({ auth, db, config, logger, adminClient });
   mounts.push(contactsApi);
   // @usernames and contact requests (T-0163): session-required, rate
   // limited; the sweep asserts every one of them answers 401 unauthenticated.
@@ -355,7 +355,7 @@ export function createApp({
     audit: auditRecorder,
   });
   mounts.push(topicsApi);
-  const chatsApi = createChatsApi({ auth, db, config, logger, archive });
+  const chatsApi = createChatsApi({ auth, db, config, logger, archive, adminClient });
   mounts.push(chatsApi);
   // Chat prefs and folders (T-0113/T-0232) on the Effect adapter: session
   // required, one write budget each; the sweep asserts every route answers 401

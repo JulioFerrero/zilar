@@ -10,7 +10,7 @@ type TicksProps = {
   size?: number;
 };
 
-/** `✓` sent, `✓✓` read, a clock while sending, a red alert on a failed send. */
+/** `✓` sent, `✓✓` delivered or read, a clock while sending, a red alert on a failed send. */
 export function Ticks({ status, color, size = 15 }: TicksProps) {
   if (status === 'failed') {
     return <CircleAlert size={size - 2} color={DANGER} />;
@@ -18,7 +18,7 @@ export function Ticks({ status, color, size = 15 }: TicksProps) {
   if (status === 'sending') {
     return <Clock size={size - 2} color={color} />;
   }
-  const Icon = status === 'read' ? CheckCheck : Check;
+  const Icon = status === 'read' || status === 'delivered' ? CheckCheck : Check;
   return (
     <View>
       <Icon size={size} color={color} />

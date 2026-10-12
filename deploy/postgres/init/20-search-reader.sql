@@ -1,9 +1,11 @@
--- Read-only role for message search (T-0117).
+-- Role for message search (T-0117) and DM clear history / delete for me
+-- (T-1236).
 --
 -- The server reads the ejabberd MAM archive (`public.archive`) through
--- `XMPP_ARCHIVE_DATABASE_URL` with this role. It can only SELECT from the
--- archive table: it cannot read credentials, rosters, room config, or
--- anything in the Zilar database, and it cannot write anywhere.
+-- `XMPP_ARCHIVE_DATABASE_URL` with this role. It can SELECT and DELETE on
+-- the archive table only (DELETE is for T-1236's clear history and delete
+-- for me): it cannot read credentials, rosters, room config, or anything in
+-- the Zilar database, and it cannot write anywhere else.
 --
 -- The postgres image runs this on the first start of an empty data volume
 -- with `psql -v ON_ERROR_STOP=1`. The password comes from the container
@@ -12,7 +14,8 @@
 -- therefore guarded: without the variable the script does nothing and
 -- search simply stays off (the server answers 501 `search_unavailable`).
 -- Nothing here revokes anything: the stock PUBLIC connect grants the other
--- roles rely on are untouched; the reader only gains SELECT on one table.
+-- roles rely on are untouched; the reader only gains SELECT and DELETE on
+-- one table.
 --
 -- Create the matching entry in infra/.env (git-ignored):
 --   ZILAR_ARCHIVE_DB_PASSWORD=CHANGE_ME
@@ -40,14 +43,15 @@ SELECT EXISTS (SELECT FROM pg_database WHERE datname = 'ejabberd') AS has_ejabbe
 GRANT CONNECT ON DATABASE ejabberd TO zilar_archive;
 GRANT USAGE ON SCHEMA public TO zilar_archive;
 -- `archive` is created by ejabberd itself on first start (`update_sql_schema`),
--- so it usually does not exist yet when this runs. The direct GRANT below
--- covers volumes where it already does. No default privileges are granted:
+-- so it usually does not exist yet when this runs. The direct GRANTs below
+-- cover volumes where it already does. No default privileges are granted:
 -- the reader must see only `archive`, never `users`, rosters, rooms or
 -- sessions. On a fresh volume run the manual GRANT from SERVER_CONFIG once
 -- ejabberd has created the table.
 SELECT EXISTS (SELECT FROM pg_class WHERE relname = 'archive') AS has_archive \gset
 \if :has_archive
 GRANT SELECT ON public.archive TO zilar_archive;
+GRANT DELETE ON public.archive TO zilar_archive;
 \endif
 \endif
 \endif

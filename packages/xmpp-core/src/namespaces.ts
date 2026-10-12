@@ -6,6 +6,7 @@ export const CHAT_STATES_NAMESPACE = 'http://jabber.org/protocol/chatstates';
 export const CORRECTION_NAMESPACE = 'urn:xmpp:message-correct:0';
 export const DATA_FORMS_NAMESPACE = 'jabber:x:data';
 export const DELAY_NAMESPACE = 'urn:xmpp:delay';
+export const DELIVERED_NAMESPACE = 'urn:zilar:delivered:0';
 export const FALLBACK_NAMESPACE = 'urn:xmpp:fallback:0';
 export const FORWARD_NAMESPACE = 'urn:xmpp:forward:0';
 export const HINTS_NAMESPACE = 'urn:xmpp:hints';

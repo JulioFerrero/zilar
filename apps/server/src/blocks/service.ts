@@ -14,7 +14,7 @@ import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
-import { removeBlockRosterItems, type BlockRosterLogger } from './roster';
+import { removePairRosterItems, type RosterLogger } from './roster';
 
 // The list endpoint caps server-side; nobody should keep 500 blocks, but
 // the cap keeps the response bounded.
@@ -34,7 +34,7 @@ export interface BlocksDeps {
   /** The XMPP domain the roster JIDs are built on. */
   domain?: string | undefined;
   /** Warns on a failed roster removal. Defaults to silence. */
-  logger?: BlockRosterLogger | undefined;
+  logger?: RosterLogger | undefined;
 }
 
 export interface BlockedUserView {
@@ -164,7 +164,7 @@ export async function blockUser(
   // Best effort, after the commit: the `both` subscriptions would otherwise
   // keep the blocked person seeing the blocker online. A failure only warns.
   if (deps.adminClient !== undefined && deps.domain !== undefined) {
-    await removeBlockRosterItems({
+    await removePairRosterItems({
       db: deps.db,
       adminClient: deps.adminClient,
       domain: deps.domain,

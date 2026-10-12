@@ -161,13 +161,16 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
     topicsOfGroup.find((entry) => entry.topic?.isGeneral === true) ?? topicsOfGroup[0]
   )?.id;
   const headerSeed = chat.groupId === undefined ? chat.id : (generalId ?? chat.id);
+  // T-1249: the panel can be handed the group's General topic row, whose
+  // `title` is the topic name ("General"), so show the group title instead.
+  const panelTitle = chat.groupTitle ?? chat.title;
 
   return (
-    <Sheet open onClose={onClose} ariaLabel={`${chat.title} info`}>
+    <Sheet open onClose={onClose} ariaLabel={`${panelTitle} info`}>
       <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
-        <Avatar id={groupSeed(headerSeed)} name={chat.title} size={44} avatarUrl={chat.avatarUrl} />
+        <Avatar id={groupSeed(headerSeed)} name={panelTitle} size={44} avatarUrl={chat.avatarUrl} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[16px] font-semibold">{chat.title}</div>
+          <div className="truncate text-[16px] font-semibold">{panelTitle}</div>
           <p className="text-[13px] text-muted-foreground">
             {memberCount} {memberCount === 1 ? 'member' : 'members'}
           </p>

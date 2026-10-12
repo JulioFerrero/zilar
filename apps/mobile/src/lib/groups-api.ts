@@ -50,6 +50,16 @@ export interface GroupsApi {
    * failure.
    */
   removeGroupMember(groupId: string, userId: string): Promise<void>;
+  /**
+   * Hands one group over (T-1190): only the owner, and the target becomes
+   * the owner while the caller becomes an admin. Rejects on failure.
+   */
+  transferGroupOwner(groupId: string, userId: string): Promise<void>;
+  /**
+   * Deletes one group for everyone (T-1243): only the owner. Every topic
+   * room is destroyed. Rejects on failure.
+   */
+  deleteGroup(groupId: string): Promise<void>;
 }
 
 /** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
@@ -111,6 +121,15 @@ export function createGroupsApi(
     },
     removeGroupMember: async (groupId, userId) => {
       await runApi(client.groups.removeMember({ params: { id: groupId, userId } }));
+    },
+    // T-1190: the fresh detail the route answers is dropped here; the store
+    // reloads it through `ensureGroupDetail`, so the cache is one source.
+    transferGroupOwner: async (groupId, userId) => {
+      await runApi(client.groups.transferOwner({ params: { id: groupId }, payload: { userId } }));
+    },
+    // T-1243: the route answers 204 with no body.
+    deleteGroup: async (groupId) => {
+      await runApi(client.groups.deleteGroup({ params: { id: groupId } }));
     },
   };
 }

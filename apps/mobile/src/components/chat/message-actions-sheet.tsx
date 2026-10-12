@@ -23,6 +23,18 @@ type MessageActionsSheetProps = {
   canCopy: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  /**
+   * The row label for the delete action (T-1247, the web's labels): "Delete" on
+   * my own DM message, "Delete for me" on the peer's, "Delete for everyone" in
+   * groups.
+   */
+  deleteLabel: string;
+  /** T-1247: my own message in a DM, where the confirm offers both choices. */
+  ownDelete: boolean;
+  /** T-1247: a DM delete, which uses the DM confirms instead of the group one. */
+  dmDelete: boolean;
+  /** The peer's name, for the DM confirm body. */
+  senderName: string;
   /** A failed own text: the sheet starts with Retry and Delete (local only),
    *  and hides Forward, Edit and Delete-for-everyone. */
   failed?: boolean | undefined;
@@ -49,23 +61,32 @@ type MessageActionsSheetProps = {
    *  restore focus on close. */
   confirmOpen: boolean;
   onCloseConfirm: () => void;
+  /** The confirm's "Delete for everyone" action. */
   onConfirmDelete: () => void;
+  /** The confirm's "Delete for me" action (T-1247). */
+  onConfirmDeleteForMe: () => void;
   onReact: (emoji: string) => void;
   onClose: () => void;
 };
 
 /**
  * Bottom sheet with the quick-reaction bar and Reply / Edit / Copy text /
- * Delete for everyone. The delete confirm is a kit `ConfirmDialog`; the
+ * Delete. In a group the delete row is "Delete for everyone" behind a kit
+ * `ConfirmDialog`. In a DM (T-1247) the peer's message offers "Delete for me"
+ * with the DM body, and my own offers both choices in an in-sheet confirm. The
  * parent just toggles `confirmOpen`. A failed own text instead starts with
  * Retry and (local-only, no-confirm) Delete, and hides Forward, Edit and
- * Delete for everyone.
+ * Delete.
  */
 export function MessageActionsSheet({
   visible,
   canCopy,
   canEdit,
   canDelete,
+  deleteLabel,
+  ownDelete,
+  dmDelete,
+  senderName,
   failed = false,
   onRetry,
   onDeleteLocal,
@@ -83,6 +104,7 @@ export function MessageActionsSheet({
   confirmOpen,
   onCloseConfirm,
   onConfirmDelete,
+  onConfirmDeleteForMe,
   onReact,
   onClose,
 }: MessageActionsSheetProps) {
@@ -168,8 +190,8 @@ export function MessageActionsSheet({
         <ActionSheetItem label="Copy text" onPress={onCopy} disabled={!canCopy} icon={Copy} />
         {!failed ? (
           <ActionSheetItem
-            label="Delete for everyone"
-            accessibilityLabel="Delete for everyone"
+            label={deleteLabel}
+            accessibilityLabel={deleteLabel}
             onPress={onDelete}
             disabled={!canDelete}
             destructive
@@ -185,18 +207,65 @@ export function MessageActionsSheet({
           />
         ) : null}
       </ActionSheet>
-      <ConfirmDialog
-        visible={visible && confirmOpen}
-        title="Delete for everyone?"
-        message="This deletes it for everyone in the chat."
-        confirmLabel="Delete"
-        busyLabel="Deleting…"
-        busy={false}
-        onCancel={onCloseConfirm}
-        onConfirm={onConfirmDelete}
-        cancelAccessibilityLabel="Cancel delete"
-        confirmAccessibilityLabel="Delete"
-      />
+      {ownDelete ? (
+        <ActionSheet
+          visible={visible && confirmOpen}
+          onClose={onCloseConfirm}
+          closeLabel="Cancel delete"
+          title="Delete message?"
+        >
+          <View className="px-4 py-3">
+            <Text className="text-[14px] leading-5 text-muted-foreground">
+              Delete it for you only, or for everyone in the chat.
+            </Text>
+          </View>
+          <ActionSheetItem
+            label="Delete for me"
+            accessibilityLabel="Delete for me"
+            onPress={onConfirmDeleteForMe}
+            destructive
+            icon={Trash2}
+          />
+          <ActionSheetItem
+            label="Delete for everyone"
+            accessibilityLabel="Delete for everyone"
+            onPress={onConfirmDelete}
+            destructive
+            icon={Trash2}
+          />
+          <ActionSheetItem
+            label="Cancel"
+            accessibilityLabel="Cancel delete"
+            onPress={onCloseConfirm}
+          />
+        </ActionSheet>
+      ) : dmDelete ? (
+        <ConfirmDialog
+          visible={visible && confirmOpen}
+          title="Delete message?"
+          message={`This removes it from your chat only. ${senderName} still has it.`}
+          confirmLabel="Delete for me"
+          busyLabel="Deleting…"
+          busy={false}
+          onCancel={onCloseConfirm}
+          onConfirm={onConfirmDeleteForMe}
+          cancelAccessibilityLabel="Cancel delete"
+          confirmAccessibilityLabel="Delete for me"
+        />
+      ) : (
+        <ConfirmDialog
+          visible={visible && confirmOpen}
+          title="Delete for everyone?"
+          message="This deletes it for everyone in the chat."
+          confirmLabel="Delete"
+          busyLabel="Deleting…"
+          busy={false}
+          onCancel={onCloseConfirm}
+          onConfirm={onConfirmDelete}
+          cancelAccessibilityLabel="Cancel delete"
+          confirmAccessibilityLabel="Delete"
+        />
+      )}
     </>
   );
 }

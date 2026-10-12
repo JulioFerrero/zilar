@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { Avatar } from '@/components/chat/avatar';
+import { GroupManageSection, type GroupManageProps } from '@/components/chat/group-manage-section';
 import { RoleChips } from '@/components/chat/role-chips';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
@@ -46,6 +47,7 @@ export function GroupRolesSheet({
   onToggleMember,
   onClose,
   seedFor,
+  manage,
 }: {
   visible: boolean;
   groupTitle: string;
@@ -61,6 +63,8 @@ export function GroupRolesSheet({
   onDeleteRole: (roleId: string) => Promise<void>;
   onToggleMember: (role: CustomGroupRole, userId: string) => Promise<void>;
   onClose: () => void;
+  /** T-1251: the manage section's owner/non-owner controls. */
+  manage: GroupManageProps;
   /**
    * T-1212: the member ball seed for a user id (the bare JID derived the
    * mention-builder way). Absent paints the raw user id.
@@ -333,6 +337,12 @@ export function GroupRolesSheet({
           </Button>
         </View>
       ) : null}
+      <GroupManageSection
+        groupTitle={groupTitle}
+        members={members.filter((member) => member.role !== 'owner')}
+        seedFor={seedFor}
+        {...manage}
+      />
       {error !== '' ? (
         <Text accessibilityRole="alert" className="py-1 text-[13px] text-danger">
           {error}

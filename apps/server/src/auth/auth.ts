@@ -8,6 +8,7 @@ import { setUpContactsFromInvite } from '../contacts/service';
 import { ensureXmppAccount } from '../xmpp/provisioning';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { consumeInvite, findUsableInvite } from './invites';
+import { cancelDeletionOnSignIn } from './deletion-request';
 import type { Mailer } from './mailer';
 import { isTransportConfigured, MailNotConfiguredError } from './mailer';
 import { effectSqlAdapter } from './sql-adapter';
@@ -32,8 +33,11 @@ export interface CreateAuthInput {
 }
 
 // Minimal slice of pino's Logger we need; the server passes its own logger.
+// `error` is here for the best-effort sign-in cancel's audit-write log
+// (T-1261); the rest of this module only warns.
 export interface AuthLogger {
   warn: (fields: Record<string, unknown>, message: string) => void;
+  error: (fields: Record<string, unknown>, message: string) => void;
 }
 
 const isMailNotConfigured = (error: unknown): error is MailNotConfiguredError =>
@@ -243,6 +247,14 @@ export function createAuth({
                 }
               }),
             ),
+        },
+      },
+      // T-1261: signing in cancels a pending account deletion (plan §5b). A
+      // `session.create` runs on sign-in and sign-up; cancelling a row that is
+      // not there is a no-op. Best effort: it never blocks the sign-in.
+      session: {
+        create: {
+          after: (session) => cancelDeletionOnSignIn(db, logger, session.userId),
         },
       },
     },

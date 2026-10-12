@@ -12,9 +12,9 @@
 // like the old `requireSession` -> 501 -> limiter -> `safeParse` sequence.
 import { Effect, Layer, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
-import type { HttpServerRequest } from 'effect/http';
+import { HttpServerResponse, type HttpServerRequest } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
-import { MediaGroup } from '@zilar/api-contract';
+import { LinkPreviewGroup, MediaGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import type { Auth } from '../auth/auth';
 import { isDmBlocked } from '../blocks/service';
@@ -39,12 +39,18 @@ import {
   type ArchivePool,
   type SearchOwner,
 } from '../search/service';
+import { fetchLinkPreview, fetchLinkPreviewImage } from '../link-preview/fetch';
 import { indexChat, type MediaChatScope, type MediaKind } from './indexer';
 
 export const MEDIA_RATE_LIMIT_MAX = 30;
 export const MEDIA_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 export const MEDIA_DEFAULT_LIMIT = 50;
 export const MEDIA_MAX_LIMIT = 100;
+// T-1234: the link-preview budget, a read route capped per user like the
+// gallery (MEDIA_RATE_LIMIT_MAX, applied at the top of the `gallery` handler).
+export const LINK_PREVIEW_RATE_LIMIT_MAX = 60;
+export const LINK_PREVIEW_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+export const LINK_PREVIEW_MAX_URL_CHARS = 2000;
 
 export const MEDIA_TYPES = ['media', 'files', 'links', 'voice'] as const;
 export type MediaType = (typeof MEDIA_TYPES)[number];
@@ -71,6 +77,8 @@ export interface MediaRoutesDependencies {
 
 export interface MediaApiDependencies extends MediaRoutesDependencies {
   limiter?: RateLimiter;
+  /** T-1234: the link-preview budget, injectable in tests. */
+  linkPreviewLimiter?: RateLimiter;
 }
 
 // Replaces `querySchema` (zod): `chat` is 1..256 characters, `type` is one of
@@ -105,6 +113,16 @@ function queryRecord(request: HttpServerRequest.HttpServerRequest): Record<strin
     }
   }
   return record;
+}
+
+// T-1234: the link-preview URL, decoded by hand like the gallery query so a
+// missing, non-https or overlong value is the handler's fixed 400.
+function linkPreviewUrl(request: HttpServerRequest.HttpServerRequest): string | null {
+  const url = queryRecord(request).url;
+  if (url === undefined || url.length === 0 || url.length > LINK_PREVIEW_MAX_URL_CHARS) {
+    return null;
+  }
+  return /^https:\/\//i.test(url) ? url : null;
 }
 
 // The reply schemas live in the shared contract (`@zilar/api-contract`,
@@ -179,7 +197,7 @@ function toMediaItem(row: MediaItemRow, senderName: string): MediaItem {
   };
 }
 
-const MediaApi = HttpApi.make('media').add(MediaGroup);
+const MediaApi = HttpApi.make('media').add(MediaGroup, LinkPreviewGroup);
 
 export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
   const logger = deps.logger;
@@ -189,6 +207,13 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
     createRateLimiter({
       max: MEDIA_RATE_LIMIT_MAX,
       windowMs: MEDIA_RATE_LIMIT_WINDOW_MS,
+      now,
+    });
+  const linkPreviewLimiter =
+    deps.linkPreviewLimiter ??
+    createRateLimiter({
+      max: LINK_PREVIEW_RATE_LIMIT_MAX,
+      windowMs: LINK_PREVIEW_RATE_LIMIT_WINDOW_MS,
       now,
     });
 
@@ -300,8 +325,64 @@ export function createMediaApi(deps: MediaApiDependencies): EffectApiMount {
     ),
   );
 
+  // T-1234: the link preview answers 200 with the unfurled head, or 204 when
+  // the page has neither a title nor a description. It shares the media
+  // module so `app.ts` does not change. A non-https or overlong URL is a 400;
+  // everything the guard refuses (redirects, private hosts, non-HTML, errors)
+  // is an empty answer, never an error page.
+  //
+  // T-1252 adds `image`: the bytes behind a key a cached preview minted, so
+  // the remote URL never reaches a client. An unknown or expired key is a 404
+  // (never a fetch), and the bytes go out with the upstream content type, a
+  // private 24 h cache and `nosniff`. It shares the preview rate limiter.
+  const linkPreviewGroupLayer = HttpApiBuilder.group(MediaApi, 'linkPreview', (handlers) =>
+    handlers
+      .handle(
+        'get',
+        handler(logger, (request, user) =>
+          Effect.gen(function* () {
+            if (!linkPreviewLimiter.allow(user.id)) {
+              throw new HttpError(429, 'rate_limited', 'Too many requests, try again later');
+            }
+            const url = linkPreviewUrl(request.request);
+            if (url === null) {
+              throw new HttpError(400, 'invalid_request', 'Invalid link preview url');
+            }
+            const preview = yield* fetchLinkPreview(url, { logger });
+            if (preview === null) {
+              return HttpServerResponse.empty();
+            }
+            return preview;
+          }),
+        ),
+      )
+      .handle(
+        'image',
+        handler(logger, (request, user) =>
+          Effect.gen(function* () {
+            if (!linkPreviewLimiter.allow(user.id)) {
+              throw new HttpError(429, 'rate_limited', 'Too many requests, try again later');
+            }
+            const image = yield* fetchLinkPreviewImage(request.params.key, { logger });
+            if (image === null) {
+              throw new HttpError(404, 'not_found', 'Link preview image not found');
+            }
+            return HttpServerResponse.uint8Array(image.bytes, {
+              status: 200,
+              headers: {
+                'content-type': image.contentType,
+                'content-length': String(image.bytes.byteLength),
+                'cache-control': 'private, max-age=86400',
+                'x-content-type-options': 'nosniff',
+              },
+            });
+          }),
+        ),
+      ),
+  );
+
   const apiLayer = HttpApiBuilder.layer(MediaApi).pipe(
-    Layer.provide(groupLayer),
+    Layer.provide(Layer.merge(groupLayer, linkPreviewGroupLayer)),
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(schemaErrorLayer(logger)),
   );

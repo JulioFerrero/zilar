@@ -113,6 +113,7 @@ export function createChatPrefsApi(deps: ChatPrefsApiDependencies): EffectApiMou
             mutedUntil,
             archived: request.payload.archived,
             pinned: request.payload.pinned,
+            unreadMark: request.payload.unreadMark,
             backgroundPreset: request.payload.backgroundPreset,
             backgroundImageId: request.payload.backgroundImageId,
             backgroundDim: request.payload.backgroundDim,

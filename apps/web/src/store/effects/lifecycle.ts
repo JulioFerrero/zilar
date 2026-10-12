@@ -12,7 +12,6 @@ import {
 } from '@zilar/client-core/store';
 import type { XmppCore } from '@zilar/xmpp-core';
 import type { ChatPref, Contact, Me } from '@/lib/api';
-import { applyChatPrefs } from '@/lib/chatPrefs';
 import { authClient } from '@/lib/auth';
 import { resetHandleGateDismissal } from '@/lib/handleGate';
 import { resetIsServerOwnerCache } from '@/lib/useIsServerOwner';
@@ -26,6 +25,7 @@ import { joinGroups } from './groupMembers';
 import { refreshChats, scheduleChatsRefresh } from './history';
 import { refreshPinsFor } from './pins';
 import { Ports } from './ports';
+import { applyPrefsWithUnreadMark } from './prefs';
 import { saveChatList } from './reads';
 import { prefsByJid, fromPromise } from './util';
 
@@ -146,7 +146,7 @@ export function applyBoot(ctx: StoreCtx, input: BootInput): void {
   ctx.set({
     me: input.me as Me,
     currentUserId: input.me.id,
-    chats: applyChatPrefs(
+    chats: applyPrefsWithUnreadMark(
       mergeWithPainted(input.previousChats, input.freshRows, input.sameUser),
       prefs,
       ctx.ports.now().getTime(),

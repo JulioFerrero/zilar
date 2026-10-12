@@ -1,7 +1,8 @@
-// Roster cleanup after a block (T-1158, SG-1): a block deletes the contact
-// pair, and the pair's `both` roster subscriptions must go with it, or the
-// blocked person keeps seeing the blocker online. Best effort: every failure
-// is a `warn`, never a throw, so a block always succeeds.
+// Roster cleanup after a contact pair is removed (T-1158 for blocks; T-1233
+// also serves contact removal): deleting the `contacts` rows must take the
+// pair's `both` roster subscriptions with it, or the two people keep seeing
+// each other online and reach each other over XMPP. Best effort: every failure
+// is a `warn`, never a throw, so the caller always succeeds.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -10,17 +11,17 @@ import { runSql } from '../effect/sql';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 
-// The smallest slice of a logger this helper needs; the API layer passes its
+// The smallest slice of a logger this helper needs; the API layers pass their
 // own logger, tests pass nothing.
-export interface BlockRosterLogger {
+export interface RosterLogger {
   warn: (fields: Record<string, unknown>, message: string) => void;
 }
 
-export interface RemoveBlockRosterInput {
+export interface RemovePairRosterInput {
   db: ServerDatabase;
   adminClient: EjabberdAdminClient;
   domain: string;
-  logger?: BlockRosterLogger | undefined;
+  logger?: RosterLogger | undefined;
   userId: string;
   targetId: string;
 }
@@ -39,12 +40,12 @@ async function rosterJidFor(db: ServerDatabase, userId: string, domain: string):
   return account?.jid ?? jidFor(localpartFor(userId), domain);
 }
 
-// Removes both roster items of a blocked pair, one per direction. A failure
+// Removes both roster items of a removed pair, one per direction. A failure
 // (DB hiccup on the JID lookups, ejabberd down, item already gone) logs a
-// `warn` with ids only and never throws, so the block itself always succeeds.
-// On a lookup failure the derived JIDs are used, so removal is still
+// `warn` with ids only and never throws, so the removal itself always
+// succeeds. On a lookup failure the derived JIDs are used, so removal is still
 // attempted best effort.
-export async function removeBlockRosterItems(input: RemoveBlockRosterInput): Promise<void> {
+export async function removePairRosterItems(input: RemovePairRosterInput): Promise<void> {
   const { db, adminClient, domain, logger, userId, targetId } = input;
   let userJid: string;
   let targetJid: string;
@@ -54,7 +55,7 @@ export async function removeBlockRosterItems(input: RemoveBlockRosterInput): Pro
       rosterJidFor(db, targetId, domain),
     ]);
   } catch (error) {
-    logger?.warn({ err: error, userId, targetId }, 'could not resolve roster JIDs after block');
+    logger?.warn({ err: error, userId, targetId }, 'could not resolve roster JIDs for the pair');
     userJid = jidFor(localpartFor(userId), domain);
     targetJid = jidFor(localpartFor(targetId), domain);
   }
@@ -66,7 +67,10 @@ export async function removeBlockRosterItems(input: RemoveBlockRosterInput): Pro
     try {
       await adminClient.deleteRosterItem(localpart, contactJid);
     } catch (error) {
-      logger?.warn({ err: error, userId, targetId }, 'could not remove a roster item after block');
+      logger?.warn({ err: error, userId, targetId }, 'could not remove a roster item for the pair');
     }
   }
 }
+
+// The block flow's name for the shared helper (T-1158), kept for its callers.
+export const removeBlockRosterItems = removePairRosterItems;

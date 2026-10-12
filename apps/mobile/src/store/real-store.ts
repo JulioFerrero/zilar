@@ -154,6 +154,18 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         ports.api.markChatRead === undefined
           ? undefined
           : (jid, messageId) => ports.api.markChatRead?.(jid, messageId) as Promise<unknown>,
+      markChatDelivered:
+        ports.api.markChatDelivered === undefined
+          ? undefined
+          : (jid, originIds) => ports.api.markChatDelivered?.(jid, originIds) as Promise<unknown>,
+      deleteMessageForMe:
+        ports.api.deleteMessageForMe === undefined
+          ? undefined
+          : (jid, archiveId) => ports.api.deleteMessageForMe?.(jid, archiveId) as Promise<unknown>,
+      clearChatHistory:
+        ports.api.clearChatHistory === undefined
+          ? undefined
+          : (jid) => ports.api.clearChatHistory?.(jid) as Promise<unknown>,
       // The chat prefs ride the boot (T-0135); a missing client reads none.
       listChatPrefs: () => ports.chatPrefs?.listChatPrefs() ?? Promise.resolve([]),
     };
@@ -178,6 +190,11 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       // Q3 (R7) is yes: mobile retries the connection like web, and a resume
       // reconnects (R8). Both are mobile-only switches.
       flags: { connectRetry: true, reconnectOnResume: true },
+      // T-1223: a session revoked on the server answers 401 on `GET
+      // /api/me`, so `authFailed` signs out to login instead of retrying
+      // for ever. The adapters live on the app ports (`effects/ports.ts`).
+      checkSession: () => ports.checkSession(),
+      sessionGone: () => ports.sessionGone(),
     };
     const coreCtx: CoreCtx = {
       get,

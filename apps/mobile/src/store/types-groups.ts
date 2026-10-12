@@ -138,6 +138,18 @@ export interface ChatStoreGroups {
    */
   leaveChannel: (chatId: string) => Promise<void>;
   /**
+   * Hands one group over (T-1190): the target becomes the owner and the
+   * caller an admin. The detail is reloaded so the acting device repaints,
+   * and the chat list refreshes. Rejects on failure.
+   */
+  transferGroupOwner: (groupId: string, userId: string) => Promise<void>;
+  /**
+   * Deletes one group for everyone (T-1243): every topic room is destroyed
+   * and the group's rows cascade. The chat list refreshes, so the rows drop.
+   * Rejects on failure.
+   */
+  deleteGroup: (groupId: string) => Promise<void>;
+  /**
    * Reads the members slice for one group (T-0144): the full audience for
    * owners/admins, the owner/admins slice for channel subscribers (never the
    * audience). Rejects on failure.

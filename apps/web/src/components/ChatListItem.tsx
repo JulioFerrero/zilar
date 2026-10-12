@@ -1,5 +1,6 @@
 import {
   formatListTime,
+  lightToPlain,
   markdownToPlain,
   previewBody,
   previewPrefix,
@@ -57,7 +58,7 @@ export const ChatListItem = memo(function ChatListItem({
   const body =
     preview !== undefined && shouldRenderMarkdown(chat, preview, currentUserId)
       ? markdownToPlain(rawBody)
-      : rawBody;
+      : lightToPlain(rawBody);
   const own = last !== undefined && last.senderId === currentUserId;
   const typing = typingLabel(chat, typingNames);
   // `writing…` is the AI's reveal; people keep D23's wording (with the new dot).
@@ -158,6 +159,16 @@ export const ChatListItem = memo(function ChatListItem({
                 muted={chat.muted}
                 labelSuffix="unread"
                 className="ml-auto shrink-0"
+              />
+            ) : chat.unreadMark === true ? (
+              // T-1244: a hand-set unread mark shows a plain dot (no count).
+              <span
+                role="img"
+                aria-label="Marked unread"
+                className={cn(
+                  'ml-auto size-2.5 shrink-0 rounded-full',
+                  chat.muted ? 'bg-badge-muted' : 'key-primary',
+                )}
               />
             ) : (
               own &&

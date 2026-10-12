@@ -44,6 +44,8 @@ export const ChatPref = Schema.Struct({
   backgroundPreset: Schema.optional(Schema.NullOr(Schema.String)),
   backgroundImageId: Schema.optional(Schema.NullOr(Schema.String)),
   backgroundDim: Schema.optional(Schema.NullOr(Schema.Number)),
+  /** T-1244: the caller marked this chat unread; optional so older rows decode. */
+  unreadMark: Schema.optional(Schema.Boolean),
   updatedAt: Schema.String,
 });
 
@@ -85,6 +87,7 @@ export const PutChatPrefPayload = Schema.Struct({
   mutedUntil: Schema.optional(Schema.NullOr(IsoDateTime)),
   archived: Schema.optional(Schema.Boolean),
   pinned: Schema.optional(Schema.Boolean),
+  unreadMark: Schema.optional(Schema.Boolean),
   ...backgroundFieldsShape,
 }).check(
   Schema.makeFilter((value) => (Object.keys(value).length > 0 ? undefined : 'Nothing to update')),

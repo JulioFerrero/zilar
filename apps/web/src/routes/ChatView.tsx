@@ -12,6 +12,7 @@ import { ForwardPicker } from '@/components/ForwardPicker';
 import { Button } from '@/components/ui/button';
 import { GroupPanel } from '@/components/GroupPanel';
 import { MessageList } from '@/components/MessageList';
+import { MediaViewerProvider } from '@/components/media/MediaViewer';
 import { SelectionBar } from '@/components/SelectionBar';
 import { PinnedBanner } from '@/components/PinnedBanner';
 import { PinsPanel } from '@/components/PinsPanel';
@@ -30,7 +31,7 @@ function initialPanel(value: string | null, chat: ChatSummary): OpenPanel | unde
   if (value === 'topic' && chat.topic !== undefined && chat.chatKind !== 'channel') {
     return 'topic';
   }
-  if (value === 'group' && chat.kind === 'group' && chat.topic === undefined) {
+  if (value === 'group' && (chat.groupId !== undefined || chat.kind === 'group')) {
     return 'group';
   }
   if (value === 'group' && chat.chatKind === 'channel') {
@@ -45,6 +46,7 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
   const editTarget = useChatSelector((s) => s.editTarget);
   const topicNotice = useChatSelector((s) => s.topicNotice);
   const storedPinsPanel = useChatSelector((s) => s.pinsPanel);
+  const chats = useChatSelector((s) => s.chats);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [panel, setPanel] = useState<OpenPanel | undefined>(() =>
@@ -171,6 +173,19 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
   const notice = topicNotice?.chatId === chat.id ? topicNotice : undefined;
   const pinsPanel = storedPinsPanel?.chatId === chat.id ? storedPinsPanel : undefined;
 
+  // T-1249: the group panel opens for every group, topics included. A topic
+  // row is not the group's chat, so hand the panel the group's General topic
+  // (same groupId); a legacy group row carries no groupId, so fall back to its
+  // kind and keep its own row. The panel reads the group title from the row's
+  // `groupTitle`.
+  const groupChat =
+    chat.groupId !== undefined && chat.topic !== undefined
+      ? (chats.find((entry) => entry.groupId === chat.groupId && entry.topic?.isGeneral === true) ??
+        chat)
+      : chat.kind === 'group'
+        ? chat
+        : undefined;
+
   // Pins load when the chat opens (the store also refreshes them on focus
   // and every 60 s while the chat is open; there is no realtime channel yet).
   useEffect(() => {
@@ -178,76 +193,80 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
   }, [storeApi, chat.id]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <ChatHeader
-        chat={chat}
-        onOpenMedia={() => setMediaOpen(true)}
-        {...(chat.isAI ? { onOpenAiPanel: () => setPanel('ai') } : {})}
-        {...(chat.kind === 'group' && chat.topic === undefined
-          ? { onOpenGroupPanel: () => setPanel('group') }
-          : {})}
-        {...(chat.topic !== undefined ? { onOpenTopicPanel: () => setPanel('topic') } : {})}
-      />
-      {chat.topic !== undefined && <TaskStrip chat={chat} />}
-      <PinnedBanner chatId={chat.id} />
-      {notice !== undefined && (
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-divider bg-panel px-4 py-2">
-          <p role="status" className="text-[13px] text-muted-foreground">
-            {notice.message}
-          </p>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label="Dismiss notice"
-            onClick={() => storeApi.getState().dismissTopicNotice()}
-            className="shrink-0 rounded-full text-[13px] text-muted-foreground"
-          >
-            Dismiss
-          </Button>
-        </div>
-      )}
-      <MessageList
-        key={chat.id}
-        chat={chat}
-        onReply={startReply}
-        onForward={forwardOne}
-        selection={selection}
-        selecting={selectedIds !== null}
-      />
-      {selectedIds !== null ? (
-        <SelectionBar
-          count={selectedIds.length}
-          onForward={forwardSelected}
-          onCancel={() => setSelectedIds(null)}
+    <MediaViewerProvider>
+      <div className="flex h-full min-h-0 flex-col">
+        <ChatHeader
+          chat={chat}
+          onOpenMedia={() => setMediaOpen(true)}
+          {...(chat.isAI ? { onOpenAiPanel: () => setPanel('ai') } : {})}
+          {...(groupChat !== undefined ? { onOpenGroupPanel: () => setPanel('group') } : {})}
+          {...(chat.topic !== undefined ? { onOpenTopicPanel: () => setPanel('topic') } : {})}
         />
-      ) : chat.chatKind === 'channel' ? (
-        <ChannelComposerBar chat={chat} />
-      ) : (
-        <Composer
-          chatId={chat.id}
-          replyTo={replyTo}
-          onCancelReply={cancelReply}
-          onOpenStickersSettings={() => navigate('/settings/stickers')}
+        {chat.topic !== undefined && <TaskStrip chat={chat} />}
+        <PinnedBanner chatId={chat.id} />
+        {notice !== undefined && (
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-divider bg-panel px-4 py-2">
+            <p role="status" className="text-[13px] text-muted-foreground">
+              {notice.message}
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label="Dismiss notice"
+              onClick={() => storeApi.getState().dismissTopicNotice()}
+              className="shrink-0 rounded-full text-[13px] text-muted-foreground"
+            >
+              Dismiss
+            </Button>
+          </div>
+        )}
+        <MessageList
+          key={chat.id}
+          chat={chat}
+          onReply={startReply}
+          onForward={forwardOne}
+          selection={selection}
+          selecting={selectedIds !== null}
         />
-      )}
-      {panel === 'ai' && chat.isAI && <AiPanel chat={chat} onClose={() => setPanel(undefined)} />}
-      {panel === 'group' && chat.kind === 'group' && chat.topic === undefined && (
-        <GroupPanel chat={chat} onClose={() => setPanel(undefined)} />
-      )}
-      {panel === 'topic' && chat.topic !== undefined && chat.chatKind !== 'channel' && (
-        <TopicPanel chat={chat} onClose={() => setPanel(undefined)} />
-      )}
-      {panel === 'group' && chat.chatKind === 'channel' && (
-        <ChannelPanel chat={chat} onClose={() => setPanel(undefined)} />
-      )}
-      {pinsPanel !== undefined && (
-        <PinsPanel chatId={chat.id} onClose={() => storeApi.getState().setPinsPanel(undefined)} />
-      )}
-      {mediaOpen && <ChatMediaPanel chatId={chat.id} onClose={() => setMediaOpen(false)} />}
-      {forwarding !== null && (
-        <ForwardPicker messages={forwarding} onClose={() => setForwarding(null)} />
-      )}
-    </div>
+        {selectedIds !== null ? (
+          <SelectionBar
+            count={selectedIds.length}
+            onForward={forwardSelected}
+            onCancel={() => setSelectedIds(null)}
+          />
+        ) : chat.chatKind === 'channel' ? (
+          <ChannelComposerBar chat={chat} />
+        ) : (
+          <Composer
+            chatId={chat.id}
+            replyTo={replyTo}
+            onCancelReply={cancelReply}
+            onOpenStickersSettings={() => navigate('/settings/stickers')}
+          />
+        )}
+        {panel === 'ai' && chat.isAI && <AiPanel chat={chat} onClose={() => setPanel(undefined)} />}
+        {panel === 'group' && groupChat !== undefined && chat.chatKind !== 'channel' && (
+          <GroupPanel chat={groupChat} onClose={() => setPanel(undefined)} />
+        )}
+        {panel === 'topic' && chat.topic !== undefined && chat.chatKind !== 'channel' && (
+          <TopicPanel
+            chat={chat}
+            {...(groupChat !== undefined ? { onOpenGroup: () => setPanel('group') } : {})}
+            onClose={() => setPanel(undefined)}
+          />
+        )}
+        {panel === 'group' && chat.chatKind === 'channel' && (
+          <ChannelPanel chat={chat} onClose={() => setPanel(undefined)} />
+        )}
+        {pinsPanel !== undefined && (
+          <PinsPanel chatId={chat.id} onClose={() => storeApi.getState().setPinsPanel(undefined)} />
+        )}
+        {mediaOpen && <ChatMediaPanel chatId={chat.id} onClose={() => setMediaOpen(false)} />}
+        {forwarding !== null && (
+          <ForwardPicker messages={forwarding} onClose={() => setForwarding(null)} />
+        )}
+      </div>
+    </MediaViewerProvider>
   );
 }

@@ -25,10 +25,20 @@ import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
 import { Data, Duration, Effect, type Effect as EffectType } from 'effect';
 import { classifyIp, isIpLiteral } from '../sandbox/ip-guard';
+import {
+  badUrlSummary,
+  classifyFetchFailureReason,
+  decodeCapped,
+  failure,
+  fetchFailedSummary,
+  mediaTypeOf,
+  redirectFailure,
+  type BadUrlReason,
+  type FetchFailureReason,
+} from './guarded-fetch-helpers';
 
 export const WEB_FETCH_TIMEOUT_MS = 10_000;
 export const WEB_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
-export const WEB_MAX_DECODE_CHARS = 2 * 1024 * 1024;
 
 // Only these response bodies are read. Anything else (images, PDFs,
 // binaries) returns `unsupported content type <type>`. The check runs on
@@ -48,10 +58,31 @@ export type DnsLookup = (host: string) => Promise<string[]>;
 
 export interface GuardedGetOptions {
   allowedHosts: readonly string[];
+  /**
+   * T-1234: skip the exact-host allowlist check and accept any public host.
+   * Every other guard stays (https only, port 443, no credentials, no
+   * redirects, the DNS pin and the private/loopback/link-local refusal), so a
+   * caller that fetches a user-supplied URL still cannot reach the LAN.
+   */
+  anyPublicHost?: boolean;
   headers?: Record<string, string>;
   resolver?: DnsLookup;
   timeoutMs?: number;
   maxResponseBytes?: number;
+  /**
+   * T-1240: when `true`, reaching `maxResponseBytes` ends the read and
+   * returns the bytes read so far as a successful body instead of failing
+   * as `too-large`. Every other check stays. Link previews use this: a
+   * page's `<head>` sits in the first few KB, while a whole page can be
+   * larger than the cap.
+   */
+  truncateAtMax?: boolean;
+  /**
+   * T-1252: replace the default text allowlist with this one. Link preview
+   * images pass the image types only, so an SVG or an HTML page is refused
+   * exactly like any other unsupported content type.
+   */
+  allowedContentTypes?: readonly string[];
   fetcher?: PinnedFetcher;
 }
 
@@ -69,6 +100,8 @@ export interface GuardedBody {
   contentType: string | null;
   location: string | null;
   text: string;
+  /** T-1252: the raw bytes, for a caller that asks for an image allowlist. */
+  bytes: Uint8Array;
 }
 
 // A failed get. `summary` is fixed wording only; `detail` carries text that
@@ -80,13 +113,9 @@ export type GuardedGetResult =
 // Internal failure modes, one tag per category from the spec. The `Promise`
 // edge maps each to exactly the `{ ok: false, summary, detail? }` object the
 // old code returned; these classes never leave this module.
-type BadUrlReason = 'invalid' | 'https-only' | 'credentials' | 'port';
-
 class BadUrl extends Data.TaggedError('BadUrl')<{ readonly reason: BadUrlReason }> {}
 
 class HostNotAllowed extends Data.TaggedError('HostNotAllowed') {}
-
-type FetchFailureReason = 'timeout' | 'too-large' | 'failed';
 
 class FetchFailed extends Data.TaggedError('FetchFailed')<{
   readonly reason: FetchFailureReason;
@@ -130,7 +159,8 @@ export function guardedGet(rawUrl: string, options: GuardedGetOptions): Promise<
         HostNotAllowed: () => Effect.succeed(failure('host not allowed')),
         FetchFailed: (error: FetchFailed) =>
           Effect.succeed(failure(fetchFailedSummary(error.reason))),
-        RedirectNotFollowed: (error: RedirectNotFollowed) => Effect.succeed(redirectFailure(error)),
+        RedirectNotFollowed: (error: RedirectNotFollowed) =>
+          Effect.succeed(redirectFailure(error.status, error.location)),
         StatusNotOk: (error: StatusNotOk) =>
           Effect.succeed(failure(`fetch failed with status ${error.status}`)),
         UnsupportedContentType: (error: UnsupportedContentType) =>
@@ -163,7 +193,10 @@ const guardedGetEffect = Effect.fnUntraced(function* (
   if (host.length === 0 || isIpLiteral(host)) {
     return yield* new HostNotAllowed();
   }
-  if (!options.allowedHosts.some((entry) => entry.toLowerCase() === host)) {
+  if (
+    options.anyPublicHost !== true &&
+    !options.allowedHosts.some((entry) => entry.toLowerCase() === host)
+  ) {
     return yield* new HostNotAllowed();
   }
   const resolver = options.resolver ?? resolveAll;
@@ -184,10 +217,12 @@ const guardedGetEffect = Effect.fnUntraced(function* (
     headers: Record<string, string>;
     timeoutMs: number;
     maxResponseBytes: number;
+    truncateAtMax: boolean;
   } = {
     headers: options.headers ?? {},
     timeoutMs: options.timeoutMs ?? WEB_FETCH_TIMEOUT_MS,
     maxResponseBytes: options.maxResponseBytes ?? WEB_MAX_RESPONSE_BYTES,
+    truncateAtMax: options.truncateAtMax === true,
   };
   const fetcher = options.fetcher;
   const pinnedFetch: EffectType.Effect<PinnedFetchResult, FetchFailed> =
@@ -214,7 +249,8 @@ const guardedGetEffect = Effect.fnUntraced(function* (
     return yield* new StatusNotOk({ status: response.status });
   }
   const mediaType = mediaTypeOf(response.rawContentType);
-  if (mediaType === null || !WEB_ALLOWED_CONTENT_TYPES.includes(mediaType)) {
+  const allowedTypes = options.allowedContentTypes ?? WEB_ALLOWED_CONTENT_TYPES;
+  if (mediaType === null || !allowedTypes.includes(mediaType)) {
     return yield* new UnsupportedContentType({ mediaType });
   }
   return {
@@ -224,86 +260,26 @@ const guardedGetEffect = Effect.fnUntraced(function* (
       contentType: mediaType,
       location: response.location,
       text: decodeCapped(raw),
+      bytes: raw,
     },
   };
 });
 
-function failure(summary: string, detail?: string): GuardedGetResult {
-  return detail === undefined ? { ok: false, summary } : { ok: false, summary, detail };
-}
-
-function badUrlSummary(reason: BadUrlReason): string {
-  switch (reason) {
-    case 'invalid':
-      return 'invalid url';
-    case 'https-only':
-      return 'only https urls are allowed';
-    case 'credentials':
-      return 'credentials in url are not allowed';
-    case 'port':
-      return 'explicit port is not allowed';
-  }
-}
-
-function fetchFailedSummary(reason: FetchFailureReason): string {
-  switch (reason) {
-    case 'timeout':
-      return 'fetch timed out';
-    case 'too-large':
-      return 'response too large';
-    case 'failed':
-      return 'fetch failed';
-  }
-}
-
-function redirectFailure(error: RedirectNotFollowed): GuardedGetResult {
-  if (error.location === null) {
-    return failure(`not followed: redirect (status ${error.status})`);
-  }
-  return failure(
-    'not followed: redirect',
-    `The page redirects to ${error.location.slice(0, 2048)}. Call the tool again with that URL if you want to follow it.`,
-  );
-}
-
 function classifyFetchError(error: unknown): FetchFailed {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/timeout/i.test(message)) {
-    return new FetchFailed({ reason: 'timeout' });
-  }
-  if (/too large|too big/i.test(message)) {
-    return new FetchFailed({ reason: 'too-large' });
-  }
-  return new FetchFailed({ reason: 'failed' });
-}
-
-function mediaTypeOf(raw: string | null): string | null {
-  if (raw === null) {
-    return null;
-  }
-  const mediaType = raw.split(';', 1)[0]?.trim().toLowerCase();
-  if (mediaType === undefined || mediaType.length === 0 || !mediaType.includes('/')) {
-    return null;
-  }
-  return mediaType;
-}
-
-// Decodes the body as UTF-8 (replacing undecodable bytes) with a hard cap
-// so a hostile page cannot blow up the server's memory at decode time.
-export function decodeCapped(raw: Uint8Array): string {
-  const text = new TextDecoder('utf-8', { fatal: false }).decode(raw);
-  if (text.length <= WEB_MAX_DECODE_CHARS) {
-    return text;
-  }
-  return text.slice(0, WEB_MAX_DECODE_CHARS);
+  return new FetchFailed({ reason: classifyFetchFailureReason(error) });
 }
 
 function fetchPinned(
   url: URL,
   address: string,
-  options: { headers: Record<string, string>; timeoutMs: number; maxResponseBytes: number },
+  options: {
+    headers: Record<string, string>;
+    timeoutMs: number;
+    maxResponseBytes: number;
+    truncateAtMax: boolean;
+  },
 ): EffectType.Effect<PinnedFetchResult, FetchFailed> {
-  const { timeoutMs, maxResponseBytes } = options;
+  const { timeoutMs, maxResponseBytes, truncateAtMax } = options;
   const headers: Record<string, string> = {
     accept: '*/*',
     connection: 'close',
@@ -311,6 +287,21 @@ function fetchPinned(
   };
   const path = `${url.pathname}${url.search}`;
   return Effect.callback<PinnedFetchResult, FetchFailed>((resume) => {
+    // `resume` may only run once; the body end, a truncation, a stream error
+    // and the request error all race to reach it.
+    let settled = false;
+    const succeed = (result: PinnedFetchResult): void => {
+      if (!settled) {
+        settled = true;
+        resume(Effect.succeed(result));
+      }
+    };
+    const failWith = (error: unknown): void => {
+      if (!settled) {
+        settled = true;
+        resume(Effect.fail(classifyFetchError(error)));
+      }
+    };
     const req = httpsRequest(
       {
         host: address,
@@ -333,34 +324,46 @@ function fetchPinned(
           : (res.headers.location ?? null);
         if (status >= 300 && status < 400) {
           res.resume();
-          resume(
-            Effect.succeed({
-              response: { status, rawContentType, location: rawLocation },
-              raw: new Uint8Array(0),
-            }),
-          );
+          succeed({
+            response: { status, rawContentType, location: rawLocation },
+            raw: new Uint8Array(0),
+          });
           return;
         }
         const chunks: Buffer[] = [];
         let total = 0;
+        let stopped = false;
+        const body = (): PinnedFetchResult => ({
+          response: { status, rawContentType, location: rawLocation },
+          raw: new Uint8Array(Buffer.concat(chunks)),
+        });
         res.on('data', (chunk: Buffer) => {
-          total += chunk.length;
-          if (total > maxResponseBytes) {
+          if (settled || stopped) {
+            return;
+          }
+          if (total + chunk.length > maxResponseBytes) {
+            if (truncateAtMax) {
+              // Answer with what was read up to the cap: the `<head>` is in
+              // the first few KB, the rest of a big page is not needed.
+              chunks.push(chunk.subarray(0, maxResponseBytes - total));
+              succeed(body());
+              req.destroy();
+              return;
+            }
+            stopped = true;
             req.destroy(new Error('response too large'));
             return;
           }
+          total += chunk.length;
           chunks.push(chunk);
         });
         res.on('end', () => {
-          resume(
-            Effect.succeed({
-              response: { status, rawContentType, location: rawLocation },
-              raw: new Uint8Array(Buffer.concat(chunks)),
-            }),
-          );
+          if (!stopped) {
+            succeed(body());
+          }
         });
         res.on('error', (error: Error) => {
-          resume(Effect.fail(classifyFetchError(error)));
+          failWith(error);
         });
       },
     );
@@ -374,7 +377,7 @@ function fetchPinned(
       req.destroy(new Error('fetch timeout'));
     });
     req.on('error', (error: Error) => {
-      resume(Effect.fail(classifyFetchError(error)));
+      failWith(error);
     });
     req.end();
     // Runs when the fiber is interrupted (overall deadline or caller abort):

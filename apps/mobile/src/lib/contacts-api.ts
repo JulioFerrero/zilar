@@ -1,5 +1,5 @@
 import { bareJid } from '@zilar/protocol';
-import { ApiError, runApi } from '@zilar/api-contract';
+import { ApiError, runApi, type Contact } from '@zilar/api-contract';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
@@ -16,6 +16,9 @@ import { createApiClient } from './effect/api-client';
 
 export type ContactRelation =
   'none' | 'contact' | 'request_sent' | 'request_received' | 'self' | 'blocked';
+
+/** The contract's contact row (`GET /contacts`), re-exported for the screens. */
+export type { Contact };
 
 export interface HandleProfile {
   userId: string;
@@ -79,6 +82,10 @@ export interface ContactsApi {
   blockUser(userId: string): Promise<{ blocked: boolean }>;
   unblockUser(userId: string): Promise<{ blocked: boolean }>;
   listBlockedUsers(): Promise<BlockedPerson[]>;
+  /** The people the caller can chat with (`GET /contacts`), T-1237. */
+  listContacts(): Promise<Contact[]>;
+  /** Removes `userId` from both sides (`DELETE /contacts/:userId`); 404 when not a contact. */
+  removeContact(userId: string): Promise<void>;
 }
 
 /** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
@@ -140,5 +147,8 @@ export function createContactsApi(
     blockUser: (userId) => runApi(client.blocks.block({ params: { userId } })),
     unblockUser: (userId) => runApi(client.blocks.unblock({ params: { userId } })),
     listBlockedUsers: () => runApi(client.blocks.list()).then((body) => [...body.blocked]),
+    listContacts: () => runApi(client.contacts.list()).then((rows) => [...rows]),
+    removeContact: (userId) =>
+      runApi(client.contacts.remove({ params: { userId } })).then(() => undefined),
   };
 }

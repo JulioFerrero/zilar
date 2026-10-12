@@ -1,6 +1,7 @@
 // effect-plain: moved unchanged from apps/web/src/lib/api.ts (size split)
 import {
   type AiMemoryFact,
+  type LinkPreview,
   type MediaItem,
   type MediaPage,
   type MediaTab,
@@ -101,6 +102,48 @@ export function listChatMedia(input: ListChatMediaInput): Promise<MediaPage> {
       },
     }),
   ).then((page) => ({ items: [...page.items], next: page.next }));
+}
+
+// --- Link previews (T-1234) ------------------------------------------------
+// The wire contract lives in packages/api-contract/src/link-preview.ts. The
+// server unfurls one pasted URL through its sandbox guard and answers 204
+// (no body) when the page has nothing to show. A module-level cache plus
+// in-flight dedupe keeps a list re-render from refetching the same URL.
+
+export type { LinkPreview };
+
+const linkPreviewCache = new Map<string, LinkPreview | null>();
+const linkPreviewInFlight = new Map<string, Promise<LinkPreview | null>>();
+
+/** The unfurled head, or `null` when the page has nothing (204) or the call
+ * fails. A hit is cached for the session. */
+export function linkPreview(url: string): Promise<LinkPreview | null> {
+  const cached = linkPreviewCache.get(url);
+  if (cached !== undefined) {
+    return Promise.resolve(cached);
+  }
+  const running = linkPreviewInFlight.get(url);
+  if (running !== undefined) {
+    return running;
+  }
+  const task = callApi((client) => client.linkPreview.get({ query: { url } }))
+    .then((value) => {
+      const preview = value ?? null;
+      linkPreviewCache.set(url, preview);
+      return preview;
+    })
+    .catch(() => null)
+    .finally(() => {
+      linkPreviewInFlight.delete(url);
+    });
+  linkPreviewInFlight.set(url, task);
+  return task;
+}
+
+/** Forgets the module-level cache (tests only). */
+export function resetLinkPreviewCache(): void {
+  linkPreviewCache.clear();
+  linkPreviewInFlight.clear();
 }
 
 // --- Message search (T-0117) -----------------------------------------------

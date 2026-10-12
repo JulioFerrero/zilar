@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from 'effect';
 import { createXmppCore, type XmppCore, type XmppCoreOptions } from '@zilar/xmpp-core';
-import type { OutgoingBytes, Visibility, VoiceOut } from '@zilar/client-core/store';
+import type { OutgoingBytes, SessionCheck, Visibility, VoiceOut } from '@zilar/client-core/store';
 
 import { createChatApi, type ChatApi } from '../../lib/chat-api';
 import type { ChatPrefsApi } from '../../lib/chat-prefs-api';
@@ -23,6 +23,10 @@ import {
   type RecordedVoice,
   type VoicePort,
 } from '../../lib/voice';
+import {
+  checkSession as checkSessionAdapter,
+  sessionGone as sessionGoneAdapter,
+} from './session-check';
 
 /** The slice of React Native's `AppState` the store listens to. */
 export interface AppStateLike {
@@ -61,6 +65,10 @@ export interface RealStoreDeps {
   appState?: AppStateLike;
   /** The AI draft SSE stream; tests inject a fake. */
   openDrafts?: OpenDraftStream;
+  /** Asks `GET /api/me` whether the session still exists (T-1223); tests inject a fake. */
+  checkSession?: () => Promise<SessionCheck>;
+  /** Signs out after `checkSession` answered `gone`; tests inject a fake. */
+  sessionGone?: () => void;
 }
 
 /** Everything the store talks to outside itself, resolved from `RealStoreDeps`. */
@@ -94,6 +102,14 @@ export interface PortsShape {
    * unsubscribe. Built from `appState`, beside `visibility`.
    */
   readonly onBackground: (handler: () => void) => () => void;
+  /** Asks `GET /api/me` whether the session still exists after `authFailed` (T-1223). */
+  readonly checkSession: () => Promise<SessionCheck>;
+  /**
+   * Signs out after `checkSession` answered `gone`, so the user lands on
+   * login. Defaults to the session store's `signOut` (T-1223); tests
+   * inject it through deps.
+   */
+  sessionGone: () => void;
 }
 
 export class Ports extends Context.Service<Ports, PortsShape>()('zilar/mobile/store/Ports') {}
@@ -285,8 +301,9 @@ function voiceOutFor(deps: RealStoreDeps): VoiceOut {
 /** The ports a store gets: each injected dependency, else the real client. */
 export function resolvePorts(deps: RealStoreDeps): PortsShape {
   const appState = deps.appState ?? alwaysActive;
+  const api = deps.api ?? createChatApi(getSessionToken);
   return {
-    api: deps.api ?? createChatApi(getSessionToken),
+    api,
     topics: deps.topicsApi ?? createTopicsApi(getSessionToken, fetch, API_URL),
     inviteLinks: deps.inviteLinksApi ?? createInviteLinksApi(getSessionToken, fetch, API_URL),
     roles: deps.rolesApi ?? createRolesApi(getSessionToken, fetch, API_URL),
@@ -314,6 +331,13 @@ export function resolvePorts(deps: RealStoreDeps): PortsShape {
           getToken: getSessionToken,
           appState,
         })),
+    // `checkSession` asks `GET /api/me` whether the session still exists; the
+    // adapter lives in `./session-check` (T-1223).
+    checkSession:
+      deps.checkSession ?? (() => checkSessionAdapter(getSessionToken, () => api.getMe())),
+    // The revoked session lands on the sign-in screen through the session
+    // store's `signOut`; the adapter lives in `./session-check` (T-1223).
+    sessionGone: deps.sessionGone ?? (() => void sessionGoneAdapter()),
   };
 }
 
@@ -355,5 +379,10 @@ export const PortsTest = (overrides: Partial<PortsShape> = {}): Layer.Layer<Port
     visibility: visibilityFor(alwaysActive),
     onBackground: (handler) => onBackground(alwaysActive, handler),
     openDrafts: () => () => {},
+    checkSession: () =>
+      Promise.reject(new Error('checkSession is not available in this test layer')),
+    sessionGone: () => {
+      throw new Error('sessionGone is not available in this test layer');
+    },
     ...overrides,
   });
