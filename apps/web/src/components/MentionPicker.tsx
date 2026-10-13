@@ -1,6 +1,6 @@
 import { isAiJid, type MentionMember } from '@zilar/chat-core';
 import { AiBadge } from './AiBadge';
-import { Avatar } from './Avatar';
+import { EntityAvatar } from './EntityAvatar';
 import { cn } from '@/lib/utils';
 
 export interface MentionPickerProps {
@@ -47,7 +47,7 @@ export function MentionPicker({ id, members, activeIndex, onSelect, onHover }: M
               index === activeIndex ? 'bg-list-hover' : 'hover:bg-list-hover',
             )}
           >
-            <Avatar id={member.jid} name={member.name} ai={ai} size={28} />
+            <EntityAvatar person={{ id: member.jid, name: member.name }} ai={ai} size={28} />
             <span className="min-w-0 flex-1 truncate">
               {member.name}
               {member.handle !== undefined && member.handle !== '' && (

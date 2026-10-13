@@ -53,6 +53,118 @@ describe('auth store bootstrap', () => {
     expect(store.getState().status).toBe('guest');
     await expect(storage.getToken()).resolves.toBeUndefined();
   });
+
+  it('keeps the token on a 502 and retries until the profile loads', async () => {
+    const storage = createMemorySessionStorage('token-1');
+    const fetchMe = vi
+      .fn<() => Promise<Me>>()
+      .mockRejectedValueOnce({ status: 502, code: 'request_failed' })
+      .mockResolvedValueOnce(NAMED);
+    const api = makeApi({ fetchMe });
+    // The retry waits on this stub, so the test drives the backoff itself.
+    const waits: Array<() => void> = [];
+    const store = createAuthStore({
+      api,
+      storage,
+      wait: () =>
+        new Promise<void>((resolve) => {
+          waits.push(resolve);
+        }),
+    });
+    const statuses: string[] = [];
+    const unsubscribe = store.subscribe((state) => statuses.push(state.status));
+
+    const booting = store.getState().bootstrap();
+    await vi.waitFor(() => {
+      expect(store.getState().status).toBe('offline');
+    });
+    expect(statuses).not.toContain('guest');
+    await expect(storage.getToken()).resolves.toBe('token-1');
+
+    waits.shift()?.();
+    await booting;
+    unsubscribe();
+
+    expect(store.getState().status).toBe('authenticated');
+    expect(store.getState().me).toEqual(NAMED);
+    expect(await storage.getMe()).toEqual(NAMED);
+    expect(statuses).not.toContain('guest');
+  });
+
+  it('opens on the stored profile before the fresh one loads', async () => {
+    const storage = createMemorySessionStorage('token-1');
+    await storage.setMe(NAMED);
+    const freshMe: Me = { ...NAMED, name: 'Grace' };
+    let resolveFetch!: (me: Me) => void;
+    const fetchMe = vi.fn(
+      () =>
+        new Promise<Me>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const api = makeApi({ fetchMe });
+    const store = createAuthStore({ api, storage });
+
+    const booting = store.getState().bootstrap();
+    await vi.waitFor(() => {
+      expect(store.getState().status).toBe('authenticated');
+    });
+
+    // The stored profile is on screen while the background fetch is pending.
+    expect(store.getState().me).toEqual(NAMED);
+    expect(fetchMe).toHaveBeenCalledWith('token-1');
+
+    resolveFetch(freshMe);
+    await booting;
+
+    expect(store.getState().me).toEqual(freshMe);
+    expect(await storage.getMe()).toEqual(freshMe);
+  });
+
+  it('signs out when the background refresh is rejected', async () => {
+    const storage = createMemorySessionStorage('stale');
+    await storage.setMe(NAMED);
+    const api = makeApi({
+      fetchMe: vi.fn(async () => {
+        throw { status: 401, code: 'unauthorized' };
+      }),
+    });
+    const store = createAuthStore({ api, storage });
+
+    await store.getState().bootstrap();
+
+    expect(store.getState().status).toBe('guest');
+    expect(store.getState().me).toBeNull();
+    await expect(storage.getToken()).resolves.toBeUndefined();
+    await expect(storage.getMe()).resolves.toBeUndefined();
+  });
+
+  it('waits when there is a token but no stored profile', async () => {
+    const storage = createMemorySessionStorage('token-1');
+    let resolveFetch!: (me: Me) => void;
+    const fetchMe = vi.fn(
+      () =>
+        new Promise<Me>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const api = makeApi({ fetchMe });
+    const store = createAuthStore({ api, storage });
+
+    const booting = store.getState().bootstrap();
+    await vi.waitFor(() => {
+      expect(fetchMe).toHaveBeenCalled();
+    });
+
+    // No cached profile: the app still shows the loading screen until the
+    // profile arrives (today's behaviour).
+    expect(store.getState().status).toBe('loading');
+
+    resolveFetch(NAMED);
+    await booting;
+
+    expect(store.getState().status).toBe('authenticated');
+  });
 });
 
 describe('auth store sign-in', () => {
@@ -119,6 +231,18 @@ describe('auth store name and sign-out', () => {
     expect(result).toEqual({ ok: true });
     expect(updateMe).toHaveBeenCalledWith('token-1', 'Ada');
     expect(store.getState().me?.name).toBe('Ada');
+  });
+
+  it('keeps the cached picture when the PATCH reply carries none', async () => {
+    const withPicture: Me = { ...ME, avatarUrl: 'https://x/a.png' };
+    const api = makeApi({ fetchMe: vi.fn(async () => withPicture) });
+    const store = createAuthStore({ api, storage: createMemorySessionStorage('token-1') });
+    await store.getState().bootstrap();
+
+    await store.getState().setName('Ada');
+
+    expect(store.getState().me?.name).toBe('Ada');
+    expect(store.getState().me?.avatarUrl).toBe('https://x/a.png');
   });
 
   it('keeps the old name when the PATCH fails', async () => {

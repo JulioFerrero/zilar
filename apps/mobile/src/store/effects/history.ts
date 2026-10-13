@@ -16,6 +16,7 @@ import {
   mergeUnread,
   openAtMessage as openAtMessageCore,
   openHistory,
+  orderChatRows,
   type HistoryCtx,
   type HistoryPatch,
   type HistorySet,
@@ -206,9 +207,11 @@ export function makeHistory(ctx: StoreCtx): History {
           ...(existing.onlineCount === undefined ? {} : { onlineCount: existing.onlineCount }),
         };
       });
-    // New chats appear at the top; the rest keep their recency order.
+    // New chats sort by recency with the rest, so a row that first appears
+    // without a preview does not jump to the top and sink on the next tick
+    // (UI-12).
     const merged = applyChatPrefs(
-      [...fresh, ...h.sortByRecency(kept)],
+      orderChatRows(fresh, kept),
       s.chatPrefRows,
       ports.now().getTime(),
     );

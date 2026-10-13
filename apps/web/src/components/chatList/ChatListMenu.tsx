@@ -1,27 +1,17 @@
 import {
-  Ban,
-  Bell,
   Bot,
   Compass,
   Download,
-  Folder,
-  Inbox,
-  LogOut,
   Menu as MenuIcon,
-  MonitorSmartphone,
-  Plug,
-  Puzzle,
-  Server,
   Settings,
-  ShieldCheck,
-  Sticker,
   UserPlus,
-  UserRound,
   Users,
   type LucideIcon,
 } from 'lucide-react';
 import { createContext, useContext, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
+import { EntityAvatar } from '@/components/EntityAvatar';
+import { useAuth } from '@/auth/AuthProvider';
 import type { BeforeInstallPromptEvent } from '@/lib/push';
 import { IconButton } from '../ui/icon-button';
 import { Menu, MenuItem } from '../ui/menu';
@@ -60,9 +50,57 @@ function NavMenuItem({ to, label, icon, badge }: NavMenuItemProps) {
   );
 }
 
-/** A gap between menu sections; purely visual, so it is hidden from AT. */
-function MenuDivider() {
-  return <div aria-hidden="true" className="my-1 border-t border-divider" />;
+/** The menu's profile row: avatar, name and @handle (or email), to the profile page. */
+function ProfileMenuItem() {
+  const auth = useAuth();
+  const navigate = useNavigate();
+  const closeMenu = useContext(MenuCloseContext);
+  const user = auth.user;
+  if (user === undefined) {
+    return null;
+  }
+  const handle = user.handle;
+  const secondary = typeof handle === 'string' && handle !== '' ? `@${handle}` : user.email;
+  return (
+    <MenuItem
+      onSelect={() => {
+        closeMenu?.();
+        navigate('/settings/profile');
+      }}
+    >
+      <span className="flex min-w-0 flex-1 items-center gap-2.5">
+        <EntityAvatar me size={32} />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate font-medium">{user.name}</span>
+          <span className="truncate text-[13px] text-muted-foreground">{secondary}</span>
+        </span>
+      </span>
+    </MenuItem>
+  );
+}
+
+/** The requests count pill, capped at 9+ like the approvals one. */
+function RequestBadge({ count }: { count: number }) {
+  return (
+    <span
+      aria-label={`${count} incoming contact requests`}
+      className="shrink-0 rounded-full bg-badge-muted px-1.5 text-[11px] font-semibold text-foreground"
+    >
+      {count > 9 ? '9+' : String(count)}
+    </span>
+  );
+}
+
+/** The approvals count pill (the hook already caps the string). */
+function ApprovalBadge({ text }: { text: string }) {
+  return (
+    <span
+      aria-label={`${text} pending approvals`}
+      className="shrink-0 rounded-full bg-badge-muted px-1.5 text-[11px] font-semibold text-foreground"
+    >
+      {text}
+    </span>
+  );
 }
 
 export interface ChatListMenuProps {
@@ -81,14 +119,21 @@ export interface ChatListMenuProps {
   onInstall: () => void;
 }
 
+/**
+ * The short hamburger menu: the profile row, Contacts (with the requests
+ * badge), My AIs, Explore groups, Invite a friend and Settings (with the
+ * approvals badge), plus Install app as a conditional seventh item while the
+ * browser offers `beforeinstallprompt`. The other entries — and Sign out —
+ * live in the `/settings` hub now; the install props are used by that item.
+ * `onSignOut` and `isServerOwner` stay in the props because `ChatList.tsx`
+ * still passes them; the menu no longer uses either.
+ */
 export function ChatListMenu({
   open,
   onOpenChange,
   isWide,
   onInvite,
   onExplore,
-  onSignOut,
-  isServerOwner,
   incomingRequests,
   approvalsBadge,
   installEvent,
@@ -118,6 +163,27 @@ export function ChatListMenu({
           className="top-full right-0 mt-1 wide:left-0 wide:right-auto"
         >
           <MenuCloseContext.Provider value={close}>
+            <ProfileMenuItem />
+            <NavMenuItem
+              to="/settings/contacts"
+              label="Contacts"
+              icon={Users}
+              badge={
+                incomingRequests !== null && incomingRequests > 0 ? (
+                  <RequestBadge count={incomingRequests} />
+                ) : undefined
+              }
+            />
+            <NavMenuItem to="/settings/ais" label="My AIs" icon={Bot} />
+            <MenuItem
+              icon={Compass}
+              onSelect={() => {
+                close();
+                onExplore();
+              }}
+            >
+              Explore groups
+            </MenuItem>
             <MenuItem
               icon={UserPlus}
               onSelect={() => {
@@ -128,59 +194,11 @@ export function ChatListMenu({
               Invite a friend
             </MenuItem>
             <NavMenuItem
-              to="/settings/requests"
-              label="Requests"
-              icon={Inbox}
-              badge={
-                incomingRequests !== null && incomingRequests > 0 ? (
-                  <span
-                    aria-label={`${incomingRequests} incoming contact requests`}
-                    className="shrink-0 rounded-full bg-badge-muted px-1.5 text-[11px] font-semibold text-foreground"
-                  >
-                    {incomingRequests > 9 ? '9+' : String(incomingRequests)}
-                  </span>
-                ) : undefined
-              }
+              to="/settings"
+              label="Settings"
+              icon={Settings}
+              badge={approvalsBadge !== null ? <ApprovalBadge text={approvalsBadge} /> : undefined}
             />
-            <NavMenuItem to="/settings/folders" label="Chat folders" icon={Folder} />
-            <NavMenuItem to="/settings/blocked" label="Blocked people" icon={Ban} />
-            <NavMenuItem to="/settings/contacts" label="Contacts" icon={Users} />
-            <MenuItem
-              icon={Compass}
-              onSelect={() => {
-                close();
-                onExplore();
-              }}
-            >
-              Explore groups
-            </MenuItem>
-            <NavMenuItem to="/settings/stickers" label="Stickers" icon={Sticker} />
-            <MenuDivider />
-            <NavMenuItem to="/settings/connections" label="Connections" icon={Plug} />
-            <NavMenuItem to="/settings/machines" label="Machines" icon={Server} />
-            <NavMenuItem
-              to="/settings/approvals"
-              label="Approvals"
-              icon={ShieldCheck}
-              badge={
-                approvalsBadge !== null ? (
-                  <span
-                    aria-label={`${approvalsBadge} pending approvals`}
-                    className="shrink-0 rounded-full bg-badge-muted px-1.5 text-[11px] font-semibold text-foreground"
-                  >
-                    {approvalsBadge}
-                  </span>
-                ) : undefined
-              }
-            />
-            <NavMenuItem to="/settings/ais" label="My AIs" icon={Bot} />
-            {isServerOwner && (
-              <NavMenuItem to="/settings/integrations" label="Integrations" icon={Puzzle} />
-            )}
-            <MenuDivider />
-            <NavMenuItem to="/settings/devices" label="Devices" icon={MonitorSmartphone} />
-            <NavMenuItem to="/settings/profile" label="Profile" icon={UserRound} />
-            <NavMenuItem to="/settings/notifications" label="Notifications" icon={Bell} />
             {installEvent !== null && (
               <MenuItem
                 icon={Download}
@@ -195,10 +213,6 @@ export function ChatListMenu({
                 {installFailed ? 'Install failed — try again' : 'Install app'}
               </MenuItem>
             )}
-            <NavMenuItem to="/settings/profile" label="Settings" icon={Settings} />
-            <MenuItem icon={LogOut} destructive onSelect={onSignOut}>
-              Sign out
-            </MenuItem>
           </MenuCloseContext.Provider>
         </Menu>
       )}

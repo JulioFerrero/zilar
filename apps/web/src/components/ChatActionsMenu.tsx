@@ -82,7 +82,6 @@ export function ChatPrefMenuItems({
   const marked = chat.unreadMark === true;
   const showMarkRead = chat.unread > 0 || marked;
   const PinIcon = pinned ? PinOff : Pin;
-  const BellIcon = chat.muted ? Bell : BellOff;
 
   return (
     <>
@@ -95,7 +94,17 @@ export function ChatPrefMenuItems({
       >
         {pinned ? 'Unpin' : 'Pin'}
       </PrefMenuItem>
-      {muteOpen ? (
+      {chat.muted ? (
+        <PrefMenuItem
+          icon={Bell}
+          ariaLabel={`Unmute ${chat.title}`}
+          save={() => storeApi.getState().setMuted(chat.id, null)}
+          onDone={onDone}
+          onError={setError}
+        >
+          Unmute
+        </PrefMenuItem>
+      ) : muteOpen ? (
         <div aria-label="Mute duration" className="border-t border-border">
           {MUTE_DURATIONS.map((option) => (
             <PrefMenuItem
@@ -107,23 +116,14 @@ export function ChatPrefMenuItems({
               {option.label}
             </PrefMenuItem>
           ))}
-          {chat.muted && (
-            <PrefMenuItem
-              save={() => storeApi.getState().setMuted(chat.id, null)}
-              onDone={onDone}
-              onError={setError}
-            >
-              Unmute
-            </PrefMenuItem>
-          )}
         </div>
       ) : (
         <MenuItem
-          icon={BellIcon}
-          ariaLabel={chat.muted ? `Change mute for ${chat.title}` : `Mute ${chat.title}`}
+          icon={BellOff}
+          ariaLabel={`Mute ${chat.title}`}
           onSelect={() => setMuteOpen(true)}
         >
-          {chat.muted ? 'Mute…' : 'Mute'}
+          Mute…
         </MenuItem>
       )}
       <PrefMenuItem

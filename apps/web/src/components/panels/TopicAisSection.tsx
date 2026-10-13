@@ -3,7 +3,7 @@ import { Brain } from 'lucide-react';
 import type { ApiFailure } from '@/lib/effect/errors';
 import type { PublicAi, TopicAi } from '@/lib/api';
 import { AiBadge } from '../AiBadge';
-import { Avatar } from '../Avatar';
+import { EntityAvatar } from '../EntityAvatar';
 import { Button } from '../ui/button';
 import { StateMessage } from '../ui/state-message';
 import { AddAiButton, RemoveAiButton } from './TopicActionButtons';
@@ -61,7 +61,11 @@ export function TopicAisSection({
             key={ai.id}
             className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
           >
-            <Avatar id={ai.id} name={ai.name} size={32} ai avatarUrl={pictureOf(ai.id)} />
+            <EntityAvatar
+              person={{ id: ai.id, name: ai.name, avatarUrl: pictureOf(ai.id) }}
+              size={32}
+              ai
+            />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">
                 <span className="truncate text-[14px]">{ai.name}</span>

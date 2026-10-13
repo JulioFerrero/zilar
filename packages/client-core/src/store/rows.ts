@@ -1,5 +1,10 @@
 // Pure row helpers shared by the web and mobile chat stores. No state, no Effect.
-import type { ChatSummary, MessageStatus, UiMessage } from '@zilar/chat-core';
+import {
+  chatSortTime,
+  type ChatSummary,
+  type MessageStatus,
+  type UiMessage,
+} from '@zilar/chat-core';
 
 // Finished turn ids are remembered only to ignore a late `draft`. The set is
 // capped so it cannot grow for the life of the app session.
@@ -7,10 +12,25 @@ export const FINISHED_TURNS_MAX = 50;
 
 export function sortByRecency(chats: ChatSummary[]): ChatSummary[] {
   return [...chats].sort((left, right) => {
-    const leftTime = left.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY;
-    const rightTime = right.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY;
+    const leftTime = chatSortTime(left);
+    const rightTime = chatSortTime(right);
     return rightTime - leftTime || left.title.localeCompare(right.title);
   });
+}
+
+/**
+ * The chat list after a refresh: the rows discovered by this refresh plus the
+ * ones already known, ordered together by recency. A new row with no preview
+ * and no creation time sorts with the oldest instead of jumping to the top for
+ * one tick only to sink again on the next sort (UI-12); a just-created row
+ * carries its creation time (T-1318), so it leads the list right away, like
+ * Telegram.
+ */
+export function orderChatRows(
+  fresh: readonly ChatSummary[],
+  kept: readonly ChatSummary[],
+): ChatSummary[] {
+  return sortByRecency([...fresh, ...kept]);
 }
 
 /** The XMPP chat kind of a chat row. */

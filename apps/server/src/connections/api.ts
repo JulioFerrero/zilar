@@ -26,6 +26,7 @@ import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import {
   CreateConnectionPayload,
   ConnectionsGroup,
+  UpdateConnectionPayload,
   type ConnectionView,
 } from '@zilar/api-contract';
 import type { Logger } from 'pino';
@@ -43,6 +44,7 @@ import {
   deleteConnection as deleteConnectionRow,
   findOwnedConnection,
   listConnections,
+  updateConnectionKey,
   type PublicConnection,
 } from './service';
 
@@ -161,6 +163,40 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
               }),
             );
             return toWire(created);
+          }),
+        ),
+      )
+      // Replaces the stored key in place (T-1292). Like `create`, the body is
+      // decoded by hand so `requireCipher` (503) still runs before the decode
+      // (400). The update is owner-scoped in one transaction, so another user's
+      // connection answers 404 and the AIs on it have their model id cleared.
+      // The new key never reaches the response or a log line.
+      .handleRaw(
+        'update',
+        handler(defectLogger, (request, user) =>
+          Effect.gen(function* () {
+            const keyCipher = requireCipher();
+            const raw = yield* request.request.json.pipe(
+              Effect.catchCause(() => Effect.succeed<unknown>(INVALID_JSON)),
+            );
+            if (raw === INVALID_JSON) {
+              throw new HttpError(400, 'invalid_request', 'Invalid JSON body');
+            }
+            const decoded = Schema.decodeUnknownOption(UpdateConnectionPayload, STRICT_DECODE)(raw);
+            if (Option.isNone(decoded)) {
+              throw new HttpError(400, 'invalid_request', 'Invalid connection request');
+            }
+            const updated = yield* Effect.promise(() =>
+              updateConnectionKey(deps.db, {
+                id: request.params.id,
+                owner: user.id,
+                encryptedKey: keyCipher.encrypt(decoded.value.key),
+              }),
+            );
+            if (updated === null) {
+              throw new HttpError(404, 'not_found', 'Connection not found');
+            }
+            return toWire(updated);
           }),
         ),
       )

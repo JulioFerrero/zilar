@@ -2,7 +2,9 @@ import { useRouter } from 'expo-router';
 import { View } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
+import { Text } from '@/components/ui/text';
 
 import { AvatarControl } from '@/components/settings/avatar-control';
 import { BioField } from '@/components/settings/bio-field';
@@ -10,7 +12,6 @@ import { HandleField } from '@/components/settings/handle-field';
 import { NameField } from '@/components/settings/name-field';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { LOAD_ERROR, useProfileSettings } from '@/components/settings/use-profile-settings';
-import { useChatStore } from '@/store/chat-store-provider';
 
 export default function ProfileSettingsScreen() {
   return (
@@ -34,41 +35,39 @@ function ProfileSettings() {
     removePicture,
     name,
     nameError,
-    nameSaved,
-    nameBusy,
-    nameUnchanged,
     onNameChange,
-    saveName,
     bio,
     bioError,
-    bioSaved,
-    bioBusy,
-    bioUnchanged,
     onBioChange,
-    saveBio,
     handle,
-    currentHandle,
     availability,
     handleError,
-    handleSaved,
-    handleBusy,
-    handleSaveDisabled,
     onHandleChange,
-    saveHandle,
+    changed,
+    saved,
+    saveBusy,
+    saveAll,
   } = useProfileSettings();
-  // T-1212: the ball is seeded by the own bare JID (the same ball as the
-  // chat list and the profile screen).
-  const ownJid = useChatStore((state) => state.me?.jid ?? undefined);
-  // A name Save must wait while a bio save is in flight: the bio PATCH carries
-  // the saved name, so its reply could land last and revert a rename (S2, the
-  // mirror of the bio guard). `unchanged` is NameField's Save-disabled prop.
-  const nameSaveBlocked = nameUnchanged || bioBusy;
+  const ready = status === 'ready' && profile !== null;
 
   return (
     <SettingsScreenShell
       title="Profile"
       subtitle="Your picture and username, seen by your contacts."
       onBack={() => router.back()}
+      // T-1329: one Save for name, username and bio, like web and Telegram.
+      right={
+        ready ? (
+          <Button
+            size="sm"
+            disabled={!changed || saveBusy}
+            onPress={saveAll}
+            accessibilityLabel="Save profile"
+          >
+            <Text>{saveBusy ? 'Saving…' : 'Save'}</Text>
+          </Button>
+        ) : undefined
+      }
     >
       {status === 'loading' ? <StateMessage kind="loading" title="Loading…" /> : null}
 
@@ -85,7 +84,6 @@ function ProfileSettings() {
           <AvatarControl
             ownerId={profile.id}
             ownerName={profile.name}
-            ownerSeed={ownJid}
             currentUrl={profile.avatarUrl}
             token={avatarToken}
             phase={avatarPhase}
@@ -95,38 +93,21 @@ function ProfileSettings() {
             onRemove={() => removePicture(profile.id)}
           />
 
-          <NameField
-            value={name}
-            error={nameError}
-            saved={nameSaved}
-            busy={nameBusy}
-            unchanged={nameSaveBlocked}
-            onChange={onNameChange}
-            onSave={saveName}
-          />
+          <NameField value={name} error={nameError} busy={saveBusy} onChange={onNameChange} />
 
-          <BioField
-            value={bio}
-            error={bioError}
-            saved={bioSaved}
-            busy={bioBusy}
-            unchanged={bioUnchanged}
-            saveDisabled={nameBusy}
-            onChange={onBioChange}
-            onSave={saveBio}
-          />
+          <BioField value={bio} error={bioError} busy={saveBusy} onChange={onBioChange} />
 
           <HandleField
             value={handle}
-            current={currentHandle}
             availability={availability}
             error={handleError}
-            saved={handleSaved}
-            busy={handleBusy}
-            saveDisabled={handleSaveDisabled}
+            busy={saveBusy}
             onChange={onHandleChange}
-            onSave={saveHandle}
           />
+
+          {saved && !saveBusy ? (
+            <Text className="text-center text-[14px] text-muted-foreground">Saved.</Text>
+          ) : null}
         </View>
       ) : null}
     </SettingsScreenShell>

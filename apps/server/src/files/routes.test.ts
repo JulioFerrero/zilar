@@ -15,7 +15,9 @@ import {
   type TestContext,
 } from '../test-support';
 import type { ArchivePool, ArchiveRow } from '../search/service';
+import type { ServerConfig } from '../config';
 import { createFilesApi } from './api';
+import type { InternalFetch } from './internal-fetch';
 
 // PGlite shapes the fake the way the real `archive` table is shaped, copied
 // from media/routes.test.ts.
@@ -122,16 +124,16 @@ function at(iso: string): number {
 interface FetchCall {
   url: string;
   range: string | null;
+  host: string;
 }
 
 function makeFetch(status: number, headers: Record<string, string>, body: string) {
   const calls: FetchCall[] = [];
-  const fetchImpl = (async (input: unknown, init?: { headers?: Record<string, string> }) => {
-    const headerMap = new Headers(init?.headers);
-    calls.push({ url: String(input), range: headerMap.get('range') });
-    return new Response(body, { status, headers });
-  }) as typeof fetch;
-  return { fetchImpl, calls };
+  const internalFetch: InternalFetch = async (url, init) => {
+    calls.push({ url, range: init.range ?? null, host: init.host });
+    return { status, headers: new Headers(headers), body: new Response(body).body! };
+  };
+  return { fetchImpl: internalFetch, calls };
 }
 
 describe('GET /api/files', () => {
@@ -166,19 +168,20 @@ describe('GET /api/files', () => {
   // The Effect handler matches the full `/api`-prefixed path, so build the
   // request against it directly instead of mounting the old Hono wrapper.
   function filesApp(
-    fetchImpl: typeof fetch,
+    internalFetch: InternalFetch,
     withoutArchive = false,
     rateLimitMax?: number,
+    config: ServerConfig = context.config,
   ): { request(url: string, init?: RequestInit): Promise<Response> } {
     const api = createFilesApi({
       auth: context.auth,
       db: context.db,
-      config: context.config,
+      config,
       logger: context.logger,
       ...(withoutArchive ? {} : { archive }),
       ...(rateLimitMax === undefined ? {} : { rateLimitMax }),
       now: () => now,
-      fetchImpl,
+      internalFetch,
     });
     return {
       request(url: string, init?: RequestInit): Promise<Response> {
@@ -238,6 +241,7 @@ describe('GET /api/files', () => {
     name: string,
     kind = 'file',
     mime = 'application/pdf',
+    url: string = UPLOAD_URL,
   ) {
     await testSql(context)(
       Effect.gen(function* () {
@@ -250,11 +254,11 @@ describe('GET /api/files', () => {
           at_micros: at('2026-05-01T00:00:00.000Z'),
           sender_jid: `${peer}/phone`,
           kind,
-          url: UPLOAD_URL,
+          url,
           name,
           mime,
           size: 11,
-          ref: UPLOAD_URL,
+          ref: url,
           deleted: false,
         })}`;
       }),
@@ -447,7 +451,22 @@ describe('GET /api/files', () => {
     expect(headers.get('x-content-type-options')).toBe('nosniff');
     expect(headers.get('content-disposition')).toContain('attachment');
     expect(headers.get('content-disposition')).toContain('doc.pdf');
-    expect(calls).toEqual([{ url: INTERNAL_URL, range: null }]);
+    expect(calls).toEqual([{ url: INTERNAL_URL, range: null, host: 'localhost:3000' }]);
+  });
+
+  it('accepts a cache-busting retry param and still rejects an unknown one', async () => {
+    const { alice, bob } = await setupDm();
+    const own = localpartFor(alice.id);
+    const peer = dmJid(bob.id);
+    await seedMediaItem(own, peer, 'o-photo', 'photo.jpg', 'image', 'image/jpeg');
+    const { fetchImpl } = makeFetch(200, { 'content-type': 'image/jpeg' }, 'bytes');
+    const target = filesApp(fetchImpl);
+    const retried = await getFile(target, alice.cookie, `${fileParams(peer)}&retry=3`);
+    expect(retried.status).toBe(200);
+    expect(retried.text).toBe('bytes');
+    const excess = await getFile(target, alice.cookie, `${fileParams(peer)}&bogus=1`);
+    expect(excess.status).toBe(400);
+    expect(errorCode(excess.json)).toBe('invalid_request');
   });
 
   it('finds a just-sent file after the on-demand index', async () => {
@@ -500,7 +519,7 @@ describe('GET /api/files', () => {
     expect(status).toBe(206);
     expect(text).toBe('hell');
     expect(headers.get('content-range')).toBe('bytes 0-3/11');
-    expect(calls).toEqual([{ url: INTERNAL_URL, range: 'bytes=0-3' }]);
+    expect(calls).toEqual([{ url: INTERNAL_URL, range: 'bytes=0-3', host: 'localhost:3000' }]);
   });
 
   it('serves a forwarded copy through the target chat but not the source chat', async () => {
@@ -547,7 +566,29 @@ describe('GET /api/files', () => {
     expect(throughTarget.text).toBe('hello-bytes');
     const throughSource = await getFile(target, alice.cookie, fileParams(bobPeer));
     expect(throughSource.status).toBe(404);
-    expect(calls).toEqual([{ url: INTERNAL_URL, range: null }]);
+    expect(calls).toEqual([{ url: INTERNAL_URL, range: null, host: 'localhost:3000' }]);
+  });
+
+  it('sends the PUBLIC_URL host to the internal fetch', async () => {
+    const { alice, bob } = await setupDm();
+    const own = localpartFor(alice.id);
+    const peer = dmJid(bob.id);
+    // PUBLIC_URL is https://chat.zilar.app, so the caller URL is on that
+    // origin and the internal fetch must carry `chat.zilar.app`, not the
+    // ejabberd host: ejabberd resolves the upload vhost from Host (T-1315).
+    const publicUpload = 'https://chat.zilar.app/upload/slot1/photo.png';
+    await seedMediaItem(own, peer, 'o-photo', 'photo.png', 'image', 'image/png', publicUpload);
+    const { fetchImpl, calls } = makeFetch(200, { 'content-type': 'image/png' }, 'png-bytes');
+    const config: ServerConfig = { ...context.config, PUBLIC_URL: 'https://chat.zilar.app' };
+    const { status } = await getFile(
+      filesApp(fetchImpl, false, undefined, config),
+      alice.cookie,
+      fileParams(peer, publicUpload),
+    );
+    expect(status).toBe(200);
+    expect(calls).toEqual([
+      { url: 'http://127.0.0.1:5280/upload/slot1/photo.png', range: null, host: 'chat.zilar.app' },
+    ]);
   });
 
   it('answers 502 when the upstream fails', async () => {
@@ -571,6 +612,20 @@ describe('GET /api/files', () => {
     const { status, json } = await getFile(filesApp(fetchImpl), alice.cookie, fileParams(peer));
     expect(status).toBe(502);
     expect(errorCode(json)).toBe('file_unavailable');
+  });
+
+  it('answers 502 and logs the status when the upstream 404s', async () => {
+    const { alice, bob } = await setupDm();
+    const own = localpartFor(alice.id);
+    const peer = dmJid(bob.id);
+    await seedMediaItem(own, peer, 'o-gone', 'gone.pdf');
+    const { fetchImpl } = makeFetch(404, { 'content-type': 'text/plain' }, 'missing');
+    const { status, json } = await getFile(filesApp(fetchImpl), alice.cookie, fileParams(peer));
+    expect(status).toBe(502);
+    expect(errorCode(json)).toBe('file_unavailable');
+    const log = context.logOutput();
+    expect(log).toContain('files upstream status');
+    expect(log).toContain('"status":404');
   });
 
   it('answers 429 after the per-minute limit', async () => {

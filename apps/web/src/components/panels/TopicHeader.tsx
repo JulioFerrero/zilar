@@ -1,6 +1,6 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { Lock, X } from 'lucide-react';
-import { Avatar } from '../Avatar';
+import { EntityAvatar } from '../EntityAvatar';
 import { Button } from '../ui/button';
 
 function visibilityLabel(visibility: 'public' | 'private'): string {
@@ -28,7 +28,7 @@ export function TopicHeader({
   const isPrivate = visibility === 'private';
   return (
     <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
-      <Avatar id={chat.id} name={chat.title} size={44} avatarUrl={chat.avatarUrl} />
+      <EntityAvatar chat={chat} size={44} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[16px] font-semibold">
           {groupTitle !== '' && (

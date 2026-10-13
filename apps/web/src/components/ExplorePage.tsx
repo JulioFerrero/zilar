@@ -12,7 +12,7 @@ import { toApiFailure, type ApiFailure } from '@/lib/effect/errors';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
-import { Avatar } from '@/components/Avatar';
+import { EntityAvatar } from '@/components/EntityAvatar';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Dialog } from '@/components/ui/dialog';
@@ -237,7 +237,7 @@ export function ExplorePage({ onClose }: { onClose: () => void }) {
               key={entry.id}
               className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-list-hover"
             >
-              <Avatar id={entry.id} name={entry.title} size={36} avatarUrl={entry.avatarUrl} />
+              <EntityAvatar chat={entry} size={36} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[15px] font-medium">
                   {entry.title}{' '}

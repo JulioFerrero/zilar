@@ -12,4 +12,4 @@ export * from './forward';
 export * from './handoff';
 export * from './payload';
 export * from './sticker';
-export { protocolVersion } from './version';
+export { protocolVersion, minClientProtocol, isClientOutdated } from './version';

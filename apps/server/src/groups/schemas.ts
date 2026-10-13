@@ -96,6 +96,8 @@ export interface ChatGroup {
   id: string;
   roomLocalpart: string;
   title: string;
+  /** T-1318: when the group was created, so an empty group still sorts first. */
+  createdAt: Date;
   memberCount: number;
   role: GroupRole;
   kind: ChannelKind;

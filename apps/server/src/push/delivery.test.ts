@@ -9,7 +9,13 @@ import { deliverToDevice, handleIncomingPush, type ScanResult } from './delivery
 import type { FcmSender, FcmWakeData } from './fcm';
 import type { ResolvedPushMessage } from './payload';
 import type { PushServiceDeps } from './service';
-import { deviceByNode, saveDevice, type PushDeviceRow, type SaveDeviceInput } from './store';
+import {
+  deviceByNode,
+  removeDevice,
+  saveDevice,
+  type PushDeviceRow,
+  type SaveDeviceInput,
+} from './store';
 
 // A fixed storage key and clock, matching `store.test.ts`: the cipher only
 // needs any 32+ character string, and the exact timestamps never matter.
@@ -21,6 +27,7 @@ const NOW = new Date('2026-06-01T12:00:00Z');
 // are present on purpose, so a native wake leaking either would show up.
 const MESSAGE: ResolvedPushMessage = {
   chatJid: 'ana@zilar.localhost',
+  chatKind: 'dm',
   senderName: 'Ana',
   place: 'Ana',
   text: 'the secret text',
@@ -153,6 +160,7 @@ describe('deliverToDevice', () => {
     expect(calls[0]?.token).toBe('fcm-token-1');
     expect(calls[0]?.data).toEqual({
       chatId: 'ana@zilar.localhost',
+      chatKind: 'dm',
       messageId: 'origin-1',
       serverId: context.config.xmpp.domain,
     });
@@ -203,10 +211,14 @@ describe('deliverToDevice', () => {
     const userId = await seedUser(context);
     const device = await saveDevice(context.db, cipher, fcmInput(userId));
     const { sender } = fakeNativeSender({ gone: true });
+    const deps = buildDeps(context, { nativeSender: sender });
+    deps.recentlyNotified.set(device.node, new Set(['origin-1']));
 
-    await run(buildDeps(context, { nativeSender: sender }), device, accepted());
+    await run(deps, device, accepted());
 
     expect(await deviceByNode(context.db, device.node)).toBeUndefined();
+    // PERF-17: the removed device's dedupe set goes with its row.
+    expect(deps.recentlyNotified.has(device.node)).toBe(false);
   });
 
   it('drops an fcm device as send-failed when no native sender is configured', async () => {
@@ -303,5 +315,37 @@ describe('handleIncomingPush archive scan', () => {
 
     expect(outcome.kind).toBe('dropped');
     expect(calls).toHaveLength(0);
+  });
+});
+
+// PERF-17: a device removed outside the delivery pipeline (the API
+// `DELETE /push/subscriptions`, or T-1255's session-revoke cascade deleting
+// the row) shows up as `unknown-device` on its next publish; that is where the
+// component forgets the node's dedupe set.
+describe('handleIncomingPush removed devices', () => {
+  let context: TestContext;
+
+  beforeEach(async () => {
+    context = await createTestContext();
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  it('forgets an unsubscribed node when its publish arrives', async () => {
+    const userId = await seedUser(context);
+    const device = await saveDevice(context.db, cipher, webPushInput(userId));
+    const deps = buildDeps(context);
+    deps.recentlyNotified.set(device.node, new Set(['origin-1']));
+
+    // The unsubscribe path deletes the row: the API handler calls
+    // `removeDevice`, not the component.
+    await removeDevice(context.db, userId, device.id);
+
+    const outcome = await handleIncomingPush(deps, { node: device.node, from: 'ana' });
+
+    expect(outcome).toEqual({ kind: 'unknown-device', node: device.node });
+    expect(deps.recentlyNotified.has(device.node)).toBe(false);
   });
 });

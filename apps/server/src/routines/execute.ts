@@ -80,6 +80,18 @@ export interface ExecuteRoutineOptions {
   now?: () => Date;
   audit: AuditRecorder;
   logger: RoutineRunLogger;
+  /** AI-18: how long to wait before the one post retry. Defaults to 30 s. */
+  postRetryDelayMs?: number;
+  /** Sleep seam for the post retry (tests pass a fake to run instantly). */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+// AI-18: a post during the AI's reconnect answers `false`; one retry after
+// this wait catches the connection the next attempt.
+export const POST_RETRY_DELAY_MS = 30_000;
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function executeRoutine(
@@ -89,6 +101,8 @@ export async function executeRoutine(
 ): Promise<void> {
   const db = options.db;
   const now = options.now ?? (() => new Date());
+  const sleep = options.sleep ?? defaultSleep;
+  const postRetryDelayMs = options.postRetryDelayMs ?? POST_RETRY_DELAY_MS;
   const startedAt = Date.now();
   const at = now();
 
@@ -168,8 +182,14 @@ export async function executeRoutine(
   }
 
   // Step 5: post the output as the AI. `false` (or a throw) means the AI
-  // is stopped or not in the room: `skipped` with no failure count.
-  const posted = await postResult(ports, options, row, outputText);
+  // is stopped or not in the room. AI-18: a post during the AI's reconnect
+  // also answers `false`, so retry once after a short wait before giving up;
+  // only then is the run `skipped` with no failure count.
+  let posted = await postResult(ports, options, row, outputText);
+  if (!posted) {
+    await sleep(postRetryDelayMs);
+    posted = await postResult(ports, options, row, outputText);
+  }
   if (!posted) {
     await markSkipped(db, options, row, at, startedAt);
     return;

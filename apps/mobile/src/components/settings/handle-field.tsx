@@ -1,6 +1,5 @@
 import { View } from 'react-native';
 
-import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 
@@ -8,32 +7,20 @@ import { handleAvailabilityText, type HandleAvailability } from './profile-logic
 
 type HandleFieldProps = {
   value: string;
-  /** Your own handle, used to skip the live check against yourself. */
-  current: string;
   availability: HandleAvailability;
   error?: string | undefined;
-  saved: boolean;
+  /** True while the screen's single Save runs, so the input stays read-only. */
   busy: boolean;
-  saveDisabled: boolean;
   onChange: (value: string) => void;
-  onSave: () => void;
 };
 
 /**
- * The `@username` editor: the input, the debounced live-availability line,
- * the claim error, the saved confirmation, and the Save key. The screen
- * owns the check timing; this only renders.
+ * The `@username` editor: the input, the debounced live-availability line and
+ * the claim error. T-1329: the per-field Save key is gone; the screen's one
+ * Save saves the fields that changed (keeping the username validation), so
+ * this only renders.
  */
-export function HandleField({
-  value,
-  availability,
-  error,
-  saved,
-  busy,
-  saveDisabled,
-  onChange,
-  onSave,
-}: HandleFieldProps) {
+export function HandleField({ value, availability, error, busy, onChange }: HandleFieldProps) {
   const line = handleAvailabilityText(availability);
   const unavailable = availability.state === 'unavailable';
   return (
@@ -67,17 +54,6 @@ export function HandleField({
           {error}
         </Text>
       ) : null}
-      {saved ? <Text className="text-[14px] text-muted-foreground">Saved.</Text> : null}
-      <Button
-        variant="default"
-        size="sm"
-        className="mt-1 self-start"
-        accessibilityLabel="Save username"
-        disabled={busy || saveDisabled}
-        onPress={onSave}
-      >
-        <Text>{busy ? 'Saving…' : 'Save username'}</Text>
-      </Button>
     </View>
   );
 }

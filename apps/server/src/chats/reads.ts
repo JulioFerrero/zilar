@@ -9,6 +9,7 @@ import { requireChatAccess } from '../chat-prefs/access';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
+import type { DeliveryLookup } from './deliveries';
 
 /**
  * Whether the caller may mark `chatJid` read. Answers the same 404 for an
@@ -73,4 +74,54 @@ export async function putChatRead(
         WHERE EXCLUDED.last_read_id::bigint > chat_reads.last_read_id::bigint`;
     }),
   );
+}
+
+/**
+ * The peer's read marks for the caller's DMs (T-1311), in the caller's
+ * own-message terms. A peer's device stores its read mark under its own user
+ * id with the caller's JID as the chat (`putChatRead`), so one query per list
+ * finds each peer's newest mark whatever the chat count. Keys are the chat
+ * JIDs the caller passed in; a chat without a peer mark is left out.
+ *
+ * The stored id is the id both DM sides share (the server's archive
+ * stanza-id), so it compares directly against the caller's own message ids.
+ */
+export async function readForChats(
+  db: ServerDatabase,
+  options: { userId: string; callerJid: string; lookups: readonly DeliveryLookup[] },
+): Promise<Record<string, string>> {
+  const peerIds = options.lookups.flatMap((lookup) =>
+    lookup.dmPeerUserId === undefined ? [] : [lookup.dmPeerUserId],
+  );
+  if (peerIds.length === 0) {
+    return {};
+  }
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      // The peer's row is keyed by its own user id under the caller's JID, so
+      // another peer's mark can never leak into this DM. Stored marks are
+      // always numeric (writes validate first), so the bigint cast cannot fail.
+      return yield* sql<{
+        userId: string;
+        lastReadId: string;
+      }>`SELECT user_id, max(last_read_id::bigint) AS last_read_id
+        FROM chat_reads
+        WHERE chat_jid = ${options.callerJid.toLowerCase()} AND user_id IN ${sql.in(peerIds)}
+        GROUP BY user_id`;
+    }),
+  );
+  const byPeer = new Map(rows.map((row) => [row.userId, String(row.lastReadId)]));
+  const answer: Record<string, string> = {};
+  for (const lookup of options.lookups) {
+    if (lookup.dmPeerUserId === undefined) {
+      continue;
+    }
+    const mark = byPeer.get(lookup.dmPeerUserId);
+    if (mark !== undefined && mark !== null) {
+      answer[lookup.chatJid] = mark;
+    }
+  }
+  return answer;
 }

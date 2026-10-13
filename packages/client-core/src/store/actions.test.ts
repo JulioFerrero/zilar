@@ -1,3 +1,4 @@
+import { canAct, type UiMessage } from '@zilar/chat-core';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { describe, expect, it, vi } from 'vitest';
 import { deleteForEveryone, editMessage, react, sendTyping } from './actions';
@@ -114,6 +115,25 @@ describe('deleteForEveryone (core)', () => {
       chatId: ANA,
       message: 'Could not delete the message. Try again.',
     });
+  });
+});
+
+describe('canAct (UI-7)', () => {
+  const message = (overrides: Partial<UiMessage> = {}): UiMessage => ({
+    id: 'srv-1',
+    chatId: ANA,
+    senderId: 'u-me',
+    senderName: 'You',
+    text: 'hello',
+    createdAt: NOW,
+    status: 'sent',
+    ...overrides,
+  });
+
+  it('is false for a message without a wire id, so React/Edit/Delete are refused', () => {
+    expect(canAct(message({ status: 'sending' }))).toBe(false);
+    expect(canAct(message({ status: 'failed', failed: true }))).toBe(false);
+    expect(canAct(message())).toBe(true);
   });
 });
 

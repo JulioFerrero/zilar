@@ -1,4 +1,5 @@
 import type { ChatSummary, ReplyRef, UiMessage } from '@zilar/chat-core';
+import { Effect } from 'effect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { AiPanel } from '@/components/ais/AiPanel';
@@ -6,10 +7,12 @@ import { ChannelComposerBar } from '@/components/ChannelComposerBar';
 import { ChannelPanel } from '@/components/ChannelPanel';
 import { ChatHeader } from '@/components/ChatHeader';
 import { ChatMediaPanel } from '@/components/ChatMediaPanel';
+import { ChatSearchBar } from '@/components/ChatSearchBar';
 import { Composer } from '@/components/Composer';
 import { focusComposer } from '@/components/composer/useComposerFocus';
 import { ForwardPicker } from '@/components/ForwardPicker';
 import { Button } from '@/components/ui/button';
+import { ContactPanel } from '@/components/ContactPanel';
 import { GroupPanel } from '@/components/GroupPanel';
 import { MessageList } from '@/components/MessageList';
 import { MediaViewerProvider } from '@/components/media/MediaViewer';
@@ -20,9 +23,11 @@ import { TaskStrip } from '@/components/TaskStrip';
 import { TopicPanel } from '@/components/TopicPanel';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { statusLabel } from '@/components/chatList/rowsSelector';
+import { runWeb } from '@/lib/effect/runtime';
 import { replyRef } from '@/lib/format';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 
-type OpenPanel = 'ai' | 'group' | 'topic';
+type OpenPanel = 'ai' | 'group' | 'topic' | 'contact';
 
 function initialPanel(value: string | null, chat: ChatSummary): OpenPanel | undefined {
   if (value === 'ai' && chat.isAI) {
@@ -37,6 +42,10 @@ function initialPanel(value: string | null, chat: ChatSummary): OpenPanel | unde
   }
   if (value === 'group' && chat.chatKind === 'channel') {
     return 'group';
+  }
+  // T-1323: a DM that is not an AI opens the contact info panel.
+  if (value === 'contact' && chat.kind === 'dm' && !chat.isAI) {
+    return 'contact';
   }
   return undefined;
 }
@@ -70,6 +79,24 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
     setMediaChatId(chat.id);
     setMediaOpen(false);
   }
+  // T-1323: the narrow in-chat search bar replaces the header (WUX-34), so it
+  // lives here; the header and the contact panel's Search key both start it.
+  const isWide = useMediaQuery('(min-width: 900px)');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const startChatSearch = (): void => {
+    if (!isWide) {
+      setSearchOpen(true);
+      return;
+    }
+    storeApi.getState().setSearchChat(chat.id);
+    // The list search box lives outside this view; focus it after a zero-delay
+    // macrotask so the scope chip is already painted.
+    void runWeb(
+      Effect.sleep(0).pipe(
+        Effect.andThen(Effect.sync(() => window.dispatchEvent(new Event('zilar:focus-search')))),
+      ),
+    );
+  };
   const [replyTo, setReplyTo] = useState<ReplyRef | undefined>(undefined);
   const [forwarding, setForwarding] = useState<UiMessage[] | null>(null);
   // The ids checked in select mode; null means not selecting. Reset when the
@@ -205,6 +232,9 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
         ? chat
         : undefined;
 
+  // T-1323: a DM that is not an AI opens the contact info panel.
+  const contactChat = chat.kind === 'dm' && !chat.isAI ? chat : undefined;
+
   // Pins load when the chat opens (the store also refreshes them on focus
   // and every 60 s while the chat is open; there is no realtime channel yet).
   useEffect(() => {
@@ -214,13 +244,21 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
   return (
     <MediaViewerProvider>
       <div className="flex h-full min-h-0 flex-col">
-        <ChatHeader
-          chat={chat}
-          onOpenMedia={() => setMediaOpen(true)}
-          {...(chat.isAI ? { onOpenAiPanel: () => setPanel('ai') } : {})}
-          {...(groupChat !== undefined ? { onOpenGroupPanel: () => setPanel('group') } : {})}
-          {...(chat.topic !== undefined ? { onOpenTopicPanel: () => setPanel('topic') } : {})}
-        />
+        {searchOpen && !isWide ? (
+          <ChatSearchBar chat={chat} onClose={() => setSearchOpen(false)} />
+        ) : (
+          <ChatHeader
+            chat={chat}
+            onSearch={startChatSearch}
+            onOpenMedia={() => setMediaOpen(true)}
+            {...(chat.isAI ? { onOpenAiPanel: () => setPanel('ai') } : {})}
+            {...(groupChat !== undefined ? { onOpenGroupPanel: () => setPanel('group') } : {})}
+            {...(chat.topic !== undefined ? { onOpenTopicPanel: () => setPanel('topic') } : {})}
+            {...(contactChat !== undefined
+              ? { onOpenContactPanel: () => setPanel('contact') }
+              : {})}
+          />
+        )}
         {chat.topic !== undefined && <TaskStrip chat={chat} />}
         <PinnedBanner chatId={chat.id} />
         {notice !== undefined && (
@@ -258,7 +296,8 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
         )}
         {selectedIds !== null ? (
           <SelectionBar
-            count={selectedIds.length}
+            chat={chat}
+            selectedIds={selectedIds}
             onForward={forwardSelected}
             onCancel={() => setSelectedIds(null)}
           />
@@ -285,6 +324,21 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
         )}
         {panel === 'group' && chat.chatKind === 'channel' && (
           <ChannelPanel chat={chat} onClose={() => setPanel(undefined)} />
+        )}
+        {panel === 'contact' && contactChat !== undefined && (
+          <ContactPanel
+            key={contactChat.id}
+            chat={contactChat}
+            onClose={() => setPanel(undefined)}
+            onSearch={() => {
+              setPanel(undefined);
+              startChatSearch();
+            }}
+            onOpenMedia={() => {
+              setPanel(undefined);
+              setMediaOpen(true);
+            }}
+          />
         )}
         {pinsPanel !== undefined && (
           <PinsPanel chatId={chat.id} onClose={() => storeApi.getState().setPinsPanel(undefined)} />

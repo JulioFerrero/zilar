@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { GroupAi } from '@/lib/api';
 import { AiBadge } from '../AiBadge';
-import { Avatar } from '../Avatar';
+import { EntityAvatar } from '../EntityAvatar';
 import { Button } from '../ui/button';
 
 /**
@@ -34,7 +34,7 @@ export function GroupAiRowView({
 }) {
   return (
     <div className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover">
-      <Avatar id={ai.jid} name={ai.name} size={32} ai avatarUrl={ai.avatarUrl} />
+      <EntityAvatar person={{ id: ai.jid, name: ai.name, avatarUrl: ai.avatarUrl }} size={32} ai />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-[14px]">{ai.name}</span>

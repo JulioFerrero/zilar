@@ -10,7 +10,7 @@ export function ProfilePage() {
     <SettingsShell
       title="Profile"
       subtitle="Your picture and username, seen by your contacts."
-      onBack={() => navigate('/')}
+      onBack={() => navigate('/settings')}
     >
       <div className={SETTINGS_COLUMN}>
         <ProfileSettingsSection />

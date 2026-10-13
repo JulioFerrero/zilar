@@ -1,23 +1,23 @@
 import type { ChatFolder, ChatSummary } from '@zilar/chat-core';
-import { Archive } from 'lucide-react-native';
-import { useRef } from 'react';
-import { FlatList, Pressable, RefreshControl, View } from 'react-native';
-import type { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
+import { View } from 'react-native';
+import { useSharedValue } from 'react-native-reanimated';
 
-import { ChatRow, chatRowKey } from '@/components/chat/chat-rows';
+import { ChatListPage } from '@/components/chat/chat-list-page';
+import { FolderPager } from '@/components/chat/folder-pager';
 import { FolderTabs } from '@/components/chat/folder-tabs';
-import { LoadError, LoadErrorBanner } from '@/components/chat/load-error';
-import { ChatListSkeleton } from '@/components/chat/skeleton';
+import { LoadErrorBanner } from '@/components/chat/load-error';
 import { Text } from '@/components/ui/text';
-import type { ChatListRow } from '@/lib/chat-list';
-import type { PutChatPrefInput } from '@/lib/chat-prefs-api';
-import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
-import { chatsListView, emptyChatsText, type LoadState } from '@/store/types';
+import type { ToastMessage } from '@/components/ui/toast';
+import type { LoadState } from '@/store/types';
 
 /**
- * The chats list body (T-0112, T-0135): folder chips, the connection line, the
- * FlatList of chat/group rows with its skeleton, empty and error states, and
- * the Archived entry at the bottom. The screen owns the load and search state.
+ * The chats list body (T-0112, T-0135): the folder tabs over a horizontal
+ * pager, the connection line, the error banners, and the Archived entry inside
+ * each page. The screen owns the load, search and refresh state. T-1310: the
+ * pager (gesture-handler + reanimated) slides between the folders and the tabs
+ * follow it; only the visible page and its neighbours render. The rows inside
+ * the pager are plain: while the folder tabs are up the pager owns horizontal
+ * drags, and Pin/Mute/Archive stay on the long-press sheet.
  */
 export function ChatList({
   activeFolder,
@@ -28,17 +28,18 @@ export function ChatList({
   chatsLoad,
   chatsCount,
   onRetry,
-  rows,
+  chats,
+  search,
   refreshing,
   onRefresh,
-  archived,
   archivedOpen,
   onToggleArchived,
   onPressChat,
   onPressGroup,
   onLongPress,
-  onPref,
   swipeError,
+  onStartChat,
+  onRequestsToast,
 }: {
   activeFolder: string;
   folders: ChatFolder[];
@@ -48,29 +49,54 @@ export function ChatList({
   chatsLoad: LoadState;
   chatsCount: number;
   onRetry: () => void;
-  rows: ChatListRow[];
+  chats: ChatSummary[];
+  search: string;
   refreshing: boolean;
   onRefresh: () => void;
-  archived: ChatSummary[];
   archivedOpen: boolean;
   onToggleArchived: () => void;
   onPressChat: (chatId: string) => void;
   onPressGroup: (groupId: string) => void;
   onLongPress: (id: string) => void;
-  /** T-1204: the chat-pref write behind the swipe actions; unset keeps rows bare. */
-  onPref?: ((chatId: string, input: PutChatPrefInput) => void) | undefined;
   /** T-1218: a failed swipe's message; empty unless a swipe just failed. */
   swipeError: string;
+  /** T-1289: opens the new-chat flow from the empty state. */
+  onStartChat?: (() => void) | undefined;
+  /** T-1336: shows the request rows' transient messages on the screen toast. */
+  onRequestsToast: (toast: ToastMessage) => void;
 }) {
-  const listView = chatsListView(chatsLoad, chatsCount);
-  // Only one swipe row stays open at a time: opening another closes this one.
-  const openSwipeRef = useRef<SwipeableMethods | null>(null);
+  const chipIds = ['all', ...folders.map((folder) => folder.id)];
+  const index = Math.max(0, chipIds.indexOf(activeFolder));
+  // The continuous page position, owned by the pager and read by the tabs.
+  const progress = useSharedValue(index);
+
+  const renderPage = (page: number) => (
+    <ChatListPage
+      folder={page === 0 ? undefined : folders[page - 1]}
+      chats={chats}
+      search={search}
+      chatsLoad={chatsLoad}
+      chatsCount={chatsCount}
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      onRetry={onRetry}
+      archivedOpen={archivedOpen}
+      onToggleArchived={onToggleArchived}
+      onPressChat={onPressChat}
+      onPressGroup={onPressGroup}
+      onLongPress={onLongPress}
+      onStartChat={onStartChat}
+      onRequestsToast={onRequestsToast}
+    />
+  );
+
   return (
     <>
       <FolderTabs
         activeFolder={activeFolder}
         folders={folders}
         counts={counts}
+        progress={progress}
         onSelect={onSelectFolder}
       />
       {connection !== undefined ? (
@@ -86,74 +112,17 @@ export function ChatList({
         </View>
       ) : null}
       {chatsLoad === 'error' && chatsCount > 0 ? (
-        <LoadErrorBanner message="Couldn't load chats" onRetry={onRetry} />
+        <LoadErrorBanner message="Could not load chats. Try again." onRetry={onRetry} />
       ) : null}
-      <FlatList
-        className="flex-1"
-        data={rows}
-        keyExtractor={chatRowKey}
-        contentContainerStyle={{ paddingBottom: 180 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            tintColor={MUTED_FOREGROUND}
-            onRefresh={onRefresh}
-          />
+      <FolderPager
+        count={folders.length + 1}
+        index={index}
+        progress={progress}
+        onIndexChange={(page) =>
+          onSelectFolder(page === 0 ? 'all' : (folders[page - 1]?.id ?? 'all'))
         }
-        renderItem={({ item }) => (
-          <ChatRow
-            row={item}
-            onPressChat={onPressChat}
-            onPressGroup={onPressGroup}
-            onLongPress={onLongPress}
-            onPref={onPref}
-            openSwipeRef={openSwipeRef}
-          />
-        )}
-        ListEmptyComponent={
-          listView === 'skeleton' ? (
-            <ChatListSkeleton />
-          ) : listView === 'error' ? (
-            <LoadError message="Couldn't load chats" onRetry={onRetry} />
-          ) : (
-            <View className="items-center px-6 pt-16">
-              <Text className="text-[15px] text-muted-foreground">
-                {emptyChatsText(chatsCount)}
-              </Text>
-            </View>
-          )
-        }
+        renderPage={renderPage}
       />
-      {archived.length > 0 ? (
-        <View className="border-t border-divider">
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={
-              archivedOpen ? 'Hide archived chats' : `Show archived chats, ${archived.length}`
-            }
-            onPress={onToggleArchived}
-            className="flex-row items-center justify-center gap-1.5 px-4 py-3 active:bg-surface-raised"
-          >
-            <Archive size={16} color={ICON} />
-            <Text className="text-[14px] font-medium text-muted-foreground">
-              Archived ({archived.length})
-            </Text>
-          </Pressable>
-          {archivedOpen
-            ? archived.map((chat) => (
-                <ChatRow
-                  key={chat.id}
-                  row={{ kind: 'chat', chat }}
-                  onPressChat={onPressChat}
-                  onPressGroup={onPressGroup}
-                  onLongPress={onLongPress}
-                  onPref={onPref}
-                  openSwipeRef={openSwipeRef}
-                />
-              ))
-            : null}
-        </View>
-      ) : null}
     </>
   );
 }

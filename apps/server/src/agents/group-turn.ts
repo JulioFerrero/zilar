@@ -4,10 +4,11 @@ import type { FetchLike } from '../ai/litellm-client';
 import type { ChatCompletionMessage } from './context';
 import type { DmTurnOutcome } from './dm-turn';
 import { clearProgressQuietly, runToolLoop } from './dm-tool-turn';
-import { cutShortSuffix } from './replies';
+import { GROUP_FAILURE_REPLY, cutShortSuffix } from './replies';
 import {
   actionOfCall,
   executeToolCalls,
+  failureLogFields,
   followUpMessages,
   mapFailureToReply,
   redactError,
@@ -19,6 +20,7 @@ import {
   type ExecuteToolCall,
   type ModelRequestMessage,
 } from './tool-loop';
+import { remainingTurnBudgetMs } from './turn-budget';
 import { TASK_STATUS_TOOL, type ChatToolDefinition } from './tools';
 
 export interface GroupTurnDeps {
@@ -88,6 +90,31 @@ export interface GroupTurnDeps {
    * nick and bare JID. A `@<nick>` in the reply text (whole word) becomes a
    * mention, up to two targets, so the gateway hands the question over. */
   handoffTargets?: { nick: string; jid: string }[];
+  /** T-1290 (AI-10): called once when a turn fails, with the real reason
+   * (`mapFailureToReply`). The gateway DMs the AI's owner at most once per
+   * day per room; a throw here never fails the turn. */
+  onFailure?: (reason: string) => Promise<void>;
+}
+
+// T-1290 (AI-10): tells the owner the real reason a room turn failed, best
+// effort. The room already heard `GROUP_FAILURE_REPLY`; a throw from the
+// callback is logged (ids only) and never fails the turn.
+async function reportFailure(
+  deps: GroupTurnDeps,
+  secrets: string[],
+  reason: string,
+): Promise<void> {
+  if (deps.onFailure === undefined) {
+    return;
+  }
+  try {
+    await deps.onFailure(reason);
+  } catch (error) {
+    deps.logger.warn(
+      { err: redactError(error, secrets), aiId: deps.aiId },
+      'AI failure notice failed',
+    );
+  }
 }
 
 // T-0481: a handoff mention is only offered when the `@<nick>` in the reply
@@ -198,9 +225,10 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
     });
     return await sendGroupReply(deps, secrets, wire(second.content ?? TRANSIENT_FAILURE_REPLY));
   } catch (error) {
-    const reply = mapFailureToReply(error);
-    deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
-    const outgoing = wire(reply);
+    const reason = mapFailureToReply(error);
+    deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
+    await reportFailure(deps, secrets, reason);
+    const outgoing = wire(GROUP_FAILURE_REPLY);
     try {
       await deps.sendMessage(deps.roomJid, 'groupchat', outgoing.text, outgoing.opts);
     } catch (sendError) {
@@ -285,19 +313,19 @@ async function runGroupToolTurn(
     });
   } catch (error) {
     const failure = mapFailureToReply(error);
-    deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
+    deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
     if (deps.clearProgress !== undefined) {
       await clearProgressQuietly(deps, secrets);
     }
-    return await sendGroupReply(deps, secrets, wire(failure), { failure: true });
+    await reportFailure(deps, secrets, failure);
+    return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
   }
   if (loop.failure !== null) {
     if (deps.clearProgress !== undefined) {
       await clearProgressQuietly(deps, secrets);
     }
-    return await sendGroupReply(deps, secrets, wire(loop.failure.reply + loop.notices.join('')), {
-      failure: true,
-    });
+    await reportFailure(deps, secrets, loop.failure.reply);
+    return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
   }
   if (loop.text === null) {
     // The caps stopped the loop with no text: one last call so the AI must
@@ -311,15 +339,15 @@ async function runGroupToolTurn(
         if (deps.clearProgress !== undefined) {
           await clearProgressQuietly(deps, secrets);
         }
-        return await sendGroupReply(deps, secrets, wire(gate.reply + loop.notices.join('')), {
-          failure: true,
-        });
+        await reportFailure(deps, secrets, gate.reply);
+        return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
       }
     }
     let text: string;
     try {
       const last = await requestCompletion({
         ...completionInput,
+        timeoutMs: remainingTurnBudgetMs(startedAt, nowMs),
         messages: loop.messages,
         ...(maxRounds <= 1 ? { tools } : {}),
       });
@@ -329,13 +357,12 @@ async function runGroupToolTurn(
           : last.content + cutShortSuffix(last.finishReason) + loop.notices.join('');
     } catch (error) {
       const failure = mapFailureToReply(error);
-      deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
+      deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
       if (deps.clearProgress !== undefined) {
         await clearProgressQuietly(deps, secrets);
       }
-      return await sendGroupReply(deps, secrets, wire(failure + loop.notices.join('')), {
-        failure: true,
-      });
+      await reportFailure(deps, secrets, failure);
+      return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
     }
     if (deps.clearProgress !== undefined) {
       await clearProgressQuietly(deps, secrets);

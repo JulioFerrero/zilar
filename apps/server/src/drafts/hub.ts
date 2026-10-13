@@ -1,5 +1,5 @@
 import { Effect, Fiber } from 'effect';
-import type { DraftHubEvent } from './events';
+import type { DraftEvent, DraftHubEvent } from './events';
 
 // At most one `draft` per turn this often. The text is cumulative, so a
 // dropped draft is harmless, and the latest text is always flushed before
@@ -31,12 +31,41 @@ export interface DraftHub {
 }
 
 // In-process, per server: a user only ever receives drafts of AIs they own.
-// There is no cross-server fan-out (one server per deployment for now) and no
-// history: a client that connects mid-turn gets the next cumulative `draft`.
+// There is no cross-server fan-out (one server per deployment for now). The
+// latest `draft` of each open turn is kept so a client that connects mid-turn
+// gets it at once (AI-11); it is cleared when the turn ends, so nothing is
+// replayed for a turn that is already over.
 export function createDraftHub(): DraftHub {
   const listeners = new Map<string, Set<DraftListener>>();
+  // The latest `draft` per (owner, chat) of a turn that is still open.
+  const latestDrafts = new Map<string, Map<string, DraftEvent>>();
+
+  function remember(ownerUserId: string, event: DraftEvent): void {
+    let byChat = latestDrafts.get(ownerUserId);
+    if (byChat === undefined) {
+      byChat = new Map();
+      latestDrafts.set(ownerUserId, byChat);
+    }
+    byChat.set(event.chatJid, event);
+  }
+
+  function forget(ownerUserId: string, chatJid: string): void {
+    const byChat = latestDrafts.get(ownerUserId);
+    if (byChat === undefined) {
+      return;
+    }
+    byChat.delete(chatJid);
+    if (byChat.size === 0) {
+      latestDrafts.delete(ownerUserId);
+    }
+  }
 
   function publish(ownerUserId: string, event: DraftHubEvent): void {
+    if (event.type === 'draft') {
+      remember(ownerUserId, event);
+    } else {
+      forget(ownerUserId, event.chatJid);
+    }
     for (const listener of listeners.get(ownerUserId) ?? []) {
       listener(event);
     }
@@ -51,7 +80,13 @@ export function createDraftHub(): DraftHub {
         set = new Set();
         listeners.set(ownerUserId, set);
       }
+      // Replay the open turns' latest frames before any live one: the
+      // listener is added first, so a live `publish` cannot slip past the
+      // synchronous replay.
       set.add(listener);
+      for (const event of latestDrafts.get(ownerUserId)?.values() ?? []) {
+        listener(event);
+      }
       return () => {
         const current = listeners.get(ownerUserId);
         if (current === undefined) {

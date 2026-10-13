@@ -3,7 +3,7 @@ import { Effect } from 'effect';
 import { useState } from 'react';
 import { View } from 'react-native';
 
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { rawCall } from '@/components/chat/group-action';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -103,7 +103,6 @@ export function GroupManageSection({
   members,
   busy,
   error,
-  seedFor,
   onLeave,
   onTransferOwner,
   onDelete,
@@ -111,8 +110,6 @@ export function GroupManageSection({
   groupTitle: string;
   /** The members the owner may hand the group to (never the owner themself). */
   members: ManageMember[];
-  /** The member ball seed for a user id, like the sheet (T-1212). */
-  seedFor?: ((userId: string) => string) | undefined;
 }) {
   const [leaveConfirming, setLeaveConfirming] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -169,11 +166,7 @@ export function GroupManageSection({
               ) : (
                 members.map((member) => (
                   <View key={member.userId} className="flex-row items-center gap-2 py-1.5">
-                    <Avatar
-                      id={seedFor === undefined ? member.userId : seedFor(member.userId)}
-                      name={member.name}
-                      size={28}
-                    />
+                    <EntityAvatar person={member} size={28} />
                     <Text numberOfLines={1} className="min-w-0 flex-1 text-[15px] text-foreground">
                       {member.name}
                     </Text>

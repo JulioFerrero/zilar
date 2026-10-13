@@ -1,6 +1,6 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { Megaphone, X } from 'lucide-react';
-import { Avatar } from '../Avatar';
+import { EntityAvatar } from '../EntityAvatar';
 import { Button } from '../ui/button';
 
 /** The channel sheet's header: avatar, title, subscriber count and Close. */
@@ -15,7 +15,7 @@ export function ChannelHeader({
 }) {
   return (
     <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
-      <Avatar id={chat.id} name={chat.title} size={44} avatarUrl={chat.avatarUrl} />
+      <EntityAvatar chat={chat} size={44} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <div className="truncate text-[16px] font-semibold">{chat.title}</div>

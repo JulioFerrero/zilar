@@ -1,5 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Effect } from 'effect';
+import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,16 +10,16 @@ import { ProfileView } from '@/components/profile/profile-view';
 import { createPicturePicker, createAvatarFileUploader } from '@/components/settings/avatar-native';
 import type { PickedPicture } from '@/components/settings/avatar-native';
 import { friendlyAvatarError } from '@/components/settings/profile-logic';
+import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { StateMessage } from '@/components/ui/state-message';
-import { domainOfJid } from '@/lib/contacts-api';
+import { ICON } from '@/lib/colors';
 import { fromApi } from '@/lib/effect/api-effect';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { goBackOrHome } from '@/lib/navigation';
 import { getSessionToken } from '@/lib/session-token';
 import { ProfileApiError, type MyProfile } from '@/lib/profile-api';
 import { useProfileApi } from '@/components/settings/use-profile-api';
-import { useChatStore } from '@/store/chat-store-provider';
-import { personSeed } from '@zilar/chat-core';
 
 type ProfileStatus = 'loading' | 'ready' | 'error';
 
@@ -35,32 +36,27 @@ const sessionTokenEffect = Effect.tryPromise({
   catch: (cause) => cause,
 });
 
-export default function ProfileTabScreen() {
+export default function OwnProfileScreen() {
   return (
     <RequireAuth>
-      <ProfileTab />
+      <OwnProfile />
     </RequireAuth>
   );
 }
 
 /**
- * The Profile tab: the picture, name, presence, action keys and info card
- * (`ProfileView`), with the same loading and error states as
+ * The own profile screen, opened from the Settings profile card and from the
+ * `/profile` link (which redirects here). The picture, name, presence, action
+ * keys and info card (`ProfileView`), with the same loading and error states as
  * `settings/profile.tsx`. "Set photo" runs the existing avatar picker flow
  * from `avatar-control.tsx` (pick, transcode, upload); "Edit info" opens
- * `/settings/profile`; "Settings" jumps to the Settings tab.
+ * `/settings/profile`; "Settings" opens `/settings`, which also covers the
+ * cold-open case (a notification link lands here with no history to go back to).
  */
-function ProfileTab() {
+function OwnProfile() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { api } = useProfileApi();
-  // T-1212: the profile ball is seeded by the own bare JID (the chat list
-  // and the chat header seed the same way), derived from the user id when
-  // no JID is known yet.
-  const ownJid = useChatStore((state) => state.me?.jid ?? undefined);
-  const domain = domainOfJid(ownJid);
-  const seedFor =
-    domain === undefined ? undefined : (userId: string): string => personSeed(userId, domain);
   const [status, setStatus] = useState<ProfileStatus>('loading');
   const [profile, setProfile] = useState<MyProfile | null>(null);
   const [token, setToken] = useState<string | undefined>(undefined);
@@ -219,9 +215,12 @@ function ProfileTab() {
   return (
     <View
       className="flex-1 bg-background"
-      style={{ paddingTop: insets.top + 8, paddingBottom: 64 + 12 + insets.bottom + 16 }}
+      style={{ paddingTop: insets.top + 8, paddingBottom: 32 + insets.bottom }}
     >
-      <View className="flex-row items-center px-4 py-2">
+      <View className="flex-row items-center gap-1 px-2 py-2">
+        <IconButton label="Back" onPress={() => goBackOrHome(router)}>
+          <ChevronLeft size={24} color={ICON} />
+        </IconButton>
         <Text className="text-[28px] font-semibold leading-9 tracking-[-0.02em] text-foreground">
           Profile
         </Text>
@@ -241,7 +240,6 @@ function ProfileTab() {
               <ProfileView
                 profile={profile}
                 token={token}
-                seedFor={seedFor}
                 photoEdit={{
                   ...(staged === null ? {} : { stagedUri: staged.uri }),
                   busy: photoBusy,

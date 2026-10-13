@@ -10,7 +10,7 @@ import { failureOf, isWaiting } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { AddContactDialog } from '@/components/AddContactDialog';
-import { Avatar } from '@/components/Avatar';
+import { EntityAvatar } from '@/components/EntityAvatar';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 
@@ -225,7 +225,7 @@ function GroupHandleCard({ entry, onClose }: { entry: DirectoryEntry; onClose: (
     <Dialog open onClose={onClose} title={entry.title} ariaLabel={`Join ${entry.title}`} size="sm">
       <div className="text-center">
         <div className="flex justify-center">
-          <Avatar id={entry.id} name={entry.title} size={56} avatarUrl={entry.avatarUrl} />
+          <EntityAvatar chat={entry} size={56} />
         </div>
         <p className="mt-1 text-[14px] text-muted-foreground">@{entry.handle}</p>
         {entry.description !== null && entry.description !== '' && (

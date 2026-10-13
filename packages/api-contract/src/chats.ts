@@ -54,6 +54,12 @@ export const DmChatEntry = mutableStruct({
    * without archive.
    */
   deliveredUntil: Schema.optional(Schema.String),
+  /**
+   * T-1311: the peer's read mark for this DM, an archive id in the caller's
+   * own-message terms (`chat_reads`). Absent when the peer has not read, or
+   * the caller's own row is the only one.
+   */
+  readUntil: Schema.optional(Schema.String),
 });
 
 export type DmChatEntry = typeof DmChatEntry.Type;
@@ -92,6 +98,13 @@ export const GroupChatEntry = mutableStruct({
   unread: Schema.optional(Schema.Number),
   /** T-1198: the newest archived message, absent without archive. */
   lastMessage: Schema.optional(ChatLastMessage),
+  /**
+   * T-1318: when the group was created (or, for a joined group, the caller
+   * joined it), an ISO datetime. It rides a group with no `lastMessage` yet so
+   * the list can sort a just-created group first, like Telegram. Optional, so
+   * older payloads still parse.
+   */
+  createdAt: Schema.optional(Schema.String),
   /**
    * T-1229: the highest delivered mark of any other member, an archive id
    * in the caller's own-message terms. Absent when nobody confirmed yet or

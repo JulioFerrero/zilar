@@ -5,7 +5,7 @@ import { Effect } from 'effect';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { XmppCore } from '@zilar/xmpp-core';
 import { fromPromise, type CoreCtx, type CorePatch, type CoreState } from './ctx';
-import { recordRead } from './reads';
+import { applyChatReadMark, recordRead } from './reads';
 import { coreKind, sortMessages } from './rows';
 
 export const PREVIEW_HISTORY_MAX = 1;
@@ -148,7 +148,7 @@ export const loadOlderPage = (
       k.ingestHistoryEdits(page.messages);
       const older = page.messages
         .filter((message) => !k.isReactionOnly(message) && !k.isEditStanza(message))
-        .map((message) => k.toUiMessage(message, ctx.get().currentUserId));
+        .map((message) => k.toUiMessage(message, ctx.get().currentUserId, page.messages));
       k.resolvePendingEdits(chatId);
       const withEditsApplied = dedupePage(
         k.sameMessage,
@@ -169,6 +169,7 @@ export const loadOlderPage = (
       });
       ctx.cursors[chatId] = page.first;
       k.refreshEdits(chatId);
+      applyChatReadMark(ctx, chatId);
     }).pipe(
       // A failed page load leaves the cursor for a later retry.
       Effect.catchCause(() => Effect.void),
@@ -272,7 +273,7 @@ export const openHistory = (ctx: HistoryCtx, chatId: string): Effect.Effect<void
         k.ingestHistoryEdits(page.messages);
         const loaded = page.messages
           .filter((message) => !k.isReactionOnly(message) && !k.isEditStanza(message))
-          .map((message) => k.toUiMessage(message, ctx.get().currentUserId));
+          .map((message) => k.toUiMessage(message, ctx.get().currentUserId, page.messages));
         k.resolvePendingEdits(chatId);
         const withEditsApplied = dedupePage(
           k.sameMessage,
@@ -301,6 +302,7 @@ export const openHistory = (ctx: HistoryCtx, chatId: string): Effect.Effect<void
         });
         ctx.cursors[chatId] = page.first;
         k.refreshEdits(chatId);
+        applyChatReadMark(ctx, chatId);
         // The displayed marker goes out only for a chat that is open,
         // visible and focused: a page that lands after leaving must not
         // mark seen (UI-2).
@@ -337,10 +339,7 @@ export const openHistory = (ctx: HistoryCtx, chatId: string): Effect.Effect<void
 /** Loads the page before the oldest one loaded, if there is one. */
 export function loadOlder(ctx: HistoryCtx, chatId: string): void {
   const cursor = ctx.cursors[chatId];
-  if (cursor === undefined) {
-    return;
-  }
-  ctx.rt.fork(loadOlderPage(ctx, chatId, cursor));
+  if (cursor !== undefined) ctx.rt.fork(loadOlderPage(ctx, chatId, cursor));
 }
 
 /**

@@ -9,7 +9,7 @@ import { localpartFor } from '../xmpp/provisioning';
 import { albumKey } from './album-key';
 import { newestMessageForUserEffect, type ArchiveCandidate } from './archive-scan';
 import { resolveCandidate } from './candidates';
-import { buildPushPayload } from './payload';
+import { buildNativeWakePayload, buildPushPayload } from './payload';
 import type { PushServiceDeps } from './service';
 
 // A fixed clock so the mute windows are exact: every `muted_until` is built
@@ -126,6 +126,19 @@ async function groupGeneralRoomJid(context: TestContext, groupId: string): Promi
     throw new Error(`group ${groupId} was not seeded`);
   }
   return roomJid(context, row.roomLocalpart);
+}
+
+async function setGroupKind(
+  context: TestContext,
+  groupId: string,
+  kind: 'group' | 'channel',
+): Promise<void> {
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE groups SET kind = ${kind} WHERE id = ${groupId}`;
+    }),
+  );
 }
 
 async function addTopicMember(
@@ -255,6 +268,7 @@ describe('resolveCandidate', () => {
       status: 'ok',
       message: {
         chatJid: roomJid(context, topic.roomLocalpart),
+        chatKind: 'group',
         senderName: 'Other',
         place: 'Team › Backend',
         text: 'hello',
@@ -283,6 +297,7 @@ describe('resolveCandidate', () => {
       status: 'ok',
       message: {
         chatJid: peer,
+        chatKind: 'dm',
         senderName: 'Ana',
         place: 'Ana',
         text: 'my reply',
@@ -331,6 +346,7 @@ describe('resolveCandidate', () => {
     const payload = buildPushPayload(
       {
         chatJid: 'ana@zilar.localhost',
+        chatKind: 'dm',
         senderName: 'Ana',
         place: 'Ana',
         text: undefined,
@@ -380,11 +396,12 @@ describe('resolveCandidate', () => {
     const row = albumDmRow(userId, peer, 2);
     const delivered = {
       chatJid: peer,
+      chatKind: 'dm',
       senderName: 'Someone',
       place: 'Someone',
       text: undefined,
       albumId: 'alb-1',
-    };
+    } as const;
     const scanDeps: PushServiceDeps = {
       ...deps,
       archive: { query: () => Promise.resolve([row]), close: () => Promise.resolve() },
@@ -395,5 +412,53 @@ describe('resolveCandidate', () => {
 
     expect(scan.newest).toBeUndefined();
     expect(scanDeps.recentlyNotified.get('node-1')?.has('origin-2')).toBe(true);
+  });
+
+  it('marks a DM candidate as a dm', async () => {
+    const userId = await seedUser(context);
+    const peer = `ana@${context.config.xmpp.domain}`;
+    const row: ArchiveCandidate = {
+      owner: localpartFor(userId),
+      barePeer: peer,
+      kind: 'chat',
+      nick: '',
+      originId: 'origin-dm',
+      timestamp: 0,
+      text: 'hi',
+      xml: `<message type="chat" from="${peer}/phone"><body>hi</body></message>`,
+    };
+    const allowed: SearchOwner = { ...ownerFor(userId), peerNames: new Map([[peer, 'Ana']]) };
+
+    const verdict = await resolveCandidate(deps, userId, allowed, row);
+
+    expect(verdict).toMatchObject({ status: 'ok', message: { chatKind: 'dm' } });
+  });
+
+  it('marks a channel room as a channel and carries it in the native wake', async () => {
+    const userId = await seedUser(context);
+    const { groupId } = await seedGroup(context, userId, [{ userId, role: 'owner' }], [], {
+      title: 'News',
+    });
+    await setGroupKind(context, groupId, 'channel');
+    const topic = await seedTopic(context, groupId, userId, 'Feed', 'public');
+    const room = roomJid(context, topic.roomLocalpart);
+    const row = roomRow({ owner: room, nick: 'Other' });
+
+    const verdict = await resolveCandidate(deps, userId, ownerFor(userId), row);
+
+    expect(verdict).toMatchObject({ status: 'ok', message: { chatKind: 'channel' } });
+    if (verdict.status !== 'ok') {
+      return;
+    }
+    const wake = buildNativeWakePayload(
+      verdict.message,
+      { muted: false, visible: true, showPreviews: true },
+      context.config.xmpp.domain,
+    );
+    expect(wake).toMatchObject({
+      chatId: room,
+      chatKind: 'channel',
+      serverId: context.config.xmpp.domain,
+    });
   });
 });

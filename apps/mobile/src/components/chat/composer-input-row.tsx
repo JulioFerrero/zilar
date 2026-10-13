@@ -1,5 +1,5 @@
 import { lightToPlain } from '@zilar/chat-core';
-import { ArrowUp, Paperclip, Smile, X } from 'lucide-react-native';
+import { ArrowUp, Check, Paperclip, Smile, X } from 'lucide-react-native';
 import { Pressable, TextInput, View } from 'react-native';
 
 import { VoiceRecorderButton } from '@/components/chat/voice-recorder';
@@ -57,6 +57,7 @@ export function ReplyBar({ reply, onCancel }: { reply: ReplyRef; onCancel: () =>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Cancel reply"
+        hitSlop={8}
         onPress={onCancel}
         className="w-9 items-center justify-center active:bg-surface-raised"
       >
@@ -147,13 +148,18 @@ export function ComposerInputRow({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={editing ? 'Save edit' : 'Send message'}
+          hitSlop={8}
           onPress={onSend}
           onPressIn={() => setPressed(true)}
           onPressOut={() => setPressed(false)}
           className="h-9 w-9 items-center justify-center rounded-[10px]"
           style={[primaryKey, pressStyle(pressed, KEY_PRIMARY_PRESSED_SHADOW, reduceMotion)]}
         >
-          <ArrowUp size={20} color={ACCENT_FOREGROUND} />
+          {editing ? (
+            <Check size={20} color={ACCENT_FOREGROUND} />
+          ) : (
+            <ArrowUp size={20} color={ACCENT_FOREGROUND} />
+          )}
         </Pressable>
       ) : (
         <VoiceRecorderButton

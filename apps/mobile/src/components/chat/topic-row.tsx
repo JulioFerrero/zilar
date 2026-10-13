@@ -4,6 +4,7 @@ import { Pressable, View } from 'react-native';
 
 import { AiBadge } from '@/components/chat/ai-badge';
 import { plainPreviewBody } from '@/components/chat/markdown-decision';
+import { PreviewIcon } from '@/components/chat/preview-icon';
 import { Ticks } from '@/components/chat/ticks';
 import { PulseDot } from '@/components/chat/typing-dots';
 import { Text } from '@/components/ui/text';
@@ -152,10 +153,13 @@ export function TopicRow({
                 {deletedPreview}
               </Text>
             ) : (
-              <Text numberOfLines={1} className="mr-2 flex-1 text-[14px] text-muted-foreground">
-                {preview.prefix ? <Text color="#d4d4d4">{preview.prefix}</Text> : null}
-                {body}
-              </Text>
+              <View className="mr-2 min-w-0 flex-1 flex-row items-center gap-1.5">
+                <PreviewIcon kind={preview.kind} />
+                <Text numberOfLines={1} className="flex-1 text-[14px] text-muted-foreground">
+                  {preview.prefix ? <Text color="#d4d4d4">{preview.prefix}</Text> : null}
+                  {body}
+                </Text>
+              </View>
             )}
             {chat.unread > 0 ? (
               <TopicUnreadBadge count={chat.unread} muted={chat.muted} />

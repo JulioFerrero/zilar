@@ -354,6 +354,38 @@ describe('group invite links', () => {
     expect(row!.uses).toBe(0);
   });
 
+  it('refuses a link join by a user the owner blocked, consuming no use (T-1286, SG-8)', async () => {
+    const owner = await bootstrapUser(context, app, 'owner-block-link@example.com');
+    const blocked = await bootstrapUser(context, app, 'blocked-link@example.com');
+    const groupId = await lonelyGroup(owner);
+    const link = (await (
+      await createLink(owner.cookie, groupId, { maxUses: 1 })
+    ).json()) as CreatedLinkBody;
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO user_blocks (user_id, blocked_user_id)
+          VALUES (${owner.id}, ${blocked.id})`;
+      }),
+    );
+
+    // The same 404 `invalid_link` an unusable link answers: a block is never
+    // an oracle, and the use stays untouched.
+    const response = await join(link.token, blocked.cookie);
+    expect(response.status).toBe(404);
+    expect(errorOf(await response.json()).code).toBe('invalid_link');
+
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ uses: number }>`
+          SELECT uses FROM group_invite_links WHERE id = ${link.id}
+        `;
+      }),
+    );
+    expect(row!.uses).toBe(0);
+  });
+
   it('answers the identical 404 for unknown, expired, revoked and exhausted links', async () => {
     const owner = await bootstrapUser(context, app, 'owner@example.com');
     const friend = await bootstrapUser(context, app, 'friend@example.com');

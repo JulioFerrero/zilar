@@ -5,7 +5,7 @@ import { ActivityIndicator, View } from 'react-native';
 
 import { LoadingScreen } from '@/auth/RequireAuth';
 import { useSession } from '@/auth/session';
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { describeJoinError, directorySubtitle } from '@/components/directory/explore-helpers';
 import {
   handleJoinLabel,
@@ -178,7 +178,7 @@ function HandleCard({ handle }: { handle: string | undefined }) {
         )}
         {view.state === 'ready' && (
           <>
-            <Avatar id={view.entry.id} name={view.entry.title} size={56} />
+            <EntityAvatar chat={view.entry} size={56} />
             <Text className="mt-3 text-center text-[20px] font-semibold text-foreground">
               {view.entry.title}
             </Text>

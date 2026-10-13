@@ -98,7 +98,7 @@ export function ApprovalsPage() {
     <SettingsShell
       title="Approvals"
       subtitle="Requests from your AIs that are waiting for you."
-      onBack={() => navigate('/')}
+      onBack={() => navigate('/settings')}
     >
       <div className={SETTINGS_COLUMN}>
         {status === 'ready' && ordered.length > 0 && (

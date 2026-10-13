@@ -719,6 +719,44 @@ describe('sendSticker (core)', () => {
     // only one: no stale second entry.
     expect(ctx.pendingOutgoing.get(signature)).toHaveLength(1);
   });
+
+  it('a failed sticker gets status failed, and a retry returns it to sending (UI-14)', async () => {
+    const { ctx, state } = harness({
+      core: { sendMessage: vi.fn(async () => Promise.reject(new Error('offline'))) },
+    });
+    sendSticker(ctx, ANA, sticker);
+    await flush();
+    const failed = state().messagesByChat[ANA]?.at(-1);
+    expect(failed).toMatchObject({ status: 'failed', failed: true, failureReason: 'network' });
+
+    retrySticker(ctx, ANA, failed?.id ?? '');
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sending');
+  });
+
+  it('a second Retry on the same sticker does not double-send (F1)', async () => {
+    // Every sibling retry refuses unless the bubble is `failed`; without the
+    // same guard here a second store call in the same tick forks a second
+    // send, and the peer receives two stickers.
+    const { ctx, state } = harness({
+      core: { sendMessage: vi.fn(async () => Promise.reject(new Error('offline'))) },
+    });
+    sendSticker(ctx, ANA, sticker);
+    await flush();
+    const failed = state().messagesByChat[ANA]?.at(-1);
+    expect(failed?.status).toBe('failed');
+
+    const sendMessage = vi.fn(async () => ({ id: 'srv-retry' }));
+    ctx.core = { sendMessage } as unknown as XmppCore;
+    const id = failed?.id ?? '';
+    retrySticker(ctx, ANA, id);
+    // The first click already moved the bubble back to `sending`; a second
+    // store call before the fork settles must return instead of sending again.
+    expect(state().messagesByChat[ANA]?.at(-1)?.status).toBe('sending');
+    retrySticker(ctx, ANA, id);
+    await flush();
+
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('sendAttachment (core)', () => {

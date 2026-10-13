@@ -3,14 +3,11 @@ import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { AlbumGrid } from '@/components/chat/album-grid';
-import {
-  AttachmentFileRow,
-  AttachmentImage,
-  AttachmentViewer,
-} from '@/components/chat/attachment-message';
+import { AttachmentImage, AttachmentViewer } from '@/components/chat/attachment-message';
+import { AttachmentFileRow } from '@/components/chat/file-bubble';
 import { AttachmentVideo } from '@/components/chat/attachment-video';
 import { isGifVideoAttachment } from '@/lib/attachments';
-import { BUBBLE_COLORS, FOREGROUND, SEEN } from '@/lib/colors';
+import { BUBBLE_COLORS, FOREGROUND, MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { Text } from '@/components/ui/text';
 import { Ticks } from '@/components/chat/ticks';
 import { mobileUploadOf } from '@/lib/types';
@@ -84,7 +81,7 @@ export function AttachmentBody({
   // outgoing bubble is light, so the caption and the meta line need the dark
   // shades the plain text bubble uses, not the app's near-white foreground.
   const textColor = outgoing ? OUTGOING_TEXT_COLOR : FOREGROUND;
-  const metaColor = outgoing ? BUBBLE_COLORS.outgoingMeta : BUBBLE_COLORS.incomingMeta;
+  const metaColor = outgoing ? BUBBLE_COLORS.outgoingMeta : MUTED_FOREGROUND;
   const upload = mobileUploadOf(message);
   const uploading = message.status === 'sending' && message.failed !== true;
   const failed = message.failed === true;
@@ -104,6 +101,7 @@ export function AttachmentBody({
       <AttachmentImage
         attachment={attachment}
         chatId={message.chatId}
+        outgoing={outgoing}
         trustedHosts={hosts}
         localUri={upload.localUri}
         uploading={uploading}
@@ -115,6 +113,7 @@ export function AttachmentBody({
     ) : attachment.kind === 'file' && !gifVideo ? (
       <AttachmentFileRow
         attachment={attachment}
+        outgoing={outgoing}
         trusted={isFileTrusted(attachment.url, hosts)}
         uploading={uploading}
         progress={upload.uploadProgress}
@@ -156,11 +155,11 @@ export function AttachmentBody({
       ) : null}
       <View className="mt-1 flex-row items-center justify-end gap-1">
         {message.edited === true ? (
-          <Text className="font-mono text-[10px]" color={metaColor}>
+          <Text className="font-mono text-[11px]" color={metaColor}>
             edited
           </Text>
         ) : null}
-        <Text className="font-mono text-[10px]" color={metaColor}>
+        <Text className="font-mono text-[11px]" color={metaColor}>
           {formatTime(message.createdAt)}
         </Text>
         {outgoing ? (
@@ -221,7 +220,7 @@ function CancelOrRetry({
         onPress={onRetry}
         className="mt-1 rounded-[10px] bg-danger/20 px-3 py-1.5 active:opacity-80"
       >
-        <Text className="text-[13px] font-semibold text-danger">Couldn't send. Retry</Text>
+        <Text className="text-[13px] font-semibold text-danger">Could not send. Try again.</Text>
       </Pressable>
     );
   }

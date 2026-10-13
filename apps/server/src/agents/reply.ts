@@ -15,6 +15,7 @@ export type {
 export {
   BUDGET_EXCEEDED_REPLY,
   ChatCompletionError,
+  GROUP_FAILURE_REPLY,
   LITELLM_CHAT_TIMEOUT_MS,
   PROVIDER_KEY_REJECTED_REPLY,
   REPLY_MAX_TOKENS,
@@ -26,7 +27,7 @@ export {
   TRANSIENT_FAILURE_REPLY,
 } from './tool-loop';
 
-export { mapFailureToReply } from './tool-exec';
+export { failureLogFields, mapFailureToReply } from './tool-exec';
 
 export type { DmTurnDeps, DmTurnOutcome } from './dm-turn';
 export {

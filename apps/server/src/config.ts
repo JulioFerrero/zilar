@@ -269,6 +269,18 @@ const serverConfigSchema = Schema.Struct({
   // change its markup at any time; `none` unregisters `web.search`.
   WEB_SEARCH_PROVIDER: literalWithDefault(['duckduckgo-html', 'none'] as const, 'duckduckgo-html'),
   RUNNER_HUB_PORT: portSchema('3189'),
+  // SIGTERM drain (T-1316): how long the server keeps serving after it gets a
+  // signal and `/health` reports draining, before it steps down the leader and
+  // closes. Milliseconds, 0 to 60000. Default 5000. Tests set 0.
+  SHUTDOWN_DRAIN_MS: withDefault(
+    Schema.String.pipe(
+      Schema.check(Schema.isPattern(/^\d+$/)),
+      Schema.decodeTo(Schema.Int, { decode: toInt, encode: toText }),
+      Schema.check(Schema.isGreaterThanOrEqualTo(0)),
+      Schema.check(Schema.isLessThanOrEqualTo(60000)),
+    ),
+    '5000',
+  ),
 });
 
 type RawServerConfig = Schema.Schema.Type<typeof serverConfigSchema>;

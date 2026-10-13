@@ -1,9 +1,9 @@
-import { type UiMessage, type UiReaction } from '@zilar/chat-core';
+import { canAct, type UiMessage, type UiReaction } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import * as Clipboard from 'expo-clipboard';
-import * as Haptics from 'expo-haptics';
 
 import { useAlbumMembers } from '@/components/chat/album-members';
+import { tap } from '@/components/chat/haptics';
 import { MessageActionsSheet } from '@/components/chat/message-actions-sheet';
 import { useChatStore } from '@/store/chat-store-provider';
 
@@ -45,11 +45,7 @@ function copyMessageText(text: string): void {
 // The haptic is a native call the press does not wait for; it starts here,
 // in the press handler, and a failed haptic is ignored.
 export function openMessageMenu(setMenuOpen: (open: boolean) => void): void {
-  Effect.runFork(
-    Effect.tryPromise(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)).pipe(
-      Effect.ignore,
-    ),
-  );
+  tap();
   setMenuOpen(true);
 }
 
@@ -106,12 +102,17 @@ export function BubbleActionsSheet({
     message.attachment === undefined &&
     message.image === undefined &&
     message.card === undefined;
+  // A message with no wire id yet (still sending, or a failed send) is refused
+  // by React, Edit and Delete: the sheet disables them instead of letting the
+  // tap do nothing (UI-7).
+  const canActNow = canAct(message);
   return (
     <MessageActionsSheet
       visible={visible}
       canCopy={canCopy}
-      canEdit={canEdit}
-      canDelete={canDelete || canDeleteForMe}
+      canEdit={canEdit && canActNow}
+      canDelete={(canDelete || canDeleteForMe) && canActNow}
+      canReact={canActNow}
       deleteLabel={isDm ? (own ? 'Delete' : 'Delete for me') : 'Delete for everyone'}
       deleteTitle={deleteTitle}
       ownDelete={isDm && own}

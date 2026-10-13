@@ -7,7 +7,7 @@ import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { ChannelMembers } from '@/components/chat/channel-members';
 import { InviteLinksSheet } from '@/components/chat/invite-links-sheet';
 import {
@@ -26,9 +26,7 @@ import {
   mayManageChannel,
 } from '@/lib/channels';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { domainOfJid } from '@/lib/contacts-api';
 import { useChatStore } from '@/store/chat-store-provider';
-import { personSeed } from '@zilar/chat-core';
 
 type ChannelScreenProps = {
   groupId: string;
@@ -158,12 +156,6 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
   const flipRole = (userId: string, role: 'admin' | 'member') => {
     changeRole({ userId, role });
   };
-  // T-1212: member balls are seeded by the bare JID, derived from the user
-  // id the way the mention builder does (the domain from my own JID); the
-  // member rows carry no JID, so this is the only form available here.
-  const domain = domainOfJid(useChatStore((state) => state.me?.jid ?? undefined));
-  const seedFor =
-    domain === undefined ? undefined : (userId: string): string => personSeed(userId, domain);
 
   const leave = () => {
     if (leaving) {
@@ -194,7 +186,7 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
           onPress={() => router.push({ pathname: '/chat/[id]', params: { id: feedId } })}
           className="mt-4 flex-row items-center gap-3 rounded-2xl bg-surface px-4 py-3 active:bg-surface-raised"
         >
-          <Avatar id={feedId} name={title} size={40} />
+          <EntityAvatar chat={{ id: feedId, title, avatarUrl: feedRow?.avatarUrl }} size={40} />
           <View className="min-w-0 flex-1">
             <Text numberOfLines={1} className="text-[15px] font-semibold text-foreground">
               Feed
@@ -216,7 +208,6 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
           roleBusy={roleBusy}
           roleError={roleError}
           onFlipRole={flipRole}
-          seedFor={seedFor}
         />
 
         {isManager ? (

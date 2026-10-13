@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useGlobalSearchParams, useRouter } from 'expo-router';
 import { Bell } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Linking, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { runApi } from '@zilar/api-contract';
@@ -21,6 +21,7 @@ import { interruptFiber } from '@/lib/effect/timers';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { NATIVE_PUSH_USER_AGENT, registerNativePush, type SetPushPair } from '@/lib/push/native';
 import { getSessionToken } from '@/lib/session-token';
+import { ENV_MOCK, mockParamAllowed, mockToken } from '@/mock/gate';
 import { useChatStore } from '@/store/chat-store-provider';
 
 type PermissionView = 'enabled' | 'not-enabled' | 'blocked';
@@ -51,12 +52,54 @@ function permissionViewOf(permission: Notifications.PermissionResponse): Permiss
   return permission.canAskAgain ? 'not-enabled' : 'blocked';
 }
 
-function pushClient() {
+/** The production push client: bearer auth, `fetch`, the build-time API URL. */
+function createRealPushClient() {
   return createApiClient({ getToken: getSessionToken, fetchImpl: fetch, apiUrl: API_URL }).push;
+}
+
+/** Builds the mock-mode push client on the shared mock backend, behind a
+ * literal build-time condition: Metro folds it to `false` in a release build,
+ * so the mock module stays out of the bundle (the `use-ais-api` recipe). */
+function createMockPushClient() {
+  if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
+    return createApiClient({ getToken: mockToken, fetchImpl: mockFetch, apiUrl: API_URL }).push;
+  }
+  throw new Error('The mock API is not part of this build');
+}
+
+/** The mock gate the sibling `use-*-api` hooks use: the route's `?mock=` param
+ * or the bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env, with `false`/`0`/empty off. */
+function notificationsMockActive(
+  envMock: string | undefined,
+  params: Record<string, string | string[] | undefined>,
+  paramAllowed: boolean,
+): boolean {
+  const rawParam = params['mock'];
+  const param = paramAllowed ? (Array.isArray(rawParam) ? rawParam[0] : rawParam) : undefined;
+  const requested = param !== undefined ? param : envMock;
+  if (requested === undefined || requested === '' || requested === '0') {
+    return false;
+  }
+  return requested !== 'false';
+}
+
+/** Picks the real push client or the mock one from the route param or the env. */
+function usePushClient() {
+  const params = useGlobalSearchParams();
+  const envMock = ENV_MOCK;
+  const mock = notificationsMockActive(
+    envMock,
+    params,
+    mockParamAllowed({ dev: __DEV__, envMock }),
+  );
+  return useMemo(() => (mock ? createMockPushClient() : createRealPushClient()), [mock]);
 }
 
 function NotificationsSettings() {
   const router = useRouter();
+  const push = usePushClient();
   const setPushPair = useChatStore((state) => state.setPushPair);
   const [status, setStatus] = useState<PageStatus>('loading');
   const [permission, setPermission] = useState<PermissionView>('not-enabled');
@@ -76,7 +119,7 @@ function NotificationsSettings() {
             try: () => Notifications.getPermissionsAsync(),
             catch: (error) => error,
           }),
-          fromApi(() => runApi(pushClient().settings())),
+          fromApi(() => runApi(push.settings())),
         ],
         { concurrency: 'unbounded' },
       ).pipe(
@@ -98,7 +141,7 @@ function NotificationsSettings() {
     return () => {
       interruptFiber(fiber);
     };
-  }, []);
+  }, [push]);
 
   useFocusEffect(load);
 
@@ -134,7 +177,7 @@ function NotificationsSettings() {
       setShowPreviews(value);
     }).pipe(
       Effect.andThen(
-        fromApi(() => runApi(pushClient().updateSettings({ payload: { showPreviews: value } }))),
+        fromApi(() => runApi(push.updateSettings({ payload: { showPreviews: value } }))),
       ),
       Effect.tap((settings) => Effect.sync(() => setShowPreviews(settings.showPreviews))),
       Effect.catch(() =>
@@ -165,14 +208,14 @@ function NotificationsSettings() {
       Effect.andThen((token) =>
         fromApi(() =>
           runApi(
-            pushClient().subscribe({
+            push.subscribe({
               payload: { kind: 'fcm', token, userAgent: NATIVE_PUSH_USER_AGENT },
             }),
           ),
         ),
       ),
       Effect.andThen((registration) =>
-        fromApi(() => runApi(pushClient().test({ payload: { subscriptionId: registration.id } }))),
+        fromApi(() => runApi(push.test({ payload: { subscriptionId: registration.id } }))),
       ),
       Effect.tap(() => Effect.sync(() => setTestResult('sent'))),
       Effect.catch(() => Effect.sync(() => setTestError(TEST_ERROR))),

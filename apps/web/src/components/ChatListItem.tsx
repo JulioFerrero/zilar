@@ -3,16 +3,29 @@ import {
   lightToPlain,
   markdownToPlain,
   previewBody,
+  previewKind,
   previewPrefix,
   shouldRenderMarkdown,
   type ChatSummary,
+  type PreviewKind,
   type UiMessage,
 } from '@zilar/chat-core';
-import { Megaphone, MoreHorizontal, Pin, VolumeX } from 'lucide-react';
+import {
+  File,
+  Image as ImageIcon,
+  Images,
+  Megaphone,
+  Mic,
+  MoreHorizontal,
+  Paperclip,
+  Pin,
+  VolumeX,
+  type LucideIcon,
+} from 'lucide-react';
 import { memo, useState } from 'react';
 import { Link } from 'react-router';
 import { AiBadge } from './AiBadge';
-import { Avatar } from './Avatar';
+import { EntityAvatar } from './EntityAvatar';
 import { ChatActionsMenu } from './ChatActionsMenu';
 import { MessageTicks } from './MessageTicks';
 import { Badge } from './ui/badge';
@@ -26,6 +39,15 @@ import { cn } from '@/lib/utils';
 
 const EMPTY_MESSAGES: UiMessage[] = [];
 const EMPTY_NAMES: string[] = [];
+
+/** The lucide icon for each `previewKind`, in the kind's own order. */
+const PREVIEW_ICONS: Record<PreviewKind, LucideIcon> = {
+  photo: ImageIcon,
+  album: Images,
+  voice: Mic,
+  file: Paperclip,
+  card: File,
+};
 
 export const ChatListItem = memo(function ChatListItem({
   chat,
@@ -52,6 +74,8 @@ export const ChatListItem = memo(function ChatListItem({
   const options = { isGroup: chat.kind === 'group', currentUserId };
   const prefix = previewPrefix(preview, options);
   const rawBody = previewBody(preview);
+  const kind = previewKind(preview);
+  const KindIcon = kind === undefined ? undefined : PREVIEW_ICONS[kind];
   // Only an incoming AI reply is Markdown (shouldRenderMarkdown), in an AI
   // chat or in a group; your own message previews literally, exactly as its
   // bubble shows it.
@@ -65,10 +89,10 @@ export const ChatListItem = memo(function ChatListItem({
   const writing = chat.isAI && (hasDraft || typing !== undefined);
   const typingText = typing === undefined ? undefined : `${typing}…`;
   const [menuOpen, setMenuOpen] = useState(false);
-  // T-0124: channels get a megaphone avatar badge and the CHANNEL tag (as in
+  // T-0124: channels get a megaphone avatar badge and a Channel label (as in
   // the mockup); the header shows "N subscribers".
-  // T-0164: public groups and channels get a PUBLIC tag next to the title,
-  // in the same tag style.
+  // T-0164: public groups and channels get a Public label next to the title.
+  // WUX-43: both are sentence-case muted text, not role-chip-style tags.
   const isChannel = chat.chatKind === 'channel';
   const isPublic = chat.visibility === 'public';
 
@@ -88,10 +112,8 @@ export const ChatListItem = memo(function ChatListItem({
             'bg-surface-raised shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] [--avatar-ring:var(--surface-raised)]',
         )}
       >
-        <Avatar
-          id={chat.id}
-          name={chat.title}
-          avatarUrl={chat.avatarUrl}
+        <EntityAvatar
+          chat={chat}
           size={isWide ? 44 : 52}
           online={chat.online === true}
           ai={chat.isAI}
@@ -112,14 +134,10 @@ export const ChatListItem = memo(function ChatListItem({
             </span>
             {chat.isAI && <AiBadge />}
             {isChannel && (
-              <span className="font-mono shrink-0 rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
-                CHANNEL
-              </span>
+              <span className="shrink-0 text-[12px] leading-5 text-muted-foreground">Channel</span>
             )}
             {isPublic && (
-              <span className="font-mono shrink-0 rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
-                PUBLIC
-              </span>
+              <span className="shrink-0 text-[12px] leading-5 text-muted-foreground">Public</span>
             )}
             <span className="ml-auto flex shrink-0 items-center gap-2 pl-1.5">
               {chat.muted && (
@@ -148,9 +166,14 @@ export const ChatListItem = memo(function ChatListItem({
                 <span className="text-danger">Draft:</span> {draftLine}
               </span>
             ) : (
-              <span className="truncate text-[13px] leading-5 text-muted-foreground">
-                {prefix.length > 0 && <span className="text-foreground">{prefix}</span>}
-                {body}
+              <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-5 text-muted-foreground">
+                {KindIcon !== undefined && (
+                  <KindIcon className="size-3.5 shrink-0" aria-hidden="true" />
+                )}
+                <span className="truncate">
+                  {prefix.length > 0 && <span className="text-foreground">{prefix}</span>}
+                  {body}
+                </span>
               </span>
             )}
             {chat.unread > 0 ? (

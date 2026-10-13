@@ -2,7 +2,7 @@ import { Brain, Check, Lock } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
@@ -74,7 +74,6 @@ export function TopicInfoSheet({
   onRetryRoles,
   onRetryGroupRoles,
   onOpenAiMemory,
-  seedFor,
 }: {
   chat: ChatSummary | null;
   groupTitle: string;
@@ -109,11 +108,6 @@ export function TopicInfoSheet({
   /** Opens the "What <AI> remembers" sheet for an AI. When unset the AI
    * rows show no memory button. */
   onOpenAiMemory?: (ai: { id: string; name: string }) => void;
-  /**
-   * T-1212: the member ball seed for a user id (the bare JID derived the
-   * mention-builder way). Absent paints the raw user id.
-   */
-  seedFor?: ((userId: string) => string) | undefined;
 }) {
   const topic = chat?.topic;
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -137,7 +131,7 @@ export function TopicInfoSheet({
       {chat !== null && topic !== undefined ? (
         <View className="gap-3 py-2">
           <View className="flex-row items-center gap-3">
-            <Avatar id={chat.id} name={chat.title} size={44} />
+            <EntityAvatar chat={chat} size={44} />
             <View className="min-w-0 flex-1">
               <Text numberOfLines={1} className="text-[17px] font-semibold text-foreground">
                 {chat.title}
@@ -158,11 +152,7 @@ export function TopicInfoSheet({
             {topic.visibility === 'private'
               ? members.map((member) => (
                   <View key={member.userId} className="flex-row items-center gap-2 py-1.5">
-                    <Avatar
-                      id={seedFor === undefined ? member.userId : seedFor(member.userId)}
-                      name={member.name}
-                      size={28}
-                    />
+                    <EntityAvatar person={{ userId: member.userId, name: member.name }} size={28} />
                     <Text numberOfLines={1} className="flex-1 text-[15px] text-foreground">
                       {member.name}
                     </Text>
@@ -177,7 +167,7 @@ export function TopicInfoSheet({
             </Text>
             {ais.map((ai) => (
               <View key={ai.id} className="flex-row items-center gap-2 py-1.5">
-                <Avatar id={ai.id} name={ai.name} size={28} ai />
+                <EntityAvatar person={{ id: ai.id, name: ai.name }} size={28} ai />
                 <Text numberOfLines={1} className="flex-1 text-[15px] text-foreground">
                   {ai.name}
                 </Text>

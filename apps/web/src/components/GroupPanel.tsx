@@ -1,5 +1,4 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { groupSeed, personSeed } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { Image, X } from 'lucide-react';
@@ -17,7 +16,7 @@ import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { PinsSection } from './PinsPanel';
 import { ChatBackgroundDialog } from './ChatBackgroundDialog';
 import { FieldError } from './ais/AiPageShell';
-import { Avatar } from './Avatar';
+import { EntityAvatar } from './EntityAvatar';
 import { Button } from './ui/button';
 import { ListRow } from './ui/list-row';
 import { Sheet } from './ui/sheet';
@@ -37,22 +36,12 @@ import type { PanelFailure } from './panels/groupPanelOps';
  * The group info panel: the people, the AIs (with their owner), add one of my
  * AIs, remove one. It slides in from the right on wide screens and fills the
  * screen on narrow ones, opened with `?panel=group` (T-0055).
- * The header avatar is the group's ball: the General topic's room JID
- * resolved from the painted chats, else the open row's id.
  */
 export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => void }) {
   const storeApi = useChatStoreApi();
 
   const info = useChatSelector((s) => s.groupInfo(chat.id));
-  const chats = useChatSelector((s) => s.chats);
   const me = useChatSelector((s) => s.currentUserId);
-  // T-1209: member balls are seeded by the bare JID, derived from the user
-  // id the way the mention builder does (the domain from my own JID); the
-  // members list carries no JID, so this is the only form available here.
-  const ownJid = useChatSelector((s) => s.me?.jid);
-  const domain = ownJid?.slice(ownJid.indexOf('@') + 1);
-  const seedFor = (userId: string): string =>
-    domain === undefined || domain === '' ? userId : personSeed(userId, domain);
   const meRole = info?.members.find((member) => member.userId === me)?.role;
   const isManager = meRole === 'owner' || meRole === 'admin';
   const memberCount =
@@ -154,13 +143,6 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
   const ownerName = (ai: GroupAi): string =>
     info?.members.find((member) => member.userId === ai.ownerId)?.name ?? 'someone';
   const isOwner = meRole === 'owner';
-  // T-1209: the header ball is the group's ball: the General topic's room
-  // JID from the painted chats, else the open row's id.
-  const topicsOfGroup = chats.filter((entry) => entry.groupId === chat.groupId);
-  const generalId = (
-    topicsOfGroup.find((entry) => entry.topic?.isGeneral === true) ?? topicsOfGroup[0]
-  )?.id;
-  const headerSeed = chat.groupId === undefined ? chat.id : (generalId ?? chat.id);
   // T-1249: the panel can be handed the group's General topic row, whose
   // `title` is the topic name ("General"), so show the group title instead.
   const panelTitle = chat.groupTitle ?? chat.title;
@@ -168,7 +150,10 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
   return (
     <Sheet open onClose={onClose} ariaLabel={`${panelTitle} info`}>
       <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
-        <Avatar id={groupSeed(headerSeed)} name={panelTitle} size={44} avatarUrl={chat.avatarUrl} />
+        <EntityAvatar
+          chat={{ id: chat.id, title: panelTitle, avatarUrl: chat.avatarUrl }}
+          size={44}
+        />
         <div className="min-w-0 flex-1">
           <div className="truncate text-[16px] font-semibold">{panelTitle}</div>
           <p className="text-[13px] text-muted-foreground">
@@ -199,7 +184,6 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                 title={info.title}
                 currentUrl={info.avatarUrl}
                 chatId={chat.id}
-                generalRoomJid={generalId}
               />
             )}
             <GroupMembersSection
@@ -222,7 +206,6 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
                 }))}
                 rolesState={rolesState}
                 onReload={refreshRoles}
-                seedFor={seedFor}
               />
             )}
 

@@ -25,17 +25,26 @@ export function ChatShell() {
   );
   const navigate = useNavigate();
   const isWide = useMediaQuery('(min-width: 900px)');
+  // WUX-33: on a wide layout Esc closes the open chat too. Dialogs and menus
+  // swallow their own Escape before window listeners, but the search box does
+  // not, so skip while a search (text or a scoped chat) is open: the first
+  // Escape clears it, the next closes the chat.
+  const searchOpen = useChatSelector((s) => s.search.trim() !== '' || s.searchChat !== undefined);
   useChatFolders();
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape' && !isWide && chatId !== undefined) {
-        navigate('/');
+      if (event.key !== 'Escape' || chatId === undefined) {
+        return;
       }
+      if (isWide && searchOpen) {
+        return;
+      }
+      navigate('/');
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isWide, chatId, navigate]);
+  }, [isWide, chatId, navigate, searchOpen]);
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-page wide:gap-3 wide:p-3">

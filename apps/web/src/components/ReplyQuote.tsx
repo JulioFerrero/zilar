@@ -1,35 +1,56 @@
-import type { ReplyRef } from '@zilar/chat-core';
+import { replyQuoteContent, senderColor, type UiMessage } from '@zilar/chat-core';
+import { useChatSelector } from '@/store/ChatStoreProvider';
+
+/** Our own replies keep the accent instead of a sender colour. */
+const ACCENT = 'var(--accent)';
 
 /**
- * The snapshot of a replied-to message above a bubble. With `onOpen` it is a
- * button that jumps to the original (WUX-13); without it, a plain block.
+ * The snapshot of the replied-to message above a bubble: the name and the left
+ * bar use the replied-to sender's colour (the accent for our own messages), and
+ * the excerpt falls back to a media label ("Photo", "Voice message", …) when the
+ * replied-to message has no text. With `onOpen` it is a button that jumps to the
+ * original (WUX-13); without it, a plain block.
  */
-export function ReplyQuote({ quote, onOpen }: { quote: ReplyRef; onOpen?: () => void }) {
-  const content = (
+export function ReplyQuote({ message, onOpen }: { message: UiMessage; onOpen?: () => void }) {
+  const quote = message.replyTo;
+  // The wire reply carries no name: resolve the target from the loaded history.
+  const referenced = useChatSelector((state) =>
+    quote === undefined
+      ? undefined
+      : state.messagesByChat[message.chatId]?.find((item) => item.id === quote.id),
+  );
+  const currentUserId = useChatSelector((state) => state.currentUserId);
+  if (quote === undefined) {
+    return null;
+  }
+  const content = replyQuoteContent(quote, referenced, currentUserId);
+  const color = content.own ? ACCENT : senderColor(content.senderId);
+
+  const block = (
     <>
-      <span className="w-[3px] shrink-0 bg-[#333333]" aria-hidden="true" />
+      <span className="w-[3px] shrink-0" style={{ backgroundColor: color }} aria-hidden="true" />
       <div className="min-w-0 px-2 py-1">
-        <div className="truncate text-[13px] leading-4 font-semibold text-[#d4d4d4]">
-          {quote.senderName}
+        <div className="truncate text-[13px] leading-4 font-semibold" style={{ color }}>
+          {content.senderName}
         </div>
-        {quote.text !== undefined && (
-          <div className="truncate text-[13px] leading-4 text-muted-foreground">{quote.text}</div>
+        {content.text !== undefined && (
+          <div className="truncate text-[13px] leading-4 text-muted-foreground">{content.text}</div>
         )}
       </div>
     </>
   );
 
   if (onOpen === undefined) {
-    return <div className="mb-1 flex overflow-hidden rounded-md bg-surface/70">{content}</div>;
+    return <div className="mb-1 flex overflow-hidden rounded-md bg-surface/70">{block}</div>;
   }
   return (
     <button
       type="button"
       onClick={onOpen}
-      aria-label={`Go to the message from ${quote.senderName}`}
+      aria-label={`Go to the message from ${content.senderName}`}
       className="mb-1 flex w-full overflow-hidden rounded-md bg-surface/70 text-left transition-colors hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
     >
-      {content}
+      {block}
     </button>
   );
 }

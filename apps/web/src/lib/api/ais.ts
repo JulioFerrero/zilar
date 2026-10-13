@@ -169,6 +169,15 @@ export async function deleteConnection(id: string): Promise<void> {
   await callApi((client) => client.connections.remove({ params: { id } }));
 }
 
+// T-1292: replaces the key of an existing connection in place, so the AIs using
+// it keep working. The server clears their `litellm_model_id`, so the model is
+// registered again on their next turn. The key is trimmed like at create.
+export function replaceConnectionKey(id: string, key: string): Promise<Connection> {
+  return callApi((client) =>
+    client.connections.update({ params: { id }, payload: { key: key.trim() } }),
+  );
+}
+
 // --- Approvals (T-0076) ---------------------------------------------------
 // The wire contract lives in apps/server/src/approvals/api.ts and
 // service.ts. Dates arrive as ISO strings; we keep them as strings so the

@@ -1,22 +1,11 @@
 import { Effect } from 'effect';
-import type { ChatMessage } from '@zilar/xmpp-core';
-import { modelNameForAi } from '../../ai/model-entry';
-import { ensureAiModel, type AiServiceDeps } from '../../ais/service';
-import type { KeyCipher } from '../../connections/crypto';
-import {
-  buildGroupMessages,
-  displayNameOf,
-  DM_HISTORY_MESSAGE_LIMIT,
-  normBareJid,
-  type ChatCompletionMessage,
-} from '../context';
+import { type AiServiceDeps } from '../../ais/service';
+import { displayNameOf, normBareJid, type ChatCompletionMessage } from '../context';
 import { finishDelegation } from '../delegation/service';
-import { mapFailureToReply, runGroupTurn, type ExecuteToolCall } from '../reply';
-import { buildGroupTools } from '../tools';
+import { GROUP_FAILURE_REPLY, mapFailureToReply, type ExecuteToolCall } from '../reply';
 import {
   errorName,
   isAiSender,
-  rememberRoomSentId,
   toRedactedError,
   type AgentGatewayDeps,
   type AiSession,
@@ -25,17 +14,11 @@ import {
   type RoomRound,
 } from './contracts';
 import { checkRoomLimits, sendRoomRateNotice } from './room-limits';
-import {
-  loadActiveAi,
-  loadDelegationFlags,
-  loadEncryptedVirtualKey,
-  loadGroupTitle,
-  loadRoomGateState,
-  loadTopicName,
-} from './db';
+import { loadActiveAi, loadGroupTitle, loadRoomGateState, loadTopicName } from './db';
 import type { createBudgetGate } from './budget';
 import type { createLiveSession } from './live';
 import type { MemoryRunner } from './memory';
+import { notifyOwnerOfFailure, runGroupTurnBody } from './group-turn-body';
 
 type LiveSession = ReturnType<typeof createLiveSession>;
 
@@ -69,7 +52,7 @@ export interface RequestActionContext {
   delegateTargetIds: ReadonlySet<string>;
 }
 
-interface GroupTurnContext {
+export interface GroupTurnContext {
   deps: AgentGatewayDeps;
   logger: GatewayLogger;
   turnLogger: GatewayLogger;
@@ -99,22 +82,13 @@ export function createGroupTurn(ctx: GroupTurnContext) {
   const {
     deps,
     logger,
-    turnLogger,
-    baseUrl,
-    sessions,
     roomRounds,
     sessionForAiJid,
     liveSendMessage,
     liveSendTyping,
-    liveProgressReporter,
     budgetGate,
-    loadMemoryContext,
-    startCompaction,
     disconnectAi,
     secretsFor,
-    aiDeps,
-    executeToolCall,
-    withToolGuide,
     nowMs,
   } = ctx;
 
@@ -284,265 +258,51 @@ export function createGroupTurn(ctx: GroupTurnContext) {
         Effect.catchDefect(() => Effect.succeed(undefined)),
       );
     }
-    let virtualKey: string | undefined;
-    const turnBody = Effect.gen(function* () {
-      yield* Effect.promise(() => ensureAiModel(aiDeps(), session.aiId));
-      const encryptedKey = yield* Effect.promise(() =>
-        loadEncryptedVirtualKey(deps.db, session.aiId),
-      );
-      if (encryptedKey === null) {
-        throw new Error(`AI ${session.aiId} has no virtual key`);
-      }
-      // Decrypted in memory only; never stored, logged or returned.
-      const key = (deps.cipher as KeyCipher).decrypt(encryptedKey);
-      virtualKey = key;
-
-      const history = yield* Effect.promise(() =>
-        session.core.loadHistory(roomJid, 'groupchat', {
-          max: DM_HISTORY_MESSAGE_LIMIT,
-        }),
-      ).pipe(
-        Effect.map((page): ChatMessage[] => page.messages),
-        Effect.catchDefect((historyError) =>
-          Effect.sync((): ChatMessage[] => {
-            logger.warn(
-              { err: toRedactedError(historyError, secretsFor(key)), aiId: session.aiId },
-              'AI group history lookup failed; replying without history',
-            );
-            return [];
-          }),
-        ),
-      );
-
-      const now = (deps.now ?? (() => new Date()))();
-      const today = now.toISOString().slice(0, 10);
-      const memory = yield* Effect.promise(() =>
-        loadMemoryContext({
-          aiId: session.aiId,
-          chatKey: groupChatKey,
-          archiveOwner: roomJid,
-          scope: { kind: 'room', room: roomJid },
-          aiBareJid: normBareJid(ai.jid),
-          now,
-          virtualKey: key,
-        }),
-      );
-      // The batch is newer than the archive may know: merge the eligible
-      // messages into the history (skipping ids MAM already returned) so a
-      // coalesced turn sees every mention that arrived, and the context
-      // builder below deduplicates the trigger by id.
-      const knownIds = new Set(history.map((message) => message.id));
-      const fresh: ChatMessage[] = eligible
-        .filter((item) => !knownIds.has(item.id))
-        .map((item) => ({
-          id: item.id,
-          chatJid: roomJid,
-          kind: 'groupchat' as const,
-          fromJid: item.fromJid,
-          fromResolved: item.fromResolved,
-          ...(item.fromNick === undefined ? {} : { fromNick: item.fromNick }),
-          body: item.body,
-          timestamp: item.timestamp,
-          outgoing: false,
-        }));
-      // T-0481: the other AIs in this room that may receive a handoff. T-0482:
-      // the same read carries this AI's `canDelegate` and each target's AI id,
-      // so the delegation tools can list the roster. One database read for the
-      // turn; a lookup failure just means no targets and no delegation tools,
-      // and the turn runs unchanged.
-      const otherSessions = [...sessions.values()].filter(
-        (candidate) => candidate.aiId !== session.aiId && candidate.rooms.has(roomJid),
-      );
-      let handoffTargets: { aiId: string; nick: string; jid: string }[] = [];
-      let canDelegate = false;
-      if (otherSessions.length > 0) {
-        // Best effort: no handoff targets, the turn runs as before.
-        yield* Effect.promise(() =>
-          loadDelegationFlags(deps.db, [
-            session.aiId,
-            ...otherSessions.map((candidate) => candidate.aiId),
-          ]),
-        ).pipe(
-          Effect.map((rows) => {
-            canDelegate = rows.find((row) => row.id === session.aiId)?.canDelegate ?? false;
-            const accepting = new Set(rows.filter((row) => row.accepts).map((row) => row.id));
-            handoffTargets = otherSessions.flatMap((candidate) => {
-              const subscription = candidate.rooms.get(roomJid);
-              if (subscription === undefined || !accepting.has(candidate.aiId)) {
-                return [];
-              }
-              return [{ aiId: candidate.aiId, nick: subscription.nick, jid: candidate.aiJid }];
-            });
-          }),
-          Effect.catchDefect(() => Effect.void),
-        );
-      }
-      const messages: ChatCompletionMessage[] = buildGroupMessages({
-        aiName: ai.name,
-        persona: ai.persona,
-        senderName,
-        today,
-        aiJid: ai.jid,
-        ...(groupName === undefined ? {} : { groupName }),
-        ...(topicName === undefined ? {} : { topicName }),
-        ...(handoffTargets.length === 0
-          ? {}
-          : { handoffNames: handoffTargets.map((target) => target.nick) }),
-        history: [...history, ...fresh],
-        trigger: { id: trigger.id, body: trigger.body },
-        memory,
-      });
-
-      // T-0098/T-0444: decide per turn, from the database, whether the
-      // trigger's sender is allowed to ask the AI for an action. The role
-      // lives on the `roomGate` we already loaded; a plain `member`, an AI
-      // sender or an unknown occupant does not get `request_action`. Every
-      // room turn still carries the three memory tools (T-0444), so the tool
-      // loop always runs.
-      const triggerBare = normBareJid(trigger.fromJid);
-      const triggerRole = gate.memberRolesByJid.get(triggerBare);
-      const allowedForAction = triggerRole === 'owner' || triggerRole === 'admin';
-      const actionsList = deps.actions?.listActions() ?? [];
-      const allowActions = allowedForAction && actionsList.length > 0;
-      // T-0482: offer the delegation tools only when this AI may delegate and
-      // at least one accepting AI is in the room. The target list is the id
-      // and room nick of each accepting session.
-      const delegateTargets =
-        canDelegate && handoffTargets.length > 0
-          ? handoffTargets.map((target) => ({ id: target.aiId, name: target.nick }))
-          : undefined;
-      const groupTools = buildGroupTools(allowedForAction ? actionsList : [], delegateTargets);
-      // The re-check callback runs at tool-execution time. A `plain
-      // member` turn never offers `request_action`, so this never fires for
-      // them; for an admin/owner turn it queries the same gate so a
-      // demotion that landed between the mention and the tool call
-      // short-circuits to `denied: not allowed` without invoking the
-      // action gateway.
-      const isStillAllowed = (): Promise<boolean> =>
-        Effect.runPromise(
-          Effect.promise(() =>
-            loadRoomGateState(deps.db, room.groupId, deps.xmpp.domain, room.topicId),
-          ).pipe(
-            Effect.map((fresh) => {
-              if (fresh === null) {
-                return false;
-              }
-              const role = fresh.memberRolesByJid.get(triggerBare);
-              // T-0109: the sender must still be a group owner/admin AND a member
-              // of this topic. Either check failing denies the action.
-              return (role === 'owner' || role === 'admin') && fresh.memberJids.has(triggerBare);
-            }),
-          ),
-        );
-
-      // No persona tools in groups and no drafts: the reply goes straight to
-      // the room with `composing`/`paused` chat states around it. The 80%
-      // warnings go out after it, so the owner reads the answer first. The
-      // `live*` wrappers drop the reply when the AI was stopped between the
-      // mention arriving and the LLM call resolving. The room reply always
-      // goes through the same tool loop as DMs (T-0098, extended by T-0444);
-      // the executor carries the room's group id, the re-check callback and
-      // whether `request_action` is allowed.
-      // T-0106: the guide is appended to the last user turn only when tools
-      // are enabled and the room offers `request_action`; the loop runs
-      // `toolMaxRounds` rounds with a live progress message.
-      const groupProgress = liveProgressReporter(session, roomJid, 'groupchat', ai.jid);
-      const groupMessages =
-        deps.toolsEnabled === true && allowActions ? withToolGuide(messages) : messages;
-      const turnOutcome = yield* Effect.promise(() =>
-        runGroupTurn({
-          aiId: session.aiId,
-          roomJid,
-          triggerId: trigger.id,
-          senderJid: normBareJid(trigger.fromJid),
-          senderName,
-          messages: groupMessages,
-          baseUrl: baseUrl,
-          virtualKey: key,
-          model: modelNameForAi(session.aiId),
-          ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
-          tools: groupTools,
-          executeTool: executeToolCall(session, groupChatKey, {
-            groupId: room.groupId,
-            topicId: room.topicId,
-            roomJid,
-            triggerId: trigger.id,
-            isStillAllowed,
-            allowActions,
-            delegateTargetIds: new Set(delegateTargets?.map((target) => target.id) ?? []),
-          }),
-          ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
-          ...(handoffTargets.length === 0 ? {} : { handoffTargets }),
-          checkRoundGate: () => budgetGate.checkDmRoundGate(session),
-          reportProgress: groupProgress.reportProgress,
-          clearProgress: groupProgress.clearProgress,
-          // T-0156: the per-turn counts line (ids and counts only), like the
-          // DM path below.
-          turnLogger,
-          sendMessage: async (to, kind, text, opts) => {
-            const sent = await liveSendMessage(session, to, kind, text, opts);
-            // T-1176 (AI-8): remember the id so a reply quoting this message
-            // wakes the AI without a mention.
-            rememberRoomSentId(session, roomJid, sent.id);
-            return sent;
-          },
-          sendTyping: (to, kind, state) => {
-            liveSendTyping(session, to, kind, state);
-          },
-          logger,
-          secrets: secretsFor(),
-        }),
-      );
-      // T-0482: a delegated turn stores its result on the row. The worker's
-      // posted text (with the `@<boss> ` prefix) is the stored summary; a
-      // failed turn stores whatever was posted instead. Log ids only.
-      const finishedDelegationId = trigger.delegationId;
-      if (finishedDelegationId !== undefined) {
-        yield* Effect.promise(() =>
-          finishDelegation(deps.db, {
-            id: finishedDelegationId,
-            aiId: session.aiId,
-            status: turnOutcome.kind === 'replied' ? 'completed' : 'failed',
-            resultSummary: turnOutcome.text,
-          }),
-        ).pipe(
-          Effect.catchDefect((error) =>
-            Effect.sync(() => {
-              logger.warn(
-                { err: errorName(error), aiId: session.aiId, delegationId: finishedDelegationId },
-                'AI delegation finish failed',
-              );
-            }),
-          ),
-        );
-      }
-      yield* Effect.promise(() =>
-        budgetGate.sendBudgetWarnings({
-          aiId: session.aiId,
-          chatKey: groupChatKey,
-          usage: groupBudget.usage,
-          sendWarning: (text) => liveSendMessage(session, roomJid, 'groupchat', text),
-        }),
-      );
-      startCompaction(session, groupChatKey, key);
-    });
-    yield* turnBody.pipe(
+    const virtualKeyRef: { value?: string } = {};
+    yield* runGroupTurnBody({
+      ctx,
+      ai,
+      session,
+      roomJid,
+      room,
+      gate,
+      groupChatKey,
+      groupBudget,
+      eligible,
+      trigger,
+      senderName,
+      groupName,
+      topicName,
+      virtualKeyRef,
+    }).pipe(
       Effect.catchDefect((error) =>
         Effect.gen(function* () {
           // ensureAiModel, the key lookup and anything else outside the turn: an
           // honest short message in the room, never the raw error.
           logger.warn(
-            { err: toRedactedError(error, secretsFor(virtualKey)), aiId: session.aiId },
+            { err: toRedactedError(error, secretsFor(virtualKeyRef.value)), aiId: session.aiId },
             'AI group turn failed',
           );
           // T-0482: if this was a delegated turn, the model call never happened
           // (or the turn failed around it), so the row must not stay `working`.
           yield* failDelegationQuietly(trigger.delegationId);
-          const reply = mapFailureToReply(error);
+          const reason = mapFailureToReply(error);
           const name = senderName.trim() === '' ? normBareJid(trigger.fromJid) : senderName.trim();
+          // T-1290 (AI-10): the owner hears the real reason (once a day per
+          // room); the room only hears the fixed reply.
+          yield* Effect.promise(() => notifyOwnerOfFailure(ctx, session, roomJid, reason)).pipe(
+            Effect.catchDefect((notifyError) =>
+              Effect.sync(() => {
+                logger.warn(
+                  { err: errorName(notifyError), aiId: session.aiId },
+                  'AI failure notice failed',
+                );
+              }),
+            ),
+          );
           // There is nobody left to tell when the send itself fails.
           yield* Effect.promise(() =>
-            liveSendMessage(session, roomJid, 'groupchat', `@${name} ${reply}`, {
+            liveSendMessage(session, roomJid, 'groupchat', `@${name} ${GROUP_FAILURE_REPLY}`, {
               replyTo: { id: trigger.id },
               mentions: [{ jid: normBareJid(trigger.fromJid), begin: 0, end: name.length + 1 }],
             }),

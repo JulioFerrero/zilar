@@ -70,4 +70,25 @@ describe('pruneInactiveChats (core)', () => {
 
     expect(shown(TEAM)).toHaveLength(350);
   });
+
+  it('drops the ledger entries of the pruned messages (PERF-13)', () => {
+    const older = history(350);
+    const { ctx, state } = pruneCtx({ [TEAM]: older }, ANA);
+    const dropped = older[0]!;
+    const kept = older[older.length - 1]!;
+    ctx.k.rememberAuthor(dropped.id, { jid: TEAM, resolved: true });
+    ctx.k.rememberBaseText(dropped.id, dropped.text ?? '');
+    ctx.k.rememberOriginId(dropped.id, 'origin-dropped', TEAM, ANA);
+    ctx.k.rememberAuthor(kept.id, { jid: TEAM, resolved: true });
+
+    pruneInactiveChats(ctx, ANA);
+
+    expect(state().messagesByChat[TEAM]).toHaveLength(KEEP_INACTIVE);
+    expect(ctx.k.authorFor(dropped.id)).toBeUndefined();
+    expect(ctx.k.correctionTargetFor(dropped.id)).toBeUndefined();
+    expect(ctx.k.messageAuthors.has(dropped.id)).toBe(false);
+    expect(ctx.k.messageBaseTexts.has(dropped.id)).toBe(false);
+    // The ids of the kept messages stay readable.
+    expect(ctx.k.authorFor(kept.id)).toEqual({ jid: TEAM, resolved: true });
+  });
 });

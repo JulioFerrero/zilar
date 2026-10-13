@@ -12,10 +12,15 @@ import { runSql } from '../effect/sql';
 import { type ExecuteRoutinePorts, executeRoutine } from './execute';
 import { nextRunAfter, parseRoutineSchedule } from './schedule';
 
-// At most this many routines run at the same time inside one tick. A slow
-// tool run must not fan out without bound when many routines come due at
-// once.
+// At most this many routines run at the same time. Claimed runs wait in a
+// queue and drain at this limit, so a slow run no longer makes the next tick
+// skip: ticks keep claiming and enqueueing while the pool works (AI-18).
 export const MAX_CONCURRENT_RUNS = 2;
+
+// AI-18: a due run more than this far past its scheduled time is recorded as
+// missed (`last_status = 'skipped'`) and its next run is scheduled, with no
+// post: firing an 8-hour-old run is worse than skipping it.
+export const MISSED_AFTER_LATE_MS = 3_600_000;
 
 export interface RoutineLogger {
   warn: (fields: Record<string, unknown>, message: string) => void;
@@ -39,8 +44,10 @@ export interface CreateRoutineSchedulerOptions {
 export interface RoutineSchedulerHandle {
   start: () => void;
   stop: () => void;
-  /** One sweep: claims due routines and runs them. Never overlaps itself. */
+  /** One sweep: claims due routines and enqueues them. Never blocks on runs. */
   tick: () => Promise<void>;
+  /** Resolves when no claimed run is queued or in flight (tests). */
+  whenIdle: () => Promise<void>;
 }
 
 export function createRoutineScheduler(
@@ -51,28 +58,96 @@ export function createRoutineScheduler(
   const maxPerTick = options.maxPerTick ?? 5;
   let fiber: Fiber.Fiber<void, never> | null = null;
   let closed = false;
-  let running = false;
 
-  async function tick(): Promise<void> {
-    // A tick never overlaps the previous one: when the database or the
-    // runner is slow, the late tick is skipped and the next interval
-    // picks the rows up (their `next_run_at` is already in the past).
-    if (running) {
+  // Claimed runs wait here until the pool (MAX_CONCURRENT_RUNS) takes them.
+  // Ticks enqueue and return, so the background loop keeps claiming on every
+  // interval even while runs are slow.
+  const queue: ClaimedRoutine[] = [];
+  let activeRuns = 0;
+  let idleResolvers: Array<() => void> = [];
+
+  function notifyIfIdle(): void {
+    if (activeRuns !== 0 || queue.length !== 0) {
       return;
     }
-    running = true;
-    try {
-      const claimed = await claimDue(options.db, now(), maxPerTick, options.logger);
-      await runClaimed(claimed, options, now);
-    } finally {
-      running = false;
+    const resolvers = idleResolvers;
+    idleResolvers = [];
+    for (const resolve of resolvers) {
+      resolve();
     }
   }
 
-  // The background loop repeats the tick with `Schedule.spaced`, first
-  // after one interval. Interrupting the fiber stops it and clears its
-  // timer; the `running` flag below already keeps direct `tick()` calls
-  // from overlapping.
+  function whenIdle(): Promise<void> {
+    if (activeRuns === 0 && queue.length === 0) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      idleResolvers.push(resolve);
+    });
+  }
+
+  // Runs one claimed routine, catching every cause: `executeRoutine` handles
+  // its expected failures itself, so this is the backstop for a database write
+  // failing mid-run. AI-18: lateness is re-checked here, when the pool
+  // dequeues the run — one claimed on time can wait behind slow runs for more
+  // than an hour, and firing it then would post stale output.
+  function runOne(claimed: ClaimedRoutine): Promise<void> {
+    const row = claimed.row;
+    return Effect.runPromise(
+      Effect.promise(async () => {
+        const at = now();
+        const lateByMs = at.getTime() - claimed.dueAt.getTime();
+        if (lateByMs > MISSED_AFTER_LATE_MS) {
+          await markQueuedMissed(options.db, row, at, lateByMs, options.logger);
+          return;
+        }
+        await executeRoutine({ runTool: options.runTool, post: options.post }, row, {
+          db: options.db,
+          now,
+          audit: options.audit,
+          logger: options.logger,
+        });
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.sync(() => {
+            options.logger.error(
+              { err: errorName(Cause.squash(cause)), routineId: row.id },
+              'routine run failed',
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  function pump(): void {
+    while (activeRuns < MAX_CONCURRENT_RUNS && queue.length > 0) {
+      const queued = queue.shift();
+      if (queued === undefined) {
+        break;
+      }
+      activeRuns += 1;
+      void runOne(queued).finally(() => {
+        activeRuns -= 1;
+        pump();
+        notifyIfIdle();
+      });
+    }
+    notifyIfIdle();
+  }
+
+  async function tick(): Promise<void> {
+    // Claims and enqueues. The claim is a compare-and-set, so two ticks
+    // racing on the same rows is safe; the pool below bounds how many run.
+    const claimed = await claimDue(options.db, now(), maxPerTick, options.logger);
+    queue.push(...claimed);
+    pump();
+  }
+
+  // The background loop repeats the tick with `Schedule.spaced`; since a tick
+  // now returns as soon as the rows are queued, slow runs never delay the
+  // next claim. Interrupting the fiber stops it and clears its timer; the
+  // `closed` flag keeps a stopped scheduler from restarting.
   function loop(): Effect.Effect<void, never, never> {
     const tickEffect = Effect.promise(() => tick()).pipe(
       Effect.catchCause((cause) =>
@@ -107,10 +182,17 @@ export function createRoutineScheduler(
       }
     },
     tick,
+    whenIdle,
   };
 }
 
-export type ClaimedRoutine = RoutineRow;
+// AI-18: a claimed run plus the `next_run_at` it was due at. The claim
+// advances `next_run_at` in the database, so the scheduled time is kept here
+// to re-check lateness when the pool finally dequeues the run.
+export interface ClaimedRoutine {
+  row: RoutineRow;
+  dueAt: Date;
+}
 
 // Selects due rows (active, not deleted, `next_run_at <= now`, oldest
 // first, at most `maxPerTick`) and claims each with a conditional update:
@@ -123,6 +205,10 @@ export type ClaimedRoutine = RoutineRow;
 // is skipped, never duplicated. A routine that is many periods overdue
 // (the server was off) runs once, not once per missed slot: the claim
 // always advances from `now`, never from the stale `next_run_at`.
+//
+// AI-18: a row more than MISSED_AFTER_LATE_MS past its due time is not run
+// at all — the same update records it `skipped` (the existing status for
+// "nothing was posted") and schedules the next occurrence.
 async function claimDue(
   db: ServerDatabase,
   nowDate: Date,
@@ -133,7 +219,7 @@ async function claimDue(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<ClaimedRoutine>`SELECT *
+      return yield* sql<RoutineRow>`SELECT *
         FROM routines
         WHERE status = 'active' AND deleted_at IS NULL AND next_run_at <= ${nowDate}
         ORDER BY next_run_at ASC
@@ -160,58 +246,60 @@ async function claimDue(
       continue;
     }
     const advanced = nextRunAfter(parsed.value, nowDate);
+    const lateByMs = nowDate.getTime() - row.nextRunAt.getTime();
+    const missed = lateByMs > MISSED_AFTER_LATE_MS;
     const updated = await runSql(
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        return yield* sql<ClaimedRoutine>`UPDATE routines
+        if (missed) {
+          return yield* sql<RoutineRow>`UPDATE routines
+            SET next_run_at = ${advanced}, last_run_at = ${nowDate}, last_status = 'skipped', updated_at = ${nowDate}
+            WHERE id = ${row.id} AND status = 'active' AND deleted_at IS NULL AND next_run_at = ${row.nextRunAt}
+            RETURNING *`;
+        }
+        return yield* sql<RoutineRow>`UPDATE routines
           SET next_run_at = ${advanced}, updated_at = ${nowDate}
           WHERE id = ${row.id} AND status = 'active' AND deleted_at IS NULL AND next_run_at = ${row.nextRunAt}
           RETURNING *`;
       }),
     );
-    if (updated.length > 0) {
-      claimed.push({ ...row, nextRunAt: advanced });
+    if (updated.length === 0) {
+      continue;
     }
+    if (missed) {
+      logger.warn(
+        { routineId: row.id, lateMs: lateByMs },
+        'routine run missed: more than 1 h late; next run scheduled',
+      );
+      continue;
+    }
+    claimed.push({ row, dueAt: row.nextRunAt });
   }
   return claimed;
 }
 
-// Runs the claimed routines with at most `MAX_CONCURRENT_RUNS` in flight.
-async function runClaimed(
-  claimed: ClaimedRoutine[],
-  options: CreateRoutineSchedulerOptions,
-  now: () => Date,
+// AI-18: a run claimed on time that then waited in the queue past the missed
+// threshold is recorded `skipped` with no post. The claim already advanced
+// `next_run_at`, so this only records the outcome and does not reschedule.
+async function markQueuedMissed(
+  db: ServerDatabase,
+  row: RoutineRow,
+  at: Date,
+  lateByMs: number,
+  logger: RoutineLogger,
 ): Promise<void> {
-  const at = now();
-  const tickNow = (): Date => at;
-  // `concurrency` starts the next run as soon as a slot frees instead of
-  // waiting for a batch; per-row errors are still caught and logged. The
-  // next run can only start earlier, never overlap more runs.
-  await Effect.runPromise(
-    Effect.forEach(
-      claimed,
-      (row) =>
-        Effect.promise(() =>
-          executeRoutine({ runTool: options.runTool, post: options.post }, row, {
-            db: options.db,
-            now: tickNow,
-            audit: options.audit,
-            logger: options.logger,
-          }),
-        ).pipe(
-          Effect.catchCause((cause) => {
-            // `executeRoutine` handles every expected failure itself; this
-            // is the backstop for a database write failing mid-run.
-            return Effect.sync(() => {
-              options.logger.error(
-                { err: errorName(Cause.squash(cause)), routineId: row.id },
-                'routine run failed',
-              );
-            });
-          }),
-        ),
-      { concurrency: MAX_CONCURRENT_RUNS, discard: true },
-    ),
+  await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE routines
+        SET last_run_at = ${at}, last_status = 'skipped', updated_at = ${at}
+        WHERE id = ${row.id}`;
+    }),
+  );
+  logger.warn(
+    { routineId: row.id, lateMs: lateByMs },
+    'routine run missed: more than 1 h late when dequeued; next run already scheduled',
   );
 }

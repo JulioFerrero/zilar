@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { AiBadge } from '@/components/chat/ai-badge';
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -44,7 +44,6 @@ export function NewTopicSheet({
   error,
   onCreate,
   onClose,
-  seedFor,
 }: {
   visible: boolean;
   groupTitle: string;
@@ -55,11 +54,6 @@ export function NewTopicSheet({
   error: string;
   onCreate: (input: NewTopicInput) => void;
   onClose: () => void;
-  /**
-   * T-1212: the member ball seed for a user id (the bare JID derived the
-   * mention-builder way). Absent paints the raw user id.
-   */
-  seedFor?: ((userId: string) => string) | undefined;
 }) {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<TopicKind>('chat');
@@ -208,11 +202,7 @@ export function NewTopicSheet({
                 className="flex-row items-center gap-3 rounded-lg px-2 py-2 active:bg-surface-raised"
               >
                 <Checkbox checked={checked} disabled={locked} />
-                <Avatar
-                  id={seedFor === undefined ? member.userId : seedFor(member.userId)}
-                  name={member.name}
-                  size={28}
-                />
+                <EntityAvatar person={member} size={28} />
                 <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px] text-foreground">
                   {member.name}
                 </Text>
@@ -242,7 +232,11 @@ export function NewTopicSheet({
                     className="flex-row items-center gap-3 rounded-lg px-2 py-2 active:bg-surface-raised"
                   >
                     <Checkbox checked={checked} />
-                    <Avatar id={ai.jid} name={ai.name} size={28} ai />
+                    <EntityAvatar
+                      person={{ id: ai.jid, name: ai.name, avatarUrl: ai.avatarUrl }}
+                      size={28}
+                      ai
+                    />
                     <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px] text-foreground">
                       {ai.name}
                     </Text>

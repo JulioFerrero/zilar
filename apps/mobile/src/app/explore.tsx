@@ -7,7 +7,7 @@ import { FlatList, Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import {
   describeDirectoryError,
   describeJoinError,
@@ -276,7 +276,7 @@ function ExploreList() {
           onEndReachedThreshold={0.5}
           renderItem={({ item }) => (
             <View className="flex-row items-center gap-3 rounded-xl px-1 py-2">
-              <Avatar id={item.id} name={item.title} size={40} />
+              <EntityAvatar chat={item} size={40} />
               <View className="min-w-0 flex-1">
                 <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">
                   {item.title}{' '}

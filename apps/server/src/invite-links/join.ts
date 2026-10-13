@@ -1,10 +1,12 @@
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
+import { pairHasBlock } from '../blocks/service';
 import type { ServerDatabase } from '../db/client';
 import type { GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
 import { MAX_GROUP_MEMBERS } from '../groups/service';
+import { groupOwnerId } from '../groups/queries';
 import type { TopicRow } from '../topics/access';
 import { syncTopicRoom } from '../topics/rooms';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
@@ -96,6 +98,13 @@ export async function joinByInviteLink(
     }),
   );
   if (!group) {
+    throw toInvalidLink();
+  }
+  // SG-8: a block in either direction between the joiner and the owner
+  // refuses the join with the same 404 `invalid_link` an unusable link
+  // answers, so a block is never an oracle. The owner is the `owner` row.
+  const ownerId = await groupOwnerId(deps.db, link.groupId);
+  if (ownerId !== null && (await pairHasBlock(deps.db, userId, ownerId))) {
     throw toInvalidLink();
   }
   if (await isGroupMember(deps.db, link.groupId, userId)) {

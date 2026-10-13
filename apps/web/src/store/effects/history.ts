@@ -10,12 +10,13 @@ import {
   loadPreview,
   openAtMessage as openAtMessageCore,
   openHistory,
+  orderChatRows,
   pruneInactiveChats,
   recordRead,
 } from '@zilar/client-core/store';
 import { applyChatPrefs } from '@/lib/chatPrefs';
 import { ApiError, type ChatPref } from '@/lib/api';
-import { mergeUnread, sortByRecency, summariesFor } from './chatRows';
+import { mergeUnread, summariesFor } from './chatRows';
 import { CHAT_REFRESH_DEBOUNCE_MS } from './constants';
 import type { StoreCtx } from './ctx';
 import { loadGroupMembersInBackground } from './groupMembers';
@@ -224,9 +225,11 @@ export const refreshChatsOrThrow = (ctx: StoreCtx): Effect.Effect<void, unknown,
           ...(existing.onlineCount === undefined ? {} : { onlineCount: existing.onlineCount }),
         };
       });
-    // New chats appear at the top; the rest keep their recency order.
+    // New chats sort by recency with the rest, so a row that first appears
+    // without a preview does not jump to the top and sink on the next tick
+    // (UI-12).
     ctx.set({
-      chats: applyChatPrefs([...fresh, ...sortByRecency(kept)], prefs, now().getTime()),
+      chats: applyChatPrefs(orderChatRows(fresh, kept), prefs, now().getTime()),
       chatPrefs: prefsByJid(prefs),
     });
     k.rememberGroupIds(entries);

@@ -177,7 +177,7 @@ export function StickerGrid({
         <View className="h-[180px] items-center justify-center gap-2 px-4">
           <StateMessage
             kind="error"
-            title="Couldn't load stickers."
+            title="Could not load stickers. Try again."
             action={{
               label: 'Retry',
               accessibilityLabel: 'Retry loading stickers',

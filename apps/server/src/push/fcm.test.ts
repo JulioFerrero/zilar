@@ -4,6 +4,7 @@ import type { FcmFetch, FcmFetchInit, FcmTokenProvider } from './fcm-token';
 
 const DATA = {
   chatId: 'ana@zilar.localhost',
+  chatKind: 'dm' as const,
   messageId: 'origin-1',
   serverId: 'zilar.localhost',
 };
@@ -13,6 +14,7 @@ const EXPECTED_BODY = {
     token: 'device-token',
     data: {
       chatId: 'ana@zilar.localhost',
+      chatKind: 'dm',
       messageId: 'origin-1',
       serverId: 'zilar.localhost',
     },

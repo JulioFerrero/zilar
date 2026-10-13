@@ -2,7 +2,7 @@ import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -117,7 +117,7 @@ export function ForwardSheet({
                 className="flex-row items-center gap-3 rounded-lg px-2 py-2 active:bg-surface-raised"
               >
                 <Checkbox checked={checked} />
-                <Avatar id={chat.id} name={chat.title} size={28} ai={chat.isAI} />
+                <EntityAvatar chat={chat} size={28} ai={chat.isAI} />
                 <Text numberOfLines={1} className="min-w-0 flex-1 text-[15px] text-foreground">
                   {label}
                 </Text>

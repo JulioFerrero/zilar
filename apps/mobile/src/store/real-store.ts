@@ -17,6 +17,7 @@ import { createAtomStore, type StoreApi } from './atomStore';
 
 import type { ChatEntry } from '../lib/chat-api';
 import { dismissChatNotifications, syncBadge } from '../lib/push/badge';
+import { markStartup, startupTimingEnabled } from '../lib/startup-timing';
 import { makeEvents } from './effects/events';
 import { makeGroups } from './effects/groups';
 import { makeHistory } from './effects/history';
@@ -30,6 +31,7 @@ import { createStoreLocals } from './effects/locals';
 import { makeStoreHelpers } from './effects/helpers';
 import { makeUserState, type UserState } from './effects/user-state';
 import { isUpdateStanza, summariesFor } from './effects/chat-rows';
+import { createOfflineCacheSync } from './offline-cache-sync';
 import type { ChatStoreState } from './types';
 
 export { MESSAGE_JUMP_MAX_PAGES, MESSAGE_JUMP_WAIT_MS } from './effects/history';
@@ -56,8 +58,10 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
   // Every outside dependency comes from the `Ports` layer (injected or live).
   const ports = Effect.runSync(Ports.use(Effect.succeed).pipe(Effect.provide(PortsLive(deps))));
   const { appState } = ports;
+  // T-1313: the offline message cache and the store watcher that saves it.
+  const offline = createOfflineCacheSync(deps);
 
-  return createAtomStore<ChatStoreState>((set, get) => {
+  const store = createAtomStore<ChatStoreState>((set, get) => {
     // The closure's mutable locals (the handles, caches and per-session maps),
     // owned by one object so the helpers below share them.
     const locals = createStoreLocals();
@@ -291,6 +295,7 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
         restartBoot: () => lifecycle.restartBoot(),
       },
       coreCtx,
+      offline,
       ...makeRunners(ports, life),
     };
     const lifecycle = makeLifecycle(ctx);
@@ -364,4 +369,24 @@ export function createRealChatStore(deps: RealStoreDeps = {}): StoreApi<ChatStor
       stop: lifecycle.stop,
     };
   });
+
+  // T-1313: save the recent messages debounced; the lifecycle flushes it on
+  // background and clears it on sign-out.
+  offline.watch(store);
+
+  // Dev-only cold-start marks (T-1312): the first paint with the chat rows and
+  // the first XMPP `online`. `startupTimingEnabled()` is false in a release
+  // build, so the subscription is not created there.
+  if (startupTimingEnabled()) {
+    store.subscribe((state, previous) => {
+      if (state.chatsLoad === 'loaded' && previous.chatsLoad !== 'loaded') {
+        markStartup('chat-list');
+      }
+      if (state.status === 'online' && previous.status !== 'online') {
+        markStartup('xmpp-online');
+      }
+    });
+  }
+
+  return store;
 }

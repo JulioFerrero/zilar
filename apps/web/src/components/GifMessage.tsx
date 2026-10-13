@@ -21,7 +21,7 @@ export function GifMessage({ chatId, attachment }: GifMessageProps) {
 
   if (broken) {
     return (
-      <div className="flex h-[120px] w-full items-center justify-center rounded-[12px] border border-edge bg-well text-[13px] text-muted-foreground">
+      <div className="flex h-[120px] w-full items-center justify-center bg-well text-[13px] text-muted-foreground">
         Video unavailable
       </div>
     );
@@ -46,7 +46,7 @@ export function GifMessage({ chatId, attachment }: GifMessageProps) {
       aria-label={attachment.name}
       onError={() => setBroken(true)}
       style={ratio === undefined ? undefined : { aspectRatio: ratio }}
-      className="max-h-[320px] w-full rounded-[12px] border border-edge object-cover shadow-[0_4px_10px_-3px_rgba(0,0,0,0.85)]"
+      className="max-h-[320px] w-full object-cover"
     />
   );
   if (href === undefined) {

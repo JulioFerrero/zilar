@@ -27,6 +27,7 @@ import { readLastRead } from './last-read';
 import type { Fibers } from './lifetime';
 import {
   clearFinishedTurns,
+  scheduleChatsRefreshBurst,
   startChatsPolling,
   startDraftStream,
   startPinsPolling,
@@ -318,11 +319,12 @@ function subscribeToCore(
     current.on('presence', (event) => handlePresence(ctx, event)),
     // A group invitation or a roster push means the chat list changed on the
     // server: refetch it, join any new group rooms and load their preview.
-    current.on('invited', () => ctx.fx.scheduleChatsRefresh()),
-    current.on('roster', () => ctx.fx.scheduleChatsRefresh()),
+    // PERF-11: a push burst (one per member) is coalesced into one refresh.
+    current.on('invited', () => scheduleChatsRefreshBurst(ctx)),
+    current.on('roster', () => scheduleChatsRefreshBurst(ctx)),
     // The server removed me from a room (kick, ban or affiliation change):
     // the chat list changed on the server, the same as above.
-    current.on('removed', () => ctx.fx.scheduleChatsRefresh()),
+    current.on('removed', () => scheduleChatsRefreshBurst(ctx)),
   ];
   return () => {
     for (const unsubscribe of unsubscribers) {

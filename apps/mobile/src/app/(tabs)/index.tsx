@@ -11,6 +11,7 @@ import { SearchHeader } from '@/components/chat/search-header';
 import { useChatActions } from '@/components/chat/use-chat-actions';
 import { peopleHandleFor } from '@/components/contacts/people-search';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
+import { Toast, type ToastMessage } from '@/components/ui/toast';
 import { connectionLabel } from '@/lib/connection';
 import { chatListModel, chatSearchMatches } from '@/lib/chat-list';
 import { unreadCount } from '@/lib/filter';
@@ -64,6 +65,8 @@ function ChatsList() {
   // opens at its bottom; the inline notice says the message is not there.
   const [searchMiss, setSearchMiss] = useState<string | null>(null);
   const [archivedOpen, setArchivedOpen] = useState(false);
+  // T-1336: the request rows show "<name> added" through the screen toast.
+  const [toast, setToast] = useState<ToastMessage | null>(null);
   const actions = useChatActions();
   // Clear the pull-to-refresh spinner as soon as the reload settles, however it
   // ends. Adjusted during render (as ChatList does on web), not in an effect.
@@ -85,7 +88,7 @@ function ChatsList() {
       activeFolder === 'all' ? undefined : folders.find((folder) => folder.id === activeFolder),
     [activeFolder, folders],
   );
-  const { rows: visibleRows, archived } = useMemo(
+  const { rows: visibleRows } = useMemo(
     () => chatListModel(chats, { folder: activeFolderDef, search }),
     [chats, activeFolderDef, search],
   );
@@ -204,13 +207,13 @@ function ChatsList() {
         chatsLoad={chatsLoad}
         chatsCount={chats.length}
         onRetry={reloadChats}
-        rows={visibleRows}
+        chats={chats}
+        search={search}
         refreshing={refreshing}
         onRefresh={() => {
           setRefreshing(true);
           reloadChats();
         }}
-        archived={archived}
         archivedOpen={archivedOpen}
         onToggleArchived={() => setArchivedOpen((value) => !value)}
         onPressChat={(chatId) => router.push({ pathname: '/chat/[id]', params: { id: chatId } })}
@@ -218,14 +221,16 @@ function ChatsList() {
           router.push({ pathname: '/group/[id]', params: { id: groupId } })
         }
         onLongPress={actions.openActions}
-        onPref={actions.saveChatPref}
         swipeError={actions.swipeError}
+        onStartChat={() => setSearchOpen(true)}
+        onRequestsToast={setToast}
       />
       <ChatActionsHost
         actions={actions}
         onOpenGroup={(groupId) => router.push({ pathname: '/group/[id]', params: { id: groupId } })}
       />
       <NewChatButton />
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </SafeAreaView>
   );
 }

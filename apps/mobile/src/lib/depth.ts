@@ -128,16 +128,3 @@ export function bubbleStyle(look: BubbleLook, lastInGroup: boolean): ViewStyle {
     boxShadow: BUBBLE_IN_SHADOW,
   };
 }
-
-/** Monochrome-friendly sender name colors (ui-style.md §5). */
-export const SENDER_COLORS = ['#d4d4d4', '#a1a1a1', '#8a8a8a', '#ededed'] as const;
-
-/** Picks a sender color deterministically from an id. */
-export function senderColor(id: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < id.length; index += 1) {
-    hash ^= id.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return SENDER_COLORS[(hash >>> 0) % SENDER_COLORS.length] ?? SENDER_COLORS[0];
-}

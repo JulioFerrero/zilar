@@ -24,6 +24,9 @@ function fakeCtx(): { ctx: StoreCtx; state: () => Record<string, unknown> } {
     activeFolder: 'work',
     stop: () => undefined,
   };
+  const messageAuthors = new Map([['m1', { name: 'Ana' }]]);
+  const messageOriginIds = new Map([['m1', 'origin-1']]);
+  const messageBaseTexts = new Map([['m1', 'hello']]);
   const ctx = {
     get: () => state,
     set: (patch: Record<string, unknown>) => {
@@ -36,9 +39,17 @@ function fakeCtx(): { ctx: StoreCtx; state: () => Record<string, unknown> } {
     finishedTurnOrder: ['turn-1'],
     groupMembers: new Map([['ana@zilar.test', new Map()]]),
     groupInfos: new Map([['ana@zilar.test', {}]]),
-    messageAuthors: new Map([['m1', { name: 'Ana' }]]),
-    messageOriginIds: new Map([['m1', 'origin-1']]),
-    messageBaseTexts: new Map([['m1', 'hello']]),
+    messageAuthors,
+    messageOriginIds,
+    messageBaseTexts,
+    // The ledger's own reset clears every id side table it knows (UI-13).
+    k: {
+      reset: () => {
+        messageAuthors.clear();
+        messageOriginIds.clear();
+        messageBaseTexts.clear();
+      },
+    },
     cachedUserId: 'u-b',
     lastReadUserId: 'u-b',
   } as unknown as StoreCtx;

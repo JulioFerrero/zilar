@@ -8,6 +8,7 @@ import { RegisteredDevice, runApi } from '@zilar/api-contract';
 import { API_URL } from '../auth';
 import { createApiClient } from '../effect/api-client';
 import { getSessionToken } from '../session-token';
+import { CHAT_CHANNELS, LEGACY_CHANNEL_ID } from './channels';
 
 /**
  * The native (FCM) push registration of the phone (T-1139, plan §4.3). Unlike
@@ -18,9 +19,6 @@ import { getSessionToken } from '../session-token';
  * running and is retried on the next cold start (the server dedupes on
  * `(user_id, token)`).
  */
-
-/** The Android channel every push lands in (plan §4.2). */
-const CHANNEL_ID = 'messages';
 
 /** The device label the server stores, like the web client's user agent. */
 export const NATIVE_PUSH_USER_AGENT = 'Zilar Android';
@@ -184,10 +182,20 @@ export async function registerNativePush(deps: NativePushDeps): Promise<void> {
     // token now, so this does not churn the enable-pair (T-1150).
     lastRegisteredToken = null;
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-        name: 'Messages',
-        importance: Notifications.AndroidImportance.HIGH,
-      });
+      for (const channel of CHAT_CHANNELS) {
+        await Notifications.setNotificationChannelAsync(channel.id, {
+          name: channel.name,
+          importance: Notifications.AndroidImportance.HIGH,
+        });
+      }
+      // T-1302 (MUX-23): the single "Messages" channel became the three above.
+      // Deleting the old id leaves Settings with exactly the three; it is a
+      // no-op after the first launch and never fatal to the registration.
+      try {
+        await Notifications.deleteNotificationChannelAsync(LEGACY_CHANNEL_ID);
+      } catch {
+        // Best effort, like the enable: the stale channel only shows in Settings.
+      }
     }
     let permission = await Notifications.getPermissionsAsync();
     if (!permission.granted) {

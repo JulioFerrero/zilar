@@ -1,4 +1,4 @@
-import type { ChatFolder, ChatSummary } from '@zilar/chat-core';
+import { chatSortTime, type ChatFolder, type ChatSummary } from '@zilar/chat-core';
 
 import { archivedChats, sortChatPinnedFirst, unarchivedChats } from './chat-prefs';
 import { filterChats } from './filter';
@@ -53,13 +53,10 @@ export function chatListModel(
   );
   const timeOf = (row: ChatListRow): number => {
     if (row.kind === 'chat') {
-      return row.chat.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY;
+      return chatSortTime(row.chat);
     }
     const topics = byGroup.get(row.groupId) ?? [];
-    return Math.max(
-      Number.NEGATIVE_INFINITY,
-      ...topics.map((chat) => chat.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY),
-    );
+    return Math.max(Number.NEGATIVE_INFINITY, ...topics.map((chat) => chatSortTime(chat)));
   };
   rows.sort((left, right) => {
     const leftPinned =

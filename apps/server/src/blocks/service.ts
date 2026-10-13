@@ -97,6 +97,28 @@ export async function isDmBlocked(
   return block !== undefined;
 }
 
+// A block between two users in either direction, read from `user_blocks`.
+// The group joins use it (T-1286, SG-8): a person the owner blocked cannot
+// join the owner's public group or invite link, and vice versa. The same
+// either-direction rule `isDmBlocked` and the request reads already apply.
+export async function pairHasBlock(
+  db: ServerDatabase,
+  userId: string,
+  otherId: string,
+): Promise<boolean> {
+  const [block] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM user_blocks
+        WHERE (user_id = ${userId} AND blocked_user_id = ${otherId})
+           OR (user_id = ${otherId} AND blocked_user_id = ${userId})
+        LIMIT 1`;
+    }),
+  );
+  return block !== undefined;
+}
+
 // Blocks `targetId` for `userId`. Idempotent: blocking twice keeps one row.
 // Unknown users answer 404, yourself answers 400. Every pending contact
 // request between the two (either direction) becomes `cancelled`, and both

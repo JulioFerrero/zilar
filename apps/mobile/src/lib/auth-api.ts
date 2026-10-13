@@ -15,6 +15,11 @@ export interface Me {
    * still decodes; readers treat an absent one as `''`.
    */
   bio?: string | undefined;
+  /**
+   * The profile picture URL (T-1334). Carried so the own avatar can show it
+   * from the session while a screen's own `GET /me` is still in flight.
+   */
+  avatarUrl?: string | undefined;
 }
 
 /**
@@ -28,7 +33,7 @@ export type AuthApiError = ApiError;
 // The routes come from the client derived from the shared contract
 // (`@zilar/api-contract`, `auth.ts`, T-0895). The profile here is the narrow
 // view the app needs; an absent `jid` reads as `null`.
-function toMe(profile: Pick<AuthMe, 'id' | 'email' | 'name' | 'jid' | 'bio'>): Me {
+function toMe(profile: Pick<AuthMe, 'id' | 'email' | 'name' | 'jid' | 'bio' | 'avatarUrl'>): Me {
   return {
     id: profile.id,
     email: profile.email,
@@ -37,6 +42,8 @@ function toMe(profile: Pick<AuthMe, 'id' | 'email' | 'name' | 'jid' | 'bio'>): M
     // Kept absent when the server has no bio, so `Me` stays equal to payloads
     // from an older server; readers fall back to `''`.
     ...(profile.bio === undefined ? {} : { bio: profile.bio }),
+    // Same for the picture (T-1334): absent stays absent.
+    ...(profile.avatarUrl === undefined ? {} : { avatarUrl: profile.avatarUrl }),
   };
 }
 

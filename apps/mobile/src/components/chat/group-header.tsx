@@ -1,7 +1,7 @@
 import { ChevronLeft, Eye, Link2, Users } from 'lucide-react-native';
 import { View } from 'react-native';
 
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
@@ -36,12 +36,15 @@ export function GroupHeader({
       <IconButton label="Back" onPress={onBack}>
         <ChevronLeft size={24} color={ICON} />
       </IconButton>
-      <Avatar id={avatarId} name={title} size={36} />
-      <View className="ml-2.5 min-w-0 flex-1">
-        <Text numberOfLines={1} className="shrink text-[15px] font-semibold text-foreground">
+      <EntityAvatar chat={{ id: avatarId, title }} size={36} />
+      <View className="ml-2.5 min-w-0 flex-1 justify-center">
+        <Text
+          numberOfLines={1}
+          className="shrink text-[15px] font-semibold leading-5 text-foreground"
+        >
           {title}
         </Text>
-        <Text numberOfLines={1} className="shrink text-[12px] text-muted-foreground">
+        <Text numberOfLines={1} className="shrink text-[12px] leading-4 text-muted-foreground">
           {subtitle}
         </Text>
       </View>

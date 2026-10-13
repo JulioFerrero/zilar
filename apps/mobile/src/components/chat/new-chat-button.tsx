@@ -1,6 +1,14 @@
 import { Data, Effect } from 'effect';
 import { useRouter } from 'expo-router';
-import { Compass, Link, Megaphone, MessageSquarePlus, Plus, Users } from 'lucide-react-native';
+import {
+  Compass,
+  Hash,
+  Link,
+  Megaphone,
+  MessageSquarePlus,
+  Plus,
+  Users,
+} from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,8 +18,8 @@ import { createErrorText } from '@/components/chat/visibility-fields';
 import { InviteSheet } from '@/components/chat/invite-sheet';
 import { JoinLinkForm } from '@/components/chat/join-link';
 import { NewChannelSheet } from '@/components/chat/new-channel-sheet';
-import { NewGroupSheet } from '@/components/chat/new-group-sheet';
 import { NewMessageSheet } from '@/components/chat/new-message-sheet';
+import { NewTopicGroupSheet } from '@/components/chat/new-topic-group-sheet';
 import { runMobile } from '@/lib/effect/runtime';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { createInvitesApi } from '@/lib/invites-api';
@@ -21,7 +29,7 @@ import { useKeyPress } from '@/components/ui/use-key-press';
 import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
 import { useChatStore } from '@/store/chat-store-provider';
 
-type NewChatAction = 'channel' | 'group' | 'message' | 'invite' | 'join';
+type NewChatAction = 'channel' | 'message' | 'invite' | 'join';
 
 /**
  * The action-dialog scroll keeps Create taps while the sheet keyboard is
@@ -46,22 +54,14 @@ export function createSheetBottomPadding(
 }
 
 /**
- * Creating a channel or a group, or opening the new screen, failed. `reason`
- * is the original error: `createErrorText` reads its code and never shows its
- * text.
+ * Creating a channel, or opening its screen, failed. `reason` is the original
+ * error: `createErrorText` reads its code and never shows its text.
  */
 class CreateFailed extends Data.TaggedError('CreateFailed')<{ readonly reason: unknown }> {}
 
 type ChannelInput = {
   title: string;
   description?: string;
-  visibility?: 'public';
-  handle?: string;
-};
-
-type GroupInput = {
-  title: string;
-  memberIds: string[];
   visibility?: 'public';
   handle?: string;
 };
@@ -89,10 +89,9 @@ export function NewChatButton() {
   const insets = useSafeAreaInsets();
   const { pressed, reduceMotion, setPressed } = useKeyPress();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [topicPickerOpen, setTopicPickerOpen] = useState(false);
   const [action, setAction] = useState<NewChatAction | undefined>(undefined);
   const createChannel = useChatStore((state) => state.createChannel);
-  const createGroup = useChatStore((state) => state.createGroup);
-  const contacts = useChatStore((state) => state.contacts);
   // Closes the dialog and opens the new group's screen; a throw here reads
   // like a failed create.
   const openGroupScreen = (groupId: string) =>
@@ -121,19 +120,6 @@ export function NewChatButton() {
     !channelBusy && channelFailure !== undefined
       ? createErrorText(channelFailure.reason, 'channel')
       : '';
-  // T-0214: creating a group mirrors the channel flow (the store
-  // returns the new group id from the POST answer), then opens the
-  // group screen. A failure reads inline, never raw.
-  const [groupState, submitGroup] = useAction((input: GroupInput) =>
-    Effect.tryPromise({
-      try: () => createGroup(input),
-      catch: (reason) => new CreateFailed({ reason }),
-    }).pipe(Effect.flatMap(openGroupScreen)),
-  );
-  const groupBusy = isWaiting(groupState);
-  const groupFailure = failureOf(groupState);
-  const groupError =
-    !groupBusy && groupFailure !== undefined ? createErrorText(groupFailure.reason, 'group') : '';
   // T-0254: pad the sheet content by the keyboard height on Android and scroll
   // to its end when the keyboard opens, so the lowest field and Create stay
   // reachable. The ref only fires while the modal is mounted.
@@ -177,6 +163,13 @@ export function NewChatButton() {
     router.push({ pathname: '/join/[token]', params: { token } });
   };
 
+  // T-1289/MUX-29: the picked group opens its own new-topic sheet on mount
+  // (`?newTopic=1` is read by the group screen).
+  const openNewTopic = (groupId: string) => {
+    setTopicPickerOpen(false);
+    router.push({ pathname: '/group/[id]', params: { id: groupId, newTopic: '1' } });
+  };
+
   return (
     <>
       <Pressable
@@ -208,11 +201,26 @@ export function NewChatButton() {
           icon={Megaphone}
           onPress={() => openDialog('channel')}
         />
-        <ActionSheetItem label="New group" icon={Users} onPress={() => openDialog('group')} />
+        <ActionSheetItem
+          label="New group"
+          icon={Users}
+          onPress={() => {
+            setMenuOpen(false);
+            router.push('/group/new');
+          }}
+        />
         <ActionSheetItem
           label="New message"
           icon={MessageSquarePlus}
           onPress={() => openDialog('message')}
+        />
+        <ActionSheetItem
+          label="New topic"
+          icon={Hash}
+          onPress={() => {
+            setMenuOpen(false);
+            setTopicPickerOpen(true);
+          }}
         />
         <ActionSheetItem
           label="Explore"
@@ -225,6 +233,12 @@ export function NewChatButton() {
         />
         <ActionSheetItem label="Join with a link" icon={Link} onPress={() => openDialog('join')} />
       </ActionSheet>
+
+      <NewTopicGroupSheet
+        visible={topicPickerOpen}
+        onClose={() => setTopicPickerOpen(false)}
+        onPick={openNewTopic}
+      />
 
       <Modal
         visible={action !== undefined}
@@ -262,18 +276,6 @@ export function NewChatButton() {
                 onCreate={create}
                 onClose={() => {
                   if (!channelBusy) {
-                    setAction(undefined);
-                  }
-                }}
-              />
-            ) : action === 'group' ? (
-              <NewGroupSheet
-                contacts={contacts}
-                busy={groupBusy}
-                error={groupError}
-                onCreate={submitGroup}
-                onClose={() => {
-                  if (!groupBusy) {
                     setAction(undefined);
                   }
                 }}

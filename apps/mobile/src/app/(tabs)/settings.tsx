@@ -22,7 +22,7 @@ import { ActivityIndicator, Pressable, View } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { useAuthStore } from '@/auth/session';
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { Card, SectionLabel } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { IconTile } from '@/components/ui/icon-tile';
@@ -82,10 +82,11 @@ function ProfileHeaderCard({
     return null;
   }
   const handle = profile?.handle ?? null;
-  // T-1212: the ball is seeded by the own bare JID (the same ball as the
-  // chat list and the profile screen). While no JID is known yet no ball
-  // is drawn; the literal `'me'` seed is gone.
-  const seed = me?.jid ?? null;
+  // T-1329/T-1334: the ball is seeded by the display name; the picture shows
+  // from the session's cached profile while `GET /me` loads, then from the
+  // profile. The email is the profile's, the same source the own profile
+  // screen shows, so the line is never blank while the session loads.
+  const email = profile?.email ?? me?.email ?? '';
   return (
     <Pressable
       accessibilityRole="button"
@@ -93,17 +94,13 @@ function ProfileHeaderCard({
       onPress={onPress}
       className="flex-row items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 active:bg-surface-raised"
     >
-      {seed === null ? (
-        <View style={{ width: 64, height: 64 }} />
-      ) : (
-        <Avatar id={seed} name={name} size={64} />
-      )}
+      <EntityAvatar person={profile ?? undefined} me={profile === null} size={64} />
       <View className="min-w-0 flex-1">
         <Text numberOfLines={1} className="text-[18px] font-semibold text-foreground">
           {name}
         </Text>
         <Text numberOfLines={1} className="mt-0.5 text-[14px] text-muted-foreground">
-          {handle === null ? (me?.email ?? '') : `@${handle}`}
+          {handle === null ? email : `@${handle}`}
         </Text>
       </View>
       <ChevronRight size={18} color={MUTED_FOREGROUND} />
@@ -214,7 +211,7 @@ function SettingsHub() {
             <ActivityIndicator color={ACCENT} />
           </View>
         ) : (
-          <ProfileHeaderCard profile={profile} onPress={() => router.push('/settings/profile')} />
+          <ProfileHeaderCard profile={profile} onPress={() => router.push('/me')} />
         )}
         {groups.map((group) => (
           <GroupCard

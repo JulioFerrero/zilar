@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View } from 'react-native';
 
-import { DismissBanner } from '@/components/chat/dismiss-banner';
 import { MessageList } from '@/components/chat/message-list';
 import type { ChatScreen } from '@/components/chat/use-chat-screen';
 import { useVoicePlayerHost } from '@/components/chat/voice-player';
+import { Toast, type ToastMessage } from '@/components/ui/toast';
 import { API_URL } from '@/lib/auth';
 import { mediaUrl } from '@/lib/attachment-common';
 import { createAttachmentOpener } from '@/lib/attachment-native';
@@ -20,8 +21,11 @@ type ChatThreadProps = {
 };
 
 /**
- * The message list and the inline error/notice stack. One copy replaces the
- * three identical `MessageList` + `DismissBanner` blocks the screen repeated.
+ * The message list and one transient toast for its failures (T-1289/MUX-32).
+ * The toast replaces the stacked `DismissBanner`s: a new message replaces the
+ * current one and clears itself, so the list never gets pushed up. One copy
+ * replaces the three identical `MessageList` + banner blocks the screen
+ * repeated.
  */
 export function ChatThread({ screen, chat }: ChatThreadProps) {
   const react = useChatStore((state) => state.react);
@@ -39,9 +43,16 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
   );
   const dismissActionError = useChatStore((state) => state.dismissActionError);
   const storeApi = useChatStoreApi();
-  const [pinError, setPinError] = useState('');
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  // A new id on every show restarts the toast timer even for identical text.
+  const toastSeq = useRef(0);
   const [openingId, setOpeningId] = useState<string | undefined>(undefined);
-  const [openError, setOpenError] = useState('');
+  // One transient message at a time: a new one replaces the current.
+  const showToast = (text: string, tone: 'error' | 'notice' = 'error') => {
+    toastSeq.current += 1;
+    setToast({ id: toastSeq.current, text, tone });
+  };
+  const dismissToast = useCallback(() => setToast(null), []);
   // The native attachment seams (T-0150): the opener for the system
   // share/open sheet lives here. The uploader is wired by the store
   // provider: the mock store settles instantly, the real store uploads
@@ -67,26 +78,24 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
     // so the download carries the session bearer; the opener's own origin
     // guard keeps that bearer off any other host.
     if (safeHttpUrl(attachment.url) === undefined) {
-      setOpenError('That file cannot be opened here.');
+      showToast('That file cannot be opened here.');
       return;
     }
     setOpeningId(message.id);
-    setOpenError('');
     runInBackground(() => opener.open(mediaUrl(chat.id, attachment.url), attachment.name), {
       onSuccess: (result) => {
         if (result.status === 'error') {
-          setOpenError(result.message);
+          showToast(result.message);
         }
       },
-      onFailure: () => setOpenError('Could not open that file. Try again.'),
+      onFailure: () => showToast('Could not open that file. Try again.'),
       onSettled: () => setOpeningId((current) => (current === message.id ? undefined : current)),
     });
   };
 
   const pin = (message: UiMessage) => {
-    setPinError('');
     runInBackground(() => pinMessage(chat.id, message.id), {
-      onFailure: () => setPinError('Could not pin the message. Try again.'),
+      onFailure: () => showToast('Could not pin the message. Try again.'),
     });
   };
 
@@ -95,10 +104,9 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
     if (pinRow === undefined) {
       return;
     }
-    setPinError('');
     const pinId = pinRow.id;
     runInBackground(() => unpinMessage(chat.id, pinId), {
-      onFailure: () => setPinError('Could not unpin the message. Try again.'),
+      onFailure: () => showToast('Could not unpin the message. Try again.'),
     });
   };
 
@@ -120,8 +128,25 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
     );
   };
 
+  // A store action failure (a failed edit, delete or reaction) arrives once:
+  // copy it into the toast and clear the store so it cannot stack.
+  useEffect(() => {
+    if (actionError !== undefined) {
+      showToast(actionError.message);
+      dismissActionError();
+    }
+  }, [actionError, dismissActionError]);
+
+  // A search jump that found no message: a quiet notice, not an error.
+  useEffect(() => {
+    if (screen.jumpMissed) {
+      showToast('Message not found', 'notice');
+      screen.setJumpMissed(false);
+    }
+  }, [screen]);
+
   return (
-    <>
+    <View className="flex-1">
       <MessageList
         chat={chat}
         onReply={screen.startReply}
@@ -144,26 +169,7 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
         openingAttachmentId={openingId}
         voiceHost={voiceHost}
       />
-      {pinError !== '' ? (
-        <DismissBanner tone="error" message={pinError} onDismiss={() => setPinError('')} />
-      ) : null}
-      {actionError !== undefined ? (
-        <DismissBanner
-          tone="error"
-          message={actionError.message}
-          onDismiss={() => dismissActionError()}
-        />
-      ) : null}
-      {openError !== '' ? (
-        <DismissBanner tone="error" message={openError} onDismiss={() => setOpenError('')} />
-      ) : null}
-      {screen.jumpMissed ? (
-        <DismissBanner
-          tone="notice"
-          message="Message not found"
-          onDismiss={() => screen.setJumpMissed(false)}
-        />
-      ) : null}
-    </>
+      <Toast toast={toast} onDismiss={dismissToast} />
+    </View>
   );
 }

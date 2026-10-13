@@ -147,8 +147,10 @@ export function joinGroup(data: MockData, id: string): GroupJoinResult | undefin
 // `chats` is read-only on `MockData`, but the chats slice exposes its array as a
 // plain writable property on the merged object. Replacing the array (never
 // pushing) leaves the shared seed array untouched, so a `reset()` rebuilds
-// cleanly. This is the one mutator the chats files do not provide.
-function addChat(data: MockData, entry: ChatEntry): void {
+// cleanly. This is the one mutator the chats files do not provide. Exported so
+// the groups create route appends the caller's new group the same way T-1314
+// needs (the real server puts it on `/chats`).
+export function addChat(data: MockData, entry: ChatEntry): void {
   (data as { chats: readonly ChatEntry[] }).chats = [...data.chats, entry];
 }
 

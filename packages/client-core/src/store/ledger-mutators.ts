@@ -156,12 +156,6 @@ export function createLedgerMutators(deps: LedgerMutatorsDeps) {
     });
   }
 
-  // A failed sticker keeps the message and shows a Retry instead of a
-  // silent "sending" state, like attachments do.
-  function markStickerFailed(chatId: string, messageId: string): void {
-    patchMessage(chatId, messageId, (item) => ({ ...item, failed: true }));
-  }
-
   // A failed upload keeps the message and its local bytes, but shows a Retry
   // instead of a silent "sending" state.
   function markAttachmentFailed(chatId: string, messageId: string): void {
@@ -176,7 +170,6 @@ export function createLedgerMutators(deps: LedgerMutatorsDeps) {
     clearSendFailure,
     markSendRetrying,
     removeFailedMessage,
-    markStickerFailed,
     markAttachmentFailed,
   };
 }

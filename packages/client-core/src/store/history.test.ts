@@ -364,3 +364,37 @@ describe('clearSupersededMarker (core)', () => {
     expect(state().historyState).toEqual({ [TEAM]: 'ready' });
   });
 });
+
+describe('reply quotes (core)', () => {
+  it('resolves a same-page reply name before inserting', async () => {
+    const list = anaHistory(2).map((message) =>
+      message.id === 'ana-1' ? { ...message, replyTo: { id: 'ana-0' } } : message,
+    );
+    const { ctx, state } = historyCtx({
+      loadHistory: serverOver(list),
+      state: { activeChatId: ANA },
+    });
+
+    await Effect.runPromise(openHistory(ctx, ANA));
+
+    const reply = state().messagesByChat[ANA]?.find((message) => message.id === 'ana-1');
+    expect(reply?.replyTo?.senderName).toBe('Ana');
+    expect(reply?.replyTo?.text).toBe('msg 0');
+  });
+
+  it('names a reply from its `to` JID when the target is not loaded', async () => {
+    const list = anaHistory(2).map((message) =>
+      message.id === 'ana-1' ? { ...message, replyTo: { id: 'ghost', to: ANA } } : message,
+    );
+    const { ctx, state } = historyCtx({
+      loadHistory: serverOver(list),
+      state: { activeChatId: ANA },
+    });
+
+    await Effect.runPromise(openHistory(ctx, ANA));
+
+    const reply = state().messagesByChat[ANA]?.find((message) => message.id === 'ana-1');
+    expect(reply?.replyTo?.senderName).toBe('Ana');
+    expect(reply?.replyTo?.senderId).toBe(ANA);
+  });
+});

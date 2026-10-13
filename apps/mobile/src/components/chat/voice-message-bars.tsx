@@ -5,7 +5,7 @@ import { Pressable, View } from 'react-native';
 
 import { VOICE_MIN_WIDTH } from './voice-playback-source';
 import { Text } from '@/components/ui/text';
-import { BUBBLE_COLORS } from '@/lib/colors';
+import { MUTED_FOREGROUND } from '@/lib/colors';
 import {
   ACCENT_FOREGROUND,
   ICON_COLOR,
@@ -54,12 +54,14 @@ export function VoiceMessageFailedBars({
   onRetryVoice?: ((message: UiMessage) => void) | undefined;
 }) {
   const idleColor = outgoing ? '#a3a3a3' : '#525252';
-  const durationColor = outgoing ? '#525252' : BUBBLE_COLORS.incomingMeta;
+  const durationColor = outgoing ? '#525252' : MUTED_FOREGROUND;
   const peak = Math.max(...bars, 1);
   // Why the send failed, when the store recorded it (finding 4). The web
   // twin keeps the same fixed buckets; unknown errors stay generic.
   const failureCopy =
-    message.failureReason === undefined ? "Couldn't send." : voiceErrorCopy(message.failureReason);
+    message.failureReason === undefined
+      ? 'Could not send. Try again.'
+      : voiceErrorCopy(message.failureReason);
   return (
     <View style={{ minWidth: VOICE_MIN_WIDTH }}>
       <View className="flex-row items-center gap-2">
@@ -143,7 +145,7 @@ export function VoiceMessageBars({
   // Played/unplayed bars follow the bubble they sit in (white outgoing).
   const playedColor = outgoing ? '#0a0a0a' : '#ededed';
   const idleColor = outgoing ? '#a3a3a3' : '#525252';
-  const durationColor = outgoing ? '#525252' : BUBBLE_COLORS.incomingMeta;
+  const durationColor = outgoing ? '#525252' : MUTED_FOREGROUND;
   const peak = Math.max(...bars, 1);
   return (
     <View className="flex-row items-center gap-2">

@@ -12,7 +12,7 @@ import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
-import { Avatar } from '@/components/Avatar';
+import { EntityAvatar } from '@/components/EntityAvatar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
@@ -149,7 +149,7 @@ function ContactRow({
           className="flex min-w-0 flex-1 basis-40 items-center gap-3 text-left"
           aria-label={`Open the chat with ${person.name}`}
         >
-          <Avatar id={person.jid} name={person.name} size={36} avatarUrl={person.avatarUrl} />
+          <EntityAvatar person={person} size={36} />
           <span className="min-w-0 flex-1 text-[14px]">
             <span className="block truncate text-[15px] font-medium">
               {person.name}

@@ -44,6 +44,21 @@ The full design is in `docs/PROJECT_PLAN.md`. Read the sections your task links 
 - Keep functions small and names clear. Don't leave dead code or commented-out code.
 - Write English in code, comments and docs.
 
+## Migrations: expand/contract
+
+Migrations live in `apps/server/drizzle/`. `migrateSql` reads that folder on startup
+(`apps/server/src/effect/sql.ts`, `migrationsFolder`, called from
+`apps/server/src/db/migrate.ts`), and a zero-downtime deploy runs the old and the new
+server side by side, so a release must never break the version still running. Follow
+expand/contract:
+
+- **Expand now, contract later.** A release must never drop or rename a column, a table
+  or a constraint that the previous release still reads or writes.
+- **Add first, remove in a later release:** keep the new shape and the old one working
+  together, then delete the old one once no running release uses it.
+- **Every new `.sql` file starts with** `SET lock_timeout = '5s';` so a migration that
+  cannot take its lock fails fast instead of blocking the running server.
+
 ## Pitfalls that already cost us a round (mobile and shared code)
 
 - Registry files (`apps/mobile/src/lib/settings-items.ts`, the new-chat menu) are touched by many tasks: add ONE entry, never reorder or reformat the others.

@@ -1,13 +1,12 @@
 import { Effect } from 'effect';
 import { Fragment, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { personSeed } from '@zilar/chat-core';
 import type { GroupDetail, GroupRole } from '@/lib/api';
 import { deleteGroup } from '@/lib/api/groups';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { FieldError } from './ais/AiPageShell';
-import { Avatar } from './Avatar';
+import { EntityAvatar } from './EntityAvatar';
 import { HandleSuffix } from './HandleSuffix';
 import { PanelFailure, apiStep, messageOf } from './panels/groupPanelOps';
 import { roleLabel } from './panels/role-label';
@@ -37,7 +36,6 @@ export function GroupMembersSection({
   const storeApi = useChatStoreApi();
   const navigate = useNavigate();
   const contacts = useChatSelector((s) => s.contacts);
-  const ownJid = useChatSelector((s) => s.me?.jid);
   const meRole = info.members.find((member) => member.userId === me)?.role;
   const isManager = meRole === 'owner' || meRole === 'admin';
   const isOwner = meRole === 'owner';
@@ -60,12 +58,6 @@ export function GroupMembersSection({
 
   const memberIds = new Set(info.members.map((member) => member.userId));
   const addable = contacts.filter((contact) => !memberIds.has(contact.userId));
-  // T-1209: member balls are seeded by the bare JID, derived from the user
-  // id the way the mention builder does (the domain from my own JID); the
-  // members list carries no JID, so this is the only form available here.
-  const domain = ownJid?.slice(ownJid.indexOf('@') + 1);
-  const seedFor = (userId: string): string =>
-    domain === undefined || domain === '' ? userId : personSeed(userId, domain);
 
   const run = (call: () => Promise<void>, fallback: string, after?: () => void): void =>
     runChange(apiStep(call, fallback).pipe(Effect.tap(() => Effect.sync(() => after?.()))));
@@ -147,12 +139,7 @@ export function GroupMembersSection({
         return (
           <Fragment key={member.userId}>
             <div className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover">
-              <Avatar
-                id={seedFor(member.userId)}
-                name={member.name}
-                size={32}
-                avatarUrl={member.avatarUrl}
-              />
+              <EntityAvatar person={member} size={32} />
               <span className="min-w-0 flex-1 truncate text-[14px]">
                 {member.name} <HandleSuffix handle={member.handle} />
               </span>
@@ -359,12 +346,7 @@ export function GroupMembersSection({
                 checked={selected.includes(contact.userId)}
                 onCheckedChange={() => toggle(contact.userId)}
               />
-              <Avatar
-                id={contact.jid}
-                name={contact.name}
-                size={28}
-                avatarUrl={contact.avatarUrl}
-              />
+              <EntityAvatar person={contact} size={28} />
               <span className="truncate text-[15px]">
                 {contact.name} <HandleSuffix handle={contact.handle} />
               </span>

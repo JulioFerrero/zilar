@@ -5,6 +5,7 @@ import type { Attachment } from '@zilar/protocol';
 import type { ChatMessage, XmppCore } from '@zilar/xmpp-core';
 
 import type { PickedFile } from '../../lib/attachment-ports';
+import type { OfflineCacheSync } from '../offline-cache-sync';
 import type { MediaTokenShape } from '../../lib/attachments';
 import type { RecordedVoice } from '../../lib/voice';
 import type { VoiceFailureReason } from '../../lib/voice-native';
@@ -209,7 +210,6 @@ export interface StoreHelpers {
     replyTo: ReplyRef | undefined,
   ): string;
   setChatMessage(chatId: string, message: UiMessage, clearUnread: boolean): void;
-  markStickerFailed(chatId: string, messageId: string): void;
   markAttachmentFailed(chatId: string, messageId: string): void;
   markVoiceFailed(chatId: string, messageId: string, reason?: VoiceFailureReason): void;
   clearFailure(message: UiMessage): UiMessage;
@@ -256,6 +256,8 @@ export interface StoreCtx {
    * the incoming handlers, the message actions and the reads run on it.
    */
   readonly coreCtx: CoreCtx;
+  /** The offline message cache and its store watcher (T-1313). */
+  readonly offline: OfflineCacheSync;
   /** Starts `effect` at once as a fiber of `scope` (default: the current generation). */
   fork<A, E>(effect: Effect.Effect<A, E, Ports>, scope?: Scope.Scope): Fiber.Fiber<A, E>;
   /**

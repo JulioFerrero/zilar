@@ -1,6 +1,8 @@
 import { formatDuration, type ReplyRef } from '@zilar/chat-core';
-import { ArrowUp, Mic, Paperclip, Send, Smile, Trash2, X } from 'lucide-react';
+import { ArrowUp, Mic, Send, Smile, Trash2, X } from 'lucide-react';
 import { useEffect, type KeyboardEvent, type RefObject } from 'react';
+import { AttachMenu } from '../attach/AttachMenu';
+import { AttachSendDialog } from '../attach/AttachSendDialog';
 import { AttachmentStrip } from './AttachmentStrip';
 import { EditBar } from '../EditBar';
 import { MentionPicker } from '../MentionPicker';
@@ -8,7 +10,7 @@ import { StickerPanel } from '../StickerPanel';
 import { Button } from '../ui/button';
 import { IconButton } from '../ui/icon-button';
 import { Well } from '../ui/well';
-import type { ComposerAttachments } from './useComposerAttachments';
+import type { ComposerAttachments, SendPendingOptions } from './useComposerAttachments';
 import type { Mentions } from './useMentions';
 import type { VoiceRecorderController } from './useVoiceRecorder';
 
@@ -27,7 +29,7 @@ export interface ComposerEditor {
   editingText: string;
   onCancelEdit: () => void;
   saveEdit: () => void;
-  send: () => void;
+  send: (options?: SendPendingOptions) => void;
 }
 
 export function ComposerControls({
@@ -59,7 +61,8 @@ export function ComposerControls({
     attachmentError,
     stickerOpen,
     setStickerOpen,
-    fileInputRef,
+    attachDialogOpen,
+    closeAttachDialog,
     stickerWrapRef,
     acceptFiles,
     sendSticker,
@@ -139,7 +142,7 @@ export function ComposerControls({
           </Well>
         )
       )}
-      {staged.length > 0 && (
+      {staged.length > 0 && !attachDialogOpen && (
         <AttachmentStrip
           attachments={staged}
           previewUrls={previewUrls}
@@ -174,22 +177,10 @@ export function ComposerControls({
           </div>
         ) : (
           <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              multiple
-              onChange={(event) => {
-                const chosen = event.target.files;
-                if (chosen !== null && chosen.length > 0) {
-                  acceptFiles([...chosen]);
-                }
-                event.target.value = '';
-              }}
+            <AttachMenu
+              onPickMedia={(files) => acceptFiles(files, { media: true })}
+              onPickFiles={(files) => acceptFiles(files)}
             />
-            <IconButton aria-label="Attach a file" onClick={() => fileInputRef.current?.click()}>
-              <Paperclip className="size-5" aria-hidden="true" />
-            </IconButton>
             <textarea
               ref={textareaRef}
               id="message-composer"
@@ -255,7 +246,7 @@ export function ComposerControls({
           <Button
             type="button"
             aria-label={isEditing ? 'Save edit' : 'Send message'}
-            onClick={isEditing ? saveEdit : send}
+            onClick={() => (isEditing ? saveEdit() : send())}
             className="size-9 rounded-[10px] p-0"
           >
             <ArrowUp className="size-4" aria-hidden="true" />
@@ -280,6 +271,18 @@ export function ComposerControls({
           </IconButton>
         )}
       </Well>
+      {attachDialogOpen && (
+        <AttachSendDialog
+          attachments={staged}
+          previewUrls={previewUrls}
+          caption={value}
+          onCaptionChange={(next) => onChange(next, next.length)}
+          onRemove={removeAttachment}
+          error={attachmentError}
+          onSend={(asFiles) => send({ asFiles })}
+          onClose={closeAttachDialog}
+        />
+      )}
     </>
   );
 }

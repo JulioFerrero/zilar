@@ -7,7 +7,9 @@ import { Image, Pressable, View } from 'react-native';
 import { Ticks } from '@/components/chat/ticks';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
+import { MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { raisedPill } from '@/lib/depth';
+import { messageAccessibilityLabel } from '@/lib/message-a11y';
 import { getSessionToken } from '@/lib/session-token';
 import { isSameOriginStickerUrl, stickerImageSource } from '@/lib/stickers';
 import { cn } from '@/lib/utils';
@@ -61,7 +63,7 @@ export function StickerMessage({ sticker, message, outgoing, onLongPress }: Stic
       onLongPress={onLongPress}
       delayLongPress={350}
       accessibilityRole="image"
-      accessibilityLabel={alt}
+      accessibilityLabel={messageAccessibilityLabel(message, outgoing)}
       className={cn('relative', outgoing ? 'items-end' : 'items-start')}
     >
       {trusted && !broken ? (
@@ -86,11 +88,17 @@ export function StickerMessage({ sticker, message, outgoing, onLongPress }: Stic
         className="absolute right-1 bottom-1 flex-row items-center gap-1 rounded-full px-2 py-0.5"
         style={raisedPill}
       >
-        <Text className="font-mono text-[10px] text-muted-foreground">
+        <Text className="font-mono text-[11px] text-muted-foreground">
           {message.edited === true ? 'edited ' : ''}
           {formatTime(message.createdAt)}
         </Text>
-        {outgoing ? <Ticks status={message.status} color="#8a8a8a" size={13} /> : null}
+        {outgoing ? (
+          <Ticks
+            status={message.status}
+            color={message.status === 'read' ? SEEN : MUTED_FOREGROUND}
+            size={13}
+          />
+        ) : null}
       </View>
     </Pressable>
   );

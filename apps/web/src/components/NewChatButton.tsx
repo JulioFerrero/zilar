@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { Bot, Compass, Hash, Megaphone, MessageSquarePlus, Plus, Users } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ExplorePage } from './ExplorePage';
 import { InviteDialog } from './InviteDialog';
@@ -167,13 +167,25 @@ export function NewChatButton({
           closeLabel="Close new chat menu"
           className="right-0 bottom-full mb-2"
         >
-          <MenuItem onSelect={() => openDialog('group')}>New group</MenuItem>
-          <MenuItem onSelect={() => openDialog('channel')}>New channel</MenuItem>
-          <MenuItem onSelect={openExplore}>Explore groups</MenuItem>
-          <MenuItem onSelect={() => openDialog('message')}>New message</MenuItem>
-          <MenuItem onSelect={() => openDialog('ai')}>New AI</MenuItem>
+          <MenuItem icon={Users} onSelect={() => openDialog('group')}>
+            New group
+          </MenuItem>
+          <MenuItem icon={Megaphone} onSelect={() => openDialog('channel')}>
+            New channel
+          </MenuItem>
+          <MenuItem icon={Compass} onSelect={openExplore}>
+            Explore groups
+          </MenuItem>
+          <MenuItem icon={MessageSquarePlus} onSelect={() => openDialog('message')}>
+            New message
+          </MenuItem>
+          <MenuItem icon={Bot} onSelect={() => openDialog('ai')}>
+            New AI
+          </MenuItem>
           {(defaultGroupId !== undefined || topicGroups.length > 0) && (
-            <MenuItem onSelect={openNewTopic}>New topic</MenuItem>
+            <MenuItem icon={Hash} onSelect={openNewTopic}>
+              New topic
+            </MenuItem>
           )}
         </Menu>
       )}

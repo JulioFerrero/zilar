@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import type { ContactRelation } from '@/lib/contacts-api';
 import type { HandleProfile } from '@zilar/api-contract';
 
-import { Avatar } from '../chat/avatar';
+import { EntityAvatar } from '../chat/entity-avatar';
 
 /**
  * True when the inline block confirm must be dropped because the card now
@@ -43,7 +43,6 @@ export function ProfileCard({
   onBlock,
   onUnblock,
   onOpenProfile,
-  seed,
 }: {
   profile: HandleProfile;
   /** True after a request was just sent from this card. */
@@ -62,11 +61,6 @@ export function ProfileCard({
   onUnblock: () => void;
   /** Opens the full profile (the people-search row); absent keeps the header static. */
   onOpenProfile?: (() => void) | undefined;
-  /**
-   * T-1212: the ball seed (the bare JID of the looked-up person, else the
-   * user id derived the mention-builder way). Absent paints the raw user id.
-   */
-  seed?: string | undefined;
 }) {
   const [confirmingBlock, setConfirmingBlock] = useState(false);
   // Reset during render on a different profile or relation (like the
@@ -84,7 +78,7 @@ export function ProfileCard({
 
   const header = (
     <View className="flex-row items-center gap-3">
-      <Avatar id={seed ?? profile.userId} name={profile.name} size={44} />
+      <EntityAvatar person={profile} size={44} />
       <View className="min-w-0 flex-1">
         <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">
           {profile.name}

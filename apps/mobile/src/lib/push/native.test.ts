@@ -4,6 +4,7 @@ import { jsonResponse } from '@/test/wait';
 
 const notifications = vi.hoisted(() => ({
   setNotificationChannelAsync: vi.fn(async () => null),
+  deleteNotificationChannelAsync: vi.fn(async () => undefined),
   getPermissionsAsync: vi.fn(async () => ({ granted: true })),
   requestPermissionsAsync: vi.fn(async () => ({ granted: true })),
   getDevicePushTokenAsync: vi.fn(async () => ({ type: 'android' as const, data: 'fcm-token-1' })),
@@ -60,6 +61,8 @@ function captureFetch(): { calls: FetchCall[]; fetchImpl: typeof fetch } {
 beforeEach(() => {
   vi.mocked(notifications.setNotificationChannelAsync).mockReset();
   vi.mocked(notifications.setNotificationChannelAsync).mockResolvedValue(null);
+  vi.mocked(notifications.deleteNotificationChannelAsync).mockReset();
+  vi.mocked(notifications.deleteNotificationChannelAsync).mockResolvedValue(undefined);
   vi.mocked(notifications.getPermissionsAsync).mockReset();
   vi.mocked(notifications.getPermissionsAsync).mockResolvedValue({ granted: true });
   vi.mocked(notifications.requestPermissionsAsync).mockReset();
@@ -99,6 +102,14 @@ describe('registerNativePush (T-1139)', () => {
       enable: true,
     });
     expect(vi.mocked(notifications.getExpoPushTokenAsync)).not.toHaveBeenCalled();
+    expect(vi.mocked(notifications.setNotificationChannelAsync).mock.calls).toEqual([
+      ['direct-messages', { name: 'Direct messages', importance: 4 }],
+      ['groups', { name: 'Groups', importance: 4 }],
+      ['channels', { name: 'Channels', importance: 4 }],
+    ]);
+    expect(vi.mocked(notifications.deleteNotificationChannelAsync)).toHaveBeenCalledWith(
+      'messages',
+    );
     expect(vi.mocked(secureStore.setItemAsync)).toHaveBeenCalledWith(
       PUSH_REGISTRATION_KEY,
       JSON.stringify(REGISTRATION),

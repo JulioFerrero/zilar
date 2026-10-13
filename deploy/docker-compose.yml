@@ -49,6 +49,7 @@ services:
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
       interval: 5s
+      start_interval: 1s
       timeout: 5s
       retries: 12
       start_period: 10s
@@ -98,6 +99,7 @@ services:
     healthcheck:
       test: ['CMD', 'ejabberdctl', 'status']
       interval: 10s
+      start_interval: 1s
       timeout: 10s
       retries: 30
       start_period: 20s
@@ -214,6 +216,7 @@ services:
       # exit 0 only when GET /health answers 2xx within 5 s.
       test: ['CMD', 'node', '/app/deploy-scripts/healthcheck.mjs']
       interval: 10s
+      start_interval: 1s
       timeout: 5s
       retries: 12
       start_period: 30s
@@ -238,6 +241,7 @@ services:
     healthcheck:
       test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1/ || exit 1']
       interval: 15s
+      start_interval: 1s
       timeout: 5s
       retries: 12
       start_period: 10s
@@ -277,6 +281,7 @@ services:
           'curl -k -s --resolve localhost:443:127.0.0.1 https://localhost/ -o /dev/null; test $$? -le 1',
         ]
       interval: 15s
+      start_interval: 1s
       timeout: 10s
       retries: 12
       start_period: 20s

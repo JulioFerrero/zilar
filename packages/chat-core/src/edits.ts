@@ -31,6 +31,19 @@ export function canDeleteMessage(message: UiMessage, currentUserId: string): boo
   return message.senderId === currentUserId && message.deleted !== true;
 }
 
+/**
+ * Whether a message can be named on the wire at all: reacting, editing and
+ * deleting all carry the target's id in a stanza the other side must resolve.
+ * A still-sending message has no server id yet, and a failed one never got
+ * one, so the menu must not offer those actions (UI-7) instead of letting a
+ * tap fail silently. The status tracks the wire state: once the ack lands the
+ * status moves to `sent` even while the bubble keeps its optimistic id, so a
+ * status check is the reliable signal here (a `local-*` prefix is not).
+ */
+export function canAct(message: UiMessage): boolean {
+  return message.status !== 'sending' && message.status !== 'failed' && message.failed !== true;
+}
+
 /** The author identity of a message, as far as it is known. */
 export interface EditAuthor {
   /** Real bare JID when resolved, else the occupant JID. */

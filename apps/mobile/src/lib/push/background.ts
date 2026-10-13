@@ -18,12 +18,10 @@ import { ENV_MOCK } from '../../mock/gate';
 import { API_URL } from '../auth';
 import { createApiClient } from '../effect/api-client';
 import { getSessionToken } from '../session-token';
+import { channelForWake, parseChatKind, type PushChatKind } from './channels';
 
 /** The task name ejabberd's publish is delivered to; defined and registered below. */
 export const WAKE_TASK = 'zilar-background-notification';
-
-/** The Android channel every push lands in (plan §4.2). */
-const CHANNEL_ID = 'messages';
 
 /** The generic text shown when the server is not asked for a preview. */
 const GENERIC_TITLE = 'Zilar';
@@ -47,6 +45,12 @@ const MOCK_MODE = ENV_MOCK === '1';
 export interface WakePayload {
   chatId: string;
   messageId?: string;
+  /**
+   * T-1302 (MUX-23): the chat kind the server would put on the wake under
+   * `chatKind`. It does not send one yet, so this is undefined in practice and
+   * `channelForWake` falls back (see the Report).
+   */
+  chatKind?: PushChatKind;
 }
 
 export interface WakeDeps {
@@ -78,14 +82,27 @@ function parseWake(data: { dataString?: string; [key: string]: unknown }): WakeP
     return undefined;
   }
   const messageId = record['messageId'];
-  return typeof messageId === 'string' && messageId !== '' ? { chatId, messageId } : { chatId };
+  const chatKind = parseChatKind(record['chatKind']);
+  const payload: WakePayload = { chatId };
+  if (typeof messageId === 'string' && messageId !== '') {
+    payload.messageId = messageId;
+  }
+  if (chatKind !== undefined) {
+    payload.chatKind = chatKind;
+  }
+  return payload;
 }
 
-/** Posts one local notification on the messages channel, opened by its `chatId`. */
-function post(title: string, body: string, chatId: string): Promise<string> {
+/** Posts one local notification on its chat-kind channel, opened by `chatId`. */
+function post(
+  title: string,
+  body: string,
+  chatId: string,
+  chatKind: PushChatKind | undefined,
+): Promise<string> {
   return Notifications.scheduleNotificationAsync({
     content: { title, body, data: { chatId } },
-    trigger: { channelId: CHANNEL_ID },
+    trigger: { channelId: channelForWake(chatKind).id },
   });
 }
 
@@ -97,7 +114,7 @@ function postTest(): Promise<string> {
   return Notifications.scheduleNotificationAsync({
     identifier: TEST_WAKE_IDENTIFIER,
     content: { title: GENERIC_TITLE, body: TEST_WAKE_BODY, data: {} },
-    trigger: { channelId: CHANNEL_ID },
+    trigger: { channelId: channelForWake(undefined).id },
   });
 }
 
@@ -119,7 +136,7 @@ async function handleWake(payload: WakePayload, deps: Required<WakeDeps>): Promi
     return;
   }
   if (payload.messageId === undefined) {
-    await post(GENERIC_TITLE, GENERIC_BODY, payload.chatId);
+    await post(GENERIC_TITLE, GENERIC_BODY, payload.chatId, payload.chatKind);
     return;
   }
   const client = createApiClient(deps);
@@ -130,10 +147,10 @@ async function handleWake(payload: WakePayload, deps: Required<WakeDeps>): Promi
     if (error instanceof ApiError && error.status === 404) {
       return;
     }
-    await post(GENERIC_TITLE, GENERIC_BODY, payload.chatId);
+    await post(GENERIC_TITLE, GENERIC_BODY, payload.chatId, payload.chatKind);
     return;
   }
-  await post(preview.title, preview.body, preview.chatId);
+  await post(preview.title, preview.body, preview.chatId, payload.chatKind);
 }
 
 /**

@@ -1,5 +1,9 @@
 # Avatar seeds audit (T-1203)
 
+> Since T-1334 the orb is seeded by the normalized display name (Julio,
+> 2026-10-13); a rename changes the orb. The rules below describe the
+> pre-T-1334 id seeds and stay as the audit record.
+
 Audit only: no code changed. Every row traces the seed to where the value is
 set and names the other ids available at that call site without a new request.
 

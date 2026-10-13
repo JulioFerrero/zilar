@@ -42,6 +42,17 @@ function refusal(file: File): string | undefined {
   return undefined;
 }
 
+/** A file the "Photo or video" picker can produce (or a dropped/pasted one). */
+function isMediaFile(file: File): boolean {
+  return file.type.startsWith('image/') || file.type.startsWith('video/');
+}
+
+/** How `sendPending` sends the staged files. */
+export interface SendPendingOptions {
+  /** Send photos one by one instead of as one album ("Send as files"). */
+  asFiles?: boolean;
+}
+
 export interface ComposerAttachments {
   /** The first staged file, for `canSend` and the single-file preview. */
   attachment: PendingAttachment | undefined;
@@ -55,12 +66,19 @@ export interface ComposerAttachments {
   setAttachmentError: Dispatch<SetStateAction<string | undefined>>;
   stickerOpen: boolean;
   setStickerOpen: Dispatch<SetStateAction<boolean>>;
-  fileInputRef: RefObject<HTMLInputElement | null>;
+  /** True while the send dialog for a media pick is open. */
+  attachDialogOpen: boolean;
+  /** Closes the send dialog and drops its staged pick. */
+  closeAttachDialog: () => void;
   stickerWrapRef: RefObject<HTMLSpanElement | null>;
   onPaste: (event: ReactClipboardEvent<HTMLDivElement>) => void;
-  acceptFiles: (files: readonly File[]) => void;
+  /**
+   * Stages the chosen files. `media` marks a pick from "Photo or video"
+   * (or a drop/paste): a media pick opens the send dialog.
+   */
+  acceptFiles: (files: readonly File[], options?: { media?: boolean }) => void;
   /** Sends every staged file in order; two or more photos share one album id. */
-  sendPending: () => void;
+  sendPending: (options?: SendPendingOptions) => void;
   sendSticker: (sticker: StickerChoice) => void;
   sendGif: (gif: GifChoice) => void;
   reset: () => void;
@@ -82,7 +100,7 @@ export function useComposerAttachments({
   const [staged, setStaged] = useState<PendingAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | undefined>(undefined);
   const [stickerOpen, setStickerOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachDialogOpen, setAttachDialogOpen] = useState(false);
   // The sticker toggle button plus the panel: a pointer-down outside this
   // wrapper closes the panel (the panel itself is viewport-fixed, so the
   // Composer subtree cannot contain it).
@@ -92,14 +110,16 @@ export function useComposerAttachments({
   // The picker, paste and drop all funnel their files through here. An empty
   // or oversized file is refused inline, before any request. An all-photo pick
   // stages up to ten photos as one album; anything else (a file, or a mixed
-  // pick) keeps the single-attachment behaviour.
-  const acceptFiles = useCallback((files: readonly File[]): void => {
+  // pick) keeps the single-attachment behaviour. A `media` pick (the "Photo or
+  // video" entry, a drop or a paste) also opens the send dialog.
+  const acceptFiles = useCallback((files: readonly File[], options?: { media?: boolean }): void => {
     setAttachmentError(undefined);
     const chosen = [...files];
     const first = chosen[0];
     if (first === undefined) {
       return;
     }
+    const isMedia = options?.media === true && chosen.every(isMediaFile);
     if (!chosen.every((file) => classify(file) === 'image')) {
       const error = refusal(first);
       if (error !== undefined) {
@@ -107,6 +127,7 @@ export function useComposerAttachments({
         return;
       }
       setStaged([{ file: first, kind: classify(first) }]);
+      setAttachDialogOpen(isMedia);
       return;
     }
     for (const file of chosen) {
@@ -120,6 +141,7 @@ export function useComposerAttachments({
       setAttachmentError(ALBUM_TOO_MANY);
     }
     setStaged(chosen.slice(0, MAX_ALBUM_PHOTOS).map((file) => ({ file, kind: 'image' as const })));
+    setAttachDialogOpen(isMedia);
   }, []);
 
   // The single-file `setAttachment(undefined)` the composer uses still clears
@@ -134,9 +156,16 @@ export function useComposerAttachments({
     [],
   );
 
-  const removeAttachment = useCallback((index: number): void => {
-    setStaged((current) => current.filter((_, position) => position !== index));
-  }, []);
+  const removeAttachment = useCallback(
+    (index: number): void => {
+      setStaged((current) => current.filter((_, position) => position !== index));
+      // Removing the last preview leaves nothing to send: close the dialog.
+      if (staged.length <= 1) {
+        setAttachDialogOpen(false);
+      }
+    },
+    [staged],
+  );
 
   const previewUrls = useMemo(
     () => staged.map((item) => (item.kind === 'image' ? objectUrlFor(item.file) : undefined)),
@@ -170,7 +199,7 @@ export function useComposerAttachments({
         return;
       }
       event.preventDefault();
-      acceptFiles([...files]);
+      acceptFiles([...files], { media: true });
     };
     document.addEventListener('dragover', onDragOver);
     document.addEventListener('drop', onDrop);
@@ -199,7 +228,7 @@ export function useComposerAttachments({
     }
     if (files.length > 0) {
       event.preventDefault();
-      acceptFiles(files);
+      acceptFiles(files, { media: true });
     }
   };
 
@@ -287,33 +316,46 @@ export function useComposerAttachments({
   // Sends every staged file in order. Two or more photos get one album id
   // (`urn:zilar:album:0`), each with its `index`, and only the first carries
   // the caption and the reply. Uploads then run in parallel and the list renders
-  // by `index`.
-  const sendPending = useCallback((): void => {
-    const store = storeApi.getState();
-    const caption = value.trim();
-    const count = staged.filter((item) => item.kind === 'image').length;
-    const albumId = count >= 2 ? crypto.randomUUID() : undefined;
-    let imageIndex = 0;
-    staged.forEach((item, index) => {
-      const isImage = item.kind === 'image';
-      store.sendAttachment(chatId, item.file, {
-        ...(index === 0 && caption.length > 0 ? { caption } : {}),
-        ...(index === 0 && replyTo !== undefined ? { replyTo } : {}),
-        ...(isImage && albumId !== undefined
-          ? { album: { id: albumId, index: imageIndex, count } }
-          : {}),
+  // by `index`. "Send as files" drops the album marker so each photo is its own
+  // message (the app never compresses, so the bytes are the same).
+  const sendPending = useCallback(
+    (options?: SendPendingOptions): void => {
+      const store = storeApi.getState();
+      const caption = value.trim();
+      const asFiles = options?.asFiles === true;
+      const count = asFiles ? 0 : staged.filter((item) => item.kind === 'image').length;
+      const albumId = count >= 2 ? crypto.randomUUID() : undefined;
+      let imageIndex = 0;
+      staged.forEach((item, index) => {
+        const isImage = item.kind === 'image';
+        store.sendAttachment(chatId, item.file, {
+          ...(index === 0 && caption.length > 0 ? { caption } : {}),
+          ...(index === 0 && replyTo !== undefined ? { replyTo } : {}),
+          ...(isImage && albumId !== undefined
+            ? { album: { id: albumId, index: imageIndex, count } }
+            : {}),
+        });
+        if (isImage) {
+          imageIndex += 1;
+        }
       });
-      if (isImage) {
-        imageIndex += 1;
-      }
-    });
+      setStaged([]);
+      setAttachDialogOpen(false);
+    },
+    [chatId, replyTo, staged, storeApi, value],
+  );
+
+  // Cancelling the send dialog drops the pick (the caption stays in the draft).
+  const closeAttachDialog = useCallback((): void => {
     setStaged([]);
-  }, [chatId, replyTo, staged, storeApi, value]);
+    setAttachDialogOpen(false);
+  }, []);
 
   const reset = (): void => {
     setStaged([]);
     setAttachmentError(undefined);
     setStickerOpen(false);
+    setAttachDialogOpen(false);
   };
 
   return {
@@ -326,7 +368,8 @@ export function useComposerAttachments({
     setAttachmentError,
     stickerOpen,
     setStickerOpen,
-    fileInputRef,
+    attachDialogOpen,
+    closeAttachDialog,
     stickerWrapRef,
     onPaste,
     acceptFiles,

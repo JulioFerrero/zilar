@@ -4,7 +4,7 @@
 // updates its state before the next event arrives, so they stay plain
 // callbacks over the shared `ctx`. The timers and the best-effort work they
 // start (the typing clear, the badge) run as fibers.
-import type { UiMessage } from '@zilar/chat-core';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import type { ChatMessage, Occupant, PresenceEvent } from '@zilar/xmpp-core';
 import type { CoreCtx } from './ctx';
 import { confirmDelivered } from './delivered';
@@ -250,41 +250,70 @@ export function handleOccupants(
   ctx: CoreCtx,
   event: { roomJid: string; occupants: Occupant[] },
 ): void {
-  const online = event.occupants.filter((occupant) => occupant.available).length;
-  ctx.set((state) => ({
-    chats: state.chats.map((chat) =>
-      chat.id === event.roomJid
-        ? {
-            ...chat,
-            onlineCount: online,
-            memberCount: Math.max(chat.memberCount ?? 0, event.occupants.length),
-          }
-        : chat,
-    ),
-  }));
+  ctx.set((state) => {
+    const index = state.chats.findIndex((chat) => chat.id === event.roomJid);
+    const chat = state.chats[index];
+    if (chat === undefined) {
+      return state;
+    }
+    const onlineCount = event.occupants.filter((occupant) => occupant.available).length;
+    const memberCount = Math.max(chat.memberCount ?? 0, event.occupants.length);
+    // PERF-7: a MUC presence burst repeats the same counts, and rebuilding
+    // `chats` would re-render every subscriber of the list. Nothing visible
+    // changed: return `state` itself, which the store skips (same object).
+    if (chat.onlineCount === onlineCount && chat.memberCount === memberCount) {
+      return state;
+    }
+    const chats = state.chats.slice();
+    chats[index] = { ...chat, onlineCount, memberCount };
+    return { chats };
+  });
+}
+
+/** The same instant, so a repeated stamped presence does not re-stamp. */
+function sameInstant(left: Date | undefined, right: Date): boolean {
+  return left !== undefined && left.getTime() === right.getTime();
+}
+
+/**
+ * The chat after one presence event, or the very same object when the event
+ * changes nothing visible (PERF-7: a repeated availability must not rebuild
+ * `chats`). Without a delay stamp, only a real online-to-offline transition
+ * re-stamps `lastSeenAt`.
+ */
+function chatAfterPresence(ctx: CoreCtx, chat: ChatSummary, event: PresenceEvent): ChatSummary {
+  if (event.available) {
+    return chat.online === true ? chat : { ...chat, online: true };
+  }
+  if (event.delayedAt !== undefined) {
+    const lastSeenAt = new Date(event.delayedAt);
+    if (chat.online === false && sameInstant(chat.lastSeenAt, lastSeenAt)) {
+      return chat;
+    }
+    return { ...chat, online: false, lastSeenAt };
+  }
+  if (chat.online === false) {
+    return chat;
+  }
+  if (chat.online === true) {
+    return { ...chat, online: false, lastSeenAt: ctx.ports.now() };
+  }
+  return { ...chat, online: false };
 }
 
 export function handlePresence(ctx: CoreCtx, event: PresenceEvent): void {
-  ctx.set((state) => ({
-    chats: state.chats.map((chat) => {
-      if (chat.id !== event.jid) {
-        return chat;
-      }
-      if (event.available) {
-        return { ...chat, online: true };
-      }
-      // An offline presence with a delay stamp says when the contact went
-      // away, so the header reads that instead of "just now". Without a
-      // stamp, only a real online-to-offline transition re-stamps: a repeated
-      // unavailable (or one for a contact never seen online) keeps the
-      // previous value.
-      if (event.delayedAt !== undefined) {
-        return { ...chat, online: false, lastSeenAt: new Date(event.delayedAt) };
-      }
-      if (chat.online !== true) {
-        return { ...chat, online: false };
-      }
-      return { ...chat, online: false, lastSeenAt: ctx.ports.now() };
-    }),
-  }));
+  ctx.set((state) => {
+    const index = state.chats.findIndex((chat) => chat.id === event.jid);
+    const chat = state.chats[index];
+    if (chat === undefined) {
+      return state;
+    }
+    const next = chatAfterPresence(ctx, chat, event);
+    if (next === chat) {
+      return state;
+    }
+    const chats = state.chats.slice();
+    chats[index] = next;
+    return { chats };
+  });
 }

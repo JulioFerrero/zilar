@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
     getToken: vi.fn<() => Promise<string | undefined>>(),
     setToken: vi.fn<(token: string) => Promise<void>>(),
     clearToken: vi.fn<() => Promise<void>>(),
+    getMe: vi.fn<() => Promise<Me | undefined>>(),
+    setMe: vi.fn<(me: Me) => Promise<void>>(),
   },
   clientOptions: [] as Array<{
     baseURL: string;
@@ -48,8 +50,11 @@ beforeEach(() => {
   mocks.storage.getToken.mockReset();
   mocks.storage.setToken.mockReset();
   mocks.storage.clearToken.mockReset();
+  mocks.storage.getMe.mockReset();
+  mocks.storage.setMe.mockReset();
   mocks.storage.setToken.mockResolvedValue(undefined);
   mocks.storage.clearToken.mockResolvedValue(undefined);
+  mocks.storage.setMe.mockResolvedValue(undefined);
   mocks.sendSignInCode.mockReset();
   mocks.verifySignInCode.mockReset();
   mocks.signOutSession.mockReset();

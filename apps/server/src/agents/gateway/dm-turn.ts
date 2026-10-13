@@ -12,7 +12,7 @@ import {
   DM_HISTORY_MESSAGE_LIMIT,
   type ChatCompletionMessage,
 } from '../context';
-import { mapFailureToReply, runDmTurn, type ExecuteToolCall } from '../reply';
+import { failureLogFields, mapFailureToReply, runDmTurn, type ExecuteToolCall } from '../reply';
 import { buildTools } from '../tools';
 import type { createBudgetGate } from './budget';
 import {
@@ -172,7 +172,6 @@ export function createDmTurn(ctx: DmTurnContext) {
     // message below. Typing indicators stay exactly as before, for clients
     // without drafts.
     const turnDrafts = draftHub.publishTurn(ai.owner, ai.jid, randomUUID());
-    let virtualKey: string | undefined;
     const turnBody = Effect.gen(function* () {
       yield* Effect.promise(() => ensureAiModel(aiDeps(), session.aiId));
       const encryptedKey = yield* Effect.promise(() =>
@@ -183,7 +182,6 @@ export function createDmTurn(ctx: DmTurnContext) {
       }
       // Decrypted in memory only; never stored, logged or returned.
       const key = (deps.cipher as KeyCipher).decrypt(encryptedKey);
-      virtualKey = key;
 
       const history = yield* Effect.promise(() =>
         session.core.loadHistory(ownerJid, 'chat', {
@@ -319,10 +317,7 @@ export function createDmTurn(ctx: DmTurnContext) {
         Effect.gen(function* () {
           // ensureAiModel, the key lookup and anything else outside the turn: an
           // honest short message, never the raw error.
-          logger.warn(
-            { err: toRedactedError(error, secretsFor(virtualKey)), aiId: session.aiId },
-            'AI turn failed',
-          );
+          logger.warn({ ...failureLogFields(error), aiId: session.aiId }, 'AI turn failed');
           const reply = mapFailureToReply(error);
           // There is nobody left to tell when the send itself fails.
           yield* Effect.promise(() => liveSendMessage(session, ownerJid, 'chat', reply)).pipe(

@@ -1,5 +1,5 @@
 import { type UiMessage } from '@zilar/chat-core';
-import { Avatar } from '../Avatar';
+import { EntityAvatar } from '../EntityAvatar';
 import { cn } from '@/lib/utils';
 
 /**
@@ -32,7 +32,7 @@ export function MessageTombstone({
     >
       {showAvatarSlot &&
         (lastInGroup ? (
-          <Avatar id={message.senderId} name={message.senderName} size={34} />
+          <EntityAvatar person={{ id: message.senderId, name: message.senderName }} size={34} />
         ) : (
           <span className="w-[34px] shrink-0" aria-hidden="true" />
         ))}

@@ -155,7 +155,7 @@ export function StickersPage() {
     <SettingsShell
       title="Stickers"
       subtitle="Make packs from your images, share them, and star favorites."
-      onBack={() => navigate('/')}
+      onBack={() => navigate('/settings')}
     >
       {status === 'loading' && <StateMessage kind="loading" title="Loading…" />}
 

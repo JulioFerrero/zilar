@@ -101,7 +101,7 @@ export function MachinesPage() {
     <SettingsShell
       title="Machines"
       subtitle="Computers where your AIs can work."
-      onBack={() => navigate('/')}
+      onBack={() => navigate('/settings')}
     >
       <div className={SETTINGS_COLUMN}>
         {status === 'loading' && <MachineListSkeleton />}

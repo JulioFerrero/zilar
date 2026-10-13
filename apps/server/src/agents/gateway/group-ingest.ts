@@ -225,9 +225,24 @@ export function createGroupIngest(ctx: GroupIngestContext) {
         // T-0482: a delegated task is always its own turn. If it coalesced
         // with a mention or another delegation, only the last item would be
         // the trigger and the other delegation rows would stay `working`
-        // forever. Mentions still coalesce with mentions.
-        const nextDelegation = queued.findIndex((item) => item.delegationId !== undefined);
-        const take = nextDelegation === -1 ? queued.length : Math.max(1, nextDelegation);
+        // forever.
+        // T-1290 (AI-9): mentions coalesce only when they come from the same
+        // sender. A different sender starts a new turn that runs after this
+        // one, so the reply is tagged to the person it answers, in order.
+        const first = queued[0] as RoomPendingMessage;
+        let take = 1;
+        if (first.delegationId === undefined) {
+          while (take < queued.length) {
+            const item = queued[take];
+            if (item === undefined || item.delegationId !== undefined) {
+              break;
+            }
+            if (normBareJid(item.fromJid) !== normBareJid(first.fromJid)) {
+              break;
+            }
+            take += 1;
+          }
+        }
         const batch = queued.slice(0, take);
         session.roomPending.set(roomJid, queued.slice(take));
         yield* Effect.promise(() => runGroupSessionTurn(session, roomJid, batch));

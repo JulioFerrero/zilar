@@ -57,6 +57,10 @@ export async function handleIncomingPush(
   const now = (deps.now ?? (() => new Date()))();
   const device = await deviceByNode(deps.db, notification.node);
   if (device === undefined) {
+    // The row is gone: the API unsubscribed it (`DELETE /push/subscriptions`)
+    // or T-1255's session-revoke cascade deleted it. Forget the node's dedupe
+    // set so a removed device's ids do not accumulate for the process's life.
+    deps.recentlyNotified.delete(notification.node);
     return { kind: 'unknown-device', node: notification.node };
   }
   const outcome = await Effect.runPromise(
@@ -174,13 +178,14 @@ export const deliverToDevice = Effect.fnUntraced(function* (
   // the same always-visible filter; only the preview setting differs, and only
   // the Web Push payload reads it.
   const filter = { muted: false, visible: true, showPreviews };
+  let gone = false;
   if (device.kind === 'webpush') {
     const subscription = yield* openDeviceEffect(deps, device);
     const payload = buildPushPayload(newest.message, filter);
     if (payload === undefined) {
       return dropped(device, 'muted');
     }
-    yield* sendWithCleanupEffect(deps, device, () =>
+    gone = yield* sendWithCleanupEffect(deps, device, () =>
       deps.sender.send(subscription, JSON.stringify(payload)),
     );
   } else {
@@ -199,30 +204,39 @@ export const deliverToDevice = Effect.fnUntraced(function* (
     if (data === undefined) {
       return dropped(device, 'muted');
     }
-    yield* sendWithCleanupEffect(deps, device, () => nativeSender.send(native.token, data));
+    gone = yield* sendWithCleanupEffect(deps, device, () => nativeSender.send(native.token, data));
   }
-  // Marked only after a successful send. Per-node serialization keeps
-  // concurrent IQs for one node ordered, so a retry cannot double-buzz:
-  // the retry finds the origin id already seen and drops as `duplicate`.
-  markNotified(deps, device.node, scan.notify, newest.message);
+  if (gone) {
+    // The transport reported the subscription gone and its row was removed
+    // (PERF-17): forget the node's dedupe set with it, and never mark ids for
+    // a device that can no longer receive them.
+    deps.recentlyNotified.delete(device.node);
+  } else {
+    // Marked only after a successful send. Per-node serialization keeps
+    // concurrent IQs for one node ordered, so a retry cannot double-buzz:
+    // the retry finds the origin id already seen and drops as `duplicate`.
+    markNotified(deps, device.node, scan.notify, newest.message);
+  }
   return { kind: 'sent', userId: device.userId, deviceId: device.id };
 });
 
 // Sends through one transport and runs the shared post-send bookkeeping: a
 // `gone` result removes the device, and any throw stamps `failed_at` and
 // answers the IQ with `SendFailed`. Both kinds share this one block, so Web
-// Push and native cleanup cannot drift apart.
+// Push and native cleanup cannot drift apart. Returns `true` when the
+// subscription was gone, so the caller forgets the node instead of marking it
+// notified (PERF-17).
 const sendWithCleanupEffect = Effect.fnUntraced(function* (
   deps: PushServiceDeps,
   device: PushDeviceRow,
   send: () => Promise<{ gone: boolean }>,
-): EffectType.fn.Return<void, SendFailed> {
+): EffectType.fn.Return<boolean, SendFailed> {
   const now = (deps.now ?? (() => new Date()))();
   // The send and the `gone` cleanup share one `try`, exactly like the old
   // `try` block: any throw stamps `failed_at` and answers the IQ with a
   // result. A failure here is not marked notified (F3), so a retried publish
   // IQ for the same message still notifies.
-  yield* Effect.tryPromise({
+  return yield* Effect.tryPromise({
     try: async () => {
       const result = await send();
       if (result.gone) {
@@ -232,6 +246,7 @@ const sendWithCleanupEffect = Effect.fnUntraced(function* (
           'push subscription expired; removed',
         );
       }
+      return result.gone;
     },
     catch: () => new SendFailed(),
   }).pipe(

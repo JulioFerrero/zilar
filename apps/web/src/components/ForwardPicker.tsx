@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-import { Avatar } from './Avatar';
+import { EntityAvatar } from './EntityAvatar';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Dialog } from './ui/dialog';
@@ -114,13 +114,7 @@ export function ForwardPicker({
                 checked={selected.includes(chat.id)}
                 onCheckedChange={() => toggle(chat.id)}
               />
-              <Avatar
-                id={chat.id}
-                name={chat.title}
-                size={28}
-                ai={chat.isAI}
-                avatarUrl={chat.avatarUrl}
-              />
+              <EntityAvatar chat={chat} size={28} ai={chat.isAI} />
               <span className="truncate text-[15px]">{targetLabel(chat)}</span>
             </label>
           ))

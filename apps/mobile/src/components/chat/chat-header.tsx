@@ -3,7 +3,7 @@ import { ChevronLeft, Images, Lock, Megaphone, MoreVertical, Search } from 'luci
 import { Pressable, View } from 'react-native';
 
 import { AiBadge } from '@/components/chat/ai-badge';
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { TypingDots } from '@/components/chat/typing-dots';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
@@ -85,14 +85,20 @@ export function ChatHeader({
   const isTopic = chat.topic !== undefined;
   const groupTarget = onOpenGroup !== undefined ? (chat.groupId ?? undefined) : undefined;
   const title = (
-    <View className="ml-2.5 min-w-0 flex-1">
+    // `justify-center` keeps the two text lines on the avatar's centre line:
+    // the wrapper stretches to the header height, so without it the content
+    // sticks to the top and reads about 11 dp too high (T-1308).
+    <View className="ml-2.5 min-w-0 flex-1 justify-center">
       {isTopic && topicGroupName !== undefined && topicGroupName !== '' ? (
-        <Text numberOfLines={1} className="shrink text-[11px] text-subtle-foreground">
+        <Text numberOfLines={1} className="shrink text-[11px] leading-4 text-subtle-foreground">
           {topicGroupName}
         </Text>
       ) : null}
       <View className="flex-row items-center gap-1.5">
-        <Text numberOfLines={1} className="shrink text-[15px] font-semibold text-foreground">
+        <Text
+          numberOfLines={1}
+          className="shrink text-[15px] font-semibold leading-5 text-foreground"
+        >
           {chat.title}
         </Text>
         {chat.chatKind === 'channel' ? (
@@ -113,7 +119,7 @@ export function ChatHeader({
         {chat.isAI ? <AiBadge /> : null}
       </View>
       <View className="flex-row items-center gap-1">
-        <Text numberOfLines={1} className="shrink text-[12px] text-muted-foreground">
+        <Text numberOfLines={1} className="shrink text-[12px] leading-4 text-muted-foreground">
           {subtitle}
         </Text>
         {working || writing ? <TypingDots color={MUTED_FOREGROUND} /> : null}
@@ -125,20 +131,13 @@ export function ChatHeader({
       <IconButton label="Back" onPress={onBack}>
         <ChevronLeft size={24} color={iconColor} />
       </IconButton>
-      <Avatar
-        id={chat.id}
-        name={chat.title}
-        size={36}
-        online={chat.online}
-        avatarUrl={chat.avatarUrl}
-        ai={chat.isAI}
-      />
+      <EntityAvatar chat={chat} size={36} online={chat.online} ai={chat.isAI} />
       {isTopic && onOpenInfo !== undefined ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Topic info for ${chat.title}`}
           onPress={onOpenInfo}
-          className="min-w-0 flex-1"
+          className="min-w-0 flex-1 justify-center"
         >
           {title}
         </Pressable>
@@ -147,7 +146,7 @@ export function ChatHeader({
           accessibilityRole="button"
           accessibilityLabel={`Open group ${chat.title}`}
           onPress={() => onOpenGroup?.(groupTarget)}
-          className="min-w-0 flex-1"
+          className="min-w-0 flex-1 justify-center"
         >
           {title}
         </Pressable>
@@ -156,7 +155,7 @@ export function ChatHeader({
           accessibilityRole="button"
           accessibilityLabel={`Open ${chat.title}'s profile`}
           onPress={() => router.push({ pathname: '/u/[handle]', params: { handle: dmHandle } })}
-          className="min-w-0 flex-1"
+          className="min-w-0 flex-1 justify-center"
         >
           {title}
         </Pressable>

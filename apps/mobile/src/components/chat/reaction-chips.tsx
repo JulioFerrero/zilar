@@ -43,9 +43,10 @@ export function ReactionChips({ reactions, outgoing, onToggle }: ReactionChipsPr
             accessibilityLabel={chipLabel(reaction)}
             accessibilityState={{ selected: reaction.mine }}
             disabled={!togglable}
+            hitSlop={8}
             onPress={togglable ? () => onToggle(reaction.emoji) : undefined}
             className={cn(
-              'flex-row items-center gap-1 rounded-full px-2 py-0.5',
+              'flex-row items-center gap-1 rounded-full px-2 py-1',
               togglable ? 'active:opacity-80' : null,
               reaction.mine ? 'bg-[#ededed]' : null,
             )}

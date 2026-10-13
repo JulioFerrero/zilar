@@ -1,5 +1,5 @@
 import { formatTime, splitCodeBlocks, splitLinks, type UiMessage } from '@zilar/chat-core';
-import { View } from 'react-native';
+import { View, type ViewStyle } from 'react-native';
 
 import { LinkPreviewCard } from '@/components/chat/link-preview-card';
 import { LinkText } from '@/components/chat/link-text';
@@ -8,6 +8,14 @@ import { DraftCaret, GeneratingLabel } from '@/components/chat/message-bubble-de
 import { Ticks } from '@/components/chat/ticks';
 import { Text } from '@/components/ui/text';
 import { DANGER, FOREGROUND, SEEN } from '@/lib/colors';
+
+/**
+ * Pins the visible meta at the bubble's bottom-right (T-1328). Its width is
+ * reserved in the last line by a `hidden` copy of `BubbleInlineMeta`, so a short
+ * last line keeps it inline and a full one makes it wrap to its own right-aligned
+ * row instead of dropping to the left.
+ */
+export const META_OVERLAY: ViewStyle = { position: 'absolute', right: 0, bottom: 0 };
 
 /**
  * T-1241: the plain (human message) body moved out of `message-bubble-content`
@@ -26,29 +34,52 @@ import { DANGER, FOREGROUND, SEEN } from '@/lib/colors';
  * the last block. A message with no code block keeps the single-`Text` structure.
  */
 
+// The colour for every hidden copy of the meta. It is not `'transparent'`:
+// Android turns that into the int 0x00000000, and React Native treats a colour
+// of 0 on a nested `Text` span as "unset", so the span inherits the parent's
+// visible colour and paints (the hidden time showed twice on the emulator). A
+// non-zero alpha (0.004 rounds the alpha byte to 1) is invisible but not zero,
+// so the span stays hidden on every platform.
+const HIDDEN_TEXT_COLOR = 'rgba(0,0,0,0.004)';
+
 /**
  * The inline time/edited/ticks meta shared by the markdown and plain text
- * branches of a bubble, on the time's own line.
+ * branches of a bubble. The visible copy is drawn at the bubble's bottom-right
+ * by the branch (see `META_OVERLAY`); a `hidden` copy is placed at the end of the
+ * last line to reserve its width, so the meta never wraps to the left.
  */
 export function BubbleInlineMeta({
   message,
   outgoing,
   color,
   generating,
+  hidden = false,
 }: {
   message: UiMessage;
   outgoing: boolean;
   color: string;
   generating: boolean;
+  hidden?: boolean;
 }) {
   // Seen ticks render brighter than delivered ones: only `read` keeps the
   // bright seen color, every earlier state keeps the passed meta color.
   const ticksColor = message.status === 'read' ? SEEN : color;
+  // The `hidden` copy must reserve the meta's width but never paint. A parent
+  // `opacity` does not hide an inline `Text`'s children on Android, so the text
+  // uses HIDDEN_TEXT_COLOR and the tick view its own `opacity: 0` instead.
+  const textColor = hidden ? HIDDEN_TEXT_COLOR : color;
+  const ticksHidden = hidden || generating;
   return (
     <Text
-      className="font-mono text-[10px]"
-      color={color}
-      style={generating ? { opacity: 0 } : undefined}
+      className="font-mono text-[11px]"
+      color={textColor}
+      style={!hidden && generating ? { opacity: 0 } : undefined}
+      {...(hidden
+        ? {
+            accessibilityElementsHidden: true,
+            importantForAccessibility: 'no-hide-descendants' as const,
+          }
+        : {})}
     >
       {'  '}
       {message.edited === true ? 'edited ' : ''}
@@ -58,7 +89,7 @@ export function BubbleInlineMeta({
       {outgoing && message.status === 'failed' ? (
         <>
           {'  '}
-          <Text className="font-mono text-[10px]" color={DANGER}>
+          <Text className="font-mono text-[11px]" color={hidden ? HIDDEN_TEXT_COLOR : DANGER}>
             Not sent
           </Text>
         </>
@@ -75,7 +106,7 @@ export function BubbleInlineMeta({
             // Nudge the ticks down onto the time's baseline
             // (they otherwise sit about a third too high).
             transform: [{ translateY: 2 }],
-            ...(generating ? { opacity: 0 } : undefined),
+            ...(ticksHidden ? { opacity: 0 } : undefined),
           }}
         >
           <Ticks status={message.status} color={ticksColor} size={11} />
@@ -125,24 +156,37 @@ export function PlainBubbleBody({
   if (!hasCode) {
     return (
       <>
-        <Text className="text-[15px] leading-5" color={textColor}>
-          <LinkText
-            text={text}
-            color={textColor}
-            mentions={message.mentions}
-            meJid={meJid}
-            outgoing={outgoing}
-            formatted
-          />
-          {generating ? <DraftCaret reduceMotion={reduceMotion} /> : null}
-          <BubbleInlineMeta
-            message={message}
-            outgoing={outgoing}
-            color={metaColor}
-            generating={generating}
-          />
-        </Text>
-        {generating ? <GeneratingLabel /> : null}
+        <View>
+          <Text className="text-[15px] leading-5" color={textColor}>
+            <LinkText
+              text={text}
+              color={textColor}
+              mentions={message.mentions}
+              meJid={meJid}
+              outgoing={outgoing}
+              formatted
+            />
+            {generating ? <DraftCaret reduceMotion={reduceMotion} /> : null}
+            <BubbleInlineMeta
+              message={message}
+              outgoing={outgoing}
+              color={metaColor}
+              generating={generating}
+              hidden
+            />
+          </Text>
+          {generating ? <GeneratingLabel /> : null}
+          <View style={META_OVERLAY}>
+            <Text className="text-[15px] leading-5" color={textColor}>
+              <BubbleInlineMeta
+                message={message}
+                outgoing={outgoing}
+                color={metaColor}
+                generating={generating}
+              />
+            </Text>
+          </View>
+        </View>
         {url !== undefined ? <LinkPreviewCard url={url} /> : null}
       </>
     );
@@ -171,16 +215,29 @@ export function PlainBubbleBody({
           </Text>
         ),
       )}
-      <Text className="text-[15px] leading-5" color={textColor}>
-        {generating ? <DraftCaret reduceMotion={reduceMotion} /> : null}
-        <BubbleInlineMeta
-          message={message}
-          outgoing={outgoing}
-          color={metaColor}
-          generating={generating}
-        />
-      </Text>
-      {generating ? <GeneratingLabel /> : null}
+      <View>
+        <Text className="text-[15px] leading-5" color={textColor}>
+          {generating ? <DraftCaret reduceMotion={reduceMotion} /> : null}
+          <BubbleInlineMeta
+            message={message}
+            outgoing={outgoing}
+            color={metaColor}
+            generating={generating}
+            hidden
+          />
+        </Text>
+        {generating ? <GeneratingLabel /> : null}
+        <View style={META_OVERLAY}>
+          <Text className="text-[15px] leading-5" color={textColor}>
+            <BubbleInlineMeta
+              message={message}
+              outgoing={outgoing}
+              color={metaColor}
+              generating={generating}
+            />
+          </Text>
+        </View>
+      </View>
       {url !== undefined ? <LinkPreviewCard url={url} /> : null}
     </>
   );

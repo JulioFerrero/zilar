@@ -6,17 +6,6 @@ import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
-import { IconButton } from '@/components/ui/icon-button';
-import { StateMessage } from '@/components/ui/state-message';
-import { Text } from '@/components/ui/text';
-import { ICON } from '@/lib/colors';
-import { goBackOrHome } from '@/lib/navigation';
-import {
-  contactChatId,
-  domainOfJid,
-  normalizeHandleInput,
-  type HandleProfile,
-} from '@/lib/contacts-api';
 import {
   actOnProfileRequest,
   addContactLookupFailure,
@@ -24,11 +13,22 @@ import {
   NO_USER_MESSAGE,
 } from '@/components/contacts/add-contact';
 import { performBlock, performUnblock } from '@/components/contacts/blocks';
-import { ProfileCard } from '@/components/contacts/profile-card';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
+import { buildActions, ProfileActions } from '@/components/profile/profile-actions';
+import { ProfileBlock } from '@/components/profile/profile-block';
+import { ProfileHeader } from '@/components/profile/profile-header';
+import { ProfileInfo } from '@/components/profile/profile-info';
+import type { ProfilePerson } from '@/components/profile/profile-person';
+import { useProfileDm } from '@/components/profile/use-profile-dm';
+import { IconButton } from '@/components/ui/icon-button';
+import { StateMessage } from '@/components/ui/state-message';
+import { Text } from '@/components/ui/text';
+import { Toast, type ToastMessage } from '@/components/ui/toast';
+import { ICON } from '@/lib/colors';
+import { domainOfJid, normalizeHandleInput } from '@/lib/contacts-api';
+import { goBackOrHome } from '@/lib/navigation';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStore } from '@/store/chat-store-provider';
-import { personSeed } from '@zilar/chat-core';
 
 /**
  * Lifts a *-api.ts call into an Effect that fails with the thrown error
@@ -39,9 +39,9 @@ function fromThrown<A>(call: () => Promise<A>): Effect.Effect<A, unknown> {
 }
 
 /**
- * The `@handle` profile screen (T-0182, the mobile twin of the web
- * `/u/:handle` route): the same profile card as the add-contact sheet, so a
- * link or a tap on a name can open it. States: loading, the card, one plain
+ * The `@handle` profile screen (T-0182, rebuilt Telegram-style in T-1308): a
+ * large centred photo with the name and status, a round action row, the info
+ * card and Block at the bottom. States: loading, the profile, one plain
  * "No user with that username" for a bad handle, and an error with Retry.
  */
 export default function HandleScreen() {
@@ -58,21 +58,15 @@ function HandleProfileView() {
   const rawHandle = typeof params.handle === 'string' ? params.handle : '';
   const handle = normalizeHandleInput(rawHandle);
   const { api } = useContactsApi();
-  const chats = useChatStore((state) => state.chats);
   const me = useChatStore((state) => state.me);
-  // T-1212: the card ball is seeded by the bare JID (the lookup profile
-  // carries no JID), derived from the user id the way the mention builder
-  // does (the domain from my own JID).
   const domain = domainOfJid(me?.jid);
-  const seedFor =
-    domain === undefined ? undefined : (userId: string): string => personSeed(userId, domain);
-
-  const [profile, setProfile] = useState<HandleProfile | null>(null);
+  const [profile, setProfile] = useState<ProfilePerson | null>(null);
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
   const [error, setError] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
 
   // A newer load interrupts the one in flight, so a stale answer never
   // replaces the card.
@@ -134,7 +128,15 @@ function HandleProfileView() {
       ),
     ),
   );
-  const actionBusy = isWaiting(actionState);
+  // The mute write has its own failure line (the contact-request one above
+  // would be wrong).
+  const [prefState, runPref] = useAction((work: Effect.Effect<unknown, unknown>) =>
+    Effect.sync(() => setActionError(null)).pipe(
+      Effect.andThen(work),
+      Effect.tapError(() => Effect.sync(() => setActionError('Could not save. Try again.'))),
+    ),
+  );
+  const actionBusy = isWaiting(actionState) || isWaiting(prefState);
 
   // `performBlock` and `performUnblock` answer with the inline failure text
   // (or null) instead of rejecting.
@@ -172,7 +174,15 @@ function HandleProfileView() {
     }
     const target = { userId: profile.userId, handle };
     runWork(
-      fromThrown(() => actOnProfileRequest(api, target, work, setProfile, () => setSent(false))),
+      fromThrown(() =>
+        actOnProfileRequest(
+          api,
+          target,
+          work,
+          (found) => setProfile(found),
+          () => setSent(false),
+        ),
+      ),
     );
   };
 
@@ -204,22 +214,31 @@ function HandleProfileView() {
     );
   };
 
-  const openMessage = (): void => {
-    if (profile === null) {
-      return;
-    }
-    const domain = domainOfJid(me?.jid);
-    if (domain === undefined) {
-      setActionError('No chat with them yet. Pull to refresh the chats list.');
-      return;
-    }
-    const chatId = contactChatId(profile.userId, domain);
-    if (!chats.some((chat) => chat.id === chatId)) {
-      setActionError('No chat with them yet. Pull to refresh the chats list.');
-      return;
-    }
-    router.push({ pathname: '/chat/[id]', params: { id: chatId } });
-  };
+  const { dmChatId, muted, status, online, openMessage, toggleMute, openSearch, copyUsername } =
+    useProfileDm({ profile, domain, runPref, setActionError, setToast });
+
+  const actions = buildActions({
+    profile,
+    sent,
+    busy: actionBusy,
+    hasDm: dmChatId !== undefined,
+    muted,
+    openMessage,
+    toggleMute,
+    openSearch,
+    send,
+    cancel: () => actOnRequest((id) => api.cancelContactRequest(id)),
+    accept: () => actOnRequest((id) => api.acceptContactRequest(id)),
+    decline: () => actOnRequest((id) => api.declineContactRequest(id)),
+    openRequests: () => router.push('/settings/requests'),
+  });
+  const requestNote =
+    profile !== null && profile.relation === 'request_sent'
+      ? 'Request sent. They have not answered yet.'
+      : profile !== null && profile.relation === 'none' && sent
+        ? 'Request sent.'
+        : null;
+  const selfNote = profile !== null && profile.relation === 'self' ? 'That is you.' : null;
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
@@ -227,11 +246,6 @@ function HandleProfileView() {
         <IconButton label="Back" onPress={() => goBackOrHome(router)}>
           <ChevronLeft size={24} color={ICON} />
         </IconButton>
-        <View className="min-w-0 flex-1">
-          <Text numberOfLines={1} className="text-[20px] font-semibold leading-6 text-foreground">
-            {profile === null ? `@${rawHandle}` : `@${profile.handle}`}
-          </Text>
-        </View>
       </View>
       <ScrollView
         className="flex-1"
@@ -255,27 +269,42 @@ function HandleProfileView() {
             />
           ) : null}
           {!loading && !missing && error === '' && profile !== null ? (
-            <ProfileCard
-              profile={profile}
-              sent={sent}
-              busy={actionBusy}
-              error={actionError}
-              // T-1212: the ball is seeded by the bare JID (the lookup
-              // profile carries no JID), derived from the user id the way
-              // the mention builder does (the domain from my own JID).
-              seed={seedFor?.(profile.userId)}
-              onSend={send}
-              onCancel={() => actOnRequest((id) => api.cancelContactRequest(id))}
-              onAccept={() => actOnRequest((id) => api.acceptContactRequest(id))}
-              onDecline={() => actOnRequest((id) => api.declineContactRequest(id))}
-              onMessage={openMessage}
-              onOpenRequests={() => router.push('/settings/requests')}
-              onBlock={block}
-              onUnblock={unblock}
-            />
+            <View className="gap-6">
+              <ProfileHeader person={profile} status={status} online={online} />
+              <View className="gap-3">
+                <ProfileActions actions={actions} />
+                {requestNote !== null ? (
+                  <Text className="text-center text-[13px] text-muted-foreground">
+                    {requestNote}
+                  </Text>
+                ) : null}
+                {selfNote !== null ? (
+                  <Text className="text-center text-[14px] text-muted-foreground">{selfNote}</Text>
+                ) : null}
+                {actionError !== null ? (
+                  <Text accessibilityRole="alert" className="text-center text-[14px] text-danger">
+                    {actionError}
+                  </Text>
+                ) : null}
+              </View>
+              <ProfileInfo
+                handle={profile.handle}
+                bio={profile.bio}
+                onCopyUsername={copyUsername}
+              />
+              <ProfileBlock
+                userId={profile.userId}
+                name={profile.name}
+                relation={profile.relation}
+                busy={actionBusy}
+                onBlock={block}
+                onUnblock={unblock}
+              />
+            </View>
           ) : null}
         </View>
       </ScrollView>
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </SafeAreaView>
   );
 }

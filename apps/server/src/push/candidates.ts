@@ -108,6 +108,7 @@ async function resolveRoomCandidate(
     status: 'ok',
     message: {
       chatJid: roomJid,
+      chatKind: group.kind === 'channel' ? 'channel' : 'group',
       senderName: row.nick === '' ? 'Someone' : row.nick,
       place,
       text,
@@ -140,6 +141,7 @@ async function resolveDmCandidate(
     status: 'ok',
     message: {
       chatJid: peer,
+      chatKind: 'dm',
       senderName,
       place: senderName,
       text,

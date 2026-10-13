@@ -9,6 +9,8 @@
 // the gate's scope step only allows the listed files.
 import { Effect } from 'effect';
 import type { CoreCtx } from './ctx';
+import { archiveIdOf, compareArchiveIds } from './delivered';
+import { advanceStatus } from './rows';
 
 /** The storage key prefix of a user's last-read map. */
 export const LAST_READ_PREFIX = 'zilar:lastRead:';
@@ -68,5 +70,55 @@ export function recordRead(ctx: CoreCtx, chatId: string, messageId: string | und
         ),
       );
     }
+  }
+}
+
+/**
+ * T-1311: applies the peer's read mark the server reported for one chat
+ * (`/api/chats` `readUntil`), moving my own messages whose archive id is at or
+ * below it to `read` through `advanceStatus`: a later message keeps its status
+ * and a `read` one is not moved down. A non-numeric mark is ignored.
+ */
+export function applyReadUntil(ctx: CoreCtx, chatId: string, until: string): void {
+  if (!isArchiveId(until)) {
+    return;
+  }
+  const state = ctx.get();
+  const messages = state.messagesByChat[chatId];
+  if (messages === undefined || messages.length === 0) {
+    return;
+  }
+  const me = state.currentUserId;
+  let changed = false;
+  const next = messages.map((message) => {
+    if (message.senderId !== me) {
+      return message;
+    }
+    const archiveId = archiveIdOf(ctx, message);
+    if (archiveId === undefined || compareArchiveIds(archiveId, until) > 0) {
+      return message;
+    }
+    const status = advanceStatus(message.status, 'read');
+    if (status === message.status) {
+      return message;
+    }
+    changed = true;
+    return { ...message, status };
+  });
+  if (!changed) {
+    return;
+  }
+  ctx.set((previous) => ({ messagesByChat: { ...previous.messagesByChat, [chatId]: next } }));
+}
+
+/**
+ * T-1311: applies the read mark the chat summary carries, if any. Called after
+ * a history page lands, so messages that arrived before the peer's mark was
+ * known still show the read state.
+ */
+export function applyChatReadMark(ctx: CoreCtx, chatId: string): void {
+  const mark = ctx.get().chats.find((chat) => chat.id === chatId)?.readUntil;
+  if (mark !== undefined) {
+    applyReadUntil(ctx, chatId, mark);
   }
 }

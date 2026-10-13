@@ -1,37 +1,26 @@
-// Avatar seed helpers (T-1209): one ball per person, AI and group on every
-// web screen. `avatarSvg` normalizes its seed, so these helpers only pick the
-// right id; they do not normalize themselves.
-//
-// The client cannot reproduce the server's `u<hash>` fallback for unusual ids
-// (`provisioning.ts:29-35` hashes with sha256 and base32 there), but normal
-// ids — the lowercased user id — match the web mention builder exactly
-// (`${userId.toLowerCase()}@${domain}`), and the DM chat id and the store
-// contact's `jid` already carry the real bare JID, which callers prefer.
-// `normalizeJid` in `avatarSvg` strips any resource and lowercases, so a
-// mixed-case input still draws the same ball.
+// Avatar seed helper (T-1334): the no-picture orb's colour and light come from
+// the person's, AI's or group's name, so the same name draws the same ball on
+// every screen. `avatarSvg` normalizes its seed (bare, lowercased), so
+// `nameSeed` only folds case and whitespace.
 
 /**
- * A person's seed: their bare JID. Prefer the real bare JID when the call
- * site already has it (the DM chat id, the store contact's `jid`); otherwise
- * derive it from the user id and the XMPP domain the way the web mention
- * builder does.
+ * Replaces a lone surrogate (a corrupt import, a hostile peer) with U+FFFD.
+ * `Array.from` yields a valid pair as one two-unit string and a lone surrogate
+ * as one, so `length === 1` in the surrogate range means there is no pair.
+ * `String.prototype.normalize` throws on lone surrogates, so this runs first.
  */
-export function personSeed(userId: string, domain: string): string {
-  return `${userId.toLowerCase()}@${domain}`;
-}
-
-/** An AI's seed: its AI JID (`ai-<aiId>@<domain>`). */
-export function aiSeed(aiJid: string): string {
-  return aiJid;
+function wellFormed(value: string): string {
+  return Array.from(value, (character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return character.length === 1 && code >= 0xd800 && code <= 0xdfff ? '\uFFFD' : character;
+  }).join('');
 }
 
 /**
- * A group, channel or topic's seed: the General topic's room JID. A topic
- * row passes its own room JID, which is the same family (the General topic's
- * room JID is the group's old chat id). Where the topics are not loaded yet
- * (cold explore lists), the rule's id is not available and the call site is
- * left unchanged.
+ * A name's orb seed: Unicode NFC, trimmed, inner whitespace collapsed to one
+ * space and lowercased, so `'  Ana  María '` and `'ana maría'` draw the same
+ * ball. An empty name returns `''`; the caller then falls back to the id.
  */
-export function groupSeed(generalRoomJid: string): string {
-  return generalRoomJid;
+export function nameSeed(name: string): string {
+  return wellFormed(name).normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
 }

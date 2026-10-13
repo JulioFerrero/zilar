@@ -17,13 +17,16 @@ import { ThemeProvider } from 'expo-router/react-navigation';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { colorScheme } from 'nativewind';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { View } from 'react-native';
 import { Effect } from 'effect';
 
 import { useAuthStore } from '@/auth/session';
+import { ClientVersionBanner } from '@/components/client-version-banner';
 import { mobileRuntime } from '@/lib/effect/runtime';
 import { NotificationRouter } from '@/lib/push/tap';
+import { markStartup } from '@/lib/startup-timing';
 import { NAV_THEME } from '@/lib/theme';
 import { ChatStoreProvider } from '@/store/chat-store-provider';
 
@@ -33,8 +36,12 @@ export { ErrorBoundary } from 'expo-router';
 const bestEffort = (call: () => Promise<unknown>): Effect.Effect<void> =>
   Effect.tryPromise({ try: call, catch: (cause) => cause }).pipe(Effect.ignore);
 
-// D24 is dark only: keep the splash up until Geist is loaded, then force dark
-// whatever the system setting is.
+// How long the root may wait for the primary font before it renders anyway
+// (PERF-12); the secondary faces keep loading in the background.
+const FONT_READY_CAP_MS = 1_000;
+
+// D24 is dark only: keep the splash up until the primary Geist face is loaded,
+// then force dark whatever the system setting is.
 Effect.runFork(bestEffort(() => SplashScreen.preventAutoHideAsync()));
 
 // Keeps the Effect runtime (and FetchHttpClient) in the bundle so the Hermes
@@ -53,14 +60,23 @@ function SessionBootstrap() {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded, fontError] = useFonts({
-    Geist_400Regular,
+  // The primary text font (`font-sans` → Geist_400Regular, tailwind.config.js)
+  // gates the first paint only, or the 1 s cap: a slow secondary face must not
+  // hold the cold start (PERF-12). The other faces load in the background.
+  const [primaryLoaded, primaryError] = useFonts({ Geist_400Regular });
+  useFonts({
     Geist_500Medium,
     Geist_600SemiBold,
     GeistMono_400Regular,
     GeistMono_500Medium,
   });
-  const fontsReady = fontsLoaded || fontError !== null;
+  const [fontCapReached, setFontCapReached] = useState(false);
+  const fontsReady = primaryLoaded || primaryError !== null || fontCapReached;
+
+  useEffect(() => {
+    const timer = setTimeout(() => setFontCapReached(true), FONT_READY_CAP_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     colorScheme.set('dark');
@@ -68,6 +84,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (fontsReady) {
+      markStartup('fonts-ready');
       Effect.runFork(bestEffort(() => SplashScreen.hideAsync()));
     }
   }, [fontsReady]);
@@ -83,7 +100,10 @@ export default function RootLayout() {
         <SessionBootstrap />
         <NotificationRouter />
         <ChatStoreProvider>
-          <Stack screenOptions={{ headerShown: false }} />
+          <View style={{ flex: 1 }}>
+            <ClientVersionBanner />
+            <Stack screenOptions={{ headerShown: false }} />
+          </View>
         </ChatStoreProvider>
         <PortalHost />
       </ThemeProvider>

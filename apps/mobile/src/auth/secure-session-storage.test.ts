@@ -59,6 +59,13 @@ describe('createSecureSessionStorage', () => {
     await expect(createSecureSessionStorage().setToken('token-2')).rejects.toBe(failure);
   });
 
+  it('reads the cached profile with its picture', async () => {
+    const me = { id: 'u1', email: 'a@b.c', name: 'Ada', jid: null, avatarUrl: 'https://x/a.png' };
+    secureStore.getItemAsync.mockResolvedValue(JSON.stringify(me));
+
+    await expect(createSecureSessionStorage().getMe()).resolves.toEqual(me);
+  });
+
   it('deletes the session key on clear', async () => {
     await expect(createSecureSessionStorage().clearToken()).resolves.toBeUndefined();
 

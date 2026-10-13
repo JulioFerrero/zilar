@@ -38,6 +38,12 @@ export interface AlbumRef {
 export interface ReplyRef {
   id: string;
   senderName: string;
+  /**
+   * The replied-to sender's bare JID off the wire (XEP-0461 `to`), when the
+   * stanza carries one. Lets a quote colour by the sender even before the
+   * replied-to message is loaded (T-1333).
+   */
+  senderId?: string;
   text?: string;
 }
 
@@ -166,10 +172,22 @@ export interface ChatSummary {
   pinnedAt?: Date;
   lastMessage?: UiMessage;
   /**
+   * T-1318: when the chat was created, or the caller joined it. A chat with no
+   * `lastMessage` yet (a just-made group nobody posted in) sorts by this, so it
+   * leads the list like Telegram instead of sinking to the bottom. Absent on an
+   * older server/cache; the shared comparator then keeps the old order.
+   */
+  createdAt?: Date;
+  /**
    * T-1238: the delivered mark the server reported for this chat, an archive id
    * in the caller's own-message terms. Absent when nobody confirmed yet.
    */
   deliveredUntil?: string;
+  /**
+   * T-1311: the peer's read mark the server reported for this DM, an archive id
+   * in the caller's own-message terms. Absent until the peer has read.
+   */
+  readUntil?: string;
   online?: boolean;
   onlineCount?: number;
   memberCount?: number;

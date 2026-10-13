@@ -46,6 +46,16 @@ function attempt<A>(run: () => Promise<A>, message: (cause: unknown) => string) 
 /** The shape of the shared call wrapper, handed to `useProfileAvatar`. */
 export type ProfileAttempt = typeof attempt;
 
+/** What the one Save carries: the trimmed values plus which fields changed. */
+type SaveInput = {
+  readonly handle: string;
+  readonly name: string;
+  readonly bio: string;
+  readonly handleChanged: boolean;
+  readonly nameChanged: boolean;
+  readonly bioChanged: boolean;
+};
+
 /** The bio calls' fetch: `mockFetch` in mock mode, else the real one (T-1259). */
 function bioFetch(mock: boolean): typeof fetch {
   if (mock && (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK)) {
@@ -70,20 +80,19 @@ export function useProfileSettings() {
 
   const [name, setNameInput] = useState('');
   const [nameError, setNameError] = useState<string | undefined>(undefined);
-  const [nameSaved, setNameSaved] = useState(false);
-  const [nameBusy, setNameBusy] = useState(false);
 
   const [handle, setHandle] = useState('');
   const [availability, setAvailability] = useState<HandleAvailability>({ state: 'idle' });
   const [handleError, setHandleError] = useState<string | undefined>(undefined);
-  const [handleSaved, setHandleSaved] = useState(false);
-  const [handleBusy, setHandleBusy] = useState(false);
 
   const [bio, setBioInput] = useState('');
   const [savedBio, setSavedBio] = useState('');
   const [bioError, setBioError] = useState<string | undefined>(undefined);
-  const [bioSaved, setBioSavedFlag] = useState(false);
-  const [bioBusy, setBioBusy] = useState(false);
+
+  // T-1329: name, username and bio share one Save (the header action): one
+  // busy flag for the fields and one "Saved." confirmation for all three.
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const setAvatarUrl = useCallback((url: string | undefined): void => {
     setProfile((previous) => (previous === null ? previous : { ...previous, avatarUrl: url }));
@@ -128,15 +137,13 @@ export function useProfileSettings() {
             setProfile(me);
             setNameInput(me.name);
             setNameError(undefined);
-            setNameSaved(false);
             setHandle(me.handle ?? '');
             setAvailability({ state: 'idle' });
             setHandleError(undefined);
-            setHandleSaved(false);
             setBioInput(viewer.bio ?? '');
             setSavedBio(viewer.bio ?? '');
             setBioError(undefined);
-            setBioSavedFlag(false);
+            setSaved(false);
             avatar.reset(token);
             setStatus('ready');
           }),
@@ -211,102 +218,97 @@ export function useProfileSettings() {
     };
   }, [api, trimmed, ownHandle]);
 
-  const [, saveNameRun] = useAction(
-    (value: string) =>
+  /**
+   * T-1329: one Save for the whole form, the mobile twin of web's `save()`.
+   * It saves the fields that changed, in an order the calls need: the username
+   * (`api.claimHandle`), then the name (`setName` → `PATCH /me`), then the bio
+   * (`updateBio`, which carries the freshly saved name). A failing field keeps
+   * its own error line and stops the run, so the bio never reverts a rename
+   * that did not land (the old name/bio guard, now implicit in the sequence).
+   */
+  const [, saveRun] = useAction(
+    (input: SaveInput) =>
       Effect.sync(() => {
-        setNameBusy(true);
+        setSaveBusy(true);
+        setSaved(false);
         setNameError(undefined);
-        setNameSaved(false);
-      }).pipe(
-        Effect.andThen(
-          attempt(
-            () => setName(value),
-            () => NAME_SAVE_ERROR,
-          ),
-        ),
-        Effect.flatMap((result) =>
-          result.ok ? Effect.void : Effect.fail(new ProfileFailed({ message: NAME_SAVE_ERROR })),
-        ),
-        Effect.tap(() =>
-          Effect.sync(() => {
-            setProfile((previous) => (previous === null ? previous : { ...previous, name: value }));
-            setNameSaved(true);
-          }),
-        ),
-        Effect.catch((failure) =>
-          Effect.sync(() => {
-            setNameError(failure.message);
-          }),
-        ),
-        Effect.ensuring(
-          Effect.sync(() => {
-            setNameBusy(false);
-          }),
-        ),
-      ),
-    { mode: 'ignore' },
-  );
-
-  const [, saveBioRun] = useAction(
-    (input: { readonly token: string; readonly name: string; readonly bio: string }) =>
-      Effect.sync(() => {
-        setBioBusy(true);
-        setBioError(undefined);
-        setBioSavedFlag(false);
-      }).pipe(
-        Effect.andThen(
-          attempt(
-            () => updateBio(API_URL, input.token, input.name, input.bio, bioFetch(mock)),
-            () => BIO_SAVE_ERROR,
-          ),
-        ),
-        Effect.tap(() =>
-          Effect.sync(() => {
-            setSavedBio(input.bio.trim());
-            setBioInput(input.bio.trim());
-            setBioSavedFlag(true);
-          }),
-        ),
-        Effect.catch((failure) =>
-          Effect.sync(() => {
-            setBioError(failure.message);
-          }),
-        ),
-        Effect.ensuring(
-          Effect.sync(() => {
-            setBioBusy(false);
-          }),
-        ),
-      ),
-    { mode: 'ignore' },
-  );
-
-  const [, claimHandleRun] = useAction(
-    (value: string) =>
-      Effect.sync(() => {
-        setHandleBusy(true);
         setHandleError(undefined);
-        setHandleSaved(false);
+        setBioError(undefined);
       }).pipe(
-        Effect.andThen(attempt(() => api.claimHandle(value), friendlyClaimError)),
-        Effect.tap((claimed) =>
-          Effect.sync(() => {
-            setProfile((previous) =>
-              previous === null ? previous : { ...previous, handle: claimed.handle },
-            );
-            setHandle(claimed.handle);
-            setAvailability({ state: 'idle' });
-            setHandleSaved(true);
+        Effect.andThen(
+          Effect.gen(function* () {
+            let savedName = profile?.name ?? input.name;
+            if (input.handleChanged) {
+              const claimed = yield* attempt(
+                () => api.claimHandle(input.handle),
+                friendlyClaimError,
+              ).pipe(
+                Effect.tapError((failure) =>
+                  Effect.sync(() => {
+                    setHandleError(failure.message);
+                  }),
+                ),
+              );
+              yield* Effect.sync(() => {
+                setProfile((previous) =>
+                  previous === null ? previous : { ...previous, handle: claimed.handle },
+                );
+                setHandle(claimed.handle);
+                setAvailability({ state: 'idle' });
+              });
+            }
+            if (input.nameChanged) {
+              const result = yield* attempt(
+                () => setName(input.name),
+                () => NAME_SAVE_ERROR,
+              );
+              if (!result.ok) {
+                yield* Effect.sync(() => {
+                  setNameError(NAME_SAVE_ERROR);
+                });
+                yield* Effect.fail(new ProfileFailed({ message: NAME_SAVE_ERROR }));
+              }
+              savedName = input.name;
+              yield* Effect.sync(() => {
+                setProfile((previous) =>
+                  previous === null ? previous : { ...previous, name: input.name },
+                );
+              });
+            }
+            if (input.bioChanged) {
+              const token = avatar.token;
+              if (token === undefined) {
+                yield* Effect.sync(() => {
+                  setBioError(BIO_SAVE_ERROR);
+                });
+                yield* Effect.fail(new ProfileFailed({ message: BIO_SAVE_ERROR }));
+              } else {
+                yield* attempt(
+                  () => updateBio(API_URL, token, savedName, input.bio, bioFetch(mock)),
+                  () => BIO_SAVE_ERROR,
+                ).pipe(
+                  Effect.tapError((failure) =>
+                    Effect.sync(() => {
+                      setBioError(failure.message);
+                    }),
+                  ),
+                );
+                yield* Effect.sync(() => {
+                  setSavedBio(input.bio);
+                  setBioInput(input.bio);
+                });
+              }
+            }
           }),
         ),
-        Effect.catch((failure) =>
+        Effect.tap(() =>
           Effect.sync(() => {
-            setHandleError(failure.message);
+            setSaved(true);
           }),
         ),
         Effect.ensuring(
           Effect.sync(() => {
-            setHandleBusy(false);
+            setSaveBusy(false);
           }),
         ),
       ),
@@ -315,52 +317,50 @@ export function useProfileSettings() {
 
   const onNameChange = (value: string): void => {
     setNameInput(value);
-    setNameSaved(false);
+    setSaved(false);
   };
 
   const onHandleChange = (value: string): void => {
     setHandle(value);
-    setHandleSaved(false);
+    setSaved(false);
   };
 
   const onBioChange = (value: string): void => {
     setBioInput(value);
-    setBioSavedFlag(false);
+    setSaved(false);
   };
 
-  const saveName = (): void => {
-    const value = name.trim();
-    if (value.length === 0) {
-      setNameError('Enter your name');
-      return;
-    }
-    saveNameRun(value);
-  };
+  // Which fields the one Save would send. A casing-only handle change counts
+  // as changed: the server applies it (interval rule, casing updated, nothing
+  // retired), the same rule web uses.
+  const nameChanged = name.trim() !== (profile?.name ?? '');
+  const handleChanged = trimmed !== current;
+  const bioChanged = bio.trim() !== savedBio;
+  const changed = nameChanged || handleChanged || bioChanged;
 
-  const saveHandle = (): void => {
-    if (trimmed === '') {
+  const saveAll = (): void => {
+    // Keep the username and name validation: clearing either is a reported
+    // error, not a silent no-op.
+    if (handleChanged && trimmed === '') {
       setHandleError('Choose a username');
       return;
     }
-    claimHandleRun(trimmed);
-  };
-
-  // The saved name (not the pending input) keeps a bio save from renaming.
-  const saveBio = (): void => {
-    const token = avatar.token;
-    if (token === undefined) {
-      setBioError(BIO_SAVE_ERROR);
+    if (nameChanged && name.trim() === '') {
+      setNameError('Enter your name');
       return;
     }
-    saveBioRun({ token, name: profile?.name ?? name.trim(), bio });
+    if (!changed) {
+      return;
+    }
+    saveRun({
+      handle: trimmed,
+      name: name.trim(),
+      bio: bio.trim(),
+      handleChanged,
+      nameChanged,
+      bioChanged,
+    });
   };
-
-  // Save is disabled only for the exactly equal value; a casing-only change
-  // stays enabled — the server applies it (interval rule, casing updated,
-  // nothing retired).
-  const unchanged = trimmed !== '' && trimmed === current;
-  const nameUnchanged = name.trim() !== '' && name.trim() === (profile?.name ?? '');
-  const bioUnchanged = bio.trim() === savedBio;
 
   return {
     status,
@@ -374,26 +374,17 @@ export function useProfileSettings() {
     removePicture: avatar.remove,
     name,
     nameError,
-    nameSaved,
-    nameBusy,
-    nameUnchanged,
     onNameChange,
-    saveName,
     bio,
     bioError,
-    bioSaved,
-    bioBusy,
-    bioUnchanged,
     onBioChange,
-    saveBio,
     handle,
-    currentHandle: current,
     availability,
     handleError,
-    handleSaved,
-    handleBusy,
-    handleSaveDisabled: unchanged,
     onHandleChange,
-    saveHandle,
+    changed,
+    saved,
+    saveBusy,
+    saveAll,
   };
 }

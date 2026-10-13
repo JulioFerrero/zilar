@@ -1,12 +1,35 @@
-import type { ChatSummary, UiMessage } from '@zilar/chat-core';
-import { ChevronDown, ChevronRight, Lock, MoreHorizontal, Pin, Plus, VolumeX } from 'lucide-react';
+import {
+  formatListTime,
+  lightToPlain,
+  markdownToPlain,
+  previewBody,
+  previewKind,
+  previewPrefix,
+  shouldRenderMarkdown,
+  type ChatSummary,
+  type PreviewKind,
+  type UiMessage,
+} from '@zilar/chat-core';
+import {
+  ChevronDown,
+  ChevronRight,
+  File,
+  Image as ImageIcon,
+  Images,
+  Lock,
+  Mic,
+  MoreHorizontal,
+  Paperclip,
+  Pin,
+  Plus,
+  VolumeX,
+  type LucideIcon,
+} from 'lucide-react';
 import { memo, useState } from 'react';
 import { Link } from 'react-router';
-import { Avatar } from './Avatar';
+import { EntityAvatar } from './EntityAvatar';
 import { ChatActionsMenu } from './ChatActionsMenu';
 import { cn } from '@/lib/utils';
-import { formatListTime, previewBody, previewPrefix, shouldRenderMarkdown } from '@zilar/chat-core';
-import { lightToPlain, markdownToPlain } from '@zilar/chat-core';
 import { useBlockedJids } from '@/lib/blockedJids';
 import { typingLabel } from '@/lib/format';
 import { previewMessage } from '@/lib/preview-message';
@@ -19,12 +42,21 @@ import { Button } from './ui/button';
 const NO_MESSAGES: UiMessage[] = [];
 const NO_NAMES: string[] = [];
 
+/** The lucide icon for each `previewKind`, in the kind's own order. */
+const PREVIEW_ICONS: Record<PreviewKind, LucideIcon> = {
+  photo: ImageIcon,
+  album: Images,
+  voice: Mic,
+  file: Paperclip,
+  card: File,
+};
+
 function rowPreview(
   chat: ChatSummary,
   currentUserId: string,
   messages: readonly UiMessage[],
   blocked: ReadonlySet<string>,
-): { prefix: string; body: string } {
+): { prefix: string; body: string; KindIcon: LucideIcon | undefined } {
   const preview = previewMessage(chat, messages, blocked, currentUserId);
   const options = { isGroup: chat.kind === 'group', currentUserId };
   const prefix = previewPrefix(preview, options);
@@ -33,7 +65,8 @@ function rowPreview(
     preview !== undefined && shouldRenderMarkdown(chat, preview, currentUserId)
       ? markdownToPlain(rawBody)
       : lightToPlain(rawBody);
-  return { prefix, body };
+  const kind = previewKind(preview);
+  return { prefix, body, KindIcon: kind === undefined ? undefined : PREVIEW_ICONS[kind] };
 }
 
 export function TopicRow({
@@ -53,7 +86,7 @@ export function TopicRow({
   const hasDraft = useChatSelector((s) => s.drafts[chat.id] !== undefined);
   const last = chat.lastMessage;
   const blockedJids = useBlockedJids();
-  const { prefix, body } = rowPreview(chat, currentUserId, messages, blockedJids);
+  const { prefix, body, KindIcon } = rowPreview(chat, currentUserId, messages, blockedJids);
   const own = last !== undefined && last.senderId === currentUserId;
   const typing = typingLabel(chat, typingNames);
   const writing = chat.isAI && (hasDraft || typing !== undefined);
@@ -123,9 +156,14 @@ export function TopicRow({
                 <span className="truncate">{typingText}</span>
               </span>
             ) : (
-              <span className="truncate text-[13px] leading-5 text-muted-foreground">
-                {prefix.length > 0 && <span className="text-foreground">{prefix}</span>}
-                {body}
+              <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-5 text-muted-foreground">
+                {KindIcon !== undefined && (
+                  <KindIcon className="size-3.5 shrink-0" aria-hidden="true" />
+                )}
+                <span className="truncate">
+                  {prefix.length > 0 && <span className="text-foreground">{prefix}</span>}
+                  {body}
+                </span>
               </span>
             )}
             {chat.unread > 0 ? (
@@ -180,8 +218,7 @@ export function TopicRow({
 export const GroupHeaderRow = memo(function GroupHeaderRow({
   groupTitle,
   groupId,
-  avatarSeed,
-  avatarUrl,
+  chat,
   topics,
   selectedId,
   collapsed,
@@ -193,9 +230,8 @@ export const GroupHeaderRow = memo(function GroupHeaderRow({
 }: {
   groupTitle: string;
   groupId: string;
-  /** T-1209: the General topic's room JID (the header ball seed). */
-  avatarSeed: string;
-  avatarUrl?: string | undefined;
+  /** The General topic's row: the group header's picture and id. */
+  chat: ChatSummary;
   topics: ChatSummary[];
   selectedId: string | undefined;
   collapsed: boolean;
@@ -246,7 +282,11 @@ export const GroupHeaderRow = memo(function GroupHeaderRow({
           aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${groupTitle}, ${active.length} topics`}
           className="flex min-w-0 flex-1 items-center gap-3 rounded-[12px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         >
-          <Avatar id={avatarSeed} name={groupTitle} size={isWide ? 44 : 52} avatarUrl={avatarUrl} />
+          {/* The row's `chat` is the General topic's row, whose title is the
+              topic name; seed the orb from the group title so the header
+              matches the group everywhere (T-1334). The picture stays the
+              row's. */}
+          <EntityAvatar chat={{ ...chat, title: groupTitle }} size={isWide ? 44 : 52} />
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5">
               <span className="truncate text-[14px] leading-5 font-semibold text-foreground">

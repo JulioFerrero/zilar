@@ -274,6 +274,54 @@ describe('auth flows', () => {
     ).toHaveLength(1);
   });
 
+  it('(T-1286, SG-9) a failed user insert leaves the invite use unchanged', async () => {
+    const app = appFor(context);
+    const invite = await createInvite(context.db, { createdBy: null });
+
+    // Force the user insert to fail inside the same transaction that consumes
+    // the invite: a table check rejects this one sentinel email. The consume
+    // rolls back with the insert, so the use is not burned (T-1286, SG-9).
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`ALTER TABLE "user" ADD CONSTRAINT t1286_fail_signup
+          CHECK (email <> 'fail-signup@example.com')`;
+      }),
+    );
+
+    await sendSignInOtp(app, 'fail-signup@example.com', invite.code);
+    const otp = context.mailer.codeFor('fail-signup@example.com');
+    const response = await signInWithOtp(app, {
+      email: 'fail-signup@example.com',
+      otp,
+      invite: invite.code,
+    });
+
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<IdRow>`SELECT id FROM "user"`;
+        }),
+      ),
+    ).toHaveLength(0);
+    const stored = await findInviteByCode(context.db, invite.code);
+    expect(stored?.uses).toBe(0);
+
+    // The untouched use is still spendable: a later sign-up with the same
+    // invite succeeds and consumes it exactly once.
+    await sendSignInOtp(app, 'recovered@example.com', invite.code);
+    const recoveredOtp = context.mailer.codeFor('recovered@example.com');
+    const recovered = await signInWithOtp(app, {
+      email: 'recovered@example.com',
+      otp: recoveredOtp,
+      invite: invite.code,
+    });
+    expect(recovered.status).toBe(200);
+    expect((await findInviteByCode(context.db, invite.code))?.uses).toBe(1);
+  });
+
   it('(e) signs an existing user in again without an invite', async () => {
     const invite = await createInvite(context.db, { createdBy: null });
     const { app } = await bootstrap(context, 'returning@example.com', invite.code);

@@ -1,10 +1,10 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { protocolVersion } from '@zilar/protocol';
+import { minClientProtocol, protocolVersion } from '@zilar/protocol';
 import type { ServerDatabase } from './db/client';
 import type { EdgeHealth } from './effect/edge';
 import { sqlRuntimeFor } from './effect/sql';
-import { healthSnapshot } from './health-status';
+import { healthSnapshot, type HealthSnapshot } from './health-status';
 import { serverVersion } from './version';
 import type { EjabberdAdminClient } from './xmpp/admin/types';
 
@@ -21,9 +21,12 @@ export type HealthBody = {
   version: string;
   commit: string;
   protocolVersion: string;
+  minClientProtocol: string;
   db: 'ok' | 'down';
   ejabberd: 'ok' | 'down';
   push: 'online' | 'offline' | 'unknown';
+  leader: boolean;
+  draining: boolean;
   lastPushSentAt?: string;
   lastPushFailure?: { at: string; kind: string };
 };
@@ -33,11 +36,12 @@ export type HealthCheckDeps = {
   adminClient: EjabberdAdminClient;
 };
 
-// Builds the `/health` handler. The status code reflects Postgres only (as
-// before): the ejabberd and push fields are informational and never make the
-// container unhealthy. ejabberd is probed at most once per
-// `EJABBERD_HEALTH_CACHE_MS`, so Coolify's frequent healthcheck does not
-// hammer the admin API.
+// Builds the `/health` handler. The status code reflects Postgres and the
+// drain: a draining instance answers 503 with `draining: true` so Traefik drops
+// it, while the process keeps serving (T-1316). The ejabberd and push fields
+// are informational and never make the container unhealthy. ejabberd is probed
+// at most once per `EJABBERD_HEALTH_CACHE_MS`, so Coolify's frequent healthcheck
+// does not hammer the admin API.
 export function createHealthCheck(deps: HealthCheckDeps): () => Promise<EdgeHealth> {
   let ejabberd: { at: number; status: 'ok' | 'down' } | undefined;
 
@@ -53,9 +57,10 @@ export function createHealthCheck(deps: HealthCheckDeps): () => Promise<EdgeHeal
 
   return async () => {
     const [dbUp, ejabberdValue] = await Promise.all([isDatabaseUp(deps.db), ejabberdStatus()]);
+    const snapshot = healthSnapshot();
     return {
-      status: dbUp ? 200 : 503,
-      body: healthBody(dbUp, ejabberdValue),
+      status: dbUp && !snapshot.draining ? 200 : 503,
+      body: healthBody(dbUp, ejabberdValue, snapshot),
     };
   };
 }
@@ -69,16 +74,17 @@ async function probeEjabberd(adminClient: EjabberdAdminClient): Promise<'ok' | '
   }
 }
 
-function healthBody(dbUp: boolean, ejabberd: 'ok' | 'down'): HealthBody {
+function healthBody(dbUp: boolean, ejabberd: 'ok' | 'down', snapshot: HealthSnapshot): HealthBody {
   return {
-    ok: dbUp,
+    ok: dbUp && !snapshot.draining,
     name: 'zilar-server',
     version: serverVersion,
     commit: process.env.ZILAR_COMMIT ?? 'unknown',
     protocolVersion,
+    minClientProtocol,
     db: dbUp ? 'ok' : 'down',
     ejabberd,
-    ...healthSnapshot(),
+    ...snapshot,
   };
 }
 

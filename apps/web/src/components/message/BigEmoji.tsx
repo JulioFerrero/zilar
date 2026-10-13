@@ -2,6 +2,11 @@ import { type UiMessage } from '@zilar/chat-core';
 import { cn } from '@/lib/utils';
 import { MessageMeta } from './MessageMeta';
 
+/**
+ * A bubble-less big-emoji message: the time (and my ticks) sit in a small
+ * translucent pill at the emoji's bottom-right, the way Telegram draws it,
+ * instead of a raised box on its own row below (T-1327).
+ */
 export function BigEmoji({
   message,
   text,
@@ -14,14 +19,14 @@ export function BigEmoji({
   generating?: boolean;
 }) {
   return (
-    <div className={cn('flex flex-col', own ? 'items-end' : 'items-start')}>
+    <div className="relative inline-flex">
       <span className="px-2 py-1 text-[48px] leading-none break-words">
         {text}
         {generating && <DraftCaret />}
       </span>
       <span
         className={cn(
-          'raised-pill mt-1 rounded-full px-2 py-0.5 text-muted-foreground',
+          'absolute right-1 bottom-1 inline-flex items-center rounded-full bg-black/45 px-1.5 py-0.5 text-white/90',
           generating && 'invisible',
         )}
       >

@@ -17,9 +17,8 @@ import type { ApiFailure } from '@/lib/effect/errors';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { refreshBlockedJids } from '@/lib/blockedJids';
-import { personSeed } from '@zilar/chat-core';
 import { Button } from '@/components/ui/button';
-import { Avatar } from './Avatar';
+import { EntityAvatar } from './EntityAvatar';
 
 type RowAction = 'send' | 'accept' | 'decline' | 'cancel' | 'block' | 'unblock';
 
@@ -60,7 +59,6 @@ export function ContactProfileRow({
   const storeApi = useChatStoreApi();
   const contacts = useChatSelector((s) => s.contacts);
   const chats = useChatSelector((s) => s.chats);
-  const me = useChatSelector((s) => s.me);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [confirmingBlock, setConfirmingBlock] = useState(false);
@@ -135,13 +133,7 @@ export function ContactProfileRow({
   // carries no JID). Every contact has a DM row on the server, so a missing
   // row only means the chat list has not refreshed since the contact was
   // added: refresh it, and the shell opens the chat once the row lands.
-  // T-1209: the ball is seeded by that same bare JID, else by the user id
-  // derived the way the mention builder does (the domain from my own JID).
   const contact = contacts.find((entry) => entry.userId === profile.userId);
-  const ownDomain = me?.jid?.slice(me.jid.indexOf('@') + 1);
-  const seed =
-    contact?.jid ??
-    (ownDomain === undefined ? profile.userId : personSeed(profile.userId, ownDomain));
 
   const openChat = (): void => {
     if (contact === undefined) {
@@ -158,7 +150,7 @@ export function ContactProfileRow({
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface px-3 py-2.5">
       <div className="flex items-center gap-3">
-        <Avatar id={seed} name={profile.name} size={40} avatarUrl={profile.image ?? undefined} />
+        <EntityAvatar person={profile} size={40} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-medium">
             {profile.name}{' '}

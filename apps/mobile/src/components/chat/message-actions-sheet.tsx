@@ -23,6 +23,8 @@ type MessageActionsSheetProps = {
   canCopy: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  /** True when the message can be named on the wire for a reaction (UI-7). */
+  canReact: boolean;
   /**
    * The row label for the delete action (T-1247, the web's labels): "Delete" on
    * my own DM message, "Delete for me" on the peer's, "Delete for everyone" in
@@ -88,6 +90,7 @@ export function MessageActionsSheet({
   canCopy,
   canEdit,
   canDelete,
+  canReact,
   deleteLabel,
   deleteTitle,
   ownDelete,
@@ -137,11 +140,13 @@ export function MessageActionsSheet({
                   accessibilityLabel={
                     mine ? `Remove your reaction with ${emoji}` : `React with ${emoji}`
                   }
-                  accessibilityState={{ selected: mine }}
+                  accessibilityState={{ selected: mine, disabled: !canReact }}
+                  disabled={!canReact}
                   onPress={() => onReact(emoji)}
                   className={cn(
-                    'h-9 w-9 items-center justify-center rounded-full active:bg-surface-raised',
+                    'h-11 w-11 items-center justify-center rounded-full active:bg-surface-raised',
                     mine ? 'bg-[#ededed]' : null,
+                    canReact ? null : 'opacity-40',
                   )}
                 >
                   <Text className="text-[20px] leading-none">{emoji}</Text>

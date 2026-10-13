@@ -19,6 +19,48 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // PERF-14: 142 files import `effect`, and the React runtime,
+        // `better-auth` and radix were bundled into the entry. Split the
+        // long-lived vendors out so the entry chunk (`index-*.js`) and the
+        // lazy route chunks shrink and stay cacheable across deploys.
+        //
+        // Measured: `effect`/`better-auth`/radix alone leave the entry chunk
+        // unchanged (636 kB) — they already sat in the shared route chunks
+        // (`button`, `jsx-runtime`, `AuthProvider`), which did shrink. Adding
+        // the React runtime (the audit's own `effect`/`react`/`radix` list,
+        // performance-audit.md:149) is what actually shrinks the entry to
+        // ~425 kB, so it is included here.
+        //
+        // Rolldown only supports the function form of `manualChunks`.
+        manualChunks: (id) => {
+          if (!id.includes('node_modules')) {
+            return undefined;
+          }
+          if (id.includes('/node_modules/effect/')) {
+            return 'vendor-effect';
+          }
+          if (id.includes('/node_modules/better-auth/')) {
+            return 'vendor-better-auth';
+          }
+          if (id.includes('/node_modules/radix-ui/') || id.includes('/node_modules/@radix-ui/')) {
+            return 'vendor-radix';
+          }
+          if (
+            id.includes('/node_modules/react/') ||
+            id.includes('/node_modules/react-dom/') ||
+            id.includes('/node_modules/react-router/') ||
+            id.includes('/node_modules/scheduler/')
+          ) {
+            return 'vendor-react';
+          }
+          return undefined;
+        },
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     // vmThreads builds jsdom once per worker instead of once per file (it was

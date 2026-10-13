@@ -5,7 +5,7 @@ import type { GroupAi, PublicAi } from '@/lib/api';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { AiBadge } from '../AiBadge';
-import { Avatar } from '../Avatar';
+import { EntityAvatar } from '../EntityAvatar';
 import { Button } from '../ui/button';
 import { GroupAiRowView } from './GroupAiRowView';
 import { addAiText, removeAiText, storeStep } from './groupPanelOps';
@@ -201,7 +201,7 @@ function AddAiOption({
       onClick={startAdd}
       className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
     >
-      <Avatar id={ai.jid} name={ai.name} size={28} ai avatarUrl={ai.avatarUrl} />
+      <EntityAvatar person={{ id: ai.jid, name: ai.name, avatarUrl: ai.avatarUrl }} size={28} ai />
       <span className="min-w-0 flex-1 truncate">{ai.name}</span>
       <AiBadge />
       {busy && <span className="text-[12px] text-muted-foreground">Adding…</span>}

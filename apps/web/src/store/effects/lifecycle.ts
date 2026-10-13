@@ -95,11 +95,11 @@ export const resetUserState = (ctx: StoreCtx): Effect.Effect<void, never, Ports>
     });
     ctx.groupMembers.clear();
     ctx.groupInfos.clear();
-    // The per-message edit caches are user scoped too: a message's author,
-    // origin id and base text must not survive into the next sign-in.
-    ctx.messageAuthors.clear();
-    ctx.messageOriginIds.clear();
-    ctx.messageBaseTexts.clear();
+    // Every id the ledger knows is user scoped too: a message's author,
+    // origin id, base text, alias chain and server-id link must not survive
+    // into the next sign-in. `reset()` clears them all; the manual clears only
+    // covered three maps and missed the alias and server-id ones (UI-13).
+    ctx.k.reset();
   });
 
 export const signOutStore = (ctx: StoreCtx): Effect.Effect<void, never, Ports> =>

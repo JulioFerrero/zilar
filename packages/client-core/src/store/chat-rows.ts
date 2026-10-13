@@ -26,12 +26,25 @@ import {
 export interface ServerRowFields {
   readonly unread?: unknown;
   readonly lastMessage?: unknown;
+  /** T-1318: when the chat was created or the caller joined, an ISO datetime. */
+  readonly createdAt?: unknown;
   /** T-1238: the delivered mark, an archive id in the caller's terms. */
   readonly deliveredUntil?: unknown;
+  /** T-1311: the peer's read mark (DMs), an archive id in the caller's terms. */
+  readonly readUntil?: unknown;
 }
 
-function deliveredUntilOf(raw: unknown): string | undefined {
+function archiveMarkOf(raw: unknown): string | undefined {
   return typeof raw === 'string' && raw !== '' ? raw : undefined;
+}
+
+/** T-1318: the chat's creation/join time from the wire, or undefined when unusable. */
+function createdAtOf(raw: unknown): Date | undefined {
+  if (typeof raw !== 'string') {
+    return undefined;
+  }
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
 function unreadOf(raw: unknown): number {
@@ -182,7 +195,9 @@ function summaryFor(entry: ChatEntry, server: ServerRowFields | undefined): Chat
     server?.lastMessage === undefined
       ? undefined
       : previewMessageOf(entry.chatJid, server.lastMessage);
-  const deliveredUntil = server === undefined ? undefined : deliveredUntilOf(server.deliveredUntil);
+  const deliveredUntil = server === undefined ? undefined : archiveMarkOf(server.deliveredUntil);
+  const readUntil = server === undefined ? undefined : archiveMarkOf(server.readUntil);
+  const createdAt = server === undefined ? undefined : createdAtOf(server.createdAt);
   const base = {
     id: entry.chatJid,
     title: entry.title,
@@ -191,6 +206,7 @@ function summaryFor(entry: ChatEntry, server: ServerRowFields | undefined): Chat
     unread,
     muted: false,
     ...(lastMessage === undefined ? {} : { lastMessage }),
+    ...(createdAt === undefined ? {} : { createdAt }),
     ...(deliveredUntil === undefined ? {} : { deliveredUntil }),
   };
   if (entry.kind === 'dm') {
@@ -199,6 +215,7 @@ function summaryFor(entry: ChatEntry, server: ServerRowFields | undefined): Chat
       kind: 'dm',
       isAI: entry.isAi === true,
       ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
+      ...(readUntil === undefined ? {} : { readUntil }),
       online: false,
     };
   }
@@ -255,7 +272,8 @@ function summaryForTopic(
     server?.lastMessage === undefined
       ? undefined
       : previewMessageOf(topic.chatJid, server.lastMessage);
-  const deliveredUntil = server === undefined ? undefined : deliveredUntilOf(server.deliveredUntil);
+  const deliveredUntil = server === undefined ? undefined : archiveMarkOf(server.deliveredUntil);
+  const createdAt = server === undefined ? undefined : createdAtOf(server.createdAt);
   return {
     id: topic.chatJid,
     title: topic.name,
@@ -275,6 +293,7 @@ function summaryForTopic(
     // T-0466: topic rows keep their group's shared background too.
     ...(groupBackground === undefined ? {} : { groupBackground }),
     ...(lastMessage === undefined ? {} : { lastMessage }),
+    ...(createdAt === undefined ? {} : { createdAt }),
     ...(deliveredUntil === undefined ? {} : { deliveredUntil }),
     ...(channel === null
       ? {}

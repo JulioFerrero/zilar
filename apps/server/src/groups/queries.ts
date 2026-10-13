@@ -94,6 +94,21 @@ export async function getMembership(
   return row ?? null;
 }
 
+// The group's owner id (the single `group_members` row with role `owner`),
+// or null when the group has none. The join flows read it (T-1286, SG-8) to
+// refuse a person the owner blocked.
+export async function groupOwnerId(db: ServerDatabase, groupId: string): Promise<string | null> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`SELECT user_id FROM group_members
+        WHERE group_id = ${groupId} AND role = 'owner' LIMIT 1`;
+    }),
+  );
+  return row?.userId ?? null;
+}
+
 // A channel refuses to lose its last admin voice: after the change, at
 // least one admin besides the target must remain (the owner always counts,
 // so demoting the only admin while the owner stays is refused — the feed
@@ -186,6 +201,7 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
           | 'id'
           | 'roomLocalpart'
           | 'title'
+          | 'createdAt'
           | 'kind'
           | 'description'
           | 'visibility'
@@ -193,7 +209,7 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
           | 'backgroundImageId'
           | 'backgroundDim'
         >
-      >`SELECT id, room_localpart, title, kind, description, visibility,
+      >`SELECT id, room_localpart, title, created_at, kind, description, visibility,
         background_preset, background_image_id, background_dim
         FROM groups WHERE id IN ${sql.in(groupIds)}`;
     }),
@@ -236,6 +252,7 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
         id: group.id,
         roomLocalpart: group.roomLocalpart,
         title: group.title,
+        createdAt: group.createdAt,
         memberCount: countsById.get(group.id) ?? 0,
         role: membership.role,
         kind: group.kind,

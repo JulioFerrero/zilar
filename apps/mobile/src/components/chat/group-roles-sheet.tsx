@@ -2,7 +2,7 @@ import { Effect } from 'effect';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { GroupManageSection, type GroupManageProps } from '@/components/chat/group-manage-section';
 import { RoleChips } from '@/components/chat/role-chips';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
@@ -46,7 +46,6 @@ export function GroupRolesSheet({
   onDeleteRole,
   onToggleMember,
   onClose,
-  seedFor,
   manage,
 }: {
   visible: boolean;
@@ -65,11 +64,6 @@ export function GroupRolesSheet({
   onClose: () => void;
   /** T-1251: the manage section's owner/non-owner controls. */
   manage: GroupManageProps;
-  /**
-   * T-1212: the member ball seed for a user id (the bare JID derived the
-   * mention-builder way). Absent paints the raw user id.
-   */
-  seedFor?: ((userId: string) => string) | undefined;
 }) {
   const [newName, setNewName] = useState('');
   const [renamingId, setRenamingId] = useState<string | undefined>(undefined);
@@ -131,11 +125,7 @@ export function GroupRolesSheet({
     >
       {members.map((member) => (
         <View key={member.userId} className="flex-row items-center gap-2 py-1.5">
-          <Avatar
-            id={seedFor === undefined ? member.userId : seedFor(member.userId)}
-            name={member.name}
-            size={28}
-          />
+          <EntityAvatar person={member} size={28} />
           <Text numberOfLines={1} className="flex-1 text-[15px] text-foreground">
             {member.name}
           </Text>
@@ -301,11 +291,7 @@ export function GroupRolesSheet({
                       className="flex-row items-center gap-3 rounded-lg px-2 py-1.5 active:bg-surface-raised disabled:opacity-50"
                     >
                       <Checkbox checked={checked} />
-                      <Avatar
-                        id={seedFor === undefined ? member.userId : seedFor(member.userId)}
-                        name={member.name}
-                        size={28}
-                      />
+                      <EntityAvatar person={member} size={28} />
                       <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px]">
                         {member.name}
                       </Text>
@@ -340,7 +326,6 @@ export function GroupRolesSheet({
       <GroupManageSection
         groupTitle={groupTitle}
         members={members.filter((member) => member.role !== 'owner')}
-        seedFor={seedFor}
         {...manage}
       />
       {error !== '' ? (

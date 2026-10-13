@@ -21,11 +21,8 @@ import {
   requestsLoadFailure,
   type RequestAction,
 } from '@/components/contacts/requests';
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
-import { domainOfJid } from '@/lib/contacts-api';
-import { useChatStore } from '@/store/chat-store-provider';
-import { personSeed } from '@zilar/chat-core';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
@@ -110,12 +107,6 @@ function RequestsList() {
     );
 
   const pending = incoming.length + outgoing.length;
-  // T-1212: request balls are seeded by the bare JID, derived from the user
-  // id the way the mention builder does (the domain from my own JID); the
-  // request rows carry no JID, so this is the only form available here.
-  const domain = domainOfJid(useChatStore((state) => state.me?.jid ?? undefined));
-  const seedFor =
-    domain === undefined ? undefined : (userId: string): string => personSeed(userId, domain);
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
@@ -172,7 +163,7 @@ function RequestsList() {
               <SectionLabel>Incoming</SectionLabel>
               <Card>
                 {incoming.map((request) => (
-                  <RequestRow key={request.id} request={request} onAct={act} seedFor={seedFor} />
+                  <RequestRow key={request.id} request={request} onAct={act} />
                 ))}
               </Card>
             </View>
@@ -187,13 +178,7 @@ function RequestsList() {
               <SectionLabel>Sent</SectionLabel>
               <Card>
                 {outgoing.map((request) => (
-                  <RequestRow
-                    key={request.id}
-                    request={request}
-                    outgoing
-                    onAct={act}
-                    seedFor={seedFor}
-                  />
+                  <RequestRow key={request.id} request={request} outgoing onAct={act} />
                 ))}
               </Card>
             </View>
@@ -234,26 +219,16 @@ function RequestRow({
   request,
   outgoing = false,
   onAct,
-  seedFor,
 }: {
   request: ContactRequestView;
   outgoing?: boolean;
   onAct: (id: string, action: RequestAction) => Effect.Effect<void>;
-  /**
-   * T-1212: the ball seed for the other side's user id (the bare JID
-   * derived the mention-builder way). Absent paints the raw user id.
-   */
-  seedFor?: ((userId: string) => string) | undefined;
 }) {
   const [state, run] = useAction((action: RequestAction) => onAct(request.id, action));
   const busy = isWaiting(state);
   return (
     <View className="flex-row items-center gap-3 px-3 py-2.5">
-      <Avatar
-        id={seedFor === undefined ? request.other.userId : seedFor(request.other.userId)}
-        name={request.other.name}
-        size={44}
-      />
+      <EntityAvatar person={{ userId: request.other.userId, name: request.other.name }} size={44} />
       <View className="min-w-0 flex-1">
         <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">
           {request.other.name}

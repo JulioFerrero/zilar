@@ -183,8 +183,8 @@ export function createContactRequestsApi(deps: ContactRequestsApiDependencies): 
         'byHandle',
         handler(logger, (request, user) => profileForHandle(db, user.id, request.params.handle)),
       )
-      // Telegram-style prefix search by `@username` or display name: up to 10
-      // matching people. The query itself is never logged.
+      // Telegram-style prefix search by `@username` only (T-1286, SG-7): up
+      // to 10 matching people. The query itself is never logged.
       .handle(
         'search',
         handler(logger, async (request, user) => ({

@@ -35,9 +35,7 @@ import {
   topicsOfGroup,
 } from '@/lib/topics';
 import type { ChatSummary } from '@/lib/types';
-import { domainOfJid } from '@/lib/contacts-api';
 import { useChatStore } from '@/store/chat-store-provider';
-import { personSeed } from '@zilar/chat-core';
 
 export default function GroupTopicsScreen() {
   return (
@@ -49,17 +47,12 @@ export default function GroupTopicsScreen() {
 
 function GroupTopics() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; newTopic?: string }>();
   const groupId = typeof params.id === 'string' ? params.id : '';
+  const wantsNewTopic = params.newTopic === '1';
 
   const chats = useChatStore((state) => state.chats);
   const chatsLoad = useChatStore((state) => state.chatsLoad);
-  // T-1212: member balls are seeded by the bare JID, derived from the user
-  // id the way the mention builder does (the domain from my own JID); the
-  // member lists carry no JID, so this is the only form available here.
-  const domain = domainOfJid(useChatStore((state) => state.me?.jid ?? undefined));
-  const seedFor =
-    domain === undefined ? undefined : (userId: string): string => personSeed(userId, domain);
   const groupDetail = useChatStore((state) => state.groupDetail(groupId));
   // Mount loads the detail only when nothing fresh is cached: the cached
   // path dedupes in-flight loads too, so the group screen after the chat
@@ -75,6 +68,7 @@ function GroupTopics() {
   const [sheetFor, setSheetFor] = useState<ChatSummary | null>(null);
   const [sheetMuteOpen, setSheetMuteOpen] = useState(false);
   const [sheetError, setSheetError] = useState('');
+  const [openedNewTopic, setOpenedNewTopic] = useState(false);
 
   // The detail is keyed by group id (not chat id): load it on mount so the
   // member list, the "+" gate and the AI count resolve even on first visit.
@@ -86,7 +80,7 @@ function GroupTopics() {
 
   const topics = useMemo(() => topicsOfGroup(chats, groupId), [chats, groupId]);
   const general = topics.find((topic) => topic.topic?.isGeneral === true);
-  const groupTitle = general?.groupTitle ?? general?.title ?? 'Group';
+  const groupTitle = general?.groupTitle ?? general?.title ?? groupDetail?.title ?? 'Group';
   const groupChatId = general?.id ?? topics[0]?.id ?? groupId;
 
   // Per-user archived topics hide like manager-archived ones (web parity):
@@ -130,6 +124,15 @@ function GroupTopics() {
   const links = useGroupInviteLinks(groupId);
   const visibility = useGroupVisibility(groupId);
   const newTopic = useGroupNewTopic({ groupChatId, myAis: myAisInGroup });
+
+  // T-1289/MUX-29: the "+" menu's New topic picker lands here with
+  // `?newTopic=1`. Open the sheet once the group detail confirms the viewer
+  // may create (the picker only offered allowed groups); the adjusted-state
+  // pattern matches the chats screen's `?searchChat=` handling.
+  if (wantsNewTopic && !openedNewTopic && canCreate && topics.length > 0) {
+    setOpenedNewTopic(true);
+    newTopic.open();
+  }
 
   const notice =
     topicNotice !== undefined && topicNotice.groupId === groupId ? topicNotice.message : undefined;
@@ -296,7 +299,6 @@ function GroupTopics() {
         error={newTopic.error}
         onCreate={newTopic.create}
         onClose={newTopic.close}
-        seedFor={seedFor}
       />
       <InviteLinksSheet
         visible={links.visible}
@@ -331,7 +333,6 @@ function GroupTopics() {
             roles.close();
           }
         }}
-        seedFor={seedFor}
         manage={manage}
       />
       <VisibilitySheet

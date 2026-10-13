@@ -36,6 +36,8 @@ export interface PublicAi {
   // platform. Optional so older payloads stay valid; a missing or non-string
   // value maps to null. CamelCase like the rest of the public AI fields.
   machineId?: string | null | undefined;
+  /** The AI's picture path (`/api/avatars/ai/<id>`); absent on older servers. */
+  avatarUrl?: string | undefined;
   createdAt: string;
 }
 
@@ -106,6 +108,7 @@ function toPublicAi(ai: ContractAi): PublicAi {
     providerConnectionId: ai.providerConnectionId,
     limits: { perDayUsd: ai.limits.perDayUsd, perMonthUsd: ai.limits.perMonthUsd },
     machineId: ai.machineId ?? null,
+    ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
     createdAt: ai.createdAt,
   };
 }

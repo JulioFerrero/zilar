@@ -1,5 +1,5 @@
 import { QUICK_REACTIONS } from '@zilar/chat-core';
-import { Forward, ListChecks } from 'lucide-react';
+import { Download, Forward, ListChecks } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Menu, MenuItem } from './ui/menu';
@@ -10,6 +10,8 @@ export interface MessageActionsMenuProps {
   canEdit: boolean;
   /** True when the message can be deleted for everyone (my own message). */
   canDelete: boolean;
+  /** True when the message can be named on the wire for a reaction (UI-7). */
+  canReact: boolean;
   /**
    * The delete item's label. In a DM it is "Delete" on my own message and
    * "Delete for me" on the peer's; everywhere else it stays
@@ -20,10 +22,14 @@ export interface MessageActionsMenuProps {
   canPin: boolean;
   /** True when this message can be forwarded (not deleted, failed or sending). */
   canForward: boolean;
+  /** True when this message carries a downloadable `kind: 'file'` attachment (T-1325). */
+  canDownload: boolean;
   /** True when this message is already pinned. */
   isPinned: boolean;
   onReply: () => void;
   onForward: () => void;
+  /** Saves the message's file attachment (T-1325). */
+  onDownload: () => void;
   /** Enters multi-select mode with this message checked (T-0439). */
   onSelectMessages: () => void;
   onCopy: () => void;
@@ -47,17 +53,20 @@ const VIEWPORT_MARGIN = 8;
 /** Fallback width when the menu is not measured yet (matches `min-w-[196px]`). */
 const MENU_WIDTH = 196;
 
-/** Reaction bar / Reply / Edit / Copy / Pin / Delete menu for a message bubble. */
+/** Reaction bar / Reply / Edit / Copy / Download / Pin / Delete menu for a message bubble. */
 export function MessageActionsMenu({
   canCopy,
   canEdit,
   canDelete,
+  canReact,
   deleteLabel,
   canPin,
   canForward,
+  canDownload,
   isPinned,
   onReply,
   onForward,
+  onDownload,
   onSelectMessages,
   onCopy,
   onEdit,
@@ -119,8 +128,9 @@ export function MessageActionsMenu({
               type="button"
               role="menuitem"
               aria-label={`React with ${emoji}`}
+              disabled={!canReact}
               onClick={() => onReact(emoji)}
-              className="key-icon flex size-7 items-center justify-center rounded-full text-[17px] leading-none focus-visible:outline-none"
+              className="key-icon flex size-7 items-center justify-center rounded-full text-[17px] leading-none focus-visible:outline-none disabled:opacity-40"
             >
               <span aria-hidden="true">{emoji}</span>
             </button>
@@ -141,6 +151,11 @@ export function MessageActionsMenu({
         <MenuItem onSelect={onCopy} disabled={!canCopy}>
           Copy text
         </MenuItem>
+        {canDownload && (
+          <MenuItem onSelect={onDownload} icon={Download}>
+            Download
+          </MenuItem>
+        )}
         <MenuItem onSelect={onDelete} disabled={!canDelete} destructive>
           {deleteLabel}
         </MenuItem>

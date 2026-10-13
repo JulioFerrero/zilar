@@ -134,6 +134,68 @@ export function isGifVideoAttachment(
 }
 
 /**
+ * Which body an image attachment bubble renders:
+ * - `local` — the picked `file://` preview shows while the bytes upload;
+ * - `image` — a trusted URL auto-loads inline;
+ * - `load-failed` — a trusted URL whose inline fetch failed: a distinct
+ *   "Couldn't load" row with a retry, never the untrusted label;
+ * - `untrusted` — the URL is not on a trusted host: the click-to-load file row.
+ *
+ * A fetch failure must not read as "untrusted": after a restart a history image
+ * keeps `kind: 'image'`, but an expired session or offline fetch makes the
+ * load fail, and mislabeling it sends the user after the wrong cause.
+ */
+export type ImageAttachmentRender = 'local' | 'image' | 'load-failed' | 'untrusted';
+
+export function imageAttachmentRender(input: {
+  /** The URL passed the trusted-host gate (`isLoadableMediaUrl`). */
+  trusted: boolean;
+  /** The inline fetch already failed once (the image's `onError`). */
+  broken: boolean;
+  /** A local preview URI exists while the bytes upload. */
+  hasLocalUri: boolean;
+}): ImageAttachmentRender {
+  if (input.hasLocalUri) {
+    return 'local';
+  }
+  if (!input.trusted) {
+    return 'untrusted';
+  }
+  return input.broken ? 'load-failed' : 'image';
+}
+
+/**
+ * The MIME type for a file name's extension, or `fallback` when the extension
+ * is unknown or absent. The mirror of `extensionForMime`: it names the gallery
+ * assets (T-1320), which carry a file name but no MIME type. HEIC stays
+ * `image/heic` (never a picture for `classifyMobileFile`), exactly like a
+ * picked phone photo.
+ */
+export function mimeForFileName(name: string, fallback: string): string {
+  const extension = name.split('.').pop()?.toLowerCase() ?? '';
+  switch (extension) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    case 'heic':
+    case 'heif':
+      return 'image/heic';
+    case 'mp4':
+      return 'video/mp4';
+    case 'mov':
+      return 'video/quicktime';
+    default:
+      return fallback;
+  }
+}
+
+/**
  * The extension for an image-picker asset from its MIME type, used when the
  * asset has no file name. Unknown types fall back to `bin`.
  */

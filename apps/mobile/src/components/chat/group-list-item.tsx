@@ -1,9 +1,10 @@
-import { formatListTime, previewMessage, groupSeed } from '@zilar/chat-core';
+import { formatListTime, previewMessage } from '@zilar/chat-core';
 import { Megaphone, Pin } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { plainPreviewBody } from '@/components/chat/markdown-decision';
+import { PreviewIcon } from '@/components/chat/preview-icon';
 import { Text } from '@/components/ui/text';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { MUTED_FOREGROUND } from '@/lib/colors';
@@ -85,11 +86,9 @@ export function GroupListItem({
       ? channelSubscriberLabel(row.subscriberCount ?? row.memberCount ?? 0)
       : topicCountLabel(row.topicCount);
   const anyPinned = row.topics.some((topic) => topic.pinnedAt !== undefined);
-  // T-1212: the group ball is seeded by the General topic's room JID (the
-  // group's old chat id), like the group screen's header; a group with no
-  // loaded topics yet keeps its group id.
-  const seed =
-    (topics.find((topic) => topic.topic?.isGeneral === true) ?? topics[0])?.id ?? groupId;
+  // T-1334: the ball's colour and light come from the group name; the General
+  // topic's row carries the group picture when set.
+  const generalTopic = topics.find((topic) => topic.topic?.isGeneral === true) ?? topics[0];
   return (
     <Pressable
       accessibilityRole="button"
@@ -98,7 +97,14 @@ export function GroupListItem({
       {...(onLongPress === undefined ? {} : { onLongPress })}
       className="h-[76px] flex-row items-center bg-background pl-4 active:bg-surface-raised"
     >
-      <Avatar id={groupSeed(seed)} name={row.title} size={52} />
+      <EntityAvatar
+        chat={{
+          id: generalTopic?.id ?? groupId,
+          title: row.title,
+          avatarUrl: generalTopic?.avatarUrl,
+        }}
+        size={52}
+      />
       <View className="ml-3 h-full flex-1 flex-row items-center border-b border-[#1a1a1a] pr-4">
         <View className="flex-1 justify-center">
           <View className="flex-row items-center justify-between">
@@ -127,10 +133,13 @@ export function GroupListItem({
             ) : null}
           </View>
           <View className="mt-0.5 flex-row items-center justify-between">
-            <Text numberOfLines={1} className="mr-2 flex-1 text-[14px] text-muted-foreground">
-              {preview.prefix ? <Text color="#d4d4d4">{preview.prefix}</Text> : null}
-              {body}
-            </Text>
+            <View className="mr-2 min-w-0 flex-1 flex-row items-center gap-1.5">
+              <PreviewIcon kind={preview.kind} />
+              <Text numberOfLines={1} className="flex-1 text-[14px] text-muted-foreground">
+                {preview.prefix ? <Text color="#d4d4d4">{preview.prefix}</Text> : null}
+                {body}
+              </Text>
+            </View>
             {row.unread > 0 ? <GroupUnreadBadge count={row.unread} muted={row.muted} /> : null}
           </View>
         </View>

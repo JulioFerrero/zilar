@@ -6,6 +6,7 @@ import {
 } from '@zilar/chat-core';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, View } from 'react-native';
+import { MessageSquare } from 'lucide-react-native';
 
 import { JumpToBottom } from '@/components/chat/jump-to-bottom';
 import { LoadError } from '@/components/chat/load-error';
@@ -158,9 +159,16 @@ export function MessageList({
       ),
     [visibleMessages, draftMessage],
   );
-  // The divider position is fixed when the chat opens, before `openChat` clears
-  // the unread count, so it does not move as new messages arrive.
-  const [dividerIndex] = useState(() => unreadDividerIndex(items, chat.unread));
+  // The anchor (the unread count) is fixed when the chat opens, before
+  // `openChat` clears it, so the divider does not move as new messages arrive.
+  // The index itself is recomputed from the live `items`, exactly like web
+  // (`apps/web/src/components/MessageList.tsx` passes `chat.unread` to
+  // `unreadDividerIndex` on every render): a count of unread from the end of the
+  // loaded messages. Snapshotting the index once, as this did before, pinned it
+  // to a page that had not loaded yet, so older pages prepended on scroll shifted
+  // every position and left the divider above an old message.
+  const [initialUnread] = useState(() => chat.unread);
+  const dividerIndex = unreadDividerIndex(items, initialUnread);
 
   const entries = useMemo(() => {
     const list: ListEntry[] = [];
@@ -194,13 +202,11 @@ export function MessageList({
   // other end. On screen nothing changes: `inverted` flips the reversed data
   // back into the date order the user sees.
   const reversedEntries = useMemo(() => [...entries].reverse(), [entries]);
-  // Snapshotted once per chat open, like `dividerIndex` above: the reversed
-  // position shifts as history or a draft grows, so deriving it from the live
-  // `entries.length` would re-run the mount divider scroll on every new message
-  // and yank the view back to the divider.
-  const [reversedDividerIndex] = useState<number | null>(() =>
-    dividerIndex === null ? null : entries.length - 1 - dividerIndex,
-  );
+  // The divider's reversed position. It stays on the same unread message as the
+  // list grows: a newer item moves `dividerIndex` and `entries.length` by the
+  // same one, and an older page prepended moves both by the same amount, so the
+  // mount scroll below does not re-run and yank the view back to the divider.
+  const reversedDividerIndex = dividerIndex === null ? null : entries.length - 1 - dividerIndex;
 
   const { listRef, atBottom, unseenCount, handleScroll, handleContentSizeChange } =
     useMessageListScroll({
@@ -287,11 +293,21 @@ export function MessageList({
       return <MessageListSkeleton />;
     }
     if (view === 'error') {
-      return <LoadError message="Couldn't load messages" onRetry={() => retryHistory(chat.id)} />;
+      return (
+        <LoadError
+          message="Could not load messages. Try again."
+          onRetry={() => retryHistory(chat.id)}
+        />
+      );
     }
     return (
       <View className="flex-1 items-center justify-center p-8">
-        <StateMessage kind="empty" title="No messages yet" />
+        <StateMessage
+          kind="empty"
+          icon={MessageSquare}
+          title="No messages yet"
+          hint="Send a message to start the conversation."
+        />
       </View>
     );
   }

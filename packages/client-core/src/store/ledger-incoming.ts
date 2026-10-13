@@ -29,7 +29,7 @@ interface LedgerIncomingDeps {
 export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
   const { get, set, deps } = ledger;
   const { rememberAuthor, rememberOriginId, rememberBaseText, sameMessage } = ledger.ids;
-  const { senderNameFor, groupMemberNameFor } = ledger.identity;
+  const { myJid, senderNameFor, groupMemberNameFor } = ledger.identity;
   const { reactionChips } = ledger.reactions;
 
   /**
@@ -82,7 +82,52 @@ export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
     return mapMentions(message.chatJid, mentions, body);
   }
 
-  function toUiMessage(message: LedgerStanza, meId: string): StoreMessage {
+  // A name for a reply's wire `to` JID when its target is not loaded, from the
+  // same sources `senderNameFor` reads for a sender (`ledger-identity.ts:45`):
+  // me, a contact, or a group member.
+  function nameForReplyTo(chatId: string, jid: string): string | undefined {
+    const me = myJid();
+    if (me !== undefined && jid === me) {
+      return 'You';
+    }
+    const contact = get().contacts.find((entry) => entry.jid === jid);
+    if (contact !== undefined) {
+      return contact.name;
+    }
+    return groupMemberNameFor(chatId, jid);
+  }
+
+  // The sender name and excerpt a reply quote resolves to, from the loaded
+  // messages of the chat or from the page being mapped: history maps a whole
+  // page before inserting it, so a target on the same page is not in the store
+  // yet (T-1333).
+  function replyReferenceFor(
+    chatId: string,
+    replyTo: { readonly id: string },
+    page: readonly LedgerStanza[] | undefined,
+  ): { senderName: string; text?: string } | undefined {
+    const stored = get().messagesByChat[chatId]?.find((item) => sameMessage(item.id, replyTo.id));
+    if (stored !== undefined) {
+      return {
+        senderName: stored.senderName,
+        ...(stored.text === undefined ? {} : { text: stored.text }),
+      };
+    }
+    const stanza = page?.find((item) => sameMessage(item.id, replyTo.id));
+    if (stanza === undefined) {
+      return undefined;
+    }
+    return {
+      senderName: senderNameFor(stanza),
+      ...(stanza.body === undefined ? {} : { text: stanza.body }),
+    };
+  }
+
+  function toUiMessage(
+    message: LedgerStanza,
+    meId: string,
+    page?: readonly LedgerStanza[],
+  ): StoreMessage {
     const senderId = message.outgoing ? meId : message.fromJid;
     // The stanza id and the sender-generated id name the same message: record
     // the origin id under the chat and sender so a correction (which always
@@ -117,15 +162,21 @@ export function createLedgerIncoming(ledger: LedgerIncomingDeps) {
     if (replyTo !== undefined) {
       // Alias-aware: a reply names the message by the id both sides share (the
       // origin id in a DM, the room stanza-id in a group), which may differ
-      // from the id it is stored under here. With no match, the fallback quote
-      // parsed off the wire is used (UI-6).
-      const referenced = get().messagesByChat[message.chatJid]?.find((item) =>
-        sameMessage(item.id, replyTo.id),
-      );
-      const text = referenced?.text ?? replyTo.text;
+      // from the id it is stored under here. The page is checked too, because
+      // history maps a whole page before inserting it. With no match, the
+      // fallback quote parsed off the wire is used (UI-6).
+      const reference = replyReferenceFor(message.chatJid, replyTo, page);
+      // With no loaded target, the wire `to` JID still names the sender (the
+      // same lookup `senderNameFor` uses) and gives the quote a sender id to
+      // colour by (T-1333).
+      const senderName =
+        reference?.senderName ??
+        (replyTo.to === undefined ? undefined : nameForReplyTo(message.chatJid, replyTo.to));
+      const text = reference?.text ?? replyTo.text;
       ui.replyTo = {
         id: replyTo.id,
-        senderName: referenced?.senderName ?? '',
+        senderName: senderName ?? '',
+        ...(replyTo.to === undefined ? {} : { senderId: replyTo.to }),
         ...(text === undefined ? {} : { text }),
       };
     }

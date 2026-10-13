@@ -1,7 +1,15 @@
 import type { ChatSummary } from './types';
 
-function topicTime(chat: ChatSummary): number {
-  return chat.lastMessage?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY;
+/**
+ * The time a chat sorts by (T-1318): its newest message, else when it was
+ * created or joined, else the oldest. A chat with messages is never moved by
+ * its creation time, so a just-created group with no messages still leads the
+ * list like Telegram.
+ */
+export function chatSortTime(chat: ChatSummary): number {
+  return (
+    chat.lastMessage?.createdAt.getTime() ?? chat.createdAt?.getTime() ?? Number.NEGATIVE_INFINITY
+  );
 }
 
 /** Topics of one group: pinned first (newer pins first), then General, then newest message. */
@@ -20,6 +28,6 @@ export function sortTopics(topics: readonly ChatSummary[]): ChatSummary[] {
     if (leftGeneral !== rightGeneral) {
       return leftGeneral ? -1 : 1;
     }
-    return topicTime(right) - topicTime(left) || left.title.localeCompare(right.title);
+    return chatSortTime(right) - chatSortTime(left) || left.title.localeCompare(right.title);
   });
 }

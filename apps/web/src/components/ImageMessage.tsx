@@ -1,5 +1,6 @@
-import { useState, type MouseEvent } from 'react';
+import { type MouseEvent } from 'react';
 import { mediaSrc, safeHttpUrl } from '@/lib/attachments';
+import { useMediaRetry } from '@/lib/media-retry';
 import { useMediaViewer } from './media/MediaViewer';
 
 export interface ImageMessageProps {
@@ -21,32 +22,53 @@ export interface ImageMessageProps {
  * image becomes a small tile instead of the browser's broken icon. A plain
  * click opens the chat's photo viewer (T-1232); on a link, a modified or middle
  * click still follows the href in a new tab.
+ *
+ * A just-sent upload (T-1337) keeps its local `blob:` preview on screen while
+ * its `/api/files` copy 404s behind the indexer, retries that copy with
+ * backoff, and only shows "Image unavailable" — with a Retry — when there was
+ * no preview to fall back on and every attempt is spent.
  */
 export function ImageMessage({ chatId, messageId, url, alt, width, height }: ImageMessageProps) {
-  const [broken, setBroken] = useState(false);
   const openViewer = useMediaViewer();
+  const media = useMediaRetry(chatId, url);
 
-  if (broken) {
+  if (media.unavailable) {
     return (
-      <div className="flex h-[120px] w-full items-center justify-center rounded-[12px] border border-edge bg-well text-[13px] text-muted-foreground">
-        Image unavailable
+      <div className="flex h-[120px] w-full flex-col items-center justify-center gap-1.5 bg-well text-[13px] text-muted-foreground">
+        <span>Image unavailable</span>
+        <button type="button" onClick={media.retry} className="text-[12px] font-semibold underline">
+          Retry
+        </button>
       </div>
     );
   }
 
   const ratio = width !== undefined && height !== undefined ? `${width} / ${height}` : undefined;
-  const src = mediaSrc(chatId, url);
+  // The raw URL decides whether the image is linkable (the trust check never
+  // changes); a same-origin upload then opens through the file route.
+  const href = safeHttpUrl(url) === undefined ? undefined : mediaSrc(chatId, url);
   const image = (
-    <img
-      src={src}
-      alt={alt}
-      loading="lazy"
-      {...(width === undefined ? {} : { width })}
-      {...(height === undefined ? {} : { height })}
-      onError={() => setBroken(true)}
-      style={ratio === undefined ? undefined : { aspectRatio: ratio }}
-      className="max-h-[320px] w-full rounded-[12px] border border-edge object-cover shadow-[0_4px_10px_-3px_rgba(0,0,0,0.85)]"
-    />
+    <div className="relative">
+      <img
+        src={media.src}
+        alt={alt}
+        loading="lazy"
+        {...(width === undefined ? {} : { width })}
+        {...(height === undefined ? {} : { height })}
+        onLoad={media.onLoad}
+        onError={media.onError}
+        style={ratio === undefined ? undefined : { aspectRatio: ratio }}
+        className="max-h-[320px] w-full object-cover"
+      />
+      {media.preview !== undefined && !media.loaded && (
+        <img
+          src={media.preview}
+          alt=""
+          aria-hidden
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      )}
+    </div>
   );
 
   const open = (event: MouseEvent<HTMLElement>): void => {
@@ -62,9 +84,6 @@ export function ImageMessage({ chatId, messageId, url, alt, width, height }: Ima
     openViewer({ chatId, messageId });
   };
 
-  // The raw URL decides whether the image is linkable (the trust check never
-  // changes); a same-origin upload then opens through the file route.
-  const href = safeHttpUrl(url) === undefined ? undefined : src;
   if (href !== undefined) {
     return (
       <a

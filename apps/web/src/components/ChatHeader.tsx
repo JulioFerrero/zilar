@@ -4,17 +4,15 @@ import { Data, Effect } from 'effect';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { AiBadge } from './AiBadge';
-import { Avatar } from './Avatar';
+import { EntityAvatar } from './EntityAvatar';
 import { ChatBackgroundDialog } from './ChatBackgroundDialog';
 import { ChatPrefMenuItems } from './ChatActionsMenu';
 import { ConfirmDialog } from './ConfirmDialog';
 import { TypingDots } from './TypingDots';
 import { IconButton } from './ui/icon-button';
 import { Menu, MenuItem } from './ui/menu';
-import { runWeb } from '@/lib/effect/runtime';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { chatSubtitle, typingLabel } from '@/lib/format';
-import { useMediaQuery } from '@/lib/useMediaQuery';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const ARCHIVE_ERROR = 'Could not archive the topic.';
@@ -25,20 +23,23 @@ class ArchiveFailed extends Data.TaggedError('ArchiveFailed') {}
 
 export function ChatHeader({
   chat,
+  onSearch,
   onOpenAiPanel,
   onOpenGroupPanel,
   onOpenTopicPanel,
+  onOpenContactPanel,
   onOpenMedia,
 }: {
   chat: ChatSummary;
+  onSearch: () => void;
   onOpenAiPanel?: () => void;
   onOpenGroupPanel?: () => void;
   onOpenTopicPanel?: () => void;
+  onOpenContactPanel?: () => void;
   onOpenMedia?: () => void;
 }) {
   const navigate = useNavigate();
   const storeApi = useChatStoreApi();
-  const isWide = useMediaQuery('(min-width: 900px)');
   const typingNames = useChatSelector((s) => s.typing[chat.id]?.names);
   const names = typingNames ?? NO_NAMES;
   const hasDraft = useChatSelector((s) => s.drafts[chat.id] !== undefined);
@@ -52,25 +53,8 @@ export function ChatHeader({
   // T-0124: a channel feed is one row (General keeps the group chat id), not
   // a topic row; the panel is the channel panel, like the group panel.
   const isChannel = chat.chatKind === 'channel';
-  // One search path for the header button and the topic menu entry: scope the
-  // list search to this chat and focus its box.
-  const startChatSearch = (): void => {
-    storeApi.getState().setSearchChat(chat.id);
-    if (!isWide) {
-      navigate('/');
-    }
-    // The list search box lives outside this view; focus it after a zero-delay
-    // macrotask so the scope chip is already painted. The narrow-screen navigate
-    // above unmounts this header, so the wait runs detached (runWeb), not in a
-    // fiber that the unmount would interrupt.
-    void runWeb(
-      Effect.sleep(0).pipe(
-        Effect.andThen(Effect.sync(() => window.dispatchEvent(new Event('zilar:focus-search')))),
-      ),
-    );
-  };
   const groupTitle = chat.groupTitle ?? storedGroupTitle;
-  const openPanel = onOpenTopicPanel ?? onOpenAiPanel ?? onOpenGroupPanel;
+  const openPanel = onOpenTopicPanel ?? onOpenAiPanel ?? onOpenGroupPanel ?? onOpenContactPanel;
   const panelLabel = isTopic
     ? `Open ${chat.title} topic info`
     : chat.isAI
@@ -139,9 +123,7 @@ export function ChatHeader({
         <span className="truncate text-[15px] leading-5 font-semibold">{chat.title}</span>
         {chat.isAI && <AiBadge />}
         {chat.visibility === 'public' && (
-          <span className="font-mono shrink-0 rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
-            PUBLIC
-          </span>
+          <span className="shrink-0 text-[12px] leading-5 text-muted-foreground">Public</span>
         )}
         {isTopic && chat.topic?.visibility === 'private' && (
           <span className="flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
@@ -157,19 +139,15 @@ export function ChatHeader({
     </>
   );
 
+  // On narrow screens the in-chat search bar replaces the header entirely
+  // (WUX-34); ChatView owns that state so the contact panel can start the same
+  // search, and this header only triggers it.
   return (
     <header className="relative flex h-16 shrink-0 items-center gap-2.5 border-b border-divider bg-panel/85 px-4">
       <IconButton aria-label="Back to chats" onClick={() => navigate('/')} className="wide:hidden">
         <ArrowLeft className="size-5" aria-hidden="true" />
       </IconButton>
-      <Avatar
-        id={chat.id}
-        name={chat.title}
-        avatarUrl={chat.avatarUrl}
-        size={36}
-        online={chat.online === true}
-        ai={chat.isAI}
-      />
+      <EntityAvatar chat={chat} size={36} online={chat.online === true} ai={chat.isAI} />
       {openPanel !== undefined ? (
         <button
           type="button"
@@ -190,7 +168,7 @@ export function ChatHeader({
           {actionError}
         </span>
       )}
-      <IconButton aria-label="Search in chat" onClick={startChatSearch}>
+      <IconButton aria-label="Search in chat" onClick={onSearch}>
         <Search className="size-5" aria-hidden="true" />
       </IconButton>
       <div className="relative">
@@ -240,7 +218,7 @@ export function ChatHeader({
             <MenuItem
               onSelect={() => {
                 setMenuOpen(false);
-                startChatSearch();
+                onSearch();
               }}
             >
               Search

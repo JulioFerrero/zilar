@@ -262,6 +262,7 @@ describe('POST /api/push/test on a native device', () => {
     expect(calls[0]?.token).toBe('fcm-token-1');
     expect(calls[0]?.data).toEqual({
       chatId: 'zilar:test',
+      chatKind: 'group',
       serverId: context.config.xmpp.domain,
     });
   });

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { Link, Trash2, X, Zap } from 'lucide-react';
+import { KeyRound, Link, Trash2, X, Zap } from 'lucide-react';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
@@ -13,6 +13,7 @@ import {
   createConnection,
   deleteConnection,
   listConnections,
+  replaceConnectionKey,
   testConnection as testConnectionApi,
 } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
@@ -69,7 +70,7 @@ export function ConnectionsPage() {
     <SettingsShell
       title="Connections"
       subtitle="Connect a provider account to use its models. API keys only for now."
-      onBack={() => navigate('/')}
+      onBack={() => navigate('/settings')}
     >
       <div className={SETTINGS_COLUMN}>
         {loadError === undefined && connections === undefined && (
@@ -175,6 +176,8 @@ function ConnectionRow({
   const [removeState, remove, removeControls] = useAction((id: string) =>
     fromApi(() => deleteConnection(id)).pipe(Effect.tap(() => Effect.sync(() => onRemoved(id)))),
   );
+  const [replacing, setReplacing] = useState(false);
+  const [replaced, setReplaced] = useState(false);
   const label = providerLabel(connection.provider);
   const outcome = testOutcome(testState);
   const removeFailure = confirming ? shownFailure(removeState) : undefined;
@@ -210,10 +213,21 @@ function ConnectionRow({
             {outcome.ok ? 'Key works' : outcome.message}
           </p>
         )}
+        {replaced && <p className="text-[13px] text-online">Key replaced</p>}
         {removeFailure !== undefined && (
           <p role="alert" className="text-[13px] text-danger">
             {messageOf(removeFailure, 'Could not remove the connection')}
           </p>
+        )}
+        {replacing && (
+          <ReplaceKeyForm
+            connectionId={connection.id}
+            onCancel={() => setReplacing(false)}
+            onSaved={() => {
+              setReplacing(false);
+              setReplaced(true);
+            }}
+          />
         )}
       </div>
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
@@ -249,6 +263,18 @@ function ConnectionRow({
               type="button"
               variant="ghost"
               size="icon"
+              disabled={replacing}
+              aria-label={`Replace ${label} key`}
+              title={`Replace ${label} key`}
+              onClick={() => setReplacing(true)}
+              className="rounded-full text-muted-foreground"
+            >
+              <KeyRound className="size-4" aria-hidden="true" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               aria-label={`Remove ${label} connection`}
               title={`Remove ${label} connection`}
               onClick={askRemove}
@@ -260,6 +286,72 @@ function ConnectionRow({
         )}
       </div>
     </li>
+  );
+}
+
+/**
+ * The inline "Replace key" form for one connection: a password-type input and
+ * Save. The server keeps the connection and only swaps the key, so the AIs
+ * using it keep working. Success is reported by the row; a failure shows here.
+ */
+function ReplaceKeyForm({
+  connectionId,
+  onCancel,
+  onSaved,
+}: {
+  connectionId: string;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [key, setKey] = useState('');
+  const [state, save] = useAction((draftKey: string): Effect.Effect<void, FormError> => {
+    const trimmedKey = draftKey.trim();
+    if (trimmedKey === '') {
+      return Effect.fail(new KeyMissing());
+    }
+    return fromApi(() => replaceConnectionKey(connectionId, trimmedKey)).pipe(
+      Effect.asVoid,
+      Effect.tap(() => Effect.sync(onSaved)),
+    );
+  });
+
+  const busy = isWaiting(state);
+  const failure = shownFailure(state);
+  const error =
+    failure === undefined
+      ? ''
+      : failure._tag === 'KeyMissing'
+        ? 'Paste your API key'
+        : messageOf(failure, 'Could not replace the key');
+
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      <label className="flex flex-col gap-1">
+        <span className="text-[14px] font-medium">New API key</span>
+        <SecretInput
+          value={key}
+          placeholder="sk-…"
+          maxLength={16384}
+          autoComplete="off"
+          onChange={(event) => setKey(event.target.value)}
+        />
+      </label>
+
+      {error !== '' && (
+        <p role="alert" className="text-[14px] text-danger">
+          {error}
+        </p>
+      )}
+
+      <div className="flex items-center gap-2">
+        <Button type="button" size="default" disabled={busy} onClick={() => save(key)}>
+          Save key
+        </Button>
+        <Button type="button" variant="ghost" size="default" disabled={busy} onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
   );
 }
 

@@ -7,6 +7,7 @@ import {
   TOOL_TURN_MAX_CALLS,
   TRANSIENT_FAILURE_REPLY,
   mapFailureToReply,
+  runDmTurn,
   runToolLoop,
   type ExecuteToolCall,
   type ModelRequestMessage,
@@ -237,5 +238,41 @@ describe('runToolLoop caps and redaction', () => {
     for (const line of logged) {
       expect(line).not.toContain(secret);
     }
+  });
+});
+
+describe('failure logs (AI-22)', () => {
+  it('carries the failure kind and status, never the provider text', async () => {
+    const providerText = 'invalid api key for request {"messages":[{"content":"secret prompt"}]}';
+    const fetchImpl: FetchLike = async () =>
+      new Response(JSON.stringify({ error: { message: providerText } }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      });
+    const calls: Array<{ fields: Record<string, unknown>; message: string }> = [];
+
+    await runDmTurn({
+      aiId: 'ai-1',
+      ownerJid: 'owner@zilar.localhost',
+      messages: [{ role: 'user', content: 'hi' }],
+      baseUrl: 'http://litellm.test',
+      virtualKey: 'sk-virtual',
+      model: 'test-model',
+      fetchImpl,
+      sendMessage: async () => undefined,
+      sendTyping: () => undefined,
+      logger: {
+        warn: (fields, message) => {
+          calls.push({ fields, message });
+        },
+      },
+    });
+
+    const failure = calls.find((call) => call.message === 'AI reply failed');
+    expect(failure).toBeDefined();
+    expect(failure?.fields.kind).toBe('key_rejected');
+    expect(failure?.fields.status).toBe(401);
+    // The provider's message (which quotes request content) never reaches a log.
+    expect(JSON.stringify(calls)).not.toContain(providerText);
   });
 });

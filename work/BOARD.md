@@ -9,11 +9,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | ID | Title | Status | Model | Depends on | Notes |
 |---|---|---|---|---|---|
 | T-0005 | Spike S3: push chain, ejabberd → relay → Expo Push → iPhone | planned | v4-pro | T-0004 | Needs an Apple Developer account; superseded by T-1129's plan |
-| [T-1285](T-1285-web-lists-and-groups.md) | WUX-19/20/23/33: requests row, group search, search selection, Esc | in-progress | auto | — | audit wave A |
-| [T-1286](T-1286-server-social-fixes.md) | SG-7/8/9: joins respect blocks, invite use survives failed sign-up, search by handle | in-progress | auto | — | audit wave A |
-| [T-1287](T-1287-client-ui-fixes.md) | UI-7/12/13/14 shared client fixes | in-progress | auto | — | audit wave A |
-| [T-1288](T-1288-mobile-touch-fixes.md) | Mobile batch 1 (MUX-16/17/22/28/30) | in-progress | auto | — | audit wave A |
-| [T-1289](T-1289-mobile-copy-states.md) | Mobile batch 2 (MUX-25/26/27/29/32) | in-progress | auto | — | audit wave A |
+| [T-1298](T-1298-mobile-layout-batch.md) | Mobile batch 3 (MUX-18/20/24/31) | planned | auto | T-1289 | audit wave B |
 
 ## Follow-ups
 - **Mobile markdown has no tables (found 2026-10-10, T-1040 smoke).** The Dev AI review summary's table shows as raw `|` text on mobile. This is a new feature, so it needs Julio's OK.
@@ -1329,3 +1325,55 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1283](T-1283-web-menu-feedback.md) | WUX-29/30/37: menu at the pointer, Copy/Pin toasts, icon tooltips | 2026-10-12 |
 | [T-1282](T-1282-web-name-and-menu.md) | WUX-38/10: display name in Profile; menu icons, sections, Settings | 2026-10-12 |
 | [T-1284](T-1284-web-polish.md) | Web polish batch: WUX-14/22/24/25/31/35/36/42 | 2026-10-12 |
+| [T-1288](T-1288-mobile-touch-fixes.md) | Mobile batch 1: MUX-16/17/22/28/30 | 2026-10-12 |
+| [T-1294](T-1294-mobile-cold-start.md) | PERF-12/15: mobile chat-list cache, font gate, recyclingKey | 2026-10-12 |
+| [T-1302](T-1302-mobile-notify-react.md) | Mobile batch 4: MUX-23 channels, MUX-21 double-tap react, MUX-33 icon | 2026-10-12 |
+| [T-1293](T-1293-client-perf.md) | PERF-7/11/13: stable chats on presence, coalesced polls, ledger pruned | 2026-10-12 |
+| [T-1295](T-1295-web-bundle-push-nodes.md) | PERF-14/17: web vendor chunks (entry 636→425 kB); push nodes dropped on gone | 2026-10-12 |
+| [T-1290](T-1290-ai-turn-fixes.md) | AI-14/9/10: per-call turn budget, mentions per sender, room failure notice + owner DM | 2026-10-12 |
+| [T-1303](T-1303-push-chat-kind.md) | Push wake payload carries chatKind (dm/group/channel) | 2026-10-12 |
+| [T-1287](T-1287-client-ui-fixes.md) | UI-7/12/13/14: canAct guard, failed stickers, recency insert, ledger reset | 2026-10-12 |
+| [T-1296](T-1296-client-version-check.md) | OPS-21 + SEC-11: client version banner; Better Auth warn/error logged | 2026-10-12 |
+| [T-1300](T-1300-web-notify-emoji.md) | WUX-39/26/43: muted chats list, emoji search + categories, copy nits | 2026-10-12 |
+| [T-1292](T-1292-ai-connection-key.md) | AI-20/21: replace a provider key in place; plain AI form errors | 2026-10-12 |
+| [T-1286](T-1286-server-social-fixes.md) | SG-7/8/9: handle-only search, joins respect blocks, invite consumed with the user insert | 2026-10-12 |
+| [T-1285](T-1285-web-lists-and-groups.md) | WUX-19/20/23/33: requests row, group member search, search keyboard, Esc closes | 2026-10-12 |
+| [T-1291](T-1291-ai-drafts-fixes.md) | AI-11/13/19 + PERF-9: draft replay, late-frame drop, 10-min cap, stream only with AI chats | 2026-10-12 |
+| [T-1297](T-1297-web-scroll-select.md) | WUX-28/32: per-chat scroll memory; select-mode Delete/Copy | 2026-10-12 |
+| [T-1299](T-1299-ai-logs-routines.md) | AI-22/18: failure kinds in logs; routines non-blocking tick, missed late runs, post retry | 2026-10-12 |
+| [T-1305](T-1305-deploy-phase1.md) | Deploy phase 1: start_interval, Caddy lb_try, expand/contract rule | 2026-10-12 |
+| [T-1306](T-1306-singleton-jobs-audit.md) | Audit: two servers side by side; advisory-lock leader design | 2026-10-12 |
+| [T-1289](T-1289-mobile-copy-states.md) | Mobile batch 2: MUX-25/26/27/29/32 (copy, empty states, toast, time, New topic) | 2026-10-12 |
+| [T-1304](T-1304-stay-signed-in-on-errors.md) | Stay signed in when the server is down: only a 401 signs out (mobile + web) | 2026-10-12 |
+| [T-1301](T-1301-web-inchat-search.md) | WUX-34: narrow web in-chat search bar | 2026-10-12 |
+| [T-1312](T-1312-mobile-fast-start.md) | Mobile fast start: open at once on a stored session; background check, 401 signs out | 2026-10-13 |
+| [T-1308](T-1308-mobile-header-profile.md) | Mobile: chat header text centred; Telegram-style contact profile | 2026-10-13 |
+| [T-1309](T-1309-preview-icons-unread-divider.md) | Preview icons instead of emoji (web+mobile); mobile unread divider above the first unread | 2026-10-13 |
+| [T-1311](T-1311-read-ticks-after-restart.md) | Read ticks survive a restart: /api/chats readUntil from chat_reads, applied on history load | 2026-10-13 |
+| [T-1307](T-1307-mobile-history-photos-untrusted.md) | parseUrl without the runtime URL; a failed image load shows retry, not 'untrusted' | 2026-10-13 |
+| [T-1315](T-1315-files-proxy-host.md) | Files proxy: internal upload fetch carries the public Host (ejabberd vhost); log upstream status | 2026-10-13 |
+| [T-1313](T-1313-mobile-offline-chat-cache.md) | Mobile offline message cache: last 50 messages of 30 recent chats, cleared on sign-out | 2026-10-13 |
+| [T-1310](T-1310-mobile-swipe-folders.md) | Mobile home: swipe between chat folders like Telegram (pager + tabs follow) | 2026-10-13 |
+| [T-1316](T-1316-leader-lock-drain.md) | Zero-downtime prep: advisory-lock leader for background work; 5 s SIGTERM drain; /health leader flag | 2026-10-13 |
+| [T-1317](T-1317-mobile-polish-a11y.md) | Mobile a11y: message labels end with status, no object char; one create button on My AIs | 2026-10-13 |
+| [T-1314](T-1314-mobile-contacts-new-group.md) | Mobile Telegram-style Contacts (search, tap opens chat) and full-screen New group; mock create adds chat + General | 2026-10-13 |
+| [T-1318](T-1318-mobile-followups.md) | A new chat with no messages sorts by creation time (group createdAt on /api/chats); mock Notifications; sticker a11y status | 2026-10-13 |
+| [T-1319](T-1319-mobile-file-bubble-open.md) | Mobile files like Telegram: round-icon bubble; tap opens the type's app (Android VIEW intent), share as fallback | 2026-10-13 |
+| [T-1320](T-1320-mobile-attach-sheet-telegram.md) | Mobile attach sheet like Telegram: inline gallery grid (camera tile, numbered select, Send N), Gallery/File tabs; photo+video permission only | 2026-10-13 |
+| [T-1321](T-1321-ios-file-preview.md) | iOS: files open in the in-app QuickLook preview (react-native-file-viewer-turbo), share as fallback | 2026-10-13 |
+| [T-1324](T-1324-web-attach-menu.md) | Web attach like Telegram: paperclip menu (Photo or video / File), Send N photos dialog with caption and send-as-files | 2026-10-13 |
+| [T-1322](T-1322-web-file-bubble-open.md) | Web files like Telegram: round-icon bubble with 'size TYPE'; PDF opens in a new tab (blob), others download | 2026-10-13 |
+| [T-1323](T-1323-web-contact-panel.md) | Web contact info panel like Telegram: DM header opens photo, status, actions, @username, shared media, Block | 2026-10-13 |
+| [T-1325](T-1325-web-file-one-button.md) | Web file bubble: one circle (FileText opens a PDF, ArrowDown downloads others); Download in the message menu | 2026-10-13 |
+| [T-1329](T-1329-mobile-profile-polish.md) | Mobile profile polish: Settings card avatar+email, one Save in Edit profile, no @handle title on contact page | 2026-10-13 |
+| [T-1327](T-1327-web-chat-polish.md) | Web chat polish: one date pill, big-emoji time pill, profile heading, New chat menu icons | 2026-10-13 |
+| [T-1326](T-1326-sender-colors-reply-quotes.md) | Sender colours + reply quotes with name, coloured bar and media label on web and mobile | 2026-10-13 |
+| [T-1331](T-1331-mobile-three-tabs.md) | Phone: three tabs (Chats, AIs, Settings); own profile opens from the Settings card; /profile still works | 2026-10-13 |
+| [T-1330](T-1330-web-nav-simplify.md) | Web nav like Telegram: rail folders+Edit, short menu, /settings hub sharing the row list with mobile | 2026-10-13 |
+| [T-1332](T-1332-own-ball-seed.md) | Own no-picture ball is the same personSeed ball on every web and mobile screen | 2026-10-13 |
+| [T-1333](T-1333-reply-name-data.md) | Reply sender name resolved in history data; unloaded quotes named and coloured by the to JID | 2026-10-13 |
+| [T-1328](T-1328-mobile-markdown-bubble.md) | Mobile bubbles: time bottom-right (inline or its own right row, never twice), Markdown tables render | 2026-10-13 |
+| [T-1334](T-1334-orb-by-name-and-pictures.md) | Avatars: one shared EntityAvatar per app; orb seeded by name; real pictures wherever available | 2026-10-13 |
+| [T-1335](T-1335-photo-bubbles-edge-to-edge.md) | Photos like Telegram: edge to edge in the bubble, time pill on the photo, caption below (mobile + web) | 2026-10-13 |
+| [T-1336](T-1336-requests-in-chat-list.md) | Contact requests as rows at the top of the chat list with inline Accept / Decline (Undo) on mobile and web | 2026-10-13 |
+| [T-1337](T-1337-just-sent-photo-loads.md) | Just-sent photos keep the local preview and retry /api/files instead of sticking on Image unavailable (web + mobile) | 2026-10-13 |

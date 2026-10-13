@@ -67,7 +67,8 @@
       [
         "expo-media-library",
         {
-          "savePhotosPermission": "Zilar saves photos you choose to your gallery."
+          "savePhotosPermission": "Zilar saves photos you choose to your gallery.",
+          "granularPermissions": ["photo", "video"]
         }
       ],
       "expo-notifications"

@@ -48,6 +48,7 @@ export function GifCell({
       style={{ aspectRatio: CELL_ASPECT }}
     >
       <Image
+        recyclingKey={item.url}
         source={
           item.url.startsWith('data:image/')
             ? { uri: item.url }

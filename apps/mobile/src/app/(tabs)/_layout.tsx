@@ -1,71 +1,19 @@
 import { Tabs, TabSlot, TabList, TabTrigger } from 'expo-router/ui';
-import { Effect } from 'effect';
-import { useCallback, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
 import { View } from 'react-native';
 
 import { FloatingTabBar, FLOATING_TABS } from '@/components/nav/floating-tab-bar';
-import { useProfileApi } from '@/components/settings/use-profile-api';
-import { domainOfJid } from '@/lib/contacts-api';
-import { personSeed } from '@zilar/chat-core';
-import { fromApi } from '@/lib/effect/api-effect';
-import { interruptFiber } from '@/lib/effect/timers';
 import { unreadCount } from '@/lib/filter';
-import { getSessionToken } from '@/lib/session-token';
 import { useChatStore } from '@/store/chat-store-provider';
-import type { TabProfile } from '@/components/nav/floating-tab-bar';
-
-// The session token as an Effect: a failed read fails the profile load.
-const sessionTokenEffect = Effect.tryPromise({
-  try: () => getSessionToken(),
-  catch: (cause) => cause,
-});
 
 /**
- * The four phone tabs (Chats, AIs, Settings, Profile). Each `TabTrigger`
- * names the route file inside this group (`index`, `ais`, `settings`,
- * `profile`); the `href` is the public URL, so `/`, `/ais` and `/settings`
- * stay exactly as today. Sub-screens (`ais/[id]`, `settings/*`, `chat/*`)
- * live outside the group and open above the bar on the root stack.
+ * The three phone tabs (Chats, AIs, Settings). Each `TabTrigger` names the
+ * route file inside this group (`index`, `ais`, `settings`); the `href` is the
+ * public URL, so `/`, `/ais` and `/settings` stay exactly as today. Sub-screens
+ * (`ais/[id]`, `settings/*`, `chat/*`, the own profile at `/me`) live outside
+ * the group and open above the bar on the root stack.
  */
 export default function TabsLayout() {
   const chats = useChatStore((state) => state.chats);
-  const ownJid = useChatStore((state) => state.me?.jid ?? undefined);
-  const { api } = useProfileApi();
-  const [profile, setProfile] = useState<TabProfile | undefined>(undefined);
-
-  useFocusEffect(
-    useCallback(() => {
-      // Leaving the tab interrupts a load still in flight, so a late answer
-      // never sets the profile of a tab that is no longer shown.
-      const load = Effect.all([fromApi(() => api.getMe()), sessionTokenEffect], {
-        concurrency: 'unbounded',
-      }).pipe(
-        Effect.tap(([me, sessionToken]) =>
-          Effect.sync(() => {
-            // T-1212: the tab ball is seeded like the profile screen (the
-            // own bare JID, or the user id derived the mention-builder way
-            // when no JID is known yet).
-            const domain = domainOfJid(ownJid);
-            const seedFor =
-              domain === undefined
-                ? undefined
-                : (userId: string): string => personSeed(userId, domain);
-            const next: TabProfile =
-              me.avatarUrl === undefined
-                ? { id: me.id, name: me.name, seedFor }
-                : { id: me.id, name: me.name, avatarUrl: me.avatarUrl, seedFor };
-            setProfile(sessionToken === undefined ? next : { ...next, token: sessionToken });
-          }),
-        ),
-        Effect.catch(() => Effect.sync(() => setProfile(undefined))),
-      );
-      const fiber = Effect.runFork(load);
-      return () => {
-        interruptFiber(fiber);
-      };
-    }, [api, ownJid]),
-  );
 
   return (
     <Tabs>
@@ -89,7 +37,7 @@ export default function TabsLayout() {
         style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0 }}
         pointerEvents="box-none"
       >
-        <FloatingTabBar unreadTotal={unreadCount(chats, undefined)} profile={profile} />
+        <FloatingTabBar unreadTotal={unreadCount(chats, undefined)} />
       </View>
     </Tabs>
   );

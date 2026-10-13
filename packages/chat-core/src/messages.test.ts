@@ -3,6 +3,7 @@ import type { UiMessage } from './types';
 import {
   groupMessages,
   previewBody,
+  previewKind,
   previewPrefix,
   previewText,
   unreadDividerIndex,
@@ -98,7 +99,7 @@ describe('album grouping', () => {
     });
     if (albumItem?.kind === 'album') {
       expect(albumItem.messages.map((m) => m.id)).toEqual(['a0', 'a1', 'a2']);
-      expect(previewBody(albumItem.message)).toBe('🖼 3 photos');
+      expect(previewBody(albumItem.message)).toBe('3 photos');
     }
   });
 
@@ -196,7 +197,7 @@ describe('previewText', () => {
       createdAt: at(0, 0),
       voice: { duration_ms: 12_000, mime: 'audio/m4a', waveform: [10, 20] },
     });
-    expect(previewText(last, options)).toBe('Ana: 🎤 Voice message (0:12)');
+    expect(previewText(last, options)).toBe('Ana: Voice message (0:12)');
   });
 
   it('uses the photo preview', () => {
@@ -207,7 +208,7 @@ describe('previewText', () => {
       createdAt: at(0, 0),
       image: { url: 'data:image/svg+xml,<svg/>', width: 10, height: 10 },
     });
-    expect(previewText(last, options)).toBe('Ana: 🖼 Photo');
+    expect(previewText(last, options)).toBe('Ana: Photo');
   });
 
   it('uses the image attachment preview, with the caption after it', () => {
@@ -224,10 +225,10 @@ describe('previewText', () => {
         mime: 'image/png',
       },
     });
-    expect(previewBody(image)).toBe('🖼 Photo');
+    expect(previewBody(image)).toBe('Photo');
 
     const withCaption = message({ ...image, text: 'the stage!' });
-    expect(previewText(withCaption, options)).toBe('Ana: 🖼 Photo, the stage!');
+    expect(previewText(withCaption, options)).toBe('Ana: Photo, the stage!');
   });
 
   it('uses the file attachment preview with its name and caption', () => {
@@ -244,15 +245,49 @@ describe('previewText', () => {
         mime: 'application/pdf',
       },
     });
-    expect(previewText(file, options)).toBe('Ana: 📎 tickets.pdf');
+    expect(previewText(file, options)).toBe('Ana: tickets.pdf');
 
     const withCaption = message({ ...file, text: 'print these' });
-    expect(previewBody(withCaption)).toBe('📎 tickets.pdf, print these');
+    expect(previewBody(withCaption)).toBe('tickets.pdf, print these');
   });
 
   it('returns an empty string without a message', () => {
     expect(previewText(undefined, options)).toBe('');
     expect(previewBody(undefined)).toBe('');
+  });
+});
+
+describe('previewKind', () => {
+  it('names the icon for a photo, album and voice preview', () => {
+    const photo = message({
+      id: '1',
+      senderId: 'ana',
+      createdAt: at(0, 0),
+      image: { url: 'data:image/svg+xml,<svg/>', width: 10, height: 10 },
+    });
+    const album = message({
+      id: '2',
+      senderId: 'ana',
+      createdAt: at(0, 0),
+      album: { id: 'alb', index: 0, count: 3 },
+    });
+    const voice = message({
+      id: '3',
+      senderId: 'ana',
+      createdAt: at(0, 0),
+      voice: { duration_ms: 12_000, mime: 'audio/m4a', waveform: [10, 20] },
+    });
+
+    expect(previewKind(photo)).toBe('photo');
+    expect(previewKind(album)).toBe('album');
+    expect(previewKind(voice)).toBe('voice');
+  });
+
+  it('has no icon for a plain text preview or no message', () => {
+    const text = message({ id: '1', senderId: 'ana', createdAt: at(0, 0), text: 'hello' });
+
+    expect(previewKind(text)).toBeUndefined();
+    expect(previewKind(undefined)).toBeUndefined();
   });
 });
 

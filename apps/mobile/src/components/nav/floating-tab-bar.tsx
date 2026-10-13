@@ -1,18 +1,12 @@
-import { avatarSvg } from '@zilar/chat-core';
 import { Bot, MessagesSquare, Settings } from 'lucide-react-native';
-import { Image, Keyboard, View } from 'react-native';
+import { Keyboard, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SvgXml } from 'react-native-svg';
 import { useEffect, useState } from 'react';
-import type { ReactNode } from 'react';
 import { TabTrigger, useTabTrigger } from 'expo-router/ui';
 
 import { Text } from '@/components/ui/text';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { primaryKey, segment } from '@/lib/depth';
-
-import { API_URL } from '@/lib/auth';
-import { avatarImageSource } from '@/components/settings/profile-logic';
 
 export const TAB_BAR_HEIGHT = 64;
 export const TAB_BAR_BOTTOM_GAP = 12;
@@ -29,7 +23,7 @@ export function tabScreenBottomPadding(hasBack: boolean, insetBottom: number): n
 
 export interface FloatingTab {
   name: string;
-  href: '/' | '/ais' | '/settings' | '/profile';
+  href: '/' | '/ais' | '/settings';
   label: string;
 }
 
@@ -37,116 +31,16 @@ export const FLOATING_TABS: FloatingTab[] = [
   { name: 'index', href: '/', label: 'Chats' },
   { name: 'ais', href: '/ais', label: 'AIs' },
   { name: 'settings', href: '/settings', label: 'Settings' },
-  { name: 'profile', href: '/profile', label: 'Profile' },
 ];
-
-/**
- * Whether the avatar picture failed to load for the *current* url. The
- * failed url is stored instead of a boolean flag, so a fresh `avatarUrl`
- * (e.g. after Set photo saves) clears the ball avatar fallback instead of
- * sticking on it until remount.
- */
-export function avatarFailedFor(
-  failedUrl: string | undefined,
-  avatarUrl: string | undefined,
-): boolean {
-  return failedUrl !== undefined && failedUrl === avatarUrl;
-}
-
-export interface TabProfile {
-  id: string;
-  name: string;
-  avatarUrl?: string | undefined;
-  /** The bearer for the same-origin picture load, if any. */
-  token?: string | undefined;
-  /**
-   * T-1212: the ball seed for the own profile (the own bare JID, the same
-   * ball as the chat list and the profile screen). Absent paints the user
-   * id.
-   */
-  seedFor?: ((userId: string) => string) | undefined;
-}
 
 type FloatingTabBarProps = {
   /** Total unread of non-muted chats (the All folder total); hidden at 0. */
   unreadTotal: number;
-  /** The signed-in profile for the Profile tab avatar; a ball avatar when present. */
-  profile?: TabProfile | undefined;
 };
 
-function TabIcon({
-  name,
-  profile,
-  imageFailed,
-  onImageError,
-}: {
-  name: string;
-  profile?: TabProfile | undefined;
-  imageFailed: boolean;
-  onImageError: () => void;
-}) {
-  if (name === 'profile') {
-    return (
-      <TabProfileFace
-        profile={profile}
-        imageFailed={imageFailed}
-        onImageError={onImageError}
-        fallback={
-          profile === undefined ? (
-            <Text className="text-[13px] font-semibold text-foreground">?</Text>
-          ) : (
-            <View style={{ width: 20, height: 20, borderRadius: 10, overflow: 'hidden' }}>
-              <SvgXml
-                xml={avatarSvg(
-                  profile.seedFor === undefined ? profile.id : profile.seedFor(profile.id),
-                )}
-                width={20}
-                height={20}
-              />
-            </View>
-          )
-        }
-      />
-    );
-  }
+function TabIcon({ name }: { name: string }) {
   const Icon = name === 'ais' ? Bot : name === 'settings' ? Settings : MessagesSquare;
   return <Icon size={20} color={ICON} />;
-}
-
-/**
- * The Profile tab face: the resolved picture, or the ball avatar fallback when
- * there is no picture or the load fails. The server's `avatarUrl` is a
- * relative `/api/avatars/<id>` path, resolved against the API origin with
- * the bearer on same-origin only (the `profile-view` pattern); a bare
- * `Image` uri would never resolve it. The content is hook-free so Vitest
- * covers the fallback without a simulator; the parent owns the failed flag.
- */
-export function TabProfileFace({
-  profile,
-  fallback,
-  imageFailed = false,
-  onImageError,
-}: {
-  profile?: TabProfile | undefined;
-  fallback: ReactNode;
-  imageFailed?: boolean;
-  onImageError?: (() => void) | undefined;
-}) {
-  const source =
-    profile?.avatarUrl === undefined || profile.avatarUrl === '' || imageFailed
-      ? null
-      : avatarImageSource(profile.avatarUrl, API_URL, profile.token);
-  if (source === null) {
-    return <>{fallback}</>;
-  }
-  return (
-    <Image
-      source={source}
-      accessibilityLabel="Profile"
-      style={{ width: 20, height: 20, borderRadius: 10 }}
-      onError={onImageError}
-    />
-  );
 }
 
 /**
@@ -154,22 +48,9 @@ export function TabProfileFace({
  * gradient style on a live view: the active and idle faces are different
  * elements, each keyed by its own look (gradient-swap.test.ts).
  */
-function FloatingTabButton({
-  tab,
-  badge,
-  profile,
-}: {
-  tab: FloatingTab;
-  badge?: number | undefined;
-  profile?: TabProfile | undefined;
-}) {
+function FloatingTabButton({ tab, badge }: { tab: FloatingTab; badge?: number | undefined }) {
   const { trigger, triggerProps } = useTabTrigger({ name: tab.name });
   const selected = trigger?.isFocused ?? false;
-  // The tab-bar avatar falls back to a ball avatar when the picture 404s (a
-  // removed picture keeps its stale url until the next focus reload). The
-  // failed url is stored, not a flag, so a fresh `avatarUrl` clears the
-  // fallback instead of sticking on the ball avatar until remount.
-  const [failedUrl, setFailedUrl] = useState<string | undefined>(undefined);
   return (
     <TabTrigger
       name={tab.name}
@@ -187,12 +68,7 @@ function FloatingTabButton({
         className="h-full flex-1 items-center justify-center gap-0.5 rounded-2xl"
         {...(selected ? { style: segment } : {})}
       >
-        <TabIcon
-          name={tab.name}
-          profile={profile}
-          imageFailed={avatarFailedFor(failedUrl, profile?.avatarUrl)}
-          onImageError={() => setFailedUrl(profile?.avatarUrl)}
-        />
+        <TabIcon name={tab.name} />
         <Text className="text-[11px]" style={{ color: selected ? '#ededed' : MUTED_FOREGROUND }}>
           {tab.label}
         </Text>
@@ -214,11 +90,11 @@ function FloatingTabButton({
 
 /**
  * The floating bottom bar (Telegram-style): a dark raised 64 px pill with
- * four equal tabs. Rendered as the `TabList` of the `expo-router/ui` headless
+ * three equal tabs. Rendered as the `TabList` of the `expo-router/ui` headless
  * `Tabs` in `(tabs)/_layout.tsx`, so `useTabTrigger` switches tabs without a
  * new dependency. Hides while the keyboard is open.
  */
-export function FloatingTabBar({ unreadTotal, profile }: FloatingTabBarProps) {
+export function FloatingTabBar({ unreadTotal }: FloatingTabBarProps) {
   const insets = useSafeAreaInsets();
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   useEffect(() => {
@@ -253,7 +129,6 @@ export function FloatingTabBar({ unreadTotal, profile }: FloatingTabBarProps) {
           key={tab.name}
           tab={tab}
           {...(tab.name === 'index' ? { badge: unreadTotal } : {})}
-          {...(tab.name === 'profile' ? { profile } : {})}
         />
       ))}
     </View>

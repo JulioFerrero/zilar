@@ -234,21 +234,15 @@ function AisList() {
         )}
 
         {status === 'ready' && ais.length > 0 && (
-          <View className="gap-3">
-            <Button className="self-start" onPress={() => router.push('/ais/new')}>
-              <Plus size={16} color={ACCENT_FOREGROUND} />
-              <Text>Create AI</Text>
-            </Button>
-            <View className="gap-1">
-              {ais.map((ai) => (
-                <AiRow
-                  key={ai.id}
-                  ai={ai}
-                  highlighted={ai.id === highlightId}
-                  onPress={() => setActionAi(ai)}
-                />
-              ))}
-            </View>
+          <View className="gap-1">
+            {ais.map((ai) => (
+              <AiRow
+                key={ai.id}
+                ai={ai}
+                highlighted={ai.id === highlightId}
+                onPress={() => setActionAi(ai)}
+              />
+            ))}
           </View>
         )}
       </AisScreenShell>

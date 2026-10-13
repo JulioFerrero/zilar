@@ -1,10 +1,9 @@
 import { Link, useNavigate } from 'react-router';
-import { personSeed } from '@zilar/chat-core';
 import { StateMessage } from '@/components/ui/state-message';
 import type { DirectoryEntry, HandleProfile } from '@/lib/api';
 import { useGroupSearch, usePeopleSearch } from '@/lib/usePeopleSearch';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-import { Avatar } from './Avatar';
+import { EntityAvatar } from './EntityAvatar';
 
 // The People and Public-groups sections above the chat-name and message
 // results (3+ characters, after one leading `@`).
@@ -78,18 +77,12 @@ function PersonRow({ entry }: { entry: HandleProfile }) {
   const contacts = useChatSelector((s) => s.contacts);
   const chats = useChatSelector((s) => s.chats);
   const setSearch = useChatSelector((s) => s.setSearch);
-  const me = useChatSelector((s) => s.me);
   const storeApi = useChatStoreApi();
 
   // The lookup profile carries no JID; the store's contact does. A contact
   // with no chat row yet (the list has not refreshed since it was added) gets
-  // a refresh, and the shell opens the DM once the row lands. T-1209: the
-  // ball is seeded by that same bare JID, else by the user id derived the
-  // way the mention builder does (the domain from my own JID).
+  // a refresh, and the shell opens the DM once the row lands.
   const contact = contacts.find((row) => row.userId === entry.userId);
-  const ownDomain = me?.jid?.slice(me.jid.indexOf('@') + 1);
-  const seed =
-    contact?.jid ?? (ownDomain === undefined ? entry.userId : personSeed(entry.userId, ownDomain));
   const href =
     contact === undefined ? `/@${entry.handle}` : `/c/${encodeURIComponent(contact.jid)}`;
 
@@ -107,7 +100,7 @@ function PersonRow({ entry }: { entry: HandleProfile }) {
       onClick={open}
       className="flex w-full items-center gap-3 rounded-[12px] px-[10px] py-2 text-left transition-colors hover:bg-surface-raised"
     >
-      <Avatar id={seed} name={entry.name} avatarUrl={entry.image ?? undefined} size={40} />
+      <EntityAvatar person={entry} size={40} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[14px] leading-5 font-semibold text-foreground">
           {entry.name}
@@ -127,7 +120,7 @@ function GroupRow({ entry }: { entry: DirectoryEntry }) {
       onClick={() => navigate(`/@${entry.handle}`)}
       className="flex w-full items-center gap-3 rounded-[12px] px-[10px] py-2 text-left transition-colors hover:bg-surface-raised"
     >
-      <Avatar id={entry.id} name={entry.title} avatarUrl={entry.avatarUrl} size={40} />
+      <EntityAvatar chat={entry} size={40} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[14px] leading-5 font-semibold text-foreground">
           {entry.title}

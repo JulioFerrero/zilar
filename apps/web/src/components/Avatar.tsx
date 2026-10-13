@@ -2,7 +2,7 @@ import { avatarDataUri } from '@zilar/chat-core';
 import { cn } from '@/lib/utils';
 
 export interface AvatarProps {
-  id: string;
+  seed: string;
   name: string;
   size?: number;
   online?: boolean;
@@ -12,7 +12,7 @@ export interface AvatarProps {
   className?: string;
 }
 
-export function Avatar({ id, size = 54, online = false, avatarUrl, className }: AvatarProps) {
+export function Avatar({ seed, size = 54, online = false, avatarUrl, className }: AvatarProps) {
   return (
     <span
       className={cn('relative inline-flex shrink-0', className)}
@@ -20,7 +20,7 @@ export function Avatar({ id, size = 54, online = false, avatarUrl, className }: 
     >
       {avatarUrl === undefined ? (
         <img
-          src={avatarDataUri(id)}
+          src={avatarDataUri(seed)}
           alt=""
           aria-hidden="true"
           className="h-full w-full rounded-full object-cover"

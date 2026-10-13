@@ -3,8 +3,10 @@ import { Pin, VolumeX } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
 import { AiBadge } from '@/components/chat/ai-badge';
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { tap } from '@/components/chat/haptics';
 import { plainPreviewBody } from '@/components/chat/markdown-decision';
+import { PreviewIcon } from '@/components/chat/preview-icon';
 import { Ticks } from '@/components/chat/ticks';
 import { PulseDot } from '@/components/chat/typing-dots';
 import { Text } from '@/components/ui/text';
@@ -77,17 +79,17 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
       accessibilityRole="button"
       accessibilityLabel={chat.title}
       onPress={onPress}
-      {...(onLongPress === undefined ? {} : { onLongPress })}
+      onLongPress={
+        onLongPress === undefined
+          ? undefined
+          : () => {
+              tap();
+              onLongPress();
+            }
+      }
       className="h-[76px] flex-row items-center bg-background pl-4 active:bg-surface-raised"
     >
-      <Avatar
-        id={chat.id}
-        name={chat.title}
-        size={52}
-        online={chat.online}
-        avatarUrl={chat.avatarUrl}
-        ai={chat.isAI}
-      />
+      <EntityAvatar chat={chat} size={52} online={chat.online} ai={chat.isAI} />
       <View className="ml-3 h-full flex-1 flex-row items-center border-b border-[#1a1a1a] pr-4">
         <View className="flex-1 justify-center">
           <View className="flex-row items-center justify-between">
@@ -133,10 +135,13 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
                 {deletedPreview}
               </Text>
             ) : (
-              <Text numberOfLines={1} className="mr-2 flex-1 text-[14px] text-muted-foreground">
-                {preview.prefix ? <Text color="#d4d4d4">{preview.prefix}</Text> : null}
-                {body}
-              </Text>
+              <View className="mr-2 flex-1 flex-row items-center gap-1.5">
+                <PreviewIcon kind={preview.kind} />
+                <Text numberOfLines={1} className="flex-1 text-[14px] text-muted-foreground">
+                  {preview.prefix ? <Text color="#d4d4d4">{preview.prefix}</Text> : null}
+                  {body}
+                </Text>
+              </View>
             )}
             {chat.unread > 0 ? (
               <UnreadBadge count={chat.unread} muted={chat.muted} />

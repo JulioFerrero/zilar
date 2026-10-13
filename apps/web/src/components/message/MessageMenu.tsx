@@ -1,4 +1,4 @@
-import { type UiMessage } from '@zilar/chat-core';
+import { canAct, type UiMessage } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { MoreHorizontal } from 'lucide-react';
 import { useState, type RefObject } from 'react';
@@ -7,8 +7,11 @@ import { MessageActionsMenu } from '../MessageActionsMenu';
 import { Button } from '../ui/button';
 import { useToast } from '../ui/toast';
 import { useAlbumMembers } from './AlbumGrid';
+import { mediaSrc, safeHttpUrl } from '@/lib/attachments';
 import { copyText } from '@/lib/clipboard';
 import { runWeb } from '@/lib/effect/runtime';
+import { downloadFile } from '@/lib/open-file';
+import { cn } from '@/lib/utils';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 /**
@@ -36,10 +39,16 @@ export function MessageActionsButton({
   buttonRef,
   open,
   onOpen,
+  beside,
 }: {
   buttonRef: RefObject<HTMLButtonElement | null>;
   open: boolean;
   onOpen: () => void;
+  /**
+   * A bubble-less big-emoji message (T-1327) has no frame to sit on, so the
+   * button moves beside the emoji, on that side, instead of covering it.
+   */
+  beside?: 'left' | 'right' | undefined;
 }) {
   return (
     <Button
@@ -51,7 +60,11 @@ export function MessageActionsButton({
       aria-haspopup="menu"
       aria-expanded={open}
       onClick={onOpen}
-      className="absolute top-0.5 right-0.5 z-10 size-6 rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+      className={cn(
+        'absolute top-0.5 right-0.5 z-10 size-6 rounded-full bg-surface/80 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100',
+        beside === 'left' && 'top-1/2 right-auto -left-7 -translate-y-1/2',
+        beside === 'right' && 'top-1/2 -right-7 -translate-y-1/2',
+      )}
     >
       <MoreHorizontal className="size-4" aria-hidden="true" />
     </Button>
@@ -114,6 +127,10 @@ export function MessageMenu({
   const chat = useChatSelector((s) => s.chats.find((entry) => entry.id === chatId));
   const meId = useChatSelector((s) => s.currentUserId);
   const own = message.senderId === meId;
+  // A message with no wire id yet (still sending, or a failed send) is refused
+  // by React, Edit and Delete: hide or disable them instead of letting the tap
+  // do nothing (UI-7).
+  const canActNow = canAct(message);
   const isDm = chat?.kind === 'dm' && chat.isAI !== true;
   const canDeleteForMe = isDm && message.deleted !== true && message.status !== 'sending';
   // T-1247: in a DM the item names the action its confirm offers (both for my
@@ -129,18 +146,31 @@ export function MessageMenu({
       storeApi.getState().deleteForEveryone(chatId, id);
     }
   };
+  // T-1325: a `kind: 'file'` attachment gets a Download item in the menu, so the
+  // file bubble keeps a single circle. The URL is resolved exactly as the file
+  // bubble resolves it, so a same-origin `/upload/` goes through `GET /api/files`.
+  const fileAttachment =
+    message.attachment !== undefined && message.attachment.kind === 'file'
+      ? message.attachment
+      : undefined;
+  const fileHref =
+    fileAttachment === undefined || safeHttpUrl(fileAttachment.url) === undefined
+      ? undefined
+      : mediaSrc(chatId, fileAttachment.url);
 
   return (
     <>
       {open && (
         <MessageActionsMenu
           canCopy={canCopy}
-          canEdit={canEdit}
-          canDelete={canDelete || canDeleteForMe}
+          canEdit={canEdit && canActNow}
+          canDelete={(canDelete || canDeleteForMe) && canActNow}
+          canReact={canActNow}
           deleteLabel={deleteLabel}
           canPin={canPin}
           isPinned={pinId !== undefined}
           canForward={canForward}
+          canDownload={fileHref !== undefined}
           point={point}
           onReact={(emoji) => {
             onClose();
@@ -153,6 +183,12 @@ export function MessageMenu({
           onForward={() => {
             onClose();
             onForward();
+          }}
+          onDownload={() => {
+            onClose();
+            if (fileHref !== undefined && fileAttachment !== undefined) {
+              downloadFile(fileHref, fileAttachment.name);
+            }
           }}
           onSelectMessages={() => {
             onClose();

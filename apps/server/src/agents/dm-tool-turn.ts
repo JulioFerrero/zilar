@@ -3,7 +3,13 @@ import type { FetchLike } from '../ai/litellm-client';
 import type { DmTurnDeps, DmTurnOutcome } from './dm-turn';
 import type { GroupTurnDeps } from './group-turn';
 import { cutShortSuffix } from './replies';
-import { mapFailureToReply, redactError, runLoopRound, actionOfCall } from './tool-exec';
+import {
+  failureLogFields,
+  mapFailureToReply,
+  redactError,
+  runLoopRound,
+  actionOfCall,
+} from './tool-exec';
 import {
   ChatCompletionError,
   TOOL_TURN_MAX_CALLS,
@@ -13,6 +19,7 @@ import {
   type ExecuteToolCall,
   type ModelRequestMessage,
 } from './tool-loop';
+import { remainingTurnBudgetMs } from './turn-budget';
 import type { ChatToolDefinition } from './tools';
 
 // T-0106: the one shared multi-round tool loop for DM and group turns. No
@@ -112,6 +119,7 @@ export async function runToolLoop(input: {
       const lastCall = lastRound && round > 1;
       const result = await requestCompletion({
         ...input.completionInput,
+        timeoutMs: remainingTurnBudgetMs(startedAt, input.nowMs),
         messages,
         ...(lastCall ? {} : { tools: input.tools }),
       });
@@ -257,7 +265,7 @@ export async function runToolTurn(
     // call: the failure text goes out like any other model failure, with
     // no notices (none were earned yet).
     const failure = mapFailureToReply(error);
-    deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
+    deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
     if (deps.clearProgress !== undefined) {
       await clearProgressQuietly(deps, secrets);
     }
@@ -317,6 +325,7 @@ export async function runToolTurn(
     try {
       const last = await requestCompletion({
         ...completionInput,
+        timeoutMs: remainingTurnBudgetMs(startedAt, nowMs),
         messages: loop.messages,
         ...(maxRounds <= 1 ? { tools } : {}),
       });
@@ -326,7 +335,7 @@ export async function runToolTurn(
           : last.content + cutShortSuffix(last.finishReason) + loop.notices.join('');
     } catch (error) {
       const failure = mapFailureToReply(error);
-      deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
+      deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
       if (deps.clearProgress !== undefined) {
         await clearProgressQuietly(deps, secrets);
       }

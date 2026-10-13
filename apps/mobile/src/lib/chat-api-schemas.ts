@@ -81,6 +81,9 @@ const GroupEntryRawSchema = struct({
   // entry so `summariesFor` maps them onto the General row.
   unread: Schema.optional(Schema.Number),
   lastMessage: Schema.optional(ChatLastMessage),
+  // T-1318: the group's creation/join time, so the list sorts a just-created
+  // group with no messages first. Absent on older servers (still parses).
+  createdAt: Schema.optional(Schema.String),
 });
 
 const RoleChipSchema = struct({
@@ -210,6 +213,8 @@ function parseChatEntry(value: unknown): ChatEntry | null {
     // servers, so they stay absent here.
     ...(raw.unread === undefined ? {} : { unread: raw.unread }),
     ...(raw.lastMessage === undefined ? {} : { lastMessage: raw.lastMessage }),
+    // T-1318: carry the creation time so an empty group sorts first.
+    ...(raw.createdAt === undefined ? {} : { createdAt: raw.createdAt }),
   };
 }
 

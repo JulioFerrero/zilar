@@ -16,7 +16,7 @@ import { fromApi } from '@/lib/effect/api-effect';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { AiBadge } from '@/components/AiBadge';
-import { Avatar } from '@/components/Avatar';
+import { EntityAvatar } from '@/components/EntityAvatar';
 import { Sheet } from '@/components/ui/sheet';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { StateMessage } from '@/components/ui/state-message';
@@ -214,12 +214,13 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
     <>
       <Sheet open onClose={onClose} ariaLabel={`${chat.title} AI settings`}>
         <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
-          <Avatar
-            id={ai?.jid ?? chat.id}
-            name={ai?.name ?? chat.title}
+          <EntityAvatar
+            person={
+              ai === null ? undefined : { id: ai.jid, name: ai.name, avatarUrl: ai.avatarUrl }
+            }
+            chat={ai === null ? chat : undefined}
             size={44}
             ai
-            avatarUrl={ai?.avatarUrl ?? chat.avatarUrl}
           />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">

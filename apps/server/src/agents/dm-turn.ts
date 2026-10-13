@@ -4,7 +4,7 @@ import type { FetchLike } from '../ai/litellm-client';
 import type { ChatCompletionMessage } from './context';
 import { runToolTurn } from './dm-tool-turn';
 import { cutShortSuffix } from './replies';
-import { mapFailureToReply, redactError } from './tool-exec';
+import { failureLogFields, mapFailureToReply, redactError } from './tool-exec';
 import {
   ChatCompletionError,
   requestCompletion,
@@ -129,7 +129,7 @@ export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
     return await runToolTurn(deps, completionInput, secrets, tools);
   } catch (error) {
     const reply = mapFailureToReply(error);
-    deps.logger.warn({ err: redactError(error, secrets), aiId: deps.aiId }, 'AI reply failed');
+    deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
     try {
       await deps.sendMessage(deps.ownerJid, 'chat', reply);
     } catch (sendError) {

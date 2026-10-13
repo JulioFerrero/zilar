@@ -3,8 +3,9 @@
 // stream with the timers that drop a finished or stale draft. Loops are forked
 // into a Scope, so they stop when it closes. The app supplies the two refreshes
 // and the draft stream through its hooks and ports.
+import type { ChatSummary } from '@zilar/chat-core';
 import { Effect, Schedule, type Scope } from 'effect';
-import type { CoreCtx, StoreAppHooks } from './ctx';
+import type { CoreCtx, CoreSet, StoreAppHooks } from './ctx';
 import type { HistoryCtx } from './history';
 import type { Fibers } from './lifetime';
 import type { DraftHubEvent } from './ports';
@@ -16,6 +17,16 @@ export const TOPIC_REFRESH_INTERVAL_MS = 60_000;
 // T-0114: the open chat's pins refresh on the same cadence (no realtime channel).
 export const PINS_REFRESH_INTERVAL_MS = 60_000;
 
+// PERF-11: a focus refresh right after a poll is wasted. A poll that ran within
+// this window coalesces the next focus refresh into it (both the chat list and
+// the pins poll).
+export const CHAT_REFRESH_COALESCE_MS = 10_000;
+// PERF-11: roster, invitation and removal pushes arrive in bursts (one per
+// room or roster entry). One refresh per burst is enough.
+export const ROSTER_REFRESH_DEBOUNCE_MS = 2_000;
+
+const ROSTER_REFRESH_KEY = 'roster-refresh';
+
 // A finished draft is kept until its final XMPP message arrives. If that never
 // happens (XMPP down), it is dropped after this long so it cannot stick.
 export const DRAFT_END_FALLBACK_MS = 5_000;
@@ -23,6 +34,13 @@ export const DRAFT_END_FALLBACK_MS = 5_000;
 // A draft that sees no further event for this long is stale (e.g. the server
 // restarted mid-turn); the idle timer drops it rather than leaving it forever.
 export const DRAFT_IDLE_MS = 60_000;
+
+// The store has no state subscription, and an app may write its chats through
+// a view other than the polling context (mobile's history view), so the draft
+// stream is reconciled on this short interval as a fallback beside the
+// `ctx.set` hook: the first AI chat opens the stream within a second instead
+// of waiting for the 60 s chat-list poll.
+export const DRAFT_STREAM_WATCH_MS = 1_000;
 
 const DRAFT_STREAM_KEY = 'draft-stream';
 
@@ -82,18 +100,39 @@ export function clearActiveChatRead(ctx: CoreCtx): void {
   }
 }
 
+/** A refresh that ran, and the time it ran at, so a focus can coalesce into it. */
+interface RefreshGate {
+  readonly ifStale: () => void;
+}
+
+// PERF-11: wraps a refresh so it is skipped when the previous one is younger
+// than `CHAT_REFRESH_COALESCE_MS` (something else polled just before the focus).
+function refreshGate(ctx: PollingCtx, refresh: () => void): RefreshGate {
+  let lastRunAt = Number.NEGATIVE_INFINITY;
+  return {
+    ifStale: () => {
+      if (ctx.ports.now().getTime() - lastRunAt < CHAT_REFRESH_COALESCE_MS) {
+        return;
+      }
+      lastRunAt = ctx.ports.now().getTime();
+      refresh();
+    },
+  };
+}
+
 const chatsPolling = (ctx: PollingCtx): Effect.Effect<void> =>
   Effect.scoped(
     Effect.gen(function* () {
+      const refresh = refreshGate(ctx, () => ctx.fx.refreshChats());
       yield* whileFocused(ctx, () => {
-        ctx.fx.refreshChats();
+        refresh.ifStale();
         clearActiveChatRead(ctx);
       });
       yield* everyInterval(
         TOPIC_REFRESH_INTERVAL_MS,
         Effect.sync(() => {
           if (ctx.ports.visibility.isVisible()) {
-            ctx.fx.refreshChats();
+            refresh.ifStale();
           }
         }),
       );
@@ -110,12 +149,13 @@ const refreshActiveChatPins = (ctx: PollingCtx): void => {
 const pinsPolling = (ctx: PollingCtx): Effect.Effect<void> =>
   Effect.scoped(
     Effect.gen(function* () {
-      yield* whileFocused(ctx, () => refreshActiveChatPins(ctx));
+      const refresh = refreshGate(ctx, () => refreshActiveChatPins(ctx));
+      yield* whileFocused(ctx, () => refresh.ifStale());
       yield* everyInterval(
         PINS_REFRESH_INTERVAL_MS,
         Effect.sync(() => {
           if (ctx.ports.visibility.isVisible()) {
-            refreshActiveChatPins(ctx);
+            refresh.ifStale();
           }
         }),
       );
@@ -133,6 +173,20 @@ export const startPinsPolling = (ctx: PollingCtx, session: Fibers<never>): Effec
   Effect.sync(() => {
     session.fork(pinsPolling(ctx));
   });
+
+/**
+ * PERF-11: handles one roster, invitation or removal push. The first push of a
+ * burst refreshes at once; the rest are dropped until the burst window closes,
+ * so a room's member list settling costs the server one `/api/chats`, not one
+ * per entry. The window is a store-scoped timer, so it dies with `stop()`.
+ */
+export function scheduleChatsRefreshBurst(ctx: PollingCtx): void {
+  if (ctx.rt.has(ROSTER_REFRESH_KEY)) {
+    return;
+  }
+  ctx.fx.scheduleChatsRefresh();
+  ctx.rt.forkKeyed(ROSTER_REFRESH_KEY, Effect.sleep(ROSTER_REFRESH_DEBOUNCE_MS));
+}
 
 /** Turn ids whose draft is done are remembered (capped) to ignore a late `draft`. */
 export function markTurnFinished(ctx: DraftTurns, turnId: string): void {
@@ -192,6 +246,24 @@ function handleDraftEnd(ctx: PollingCtx, event: Extract<DraftHubEvent, { type: '
   armDraftRemoval(ctx, event.chatJid, event.turnId, DRAFT_END_FALLBACK_MS);
 }
 
+// The chat's newest message that the AI wrote. Its body is the final text of
+// the turn; a draft frame that already equals it carries nothing new.
+function newestAiText(ctx: PollingCtx, chatJid: string): string | undefined {
+  let newestText: string | undefined;
+  let newestAt: number | undefined;
+  for (const message of ctx.get().messagesByChat[chatJid] ?? []) {
+    if (message.senderId !== chatJid) {
+      continue;
+    }
+    const at = message.createdAt.getTime();
+    if (newestAt === undefined || at >= newestAt) {
+      newestAt = at;
+      newestText = message.text;
+    }
+  }
+  return newestText;
+}
+
 // A draft disappears only once its final message is there, so the two never
 // leave a gap. Each `draft` re-arms an idle timer (a dead turn, e.g. the
 // server restarted mid-turn, would otherwise leave the bubble forever); `end`
@@ -202,7 +274,16 @@ function handleDraftEvent(ctx: PollingCtx, event: DraftHubEvent): void {
     handleDraftEnd(ctx, event);
     return;
   }
+  // A finished turn is known from `finishedTurns`: `end` marks it here, and
+  // the final AI message marks it through the `finishDraftTurn` hook when a
+  // draft was shown (`incoming.ts`).
   if (ctx.finishedTurns.has(event.turnId)) {
+    return;
+  }
+  // The final message lands over XMPP, a separate channel from the SSE frame
+  // (AI-13): if it arrived first, this frame would render below it until the
+  // fallback. Drop the frame when its text is already the newest AI message.
+  if (event.text === newestAiText(ctx, event.chatJid)) {
     return;
   }
   ctx.set((state) => ({
@@ -211,23 +292,90 @@ function handleDraftEvent(ctx: PollingCtx, event: DraftHubEvent): void {
   armDraftRemoval(ctx, event.chatJid, event.turnId, DRAFT_IDLE_MS);
 }
 
-/** Opens the AI draft stream once for the store; it closes when the store Scope does. */
-export const startDraftStream = (ctx: PollingCtx, session: Fibers<never>): Effect.Effect<void> =>
-  Effect.sync(() => {
-    if (ctx.rt.session() !== session || ctx.rt.has(DRAFT_STREAM_KEY)) {
+// Opens the store's one AI draft stream when the user has at least one AI chat,
+// and closes it when none is left (PERF-9). A user with no AI chat keeps no
+// long-lived connection.
+function syncDraftStream(ctx: PollingCtx, session: Fibers<never>): void {
+  if (ctx.rt.session() !== session) {
+    return;
+  }
+  const hasAi = hasAiChat(ctx.get().chats);
+  const isOpen = ctx.rt.has(DRAFT_STREAM_KEY);
+  if (!hasAi) {
+    if (isOpen) {
+      ctx.rt.cancel(DRAFT_STREAM_KEY);
+    }
+    return;
+  }
+  if (isOpen) {
+    return;
+  }
+  ctx.rt.forkKeyed(
+    DRAFT_STREAM_KEY,
+    Effect.scoped(
+      Effect.gen(function* () {
+        const open = ctx.ports.drafts;
+        yield* Effect.acquireRelease(
+          Effect.sync(() => open((event) => handleDraftEvent(ctx, event))),
+          (close) => Effect.sync(close),
+        );
+        yield* Effect.never;
+      }),
+    ),
+  );
+}
+
+// The store has no state subscription, so the draft stream follows the chat
+// list through the store's one write point (`ctx.set`): a refresh that
+// finishes, or a chat added locally, opens or closes the stream at once
+// instead of waiting for the next poll tick. The AI-chat check runs only when
+// the chat list is a new array, so an unrelated write costs one comparison.
+const draftWatchers = new WeakMap<
+  PollingCtx,
+  { session: Fibers<never>; chats: readonly ChatSummary[]; hasAiChat: boolean }
+>();
+
+function hasAiChat(chats: readonly ChatSummary[]): boolean {
+  return chats.some((chat) => chat.isAI);
+}
+
+function watchChats(ctx: PollingCtx, session: Fibers<never>): void {
+  const existing = draftWatchers.get(ctx);
+  if (existing !== undefined) {
+    existing.session = session;
+    return;
+  }
+  const chats = ctx.get().chats;
+  const watch = { session, chats, hasAiChat: hasAiChat(chats) };
+  draftWatchers.set(ctx, watch);
+  const set = ctx.set;
+  const target = ctx as { set: CoreSet };
+  target.set = (update) => {
+    set(update);
+    const next = ctx.get().chats;
+    if (next === watch.chats) {
       return;
     }
-    ctx.rt.forkKeyed(
-      DRAFT_STREAM_KEY,
-      Effect.scoped(
-        Effect.gen(function* () {
-          const open = ctx.ports.drafts;
-          yield* Effect.acquireRelease(
-            Effect.sync(() => open((event) => handleDraftEvent(ctx, event))),
-            (close) => Effect.sync(close),
-          );
-          yield* Effect.never;
-        }),
+    watch.chats = next;
+    const nextHasAiChat = hasAiChat(next);
+    if (nextHasAiChat === watch.hasAiChat) {
+      return;
+    }
+    watch.hasAiChat = nextHasAiChat;
+    syncDraftStream(ctx, watch.session);
+  };
+}
+
+/** Opens the AI draft stream for the store; it closes when the store Scope does. */
+export const startDraftStream = (ctx: PollingCtx, session: Fibers<never>): Effect.Effect<void> =>
+  Effect.sync(() => {
+    watchChats(ctx, session);
+    syncDraftStream(ctx, session);
+    // Fallback for a chat write that bypasses `ctx.set` (see the constant).
+    session.fork(
+      everyInterval(
+        DRAFT_STREAM_WATCH_MS,
+        Effect.sync(() => syncDraftStream(ctx, session)),
       ),
     );
   });

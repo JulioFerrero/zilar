@@ -11,6 +11,7 @@ import { MessageListRow, messageRowKey } from './MessageListRow';
 import { MessageAnnouncer } from './MessageAnnouncer';
 import { MessageListSkeleton } from './Skeleton';
 import { useMessageWindow } from './useMessageWindow';
+import { useInitialScroll, useScrollMemory } from './useScrollMemory';
 import { IconButton } from './ui/icon-button';
 import { Badge } from './ui/badge';
 import { StateMessage } from './ui/state-message';
@@ -130,6 +131,9 @@ export const MessageList = memo(function MessageList({
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const dividerRef = useRef<HTMLDivElement>(null);
+  // WUX-28: the session scroll anchor (an unread chat keeps the divider).
+  const scrollMemory = useScrollMemory(chatId, scrollRef, initialUnread === 0, items.length > 0);
+  const restoredScroll = useRef(false);
   const previousCount = useRef(visibleMessages.length);
   const prependScrollHeight = useRef<number | undefined>(undefined);
   const [atBottom, setAtBottom] = useState(true);
@@ -144,34 +148,24 @@ export const MessageList = memo(function MessageList({
     setLoadingOlder(false);
   };
 
-  useEffect(() => {
-    atBottomRef.current = atBottom;
-  }, [atBottom]);
-
   // A jump target is pending from the first render (search, pin, reply quote):
   // the window hook draws and scrolls to it, so skip the bottom snap below.
   const pendingJump = useRef(reveals.size > 0);
-  useEffect(() => {
-    const element = scrollRef.current;
-    const divider = dividerRef.current;
-    if (element === null) {
-      return;
-    }
-    if (pendingJump.current) {
-      return;
-    }
-    if (divider !== null) {
-      divider.scrollIntoView({ block: 'center' });
-      return;
-    }
-    element.scrollTop = element.scrollHeight;
-  }, []);
+  useInitialScroll(scrollRef, dividerRef, pendingJump, restoredScroll);
 
   // WUX-11: compensate for a prepended page before paint so the view
   // stays fixed instead of jumping for a frame.
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (element === null) {
+      return;
+    }
+    // WUX-28: land on the message the reader left once it is drawn; a jump
+    // already pending (search, pin, quote) wins, so it is skipped above.
+    if (!pendingJump.current && !restoredScroll.current && scrollMemory.restore()) {
+      restoredScroll.current = true;
+      atBottomRef.current = false;
+      setAtBottom(false);
       return;
     }
     const added = visibleMessages.length - previousCount.current;
@@ -186,12 +180,14 @@ export const MessageList = memo(function MessageList({
       }
       return;
     }
-    if (atBottom) {
+    // A restored view sits above the bottom: never snap it back (dev
+    // StrictMode re-runs this effect after the restore has already run).
+    if (atBottom && !restoredScroll.current) {
       element.scrollTop = element.scrollHeight;
     } else if (added > 0) {
       setPending((value) => value + added);
     }
-  }, [windowItems.length, visibleMessages.length, atBottom]);
+  }, [windowItems.length, visibleMessages.length, atBottom, scrollMemory]);
 
   // The loading line also stops when there is nothing left to load.
   const hasMore = useChatSelector((s) => s.hasMore(chatId));
@@ -259,8 +255,12 @@ export const MessageList = memo(function MessageList({
     }
     const distance = element.scrollHeight - element.scrollTop - element.clientHeight;
     const nearBottom = distance < NEAR_BOTTOM_PX;
+    atBottomRef.current = nearBottom;
     setAtBottom(nearBottom);
     if (nearBottom) {
+      // The reader is back at the bottom: the restored spot no longer pins
+      // the view, so later height changes may snap it down again.
+      restoredScroll.current = false;
       setPending(0);
     }
     const store = storeApi.getState();
@@ -290,6 +290,8 @@ export const MessageList = memo(function MessageList({
     if (element !== null) {
       element.scrollTop = element.scrollHeight;
     }
+    restoredScroll.current = false;
+    atBottomRef.current = true;
     setAtBottom(true);
     setPending(0);
   };

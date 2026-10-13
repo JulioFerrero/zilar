@@ -10,7 +10,13 @@ import {
 
 import { well } from '../../lib/depth';
 import { safeLinkTarget } from '../../lib/links';
-import { parseMarkdown, type Block, type InlineNode } from '../../lib/markdown';
+import { parseInline, parseMarkdown, type Block, type InlineNode } from '../../lib/markdown';
+import {
+  MarkdownTable,
+  splitMarkdownTables,
+  type MarkdownPart,
+  type MarkdownTableData,
+} from './markdown-table';
 
 // The bubble text, code and inline-code looks, shared with `link-text.tsx`
 // (T-1227) so the plain path matches the full Markdown renderer.
@@ -85,8 +91,23 @@ function renderInline(nodes: InlineNode[]): ReactNode[] {
   });
 }
 
-function Body({ nodes, color, style }: { nodes: InlineNode[]; color: string; style?: TextStyle }) {
-  return <RNText style={[BODY, { color }, style]}>{renderInline(nodes)}</RNText>;
+function Body({
+  nodes,
+  color,
+  style,
+  trailing,
+}: {
+  nodes: InlineNode[];
+  color: string;
+  style?: TextStyle;
+  trailing?: ReactNode;
+}) {
+  return (
+    <RNText style={[BODY, { color }, style]}>
+      {renderInline(nodes)}
+      {trailing}
+    </RNText>
+  );
 }
 
 function ListBlock({ block, color }: { block: Extract<Block, { type: 'list' }>; color: string }) {
@@ -130,13 +151,23 @@ export function CodeBlock({
   );
 }
 
-function BlockView({ block, color, first }: { block: Block; color: string; first: boolean }) {
+function BlockView({
+  block,
+  color,
+  first,
+  trailing,
+}: {
+  block: Block;
+  color: string;
+  first: boolean;
+  trailing?: ReactNode;
+}) {
   const wrapper: ViewStyle | undefined = first ? undefined : { marginTop: BLOCK_GAP };
   switch (block.type) {
     case 'paragraph':
       return (
         <View style={wrapper}>
-          <Body nodes={block.nodes} color={color} />
+          <Body nodes={block.nodes} color={color} trailing={trailing} />
         </View>
       );
     case 'heading':
@@ -168,27 +199,87 @@ function BlockView({ block, color, first }: { block: Block; color: string; first
   }
 }
 
+type RenderItem = { kind: 'block'; block: Block } | { kind: 'table'; table: MarkdownTableData };
+
+/** Flattens the table split back into one ordered list of blocks and tables. */
+function toItems(parts: MarkdownPart[]): RenderItem[] {
+  const items: RenderItem[] = [];
+  for (const part of parts) {
+    if (part.kind === 'table') {
+      items.push({ kind: 'table', table: part.table });
+      continue;
+    }
+    for (const block of parseMarkdown(part.text)) {
+      items.push({ kind: 'block', block });
+    }
+  }
+  return items;
+}
+
 /**
  * Renders a safe Markdown reply with React Native `Text` and `View` only: no
- * library, no raw HTML and no remote image. Memoized on `text` and `color`, so a
- * reveal frame that repeats the same text does not re-parse the whole reply.
+ * library, no raw HTML and no remote image. GFM tables come from
+ * `markdown-table`, the rest from the shared parser. Memoized on `text`,
+ * `color` and `trailing`, so a reveal frame that repeats the same text does not
+ * re-parse the whole reply.
+ *
+ * `trailing` is the caret plus an invisible copy of the time/ticks meta that
+ * reserves the meta's width. Telegram puts the meta at the bottom-right and the
+ * bubble draws it there (`META_OVERLAY`); the reserved width keeps it inline
+ * after a short final paragraph and pushes a full line's meta to its own
+ * right-aligned row, so it never wraps to the left.
  */
 export const MarkdownText = memo(function MarkdownText({
   text,
   color,
+  trailing,
 }: {
   text: string;
   color: string;
+  trailing?: ReactNode;
 }) {
-  const blocks = parseMarkdown(text);
-  if (blocks.length === 0) {
-    return null;
+  const items = toItems(splitMarkdownTables(text));
+  const last = items[items.length - 1];
+  const inlineTrailing =
+    last !== undefined && last.kind === 'block' && last.block.type === 'paragraph';
+
+  const trailingRow =
+    trailing === undefined ? null : (
+      <View style={{ alignItems: 'flex-end' }}>
+        <RNText style={[BODY, { color }]}>{trailing}</RNText>
+      </View>
+    );
+
+  if (items.length === 0) {
+    return trailingRow;
   }
+
   return (
     <View>
-      {blocks.map((block, index) => (
-        <BlockView key={index} block={block} color={color} first={index === 0} />
-      ))}
+      {items.map((item, index) => {
+        const first = index === 0;
+        if (item.kind === 'table') {
+          return (
+            <View key={index} style={first ? undefined : { marginTop: BLOCK_GAP }}>
+              <MarkdownTable
+                table={item.table}
+                color={color}
+                renderCell={(cell) => renderInline(parseInline(cell))}
+              />
+            </View>
+          );
+        }
+        return (
+          <BlockView
+            key={index}
+            block={item.block}
+            color={color}
+            first={first}
+            trailing={inlineTrailing && index === items.length - 1 ? trailing : undefined}
+          />
+        );
+      })}
+      {inlineTrailing ? null : trailingRow}
     </View>
   );
 });

@@ -1,14 +1,17 @@
-import { canDeleteMessage, canEditMessage, isBigEmoji, type UiMessage } from '@zilar/chat-core';
+import { canDeleteMessage, canEditMessage, isBigEmoji } from '@zilar/chat-core';
 import { memo, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { BubbleGesture } from '@/components/chat/bubble-gesture';
 import { rendersMarkdown } from '@/components/chat/markdown-decision';
 import { BubbleActionsSheet, openMessageMenu } from '@/components/chat/message-bubble-actions';
+import { isMediaFirstMessage } from '@/components/chat/media-bubble';
 import {
   BigEmojiBubble,
   MessageBubbleContent,
+  type MessageBubbleProps,
   StickerBubble,
 } from '@/components/chat/message-bubble-content';
 import {
@@ -23,69 +26,15 @@ import { MessageMenuProvider } from '@/components/chat/message-menu-context';
 import { stickerOf } from '@/components/chat/payload-card';
 import { ReactionChips } from '@/components/chat/reaction-chips';
 import { SwipeToReply } from '@/components/chat/swipe-to-reply';
-import type { VoicePlayerHost } from '@/components/chat/voice-player';
 import { Checkbox } from '@/components/ui/checkbox';
-import { BUBBLE_COLORS } from '@/lib/colors';
+import { BUBBLE_COLORS, MUTED_FOREGROUND } from '@/lib/colors';
 import { WELL_BACKGROUND, bubbleStyle } from '@/lib/depth';
+import { messageAccessibilityLabel } from '@/lib/message-a11y';
 import { useSmoothText } from '@/lib/use-smooth-text';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
 
-type MessageBubbleProps = {
-  message: UiMessage;
-  isGroup: boolean;
-  isFirstInGroup: boolean;
-  isLastInGroup: boolean;
-  currentUserId: string;
-  onReply: (message: UiMessage) => void;
-  /** A live AI draft: the same bubble, recessed while it is written. */
-  draft?: boolean;
-  /**
-   * The turn whose draft this final message continues (T-0056). The bubble keeps
-   * revealing from the shown length and only becomes a normal message once the
-   * reveal is done.
-   */
-  revealTurnId?: string;
-  /** Called when the user picks a quick-reaction emoji or taps a chip. */
-  onReact?: (message: UiMessage, emoji: string) => void;
-  /** Called when the sheet asks to edit the message. */
-  onEdit?: (message: UiMessage) => void;
-  /** Called when the user confirms a delete-for-everyone. */
-  onDelete?: (message: UiMessage) => void;
-  /** Called when the sheet asks to forward the message. */
-  onForward?: (message: UiMessage) => void;
-  /** Multi-select mode (T-0445): shows the row checkbox and blocks the row's
-   *  own taps/long-presses while messages are picked for forwarding. */
-  selecting?: boolean;
-  /** Whether this message is picked in select mode. */
-  selected?: boolean;
-  /** Toggles this message in select mode. */
-  onToggleSelect?: (message: UiMessage) => void;
-  /** Enters select mode with this message picked (the sheet's Select row). */
-  onStartSelect?: (message: UiMessage) => void;
-  /** Called when the sticker Retry is tapped on a failed sticker send. */
-  onRetrySticker?: (message: UiMessage) => void;
-  /** Called when the Retry is tapped on a failed attachment upload. */
-  onRetryAttachment?: (message: UiMessage) => void;
-  /** Called when Cancel is tapped while an attachment uploads. */
-  onCancelAttachment?: (message: UiMessage) => void;
-  /** Called when the Retry is tapped on a failed voice send. */
-  onRetryVoice?: (message: UiMessage) => void;
-  /** Called when Cancel is tapped while a voice message uploads. */
-  onCancelVoice?: (message: UiMessage) => void;
-  /** Called when a file row is tapped (system open sheet). */
-  onOpenAttachment?: (message: UiMessage) => void;
-  /** The message id currently downloading for the open sheet. */
-  openingAttachmentId?: string | undefined;
-  /** The shared voice player host from the chat screen (T-0154). */
-  voiceHost?: VoicePlayerHost | undefined;
-  /** Pin/unpin gating for chat of this message (T-0135). */
-  canPin?: boolean;
-  isPinned?: boolean;
-  /** Called when the sheet asks to pin or unpin the message. */
-  onPin?: (message: UiMessage) => void;
-  onUnpin?: (message: UiMessage) => void;
-};
+const EMPTY_HOSTS: ReadonlySet<string> = new Set();
 
 function MessageBubbleImpl({
   message,
@@ -122,6 +71,8 @@ function MessageBubbleImpl({
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const outgoing = message.senderId === currentUserId;
+  const mediaHosts = useChatStore((state) => state.mediaTrustedHosts) ?? EMPTY_HOSTS;
+  const mediaFirst = isMediaFirstMessage(message, mediaHosts);
   // `MessageBubble` has no chat prop, so the shared Markdown rule is evaluated
   // against the store's chat for this message (AI DMs and AI group replies).
   const showMarkdown = useChatStore((state) =>
@@ -154,7 +105,7 @@ function MessageBubbleImpl({
     !(outgoing && message.status === 'failed');
   const myReactions = (message.reactions ?? []).filter((entry) => entry.mine);
   const react = onReact ?? (() => {});
-  const metaColor = outgoing ? colors.outgoingMeta : colors.incomingMeta;
+  const metaColor = outgoing ? colors.outgoingMeta : MUTED_FOREGROUND;
   const hasText = message.text !== undefined && message.text.length > 0;
   const beyondDraft = revealTurnId !== undefined && !draft;
   const animate = draft || beyondDraft;
@@ -248,13 +199,22 @@ function MessageBubbleImpl({
           ) : null}
           {!outgoing && isGroup ? (
             showAvatar ? (
-              <Avatar id={message.senderId} name={message.senderName} size={34} className="mr-2" />
+              <EntityAvatar
+                person={{ id: message.senderId, name: message.senderName }}
+                size={34}
+                className="mr-2"
+              />
             ) : (
               <View className="mr-2" style={{ width: 34 }} />
             )
           ) : null}
           <View className={cn('max-w-[80%] shrink', outgoing ? 'items-end' : 'items-start')}>
-            <View className="relative">
+            <BubbleGesture
+              message={message}
+              onReact={onReact}
+              enabled={selecting !== true && !draft}
+              className="relative"
+            >
               {sticker !== undefined ? (
                 <StickerBubble
                   sticker={sticker}
@@ -278,7 +238,8 @@ function MessageBubbleImpl({
                 <Pressable
                   onLongPress={generating ? undefined : openMenu}
                   delayLongPress={LONG_PRESS_MS}
-                  className="rounded-[14px] px-3 py-2"
+                  accessibilityLabel={messageAccessibilityLabel(message, outgoing)}
+                  className={cn('rounded-[14px]', mediaFirst ? 'overflow-hidden' : 'px-3 py-2')}
                   style={bubbleStyle(
                     outgoing ? 'outgoing' : everLive ? 'generating' : 'incoming',
                     isLastInGroup,
@@ -301,6 +262,7 @@ function MessageBubbleImpl({
                       generating={generating}
                       showSenderName={showSenderName}
                       hasAttachment={hasAttachment}
+                      mediaFirst={mediaFirst}
                       showMarkdown={showMarkdown}
                       text={text}
                       textColor={textColor}
@@ -326,7 +288,7 @@ function MessageBubbleImpl({
                   color={outgoing ? '#dedede' : generating ? WELL_BACKGROUND : '#161616'}
                 />
               ) : null}
-            </View>
+            </BubbleGesture>
             {isLastInGroup && message.reactions !== undefined && message.reactions.length > 0 ? (
               <ReactionChips
                 reactions={message.reactions}
@@ -387,8 +349,7 @@ function MessageBubbleImpl({
 }
 
 /**
- * Memoised (T-0846): the list passes stable handlers, so a bubble re-renders
- * only when its own message, selection or flags change, not on every draft
- * token or store update elsewhere in the list.
+ * Memoised (T-0846): a bubble re-renders only when its own message, selection
+ * or flags change, not on every draft token or store update in the list.
  */
 export const MessageBubble = memo(MessageBubbleImpl);

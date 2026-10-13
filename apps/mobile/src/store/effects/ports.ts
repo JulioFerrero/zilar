@@ -2,6 +2,7 @@ import { Context, Effect, Layer } from 'effect';
 import { createXmppCore, type XmppCore, type XmppCoreOptions } from '@zilar/xmpp-core';
 import type { OutgoingBytes, SessionCheck, Visibility, VoiceOut } from '@zilar/client-core/store';
 
+import type { OfflineCachePort } from '../offline-cache';
 import { createChatApi, type ChatApi } from '../../lib/chat-api';
 import type { ChatPrefsApi } from '../../lib/chat-prefs-api';
 import type { ChatFoldersApi } from '../../lib/chat-folders-api';
@@ -69,6 +70,10 @@ export interface RealStoreDeps {
   checkSession?: () => Promise<SessionCheck>;
   /** Signs out after `checkSession` answered `gone`; tests inject a fake. */
   sessionGone?: () => void;
+  /** The offline cache file seam (T-1313); tests inject an in-memory fake. */
+  offlineCache?: OfflineCachePort;
+  /** Reads the signed-in user id for the offline cache owner check (T-1313). */
+  sessionUserId?: () => Promise<string | undefined>;
 }
 
 /** Everything the store talks to outside itself, resolved from `RealStoreDeps`. */

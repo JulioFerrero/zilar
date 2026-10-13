@@ -1,5 +1,4 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { personSeed } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -160,7 +159,6 @@ export function useTopicPanelOps({
   const storeApi = useChatStoreApi();
   const info: GroupDetail | undefined = useChatSelector((s) => s.groupInfo(chat.id));
   const me = useChatSelector((s) => s.currentUserId);
-  const ownJid = useChatSelector((s) => s.me?.jid);
   const navigate = useNavigate();
 
   const topicId = topic.id;
@@ -358,13 +356,6 @@ export function useTopicPanelOps({
     storeApi,
     info,
     me,
-    // T-1209: member balls are seeded by the bare JID, derived from the user
-    // id the way the mention builder does (the domain from my own JID); the
-    // members list carries no JID, so this is the only form available here.
-    seedFor: (userId: string): string => {
-      const domain = ownJid?.slice(ownJid.indexOf('@') + 1);
-      return domain === undefined || domain === '' ? userId : personSeed(userId, domain);
-    },
     groupTitle,
     isManager,
     membersState: {

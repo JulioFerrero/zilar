@@ -11,7 +11,9 @@ import { getSessionToken } from '@/lib/session-token';
 import { cn } from '@/lib/utils';
 
 type AvatarProps = {
-  id: string;
+  /** The orb seed, already normalized by `avatarIdentity`. */
+  seed: string;
+  /** The display name, for the picture's accessibility label. */
   name: string;
   size?: number;
   online?: boolean;
@@ -35,7 +37,14 @@ type AvatarProps = {
  * loads `getSessionToken()` into state), here with the fiber the chat media
  * loaders use so a late token or an unmount never reaches a stale avatar.
  */
-export function Avatar({ id, name, size = 54, online = false, avatarUrl, className }: AvatarProps) {
+export function Avatar({
+  seed,
+  name,
+  size = 54,
+  online = false,
+  avatarUrl,
+  className,
+}: AvatarProps) {
   const dotSize = Math.max(10, Math.round(size * 0.22));
   const hasUrl = avatarUrl !== undefined && avatarUrl !== '';
   const [token, setToken] = useState<string | undefined>(undefined);
@@ -77,7 +86,7 @@ export function Avatar({ id, name, size = 54, online = false, avatarUrl, classNa
           overflow: 'hidden',
         }}
       >
-        <SvgXml xml={avatarSvg(id)} width={size} height={size} />
+        <SvgXml xml={avatarSvg(seed)} width={size} height={size} />
         {source !== null ? (
           <Image
             source={source}

@@ -2,38 +2,37 @@
 // runs `serverProgram` with `NodeRuntime.runMain`; nothing else imports this
 // file except its test.
 //
-// `startServer` builds and starts every component in the order the old
-// top-level `index.ts` did, and records each handle on a `RunningServer` as
-// soon as it exists. `stopServer` stops whatever has been recorded, in the
-// fixed order below (HTTP server first, the SQL runtime last), so it is also
-// right when a stop begins while startup is still in flight.
+// `startServer` builds the shared objects, starts the HTTP listener, then
+// wires the leader lock (T-1316): the leader-only work lives in
+// `leader/start.ts` and runs only on the instance that holds the Postgres
+// advisory lock. `stopServer` follows the zero-downtime order below (drain,
+// step down the leader, close HTTP, then the SQL runtime and the lock).
 //
 // `serverProgram` holds ONE scope finalizer, registered before startup begins:
 // `runMain` interrupts the main fiber on SIGINT/SIGTERM, the scope closes, and
-// the finalizer runs `stopServer` under the 15 s force-exit. It does not rely
-// on the reverse order of acquisition, because the HTTP server must stop first.
+// the finalizer runs `stopServer` under the force-exit.
 import { Cause, Effect, Exit, Fiber, Runtime } from 'effect';
 import type { Logger } from 'pino';
-import {
-  createLitellmAdminClientFromConfig,
-  DEFAULT_LITELLM_BASE_URL,
-  redactSecrets,
-} from './ai/litellm-client';
+import { createLitellmAdminClientFromConfig, DEFAULT_LITELLM_BASE_URL } from './ai/litellm-client';
 import { createProductionAnnouncer } from './actions/production-announcer';
 import { buildDemoEchoAdapter } from './actions/demo';
-import {
-  type ActionAnnouncer,
-  createActionGateway,
-  startRecoveryStuckTimer,
-  type RecoveryStuckHandle,
-} from './actions/gateway';
+import { type ActionAnnouncer, createActionGateway } from './actions/gateway';
 import { buildAlwaysEligible, buildRegistry } from './actions/registry';
 import { createAgentGateway, type AgentGateway } from './agents/gateway';
 import { createApp } from './app';
 import { serveEdgeOnNode } from './effect/node-serve';
 import { resolveStorageDir } from './stickers/service';
-import { startApprovalsSweeper, type ApprovalsSweeperHandle } from './approvals/sweeper';
 import { createAuditRecorder } from './audit/service';
+import { markDraining, markLeader } from './health-status';
+import {
+  createLeaderLock,
+  createPostgresLockConnection,
+  LEADER_LOCK_KEY,
+  LEADER_LOCK_SCOPE,
+  LEADER_POLL_MS,
+  type LeaderLock,
+} from './leader/lock';
+import { createLeaderWork } from './leader/start';
 import { createAuth } from './auth/auth';
 import {
   createMailer,
@@ -49,18 +48,11 @@ import type { ServerDatabase } from './db/client';
 import { runMigrations } from './db/migrate';
 import { disposeSqlRuntime, registerSqlRuntime } from './effect/sql';
 import { createArchivePool } from './search/service';
-import { createPushCipher } from './push/crypto';
-import { loadPushConfigOrExit, pushConfigError, type PushConfig } from './push/config';
-import { startPushComponent, type PushComponentHandle } from './push/component';
-import { startGroupNotifier } from './push/group-notifier';
-import { createWebPushSender } from './push/sender';
-import { createNativeSender } from './push/native-sender';
-import { reconcileRoomSubscriptionOptions } from './topics/rooms';
+import { loadPushConfigOrExit, type PushConfig } from './push/config';
 import { sharedDraftHub } from './drafts/hub';
 import { createLogger } from './logger';
-import { assertRunnerHubConfig, startRunnerHub, type RunnerHub } from './machines/hub';
+import { assertRunnerHubConfig, type RunnerHub } from './machines/hub';
 import { createDbMachineRegistry } from './machines/registry';
-import { buildRoutineScheduler, type RoutineSchedulerHandle } from './routines/wiring';
 import {
   ensureWritableDir,
   warnOnContainerLayerStorage,
@@ -81,19 +73,18 @@ export const FORCE_EXIT_MS = 15_000;
 /**
  * The handles `stopServer` closes. `startServer` fills each field as soon as
  * the thing it names exists, so a stop that begins during startup closes
- * exactly what was started.
+ * exactly what was started. The leader-only work lives behind `leader`; a
+ * follower has nothing there to stop beyond releasing the lock.
  */
 export interface RunningServer {
   logger: Logger | null;
   db: ServerDatabase | null;
   closeDb: (() => Promise<void>) | null;
   closeHttp: (() => Promise<void>) | null;
-  runnerHub: Pick<RunnerHub, 'isOnline' | 'close'> | null;
-  pushComponent: Pick<PushComponentHandle, 'stop'> | null;
   gateway: Pick<AgentGateway, 'stop' | 'postToChat'> | null;
-  approvalsSweeper: Pick<ApprovalsSweeperHandle, 'close'> | null;
-  recoveryStuck: Pick<RecoveryStuckHandle, 'close'> | null;
-  routineScheduler: Pick<RoutineSchedulerHandle, 'stop'> | null;
+  leader: Pick<LeaderLock, 'stepDown' | 'close'> | null;
+  /** How long to keep serving (health 503) before stepping down. 0 in tests. */
+  drainMs: number;
 }
 
 export function emptyRunning(): RunningServer {
@@ -102,44 +93,33 @@ export function emptyRunning(): RunningServer {
     db: null,
     closeDb: null,
     closeHttp: null,
-    runnerHub: null,
-    pushComponent: null,
     gateway: null,
-    approvalsSweeper: null,
-    recoveryStuck: null,
-    routineScheduler: null,
+    leader: null,
+    drainMs: 0,
   };
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /**
- * Stops everything `running` holds, in the order the server has always used:
- * the HTTP server first (it drops idle connections at once and live ones after
- * the grace passed at startup), then the runner hub, push, the agent gateway,
- * the timers and the routine scheduler, and the SQL runtime last. A step that
- * fails ends the sequence, like the old sequential awaits.
+ * Shuts the server down in the zero-downtime order (T-1316): mark draining so
+ * `/health` answers 503, keep serving for `drainMs` so Traefik stops routing
+ * here while in-flight requests finish, stop the leader-only work and release
+ * the advisory lock (so the new instance takes over), then close HTTP, the SQL
+ * runtime and the database, and finally the lock connection. A step that fails
+ * ends the sequence, like the old sequential awaits.
  */
 export function stopServer(running: RunningServer): Effect.Effect<void> {
   return Effect.gen(function* () {
-    const { closeHttp, runnerHub, pushComponent, gateway, db, closeDb } = running;
+    const { leader, closeHttp, db, closeDb } = running;
+    markDraining();
+    if (running.drainMs > 0) {
+      yield* Effect.sleep(running.drainMs);
+    }
+    if (leader !== null) {
+      yield* Effect.promise(() => leader.stepDown());
+    }
     if (closeHttp !== null) {
       yield* Effect.promise(() => closeHttp());
     }
-    if (runnerHub !== null) {
-      yield* Effect.promise(() => runnerHub.close());
-    }
-    if (pushComponent !== null) {
-      yield* Effect.promise(() => pushComponent.stop());
-    }
-    if (gateway !== null) {
-      yield* Effect.promise(() => gateway.stop());
-    }
-    running.approvalsSweeper?.close();
-    running.recoveryStuck?.close();
-    running.routineScheduler?.stop();
     // The `effect/sql` runtime owns the database pool: dispose it. `closeDb`
     // is the no-op from `createDb`, kept so the shutdown path reads the same.
     if (db !== null) {
@@ -147,6 +127,9 @@ export function stopServer(running: RunningServer): Effect.Effect<void> {
     }
     if (closeDb !== null) {
       yield* Effect.promise(() => closeDb());
+    }
+    if (leader !== null) {
+      yield* Effect.promise(() => leader.close());
     }
   });
 }
@@ -334,11 +317,12 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
     // route's approve/revoke notifies must reach the hub's listener set.
     const machineRegistry = createDbMachineRegistry(db);
 
-    // `isMachineOnline` looks up the hub each request, so the routes pick up
-    // the running hub once `startRunnerHub` resolves. Absent when the hub is
-    // disabled, so the routes answer `online: false` for everyone.
+    // The leader starts the runner hub later; the closure reads this holder
+    // each request, so the routes pick up the hub once `startRunnerHub`
+    // resolves. Null when this instance is a follower, so `online: false`.
+    let runnerHub: Pick<RunnerHub, 'isOnline' | 'close'> | null = null;
     const isMachineOnline = (machineId: string): boolean => {
-      return running.runnerHub?.isOnline(machineId) ?? false;
+      return runnerHub?.isOnline(machineId) ?? false;
     };
 
     // The audit recorder used by both the action gateway and the app: one
@@ -469,83 +453,8 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
       ...(toolRunner === undefined ? {} : { toolRunner }),
     });
 
-    // Push component (T-0119): off unless PUSH_ENABLED=true. A misconfigured
-    // flag (keys, component credentials or storage key missing) logs one error
-    // and stays off; without the archive pool it also stays off, because the
-    // component could not resolve who/where and would have to guess. A start
-    // failure never takes the API down: the component reconnects on its own and
-    // the shutdown below still stops it.
-    const pushError = pushConfigError(push);
-    if (!push.PUSH_ENABLED) {
-      logger.info('push is disabled (PUSH_ENABLED=false)');
-    } else if (pushError !== null) {
-      logger.error({ err: pushError }, 'push stays off');
-    } else if (archivePool === undefined) {
-      logger.error(
-        'push stays off: XMPP_ARCHIVE_DATABASE_URL is not set, so notifications could not be resolved',
-      );
-    } else {
-      yield* Effect.gen(function* () {
-        yield* Effect.try({
-          try: () => {
-            const sender = createWebPushSender({
-              PUSH_VAPID_PUBLIC_KEY: push.PUSH_VAPID_PUBLIC_KEY as string,
-              PUSH_VAPID_PRIVATE_KEY: push.PUSH_VAPID_PRIVATE_KEY as string,
-              PUSH_VAPID_SUBJECT: push.PUSH_VAPID_SUBJECT as string,
-            });
-            const nativeSender = createNativeSender(push, logger);
-            const cipher = createPushCipher(push.PUSH_STORAGE_KEY as string);
-            const service = {
-              db,
-              config,
-              archive: archivePool,
-              cipher,
-              sender,
-              ...(nativeSender === undefined ? {} : { nativeSender }),
-              logger,
-              recentlyNotified: new Map<string, Set<string>>(),
-            };
-            const groupNotifier = startGroupNotifier({ service, admin: adminClient, logger });
-            const component = startPushComponent({
-              domain: push.PUSH_COMPONENT_JID as string,
-              secret: push.PUSH_COMPONENT_SECRET as string,
-              host: push.PUSH_COMPONENT_HOST,
-              port: push.PUSH_COMPONENT_PORT,
-              service,
-              logger,
-            });
-            // Starts next to the component; stops with it, one handle.
-            running.pushComponent = {
-              stop: () => Promise.all([component.stop(), groupNotifier.stop()]).then(() => {}),
-            };
-          },
-          catch: (error) => error,
-        });
-        // One-time reconcile for rooms created before push: enable
-        // `allow_subscription` through `change_room_option`. Best effort —
-        // failures are logged per room inside.
-        yield* Effect.tryPromise({
-          try: () => reconcileRoomSubscriptionOptions({ db, adminClient, logger }),
-          catch: (error) => error,
-        }).pipe(
-          Effect.catch((error) =>
-            Effect.sync(() => {
-              logger.warn({ error: errorMessage(error) }, 'push room reconcile failed');
-            }),
-          ),
-          Effect.forkDetach({ startImmediately: true }),
-        );
-      }).pipe(
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            logger.error(
-              { err: errorMessage(error) },
-              'push component failed to start; API continues without it',
-            );
-          }),
-        ),
-      );
-    }
+    // The push component, room reconcile and group notifier are leader-only;
+    // they start through `createLeaderWork` once the advisory lock is held.
     // Agent gateway (T-0034): off unless AGENT_GATEWAY_ENABLED=true, and inert
     // without LiteLLM plus the key cipher. It connects each active AI to XMPP so
     // owner DMs get replies.
@@ -620,104 +529,51 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
     running.closeHttp = closeNodeServer;
     logger.info({ port: boundPort }, 'zilar-server listening');
 
-    // Runner hub (T-0071): starts only when RUNNER_HUB_ENABLED=true, after the
-    // HTTP server is listening. A start failure (port in use, bad config) must
-    // never take the API down, so it logs and the rest of the server keeps
-    // running. `isMachineOnline` returns false until the hub resolves, then
-    // forwards to it for every request.
-    if (config.RUNNER_HUB_ENABLED) {
-      yield* Effect.tryPromise({
-        try: () =>
-          startRunnerHub({
-            db,
-            registry: machineRegistry,
-            logger,
-            port: config.RUNNER_HUB_PORT,
-            gatewayUrl: config.LITELLM_BASE_URL ?? DEFAULT_LITELLM_BASE_URL,
-          }),
-        catch: (error) => error,
-      }).pipe(
-        Effect.map((hub) => {
-          running.runnerHub = hub;
-        }),
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            logger.error(
-              { err: errorMessage(error) },
-              'runner hub failed to start; API continues without it',
-            );
-          }),
-        ),
-        Effect.forkDetach({ startImmediately: true }),
-      );
-    }
-
-    // The gateway logs each AI in over XMPP, which can take a while when ejabberd
-    // is slow or down: start it after the server is listening and never block on
-    // it. Shutdown still awaits `gateway.stop()`, which is safe while a
-    // start is in flight (sessions it no longer owns are dropped on connect).
-    yield* Effect.tryPromise({ try: () => gateway.start(), catch: (error) => error }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          const secrets =
-            config.LITELLM_MASTER_KEY === undefined ? [] : [config.LITELLM_MASTER_KEY];
-          const err = new Error(redactSecrets(errorMessage(error), secrets));
-          if (error instanceof Error) {
-            err.stack = redactSecrets(error.stack ?? '', secrets);
-          }
-          logger.error({ err }, 'agent gateway failed to start');
-        }),
-      ),
-      Effect.forkDetach({ startImmediately: true }),
-    );
-
-    // Approvals sweeper (T-0087): starts after the edge server is listening so the API is
-    // already listening, never blocks startup. The handle is held on `running`
-    // for the shutdown sequence to close. The recorder wraps `recordAudit` so a
-    // database write error never propagates into the timer.
-    running.approvalsSweeper = startApprovalsSweeper({
+    // Everything from here on is leader-only: the two overlapping instances
+    // during a rolling deploy must not both run it (T-1316). `createLeaderWork`
+    // starts it when this instance wins the advisory lock and stops it on step
+    // down; the HTTP routes and per-request work above stay on every instance.
+    const leaderWork = createLeaderWork({
       db,
-      audit: createAuditRecorder({ db, logger }),
+      config,
       logger,
-    });
-
-    // Action gateway recovery loop (T-0090): runs `recoverStuck` after one
-    // interval and then every five minutes on an unref'd timer. The first
-    // tick fires after the interval so startup is never blocked.
-    running.recoveryStuck = startRecoveryStuckTimer({
-      gateway: actionGateway,
-      logger,
-    });
-
-    // One startup sweep: an earlier crash may have left `running` or
-    // past-due `waiting` rows that we want to surface immediately rather than
-    // wait up to five minutes for the first timer tick. Failure here logs
-    // and carries on; the timer will retry on the next tick.
-    yield* Effect.tryPromise({
-      try: () => actionGateway.recoverStuck(),
-      catch: (error) => error,
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.sync(() => {
-          logger.error({ err: errorMessage(error) }, 'initial recoverStuck sweep failed');
-        }),
-      ),
-      Effect.forkDetach({ startImmediately: true }),
-    );
-
-    // Routines scheduler (T-0104): starts after the edge server is listening when
-    // `ROUTINES_ENABLED=true`, with the gateway's `postToChat` (via the same
-    // `running.gateway` the announcer uses). T-0105 wires the sandbox as
-    // the runner: with the flag on but `TOOLS_ENABLED=false` the builder logs
-    // its one warning and stays off; with both flags off it stays off
-    // silently. Stops on shutdown like the other timers.
-    running.routineScheduler = buildRoutineScheduler({
-      db,
-      routinesEnabled: config.ROUTINES_ENABLED,
-      ...(toolRunner === undefined ? {} : { toolRunner }),
+      adminClient,
+      archivePool,
+      push,
+      machineRegistry,
+      gateway,
+      actionGateway,
       audit: auditRecorder,
-      logger,
+      toolRunner,
       post,
+      onRunnerHub: (hub) => {
+        runnerHub = hub;
+      },
     });
+
+    // One dedicated connection holds the session-level advisory lock; the
+    // second instance polls every second until the first steps down. If this
+    // connection drops while leader, the lock is gone: the lock logs and exits
+    // so a restart comes back as a follower (audit §3).
+    const leader = createLeaderLock({
+      connection: createPostgresLockConnection({
+        url: config.DATABASE_URL,
+        scope: LEADER_LOCK_SCOPE,
+        key: LEADER_LOCK_KEY,
+      }),
+      logger,
+      pollMs: LEADER_POLL_MS,
+      onAcquire: async () => {
+        markLeader(true);
+        await leaderWork.start();
+      },
+      onStepDown: async () => {
+        await leaderWork.stop();
+        markLeader(false);
+      },
+    });
+    running.leader = leader;
+    running.drainMs = config.SHUTDOWN_DRAIN_MS;
+    leader.start();
   });
 }

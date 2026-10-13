@@ -1,3 +1,4 @@
+import { avatarIdentity } from '@zilar/chat-core';
 import { Image } from 'expo-image';
 import { useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
@@ -13,11 +14,6 @@ import { avatarImageSource, avatarPhaseLabel, type AvatarPhase } from './profile
 type AvatarControlProps = {
   ownerId: string;
   ownerName: string;
-  /**
-   * T-1212: the ball seed (the own bare JID); undefined paints the raw
-   * `ownerId` (the web uploader keeps the same fallback).
-   */
-  ownerSeed?: string | undefined;
   /** The server's picture path (`/api/avatars/<id>`), if any. */
   currentUrl?: string | undefined;
   /** The bearer token for the same-origin picture load, if any. */
@@ -39,7 +35,6 @@ type AvatarControlProps = {
 export function AvatarControl({
   ownerId,
   ownerName,
-  ownerSeed,
   currentUrl,
   token,
   phase,
@@ -62,7 +57,7 @@ export function AvatarControl({
       <View className="flex-row items-center gap-3">
         <AvatarPicture
           source={source}
-          ownerId={ownerSeed ?? ownerId}
+          ownerId={ownerId}
           ownerName={ownerName}
           imageFailed={imageFailed}
           onImageError={() => setImageFailed(true)}
@@ -159,7 +154,13 @@ export function AvatarPicture({
   onImageError: () => void;
 }) {
   if (source === null || imageFailed) {
-    return <Avatar id={ownerId} name={ownerName} size={64} />;
+    return (
+      <Avatar
+        seed={avatarIdentity({ name: ownerName, id: ownerId }).seed}
+        name={ownerName}
+        size={64}
+      />
+    );
   }
   return (
     <Image

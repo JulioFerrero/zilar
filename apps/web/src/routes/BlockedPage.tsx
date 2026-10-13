@@ -8,7 +8,7 @@ import type { ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
-import { Avatar } from '@/components/Avatar';
+import { EntityAvatar } from '@/components/EntityAvatar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { StateMessage } from '@/components/ui/state-message';
@@ -103,11 +103,13 @@ function BlockedRow({
 
   return (
     <li className="flex flex-wrap items-center gap-3 px-3 py-2.5">
-      <Avatar
-        id={person.jid ?? person.userId}
-        name={person.name}
+      <EntityAvatar
+        person={{
+          id: person.jid ?? person.userId,
+          name: person.name,
+          avatarUrl: person.image ?? undefined,
+        }}
         size={36}
-        avatarUrl={person.image ?? undefined}
       />
       <span className="min-w-0 flex-1 basis-40 text-[14px]">
         <span className="block truncate text-[15px] font-medium">

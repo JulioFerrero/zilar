@@ -42,16 +42,25 @@
   # (Coolify), this makes the web container the single entry point. Hosts resolve
   # when a request arrives, so the plain stack never needs them from here.
   handle /api/* {
-    reverse_proxy server:3000
+    reverse_proxy server:3000 {
+      lb_try_duration 30s
+      lb_try_interval 250ms
+    }
   }
 
   handle /health {
-    reverse_proxy server:3000
+    reverse_proxy server:3000 {
+      lb_try_duration 30s
+      lb_try_interval 250ms
+    }
   }
 
   handle /xmpp-ws/ws {
     uri strip_prefix /xmpp-ws
-    reverse_proxy ejabberd:5280
+    reverse_proxy ejabberd:5280 {
+      lb_try_duration 30s
+      lb_try_interval 250ms
+    }
   }
 
   # Everything else under /xmpp-ws is not the WebSocket: ejabberd's :5280
@@ -69,7 +78,10 @@
       Content-Security-Policy "default-src 'none'; sandbox"
       Strict-Transport-Security "max-age=31536000; includeSubDomains"
     }
-    reverse_proxy ejabberd:5280
+    reverse_proxy ejabberd:5280 {
+      lb_try_duration 30s
+      lb_try_interval 250ms
+    }
   }
 
   handle {

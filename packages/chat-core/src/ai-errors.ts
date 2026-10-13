@@ -34,7 +34,11 @@ export function describeAiFailure(error: AiFailure): AiErrorInfo {
         message: "The server couldn't finish. Nothing was left half-created; try again.",
         unavailable: false,
       };
+    case 'invalid_request':
+      return { message: error.message, unavailable: false };
     default:
-      return { message: error.message, unavailable: error.status === 503 };
+      // Any other server text may quote internals, so the user gets a fixed
+      // sentence (AI-21, T-1292); only a 503 still marks AI management off.
+      return { message: 'Something went wrong. Try again.', unavailable: error.status === 503 };
   }
 }

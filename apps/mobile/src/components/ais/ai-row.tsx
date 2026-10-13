@@ -2,7 +2,7 @@ import { ChevronRight } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
 import { AiBadge } from '@/components/chat/ai-badge';
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { cn } from '@/lib/utils';
@@ -11,7 +11,6 @@ import type { PublicAi } from '../../lib/ais-api';
 import { formatLimit } from './limits';
 import { runStateLabel } from './run-state';
 import { templateLabel } from './templates';
-import { aiSeed } from '@zilar/chat-core';
 
 /** One row of the My AIs list: avatar, name, template, model and limits. */
 export function AiRow({
@@ -33,7 +32,7 @@ export function AiRow({
         highlighted ? 'border-accent bg-surface-raised' : 'border-transparent',
       )}
     >
-      <Avatar id={aiSeed(ai.jid)} name={ai.name} size={44} ai />
+      <EntityAvatar person={{ id: ai.jid, name: ai.name, avatarUrl: ai.avatarUrl }} size={44} ai />
       <View className="min-w-0 flex-1">
         <View className="flex-row items-center gap-1.5">
           <Text numberOfLines={1} className="shrink text-[16px] font-semibold text-foreground">

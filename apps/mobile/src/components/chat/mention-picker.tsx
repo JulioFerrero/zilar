@@ -2,7 +2,7 @@ import { isAiJid, type MentionMember } from '@zilar/chat-core';
 import { Pressable, View } from 'react-native';
 
 import { AiBadge } from '@/components/chat/ai-badge';
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { Text } from '@/components/ui/text';
 
 export interface MentionPickerProps {
@@ -36,7 +36,7 @@ export function MentionPicker({ members, onSelect }: MentionPickerProps) {
             onPress={() => onSelect(member)}
             className="w-full flex-row items-center gap-2 px-2 py-1.5 active:bg-surface-raised"
           >
-            <Avatar id={member.jid} name={member.name} ai={ai} size={28} />
+            <EntityAvatar person={{ id: member.jid, name: member.name }} ai={ai} size={28} />
             <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px] text-foreground">
               {member.name}
               {member.handle !== undefined && member.handle !== '' ? (

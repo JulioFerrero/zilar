@@ -329,8 +329,10 @@ The agent gateway `start()` is launched with `void` and `.catch(...)` (`index.ts
 
 `apps/server/src/app.ts:229-241` mounts a single GET route at `/health`. It runs `SELECT 1` against the database with a `1_000` ms timeout (`app.ts:79`, `app.ts:278-285`). The response is JSON:
 
-- `200` + `{ ok: true, name: 'zilar-server', version: serverVersion, protocolVersion, db: 'ok' }` when the ping resolves.
-- `503` + `{ ok: false, name: 'zilar-server', version: serverVersion, protocolVersion, db: 'down' }` when it does not.
+- `200` + `{ ok: true, name: 'zilar-server', version: serverVersion, protocolVersion, minClientProtocol, db: 'ok' }` when the ping resolves.
+- `503` + `{ ok: false, name: 'zilar-server', version: serverVersion, protocolVersion, minClientProtocol, db: 'down' }` when it does not.
+
+`minClientProtocol` (T-1296, `packages/protocol/src/version.ts`) is the oldest client protocol the server still serves. Web and mobile compare it with their built-in `protocolVersion`, at boot and on focus or foreground, and show an "update" banner when they are older. Raise it only with a breaking API change.
 
 The 503 is the only signal a load balancer should treat as unhealthy. `version` comes from `apps/server/package.json` (`version.ts:1-13`); `protocolVersion` from `@zilar/protocol` (`app.ts:6`).
 

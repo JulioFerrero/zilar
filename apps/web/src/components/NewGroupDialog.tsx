@@ -8,10 +8,8 @@ import { type ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-import { Avatar } from './Avatar';
-import { HandleSuffix } from './HandleSuffix';
+import { NewGroupMembers } from './NewGroupMembers';
 import { Button } from './ui/button';
-import { Checkbox } from './ui/checkbox';
 import { Dialog } from './ui/dialog';
 import { SegmentedControl } from './ui/segmented-control';
 import { TextArea, TextInput } from './ui/text-input';
@@ -150,12 +148,7 @@ export function NewGroupDialog({
             <Button type="button" variant="ghost" size="lg" onClick={onClose}>
               Cancel
             </Button>
-            <Button
-              type="button"
-              size="lg"
-              disabled={selected.length === 0}
-              onClick={() => setStep('title')}
-            >
+            <Button type="button" size="lg" onClick={() => setStep('title')}>
               Next
             </Button>
           </>
@@ -177,34 +170,7 @@ export function NewGroupDialog({
       }
     >
       {step === 'members' ? (
-        <div className="mt-3">
-          {contacts.length === 0 ? (
-            <p className="py-6 text-center text-[14px] text-muted-foreground">
-              Invite a friend first to start a group.
-            </p>
-          ) : (
-            contacts.map((contact) => (
-              <label
-                key={contact.userId}
-                className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-list-hover"
-              >
-                <Checkbox
-                  checked={selected.includes(contact.userId)}
-                  onCheckedChange={() => toggle(contact.userId)}
-                />
-                <Avatar
-                  id={contact.jid}
-                  name={contact.name}
-                  size={28}
-                  avatarUrl={contact.avatarUrl}
-                />
-                <span className="truncate text-[15px]">
-                  {contact.name} <HandleSuffix handle={contact.handle} />
-                </span>
-              </label>
-            ))
-          )}
-        </div>
+        <NewGroupMembers contacts={contacts} selected={selected} onToggle={toggle} />
       ) : (
         <>
           <div className="mt-3">

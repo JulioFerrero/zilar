@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { memo, useCallback, useEffect, useRef } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { LoadError } from '@/components/chat/load-error';
 import { Text } from '@/components/ui/text';
 import { ACCENT } from '@/lib/colors';
@@ -24,10 +24,12 @@ import { useMessageSearch, type MessageSearchView } from './use-message-search';
 const MessageSearchHit = memo(function MessageSearchHit({
   item,
   heading,
+  avatarUrl,
   onOpen,
 }: {
   item: SearchItem;
   heading: string;
+  avatarUrl?: string | undefined;
   onOpen: (item: SearchItem) => void;
 }) {
   return (
@@ -37,7 +39,7 @@ const MessageSearchHit = memo(function MessageSearchHit({
       onPress={() => onOpen(item)}
       className="w-full flex-row items-center gap-3 rounded-[12px] p-[10px] active:bg-surface-raised"
     >
-      <Avatar id={item.chatJid} name={heading} size={36} />
+      <EntityAvatar chat={{ id: item.chatJid, title: heading, avatarUrl }} size={36} />
       <View className="min-w-0 flex-1">
         <View className="flex-row items-baseline gap-1.5">
           <Text
@@ -193,7 +195,14 @@ function MessageSearchGroups({
       {groups.map((group) => (
         <View key={`group:${group.chatJid}`}>
           <View className="flex-row items-center gap-2 px-[10px] pb-0.5 pt-1.5">
-            <Avatar id={group.chatJid} name={group.title} size={20} />
+            <EntityAvatar
+              chat={{
+                id: group.chatJid,
+                title: group.title,
+                avatarUrl: byId.get(group.chatJid)?.avatarUrl,
+              }}
+              size={20}
+            />
             <Text numberOfLines={1} className="text-[12px] font-medium text-muted-foreground">
               {group.title}
             </Text>
@@ -211,6 +220,7 @@ function MessageSearchGroups({
                 key={`${item.chatJid}:${item.messageId}`}
                 item={item}
                 heading={heading}
+                avatarUrl={chat?.avatarUrl}
                 onOpen={openHit}
               />
             );

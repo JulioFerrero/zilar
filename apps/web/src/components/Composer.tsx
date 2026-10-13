@@ -3,7 +3,7 @@ import { Effect, Schedule } from 'effect';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ComposerControls } from './composer/ComposerControls';
 import { useFormatShortcut } from './composer/formatShortcut';
-import { useComposerAttachments } from './composer/useComposerAttachments';
+import { useComposerAttachments, type SendPendingOptions } from './composer/useComposerAttachments';
 import { useComposerFocus } from './composer/useComposerFocus';
 import { beginEdit, endEdit, useDraftValue } from './composer/useDraftValue';
 import { useMentions } from './composer/useMentions';
@@ -260,9 +260,9 @@ export function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const send = (): void => {
+  const send = (options?: SendPendingOptions): void => {
     if (attachment !== undefined) {
-      attachments.sendPending();
+      attachments.sendPending(options);
       setValue('');
       setMentions([]);
       setPicker(undefined);

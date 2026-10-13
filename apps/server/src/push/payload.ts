@@ -1,4 +1,4 @@
-import type { FcmWakeData } from './fcm';
+import type { FcmWakeData, PushChatKind } from './fcm';
 
 // The encrypted Web Push payload the service worker decrypts and shows.
 // The payload JSON is encrypted end to end by `web-push` (RFC 8291) between
@@ -24,6 +24,8 @@ export type PushPayload = {
 export type ResolvedPushMessage = {
   /** Room bare JID for groups/topics, DM peer bare JID for DMs. */
   chatJid: string;
+  /** Which kind of chat it is, so the phone picks the right channel (T-1303). */
+  chatKind: PushChatKind;
   /** Display name of the sender, never an e-mail. */
   senderName: string;
   /** Where it was written: `Group › Topic`, the group title, or the DM name. */
@@ -92,9 +94,14 @@ export function buildNativeWakePayload(
     return undefined;
   }
   if (message.messageId === undefined) {
-    return { chatId: message.chatJid, serverId };
+    return { chatId: message.chatJid, chatKind: message.chatKind, serverId };
   }
-  return { chatId: message.chatJid, messageId: message.messageId, serverId };
+  return {
+    chatId: message.chatJid,
+    chatKind: message.chatKind,
+    messageId: message.messageId,
+    serverId,
+  };
 }
 
 // DMs read as just the name ("Ana"); groups read as who plus where

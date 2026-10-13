@@ -2,6 +2,148 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-13 15:35: UI audit wave done, all merged, live at `2cd18fcf`.** No workers are running.
+- **Merged:** T-1326, T-1327, T-1328, T-1329, T-1330, T-1331, T-1332, T-1333.
+- **Builds:**
+  - iOS is installed on Iryna's iPhone from `2cd18fcf`;
+  - the APK `~/Downloads/zilar-2cd18fcf.apk` installs automatically when Julio's phone connects (a background wait).
+- **Lesson** (T-1328): on Android, a nested `Text` with `color: 'transparent'` paints in the parent's colour (colour 0 counts as unset). Use `rgba(0,0,0,0.004)`.
+- **Follow-ups, not specced:**
+  - the shared settings row subtitle "Push on this phone" reads oddly on web;
+  - `profile-view.tsx:85` has a stale comment;
+  - the floating date while scrolling (web) is optional.
+
+**2026-10-13 afternoon: UI audit vs Telegram (Julio: "do you see more of this type of errors?").**
+- **Lead audit:** web mock (desktop and 400 px) and Android mock build. Shots are in the job folder `ui-audit/`.
+- **Merged:**
+  - T-1327 web: one date pill, big-emoji time pill, profile heading, menu icons;
+  - T-1329 phone: Settings card avatar, one Save, no @handle title.
+- **Running:**
+  - T-1326: sender colours and reply quotes, web and phone (in pre-review);
+  - T-1328: phone markdown time and tables (fix round: wrapped time must be right-aligned, including plain bubbles; table min column width).
+- **Nav simplify** (Julio approved "Simplify like Telegram"; plan in `docs/audit/nav-plan.md`):
+  - T-1330 web: rail, 6-item menu, `/settings` hub;
+  - T-1331 phone: three tabs.
+- **Follow-ups, not specced:**
+  - the Edit profile avatar is a different ball than Settings and Profile (it should use `own-seed`);
+  - mock-only: pictures show as "0 B" file bubbles, and phone files show "Not loaded: untrusted address".
+
+**2026-10-13 midday (live at `49605f6`): files and attach like Telegram on all three platforms.**
+- **Rule** (Julio): every user-facing change ships on web, Android and iOS.
+- **Android:**
+  - tapping a PDF opens the system viewer (T-1319);
+  - the attach sheet has a gallery grid, Send N, and Gallery | File tabs (T-1320);
+  - the APK installed at 10:27 (`zilar-23f54bd2`); the newest is `zilar-09b82717`, which isn't needed for these changes.
+- **iOS:** files open in the QuickLook preview (T-1321, `react-native-file-viewer-turbo` 0.7.5); installed on Iryna's iPhone from `9feca942`.
+- **Web:**
+  - the file bubble has one circle; a PDF opens in a new tab, and Download is in the message menu (T-1322, T-1325);
+  - the contact info panel opens from the DM header (T-1323);
+  - the attach menu and the "Send N photos" dialog (T-1324).
+- **Julio to check:**
+  - tap a PDF on Android and iPhone;
+  - the attach sheet;
+  - on web: a PDF, a contact name, and the paperclip.
+- **Follow-ups (not specced):**
+  - mobile `file-bubble.tsx` should use chat-core `formatFileMeta` (T-1322 F1);
+  - pass the real MIME type on Android open (T-1319).
+
+**MORNING SUMMARY for Julio (2026-10-13, night work, live at `990688b`)**
+- **Fixed and live (server):**
+  - photos, voice and files in history load again on phone and web (T-1315: `/api/files` had answered 502 since 10-12);
+  - read ticks survive a restart (T-1311);
+  - the server is ready for zero-downtime deploys (T-1316: leader lock, 5 s drain; `/health` shows `leader: true`).
+- **Fixed in the apps (in the new builds):**
+  - stay signed in when the server is down (T-1304);
+  - fast start on a stored session (T-1312);
+  - an offline message cache (T-1313);
+  - chat header aligned, Telegram-style profile (T-1308);
+  - icons instead of emoji, and the unread line in the right place (T-1309);
+  - **swipe between All chats / Personal / AIs** (T-1310);
+  - Telegram-style Contacts and full-screen New group (T-1314);
+  - new groups show first (T-1318);
+  - screen-reader labels, one create button on My AIs (T-1317);
+  - "Couldn't load / retry" instead of a false "untrusted" (T-1307);
+  - New topic picker (T-1289).
+- **Builds:** APK in `~/Downloads/zilar-<commit>.apk` (newest file; your phone wasn't connected); iOS installed on Iryna's iPhone over the cable.
+- **Please check on your phone** (the lead couldn't sign in on the emulator):
+  1. a photo from history shows;
+  2. old messages Julio has read show read ticks;
+  3. the app opens in about 1–2 s;
+  4. with flight mode on, it opens on your chats;
+  5. the "Unread messages" line;
+  6. the contact profile has Message, Mute and Search.
+- **Decisions for you:**
+  - phase 2 deploy: create the `zilar-server` / `zilar-web` Coolify apps and copy the secrets, then pick a quiet hour for the switch;
+  - may the lead install Maestro or idb for iOS simulator QA?
+  - Settings gaps vs Telegram: Appearance, Privacy (last seen / read receipts), Data & storage, and account deletion and export on mobile.
+
+**2026-10-13 ~03:40 update**
+- **Merged since 03:20:**
+  - T-1317: screen-reader labels end with the status, with no stray "￼"; one create button on My AIs;
+  - T-1314: Telegram-style Contacts (search, tap opens the chat, "⋯" menu) and a full-screen New group (search, chips, name step; Create opens the group).
+- **Phone builds:**
+  - APK of main: `~/Downloads/zilar-1d2693e4.apk` (Julio's phone not connected);
+  - an iOS release build for Iryna's iPhone is in progress.
+- **Running:** T-1318 (a new chat sorts by creation time, mock Notifications, sticker labels).
+
+**2026-10-13 ~03:20 update**
+- **T-1316 merged and live** (`b2e88d3`): the advisory-lock leader and a 5 s SIGTERM drain. `/health` shows `leader: true`, `draining: false`, `push: online`. With that, phase 2 of the zero-downtime plan is ready on the code side.
+- **Phase 2 next steps:**
+  1. re-run the `zdt-spike` rolling test with a drained server;
+  2. **Julio:** create the `zilar-server` / `zilar-web` Dockerfile apps in Coolify and copy the secrets (the lead never handles them);
+  3. the switch at a quiet hour Julio picks.
+- **Running:** T-1314 (round 2: the mock backend creates the chat and its General topic, as the server does) and T-1317 (accessibility labels, one create button; the mock notifications item was dropped).
+
+**2026-10-13 ~03:00 update**
+- **The real photo bug was on the server:** `GET /api/files` answered 502 for every chat file since T-1185 (10-12), because ejabberd finds the upload vhost from the Host header and the server sent `ejabberd:5280`. **T-1315 fixed it and is live:** the same read-only check now answers 200 `image/png`. Photos, voice and files in history load again on phone and web.
+- **Merged since 02:30:**
+  - T-1307: URL parser, plus "Couldn't load / retry" instead of a false "untrusted";
+  - T-1315;
+  - T-1313: offline message cache;
+  - T-1310: swipe between folders. Checked on the emulator: All → Personal → AIs, no crash, long-press actions kept.
+- **Running:** T-1314. Contacts and the full-screen New group work, but Create returns to the list instead of opening the group (fix round sent).
+- **iOS:** a mock simulator build runs and its chat list renders well. Deeper iOS QA needs a UI driver (Maestro or idb); the lead won't install one without Julio's OK.
+- **Product gaps seen vs Telegram (not specced):** Settings has no Appearance, Privacy (last seen / read receipts) or Data & storage, and the server-side account deletion and export (T-1261/T-1262) aren't reachable on mobile.
+
+**2026-10-13 ~02:30 update**
+- **Merged and live at `e93ea6d`:**
+  - T-1312: fast start;
+  - T-1308: header and profile;
+  - T-1309: icons and divider;
+  - T-1311: read ticks. `GET /api/chats` was called live: 200, `readUntil` on both of Julio's DMs.
+- **APK for Julio's phone:** `~/Downloads/zilar-e93ea6db.apk` (T-1307's photo fix not in yet).
+- **Fix rounds:**
+  - T-1307: auto round 2;
+  - T-1310: pages after the first rendered blank and the swipe didn't move. The cause is a translated, clipped track. The lead decided: with folder tabs shown, horizontal swipes change folder; row actions stay on long-press;
+  - T-1313: drop the duplicate chat-list copy (T-1294 already caches the list), don't cache in-flight messages, and leave no file after sign-out.
+- **Running:** T-1314.
+- **Live checks for Julio's phone** (the emulator lost Claude Test's session when the lead reinstalled; the lead doesn't type login codes into production on its own):
+  1. cold start time;
+  2. read ticks on old messages after a restart;
+  3. the unread line;
+  4. the contact profile (Message, Mute, Search);
+  5. after T-1307, a photo after a restart.
+
+**2026-10-13 ~02:10 local (Julio asleep: "find more things like that and work in the night")**
+- **Merged and live tonight:** T-1285, T-1291, T-1297, T-1299, T-1301, T-1305, T-1306, T-1289 (New topic picker, fixed after 3 rounds), T-1304 (stay signed in: checked on a release APK, a cold start offline opens the chats with "Waiting for network…", not login).
+- **Approved, waiting for the next batch merge** (at most one code push every 30 min): T-1309 (preview icons; unread divider).
+- **Running:**
+  - T-1307: history photos "untrusted". **Cause found:** React Native's `URL` reads the hostname only for http(s), so the `wss://` service host is lost;
+  - T-1308: header and Telegram-style profile;
+  - T-1310: swipe between folders;
+  - T-1311: read ticks after a restart;
+  - T-1312: fast start;
+  - T-1313: offline chat cache.
+- **Queued:** T-1314, Telegram-style Contacts and a full-screen New group.
+- **Night QA findings** (release APK vs live, as Claude Test):
+  - cold start takes 12 s online and 16 s offline, because the app waits for `/api/me` (T-1312);
+  - offline shows grey rows: nothing is kept on the phone (T-1313);
+  - after a restart, read messages show one tick (T-1311);
+  - Contacts and New group aren't Telegram-like (T-1314);
+  - during a deploy, Contacts and Devices show "Could not load", which zero-downtime phase 2 fixes;
+  - screen-reader labels of my messages end in a stray "￼" character (minor, not specced).
+- **iOS:** a simulator Release build is in progress for iOS QA. Iryna's iPhone is reachable for an install in the morning; Julio's Android phone isn't connected (the APK is in `~/Downloads`).
+
 **2026-10-12 ~20:30 local (Julio away)**
 - **Decisions waiting for Julio: account deletion** (plan `docs/audit/account-deletion-plan.md` §8, from T-1260). The lead's recommendation is in brackets.
   1. Groups you created but no longer own [repoint `created_by` to the current owner].
@@ -34,6 +176,25 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - an album counts as 1 unread, with the preview "N photos";
   - the viewer steps through the album first;
   - photos only, with no mixed files, in v1.
+- **Julio's phone list, specced (2026-10-13, 01:40; Julio: "fix all that" plus "home like Telegram"):**
+  - T-1307: history photos show as untrusted (running);
+  - T-1308: header alignment and a Telegram-style profile;
+  - T-1309: icons instead of emoji in previews, and the unread divider;
+  - T-1310: swipe between chat folders.
+  - T-1308 to T-1310 launch as mobile slots free up (at most 3 mobile workers).
+  - **Merge plan:** the approved T-1285, T-1291, T-1297, T-1299, T-1301, T-1305 and T-1306, plus T-1289 and T-1304 once clean, go out in ONE merge batch with Coolify auto-deploy paused, then one deploy and new Android and iOS builds.
+- **Issues Julio and the lead found on the phone apps (2026-10-13, 01:30; Julio said "stop all new tasks", so none is specced yet).** Seen on the emulator with the same APK as Julio's phone (`zilar-c2d1be1c`, live server, Claude Test):
+  1. **Photos from history show "Not loaded: untrusted address".** I sent a photo: it shows fine. After closing and reopening the app, the same message renders as a file card "20.png, Not loaded: untrusted address" (`apps/mobile/src/components/chat/attachment-message.tsx:57-58`).
+     - **Ruled out:** the token link (`apps/mobile/src/store/real-store.ts:108-113`), and it's set before history loads (`packages/client-core/src/store/lifecycle.ts:347`); the host check matches `chat.zilar.app` (`packages/chat-core/src/media.ts:60-88`).
+     - **Next:** a debugging task with the live attachment URL.
+  2. **Chat header misaligned:** the "Julio / online" block is centred about 33 px (≈11 dp) above the avatar and the back button (bounds: text 136–235, back button 166–271).
+  3. **Contact profile page** (`apps/mobile/src/app/u/[handle].tsx`) is a bare card. Julio wants it like Telegram: a large centred photo, name and status, round action buttons, an info section, shared media tabs, and Block in red at the bottom.
+  4. **The "Unread messages" divider** sat above an old message (Oct 11) instead of the newest unread one.
+  5. **The chat-list preview shows a 🖼 emoji for photos;** Julio's rule is icons, not emoji.
+  6. **Kicked to login during deploys:** T-1304 (in fix round 1), plus the zero-downtime plan.
+- **Phones (2026-10-13, 00:40).** Julio's Android has `~/Downloads/zilar-c2d1be1c.apk` (main at T-1295). Iryna's iPhone 16 Pro has an iOS Release build from the same commit.
+  - **iOS limits:** it's signed with Julio's free personal team, so it stops opening after 7 days (rebuild with `docs/RELEASING.md` §8) and has **no push**. A personal team can't sign the Push Notifications capability, so the build drops `aps-environment` from the generated `ios/Zilar/Zilar.entitlements` (git-ignored, regenerated by prebuild).
+  - **Real iOS push needs** a paid Apple Developer account (Julio's call).
 - **Audit findings waves (from 2026-10-12, 23:00).** Julio: "i see a lot of task still to do, why you stop?". About 100 audit findings were still open beyond the plan's headline items.
   - **Wave A, running:**
     - T-1282: WUX-38/10, name in Profile and the menu;

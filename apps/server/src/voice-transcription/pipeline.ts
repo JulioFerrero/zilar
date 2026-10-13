@@ -18,6 +18,7 @@ import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
+import { defaultInternalFetch, type InternalFetchResponse } from '../files/internal-fetch';
 import { transcribeAudio, TranscriptionProviderError, type TranscriptionFetch } from './provider';
 import type { VoiceTranscriptionSettings } from './settings';
 
@@ -30,7 +31,12 @@ export interface FetchedAudio {
   contentType: string;
 }
 
-export type AudioFetcher = (url: string) => Promise<FetchedAudio>;
+/** The public host to send on the internal upload fetch (see `internal-fetch.ts`). */
+export interface AudioFetchInit {
+  host: string;
+}
+
+export type AudioFetcher = (url: string, init: AudioFetchInit) => Promise<FetchedAudio>;
 
 export type Transcriber = (input: {
   baseUrl: string;
@@ -83,6 +89,7 @@ export interface FetchAndTranscribeInput {
   db: ServerDatabase;
   urlHash: string;
   internalUrl: string;
+  uploadHost: string;
   settings: VoiceTranscriptionSettings;
   fetchAudio: AudioFetcher;
   transcribe: Transcriber;
@@ -91,9 +98,10 @@ export interface FetchAndTranscribeInput {
 const fetchAudioEffect = Effect.fnUntraced(function* (
   fetchAudio: AudioFetcher,
   internalUrl: string,
+  uploadHost: string,
 ): EffectType.fn.Return<FetchedAudio, AudioUnavailable> {
   const fetched = yield* Effect.tryPromise({
-    try: () => fetchAudio(internalUrl),
+    try: () => fetchAudio(internalUrl, { host: uploadHost }),
     catch: () => new AudioUnavailable(),
   }).pipe(
     Effect.timeoutOrElse({
@@ -192,7 +200,7 @@ const storeTranscriptEffect = Effect.fnUntraced(function* (
 const fetchAndTranscribeEffect = Effect.fnUntraced(function* (
   input: FetchAndTranscribeInput,
 ): EffectType.fn.Return<string, TranscriptPipelineError> {
-  const audio = yield* fetchAudioEffect(input.fetchAudio, input.internalUrl);
+  const audio = yield* fetchAudioEffect(input.fetchAudio, input.internalUrl, input.uploadHost);
   yield* checkAudioEffect(audio);
   const result = yield* transcribeEffect(input.transcribe, {
     baseUrl: input.settings.baseUrl,
@@ -281,28 +289,29 @@ export function shareInFlight(): TranscriptionInFlight {
 // 502, never a bare 500 and never the network's error text. The content type
 // gates the provider call (`not_audio` without one); the bytes are never
 // logged.
-export async function defaultAudioFetcher(url: string): Promise<FetchedAudio> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), VOICE_FETCH_TIMEOUT_MS);
+export async function defaultAudioFetcher(
+  url: string,
+  init: AudioFetchInit,
+): Promise<FetchedAudio> {
+  let response: InternalFetchResponse;
   try {
-    let response: Response;
-    try {
-      response = await fetch(url, { signal: controller.signal });
-    } catch {
-      throw new AudioUnavailableError();
-    }
-    if (!response.ok) {
-      throw new AudioUnavailableError();
-    }
-    const contentType = response.headers.get('content-type') ?? 'application/octet-stream';
-    const buffer = await response.arrayBuffer().catch(() => null);
-    if (buffer === null) {
-      throw new AudioUnavailableError();
-    }
-    return { body: new Uint8Array(buffer), contentType };
-  } finally {
-    clearTimeout(timer);
+    response = await defaultInternalFetch(url, {
+      host: init.host,
+      signal: AbortSignal.timeout(VOICE_FETCH_TIMEOUT_MS),
+    });
+  } catch {
+    throw new AudioUnavailableError();
   }
+  if (response.status < 200 || response.status >= 300) {
+    await response.body.cancel().catch(() => {});
+    throw new AudioUnavailableError();
+  }
+  const contentType = response.headers.get('content-type') ?? 'application/octet-stream';
+  const buffer = await new Response(response.body).arrayBuffer().catch(() => null);
+  if (buffer === null) {
+    throw new AudioUnavailableError();
+  }
+  return { body: new Uint8Array(buffer), contentType };
 }
 
 /** The audio-fetch leg failed (ejabberd down, slow, or refusing): fixed

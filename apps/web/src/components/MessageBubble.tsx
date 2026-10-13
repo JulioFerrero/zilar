@@ -8,7 +8,7 @@ import {
 } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { memo, useRef, useState } from 'react';
-import { Avatar } from './Avatar';
+import { EntityAvatar } from './EntityAvatar';
 import { ForwardedHeader } from './ForwardedHeader';
 import { isGifVideoAttachment } from './GifMessage';
 import { AttachmentBody } from './message/AttachmentBody';
@@ -118,6 +118,8 @@ export const MessageBubble = memo(function MessageBubble({
   // A big-emoji message is shown without its bubble, so the sender name would
   // float on its own; a classic messenger shows only the avatar in that case.
   const showSender = !own && chat.kind === 'group' && firstInGroup && !bigEmoji;
+  // Whether the media is the bubble's first element, for the media corners (T-1335).
+  const mediaTop = !showSender && message.forward === undefined && message.replyTo === undefined;
   const attachmentImage = message.attachment?.kind === 'image';
   // GIF-origin videos render inline only on a trusted media URL (the store
   // sanitizer renames untrusted `gif-` attachments first; the URL check here
@@ -226,7 +228,7 @@ export const MessageBubble = memo(function MessageBubble({
       {!own &&
         chat.kind === 'group' &&
         (lastInGroup ? (
-          <Avatar id={message.senderId} name={message.senderName} size={34} />
+          <EntityAvatar person={{ id: message.senderId, name: message.senderName }} size={34} />
         ) : (
           <span className="w-[34px] shrink-0" aria-hidden="true" />
         ))}
@@ -241,7 +243,7 @@ export const MessageBubble = memo(function MessageBubble({
             )}
             {message.replyTo !== undefined && (
               <div className="mb-1 w-full max-w-[200px]">
-                <ReplyQuote quote={message.replyTo} onOpen={() => openQuote(message.replyTo!.id)} />
+                <ReplyQuote message={message} onOpen={() => openQuote(message.replyTo!.id)} />
               </div>
             )}
             <StickerMessage sticker={sticker} message={message} own={own} />
@@ -319,7 +321,7 @@ export const MessageBubble = memo(function MessageBubble({
 
             {message.replyTo !== undefined && (
               <div className="px-3 pt-2">
-                <ReplyQuote quote={message.replyTo} onOpen={() => openQuote(message.replyTo!.id)} />
+                <ReplyQuote message={message} onOpen={() => openQuote(message.replyTo!.id)} />
               </div>
             )}
 
@@ -339,6 +341,8 @@ export const MessageBubble = memo(function MessageBubble({
                   sendFailed={sendFailed}
                   failed={failed}
                   isSending={isSending}
+                  mediaTop={mediaTop}
+                  lastInGroup={lastInGroup}
                 />
 
                 <MessageTextBody
@@ -361,6 +365,7 @@ export const MessageBubble = memo(function MessageBubble({
                   setMenuPoint(undefined);
                   setMenuOpen(true);
                 }}
+                beside={bigEmoji ? (own ? 'left' : 'right') : undefined}
               />
             )}
           </div>

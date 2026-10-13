@@ -234,6 +234,40 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     return correctionTargetFor(messageId);
   }
 
+  // PERF-13: drops every entry of the messages a chat just pruned from its
+  // `messagesByChat` (`prune.ts`, PERF-3), so the ledger's six id maps
+  // (`aliases`, `serverIds`, `originIds`, `originClaims`, `authors`,
+  // `baseTexts`, all in `LedgerMaps`) do not grow for the life of the session.
+  // `messageIds` are the dropped bubble ids as stored.
+  function forgetMessages(chatId: string, messageIds: readonly string[]): void {
+    if (messageIds.length === 0) {
+      return;
+    }
+    const roots = new Set(messageIds.map((id) => aliasRoot(id)));
+    const ids = new Set<string>(messageIds);
+    for (const root of roots) {
+      ids.add(root);
+    }
+    // An alias goes when it names a forgotten id or when it points at one, so
+    // no later lookup resolves a pruned message to a surviving root.
+    for (const [alias, target] of messageAliases) {
+      if (ids.has(alias) || roots.has(target)) {
+        messageAliases.delete(alias);
+      }
+    }
+    for (const id of ids) {
+      messageServerIds.delete(id);
+      const originId = messageOriginIds.get(id);
+      messageOriginIds.delete(id);
+      messageAuthors.delete(id);
+      messageBaseTexts.delete(id);
+      // The claim is keyed by chat and origin id (`rememberOriginId`).
+      if (originId !== undefined) {
+        messageOriginClaims.delete(`${chatId}|${originId}`);
+      }
+    }
+  }
+
   return {
     aliasRoot,
     linkMessageIds,
@@ -248,6 +282,7 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     authorFor,
     correctionTargetFor,
     retractionTargetFor,
+    forgetMessages,
   };
 }
 

@@ -21,7 +21,7 @@ interface UserEmailRow {
 // A fresh factory instance per call: `createTestContext` registers the
 // effect/sql runtime the adapter runs on.
 function adapterFor(context: TestContext) {
-  return effectSqlAdapter(context.db)({});
+  return effectSqlAdapter(context.db, new Map())({});
 }
 
 describe('effectSqlAdapter', () => {
@@ -249,7 +249,7 @@ describe('better-auth on the effect/sql adapter', () => {
     return betterAuth({
       baseURL: context.config.BETTER_AUTH_URL,
       secret: context.config.BETTER_AUTH_SECRET,
-      database: effectSqlAdapter(context.db),
+      database: effectSqlAdapter(context.db, new Map()),
       emailAndPassword: { enabled: false },
       telemetry: { enabled: false },
       logger: { disabled: true },

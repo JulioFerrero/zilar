@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { BrowserRouter } from 'react-router';
 import { AuthProvider } from '@/auth/AuthProvider';
 import { AppRoutes } from '@/routes/AppRoutes';
+import { ClientVersionBanner } from '@/components/ClientVersionBanner';
 import { ToastProvider } from '@/components/ui/toast';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
 import { ensureServiceWorker, realPushBrowser } from '@/lib/push';
@@ -23,6 +24,7 @@ export function App() {
       <ChatStoreProvider>
         <ToastProvider>
           <BrowserRouter>
+            <ClientVersionBanner />
             <AppRoutes />
           </BrowserRouter>
         </ToastProvider>

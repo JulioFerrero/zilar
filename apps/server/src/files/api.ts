@@ -31,6 +31,7 @@ import { createRateLimiter } from '../rate-limit';
 import { allowedArchives, resolveChatFilter, type ArchivePool } from '../search/service';
 import { indexChat } from '../media/indexer';
 import { toInternalUploadUrl } from '../voice-transcription/routes';
+import { defaultInternalFetch, type InternalFetch } from './internal-fetch';
 
 export const FILES_RATE_LIMIT_MAX = 600;
 export const FILES_RATE_LIMIT_WINDOW_MS = 60 * 1000;
@@ -48,7 +49,7 @@ export interface FilesRoutesDependencies {
   /** Injected in tests so the 429 boundary is reached in a few requests. */
   rateLimitMax?: number;
   /** Injected in tests so the ejabberd fetch never touches the network. */
-  fetchImpl?: typeof fetch;
+  internalFetch?: InternalFetch;
 }
 
 // Replaces `querySchema` (zod): `chat` is 1..256 characters, `url` is
@@ -58,6 +59,11 @@ export interface FilesRoutesDependencies {
 const FilesQuery = Schema.Struct({
   chat: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)),
   url: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048)),
+  // A client cache-buster for a retried image load (T-1337): the bubble appends
+  // a new `retry` on every attempt so a 404 is not served from the browser
+  // cache. It never reaches the lookup, only breaks the cache, so it is
+  // accepted and ignored. Every other excess key still fails below.
+  retry: Schema.optional(Schema.String.check(Schema.isMaxLength(32))),
 });
 
 const STRICT_QUERY = { onExcessProperty: 'error' } as const;
@@ -191,7 +197,10 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
     windowMs: FILES_RATE_LIMIT_WINDOW_MS,
     now,
   });
-  const fetchImpl = deps.fetchImpl ?? fetch;
+  const internalFetch = deps.internalFetch ?? defaultInternalFetch;
+  // ejabberd resolves the upload vhost from the Host header, so the internal
+  // fetch must carry the public host, not `ejabberd:5280` (T-1315).
+  const uploadHost = new URL(deps.config.PUBLIC_URL).host;
 
   const groupLayer = HttpApiBuilder.group(FilesApi, 'files', (handlers) =>
     handlers.handle(
@@ -290,9 +299,10 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
           // other caller header stay behind.
           const range = request.request.headers['range'];
           const fetched = yield* Effect.promise(() =>
-            fetchImpl(internalUrl, {
+            internalFetch(internalUrl, {
+              host: uploadHost,
+              ...(range === undefined ? {} : { range }),
               signal: AbortSignal.timeout(FILES_FETCH_TIMEOUT_MS),
-              ...(range === undefined ? {} : { headers: { range } }),
             }),
           ).pipe(
             Effect.map((response) => ({ ok: true as const, response })),
@@ -315,6 +325,11 @@ export function createFilesApi(deps: FilesRoutesDependencies): EffectApiMount {
               headers: passthroughHeaders(upstream.headers, row),
             });
           }
+          // A non-200/206/416 upstream (ejabberd 404, a bad Host, a refusal)
+          // becomes the fixed 502; log only the status, never the URL/token.
+          // Release the unread body so the socket is not left dangling.
+          void upstream.body.cancel().catch(() => {});
+          deps.logger.warn({ userId: user.id, status: upstream.status }, 'files upstream status');
           throw new HttpError(502, 'file_unavailable', 'The file could not be loaded');
         }),
       ),

@@ -10,6 +10,7 @@ import { VoiceMessage } from '../VoiceMessage';
 import { cn } from '@/lib/utils';
 import { mediaSrc } from '@/lib/attachments';
 import { AlbumGrid } from './AlbumGrid';
+import { MediaMetaPill } from './MediaMetaPill';
 import { MessageMeta } from './MessageMeta';
 import { SendFailure } from './SendFailure';
 
@@ -28,6 +29,8 @@ export function AttachmentBody({
   sendFailed,
   failed,
   isSending,
+  mediaTop,
+  lastInGroup,
 }: {
   message: UiMessage;
   chat: ChatSummary;
@@ -40,6 +43,10 @@ export function AttachmentBody({
   sendFailed: boolean;
   failed: boolean;
   isSending: boolean;
+  /** The media is the bubble's first element (no sender/forward/reply above). */
+  mediaTop: boolean;
+  /** Last in its group: the bubble's bottom tail corner is 4px. */
+  lastInGroup: boolean;
 }) {
   const storeApi = useChatStoreApi();
   const mediaHosts = useChatSelector((state) => state.mediaTrustedHosts);
@@ -52,6 +59,9 @@ export function AttachmentBody({
     message.attachment !== undefined &&
     message.attachment.mime.startsWith('video/') &&
     isTrustedInlineVideoUrl(message.attachment.url, mediaHosts ?? EMPTY_HOSTS);
+  // A media bubble is edge to edge (T-1335): the media fills the bubble and its
+  // own clip follows the bubble's corners and tail.
+  const radius = mediaCorners(mediaTop, !hasText, lastInGroup, own);
   // An album head draws the whole grid (T-1268) instead of its single photo;
   // the caption under it is the bubble's text body. A failed tile owns its own
   // upload-failure Retry, but the fixed "Not sent" row (reason, Retry, Delete
@@ -60,7 +70,12 @@ export function AttachmentBody({
   if (message.album !== undefined) {
     return (
       <>
-        <AlbumGrid message={message} chat={chat} />
+        <div className={cn('relative overflow-hidden', radius)}>
+          <AlbumGrid message={message} chat={chat} />
+          {!hasText && !sendFailed && !failed && (
+            <MediaMetaPill message={message} showTicks={own} />
+          )}
+        </div>
         {sendFailed && (
           <div className="px-1.5">
             <SendFailure
@@ -77,7 +92,7 @@ export function AttachmentBody({
   return (
     <>
       {message.image !== undefined && (
-        <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
+        <div className={cn('relative overflow-hidden', radius)}>
           <ImageMessage
             chatId={message.chatId}
             messageId={message.id}
@@ -86,18 +101,12 @@ export function AttachmentBody({
             width={message.image.width}
             height={message.image.height}
           />
-          {imageOnly && (
-            <MessageMeta
-              message={message}
-              showTicks={own}
-              className="raised-pill absolute right-2.5 bottom-2.5 rounded-full px-1.5 py-0.5 text-muted-foreground"
-            />
-          )}
+          {imageOnly && <MediaMetaPill message={message} showTicks={own} />}
         </div>
       )}
 
       {attachmentImage && message.attachment !== undefined && (
-        <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
+        <div className={cn('relative overflow-hidden', radius)}>
           <ImageMessage
             chatId={message.chatId}
             messageId={message.id}
@@ -107,14 +116,16 @@ export function AttachmentBody({
             height={message.attachment.height}
           />
           {sendFailed ? (
-            <SendFailure
-              chatId={chat.id}
-              messageId={message.id}
-              reason={message.failureReason}
-              onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-            />
+            <div className="px-3">
+              <SendFailure
+                chatId={chat.id}
+                messageId={message.id}
+                reason={message.failureReason}
+                onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+              />
+            </div>
           ) : failed ? (
-            <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[12px] text-danger">
+            <div className="mt-1.5 flex items-center gap-2 px-3 text-[12px] text-danger">
               <span>Upload failed</span>
               <button
                 type="button"
@@ -126,27 +137,48 @@ export function AttachmentBody({
               </button>
             </div>
           ) : (
-            imageOnly && (
-              <MessageMeta
-                message={message}
-                showTicks={own}
-                className="raised-pill absolute right-2.5 bottom-2.5 rounded-full px-1.5 py-0.5 text-muted-foreground"
-              />
-            )
+            imageOnly && <MediaMetaPill message={message} showTicks={own} />
           )}
         </div>
       )}
 
-      {attachmentFile && message.attachment !== undefined && (
-        <div className="px-3 py-1.5">
-          {videoAttachment ? (
+      {attachmentFile &&
+        message.attachment !== undefined &&
+        (videoAttachment ? (
+          <div className={cn('relative overflow-hidden', radius)}>
             <video
               controls
               preload="metadata"
               src={mediaSrc(message.chatId, message.attachment.url)}
-              className="max-h-[320px] w-full rounded-[12px] border border-edge"
+              className="max-h-[320px] w-full object-cover"
             />
-          ) : (
+            {sendFailed ? (
+              <div className="px-3">
+                <SendFailure
+                  chatId={chat.id}
+                  messageId={message.id}
+                  reason={message.failureReason}
+                  onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+                />
+              </div>
+            ) : failed ? (
+              <div className="mt-1.5 flex items-center gap-2 px-3 text-[12px] text-danger">
+                <span>Upload failed</span>
+                <button
+                  type="button"
+                  aria-label="Retry upload"
+                  onClick={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+                  className="font-semibold underline"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              !hasText && <MediaMetaPill message={message} showTicks={own} />
+            )}
+          </div>
+        ) : (
+          <div className="px-3 py-1.5">
             <FileMessage
               chatId={message.chatId}
               attachment={message.attachment}
@@ -155,43 +187,31 @@ export function AttachmentBody({
               failed={failed && !sendFailed}
               onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
             />
-          )}
-          {videoAttachment && failed && !sendFailed && (
-            <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[12px] text-danger">
-              <span>Upload failed</span>
-              <button
-                type="button"
-                aria-label="Retry upload"
-                onClick={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-                className="font-semibold underline"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-          {sendFailed && (
-            <SendFailure
-              chatId={chat.id}
-              messageId={message.id}
-              reason={message.failureReason}
-              onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-            />
-          )}
-        </div>
-      )}
+            {sendFailed && (
+              <SendFailure
+                chatId={chat.id}
+                messageId={message.id}
+                reason={message.failureReason}
+                onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+              />
+            )}
+          </div>
+        ))}
 
       {gifVideo && message.attachment !== undefined && (
-        <div className={cn('relative', hasText ? 'px-1.5 pt-1.5' : 'p-1.5')}>
+        <div className={cn('relative overflow-hidden', radius)}>
           <GifMessage chatId={message.chatId} attachment={message.attachment} />
           {sendFailed ? (
-            <SendFailure
-              chatId={chat.id}
-              messageId={message.id}
-              reason={message.failureReason}
-              onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
-            />
+            <div className="px-3">
+              <SendFailure
+                chatId={chat.id}
+                messageId={message.id}
+                reason={message.failureReason}
+                onRetry={() => storeApi.getState().retryAttachment(chat.id, message.id)}
+              />
+            </div>
           ) : failed ? (
-            <div className="mt-1.5 flex items-center gap-2 px-0.5 text-[12px] text-danger">
+            <div className="mt-1.5 flex items-center gap-2 px-3 text-[12px] text-danger">
               <span>Upload failed</span>
               <button
                 type="button"
@@ -203,13 +223,7 @@ export function AttachmentBody({
               </button>
             </div>
           ) : (
-            imageOnly && (
-              <MessageMeta
-                message={message}
-                showTicks={own}
-                className="raised-pill absolute right-2.5 bottom-2.5 rounded-full px-1.5 py-0.5 text-muted-foreground"
-              />
-            )
+            imageOnly && <MediaMetaPill message={message} showTicks={own} />
           )}
         </div>
       )}
@@ -241,7 +255,9 @@ export function AttachmentBody({
       )}
 
       {!hasText &&
-        (message.voice !== undefined || message.card !== undefined || attachmentFile) && (
+        (message.voice !== undefined ||
+          message.card !== undefined ||
+          (attachmentFile && !videoAttachment)) && (
           <div className="flex justify-end px-3 pb-2">
             <MessageMeta
               message={message}
@@ -252,4 +268,26 @@ export function AttachmentBody({
         )}
     </>
   );
+}
+
+/**
+ * The media wrapper's corner classes (T-1335): rounded at the bubble's top when
+ * the media is the first element, and at the bottom when it is the last (no
+ * caption), with the 4px tail corner on its own side when last in a group.
+ */
+function mediaCorners(top: boolean, bottom: boolean, lastInGroup: boolean, own: boolean): string {
+  const corners: string[] = [];
+  if (top) {
+    corners.push('rounded-t-[14px]');
+  }
+  if (bottom) {
+    corners.push(
+      lastInGroup
+        ? own
+          ? 'rounded-bl-[14px] rounded-br-[4px]'
+          : 'rounded-bl-[4px] rounded-br-[14px]'
+        : 'rounded-b-[14px]',
+    );
+  }
+  return corners.join(' ');
 }

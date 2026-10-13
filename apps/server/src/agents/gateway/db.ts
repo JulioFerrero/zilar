@@ -312,7 +312,7 @@ export async function loadDelegationFlags(
   );
 }
 
-interface RoomGateState {
+export interface RoomGateState {
   /** Bare JIDs of the current human members, lowercased. */
   memberJids: Set<string>;
   /** Per-member role for the gate that decides whether a sender may wake an

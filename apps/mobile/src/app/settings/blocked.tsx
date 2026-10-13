@@ -15,7 +15,7 @@ import { ICON } from '@/lib/colors';
 import type { BlockedPerson } from '@/lib/contacts-api';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { blockedLoadFailure, performUnblock } from '@/components/contacts/blocks';
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 
 type PageStatus = 'loading' | 'ready' | 'error';
@@ -182,7 +182,14 @@ function BlockedRow({
   const [state, unblock] = useAction<void, void, never>(() => onUnblock(person.userId));
   return (
     <View className="flex-row items-center gap-3 px-3 py-2.5">
-      <Avatar id={person.jid ?? person.userId} name={person.name} size={44} />
+      <EntityAvatar
+        person={{
+          id: person.jid ?? person.userId,
+          name: person.name,
+          avatarUrl: person.image ?? undefined,
+        }}
+        size={44}
+      />
       <View className="min-w-0 flex-1">
         <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">
           {person.name}

@@ -285,6 +285,10 @@ export function createPushGroupLayer(
               const nativeOutcome = yield* Effect.promise(() =>
                 nativeSender.send(native.token, {
                   chatId: TEST_WAKE_CHAT_ID,
+                  // The synthetic test wake is not a real chat: `group` is the
+                  // kind the phone's test post used before it carried one, and
+                  // the phone ignores the kind for a test wake anyway.
+                  chatKind: 'group',
                   serverId: deps.config.xmpp.domain,
                 }),
               ).pipe(

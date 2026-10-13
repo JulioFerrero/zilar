@@ -15,7 +15,6 @@ export function AiPictureSection({
     <AvatarUploader
       kind="ai"
       ownerId={ai.id}
-      ownerSeed={ai.jid}
       ownerName={ai.name}
       currentUrl={ai.avatarUrl}
       onChanged={(url) =>

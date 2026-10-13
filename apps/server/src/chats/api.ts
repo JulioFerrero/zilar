@@ -29,7 +29,7 @@ import { httpErrorResponse, requestIdOf } from '../effect/http-core';
 import { ownBareJid } from '../jid';
 import { allowedArchives } from '../search/service';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
-import { putChatRead, requireChatReadAccess } from './reads';
+import { putChatRead, readForChats, requireChatReadAccess } from './reads';
 import { deliveredForChats, mergeTopicMarks, type DeliveryLookup } from './deliveries';
 import { deleteOwnHandlers } from './delete-own';
 import { markDeliveredAndNotify } from './delivered-notice';
@@ -41,9 +41,13 @@ export const CHAT_READ_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 export interface ChatUnreadFields {
   unread?: number;
   lastMessage?: ChatUnread['lastMessage'];
+  /** T-1318: the chat's creation time (ISO); an empty chat sorts by it. */
+  createdAt?: string;
   /** T-1229: another member's delivered mark, in the caller's own-message
    * terms. Absent when nobody confirmed yet or without archive. */
   deliveredUntil?: string;
+  /** T-1311: a DM peer's read mark, an archive id in the caller's terms. */
+  readUntil?: string;
 }
 
 export type ChatListEntry =
@@ -218,14 +222,13 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
                 handle: group.handle,
                 topics: [],
                 background: group.background,
+                createdAt: group.createdAt.toISOString(),
               })),
             ];
 
-            // T-0108/T-1175: each group entry gains its visible topics. One
-            // batched visibility pass and one view build cover every group, so a
-            // user in N groups costs a fixed number of queries, not one set per
-            // group. A group the user cannot see stays out of the map (and yields
-            // no rows), so it never leaks in.
+            // T-0108/T-1175: one batched pass builds every group's visible
+            // topics, so a user in N groups costs a fixed number of queries; a
+            // group the user cannot see stays out of the map (yields no rows).
             const groupEntries = chats.filter(
               (entry): entry is Extract<ChatListEntry, { kind: 'group' }> => entry.kind === 'group',
             );
@@ -297,22 +300,21 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
                 return {} as Record<string, ChatUnread>;
               }),
             );
-            // T-1229: the delivery-marks pass. Like unread, a failure is
-            // logged without content and the list answers without the field.
-            const deliveredMarks = yield* Effect.promise(() =>
-              deliveredForChats(deps.db, {
-                userId: user.id,
-                callerJid: ownBareJid(allowed, deps.config.xmpp.domain),
-                lookups,
-              }).catch((error) => {
+            const callerJid = ownBareJid(allowed, deps.config.xmpp.domain);
+            // T-1229/T-1311: the delivery- and read-marks passes, best effort.
+            const [deliveredMarks, readMarks] = yield* Effect.promise(() =>
+              Promise.all([
+                deliveredForChats(deps.db, { userId: user.id, callerJid, lookups }),
+                readForChats(deps.db, { userId: user.id, callerJid, lookups }),
+              ]).catch((error) => {
                 logger.warn(
                   {
                     errorClass: error?.constructor?.name,
                     message: String(error?.message ?? error),
                   },
-                  'delivered marks failed, answering the list without delivered fields',
+                  'chat marks failed, answering the list without mark fields',
                 );
-                return {} as Record<string, string>;
+                return [{}, {}] as [Record<string, string>, Record<string, string>];
               }),
             );
             for (const entry of chats) {
@@ -330,6 +332,8 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
               if (delivered !== undefined) {
                 entry.deliveredUntil = delivered;
               }
+              const read = entry.kind === 'dm' ? readMarks[entry.chatJid] : undefined;
+              if (read !== undefined) entry.readUntil = read;
             }
 
             chats.sort((a, b) => a.title.localeCompare(b.title));

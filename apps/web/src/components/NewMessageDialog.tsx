@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import type { Contact } from '@zilar/api-contract';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
-import { Avatar } from './Avatar';
+import { EntityAvatar } from './EntityAvatar';
 import { HandleSuffix } from './HandleSuffix';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
@@ -143,12 +143,7 @@ export function NewMessageDialog({
                 index === selectedIndex ? 'bg-surface-raised' : 'hover:bg-list-hover',
               )}
             >
-              <Avatar
-                id={contact.jid}
-                name={contact.name}
-                size={28}
-                avatarUrl={contact.avatarUrl}
-              />
+              <EntityAvatar person={contact} size={28} />
               <span className="truncate text-[15px]">
                 {contact.name} <HandleSuffix handle={contact.handle} />
               </span>

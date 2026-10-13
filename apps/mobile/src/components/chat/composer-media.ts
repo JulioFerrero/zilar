@@ -272,6 +272,16 @@ export function useComposerMedia({
     setAttachOpen(false);
   };
 
+  // The Gallery tab's send (T-1320): the selected assets arrive as picked files
+  // and go straight into the composer strip, exactly like today's library pick
+  // (the same `setPicks(result.files)` + close above), so albums (T-1246) and
+  // captions keep working. `sendPicked` reads the same `picks`.
+  const stageFiles = (files: PickedFile[]) => {
+    setAttachError(undefined);
+    setPicks(files);
+    setAttachOpen(false);
+  };
+
   return {
     attachOpen,
     attachError,
@@ -289,5 +299,6 @@ export function useComposerMedia({
     closeAttach,
     chooseAttachment,
     demoPick,
+    stageFiles,
   };
 }

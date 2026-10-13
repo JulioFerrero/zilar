@@ -180,6 +180,7 @@ export {
   listConnections,
   listGroupApprovalRules,
   publicApprovalSchema,
+  replaceConnectionKey,
   resumeAi,
   revokeApprovalRule,
   setAiMachine,

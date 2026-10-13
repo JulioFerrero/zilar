@@ -51,7 +51,21 @@ describe('onWake (T-1143)', () => {
     expect(notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
     expect(notifications.scheduleNotificationAsync).toHaveBeenCalledWith({
       content: { title: 'Ada', body: 'see you there', data: { chatId: 'preview-chat' } },
-      trigger: { channelId: 'messages' },
+      trigger: { channelId: 'groups' },
+    });
+  });
+
+  it('posts on the channel for the wake chat kind (T-1302)', async () => {
+    const fetchImpl = previewFetch({ title: 'Ada', body: 'hi', chatId: 'dm-1' });
+
+    await onWake(
+      { chatId: 'dm-1', messageId: 'msg-1', chatKind: 'dm' },
+      { getToken: token, fetchImpl, apiUrl: API_URL },
+    );
+
+    expect(notifications.scheduleNotificationAsync).toHaveBeenCalledWith({
+      content: { title: 'Ada', body: 'hi', data: { chatId: 'dm-1' } },
+      trigger: { channelId: 'direct-messages' },
     });
   });
 
@@ -107,7 +121,7 @@ describe('onWake (T-1143)', () => {
         body: 'Push notifications work on this device.',
         data: {},
       },
-      trigger: { channelId: 'messages' },
+      trigger: { channelId: 'groups' },
     });
   });
 });

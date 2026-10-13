@@ -12,6 +12,8 @@ import { getSessionToken } from '@/lib/session-token';
 import { ICON } from '@/lib/colors';
 
 import { isLoadableMediaUrl } from './attachment-message';
+import { LONG_PRESS_MS } from './message-bubble-decor';
+import { useOpenMessageMenu } from './message-menu-context';
 
 const VIDEO_WIDTH = 240;
 const VIDEO_HEIGHT = 180;
@@ -55,6 +57,12 @@ export function AttachmentVideo({
 }: AttachmentVideoProps) {
   const reduceMotion = useReducedMotion();
   const [view, setView] = useState(false);
+  // The media-first inner `Pressable` swallows the outer bubble's `onLongPress`
+  // (`message-menu-context.tsx`): forward the menu open so a long hold still
+  // opens the message menu, while a short tap keeps playing/opening the video.
+  const openMenu = useOpenMessageMenu();
+  const longPress =
+    openMenu === undefined ? {} : { onLongPress: openMenu, delayLongPress: LONG_PRESS_MS };
   const trusted = isLoadableMediaUrl(attachment.url, trustedHosts);
   // A trusted `/upload/` file on our API origin goes through `GET /api/files`
   // with the bearer (T-1185); a local preview or another origin loads directly.
@@ -130,7 +138,7 @@ export function AttachmentVideo({
 
   if (failed) {
     return (
-      <View className="flex-row items-center gap-2 px-0.5">
+      <View className="flex-row items-center gap-2 px-3 py-2">
         <Text className="text-[12px] text-danger">Upload failed</Text>
         <Pressable
           accessibilityRole="button"
@@ -180,8 +188,9 @@ export function AttachmentVideo({
           }
           setView(true);
         }}
-        className="overflow-hidden rounded-xl border border-edge"
+        className="overflow-hidden"
         style={{ width: VIDEO_WIDTH, height: VIDEO_HEIGHT }}
+        {...longPress}
       >
         <VideoView
           player={player}

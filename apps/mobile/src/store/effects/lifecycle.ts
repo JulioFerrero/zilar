@@ -22,6 +22,11 @@ import {
 } from '@zilar/client-core/store';
 
 import type { ChatEntry, Contact, Me } from '../../lib/chat-api';
+import {
+  clearChatListCache,
+  readChatListCache,
+  writeChatListCache,
+} from '../../lib/chat-list-cache';
 import type { ChatPref } from '../../lib/chat-prefs-api';
 import { applyChatPrefs } from '../../lib/chat-prefs';
 import { dismissChatNotifications, syncBadge } from '../../lib/push/badge';
@@ -50,7 +55,7 @@ export const BACKGROUND_SUSPEND_GRACE_MS = 10_000;
  * the mobile state, the app hooks and the resume listener (AppState focus).
  */
 export function makeLifecycle(ctx: StoreCtx): Lifecycle {
-  const { get, set, s, life, h, coreCtx } = ctx;
+  const { get, set, s, life, h, coreCtx, offline } = ctx;
 
   // The core's `HistoryState` over the mobile state: only the load-map name
   // and its `'ready'`/`'loaded'` value differ (as `effects/history.ts`).
@@ -84,6 +89,42 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
   // Late-bound: the app hooks below call back into the context that holds them.
   let lifecycleCtx!: LifecycleCtx;
 
+  // Saves the painted list for the next cold start (PERF-12); only a fully
+  // loaded list is worth keeping. Called after a connect (by the core) and when
+  // the app leaves the foreground, like web's `pagehide`.
+  const saveChatListNow = (): void => {
+    const state = get();
+    if (state.chatsLoad === 'loaded') {
+      writeChatListCache(state.currentUserId, state.chats);
+    }
+  };
+
+  // T-1313: load the cached messages of the recent chats before the boot, so a
+  // cold start (online or offline) opens an open chat at once. The chat list
+  // stays the existing chat-list cache's job (PERF-12). The owner id is the
+  // signed-in user's; a file left by another user is ignored here and the next
+  // save (after the boot) replaces it.
+  const hydrateOfflineCache = (): void => {
+    void (async () => {
+      const userId = await offline.sessionUserId();
+      if (userId === undefined || userId === '') {
+        return;
+      }
+      const cached = await offline.cache.hydrate(userId);
+      if (cached === null) {
+        return;
+      }
+      const state = get();
+      const messagesByChat = { ...state.messagesByChat };
+      for (const [chatId, list] of Object.entries(cached.messages)) {
+        if (messagesByChat[chatId] === undefined) {
+          messagesByChat[chatId] = list;
+        }
+      }
+      set({ currentUserId: userId, messagesByChat });
+    })();
+  };
+
   const appHooks: StoreAppHooks = {
     syncBadge: () => {
       Effect.runFork(syncBadge(lifecycleCtx.get().chats));
@@ -105,6 +146,17 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
     prepareStart: () => {
       if (get().chats.length === 0) {
         set({ chatsLoad: 'loading' });
+        // PERF-12: paint the saved list before `/api/chats` answers. The read
+        // is async (a file), so this lands as a first paint and the boot
+        // replaces it with fresh data right after.
+        void readChatListCache().then((cached) => {
+          if (cached === null || get().chats.length > 0) {
+            return;
+          }
+          lifecycleCtx.cachedUserId = cached.userId;
+          set({ chats: cached.chats, chatsLoad: 'loaded' });
+        });
+        hydrateOfflineCache();
       }
       // F1: `background` starts a 10 s grace that suspends the session, so
       // ejabberd pushes while the app is away; `active` cancels the grace
@@ -123,6 +175,11 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
       });
       const unsubscribeBackground = ctx.ports.onBackground(() => {
         clearSuspendTimer();
+        // The app is leaving the foreground: save the list now (web's
+        // `pagehide`), so the next cold start paints the latest. The offline
+        // cache flushes its debounced write at the same point (T-1313).
+        saveChatListNow();
+        offline.cache.flush();
         suspendTimer = setTimeout(() => {
           suspendTimer = undefined;
           life.lifetime.fork(coreSuspendStore(lifecycleCtx));
@@ -163,7 +220,7 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
       ctx.fx.refreshActiveChatPins(chatId);
     },
     joinGroups: (core, me) => ctx.run(ctx.fx.joinGroups(core, me as Me)),
-    saveChatList: () => {},
+    saveChatList: saveChatListNow,
     refreshDefaultBackground: () => {},
     loadFolders: () => {
       // The folders load beside the chat list, as they did before the move to
@@ -265,6 +322,11 @@ export function makeLifecycle(ctx: StoreCtx): Lifecycle {
     stop: () => {
       Effect.runSync(coreStopStore(lifecycleCtx));
       reset(lifecycleCtx);
+      // Sign-out forgets the cached list so the next user never paints this one.
+      clearChatListCache();
+      // And the offline cache, so the next user starts clean (T-1313). The
+      // removal runs after any in-flight write; no late write recreates it.
+      void offline.cache.clear();
     },
     restartBoot: () => {
       Effect.runSync(coreRetryBoot(lifecycleCtx));

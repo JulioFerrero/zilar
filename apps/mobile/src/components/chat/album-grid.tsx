@@ -1,8 +1,7 @@
 import type { UiMessage } from '@zilar/chat-core';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useState } from 'react';
-import { Pressable, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useAlbumMembers } from '@/components/chat/album-members';
 import { isLoadableMediaUrl } from '@/components/chat/attachment-message';
@@ -10,8 +9,10 @@ import { LONG_PRESS_MS } from '@/components/chat/message-bubble-decor';
 import { useOpenMessageMenu } from '@/components/chat/message-menu-context';
 import { Text } from '@/components/ui/text';
 import { imageGradient } from '@/lib/image-presets';
+import { useMediaRetry, withMediaRetry } from '@/lib/media-retry';
 import { useMediaSource } from '@/lib/media-source';
 import { mobileUploadOf } from '@/lib/types';
+import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
 
 /** One rendered album tile: its message, id, URL and label. */
@@ -20,6 +21,9 @@ interface AlbumPhoto {
   messageId: string;
   url: string;
   alt: string;
+  /** Pixel size, when known: a single-photo tile reserves the aspect ratio. */
+  width?: number | undefined;
+  height?: number | undefined;
 }
 
 const GRID_WIDTH = 240;
@@ -28,6 +32,10 @@ const HALF = (GRID_WIDTH - GAP) / 2;
 const THIRD = (GRID_WIDTH - 2 * GAP) / 3;
 const LARGE_WIDTH = GRID_WIDTH - GAP - THIRD;
 const EMPTY_HOSTS: ReadonlySet<string> = new Set();
+/** The single-photo tile's shape when the photo's pixel size is unknown. */
+const FALLBACK_ASPECT_RATIO = 4 / 3;
+/** The tallest a single-photo tile may be, matching a single image (T-1335). */
+const MAX_IMAGE_HEIGHT = 320;
 
 /**
  * The members' renderable photos, in `index` order, mirroring `photosOf`: a
@@ -41,7 +49,16 @@ export function albumPhotosOf(messages: readonly UiMessage[]): AlbumPhoto[] {
     .sort((a, b) => (a.album?.index ?? 0) - (b.album?.index ?? 0))
     .flatMap((message) => {
       if (message.image !== undefined) {
-        return [{ message, messageId: message.id, url: message.image.url, alt: 'Photo' }];
+        return [
+          {
+            message,
+            messageId: message.id,
+            url: message.image.url,
+            alt: 'Photo',
+            width: message.image.width,
+            height: message.image.height,
+          },
+        ];
       }
       if (message.attachment !== undefined && message.attachment.kind === 'image') {
         return [
@@ -50,11 +67,32 @@ export function albumPhotosOf(messages: readonly UiMessage[]): AlbumPhoto[] {
             messageId: message.id,
             url: message.attachment.url,
             alt: message.attachment.name,
+            ...(message.attachment.width === undefined ? {} : { width: message.attachment.width }),
+            ...(message.attachment.height === undefined
+              ? {}
+              : { height: message.attachment.height }),
           },
         ];
       }
       return [];
     });
+}
+
+/**
+ * A single-photo album's aspect ratio: the photo's own pixel size, or 4:3 when
+ * it is unknown, so the tile keeps its shape and fills the media width like a
+ * single attachment image.
+ */
+function albumAspectRatio(photo: AlbumPhoto): number {
+  if (
+    photo.width === undefined ||
+    photo.height === undefined ||
+    photo.width <= 0 ||
+    photo.height <= 0
+  ) {
+    return FALLBACK_ASPECT_RATIO;
+  }
+  return photo.width / photo.height;
 }
 
 function AlbumTile({
@@ -64,6 +102,7 @@ function AlbumTile({
   onRetry,
   style,
   hidden,
+  edgeToEdge = false,
 }: {
   chatId: string;
   photo: AlbumPhoto;
@@ -71,28 +110,36 @@ function AlbumTile({
   onRetry: ((message: UiMessage) => void) | undefined;
   style: StyleProp<ViewStyle>;
   hidden?: number | undefined;
+  /** A one-photo album fills the bubble: no inner border or radius of its own. */
+  edgeToEdge?: boolean | undefined;
 }) {
-  const [broken, setBroken] = useState(false);
+  const upload = mobileUploadOf(photo.message);
+  const media = useMediaRetry(photo.url, upload.localUri);
   const openMenu = useOpenMessageMenu();
   const longPress =
     openMenu === undefined ? {} : { onLongPress: openMenu, delayLongPress: LONG_PRESS_MS };
   const hosts = useChatStore((state) => state.mediaTrustedHosts) ?? EMPTY_HOSTS;
-  const upload = mobileUploadOf(photo.message);
   const failed = photo.message.failed === true || photo.message.status === 'failed';
   const gradient = imageGradient(photo.url);
   const trusted = isLoadableMediaUrl(photo.url, hosts);
-  // A local preview (still uploading) wins; a `gradient:` URL is the mock-mode
-  // placeholder and is never fetched; otherwise a trusted URL loads directly.
-  const localUri = upload.localUri;
-  const remote = trusted && gradient === undefined && localUri === undefined && !broken;
-  const loaded = useMediaSource(chatId, photo.url, remote);
-  const source = localUri !== undefined ? { uri: localUri } : loaded;
-  const showTile = gradient !== undefined || localUri !== undefined || remote;
+  // A `gradient:` URL is the mock-mode placeholder and is never fetched;
+  // otherwise a trusted URL loads directly, while the local `file://` preview
+  // stays on top until the remote image loads (T-1337).
+  const remote = trusted && gradient === undefined && !media.failed;
+  const loadedSource = useMediaSource(chatId, photo.url, remote);
+  const source =
+    loadedSource === undefined
+      ? undefined
+      : { ...loadedSource, uri: withMediaRetry(loadedSource.uri, media.retry) };
+  const showTile = gradient !== undefined || media.localUri !== undefined || remote;
 
   return (
     <View
       style={style}
-      className="relative overflow-hidden rounded-[10px] border border-edge bg-well"
+      className={cn(
+        'relative overflow-hidden bg-well',
+        edgeToEdge ? undefined : 'rounded-[10px] border border-edge',
+      )}
     >
       <Pressable
         accessibilityRole="image"
@@ -109,13 +156,25 @@ function AlbumTile({
             style={{ width: '100%', height: '100%' }}
           />
         ) : showTile ? (
-          <Image
-            source={source ?? null}
-            accessibilityLabel={photo.alt}
-            onError={() => setBroken(true)}
-            contentFit="cover"
-            style={{ width: '100%', height: '100%' }}
-          />
+          <>
+            <Image
+              recyclingKey={withMediaRetry(photo.url, media.retry)}
+              source={source ?? null}
+              accessibilityLabel={photo.alt}
+              onLoad={media.onLoad}
+              onError={media.onError}
+              contentFit="cover"
+              style={{ width: '100%', height: '100%' }}
+            />
+            {media.localUri !== undefined && !media.loaded ? (
+              <Image
+                source={{ uri: media.localUri }}
+                accessibilityLabel={photo.alt}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+              />
+            ) : null}
+          </>
         ) : (
           <View className="h-full w-full items-center justify-center">
             <Text className="text-[11px] text-muted-foreground">Image unavailable</Text>
@@ -127,6 +186,16 @@ function AlbumTile({
           </View>
         ) : null}
       </Pressable>
+      {media.failed && media.localUri === undefined ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Retry image"
+          onPress={media.restart}
+          className="absolute inset-x-0 bottom-0 items-center justify-center bg-black/60 py-1"
+        >
+          <Text className="text-[11px] font-semibold text-white underline">Retry</Text>
+        </Pressable>
+      ) : null}
       {failed ? (
         <View className="absolute inset-x-0 bottom-0 flex-row items-center justify-center gap-2 bg-black/60 px-1 py-1">
           <Text className="text-[11px] text-white">Upload failed</Text>
@@ -169,7 +238,12 @@ export function AlbumGrid({
   if (photos.length === 0 || first === undefined) {
     return null;
   }
-  const tile = (photo: AlbumPhoto, style: StyleProp<ViewStyle>, hidden?: number) => (
+  const tile = (
+    photo: AlbumPhoto,
+    style: StyleProp<ViewStyle>,
+    hidden?: number,
+    edgeToEdge?: boolean,
+  ) => (
     <AlbumTile
       key={photo.messageId}
       chatId={chatId}
@@ -178,11 +252,21 @@ export function AlbumGrid({
       onRetry={onRetry}
       style={style}
       {...(hidden === undefined ? {} : { hidden })}
+      {...(edgeToEdge === true ? { edgeToEdge: true } : {})}
     />
   );
 
   if (photos.length === 1) {
-    return <View>{tile(first, { width: 200, height: 150 })}</View>;
+    return (
+      <View>
+        {tile(
+          first,
+          { width: GRID_WIDTH, aspectRatio: albumAspectRatio(first), maxHeight: MAX_IMAGE_HEIGHT },
+          undefined,
+          true,
+        )}
+      </View>
+    );
   }
   if (photos.length === 2) {
     return (

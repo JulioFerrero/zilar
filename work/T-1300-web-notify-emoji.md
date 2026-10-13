@@ -1,7 +1,7 @@
 ---
 id: T-1300
 title: "Web: the Notifications page lists muted chats with Unmute (WUX-39); the emoji tab gets a search box and categories (WUX-26); small copy nits (WUX-43)"
-status: todo
+status: merged
 milestone: M5
 branch: task/T-1300-web-notify-emoji
 model: auto
@@ -56,4 +56,57 @@ pnpm gate
 
 ## Report (written by the worker when done)
 
+### Recheck on main (before building)
+- **WUX-39** (confirmed): `apps/web/src/components/ChatActionsMenu.tsx` had mute only in the row/header menus; there was no mute list on `NotificationsPage`.
+- **WUX-26** (confirmed): `apps/web/src/components/sticker/emoji.ts` was a flat `COMMON_EMOJI` list of 31 glyphs, no names, no search, no categories.
+- **WUX-43** (confirmed): `ChatActionsMenu.tsx` showed `Mute…` when muted and `Mute` when unmuted (backwards); `ChatListItem.tsx` / `ChatHeader.tsx` drew `CHANNEL`/`PUBLIC` with the same `font-mono` bordered chip style the role chips use.
+
+### What I did
+- **WUX-39** — `apps/web/src/components/push/MutedChatsSection.tsx` (new), rendered at the end of `apps/web/src/routes/NotificationsPage.tsx`. It selects `chats` and `chatPrefs` from the store, lists chats muted by their own pref (a group mute sits on the General row; inherited topics are skipped so the group is not repeated), shows the mute end (`until 18:00` via `formatListTime`, or `always` for the far-future `forever` sentinel), and unmutes with the existing store action `setMuted(chatId, null)` (`store/effects/prefs.ts:126`), the same one the row menu uses. Empty state: "No muted chats." A failed unmute shows the fixed sentence "Could not unmute. Try again."
+- **WUX-26** — rewrote `apps/web/src/components/sticker/emoji.ts` to export `EMOJI` (names + one of 7 categories) and `EMOJI_CATEGORIES`; new `apps/web/src/components/sticker/EmojiTab.tsx` renders a search box (`SearchField`, filters by name; typing "heart" matches ❤️ "red heart") and category headers. `StickerPanel.tsx` now renders `<EmojiTab onEmoji={onEmoji} />` and dropped the old inline grid. No new dependency. `emoji.ts` is 134 lines (hand-curated, not generated), under the 400-line cap.
+- **WUX-43** — `ChatActionsMenu.tsx`: label is `Mute…` when unmuted (opens the duration list) and `Unmute` when muted (direct `setMuted(id, null)`); the fade-out `data` no longer toggles the wrong way. `ChatListItem.tsx` and `ChatHeader.tsx`: `CHANNEL`/`PUBLIC` became sentence-case muted text `Channel`/`Public`, no mono/border chip, so they are distinct from the role chips.
+
+### Files changed
+- `apps/web/src/components/push/MutedChatsSection.tsx` (new)
+- `apps/web/src/components/sticker/EmojiTab.tsx` (new)
+- `apps/web/src/components/sticker/emoji.ts`
+- `apps/web/src/components/StickerPanel.tsx`
+- `apps/web/src/components/ChatActionsMenu.tsx`
+- `apps/web/src/components/ChatListItem.tsx`
+- `apps/web/src/components/ChatHeader.tsx`
+- `apps/web/src/routes/NotificationsPage.tsx`
+- `work/T-1300-web-notify-emoji.md`
+
+### Commands
+- `pnpm install`: 1181 packages, done (first run).
+- Single tests: none — the change is UI only and there is no nearby test file for these components (gate reported `SKIP tests @zilar/web (no nearby test files)`).
+- `pnpm gate` (repo root): first run FAILed only on `format` (prettier in `emoji.ts`) and then on `lint` (`react(purity)`: `Date.now()` during render in `MutedChatsSection.tsx`). Both fixed. Final run:
+  ```
+  gate: 9 changed file(s) against main
+  PASS  install (frozen)  (1.7s)
+  PASS  format  (1.5s)
+  PASS  lint  (0.9s)
+  PASS  typecheck  (8.0s)
+  PASS  effect  (1.5s)
+  SKIP tests @zilar/web (no nearby test files)
+  scope: every changed file is inside the Allowed files
+  migration: every added migration continues from the base
+  GATE PASS
+  ```
+
+### Deviations / notes
+- The mute menu now unmutes directly when muted (it previously opened the duration list, whose only use then was Unmute). Muting with a chosen duration is still offered when unmuted. This matches the spec wording ("Mute…" when unmuted, "Unmute" when muted) and Telegram.
+- `emoji.ts` was expanded from 31 to 104 curated glyphs so the categories are not near-empty; names are lowercase for search.
+- No migration, no dependency, no tests (UI).
+
+### Blocked / needs a decision
+- None.
+
 ## Review (written by Claude)
+
+**Lead, 2026-10-13: approved. Pre-review clean (2 nits).**
+- **Lead's check on the web mock:**
+  - I muted Marta for 8 hours from the row menu; Notifications → Muted chats lists "Marta, until 09:33" with Unmute;
+  - Unmute empties the list ("No muted chats.");
+  - in the Emoji tab, "heart" finds 🥰 🫶 ❤️ 💔.
+- **Lead's checks after the rebase:** web tsc: 0 errors. The largest touched file is `ChatHeader.tsx` at 365 lines.

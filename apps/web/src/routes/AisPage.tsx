@@ -9,7 +9,7 @@ import type { ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { AiBadge } from '@/components/AiBadge';
-import { Avatar } from '@/components/Avatar';
+import { EntityAvatar } from '@/components/EntityAvatar';
 import { FieldError } from '@/components/ais/AiPageShell';
 import { Button } from '@/components/ui/button';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
@@ -70,7 +70,7 @@ export function AisPage() {
     <SettingsShell
       title="My AIs"
       subtitle="Your AIs, their model and their spending limits."
-      onBack={() => navigate('/')}
+      onBack={() => navigate('/settings')}
     >
       <div className={SETTINGS_COLUMN}>
         {loadError === undefined && ais === undefined && (
@@ -178,7 +178,7 @@ function AiRow({
 
   return (
     <div className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
-      <Avatar id={ai.jid} name={ai.name} size={44} ai avatarUrl={ai.avatarUrl} />
+      <EntityAvatar person={{ id: ai.jid, name: ai.name, avatarUrl: ai.avatarUrl }} size={44} ai />
       <div className="min-w-0 flex-1 basis-40">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[15px] font-medium">{ai.name}</span>

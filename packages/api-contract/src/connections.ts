@@ -45,6 +45,17 @@ export const CreateConnectionPayload = Schema.Struct({
 export type CreateConnectionPayload = typeof CreateConnectionPayload.Type;
 
 /**
+ * Replacing the key of an existing connection (T-1292). Only the key changes:
+ * the provider and label are fixed at create. The same trim and length rules
+ * as `CreateConnectionPayload` apply, and the key stays write-only.
+ */
+export const UpdateConnectionPayload = Schema.Struct({
+  key: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(16384)),
+});
+
+export type UpdateConnectionPayload = typeof UpdateConnectionPayload.Type;
+
+/**
  * Every field of a public connection: the encrypted key is not one of them.
  * `provider` and `status` stay plain strings on the wire, so an older app
  * still shows a provider a newer server added.
@@ -76,6 +87,11 @@ export const ConnectionsGroup = HttpApiGroup.make('connections')
     HttpApiEndpoint.post('create', '/connections', {
       payload: CreateConnectionPayload,
       success: ConnectionView.pipe(HttpApiSchema.status(201)),
+    }),
+    HttpApiEndpoint.patch('update', '/connections/:id', {
+      params: ConnectionIdParams,
+      payload: UpdateConnectionPayload,
+      success: ConnectionView,
     }),
     HttpApiEndpoint.post('test', '/connections/:id/test', {
       params: ConnectionIdParams,

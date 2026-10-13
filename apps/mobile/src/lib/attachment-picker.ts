@@ -8,9 +8,15 @@ import { Effect, type Effect as EffectType } from 'effect';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library/legacy';
 
-import { extensionForMime, MAX_ATTACHMENT_BYTES, mimeForAsset } from './attachments';
-import { createImageDownscaler } from './attachment-downscale';
+import {
+  extensionForMime,
+  MAX_ATTACHMENT_BYTES,
+  mimeForAsset,
+  mimeForFileName,
+} from './attachments';
+import { createImageDownscaler, type ImageDownscaler } from './attachment-downscale';
 import type { AttachmentPicker, PickedFile, PickResult } from './attachment-ports';
 import {
   CAMERA_DENIED_MESSAGE,
@@ -24,6 +30,18 @@ import {
 
 function tooLarge(size: number | undefined): boolean {
   return size !== undefined && size > MAX_ATTACHMENT_BYTES;
+}
+
+/**
+ * The fixed message for an empty (real zero bytes) or over-cap file, or
+ * `undefined` when the size is fine. Shared by the library pick and the
+ * gallery grid (T-1320), so both refuse the same files with the same sentence.
+ */
+function sizeErrorMessage(size: number | undefined): string | undefined {
+  if (size !== undefined && size === 0) {
+    return EMPTY_MESSAGE;
+  }
+  return tooLarge(size) ? TOO_LARGE_MESSAGE : undefined;
 }
 
 function pickedFile(input: {
@@ -40,11 +58,9 @@ function pickedFile(input: {
   // The picker reads the size from the file first (see `createAttachmentPicker`
   // below); `measuredSize` is that stat when the picker reported nothing.
   const size = input.size ?? input.measuredSize;
-  if (size !== undefined && size === 0) {
-    return { status: 'error', message: EMPTY_MESSAGE };
-  }
-  if (tooLarge(size)) {
-    return { status: 'error', message: TOO_LARGE_MESSAGE };
+  const sizeError = sizeErrorMessage(size);
+  if (sizeError !== undefined) {
+    return { status: 'error', message: sizeError };
   }
   const mime = mimeForAsset(input.mimeType);
   const fallbackName = `photo.${extensionForMime(mime)}`;
@@ -207,6 +223,113 @@ export function createAttachmentPicker(sizeReader?: SizeReader): AttachmentPicke
     pickImageOrVideo: () => Effect.runPromise(orErrorResult(pickImageOrVideoEffect())),
     takePhoto: () => Effect.runPromise(orErrorResult(takePhotoEffect())),
     pickFile: () => Effect.runPromise(orErrorResult(pickFileEffect())),
+  };
+}
+
+/** One page of gallery assets as the inline grid shows them (T-1320). */
+export interface GalleryPage {
+  assets: GalleryAsset[];
+  endCursor: string;
+  hasNextPage: boolean;
+}
+
+/** One recent asset of the phone's media library, before it is picked. */
+export interface GalleryAsset {
+  id: string;
+  /** Display URI: `ph://*` on iOS, `file://*` on Android. */
+  uri: string;
+  filename: string;
+  mediaType: 'photo' | 'video';
+  width: number;
+  height: number;
+  /** Seconds for a video, 0 for a photo. */
+  duration: number;
+}
+
+/**
+ * Reads the phone's recent photos and videos for the attach sheet's Gallery tab
+ * (T-1320). `toPickedFile` turns one selected asset into the same `PickedFile`
+ * the library picker stages: it resolves a local `file://` URI (the `ph://`
+ * display URI is not uploadable), reads the byte size, refuses an empty or
+ * over-cap file with the same fixed sentence, and runs the photo downscale,
+ * exactly like `pickImageOrVideo` does for `expo-image-picker`.
+ */
+export type GalleryPickResult =
+  { status: 'picked'; file: PickedFile } | { status: 'error'; message: string };
+
+export interface GalleryReader {
+  requestPermission(): Promise<boolean>;
+  loadPage(input: { after?: string | undefined; pageSize: number }): Promise<GalleryPage>;
+  toPickedFile(asset: GalleryAsset): Promise<GalleryPickResult>;
+}
+
+/** One media-library asset as the gallery grid and the picker want it. */
+function galleryAssetFor(asset: MediaLibrary.Asset): GalleryAsset {
+  return {
+    id: asset.id,
+    uri: asset.uri,
+    filename: asset.filename,
+    mediaType: asset.mediaType === 'video' ? 'video' : 'photo',
+    width: asset.width,
+    height: asset.height,
+    duration: asset.duration,
+  };
+}
+
+/**
+ * The real gallery reader: `expo-media-library` for the pages and the local
+ * URI, the shared size reader and photo downscaler for the staged bytes.
+ * `MediaLibrary.getAssetInfoAsync` may fail for an iCloud asset; the display
+ * URI is then kept, so the grid still works and only the upload is left to
+ * fail like any other.
+ */
+export function createGalleryReader(options?: {
+  sizeReader?: SizeReader | undefined;
+  downscaler?: ImageDownscaler | undefined;
+}): GalleryReader {
+  const sizeReader = options?.sizeReader ?? createSizeReader();
+  const downscaler = options?.downscaler ?? createImageDownscaler({ sizeReader });
+  return {
+    requestPermission: () =>
+      // Granular read permissions: photos and videos only, so Android 13+ never
+      // asks for audio (Telegram asks for photos and videos too). The signature
+      // is `requestPermissionsAsync(writeOnly?, granularPermissions?)`
+      // (`expo-media-library` 57, `GranularPermission = 'audio' | 'photo' | 'video'`).
+      MediaLibrary.requestPermissionsAsync(false, ['photo', 'video'])
+        .then((response) => response.granted)
+        .catch(() => false),
+    loadPage: async ({ after, pageSize }) => {
+      const page = await MediaLibrary.getAssetsAsync({
+        first: pageSize,
+        mediaType: ['photo', 'video'],
+        sortBy: [['creationTime', false]],
+        ...(after === undefined ? {} : { after }),
+      });
+      return {
+        assets: page.assets.map(galleryAssetFor),
+        endCursor: page.endCursor,
+        hasNextPage: page.hasNextPage,
+      };
+    },
+    toPickedFile: async (asset) => {
+      const info = await MediaLibrary.getAssetInfoAsync(asset.id).catch(() => undefined);
+      const uri = info?.localUri ?? asset.uri;
+      const fallback = asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
+      const base: PickedFile = {
+        uri,
+        name: asset.filename,
+        mimeType: mimeForFileName(asset.filename, fallback),
+        width: asset.width,
+        height: asset.height,
+      };
+      const size = await sizeReader.sizeOf(uri);
+      const sizeError = sizeErrorMessage(size);
+      if (sizeError !== undefined) {
+        return { status: 'error', message: sizeError };
+      }
+      const file = await downscaler.downscale(size === undefined ? base : { ...base, size });
+      return { status: 'picked', file };
+    },
   };
 }
 

@@ -4,6 +4,7 @@ import { isIosDevice, isStandaloneDisplay } from '@/lib/push';
 import { usePushEnable } from '@/lib/push/usePushEnable';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { DevicesSection } from '@/components/push/DevicesSection';
+import { MutedChatsSection } from '@/components/push/MutedChatsSection';
 import { PreviewsSection } from '@/components/push/PreviewsSection';
 import { ThisDeviceCard } from '@/components/push/ThisDeviceCard';
 import { Button } from '@/components/ui/button';
@@ -64,7 +65,7 @@ export function NotificationsPage() {
     <SettingsShell
       title="Notifications"
       subtitle="Push this device when a message arrives."
-      onBack={() => navigate('/')}
+      onBack={() => navigate('/settings')}
     >
       <div className={SETTINGS_COLUMN}>
         {status === 'loading' && (
@@ -176,6 +177,7 @@ export function NotificationsPage() {
             </section>
           </div>
         )}
+        <MutedChatsSection />
       </div>
     </SettingsShell>
   );

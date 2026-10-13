@@ -7,8 +7,14 @@ import type { FcmFetch, FcmTokenProvider } from './fcm-token';
 
 const FCM_HOST = 'https://fcm.googleapis.com';
 
+// The chat kind a wake carries, so the phone posts each notification on the
+// matching Android notification channel (T-1302): "Direct messages", "Groups"
+// or "Channels". Mirrors the mobile `PushChatKind`.
+export type PushChatKind = 'dm' | 'group' | 'channel';
+
 export interface FcmWakeData {
   chatId: string;
+  chatKind: PushChatKind;
   messageId?: string;
   serverId: string;
 }
@@ -42,8 +48,14 @@ export class FcmSendError extends Error {
 // `priority: "high"`, `ttl: "3600s"`, and no `notification` block. A wake with
 // no message id (the archive row carried none) leaves `messageId` out entirely.
 export function fcmMessageBody(token: string, data: FcmWakeData) {
-  const messageData: { chatId: string; messageId?: string; serverId: string } = {
+  const messageData: {
+    chatId: string;
+    chatKind: PushChatKind;
+    messageId?: string;
+    serverId: string;
+  } = {
     chatId: data.chatId,
+    chatKind: data.chatKind,
     serverId: data.serverId,
   };
   if (data.messageId !== undefined) {

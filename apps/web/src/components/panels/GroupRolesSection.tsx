@@ -4,7 +4,7 @@ import type { GroupRole } from '@/lib/api';
 import { createGroupRole, deleteGroupRole, renameGroupRole, setGroupRoleMembers } from '@/lib/api';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { FieldError } from '../ais/AiPageShell';
-import { Avatar } from '../Avatar';
+import { EntityAvatar } from '../EntityAvatar';
 import { Button } from '../ui/button';
 import { Checkbox } from '../ui/checkbox';
 import { StateMessage } from '../ui/state-message';
@@ -23,14 +23,11 @@ export function GroupRolesSection({
   members,
   rolesState,
   onReload,
-  seedFor,
 }: {
   groupId: string;
   members: Array<{ userId: string; name: string; avatarUrl?: string | undefined }>;
   rolesState: RolesView;
   onReload: () => void;
-  /** T-1209: the ball seed for a member (their bare JID). */
-  seedFor: (userId: string) => string;
 }) {
   const [newName, setNewName] = useState('');
   const [renamingId, setRenamingId] = useState<string | undefined>(undefined);
@@ -234,12 +231,7 @@ export function GroupRolesSection({
                           label={`${member.name} holds ${role.name}`}
                           onCheckedChange={() => toggleHolder(role, member.userId)}
                         />
-                        <Avatar
-                          id={seedFor(member.userId)}
-                          name={member.name}
-                          size={28}
-                          avatarUrl={member.avatarUrl}
-                        />
+                        <EntityAvatar person={member} size={28} />
                         <span className="min-w-0 flex-1 truncate text-[14px]">{member.name}</span>
                       </label>
                     );

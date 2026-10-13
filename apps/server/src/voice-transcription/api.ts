@@ -71,6 +71,9 @@ export function createVoiceTranscriptionApi(
     });
   const fetchAudio = deps.audioFetcher ?? defaultAudioFetcher;
   const transcribe = deps.transcribe ?? defaultTranscriber();
+  // ejabberd resolves the upload vhost from the Host header, so the internal
+  // fetch must carry the public host, not `ejabberd:5280` (T-1315).
+  const uploadHost = new URL(deps.config.PUBLIC_URL).host;
   // In-flight transcripts by URL hash: two simultaneous taps on the same
   // voice message share one fetch + provider call instead of double-billing.
   // `shareInFlight` removes the entry in `finally`, so a failure (or an
@@ -165,6 +168,7 @@ export function createVoiceTranscriptionApi(
               db,
               urlHash,
               internalUrl,
+              uploadHost,
               settings,
               fetchAudio,
               transcribe,

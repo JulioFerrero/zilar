@@ -11,6 +11,7 @@ import { TopicKeyboardNav } from '../TopicKeyboardNav';
 import { Button } from '../ui/button';
 import { StateMessage } from '../ui/state-message';
 import { normalizePeopleQuery, PEOPLE_SEARCH_MIN_LENGTH } from '@/lib/usePeopleSearch';
+import { ContactRequestsRow } from './ContactRequestsRow';
 import type { ChatRows } from './rowsSelector';
 
 export interface ChatListBodyProps {
@@ -102,6 +103,9 @@ export function ChatListBody({
               </Button>
             </div>
           )}
+          {/* WUX-19: pending incoming contact requests show as a row at the
+              top of the list, above the people hits and chat rows. */}
+          <ContactRequestsRow isWide={isWide} />
           {/* People hits come first: 3+ characters (after stripping `@`) show
               matching people and public groups, above the chat-name matches
               and the message hits. */}
@@ -127,13 +131,10 @@ export function ChatListBody({
                     key={group.key}
                     groupTitle={group.title}
                     groupId={group.groupId}
-                    avatarSeed={
-                      (
-                        group.topics.find((topic) => topic.topic?.isGeneral === true) ??
-                        group.topics[0]
-                      )?.id ?? group.groupId
+                    chat={
+                      group.topics.find((topic) => topic.topic?.isGeneral === true) ??
+                      group.topics[0]!
                     }
-                    avatarUrl={group.avatarUrl}
                     topics={group.topics}
                     selectedId={activeChatId}
                     collapsed={collapsed.has(group.groupId)}

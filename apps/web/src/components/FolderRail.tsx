@@ -1,15 +1,13 @@
 import type { KeyboardEvent } from 'react';
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { useNavigate } from 'react-router';
-import { Bot, LayoutGrid, Pencil, Plus, UserRound } from 'lucide-react';
+import { LayoutGrid, Pencil } from 'lucide-react';
 import { folderIconComponent } from './folderIcon';
-import { FolderEditorDialog } from './FolderEditorDialog';
-import { FOLDERS_MAX } from '@zilar/chat-core';
 import { folderUnreadTotal } from '@zilar/chat-core';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
 
-/** Folder rail for wide screens: All chats, every folder, then My AIs and Profile keys. */
+/** Folder rail for wide screens: All chats, every folder, then the Edit key. */
 export function FolderRail() {
   const folders = useChatSelector((s) => s.folders);
   const chats = useChatSelector((s) => s.chats);
@@ -17,7 +15,6 @@ export function FolderRail() {
   const setActiveFolder = useChatSelector((s) => s.setActiveFolder);
   const navigate = useNavigate();
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const [editorOpen, setEditorOpen] = useState(false);
 
   const items: {
     key: string;
@@ -46,19 +43,14 @@ export function FolderRail() {
   ];
 
   // Arrow keys walk every key in the rail: the tablist items (All + folders),
-  // then New (when shown), Edit, My AIs and Profile. Moving onto a folder
-  // tab selects it (selection follows focus); moving onto an action key only
-  // moves focus, Enter/Space activates it.
+  // then Edit. Moving onto a folder tab selects it (selection follows focus);
+  // moving onto Edit only moves focus, Enter/Space activates it.
   const tabCount = items.length;
-  const showNew = folders.length < FOLDERS_MAX;
-  const editIndex = tabCount + (showNew ? 1 : 0);
+  const editIndex = tabCount;
 
   const keyActions: { onSelect: () => void; selects: boolean }[] = [
     ...items.map((item) => ({ onSelect: item.onSelect, selects: true })),
-    ...(showNew ? [{ onSelect: () => setEditorOpen(true), selects: false }] : []),
     { onSelect: () => navigate('/settings/folders'), selects: false },
-    { onSelect: () => navigate('/settings/ais'), selects: false },
-    { onSelect: () => navigate('/settings/profile'), selects: false },
   ];
 
   const moveFocus = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
@@ -133,22 +125,6 @@ export function FolderRail() {
               </button>
             );
           })}
-          {showNew && (
-            <button
-              type="button"
-              aria-label="New folder"
-              title="New folder"
-              ref={(element) => {
-                itemRefs.current[items.length] = element;
-              }}
-              onClick={() => setEditorOpen(true)}
-              onKeyDown={(event) => moveFocus(event, items.length)}
-              className={footKeyClass}
-            >
-              <Plus className="h-5 w-5" aria-hidden="true" />
-              <span className="max-w-full truncate">New</span>
-            </button>
-          )}
         </div>
         <div className="mt-auto flex flex-col gap-1 pt-2">
           <button
@@ -165,35 +141,8 @@ export function FolderRail() {
             <Pencil className="h-5 w-5" aria-hidden="true" />
             <span className="max-w-full truncate">Edit</span>
           </button>
-          <button
-            ref={(element) => {
-              itemRefs.current[editIndex + 1] = element;
-            }}
-            type="button"
-            aria-label="My AIs"
-            onClick={() => navigate('/settings/ais')}
-            onKeyDown={(event) => moveFocus(event, editIndex + 1)}
-            className={footKeyClass}
-          >
-            <Bot className="h-5 w-5" aria-hidden="true" />
-            <span className="max-w-full truncate">My AIs</span>
-          </button>
-          <button
-            ref={(element) => {
-              itemRefs.current[editIndex + 2] = element;
-            }}
-            type="button"
-            aria-label="Profile"
-            onClick={() => navigate('/settings/profile')}
-            onKeyDown={(event) => moveFocus(event, editIndex + 2)}
-            className={footKeyClass}
-          >
-            <UserRound className="h-5 w-5" aria-hidden="true" />
-            <span className="max-w-full truncate">Profile</span>
-          </button>
         </div>
       </nav>
-      {editorOpen && <FolderEditorDialog folder={null} onClose={() => setEditorOpen(false)} />}
     </>
   );
 }

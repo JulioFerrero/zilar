@@ -84,6 +84,47 @@ export async function createConnection(
   return toPublicConnection(row);
 }
 
+export interface UpdateConnectionKeyInput {
+  id: string;
+  owner: string;
+  encryptedKey: string;
+}
+
+// Replaces the stored key in place (T-1292). One transaction: the row update is
+// owner-scoped, so a row another user owns is not touched (the caller sees null
+// and the route answers 404), and the AIs' `litellm_model_id` is cleared in the
+// same transaction, so `ensureAiModel` registers the model again on their next
+// turn. The plaintext key never enters this shape.
+export async function updateConnectionKey(
+  db: ServerDatabase,
+  input: UpdateConnectionKeyInput,
+): Promise<PublicConnection | null> {
+  const row = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const [updated] = yield* sql<ConnectionRow>`UPDATE provider_connections
+            SET encrypted_key = ${input.encryptedKey}, updated_at = now()
+            WHERE id = ${input.id} AND owner = ${input.owner}
+            RETURNING *`;
+          if (!updated) {
+            return undefined;
+          }
+          yield* sql`UPDATE llm_virtual_keys SET litellm_model_id = NULL
+            WHERE ai_id IN (
+              SELECT id FROM ais
+              WHERE provider_connection_id = ${input.id} AND owner = ${input.owner}
+            )`;
+          return updated;
+        }),
+      );
+    }),
+  );
+  return row === undefined ? null : toPublicConnection(row);
+}
+
 // Looks up one connection owned by `owner`. Returns null for a missing id and
 // for an id owned by someone else alike, so existence is never leaked.
 export async function findOwnedConnection(

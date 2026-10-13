@@ -6,6 +6,7 @@
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
+import { pairHasBlock } from '../blocks/service';
 import type { ServerDatabase } from '../db/client';
 import type { GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
@@ -15,6 +16,7 @@ import type { InviteLogger } from './service';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { PUBLIC_GROUP_MAX_MEMBERS } from '../directory/service';
+import { groupOwnerId } from './queries';
 
 export interface JoinPublicGroupDeps {
   db: ServerDatabase;
@@ -32,7 +34,9 @@ export interface JoinPublicGroupResult {
 }
 
 // Unknown and private groups answer the same 404, so group ids cannot be
-// probed from here. A user already in the group gets the same answer as a
+// probed from here. A block between the joiner and the owner (either
+// direction) answers that same 404 (T-1286, SG-8). A user already in the
+// group gets the same answer as a
 // success (idempotent). Beyond the cap (people and AIs share it — one
 // rule, counted by `countOccupants` in the pre-check and in the
 // transaction alike) the join answers 409 `group_full`. The transaction
@@ -57,6 +61,13 @@ export async function joinPublicGroup(
   );
   // Private and unknown read the same: no oracle for strangers.
   if (!group || group.visibility !== 'public') {
+    throw new HttpError(404, 'not_found', 'Group not found');
+  }
+  // SG-8: a block in either direction between the joiner and the owner
+  // refuses the join, with the same 404 a private or unknown group answers
+  // so a block is never an oracle. The owner is the `owner` member row.
+  const ownerId = await groupOwnerId(deps.db, groupId);
+  if (ownerId !== null && (await pairHasBlock(deps.db, userId, ownerId))) {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
   const [existing] = await runSql(

@@ -25,8 +25,10 @@ export function LoadingScreen() {
 
 /** Requires a session, but not a display name (the `/welcome/name` step). */
 export function RequireUser({ children }: { children: ReactNode }) {
-  const { status } = useSession();
-  if (status === 'loading') {
+  const { status, me } = useSession();
+  // An offline session with no known user is still loading: the retry may
+  // bring one back (T-1304). With a user it renders like a signed-in one.
+  if (status === 'loading' || (status === 'offline' && me === null)) {
     return <LoadingScreen />;
   }
   if (status === 'guest') {

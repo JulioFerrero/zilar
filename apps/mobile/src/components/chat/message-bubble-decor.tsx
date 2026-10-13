@@ -8,6 +8,7 @@ import { PulseDot } from '@/components/chat/typing-dots';
 import { Text } from '@/components/ui/text';
 import { SEEN } from '@/lib/colors';
 import { raisedPill } from '@/lib/depth';
+import { messageAccessibilityLabel } from '@/lib/message-a11y';
 import type { ActiveSource } from '@/lib/use-smooth-text';
 import { cn } from '@/lib/utils';
 
@@ -70,7 +71,7 @@ export function BubbleMeta({
   const ticksColor = message.status === 'read' ? SEEN : color;
   return (
     <View className={cn('flex-row items-center gap-1', className)}>
-      <Text className="font-mono text-[10px]" color={color}>
+      <Text className="font-mono text-[11px]" color={color}>
         {formatTime(message.createdAt)}
       </Text>
       {outgoing && message.status === 'failed' ? (
@@ -138,6 +139,7 @@ export function BigEmoji({
     <Pressable
       onLongPress={onLongPress}
       delayLongPress={LONG_PRESS_MS}
+      accessibilityLabel={messageAccessibilityLabel(message, outgoing)}
       className={cn('flex-col', outgoing ? 'items-end' : 'items-start')}
     >
       <Text
@@ -151,7 +153,7 @@ export function BigEmoji({
         className="mt-1 flex-row items-center gap-1 self-center rounded-full px-2 py-0.5"
         style={raisedPill}
       >
-        <Text className="font-mono text-[10px] text-muted-foreground">
+        <Text className="font-mono text-[11px] text-muted-foreground">
           {message.edited === true ? 'edited ' : ''}
           {formatTime(message.createdAt)}
         </Text>

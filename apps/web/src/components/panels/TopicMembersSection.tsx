@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import type { ApiFailure } from '@/lib/effect/errors';
 import type { GroupDetail, TopicMember } from '@/lib/api';
-import { Avatar } from '../Avatar';
+import { EntityAvatar } from '../EntityAvatar';
 import { Button } from '../ui/button';
 import { StateMessage } from '../ui/state-message';
 import { AddMemberButton, RemoveMemberButton } from './TopicActionButtons';
@@ -36,7 +36,6 @@ export function TopicMembersSection({
   removeMember,
   addMember,
   onError,
-  seedFor,
 }: {
   isPrivate: boolean;
   state: MembersState;
@@ -54,8 +53,6 @@ export function TopicMembersSection({
   removeMember: (userId: string) => Effect.Effect<void, ApiFailure>;
   addMember: (userId: string) => Effect.Effect<void, ApiFailure>;
   onError: (message: string) => void;
-  /** T-1209: the ball seed for a member (their bare JID). */
-  seedFor: (userId: string) => string;
 }) {
   return (
     <section aria-label="Members" className="flex flex-col gap-1">
@@ -77,11 +74,13 @@ export function TopicMembersSection({
                   key={member.userId}
                   className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover"
                 >
-                  <Avatar
-                    id={seedFor(member.userId)}
-                    name={member.name}
+                  <EntityAvatar
+                    person={{
+                      userId: member.userId,
+                      name: member.name,
+                      avatarUrl: detail?.avatarUrl,
+                    }}
                     size={32}
-                    avatarUrl={detail?.avatarUrl}
                   />
                   <span className="min-w-0 flex-1 truncate text-[14px]">
                     {member.name}
@@ -109,7 +108,6 @@ export function TopicMembersSection({
                 <AddMemberButton
                   key={member.userId}
                   member={member}
-                  seed={seedFor(member.userId)}
                   add={addMember}
                   onError={onError}
                 />

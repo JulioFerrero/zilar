@@ -4,7 +4,7 @@
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
-import { SqlClient } from 'effect/sql';
+import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { InviteRow } from '../db/rows';
 import { runSql } from '../effect/sql';
@@ -86,22 +86,30 @@ export async function findUsableInvite(
   return invite ?? null;
 }
 
+// T-1286 (SG-9): the atomic consume as an Effect on the ambient `SqlClient`, so
+// the SQL adapter can run it in the same transaction as the user insert. A
+// failed insert rolls the use back; two racing sign-ups serialize on the invite
+// row, so the cap cannot be exceeded.
+export function consumeInviteEffect(
+  code: string,
+  now: Date = new Date(),
+): Effect.Effect<Invite | null, SqlError.SqlError, SqlClient.SqlClient> {
+  return Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const [invite] = yield* sql<Invite>`UPDATE invites SET uses = uses + 1
+      WHERE code = ${code} AND revoked_at IS NULL AND expires_at > ${now} AND uses < max_uses
+      RETURNING *`;
+    return invite ?? null;
+  });
+}
+
 export async function consumeInvite(
   db: ServerDatabase,
   code: string,
   now: Date = new Date(),
 ): Promise<Invite | null> {
   // One conditional statement, so two concurrent consumes cannot both win.
-  const [invite] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<Invite>`UPDATE invites SET uses = uses + 1
-        WHERE code = ${code} AND revoked_at IS NULL AND expires_at > ${now} AND uses < max_uses
-        RETURNING *`;
-    }),
-  );
-  return invite ?? null;
+  return runSql(db, consumeInviteEffect(code, now));
 }
 
 export async function revokeInvite(

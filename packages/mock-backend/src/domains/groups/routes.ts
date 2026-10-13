@@ -2,9 +2,11 @@
 // the same bodies and mutations as web's mock (`apps/web/src/mock/api.ts` group
 // ranges). The public-group `by-handle` lookup and join, and the invite-link
 // routes, belong to neighbouring domains and are left untouched here.
-import type { GroupAi, GroupMember } from '@zilar/api-contract';
+import type { GroupAi, GroupChatEntry, GroupMember } from '@zilar/api-contract';
 import { classifyHandle, normalizeHandle } from '@zilar/protocol';
 import type { MockData } from '../../state';
+import { generalTopicRow, groupRoomJid } from '../chats/general-topics';
+import { addChat } from '../directory/groups';
 import {
   badRequest,
   conflict,
@@ -70,13 +72,33 @@ function createGroup(data: MockData, request: MockHttpRequest): Response {
       : null;
   const memberIds = readStringArray(body.memberIds).filter((userId) => userId !== data.me.id);
   const managerId = data.me.id;
+  const groupId = data.nextGroupId();
+  // T-1314 fix 1: the step-2 screen sends `visibility` + `handle`
+  // (`buildGroupCreateInput`) and the real server claims the public handle in
+  // the create transaction (`apps/server/src/groups/service.ts:173-199`). The
+  // mock stored every group `private`/`handle: null`, so a Public group the
+  // user made did not exist. Validate and store the claim like `patchGroup`.
+  const publicGroup = body.visibility === 'public';
+  const rawHandle = typeof body.handle === 'string' ? body.handle.trim() : '';
+  if (publicGroup) {
+    const reason = handleReason(rawHandle, groupId);
+    if (reason === 'invalid') {
+      return badRequest('handle_invalid', 'That handle is not available');
+    }
+    if (reason !== null) {
+      return conflict(
+        reason === 'reserved' ? 'handle_reserved' : 'handle_taken',
+        'That handle is not available',
+      );
+    }
+  }
   const group: MockGroup = {
-    id: data.nextGroupId(),
+    id: groupId,
     title,
     createdBy: managerId,
     membersCanCreateTopics: false,
-    visibility: 'private',
-    handle: null,
+    visibility: publicGroup ? 'public' : 'private',
+    handle: publicGroup ? rawHandle : null,
     members: [
       { userId: managerId, name: personName(data, managerId), role: 'owner', roles: [] },
       ...unique(memberIds).map((userId) => ({
@@ -93,7 +115,41 @@ function createGroup(data: MockData, request: MockHttpRequest): Response {
     group.description = description;
   }
   data.putGroup(group);
+  // T-1314: the created group joins the caller's chat list and gets its General
+  // topic in the group's own room, the way the server does in the same
+  // transaction (`apps/server/src/groups/service.ts:157-171`). Without the chat
+  // row `/api/chats` never carried the new group, so the group screen after
+  // Create bounced straight back to the list.
+  const chatJid = groupRoomJid(group.id);
+  addChat(data, chatEntryOf(group, chatJid));
+  data.putTopic(generalTopicRow(group.id, chatJid));
   return jsonResponse(group, 201);
+}
+
+/** The `/chats` row of a freshly created group: the creator owns it. */
+function chatEntryOf(group: MockGroup, chatJid: string): GroupChatEntry {
+  const memberCount = group.members.length;
+  return {
+    kind: 'group',
+    chatJid,
+    title: group.title,
+    groupId: group.id,
+    memberCount,
+    role: 'owner',
+    visibility: group.visibility,
+    handle: group.handle ?? null,
+    // T-1318: stamp the creation time so the chat list sorts the group first
+    // while it has no messages, the way Telegram does (the real server sends
+    // the group row's `created_at`, `apps/server/src/groups/queries.ts:55`).
+    createdAt: new Date().toISOString(),
+    ...(group.kind === 'channel'
+      ? {
+          chatKind: 'channel' as const,
+          subscriberCount: memberCount,
+          description: group.description ?? null,
+        }
+      : {}),
+  };
 }
 
 function patchGroup(data: MockData, group: MockGroup, request: MockHttpRequest): Response {

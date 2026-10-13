@@ -7,7 +7,7 @@ import type { ServerDatabase } from '../db/client';
 import { setUpContactsFromInvite } from '../contacts/service';
 import { ensureXmppAccount } from '../xmpp/provisioning';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
-import { consumeInvite, findUsableInvite } from './invites';
+import { findUsableInvite } from './invites';
 import { cancelDeletionOnSignIn } from './deletion-request';
 import type { Mailer } from './mailer';
 import { isTransportConfigured, MailNotConfiguredError } from './mailer';
@@ -70,13 +70,34 @@ export function createAuth({
   logger,
 }: CreateAuthInput & { logger?: AuthLogger }) {
   const profileVersions = new Map<string, number>();
+  // T-1286 (SG-9): the invite code of an in-flight sign-up, handed from the
+  // `create.before` hook to the SQL adapter, which consumes it in the same
+  // transaction as the user insert. Keyed by the lowercased email.
+  const pendingInviteCodes = new Map<string, string>();
   return betterAuth({
     baseURL: config.BETTER_AUTH_URL,
     secret: config.BETTER_AUTH_SECRET,
-    database: effectSqlAdapter(db),
+    database: effectSqlAdapter(db, pendingInviteCodes),
     emailAndPassword: { enabled: false },
     telemetry: { enabled: false },
-    logger: { disabled: true },
+    // T-1296/SEC-11: `logger: { disabled: true }` silenced Better Auth's own
+    // warnings and errors — notably the rate-limit fallback to one shared
+    // bucket and "Invalid origin". Forward `warn` and `error` to the server
+    // logger that `main.ts` passes in; Better Auth's own default level is
+    // `warn`, so `info`/`debug` are dropped. Leaving `level` unset also keeps
+    // Better Auth's API-error handler (which logs through its global console
+    // logger, not this one) from double-logging client errors. Better Auth
+    // only passes a formatted message (never a request body), and the empty
+    // fields object keeps a secret from riding along.
+    logger: {
+      log: (level, message) => {
+        if (level === 'error') {
+          logger?.error({}, message);
+        } else if (level === 'warn') {
+          logger?.warn({}, message);
+        }
+      },
+    },
     trustedOrigins: config.WEB_ORIGINS,
     rateLimit: {
       enabled: true,
@@ -195,6 +216,12 @@ export function createAuth({
           },
         },
         create: {
+          // T-1286 (SG-9): `before` validates the invite so an invalid, expired
+          // or used-up code still refuses sign-up before the insert. The use is
+          // consumed by the SQL adapter in the SAME transaction as the user
+          // insert (the code is handed over in `pendingInviteCodes`), so a
+          // failed insert never burns it and two racing sign-ups cannot exceed
+          // the cap.
           before: (user, context) =>
             Effect.runPromise(
               Effect.gen(function* () {
@@ -206,7 +233,7 @@ export function createAuth({
                     }),
                   );
                 }
-                const invite = yield* Effect.promise(() => consumeInvite(db, code));
+                const invite = yield* Effect.promise(() => findUsableInvite(db, code));
                 if (!invite) {
                   return yield* Effect.fail(
                     new APIError('BAD_REQUEST', {
@@ -214,6 +241,9 @@ export function createAuth({
                     }),
                   );
                 }
+                // Hand the code to the SQL adapter, which consumes it in the
+                // same transaction as the user insert (SG-9).
+                pendingInviteCodes.set(user.email, code);
                 return { data: user };
               }),
             ),
@@ -232,12 +262,15 @@ export function createAuth({
                   ),
                 );
 
-                // Contacts from the invite: record which invite created the user
-                // and, when the inviter is known, make them contacts and add the
-                // two roster items. Roster failures are retried on the token
-                // endpoint, so they must never block sign-up.
+                // SG-9: the invite use was consumed by the SQL adapter in the
+                // same transaction as the user insert, so there is nothing to
+                // consume here.
                 const inviteCode = context?.headers?.get(INVITE_HEADER)?.trim();
                 if (inviteCode) {
+                  // Contacts from the invite: record which invite created the
+                  // user and, when the inviter is known, make them contacts and
+                  // add the two roster items. Roster failures are retried on the
+                  // token endpoint, so they must never block sign-up.
                   yield* Effect.promise(() =>
                     setUpContactsFromInvite(db, adminClient, config.xmpp.domain, {
                       userId: user.id,

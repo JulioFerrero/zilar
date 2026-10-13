@@ -2,7 +2,7 @@ import type { SearchItem } from '@/lib/api';
 import { formatListTime } from '@zilar/chat-core';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { cn } from '@/lib/utils';
-import { Avatar } from './Avatar';
+import { EntityAvatar } from './EntityAvatar';
 
 // Renders one message hit with its snippet highlights. The snippet is plain
 // text from the server (plus character ranges); every slice is rendered as
@@ -76,10 +76,12 @@ export function MessageSearchResult({
         selected && 'bg-surface-raised',
       )}
     >
-      <Avatar
-        id={item.chatJid}
-        name={topicLabel ?? chatTitle}
-        avatarUrl={chat?.avatarUrl}
+      <EntityAvatar
+        chat={{
+          id: item.chatJid,
+          title: topicLabel ?? chatTitle,
+          ...(chat?.avatarUrl === undefined ? {} : { avatarUrl: chat.avatarUrl }),
+        }}
         size={36}
         ai={chat?.isAI === true}
       />

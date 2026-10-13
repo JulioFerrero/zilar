@@ -18,6 +18,7 @@ import { RequestsPage } from './RequestsPage';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { NamePage } from './NamePage';
 import { ProfilePage } from './ProfilePage';
+import { SettingsHubPage } from './SettingsHubPage';
 
 // Settings, setup and login pages load on demand; the chat routes stay eager.
 const ConnectionsPage = lazy(() =>
@@ -142,6 +143,14 @@ export function AppRoutes() {
           element={
             <RequireAuth>
               <ChatShell />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <RequireAuth>
+              <SettingsHubPage />
             </RequireAuth>
           }
         />
@@ -283,27 +292,27 @@ function JoinRoute() {
 
 function RequestsRoute() {
   const navigate = useNavigate();
-  return <RequestsPage onBack={() => navigate('/')} />;
+  return <RequestsPage onBack={() => navigate('/settings')} />;
 }
 
 function FoldersRoute() {
   const navigate = useNavigate();
-  return <FoldersPage onBack={() => navigate('/')} />;
+  return <FoldersPage onBack={() => navigate('/settings')} />;
 }
 
 function BlockedRoute() {
   const navigate = useNavigate();
-  return <BlockedPage onBack={() => navigate('/')} />;
+  return <BlockedPage onBack={() => navigate('/settings')} />;
 }
 
 function ContactsRoute() {
   const navigate = useNavigate();
-  return <ContactsPage onBack={() => navigate('/')} />;
+  return <ContactsPage onBack={() => navigate('/settings')} />;
 }
 
 function DevicesRoute() {
   const navigate = useNavigate();
-  return <DevicesPage onBack={() => navigate('/')} />;
+  return <DevicesPage onBack={() => navigate('/settings')} />;
 }
 
 // The `/@handle` gate: react-router cannot match `/@:handle` (a param must

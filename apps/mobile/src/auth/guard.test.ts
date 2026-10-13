@@ -30,6 +30,15 @@ describe('guardDecision', () => {
       kind: 'allow',
     });
   });
+
+  it('keeps an offline session in the app instead of sending it to login', () => {
+    expect(guardDecision({ status: 'offline', name: 'Ada', target: '/chat/ana' })).toEqual({
+      kind: 'allow',
+    });
+    expect(guardDecision({ status: 'offline', name: undefined, target: '/chat/ana' })).toEqual({
+      kind: 'loading',
+    });
+  });
 });
 
 describe('safeTarget', () => {

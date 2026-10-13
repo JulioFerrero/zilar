@@ -1,7 +1,9 @@
 import { Effect } from 'effect';
 import type { LitellmAdminClient } from '../../ai/litellm-client';
 import { getAiUsage, type AiUsage } from '../../ais/usage';
+import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import { dailyLimitReply, dailyWarningReply, monthlyWarningReply } from '../reply';
+import { loadAiOwnerId } from './db';
 import {
   toRedactedError,
   type AgentGatewayDeps,
@@ -45,6 +47,10 @@ export function createBudgetGate(ctx: BudgetGateContext) {
   // Daily and monthly warnings are independent; a restart may repeat one.
   const dailyWarningNotices = new Map<string, string>();
   const monthlyWarningNotices = new Map<string, string>();
+  // T-1290 (AI-10): one owner DM per AI per room per UTC day when a room turn
+  // fails — the same in-memory day key as `dailyLimitNotices` above. After a
+  // restart the map is empty, so a failure may notify the owner once more.
+  const ownerFailureNotices = new Map<string, string>();
 
   function utcDay(): string {
     return (deps.now ?? (() => new Date()))().toISOString().slice(0, 10);
@@ -199,6 +205,52 @@ export function createBudgetGate(ctx: BudgetGateContext) {
     return { limited: true, reply: dailyLimitReply(usage.perDayUsd) };
   });
 
+  // T-1290 (AI-10): DMs the AI's owner the real reason a room turn failed, at
+  // most once per AI per room per UTC day — the same day-key pattern as
+  // `dailyLimitNotices`. The room always hears the fixed `GROUP_FAILURE_REPLY`;
+  // this is the only place the owner learns of the failure. `send` is the
+  // caller's live DM path, so a stopped AI drops the notice. A failed owner
+  // lookup or send only logs (ids only) and never marks the day spent, so a
+  // later failure retries.
+  const notifyOwnerOfFailureEffect = Effect.fnUntraced(function* (input: {
+    aiId: string;
+    roomJid: string;
+    reason: string;
+    send: (to: string, text: string) => Promise<unknown>;
+  }): Effect.fn.Return<void> {
+    const key = `${input.aiId}:${input.roomJid}`;
+    const today = utcDay();
+    if (ownerFailureNotices.get(key) === today) {
+      return;
+    }
+    const ownerId = yield* attempt(
+      () => loadAiOwnerId(deps.db, input.aiId),
+      (error) => {
+        logger.warn(
+          { err: toRedactedError(error, secretsFor()), aiId: input.aiId },
+          'AI owner lookup failed for a failure notice',
+        );
+      },
+    );
+    if (ownerId === FAILED || ownerId === null) {
+      return;
+    }
+    const ownerJid = jidFor(localpartFor(ownerId), deps.xmpp.domain);
+    const sent = yield* attempt(
+      () => input.send(ownerJid, input.reason),
+      (error) => {
+        logger.warn(
+          { err: toRedactedError(error, secretsFor()), aiId: input.aiId },
+          'AI failure notice could not be sent',
+        );
+      },
+    );
+    if (sent === FAILED) {
+      return;
+    }
+    ownerFailureNotices.set(key, today);
+  });
+
   return {
     utcDay,
     checkDailyLimit: (input: {
@@ -215,5 +267,11 @@ export function createBudgetGate(ctx: BudgetGateContext) {
     }): Promise<void> => Effect.runPromise(sendBudgetWarningsEffect(input)),
     checkDmRoundGate: (session: AiSession): Promise<{ limited: boolean; reply: string } | null> =>
       Effect.runPromise(checkDmRoundGateEffect(session)),
+    notifyOwnerOfFailure: (input: {
+      aiId: string;
+      roomJid: string;
+      reason: string;
+      send: (to: string, text: string) => Promise<unknown>;
+    }): Promise<void> => Effect.runPromise(notifyOwnerOfFailureEffect(input)),
   };
 }

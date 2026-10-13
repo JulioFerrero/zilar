@@ -959,5 +959,41 @@ describe('public groups and channels', () => {
         ),
       ).toHaveLength(1);
     });
+
+    it('refuses a join by a user the owner blocked (T-1286, SG-8)', async () => {
+      const owner = await bootstrapUser(context, app, 'owner-block@example.com');
+      const blocked = await bootstrapUser(context, app, 'blocked@example.com');
+      const groupId = await publicGroup(owner.cookie, 'Blocked room');
+      await testSql(context)(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`INSERT INTO user_blocks (user_id, blocked_user_id)
+            VALUES (${owner.id}, ${blocked.id})`;
+        }),
+      );
+
+      // The same 404 a private or unknown group answers: a block is never an
+      // oracle, and nothing is written.
+      const refused = await joinPublicGroup(
+        service(PUBLIC_GROUP_MAX_MEMBERS),
+        groupId,
+        blocked.id,
+      ).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      expect(refused).toMatchObject({ status: 404, code: 'not_found' });
+      expect(
+        await testSql(context)(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            return yield* sql<{ userId: string }>`
+              SELECT user_id FROM group_members
+              WHERE group_id = ${groupId} AND user_id = ${blocked.id}
+            `;
+          }),
+        ),
+      ).toHaveLength(0);
+    });
   });
 });

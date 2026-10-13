@@ -1,7 +1,7 @@
 import type { UiMessage } from '@zilar/chat-core';
 import { View } from 'react-native';
 
-import { Avatar } from '@/components/chat/avatar';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 
@@ -27,7 +27,11 @@ export function MessageTombstone({
     >
       {!outgoing && isGroup ? (
         showAvatar ? (
-          <Avatar id={message.senderId} name={message.senderName} size={34} className="mr-2" />
+          <EntityAvatar
+            person={{ id: message.senderId, name: message.senderName }}
+            size={34}
+            className="mr-2"
+          />
         ) : (
           <View className="mr-2" style={{ width: 34 }} />
         )

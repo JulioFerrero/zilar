@@ -162,6 +162,7 @@ export function LinkPreviewCard({ url }: { url: string }) {
     >
       {thumbnail !== undefined ? (
         <Image
+          recyclingKey={image}
           source={thumbnail}
           onError={() => setBrokenImage(image)}
           className="h-16 w-16 shrink-0 rounded-[14px]"

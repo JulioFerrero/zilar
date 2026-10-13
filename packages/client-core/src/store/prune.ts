@@ -31,8 +31,15 @@ export function pruneInactiveChats(ctx: HistoryCtx, activeChatId: string | null 
     if (messages.some((message) => message.status === 'sending')) {
       continue;
     }
-    messagesByChat[chatId] = messages.slice(-KEEP_INACTIVE);
+    // PERF-13: the ids of the messages that leave the store go with them, so
+    // the ledger's id maps do not grow for the life of the session.
+    const kept = messages.slice(-KEEP_INACTIVE);
+    messagesByChat[chatId] = kept;
     historyComplete[chatId] = false;
+    ctx.k.forgetMessages(
+      chatId,
+      messages.slice(0, messages.length - kept.length).map((message) => message.id),
+    );
   }
   if (Object.keys(messagesByChat).length === 0) {
     return;

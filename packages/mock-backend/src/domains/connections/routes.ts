@@ -34,6 +34,16 @@ export function handleConnections(data: MockData, request: MockHttpRequest): Res
   if (action !== undefined) {
     return undefined;
   }
+  if (request.method === 'PATCH') {
+    const connection = data.connections.find((item) => item.id === id);
+    if (!connection) {
+      return notFound('No such connection.');
+    }
+    // T-1292: a key is write-only, so the mock stores none and returns the
+    // unchanged row. The client sees the same "key replaced" success as the
+    // real server's 200.
+    return jsonResponse(connection);
+  }
   if (request.method === 'DELETE') {
     if (!data.hasConnection(id)) {
       return notFound('No such connection.');

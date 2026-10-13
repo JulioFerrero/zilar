@@ -1,5 +1,4 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { personSeed } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useState } from 'react';
@@ -27,7 +26,7 @@ import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { PinsSection } from './PinsPanel';
 import { AiBadge } from './AiBadge';
 import { FieldError } from './ais/AiPageShell';
-import { Avatar } from './Avatar';
+import { EntityAvatar } from './EntityAvatar';
 import { Button } from './ui/button';
 import { Sheet } from './ui/sheet';
 import { StateMessage } from './ui/state-message';
@@ -56,13 +55,6 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
 
   const info = useChatSelector((s) => s.groupInfo(chat.id));
   const me = useChatSelector((s) => s.currentUserId);
-  // T-1209: member balls are seeded by the bare JID, derived from the user
-  // id the way the mention builder does (the domain from my own JID); the
-  // members list carries no JID, so this is the only form available here.
-  const ownJid = useChatSelector((s) => s.me?.jid);
-  const domain = ownJid?.slice(ownJid.indexOf('@') + 1);
-  const seedFor = (userId: string): string =>
-    domain === undefined || domain === '' ? userId : personSeed(userId, domain);
   const meRole = info?.members.find((member) => member.userId === me)?.role;
   const isManager = meRole === 'owner' || meRole === 'admin';
   const isOwner = meRole === 'owner';
@@ -253,7 +245,6 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
               adminsLoaded={adminsLoaded}
               adminsFailure={adminsFailure}
               admins={admins}
-              seedFor={seedFor}
             />
 
             <section aria-label="AIs" className="flex flex-col gap-1">
@@ -292,12 +283,10 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
                           onClick={() => pickAi(ai.id)}
                           className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
                         >
-                          <Avatar
-                            id={ai.jid}
-                            name={ai.name}
+                          <EntityAvatar
+                            person={{ id: ai.jid, name: ai.name, avatarUrl: ai.avatarUrl }}
                             size={28}
                             ai
-                            avatarUrl={ai.avatarUrl}
                           />
                           <span className="min-w-0 flex-1 truncate">{ai.name}</span>
                           <AiBadge />

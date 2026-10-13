@@ -150,13 +150,15 @@ describe('contact request permissions (T-0994)', () => {
     });
   });
 
-  it('returns handle and name-word prefix matches, excludes the viewer and caps at 10', async () => {
+  it('returns handle-prefix matches only, excludes the viewer and caps at 10', async () => {
     const viewer = await seedUser(context, { name: 'Julio Viewer' });
     await seedHandle(viewer, 'julio_viewer');
     const byHandle = await seedUser(context, { name: 'Handle Match' });
     await seedHandle(byHandle, 'julio_handle');
-    const byNamePrefix = await seedUser(context, { name: 'Juliana' });
-    await seedHandle(byNamePrefix, 'juliana_name');
+    // Matched by its handle, even though the display name also starts with it.
+    const byHandleName = await seedUser(context, { name: 'Juliana' });
+    await seedHandle(byHandleName, 'juliana_name');
+    // A display-name-only match is never returned (T-1286, SG-7).
     const byNameWord = await seedUser(context, { name: 'Ana Julieta' });
     await seedHandle(byNameWord, 'ana_julieta');
     // No handle row: Telegram-style search never returns a user without one.
@@ -165,8 +167,8 @@ describe('contact request permissions (T-0994)', () => {
     const matches = await searchUsers(deps.db, viewer, 'jul');
     const ids = matches.map((entry) => entry.userId);
     expect(ids).toContain(byHandle);
-    expect(ids).toContain(byNamePrefix);
-    expect(ids).toContain(byNameWord);
+    expect(ids).toContain(byHandleName);
+    expect(ids).not.toContain(byNameWord);
     expect(ids).not.toContain(viewer);
     expect(ids).not.toContain(withoutHandle);
     expect(matches.find((entry) => entry.userId === byHandle)?.relation).toBe('none');
@@ -176,6 +178,15 @@ describe('contact request permissions (T-0994)', () => {
       await seedHandle(capped, `capped_${index}`);
     }
     expect(await searchUsers(deps.db, viewer, 'capped')).toHaveLength(10);
+  });
+
+  it('returns nothing for a display-name-only match (T-1286, SG-7)', async () => {
+    const viewer = await seedUser(context, { name: 'Viewer Name' });
+    await seedHandle(viewer, 'viewer_name');
+    const named = await seedUser(context, { name: 'Julianne' });
+    await seedHandle(named, 'zzz_julianne');
+
+    expect(await searchUsers(deps.db, viewer, 'jul')).toEqual([]);
   });
 
   it('does not return a user who blocked the viewer', async () => {

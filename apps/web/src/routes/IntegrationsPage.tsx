@@ -47,7 +47,7 @@ export function IntegrationsPage() {
     <SettingsShell
       title="Integrations"
       subtitle="Keys and senders for the services this server talks to."
-      onBack={() => navigate('/')}
+      onBack={() => navigate('/settings')}
     >
       <div className={SETTINGS_COLUMN}>
         {status === 'loading' && <StateMessage kind="loading" title="Loading integrations…" />}

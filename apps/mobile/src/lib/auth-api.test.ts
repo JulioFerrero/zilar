@@ -21,6 +21,15 @@ describe('fetchMe', () => {
     );
   });
 
+  it('keeps the profile picture when the server sends one', async () => {
+    const withPicture = { ...ME, avatarUrl: 'https://x/a.png' };
+    const fetchImpl = vi.fn(async () => jsonResponse(withPicture)) as unknown as typeof fetch;
+
+    const me = await fetchMe('http://server.test', 'token-1', fetchImpl);
+
+    expect(me).toEqual(withPicture);
+  });
+
   it('rejects a non-2xx with the server error', async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({ error: { code: 'unauthorized', message: 'Authentication required' } }, 401),

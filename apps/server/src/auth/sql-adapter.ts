@@ -10,7 +10,8 @@
 
 import { Effect } from 'effect';
 import { PgTypes } from '@effect/sql-pg';
-import { SqlClient, SqlError } from 'effect/sql';
+import { SqlClient } from 'effect/sql';
+import { APIError } from 'better-auth/api';
 import { createAdapterFactory } from 'better-auth/adapters';
 import type {
   AdapterFactoryConfig,
@@ -21,11 +22,12 @@ import type {
 import type { BetterAuthOptions, DBAdapter } from 'better-auth';
 import type { ServerDatabase } from '../db/client';
 import { isPgliteDatabase, sqlRuntimeFor } from '../effect/sql';
+import { consumeInviteEffect } from './invites';
 import { columnFor, tableFor, toColumns, whereFragment } from './sql-where';
 
-function run<A>(
+function run<A, E>(
   db: ServerDatabase,
-  effect: Effect.Effect<A, SqlError.SqlError, SqlClient.SqlClient>,
+  effect: Effect.Effect<A, E, SqlClient.SqlClient>,
 ): Promise<A> {
   return sqlRuntimeFor(db).runPromise(effect);
 }
@@ -96,8 +98,22 @@ function bindRow(db: ServerDatabase, row: Row): Row {
   return bound;
 }
 
-function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
+function makeAdapter(
+  db: ServerDatabase,
+  config: AdapterConfig,
+  pendingInviteCodes: Map<string, string>,
+): CustomAdapter {
   async function create({ model, data }: CreateArgs): Promise<Row> {
+    // T-1286 (SG-9): a sign-up's `create.before` hook records the invite code
+    // under the user's email. When present, the invite is consumed and the row
+    // inserted in ONE transaction: a failed insert rolls the use back, and two
+    // racing sign-ups serialize on the invite row, so the cap is never
+    // exceeded. Reading and clearing the entry is the per-request hand-off.
+    const email = model === 'user' && typeof data.email === 'string' ? data.email : undefined;
+    const inviteCode = email === undefined ? undefined : pendingInviteCodes.get(email);
+    if (email !== undefined) {
+      pendingInviteCodes.delete(email);
+    }
     const row = toColumns(model, data);
     // `session.updated_at` and `account.updated_at` have no database default;
     // The adapter fills them on insert.
@@ -108,9 +124,24 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        return yield* sql<Row>`INSERT INTO ${sql(tableFor(model))} ${sql.insert(
-          bindRow(db, row),
-        )} RETURNING *`;
+        const insert = () =>
+          sql<Row>`INSERT INTO ${sql(tableFor(model))} ${sql.insert(bindRow(db, row))} RETURNING *`;
+        if (inviteCode === undefined) {
+          return yield* insert();
+        }
+        return yield* sql.withTransaction(
+          Effect.gen(function* () {
+            const consumed = yield* consumeInviteEffect(inviteCode);
+            if (consumed === null) {
+              return yield* Effect.fail(
+                new APIError('BAD_REQUEST', {
+                  message: 'This invite is invalid, expired or already used.',
+                }),
+              );
+            }
+            return yield* insert();
+          }),
+        );
       }),
     );
     const created = rows[0];
@@ -261,6 +292,7 @@ function makeAdapter(db: ServerDatabase, config: AdapterConfig): CustomAdapter {
 
 export function effectSqlAdapter(
   db: ServerDatabase,
+  pendingInviteCodes: Map<string, string>,
 ): (options: BetterAuthOptions) => DBAdapter<BetterAuthOptions> {
   const config: AdapterFactoryConfig = {
     adapterId: 'effect-sql',
@@ -273,7 +305,7 @@ export function effectSqlAdapter(
   };
 
   const adapter: AdapterFactoryCustomizeAdapterCreator = (adapterConfig) =>
-    makeAdapter(db, adapterConfig);
+    makeAdapter(db, adapterConfig, pendingInviteCodes);
 
   return createAdapterFactory({ config, adapter });
 }

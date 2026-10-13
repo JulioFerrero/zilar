@@ -1,7 +1,9 @@
-// People prefix search (T-1148): Telegram-style lookup by `@username` or
-// display name, used by the chat-list search. Only users with a handle are
-// returned, unknown handles are not, and a person who blocked the viewer is
-// never listed. The query is never logged.
+// People prefix search (T-1148, T-1286): Telegram-style lookup by
+// `@username` only, used by the chat-list search. T-1286 (SG-7) dropped the
+// display-name clauses, which let anyone enumerate every user by name; a
+// query now matches an exact handle or a handle prefix. Only users with a
+// handle are returned, unknown handles are not, and a person who blocked the
+// viewer is never listed. The query is never logged.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
@@ -45,10 +47,11 @@ export async function searchUsers(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      // Matches a handle prefix, a display-name prefix or the start of any
-      // name word. Exact handle first, then handle prefix, then the rest,
-      // tied by display name. The viewer and anyone who blocked the viewer
-      // (silently, like `profileForHandle`) are excluded.
+      // T-1286 (SG-7): matches an exact handle or a handle prefix only —
+      // never a display name, which let the whole user base be enumerated.
+      // Exact handle first, then handle prefix, tied by display name. The
+      // viewer and anyone who blocked the viewer (silently, like
+      // `profileForHandle`) are excluded.
       return yield* sql<{
         userId: string;
         handle: string;
@@ -62,17 +65,9 @@ export async function searchUsers(
             SELECT 1 FROM user_blocks b
             WHERE b.user_id = u.id AND b.blocked_user_id = ${viewerId}
           )
-          AND (
-            h.handle_lower LIKE ${pattern + '%'}
-            OR lower(u.name) LIKE ${pattern + '%'}
-            OR lower(u.name) LIKE ${'% ' + pattern + '%'}
-          )
+          AND h.handle_lower LIKE ${pattern + '%'}
         ORDER BY
-          CASE
-            WHEN h.handle_lower = ${q} THEN 0
-            WHEN h.handle_lower LIKE ${pattern + '%'} THEN 1
-            ELSE 2
-          END,
+          CASE WHEN h.handle_lower = ${q} THEN 0 ELSE 1 END,
           u.name
         LIMIT ${USER_SEARCH_LIMIT}`;
     }),

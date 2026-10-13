@@ -1,6 +1,8 @@
 import type { ChatFolder } from '@zilar/chat-core';
 import { MessagesSquare } from 'lucide-react-native';
-import { Pressable, ScrollView, View } from 'react-native';
+import { useCallback, useEffect, useRef } from 'react';
+import { Pressable, ScrollView, View, type LayoutChangeEvent } from 'react-native';
+import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 
 import { Text } from '@/components/ui/text';
 import { FOREGROUND, MUTED_FOREGROUND } from '@/lib/colors';
@@ -9,27 +11,73 @@ import { cn } from '@/lib/utils';
 
 import { folderIcon } from './folder-icon';
 
+/** How far the chip row is inset, used to keep the active chip in view. */
+const ROW_INSET = 16;
+
+type FolderChip = {
+  id: string;
+  name: string;
+  folder: ChatFolder | undefined;
+};
+
 type FolderTabsProps = {
   /** 'all' or a folder id. */
   activeFolder: string;
   folders: ChatFolder[];
   /** Unread totals keyed by 'all' or a folder id. */
   counts: Record<string, number>;
+  /** The pager's continuous page position; drives the raised chip. */
+  progress: SharedValue<number>;
   onSelect: (folder: string) => void;
 };
+
+/** The chip's glyph: the folder's icon, or the all-chats square for "all". */
+function chipGlyph(folder: ChatFolder | undefined, color: string) {
+  if (folder === undefined) {
+    return <MessagesSquare size={14} color={color} />;
+  }
+  const Icon = folderIcon(folder.icon);
+  return <Icon size={14} color={color} />;
+}
 
 /**
  * The chat folders as scrollable chips (T-0248): "All chats" first, then one
  * chip per server folder. The selected chip is raised (the `segment` look) and
- * the rest are muted; a chip shows its unread count only when it is above zero.
+ * the rest sit on the surface; a chip shows its unread count only when it is
+ * above zero. T-1310: the raised look is two layers that cross-fade with the
+ * pager's `progress`, so the indicator follows a swipe, and the row scrolls to
+ * keep the active chip in view as the pager turns.
  */
-export function FolderTabs({ activeFolder, folders, counts, onSelect }: FolderTabsProps) {
-  const chips = [
-    { id: 'all', name: 'All chats', folder: undefined as ChatFolder | undefined },
+export function FolderTabs({ activeFolder, folders, counts, progress, onSelect }: FolderTabsProps) {
+  const chips: FolderChip[] = [
+    { id: 'all', name: 'All chats', folder: undefined },
     ...folders.map((folder) => ({ id: folder.id, name: folder.name, folder })),
   ];
+  const scrollRef = useRef<ScrollView>(null);
+  const positions = useRef<Record<string, { x: number; width: number }>>({});
+
+  const scrollToActive = useCallback((id: string) => {
+    const position = positions.current[id];
+    if (position !== undefined) {
+      scrollRef.current?.scrollTo({ x: Math.max(0, position.x - ROW_INSET), animated: true });
+    }
+  }, []);
+
+  useEffect(() => {
+    scrollToActive(activeFolder);
+  }, [activeFolder, scrollToActive]);
+
+  const recordLayout = (chip: FolderChip, event: LayoutChangeEvent) => {
+    const { x, width } = event.nativeEvent.layout;
+    positions.current[chip.id] = { x, width };
+    if (chip.id === activeFolder) {
+      scrollToActive(chip.id);
+    }
+  };
+
   return (
     <ScrollView
+      ref={scrollRef}
       horizontal
       showsHorizontalScrollIndicator={false}
       // A horizontal ScrollView grows to fill the free height; without this it
@@ -38,57 +86,98 @@ export function FolderTabs({ activeFolder, folders, counts, onSelect }: FolderTa
       contentContainerStyle={{
         flexDirection: 'row',
         gap: 8,
-        paddingHorizontal: 16,
+        paddingHorizontal: ROW_INSET,
         paddingBottom: 8,
       }}
     >
-      {chips.map((chip) => {
-        const selected = chip.id === activeFolder;
-        const count = counts[chip.id] ?? 0;
-        const Icon = chip.folder === undefined ? MessagesSquare : folderIcon(chip.folder.icon);
-        const iconColor = selected ? FOREGROUND : MUTED_FOREGROUND;
-        return (
-          <Pressable
-            key={chip.id}
-            accessibilityRole="tab"
-            accessibilityState={{ selected }}
-            accessibilityLabel={chip.name}
-            onPress={() => onSelect(chip.id)}
-            className={cn(
-              'h-[34px] flex-row items-center gap-1.5 rounded-full px-3',
-              selected ? '' : 'bg-surface',
-            )}
-            style={selected ? segment : undefined}
-          >
-            <Icon size={14} color={iconColor} />
-            <Text
-              className={cn(
-                'text-[13px] font-medium',
-                selected ? 'text-foreground' : 'text-muted-foreground',
-              )}
-            >
-              {chip.name}
-            </Text>
-            {count > 0 ? (
-              <View
-                className={cn(
-                  'min-w-[16px] items-center justify-center rounded-full px-1',
-                  selected ? 'bg-accent' : 'bg-surface',
-                )}
-              >
-                <Text
-                  className={cn(
-                    'font-mono text-[10px] leading-4',
-                    selected ? 'text-accent-foreground' : 'text-muted-foreground',
-                  )}
-                >
-                  {count}
-                </Text>
-              </View>
-            ) : null}
-          </Pressable>
-        );
-      })}
+      {chips.map((chip, index) => (
+        <FolderChipView
+          key={chip.id}
+          chip={chip}
+          index={index}
+          selected={chip.id === activeFolder}
+          count={counts[chip.id] ?? 0}
+          progress={progress}
+          onSelect={() => onSelect(chip.id)}
+          onLayout={(event) => recordLayout(chip, event)}
+        />
+      ))}
     </ScrollView>
+  );
+}
+
+type FolderChipViewProps = {
+  chip: FolderChip;
+  index: number;
+  selected: boolean;
+  count: number;
+  progress: SharedValue<number>;
+  onSelect: () => void;
+  onLayout: (event: LayoutChangeEvent) => void;
+};
+
+/** One chip: a surface layer under the raised `segment` layer, cross-faded. */
+function FolderChipView({
+  chip,
+  index,
+  selected,
+  count,
+  progress,
+  onSelect,
+  onLayout,
+}: FolderChipViewProps) {
+  const raisedStyle = useAnimatedStyle(() => ({
+    opacity: Math.max(0, 1 - Math.abs(progress.value - index)),
+  }));
+  const surfaceStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(1, Math.abs(progress.value - index)),
+  }));
+  const iconColor = selected ? FOREGROUND : MUTED_FOREGROUND;
+  return (
+    <Pressable
+      accessibilityRole="tab"
+      accessibilityState={{ selected }}
+      accessibilityLabel={chip.name}
+      onPress={onSelect}
+      onLayout={onLayout}
+      className="h-[34px] flex-row items-center gap-1.5 overflow-hidden rounded-full px-3"
+    >
+      <Animated.View
+        className="absolute inset-0 rounded-full bg-surface"
+        style={surfaceStyle}
+        pointerEvents="none"
+      />
+      <Animated.View
+        className="absolute inset-0 rounded-full"
+        style={[segment, raisedStyle]}
+        pointerEvents="none"
+      />
+      {chipGlyph(chip.folder, iconColor)}
+      <Text
+        className={cn(
+          'text-[13px] font-medium',
+          selected ? 'text-foreground' : 'text-muted-foreground',
+        )}
+      >
+        {chip.name}
+      </Text>
+      {count > 0 ? (
+        <View
+          className={cn(
+            'min-w-[16px] items-center justify-center rounded-full px-1',
+            selected ? 'bg-accent' : 'bg-surface',
+          )}
+        >
+          <Text
+            className={cn(
+              'font-mono text-[10px] leading-4',
+              selected ? 'text-accent-foreground' : 'text-muted-foreground',
+            )}
+          >
+            {count}
+          </Text>
+        </View>
+      ) : null}
+    </Pressable>
   );
 }

@@ -202,6 +202,66 @@ describe('loadOlder while the first page is still loading', () => {
   });
 });
 
+describe('an image attachment loaded from history', () => {
+  it('keeps its image kind with the live-shaped token after a restart', async () => {
+    const xmpp = fakeXmpp();
+    xmpp.history[ANA] = [
+      {
+        kind: 'chat',
+        chatJid: ANA,
+        id: 'photo-1',
+        fromJid: 'me@zilar.test',
+        fromResolved: true,
+        outgoing: true,
+        timestamp: NOW,
+        payload: {
+          v: 0,
+          type: 'attachment',
+          data: {
+            kind: 'image',
+            url: 'https://chat.zilar.app/upload/abc/20.png',
+            name: '20.png',
+            size: 1234,
+            mime: 'image/png',
+            width: 10,
+            height: 10,
+          },
+        },
+      } as ChatMessage,
+    ];
+    const store = createRealChatStore({
+      api: fakeApi({
+        getChats: vi.fn(async () => [
+          { kind: 'dm' as const, chatJid: ANA, title: 'Ana', userId: 'u-ana' },
+        ]),
+        getXmppToken: vi.fn(async () => ({
+          jid: 'me@zilar.test',
+          token: 'tok',
+          expiresAt: '2026-09-28T12:05:00Z',
+          service: 'wss://chat.zilar.app/xmpp-ws/ws',
+          domain: 'chat.zilar.app',
+          mucDomain: 'rooms.zilar.app',
+        })),
+      }),
+      appState: fakeAppState(),
+      now: () => NOW,
+      openDrafts: () => () => {},
+      createXmpp: () => xmpp.core,
+    });
+    store.getState().start();
+    await waitFor(() => store.getState().status === 'online');
+
+    store.getState().openChat(ANA);
+    await waitFor(() => store.getState().historyLoad[ANA] === 'loaded');
+
+    expect(store.getState().messages(ANA)[0]?.attachment?.kind).toBe('image');
+    expect([...(store.getState().mediaTrustedHosts ?? [])].sort()).toEqual([
+      'chat.zilar.app',
+      'upload.chat.zilar.app',
+    ]);
+  });
+});
+
 const TEAM = 'general@rooms.zilar.test';
 const BUG = 't-1@rooms.zilar.test';
 

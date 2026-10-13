@@ -1,5 +1,5 @@
 import { formatDuration } from './format';
-import type { RenderItem, UiMessage } from './types';
+import type { RenderItem, ReplyRef, UiMessage } from './types';
 
 export const GROUP_WINDOW_MS = 5 * 60 * 1000;
 
@@ -146,23 +146,56 @@ export function previewPrefix(lastMessage: UiMessage | undefined, options: Previ
   return `${name}: `;
 }
 
+/** The small icon a chat row shows before a non-text preview. */
+export type PreviewKind = 'photo' | 'album' | 'voice' | 'file' | 'card';
+
+/**
+ * Icon kind for the list preview, in the same priority `previewBody` reads the
+ * payload (`photo`, `album`, `voice`, `file`, `card`), or `undefined` for a
+ * plain text preview. The web and mobile rows map it to a lucide icon; the
+ * emoji stay out of the app chrome.
+ */
+export function previewKind(lastMessage: UiMessage | undefined): PreviewKind | undefined {
+  if (lastMessage === undefined) {
+    return undefined;
+  }
+  if (lastMessage.album !== undefined) {
+    return 'album';
+  }
+  if (lastMessage.voice !== undefined) {
+    return 'voice';
+  }
+  if (lastMessage.image !== undefined) {
+    return 'photo';
+  }
+  if (lastMessage.attachment !== undefined) {
+    return lastMessage.attachment.kind === 'image' ? 'photo' : 'file';
+  }
+  if (lastMessage.text !== undefined && lastMessage.text.length > 0) {
+    return undefined;
+  }
+  if (lastMessage.card !== undefined) {
+    return 'card';
+  }
+  return undefined;
+}
+
 /** Body of a list preview: voice, photo, attachment, text or a generic card. */
 export function previewBody(lastMessage: UiMessage | undefined): string {
   if (lastMessage === undefined) {
     return '';
   }
   if (lastMessage.album !== undefined) {
-    return `🖼 ${lastMessage.album.count} photos`;
+    return `${lastMessage.album.count} photos`;
   }
   if (lastMessage.voice !== undefined) {
-    return `🎤 Voice message (${formatDuration(lastMessage.voice.duration_ms)})`;
+    return `Voice message (${formatDuration(lastMessage.voice.duration_ms)})`;
   }
   if (lastMessage.image !== undefined) {
-    return '🖼 Photo';
+    return 'Photo';
   }
   if (lastMessage.attachment !== undefined) {
-    const base =
-      lastMessage.attachment.kind === 'image' ? '🖼 Photo' : `📎 ${lastMessage.attachment.name}`;
+    const base = lastMessage.attachment.kind === 'image' ? 'Photo' : lastMessage.attachment.name;
     const caption = lastMessage.text;
     return caption !== undefined && caption.length > 0 ? `${base}, ${caption}` : base;
   }
@@ -170,7 +203,7 @@ export function previewBody(lastMessage: UiMessage | undefined): string {
     return lastMessage.text;
   }
   if (lastMessage.card !== undefined) {
-    return '📎 Attachment';
+    return 'Attachment';
   }
   return '';
 }
@@ -178,6 +211,80 @@ export function previewBody(lastMessage: UiMessage | undefined): string {
 /** Full one-line preview shown in the chat list (see `ui-style.md` §4). */
 export function previewText(lastMessage: UiMessage | undefined, options: PreviewOptions): string {
   return previewPrefix(lastMessage, options) + previewBody(lastMessage);
+}
+
+/**
+ * The label a reply quote shows when the replied-to message carries no text:
+ * a media kind ("Photo", "Video", "Voice message", "Sticker", "GIF") or the
+ * file name, in the same priority `previewBody` reads the payload. `undefined`
+ * for a plain text message or an unknown card.
+ */
+export function replyQuoteLabel(message: UiMessage | undefined): string | undefined {
+  if (message === undefined) {
+    return undefined;
+  }
+  if (message.album !== undefined || message.image !== undefined) {
+    return 'Photo';
+  }
+  if (message.voice !== undefined) {
+    return 'Voice message';
+  }
+  if (message.attachment !== undefined) {
+    const { kind, name, mime } = message.attachment;
+    if (kind === 'image') {
+      return 'Photo';
+    }
+    // The GIF send path names files `gif-<id>.<ext>` with a video mime (T-0122).
+    if (name.startsWith('gif-') && (mime === 'video/mp4' || mime === 'video/webm')) {
+      return 'GIF';
+    }
+    return mime.startsWith('video/') ? 'Video' : name;
+  }
+  return message.card?.type === 'sticker' ? 'Sticker' : undefined;
+}
+
+function nonEmpty(value: string | undefined): string | undefined {
+  return value !== undefined && value.length > 0 ? value : undefined;
+}
+
+/** What a reply quote renders, resolved against the loaded replied-to message. */
+export interface ReplyQuoteContent {
+  /** Display name: the replied-to sender's, "You" for our own, never empty. */
+  senderName: string;
+  /** The replied-to sender's id, for the quote colour; the reply id when unknown. */
+  senderId: string;
+  /** True when the reply is to one of our own messages (renders in the accent). */
+  own: boolean;
+  /** The excerpt line: the replied-to text, or a media label, or absent. */
+  text?: string;
+}
+
+/**
+ * Resolves a reply quote against the replied-to message from the loaded
+ * history: the wire reply (`{ id, to?, text? }`) carries no name, so the name
+ * and the excerpt come from the target when it is loaded. Without a loaded
+ * target the wire fallback is used, and the name falls back to "Message" so the
+ * line is never empty.
+ */
+export function replyQuoteContent(
+  quote: ReplyRef,
+  referenced: UiMessage | undefined,
+  currentUserId: string,
+): ReplyQuoteContent {
+  // The wire reply carries no sender id, so a reply to one of our own messages
+  // keeps the composer's "You" name (`replyRef`); trust it as own when the
+  // replied-to message is not in the loaded history.
+  const own =
+    referenced?.senderId === currentUserId ||
+    (referenced === undefined && quote.senderName === 'You');
+  const name = own ? 'You' : (referenced?.senderName ?? quote.senderName);
+  const text = nonEmpty(referenced?.text) ?? nonEmpty(quote.text) ?? replyQuoteLabel(referenced);
+  return {
+    senderName: name === '' ? 'Message' : name,
+    senderId: referenced?.senderId ?? quote.senderId ?? quote.id,
+    own,
+    ...(text === undefined ? {} : { text }),
+  };
 }
 
 /**

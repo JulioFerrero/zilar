@@ -74,6 +74,7 @@ function Probe() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.sessionStorage.clear();
   vi.mocked(getMe).mockResolvedValue({
     id: 'u-1',
     email: 'ada@example.com',
@@ -84,6 +85,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  window.history.replaceState({}, '', '/');
 });
 
 describe('AuthProvider', () => {
@@ -147,5 +149,78 @@ describe('AuthProvider', () => {
     );
 
     expect(await screen.findByText('authenticated:Ada:ada')).toBeTruthy();
+  });
+
+  it('does not report a guest when the session check fails without a 401', () => {
+    vi.mocked(isMockMode).mockReturnValue(false);
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: null,
+      isPending: false,
+      error: { status: 502, statusText: 'Bad Gateway', message: 'Bad Gateway' },
+      isRefetching: false,
+      refetch: async () => {},
+    } as unknown as SessionReturn);
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+
+    // No user was ever known, so the app keeps loading (never `/login`).
+    expect(screen.getByText('loading::undefined')).toBeTruthy();
+  });
+
+  it('keeps the remembered user on an app route while the server is down', () => {
+    vi.mocked(isMockMode).mockReturnValue(false);
+    window.sessionStorage.setItem(
+      'zilar:lastUser',
+      JSON.stringify({ id: 'u-1', name: 'Ada', email: 'ada@example.com' }),
+    );
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: null,
+      isPending: false,
+      error: { status: 502, statusText: 'Bad Gateway', message: 'Bad Gateway' },
+      isRefetching: false,
+      refetch: async () => {},
+    } as unknown as SessionReturn);
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+
+    expect(screen.getByText('authenticated:Ada:undefined')).toBeTruthy();
+    expect(window.sessionStorage.getItem('zilar:lastUser')).not.toBeNull();
+  });
+
+  it('drops the remembered user on the login page after a sign-out (finding 1)', () => {
+    vi.mocked(isMockMode).mockReturnValue(false);
+    window.sessionStorage.setItem(
+      'zilar:lastUser',
+      JSON.stringify({ id: 'u-1', name: 'Ada', email: 'ada@example.com' }),
+    );
+    // A deliberate sign-out reloads the page on `/login` even when the
+    // server is down, so the previous user must not be remembered.
+    window.history.pushState({}, '', '/login');
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: null,
+      isPending: false,
+      error: { status: 502, statusText: 'Bad Gateway', message: 'Bad Gateway' },
+      isRefetching: false,
+      refetch: async () => {},
+    } as unknown as SessionReturn);
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+
+    // Not `authenticated:Ada` — that would send `LoginPage` straight back
+    // into the app while the previous user's identity is rendered.
+    expect(screen.getByText('loading::undefined')).toBeTruthy();
+    expect(window.sessionStorage.getItem('zilar:lastUser')).toBeNull();
   });
 });

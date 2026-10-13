@@ -13,7 +13,7 @@ import { useQuery } from '@/lib/effect/use-query';
 import { rememberRecentSticker } from '@/lib/stickers';
 import type { RecentStickerEntry } from '@/lib/stickers';
 import { SegmentedControl } from '@/components/ui/segmented-control';
-import { COMMON_EMOJI } from './sticker/emoji';
+import { EmojiTab } from './sticker/EmojiTab';
 import { StickerGrid } from './sticker/StickerGrid';
 import { panelStorage, readStoredRecents } from './sticker/StickerThumb';
 
@@ -92,7 +92,7 @@ function favoriteFrom(choice: StickerChoice): Sticker {
  * GIFs / Emoji, a strip of pack tabs (first: Recent), a 5-column grid of 56
  * px tiles that fit the 344 px panel with no overlap, hover/keyboard focus
  * preview, click sends. The GIFs tab searches through the
- * privacy-preserving proxy; the Emoji tab appends a common emoji to the
+ * privacy-preserving proxy; the Emoji tab searches and appends an emoji to the
  * draft.
  *
  * The dialog is `fixed` to the viewport's bottom-right (`right-4
@@ -275,25 +275,7 @@ export function StickerPanel({
 
       {visibleTab === 'gifs' && gifsEnabled !== false && <GifPanel onPick={onGifPick} />}
 
-      {visibleTab === 'emoji' && (
-        <div
-          className="grid max-h-[260px] grid-cols-6 gap-1 overflow-y-auto p-2"
-          role="grid"
-          aria-label="Emoji"
-        >
-          {COMMON_EMOJI.map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              aria-label={`Insert ${emoji}`}
-              onClick={() => onEmoji(emoji)}
-              className="flex h-[48px] items-center justify-center rounded-[8px] text-[26px] hover:bg-surface-raised"
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
-      )}
+      {visibleTab === 'emoji' && <EmojiTab onEmoji={onEmoji} />}
 
       {visibleTab === 'stickers' && (
         <StickerGrid

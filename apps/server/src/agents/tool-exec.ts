@@ -1,5 +1,6 @@
 // effect-plain: moved unchanged from apps/server/src/agents/reply.ts (size split)
-import { LitellmApiError, redactSecrets } from '../ai/litellm-client';
+import { redactSecrets } from '../ai/litellm-client';
+import { classifyFailure } from './failure-class';
 import {
   DELEGATE_TOOL,
   MEMORY_ZOOM_TOOL,
@@ -23,7 +24,6 @@ import {
   TRANSIENT_FAILURE_REPLY,
 } from './replies';
 import {
-  ChatCompletionError,
   TOOL_CAPPED_RESULT,
   TOOL_REPEAT_RESULT,
   TOOL_RESULT_MAX_CHARS,
@@ -36,37 +36,25 @@ import {
   type ValidToolCall,
 } from './tool-loop';
 
-function statusAndDetail(error: unknown): { status: number; detail: string } {
-  if (error instanceof ChatCompletionError) {
-    return { status: error.status, detail: error.detail };
-  }
-  if (error instanceof LitellmApiError) {
-    return { status: error.status, detail: error.message };
-  }
-  return { status: 0, detail: error instanceof Error ? error.message : String(error) };
-}
+// AI-22: the failure class and its log fields live in `./failure-class`.
+export { failureLogFields } from './failure-class';
 
 // Maps any turn failure to the exact DM text. Never the raw provider body.
-// Order matters: a LiteLLM hard cap arrives as a 400 with "Budget has been
-// exceeded" (AI-4), so the budget test comes before the status ones.
 export function mapFailureToReply(error: unknown): string {
-  const { status, detail } = statusAndDetail(error);
-  if (/budget/i.test(detail)) {
-    return BUDGET_EXCEEDED_REPLY;
+  switch (classifyFailure(error).kind) {
+    case 'budget':
+      return BUDGET_EXCEEDED_REPLY;
+    case 'key_rejected':
+      return PROVIDER_KEY_REJECTED_REPLY;
+    case 'rate_limited':
+      return RATE_LIMITED_REPLY;
+    case 'model_not_found':
+      return MODEL_NOT_FOUND_REPLY;
+    case 'context_too_long':
+      return CONTEXT_TOO_LONG_REPLY;
+    default:
+      return TRANSIENT_FAILURE_REPLY;
   }
-  if (status === 401 || status === 403) {
-    return PROVIDER_KEY_REJECTED_REPLY;
-  }
-  if (status === 429) {
-    return RATE_LIMITED_REPLY;
-  }
-  if ((status === 400 || status === 404) && /model/i.test(detail)) {
-    return MODEL_NOT_FOUND_REPLY;
-  }
-  if (/context|too long|maximum context|token limit/i.test(detail)) {
-    return CONTEXT_TOO_LONG_REPLY;
-  }
-  return TRANSIENT_FAILURE_REPLY;
 }
 
 // Parses one raw tool call's `arguments`, runs the executor on it, and turns

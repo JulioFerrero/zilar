@@ -1,6 +1,6 @@
 import { type ChatSummary, type UiMessage } from '@zilar/chat-core';
-import { createContext, useContext, useState, type MouseEvent, type ReactNode } from 'react';
-import { mediaSrc } from '@/lib/attachments';
+import { createContext, useContext, type MouseEvent, type ReactNode } from 'react';
+import { useMediaRetry } from '@/lib/media-retry';
 import { cn } from '@/lib/utils';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { useMediaViewer } from '../media/MediaViewer';
@@ -82,7 +82,7 @@ function AlbumTile({
   className: string;
   hidden?: number | undefined;
 }) {
-  const [broken, setBroken] = useState(false);
+  const media = useMediaRetry(chatId, photo.url);
   const storeApi = useChatStoreApi();
   const openViewer = useMediaViewer();
   // A sibling whose upload failed keeps its local bytes; its tile offers the
@@ -109,18 +109,29 @@ function AlbumTile({
         onClick={open}
         className="absolute inset-0 h-full w-full"
       >
-        {broken ? (
+        {media.unavailable ? (
           <span className="flex h-full w-full items-center justify-center text-[12px] text-muted-foreground">
             Image unavailable
           </span>
         ) : (
-          <img
-            src={mediaSrc(chatId, photo.url)}
-            alt={photo.alt}
-            loading="lazy"
-            onError={() => setBroken(true)}
-            className="h-full w-full object-cover"
-          />
+          <>
+            <img
+              src={media.src}
+              alt={photo.alt}
+              loading="lazy"
+              onLoad={media.onLoad}
+              onError={media.onError}
+              className="h-full w-full object-cover"
+            />
+            {media.preview !== undefined && !media.loaded && (
+              <img
+                src={media.preview}
+                alt=""
+                aria-hidden
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            )}
+          </>
         )}
         {hidden !== undefined && (
           <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-[20px] font-semibold text-white">
@@ -128,6 +139,18 @@ function AlbumTile({
           </span>
         )}
       </button>
+      {media.unavailable && (
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-center bg-black/60 py-1">
+          <button
+            type="button"
+            aria-label={`Retry ${photo.alt}`}
+            onClick={media.retry}
+            className="text-[11px] font-semibold text-white underline"
+          >
+            Retry
+          </button>
+        </div>
+      )}
       {failed && (
         <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 bg-black/60 px-1 py-1 text-[11px] text-white">
           <span>Upload failed</span>
@@ -165,7 +188,7 @@ export function AlbumGrid({ message, chat }: { message: UiMessage; chat: ChatSum
   }
   if (photos.length === 1) {
     return (
-      <div className="p-1.5">
+      <div>
         <AlbumTile
           chatId={chat.id}
           photo={first}
@@ -177,7 +200,7 @@ export function AlbumGrid({ message, chat }: { message: UiMessage; chat: ChatSum
   }
   if (photos.length === 2) {
     return (
-      <div className="grid w-[320px] max-w-full grid-cols-2 gap-0.5 p-1.5">
+      <div className="grid w-[320px] max-w-full grid-cols-2 gap-0.5">
         {photos.map((photo) => (
           <AlbumTile
             key={photo.messageId}
@@ -193,7 +216,7 @@ export function AlbumGrid({ message, chat }: { message: UiMessage; chat: ChatSum
   if (photos.length === 3) {
     const [large, top, bottom] = photos;
     return (
-      <div className="grid h-[320px] w-[320px] max-w-full grid-cols-2 grid-rows-2 gap-0.5 p-1.5">
+      <div className="grid h-[320px] w-[320px] max-w-full grid-cols-2 grid-rows-2 gap-0.5">
         {large !== undefined && (
           <AlbumTile
             chatId={chat.id}
@@ -215,7 +238,7 @@ export function AlbumGrid({ message, chat }: { message: UiMessage; chat: ChatSum
   const total = Math.max(message.album?.count ?? 0, photos.length);
   const hidden = photos.length > 4 ? total - 4 : undefined;
   return (
-    <div className="grid w-[320px] max-w-full grid-cols-2 gap-0.5 p-1.5">
+    <div className="grid w-[320px] max-w-full grid-cols-2 gap-0.5">
       {shown.map((photo, index) => (
         <AlbumTile
           key={photo.messageId}

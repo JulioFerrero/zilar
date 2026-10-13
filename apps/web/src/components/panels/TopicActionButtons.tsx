@@ -3,7 +3,7 @@ import type { ApiFailure } from '@/lib/effect/errors';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import type { GroupDetail, PublicAi, TopicAi, TopicMember } from '@/lib/api';
 import { AiBadge } from '../AiBadge';
-import { Avatar } from '../Avatar';
+import { EntityAvatar } from '../EntityAvatar';
 import { Button } from '../ui/button';
 import { failInline } from './topic-failure';
 
@@ -49,13 +49,10 @@ export function RemoveMemberButton({
 /** Adds one group member from the picker; one call per row, as RemoveMemberButton. */
 export function AddMemberButton({
   member,
-  seed,
   add,
   onError,
 }: {
   member: GroupMemberRow;
-  /** T-1209: the member's bare JID (the ball seed). */
-  seed: string;
   add: (userId: string) => Effect.Effect<void, ApiFailure>;
   onError: (message: string) => void;
 }) {
@@ -76,7 +73,7 @@ export function AddMemberButton({
       }}
       className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
     >
-      <Avatar id={seed} name={member.name} size={28} avatarUrl={member.avatarUrl} />
+      <EntityAvatar person={member} size={28} />
       <span className="min-w-0 flex-1 truncate">{member.name}</span>
       {adding && <span className="text-[12px] text-muted-foreground">Adding…</span>}
     </Button>
@@ -142,7 +139,7 @@ export function AddAiButton({
       }}
       className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
     >
-      <Avatar id={ai.jid} name={ai.name} size={28} ai avatarUrl={ai.avatarUrl} />
+      <EntityAvatar person={{ id: ai.jid, name: ai.name, avatarUrl: ai.avatarUrl }} size={28} ai />
       <span className="min-w-0 flex-1 truncate">{ai.name}</span>
       <AiBadge />
       {adding && <span className="text-[12px] text-muted-foreground">Adding…</span>}

@@ -224,7 +224,7 @@ export class MessageSearchController {
           items: kept.items,
           ...(kept.nextBefore === undefined ? {} : { nextBefore: kept.nextBefore }),
           pageError: {
-            message: "Couldn't load more messages",
+            message: 'Could not load more messages. Try again.',
             retry: () => this.loadMore(),
           },
         });
@@ -328,7 +328,7 @@ export class MessageSearchController {
         }
         this.set({
           status: 'error',
-          message: "Couldn't search messages",
+          message: 'Could not search messages. Try again.',
           rateLimited: false,
           retry: () => this.retry(),
         });

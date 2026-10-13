@@ -23,6 +23,14 @@ import { sharedDraftHub, type DraftHub } from './hub';
 // alive between turns. Carried as an SSE comment, so event parsers ignore it.
 export const DRAFT_SSE_HEARTBEAT_MS = 25_000;
 
+// The stream ends after this long (AI-19): the session is only checked when
+// the request opens, so a revoked session would otherwise keep receiving the
+// owner's drafts until the socket drops. Both clients reconnect — web
+// `subscribeToDrafts` (apps/web/src/lib/drafts.ts:100-150) and mobile
+// (`apps/mobile/src/lib/drafts.ts:218-247`) — and the reconnect re-runs the
+// session check.
+export const DRAFT_STREAM_MAX_MS = 10 * 60_000;
+
 export interface DraftsApiDependencies {
   auth: Auth;
   hub?: DraftHub;
@@ -58,8 +66,11 @@ function encodeHeartbeat(): string {
 /**
  * `GET /api/drafts/stream`: the caller's own AI drafts as `event: draft` /
  * `event: end` SSE frames with JSON `data:`, plus a `: heartbeat` comment
- * every `DRAFT_SSE_HEARTBEAT_MS` of idleness. The stream never ends on its
- * own; interrupting it (client disconnect) unsubscribes from the hub.
+ * every `DRAFT_SSE_HEARTBEAT_MS` of idleness. A client that connects mid-turn
+ * is sent the open turns' latest frame at once (AI-11). The stream ends after
+ * `DRAFT_STREAM_MAX_MS` (AI-19), so a revoked session stops receiving; both
+ * clients reconnect, which re-runs the session check. Interrupting it (client
+ * disconnect) unsubscribes from the hub.
  */
 export function createDraftsApi(deps: DraftsApiDependencies): EffectApiMount {
   const logger = deps.logger ?? defaultLogger();
@@ -97,15 +108,23 @@ export function createDraftsApi(deps: DraftsApiDependencies): EffectApiMount {
               ),
             ),
           );
-          return HttpServerResponse.stream(frames.pipe(Stream.encodeText), {
-            headers: {
-              'content-type': 'text/event-stream',
-              'cache-control': 'no-cache',
-              connection: 'keep-alive',
-              'transfer-encoding': 'chunked',
-              'x-accel-buffering': 'no',
+          return HttpServerResponse.stream(
+            frames.pipe(
+              // End the response after the cap so a revoked session stops
+              // receiving drafts (AI-19); the client reconnects and re-auths.
+              Stream.interruptWhen(Effect.sleep(Duration.millis(DRAFT_STREAM_MAX_MS))),
+              Stream.encodeText,
+            ),
+            {
+              headers: {
+                'content-type': 'text/event-stream',
+                'cache-control': 'no-cache',
+                connection: 'keep-alive',
+                'transfer-encoding': 'chunked',
+                'x-accel-buffering': 'no',
+              },
             },
-          });
+          );
         }),
       ),
     ),

@@ -1,14 +1,16 @@
-import { Archive, Plus } from 'lucide-react-native';
+import { Archive, Hash, Plus } from 'lucide-react-native';
 import { useState } from 'react';
-import { FlatList, Pressable, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 
 import { TopicRow } from '@/components/chat/topic-row';
 import { SearchField } from '@/components/ui/search-field';
+import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
-import { ICON } from '@/lib/colors';
+import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
 import type { ChatSummary } from '@/lib/types';
+import { useChatStore } from '@/store/chat-store-provider';
 
 type GroupTopicListProps = {
   activeTopics: ChatSummary[];
@@ -36,6 +38,32 @@ export function GroupTopicList({
   const { pressed, reduceMotion, setPressed } = useKeyPress();
   const [search, setSearch] = useState('');
   const [archivedOpen, setArchivedOpen] = useState(false);
+  const refreshGroupDetail = useChatStore((state) => state.refreshGroupDetail);
+  const reloadChats = useChatStore((state) => state.reloadChats);
+  const chatsLoad = useChatStore((state) => state.chatsLoad);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Pull-to-refresh the topic rows the same way the chat list does
+  // (`chat-list.tsx:96-102`). The rows come from `state.chats`, so `reloadChats`
+  // (`store/effects/history.ts:355-363`) repaints them, while
+  // `refreshGroupDetail` (`store/effects/group-actions.ts:69-71`) reloads the
+  // members/AIs behind the header. The spinner clears when the list reload
+  // settles, adjusted during render as the chat list screen does.
+  const groupId = (activeTopics[0] ?? archivedTopics[0])?.groupId;
+  const [lastChatsLoad, setLastChatsLoad] = useState(chatsLoad);
+  if (chatsLoad !== lastChatsLoad) {
+    setLastChatsLoad(chatsLoad);
+    if (refreshing && chatsLoad !== 'loading') {
+      setRefreshing(false);
+    }
+  }
+  const onRefresh = (): void => {
+    setRefreshing(true);
+    if (groupId !== undefined) {
+      refreshGroupDetail(groupId);
+    }
+    reloadChats();
+  };
 
   const query = search.trim().toLowerCase();
   const listed =
@@ -65,6 +93,13 @@ export function GroupTopicList({
         data={visible}
         keyExtractor={(chat) => chat.id}
         contentContainerStyle={{ paddingBottom: 96 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            tintColor={MUTED_FOREGROUND}
+            onRefresh={onRefresh}
+          />
+        }
         renderItem={({ item }) => (
           <TopicRow
             chat={item}
@@ -73,9 +108,13 @@ export function GroupTopicList({
           />
         )}
         ListEmptyComponent={
-          <View className="items-center px-6 pt-16">
-            <Text className="text-[15px] text-muted-foreground">No topics found</Text>
-          </View>
+          <StateMessage
+            kind="empty"
+            icon={Hash}
+            title="No topics found"
+            hint={canCreate ? 'Create a topic to get started.' : 'This group has no topics yet.'}
+            action={canCreate ? { label: 'New topic', onPress: onNewTopic } : undefined}
+          />
         }
         ListFooterComponent={
           listedArchived.length > 0 ? (

@@ -2,24 +2,25 @@ import { Effect } from 'effect';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, Share, View } from 'react-native';
+import { ScrollView, Share, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
-import { Avatar } from '@/components/chat/avatar';
+import { resolveDmChatId } from '@/components/chat/dm-chat-id';
+import { ContactList } from '@/components/contacts/contact-list';
 import { contactsLoadFailure, performRemoveContact } from '@/components/contacts/contacts';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
 import { useProfileApi } from '@/components/settings/use-profile-api';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
-import type { Contact } from '@/lib/contacts-api';
+import { domainOfJid, type Contact } from '@/lib/contacts-api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { interruptFiber } from '@/lib/effect/timers';
-import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { useAction } from '@/lib/effect/use-action';
+import { useChatStore } from '@/store/chat-store-provider';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
@@ -27,10 +28,11 @@ type PageStatus = 'loading' | 'ready' | 'error';
 const WEB_HOST = 'https://chat.zilar.app';
 
 /**
- * Settings → Contacts (T-1237, mirrors the web `ContactsPage`): the people you
- * can chat with. A row opens the DM; each row's Remove asks in place, then
- * calls the T-1233 remove route and drops the row. The Share button at the top
- * sends the same `/@handle` link the web shares.
+ * Settings → Contacts (T-1237, T-1314 Telegram-style): the people you can chat
+ * with. Each row shows the name plus the presence the chat header uses, a tap
+ * opens the DM, and a "⋯" menu offers View profile and Remove contact (with the
+ * inline confirm). The Share button sends the same `/@handle` link the web
+ * shares.
  */
 export default function ContactsScreen() {
   return (
@@ -44,11 +46,15 @@ function ContactsList() {
   const router = useRouter();
   const { api, mock } = useContactsApi();
   const { api: profileApi } = useProfileApi();
+  const chats = useChatStore((state) => state.chats);
+  const meJid = useChatStore((state) => state.me?.jid ?? undefined);
+  const reloadChats = useChatStore((state) => state.reloadChats);
 
   const [people, setPeople] = useState<Contact[]>([]);
   const [handle, setHandle] = useState<string | null>(null);
   const [status, setStatus] = useState<PageStatus>('loading');
   const [error, setError] = useState('');
+  const [actionError, setActionError] = useState('');
 
   // A new load replaces one still running (the focus refresh and Retry).
   const [, reload] = useAction<void, void, never>(
@@ -65,7 +71,7 @@ function ContactsList() {
         ),
         Effect.tap((contacts) =>
           Effect.sync(() => {
-            setPeople([...contacts].sort((left, right) => left.name.localeCompare(right.name)));
+            setPeople([...contacts]);
             setStatus('ready');
           }),
         ),
@@ -101,26 +107,31 @@ function ContactsList() {
     }, [profileApi]),
   );
 
-  // One Remove: the row drops on success, a failure keeps it and shows the
-  // fixed sentence. The row's own action stops a double tap.
-  const remove = (userId: string): Effect.Effect<void> =>
-    Effect.sync(() => setError('')).pipe(
-      Effect.andThen(
-        Effect.promise(() =>
-          performRemoveContact(api, userId, () => {
-            setPeople((rows) => rows.filter((row) => row.userId !== userId));
-          }),
-        ),
-      ),
-      Effect.tap((failure) =>
-        Effect.sync(() => {
-          if (failure !== null) {
-            setError(failure);
-          }
-        }),
-      ),
-      Effect.asVoid,
-    );
+  // The profile's Message button uses the same helper (T-1288): a contact's row
+  // carries the peer's real JID, so the DM resolves without guessing. The chat
+  // screen's skeleton covers the wait when the list has not caught up yet.
+  const openChat = (person: Contact): void => {
+    setActionError('');
+    const domain = domainOfJid(meJid);
+    if (domain === undefined) {
+      setActionError('Could not open that chat. Try again.');
+      return;
+    }
+    const chatId = resolveDmChatId(person.userId, people, domain);
+    if (chatId === undefined) {
+      setActionError('Could not open that chat. Try again.');
+      return;
+    }
+    if (!chats.some((chat) => chat.id === chatId)) {
+      reloadChats();
+    }
+    router.push({ pathname: '/chat/[id]', params: { id: chatId } });
+  };
+
+  const removeContact = (userId: string): Promise<string | null> =>
+    performRemoveContact(api, userId, () => {
+      setPeople((rows) => rows.filter((row) => row.userId !== userId));
+    });
 
   // `Share.share` sends the same `https://<host>/@handle` link the web page does.
   const [, share] = useAction(
@@ -186,25 +197,20 @@ function ContactsList() {
           ) : null}
 
           {status === 'ready' && people.length > 0 ? (
-            <View accessibilityRole="none" accessibilityLabel="Contacts" className="gap-2">
-              <Card>
-                {people.map((person) => (
-                  <ContactRow
-                    key={person.userId}
-                    person={person}
-                    onOpen={() =>
-                      router.push({ pathname: '/chat/[id]', params: { id: person.jid } })
-                    }
-                    onRemove={remove}
-                  />
-                ))}
-              </Card>
-            </View>
+            <ContactList
+              people={people}
+              chats={chats}
+              onOpenChat={openChat}
+              onViewProfile={(profileHandle) =>
+                router.push({ pathname: '/u/[handle]', params: { handle: profileHandle } })
+              }
+              onRemove={removeContact}
+            />
           ) : null}
 
-          {error !== '' && status === 'ready' ? (
+          {actionError !== '' && status === 'ready' ? (
             <Text accessibilityRole="alert" className="mt-3 text-[14px] text-danger">
-              {error}
+              {actionError}
             </Text>
           ) : null}
         </View>
@@ -215,78 +221,5 @@ function ContactsList() {
         </View>
       ) : null}
     </SafeAreaView>
-  );
-}
-
-/** One contact: the row body opens the DM; Remove asks in place, then removes. */
-function ContactRow({
-  person,
-  onOpen,
-  onRemove,
-}: {
-  person: Contact;
-  onOpen: () => void;
-  onRemove: (userId: string) => Effect.Effect<void>;
-}) {
-  const [confirming, setConfirming] = useState(false);
-  const [state, remove] = useAction<void, void, never>(() => onRemove(person.userId));
-  const busy = isWaiting(state);
-  return (
-    <View className="px-3 py-2.5">
-      <View className="flex-row items-center gap-3">
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Open the chat with ${person.name}`}
-          onPress={onOpen}
-          className="min-w-0 flex-1 flex-row items-center gap-3 active:opacity-80"
-        >
-          <Avatar id={person.jid} name={person.name} size={44} avatarUrl={person.avatarUrl} />
-          <View className="min-w-0 flex-1">
-            <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">
-              {person.name}
-              {person.handle !== undefined && person.handle !== null ? (
-                <Text className="font-normal text-muted-foreground"> @{person.handle}</Text>
-              ) : null}
-            </Text>
-          </View>
-        </Pressable>
-        <Button
-          variant="outline"
-          size="sm"
-          accessibilityLabel={`Remove ${person.name}`}
-          disabled={busy}
-          onPress={() => setConfirming(true)}
-        >
-          <Text>Remove</Text>
-        </Button>
-      </View>
-      {confirming ? (
-        <View className="mt-2 gap-2 rounded-lg bg-surface-raised px-3 py-2.5">
-          <Text className="text-[13px] text-foreground">
-            Remove {person.name}? They stay in your chats; you stop being contacts.
-          </Text>
-          <View className="flex-row gap-2">
-            <Button
-              variant="destructive"
-              size="sm"
-              accessibilityLabel="Confirm remove contact"
-              disabled={busy}
-              onPress={() => remove()}
-            >
-              <Text>{busy ? 'Removing…' : 'Remove'}</Text>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              accessibilityLabel={`Cancel removing ${person.name}`}
-              disabled={busy}
-              onPress={() => setConfirming(false)}
-            >
-              <Text>Cancel</Text>
-            </Button>
-          </View>
-        </View>
-      ) : null}
-    </View>
   );
 }
