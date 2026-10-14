@@ -210,14 +210,20 @@ modules:
   mod_carboncopy: {}
   mod_ping: {}
   # Push notifications (T-0119): mod_push routes offline and MAM events to
-  # our XEP-0114 component (see the listener above). `include_sender` and
-  # `include_body` stay off: the component resolves who and what itself from
-  # the chat archive, honouring mute, visibility and the previews setting —
-  # ejabberd never sees message text for push. `mod_push_keepalive` keeps
-  # the stream-management session up so hibernating sessions still notify.
+  # our XEP-0114 component (see the listener above). `include_sender` stays
+  # off: the component resolves who and what itself from the chat archive,
+  # honouring mute, visibility and the previews setting — ejabberd never sees
+  # message text for push. `include_body` must NOT be `false` (T-1357): with
+  # `include_sender: false` and `include_body: false`, mod_push's
+  # `make_summary/3` returns `undefined`, and `notify_on: messages` then takes
+  # the `{undefined, messages}` branch in `notify/7`, which *suppresses* the
+  # notification. A static string keeps the text out while making the summary
+  # defined; `notify_on: messages` limits publishing to real messages, so
+  # typing and presence stay silent. `mod_push_keepalive` keeps the
+  # stream-management session up so hibernating sessions still notify.
   mod_push:
     include_sender: false
-    include_body: false
+    include_body: 'New message'
     # T-1155: only message stanzas publish; typing and presence stay silent.
     notify_on: messages
   mod_push_keepalive: {}

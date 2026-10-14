@@ -6,9 +6,7 @@ import {
   type TopicKind,
   type TopicStatus,
 } from '@zilar/chat-core';
-import { summariesFor as coreSummariesFor } from '@zilar/client-core/store';
 
-import type { ChatEntry } from './chat-api';
 import type { ChatFolder } from './types';
 
 /**
@@ -18,20 +16,6 @@ import type { ChatFolder } from './types';
  * `topics` keeps one row per group. Components stay thin; everything here is
  * a pure function with Vitest coverage.
  */
-
-/**
- * One `/api/chats` entry to its chat rows (T-0924): the shared core
- * `summariesFor` does the mapping for both apps, so mobile's group rows now
- * also carry the fields web kept (visibility, handle, avatarUrl,
- * groupBackground). A DM yields no topic rows here; the caller's `summaryFor`
- * handles DMs.
- */
-export function summariesForTopicsEntry(entry: ChatEntry): ChatSummary[] {
-  if (entry.kind !== 'group') {
-    return [];
-  }
-  return coreSummariesFor(entry);
-}
 
 /** True when the chat is a group topic (a group chat with a task strip). */
 export function isTopicChat(chat: ChatSummary): boolean {

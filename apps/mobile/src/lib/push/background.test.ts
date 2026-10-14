@@ -13,11 +13,20 @@ const taskManager = vi.hoisted(() => ({ defineTask: vi.fn() }));
 
 const appState = vi.hoisted(() => ({ currentState: 'background' as string }));
 
+// `onWake` records the receipt time in SecureStore (`last-received.ts`); the
+// dynamic import needs the module mocked under Vitest.
+const secureStore = vi.hoisted(() => ({
+  getItemAsync: vi.fn(async () => null as string | null),
+  setItemAsync: vi.fn(async () => undefined),
+}));
+
 vi.mock('expo-notifications', () => notifications);
 vi.mock('expo-task-manager', () => taskManager);
 vi.mock('react-native', () => ({ AppState: appState }));
+vi.mock('expo-secure-store', () => secureStore);
 
 import { onWake } from './background';
+import { setActiveChatId } from './active-chat';
 
 const API_URL = 'http://server.test';
 
@@ -30,6 +39,7 @@ const token = async () => 'session-token';
 
 beforeEach(() => {
   appState.currentState = 'background';
+  setActiveChatId(null);
   vi.mocked(notifications.scheduleNotificationAsync).mockClear();
   vi.mocked(notifications.registerTaskAsync).mockClear();
   vi.mocked(taskManager.defineTask).mockClear();
@@ -96,8 +106,23 @@ describe('onWake (T-1143)', () => {
     expect(notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 
-  it('posts nothing while the app is in the foreground', async () => {
-    appState.currentState = 'active';
+  it('posts nothing while the app is open on that chat', async () => {
+    setActiveChatId('chat-1');
+    const fetchImpl = vi.fn(
+      previewFetch({ title: 'Ada', body: 'see you there', chatId: 'chat-1' }),
+    );
+
+    await onWake(
+      { chatId: 'chat-1', messageId: 'msg-1' },
+      { getToken: token, fetchImpl, apiUrl: API_URL },
+    );
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('posts a wake for the foreground when another chat is open', async () => {
+    setActiveChatId('other-chat');
     const fetchImpl = previewFetch({ title: 'Ada', body: 'see you there', chatId: 'chat-1' });
 
     await onWake(
@@ -105,11 +130,11 @@ describe('onWake (T-1143)', () => {
       { getToken: token, fetchImpl, apiUrl: API_URL },
     );
 
-    expect(notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    expect(notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
   });
 
-  it('posts the test wake even while the app is in the foreground', async () => {
-    appState.currentState = 'active';
+  it('posts the test wake even while a chat is open', async () => {
+    setActiveChatId('chat-1');
 
     await onWake({ chatId: 'zilar:test' }, { getToken: token, apiUrl: API_URL });
 

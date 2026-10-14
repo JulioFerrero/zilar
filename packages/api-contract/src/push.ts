@@ -26,11 +26,19 @@ export const RegisteredDevice = Schema.Struct({
 
 export type RegisteredDevice = typeof RegisteredDevice.Type;
 
+/** The transport a push device speaks: a browser, an Android app or an iPhone app. */
+export const PushDeviceKind = Schema.Literals(['webpush', 'fcm', 'apns']);
+
+export type PushDeviceKind = typeof PushDeviceKind.Type;
+
 export const PushDevice = Schema.Struct({
   id: Schema.String,
+  kind: PushDeviceKind,
   userAgent: Schema.NullOr(Schema.String),
   createdAt: Schema.String,
   lastUsedAt: Schema.NullOr(Schema.String),
+  failedAt: Schema.NullOr(Schema.String),
+  lastFailure: Schema.NullOr(Schema.String),
   inactive: Schema.Boolean,
 });
 

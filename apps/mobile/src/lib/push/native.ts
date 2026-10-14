@@ -49,6 +49,9 @@ export type UnregisterNativePushDeps = Omit<NativePushDeps, 'setPushPair'>;
 
 type Registration = typeof RegisteredDevice.Type;
 
+/** The stored registration shape, as the settings diagnostics screen reads it. */
+export type StoredPushRegistration = Registration;
+
 /** The stored registration, or undefined when the key is missing or malformed. */
 function parseRegistration(raw: string | null): Registration | undefined {
   if (raw === null || raw === '') {
@@ -73,6 +76,19 @@ async function clearRegistration(): Promise<void> {
     await SecureStore.deleteItemAsync(PUSH_REGISTRATION_KEY);
   } catch {
     // Best effort: the stale key can never make the app fail.
+  }
+}
+
+/**
+ * The registration this phone stored, or undefined when the key is missing or
+ * malformed. Best effort: a SecureStore failure answers undefined. The
+ * settings diagnostics screen matches its own row by this `id`.
+ */
+export async function readStoredRegistration(): Promise<StoredPushRegistration | undefined> {
+  try {
+    return parseRegistration(await SecureStore.getItemAsync(PUSH_REGISTRATION_KEY));
+  } catch {
+    return undefined;
   }
 }
 

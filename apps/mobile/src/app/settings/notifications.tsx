@@ -4,7 +4,7 @@ import { Bell } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { Linking, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { runApi } from '@zilar/api-contract';
+import { runApi, type PushDevice } from '@zilar/api-contract';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Card, SectionLabel } from '@/components/ui/card';
 import { StateMessage } from '@/components/ui/state-message';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
+import { LastPushReceivedLine, PushDevicesSection } from '@/components/settings/push-diagnostics';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { API_URL } from '@/lib/auth';
 import { ACCENT_FOREGROUND } from '@/lib/colors';
@@ -19,7 +20,13 @@ import { createApiClient } from '@/lib/effect/api-client';
 import { fromApi } from '@/lib/effect/api-effect';
 import { interruptFiber } from '@/lib/effect/timers';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
-import { NATIVE_PUSH_USER_AGENT, registerNativePush, type SetPushPair } from '@/lib/push/native';
+import { readLastPushReceived } from '@/lib/push/last-received';
+import {
+  NATIVE_PUSH_USER_AGENT,
+  readStoredRegistration,
+  registerNativePush,
+  type SetPushPair,
+} from '@/lib/push/native';
 import { getSessionToken } from '@/lib/session-token';
 import { ENV_MOCK, mockParamAllowed, mockToken } from '@/mock/gate';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -108,6 +115,9 @@ function NotificationsSettings() {
   const [previewError, setPreviewError] = useState('');
   const [testResult, setTestResult] = useState<'sent' | ''>('');
   const [testError, setTestError] = useState('');
+  const [devices, setDevices] = useState<readonly PushDevice[]>([]);
+  const [thisDeviceId, setThisDeviceId] = useState<string | null>(null);
+  const [lastReceivedAt, setLastReceivedAt] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setStatus('loading');
@@ -120,13 +130,19 @@ function NotificationsSettings() {
             catch: (error) => error,
           }),
           fromApi(() => runApi(push.settings())),
+          fromApi(() => runApi(push.list())),
+          Effect.tryPromise({ try: () => readLastPushReceived(), catch: () => null }),
+          Effect.tryPromise({ try: () => readStoredRegistration(), catch: () => undefined }),
         ],
         { concurrency: 'unbounded' },
       ).pipe(
-        Effect.tap(([granted, settings]) =>
+        Effect.tap(([granted, settings, list, lastReceived, registration]) =>
           Effect.sync(() => {
             setPermission(permissionViewOf(granted));
             setShowPreviews(settings.showPreviews);
+            setDevices(list.devices);
+            setLastReceivedAt(lastReceived);
+            setThisDeviceId(registration?.id ?? null);
             setStatus('ready');
           }),
         ),
@@ -218,6 +234,25 @@ function NotificationsSettings() {
         fromApi(() => runApi(push.test({ payload: { subscriptionId: registration.id } }))),
       ),
       Effect.tap(() => Effect.sync(() => setTestResult('sent'))),
+      // Refresh the diagnostics so the test's result shows. Ignored: a failed
+      // refresh must not turn a successful send into an error.
+      Effect.tap(() =>
+        Effect.all(
+          [
+            fromApi(() => runApi(push.list())),
+            Effect.tryPromise({ try: () => readLastPushReceived(), catch: () => null }),
+          ],
+          { concurrency: 'unbounded' },
+        ).pipe(
+          Effect.tap(([list, lastReceived]) =>
+            Effect.sync(() => {
+              setDevices(list.devices);
+              setLastReceivedAt(lastReceived);
+            }),
+          ),
+          Effect.ignore,
+        ),
+      ),
       Effect.catch(() => Effect.sync(() => setTestError(TEST_ERROR))),
     ),
   );
@@ -285,6 +320,11 @@ function NotificationsSettings() {
                 ) : null}
               </View>
             </Card>
+          </View>
+
+          <View className="gap-2">
+            <PushDevicesSection devices={devices} thisDeviceId={thisDeviceId} />
+            <LastPushReceivedLine at={lastReceivedAt} />
           </View>
 
           <View className="gap-2">

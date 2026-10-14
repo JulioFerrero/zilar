@@ -70,9 +70,12 @@ function createDevice(data: MockData, request: MockHttpRequest): Response {
   const id = data.nextPushDeviceId();
   const device: MockPushDevice = {
     id,
+    kind: 'webpush',
     userAgent: typeof body.userAgent === 'string' ? body.userAgent : null,
     createdAt: new Date().toISOString(),
     lastUsedAt: null,
+    failedAt: null,
+    lastFailure: null,
     inactive: false,
   };
   data.putPushDevice(device);

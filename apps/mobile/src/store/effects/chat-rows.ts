@@ -1,8 +1,8 @@
 import type { ChatSummary } from '@zilar/chat-core';
+import { summariesFor as coreSummariesFor } from '@zilar/client-core/store';
 import type { ChatMessage } from '@zilar/xmpp-core';
 
 import type { ChatEntry } from '../../lib/chat-api';
-import { summariesForTopicsEntry } from '../../lib/topics';
 
 /**
  * XEP-0308 corrections, XEP-0424 retractions and XEP-0444 reactions arrive as
@@ -19,43 +19,15 @@ export function isUpdateStanza(message: ChatMessage): boolean {
   );
 }
 
-function summaryFor(entry: ChatEntry): ChatSummary {
-  const base = {
-    id: entry.chatJid,
-    title: entry.title,
-    isAI: entry.kind === 'dm' && entry.isAi === true,
-    space: 'personal' as const,
-    unread: 0,
-    muted: false,
-  };
-  if (entry.kind === 'dm') {
-    return {
-      ...base,
-      kind: 'dm',
-      ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
-      online: false,
-    };
-  }
-  return {
-    ...base,
-    kind: 'group',
-    memberCount: entry.memberCount,
-    onlineCount: 0,
-  };
-}
-
 /**
- * One `/api/chats` entry to its chat rows (T-0112): DMs map to one row; a
- * group with `topics` maps to one row per visible topic (General keeps the
- * group's old chat id); a group without the field keeps its single legacy
- * row. Malformed topic rows are dropped by `chatEntryTopics`, never rendered.
+ * One `/api/chats` entry to its chat rows (T-0924): the shared core mapper
+ * does the mapping for both apps, so a row carries the server `unread`,
+ * `lastMessage`, `readUntil` and `deliveredUntil` the entry holds.
+ *
+ * T-1361: mobile used to keep its own DM branch that hardcoded `unread: 0` and
+ * dropped the preview (groups already went through the core mapper), so a DM
+ * unread that arrived while the app was killed or woken never reached its row.
  */
 export function summariesFor(entry: ChatEntry): ChatSummary[] {
-  if (entry.kind !== 'group') {
-    return [summaryFor(entry)];
-  }
-  const rows = summariesForTopicsEntry(entry);
-  // `summariesForTopicsEntry` already falls back to the legacy row for an
-  // older server; `summariesFor` only keeps the export beside `summaryFor`.
-  return rows;
+  return coreSummariesFor(entry);
 }

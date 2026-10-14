@@ -51,6 +51,13 @@ const DmEntrySchema = struct({
   // onto the row.
   unread: Schema.optional(Schema.Number),
   lastMessage: Schema.optional(ChatLastMessage),
+  // T-1363: the server's delivered and read marks (an archive id in the
+  // caller's own-message terms, the same fields the contract declares on
+  // `DmChatEntry`). Without them the shared mapper finds no mark on a DM row,
+  // so its ticks reset on every cold start and fall back to live receipts.
+  // Absent on older servers (still parses), so they stay optional.
+  deliveredUntil: Schema.optional(Schema.String),
+  readUntil: Schema.optional(Schema.String),
 });
 
 const GroupEntryRawSchema = struct({
@@ -84,6 +91,10 @@ const GroupEntryRawSchema = struct({
   // T-1318: the group's creation/join time, so the list sorts a just-created
   // group with no messages first. Absent on older servers (still parses).
   createdAt: Schema.optional(Schema.String),
+  // T-1363: the group's delivered mark (the contract carries only this mark
+  // on a group, no `readUntil`), so its delivered tick survives a cold start
+  // too. Absent on older servers (still parses).
+  deliveredUntil: Schema.optional(Schema.String),
 });
 
 const RoleChipSchema = struct({
@@ -215,6 +226,9 @@ function parseChatEntry(value: unknown): ChatEntry | null {
     ...(raw.lastMessage === undefined ? {} : { lastMessage: raw.lastMessage }),
     // T-1318: carry the creation time so an empty group sorts first.
     ...(raw.createdAt === undefined ? {} : { createdAt: raw.createdAt }),
+    // T-1363: carry the group's delivered mark so the shared mapper can paint
+    // its tick before new receipts arrive.
+    ...(raw.deliveredUntil === undefined ? {} : { deliveredUntil: raw.deliveredUntil }),
   };
 }
 

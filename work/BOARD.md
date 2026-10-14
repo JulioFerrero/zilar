@@ -1377,6 +1377,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1335](T-1335-photo-bubbles-edge-to-edge.md) | Photos like Telegram: edge to edge in the bubble, time pill on the photo, caption below (mobile + web) | 2026-10-13 |
 | [T-1336](T-1336-requests-in-chat-list.md) | Contact requests as rows at the top of the chat list with inline Accept / Decline (Undo) on mobile and web | 2026-10-13 |
 | [T-1338](T-1338-mobile-viewer-gestures.md) | Mobile photo viewer: swipe, pinch, pan actually work (double-tap blocked them) | in-progress | auto | — | Julio 10-13 |
+| [T-1362](T-1362-go-muse-fallback.md) | Lead tool: Go Muse in the fallback chain before paid Muse | in-progress | auto | — | Julio 10-14 |
 | [T-1337](T-1337-just-sent-photo-loads.md) | Just-sent photos keep the local preview and retry /api/files instead of sticking on Image unavailable (web + mobile) | 2026-10-13 |
 | [T-1339](T-1339-web-viewer-zoom.md) | Web photo viewer: wheel/trackpad/double-click zoom, drag pan, touch swipe, prev/next arrows | 2026-10-13 |
 | [T-1340](T-1340-web-viewer-dblclick.md) | Web viewer: double-click on the photo zooms and toggles back; only a click outside the photo closes | 2026-10-13 |
@@ -1394,5 +1395,11 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1353](T-1353-search-overlap.md) | Web search results flow without overlap; request rows hide while searching | 2026-10-14 |
 | [T-1352](T-1352-refresh-screenshots.md) | Docs screenshots and USER_GUIDE text refreshed to today's app | 2026-10-14 |
 | [T-1354](T-1354-android-release-workflow.md) | GitHub Releases: tag v* builds release-signed APKs (arm64 + universal) and publishes them with notes | 2026-10-14 |
-| [T-1356](T-1356-push-diagnostics.md) | Push diagnostics per device in Settings → Notifications (web + mobile) | in-progress | auto | — | Julio 10-14 Android no push |
 | [T-1355](T-1355-channel-shows-as-group.md) | Channels render as channels (no General topic expansion) on web and mobile | 2026-10-14 |
+| [T-1356](T-1356-push-diagnostics.md) | Push diagnostics per device (kind, last push, last failure + reason) on web and mobile; migration 0054 | 2026-10-14 |
+| [T-1358](T-1358-android-wake-shows-nothing.md) | Android: notifications are shown again (the foreground handler no longer drops every post; only the open chat stays silent); failed posts are logged | 2026-10-14 |
+| [T-1357](T-1357-push-pending-sessions.md) | Push: ejabberd mod_push no longer suppresses every message push (include_body static text instead of false); config test + e2e steps | 2026-10-14 |
+| [T-1359](T-1359-headless-wake-entry.md) | Android: the push wake task is defined in a new entry file, so a closed app handles the wake without being opened | 2026-10-14 |
+| [T-1360](T-1360-component-iq-callee.md) | Push component: publishes go through iqCallee and get one result reply, so ejabberd no longer disables push after the first notification | 2026-10-14 |
+| [T-1361](T-1361-unread-lost-after-wake.md) | Mobile: DM rows keep the server unread count and preview (the mobile DM mapper hard-coded unread 0) | 2026-10-14 |
+| [T-1363](T-1363-mobile-dm-marks.md) | Mobile: DM rows keep readUntil/deliveredUntil (group keeps deliveredUntil); dead summariesForTopicsEntry removed | 2026-10-14 |

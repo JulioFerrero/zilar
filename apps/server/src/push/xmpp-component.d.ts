@@ -39,8 +39,30 @@ declare module '@xmpp/component' {
     stanza: (stanza: PushXmppElement) => void;
   };
 
+  export type PushIqContext = {
+    /** `get` or `set`. */
+    type: string;
+    /** The IQ id, empty when the stanza carried none. */
+    id: string;
+    /** The whole IQ stanza the route matched on. */
+    stanza: PushXmppElement;
+    /** The single child element the route matched on (`pubsub`, `query`, …). */
+    element?: PushXmppElement;
+  };
+
+  // A route handler's return value is the reply. A truthy value makes the
+  // callee send a single `result` (an element is included as its child); a
+  // falsy value makes it answer `service-unavailable`.
+  export type PushIqRouteHandler = (ctx: PushIqContext, next: () => Promise<unknown>) => unknown;
+
+  export type PushIqCallee = {
+    get(ns: string, name: string, handler: PushIqRouteHandler): void;
+    set(ns: string, name: string, handler: PushIqRouteHandler): void;
+  };
+
   export type PushComponent = {
     status: string;
+    iqCallee: PushIqCallee;
     on(
       event: keyof PushComponentEvents,
       listener: PushComponentEvents[keyof PushComponentEvents],

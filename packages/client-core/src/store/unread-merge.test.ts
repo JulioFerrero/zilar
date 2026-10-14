@@ -64,6 +64,27 @@ describe('mergeUnread', () => {
     expect(mergeUnread(fresh, memory, CHAT).unread).toBe(0);
   });
 
+  it('a DM entry maps the server unread, preview and delivered mark (T-1361)', async () => {
+    const { summariesFor } = await import('./chat-rows');
+    const rows = summariesFor({
+      kind: 'dm',
+      chatJid: CHAT,
+      title: 'Ana',
+      unread: 1,
+      lastMessage: {
+        id: 'o-12',
+        text: 'push test 12',
+        senderName: 'Ana',
+        at: '2026-10-14T12:30:25Z',
+        archiveId: '1791981025538427',
+      },
+      deliveredUntil: '1791981025538427',
+    });
+    expect(rows[0]?.unread).toBe(1);
+    expect(rows[0]?.lastMessage?.id).toBe('o-12');
+    expect(rows[0]?.deliveredUntil).toBe('1791981025538427');
+  });
+
   it('a chat-rows entry maps the server unread and preview onto the row', async () => {
     const { summariesFor } = await import('./chat-rows');
     const rows = summariesFor({

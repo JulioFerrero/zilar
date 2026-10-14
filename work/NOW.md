@@ -2,6 +2,13 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-14 13:20: Android push debugging. Workers: T-1357, T-1358. Julio is at lunch; the phone is unplugged.**
+- **Cause, found live** (VPS SSH, memory `vps-ssh-access.md`):
+  - (1) A paused XMPP session (the app closed, 600 s resume window) gets no push. ejabberd never publishes to the component, and the group notifier counts the paused session as online. This is T-1357.
+  - (2) Wakes reach the app and it fetches `/api/push/preview`, but Android has never shown a Zilar notification (`mLastNotificationUpdateTimeMs=0` on every channel). This is T-1358.
+- **Merged:** T-1356 push diagnostics (migration 0054 `last_failure`, live and checked).
+- **Next:** merge T-1357 and T-1358, build the APK and send it to Julio's DM. When he is back with the phone, test with the app killed: a DM and a channel post. Then the release key (below).
+
 **2026-10-14 12:15: release workflow ready, channel live. No workers running.**
 - **Merged:**
   - T-1354: `.github/workflows/android-release.yml`. Tag `v*` builds arm64 and universal APKs signed with Julio's key and publishes a GitHub Release; see `docs/RELEASING.md` §7b;

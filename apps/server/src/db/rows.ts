@@ -246,6 +246,9 @@ export interface PushSubscriptionRow {
   createdAt: Date;
   lastUsedAt: Date | null;
   failedAt: Date | null;
+  // Short reason stored with `failedAt` (migration 0054): the FCM error code
+  // or `http-<status>`, at most 64 chars. Cleared with `failedAt` on success.
+  lastFailure: string | null;
 }
 
 // Row of the `push_settings` table.

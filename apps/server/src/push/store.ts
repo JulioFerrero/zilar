@@ -1,7 +1,7 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import type { PushSettingRow, PushSubscriptionRow } from '../db/rows';
+import type { PushDeviceKind, PushSettingRow, PushSubscriptionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import type { PushCipher } from './crypto';
 
@@ -22,9 +22,12 @@ export const PUSH_INACTIVE_AFTER_DAYS = 90;
 
 export interface PushDeviceView {
   id: string;
+  kind: PushDeviceKind;
   userAgent: string | null;
   createdAt: string;
   lastUsedAt: string | null;
+  failedAt: string | null;
+  lastFailure: string | null;
   inactive: boolean;
 }
 
@@ -33,9 +36,12 @@ export function toPushDeviceView(row: PushDeviceRow, now: Date): PushDeviceView 
   const inactiveDays = (now.getTime() - last.getTime()) / (24 * 3600 * 1000);
   return {
     id: row.id,
+    kind: row.kind,
     userAgent: row.userAgent,
     createdAt: row.createdAt.toISOString(),
     lastUsedAt: row.lastUsedAt === null ? null : row.lastUsedAt.toISOString(),
+    failedAt: row.failedAt === null ? null : row.failedAt.toISOString(),
+    lastFailure: row.lastFailure,
     inactive: inactiveDays >= PUSH_INACTIVE_AFTER_DAYS,
   };
 }
@@ -123,23 +129,27 @@ export async function markDeviceUsed(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* sql`UPDATE push_subscriptions
-        SET last_used_at = ${now}, failed_at = NULL
+        SET last_used_at = ${now}, failed_at = NULL, last_failure = NULL
         WHERE id = ${deviceId}`;
     }),
   );
 }
 
+// Stamps the failure time and its short reason together. The reason is the FCM
+// error code or `http-<status>`; `pushFailureReason` caps it at 64 chars, the
+// column's limit (migration 0054's check).
 export async function markDeviceFailed(
   db: ServerDatabase,
   deviceId: string,
   now: Date,
+  lastFailure: string,
 ): Promise<void> {
   await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* sql`UPDATE push_subscriptions
-        SET failed_at = ${now}
+        SET failed_at = ${now}, last_failure = ${lastFailure}
         WHERE id = ${deviceId}`;
     }),
   );

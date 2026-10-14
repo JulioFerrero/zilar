@@ -2,6 +2,7 @@ import { Effect, type Effect as EffectType } from 'effect';
 import { markPushFailed, markPushSent } from '../health-status';
 import { albumKey } from './album-key';
 import { newestMessageForUserEffect } from './archive-scan';
+import { pushFailureReason } from './failure-reason';
 import { buildNativeWakePayload, buildPushPayload, type ResolvedPushMessage } from './payload';
 import type { PushNotification } from './protocol';
 import {
@@ -248,15 +249,17 @@ const sendWithCleanupEffect = Effect.fnUntraced(function* (
       }
       return result.gone;
     },
-    catch: () => new SendFailed(),
+    // The thrown error never leaves this module: only its short reason (the
+    // FCM code or the HTTP status) is kept, to store with `failed_at`.
+    catch: (error) => new SendFailed({ reason: pushFailureReason(error) }),
   }).pipe(
-    Effect.catchTag('SendFailed', () =>
+    Effect.catchTag('SendFailed', (failed) =>
       Effect.gen(function* () {
-        yield* awaitDb(() => markDeviceFailed(deps.db, device.id, now));
+        yield* awaitDb(() => markDeviceFailed(deps.db, device.id, now, failed.reason));
         // Ids only: the error may echo the request, which carries the token
         // or the endpoint. The boundary logs the failure and returns the
         // dropped outcome.
-        return yield* new SendFailed();
+        return yield* new SendFailed({ reason: failed.reason });
       }),
     ),
   );

@@ -15,6 +15,7 @@ import { syncPushSubscriptionsForUser } from '../topics/rooms';
 import { readCandidateByOriginId } from './archive-scan';
 import { resolveCandidate } from './candidates';
 import { createPushCipher } from './crypto';
+import { pushFailureReason } from './failure-reason';
 import type { FcmSender } from './fcm';
 import { createNativeSender } from './native-sender';
 import { buildPushPayload } from './payload';
@@ -292,13 +293,22 @@ export function createPushGroupLayer(
                   serverId: deps.config.xmpp.domain,
                 }),
               ).pipe(
-                Effect.map((result) => ({ sent: true as const, gone: result.gone })),
-                Effect.catchDefect(() => Effect.succeed({ sent: false as const, gone: false })),
+                Effect.map((result) => ({ sent: true as const, gone: result.gone, reason: '' })),
+                Effect.catchDefect((defect) =>
+                  Effect.succeed({
+                    sent: false as const,
+                    gone: false,
+                    reason: pushFailureReason(defect),
+                  }),
+                ),
               );
               if (!nativeOutcome.sent) {
                 // Like the Web Push failure path: a failed send stamps
-                // `failed_at`, and the route answers `push_failed`.
-                yield* Effect.promise(() => markDeviceFailed(deps.db, target.id, new Date(now())));
+                // `failed_at` and its reason, and the route answers
+                // `push_failed`.
+                yield* Effect.promise(() =>
+                  markDeviceFailed(deps.db, target.id, new Date(now()), nativeOutcome.reason),
+                );
                 throw new HttpError(502, 'push_failed', 'The test notification could not be sent');
               }
               if (nativeOutcome.gone) {
@@ -357,9 +367,12 @@ export function createPushGroupLayer(
                 yield* Effect.promise(() => removeDevice(deps.db, user.id, target.id));
                 throw new HttpError(410, 'device_gone', 'The push device is no longer usable');
               }
-              // Like the component path: a failed send stamps `failed_at`, so
-              // the device list and the 90-day rule see the failure.
-              yield* Effect.promise(() => markDeviceFailed(deps.db, target.id, new Date(now())));
+              // Like the component path: a failed send stamps `failed_at` and
+              // its short reason, so the device list and the 90-day rule see
+              // the failure.
+              yield* Effect.promise(() =>
+                markDeviceFailed(deps.db, target.id, new Date(now()), pushFailureReason(error)),
+              );
               throw new HttpError(502, 'push_failed', 'The test notification could not be sent');
             }
             // A successful test proves receipt, so it counts for the 90-day

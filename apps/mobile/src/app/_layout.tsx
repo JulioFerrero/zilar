@@ -26,10 +26,11 @@ import { Effect } from 'effect';
 import { useAuthStore } from '@/auth/session';
 import { ClientVersionBanner } from '@/components/client-version-banner';
 import { mobileRuntime } from '@/lib/effect/runtime';
+import { setActiveChatId } from '@/lib/push/active-chat';
 import { NotificationRouter } from '@/lib/push/tap';
 import { markStartup } from '@/lib/startup-timing';
 import { NAV_THEME } from '@/lib/theme';
-import { ChatStoreProvider } from '@/store/chat-store-provider';
+import { ChatStoreProvider, useChatStoreApi } from '@/store/chat-store-provider';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -56,6 +57,23 @@ function SessionBootstrap() {
   useEffect(() => {
     Effect.runFork(Effect.promise(() => bootstrap()));
   }, [bootstrap]);
+
+  return null;
+}
+
+/**
+ * Mirrors the store's open chat into the push module (T-1358), so `onWake`
+ * and the foreground notification handler stay silent for the one chat the
+ * user is already reading. Must be inside `ChatStoreProvider`.
+ */
+function ActiveChatSync() {
+  const store = useChatStoreApi();
+
+  useEffect(() => {
+    const sync = () => setActiveChatId(store.getState().activeChatId);
+    sync();
+    return store.subscribe(sync);
+  }, [store]);
 
   return null;
 }
@@ -102,6 +120,7 @@ export default function RootLayout() {
           <SessionBootstrap />
           <NotificationRouter />
           <ChatStoreProvider>
+            <ActiveChatSync />
             <View style={{ flex: 1 }}>
               <ClientVersionBanner />
               <Stack screenOptions={{ headerShown: false }} />

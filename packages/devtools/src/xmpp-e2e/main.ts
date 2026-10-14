@@ -17,6 +17,7 @@ import {
 } from './harness';
 import { queryRoomMam } from './mam';
 import { joinRoom } from './muc';
+import { pushPendingDm, pushPendingGroup } from './push-pending';
 
 export async function main(): Promise<void> {
   const config = loadEnvironment();
@@ -177,6 +178,17 @@ export async function main(): Promise<void> {
     const condition = await joinRoom(requireAlice(), nonAdminRoom, 'alice', 'error');
     console.log(`      the MUC service answered with: ${condition}`);
   });
+
+  await step('push: a DM to a pending push session reaches the component (T-1357)', async () => {
+    console.log(`      ${await pushPendingDm({ config, runtime, admin, prefix: 'dm-' })}`);
+  });
+
+  await step(
+    'push: a group post to a pending push session reaches the component (T-1357)',
+    async () => {
+      console.log(`      ${await pushPendingGroup({ config, runtime, admin, prefix: 'gr-' })}`);
+    },
+  );
 
   await step('clean up: the server destroys the room', async () => {
     await admin.destroyRoom(roomId);

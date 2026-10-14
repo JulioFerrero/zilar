@@ -6,7 +6,7 @@ import { seedUser } from '../test-support/seed';
 import { createPushCipher } from './crypto';
 import type { ArchiveCandidate } from './archive-scan';
 import { deliverToDevice, handleIncomingPush, type ScanResult } from './delivery';
-import type { FcmSender, FcmWakeData } from './fcm';
+import { FcmSendError, type FcmSender, type FcmWakeData } from './fcm';
 import type { ResolvedPushMessage } from './payload';
 import type { PushServiceDeps } from './service';
 import {
@@ -315,6 +315,37 @@ describe('handleIncomingPush archive scan', () => {
 
     expect(outcome.kind).toBe('dropped');
     expect(calls).toHaveLength(0);
+  });
+
+  it('stores the FCM failure reason and clears it on a later success', async () => {
+    const userId = await seedUser(context);
+    const device = await saveDevice(context.db, cipher, fcmInput(userId));
+    const rows = [archiveRow('origin-fail', microsAgo(60_000))];
+    const failing: FcmSender = {
+      send: () => Promise.reject(new FcmSendError(503, 'UNAVAILABLE')),
+    };
+
+    const failed = await handleIncomingPush(
+      buildDeps(context, { nativeSender: failing, archive: stubArchive(rows) }),
+      { node: device.node, from: 'ana@zilar.localhost' },
+    );
+
+    expect(failed).toEqual({ kind: 'dropped', userId, deviceId: device.id, reason: 'send-failed' });
+    const afterFailure = await deviceByNode(context.db, device.node);
+    expect(afterFailure?.lastFailure).toBe('UNAVAILABLE');
+    expect(afterFailure?.failedAt?.toISOString()).toBe(NOW.toISOString());
+
+    const { sender } = fakeNativeSender();
+    const sent = await handleIncomingPush(
+      buildDeps(context, { nativeSender: sender, archive: stubArchive(rows) }),
+      { node: device.node, from: 'ana@zilar.localhost' },
+    );
+
+    expect(sent).toEqual({ kind: 'sent', userId, deviceId: device.id });
+    const afterSuccess = await deviceByNode(context.db, device.node);
+    expect(afterSuccess?.lastFailure).toBeNull();
+    expect(afterSuccess?.failedAt).toBeNull();
+    expect(afterSuccess?.lastUsedAt?.toISOString()).toBe(NOW.toISOString());
   });
 });
 

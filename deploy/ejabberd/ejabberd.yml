@@ -264,14 +264,23 @@ modules:
     ping_interval: 60
     timeout_action: none
   # Push notifications (T-0145): mod_push routes offline and MAM events to
-  # our XEP-0114 component (see the listener above). `include_sender` and
-  # `include_body` stay off: the component resolves who and what itself from
-  # the chat archive, honouring mute, visibility and the previews setting —
-  # ejabberd never sees message text for push. `mod_push_keepalive` keeps
-  # the stream-management session up so hibernating sessions still notify.
+  # our XEP-0114 component (see the listener above). `include_sender` stays
+  # off: the component resolves who and what itself from the chat archive,
+  # honouring mute, visibility and the previews setting — ejabberd never sees
+  # message text for push. `include_body` must NOT be `false` (T-1357): with
+  # `include_sender: false` and `include_body: false`, mod_push's
+  # `make_summary/3` returns `undefined`, and `notify_on: messages` then takes
+  # the `{undefined, messages}` branch in `notify/7`, which *suppresses* the
+  # notification. That silently dropped every push — a DM to a pending
+  # (stream-management hibernated) or offline session and a group post to a
+  # pending MUC occupant never reached the component. A static string keeps the
+  # text out (the app server still resolves the content itself) while making
+  # the summary defined, and `notify_on: messages` still filters out typing and
+  # presence. `mod_push_keepalive` keeps the stream-management session up so
+  # hibernating sessions still notify.
   mod_push:
     include_sender: false
-    include_body: false
+    include_body: 'New message'
     # T-1155: only message stanzas publish; typing and presence stay silent.
     notify_on: messages
   mod_push_keepalive: {}
