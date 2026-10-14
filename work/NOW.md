@@ -2,6 +2,20 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-14 ~10:30: Radix removed, docs refreshed. No workers running.**
+- **Julio, 10-14:** "use Base UI instead of Radix, remove Radix overall" (memory `prefer-libraries.md`).
+- **Merged:**
+  - T-1350: Dialog, Sheet, ConfirmDialog and Button on Base UI; `radix-ui` removed; shadcn style `base-nova`; vite `vendor-base-ui`;
+  - T-1349: the 9 web menus on Base UI Menu, with icons on every message-menu item;
+  - T-1351: Escape on a nested confirm closes only the confirm;
+  - T-1353: the search results overlap is fixed, and request rows hide while searching;
+  - T-1352: 19 docs screenshots and USER_GUIDE text match today's app.
+- **Radix:** web has none. Only Expo's own web tooling (vaul) and true-sheet's optional web peer remain in the lockfile.
+- **Open:**
+  - Julio's phone check of build `86647e0f` (native sheets, keyboard);
+  - his answer on adding real Android screenshots to the README;
+  - follow-up: icons for the first three chat-menu items (Pinned messages, Media, Chat background).
+
 **2026-10-14 00:45: library wave done, main at `86647e0f`. No workers running.** Julio asked (10-13) to use libraries or native components instead of hand-rolled UI (memory `prefer-libraries.md`; plan `docs/audit/library-plan.md`, T-1342).
 - **Merged:**
   - T-1341: mobile viewer on react-native-zoom-toolkit; Julio: "perfect";

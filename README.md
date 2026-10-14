@@ -63,6 +63,15 @@ The web app in action (demo data — the guide walks through every screen):
 ![Approval card](docs/screenshots/approval-desktop.png)
 ![Message search](docs/screenshots/search-desktop.png)
 
+The Android app (same demo data):
+
+<p>
+  <img src="docs/screenshots/android-chats.png" alt="Android: chat list with contact requests" width="200" />
+  <img src="docs/screenshots/android-topics.png" alt="Android: a group's topics" width="200" />
+  <img src="docs/screenshots/android-topic.png" alt="Android: a topic with an AI reply" width="200" />
+  <img src="docs/screenshots/android-message-menu.png" alt="Android: message menu sheet" width="200" />
+</p>
+
 The full tour, with a screenshot on every screen, is in **[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md)**.
 
 ## 🧭 How it works
