@@ -21,6 +21,7 @@ import {
 } from './tool-loop';
 import { executeToolCalls } from './tool-calls';
 import { redactError } from './redact-error';
+import { byteLength, redactAndTruncate, type TurnLog } from './log/append';
 
 // AI-22: the failure class and its log fields live in `./failure-class`.
 export { failureLogFields } from './failure-class';
@@ -102,6 +103,9 @@ export async function runLoopRound(input: {
   reportProgress?: (stage: string) => Promise<string | null>;
   progressPosted?: boolean;
   actionOf?: (tool: string, argsJson: string) => string | undefined;
+  /** T-1426: the turn's session log. One `tool_call` and one `tool_result`
+   * row are appended per executed call (redacted and truncated). */
+  log?: TurnLog;
 }): Promise<{
   messages: ModelRequestMessage[];
   notices: string[];
@@ -147,7 +151,7 @@ export async function runLoopRound(input: {
   const remaining = TOOL_TURN_MAX_CALLS - input.executedCalls;
   const runnable = input.result.toolCalls.slice(0, Math.max(0, remaining));
   const dropped = input.result.toolCalls.slice(runnable.length);
-  const { toolMessages, notices, stages } = await executeToolCalls({
+  const { toolMessages, notices, stages, outcomes } = await executeToolCalls({
     toolCalls: runnable,
     aiId: input.aiId,
     ...(input.executeAdvertised !== undefined
@@ -158,6 +162,34 @@ export async function runLoopRound(input: {
     logger: input.logger,
     secrets: input.secrets,
   });
+  // T-1426: one pair of session-log rows per executed call — the tool name,
+  // the arguments and the output redacted and truncated to 2 KiB, the byte
+  // counts, the exit code and the duration. Order: tool_call then tool_result.
+  if (input.log !== undefined) {
+    for (let index = 0; index < runnable.length; index += 1) {
+      const outcome = outcomes[index];
+      const call = runnable[index];
+      if (outcome === undefined || call === undefined) {
+        continue;
+      }
+      input.log.append('tool_call', {
+        tool: outcome.tool,
+        args: redactAndTruncate(call.argsJson, input.secrets),
+        args_bytes: byteLength(call.argsJson),
+      });
+      input.log.append(
+        'tool_result',
+        {
+          tool: outcome.tool,
+          output: redactAndTruncate(outcome.content, input.secrets),
+          output_bytes: byteLength(outcome.content),
+          ok: outcome.ok,
+          ...(outcome.exitCode === undefined ? {} : { exit_code: outcome.exitCode }),
+        },
+        outcome.durationMs,
+      );
+    }
+  }
   // T-1409: a call may report a new stage after it ran (for example
   // "Waiting for a computer" while the desk is queued). Report the last one,
   // best effort, exactly like the pre-round stage above.

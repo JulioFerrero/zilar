@@ -2,6 +2,7 @@
 // checkout-fix storyline with the Dev AI's progress cards and the approval.
 import { approvalCard, image, progressCard, voice } from '../builders';
 import { ago, JIDS, msg, type MockMessageSeed } from './shared';
+import { MOCK_RELEASE_NOTES_TASK_ID } from '../../agent-tasks/events';
 
 const { you: YOU, ana: ANA, luis: LUIS, marco: MARCO, dev1: DEV1 } = JIDS;
 
@@ -59,7 +60,7 @@ export const devTeamMessages: readonly MockMessageSeed[] = [
     payload: progressCard({
       stage: 'Drafting the changelog',
       title: 'Writing release notes',
-      taskId: 't-17',
+      taskId: MOCK_RELEASE_NOTES_TASK_ID,
       state: 'working',
       startedAt: new Date(Date.now() - 60_000).toISOString(),
       steps: [

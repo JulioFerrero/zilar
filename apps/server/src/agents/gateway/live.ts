@@ -18,6 +18,7 @@ import {
   taskCardSummary,
   type TaskCard,
 } from '../task-card';
+import type { TurnLog } from '../log/append';
 
 interface LiveSessionContext {
   sessions: Map<string, AiSession>;
@@ -82,11 +83,12 @@ export function createLiveSession(ctx: LiveSessionContext) {
     to: string,
     kind: ChatKind,
     aiJid: string,
-    taskId?: string,
+    log?: TurnLog,
   ): {
     reportProgress: (stage: string) => Promise<string | null>;
     finishProgress: (state: 'done' | 'failed') => Promise<void>;
   } {
+    const taskId = log?.taskId;
     let progressId: string | null = null;
     let card: TaskCard | null = null;
     let lastSentAtMs = 0;
@@ -103,6 +105,9 @@ export function createLiveSession(ctx: LiveSessionContext) {
       // T-1406: the same fixed stage text rides the chat state, next to the
       // card. Both come from one place, so they never disagree.
       liveSendStatus(session, to, kind, stage);
+      // T-1426: one session-log status row per reported stage. The label is a
+      // fixed `TOOL_STAGE_*` text, never model or tool output.
+      log?.append('status', { stage });
       const nextCard =
         card === null
           ? startTaskCard(stage, new Date().toISOString())

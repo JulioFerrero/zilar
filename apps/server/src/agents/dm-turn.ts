@@ -7,6 +7,7 @@ import type { ChatCompletionMessage } from './context';
 import { runToolTurn } from './dm-tool-turn';
 import { cutShortSuffix } from './replies';
 import { failureLogFields, mapFailureToReply, redactError } from './tool-exec';
+import type { TurnLog } from './log/append';
 import {
   ChatCompletionError,
   requestCompletion,
@@ -104,6 +105,9 @@ export interface DmTurnDeps {
   turnLogger?: {
     info: (fields: Record<string, unknown>, message: string) => void;
   };
+  /** T-1426: the turn's session log. Best effort; a write never fails the
+   * turn. */
+  log?: TurnLog;
 }
 
 export type DmTurnOutcome = { kind: 'replied'; text: string } | { kind: 'failed'; text: string };
@@ -124,6 +128,7 @@ export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
     ...(deps.secrets === undefined ? {} : { secrets: deps.secrets }),
     ...(deps.onDelta === undefined ? {} : { onDelta: deps.onDelta }),
     ...(deps.onUsage === undefined ? {} : { onUsage: deps.onUsage }),
+    ...(deps.log === undefined ? {} : { log: deps.log }),
   };
   deps.sendTyping(deps.ownerJid, 'chat', 'composing');
   try {
@@ -133,6 +138,7 @@ export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
     return await runToolTurn(deps, completionInput, secrets, tools);
   } catch (error) {
     const reply = mapFailureToReply(error);
+    deps.log?.append('error', failureLogFields(error));
     deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
     try {
       await deps.sendMessage(deps.ownerJid, 'chat', reply);

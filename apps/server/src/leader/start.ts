@@ -11,6 +11,7 @@ import type { ActionGateway } from '../actions/gateway';
 import { startRecoveryStuckTimer, type RecoveryStuckHandle } from '../actions/gateway';
 import type { AgentGateway } from '../agents/gateway';
 import { startApprovalsSweeper, type ApprovalsSweeperHandle } from '../approvals/sweeper';
+import { startTaskEventRetention, type TaskEventRetentionHandle } from '../agents/log/retention';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
@@ -63,6 +64,7 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
   let runnerHub: RunnerHub | null = null;
   let pushComponent: Pick<PushComponentHandle, 'stop'> | null = null;
   let approvalsSweeper: ApprovalsSweeperHandle | null = null;
+  let taskEventRetention: TaskEventRetentionHandle | null = null;
   let recoveryStuck: RecoveryStuckHandle | null = null;
   let routineScheduler: RoutineSchedulerHandle | null = null;
 
@@ -196,6 +198,7 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
       startRunnerHubWork();
       startGatewayWork();
       approvalsSweeper = startApprovalsSweeper({ db, audit: deps.audit, logger });
+      taskEventRetention = startTaskEventRetention({ db, logger });
       recoveryStuck = startRecoveryStuckTimer({ gateway: deps.actionGateway, logger });
       recoverStuckOnce();
       routineScheduler = buildRoutineScheduler({
@@ -222,6 +225,8 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
       await deps.gateway.stop();
       approvalsSweeper?.close();
       approvalsSweeper = null;
+      taskEventRetention?.close();
+      taskEventRetention = null;
       recoveryStuck?.close();
       recoveryStuck = null;
       routineScheduler?.stop();

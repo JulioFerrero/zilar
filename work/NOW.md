@@ -2,6 +2,20 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-15 01:00: 3 workers; LiteLLM fully gone.**
+- **Merged:**
+  - T-1421: Go paused until 2026-10-27 (`~/.zilar-lead/config.json`; the autopilot restarted on the new code);
+  - T-1423: RunnerHands plus the runner and auto computer modes;
+  - T-1424: the LiteLLM tables dropped. Live at `0a6caceb6`: the tables are gone, the server is healthy, 0 errors.
+- **Running:**
+  - T-1422: Stop from the card;
+  - T-1425: the Computer picker, web and mobile;
+  - T-1426: the session log (migration 0060) and the View steps route.
+- **Next:**
+  - the View steps UI (Task G), after T-1426;
+  - approvals batching (H) and the groups follow-up (I);
+  - enabling desks in production with `./zilar host-setup`, which needs Julio's OK.
+
 **2026-10-15 00:10: history rewritten (Julio OK'd): main is 172 commits, down from 3,096.**
 - **How it went:**
   - the final tree is byte-identical, and every intermediate tree existed;

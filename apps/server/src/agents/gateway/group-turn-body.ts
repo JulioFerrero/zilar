@@ -29,6 +29,7 @@ import { loadDelegationFlags, loadRoomGateState, type RoomGateState } from './db
 import { resolveTurnDesk, TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER } from './desk-exec';
 import { loadModelTarget } from './model-target';
 import type { GroupTurnContext } from './group-turn';
+import type { TurnLog } from '../log/append';
 
 export interface GroupTurnBodyInput {
   ctx: GroupTurnContext;
@@ -44,6 +45,8 @@ export interface GroupTurnBodyInput {
   senderName: string;
   groupName: string | undefined;
   topicName: string | undefined;
+  /** T-1426: the turn's session log; its task id keys every row. */
+  log: TurnLog;
   /** T-1290: filled with the decrypted key so the caller's failure path can
    * redact it from the log line without holding the key itself. */
   secretRef: { value?: string };
@@ -81,6 +84,7 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     senderName,
     groupName,
     topicName,
+    log,
     secretRef,
   } = input;
   const {
@@ -265,7 +269,7 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     // T-0106: the guide is appended to the last user turn only when tools
     // are enabled and the room offers `request_action`; the loop runs
     // `toolMaxRounds` rounds with a live progress message.
-    const groupProgress = liveProgressReporter(session, roomJid, 'groupchat', ai.jid);
+    const groupProgress = liveProgressReporter(session, roomJid, 'groupchat', ai.jid, log);
     if (turnDesk.waiting) {
       yield* Effect.promise(() =>
         groupProgress.reportProgress(TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER),
@@ -340,6 +344,7 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         },
         logger,
         secrets: secretsFor(),
+        log,
       }),
     );
     // T-0482: a delegated turn stores its result on the row. The worker's

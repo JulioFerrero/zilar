@@ -354,4 +354,21 @@ export interface UserDeletionRow {
   lastError: string | null;
 }
 
+// Row of the `agent_task_events` table (T-1426): one append-only step of an AI
+// task's session log, keyed by the turn's `task_id` and a per-task `seq`.
+// `kind` is one of the `TASK_EVENT_KINDS` in `agents/log/append.ts`; `data`
+// holds ids, counts and redacted/truncated tool text only.
+export interface AgentTaskEventRow {
+  id: string;
+  taskId: string;
+  aiId: string;
+  ownerId: string;
+  chatJid: string;
+  seq: number;
+  kind: string;
+  at: Date;
+  durationMs: number | null;
+  data: Record<string, unknown>;
+}
+
 export * from './rows-agents';

@@ -1,4 +1,5 @@
 import { HttpApi } from 'effect/http-api';
+import { AgentTasksGroup } from './agent-tasks';
 import { AiMemoryGroup } from './ai-memory';
 import { AisGroup } from './ais';
 import { ApprovalsGroup } from './approvals';
@@ -38,6 +39,7 @@ import { XmppGroup } from './xmpp';
  * from its group until the modules are mounted as one API.
  */
 export const ZilarApi = HttpApi.make('zilar').add(
+  AgentTasksGroup,
   AiMemoryGroup,
   AisGroup,
   ApprovalsGroup,

@@ -1,3 +1,4 @@
+// effect-plain: the Promise edge over `ai/model-client`; every model call is an Effect inside `chat`.
 // The model call the whole agent loop goes through. The transport is Effect AI
 // (`ai/model-client.ts`); this module keeps the loop's own types and caps and
 // exposes `requestCompletion` with the same shape every caller already uses.
@@ -11,7 +12,9 @@ import {
   type ModelRequestMessage,
 } from '../ai/model-client';
 import type { FetchLike } from '../ai/http';
+import { costOf, modelPricesFor } from '../ai/cost';
 import type { ModelTarget } from '../ai/providers';
+import type { TurnLog } from './log/append';
 import {
   DELEGATE_TOOL,
   MEMORY_ZOOM_TOOL,
@@ -71,6 +74,9 @@ export interface ToolExecution {
   // example "Waiting for a computer" while the desk is queued). Optional: most
   // calls leave the round's stage as it was.
   stage?: string;
+  // T-1426: the process exit code when the tool ran one (the desk tools), so
+  // the session log can carry it. Absent for every other tool.
+  exitCode?: number;
 }
 
 export type ExecuteToolCall = (call: ValidToolCall) => Promise<ToolExecution>;
@@ -88,25 +94,66 @@ export interface CompleteChatInput {
   /** Called with the token counters when the provider reports them. */
   onUsage?: (usage: ChatUsage) => void;
   maxTokens?: number;
+  /** T-1426: the turn's session log. A `model_call` row is appended for every
+   * call (tokens, duration, cost when the catalog knows the model). Best
+   * effort: a log failure never fails the call. */
+  log?: TurnLog;
 }
 
 export type ChatCompletionResult = ModelCallResult;
 
 // One model call for one turn, authenticated as the AI with the owner's
 // provider key (decrypted per call by the caller). Effect AI owns the retry,
-// timeout, streaming and error mapping; this is the Promise edge.
-export function requestCompletion(input: CompleteChatInput): Promise<ChatCompletionResult> {
-  return chat({
-    target: input.target,
-    messages: input.messages,
-    maxTokens: input.maxTokens ?? REPLY_MAX_TOKENS,
-    ...(input.tools === undefined ? {} : { tools: input.tools }),
-    ...(input.fetchImpl === undefined ? {} : { fetchImpl: input.fetchImpl }),
-    ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
-    ...(input.secrets === undefined ? {} : { secrets: input.secrets }),
-    ...(input.onDelta === undefined ? {} : { onDelta: input.onDelta }),
-    ...(input.onUsage === undefined ? {} : { onUsage: input.onUsage }),
-  });
+// timeout, streaming and error mapping; this is the Promise edge. T-1426: the
+// single choke point every model call passes, so it also appends the turn's
+// `model_call` session-log row (tokens, duration, cost when known).
+export async function requestCompletion(input: CompleteChatInput): Promise<ChatCompletionResult> {
+  const startedMs = Date.now();
+  try {
+    const result = await chat({
+      target: input.target,
+      messages: input.messages,
+      maxTokens: input.maxTokens ?? REPLY_MAX_TOKENS,
+      ...(input.tools === undefined ? {} : { tools: input.tools }),
+      ...(input.fetchImpl === undefined ? {} : { fetchImpl: input.fetchImpl }),
+      ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
+      ...(input.secrets === undefined ? {} : { secrets: input.secrets }),
+      ...(input.onDelta === undefined ? {} : { onDelta: input.onDelta }),
+      ...(input.onUsage === undefined ? {} : { onUsage: input.onUsage }),
+    });
+    if (input.log !== undefined) {
+      const provider = input.target.provider;
+      const model = input.target.model;
+      input.log.append(
+        'model_call',
+        {
+          provider,
+          model,
+          input_tokens: result.usage.inputTokens,
+          output_tokens: result.usage.outputTokens,
+          cached_tokens: result.usage.cacheReadTokens,
+          cache_write_tokens: result.usage.cacheWriteTokens,
+          ...(modelPricesFor(provider, model) === null
+            ? {}
+            : {
+                cost_usd: Number(costOf(provider, model, result.usage).toFixed(6)),
+              }),
+          ok: true,
+        },
+        Date.now() - startedMs,
+      );
+    }
+    return result;
+  } catch (error) {
+    // The failure class rides the `error` row the turn writes; here only the
+    // model identity, the duration and the outcome.
+    input.log?.append(
+      'model_call',
+      { provider: input.target.provider, model: input.target.model, ok: false },
+      Date.now() - startedMs,
+    );
+    throw error;
+  }
 }
 
 // T-0106: per-turn caps for the multi-round tool loop. The wall clock keeps

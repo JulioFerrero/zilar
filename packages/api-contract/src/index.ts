@@ -1,4 +1,5 @@
 export * from './ai-memory';
+export * from './agent-tasks';
 export * from './ais';
 export * from './api';
 export * from './approvals';

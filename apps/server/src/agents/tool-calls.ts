@@ -25,6 +25,17 @@ import type {
   ValidToolCall,
 } from './tool-loop';
 
+// T-1426: one call's row for the session log: the safe tool name, whether it
+// ran, its result text (the caller redacts and truncates it), its duration and
+// the exit code when the tool ran a process.
+export interface ToolCallOutcome {
+  tool: string;
+  ok: boolean;
+  content: string;
+  durationMs: number;
+  exitCode?: number;
+}
+
 // Parses one raw tool call's `arguments`, runs the executor on it, and turns
 // the result into a `tool` message plus an optional persona notice. Shared by
 // the DM and the group tool loop (T-0098) so they run the exact same
@@ -38,7 +49,12 @@ async function executeOneToolCall(
     logger: { warn: (fields: Record<string, unknown>, message: string) => void };
     secrets: readonly string[];
   },
-): Promise<{ message: ModelRequestMessage; notice?: string; stage?: string }> {
+): Promise<{
+  message: ModelRequestMessage;
+  notice?: string;
+  stage?: string;
+  outcome: ToolCallOutcome;
+}> {
   const parsed = parseToolArguments(call.name, call.argsJson);
   if (!parsed.ok) {
     // Never executed. The arguments stay out of the log entirely: only the
@@ -49,6 +65,12 @@ async function executeOneToolCall(
     );
     return {
       message: { role: 'tool', content: `invalid: ${parsed.reason}`, tool_call_id: call.id },
+      outcome: {
+        tool: safeToolName(call.name),
+        ok: false,
+        content: `invalid: ${parsed.reason}`,
+        durationMs: 0,
+      },
     };
   }
   if (context.executeTool === undefined) {
@@ -62,8 +84,15 @@ async function executeOneToolCall(
         content: `invalid: unknown tool: ${safeToolName(call.name)}`,
         tool_call_id: call.id,
       },
+      outcome: {
+        tool: safeToolName(call.name),
+        ok: false,
+        content: `invalid: unknown tool: ${safeToolName(call.name)}`,
+        durationMs: 0,
+      },
     };
   }
+  const startedMs = Date.now();
   let execution: ToolExecution;
   try {
     execution = await context.executeTool(toCall(parsed, call.id));
@@ -82,37 +111,56 @@ async function executeOneToolCall(
     );
     return {
       message: { role: 'tool', content: 'failed: could not save', tool_call_id: call.id },
+      outcome: {
+        tool: safeToolName(call.name),
+        ok: false,
+        content: 'failed: could not save',
+        durationMs: Date.now() - startedMs,
+      },
     };
   }
   return {
     message: { role: 'tool', content: execution.content, tool_call_id: call.id },
     ...(execution.notice === undefined ? {} : { notice: execution.notice }),
     ...(execution.stage === undefined ? {} : { stage: execution.stage }),
+    outcome: {
+      tool: safeToolName(call.name),
+      ok: true,
+      content: execution.content,
+      durationMs: Date.now() - startedMs,
+      ...(execution.exitCode === undefined ? {} : { exitCode: execution.exitCode }),
+    },
   };
 }
 
 // Runs every parsed tool call through the executor, in order. Returns the
-// follow-up `tool` messages and the persona notices that ride along on the
-// final text. Both the DM and the group tool loops call this so they share
-// one validation + execution pipeline.
+// follow-up `tool` messages, the persona notices that ride along on the
+// final text, and one log outcome per call (same order).
 export async function executeToolCalls(input: {
   toolCalls: ChatToolCall[];
   aiId: string;
   executeTool?: ExecuteToolCall;
   logger: { warn: (fields: Record<string, unknown>, message: string) => void };
   secrets: readonly string[];
-}): Promise<{ toolMessages: ModelRequestMessage[]; notices: string[]; stages: string[] }> {
+}): Promise<{
+  toolMessages: ModelRequestMessage[];
+  notices: string[];
+  stages: string[];
+  outcomes: ToolCallOutcome[];
+}> {
   const toolMessages: ModelRequestMessage[] = [];
   const notices: string[] = [];
   const stages: string[] = [];
+  const outcomes: ToolCallOutcome[] = [];
   for (const call of input.toolCalls) {
-    const { message, notice, stage } = await executeOneToolCall(call, {
+    const { message, notice, stage, outcome } = await executeOneToolCall(call, {
       aiId: input.aiId,
       ...(input.executeTool === undefined ? {} : { executeTool: input.executeTool }),
       logger: input.logger,
       secrets: input.secrets,
     });
     toolMessages.push(message);
+    outcomes.push(outcome);
     if (notice !== undefined) {
       notices.push(notice);
     }
@@ -120,7 +168,7 @@ export async function executeToolCalls(input: {
       stages.push(stage);
     }
   }
-  return { toolMessages, notices, stages };
+  return { toolMessages, notices, stages, outcomes };
 }
 
 // Lifts a parsed `request_action` / `update_persona` / `revert_persona` /

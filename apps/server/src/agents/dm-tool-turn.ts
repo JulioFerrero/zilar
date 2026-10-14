@@ -23,6 +23,7 @@ import {
 } from './tool-loop';
 import { remainingTurnBudgetMs } from './turn-budget';
 import type { ChatToolDefinition } from './tools';
+import { byteLength, type TurnLog } from './log/append';
 
 // T-0106: the one shared multi-round tool loop for DM and group turns. No
 // copy: both turns call this, differing only in their executor (groups wrap
@@ -61,6 +62,7 @@ export async function runToolLoop(input: {
     secrets?: readonly string[];
     onDelta?: (textSoFar: string) => void;
     onUsage?: (usage: ChatUsage) => void;
+    log?: TurnLog;
   };
   maxRounds: number;
   executeTool?: ExecuteToolCall;
@@ -73,6 +75,8 @@ export async function runToolLoop(input: {
   nowMs: () => number;
   reportProgress?: (stage: string) => Promise<string | null>;
   actionOf?: (tool: string, argsJson: string) => string | undefined;
+  /** T-1426: the turn's session log for the tool-call rows. */
+  log?: TurnLog;
 }): Promise<{
   text: string | null;
   notices: string[];
@@ -180,6 +184,7 @@ export async function runToolLoop(input: {
           : { reportProgress: input.reportProgress }),
         progressPosted,
         ...(input.actionOf === undefined ? {} : { actionOf: input.actionOf }),
+        ...(input.log === undefined ? {} : { log: input.log }),
       });
       messages = step.messages;
       notices.push(...step.notices);
@@ -227,6 +232,7 @@ export async function runToolTurn(
     secrets?: readonly string[];
     onDelta?: (textSoFar: string) => void;
     onUsage?: (usage: ChatUsage) => void;
+    log?: TurnLog;
   },
   secrets: string[],
   tools: ChatToolDefinition[],
@@ -259,12 +265,14 @@ export async function runToolTurn(
       nowMs,
       ...(deps.reportProgress === undefined ? {} : { reportProgress: deps.reportProgress }),
       actionOf: (tool, argsJson) => actionOfCall(tool, argsJson),
+      ...(deps.log === undefined ? {} : { log: deps.log }),
     });
   } catch (error) {
     // The loop throws only for an empty first reply or a failed model
     // call: the failure text goes out like any other model failure, with
     // no notices (none were earned yet).
     const failure = mapFailureToReply(error);
+    deps.log?.append('error', failureLogFields(error));
     deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
     await finishProgressQuietly(deps, secrets, 'failed');
     try {
@@ -329,6 +337,7 @@ export async function runToolTurn(
           : last.content + cutShortSuffix(last.finishReason) + loop.notices.join('');
     } catch (error) {
       const failure = mapFailureToReply(error);
+      deps.log?.append('error', failureLogFields(error));
       deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
       await finishProgressQuietly(deps, secrets, 'failed');
       const text = failure + loop.notices.join('');
@@ -383,5 +392,8 @@ async function sendReply(deps: DmTurnDeps, text: string): Promise<DmTurnOutcome>
     );
     return { kind: 'failed', text: '' };
   }
+  // T-1426: the answer went out. The session log stores its size only, never
+  // the text.
+  deps.log?.append('answer', { bytes: byteLength(text) });
   return { kind: 'replied', text };
 }

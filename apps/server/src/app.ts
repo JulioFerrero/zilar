@@ -2,6 +2,7 @@ import type { Logger } from 'pino';
 import { createAisApi } from './ais/api';
 import type { AiLogger } from './ais/service';
 import { createAiMemoryApi } from './agents/memory/api';
+import { createAgentTasksApi } from './agents/log/api';
 import { createActionGateway, type ActionGateway } from './actions/gateway';
 import type { AlwaysEligiblePredicate } from './approvals/service';
 import { createApprovalsApi } from './approvals/api';
@@ -342,6 +343,10 @@ export function createApp({
   mounts.push(rolesApi);
   const aiMemoryApi = createAiMemoryApi({ auth, db, config, logger });
   mounts.push(aiMemoryApi);
+  // The AI session log behind "View steps" (T-1426): owner-only, session
+  // required, so the 401 sweep covers it.
+  const agentTasksApi = createAgentTasksApi({ auth, db, logger });
+  mounts.push(agentTasksApi);
   const pinsApi = createPinsApi({ auth, db, config, audit: auditRecorder, logger });
   mounts.push(pinsApi);
   const topicsApi = createTopicsApi({

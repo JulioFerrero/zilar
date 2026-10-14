@@ -36,6 +36,7 @@ import {
   type DeskTurnContext,
 } from './desk-exec';
 import type { RequestActionContext } from './group-turn';
+import { openTurnLog } from '../log/append';
 import { recordUsage } from '../../ais/usage-store';
 import type { createLiveSession } from './live';
 import type { MemoryRunner } from './memory';
@@ -186,6 +187,7 @@ export function createDmTurn(ctx: DmTurnContext) {
     // message below. Typing indicators stay exactly as before, for clients
     // without drafts.
     const turnDrafts = draftHub.publishTurn(ai.owner, ai.jid, randomUUID());
+    const turnLog = openTurnLog(deps.db, logger, session.aiId, ai.owner, ownerBare, secretsFor());
     const turnBody = Effect.gen(function* () {
       const target = yield* Effect.promise(() =>
         loadModelTarget(deps.db, deps.cipher as KeyCipher, session.aiId),
@@ -279,12 +281,10 @@ export function createDmTurn(ctx: DmTurnContext) {
       // final send drops the reply (and every draft) instead of delivering
       // it. The `end` itself runs unconditionally so the owner's client
       // sees the turn terminate instead of hanging.
-      // T-0106: multi-round turns post one live progress message at the
-      // first tool round and update it per round; T-1414 turns it into a
-      // task card edited in place, closed with a final `done`/`failed`
-      // correction when the reply lands. Best effort: the turn never fails
-      // over it.
-      const dmProgress = liveProgressReporter(session, ownerJid, 'chat', ai.jid);
+      // T-0106/T-1414: multi-round turns post one task card, edited in place
+      // and closed with a final `done`/`failed` correction. Best effort: the
+      // turn never fails over it.
+      const dmProgress = liveProgressReporter(session, ownerJid, 'chat', ai.jid, turnLog);
       // T-1423: resolve the AI's computer for this turn (cloud or its runner).
       // T-1409: the tools are offered only when it resolves to hands; the list
       // and the executor see the same flag.
@@ -354,6 +354,7 @@ export function createDmTurn(ctx: DmTurnContext) {
           },
           logger,
           secrets: secretsFor(),
+          log: turnLog,
         }),
       );
       turnDrafts.end(outcome.kind === 'replied' && sessionIsLive(session) ? 'sent' : 'failed');
@@ -376,6 +377,7 @@ export function createDmTurn(ctx: DmTurnContext) {
           // The connection lookup and anything else outside the turn: an
           // honest short message, never the raw error.
           logger.warn({ ...failureLogFields(error), aiId: session.aiId }, 'AI turn failed');
+          turnLog.append('error', failureLogFields(error));
           const reply = mapFailureToReply(error);
           // There is nobody left to tell when the send itself fails.
           yield* Effect.promise(() => liveSendMessage(session, ownerJid, 'chat', reply)).pipe(

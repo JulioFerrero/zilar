@@ -24,6 +24,7 @@ import {
 } from './tool-loop';
 import { remainingTurnBudgetMs } from './turn-budget';
 import { TASK_STATUS_TOOL, type ChatToolDefinition } from './tools';
+import { byteLength, type TurnLog } from './log/append';
 
 export interface GroupTurnDeps {
   aiId: string;
@@ -96,6 +97,8 @@ export interface GroupTurnDeps {
    * (`mapFailureToReply`). The gateway DMs the AI's owner at most once per
    * day per room; a throw here never fails the turn. */
   onFailure?: (reason: string) => Promise<void>;
+  /** T-1426: the turn's session log (best effort). */
+  log?: TurnLog;
 }
 
 // T-1290 (AI-10): tells the owner the real reason a room turn failed, best
@@ -192,6 +195,7 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
     ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }),
     ...(deps.secrets === undefined ? {} : { secrets: deps.secrets }),
     ...(deps.onUsage === undefined ? {} : { onUsage: deps.onUsage }),
+    ...(deps.log === undefined ? {} : { log: deps.log }),
   };
   deps.sendTyping(deps.roomJid, 'groupchat', 'composing');
   try {
@@ -227,6 +231,7 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
     return await sendGroupReply(deps, secrets, wire(second.content ?? TRANSIENT_FAILURE_REPLY));
   } catch (error) {
     const reason = mapFailureToReply(error);
+    deps.log?.append('error', failureLogFields(error));
     deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
     await reportFailure(deps, secrets, reason);
     const outgoing = wire(GROUP_FAILURE_REPLY);
@@ -263,6 +268,7 @@ async function runGroupToolTurn(
     timeoutMs?: number;
     secrets?: readonly string[];
     onUsage?: (usage: ChatUsage) => void;
+    log?: TurnLog;
   },
   secrets: string[],
   wire: (text: string) => { text: string; opts: SendMessageOptions },
@@ -310,9 +316,11 @@ async function runGroupToolTurn(
       nowMs,
       ...(deps.reportProgress === undefined ? {} : { reportProgress: deps.reportProgress }),
       actionOf: (tool, argsJson) => actionOfCall(tool, argsJson),
+      ...(deps.log === undefined ? {} : { log: deps.log }),
     });
   } catch (error) {
     const failure = mapFailureToReply(error);
+    deps.log?.append('error', failureLogFields(error));
     deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
     await finishProgressQuietly(deps, secrets, 'failed');
     await reportFailure(deps, secrets, failure);
@@ -351,6 +359,7 @@ async function runGroupToolTurn(
           : last.content + cutShortSuffix(last.finishReason) + loop.notices.join('');
     } catch (error) {
       const failure = mapFailureToReply(error);
+      deps.log?.append('error', failureLogFields(error));
       deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
       await finishProgressQuietly(deps, secrets, 'failed');
       await reportFailure(deps, secrets, failure);
@@ -381,6 +390,9 @@ async function sendGroupReply(
       'AI group reply could not be sent',
     );
     return { kind: 'failed', text: '' };
+  }
+  if (!options.failure) {
+    deps.log?.append('answer', { bytes: byteLength(outgoing.text) });
   }
   return options.failure
     ? { kind: 'failed', text: outgoing.text }

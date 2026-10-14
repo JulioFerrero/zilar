@@ -213,9 +213,9 @@ async function runExecute(
   const status =
     exitCode === 0 ? 'done' : `exit code ${exitCode}${truncated ? ' (truncated)' : ''}`;
   if (capped === '') {
-    return { content: status };
+    return { content: status, exitCode };
   }
-  return { content: `${status}${formatModelText(capped)}` };
+  return { content: `${status}${formatModelText(capped)}`, exitCode };
 }
 
 function provisionFailure(

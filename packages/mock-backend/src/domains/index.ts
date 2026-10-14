@@ -3,6 +3,7 @@
 // that exports a `defineDomain({ name, seed, createState, routes })` object, then
 // import it here and add one line in alphabetical order. `src/state.ts` and
 // `src/http.ts` build the backend from this array, so nothing else lists domains.
+import { agentTasksDomain } from './agent-tasks';
 import { aiMemoryDomain } from './ai-memory';
 import { aisDomain } from './ais';
 import { approvalRulesDomain } from './approval-rules';
@@ -41,6 +42,7 @@ import { voiceTranscriptionDomain } from './voice-transcription';
 import { xmppTokenDomain } from './xmpp-token';
 
 export const domains: readonly Domain[] = [
+  agentTasksDomain,
   aiMemoryDomain,
   aisDomain,
   approvalRulesDomain,

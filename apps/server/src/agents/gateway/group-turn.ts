@@ -1,7 +1,12 @@
 import { Effect } from 'effect';
 import { displayNameOf, normBareJid, type ChatCompletionMessage } from '../context';
 import { finishDelegation } from '../delegation/service';
-import { GROUP_FAILURE_REPLY, mapFailureToReply, type ExecuteToolCall } from '../reply';
+import {
+  GROUP_FAILURE_REPLY,
+  failureLogFields,
+  mapFailureToReply,
+  type ExecuteToolCall,
+} from '../reply';
 import {
   errorName,
   isAiSender,
@@ -19,6 +24,7 @@ import type { createLiveSession } from './live';
 import type { MemoryRunner } from './memory';
 import type { DeskTurnContext } from './desk-exec';
 import { notifyOwnerOfFailure, runGroupTurnBody } from './group-turn-body';
+import { openTurnLog } from '../log/append';
 
 type LiveSession = ReturnType<typeof createLiveSession>;
 
@@ -258,6 +264,7 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       );
     }
     const secretRef: { value?: string } = {};
+    const turnLog = openTurnLog(deps.db, logger, session.aiId, ai.owner, roomJid, secretsFor());
     yield* runGroupTurnBody({
       ctx,
       ai,
@@ -272,6 +279,7 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       senderName,
       groupName,
       topicName,
+      log: turnLog,
       secretRef,
     }).pipe(
       Effect.catchDefect((error) =>
@@ -282,6 +290,7 @@ export function createGroupTurn(ctx: GroupTurnContext) {
             { err: toRedactedError(error, secretsFor(secretRef.value)), aiId: session.aiId },
             'AI group turn failed',
           );
+          turnLog.append('error', failureLogFields(error));
           // T-0482: if this was a delegated turn, the model call never happened
           // (or the turn failed around it), so the row must not stay `working`.
           yield* failDelegationQuietly(trigger.delegationId);
