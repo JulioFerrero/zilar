@@ -104,8 +104,10 @@ export function ChatListBody({
             </div>
           )}
           {/* WUX-19: pending incoming contact requests show as a row at the
-              top of the list, above the people hits and chat rows. */}
-          <ContactRequestsRow isWide={isWide} />
+              top of the list, above the people hits and chat rows. Hidden
+              while a query is active, as Telegram and the mobile app's search
+              results do: the search view is a list of hits, not the folder. */}
+          {search.trim() === '' && <ContactRequestsRow isWide={isWide} />}
           {/* People hits come first: 3+ characters (after stripping `@`) show
               matching people and public groups, above the chat-name matches
               and the message hits. */}
@@ -117,66 +119,74 @@ export function ChatListBody({
               <p className="px-[10px] py-2 text-[13px] text-muted-foreground">No chats match</p>
             )
           ) : (
-            <TopicKeyboardNav>
-              {groups.map((group) =>
-                group.groupId === undefined ? (
-                  <ChatListItem
-                    key={group.key}
-                    chat={group.topics[0]!}
-                    selected={group.topics[0]!.id === activeChatId}
-                    isWide={isWide}
-                  />
-                ) : (
-                  <GroupHeaderRow
-                    key={group.key}
-                    groupTitle={group.title}
-                    groupId={group.groupId}
-                    chat={
-                      group.topics.find((topic) => topic.topic?.isGeneral === true) ??
-                      group.topics[0]!
-                    }
-                    topics={group.topics}
-                    selectedId={activeChatId}
-                    collapsed={collapsed.has(group.groupId)}
-                    onToggleCollapse={onToggleCollapse}
-                    archivedOpen={archivedOpen.has(group.groupId)}
-                    onToggleArchived={onToggleArchived}
-                    isWide={isWide}
-                    onOpenNewTopic={onOpenNewTopic}
-                  />
-                ),
-              )}
-              {/* Per-user archived chats (T-0113): topics hide inside their
-                  group's own Archived toggle instead; this row covers DMs,
-                  AI chats and legacy groups. */}
-              {archived.length > 0 && (
-                <>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-expanded={showArchived}
-                    onClick={onToggleShowArchived}
-                    className={cn(
-                      'w-full justify-start gap-2 text-[13px] font-normal text-muted-foreground hover:text-foreground',
-                      isWide && 'rounded-[12px]',
-                    )}
-                  >
-                    <Archive className="size-4" aria-hidden="true" />
-                    <span className="flex-1">Archived ({archived.length})</span>
-                  </Button>
-                  {showArchived &&
-                    archived.map((chat) => (
-                      <ChatListItem
-                        key={chat.id}
-                        chat={chat}
-                        selected={chat.id === activeChatId}
-                        isWide={isWide}
-                      />
-                    ))}
-                </>
-              )}
-            </TopicKeyboardNav>
+            // T-1353: `TopicKeyboardNav` grows with `flex-1` (its own class).
+            // Inside this scroll container a `flex-1` item has a zero basis, so
+            // once the message hits below are taller than the list it collapsed
+            // to nothing and its rows painted over the `Messages` section. A
+            // plain block wrapper keeps the rows at their natural height, and
+            // the whole list scrolls instead.
+            <div className="shrink-0">
+              <TopicKeyboardNav>
+                {groups.map((group) =>
+                  group.groupId === undefined ? (
+                    <ChatListItem
+                      key={group.key}
+                      chat={group.topics[0]!}
+                      selected={group.topics[0]!.id === activeChatId}
+                      isWide={isWide}
+                    />
+                  ) : (
+                    <GroupHeaderRow
+                      key={group.key}
+                      groupTitle={group.title}
+                      groupId={group.groupId}
+                      chat={
+                        group.topics.find((topic) => topic.topic?.isGeneral === true) ??
+                        group.topics[0]!
+                      }
+                      topics={group.topics}
+                      selectedId={activeChatId}
+                      collapsed={collapsed.has(group.groupId)}
+                      onToggleCollapse={onToggleCollapse}
+                      archivedOpen={archivedOpen.has(group.groupId)}
+                      onToggleArchived={onToggleArchived}
+                      isWide={isWide}
+                      onOpenNewTopic={onOpenNewTopic}
+                    />
+                  ),
+                )}
+                {/* Per-user archived chats (T-0113): topics hide inside their
+                    group's own Archived toggle instead; this row covers DMs,
+                    AI chats and legacy groups. */}
+                {archived.length > 0 && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-expanded={showArchived}
+                      onClick={onToggleShowArchived}
+                      className={cn(
+                        'w-full justify-start gap-2 text-[13px] font-normal text-muted-foreground hover:text-foreground',
+                        isWide && 'rounded-[12px]',
+                      )}
+                    >
+                      <Archive className="size-4" aria-hidden="true" />
+                      <span className="flex-1">Archived ({archived.length})</span>
+                    </Button>
+                    {showArchived &&
+                      archived.map((chat) => (
+                        <ChatListItem
+                          key={chat.id}
+                          chat={chat}
+                          selected={chat.id === activeChatId}
+                          isWide={isWide}
+                        />
+                      ))}
+                  </>
+                )}
+              </TopicKeyboardNav>
+            </div>
           )}
           {/* Message hits come after the chat-name matches. `searchChat`
               scopes "Search only in this chat" from a chat header. */}
