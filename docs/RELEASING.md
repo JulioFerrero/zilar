@@ -188,7 +188,7 @@ Auto-deploys rely on the nightly backup (see `deploy/coolify/scheduled-backup.md
 2. Run the `postgres-data` volume backup once.
 3. Check that the new files are in the bucket.
 
-The dump task covers both databases, and the `postgres-data` backup carries the dumps. The `./zilar backup` command does not apply on Coolify; it works only on the plain stack with a host checkout.
+The dump task covers both databases, and the `postgres-data` backup carries the dumps. The `./zilar backup` command does not apply on Coolify; it works only on the plain stack with a host checkout. Practice a restore before you need it: `docs/ops/restore-drill.md` is the step-by-step drill (both dumps, every volume archive, the secrets, a 60-minute RTO) on a scratch host.
 
 ## 10. AI computers (desks)
 

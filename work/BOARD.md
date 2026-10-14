@@ -1449,3 +1449,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1432](T-1432-mobile-sheet-kit.md) | Mobile sheet kit: D24 panel, header, sticky footer, step track | 2026-10-14 |
 | [T-1437](T-1437-server-perf-batch.md) | Search without N+1, push archive cache, budget fails closed | 2026-10-14 |
 | [T-1429](T-1429-catalog-providers.md) | Every models.dev OpenAI-compatible provider can back an AI | 2026-10-14 |
+| [T-1439](T-1439-ops-docs.md) | Ops docs: Application-era backups, restore drill, install doc | 2026-10-14 |
