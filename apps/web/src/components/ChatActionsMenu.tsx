@@ -5,7 +5,6 @@ import { useState, type ReactNode } from 'react';
 import { MUTE_DURATIONS } from '@/lib/chatPrefs';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
-import { cn } from '@/lib/utils';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Menu, MenuItem, type MenuItemProps } from './ui/menu';
 
@@ -53,7 +52,13 @@ function PrefMenuItem({
   };
 
   return (
-    <MenuItem {...item} onSelect={startSave}>
+    <MenuItem
+      {...item}
+      // Keep the menu open until the save settles so a failure can show the
+      // error sentence; success closes via onDone(false).
+      closeOnClick={false}
+      onSelect={startSave}
+    >
       {children}
     </MenuItem>
   );
@@ -121,6 +126,8 @@ export function ChatPrefMenuItems({
         <MenuItem
           icon={BellOff}
           ariaLabel={`Mute ${chat.title}`}
+          // Keep the menu open so the durations appear in place.
+          closeOnClick={false}
           onSelect={() => setMuteOpen(true)}
         >
           Mute…
@@ -165,6 +172,8 @@ export function ChatPrefMenuItems({
         <MenuItem
           icon={Eraser}
           ariaLabel={`Clear history with ${chat.title}`}
+          // Keep the menu open so the confirm dialog can appear.
+          closeOnClick={false}
           onSelect={() => setClearOpen(true)}
         >
           Clear history
@@ -209,14 +218,15 @@ export function ChatActionsMenu({
   return (
     <Menu
       open
-      onClose={onClose}
+      onOpenChange={(next) => {
+        if (!next) {
+          onClose();
+        }
+      }}
       label={`Actions for ${chat.title}`}
-      closeLabel="Close chat menu"
-      backdropClassName="z-20"
-      className={cn(
-        'top-6 z-30 min-w-[196px] rounded-[12px] shadow-[0_8px_24px_-8px_rgba(0,0,0,0.9)]',
-        align === 'right' ? 'right-0' : 'left-0',
-      )}
+      align={align === 'right' ? 'end' : 'start'}
+      sideOffset={0}
+      anchorClassName={align === 'right' ? 'absolute top-6 right-0' : 'absolute top-6 left-0'}
     >
       <ChatPrefMenuItems chat={chat} onDone={(failed) => !failed && onClose()} />
     </Menu>

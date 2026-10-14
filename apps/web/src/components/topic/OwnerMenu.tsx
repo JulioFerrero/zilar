@@ -1,6 +1,6 @@
 import type { MentionMember, TopicOwner } from '@zilar/chat-core';
 import { isAiJid } from '@zilar/protocol';
-import { Menu, MenuRadioItem } from '@/components/ui/menu';
+import { Menu, MenuRadioGroup, MenuRadioItem } from '@/components/ui/menu';
 import { ownerIdFor } from './stripModel';
 
 interface OwnerMenuProps {
@@ -11,6 +11,13 @@ interface OwnerMenuProps {
   onToggle: () => void;
   onClose: () => void;
   onChange: (owner: TopicOwner | null) => void;
+}
+
+const NO_OWNER = 'none';
+
+/** The picker value for an owner: `user:<id>` or `ai:<id>`, or `none`. */
+function ownerValue(owner: TopicOwner | null): string {
+  return owner === null ? NO_OWNER : `${owner.kind}:${owner.id}`;
 }
 
 /** The owner chip and its picker of topic members and AIs. */
@@ -34,44 +41,45 @@ export function OwnerMenu({
     onChange(next);
   };
 
+  const chooseValue = (value: string): void => {
+    if (value === NO_OWNER) {
+      chooseOwner(null);
+      return;
+    }
+    const sep = value.indexOf(':');
+    const kind = value.slice(0, sep);
+    const id = value.slice(sep + 1);
+    const member = candidates.find((entry) => ownerIdFor(entry.jid) === id);
+    const name = member?.name ?? '';
+    chooseOwner(kind === 'ai' ? { kind: 'ai', id, name } : { kind: 'user', id, name });
+  };
+
   const members = candidates.filter((member) => !isAiJid(member.jid));
   const aiCandidates = candidates.filter((member) => isAiJid(member.jid));
 
   return (
-    <div className="relative">
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={`${label}. Change owner`}
-        onClick={onToggle}
-        className="rounded-full border border-border px-2.5 py-1 text-[12px] text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
-      >
-        {label}
-      </button>
-      <Menu
-        open={open}
-        onClose={onClose}
-        label="Change owner"
-        closeLabel="Close owner picker"
-        className="top-full left-0 mt-1 max-h-64 min-w-[180px] overflow-y-auto"
-      >
-        <MenuRadioItem
-          checked={owner === null}
-          onSelect={() => chooseOwner(null)}
-          className="text-[13px]"
+    <Menu
+      open={open}
+      onOpenChange={(next) => (next ? onToggle() : onClose())}
+      label="Change owner"
+      trigger={
+        <button
+          type="button"
+          aria-label={`${label}. Change owner`}
+          className="rounded-full border border-border px-2.5 py-1 text-[12px] text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
         >
+          {label}
+        </button>
+      }
+    >
+      <MenuRadioGroup value={ownerValue(owner)} onValueChange={chooseValue}>
+        <MenuRadioItem value={NO_OWNER} className="text-[13px]">
           No owner
         </MenuRadioItem>
         {members.map((member) => {
           const userId = ownerIdFor(member.jid);
           return (
-            <MenuRadioItem
-              key={member.jid}
-              checked={owner?.kind === 'user' && owner.id === userId}
-              onSelect={() => chooseOwner({ kind: 'user', id: userId, name: member.name })}
-              className="text-[13px]"
-            >
+            <MenuRadioItem key={member.jid} value={`user:${userId}`} className="text-[13px]">
               {member.name}
             </MenuRadioItem>
           );
@@ -79,17 +87,12 @@ export function OwnerMenu({
         {aiCandidates.map((member) => {
           const aiId = ownerIdFor(member.jid);
           return (
-            <MenuRadioItem
-              key={member.jid}
-              checked={owner?.kind === 'ai' && owner.id === aiId}
-              onSelect={() => chooseOwner({ kind: 'ai', id: aiId, name: member.name })}
-              className="text-[13px]"
-            >
+            <MenuRadioItem key={member.jid} value={`ai:${aiId}`} className="text-[13px]">
               {member.name} (AI)
             </MenuRadioItem>
           );
         })}
-      </Menu>
-    </div>
+      </MenuRadioGroup>
+    </Menu>
   );
 }

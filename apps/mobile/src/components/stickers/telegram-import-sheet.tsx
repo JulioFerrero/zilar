@@ -1,14 +1,8 @@
 import { Effect } from 'effect';
 import { Clock, Info, X } from 'lucide-react-native';
 import { useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { ActivityIndicator, Modal, Pressable, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
@@ -136,7 +130,7 @@ export function TelegramImportSheet({
           onPress={close}
           className="flex-1"
         />
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView behavior="padding">
           <View className="rounded-t-2xl bg-background px-4 pb-8 pt-3" style={{ maxHeight: '90%' }}>
             <View className="mb-3 h-1 w-10 self-center rounded-full bg-border-strong" />
             <View className="flex-row items-start justify-between gap-2">

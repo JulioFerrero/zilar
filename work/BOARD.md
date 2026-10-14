@@ -1376,4 +1376,19 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1334](T-1334-orb-by-name-and-pictures.md) | Avatars: one shared EntityAvatar per app; orb seeded by name; real pictures wherever available | 2026-10-13 |
 | [T-1335](T-1335-photo-bubbles-edge-to-edge.md) | Photos like Telegram: edge to edge in the bubble, time pill on the photo, caption below (mobile + web) | 2026-10-13 |
 | [T-1336](T-1336-requests-in-chat-list.md) | Contact requests as rows at the top of the chat list with inline Accept / Decline (Undo) on mobile and web | 2026-10-13 |
+| [T-1338](T-1338-mobile-viewer-gestures.md) | Mobile photo viewer: swipe, pinch, pan actually work (double-tap blocked them) | in-progress | auto | — | Julio 10-13 |
 | [T-1337](T-1337-just-sent-photo-loads.md) | Just-sent photos keep the local preview and retry /api/files instead of sticking on Image unavailable (web + mobile) | 2026-10-13 |
+| [T-1339](T-1339-web-viewer-zoom.md) | Web photo viewer: wheel/trackpad/double-click zoom, drag pan, touch swipe, prev/next arrows | 2026-10-13 |
+| [T-1340](T-1340-web-viewer-dblclick.md) | Web viewer: double-click on the photo zooms and toggles back; only a click outside the photo closes | 2026-10-13 |
+| [T-1341](T-1341-viewer-zoom-toolkit.md) | Mobile photo viewer on react-native-zoom-toolkit Gallery: swipe carousel, pinch, pan, double tap, pull down to close | 2026-10-13 |
+| [T-1342](T-1342-library-audit.md) | Library audit: docs/audit/library-plan.md ranks hand-rolled UI to swap for libraries | 2026-10-13 |
+| [T-1345](T-1345-keyboard-controller.md) | Mobile keyboard on react-native-keyboard-controller: composer rides the keyboard, last message stays visible | 2026-10-13 |
+| [T-1347](T-1347-web-dnd-kit.md) | Web folder and sticker reorder on dnd-kit (mouse, touch, keyboard; named announcements) | 2026-10-13 |
+| [T-1344](T-1344-web-dialogs-radix.md) | Web Dialog, Sheet and ConfirmDialog on Radix Dialog (focus trap, Escape, scroll lock), call sites unchanged | 2026-10-13 |
+| [T-1346](T-1346-web-easy-crop.md) | Web avatar cropper on react-easy-crop (drag, wheel and pinch zoom, 256x256 export) | 2026-10-13 |
+| [T-1343](T-1343-web-lightbox.md) | Web photo viewer on yet-another-react-lightbox (zoom, pan, swipe, arrows) | 2026-10-13 |
+| [T-1348](T-1348-gorhom-sheets.md) | Mobile kit sheets native via react-native-true-sheet (drag to close, backdrop, keyboard) | 2026-10-13 |
+| [T-1352](T-1352-refresh-screenshots.md) | Refresh docs screenshots + README/USER_GUIDE text | in-progress | auto | — | Julio 10-14 |
+| [T-1350](T-1350-web-base-ui.md) | Web Dialog, Sheet, ConfirmDialog and Button on Base UI; radix-ui removed | 2026-10-14 |
+| [T-1351](T-1351-nested-confirm-escape.md) | Web: Escape on a confirm opened from a sheet or dialog closes only the confirm | 2026-10-14 |
+| [T-1349](T-1349-web-menus-radix.md) | Web dropdown menus on Base UI Menu (portalled, collision-aware, cursor-anchored context menu) | 2026-10-14 |

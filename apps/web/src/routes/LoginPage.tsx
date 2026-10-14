@@ -34,8 +34,8 @@ export function LoginPage() {
           <p className="mt-2 text-[15px] text-muted-foreground">
             This server has no accounts yet. Finish the one-time setup to create the first admin.
           </p>
-          <Button asChild size="lg" className="mt-5">
-            <Link to="/setup">Finish setting up this server</Link>
+          <Button render={<Link to="/setup" />} size="lg" className="mt-5">
+            Finish setting up this server
           </Button>
         </div>
       </div>

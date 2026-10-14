@@ -160,22 +160,16 @@ function ContactRow({
           </span>
         </button>
         <div className="relative">
-          <IconButton
-            aria-label={`Actions for ${person.name}`}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            size={32}
-            radius={8}
-            onClick={() => setMenuOpen(!menuOpen)}
-          >
-            <MoreHorizontal className="size-4" aria-hidden="true" />
-          </IconButton>
           <Menu
             open={menuOpen}
-            onClose={() => setMenuOpen(false)}
+            onOpenChange={setMenuOpen}
             label="Contact actions"
-            closeLabel="Close contact menu"
-            className="top-full right-0 mt-1"
+            align="end"
+            trigger={
+              <IconButton aria-label={`Actions for ${person.name}`} size={32} radius={8}>
+                <MoreHorizontal className="size-4" aria-hidden="true" />
+              </IconButton>
+            }
           >
             <MenuItem
               destructive

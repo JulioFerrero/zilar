@@ -41,6 +41,7 @@ export function ConfirmDialog({
       description={body}
       size="sm"
       initialFocusRef={cancelRef}
+      forceRenderBackdrop
       actions={
         <>
           <Button ref={cancelRef} type="button" variant="ghost" size="lg" onClick={onCancel}>

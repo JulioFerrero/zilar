@@ -1,8 +1,16 @@
 import { QUICK_REACTIONS } from '@zilar/chat-core';
-import { Download, Forward, ListChecks } from 'lucide-react';
-import { useLayoutEffect, useRef, useState } from 'react';
-import { cn } from '@/lib/utils';
-import { Menu, MenuItem } from './ui/menu';
+import {
+  Copy,
+  Download,
+  Forward,
+  ListChecks,
+  Pencil,
+  Pin,
+  PinOff,
+  Reply,
+  Trash2,
+} from 'lucide-react';
+import { Menu, MenuEntry, MenuItem } from './ui/menu';
 
 export interface MessageActionsMenuProps {
   canCopy: boolean;
@@ -43,15 +51,11 @@ export interface MessageActionsMenuProps {
   align?: 'left' | 'right';
   /**
    * A right-click point (viewport coordinates). When set, the menu opens at
-   * the pointer instead of the bubble corner, kept inside the viewport (WUX-29).
+   * the pointer instead of the bubble corner (WUX-29); Base UI shifts it back
+   * inside the viewport when the point is near an edge.
    */
   point?: { x: number; y: number } | undefined;
 }
-
-/** Keeps a menu box at least this far from the viewport edges. */
-const VIEWPORT_MARGIN = 8;
-/** Fallback width when the menu is not measured yet (matches `min-w-[196px]`). */
-const MENU_WIDTH = 196;
 
 /** Reaction bar / Reply / Edit / Copy / Download / Pin / Delete menu for a message bubble. */
 export function MessageActionsMenu({
@@ -78,94 +82,83 @@ export function MessageActionsMenu({
   align = 'right',
   point,
 }: MessageActionsMenuProps) {
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [at, setAt] = useState(() => point ?? { x: 0, y: 0 });
-
-  // Measure the open menu and clamp the pointer position so it stays fully
-  // inside the viewport. Runs before paint, so the clamped spot is the first
-  // one the user sees.
-  useLayoutEffect(() => {
-    if (point === undefined) {
-      return;
-    }
-    const menu = wrapRef.current?.querySelector<HTMLElement>('[role="menu"]');
-    const width = menu?.offsetWidth ?? MENU_WIDTH;
-    const height = menu?.offsetHeight ?? 0;
-    const x = Math.max(
-      VIEWPORT_MARGIN,
-      Math.min(point.x, window.innerWidth - width - VIEWPORT_MARGIN),
-    );
-    const y = Math.max(
-      VIEWPORT_MARGIN,
-      Math.min(point.y, window.innerHeight - height - VIEWPORT_MARGIN),
-    );
-    setAt({ x, y });
-  }, [point]);
-
+  const right = align === 'right';
   return (
-    <div
-      ref={wrapRef}
-      className={point === undefined ? undefined : 'z-50'}
-      style={point === undefined ? undefined : { position: 'fixed', left: at.x, top: at.y }}
+    <Menu
+      open
+      onOpenChange={(next) => {
+        if (!next) {
+          onClose();
+        }
+      }}
+      label="Message actions"
+      align={point === undefined ? (right ? 'end' : 'start') : 'start'}
+      sideOffset={0}
+      {...(point === undefined
+        ? {
+            // No trigger of its own: the bubble's ⋯ button lives in the parent
+            // and manages `open`. The invisible anchor sits where the old panel
+            // was placed (below the button, `top-6`).
+            anchorClassName: right ? 'absolute top-6 right-0' : 'absolute top-6 left-0',
+          }
+        : {
+            // A right-click anchor at the pointer; Base UI keeps the panel
+            // inside the viewport near an edge.
+            point,
+          })}
     >
-      <Menu
-        open
-        onClose={onClose}
-        label="Message actions"
-        closeLabel="Close message menu"
-        backdropClassName="z-20"
-        className={cn(
-          'z-30 min-w-[196px] rounded-[12px] shadow-[0_8px_24px_-8px_rgba(0,0,0,0.9)]',
-          point === undefined
-            ? cn('top-6', align === 'right' ? 'right-0' : 'left-0')
-            : 'top-0 left-0',
-        )}
-      >
-        <div className="flex items-center justify-between gap-0.5 px-2 pb-1">
-          {QUICK_REACTIONS.map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              role="menuitem"
-              aria-label={`React with ${emoji}`}
-              disabled={!canReact}
-              onClick={() => onReact(emoji)}
-              className="key-icon flex size-7 items-center justify-center rounded-full text-[17px] leading-none focus-visible:outline-none disabled:opacity-40"
-            >
-              <span aria-hidden="true">{emoji}</span>
-            </button>
-          ))}
-        </div>
-        <MenuItem onSelect={onReply}>Reply</MenuItem>
-        {canForward && (
-          <>
-            <MenuItem onSelect={onForward} icon={Forward}>
-              Forward
-            </MenuItem>
-            <MenuItem onSelect={onSelectMessages} icon={ListChecks}>
-              Select
-            </MenuItem>
-          </>
-        )}
-        {canEdit && <MenuItem onSelect={onEdit}>Edit</MenuItem>}
-        <MenuItem onSelect={onCopy} disabled={!canCopy}>
-          Copy text
-        </MenuItem>
-        {canDownload && (
-          <MenuItem onSelect={onDownload} icon={Download}>
-            Download
+      <div className="flex items-center justify-between gap-0.5 px-2 pb-1">
+        {QUICK_REACTIONS.map((emoji) => (
+          <MenuEntry
+            key={emoji}
+            ariaLabel={`React with ${emoji}`}
+            disabled={!canReact}
+            onSelect={() => onReact(emoji)}
+            className="key-icon flex size-7 items-center justify-center rounded-full text-[17px] leading-none"
+          >
+            <span aria-hidden="true">{emoji}</span>
+          </MenuEntry>
+        ))}
+      </div>
+      <MenuItem onSelect={onReply} icon={Reply}>
+        Reply
+      </MenuItem>
+      {canForward && (
+        <>
+          <MenuItem onSelect={onForward} icon={Forward}>
+            Forward
           </MenuItem>
-        )}
-        <MenuItem onSelect={onDelete} disabled={!canDelete} destructive>
-          {deleteLabel}
+          <MenuItem onSelect={onSelectMessages} icon={ListChecks}>
+            Select
+          </MenuItem>
+        </>
+      )}
+      {canEdit && (
+        <MenuItem onSelect={onEdit} icon={Pencil}>
+          Edit
         </MenuItem>
-        {canPin &&
-          (isPinned ? (
-            <MenuItem onSelect={onUnpin}>Unpin</MenuItem>
-          ) : (
-            <MenuItem onSelect={onPin}>Pin</MenuItem>
-          ))}
-      </Menu>
-    </div>
+      )}
+      <MenuItem onSelect={onCopy} disabled={!canCopy} icon={Copy}>
+        Copy text
+      </MenuItem>
+      {canDownload && (
+        <MenuItem onSelect={onDownload} icon={Download}>
+          Download
+        </MenuItem>
+      )}
+      <MenuItem onSelect={onDelete} disabled={!canDelete} destructive icon={Trash2}>
+        {deleteLabel}
+      </MenuItem>
+      {canPin &&
+        (isPinned ? (
+          <MenuItem onSelect={onUnpin} icon={PinOff}>
+            Unpin
+          </MenuItem>
+        ) : (
+          <MenuItem onSelect={onPin} icon={Pin}>
+            Pin
+          </MenuItem>
+        ))}
+    </Menu>
   );
 }

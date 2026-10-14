@@ -1,4 +1,5 @@
-import { KeyboardAvoidingView, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -107,7 +108,7 @@ function Chat() {
           onOpenList={() => setPinsOpen(true)}
           onDismissError={() => dismissPinsError()}
         />
-        <KeyboardAvoidingView className="flex-1" behavior="padding">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
           <ChatThread screen={screen} chat={chat} />
           <ChatComposerDock
             screen={screen}
@@ -147,7 +148,7 @@ function Chat() {
           onOpenList={() => setPinsOpen(true)}
           onDismissError={() => dismissPinsError()}
         />
-        <KeyboardAvoidingView className="flex-1" behavior="padding">
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
           <ChatThread screen={screen} chat={chat} />
           <ChatComposerDock
             screen={screen}
@@ -241,7 +242,7 @@ function Chat() {
         onOpenList={() => setPinsOpen(true)}
         onDismissError={() => dismissPinsError()}
       />
-      <KeyboardAvoidingView className="flex-1" behavior="padding">
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <ChatThread screen={screen} chat={chat} />
         <ChatComposerDock screen={screen} chat={chat} variant="composer" />
       </KeyboardAvoidingView>

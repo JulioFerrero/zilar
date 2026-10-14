@@ -144,78 +144,70 @@ export function ChatListMenu({
   const close = (): void => onOpenChange(false);
   return (
     <div className="relative">
-      <IconButton
-        aria-label="Open menu"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        size={isWide ? 36 : 40}
-        radius={isWide ? 10 : 12}
-        onClick={() => onOpenChange(!open)}
+      <Menu
+        open={open}
+        onOpenChange={onOpenChange}
+        label="Main menu"
+        align={isWide ? 'start' : 'end'}
+        trigger={
+          <IconButton aria-label="Open menu" size={isWide ? 36 : 40} radius={isWide ? 10 : 12}>
+            <MenuIcon className="size-[18px]" aria-hidden="true" />
+          </IconButton>
+        }
       >
-        <MenuIcon className="size-[18px]" aria-hidden="true" />
-      </IconButton>
-      {open && (
-        <Menu
-          open={open}
-          onClose={close}
-          label="Main menu"
-          closeLabel="Close menu"
-          className="top-full right-0 mt-1 wide:left-0 wide:right-auto"
-        >
-          <MenuCloseContext.Provider value={close}>
-            <ProfileMenuItem />
-            <NavMenuItem
-              to="/settings/contacts"
-              label="Contacts"
-              icon={Users}
-              badge={
-                incomingRequests !== null && incomingRequests > 0 ? (
-                  <RequestBadge count={incomingRequests} />
-                ) : undefined
-              }
-            />
-            <NavMenuItem to="/settings/ais" label="My AIs" icon={Bot} />
+        <MenuCloseContext.Provider value={close}>
+          <ProfileMenuItem />
+          <NavMenuItem
+            to="/settings/contacts"
+            label="Contacts"
+            icon={Users}
+            badge={
+              incomingRequests !== null && incomingRequests > 0 ? (
+                <RequestBadge count={incomingRequests} />
+              ) : undefined
+            }
+          />
+          <NavMenuItem to="/settings/ais" label="My AIs" icon={Bot} />
+          <MenuItem
+            icon={Compass}
+            onSelect={() => {
+              close();
+              onExplore();
+            }}
+          >
+            Explore groups
+          </MenuItem>
+          <MenuItem
+            icon={UserPlus}
+            onSelect={() => {
+              close();
+              onInvite();
+            }}
+          >
+            Invite a friend
+          </MenuItem>
+          <NavMenuItem
+            to="/settings"
+            label="Settings"
+            icon={Settings}
+            badge={approvalsBadge !== null ? <ApprovalBadge text={approvalsBadge} /> : undefined}
+          />
+          {installEvent !== null && (
             <MenuItem
-              icon={Compass}
+              icon={Download}
               onSelect={() => {
                 close();
-                onExplore();
+                // A click while a prompt waits is dropped before prompt() runs.
+                if (!installing) {
+                  onInstall();
+                }
               }}
             >
-              Explore groups
+              {installFailed ? 'Install failed — try again' : 'Install app'}
             </MenuItem>
-            <MenuItem
-              icon={UserPlus}
-              onSelect={() => {
-                close();
-                onInvite();
-              }}
-            >
-              Invite a friend
-            </MenuItem>
-            <NavMenuItem
-              to="/settings"
-              label="Settings"
-              icon={Settings}
-              badge={approvalsBadge !== null ? <ApprovalBadge text={approvalsBadge} /> : undefined}
-            />
-            {installEvent !== null && (
-              <MenuItem
-                icon={Download}
-                onSelect={() => {
-                  close();
-                  // A click while a prompt waits is dropped before prompt() runs.
-                  if (!installing) {
-                    onInstall();
-                  }
-                }}
-              >
-                {installFailed ? 'Install failed — try again' : 'Install app'}
-              </MenuItem>
-            )}
-          </MenuCloseContext.Provider>
-        </Menu>
-      )}
+          )}
+        </MenuCloseContext.Provider>
+      </Menu>
     </div>
   );
 }

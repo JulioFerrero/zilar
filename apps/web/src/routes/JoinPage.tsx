@@ -126,10 +126,12 @@ export function JoinPage({
           <p className="mt-2 text-[15px] text-muted-foreground">
             Sign in to see the group and join it.
           </p>
-          <Button asChild size="lg" className="mt-5">
-            <Link to="/login" state={{ from: `/j/${token}` }}>
-              Sign in
-            </Link>
+          <Button
+            render={<Link to="/login" state={{ from: `/j/${token}` }} />}
+            size="lg"
+            className="mt-5"
+          >
+            Sign in
           </Button>
         </div>
       </div>
@@ -215,10 +217,12 @@ export function JoinPage({
           </p>
         )}
         {needsName ? (
-          <Button asChild size="lg" className="mt-5 w-full">
-            <Link to="/welcome/name" state={{ next: `/j/${token}` }}>
-              Choose a name
-            </Link>
+          <Button
+            render={<Link to="/welcome/name" state={{ next: `/j/${token}` }} />}
+            size="lg"
+            className="mt-5 w-full"
+          >
+            Choose a name
           </Button>
         ) : (
           <Button type="button" disabled={busy} onClick={join} size="lg" className="mt-5 w-full">
@@ -242,8 +246,8 @@ function JoinCard({ title, body }: { title: string; body: string }) {
       <div className="w-full max-w-sm rounded-2xl bg-background p-6 text-center shadow-xl">
         <h1 className="text-[24px] leading-8 font-semibold">{title}</h1>
         <p className="mt-2 text-[15px] text-muted-foreground">{body}</p>
-        <Button asChild size="lg" className="mt-5">
-          <Link to="/">Back to chats</Link>
+        <Button render={<Link to="/" />} size="lg" className="mt-5">
+          Back to chats
         </Button>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import { Effect } from 'effect';
 import { useState } from 'react';
-import { GripVertical, Pencil, Plus } from 'lucide-react';
+import { Pencil, Plus } from 'lucide-react';
 import { FOLDERS_MAX, type ChatFolder, type FolderChatType } from '@zilar/chat-core';
 import { reorderChatFolders } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
@@ -12,6 +12,7 @@ import { FolderEditorDialog } from '@/components/FolderEditorDialog';
 import { folderIconComponent } from '@/components/folderIcon';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { SortableHandle, SortableItem, SortableList } from '@/components/ui/sortable-list';
 import { StateMessage } from '@/components/ui/state-message';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -32,7 +33,6 @@ export function FoldersPage({ onBack }: { onBack: () => void }) {
   // a direct load (refresh, typed URL) needs the sync here too; mounting
   // the hook twice is safe.
   useChatFolders();
-  const [dragId, setDragId] = useState<string | undefined>(undefined);
   const [editor, setEditor] = useState<{ open: boolean; folder: ChatFolder | null }>({
     open: false,
     folder: null,
@@ -70,24 +70,7 @@ export function FoldersPage({ onBack }: { onBack: () => void }) {
     reorder(next);
   };
 
-  const moveByKey = (id: string, direction: -1 | 1): void => {
-    if (reordering) {
-      return;
-    }
-    const ids = folders.map((folder) => folder.id);
-    const index = ids.indexOf(id);
-    const target = index + direction;
-    if (index === -1 || target < 0 || target >= ids.length) {
-      return;
-    }
-    const next = [...ids];
-    const [moved] = next.splice(index, 1);
-    if (moved === undefined) {
-      return;
-    }
-    next.splice(target, 0, moved);
-    reorder(next);
-  };
+  const folderName = (id: string): string => folders.find((folder) => folder.id === id)?.name ?? id;
 
   return (
     <SettingsShell
@@ -100,77 +83,63 @@ export function FoldersPage({ onBack }: { onBack: () => void }) {
           <StateMessage kind="empty" title="No folders yet. Create one to group your chats." />
         ) : (
           <Card>
-            <ul className="divide-y divide-divider">
-              {folders.map((folder) => {
-                const Icon = folderIconComponent(folder.icon);
-                return (
-                  <li
-                    key={folder.id}
-                    draggable
-                    onDragStart={(event) => {
-                      event.dataTransfer.setData('text/plain', folder.id);
-                      setDragId(folder.id);
-                    }}
-                    onDragEnd={() => setDragId(undefined)}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      const from = event.dataTransfer.getData('text/plain') || dragId;
-                      setDragId(undefined);
-                      if (from !== undefined && from !== '') {
-                        move(from, folder.id);
-                      }
-                    }}
-                    className={cn(
-                      'flex items-center gap-2 px-2 py-2.5',
-                      dragId === folder.id && 'opacity-50',
-                    )}
-                  >
-                    <button
-                      type="button"
-                      aria-label={`Reorder ${folder.name}`}
-                      title={`Reorder ${folder.name}`}
+            <SortableList
+              ids={folders.map((folder) => folder.id)}
+              disabled={reordering}
+              labelOf={folderName}
+              onReorder={move}
+            >
+              <ul className="divide-y divide-divider">
+                {folders.map((folder) => {
+                  const Icon = folderIconComponent(folder.icon);
+                  return (
+                    <SortableItem
+                      key={folder.id}
+                      id={folder.id}
                       disabled={reordering}
-                      onKeyDown={(event) => {
-                        if (!event.altKey) {
-                          return;
-                        }
-                        if (event.key === 'ArrowUp') {
-                          event.preventDefault();
-                          moveByKey(folder.id, -1);
-                        } else if (event.key === 'ArrowDown') {
-                          event.preventDefault();
-                          moveByKey(folder.id, 1);
-                        }
-                      }}
-                      className="flex shrink-0 cursor-grab items-center justify-center rounded-lg p-1.5 text-muted-foreground hover:bg-list-hover hover:text-foreground"
+                      className={({ isDragging }) =>
+                        cn('flex items-center gap-2 px-2 py-2.5', isDragging && 'opacity-50')
+                      }
                     >
-                      <GripVertical className="h-5 w-5" aria-hidden="true" />
-                    </button>
-                    <span className="key-icon flex shrink-0 items-center justify-center rounded-xl p-2">
-                      <Icon className="h-5 w-5" aria-hidden="true" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[15px] font-medium">{folder.name}</span>
-                      <span className="block truncate text-[13px] text-muted-foreground">
-                        {summary(folder)}
-                      </span>
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Edit ${folder.name}`}
-                      title={`Edit ${folder.name}`}
-                      onClick={() => setEditor({ open: true, folder })}
-                      className="shrink-0 rounded-full text-muted-foreground"
-                    >
-                      <Pencil className="h-4 w-4" aria-hidden="true" />
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
+                      {({ attributes, listeners, setActivatorNodeRef, isDragging }) => (
+                        <>
+                          <SortableHandle
+                            attributes={attributes}
+                            listeners={listeners}
+                            setActivatorNodeRef={setActivatorNodeRef}
+                            isDragging={isDragging}
+                            label={`Reorder ${folder.name}`}
+                            disabled={reordering}
+                          />
+                          <span className="key-icon flex shrink-0 items-center justify-center rounded-xl p-2">
+                            <Icon className="h-5 w-5" aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[15px] font-medium">
+                              {folder.name}
+                            </span>
+                            <span className="block truncate text-[13px] text-muted-foreground">
+                              {summary(folder)}
+                            </span>
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`Edit ${folder.name}`}
+                            title={`Edit ${folder.name}`}
+                            onClick={() => setEditor({ open: true, folder })}
+                            className="shrink-0 rounded-full text-muted-foreground"
+                          >
+                            <Pencil className="h-4 w-4" aria-hidden="true" />
+                          </Button>
+                        </>
+                      )}
+                    </SortableItem>
+                  );
+                })}
+              </ul>
+            </SortableList>
           </Card>
         )}
         {!atLimit && (

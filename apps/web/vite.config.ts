@@ -23,14 +23,14 @@ export default defineConfig({
     rollupOptions: {
       output: {
         // PERF-14: 142 files import `effect`, and the React runtime,
-        // `better-auth` and radix were bundled into the entry. Split the
-        // long-lived vendors out so the entry chunk (`index-*.js`) and the
+        // `better-auth` and the overlay kit were bundled into the entry. Split
+        // the long-lived vendors out so the entry chunk (`index-*.js`) and the
         // lazy route chunks shrink and stay cacheable across deploys.
         //
-        // Measured: `effect`/`better-auth`/radix alone leave the entry chunk
+        // Measured: `effect`/`better-auth`/Base UI alone leave the entry chunk
         // unchanged (636 kB) — they already sat in the shared route chunks
         // (`button`, `jsx-runtime`, `AuthProvider`), which did shrink. Adding
-        // the React runtime (the audit's own `effect`/`react`/`radix` list,
+        // the React runtime (the audit's own `effect`/`react`/overlay list,
         // performance-audit.md:149) is what actually shrinks the entry to
         // ~425 kB, so it is included here.
         //
@@ -45,8 +45,8 @@ export default defineConfig({
           if (id.includes('/node_modules/better-auth/')) {
             return 'vendor-better-auth';
           }
-          if (id.includes('/node_modules/radix-ui/') || id.includes('/node_modules/@radix-ui/')) {
-            return 'vendor-radix';
+          if (id.includes('/node_modules/@base-ui/')) {
+            return 'vendor-base-ui';
           }
           if (
             id.includes('/node_modules/react/') ||

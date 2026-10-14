@@ -1,161 +1,100 @@
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
-} from 'react';
+import { Menu as BaseMenu } from '@base-ui/react/menu';
 import type { LucideIcon } from 'lucide-react';
+import { useRef, type MouseEvent, type ReactElement, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface MenuProps {
   open: boolean;
-  onClose: () => void;
+  onOpenChange: (open: boolean) => void;
   /** Accessible name of the menu. */
   label: string;
-  /** Accessible name of the backdrop button that closes the menu. */
-  closeLabel: string;
-  /** Placement classes such as `top-full right-0 mt-1`. */
-  className?: string;
-  /** Extra classes for the backdrop button (e.g. a higher `z-index`). */
-  backdropClassName?: string;
+  /**
+   * The opener button. Base UI wires it as the trigger: it opens on click and
+   * on Enter/Space/ArrowDown, and focus returns to it on close.
+   */
+  trigger?: ReactElement;
+  /**
+   * Class for an invisible positioned element that anchors the panel when the
+   * opener button lives in a parent (`ChatListItem`, `TopicRow`, `MessageMenu`)
+   * and there is no trigger of its own.
+   */
+  anchorClassName?: string;
+  /**
+   * A viewport point (right-click) to anchor the panel to, instead of a
+   * trigger. Base UI keeps the panel inside the viewport near an edge.
+   */
+  point?: { x: number; y: number };
+  /** Which side of the anchor the panel opens on. Defaults to `bottom`. */
+  side?: 'top' | 'right' | 'bottom' | 'left';
+  /** How the panel lines up with the anchor. Defaults to `start`. */
+  align?: 'start' | 'center' | 'end';
+  /** Gap in pixels between the anchor and the panel. Defaults to 4. */
+  sideOffset?: number;
   children?: ReactNode;
 }
 
-function enabledItems(menu: HTMLElement | null): HTMLElement[] {
-  if (menu === null) {
-    return [];
-  }
-  return [
-    ...menu.querySelectorAll<HTMLElement>(
-      '[role="menuitem"]:not([disabled]), [role="menuitemradio"]:not([disabled]), [role="menuitemcheckbox"]:not([disabled])',
-    ),
-  ];
+const PANEL =
+  'max-h-[var(--available-height)] min-w-[180px] overflow-y-auto rounded-xl border border-border-strong bg-surface py-1 shadow-lg outline-none';
+
+const ITEM =
+  'flex w-full items-center gap-2 px-3 py-2 text-left text-[15px] select-none outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-list-hover';
+
+/** A zero-size virtual element at a viewport point, for the right-click anchor. */
+function pointAnchor(x: number, y: number): { getBoundingClientRect: () => DOMRect } {
+  const rect = { x, y, width: 0, height: 0, top: y, right: x, bottom: y, left: x };
+  return { getBoundingClientRect: () => ({ ...rect, toJSON: () => rect }) as DOMRect };
 }
 
 /**
- * A small dropdown menu with keyboard support: focus moves to the first item
- * on open, ArrowDown/ArrowUp move between enabled items (wrapping), Home/End
- * jump to the ends, Escape closes and returns focus to the opener, and Tab
- * closes.
+ * A dropdown menu built on Base UI `Menu`: the panel is portalled, it flips and
+ * shifts to stay inside the viewport (`collisionPadding` 8), and it gets
+ * keyboard support (arrows, Home/End, typeahead, Escape, focus back to the
+ * anchor) from Base UI.
  */
 export function Menu({
   open,
-  onClose,
+  onOpenChange,
   label,
-  closeLabel,
-  className,
-  backdropClassName,
+  trigger,
+  anchorClassName,
+  point,
+  side = 'bottom',
+  align = 'start',
+  sideOffset = 4,
   children,
 }: MenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
-
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  });
-
-  useLayoutEffect(() => {
-    if (!open) {
-      return;
-    }
-    const active = document.activeElement;
-    returnFocusRef.current = active instanceof HTMLElement ? active : null;
-    enabledItems(menuRef.current)[0]?.focus();
-  }, [open]);
-
-  useLayoutEffect(() => {
-    if (!open) {
-      return;
-    }
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') {
-        return;
-      }
-      event.stopPropagation();
-      onCloseRef.current();
-      returnFocusRef.current?.focus();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [open]);
-
-  if (!open) {
-    return null;
-  }
-
-  const moveFocus = (direction: 1 | -1): void => {
-    const items = enabledItems(menuRef.current);
-    if (items.length === 0) {
-      return;
-    }
-    const current = items.indexOf(document.activeElement as HTMLElement);
-    const next =
-      current === -1
-        ? direction === 1
-          ? items[0]
-          : items[items.length - 1]
-        : items[(current + direction + items.length) % items.length];
-    next?.focus();
-  };
-
-  const focusEdge = (edge: 'first' | 'last'): void => {
-    const items = enabledItems(menuRef.current);
-    (edge === 'first' ? items[0] : items[items.length - 1])?.focus();
-  };
-
-  const onMenuKeyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
-    switch (event.key) {
-      case 'ArrowDown':
-        event.preventDefault();
-        moveFocus(1);
-        break;
-      case 'ArrowUp':
-        event.preventDefault();
-        moveFocus(-1);
-        break;
-      case 'Home':
-        event.preventDefault();
-        focusEdge('first');
-        break;
-      case 'End':
-        event.preventDefault();
-        focusEdge('last');
-        break;
-      case 'Tab':
-        onClose();
-        break;
-    }
-  };
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
 
   return (
-    <>
-      <button
-        type="button"
-        tabIndex={-1}
-        aria-label={closeLabel}
-        onClick={onClose}
-        className={cn('fixed inset-0 z-10 cursor-default', backdropClassName)}
-      />
-      <div
-        ref={menuRef}
-        role="menu"
-        aria-label={label}
-        onKeyDown={onMenuKeyDown}
-        className={cn(
-          'absolute z-20 min-w-[180px] rounded-xl border border-border-strong bg-surface py-1 shadow-lg',
-          className,
-        )}
-      >
-        {children}
-      </div>
-    </>
+    <BaseMenu.Root open={open} onOpenChange={onOpenChange}>
+      {trigger !== undefined && <BaseMenu.Trigger render={trigger} />}
+      {anchorClassName !== undefined && (
+        <span ref={anchorRef} aria-hidden="true" className={anchorClassName} />
+      )}
+      <BaseMenu.Portal>
+        <BaseMenu.Positioner
+          className="z-50"
+          side={side}
+          align={align}
+          sideOffset={sideOffset}
+          collisionPadding={8}
+          {...(point !== undefined
+            ? { anchor: () => pointAnchor(point.x, point.y) }
+            : anchorClassName !== undefined
+              ? { anchor: anchorRef }
+              : {})}
+        >
+          <BaseMenu.Popup aria-label={label} className={PANEL}>
+            {children}
+          </BaseMenu.Popup>
+        </BaseMenu.Positioner>
+      </BaseMenu.Portal>
+    </BaseMenu.Root>
   );
 }
 
 export interface MenuItemProps {
-  onSelect: () => void;
+  onSelect: (event: MouseEvent<HTMLElement>) => void;
   /** A lucide icon drawn before the label. */
   icon?: LucideIcon;
   /** A dangerous action (sign out): the label turns red. */
@@ -163,6 +102,8 @@ export interface MenuItemProps {
   disabled?: boolean;
   /** Accessible name override when the visible text is not enough. */
   ariaLabel?: string;
+  /** When false the menu stays open after the click (the Mute… durations). */
+  closeOnClick?: boolean;
   children?: ReactNode;
 }
 
@@ -172,59 +113,92 @@ export function MenuItem({
   destructive,
   disabled,
   ariaLabel,
+  closeOnClick,
   children,
 }: MenuItemProps) {
   return (
-    <button
-      type="button"
-      role="menuitem"
-      disabled={disabled}
+    <BaseMenu.Item
+      disabled={disabled ?? false}
+      closeOnClick={closeOnClick ?? true}
       aria-label={ariaLabel}
       onClick={onSelect}
-      className={cn(
-        'flex w-full items-center gap-2 px-3 py-2 text-left text-[15px] hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none disabled:opacity-50',
-        destructive && 'text-danger',
-      )}
+      className={cn(ITEM, destructive && 'text-danger')}
     >
       {Icon === undefined ? null : <Icon className="size-4" aria-hidden="true" />}
       {children}
-    </button>
+    </BaseMenu.Item>
+  );
+}
+
+export interface MenuEntryProps {
+  onSelect: (event: MouseEvent<HTMLElement>) => void;
+  disabled?: boolean;
+  /** Accessible name; required when the entry has no visible text. */
+  ariaLabel?: string;
+  /** Extra classes; this entry carries no built-in layout. */
+  className?: string;
+  children?: ReactNode;
+}
+
+/** An entry with fully custom content, for the reaction bar's emoji keys. */
+export function MenuEntry({ onSelect, disabled, ariaLabel, className, children }: MenuEntryProps) {
+  return (
+    <BaseMenu.Item
+      disabled={disabled ?? false}
+      aria-label={ariaLabel}
+      onClick={onSelect}
+      className={cn('select-none outline-none data-[disabled]:opacity-50', className)}
+    >
+      {children}
+    </BaseMenu.Item>
+  );
+}
+
+export interface MenuRadioGroupProps {
+  /** The selected item's value. */
+  value: string;
+  onValueChange: (value: string) => void;
+  children?: ReactNode;
+}
+
+/** The group that owns a set of `MenuRadioItem`s and their single selection. */
+export function MenuRadioGroup({ value, onValueChange, children }: MenuRadioGroupProps) {
+  return (
+    <BaseMenu.RadioGroup value={value} onValueChange={onValueChange}>
+      {children}
+    </BaseMenu.RadioGroup>
   );
 }
 
 export interface MenuRadioItemProps {
-  checked: boolean;
-  onSelect: () => void;
+  value: string;
   disabled?: boolean;
   /** Accessible name override when the visible text is not enough. */
   ariaLabel?: string;
+  /** When false the menu stays open after picking (Base UI's default). */
+  closeOnClick?: boolean;
   /** Extra classes merged with the base item classes. */
   className?: string;
   children?: ReactNode;
 }
 
 export function MenuRadioItem({
-  checked,
-  onSelect,
+  value,
   disabled,
   ariaLabel,
+  closeOnClick,
   className,
   children,
 }: MenuRadioItemProps) {
   return (
-    <button
-      type="button"
-      role="menuitemradio"
-      aria-checked={checked}
-      disabled={disabled}
+    <BaseMenu.RadioItem
+      value={value}
+      disabled={disabled ?? false}
+      closeOnClick={closeOnClick ?? true}
       aria-label={ariaLabel}
-      onClick={onSelect}
-      className={cn(
-        'flex w-full items-center gap-2 px-3 py-2 text-left text-[15px] hover:bg-list-hover focus-visible:bg-list-hover focus-visible:outline-none disabled:opacity-50',
-        className,
-      )}
+      className={cn(ITEM, className)}
     >
       {children}
-    </button>
+    </BaseMenu.RadioItem>
   );
 }

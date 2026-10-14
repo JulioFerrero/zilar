@@ -37,8 +37,6 @@ export function NewChatButton({
   const currentUserId = useChatSelector((s) => s.currentUserId);
   const groupInfos = useChatSelector((s) => s.groupInfos);
 
-  const toggleMenu = (): void => setMenuOpen((value) => !value);
-
   // The wide button shows a `kbd N`: plain `n` (outside inputs) opens the
   // same menu the button opens.
   useEffect(() => {
@@ -65,11 +63,6 @@ export function NewChatButton({
   }, []);
 
   const focusTrigger = (): void => triggerRef.current?.focus();
-
-  const closeMenu = (): void => {
-    setMenuOpen(false);
-    focusTrigger();
-  };
 
   const closeDialog = (): void => {
     setDialog(undefined);
@@ -148,9 +141,9 @@ export function NewChatButton({
     setDialog('topic');
   };
 
-  // Esc must close the menu wherever focus is, including on the trigger button
-  // (whose own keydown never reaches the menu). `Menu` registers a document
-  // listener while open that closes and returns focus to the trigger.
+  // The trigger button is the menu's anchor: Base UI opens on click, moves
+  // focus into the panel, and returns it to the button on Escape or an outside
+  // click.
 
   return (
     <div
@@ -159,67 +152,61 @@ export function NewChatButton({
         isWide ? 'relative shrink-0 border-t border-border p-3' : 'absolute right-4 bottom-4',
       )}
     >
-      {menuOpen && (
-        <Menu
-          open={menuOpen}
-          onClose={closeMenu}
-          label="New chat actions"
-          closeLabel="Close new chat menu"
-          className="right-0 bottom-full mb-2"
-        >
-          <MenuItem icon={Users} onSelect={() => openDialog('group')}>
-            New group
+      <Menu
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+        label="New chat actions"
+        side="top"
+        align="end"
+        sideOffset={8}
+        trigger={
+          isWide ? (
+            <Button
+              type="button"
+              ref={triggerRef}
+              aria-label="New chat"
+              className="h-10 w-full gap-2 rounded-[10px] text-[14px] font-semibold"
+            >
+              <Plus aria-hidden="true" />
+              New chat
+              <kbd className="font-mono rounded-[5px] border border-current px-1 text-[11px] leading-4 opacity-60">
+                N
+              </kbd>
+            </Button>
+          ) : (
+            <Button
+              ref={triggerRef}
+              type="button"
+              size="icon-lg"
+              aria-label="New chat"
+              className="size-14 rounded-[18px]"
+            >
+              <Plus className="size-[22px]" aria-hidden="true" />
+            </Button>
+          )
+        }
+      >
+        <MenuItem icon={Users} onSelect={() => openDialog('group')}>
+          New group
+        </MenuItem>
+        <MenuItem icon={Megaphone} onSelect={() => openDialog('channel')}>
+          New channel
+        </MenuItem>
+        <MenuItem icon={Compass} onSelect={openExplore}>
+          Explore groups
+        </MenuItem>
+        <MenuItem icon={MessageSquarePlus} onSelect={() => openDialog('message')}>
+          New message
+        </MenuItem>
+        <MenuItem icon={Bot} onSelect={() => openDialog('ai')}>
+          New AI
+        </MenuItem>
+        {(defaultGroupId !== undefined || topicGroups.length > 0) && (
+          <MenuItem icon={Hash} onSelect={openNewTopic}>
+            New topic
           </MenuItem>
-          <MenuItem icon={Megaphone} onSelect={() => openDialog('channel')}>
-            New channel
-          </MenuItem>
-          <MenuItem icon={Compass} onSelect={openExplore}>
-            Explore groups
-          </MenuItem>
-          <MenuItem icon={MessageSquarePlus} onSelect={() => openDialog('message')}>
-            New message
-          </MenuItem>
-          <MenuItem icon={Bot} onSelect={() => openDialog('ai')}>
-            New AI
-          </MenuItem>
-          {(defaultGroupId !== undefined || topicGroups.length > 0) && (
-            <MenuItem icon={Hash} onSelect={openNewTopic}>
-              New topic
-            </MenuItem>
-          )}
-        </Menu>
-      )}
-
-      {isWide ? (
-        <Button
-          type="button"
-          ref={triggerRef}
-          aria-label="New chat"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          onClick={toggleMenu}
-          className="h-10 w-full gap-2 rounded-[10px] text-[14px] font-semibold"
-        >
-          <Plus aria-hidden="true" />
-          New chat
-          <kbd className="font-mono rounded-[5px] border border-current px-1 text-[11px] leading-4 opacity-60">
-            N
-          </kbd>
-        </Button>
-      ) : (
-        <Button
-          ref={triggerRef}
-          type="button"
-          size="icon-lg"
-          aria-label="New chat"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          onClick={toggleMenu}
-          className="size-14 rounded-[18px]"
-        >
-          <Plus className="size-[22px]" aria-hidden="true" />
-        </Button>
-      )}
+        )}
+      </Menu>
 
       {dialog === 'group' && <NewGroupDialog onClose={closeDialog} />}
       {dialog === 'channel' && <NewGroupDialog onClose={closeDialog} channel />}

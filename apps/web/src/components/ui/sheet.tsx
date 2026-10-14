@@ -1,5 +1,5 @@
-import { useRef, type ReactNode, type RefObject } from 'react';
-import { useModal } from './use-modal';
+import type { ReactNode, RefObject } from 'react';
+import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 
 export interface SheetProps {
   open: boolean;
@@ -14,10 +14,11 @@ export interface SheetProps {
 }
 
 /**
- * A right-side drawer for chat panels. It shares focus, Escape and Tab
- * behaviour with `Dialog`: Escape closes only the topmost overlay and stops
- * before window listeners, focus moves in on open and back on close, and Tab
- * is trapped. It has no header, so each panel renders its own.
+ * A right-side drawer for chat panels, built on the Base UI `Dialog` primitive so
+ * it shares focus, Escape and Tab behaviour with `Dialog`: Escape closes only
+ * the topmost overlay and stops before window listeners, focus moves in on open
+ * and back on close, and Tab is trapped. It has no header, so each panel
+ * renders its own.
  */
 export function Sheet({
   open,
@@ -27,30 +28,35 @@ export function Sheet({
   initialFocusRef,
   dismissable = true,
 }: SheetProps) {
-  const panelRef = useRef<HTMLDivElement>(null);
-  const onKeyDown = useModal({ open, onClose, dismissable, panelRef, initialFocusRef });
-
-  if (!open) {
-    return null;
-  }
-
   return (
-    <div
-      onClick={dismissable ? onClose : undefined}
-      className="fixed inset-0 z-40 flex justify-end bg-black/40"
+    <DialogPrimitive.Root
+      open={open}
+      disablePointerDismissal={!dismissable}
+      onOpenChange={(nextOpen, eventDetails) => {
+        if (nextOpen) {
+          return;
+        }
+        // `dismissable={false}` keeps the sheet open on Escape: Base UI reports
+        // it as `escape-key`, and cancelling the change leaves it mounted.
+        if (!dismissable && eventDetails.reason === 'escape-key') {
+          eventDetails.cancel();
+          return;
+        }
+        onClose();
+      }}
     >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label={ariaLabel}
-        tabIndex={-1}
-        onClick={(event) => event.stopPropagation()}
-        onKeyDown={onKeyDown}
-        className="flex h-full w-full flex-col bg-surface shadow-xl outline-none sm:w-[380px]"
-      >
-        {children}
-      </div>
-    </div>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Backdrop className="fixed inset-0 z-40 bg-black/40" />
+        <DialogPrimitive.Viewport className="fixed inset-0 z-40 flex justify-end">
+          <DialogPrimitive.Popup
+            aria-label={ariaLabel}
+            initialFocus={initialFocusRef}
+            className="flex h-full w-full flex-col bg-surface shadow-xl outline-none sm:w-[380px]"
+          >
+            {children}
+          </DialogPrimitive.Popup>
+        </DialogPrimitive.Viewport>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }

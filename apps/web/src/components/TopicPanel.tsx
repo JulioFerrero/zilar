@@ -236,26 +236,28 @@ function TopicPanelBody({
 
           {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
         </div>
-      </Sheet>
 
-      {confirmingVisibility && topic.visibility === 'private' && (
-        <ConfirmDialog
-          title="Make this topic public?"
-          body={`Everyone in ${groupTitle} will be able to read the whole history of “${chat.title}”, including messages sent while it was private.`}
-          confirmLabel={visibilityBusy ? 'Making public…' : 'Make public'}
-          onConfirm={() => runVisibility()}
-          onCancel={() => setConfirmingVisibility(false)}
-        />
-      )}
-      {confirmingArchive && (
-        <ConfirmDialog
-          title={`Archive “${chat.title}”?`}
-          body="The topic disappears from the list for everyone. Its history stays on the server."
-          confirmLabel={isWaiting(archiveState) ? 'Archiving…' : 'Archive'}
-          onConfirm={() => runArchive()}
-          onCancel={() => setConfirmingArchive(false)}
-        />
-      )}
+        {/* T-1351: the confirms are React children of the Sheet, not siblings,
+            so Base UI nests them and Escape closes only the confirm. */}
+        {confirmingVisibility && topic.visibility === 'private' && (
+          <ConfirmDialog
+            title="Make this topic public?"
+            body={`Everyone in ${groupTitle} will be able to read the whole history of “${chat.title}”, including messages sent while it was private.`}
+            confirmLabel={visibilityBusy ? 'Making public…' : 'Make public'}
+            onConfirm={() => runVisibility()}
+            onCancel={() => setConfirmingVisibility(false)}
+          />
+        )}
+        {confirmingArchive && (
+          <ConfirmDialog
+            title={`Archive “${chat.title}”?`}
+            body="The topic disappears from the list for everyone. Its history stays on the server."
+            confirmLabel={isWaiting(archiveState) ? 'Archiving…' : 'Archive'}
+            onConfirm={() => runArchive()}
+            onCancel={() => setConfirmingArchive(false)}
+          />
+        )}
+      </Sheet>
     </>
   );
 }

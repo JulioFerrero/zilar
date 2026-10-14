@@ -1,29 +1,49 @@
-import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TrueSheet } from '@lodev09/react-native-true-sheet';
+import { palette } from '@zilar/ui-tokens';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { ScrollView, View, useWindowDimensions } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { sheetBottomPadding, useKeyboardHeight } from '@/lib/use-keyboard-height';
+import { runInBackground } from '@/lib/effect/run-in-background';
 
 type BottomSheetProps = {
   visible: boolean;
   onClose: () => void;
-  /** The backdrop's accessibility label, e.g. "Close pins list". */
+  /**
+   * The label for the sheet's drag handle (the kit used it for the backdrop).
+   * Kept so the call sites don't change; see the T-1348 Report.
+   */
   closeLabel: string;
-  /** A plain title row under the grab handle, when given. */
+  /** A plain title row above the scrollable content, when given. */
   title?: string;
-  /** The sheet panel's max height class (default `'max-h-[85%]'`). */
+  /** A `max-h-[NN%]` class; the panel is capped at that share of the screen. */
   maxHeightClassName?: string;
   children?: ReactNode;
 };
 
+const DEFAULT_MAX_HEIGHT_FRACTION = 0.85;
+
+/** Reads `max-h-[70%]` → `0.7`; anything else falls back to 85%. */
+function maxHeightFraction(className: string): number {
+  const match = /\[(\d+(?:\.\d+)?)%\]/.exec(className);
+  const fraction = match ? Number(match[1]) / 100 : Number.NaN;
+  return fraction > 0 && fraction <= 1 ? fraction : DEFAULT_MAX_HEIGHT_FRACTION;
+}
+
 /**
- * The kit bottom sheet shell (T-0313, from T-0299/T-0310): a fade-in
- * `Modal`, a tappable backdrop that closes it and a rounded-top panel with
- * a grab handle, an optional title and scrollable content. The panel stays
- * above the keyboard: `KeyboardAvoidingView` pads it on iOS, and on Android
- * (edge-to-edge, Expo SDK 57) the panel is padded by the keyboard height on
- * top of the safe-area minimum.
+ * The kit bottom sheet shell (T-0313; rebuilt on `@lodev09/react-native-true-sheet`
+ * in T-1348). It is the platform's own sheet — iOS `UISheetPresentationController`,
+ * Android `BottomSheetDialog` — so it slides up, drags down to close, dims the
+ * backdrop (a tap outside closes it) and keeps text inputs above the keyboard
+ * natively. `visible` drives `present()` / `dismiss()`; `onDidDismiss` reports a
+ * native dismissal (drag, backdrop tap, Android back) back to `onClose`.
+ *
+ * `detents={['auto']}` sizes the panel to its content, capped at the share of
+ * the screen named by `maxHeightClassName` (via `maxContentHeight`). The library
+ * does not support `auto` together with its `scrollable` mode, so the content is
+ * bounded by the same cap and scrolls within it instead. The content's top
+ * padding (`pt-6`) keeps its first row clear of the native grabber, which the
+ * library draws inside the sheet's top edge and offers no content inset for.
  */
 export function BottomSheet({
   visible,
@@ -33,41 +53,54 @@ export function BottomSheet({
   maxHeightClassName = 'max-h-[85%]',
   children,
 }: BottomSheetProps) {
-  const insets = useSafeAreaInsets();
-  const keyboardHeight = useKeyboardHeight();
+  const { height } = useWindowDimensions();
+  const sheet = useRef<TrueSheet>(null);
+  const presented = useRef(false);
+  const maxHeight = Math.round(height * maxHeightFraction(maxHeightClassName));
+
+  useEffect(() => {
+    const instance = sheet.current;
+    if (instance === null) {
+      return;
+    }
+    if (visible) {
+      presented.current = true;
+      runInBackground(() => instance.present(), {});
+    } else if (presented.current) {
+      presented.current = false;
+      runInBackground(() => instance.dismiss(), {});
+    }
+  }, [visible]);
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        className="flex-1"
+    <TrueSheet
+      ref={sheet}
+      detents={['auto']}
+      maxContentHeight={maxHeight}
+      backgroundColor={palette.surface}
+      cornerRadius={16}
+      grabber
+      dimmed
+      dismissible
+      accessibilityOptions={{ grabberLabel: closeLabel }}
+      onDidDismiss={() => {
+        presented.current = false;
+        onClose();
+      }}
+    >
+      <View
+        className="border-t border-border-strong bg-surface px-4 pt-6"
+        style={{ maxHeight, paddingBottom: 16 }}
       >
-        <Pressable
-          accessibilityLabel={closeLabel}
-          onPress={onClose}
-          className="flex-1 justify-end bg-black/40"
-        >
-          <Pressable
-            onPress={() => {}}
-            className={`${maxHeightClassName} rounded-t-2xl border-t border-border-strong bg-surface px-4 pt-3`}
-            style={{
-              paddingBottom: sheetBottomPadding(Platform.OS, insets.bottom, keyboardHeight),
-            }}
-          >
-            <ScrollView keyboardShouldPersistTaps="handled">
-              <View className="mb-1 h-1 w-10 self-center rounded-full bg-surface-raised" />
-              {title !== undefined ? (
-                <Text
-                  accessibilityRole="header"
-                  className="text-[18px] font-semibold text-foreground"
-                >
-                  {title}
-                </Text>
-              ) : null}
-              {children}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </KeyboardAvoidingView>
-    </Modal>
+        <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
+          {title !== undefined ? (
+            <Text accessibilityRole="header" className="text-[18px] font-semibold text-foreground">
+              {title}
+            </Text>
+          ) : null}
+          {children}
+        </ScrollView>
+      </View>
+    </TrueSheet>
   );
 }

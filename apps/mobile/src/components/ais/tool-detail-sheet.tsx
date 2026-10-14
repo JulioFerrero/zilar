@@ -1,4 +1,5 @@
-import { KeyboardAvoidingView, Modal, Platform, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { Modal, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ToolActionsApi, ToolDetailsApi } from '@/lib/tools-api';
@@ -37,10 +38,7 @@ export function ToolDetailSheet({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1"
-      >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         <View className="flex-1 bg-background" style={{ paddingTop: Math.max(insets.top, 16) }}>
           {toolId !== null ? (
             <ToolDetailLoader

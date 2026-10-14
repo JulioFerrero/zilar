@@ -1,7 +1,8 @@
 import { useRouter } from 'expo-router';
 import { Plus, Zap } from 'lucide-react-native';
 import { useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, View } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { View } from 'react-native';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 
@@ -195,10 +196,7 @@ function CreateAiWizard() {
   }
 
   return (
-    <KeyboardAvoidingView
-      className="flex-1"
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
       <AisScreenShell
         title="Create an AI"
         subtitle={`Step ${step} of ${LAST_STEP}`}

@@ -1,0 +1,33 @@
+/*
+ * The photo viewer's dark kit (T-1343). `yet-another-react-lightbox` ships a
+ * dark default already, so this only maps the library's variables onto the app
+ * tokens in `index.css` and quiets its chrome. Nothing here is white: the
+ * backdrop is the app page colour and the buttons and counter use the app's
+ * near-white, so opening the viewer never flashes.
+ */
+.yarl__portal {
+  --yarl__color_backdrop: var(--page);
+  --yarl__color_button: rgba(237, 237, 237, 0.8);
+  --yarl__color_button_active: #ffffff;
+  --yarl__color_button_disabled: rgba(237, 237, 237, 0.3);
+  --yarl__counter_color: #ededed;
+  --yarl__icon_size: 24px;
+  --yarl__toolbar_padding: 12px;
+  --yarl__navigation_button_padding: 20px 12px;
+}
+
+/* The toolbar's "Open original" link (a real anchor, not a round key). */
+.yarl__open_original {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  padding: 0 10px;
+  color: rgba(237, 237, 237, 0.9);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.yarl__open_original:hover {
+  color: #ffffff;
+}

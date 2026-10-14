@@ -4,9 +4,9 @@ import { avatarIdentity } from '@zilar/chat-core';
 import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/ui/button';
 import { removeAvatar, uploadAvatar } from '@/lib/api';
-import type { CropState } from '@/lib/avatar-crop';
+import { INITIAL_CROP_STATE, type CropState } from '@/lib/avatar-crop';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
-import { applyCrop, CropDialog } from './avatar/CropDialog';
+import { CropDialog } from './avatar/CropDialog';
 import { friendlyUploadError } from './avatar/avatarErrors';
 import {
   defaultExporter,
@@ -60,7 +60,7 @@ export function AvatarUploader({
   exporter?: Exporter;
 }) {
   const [phase, setPhase] = useState<Phase>({ name: 'idle' });
-  const [crop, setCrop] = useState<CropState>({ zoom: 1, offsetX: 0, offsetY: 0 });
+  const [crop, setCrop] = useState<CropState>(INITIAL_CROP_STATE);
   const [message, setMessage] = useState<string | undefined>(undefined);
   const fileRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -120,7 +120,7 @@ export function AvatarUploader({
                   natural.width <= 0 || natural.height <= 0
                     ? unreadable(objectUrl)
                     : Effect.sync(() => {
-                        setCrop(applyCrop(natural, { zoom: 1, offsetX: 0, offsetY: 0 }));
+                        setCrop(INITIAL_CROP_STATE);
                         setPhase({ name: 'crop', fileName: file.name, objectUrl, natural });
                       }),
                 onFailure: () => unreadable(objectUrl),
@@ -252,7 +252,6 @@ export function AvatarUploader({
       {phase.name === 'crop' && (
         <CropDialog
           crop={crop}
-          natural={phase.natural}
           objectUrl={phase.objectUrl}
           busy={busy}
           imageRef={imageRef}

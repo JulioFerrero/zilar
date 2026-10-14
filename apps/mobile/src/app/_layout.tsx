@@ -19,6 +19,7 @@ import { StatusBar } from 'expo-status-bar';
 import { colorScheme } from 'nativewind';
 import { useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { View } from 'react-native';
 import { Effect } from 'effect';
 
@@ -95,18 +96,20 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={NAV_THEME.dark}>
-        <StatusBar style="light" />
-        <SessionBootstrap />
-        <NotificationRouter />
-        <ChatStoreProvider>
-          <View style={{ flex: 1 }}>
-            <ClientVersionBanner />
-            <Stack screenOptions={{ headerShown: false }} />
-          </View>
-        </ChatStoreProvider>
-        <PortalHost />
-      </ThemeProvider>
+      <KeyboardProvider>
+        <ThemeProvider value={NAV_THEME.dark}>
+          <StatusBar style="light" />
+          <SessionBootstrap />
+          <NotificationRouter />
+          <ChatStoreProvider>
+            <View style={{ flex: 1 }}>
+              <ClientVersionBanner />
+              <Stack screenOptions={{ headerShown: false }} />
+            </View>
+          </ChatStoreProvider>
+          <PortalHost />
+        </ThemeProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

@@ -2,7 +2,47 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-**2026-10-13 15:35: UI audit wave done, all merged, live at `2cd18fcf`.** No workers are running.
+**2026-10-14 00:45: library wave done, main at `86647e0f`. No workers running.** Julio asked (10-13) to use libraries or native components instead of hand-rolled UI (memory `prefer-libraries.md`; plan `docs/audit/library-plan.md`, T-1342).
+- **Merged:**
+  - T-1341: mobile viewer on react-native-zoom-toolkit; Julio: "perfect";
+  - T-1343: web viewer on yet-another-react-lightbox, live-checked;
+  - T-1344: web Dialog/Sheet on Radix;
+  - T-1345: mobile keyboard on react-native-keyboard-controller;
+  - T-1346: web cropper on react-easy-crop;
+  - T-1347: web reorder on dnd-kit;
+  - T-1348: mobile kit sheets native via react-native-true-sheet. Gorhom was rejected: open crashes on reanimated 4.5 / new arch.
+- **Earlier the same evening:** T-1339 and T-1340 (web zoom, hand-rolled, now replaced by T-1343).
+- **T-1338:** hand-rolled mobile gestures, superseded; status blocked, unmerged.
+- **Build `86647e0f`** was sent to Julio's Zilar DM (his phone was not on USB).
+- **Julio to check on his phone:**
+  - sheets drag to close;
+  - the keyboard in chat and in sheets with inputs;
+  - the photo viewer.
+- **Next from the plan:**
+  - web dropdown menus on Radix: needs a plan, because `ui/menu.tsx` has no trigger element;
+  - mobile markdown (row 6);
+  - web list virtualisation (row 5): only after a profile shows the need.
+
+**2026-10-13 21:10: live at `291f2d59`. No workers are running.** Julio is out and following on the Claude phone app (remote control).
+- **Merged this evening:**
+  - T-1334: one shared `EntityAvatar` per app, orb seeded by name, real pictures;
+  - T-1335: photos edge to edge with the time pill on the photo;
+  - T-1336: contact requests as chat-list rows with Accept / Decline + Undo;
+  - T-1337: a just-sent photo keeps its preview and retries `/api/files` (the 404 was indexer lag).
+- **APK delivery while Julio is out:**
+  - Julio approved signing **@claude_test** (zilar@agentmail.to) in on web, via the code from its agentmail inbox;
+  - he accepted its contact request; its DM with JULITO (@test_julio) is `/c/pzooiu0v6vsmvitvbve964mzejnrkdw2%40chat.zilar.app`;
+  - builds go there as an arm64-only APK zipped to about 34 MB (the full APK is 129 MB; the Claude app limit is 30 MB, Zilar's 50 MB);
+  - scripts in the job folder: `tmp/build-apk-arm64.sh`, `tmp/send-build.mjs <zip> <lines…>`; the Playwright profile is `tmp/claude-test-profile`;
+  - latest sent: `zilar-291f2d59-arm64.zip`.
+- **Live web checks:**
+  - a just-sent photo shows (404 → retry 200, never "Image unavailable") and sits edge to edge with the time pill;
+  - small follow-up: the preview draws smaller for about 1 s before the full size.
+- **Follow-ups:**
+  - push notification for new contact requests (Julio didn't decide);
+  - `attachment-message.tsx` `AttachmentImage` has the same sticky-broken pattern (unused for media-first).
+
+**2026-10-13 15:35: UI audit wave done, all merged, live at `2cd18fcf`.**
 - **Merged:** T-1326, T-1327, T-1328, T-1329, T-1330, T-1331, T-1332, T-1333.
 - **Builds:**
   - iOS is installed on Iryna's iPhone from `2cd18fcf`;

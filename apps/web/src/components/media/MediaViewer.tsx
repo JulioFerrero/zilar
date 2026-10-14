@@ -1,19 +1,13 @@
 import { photosOf, type UiMessage, type ViewerPhoto } from '@zilar/chat-core';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import {
-  createContext,
-  useContext,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
-  type ReactNode,
-} from 'react';
-import { IconButton } from '@/components/ui/icon-button';
-import { useModal } from '@/components/ui/use-modal';
-import { mediaSrc } from '@/lib/attachments';
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import Lightbox from 'yet-another-react-lightbox';
+import Counter from 'yet-another-react-lightbox/plugins/counter';
+import Zoom from 'yet-another-react-lightbox/plugins/zoom';
+import 'yet-another-react-lightbox/styles.css';
+import 'yet-another-react-lightbox/plugins/counter.css';
 import { useChatSelector } from '@/store/ChatStoreProvider';
+import './lightbox-theme.css';
+import { viewerSlides } from './viewerSlides';
 
 /** The chat to step through, and the photo the viewer starts on. */
 export interface MediaViewerTarget {
@@ -39,12 +33,16 @@ export function useMediaViewer(): OpenMediaViewer | null {
 const EMPTY_MESSAGES: readonly UiMessage[] = [];
 
 /**
- * The chat's photo viewer (T-1232): a full-screen overlay on a dark backdrop,
- * opened from the message list by `ImageMessage` through `useMediaViewer`. One
- * provider serves the whole list. The overlay uses the `use-modal` primitive,
- * so Escape closes it, focus is trapped inside and returns to the photo on
- * close; a click on the backdrop, the close key, and ←/→ step between the
- * chat's photos in message order.
+ * The chat's photo viewer (T-1232): a full-screen overlay opened from the
+ * message list by `ImageMessage` and `AlbumGrid` through `useMediaViewer`. One
+ * provider serves the whole list.
+ *
+ * T-1343 rewrote it on `yet-another-react-lightbox` (the twin of the phone's
+ * T-1341 library move): the Zoom plugin gives wheel and trackpad-pinch zoom
+ * toward the cursor, double-click zoom and drag-pan, the carousel gives the
+ * swipe and the edge arrows, and the Counter plugin gives the "3 / 12" badge.
+ * Escape and a backdrop click close, and the toolbar keeps an "Open original"
+ * link.
  */
 export function MediaViewerProvider({ children }: { children: ReactNode }) {
   const [target, setTarget] = useState<MediaViewerTarget | null>(null);
@@ -77,103 +75,55 @@ function MediaViewer({ target, onClose }: { target: MediaViewerTarget; onClose: 
       .filter((photo): photo is ViewerPhoto => photo !== undefined);
     return [...album, ...all.filter((photo) => !inScope.has(photo.messageId))];
   }, [stored, target.albumIds]);
-  const [index, setIndex] = useState(() =>
-    Math.max(
-      0,
-      photos.findIndex((photo) => photo.messageId === target.messageId),
-    ),
+  const slides = useMemo(() => viewerSlides(target.chatId, photos), [target.chatId, photos]);
+  // The photo the viewer opens on. The carousel owns the current slide, and
+  // `on.view` mirrors it back into `index`; passing that back in as the
+  // controlled `index` (the library's "Tracking Slide Index" pattern) keeps the
+  // viewer on the same slide when `slides` gets a new reference (a message
+  // arriving in the chat), which would otherwise snap it back to `startIndex`.
+  const startIndex = useMemo(
+    () =>
+      Math.max(
+        0,
+        photos.findIndex((photo) => photo.messageId === target.messageId),
+      ),
+    [photos, target.messageId],
   );
+  const [index, setIndex] = useState(startIndex);
 
-  const panelRef = useRef<HTMLDivElement>(null);
-  const trapTab = useModal({ open: true, onClose, dismissable: true, panelRef });
-
-  if (photos.length === 0) {
+  if (slides.length === 0) {
     return null;
   }
-  const photo = photos[index];
-  if (photo === undefined) {
-    return null;
-  }
-
-  const step = (delta: number): void => {
-    setIndex((current) => Math.min(photos.length - 1, Math.max(0, current + delta)));
-  };
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === 'ArrowLeft') {
-      event.preventDefault();
-      step(-1);
-      return;
-    }
-    if (event.key === 'ArrowRight') {
-      event.preventDefault();
-      step(1);
-      return;
-    }
-    trapTab(event);
-  };
-
-  const src = mediaSrc(target.chatId, photo.url);
-  const stop = (event: ReactMouseEvent): void => event.stopPropagation();
+  const current = slides[index];
 
   return (
-    <div
-      ref={panelRef}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Photo viewer"
-      tabIndex={-1}
-      onKeyDown={onKeyDown}
-      className="fixed inset-0 z-50 flex flex-col bg-black/90 outline-none"
-    >
-      <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-3">
-        <span className="text-[13px] tabular-nums text-white/80">
-          {index + 1} / {photos.length}
-        </span>
-        <IconButton aria-label="Close viewer" onClick={onClose}>
-          <X className="size-4" aria-hidden="true" />
-        </IconButton>
-      </div>
-
-      <div className="flex min-h-0 flex-1 items-center justify-center gap-2 p-4" onClick={onClose}>
-        <IconButton
-          aria-label="Previous photo"
-          disabled={index === 0}
-          onClick={(event) => {
-            stop(event);
-            step(-1);
-          }}
-        >
-          <ChevronLeft className="size-5" aria-hidden="true" />
-        </IconButton>
-        <img
-          src={src}
-          alt={photo.alt}
-          onClick={stop}
-          className="max-h-full max-w-full object-contain"
-        />
-        <IconButton
-          aria-label="Next photo"
-          disabled={index >= photos.length - 1}
-          onClick={(event) => {
-            stop(event);
-            step(1);
-          }}
-        >
-          <ChevronRight className="size-5" aria-hidden="true" />
-        </IconButton>
-      </div>
-
-      <div className="flex shrink-0 justify-center px-4 py-3">
-        <a
-          href={src}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[13px] font-semibold text-white/90 underline"
-        >
-          Open original
-        </a>
-      </div>
-    </div>
+    <Lightbox
+      open
+      close={onClose}
+      index={index}
+      slides={slides}
+      plugins={[Zoom, Counter]}
+      controller={{ closeOnBackdropClick: true }}
+      carousel={{ finite: true, padding: 0 }}
+      zoom={{ scrollToZoom: true, maxZoomPixelRatio: 2 }}
+      labels={{ Lightbox: 'Photo viewer' }}
+      on={{ view: ({ index: next }) => setIndex(next) }}
+      toolbar={{
+        buttons: [
+          current !== undefined && (
+            <a
+              key="open-original"
+              href={current.src}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="yarl__open_original"
+            >
+              Open original
+            </a>
+          ),
+          'close',
+        ],
+      }}
+    />
   );
 }

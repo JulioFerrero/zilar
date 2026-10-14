@@ -202,16 +202,19 @@ export function FolderEditorDialog({
               : saveErrorMessage(writeFailure)}
           </p>
         )}
+
+        {/* T-1351: the confirm is a React child of the dialog, not a sibling,
+            so Base UI nests it and Escape closes only the confirm. */}
+        {confirmingDelete && folder !== null && (
+          <ConfirmDialog
+            title="Delete folder"
+            body={`Delete the folder ${folder.name}? Chats stay where they are.`}
+            confirmLabel="Delete"
+            onConfirm={() => runWrite('delete')}
+            onCancel={() => setConfirmingDelete(false)}
+          />
+        )}
       </Dialog>
-      {confirmingDelete && folder !== null && (
-        <ConfirmDialog
-          title="Delete folder"
-          body={`Delete the folder ${folder.name}? Chats stay where they are.`}
-          confirmLabel="Delete"
-          onConfirm={() => runWrite('delete')}
-          onCancel={() => setConfirmingDelete(false)}
-        />
-      )}
     </>
   );
 }

@@ -56,20 +56,18 @@ export function AttachMenu({
           event.target.value = '';
         }}
       />
-      <IconButton
-        aria-label="Attach"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <Paperclip className="size-5" aria-hidden="true" />
-      </IconButton>
       <Menu
         open={open}
-        onClose={() => setOpen(false)}
+        onOpenChange={setOpen}
         label="Attach"
-        closeLabel="Close attach menu"
-        className="bottom-full left-0 mb-2"
+        side="top"
+        align="start"
+        sideOffset={8}
+        trigger={
+          <IconButton aria-label="Attach">
+            <Paperclip className="size-5" aria-hidden="true" />
+          </IconButton>
+        }
       >
         <MenuItem icon={ImageIcon} onSelect={() => choose(mediaInputRef)}>
           Photo or video

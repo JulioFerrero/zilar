@@ -9,8 +9,9 @@ import {
   Plus,
   Users,
 } from 'lucide-react-native';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Modal, Pressable, ScrollView, Share } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
@@ -24,7 +25,6 @@ import { runMobile } from '@/lib/effect/runtime';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { createInvitesApi } from '@/lib/invites-api';
 import { getSessionToken } from '@/lib/session-token';
-import { useKeyboardHeight } from '@/lib/use-keyboard-height';
 import { useKeyPress } from '@/components/ui/use-key-press';
 import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -37,21 +37,6 @@ type NewChatAction = 'channel' | 'message' | 'invite' | 'join';
  * the keyboard. Pure so tests can cover it without mounting the dialog.
  */
 export const CREATE_SHEETS_SCROLL_TAPS_PERSIST = 'handled' as const;
-
-/**
- * T-0254: the bottom padding of the create sheets' scroll content. On Android
- * the window no longer resizes for the keyboard (edge-to-edge, Expo SDK 57), so
- * the content is padded by the keyboard height on top of the 16 px the sheet
- * already has, letting a tall sheet scroll its last field and Create into view.
- * On iOS `KeyboardAvoidingView` keeps its own `padding` behaviour, so no extra
- * padding is added here (pure, so tests can cover the rule without a renderer).
- */
-export function createSheetBottomPadding(
-  platform: string,
-  keyboardHeight: number,
-): number | undefined {
-  return platform === 'android' ? 16 + keyboardHeight : undefined;
-}
 
 /**
  * Creating a channel, or opening its screen, failed. `reason` is the original
@@ -120,18 +105,6 @@ export function NewChatButton() {
     !channelBusy && channelFailure !== undefined
       ? createErrorText(channelFailure.reason, 'channel')
       : '';
-  // T-0254: pad the sheet content by the keyboard height on Android and scroll
-  // to its end when the keyboard opens, so the lowest field and Create stay
-  // reachable. The ref only fires while the modal is mounted.
-  const keyboardHeight = useKeyboardHeight();
-  const sheetsRef = useRef<ScrollView>(null);
-  const previousKeyboardHeight = useRef(0);
-  useEffect(() => {
-    if (previousKeyboardHeight.current === 0 && keyboardHeight > 0) {
-      sheetsRef.current?.scrollToEnd({ animated: true });
-    }
-    previousKeyboardHeight.current = keyboardHeight;
-  }, [keyboardHeight]);
   // The invite box always talks to the real session API (a personal invite
   // link is meaningless offline), and this menu must stay importable under
   // the Node tests, whose `expo-router` mock has no `useGlobalSearchParams`.
@@ -246,19 +219,14 @@ export function NewChatButton() {
         animationType="fade"
         onRequestClose={() => setAction(undefined)}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          className="flex-1"
-        >
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
           <ScrollView
-            ref={sheetsRef}
             keyboardShouldPersistTaps={CREATE_SHEETS_SCROLL_TAPS_PERSIST}
             contentContainerStyle={{
               flexGrow: 1,
               alignItems: 'center',
               justifyContent: 'center',
               padding: 16,
-              paddingBottom: createSheetBottomPadding(Platform.OS, keyboardHeight),
             }}
             className="flex-1 bg-black/40"
           >

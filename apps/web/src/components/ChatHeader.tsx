@@ -172,120 +172,109 @@ export function ChatHeader({
         <Search className="size-5" aria-hidden="true" />
       </IconButton>
       <div className="relative">
-        <IconButton
-          aria-label="Chat menu"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          onClick={() => {
-            setMenuOpen((value) => !value);
-          }}
+        <Menu
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          label={isTopic ? 'Topic actions' : `Actions for ${chat.title}`}
+          align="end"
+          trigger={
+            <IconButton aria-label="Chat menu">
+              <MoreVertical className="size-5" aria-hidden="true" />
+            </IconButton>
+          }
         >
-          <MoreVertical className="size-5" aria-hidden="true" />
-        </IconButton>
-        {isTopic && (
-          <Menu
-            open={menuOpen}
-            onClose={() => setMenuOpen(false)}
-            label="Topic actions"
-            closeLabel="Close chat menu"
-            className="top-full right-0 mt-1 min-w-[180px]"
-          >
-            {groupInfoItem}
-            <MenuItem
-              onSelect={() => {
-                setMenuOpen(false);
-                openPanel?.();
-              }}
-            >
-              Topic info
-            </MenuItem>
-            <MenuItem
-              onSelect={() => {
-                setMenuOpen(false);
-                storeApi.getState().setPinsPanel(chat.id);
-              }}
-            >
-              Pinned messages
-            </MenuItem>
-            <MenuItem
-              onSelect={() => {
-                setMenuOpen(false);
-                onOpenMedia?.();
-              }}
-            >
-              Media, files and links
-            </MenuItem>
-            <MenuItem
-              onSelect={() => {
-                setMenuOpen(false);
-                onSearch();
-              }}
-            >
-              Search
-            </MenuItem>
-            <MenuItem
-              onSelect={() => {
-                setMenuOpen(false);
-                setBackgroundOpen(true);
-              }}
-            >
-              Chat background
-            </MenuItem>
-            <ChatPrefMenuItems
-              chat={chat}
-              onDone={(failed) => {
-                if (!failed) {
+          {isTopic ? (
+            <>
+              {groupInfoItem}
+              <MenuItem
+                onSelect={() => {
                   setMenuOpen(false);
-                }
-              }}
-            >
-              <TopicArchiveItem
-                chat={chat}
-                archiving={archiving}
-                onArchive={() => {
-                  setMenuOpen(false);
-                  setConfirmingArchive(true);
+                  openPanel?.();
                 }}
-              />
-            </ChatPrefMenuItems>
-          </Menu>
-        )}
-        {!isTopic && (
-          <Menu
-            open={menuOpen}
-            onClose={() => setMenuOpen(false)}
-            label={`Actions for ${chat.title}`}
-            closeLabel="Close chat menu"
-            className="top-full right-0 mt-1 min-w-[196px]"
-          >
-            {groupInfoItem}
-            <MenuItem
-              onSelect={() => {
-                setMenuOpen(false);
-                storeApi.getState().setPinsPanel(chat.id);
-              }}
-            >
-              Pinned messages
-            </MenuItem>
-            <MenuItem
-              onSelect={() => {
-                setMenuOpen(false);
-                onOpenMedia?.();
-              }}
-            >
-              Media, files and links
-            </MenuItem>
-            <MenuItem
-              onSelect={() => {
-                setMenuOpen(false);
-                setBackgroundOpen(true);
-              }}
-            >
-              Chat background
-            </MenuItem>
-            <ChatPrefMenuItems chat={chat} onDone={(failed) => !failed && setMenuOpen(false)} />
-          </Menu>
-        )}
+              >
+                Topic info
+              </MenuItem>
+              <MenuItem
+                onSelect={() => {
+                  setMenuOpen(false);
+                  storeApi.getState().setPinsPanel(chat.id);
+                }}
+              >
+                Pinned messages
+              </MenuItem>
+              <MenuItem
+                onSelect={() => {
+                  setMenuOpen(false);
+                  onOpenMedia?.();
+                }}
+              >
+                Media, files and links
+              </MenuItem>
+              <MenuItem
+                onSelect={() => {
+                  setMenuOpen(false);
+                  onSearch();
+                }}
+              >
+                Search
+              </MenuItem>
+              <MenuItem
+                onSelect={() => {
+                  setMenuOpen(false);
+                  setBackgroundOpen(true);
+                }}
+              >
+                Chat background
+              </MenuItem>
+              <ChatPrefMenuItems
+                chat={chat}
+                onDone={(failed) => {
+                  if (!failed) {
+                    setMenuOpen(false);
+                  }
+                }}
+              >
+                <TopicArchiveItem
+                  chat={chat}
+                  archiving={archiving}
+                  onArchive={() => {
+                    setMenuOpen(false);
+                    setConfirmingArchive(true);
+                  }}
+                />
+              </ChatPrefMenuItems>
+            </>
+          ) : (
+            <>
+              {groupInfoItem}
+              <MenuItem
+                onSelect={() => {
+                  setMenuOpen(false);
+                  storeApi.getState().setPinsPanel(chat.id);
+                }}
+              >
+                Pinned messages
+              </MenuItem>
+              <MenuItem
+                onSelect={() => {
+                  setMenuOpen(false);
+                  onOpenMedia?.();
+                }}
+              >
+                Media, files and links
+              </MenuItem>
+              <MenuItem
+                onSelect={() => {
+                  setMenuOpen(false);
+                  setBackgroundOpen(true);
+                }}
+              >
+                Chat background
+              </MenuItem>
+              <ChatPrefMenuItems chat={chat} onDone={(failed) => !failed && setMenuOpen(false)} />
+            </>
+          )}
+        </Menu>
       </div>
       <ChatBackgroundDialog
         chat={chat}
