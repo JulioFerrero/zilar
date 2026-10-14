@@ -1,4 +1,4 @@
-import { ballAvatarSvg } from '@zilar/ball-avatar';
+import { ballAvatarSvg, ballParams, ballSvg, type BallParams } from '@zilar/ball-avatar';
 import { normalizeJid } from '@zilar/protocol';
 
 import { graphemes } from './text';
@@ -68,4 +68,19 @@ export function avatarSvg(seed: string): string {
 /** The ball avatar as an SVG `data:` URI, ready for an image source. */
 export function avatarDataUri(seed: string): string {
   return 'data:image/svg+xml,' + encodeURIComponent(avatarSvg(seed));
+}
+
+/** The orb look for a seed, normalized like `avatarSvg`. */
+export function orbParamsFor(seed: string): BallParams {
+  return ballParams(normalizeJid(seed));
+}
+
+/** The orb SVG for explicit params, with the gradient id hashed from `idSeed`. */
+export function orbSvg(params: BallParams, idSeed: string): string {
+  return ballSvg(params, normalizeJid(idSeed));
+}
+
+/** The orb as an SVG `data:` URI, ready for an image source. */
+export function orbDataUri(params: BallParams, idSeed: string): string {
+  return 'data:image/svg+xml,' + encodeURIComponent(orbSvg(params, idSeed));
 }

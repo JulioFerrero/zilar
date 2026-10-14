@@ -31,32 +31,63 @@ function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-/**
- * The glossy ball avatar for a seed: a deterministic SVG with a `viewBox`
- * and no `width`/`height`, so it scales to any box. Two inline SVGs never
- * clash because every gradient id carries a short seed hash.
- */
-export function ballAvatarSvg(seed: string): string {
-  const hash = hashSeed(seed);
-  const random = makeRandom(hash);
+/** The explicit look of a ball avatar, all in the units `ballSvg` expects. */
+export interface BallParams {
+  /** Body hue in degrees. */
+  hue: number;
+  /** Rim-light hue in degrees. */
+  rim: number;
+  /** Light direction in radians. */
+  angle: number;
+  /** Light distance from the centre, 0–1. */
+  distance: number;
+}
+
+/** The named look of a ball avatar, derived from a seed. */
+export function ballParams(seed: string): BallParams {
+  const random = makeRandom(hashSeed(seed));
 
   const hue = random() * 360;
-  const hue2 = (hue + 30 + random() * 120) % 360;
+  const rim = (hue + 30 + random() * 120) % 360;
   const angle = random() * Math.PI * 2;
   const distance = 0.18 + random() * 0.14;
+
+  return { hue, rim, angle, distance };
+}
+
+/** Wraps a hue into 0–360 degrees, so the same colour stays the same colour. */
+function wrapHue(hue: number): number {
+  return ((hue % 360) + 360) % 360;
+}
+
+/** Keeps the light distance inside the 0–0.4 range the markup supports. */
+function clampDistance(distance: number): number {
+  return Math.min(0.4, Math.max(0, distance));
+}
+
+/**
+ * The glossy ball avatar for explicit params: a deterministic SVG with a
+ * `viewBox` and no `width`/`height`, so it scales to any box. Two inline SVGs
+ * never clash because `idSeed` gives every gradient id a short hash.
+ */
+export function ballSvg(params: BallParams, idSeed: string): string {
+  const hue = wrapHue(params.hue);
+  const rim = wrapHue(params.rim);
+  const distance = clampDistance(params.distance);
+  const { angle } = params;
 
   const lightX = round(50 + Math.cos(angle) * distance * 100);
   const lightY = round(50 + Math.sin(angle) * distance * 100);
   const backX = round(50 - Math.cos(angle) * 28);
   const backY = round(50 - Math.sin(angle) * 28);
 
-  const id = `b${hash.toString(36).slice(0, 5)}`;
+  const id = `b${hashSeed(idSeed).toString(36).slice(0, 5)}`;
   const hueDeg = Math.round(hue);
-  const hue2Deg = Math.round(hue2);
+  const hue2Deg = Math.round(rim);
   const body = `hsl(${hueDeg} 85% 72%)`;
   const bodyMid = `hsl(${hueDeg} 75% 46%)`;
   const bodyEdge = `hsl(${hueDeg} 80% 16%)`;
-  const rim = `hsl(${hue2Deg} 90% 70%)`;
+  const rimColor = `hsl(${hue2Deg} 90% 70%)`;
 
   return (
     `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">` +
@@ -67,8 +98,8 @@ export function ballAvatarSvg(seed: string): string {
     `<stop offset="1" stop-color="${bodyEdge}"/>` +
     `</radialGradient>` +
     `<radialGradient id="${id}-rim" cx="${backX}%" cy="${backY}%" r="55%">` +
-    `<stop offset="0.6" stop-color="${rim}" stop-opacity="0"/>` +
-    `<stop offset="1" stop-color="${rim}" stop-opacity="0.55"/>` +
+    `<stop offset="0.6" stop-color="${rimColor}" stop-opacity="0"/>` +
+    `<stop offset="1" stop-color="${rimColor}" stop-opacity="0.55"/>` +
     `</radialGradient>` +
     `<radialGradient id="${id}-gloss" cx="${lightX}%" cy="${lightY}%" r="18%">` +
     `<stop offset="0" stop-color="#fff" stop-opacity="0.95"/>` +
@@ -80,4 +111,12 @@ export function ballAvatarSvg(seed: string): string {
     `<circle cx="50" cy="50" r="50" fill="url(#${id}-gloss)"/>` +
     `</svg>`
   );
+}
+
+/**
+ * The glossy ball avatar for a seed: `ballSvg` with the seed's params and the
+ * seed as the gradient-id hash, so its output never changes.
+ */
+export function ballAvatarSvg(seed: string): string {
+  return ballSvg(ballParams(seed), seed);
 }
