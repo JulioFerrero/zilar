@@ -1,4 +1,10 @@
-import { ApiError, runApi, type AiCatalog, type PublicAi as ContractAi } from '@zilar/api-contract';
+import {
+  ApiError,
+  runApi,
+  type AiCatalog,
+  type AiComputerOptions,
+  type PublicAi as ContractAi,
+} from '@zilar/api-contract';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
@@ -83,6 +89,8 @@ export interface AisApi {
   listConnections(): Promise<Connection[]>;
   /** T-1395: the models.dev catalog for the wizard's model step. */
   getAiCatalog(): Promise<AiCatalog>;
+  /** T-1425: whether Zilar cloud desks are available on this server. */
+  getComputerOptions(): Promise<AiComputerOptions>;
   // T-0080: the owner kill switch. The server answers the fresh public AI so
   // the list can swap the row against server truth without a second GET.
   stopAi(id: string): Promise<PublicAi>;
@@ -176,6 +184,9 @@ export function createAisApi(
     },
     async getAiCatalog() {
       return runApi(client.ais.catalog());
+    },
+    async getComputerOptions() {
+      return runApi(client.ais.computerOptions());
     },
     async stopAi(id) {
       return toPublicAi(await runApi(client.ais.stop({ params: { id } })));

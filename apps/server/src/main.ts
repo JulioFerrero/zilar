@@ -432,12 +432,17 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
     // value echoed) instead of dialling a broken URL — see push/config.ts.
     const push: PushConfig = yield* Effect.sync(() => loadPushConfigOrExit(process.env));
 
+    // T-1425: built here so the AI routes can report whether Zilar cloud desks
+    // are available (`desk !== null`); the gateway below reuses the same value.
+    const desk = buildDeskClient(config, logger);
+
     const app = createApp({
       db,
       logger,
       config,
       auth,
       adminClient,
+      ais: { cloud: desk !== null },
       mailer: currentMailer,
       machineRegistry,
       // Message search (T-0117): a separate small pool on the ejabberd archive
@@ -470,7 +475,6 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
         'listener is off until AIs can pay for their own model calls; ignoring LISTENER_ENABLED',
       );
     }
-    const desk = buildDeskClient(config, logger);
     const gateway = createAgentGateway(
       {
         db,

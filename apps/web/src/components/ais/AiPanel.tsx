@@ -30,6 +30,7 @@ import { ToolsSection } from '@/components/tools/ToolsSection';
 import { describeFailure, type PanelStatus } from './aiPanelOps';
 import { AiFormFields, AiLimitsFields } from './AiFormFields';
 import { AiMachineSection } from './AiMachineSection';
+import { AiComputerSection } from './AiComputerSection';
 import { AiDelegationSection } from './AiDelegationSection';
 import { AiDangerZone } from './AiDangerZone';
 import { AiPictureSection } from './AiPictureSection';
@@ -292,6 +293,8 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
               />
 
               <AiMachineSection ai={ai} setAi={setAi} />
+
+              <AiComputerSection ai={ai} setAi={setAi} />
 
               <UsageBlock ai={ai} />
 

@@ -55,6 +55,9 @@ export interface AisApiDependencies {
   /** Absent when the key cipher is not configured: routes that touch an AI
    * answer 503 instead of failing halfway. */
   cipher?: KeyCipher;
+  /** T-1425: true when the cloud desk client is wired (`DESK_AGENT_SOCKET` and
+   * `DESK_IMAGE` set), so the Computer picker can offer Zilar cloud. */
+  cloud: boolean;
   /** Audit recorder (T-0083): when present, a successful stop / resume that
    * actually flipped the AI's status writes one entry; an idempotent repeat
    * writes nothing; a 4xx writes nothing. The recorder swallows its own
@@ -121,6 +124,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
   const effectLogger = toLogger(logger);
   const cipher = deps.cipher;
   const audit = deps.audit;
+  const cloud = deps.cloud;
 
   const requireConfigured = (): { cipher: KeyCipher } => {
     // Unreachable when called through create/patch/remove: the AisConfigured
@@ -202,6 +206,11 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
       .handle(
         'catalog',
         handler(effectLogger, () => getAiCatalog()),
+      )
+      // T-1425: read-only, session-required; no configured gateway needed.
+      .handle(
+        'computerOptions',
+        handler(effectLogger, () => Effect.succeed({ cloud })),
       )
       .handle(
         'detail',

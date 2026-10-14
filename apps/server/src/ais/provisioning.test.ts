@@ -132,6 +132,15 @@ describe('AI provisioning without a remote gateway', () => {
     expect(await counts()).toEqual({ ais: 0, limits: 0 });
   });
 
+  it('reports Zilar cloud as unavailable without the desk env', async () => {
+    const user = await bootstrapUser(context, app, 'owner@example.com');
+    const response = await app.request(`${TEST_BASE_URL}/api/ais/computer-options`, {
+      headers: { cookie: user.cookie },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ cloud: false });
+  });
+
   it("refuses another user's connection and a non-LLM connection", async () => {
     const owner = await bootstrapUser(context, app, 'owner@example.com');
     const stranger = await bootstrapUser(context, app, 'stranger@example.com');

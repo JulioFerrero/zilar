@@ -25,6 +25,15 @@ export const AiComputerMode = Schema.Literals(AI_COMPUTER_MODES);
 
 export type AiComputerMode = typeof AiComputerMode.Type;
 
+// T-1425: what the Computer picker may offer. `cloud` is true when the server
+// has the cloud desk client wired; when it is false the picker disables the
+// cloud option with "Not available yet".
+export const AiComputerOptions = Schema.Struct({
+  cloud: Schema.Boolean,
+});
+
+export type AiComputerOptions = typeof AiComputerOptions.Type;
+
 /** The server ceiling for an AI's monthly spend limit. */
 export const MAX_MONTHLY_USD = 200;
 
@@ -201,6 +210,11 @@ export const AisGroup = HttpApiGroup.make('ais')
     HttpApiEndpoint.get('detail', '/ais/:id', {
       params: AiIdParams,
       success: PublicAi,
+    }),
+    // T-1425: whether Zilar cloud desks are available, so the Computer picker
+    // can disable the cloud option. Session-required, read-only.
+    HttpApiEndpoint.get('computerOptions', '/ais/computer-options', {
+      success: AiComputerOptions,
     }),
     HttpApiEndpoint.post('create', '/ais', {
       payload: CreateAiPayload,

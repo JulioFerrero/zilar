@@ -32,6 +32,12 @@ export function handleAis(data: MockData, request: MockHttpRequest): Response | 
   }
   const aiId = request.segments[1];
   const action = request.segments[2];
+  // T-1425: the Computer picker asks whether Zilar cloud desks are wired; the
+  // mock always has them on. Static segment, so it answers before the `:id`
+  // lookup below.
+  if (aiId === 'computer-options' && action === undefined && request.method === 'GET') {
+    return jsonResponse({ cloud: true });
+  }
   if (aiId === undefined) {
     if (request.method === 'GET') return jsonResponse(data.ais);
     if (request.method === 'POST') return createAi(data, request);

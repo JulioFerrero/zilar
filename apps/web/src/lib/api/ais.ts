@@ -5,6 +5,7 @@ import {
   PublicApproval,
   isProviderId,
   type AiCatalog,
+  type AiComputerOptions,
   type AiLimits,
   type AiTemplate,
   type AiUsage,
@@ -20,7 +21,7 @@ import { callApi } from '@/lib/effect/api-client';
 // `ApiError` already carries the server's `code` and `status`, so callers can
 // branch without parsing the message again.
 
-export type { AiLimits, AiTemplate, AiUsage };
+export type { AiComputerOptions, AiLimits, AiTemplate, AiUsage };
 
 // The contract's AI with mutable fields, the shape the mock backend and the
 // fixtures build.
@@ -62,6 +63,12 @@ export function getAi(id: string): Promise<PublicAi> {
 // T-1395: the models.dev catalog behind the wizard's model step.
 export function getAiCatalog(): Promise<AiCatalog> {
   return callApi((client) => client.ais.catalog());
+}
+
+// T-1425: whether Zilar cloud desks are available on this server, so the
+// Computer picker can disable the cloud option with a hint.
+export function getComputerOptions(): Promise<AiComputerOptions> {
+  return callApi((client) => client.ais.computerOptions());
 }
 
 // The server trims these strings before its length checks; the contract

@@ -1437,3 +1437,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1421](T-1421-go-pause.md) | Lead models: pause OpenCode Go until a date | 2026-10-14 |
 | [T-1423](T-1423-runner-hands.md) | RunnerHands + computer modes runner and auto | 2026-10-14 |
 | [T-1426](T-1426-session-log.md) | Session log behind View steps: events table, route | 2026-10-14 |
+| [T-1425](T-1425-computer-picker.md) | Computer picker per AI on web and mobile | 2026-10-14 |

@@ -11,6 +11,8 @@ import { buildPatch } from '@/components/ais/form';
 import { LimitsFields } from '@/components/ais/limits-fields';
 import { validateLimits } from '@/components/ais/limits';
 import { MachinePicker } from '@/components/ais/machine-picker';
+import { ComputerPicker } from '@/components/ais/computer-picker';
+import { useComputerMode } from '@/components/ais/use-computer-mode';
 import { ModelPicker } from '@/components/ais/model-picker';
 import { ProviderPicker } from '@/components/ais/provider-picker';
 import { RoutinesSection } from '@/components/ais/routines-section';
@@ -82,6 +84,9 @@ function EditAi() {
   const [homeMachineId, setHomeMachineId] = useState<string | null>(null);
   const [machineError, setMachineError] = useState('');
 
+  // T-1425: computer mode, cloud availability and save-and-revert behind the picker.
+  const computer = useComputerMode(api, loaded?.id ?? null);
+
   // Shows the AI the list answered with; an AI missing from the list is a
   // load error. The form fills from it once per load.
   const showAi = (list: PublicAi[]): void => {
@@ -99,6 +104,7 @@ function EditAi() {
     setSelectedConnectionId(ai.providerConnectionId);
     setModelDraft(ai.model);
     setHomeMachineId(ai.machineId ?? null);
+    computer.adopt(ai);
     setStatus('ready');
   };
 
@@ -350,6 +356,16 @@ function EditAi() {
                 </Text>
               ) : null}
             </View>
+
+            <ComputerPicker
+              label="Computer"
+              value={computer.mode}
+              cloud={computer.cloud}
+              hasMachine={homeMachineId !== null}
+              disabled={computer.busy}
+              error={computer.error}
+              onChange={computer.change}
+            />
 
             {loaded !== null ? (
               <AiMemorySection api={memoryApi} chat={loaded.jid} aiId={id} aiName={loaded.name} />

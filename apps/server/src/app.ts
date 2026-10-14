@@ -100,6 +100,8 @@ export interface AppDependencies {
   ais?: {
     cipher?: KeyCipher;
     logger?: AiLogger;
+    /** T-1425: whether Zilar cloud desks are wired. Defaults to false. */
+    cloud?: boolean;
   };
   /** Injected by index.ts when the runner hub is on; absent = hub off. */
   isMachineOnline?: (machineId: string) => boolean;
@@ -567,6 +569,7 @@ export function createApp({
     adminClient,
     logger: ais?.logger ?? logger,
     audit: auditRecorder,
+    cloud: ais?.cloud ?? false,
     ...(aisCipher === undefined ? {} : { cipher: aisCipher }),
   });
   mounts.push(aisApi);

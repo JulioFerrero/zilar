@@ -175,6 +175,7 @@ export {
   getAi,
   getAiCatalog,
   getApproval,
+  getComputerOptions,
   listAiApprovalRules,
   listAis,
   listApprovals,
@@ -190,6 +191,7 @@ export {
   updateAi,
 } from './api/ais';
 export type {
+  AiComputerOptions,
   AiLimits,
   AiTemplate,
   AiUsage,
