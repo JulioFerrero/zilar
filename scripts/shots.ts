@@ -21,11 +21,13 @@ export const PHONE = { width: 390, height: 844 };
  */
 export const SHOT_SETUPS = [
   'none',
-  'searchTickets',
+  'searchMessages',
   'openChatMenu',
   'openNewTopic',
   'openToolDetail',
   'openRoutines',
+  'openMessageMenu',
+  'waitPins',
 ] as const;
 
 /**
@@ -66,24 +68,60 @@ export interface ShotDef {
   setup: string;
 }
 
+// The mock seeds chats by bare JID and the chat route is
+// `/c/<encodeURIComponent(chatJid)>` (`ChatListItem.tsx:102`): a DM uses the
+// peer's JID (`ana@zilar.test`), a group or topic its room JID
+// (`qa@rooms.zilar.test`, `t-devteam-bug@rooms.zilar.test`). The old
+// `c-ana`-style ids went away with the unified mock seed (T-1044).
 export const DESKTOP_SHOTS: ShotDef[] = [
   { name: 'signin-desktop.png', path: '/login', viewport: DESKTOP, setup: 'none' },
   { name: 'topics-desktop.png', path: '/', viewport: DESKTOP, setup: 'none' },
-  { name: 'topic-desktop.png', path: '/c/c-devteam-bug', viewport: DESKTOP, setup: 'none' },
-  { name: 'group-desktop.png', path: '/c/c-qa?panel=group', viewport: DESKTOP, setup: 'none' },
+  { name: 'settings-desktop.png', path: '/settings', viewport: DESKTOP, setup: 'none' },
+  // T-1090/T-0111: the Dev team General topic is seeded with the room's
+  // message history AND a task strip. Non-General topics (e.g. the bug
+  // topic) have no seeded thread, so they render "No messages yet".
+  {
+    name: 'topic-desktop.png',
+    path: '/c/dev-team%40rooms.zilar.test',
+    viewport: DESKTOP,
+    setup: 'none',
+  },
+  {
+    name: 'group-desktop.png',
+    path: '/c/qa%40rooms.zilar.test?panel=group',
+    viewport: DESKTOP,
+    setup: 'none',
+  },
   {
     name: 'approval-desktop.png',
     path: '/settings/approvals',
     viewport: DESKTOP,
     setup: 'none',
   },
-  { name: 'search-desktop.png', path: '/c/c-ana', viewport: DESKTOP, setup: 'searchTickets' },
-  { name: 'pins-desktop.png', path: '/c/c-ana', viewport: DESKTOP, setup: 'none' },
-  { name: 'prefs-desktop.png', path: '/c/c-ana', viewport: DESKTOP, setup: 'openChatMenu' },
+  {
+    name: 'search-desktop.png',
+    path: '/c/ana%40zilar.test',
+    viewport: DESKTOP,
+    setup: 'searchMessages',
+  },
+  { name: 'pins-desktop.png', path: '/c/ana%40zilar.test', viewport: DESKTOP, setup: 'waitPins' },
+  {
+    name: 'prefs-desktop.png',
+    path: '/c/ana%40zilar.test',
+    viewport: DESKTOP,
+    setup: 'openChatMenu',
+  },
+  // WUX-29: the message actions menu opens on a right-click.
+  {
+    name: 'messagemenu-desktop.png',
+    path: '/c/ana%40zilar.test',
+    viewport: DESKTOP,
+    setup: 'openMessageMenu',
+  },
   { name: 'newtopic-desktop.png', path: '/', viewport: DESKTOP, setup: 'openNewTopic' },
   {
     name: 'aisettings-desktop.png',
-    path: '/c/c-devai?panel=ai',
+    path: '/c/ai-dev-1%40zilar.test?panel=ai',
     viewport: DESKTOP,
     setup: 'none',
   },
@@ -92,13 +130,13 @@ export const DESKTOP_SHOTS: ShotDef[] = [
   // seeds two tools and two routines), open on the tool detail.
   {
     name: 'tools-desktop.png',
-    path: '/c/c-devteam-bug?panel=topic',
+    path: '/c/t-devteam-bug%40rooms.zilar.test?panel=topic',
     viewport: DESKTOP,
     setup: 'openToolDetail',
   },
   {
     name: 'routines-desktop.png',
-    path: '/c/c-devteam-bug?panel=topic',
+    path: '/c/t-devteam-bug%40rooms.zilar.test?panel=topic',
     viewport: DESKTOP,
     setup: 'openRoutines',
   },
@@ -106,11 +144,16 @@ export const DESKTOP_SHOTS: ShotDef[] = [
 
 export const PHONE_SHOTS: ShotDef[] = [
   { name: 'topics-phone.png', path: '/', viewport: PHONE, setup: 'none' },
-  { name: 'topic-phone.png', path: '/c/c-devteam-bug', viewport: PHONE, setup: 'none' },
-  { name: 'chat-phone.png', path: '/c/c-ana', viewport: PHONE, setup: 'none' },
+  {
+    name: 'topic-phone.png',
+    path: '/c/dev-team%40rooms.zilar.test',
+    viewport: PHONE,
+    setup: 'none',
+  },
+  { name: 'chat-phone.png', path: '/c/ana%40zilar.test', viewport: PHONE, setup: 'none' },
   // The search box lives in the list pane, which a phone hides while a chat
   // is open — so the phone search shot starts from the list.
-  { name: 'search-phone.png', path: '/', viewport: PHONE, setup: 'searchTickets' },
+  { name: 'search-phone.png', path: '/', viewport: PHONE, setup: 'searchMessages' },
 ];
 
 /**

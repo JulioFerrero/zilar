@@ -88,8 +88,12 @@ async function runSetup(page: Page, setup: string): Promise<void> {
   switch (setup) {
     case 'none':
       return;
-    case 'searchTickets':
-      await page.locator('#chat-search').fill('tickets');
+    // Keep the query at two characters: the mock backend has no people-search
+    // route (`apps/web/src/lib/api/people.ts:60` calls `/users/search`, which
+    // `contact-requests/routes.ts` does not serve), so a 3+ character query
+    // would paint a mock-only "Could not search." error into the shot.
+    case 'searchMessages':
+      await page.locator('#chat-search').fill('ti');
       await page.waitForTimeout(1500);
       return;
     case 'openChatMenu':
@@ -97,7 +101,10 @@ async function runSetup(page: Page, setup: string): Promise<void> {
       await page.waitForTimeout(600);
       return;
     case 'openNewTopic':
-      await page.getByRole('button', { name: 'New topic in Dev team' }).click();
+      // The row's new-topic button is hover-only and the group header button
+      // sits over it, so dispatch the click directly (like `openToolDetail`).
+      await page.waitForSelector('button[aria-label="New topic in Dev team"]', { timeout: 15000 });
+      await page.$eval('button[aria-label="New topic in Dev team"]', (button) => button.click());
       await page.waitForTimeout(800);
       return;
     // T-0107: the topic panel opens from the URL already (`?panel=topic`);
@@ -111,6 +118,9 @@ async function runSetup(page: Page, setup: string): Promise<void> {
       await page.waitForSelector('button[aria-label="Open prices"]', { timeout: 15000 });
       await page.$eval('button[aria-label="Open prices"]', (button) => button.click());
       await page.waitForTimeout(1500);
+      // A focused element paints a text caret in the panel title; blur it
+      // before the capture.
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       return;
     // T-0107: the group panel opens from the URL already (`?panel=group`);
     // scroll the routines section into view so the shot shows the routine
@@ -121,6 +131,24 @@ async function runSetup(page: Page, setup: string): Promise<void> {
         section.scrollIntoView({ block: 'start' }),
       );
       await page.waitForTimeout(800);
+      // A focused element paints a text caret in the panel title; blur it
+      // before the capture.
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      return;
+    }
+    // WUX-29: a right-click on a message opens its actions menu at the
+    // pointer. The last message is the newest visible one.
+    case 'openMessageMenu': {
+      const target = page.locator('[data-message-id]').last();
+      await target.click({ button: 'right' });
+      await page.waitForTimeout(600);
+      return;
+    }
+    // The pins arrive from the mock API after the chat opens; wait for the
+    // banner so the shot never races and misses it.
+    case 'waitPins': {
+      await page.waitForSelector('[aria-label^="Jump to pinned message"]', { timeout: 15000 });
+      await page.waitForTimeout(400);
       return;
     }
     default:
@@ -132,11 +160,29 @@ async function capture(browser: Browser, dir: string, shot: Shot): Promise<void>
   const context = await browser.newContext({ viewport: shot.viewport });
   const page = await context.newPage();
   // Mock mode only: the dev build serves fake chats locally, so no real
-  // request ever leaves the machine (the mock API answers in memory).
-  // Every shot carries `mock=1`, including `/login` (the dev build renders
-  // the email form without a session; mock mode only skips the auth gate).
+  // request ever leaves the machine (the mock API answers in memory). Every
+  // shot carries `mock=1`, except `/login`: mock mode reports the viewer as
+  // already signed in (`AuthProvider.tsx` MockAuthProvider), so `/login`
+  // redirects home. The sign-in shot instead runs the live auth path with the
+  // session endpoint answered locally as "no session" (401), which is exactly
+  // what a real signed-out browser gets, and no request leaves the machine.
+  // Match only the real `/api/*` paths: `**/api/**` would also swallow the
+  // dev server's own `/src/lib/api/*.ts` module requests and blank the app.
+  const isLogin = shot.path === '/login';
+  if (isLogin) {
+    await context.route(
+      (url) => url.pathname.startsWith('/api/'),
+      (route) =>
+        route.fulfill({
+          status: 401,
+          contentType: 'application/json',
+          body: '{"message":"no session"}',
+        }),
+    );
+  }
   const separator = shot.path.includes('?') ? '&' : '?';
-  await page.goto(`${BASE}${shot.path}${separator}mock=1`, { waitUntil: 'networkidle' });
+  const url = isLogin ? `${BASE}${shot.path}` : `${BASE}${shot.path}${separator}mock=1`;
+  await page.goto(url, { waitUntil: 'networkidle' });
   // Past the mock API delay, the typing simulation and the search debounce.
   await page.waitForTimeout(7000);
   await runSetup(page, shot.setup);

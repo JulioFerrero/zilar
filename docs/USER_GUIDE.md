@@ -8,15 +8,17 @@ Zilar is invite-only. You get a link, enter your email, and receive a 6-digit si
 
 ![Sign in](screenshots/signin-desktop.png)
 
-Your session stays signed in on that device. **Sign out** is in the menu (top-left) if you ever need it.
+Your session stays signed in on that device. **Sign out** is in **Settings** if you ever need it.
+
+![Settings hub](screenshots/settings-desktop.png)
 
 ## Chats and groups
 
-The left column lists every conversation: direct messages (DMs) with people, groups with several people, and chats with your AIs. The top tabs filter the list: **All**, **Personal**, **AIs**, **Work**. The search box finds chats by name, and ⌘K (Ctrl+K) jumps to it.
+The left column lists every conversation: direct messages (DMs) with people, groups with several people, and chats with your AIs. The rail on the left (chips on a phone) filters the list: **All chats** plus your folders — **Personal** and **AIs** to start with. The search box finds chats by name, and ⌘K (Ctrl+K) jumps to it.
 
-- **New chat** (the button at the bottom) starts a group, a DM (by inviting a friend), a new AI, or a new topic.
+- **New chat** (the button at the bottom) starts a group, a channel, a DM (**New message**), a new AI, or a new topic, or opens **Explore groups**.
 - **Invite a friend** is also in the menu. Friends join with an invite link and a sign-in code, like you did.
-- Inside a chat you can reply, react with emoji, edit or delete your own messages, and send images and files (paste, drag-and-drop, or the paperclip button). The phone view below shows a DM with a reply, an image, a file, and a deleted message.
+- Inside a chat you can reply, react with emoji, edit or delete your own messages, and send images and files (paste, drag-and-drop, or the paperclip button). The phone view below shows a DM with a reply, attachments, and deleted messages.
 
 ![Chat list with topics](screenshots/topics-desktop.png)
 
@@ -29,6 +31,8 @@ On a phone the same list fills the screen; opening a chat slides it in, and the 
 ## Forwarding and multi-select
 
 Forwarding passes a message on to another chat, with an optional comment on top. Open a message's menu and choose **Forward**, pick the chat (a DM, a group, a topic, a channel or one of your AIs), add a comment if you like, and send. The receiving chat shows **Forwarded from** the original sender, with the original chat's name when it was a group. On a phone the same Forward action opens the chat picker.
+
+![Message actions menu](screenshots/messagemenu-desktop.png)
 
 To forward several messages at once, choose **Select** from a message's menu (or long-press on the phone), tick the messages you want, then **Forward**. They arrive in the order they were sent, even if you ticked them out of order. **Cancel** clears the selection.
 
@@ -66,10 +70,10 @@ The topic panel (click the topic title) holds the full settings: rename, members
 An **AI** is an agent you own. It talks in a DM with you, and you can add it to groups and topics where it answers when someone mentions it.
 
 - **Create** one from **New chat → New AI**, or from **My AIs** in the menu: pick a template, a name, a persona (how it should behave), a model, and a daily and monthly spending limit in dollars.
-- **Keys**: Zilar uses your own provider keys (OpenAI, Anthropic, …). Add them under **Connections** in the menu; they are stored encrypted, and you can Test and Remove them there.
+- **Keys**: Zilar uses your own provider keys (OpenAI, Anthropic, …). Add them under **Settings → Connections**; they are stored encrypted, and you can Test and Remove them there.
 - **Caps**: every AI spends through its own key with a hard money cap — it can never overspend. Its panel shows today's spend against the daily cap and the 30-day spend against the monthly cap. At 80% of either cap the AI posts a heads-up in the chat.
 - **Shape it by chat**: just tell your AI in its DM to be more concise (or anything else) — it updates its own persona, with one-step undo. Only the owner can do this, only in the owner's DM.
-- **Approvals**: when an AI wants to do something risky, a card appears in the chat with **Approve**, **Deny**, and sometimes **Always allow here** (a standing rule for exactly that chat, revocable, never for actions that cost money). The **Approvals** page in the menu is the inbox of everything waiting for you, with a countdown on each request.
+- **Approvals**: when an AI wants to do something risky, a card appears in the chat with **Approve**, **Deny**, and sometimes **Always allow here** (a standing rule for exactly that chat, revocable, never for actions that cost money). The **Approvals** page (**Settings → Approvals**) is the inbox of everything waiting for you, with a countdown on each request.
 - **Kill switch**: the AI's panel has **Stop AI**. It goes offline at once, any reply in flight is dropped, and nothing it was doing can land afterwards. **Resume** brings it back. The panel's Activity section records stops, resumes, and approval decisions.
 - **Delete** (two-step, in the same panel) removes the AI and its chat; your provider connection stays.
 - **Runs on**: each AI can be assigned to one of your machines (below), or to the platform when it has none.
@@ -111,9 +115,12 @@ Every group has shareable **invite links**: a short web address that lets someon
 Every person has a unique **@username**: 3–32 characters of letters, numbers and `_`, starting with a letter (some words like `admin` are reserved).
 
 - **Pick** yours during onboarding (right after your display name) or later from the profile settings. You can change it, but at most once every 14 days — and your old name stays reserved for you for 30 days, so nobody else can grab it.
-- **Add** someone by their username: "Add contact" in the chat-list menu, the + new chat menu, or the empty state. They get a contact request and must accept before you are contacts.
-- **Requests** live under Settings → Requests: Accept or Decline incoming ones, Cancel the ones you sent. The chat-list menu shows a badge with the incoming count.
-- Your share link looks like `https://your-server/@ada`: opening it shows your card with a Send request button (or asks to sign in first).
+- **Add** someone by their username: type it (3+ letters) in the search box and open the person — or open their share link — then **Add contact**. They get a contact request and must accept before you are contacts.
+- **Requests** live under Settings → Requests: Accept or Decline incoming ones, Cancel the ones you sent. The chat-list menu shows a badge with the incoming count, and a new incoming request also appears as a row at the top of the chat list.
+
+![The chat list with contact requests at the top](screenshots/topics-desktop.png)
+
+- Your share link looks like `https://your-server/@ada`: opening it shows your card with an **Add contact** button (or asks to sign in first).
 
 ## Blocking people
 
@@ -188,7 +195,7 @@ Any message can be pinned. The banner under the chat title shows the newest pin 
 
 ## Mute, archive, pin (chats)
 
-Every chat row has a menu (hover, or the chat header's menu) with three per-user settings, synced across your devices:
+Every chat row has a menu (hover, or the chat header's menu) with per-user settings, synced across your devices:
 
 - **Pin**: pins the chat to the top of your list (up to 20).
 - **Mute**: silences notifications for 1 hour, 8 hours, 1 day, 1 week, or forever; muted chats still collect their unread count, shown grey.
@@ -200,7 +207,7 @@ Topics share the same menu; archiving a topic hides it inside its group's own Ar
 
 ## Chat folders
 
-**Folders** group your chats the way you like — "Family", "Work", "AIs". Open **Chat folders** from the chat list (on the phone, **Settings → Chat folders**) to create a folder, pick an icon, and choose which chats it holds (whole kinds such as DMs or AIs, or named chats); a chat can sit in more than one folder. Drag the folders to reorder them. They show in the left rail and above the chat list on web, and as chips on the phone.
+**Folders** group your chats the way you like — "Family", "Work", "AIs". Open **Chat folders** from the rail's **Edit** key on the web (on the phone, **Settings → Chat folders**) to create a folder, pick an icon, and choose which chats it holds (whole kinds such as DMs or AIs, or named chats); a chat can sit in more than one folder. Drag the folders to reorder them. They show in the left rail and above the chat list on web, and as chips on the phone.
 
 ## Chat backgrounds
 
@@ -210,7 +217,7 @@ Group owners and admins can set a background for the whole group; every member s
 
 ## Machines
 
-**Machines** (in the menu) are computers you pair so your AIs can run on them: your Mac, a Linux box, a VPS.
+**Machines** (**Settings → Machines**) are computers you pair so your AIs can run on them: your Mac, a Linux box, a VPS.
 
 1. Click **Add machine**: a pairing code appears, valid 10 minutes.
 2. On the machine, install the runner app and pair it with the code. Check that the fingerprint the runner prints matches the one on the page.

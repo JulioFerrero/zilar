@@ -1388,8 +1388,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1346](T-1346-web-easy-crop.md) | Web avatar cropper on react-easy-crop (drag, wheel and pinch zoom, 256x256 export) | 2026-10-13 |
 | [T-1343](T-1343-web-lightbox.md) | Web photo viewer on yet-another-react-lightbox (zoom, pan, swipe, arrows) | 2026-10-13 |
 | [T-1348](T-1348-gorhom-sheets.md) | Mobile kit sheets native via react-native-true-sheet (drag to close, backdrop, keyboard) | 2026-10-13 |
-| [T-1352](T-1352-refresh-screenshots.md) | Refresh docs screenshots + README/USER_GUIDE text | in-progress | auto | — | Julio 10-14 |
 | [T-1350](T-1350-web-base-ui.md) | Web Dialog, Sheet, ConfirmDialog and Button on Base UI; radix-ui removed | 2026-10-14 |
 | [T-1351](T-1351-nested-confirm-escape.md) | Web: Escape on a confirm opened from a sheet or dialog closes only the confirm | 2026-10-14 |
 | [T-1349](T-1349-web-menus-radix.md) | Web dropdown menus on Base UI Menu (portalled, collision-aware, cursor-anchored context menu) | 2026-10-14 |
 | [T-1353](T-1353-search-overlap.md) | Web search results flow without overlap; request rows hide while searching | 2026-10-14 |
+| [T-1352](T-1352-refresh-screenshots.md) | Docs screenshots and USER_GUIDE text refreshed to today's app | 2026-10-14 |
