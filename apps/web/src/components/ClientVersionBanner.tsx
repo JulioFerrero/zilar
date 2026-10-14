@@ -3,13 +3,15 @@ import { useClientVersionCheck } from '@/lib/useClientVersionCheck';
 
 /**
  * A thin bar pinned to the top when this web build is older than the server's
- * minimum client protocol (OPS-21). It never blocks the app; Reload fetches the
- * current bundle. At the current version nothing renders.
+ * minimum client protocol (OPS-21), or when a new deploy's service worker has
+ * taken over this page (`reason: 'deploy'`, T-1435). It never blocks the app;
+ * Reload fetches the current bundle. With no reason and a current version,
+ * nothing renders.
  */
-export function ClientVersionBanner() {
+export function ClientVersionBanner({ reason }: { reason?: 'deploy' | undefined } = {}) {
   const outdated = useClientVersionCheck();
 
-  if (!outdated) {
+  if (!outdated && reason !== 'deploy') {
     return null;
   }
 

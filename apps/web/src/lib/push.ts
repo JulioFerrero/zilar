@@ -110,6 +110,34 @@ export function ensureServiceWorker(browser: PushBrowser): Promise<void> {
 const ensureServiceWorkerEffect = (browser: PushBrowser): Effect.Effect<void> =>
   Effect.promise(() => browser.serviceWorker.register('/sw.js')).pipe(Effect.asVoid);
 
+/**
+ * True once a new deploy's service worker has taken over this page (T-1435):
+ * the page keeps running the old bundle, so the caller shows the reload
+ * banner. A first install claims this page too, so a page with no previous
+ * controller never counts as an update; browsers without service workers stay
+ * false as well.
+ */
+export function useServiceWorkerUpdate(): boolean {
+  const [updated, setUpdated] = useState(false);
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+      return;
+    }
+    // Only a page that was already controlled can be updated by a new worker.
+    if (navigator.serviceWorker.controller === null) {
+      return;
+    }
+    const onControllerChange = (): void => {
+      setUpdated(true);
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+    return () => {
+      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+    };
+  }, []);
+  return updated;
+}
+
 export interface DeviceSubscription {
   endpoint: string;
   keys: { p256dh: string; auth: string };

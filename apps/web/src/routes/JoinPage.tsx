@@ -3,12 +3,28 @@ import { AsyncResult } from 'effect/reactivity';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useAuth } from '@/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
+import { StateMessage } from '@/components/ui/state-message';
 import { joinByLink, previewJoinLink, type JoinPreview } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
+import { useDelayed } from '@/lib/useDelayed';
 
 class OpenFailed extends Data.TaggedError('OpenFailed') {}
+
+// The invite check usually answers in a frame or two; the spinner only shows
+// when it is slow, so a fast link never flashes a "Checking…" state (WUX-18).
+const INVITE_CHECKING_DELAY_MS = 400;
+
+/** The centered empty area that becomes a delayed spinner once the check drags. */
+function JoinChecking() {
+  const slow = useDelayed(true, INVITE_CHECKING_DELAY_MS) === true;
+  return (
+    <div className="chat-background flex min-h-dvh items-center justify-center">
+      {slow ? <StateMessage kind="loading" title="Checking your invite link…" /> : null}
+    </div>
+  );
+}
 
 type LoadedPreview =
   | { readonly state: 'ready'; readonly preview: JoinPreview }
@@ -111,11 +127,7 @@ export function JoinPage({
   }
 
   if (auth.status === 'loading') {
-    return (
-      <div className="chat-background flex min-h-dvh items-center justify-center text-[15px] text-muted-foreground">
-        Checking your invite link…
-      </div>
-    );
+    return <JoinChecking />;
   }
 
   if (auth.status === 'guest') {
@@ -145,11 +157,7 @@ export function JoinPage({
   const needsName = (auth.user?.name ?? '').trim() === '';
 
   if (state === 'checking') {
-    return (
-      <div className="chat-background flex min-h-dvh items-center justify-center text-[15px] text-muted-foreground">
-        Checking your invite link…
-      </div>
-    );
+    return <JoinChecking />;
   }
 
   if (state === 'invalid') {

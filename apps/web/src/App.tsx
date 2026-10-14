@@ -6,10 +6,14 @@ import { AppRoutes } from '@/routes/AppRoutes';
 import { ClientVersionBanner } from '@/components/ClientVersionBanner';
 import { ToastProvider } from '@/components/ui/toast';
 import { ChatStoreProvider } from '@/store/ChatStoreProvider';
-import { ensureServiceWorker, realPushBrowser } from '@/lib/push';
+import { ensureServiceWorker, realPushBrowser, useServiceWorkerUpdate } from '@/lib/push';
 import { runWeb } from '@/lib/effect/runtime';
 
 export function App() {
+  // A new deploy's worker taking over keeps this page on the old bundle until
+  // Reload (T-1435); a first install is not an update (see the hook).
+  const serviceWorkerUpdated = useServiceWorkerUpdate();
+
   // Registers the app service worker once (push + click + offline page).
   // Idempotent and harmless in dev: it never caches API or app traffic.
   // A failed registration is ignored, as before.
@@ -24,7 +28,7 @@ export function App() {
       <ChatStoreProvider>
         <ToastProvider>
           <BrowserRouter>
-            <ClientVersionBanner />
+            <ClientVersionBanner reason={serviceWorkerUpdated ? 'deploy' : undefined} />
             <AppRoutes />
           </BrowserRouter>
         </ToastProvider>
