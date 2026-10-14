@@ -1445,3 +1445,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1434](T-1434-sweep-server-findings.md) | Findings sweep (server, sec, perf, AI, ops): 59 rechecked | 2026-10-14 |
 | [T-1428](T-1428-one-line-installer.md) | One-line installer: curl | sh, sudo-aware, dry run | 2026-10-14 |
 | [T-1435](T-1435-web-small-ux.md) | Web: remembered handle skip, invite spinner, deploy reload | 2026-10-14 |
+| [T-1438](T-1438-get-zilar-app.md) | Web image serves /install.sh; get.zilar.app answers with it | 2026-10-14 |

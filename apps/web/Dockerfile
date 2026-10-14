@@ -49,6 +49,8 @@ FROM caddy:2.10.2-alpine AS runtime
 
 COPY apps/web/Caddyfile /etc/caddy/Caddyfile
 COPY --from=builder /repo/apps/web/dist /srv/zilar-web
+# The one-line installer served at /install.sh (see the Caddyfile).
+COPY deploy/install.sh /srv/zilar-web/install.sh
 
 # Caddy serves on 80/443; the production compose wires the actual site
 # through Caddy's reverse proxy with automatic HTTPS.

@@ -84,6 +84,24 @@
     }
   }
 
+  # The one-line installer (`curl -fsSL https://get.zilar.app | sh`). The
+  # script is copied into the image by the Dockerfile (deploy/install.sh).
+  handle /install.sh {
+    header Content-Type "text/x-shellscript; charset=utf-8"
+    header Cache-Control "no-cache"
+    file_server
+  }
+
+  # The bare installer host answers with the script at any path, so
+  # https://get.zilar.app and https://get.zilar.app/anything both work.
+  @installer host get.zilar.app
+  handle @installer {
+    rewrite * /install.sh
+    header Content-Type "text/x-shellscript; charset=utf-8"
+    header Cache-Control "no-cache"
+    file_server
+  }
+
   handle {
     # SPA fallback: every non-file path serves index.html.
     try_files {path} /index.html
