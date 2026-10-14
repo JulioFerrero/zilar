@@ -2,6 +2,34 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-15 03:00: the New AI redesign is approved; wave 1 is running (5 workers).**
+- **Design:** canvas https://claude.ai/artifact/WMbGfFmbgAHeuEKKHvBg2k (Julio: "10/10").
+  - D24 only.
+  - Providers come from models.dev.
+  - OpenAI-compatible fields sit in the provider step.
+  - The Setup step holds the computer choice (Off · Zilar · Machine · Auto) and the limits.
+  - The orb picker has color, light and free drag.
+  - Phone sheets hug their content.
+  - Standard from now on: every UI change starts as a canvas (memory `ui-canvas-workflow`).
+- **Merged since 01:00:**
+  - T-1426: the session log (live, 0060);
+  - T-1425: the Computer picker;
+  - T-1422: Stop (live `dfb679680`);
+  - T-1427: the gate's 400-line growth check.
+- **Running:**
+  - T-1428: the one-line installer (a sudo fix round);
+  - T-1429: every models.dev OpenAI-compatible provider (server);
+  - T-1430: orb params;
+  - T-1431: the web dialog kit;
+  - T-1432: the mobile sheet kit.
+- **Wave 2, after the kits merge:**
+  - the web New AI flow, with the shared add-key dialog and the orb popover;
+  - the mobile New AI flow, with the orb sheet.
+  - The orb is saved as the AI's picture (a rendered PNG through the existing avatar upload), so no server change is needed.
+  - The computer is set after create with `assignMachine` plus a computer-mode `patch`, because `ais/api.ts` is at 403 lines.
+- **Then:** move the other dialogs to the new kit (design brief `/Users/julio/.claude/jobs/ab934c68/tmp/ui-dialogs-brief.md`, §4 and tasks E1-E3, F1-F2).
+- **get.zilar.app:** waits for the Porkbun A record (Julio), T-1428, and a small Caddy task.
+
 **2026-10-15 01:00: 3 workers; LiteLLM fully gone.**
 - **Merged:**
   - T-1421: Go paused until 2026-10-27 (`~/.zilar-lead/config.json`; the autopilot restarted on the new code);

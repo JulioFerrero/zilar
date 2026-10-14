@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New AI, orb picker</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed}a:hover{color:#ffffff}
+.key-primary{background:linear-gradient(180deg,rgba(255,255,255,.4),rgba(255,255,255,.08) 48%,rgba(0,0,0,0) 52%,rgba(0,0,0,.14)),#ededed;color:#0a0a0a;text-shadow:0 1px 0 rgba(255,255,255,.7);box-shadow:inset 0 1px 0 rgba(255,255,255,.85),inset 0 -2px 0 rgba(0,0,0,.2),inset 0 0 0 1px rgba(255,255,255,.12),0 1px 0 rgba(0,0,0,.95),0 2px 3px rgba(0,0,0,.7),0 10px 18px -8px rgba(0,0,0,.95)}
+.key-icon{background:linear-gradient(180deg,#2c2c2c,#151515);border:1px solid #050505;color:#d4d4d4;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.65),0 1px 0 rgba(0,0,0,.95),0 3px 6px -1px rgba(0,0,0,.75)}
+.key-icon svg{filter:drop-shadow(0 1px 0 rgba(0,0,0,.95))}
+.well{background:#0c0c0c;box-shadow:inset 0 2px 6px rgba(0,0,0,.9),inset 0 1px 1px rgba(0,0,0,.8),inset 0 0 0 1px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.06)}
+.seg-on{background:linear-gradient(180deg,#333333,#1c1c1c);color:#ededed;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.6),0 1px 0 rgba(0,0,0,.9),0 2px 4px rgba(0,0,0,.7);text-shadow:0 -1px 0 rgba(0,0,0,.7)}
+.sel{background:linear-gradient(180deg,rgba(255,255,255,.4),rgba(255,255,255,.08) 48%,rgba(0,0,0,0) 52%,rgba(0,0,0,.14)),#ededed !important;color:#0a0a0a !important;text-shadow:0 1px 0 rgba(255,255,255,.7);box-shadow:inset 0 1px 0 rgba(255,255,255,.85),inset 0 -2px 0 rgba(0,0,0,.2),0 1px 0 rgba(0,0,0,.95),0 2px 3px rgba(0,0,0,.7)}
+.done{height:28px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:500;color:#a1a1a1}
+.todo{height:28px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500;color:#8a8a8a}
+.lbl{font-size:13px;font-weight:500}
+.field{height:40px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 12px;border:1px solid #262626;border-radius:10px}
+.menu{background:#111111;border:1px solid #262626;box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 16px 40px rgba(0,0,0,.85)}
+.sw{width:26px;height:26px;padding:0;border:0;border-radius:999px;cursor:pointer}
+.ln{width:22px;height:22px;padding:0;border:0;border-radius:999px;cursor:pointer}
+</style>
+</helmet>
+<div style="width: 960px; height: 760px; position: relative; box-sizing: border-box; padding: 12px; display: flex; gap: 12px; background: #000000; overflow: hidden">
+  <div style="width: 300px; background: #0a0a0a; border: 1px solid #1f1f1f; border-radius: 16px"></div>
+  <div style="flex-grow: 1; background-color: #0a0a0a; background-image: radial-gradient(#1c1c1c 1px, transparent 1px); background-size: 22px 22px; border: 1px solid #1f1f1f; border-radius: 16px"></div>
+  <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center">
+    <div role="dialog" aria-label="New AI" style="position: relative; width: 480px; background: #0a0a0a; border: 1px solid #1f1f1f; border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,0.8); display: flex; flex-direction: column">
+      <div style="padding: 16px 16px 0 20px; display: flex; align-items: center">
+        <h2 style="margin: 0; flex-grow: 1; font-size: 18px; font-weight: 600; letter-spacing: -0.02em">New AI</h2>
+        <button type="button" aria-label="Close" class="key-icon" style="width: 32px; height: 32px; box-sizing: border-box; border-radius: 10px; display: flex; align-items: center; justify-content: center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </div>
+      <div class="well" style="margin: 16px 20px 0 20px; padding: 3px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; border: 1px solid #1a1a1a; border-radius: 10px">
+        <span class="done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>DeepSeek</span>
+        <span class="done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>Key</span>
+        <span class="seg-on" style="height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500">Model</span>
+        <span class="todo">Setup</span>
+      </div>
+      <div style="padding: 20px; display: flex; flex-direction: column; gap: 16px">
+        <div style="display: flex; align-items: flex-end; gap: 14px">
+          <button type="button" aria-label="Change the orb" aria-expanded="true" style="position: relative; width: 40px; height: 40px; flex-shrink: 0; padding: 0; border: 0; border-radius: 999px; background: {{orb}}; box-shadow: 0 0 0 2px #0a0a0a, 0 0 0 4px #a1a1a1; cursor: pointer"></button>
+          <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 8px">
+            <label for="o-name" class="lbl">Name</label>
+            <div class="well field"><input id="o-name" type="text" value="Research helper" style="flex-grow: 1; min-width: 0; border: 0; background: transparent; outline: none; color: #ededed; font: 14px 'Geist', sans-serif"></div>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span class="lbl">Model</span>
+          <div class="well field"><span style="flex-grow: 1; font-size: 14px">DeepSeek V4 Flash</span></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span class="lbl">Template</span>
+          <div class="well" style="padding: 3px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; border: 1px solid #1a1a1a; border-radius: 10px">
+            <span class="sel" style="height: 34px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font: 500 13px/1 'Geist', sans-serif">Dev</span>
+            <span style="height: 34px; display: flex; align-items: center; justify-content: center; color: #a1a1a1; font: 500 13px/1 'Geist', sans-serif">Marketing</span>
+            <span style="height: 34px; display: flex; align-items: center; justify-content: center; color: #a1a1a1; font: 500 13px/1 'Geist', sans-serif">Fun</span>
+          </div>
+        </div>
+      </div>
+      <div style="padding: 14px 20px; border-top: 1px solid #1f1f1f; display: flex; justify-content: flex-end; gap: 8px">
+        <button type="button" class="key-icon" style="height: 36px; box-sizing: border-box; padding: 0 14px; border-radius: 10px; font: 600 14px 'Geist', sans-serif">Back</button>
+        <button type="button" class="key-primary" style="height: 36px; padding: 0 16px; border: 0; border-radius: 10px; font: 600 14px 'Geist', sans-serif">Continue</button>
+      </div>
+      <div role="dialog" aria-label="Orb" class="menu" style="position: absolute; left: 20px; top: 150px; width: 268px; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; align-items: flex-start; gap: 12px">
+          <button type="button" aria-label="Drag to move the light" onPointerDown="{{down}}" onPointerMove="{{move}}" onPointerUp="{{up}}" onPointerCancel="{{up}}" style="position: relative; width: 112px; height: 112px; flex-shrink: 0; padding: 0; border: 0; border-radius: 999px; background: {{orb}}; box-shadow: 0 10px 24px rgba(0,0,0,0.75); cursor: grab; touch-action: none">
+            <span aria-hidden="true" style="position: absolute; left: {{lx}}%; top: {{ly}}%; width: 14px; height: 14px; margin: -8px 0 0 -8px; border: 1px solid rgba(255,255,255,0.9); border-radius: 999px; box-shadow: 0 0 0 1px rgba(0,0,0,0.35); pointer-events: none"></span>
+          </button>
+          <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: flex-end; gap: 8px">
+            <button type="button" aria-label="Shuffle" onClick="{{shuffle}}" class="key-icon" style="width: 32px; height: 32px; box-sizing: border-box; border-radius: 10px; display: flex; align-items: center; justify-content: center">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"></path></svg>
+            </button>
+            <button type="button" aria-label="Back to the name's orb" onClick="{{reset}}" class="key-icon" style="width: 32px; height: 32px; box-sizing: border-box; border-radius: 10px; display: flex; align-items: center; justify-content: center">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg>
+            </button>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span class="lbl">Color</span>
+          <div role="radiogroup" aria-label="Color" style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; justify-items: center">
+            <sc-for list="{{colors}}" as="c" hint-placeholder-count="14">
+              <button type="button" role="radio" aria-label="{{c.name}}" onClick="{{c.pick}}" class="sw" style="background: {{c.bg}}; box-shadow: {{c.ring}}"></button>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span class="lbl">Light</span>
+          <div role="radiogroup" aria-label="Light" style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; justify-items: center">
+            <sc-for list="{{lights}}" as="l" hint-placeholder-count="7">
+              <button type="button" role="radio" aria-label="{{l.name}}" onClick="{{l.pick}}" class="ln" style="background: {{l.bg}}; box-shadow: {{l.ring}}"></button>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":760}}'>
+class Component extends DCLogic {
+  orbBg(h, h2, lx, ly) {
+    const dx = lx - 50;
+    const dy = ly - 50;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const bx = Math.round(50 - (dx / len) * 28);
+    const by = Math.round(50 - (dy / len) * 28);
+    return 'radial-gradient(18% 18% at ' + lx + '% ' + ly + '%, rgba(255,255,255,0.95), rgba(255,255,255,0) 100%), ' +
+      'radial-gradient(55% 55% at ' + bx + '% ' + by + '%, rgba(0,0,0,0) 60%, hsla(' + h2 + ', 90%, 70%, 0.55) 100%), ' +
+      'radial-gradient(75% 75% at ' + lx + '% ' + ly + '%, hsl(' + h + ' 85% 72%) 0%, hsl(' + h + ' 75% 46%) 55%, hsl(' + h + ' 80% 16%) 100%)';
+  }
+  place(e) {
+    const r = e.currentTarget.getBoundingClientRect();
+    let nx = ((e.clientX - r.left) / r.width) * 100 - 50;
+    let ny = ((e.clientY - r.top) / r.height) * 100 - 50;
+    const d = Math.sqrt(nx * nx + ny * ny);
+    if (d > 40) { nx = (nx / d) * 40; ny = (ny / d) * 40; }
+    this.setState({ lx: Math.round(50 + nx), ly: Math.round(50 + ny) });
+  }
+  renderVals() {
+    const s = this.state || {};
+    const hue = s.hue ?? 215;
+    const rim = s.rim ?? 300;
+    const lx = s.lx ?? 35;
+    const ly = s.ly ?? 30;
+    const ring = '0 0 0 2px #111111, 0 0 0 4px #ededed';
+    const hues = [[0,'Red'],[18,'Coral'],[32,'Orange'],[45,'Amber'],[58,'Yellow'],[90,'Lime'],[140,'Green'],[165,'Teal'],[190,'Cyan'],[215,'Blue'],[240,'Indigo'],[265,'Violet'],[290,'Purple'],[320,'Pink']];
+    const rims = [[300,'Magenta'],[200,'Ice'],[160,'Mint'],[50,'Gold'],[20,'Ember'],[260,'Lilac'],[0,'Rose']];
+    return {
+      orb: this.orbBg(hue, rim, lx, ly),
+      lx: lx,
+      ly: ly,
+      colors: hues.map((x) => ({ name: x[1], bg: this.orbBg(x[0], rim, lx, ly), ring: x[0] === hue ? ring : 'none', pick: () => this.setState({ hue: x[0] }) })),
+      lights: rims.map((x) => ({ name: x[1], bg: 'hsl(' + x[0] + ' 90% 70%)', ring: x[0] === rim ? ring : 'inset 0 1px 0 rgba(255,255,255,0.4), 0 0 8px hsla(' + x[0] + ', 90%, 70%, 0.35)', pick: () => this.setState({ rim: x[0] }) })),
+      down: (e) => {
+        this.dragging = true;
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
+        this.place(e);
+      },
+      move: (e) => { if (this.dragging) this.place(e); },
+      up: () => { this.dragging = false; },
+      shuffle: () => {
+        const a = Math.random() * Math.PI * 2;
+        const d = 18 + Math.random() * 18;
+        this.setState({ hue: Math.round(Math.random() * 360), rim: Math.round(Math.random() * 360), lx: Math.round(50 + Math.cos(a) * d), ly: Math.round(50 + Math.sin(a) * d) });
+      },
+      reset: () => this.setState({ hue: 215, rim: 300, lx: 35, ly: 30 })
+    };
+  }
+}
+</script>
+</body>
+</html>

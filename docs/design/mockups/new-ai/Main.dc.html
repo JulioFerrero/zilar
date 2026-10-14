@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New AI, provider step</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed}a:hover{color:#ffffff}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.key-primary{background:linear-gradient(180deg,rgba(255,255,255,.4),rgba(255,255,255,.08) 48%,rgba(0,0,0,0) 52%,rgba(0,0,0,.14)),#ededed;color:#0a0a0a;text-shadow:0 1px 0 rgba(255,255,255,.7);box-shadow:inset 0 1px 0 rgba(255,255,255,.85),inset 0 -2px 0 rgba(0,0,0,.2),inset 0 0 0 1px rgba(255,255,255,.12),0 1px 0 rgba(0,0,0,.95),0 2px 3px rgba(0,0,0,.7),0 10px 18px -8px rgba(0,0,0,.95)}
+.key-icon{background:linear-gradient(180deg,#2c2c2c,#151515);border:1px solid #050505;color:#d4d4d4;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.65),0 1px 0 rgba(0,0,0,.95),0 3px 6px -1px rgba(0,0,0,.75)}
+.key-icon svg{filter:drop-shadow(0 1px 0 rgba(0,0,0,.95))}
+.well{background:#0c0c0c;box-shadow:inset 0 2px 6px rgba(0,0,0,.9),inset 0 1px 1px rgba(0,0,0,.8),inset 0 0 0 1px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.06)}
+.seg-on{background:linear-gradient(180deg,#333333,#1c1c1c);color:#ededed;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.6),0 1px 0 rgba(0,0,0,.9),0 2px 4px rgba(0,0,0,.7);text-shadow:0 -1px 0 rgba(0,0,0,.7)}
+.menu{background:#111111;border:1px solid #262626;box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 16px 40px rgba(0,0,0,.85)}
+.row{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:#ededed;font:14px 'Geist',sans-serif;text-align:left}
+.dot{width:8px;height:8px;border-radius:999px;background:#22c55e;box-shadow:0 0 0 2px #111111}
+</style>
+</helmet>
+<div style="width: 960px; height: 760px; position: relative; box-sizing: border-box; padding: 12px; display: flex; gap: 12px; background: #000000; overflow: hidden">
+  <div style="width: 300px; background: #0a0a0a; border: 1px solid #1f1f1f; border-radius: 16px"></div>
+  <div style="flex-grow: 1; background-color: #0a0a0a; background-image: radial-gradient(#1c1c1c 1px, transparent 1px); background-size: 22px 22px; border: 1px solid #1f1f1f; border-radius: 16px"></div>
+  <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center">
+    <div role="dialog" aria-label="New AI" style="width: 480px; background: #0a0a0a; border: 1px solid #1f1f1f; border-radius: 16px; box-shadow: 0 24px 60px rgba(0,0,0,0.8); display: flex; flex-direction: column">
+      <div style="padding: 16px 16px 0 20px; display: flex; align-items: center">
+        <h2 style="margin: 0; flex-grow: 1; font-size: 18px; font-weight: 600; letter-spacing: -0.02em">New AI</h2>
+        <button type="button" aria-label="Close" class="key-icon" style="width: 32px; height: 32px; box-sizing: border-box; border-radius: 10px; display: flex; align-items: center; justify-content: center">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </div>
+      <div class="well" style="margin: 16px 20px 0 20px; padding: 3px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; border: 1px solid #1a1a1a; border-radius: 10px">
+        <span class="seg-on" style="height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500">Provider</span>
+        <span style="height: 28px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; color: #8a8a8a">Key</span>
+        <span style="height: 28px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; color: #8a8a8a">Model</span>
+        <span style="height: 28px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; color: #8a8a8a">Setup</span>
+      </div>
+      <div style="position: relative; padding: 20px 20px 0 20px; display: flex; flex-direction: column; gap: 8px">
+        <span style="font-size: 13px; font-weight: 500">Provider</span>
+        <button type="button" aria-haspopup="listbox" aria-expanded="true" class="well" style="height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 1px solid #262626; border-radius: 10px; color: #ededed; font: 14px 'Geist', sans-serif; text-align: left">
+          <span style="flex-grow: 1">DeepSeek</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8a8a8a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+        </button>
+        <div role="listbox" aria-label="Providers" class="menu" style="position: absolute; left: 20px; right: 20px; top: 96px; z-index: 2; border-radius: 12px; padding: 6px; display: flex; flex-direction: column; gap: 1px">
+          <div class="well" style="height: 34px; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid #1f1f1f; border-radius: 8px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8a8a8a" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+            <label for="p-search" style="position: absolute; left: -9999px">Search providers</label>
+            <input id="p-search" placeholder="Search 229 providers" style="flex-grow: 1; min-width: 0; border: 0; background: transparent; outline: none; color: #ededed; font: 14px 'Geist', sans-serif">
+          </div>
+          <button type="button" role="option" class="row"><span style="flex-grow: 1">OpenAI</span><span class="dot" role="img" aria-label="Key added"></span></button>
+          <button type="button" role="option" class="row"><span style="flex-grow: 1">Anthropic</span></button>
+          <button type="button" role="option" class="row"><span style="flex-grow: 1">Amazon Bedrock</span></button>
+          <button type="button" role="option" class="row"><span style="flex-grow: 1">Cerebras</span></button>
+          <button type="button" role="option" class="row"><span style="flex-grow: 1">Cohere</span></button>
+          <button type="button" role="option" aria-selected="true" class="row" style="background: #1c1c1c; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05)"><span style="flex-grow: 1">DeepSeek</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ededed" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>
+          </button>
+          <button type="button" role="option" class="row"><span style="flex-grow: 1">Google</span></button>
+          <button type="button" role="option" class="row"><span style="flex-grow: 1">Groq</span></button>
+          <button type="button" role="option" class="row"><span style="flex-grow: 1">Mistral</span></button>
+          <div style="height: 1px; margin: 4px 4px; background: #1f1f1f"></div>
+          <button type="button" role="option" class="row" style="color: #a1a1a1">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+            <span style="flex-grow: 1">OpenAI-compatible</span>
+          </button>
+        </div>
+      </div>
+      <div style="height: 300px"></div>
+      <div style="padding: 14px 20px; border-top: 1px solid #1f1f1f; display: flex; justify-content: flex-end">
+        <button type="button" class="key-primary" style="height: 36px; padding: 0 16px; border: 0; border-radius: 10px; font: 600 14px 'Geist', sans-serif">Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":760}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
