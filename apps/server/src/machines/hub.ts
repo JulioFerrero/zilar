@@ -2,6 +2,8 @@ import { TunnelServer } from '@zilar/runner-tunnel';
 import type { KeyRegistry } from '@zilar/runner-tunnel';
 import { Duration, Effect, Fiber, Schedule } from 'effect';
 import type { ServerDatabase } from '../db/client';
+import type { RunnerDesk } from '../hands/runner-hands';
+import { bindRunnerDesk } from './runner-desk';
 import { listApprovedMachineKeys } from './service';
 
 // Default address a runner's model listener is reached on in local dev. The
@@ -232,6 +234,11 @@ export interface RunnerHub {
   isOnline(machineId: string): boolean;
   close(): Promise<void>;
   port: number;
+  /**
+   * T-1423: the desk ops bound to a live runner, or null when it is offline.
+   * Read per turn, so a runner that drops out is refused on the next turn.
+   */
+  deskFor(machineId: string): RunnerDesk | null;
 }
 
 // Bumps `last_seen_at` at most once every 60 s while the machine is still
@@ -336,6 +343,14 @@ export async function startRunnerHub({
     // true for a machine whose key has just been revoked.
     isOnline(machineId: string): boolean {
       return cache.getPublicKey(machineId) !== null && server.isRunnerLive(machineId);
+    },
+
+    // T-1423: the same liveness gate, plus the bound desk ops for the runner.
+    deskFor(machineId: string): RunnerDesk | null {
+      if (cache.getPublicKey(machineId) === null || !server.isRunnerLive(machineId)) {
+        return null;
+      }
+      return bindRunnerDesk(server.desk, machineId);
     },
 
     async close(): Promise<void> {

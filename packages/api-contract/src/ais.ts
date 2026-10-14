@@ -17,8 +17,8 @@ export const AiTemplate = Schema.Literals(AI_TEMPLATES);
 export type AiTemplate = typeof AiTemplate.Type;
 
 // T-1409: where an AI's computer (desk) runs. `off` is the default and means
-// none; the column also allows `runner` and `auto`, but only `off` and `cloud`
-// may be set through the API for now.
+// none; `cloud` is Zilar cloud, `runner` the owner's machine and `auto` the
+// owner's machine when it is online, else cloud.
 export const AI_COMPUTER_MODES = ['off', 'cloud', 'runner', 'auto'] as const;
 
 export const AiComputerMode = Schema.Literals(AI_COMPUTER_MODES);
@@ -89,9 +89,9 @@ export const UpdateAiPayload = Schema.Struct({
   // T-0474: the two delegation opt-ins (plan §8, decision 3). Owner only.
   canDelegate: Schema.optional(Schema.Boolean),
   acceptsDelegation: Schema.optional(Schema.Boolean),
-  // T-1409: the owner turns the AI's computer on (`cloud`) or off. Only these
-  // two values are settable through the API for now.
-  computerMode: Schema.optional(Schema.Literals(['off', 'cloud'])),
+  // T-1409/T-1423: where the AI's computer runs. `runner` and `auto` require
+  // the AI to have an assigned machine, refused with a 400 otherwise.
+  computerMode: Schema.optional(AiComputerMode),
 }).check(
   Schema.makeFilter((value) =>
     value.providerConnectionId === undefined || value.model !== undefined

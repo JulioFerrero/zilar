@@ -79,7 +79,7 @@ export async function loadActiveAi(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<ActiveAiForGateway>`SELECT id, jid, localpart, owner, name, persona, computer_mode
+      return yield* sql<ActiveAiForGateway>`SELECT id, jid, localpart, owner, name, persona, computer_mode, machine_id
         FROM ais
         WHERE id = ${aiId} AND status = 'active'
         LIMIT 1`;

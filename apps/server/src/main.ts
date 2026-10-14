@@ -320,7 +320,7 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
     // The leader starts the runner hub later; the closure reads this holder
     // each request, so the routes pick up the hub once `startRunnerHub`
     // resolves. Null when this instance is a follower, so `online: false`.
-    let runnerHub: Pick<RunnerHub, 'isOnline' | 'close'> | null = null;
+    let runnerHub: RunnerHub | null = null;
     const isMachineOnline = (machineId: string): boolean => {
       return runnerHub?.isOnline(machineId) ?? false;
     };
@@ -492,6 +492,8 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
         toolsEnabled: config.TOOLS_ENABLED,
         toolMaxRounds: config.AGENT_TOOL_MAX_ROUNDS,
         ...(desk === null ? {} : { desk }),
+        // T-1423: the runner hub, read lazily because it starts after this.
+        runnerDesk: () => runnerHub,
       },
       { enabled: config.AGENT_GATEWAY_ENABLED },
     );
@@ -531,7 +533,7 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
       toolRunner,
       post,
       onRunnerHub: (hub) => {
-        runnerHub = hub;
+        runnerHub = hub as RunnerHub | null;
       },
     });
 

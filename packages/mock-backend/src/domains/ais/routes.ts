@@ -87,6 +87,12 @@ function createAi(data: MockData, request: MockHttpRequest): Response {
 
 function patchAi(data: MockData, ai: PublicAi, request: MockHttpRequest): Response {
   const body = readJsonBody(request.init);
+  if (
+    (body.computerMode === 'runner' || body.computerMode === 'auto') &&
+    (ai.machineId === null || ai.machineId === undefined)
+  ) {
+    return badRequest('invalid_request', 'Runner and auto modes need an assigned machine');
+  }
   const updated: PublicAi = {
     ...ai,
     ...(typeof body.name === 'string' ? { name: body.name } : {}),
@@ -100,7 +106,10 @@ function patchAi(data: MockData, ai: PublicAi, request: MockHttpRequest): Respon
     ...(typeof body.acceptsDelegation === 'boolean'
       ? { acceptsDelegation: body.acceptsDelegation }
       : {}),
-    ...(body.computerMode === 'off' || body.computerMode === 'cloud'
+    ...(body.computerMode === 'off' ||
+    body.computerMode === 'cloud' ||
+    body.computerMode === 'runner' ||
+    body.computerMode === 'auto'
       ? { computerMode: body.computerMode }
       : {}),
   };

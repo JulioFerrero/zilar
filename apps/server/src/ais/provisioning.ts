@@ -136,6 +136,12 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
     );
   }
 
+  // T-1423: `runner` and `auto` run on the AI's assigned machine, so a mode
+  // change to either without one is refused the same way an unknown field is.
+  if ((input.computerMode === 'runner' || input.computerMode === 'auto') && ai.machineId === null) {
+    throw new HttpError(400, 'invalid_request', 'Runner and auto modes need an assigned machine');
+  }
+
   // The model swap goes first: a failure there leaves the name, persona and
   // limits untouched too.
   const newModel = input.model ?? ai.model;

@@ -85,7 +85,7 @@ function openSocket(socketPath: string): Promise<Socket> {
   });
 }
 
-async function* socketLines(socket: Socket): AsyncIterable<string> {
+export async function* socketLines(socket: Socket): AsyncIterable<string> {
   let buffer = '';
   for await (const data of socket) {
     buffer += String(data);
@@ -169,6 +169,20 @@ async function* runExecute(
   signal?: AbortSignal,
 ): AsyncIterable<DeskChunk> {
   const socket = await openSocket(socketPath);
+  yield* runExecuteOverSocket(socket, ref, call, signal);
+}
+
+/**
+ * T-1423: runs one tool call over an already-open daemon socket and yields the
+ * chunks. Shared with `runner-hands.ts`, whose `desk.exec` stream carries the
+ * same newline-delimited JSON, so the daemon is spoken from one place.
+ */
+export async function* runExecuteOverSocket(
+  socket: Socket,
+  ref: DeskRef,
+  call: DeskToolCall,
+  signal?: AbortSignal,
+): AsyncIterable<DeskChunk> {
   const onAbort = (): void => {
     socket.destroy();
   };

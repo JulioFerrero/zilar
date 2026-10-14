@@ -26,6 +26,7 @@ import {
   type RoomSubscription,
 } from './contracts';
 import { loadDelegationFlags, loadRoomGateState, type RoomGateState } from './db';
+import { resolveTurnDesk, TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER } from './desk-exec';
 import { loadModelTarget } from './model-target';
 import type { GroupTurnContext } from './group-turn';
 
@@ -223,9 +224,12 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
       canDelegate && handoffTargets.length > 0
         ? handoffTargets.map((target) => ({ id: target.aiId, name: target.nick }))
         : undefined;
+    // T-1423: resolve the AI's computer for this turn (cloud or its runner).
+    const turnDesk = yield* Effect.promise(() => resolveTurnDesk(deps, ai));
+    const deskEnabled = turnDesk.client !== undefined;
     const groupTools = buildGroupTools(allowedForAction ? actionsList : [], delegateTargets, {
       // T-1409: the desk tools ride the same flag as their executor.
-      desk: deps.desk !== undefined && ai.computerMode === 'cloud',
+      desk: deskEnabled,
     });
     // The re-check callback runs at tool-execution time. A `plain
     // member` turn never offers `request_action`, so this never fires for
@@ -262,6 +266,11 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     // are enabled and the room offers `request_action`; the loop runs
     // `toolMaxRounds` rounds with a live progress message.
     const groupProgress = liveProgressReporter(session, roomJid, 'groupchat', ai.jid);
+    if (turnDesk.waiting) {
+      yield* Effect.promise(() =>
+        groupProgress.reportProgress(TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER),
+      );
+    }
     const groupMessages =
       deps.toolsEnabled === true && allowActions ? withToolGuide(messages) : messages;
     const turnOutcome = yield* Effect.promise(() =>
@@ -287,9 +296,7 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
             allowActions,
             delegateTargetIds: new Set(delegateTargets?.map((entry) => entry.id) ?? []),
           },
-          deps.desk !== undefined && ai.computerMode === 'cloud'
-            ? { ownerUserId: ai.owner }
-            : undefined,
+          deskEnabled ? { ownerUserId: ai.owner, client: turnDesk.client } : undefined,
         ),
         ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
         ...(handoffTargets.length === 0 ? {} : { handoffTargets }),

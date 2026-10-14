@@ -11,6 +11,7 @@ import type { ArchivePool } from '../../search/service';
 import type { EjabberdAdminClient } from '../../xmpp/admin-client';
 import type { XmppConfig } from '../../xmpp/config';
 import type { completeChat } from '../reply';
+import type { RunnerDeskSource } from '../../hands/resolve';
 import type { DeskClient } from './desk-exec';
 
 export interface GatewayLogger {
@@ -64,6 +65,10 @@ export interface AgentGatewayDeps {
    * when the sidecar is wired (`DESK_AGENT_SOCKET`); a turn offers the desk
    * tools only for an AI whose `computer_mode` is `cloud`. */
   desk?: DeskClient;
+  /** T-1423: the runner hub's desk ops, read lazily per turn (the hub starts
+   * after the gateway is built). Absent or returning null keeps `runner` and
+   * `auto` unavailable. */
+  runnerDesk?: () => RunnerDeskSource | null;
 }
 
 export interface AgentGatewayConfig {

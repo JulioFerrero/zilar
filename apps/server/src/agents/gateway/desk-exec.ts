@@ -1,5 +1,6 @@
 // effect-plain: the Promise edge over the Hands client (an async iterable); the
 // tool executor wraps each call in `Effect.promise`.
+import type { AiComputerMode } from '@zilar/api-contract';
 import {
   DeskError,
   DeskQueued,
@@ -10,6 +11,8 @@ import {
   type DeskRef,
   type Hands,
 } from '@zilar/desk';
+import type { ServerDatabase } from '../../db/client';
+import { machineUsableFor, resolveDeskForAi, type RunnerDeskSource } from '../../hands/resolve';
 import type { ToolExecution, ValidToolCall } from '../reply';
 import { TOOL_RESULT_MAX_CHARS } from '../tool-loop';
 import { TOOL_STAGE_WAITING_FOR_COMPUTER } from '../tool-guide';
@@ -31,9 +34,11 @@ export interface DeskClient {
   readonly imageDigest: string;
 }
 
-/** The per-turn desk context: the AI's owner, so `provision` can set it. */
+/** The per-turn desk context: the AI's owner, so `provision` can set it, and
+ * the client resolved for this turn (the cloud sidecar or the AI's runner). */
 export interface DeskTurnContext {
   readonly ownerUserId: string;
+  readonly client?: DeskClient;
 }
 
 export type DeskToolCallValid = Extract<ValidToolCall, { tool: DeskToolName }>;
@@ -108,21 +113,70 @@ export function createDeskRunner(input: DeskRunnerInput): DeskRunner {
 
 /** Creates the turn's desk runner, or `null` when the turn did not offer the tools. */
 export function createTurnDeskRunner(
-  client: DeskClient | undefined,
   turn: DeskTurnContext | undefined,
   aiId: string,
   logger: GatewayLogger,
 ): DeskRunner | null {
-  if (client === undefined || turn === undefined) {
+  if (turn?.client === undefined) {
     return null;
   }
   return createDeskRunner({
-    hands: client.hands,
-    imageDigest: client.imageDigest,
+    hands: turn.client.hands,
+    imageDigest: turn.client.imageDigest,
     aiId,
     ownerUserId: turn.ownerUserId,
     logger,
   });
+}
+
+/** T-1423: the stage shown while `runner` mode waits for an offline runner. */
+export const TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER = 'Waiting for your computer';
+
+export interface TurnDeskDeps {
+  readonly db: ServerDatabase;
+  readonly desk?: DeskClient | undefined;
+  readonly runnerDesk?: (() => RunnerDeskSource | null) | undefined;
+}
+
+export interface DeskTurnInput {
+  readonly computerMode: AiComputerMode;
+  readonly machineId: string | null;
+  readonly owner: string;
+}
+
+/** The computer a turn runs on: the resolved client, or none. `waiting` marks
+ * `runner` mode whose runner is offline (the card says so). */
+export interface TurnDesk {
+  readonly client?: DeskClient;
+  readonly waiting: boolean;
+}
+
+/** Resolves the AI's computer for one turn. Called per turn, so a runner that
+ * goes offline is seen at once; no hub and no desk env stays `{ waiting: false }`. */
+export async function resolveTurnDesk(deps: TurnDeskDeps, input: DeskTurnInput): Promise<TurnDesk> {
+  const cloud = deps.desk ?? null;
+  const hub = deps.runnerDesk?.() ?? null;
+  if (cloud === null && hub === null) {
+    return { waiting: false };
+  }
+  const resolved = await resolveDeskForAi({
+    computerMode: input.computerMode,
+    machineId: input.machineId,
+    ownerId: input.owner,
+    cloud,
+    runnerImage: cloud?.imageDigest ?? null,
+    hub,
+    isMachineUsable: machineUsableFor(deps.db),
+  });
+  if ('unavailable' in resolved) {
+    return {
+      waiting: input.computerMode === 'runner' && resolved.unavailable === 'offline',
+    };
+  }
+  return {
+    client: { hands: resolved.hands, imageDigest: resolved.imageDigest },
+    waiting: false,
+  };
 }
 
 /** Runs one desk call; an improvised call on a turn that offered none is refused. */

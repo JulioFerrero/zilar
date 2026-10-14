@@ -76,9 +76,9 @@ export interface UpdateAiInput {
   // T-0474: the two delegation opt-ins, owner only like the rest.
   canDelegate?: boolean;
   acceptsDelegation?: boolean;
-  // T-1409: the owner turns the AI's computer on (`cloud`) or off. Only these
-  // two values are accepted through the API for now.
-  computerMode?: Extract<AiComputerMode, 'off' | 'cloud'>;
+  // T-1409/T-1423: where the AI's computer runs. `runner` and `auto` need an
+  // assigned machine, refused with a 400 in `updateAi` otherwise.
+  computerMode?: AiComputerMode;
 }
 
 // The persona ceiling the API enforces (`CreateAiSchema`), repeated here so a

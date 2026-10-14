@@ -46,8 +46,10 @@ export interface ActiveAiForGateway {
   name: string;
   persona: string;
   // T-1409: the AI's computer mode, so a turn only offers the desk tools when
-  // the desk is actually enabled for it.
+  // the desk is actually enabled for it. T-1423: the assigned machine id, so
+  // `runner`/`auto` can resolve to that runner.
   computerMode: AiComputerMode;
+  machineId: string | null;
 }
 
 export async function listActiveAisForGateway(db: ServerDatabase): Promise<ActiveAiForGateway[]> {
@@ -62,7 +64,8 @@ export async function listActiveAisForGateway(db: ServerDatabase): Promise<Activ
         ais.owner,
         ais.name,
         ais.persona,
-        ais.computer_mode
+        ais.computer_mode,
+        ais.machine_id
       FROM ais
       WHERE ais.status = ${'active'}
       ORDER BY ais.created_at ASC`;

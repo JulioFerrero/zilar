@@ -30,7 +30,11 @@ import {
 } from './contracts';
 import { loadActiveAi, loadOwnerName } from './db';
 import { loadModelTarget } from './model-target';
-import type { DeskTurnContext } from './desk-exec';
+import {
+  resolveTurnDesk,
+  TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER,
+  type DeskTurnContext,
+} from './desk-exec';
 import type { RequestActionContext } from './group-turn';
 import { recordUsage } from '../../ais/usage-store';
 import type { createLiveSession } from './live';
@@ -281,11 +285,16 @@ export function createDmTurn(ctx: DmTurnContext) {
       // correction when the reply lands. Best effort: the turn never fails
       // over it.
       const dmProgress = liveProgressReporter(session, ownerJid, 'chat', ai.jid);
-      // T-1409: offer the desk tools only when the AI's `computer_mode` is
-      // `cloud` and a desk client is wired. The list and the executor see the
-      // same flag, so a turn that did not advertise them refuses an improvised
-      // call.
-      const deskEnabled = deps.desk !== undefined && ai.computerMode === 'cloud';
+      // T-1423: resolve the AI's computer for this turn (cloud or its runner).
+      // T-1409: the tools are offered only when it resolves to hands; the list
+      // and the executor see the same flag.
+      const turnDesk = yield* Effect.promise(() => resolveTurnDesk(deps, ai));
+      if (turnDesk.waiting) {
+        yield* Effect.promise(() =>
+          dmProgress.reportProgress(TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER),
+        );
+      }
+      const deskEnabled = turnDesk.client !== undefined;
       const outcome = yield* Effect.promise(() =>
         runDmTurn({
           aiId: session.aiId,
@@ -296,7 +305,7 @@ export function createDmTurn(ctx: DmTurnContext) {
             session,
             dmChatKey,
             undefined,
-            deskEnabled ? { ownerUserId: ai.owner } : undefined,
+            deskEnabled ? { ownerUserId: ai.owner, client: turnDesk.client } : undefined,
           ),
           tools: buildTools(deps.actions?.listActions() ?? [], { desk: deskEnabled }),
           ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),

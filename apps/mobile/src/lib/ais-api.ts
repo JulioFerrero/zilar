@@ -71,8 +71,8 @@ export interface UpdateAiInput {
   name?: string;
   persona?: string;
   limits?: AiLimits;
-  /** T-1409: turn the AI's computer on (`cloud`) or off. */
-  computerMode?: 'off' | 'cloud';
+  /** T-1409/T-1423: where the AI's computer runs. */
+  computerMode?: 'off' | 'cloud' | 'runner' | 'auto';
 }
 
 export interface AisApi {

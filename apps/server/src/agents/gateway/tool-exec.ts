@@ -73,7 +73,7 @@ export function createToolExec(ctx: ToolExecContext) {
     const aiId = session.aiId;
     // T-1409: one desk runner per turn, created only when the turn offered the
     // desk tools; `null` keeps an improvised call an unknown tool.
-    const deskRunner = createTurnDeskRunner(deps.desk, desk, aiId, logger);
+    const deskRunner = createTurnDeskRunner(desk, aiId, logger);
     // The T-0444 cap: at most five facts saved per turn. The counter lives in
     // this closure, which is created once per turn, so it resets with the
     // turn.

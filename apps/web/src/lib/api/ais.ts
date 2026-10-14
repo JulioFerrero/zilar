@@ -46,8 +46,8 @@ export interface UpdateAiInput {
   // T-0478: the owner's delegation opt-ins.
   canDelegate?: boolean;
   acceptsDelegation?: boolean;
-  // T-1409: the owner turns the AI's computer on (`cloud`) or off.
-  computerMode?: 'off' | 'cloud';
+  // T-1409/T-1423: where the AI's computer runs.
+  computerMode?: 'off' | 'cloud' | 'runner' | 'auto';
 }
 
 export async function listAis(): Promise<PublicAi[]> {
