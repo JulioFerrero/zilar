@@ -2,6 +2,24 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-15 00:10: history rewritten (Julio OK'd): main is 172 commits, down from 3,096.**
+- **How it went:**
+  - the final tree is byte-identical, and every intermediate tree existed;
+  - pushed with `--force-with-lease` from `ceca19fb6` to `7bc17c67a`;
+  - the 14 `v0.1.x` tags were re-pointed and pushed; local `t0113-orig` was deleted.
+- **Backups:**
+  - `~/.zilar-lead/pre-rewrite-2026-10-14.bundle` (old main and its tags, verified);
+  - `~/.zilar-lead/history-map-2026-10-14.tsv` (old hash to new, for the hashes cited in docs and task files);
+  - `~/.zilar-lead/state-pre-rewrite.json`.
+- **Afterwards:**
+  - the doctor and phone-build worktrees were moved to the new main;
+  - `state.json` `doctor.head`/`since` were set to the new tip;
+  - the autopilot was restarted.
+- **The new flow works:** T-1421's spec was committed on its task branch, and main stayed clean.
+- **Merged before the rewrite:** T-1396, the custom OpenAI-compatible provider. Live: migration 59, `base_url` exists, "desks: off", 0 errors.
+- **Running:** T-1421, the Go pause (OpenCode Go is at 100% for the month and renews in about 12 days).
+- **Disk:** 23 GB free (95% used); one Gradle packaging failure today may relate to it.
+
 **2026-10-14 23:30: the rewrite is approved (Julio: the 174-commit version); it runs after T-1396 merges.**
 - **The dry run passed** (`/Users/julio/.claude/jobs/ab934c68/tmp/rewrite/REPORT.md`).
 - **Apply:**
