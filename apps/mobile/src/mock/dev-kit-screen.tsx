@@ -4,7 +4,18 @@
  * sample content so the kit can be eyeballed on-device. It stays unlinked in
  * release builds too: no tab, no button, no router push.
  */
-import { Bell, FolderOpen, MessageCircle, Trash2, UserRound } from 'lucide-react-native';
+import {
+  Bell,
+  Cloud,
+  FolderOpen,
+  MessageCircle,
+  Power,
+  Server,
+  Sparkles,
+  Trash2,
+  UserRound,
+  X,
+} from 'lucide-react-native';
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,8 +31,10 @@ import { IconButton } from '@/components/ui/icon-button';
 import { IconTile } from '@/components/ui/icon-tile';
 import { ListRow } from '@/components/ui/list-row';
 import { SearchField } from '@/components/ui/search-field';
+import { SelectSheet } from '@/components/ui/select-sheet';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { StateMessage } from '@/components/ui/state-message';
+import { StepTrack } from '@/components/ui/step-track';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
@@ -43,6 +56,10 @@ function KitCatalog() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [search, setSearch] = useState('Try clearing me');
   const [segment, setSegment] = useState('one');
+  const [step, setStep] = useState('key');
+  const [choice, setChoice] = useState('auto');
+  const [provider, setProvider] = useState('deepseek');
+  const [footerOpen, setFooterOpen] = useState(false);
   const [switchOn, setSwitchOn] = useState(true);
   const [switchOff, setSwitchOff] = useState(false);
   return (
@@ -182,6 +199,59 @@ function KitCatalog() {
         </View>
 
         <View className="mt-6 gap-2">
+          <SectionLabel>Choice control</SectionLabel>
+          <SegmentedControl
+            tone="choice"
+            options={[
+              { value: 'off', label: 'Off', icon: Power },
+              { value: 'zilar', label: 'Zilar', icon: Cloud },
+              { value: 'machine', label: 'Machine', icon: Server },
+              { value: 'auto', label: 'Auto', icon: Sparkles },
+            ]}
+            value={choice}
+            onChange={setChoice}
+            accessibilityLabel="Sample choice control"
+          />
+        </View>
+
+        <View className="mt-6 gap-2">
+          <SectionLabel>Step track</SectionLabel>
+          <StepTrack
+            steps={[
+              { value: 'provider', label: 'DeepSeek' },
+              { value: 'key', label: 'Key' },
+              { value: 'model', label: 'Model' },
+              { value: 'setup', label: 'Setup' },
+            ]}
+            current={step}
+            onStepPress={setStep}
+          />
+        </View>
+
+        <View className="mt-6 gap-2">
+          <SectionLabel>Select sheet</SectionLabel>
+          <SelectSheet
+            label="Provider"
+            value={provider}
+            searchPlaceholder="Search 229 providers"
+            options={[
+              { value: 'openai', label: 'OpenAI', dot: 'online' },
+              { value: 'anthropic', label: 'Anthropic' },
+              { value: 'deepseek', label: 'DeepSeek' },
+              { value: 'google', label: 'Google' },
+              { value: 'groq', label: 'Groq' },
+              { value: 'mistral', label: 'Mistral' },
+              { value: 'together', label: 'Together', dot: 'online' },
+              { value: 'xai', label: 'xAI' },
+              { value: 'cohere', label: 'Cohere' },
+              { value: 'cerebras', label: 'Cerebras' },
+            ]}
+            onChange={setProvider}
+            footerOption={{ label: 'OpenAI-compatible', onPress: noop }}
+          />
+        </View>
+
+        <View className="mt-6 gap-2">
           <SectionLabel>Switch</SectionLabel>
           <View className="gap-3">
             <Switch label="Notifications" value={switchOn} onValueChange={setSwitchOn} />
@@ -232,6 +302,51 @@ function KitCatalog() {
               placeholder="Type with the keyboard up"
               accessibilityLabel="Sample bottom sheet field"
               className="mt-2"
+            />
+          </BottomSheet>
+        </View>
+
+        <View className="mt-6 gap-2">
+          <SectionLabel>Bottom sheet with header and footer</SectionLabel>
+          <Button onPress={() => setFooterOpen(true)}>
+            <Text>Open sheet kit</Text>
+          </Button>
+          <BottomSheet
+            visible={footerOpen}
+            onClose={() => setFooterOpen(false)}
+            closeLabel="Close sheet kit"
+            title="New AI"
+            onBack={noop}
+            headerRight={
+              <IconButton
+                label="Close"
+                className="h-9 w-9 rounded-xl"
+                onPress={() => setFooterOpen(false)}
+              >
+                <X size={16} color={ICON} />
+              </IconButton>
+            }
+            footer={
+              <Button onPress={() => setFooterOpen(false)}>
+                <Text>Continue</Text>
+              </Button>
+            }
+          >
+            <StepTrack
+              steps={[
+                { value: 'provider', label: 'DeepSeek' },
+                { value: 'key', label: 'Key' },
+                { value: 'model', label: 'Model' },
+                { value: 'setup', label: 'Setup' },
+              ]}
+              current="key"
+              onStepPress={noop}
+            />
+            <TextField
+              label="API key"
+              placeholder="A field in a sheet with a footer"
+              accessibilityLabel="Sample sheet kit field"
+              className="mt-4"
             />
           </BottomSheet>
         </View>

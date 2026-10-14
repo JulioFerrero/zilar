@@ -1,12 +1,16 @@
+import type { LucideIcon } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { segment, well } from '@/lib/depth';
+import { FOREGROUND, MUTED_FOREGROUND } from '@/lib/colors';
+import { ACCENT_FOREGROUND, primaryKey, segment, well } from '@/lib/depth';
 import { cn } from '@/lib/utils';
 
 export interface SegmentedOption {
   value: string;
   label: string;
+  /** An optional lucide icon, drawn at 15 px inline with the label. */
+  icon?: LucideIcon;
 }
 
 export interface SegmentedControlProps {
@@ -15,6 +19,12 @@ export interface SegmentedControlProps {
   onChange: (value: string) => void;
   accessibilityLabel: string;
   mode?: 'tabs' | 'radio';
+  /**
+   * `tab` is the default: the active option is the dark raised segment.
+   * `choice` is the New AI look: the selected option is the light primary key
+   * with dark text, a 40 px row, and every option keeps the same weight.
+   */
+  tone?: 'tab' | 'choice';
   /** Extra classes for the well track. */
   className?: string;
 }
@@ -24,7 +34,9 @@ export interface SegmentedControlProps {
  * segment raised (`ui-style.md` §5). Exactly one option is selected; the track
  * carries the `tablist` or `radiogroup` role and each option the matching one.
  * The option `key` carries the selected state on purpose, so the raised style
- * re-applies when the selection toggles (the Stickers tabs trick).
+ * re-applies when the selection toggles (the Stickers tabs trick). With
+ * `tone="choice"` the selected option is the light primary key instead
+ * (`PhoneSetup.dc.html`), a 40 px row at 13/500 that can carry an inline icon.
  */
 export function SegmentedControl({
   options,
@@ -32,9 +44,11 @@ export function SegmentedControl({
   onChange,
   accessibilityLabel,
   mode = 'tabs',
+  tone = 'tab',
   className,
 }: SegmentedControlProps) {
   const isRadio = mode === 'radio';
+  const isChoice = tone === 'choice';
   return (
     <View
       accessibilityRole={isRadio ? 'radiogroup' : 'tablist'}
@@ -44,6 +58,12 @@ export function SegmentedControl({
     >
       {options.map((option) => {
         const selected = option.value === value;
+        const Icon = option.icon;
+        const labelTone = selected
+          ? isChoice
+            ? 'text-accent-foreground'
+            : 'text-foreground'
+          : 'text-muted-foreground';
         return (
           <Pressable
             key={`${option.value}-${selected ? 'on' : 'off'}`}
@@ -55,17 +75,19 @@ export function SegmentedControl({
                 onChange(option.value);
               }
             }}
-            className="h-[34px] flex-1 items-center justify-center rounded-[7px]"
-            style={selected ? segment : undefined}
+            className={cn(
+              'flex-1 flex-row items-center justify-center gap-1.5 rounded-[7px]',
+              isChoice ? 'h-10' : 'h-[34px]',
+            )}
+            style={selected ? (isChoice ? primaryKey : segment) : undefined}
           >
-            <Text
-              className={cn(
-                'text-[13px] font-medium',
-                selected ? 'text-foreground' : 'text-muted-foreground',
-              )}
-            >
-              {option.label}
-            </Text>
+            {Icon === undefined ? null : (
+              <Icon
+                size={15}
+                color={selected ? (isChoice ? ACCENT_FOREGROUND : FOREGROUND) : MUTED_FOREGROUND}
+              />
+            )}
+            <Text className={cn('text-[13px] font-medium', labelTone)}>{option.label}</Text>
           </Pressable>
         );
       })}

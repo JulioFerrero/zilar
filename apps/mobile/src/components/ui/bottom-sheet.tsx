@@ -1,10 +1,15 @@
 import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { palette } from '@zilar/ui-tokens';
+import { ChevronLeft } from 'lucide-react-native';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { ScrollView, View, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
+import { ICON } from '@/lib/colors';
 import { runInBackground } from '@/lib/effect/run-in-background';
+import { cn } from '@/lib/utils';
 
 type BottomSheetProps = {
   visible: boolean;
@@ -14,8 +19,14 @@ type BottomSheetProps = {
    * Kept so the call sites don't change; see the T-1348 Report.
    */
   closeLabel: string;
-  /** A plain title row above the scrollable content, when given. */
+  /** The header title; it also announces the sheet to screen readers. */
   title?: string;
+  /** A dark back key on the header's left, when given. */
+  onBack?: () => void;
+  /** Keys on the header's right (a close key, or Shuffle and Reset). */
+  headerRight?: ReactNode;
+  /** A sticky row under the scroll view, kept above the keyboard. */
+  footer?: ReactNode;
   /** A `max-h-[NN%]` class; the panel is capped at that share of the screen. */
   maxHeightClassName?: string;
   children?: ReactNode;
@@ -41,8 +52,11 @@ function maxHeightFraction(className: string): number {
  * `detents={['auto']}` sizes the panel to its content, capped at the share of
  * the screen named by `maxHeightClassName` (via `maxContentHeight`). The library
  * does not support `auto` together with its `scrollable` mode, so the content is
- * bounded by the same cap and scrolls within it instead. The content's top
- * padding (`pt-6`) keeps its first row clear of the native grabber, which the
+ * bounded by the same cap and scrolls within it instead. The panel is the D24
+ * `panel` colour with a top hairline and the 36×4 grabber (`ui-style.md` §2); the
+ * header row (an optional back key, the title, optional right keys) and the
+ * `footer` row sit outside the scroll view, so a long body scrolls between them.
+ * The top padding keeps the header clear of the native grabber, which the
  * library draws inside the sheet's top edge and offers no content inset for.
  */
 export function BottomSheet({
@@ -50,13 +64,20 @@ export function BottomSheet({
   onClose,
   closeLabel,
   title,
+  onBack,
+  headerRight,
+  footer,
   maxHeightClassName = 'max-h-[85%]',
   children,
 }: BottomSheetProps) {
   const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const sheet = useRef<TrueSheet>(null);
   const presented = useRef(false);
   const maxHeight = Math.round(height * maxHeightFraction(maxHeightClassName));
+  // A sheet with no title, back key or right keys shows no header row, so the
+  // content starts at the top instead of under an empty block.
+  const hasHeader = title !== undefined || onBack !== undefined || headerRight !== undefined;
 
   useEffect(() => {
     const instance = sheet.current;
@@ -77,9 +98,10 @@ export function BottomSheet({
       ref={sheet}
       detents={['auto']}
       maxContentHeight={maxHeight}
-      backgroundColor={palette.surface}
+      backgroundColor={palette.panel}
       cornerRadius={16}
       grabber
+      grabberOptions={{ width: 36, height: 4, cornerRadius: 2, color: '#333333', adaptive: false }}
       dimmed
       dismissible
       accessibilityOptions={{ grabberLabel: closeLabel }}
@@ -88,18 +110,41 @@ export function BottomSheet({
         onClose();
       }}
     >
-      <View
-        className="border-t border-border-strong bg-surface px-4 pt-6"
-        style={{ maxHeight, paddingBottom: 16 }}
-      >
-        <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
-          {title !== undefined ? (
-            <Text accessibilityRole="header" className="text-[18px] font-semibold text-foreground">
-              {title}
+      <View className="border-t border-border bg-panel" style={{ maxHeight }}>
+        {hasHeader ? (
+          <View className="flex-row items-center gap-2 px-4 pt-[22px]">
+            {onBack !== undefined ? (
+              <IconButton label="Back" className="h-9 w-9 rounded-xl" onPress={onBack}>
+                <ChevronLeft size={18} color={ICON} />
+              </IconButton>
+            ) : null}
+            <Text
+              numberOfLines={1}
+              accessibilityRole="header"
+              className="min-w-0 flex-1 text-[17px] font-semibold tracking-[-0.02em] text-foreground"
+            >
+              {title ?? ''}
             </Text>
-          ) : null}
+            {headerRight}
+          </View>
+        ) : null}
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
+          style={{ flexShrink: 1 }}
+          contentContainerStyle={{ paddingBottom: footer !== undefined ? 12 : 16 }}
+          className={cn('px-4', hasHeader ? 'pt-3.5' : 'pt-[22px]')}
+        >
           {children}
         </ScrollView>
+        {footer !== undefined ? (
+          <View
+            className="border-t border-border px-4 pt-3"
+            style={{ paddingBottom: Math.max(insets.bottom, 34) }}
+          >
+            {footer}
+          </View>
+        ) : null}
       </View>
     </TrueSheet>
   );
