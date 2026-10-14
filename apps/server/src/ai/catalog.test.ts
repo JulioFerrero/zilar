@@ -5,8 +5,9 @@ import { fallbackProviders, getAiCatalog, mapCatalog, resetCatalogCache } from '
 // A recorded sample of `https://models.dev/api.json` (2026-10-14), trimmed to
 // the models the assertions need. It carries a deprecated model
 // (`gpt-3.5-turbo`), a non-text model (`gemini-2.5-pro-preview-tts`, audio
-// output), a model with no cost (`openrouter/bodybuilder`) and a provider we
-// do not support (`groq`).
+// output), a model with no cost (`openrouter/bodybuilder`), a provider with no
+// OpenAI-compatible `npm` (`groq`, skipped) and one compatible provider
+// (`together`, T-1429).
 const sample: unknown = JSON.parse(
   readFileSync(new URL('./__fixtures__/models-dev-sample.json', import.meta.url), 'utf8'),
 );
@@ -20,21 +21,50 @@ function failingFetch(): Promise<Response> {
 }
 
 describe('mapCatalog', () => {
-  it('keeps only our providers, drops deprecated and non-text models, newest first', () => {
+  it('lists the natives first, then the compatible providers by name', () => {
     const providers = mapCatalog(sample);
 
+    // `groq` has no OpenAI-compatible `npm`, so it is skipped.
     expect(providers.map((provider) => provider.id)).toEqual([
       'openai',
       'anthropic',
       'google',
       'xai',
       'openrouter',
+      'together',
+    ]);
+    expect(providers.map((provider) => provider.kind)).toEqual([
+      'native',
+      'native',
+      'native',
+      'native',
+      'native',
+      'compatible',
     ]);
     expect(providers[0]?.name).toBe('OpenAI');
+    expect(providers[0]?.docUrl).toBe('https://platform.openai.com/docs/models');
     // `gpt-3.5-turbo` is deprecated and `o4-mini` is not in the sample.
     expect(providers[0]?.models.map((model) => model.id)).toEqual(['gpt-5.4', 'gpt-4o-mini']);
     // The TTS model outputs audio, so it is not a chat model.
     expect(providers[2]?.models.map((model) => model.id)).toEqual(['gemini-2.5-flash']);
+  });
+
+  it('keeps a compatible provider with its docs and newest-first models', () => {
+    const together = mapCatalog(sample).find((provider) => provider.id === 'together');
+
+    expect(together?.name).toBe('Together AI');
+    expect(together?.kind).toBe('compatible');
+    expect(together?.docUrl).toBe('https://docs.together.ai/docs/openai-api-compatibility');
+    expect(together?.models.map((model) => model.id)).toEqual([
+      'deepseek-ai/DeepSeek-R1',
+      'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+    ]);
+  });
+
+  it('answers an empty docUrl when models.dev has no doc', () => {
+    const xai = mapCatalog(sample).find((provider) => provider.id === 'xai');
+
+    expect(xai?.docUrl).toBe('');
   });
 
   it('maps every field of a model', () => {

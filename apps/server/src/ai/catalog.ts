@@ -1,3 +1,4 @@
+// effect-plain: a fetch, a 24 h cache and a fallback; the mapping (Effect Schema) lives in catalog-map.ts
 // T-1395: the models.dev catalog behind the wizard's model step.
 //
 // Fetches the public `https://models.dev/api.json` (verified 2026-10-14: 229
@@ -5,14 +6,18 @@
 // `id`, `name`, `release_date`, `reasoning`, `tool_call`, `status`,
 // `modalities { input, output }`, `limit { context }` and
 // `cost { input, output, cache_read, cache_write }` in USD per million
-// tokens). It keeps only our six LLM providers, caches the answer in memory
+// tokens). It keeps our six native LLM providers plus, since T-1429, every
+// provider that speaks the OpenAI-compatible API, caches the answer in memory
 // for 24 h, and on any failure serves the last good copy or the static list.
 // The cache prices never reach the public catalog response; `cost.ts` reads
-// them through `setModelPrices` (T-1405).
+// them through `setModelPrices` (T-1405). The mapping itself lives in
+// `./catalog-map`.
 
-import { Option, Schema } from 'effect';
-import type { AiCatalog, AiCatalogModel, AiCatalogProvider } from '@zilar/api-contract';
-import { modelPricesFor, priceKey, setModelPrices, type ModelPrices } from './cost';
+import type { AiCatalog, AiCatalogProvider } from '@zilar/api-contract';
+import { modelPricesFor, setModelPrices } from './cost';
+import { PROVIDERS, PROVIDER_NAMES, mapCatalogDocument, resetCatalogBaseUrls } from './catalog-map';
+
+export { catalogBaseUrl } from './catalog-map';
 
 export const MODELS_DEV_URL = 'https://models.dev/api.json';
 
@@ -21,19 +26,7 @@ const FETCH_TIMEOUT_MS = 10_000;
 const MAX_BYTES = 15 * 1024 * 1024;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
-// models.dev uses the same provider ids we do, so the mapping is the identity.
-const PROVIDERS = ['openai', 'anthropic', 'google', 'deepseek', 'xai', 'openrouter'] as const;
-
 type ProviderId = (typeof PROVIDERS)[number];
-
-const PROVIDER_NAMES: Record<ProviderId, string> = {
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-  google: 'Google',
-  deepseek: 'DeepSeek',
-  xai: 'xAI',
-  openrouter: 'OpenRouter',
-};
 
 // A copy of `@zilar/chat-core`'s `MODEL_SUGGESTIONS`: the server does not
 // depend on that package, so the same six lists live here for the fallback.
@@ -46,122 +39,23 @@ const FALLBACK_MODEL_IDS: Record<ProviderId, readonly string[]> = {
   openrouter: ['openai/gpt-4o', 'anthropic/claude-sonnet-4.5', 'google/gemini-2.5-pro'],
 };
 
-const Modalities = Schema.Struct({
-  input: Schema.optional(Schema.Array(Schema.String)),
-  output: Schema.optional(Schema.Array(Schema.String)),
-});
-
-const ModelsDevModel = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  release_date: Schema.optional(Schema.String),
-  tool_call: Schema.optional(Schema.Boolean),
-  reasoning: Schema.optional(Schema.Boolean),
-  status: Schema.optional(Schema.String),
-  modalities: Schema.optional(Modalities),
-  limit: Schema.optional(Schema.Struct({ context: Schema.optional(Schema.Number) })),
-  cost: Schema.optional(
-    Schema.Struct({
-      input: Schema.optional(Schema.Number),
-      output: Schema.optional(Schema.Number),
-      cache_read: Schema.optional(Schema.Number),
-      cache_write: Schema.optional(Schema.Number),
-    }),
-  ),
-});
-
-// The provider record is decoded loosely and each model on its own: models.dev
-// ships thousands of entries, and one malformed model must not drop the rest.
-const ModelsDevProvider = Schema.Struct({
-  models: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
-});
-
-type ModelsDevModelType = typeof ModelsDevModel.Type;
-
-// A model without a text input or a text output (an image, audio or embedding
-// model) is not a chat model. A model with no `modalities` is kept: the data
-// cannot prove it is not text.
-function isTextModel(model: ModelsDevModelType): boolean {
-  const modalities = model.modalities;
-  if (modalities === undefined) {
-    return true;
-  }
-  return (
-    (modalities.input?.includes('text') ?? false) && (modalities.output?.includes('text') ?? false)
-  );
-}
-
-function toCatalogModel(model: ModelsDevModelType): AiCatalogModel {
-  return {
-    id: model.id,
-    name: model.name,
-    contextTokens: model.limit?.context ?? 0,
-    inputPricePerMTok: model.cost?.input ?? null,
-    outputPricePerMTok: model.cost?.output ?? null,
-    toolCalls: model.tool_call ?? false,
-    reasoning: model.reasoning ?? false,
-    releaseDate: model.release_date ?? '',
-  };
-}
-
-/**
- * Maps the models.dev document to our providers, dropping deprecated and
- * non-text models and sorting each provider's models newest first, alongside
- * the per-model prices (including cache prices) the cost module keeps. An
- * unknown or missing provider is skipped.
- */
-function mapCatalogDocument(raw: unknown): {
-  providers: AiCatalogProvider[];
-  prices: Map<string, ModelPrices>;
-} {
-  if (typeof raw !== 'object' || raw === null) {
-    return { providers: [], prices: new Map() };
-  }
-  const root = raw as Record<string, unknown>;
-  const providers: AiCatalogProvider[] = [];
-  const prices = new Map<string, ModelPrices>();
-  for (const id of PROVIDERS) {
-    const parsed = Schema.decodeUnknownOption(ModelsDevProvider)(root[id]);
-    if (Option.isNone(parsed)) {
-      continue;
-    }
-    const models = Object.values(parsed.value.models ?? {})
-      .flatMap((raw): ModelsDevModelType[] => {
-        const model = Schema.decodeUnknownOption(ModelsDevModel)(raw);
-        return Option.isSome(model) ? [model.value] : [];
-      })
-      .filter((model) => model.status !== 'deprecated' && isTextModel(model))
-      .sort((a, b) => (b.release_date ?? '').localeCompare(a.release_date ?? ''));
-    if (models.length === 0) {
-      continue;
-    }
-    providers.push({ id, name: PROVIDER_NAMES[id], models: models.map(toCatalogModel) });
-    for (const model of models) {
-      prices.set(priceKey(id, model.id), {
-        inputPerMTok: model.cost?.input ?? null,
-        outputPerMTok: model.cost?.output ?? null,
-        cacheReadPerMTok: model.cost?.cache_read ?? null,
-        cacheWritePerMTok: model.cost?.cache_write ?? null,
-      });
-    }
-  }
-  return { providers, prices };
-}
-
 /**
  * The public catalog providers, exactly as the contract carries them. Pure, so
  * the test drives it with a fixture; `getAiCatalog` uses the internal mapper
- * above, which also keeps the cache prices out of this response.
+ * in `./catalog-map`, which also keeps the cache prices out of this response.
  */
 export function mapCatalog(raw: unknown): AiCatalogProvider[] {
   return mapCatalogDocument(raw).providers;
 }
 
-/** The static list, marked `source: 'fallback'`, when models.dev cannot be reached. */
+// When models.dev cannot be reached and no good copy exists only the natives
+// are listed: the compatible base URLs cannot be known offline (T-1429).
 export function fallbackProviders(): AiCatalogProvider[] {
   return PROVIDERS.map((id) => ({
     id,
     name: PROVIDER_NAMES[id],
+    kind: 'native' as const,
+    docUrl: '',
     models: FALLBACK_MODEL_IDS[id].map((modelId) => ({
       id: modelId,
       name: modelId,
@@ -218,9 +112,11 @@ async function readCappedBody(response: Response, cap: number): Promise<string |
 
 let cache: { readonly catalog: AiCatalog; readonly at: number } | null = null;
 
-/** Test seam: drops the in-memory cache. */
+// Test seam: drops the in-memory cache and the compatible base URL map it
+// fills, so a later `getAiCatalog` maps the document again (a cold process).
 export function resetCatalogCache(): void {
   cache = null;
+  resetCatalogBaseUrls();
 }
 
 export interface CatalogDeps {

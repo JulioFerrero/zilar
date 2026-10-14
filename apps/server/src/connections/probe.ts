@@ -1,4 +1,5 @@
 import { Data, Duration, Effect } from 'effect';
+import { catalogBaseUrl } from '../ai/catalog';
 import { redactSecrets } from '../ai/http';
 import { createPinnedFetch } from './pinned-fetch';
 import type { ProviderId } from './providers';
@@ -15,9 +16,9 @@ export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 export interface ProviderProbe {
   /**
    * T-1396: `baseUrl` is the stored URL for the OpenAI-compatible provider and
-   * ignored by every other one.
+   * ignored by every other one. T-1429: `provider` may also be a catalog id.
    */
-  testKey(provider: ProviderId, key: string, baseUrl?: string | null): Promise<ProbeOutcome>;
+  testKey(provider: string, key: string, baseUrl?: string | null): Promise<ProbeOutcome>;
 }
 
 const PROBE_TIMEOUT_MS = 10_000;
@@ -68,6 +69,24 @@ const ENDPOINTS: Record<ProviderId, Endpoint> = {
   },
 };
 
+// T-1429: a catalog provider (a models.dev id we did not hardcode) probes
+// exactly like the user's own OpenAI-compatible endpoint, through the pinned
+// fetch. An id the endpoint table does not name is such a provider.
+function usesCompatiblePath(provider: string): boolean {
+  return (
+    provider === 'openai-compatible' ||
+    catalogBaseUrl(provider) !== null ||
+    !Object.hasOwn(ENDPOINTS, provider)
+  );
+}
+
+function endpointFor(provider: string): Endpoint {
+  // `usesCompatiblePath` proved the id is a known endpoint when it is false.
+  return usesCompatiblePath(provider)
+    ? ENDPOINTS['openai-compatible']
+    : ENDPOINTS[provider as ProviderId];
+}
+
 // A failed or timed-out fetch. Internal only: it never reaches a caller, it is
 // turned into the "unreachable" outcome below.
 class ProbeUnreachable extends Data.TaggedError('ProbeUnreachable') {}
@@ -105,13 +124,13 @@ function outcomeForCustom(response: Response): ProbeOutcome {
 // receives the Effect abort signal, which fires when the probe is interrupted.
 export function testKeyEffect(
   fetchImpl: FetchLike,
-): (provider: ProviderId, key: string, baseUrl: string | null) => Effect.Effect<ProbeOutcome> {
+): (provider: string, key: string, baseUrl: string | null) => Effect.Effect<ProbeOutcome> {
   return Effect.fnUntraced(function* (
-    provider: ProviderId,
+    provider: string,
     key: string,
     baseUrl: string | null,
   ): Effect.fn.Return<ProbeOutcome> {
-    const endpoint = ENDPOINTS[provider];
+    const endpoint = endpointFor(provider);
     const probe = Effect.tryPromise({
       try: (signal) =>
         fetchImpl(endpoint.buildUrl(key, baseUrl), {
@@ -130,7 +149,7 @@ export function testKeyEffect(
     // and not a false success. The message carries no detail from the error
     // object because a URL (Google puts the key in the query) could echo the
     // key back.
-    const mapOutcome = provider === 'openai-compatible' ? outcomeForCustom : outcomeFor;
+    const mapOutcome = usesCompatiblePath(provider) ? outcomeForCustom : outcomeFor;
     return yield* probe.pipe(
       Effect.map(mapOutcome),
       Effect.catchTag('ProbeUnreachable', () =>
@@ -143,9 +162,9 @@ export function testKeyEffect(
 export function createProviderProbe(fetchImpl: FetchLike = fetch): ProviderProbe {
   return {
     testKey(provider, key, baseUrl = null) {
-      // A custom endpoint is only ever called through the pinned fetch, which
-      // re-resolves and refuses a private address on every probe.
-      if (provider === 'openai-compatible') {
+      // A custom or catalog endpoint is only ever called through the pinned
+      // fetch, which re-resolves and refuses a private address on every probe.
+      if (usesCompatiblePath(provider)) {
         if (baseUrl === null || baseUrl === '') {
           return Promise.resolve({ ok: false, message: 'The provider is unreachable' });
         }

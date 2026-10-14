@@ -325,7 +325,7 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
           void recordUsage(
             { db: deps.db, logger },
             session.aiId,
-            target.provider,
+            target.usageProvider ?? target.provider,
             target.model,
             usage,
             (deps.now ?? (() => new Date()))(),

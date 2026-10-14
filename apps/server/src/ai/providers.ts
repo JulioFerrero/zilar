@@ -40,6 +40,9 @@ export interface ModelTarget {
   apiKey: string;
   model: string;
   apiUrl?: string;
+  // T-1429: a catalog provider runs as `openai-compatible` but its usage and
+  // prices are keyed by the catalog id, so the turn records that id.
+  usageProvider?: string;
 }
 
 // The remaining providers speak the OpenAI-compatible chat-completions API;

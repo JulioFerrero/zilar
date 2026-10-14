@@ -29,7 +29,15 @@ export const PROVIDER_IDS = [
 
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
-export const ProviderIdSchema = Schema.Literals(PROVIDER_IDS);
+// T-1429: the models.dev catalog adds every OpenAI-compatible provider, so an
+// id may also be any models.dev-shaped id. The server only accepts one it knows
+// from the catalog (`Unknown provider`), so this stays a shape check.
+const CATALOG_PROVIDER_ID_PATTERN = /^[a-z0-9][a-z0-9.-]{0,63}$/;
+
+export const ProviderIdSchema = Schema.Union([
+  Schema.Literals(PROVIDER_IDS),
+  Schema.String.check(Schema.isPattern(CATALOG_PROVIDER_ID_PATTERN)),
+]);
 
 /** Narrows a free-form provider string to a known id before it is sent. */
 export const isProviderId = Schema.is(ProviderIdSchema);

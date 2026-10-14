@@ -26,10 +26,12 @@ import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import {
   CreateConnectionPayload,
   ConnectionsGroup,
+  PROVIDER_IDS,
   UpdateConnectionPayload,
   type ConnectionView,
 } from '@zilar/api-contract';
 import type { Logger } from 'pino';
+import { catalogBaseUrl, getAiCatalog } from '../ai/catalog';
 import type { Auth } from '../auth/auth';
 import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
@@ -104,6 +106,34 @@ async function validatedBaseUrl(raw: string): Promise<string> {
   }
 }
 
+// The base URL to store for a create request (T-1429). A client URL is allowed
+// only for `openai-compatible` (the contract refuses it everywhere else); a
+// catalog provider resolves its own models.dev base URL through the same
+// checks, and an id no catalog knows is a 400.
+async function connectionBaseUrl(
+  provider: string,
+  clientBaseUrl: string | undefined,
+): Promise<string | null> {
+  if (provider === 'openai-compatible') {
+    return validatedBaseUrl(clientBaseUrl ?? '');
+  }
+  if ((PROVIDER_IDS as readonly string[]).includes(provider)) {
+    return null;
+  }
+  // A restart leaves the catalog unmapped; load it once (cached, or the
+  // fallback on failure) before an id is refused, so a known compatible
+  // provider is not lost to a cold process.
+  let catalogUrl = catalogBaseUrl(provider);
+  if (catalogUrl === null) {
+    await getAiCatalog();
+    catalogUrl = catalogBaseUrl(provider);
+  }
+  if (catalogUrl === null) {
+    throw new HttpError(400, 'invalid_request', 'Unknown provider');
+  }
+  return validatedBaseUrl(catalogUrl);
+}
+
 // `create` declares its payload in the contract for the derived client but is
 // served with `handleRaw`: the body is decoded by hand in the handler (see the
 // header).
@@ -171,13 +201,10 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
             }
             const body = decoded.value;
             const created = yield* Effect.promise(async () => {
-              const baseUrl =
-                body.provider === 'openai-compatible'
-                  ? await validatedBaseUrl(body.baseUrl ?? '')
-                  : null;
+              const baseUrl = await connectionBaseUrl(body.provider, body.baseUrl);
               return createConnectionRow(deps.db, {
                 owner: user.id,
-                provider: body.provider,
+                provider: body.provider as ProviderId,
                 encryptedKey: keyCipher.encrypt(body.key),
                 label: body.label ?? null,
                 baseUrl,
@@ -252,7 +279,7 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
             // throw into a surrounding `try`; map it to a value so the
             // redacted log below runs instead of a bare 500.
             const probed = yield* Effect.promise(() =>
-              probeImpl.testKey(connection.provider as ProviderId, key, connection.baseUrl),
+              probeImpl.testKey(connection.provider, key, connection.baseUrl),
             ).pipe(
               Effect.map((outcome) => ({ failed: false as const, outcome })),
               Effect.catchDefect((defect) => Effect.succeed({ failed: true as const, defect })),

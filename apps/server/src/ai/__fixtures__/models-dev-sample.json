@@ -2,6 +2,7 @@
   "openai": {
     "id": "openai",
     "name": "OpenAI",
+    "doc": "https://platform.openai.com/docs/models",
     "models": {
       "gpt-5.4": {
         "id": "gpt-5.4",
@@ -326,6 +327,56 @@
         "cost": {
           "input": 0.59,
           "output": 0.79
+        }
+      }
+    }
+  },
+  "together": {
+    "id": "together",
+    "name": "Together AI",
+    "doc": "https://docs.together.ai/docs/openai-api-compatibility",
+    "env": ["TOGETHER_API_KEY"],
+    "npm": "@ai-sdk/openai-compatible",
+    "api": "https://api.together.xyz/v1",
+    "models": {
+      "meta-llama/Llama-3.3-70B-Instruct-Turbo": {
+        "id": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        "name": "Llama 3.3 70B Instruct Turbo",
+        "family": "llama",
+        "attachment": false,
+        "reasoning": false,
+        "tool_call": true,
+        "temperature": true,
+        "release_date": "2024-12-06",
+        "modalities": {
+          "input": ["text"],
+          "output": ["text"]
+        },
+        "open_weights": true,
+        "limit": {
+          "context": 131072
+        },
+        "cost": {
+          "input": 0.88,
+          "output": 0.88
+        }
+      },
+      "deepseek-ai/DeepSeek-R1": {
+        "id": "deepseek-ai/DeepSeek-R1",
+        "name": "DeepSeek R1",
+        "release_date": "2025-01-20",
+        "reasoning": true,
+        "tool_call": true,
+        "modalities": {
+          "input": ["text"],
+          "output": ["text"]
+        },
+        "limit": {
+          "context": 163840
+        },
+        "cost": {
+          "input": 3,
+          "output": 7
         }
       }
     }

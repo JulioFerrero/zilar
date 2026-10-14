@@ -174,7 +174,8 @@ export const PublicAi = Schema.Struct({
 export type PublicAi = typeof PublicAi.Type;
 
 // T-1395: the models.dev catalog behind the wizard's model step. The server
-// fetches models.dev, keeps our six LLM providers (identity ids, see
+// fetches models.dev, keeps our six native LLM providers plus, since T-1429,
+// every OpenAI-compatible one (identity ids, see
 // `apps/server/src/ai/catalog.ts`) and caches the result for 24 h. The
 // answer groups the models per provider, newest first. `source` says where it
 // came from: a live fetch, the last good copy, or the static list.
@@ -194,9 +195,23 @@ export const AiCatalogModel = Schema.Struct({
 
 export type AiCatalogModel = typeof AiCatalogModel.Type;
 
+// T-1429: `native` is one of our six providers (a fixed key and base URL);
+// `compatible` is a models.dev provider that speaks the OpenAI-compatible API
+// and whose base URL the server keeps to itself.
+export const AI_CATALOG_PROVIDER_KINDS = ['native', 'compatible'] as const;
+
+export const AiCatalogProviderKind = Schema.Literals(AI_CATALOG_PROVIDER_KINDS);
+
+export type AiCatalogProviderKind = typeof AiCatalogProviderKind.Type;
+
+// `kind` and `docUrl` are optional so the mock backend (an older payload
+// shape) still parses; the real server always sends both.
 export const AiCatalogProvider = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
+  kind: Schema.optional(AiCatalogProviderKind),
+  /** The provider's docs page (models.dev `doc`); `''` when it has none. */
+  docUrl: Schema.optional(Schema.String),
   models: Schema.Array(AiCatalogModel),
 });
 

@@ -331,7 +331,7 @@ export function createDmTurn(ctx: DmTurnContext) {
             void recordUsage(
               { db: deps.db, logger },
               session.aiId,
-              target.provider,
+              target.usageProvider ?? target.provider,
               target.model,
               usage,
               (deps.now ?? (() => new Date()))(),
