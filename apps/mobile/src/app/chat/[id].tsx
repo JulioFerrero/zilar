@@ -14,7 +14,7 @@ import { MessageListSkeleton } from '@/components/chat/skeleton';
 import { TaskStrip } from '@/components/chat/task-strip';
 import { TopicInfoHost } from '@/components/chat/topic-info-host';
 import { useChatScreen } from '@/components/chat/use-chat-screen';
-import { Text } from '@/components/ui/text';
+import { StateMessage } from '@/components/ui/state-message';
 import { goBackOrHome } from '@/lib/navigation';
 import { httpsTopicUrl } from '@/lib/topics';
 
@@ -42,7 +42,16 @@ function Chat() {
     }
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-background" edges={['top']}>
-        <Text className="text-[15px] text-muted-foreground">Chat not found</Text>
+        <StateMessage
+          kind="empty"
+          title="Chat not found"
+          hint="It may have been deleted or you left it."
+          action={{
+            label: 'Back to chats',
+            onPress: () => goBackOrHome(screen.router),
+            accessibilityLabel: 'Back to chats',
+          }}
+        />
       </SafeAreaView>
     );
   }

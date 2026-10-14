@@ -1,8 +1,9 @@
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Effect } from 'effect';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Platform, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/button';
@@ -148,115 +149,134 @@ export function AuthFlow({
         end={{ x: 1, y: 1 }}
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
       />
-      <SafeAreaView className="flex-1 items-center justify-center p-4">
-        <View className="w-full max-w-sm rounded-2xl border border-border-strong bg-surface p-6 shadow-xl">
-          <Text className="text-center text-[24px] font-semibold leading-8 text-foreground">
-            {heading}
-          </Text>
-          {subheading !== undefined && (
-            <Text className="mt-1 text-center text-[15px] text-muted-foreground">{subheading}</Text>
-          )}
-
-          {step === 'email' ? (
-            <View className="mt-6 gap-3">
-              <Text className="text-[14px] font-medium text-foreground">Email</Text>
-              <TextField
-                accessibilityLabel="Email"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoComplete="email"
-                autoFocus
-                returnKeyType="go"
-                editable={!busy}
-                value={email}
-                onChangeText={changeEmail}
-                onSubmitEditing={submitEmail}
-                placeholder="you@example.com"
-              />
-              {inviteStep === false && error !== undefined && (
-                <Text accessibilityRole="alert" className="text-[14px] text-danger">
-                  {error}
-                </Text>
-              )}
-              {inviteStep && inviteHint !== undefined && (
-                <Text className="text-[14px] text-muted-foreground">{inviteHint}</Text>
-              )}
-              {inviteStep && <InviteCodeField value={inviteCode} onChange={setInviteCode} />}
-              {inviteStep && error !== undefined && (
-                <Text accessibilityRole="alert" className="text-[14px] text-danger">
-                  {error}
-                </Text>
-              )}
-              <Button
-                accessibilityLabel="Continue"
-                disabled={busy}
-                onPress={submitEmail}
-                variant="default"
-                size="lg"
-                className="mt-1"
-              >
-                <Text>Continue</Text>
-              </Button>
-            </View>
-          ) : (
-            <View className="mt-6 items-center gap-4">
-              <Text className="text-center text-[15px] text-muted-foreground">
-                Enter the 6-digit code we sent to <Text className="text-foreground">{email}</Text>
+      <SafeAreaView className="flex-1">
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView
+            className="flex-1"
+            contentContainerStyle={{
+              flexGrow: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              padding: 16,
+            }}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View className="w-full max-w-sm rounded-2xl border border-border-strong bg-surface p-6 shadow-xl">
+              <Text className="text-center text-[24px] font-semibold leading-8 text-foreground">
+                {heading}
               </Text>
-              <OtpInput
-                value={code}
-                onChange={setCode}
-                onComplete={verify}
-                disabled={busy}
-                invalid={error !== undefined}
-              />
-              {error !== undefined && (
-                <Text accessibilityRole="alert" className="text-[14px] text-danger">
-                  {error}
+              {subheading !== undefined && (
+                <Text className="mt-1 text-center text-[15px] text-muted-foreground">
+                  {subheading}
                 </Text>
               )}
-              <View className="flex-row items-center gap-3">
-                <Button
-                  accessibilityLabel="Continue"
-                  disabled={busy}
-                  onPress={() => verify(code)}
-                  variant="default"
-                  size="default"
-                >
-                  <Text>Continue</Text>
-                </Button>
-                {secondsLeft > 0 ? (
-                  <Text className="text-[14px] text-muted-foreground">
-                    Resend in {secondsLeft}s
-                  </Text>
-                ) : (
+
+              {step === 'email' ? (
+                <View className="mt-6 gap-3">
+                  <Text className="text-[14px] font-medium text-foreground">Email</Text>
+                  <TextField
+                    accessibilityLabel="Email"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoComplete="email"
+                    autoFocus
+                    returnKeyType="go"
+                    editable={!busy}
+                    value={email}
+                    onChangeText={changeEmail}
+                    onSubmitEditing={submitEmail}
+                    placeholder="you@example.com"
+                  />
+                  {inviteStep === false && error !== undefined && (
+                    <Text accessibilityRole="alert" className="text-[14px] text-danger">
+                      {error}
+                    </Text>
+                  )}
+                  {inviteStep && inviteHint !== undefined && (
+                    <Text className="text-[14px] text-muted-foreground">{inviteHint}</Text>
+                  )}
+                  {inviteStep && <InviteCodeField value={inviteCode} onChange={setInviteCode} />}
+                  {inviteStep && error !== undefined && (
+                    <Text accessibilityRole="alert" className="text-[14px] text-danger">
+                      {error}
+                    </Text>
+                  )}
                   <Button
-                    variant="ghost"
+                    accessibilityLabel="Continue"
+                    disabled={busy}
+                    onPress={submitEmail}
+                    variant="default"
+                    size="lg"
+                    className="mt-1"
+                  >
+                    <Text>Continue</Text>
+                  </Button>
+                </View>
+              ) : (
+                <View className="mt-6 items-center gap-4">
+                  <Text className="text-center text-[15px] text-muted-foreground">
+                    Enter the 6-digit code we sent to{' '}
+                    <Text className="text-foreground">{email}</Text>
+                  </Text>
+                  <OtpInput
+                    value={code}
+                    onChange={setCode}
+                    onComplete={verify}
+                    disabled={busy}
+                    invalid={error !== undefined}
+                  />
+                  {error !== undefined && (
+                    <Text accessibilityRole="alert" className="text-[14px] text-danger">
+                      {error}
+                    </Text>
+                  )}
+                  <View className="flex-row items-center gap-3">
+                    <Button
+                      accessibilityLabel="Continue"
+                      disabled={busy}
+                      onPress={() => verify(code)}
+                      variant="default"
+                      size="default"
+                    >
+                      <Text>Continue</Text>
+                    </Button>
+                    {secondsLeft > 0 ? (
+                      <Text className="text-[14px] text-muted-foreground">
+                        Resend in {secondsLeft}s
+                      </Text>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="px-0"
+                        accessibilityLabel="Resend code"
+                        disabled={busy}
+                        onPress={() => sendCode()}
+                      >
+                        <Text className="text-[14px] text-accent">Resend code</Text>
+                      </Button>
+                    )}
+                  </View>
+                  <Button
+                    variant="link"
                     size="sm"
                     className="px-0"
-                    accessibilityLabel="Resend code"
-                    disabled={busy}
-                    onPress={() => sendCode()}
+                    accessibilityLabel="Use a different email"
+                    onPress={() => {
+                      setStep('email');
+                      setError(undefined);
+                    }}
                   >
-                    <Text className="text-[14px] text-accent">Resend code</Text>
+                    <Text className="text-[14px] text-muted-foreground">Use a different email</Text>
                   </Button>
-                )}
-              </View>
-              <Button
-                variant="link"
-                size="sm"
-                className="px-0"
-                accessibilityLabel="Use a different email"
-                onPress={() => {
-                  setStep('email');
-                  setError(undefined);
-                }}
-              >
-                <Text className="text-[14px] text-muted-foreground">Use a different email</Text>
-              </Button>
+                </View>
+              )}
             </View>
-          )}
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
   );

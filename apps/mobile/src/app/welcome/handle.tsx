@@ -1,7 +1,8 @@
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Effect } from 'effect';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { Platform, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -135,68 +136,84 @@ function HandleStep() {
         end={{ x: 1, y: 1 }}
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
       />
-      <SafeAreaView className="flex-1 items-center justify-center p-4">
-        <View className="w-full max-w-sm rounded-2xl border border-border-strong bg-surface p-6 shadow-xl">
-          <Text className="text-center text-[24px] font-semibold leading-8 text-foreground">
-            Pick your username
-          </Text>
-          <Text className="mt-1 text-center text-[15px] text-muted-foreground">
-            Friends add you with it, like @ada. You can change it later.
-          </Text>
-          <Text className="mt-6 text-[14px] font-medium text-foreground">Username</Text>
-          <TextField
-            accessibilityLabel="Username"
-            autoFocus
-            maxLength={32}
-            autoCapitalize="none"
-            autoCorrect={false}
-            spellCheck={false}
-            editable={!busy}
-            value={handle}
-            onChangeText={(value) => {
-              setHandle(value);
-              setTyped(true);
+      <SafeAreaView className="flex-1">
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView
+            className="flex-1"
+            contentContainerStyle={{
+              flexGrow: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              padding: 16,
             }}
-            placeholder="ada_lovelace"
-            className="mt-1"
-          />
-          <View accessibilityLiveRegion="polite" className="mt-2 min-h-[20px]">
-            {line !== null ? (
-              <Text
-                className={
-                  unavailable ? 'text-[14px] text-danger' : 'text-[14px] text-muted-foreground'
-                }
-              >
-                {line}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View className="w-full max-w-sm rounded-2xl border border-border-strong bg-surface p-6 shadow-xl">
+              <Text className="text-center text-[24px] font-semibold leading-8 text-foreground">
+                Pick your username
               </Text>
-            ) : null}
-          </View>
-          {error !== undefined ? (
-            <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
-              {error}
-            </Text>
-          ) : null}
-          <Button
-            accessibilityLabel="Continue"
-            disabled={busy}
-            onPress={submit}
-            variant="default"
-            size="lg"
-            className="mt-4"
-          >
-            <Text>Continue</Text>
-          </Button>
-          <Button
-            accessibilityLabel="Skip for now"
-            disabled={busy}
-            onPress={skip}
-            variant="ghost"
-            size="default"
-            className="mt-2"
-          >
-            <Text>Skip for now</Text>
-          </Button>
-        </View>
+              <Text className="mt-1 text-center text-[15px] text-muted-foreground">
+                Friends add you with it, like @ada. You can change it later.
+              </Text>
+              <Text className="mt-6 text-[14px] font-medium text-foreground">Username</Text>
+              <TextField
+                accessibilityLabel="Username"
+                autoFocus
+                maxLength={32}
+                autoCapitalize="none"
+                autoCorrect={false}
+                spellCheck={false}
+                editable={!busy}
+                value={handle}
+                onChangeText={(value) => {
+                  setHandle(value);
+                  setTyped(true);
+                }}
+                placeholder="ada_lovelace"
+                className="mt-1"
+              />
+              <View accessibilityLiveRegion="polite" className="mt-2 min-h-[20px]">
+                {line !== null ? (
+                  <Text
+                    className={
+                      unavailable ? 'text-[14px] text-danger' : 'text-[14px] text-muted-foreground'
+                    }
+                  >
+                    {line}
+                  </Text>
+                ) : null}
+              </View>
+              {error !== undefined ? (
+                <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
+                  {error}
+                </Text>
+              ) : null}
+              <Button
+                accessibilityLabel="Continue"
+                disabled={busy}
+                onPress={submit}
+                variant="default"
+                size="lg"
+                className="mt-4"
+              >
+                <Text>Continue</Text>
+              </Button>
+              <Button
+                accessibilityLabel="Skip for now"
+                disabled={busy}
+                onPress={skip}
+                variant="ghost"
+                size="default"
+                className="mt-2"
+              >
+                <Text>Skip for now</Text>
+              </Button>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
   );

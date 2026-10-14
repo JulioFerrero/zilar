@@ -142,7 +142,7 @@ export function ChatHeader({
     </View>
   );
   return (
-    <View className="h-16 flex-row items-center gap-1 border-b border-divider bg-surface px-1">
+    <View className="min-h-16 flex-row items-center gap-1 border-b border-divider bg-surface px-1">
       <IconButton label="Back" onPress={onBack}>
         <ChevronLeft size={24} color={iconColor} />
       </IconButton>

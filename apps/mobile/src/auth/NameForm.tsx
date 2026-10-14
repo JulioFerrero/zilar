@@ -1,8 +1,9 @@
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { Effect } from 'effect';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Platform, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/button';
@@ -59,41 +60,57 @@ export function NameForm() {
         end={{ x: 1, y: 1 }}
         style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }}
       />
-      <SafeAreaView className="flex-1 items-center justify-center p-4">
-        <View className="w-full max-w-sm rounded-2xl border border-border-strong bg-surface p-6 shadow-xl">
-          <Text className="text-center text-[24px] font-semibold leading-8 text-foreground">
-            What should we call you?
-          </Text>
-          <Text className="mt-1 text-center text-[15px] text-muted-foreground">
-            Your friends will see this name.
-          </Text>
-          <Text className="mt-6 text-[14px] font-medium text-foreground">Name</Text>
-          <TextField
-            accessibilityLabel="Name"
-            autoFocus
-            maxLength={64}
-            editable={!busy}
-            value={name}
-            onChangeText={setNameInput}
-            placeholder="Your name"
-            className="mt-1"
-          />
-          {error !== undefined && (
-            <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
-              {error}
-            </Text>
-          )}
-          <Button
-            accessibilityLabel="Continue"
-            disabled={busy}
-            onPress={submit}
-            variant="default"
-            size="lg"
-            className="mt-4"
+      <SafeAreaView className="flex-1">
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView
+            className="flex-1"
+            contentContainerStyle={{
+              flexGrow: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              padding: 16,
+            }}
+            keyboardShouldPersistTaps="handled"
           >
-            <Text>Continue</Text>
-          </Button>
-        </View>
+            <View className="w-full max-w-sm rounded-2xl border border-border-strong bg-surface p-6 shadow-xl">
+              <Text className="text-center text-[24px] font-semibold leading-8 text-foreground">
+                What should we call you?
+              </Text>
+              <Text className="mt-1 text-center text-[15px] text-muted-foreground">
+                Your friends will see this name.
+              </Text>
+              <Text className="mt-6 text-[14px] font-medium text-foreground">Name</Text>
+              <TextField
+                accessibilityLabel="Name"
+                autoFocus
+                maxLength={64}
+                editable={!busy}
+                value={name}
+                onChangeText={setNameInput}
+                placeholder="Your name"
+                className="mt-1"
+              />
+              {error !== undefined && (
+                <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
+                  {error}
+                </Text>
+              )}
+              <Button
+                accessibilityLabel="Continue"
+                disabled={busy}
+                onPress={submit}
+                variant="default"
+                size="lg"
+                className="mt-4"
+              >
+                <Text>Continue</Text>
+              </Button>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
   );

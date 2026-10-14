@@ -145,7 +145,7 @@ export function ChatActionsSheet({
         ))
       ) : (
         <ActionSheetItem
-          label={muted ? 'Muted: change' : 'Mute'}
+          label={muted ? 'Muted · Change' : 'Mute'}
           accessibilityLabel={muted ? 'Change mute' : 'Mute chat'}
           disabled={busy || !ready}
           onPress={onOpenMute}

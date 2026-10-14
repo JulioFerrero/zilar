@@ -2,6 +2,7 @@ import { lightToPlain } from '@zilar/chat-core';
 import { ArrowUp, Check, Paperclip, Smile, X } from 'lucide-react-native';
 import { Pressable, TextInput, View } from 'react-native';
 
+import { tap } from '@/components/chat/haptics';
 import { VoiceRecorderButton } from '@/components/chat/voice-recorder';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
@@ -149,7 +150,10 @@ export function ComposerInputRow({
           accessibilityRole="button"
           accessibilityLabel={editing ? 'Save edit' : 'Send message'}
           hitSlop={8}
-          onPress={onSend}
+          onPress={() => {
+            tap();
+            onSend();
+          }}
           onPressIn={() => setPressed(true)}
           onPressOut={() => setPressed(false)}
           className="h-9 w-9 items-center justify-center rounded-[10px]"

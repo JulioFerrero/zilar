@@ -68,6 +68,7 @@ function Text({
   variant = 'default',
   color,
   style,
+  maxFontSizeMultiplier = 1.4,
   ...props
 }: React.ComponentProps<typeof RNText> &
   React.RefAttributes<typeof RNText> &
@@ -88,6 +89,7 @@ function Text({
         className,
       )}
       style={hasColor ? [{ color }, style] : style}
+      maxFontSizeMultiplier={maxFontSizeMultiplier}
       role={variant ? ROLE[variant] : undefined}
       aria-level={variant ? ARIA_LEVEL[variant] : undefined}
       {...props}

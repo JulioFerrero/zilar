@@ -47,7 +47,12 @@ export function SearchField({
         {...props}
       />
       {onClear !== undefined && typeof value === 'string' && value !== '' ? (
-        <Pressable accessibilityRole="button" accessibilityLabel={clearLabel} onPress={onClear}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={clearLabel}
+          hitSlop={12}
+          onPress={onClear}
+        >
           <X size={16} color={MUTED_FOREGROUND} />
         </Pressable>
       ) : null}

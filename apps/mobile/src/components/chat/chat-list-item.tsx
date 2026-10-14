@@ -48,7 +48,7 @@ function UnreadBadge({ count, muted }: { count: number; muted: boolean }) {
   );
 }
 
-/** The 76 px chat row, restyled for D24 (ui-style.md §5). */
+/** The chat row, 76 px tall at the default font size (D24, ui-style.md §5). */
 export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) {
   const names = useChatStore((state) => state.typing[chat.id]?.names);
   const hasDraft = useChatStore((state) => state.drafts[chat.id] !== undefined);
@@ -88,10 +88,10 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
               onLongPress();
             }
       }
-      className="h-[76px] flex-row items-center bg-background pl-4 active:bg-surface-raised"
+      className="min-h-[76px] flex-row items-center bg-background pl-4 active:bg-surface-raised"
     >
       <EntityAvatar chat={chat} size={52} online={chat.online} ai={chat.isAI} />
-      <View className="ml-3 h-full flex-1 flex-row items-center border-b border-[#1a1a1a] pr-4">
+      <View className="ml-3 flex-1 self-stretch flex-row items-center border-b border-[#1a1a1a] py-3 pr-4">
         <View className="flex-1 justify-center">
           <View className="flex-row items-center justify-between">
             <View className="min-w-0 flex-1 flex-row items-center">

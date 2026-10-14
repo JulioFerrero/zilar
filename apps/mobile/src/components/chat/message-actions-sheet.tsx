@@ -13,6 +13,7 @@ import {
 } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
+import { tap } from '@/components/chat/haptics';
 import { Text } from '@/components/ui/text';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -142,7 +143,10 @@ export function MessageActionsSheet({
                   }
                   accessibilityState={{ selected: mine, disabled: !canReact }}
                   disabled={!canReact}
-                  onPress={() => onReact(emoji)}
+                  onPress={() => {
+                    tap();
+                    onReact(emoji);
+                  }}
                   className={cn(
                     'h-11 w-11 items-center justify-center rounded-full active:bg-surface-raised',
                     mine ? 'bg-[#ededed]' : null,
