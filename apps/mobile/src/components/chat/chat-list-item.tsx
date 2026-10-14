@@ -1,5 +1,5 @@
 import { formatListTime, previewMessage } from '@zilar/chat-core';
-import { Pin, VolumeX } from 'lucide-react-native';
+import { Megaphone, Pin, VolumeX } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
 import { AiBadge } from '@/components/chat/ai-badge';
@@ -15,6 +15,7 @@ import { MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { useComposerDraft } from '@/lib/composer-drafts';
 import { primaryKey, raisedPill } from '@/lib/depth';
 import { useBlockedJids } from '@/lib/blocked-users';
+import { channelSubscriberCount, channelSubscriberLabel } from '@/lib/channels';
 import { previewParts, typingLabel } from '@/lib/format';
 import { type ChatSummary, type MessageStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -98,6 +99,19 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
                 {chat.title}
               </Text>
               {chat.isAI ? <AiBadge className="ml-1.5" /> : null}
+              {chat.chatKind === 'channel' ? (
+                // T-1355: a channel is one row (its General feed), so the row
+                // paints the megaphone marker and "N subscribers" like the
+                // group row's channel look and the header.
+                <View className="ml-1.5 shrink-0 flex-row items-center gap-1">
+                  <View accessibilityRole="image" accessibilityLabel="Channel">
+                    <Megaphone size={14} color={MUTED_FOREGROUND} />
+                  </View>
+                  <Text numberOfLines={1} className="text-[12px] text-subtle-foreground">
+                    {channelSubscriberLabel(channelSubscriberCount(chat, undefined))}
+                  </Text>
+                </View>
+              ) : null}
               {chat.pinnedAt !== undefined ? (
                 <View className="ml-2" accessibilityRole="image" accessibilityLabel="Pinned chat">
                   <Pin size={14} color={MUTED_FOREGROUND} />

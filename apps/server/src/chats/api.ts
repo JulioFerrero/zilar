@@ -226,11 +226,11 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
               })),
             ];
 
-            // T-0108/T-1175: one batched pass builds every group's visible
-            // topics, so a user in N groups costs a fixed number of queries; a
-            // group the user cannot see stays out of the map (yields no rows).
+            // T-0108/T-1175: one batched pass builds each visible group's topics
+            // (unseen groups yield none; T-1355: a channel's feed is its own row).
             const groupEntries = chats.filter(
-              (entry): entry is Extract<ChatListEntry, { kind: 'group' }> => entry.kind === 'group',
+              (entry): entry is Extract<ChatListEntry, { kind: 'group' }> =>
+                entry.kind === 'group' && entry.chatKind !== 'channel',
             );
             const topicsByGroup = yield* Effect.promise(() =>
               visibleTopicsForGroups(

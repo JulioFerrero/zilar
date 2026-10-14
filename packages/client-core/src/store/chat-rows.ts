@@ -319,6 +319,12 @@ export function summariesFor(entry: ChatEntry): ChatSummary[] {
   if (entry.kind !== 'group') {
     return [summaryFor(entry, entry)];
   }
+  // T-1355: a channel's only topic is its General feed, and that feed is the
+  // row itself, so a channel never expands into topic rows — not from an older
+  // server that still sends the General topic, and not from a cached answer.
+  if ((entry.chatKind ?? 'group') === 'channel') {
+    return [summaryFor(entry, entry)];
+  }
   const topics = chatEntryTopics(entry).filter((topic) => !topic.archived);
   if (topics.length === 0) {
     return [summaryFor(entry, entry)];

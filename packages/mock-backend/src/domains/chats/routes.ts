@@ -114,6 +114,11 @@ function withTopics(data: MockData, entry: ChatEntry): ChatEntry {
   if (entry.kind !== 'group') {
     return entry;
   }
+  // T-1355: a channel's General row is its feed, not a listed topic, so a
+  // channel answers the entry alone (no topic tree), like the real server.
+  if (entry.chatKind === 'channel') {
+    return { ...entry, topics: [] };
+  }
   const topics = groupTopicViews(data, entry.groupId);
   return topics.length === 0 ? entry : { ...entry, topics };
 }
