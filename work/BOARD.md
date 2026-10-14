@@ -1441,3 +1441,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1422](T-1422-stop-ai-turn.md) | Stop a running AI turn from its card (owner only) | 2026-10-14 |
 | [T-1427](T-1427-gate-file-size.md) | Gate: changed files may not grow past 400 lines | 2026-10-14 |
 | [T-1430](T-1430-orb-params.md) | Orb params: ballParams and ballSvg, output unchanged | 2026-10-14 |
+| [T-1433](T-1433-sweep-client-findings.md) | Findings sweep (client UX): 57 rechecked on main | 2026-10-14 |
