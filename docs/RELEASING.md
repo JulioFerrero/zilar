@@ -66,6 +66,55 @@ adb -s <device> install -r app/build/outputs/apk/release/app-release.apk
 - A vivo phone may show a confirmation prompt on the phone for a USB install; the first `adb install` can fail with an empty message until it is accepted. A phone that shows as `unauthorized` needs the "Allow USB debugging" prompt accepted.
 - Recording needs the microphone permission, which the app asks for on first use.
 
+## 7b. GitHub release APKs
+
+Since T-1354 a `v*` tag (or a manual run of the "Android release" workflow) builds two
+release APKs signed with Julio's private release key and publishes them as a GitHub
+Release. It is the CI version of §7: no Play Store, installs in place from the browser.
+
+### One-time key setup
+
+The release key is Julio's alone. Create it once, keep a backup (losing it means a new
+signature and a reinstall for every phone), and store the signing material as repository
+secrets:
+
+```bash
+keytool -genkeypair -v -keystore ~/zilar-release.keystore -alias zilar -keyalg RSA -keysize 4096 -validity 10000
+base64 -i ~/zilar-release.keystore | gh secret set ZILAR_ANDROID_KEYSTORE_BASE64
+gh secret set ZILAR_ANDROID_KEYSTORE_PASSWORD
+gh secret set ZILAR_ANDROID_KEY_ALIAS --body zilar
+gh secret set ZILAR_ANDROID_KEY_PASSWORD
+base64 -i apps/mobile/google-services.json | gh secret set ZILAR_GOOGLE_SERVICES_JSON_BASE64
+```
+
+The workflow fails early when any of the five secrets is missing; it never falls back to
+debug signing.
+
+### Cut a release
+
+Tag and push, and the tag builds the APKs and the GitHub Release:
+
+```bash
+git tag v0.1.14
+git push origin v0.1.14
+```
+
+Or run it from the Actions tab ("Android release", "Run workflow") with an existing tag.
+The release carries `zilar-<tag>-arm64.apk` (any recent phone), `zilar-<tag>-universal.apk`
+(all ABIs) and `SHA256SUMS`; the notes list the commits since the previous tag. Before
+publishing, the job checks that both APKs are signed with the release certificate (not
+`CN=Android Debug`) and that they contain the server URL.
+
+`versionName` is the tag without `v` and `versionCode` is `major*10000 + minor*100 + patch`
+(v0.1.14 → 114).
+
+### Warning: the first install needs an uninstall
+
+These APKs are signed with a new key, not the public debug key older builds used. A phone
+that already has a debug-signed build refuses the upgrade with a signature mismatch, so
+**uninstall the old app once** and then install the release APK. Later releases signed with
+this key install over the top.
+
 ## 8. iOS release build (install on an iPhone)
 
 A Release build for a real iPhone with the server URL baked in. It needs Xcode, an Apple Development certificate in the keychain, and the iPhone paired and unlocked. With a free Apple account the app stops opening after 7 days (rebuild and reinstall) and the first launch needs **Settings, General, VPN and Device Management, your Apple ID, Trust**.

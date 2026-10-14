@@ -1,0 +1,206 @@
+# T-1354: builds the Android release APKs on a version tag (or by hand) with
+# Julio's private release key and publishes them as a GitHub Release. The key
+# lives only in repository secrets; CI never falls back to debug signing.
+name: Android release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and publish (e.g. v0.1.14)'
+        required: true
+        type: string
+
+# One release per tag: a newer run for the same tag waits instead of racing.
+concurrency:
+  group: android-release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build and publish APKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      ZILAR_API_URL: https://chat.zilar.app
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - run: pnpm install --frozen-lockfile
+
+      # Fork safety: a fork has no secrets, so fail before doing any work rather
+      # than quietly building a debug-signed APK.
+      - name: Check the release secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ZILAR_ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ZILAR_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ZILAR_ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ZILAR_ANDROID_KEY_PASSWORD }}
+          GOOGLE_SERVICES_BASE64: ${{ secrets.ZILAR_GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          missing=()
+          [ -n "$KEYSTORE_BASE64" ] || missing+=(ZILAR_ANDROID_KEYSTORE_BASE64)
+          [ -n "$KEYSTORE_PASSWORD" ] || missing+=(ZILAR_ANDROID_KEYSTORE_PASSWORD)
+          [ -n "$KEY_ALIAS" ] || missing+=(ZILAR_ANDROID_KEY_ALIAS)
+          [ -n "$KEY_PASSWORD" ] || missing+=(ZILAR_ANDROID_KEY_PASSWORD)
+          [ -n "$GOOGLE_SERVICES_BASE64" ] || missing+=(ZILAR_GOOGLE_SERVICES_JSON_BASE64)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing release secrets: ${missing[*]}. CI never falls back to debug signing; set them (docs/RELEASING.md §7b) and rerun."
+            exit 1
+          fi
+          echo "All release secrets are set."
+
+      - name: Decode the signing material
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ZILAR_ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ZILAR_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ZILAR_ANDROID_KEY_PASSWORD }}
+          GOOGLE_SERVICES_BASE64: ${{ secrets.ZILAR_GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          # Never echo a secret: the decoded bytes go straight into files.
+          echo "::add-mask::$KEYSTORE_PASSWORD"
+          echo "::add-mask::$KEY_PASSWORD"
+          install -d -m 700 "$RUNNER_TEMP/zilar"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/zilar/release.keystore"
+          printf '%s' "$GOOGLE_SERVICES_BASE64" | base64 --decode > apps/mobile/google-services.json
+          echo "ZILAR_UPLOAD_STORE_FILE=$RUNNER_TEMP/zilar/release.keystore" >> "$GITHUB_ENV"
+
+      - name: Resolve the version from the tag
+        id: version
+        run: |
+          set -euo pipefail
+          tag="$RELEASE_TAG"
+          if [[ ! "$tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::Tag ${tag} is not vMAJOR.MINOR.PATCH; cannot derive versionName/versionCode."
+            exit 1
+          fi
+          name="${tag#v}"
+          code=$((10#${BASH_REMATCH[1]} * 10000 + 10#${BASH_REMATCH[2]} * 100 + 10#${BASH_REMATCH[3]}))
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Building ${tag}: versionName=${name} versionCode=${code}."
+
+      - name: Prebuild the Android project
+        working-directory: apps/mobile
+        env:
+          ZILAR_VERSION_NAME: ${{ steps.version.outputs.name }}
+          ZILAR_VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: pnpm exec expo prebuild --platform android --clean --no-install
+
+      # Two APKs from the same tree: a small arm64-only one for recent phones and
+      # a universal one for anything else. Gradle caches, so the second is faster.
+      - name: Build the APKs (arm64 and universal)
+        working-directory: apps/mobile/android
+        env:
+          EXPO_PUBLIC_ZILAR_API_URL: ${{ env.ZILAR_API_URL }}
+          NODE_ENV: production
+          ZILAR_UPLOAD_STORE_FILE: ${{ env.ZILAR_UPLOAD_STORE_FILE }}
+          ZILAR_UPLOAD_STORE_PASSWORD: ${{ secrets.ZILAR_ANDROID_KEYSTORE_PASSWORD }}
+          ZILAR_UPLOAD_KEY_ALIAS: ${{ secrets.ZILAR_ANDROID_KEY_ALIAS }}
+          ZILAR_UPLOAD_KEY_PASSWORD: ${{ secrets.ZILAR_ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          apk_dir=app/build/outputs/apk/release
+          out="$RUNNER_TEMP/zilar"
+          ./gradlew assembleRelease --console=plain -PreactNativeArchitectures=arm64-v8a
+          cp "$apk_dir/app-release.apk" "$out/zilar-${RELEASE_TAG}-arm64.apk"
+          ./gradlew assembleRelease --console=plain
+          cp "$apk_dir/app-release.apk" "$out/zilar-${RELEASE_TAG}-universal.apk"
+
+      # A debug-signed APK or one without the server URL must never reach a release.
+      - name: Verify the signatures and the baked server URL
+        env:
+          API_URL: ${{ env.ZILAR_API_URL }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/zilar"
+          apksigner="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          for apk in "$out"/zilar-*.apk; do
+            echo "Verifying $(basename "$apk")"
+            certs="$("$apksigner" verify --print-certs "$apk")"
+            echo "$certs"
+            if printf '%s' "$certs" | grep -q 'CN=Android Debug'; then
+              echo "::error::$(basename "$apk") is signed with the Android debug key; CI must never publish it."
+              exit 1
+            fi
+            unzip -p "$apk" assets/index.android.bundle | grep -a -q "$API_URL" || {
+              echo "::error::$(basename "$apk") does not contain the server URL ${API_URL}."
+              exit 1
+            }
+          done
+          echo "Both APKs are release-signed and carry ${API_URL}."
+
+      - name: Write the SHA-256 sums
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/zilar"
+          (cd "$out" && sha256sum zilar-*.apk > SHA256SUMS)
+          cat "$out/SHA256SUMS"
+
+      - name: Generate the release notes
+        run: |
+          set -euo pipefail
+          previous="$(git describe --tags --abbrev=0 "${RELEASE_TAG}^" 2>/dev/null || true)"
+          {
+            if [ -n "$previous" ]; then
+              echo "Changes since ${previous}:"
+              echo
+              git log "${previous}..${RELEASE_TAG}" --oneline --no-decorate
+            else
+              echo "Changes in ${RELEASE_TAG}:"
+              echo
+              git log "${RELEASE_TAG}" --oneline --no-decorate
+            fi
+            echo
+            echo "### Install"
+            echo
+            echo "Android: download the arm64 APK for any recent phone; allow installs from your browser."
+            echo
+            echo "SHA-256 sums for both APKs are in \`SHA256SUMS\`."
+          } > "$RUNNER_TEMP/zilar/notes.md"
+          cat "$RUNNER_TEMP/zilar/notes.md"
+
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/zilar"
+          assets=(
+            "$out/zilar-${RELEASE_TAG}-arm64.apk"
+            "$out/zilar-${RELEASE_TAG}-universal.apk"
+            "$out/SHA256SUMS"
+          )
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file "$out/notes.md"
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" --title "$RELEASE_TAG" --notes-file "$out/notes.md"
+          fi
+          echo "Published ${RELEASE_TAG}."

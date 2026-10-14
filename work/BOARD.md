@@ -1391,5 +1391,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1350](T-1350-web-base-ui.md) | Web Dialog, Sheet, ConfirmDialog and Button on Base UI; radix-ui removed | 2026-10-14 |
 | [T-1351](T-1351-nested-confirm-escape.md) | Web: Escape on a confirm opened from a sheet or dialog closes only the confirm | 2026-10-14 |
 | [T-1349](T-1349-web-menus-radix.md) | Web dropdown menus on Base UI Menu (portalled, collision-aware, cursor-anchored context menu) | 2026-10-14 |
+| [T-1355](T-1355-channel-shows-as-group.md) | New channel shows as a group with topics (live, Zilar Updates) | in-progress | auto | — | lead live check 10-14 |
 | [T-1353](T-1353-search-overlap.md) | Web search results flow without overlap; request rows hide while searching | 2026-10-14 |
 | [T-1352](T-1352-refresh-screenshots.md) | Docs screenshots and USER_GUIDE text refreshed to today's app | 2026-10-14 |
+| [T-1354](T-1354-android-release-workflow.md) | GitHub Releases: tag v* builds release-signed APKs (arm64 + universal) and publishes them with notes | 2026-10-14 |
