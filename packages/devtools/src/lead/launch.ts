@@ -145,11 +145,67 @@ export async function startWorkerSession(
   return { sessionId, prompt };
 }
 
+export interface LaunchOptions {
+  task: string;
+  extraRulesFile: string | undefined;
+  base: string | undefined;
+}
+
+function argValue(args: string[], name: string): string | undefined {
+  const index = args.indexOf(name);
+  if (index === -1) {
+    return undefined;
+  }
+  const value = args[index + 1];
+  if (value === undefined || value.startsWith('--')) {
+    throw new Error(`${name} needs a value`);
+  }
+  return value;
+}
+
+// Parses `lead launch <T-XXXX> [--extra-rules <file>] [--base <ref>]`. It lives
+// here rather than in cli.ts so that command file stays within its line budget.
+export function parseLaunchArgs(args: string[]): LaunchOptions {
+  const task = args.find((arg) => !arg.startsWith('--'));
+  if (task === undefined) {
+    throw new Error('usage: lead launch <T-XXXX> [--extra-rules <file>] [--base <ref>]');
+  }
+  return {
+    task,
+    extraRulesFile: argValue(args, '--extra-rules'),
+    base: argValue(args, '--base'),
+  };
+}
+
+// A worktree built from an older commit (a model eval replay) does not contain
+// the task file, which lives on `main`. Copy the spec in and commit it so the
+// worker finds its brief. Both failures are hard: a worker without its spec
+// misses the whole task.
+function commitEvalSpec(deps: LaunchDeps, worktree: string, file: string, task: string): void {
+  const relative = path.posix.join('work', file);
+  const destination = path.join(worktree, relative);
+  try {
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.copyFileSync(path.join(deps.repoRoot, 'work', file), destination);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`failed to copy ${relative} into ${worktree}: ${detail}`);
+  }
+  const added = deps.runner.run(worktree, ['add', relative]);
+  if (!added.ok) {
+    throw new Error(`failed to stage ${relative} in ${worktree}`);
+  }
+  const committed = deps.runner.run(worktree, ['commit', '-m', `${task}: eval spec`]);
+  if (!committed.ok) {
+    throw new Error(`failed to commit the eval spec ${relative} in ${worktree}`);
+  }
+}
+
 export async function launchTask(
-  task: string,
-  extraRulesFile: string | undefined,
+  options: LaunchOptions,
   deps: LaunchDeps,
 ): Promise<{ sessionId: string; worktree: string }> {
+  const { task, extraRulesFile, base } = options;
   if (!/^T-\d+$/.test(task)) {
     throw new Error(`task must look like T-0038, got ${JSON.stringify(task)}`);
   }
@@ -165,6 +221,13 @@ export async function launchTask(
   if (fs.existsSync(worktree)) {
     throw new Error(`worktree already exists: ${worktree}`);
   }
+  if (base !== undefined) {
+    const verified = deps.runner.run(deps.repoRoot, ['rev-parse', '--verify', `${base}^{commit}`]);
+    if (!verified.ok) {
+      throw new Error(`--base ${base} does not resolve to a commit`);
+    }
+  }
+  const ref = base ?? 'main';
   const added = deps.runner.run(deps.repoRoot, [
     'worktree',
     'add',
@@ -172,10 +235,13 @@ export async function launchTask(
     worktree,
     '-b',
     branch,
-    'main',
+    ref,
   ]);
   if (!added.ok) {
     throw new Error(`git worktree add failed for ${worktree} (is ${branch} taken?)`);
+  }
+  if (ref !== 'main') {
+    commitEvalSpec(deps, worktree, file, task);
   }
   const rules = loadRulesFile(path.join(deps.promptsDirPath, 'rules.json'));
   if (extraRulesFile !== undefined) {

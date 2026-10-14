@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { fallbackModel } from './fallback.js';
-import { DEEPSEEK_FLASH, FREE_MUSE, GO_DEEPSEEK_FLASH, PAID_MUSE } from './models.js';
+import { DEEPSEEK_FLASH, FREE_MUSE, GO_DEEPSEEK_FLASH, GO_MUSE, PAID_MUSE } from './models.js';
 import { isDeepSeekPeak, resolveWorkerModel } from './model-schedule.js';
 
 // A Monday inside DeepSeek's old peak window (01:00-04:00 UTC): the hour that
@@ -38,12 +38,16 @@ describe('fallbackModel', () => {
     expect(fallbackModel(GO_DEEPSEEK_FLASH)).toBe(DEEPSEEK_FLASH);
   });
 
-  it('then moves the DeepSeek API to the paid Muse', () => {
-    expect(fallbackModel(DEEPSEEK_FLASH)).toBe(PAID_MUSE);
+  it('then moves the DeepSeek API to the Go Muse (T-1362)', () => {
+    expect(fallbackModel(DEEPSEEK_FLASH)).toBe(GO_MUSE);
   });
 
-  it('still moves the free Muse straight to the paid Muse', () => {
-    expect(fallbackModel(FREE_MUSE)).toBe(PAID_MUSE);
+  it('moves the Go Muse to the paid Muse', () => {
+    expect(fallbackModel(GO_MUSE)).toBe(PAID_MUSE);
+  });
+
+  it('still moves the free Muse to the Go Muse first (T-1362)', () => {
+    expect(fallbackModel(FREE_MUSE)).toBe(GO_MUSE);
   });
 
   it('has no fallback for the paid Muse or an unknown model', () => {

@@ -1,13 +1,19 @@
 // Pure formatting helpers for `lead watch`, moved unchanged from
 // `lead/watch.ts` (size split).
 
+import { GO_MUSE } from '../models.js';
+
 // `meta/muse-spark-1.3-contributor` + `low` → `muse-spark-1.3-contributor (low)`.
+// The flat-rate Go Muse shares the metered Meta listing's name, so its provider
+// is tagged to keep the two readable apart (T-1362). Go DeepSeek stays distinct
+// on its own id.
 export function modelLabel(model: string, variant: string | undefined): string {
   const stripped = model.includes('/') ? model.slice(model.indexOf('/') + 1) : model;
+  const name = model === GO_MUSE ? 'muse (go)' : stripped;
   if (variant !== undefined && variant.length > 0) {
-    return `${stripped} (${variant})`;
+    return `${name} (${variant})`;
   }
-  return stripped;
+  return name;
 }
 
 // `formatContext(158705) === '158k'`, `formatContext(1_234_000) === '1.2M'`.

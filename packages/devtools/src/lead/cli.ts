@@ -7,7 +7,7 @@ import { realBatchDeps, realBatchMergeDeps, runBatchCheck, runBatchMerge } from 
 import { OpencodeCliClient } from './client.js';
 import { doctorWorktreeFor, startDoctorSession } from './doctor.js';
 import { RealGitRunner } from './git.js';
-import { findTaskFile, launchTask } from './launch.js';
+import { findTaskFile, launchTask, parseLaunchArgs } from './launch.js';
 import { mergeTask } from './merge.js';
 import { promptsDir } from './prompts.js';
 import { replyToWorker } from './reply.js';
@@ -25,7 +25,7 @@ const HELP = `lead — zero-token supervision of OpenCode workers
 
 Usage: lead <command> [options]
 
-  launch <T-XXXX> [--extra-rules <file>]                    create the worktree and worker session
+  launch <T-XXXX> [--extra-rules <file>] [--base <ref>]      create the worktree and worker session (--base branches off an older commit)
   switch-model <T-XXXX> <provider/model> [--extra-rules <file>] [--in-place]
                                                             move a tracked worker onto a new model (quota fallback)
                                                             --in-place keeps the same session and its context; send lead reply after it if the worker is idle
@@ -75,21 +75,17 @@ function flagValue(args: string[], name: string): string | undefined {
   return args[index + 1];
 }
 
-async function runLaunch(positional: string[], args: string[]): Promise<void> {
-  const task = positional[0];
-  if (task === undefined) {
-    throw new Error('usage: lead launch <T-XXXX> [--extra-rules <file>]');
-  }
-  const extraRules = flagValue(args, '--extra-rules');
+async function runLaunch(args: string[]): Promise<void> {
+  const options = parseLaunchArgs(args);
   const root = findRepoRoot();
-  const { sessionId, worktree } = await launchTask(task, extraRules, {
+  const { sessionId, worktree } = await launchTask(options, {
     repoRoot: root,
     client: new OpencodeCliClient(),
     promptsDirPath: promptsDir(),
     statePath: stateFilePath(),
     runner: new RealGitRunner(),
   });
-  console.log(`${task} ${sessionId} ${worktree}`);
+  console.log(`${options.task} ${sessionId} ${worktree}`);
 }
 
 async function runAutopilotCommand(positional: string[], args: string[]): Promise<void> {
@@ -376,7 +372,7 @@ export async function main(argv: string[]): Promise<void> {
     return;
   }
   if (command === 'launch') {
-    await runLaunch(positional, rest);
+    await runLaunch(rest);
   } else if (command === 'switch-model') {
     await runSwitchModel(positional, rest);
   } else if (command === 'autopilot') {

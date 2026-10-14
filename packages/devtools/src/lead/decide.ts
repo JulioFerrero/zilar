@@ -4,6 +4,7 @@ import {
   fallbackModel,
   FREE_MUSE,
   GO_DEEPSEEK_FLASH,
+  GO_MUSE,
   PAID_MUSE,
 } from './fallback.js';
 import type { SessionState } from './session.js';
@@ -111,9 +112,9 @@ export function decide(input: DecideInput): Action[] {
     actions.push({ kind: 'record', patch: { lastEscalation: line } });
   };
   // Push the in-place worker fallback (Go DeepSeek -> the metered DeepSeek
-  // API -> paid Muse; the free Muse goes straight to paid Muse) and its
-  // escalation. Used by both the planned-task branch (before the status gate)
-  // and the todo/in-progress quota branch below.
+  // API -> Go Muse -> paid Muse; the free Muse goes to Go Muse, then paid
+  // Muse) and its escalation. Used by both the planned-task branch (before the
+  // status gate) and the todo/in-progress quota branch below.
   const label = (model: string): string => {
     if (model === GO_DEEPSEEK_FLASH) {
       return 'Go DeepSeek flash';
@@ -123,6 +124,9 @@ export function decide(input: DecideInput): Action[] {
     }
     if (model === DEEPSEEK_FLASH) {
       return 'DeepSeek flash (API)';
+    }
+    if (model === GO_MUSE) {
+      return 'Go Muse';
     }
     if (model === PAID_MUSE) {
       return 'paid Muse';
@@ -221,7 +225,7 @@ export function decide(input: DecideInput): Action[] {
       const fallback = fallbackModel(input.record.prereview.model ?? FREE_MUSE);
       if (fallback !== undefined) {
         actions.push({ kind: 'fallback-model', session: 'prereview', model: fallback });
-        escalate(`LEAD: FALLBACK ${input.task} pre-review continues on paid Muse`);
+        escalate(`LEAD: FALLBACK ${input.task} pre-review continues on ${label(fallback)}`);
         return actions;
       }
     }

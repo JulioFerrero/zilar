@@ -8,3 +8,6 @@ export const DEEPSEEK_FLASH = 'deepseek/deepseek-flash';
 // subscription. Auto workers run there first; the metered API above is the
 // first fallback.
 export const GO_DEEPSEEK_FLASH = 'opencode-go/deepseek-v4.1-flash';
+// T-1362: the flat-rate OpenCode Go listing of Muse Spark 1.3 Contributor,
+// the step before the metered Meta listing.
+export const GO_MUSE = 'opencode-go/muse-spark-1.3-contributor';

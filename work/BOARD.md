@@ -1377,7 +1377,7 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1335](T-1335-photo-bubbles-edge-to-edge.md) | Photos like Telegram: edge to edge in the bubble, time pill on the photo, caption below (mobile + web) | 2026-10-13 |
 | [T-1336](T-1336-requests-in-chat-list.md) | Contact requests as rows at the top of the chat list with inline Accept / Decline (Undo) on mobile and web | 2026-10-13 |
 | [T-1338](T-1338-mobile-viewer-gestures.md) | Mobile photo viewer: swipe, pinch, pan actually work (double-tap blocked them) | in-progress | auto | — | Julio 10-13 |
-| [T-1362](T-1362-go-muse-fallback.md) | Lead tool: Go Muse in the fallback chain before paid Muse | in-progress | auto | — | Julio 10-14 |
+| T-1365…T-1388 | Model eval: 12 OpenCode Go models replay T-1361 (B) and T-1356 (A); never merged; plan `docs/audit/model-eval-2026-10.md` | planned | per model | T-1364 | Julio 10-14 |
 | [T-1337](T-1337-just-sent-photo-loads.md) | Just-sent photos keep the local preview and retry /api/files instead of sticking on Image unavailable (web + mobile) | 2026-10-13 |
 | [T-1339](T-1339-web-viewer-zoom.md) | Web photo viewer: wheel/trackpad/double-click zoom, drag pan, touch swipe, prev/next arrows | 2026-10-13 |
 | [T-1340](T-1340-web-viewer-dblclick.md) | Web viewer: double-click on the photo zooms and toggles back; only a click outside the photo closes | 2026-10-13 |
@@ -1403,3 +1403,5 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1360](T-1360-component-iq-callee.md) | Push component: publishes go through iqCallee and get one result reply, so ejabberd no longer disables push after the first notification | 2026-10-14 |
 | [T-1361](T-1361-unread-lost-after-wake.md) | Mobile: DM rows keep the server unread count and preview (the mobile DM mapper hard-coded unread 0) | 2026-10-14 |
 | [T-1363](T-1363-mobile-dm-marks.md) | Mobile: DM rows keep readUntil/deliveredUntil (group keeps deliveredUntil); dead summariesForTopicsEntry removed | 2026-10-14 |
+| [T-1362](T-1362-go-muse-fallback.md) | Lead tool: Go Muse joins the fallback chain before the paid Muse (workers and reviews) | 2026-10-14 |
+| [T-1364](T-1364-launch-base-ref.md) | Lead tool: launch --base <ref> branches from an older commit and commits the task file (model eval replays) | 2026-10-14 |
