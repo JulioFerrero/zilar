@@ -31,7 +31,9 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import type { TurnStopper } from '../agents/gateway/stop-types';
 import { toLogger } from './http-logger';
+import { stopTurn } from './stop-turn';
 import {
   assignMachine,
   createAi,
@@ -63,6 +65,9 @@ export interface AisApiDependencies {
    * writes nothing; a 4xx writes nothing. The recorder swallows its own
    * errors, so the response is never affected. */
   audit?: AuditRecorder;
+  /** T-1422: the live agent gateway's turn-stop hook, or null when the gateway
+   * is disabled. Read lazily, because the app is built before the gateway. */
+  getGateway?: () => TurnStopper | null;
 }
 
 // The spend summary the AI list and detail carry (T-0058). Null when the usage
@@ -331,6 +336,20 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
           }
           return toWire(ai);
         }),
+      )
+      // T-1422: stop the turn running in one chat. Owner only; answers
+      // `{ stopped }`, false when no turn was running or the gateway is off.
+      .handle(
+        'stopTurn',
+        handler(effectLogger, (request, user) =>
+          stopTurn(
+            {
+              db: deps.db,
+              getGateway: deps.getGateway ?? (() => null),
+            },
+            { aiId: request.params.id, userId: user.id, chatJid: request.payload.chatJid },
+          ),
+        ),
       )
       // T-0091: assign or clear the AI's home machine. The audit entry is
       // written only when the value actually changed, mirroring how `stop` /

@@ -216,6 +216,10 @@ export interface AiSession {
   /** The pending reconnect: a fiber that sleeps, then reconnects. */
   retryTimer: Fiber.Fiber<void> | undefined;
   unsubs: Array<() => void>;
+  /** T-1422: the AbortController of the turn running in each chat, keyed by
+   * the client chat id the owner sees (the AI's own JID in a DM, the room JID
+   * in a group/topic). One entry per running turn. */
+  turnAborts: Map<string, AbortController>;
   /** Rooms the AI currently holds a join for, keyed by bare room JID. */
   rooms: Map<string, RoomSubscription>;
   /** One coalescing queue per room, like the DM queue. */
@@ -274,6 +278,14 @@ export interface AgentGateway {
     text: string;
     payload?: Payload;
   }) => Promise<boolean>;
+  /**
+   * T-1422: aborts the turn running in one chat, if any. `chatJid` is the
+   * client chat id the owner sees (the AI's own JID in a DM, the room JID in a
+   * group/topic). Returns `true` when a turn was running and was aborted,
+   * `false` when the AI is unknown or idle. Owner scoping happens in the
+   * route; this only reaches the gateway's own sessions.
+   */
+  stopTurn: (aiId: string, chatJid: string) => boolean;
 }
 
 export function isAiSender(bare: string): boolean {

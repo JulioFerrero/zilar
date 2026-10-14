@@ -114,6 +114,16 @@ export const AssignMachinePayload = Schema.Struct({
   machineId: Schema.NullOr(MachineId),
 });
 
+// T-1422: stops the turn running in one chat. `chatJid` is the client chat id
+// the owner sees: the AI's own JID in a DM, the room JID in a group/topic.
+const ChatJid = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(512));
+
+export const StopTurnPayload = Schema.Struct({ chatJid: ChatJid });
+
+/** T-1422: `true` when a running turn in that chat was stopped, `false` when
+ * none was running (or the gateway is not up). */
+export const StopTurnResult = Schema.Struct({ stopped: Schema.Boolean });
+
 // T-1408: a `null` bound means the owner set no limit; the budget check and
 // the warnings only run for a bound that is set.
 export const AiLimits = Schema.Struct({
@@ -241,6 +251,13 @@ export const AisGroup = HttpApiGroup.make('ais')
       params: AiIdParams,
       success: PublicAi,
     }),
+    // T-1422: stops the turn running in one chat. Owner only, like the other
+    // AI routes; not the AI kill switch above.
+    HttpApiEndpoint.post('stopTurn', '/ais/:id/turns/stop', {
+      params: AiIdParams,
+      payload: StopTurnPayload,
+      success: StopTurnResult,
+    }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
     HttpApiEndpoint.put('assignMachine', '/ais/:id/machine', {
       params: AiIdParams,
       payload: AssignMachinePayload,

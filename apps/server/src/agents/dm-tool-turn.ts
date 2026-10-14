@@ -3,8 +3,9 @@ import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
 import type { ChatUsage } from '../ai/model-client';
 import type { DmTurnDeps, DmTurnOutcome } from './dm-turn';
-import type { GroupTurnDeps } from './group-turn';
 import { cutShortSuffix } from './replies';
+import { finishProgressQuietly, stoppedTurn, turnStopped } from './turn-stop';
+import { sendReply } from './turn-send';
 import {
   failureLogFields,
   mapFailureToReply,
@@ -23,7 +24,7 @@ import {
 } from './tool-loop';
 import { remainingTurnBudgetMs } from './turn-budget';
 import type { ChatToolDefinition } from './tools';
-import { byteLength, type TurnLog } from './log/append';
+import type { TurnLog } from './log/append';
 
 // T-0106: the one shared multi-round tool loop for DM and group turns. No
 // copy: both turns call this, differing only in their executor (groups wrap
@@ -63,6 +64,8 @@ export async function runToolLoop(input: {
     onDelta?: (textSoFar: string) => void;
     onUsage?: (usage: ChatUsage) => void;
     log?: TurnLog;
+    /** T-1422: the turn's abort signal, forwarded to every model call. */
+    signal?: AbortSignal;
   };
   maxRounds: number;
   executeTool?: ExecuteToolCall;
@@ -98,6 +101,8 @@ export async function runToolLoop(input: {
 
   try {
     for (let round = 1; round <= input.maxRounds; round += 1) {
+      // T-1422: a stop drops the loop before another round.
+      if (input.completionInput.signal?.aborted === true) break;
       if (input.nowMs() - startedAt >= TOOL_TURN_WALL_CLOCK_MS) {
         break;
       }
@@ -233,6 +238,8 @@ export async function runToolTurn(
     onDelta?: (textSoFar: string) => void;
     onUsage?: (usage: ChatUsage) => void;
     log?: TurnLog;
+    /** T-1422: the turn's abort signal, forwarded to every model call. */
+    signal?: AbortSignal;
   },
   secrets: string[],
   tools: ChatToolDefinition[],
@@ -268,6 +275,10 @@ export async function runToolTurn(
       ...(deps.log === undefined ? {} : { log: deps.log }),
     });
   } catch (error) {
+    // T-1422: a stopped turn posts no reply; the card ends `stopped`.
+    if (turnStopped(deps)) {
+      return await stoppedTurn(deps, secrets);
+    }
     // The loop throws only for an empty first reply or a failed model
     // call: the failure text goes out like any other model failure, with
     // no notices (none were earned yet).
@@ -287,6 +298,9 @@ export async function runToolTurn(
     return { kind: 'failed', text: failure };
   }
   if (loop.failure !== null) {
+    if (turnStopped(deps)) {
+      return await stoppedTurn(deps, secrets);
+    }
     await finishProgressQuietly(deps, secrets, 'failed');
     const text = loop.failure.reply + loop.notices.join('');
     try {
@@ -308,6 +322,11 @@ export async function runToolTurn(
     // the gate's fixed reply instead of another model call.
     if (deps.checkRoundGate !== undefined) {
       const gate = await deps.checkRoundGate();
+      // T-1422: a stop that landed while the gate was awaited drops the turn
+      // quietly, exactly like the group tail; a budget trip never overrides it.
+      if (turnStopped(deps)) {
+        return await stoppedTurn(deps, secrets);
+      }
       if (gate !== null && gate.limited) {
         await finishProgressQuietly(deps, secrets, 'failed');
         const text = gate.reply + loop.notices.join('');
@@ -336,6 +355,9 @@ export async function runToolTurn(
           ? TRANSIENT_FAILURE_REPLY + loop.notices.join('')
           : last.content + cutShortSuffix(last.finishReason) + loop.notices.join('');
     } catch (error) {
+      if (turnStopped(deps)) {
+        return await stoppedTurn(deps, secrets);
+      }
       const failure = mapFailureToReply(error);
       deps.log?.append('error', failureLogFields(error));
       deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
@@ -352,48 +374,16 @@ export async function runToolTurn(
       }
       return { kind: 'failed', text };
     }
+    if (turnStopped(deps)) {
+      return await stoppedTurn(deps, secrets);
+    }
     await finishProgressQuietly(deps, secrets, 'done');
     return sendReply(deps, text);
   }
 
+  if (turnStopped(deps)) {
+    return await stoppedTurn(deps, secrets);
+  }
   await finishProgressQuietly(deps, secrets, 'done');
   return sendReply(deps, loop.text + loop.notices.join(''));
-}
-
-// T-1414: closes the turn's task card, best effort. A throw never fails the
-// turn: it warns with the AI id only, never content.
-export async function finishProgressQuietly(
-  deps: DmTurnDeps | GroupTurnDeps,
-  secrets: string[],
-  state: 'done' | 'failed',
-): Promise<void> {
-  try {
-    await deps.finishProgress?.(state);
-  } catch (error) {
-    deps.logger.warn(
-      { aiId: deps.aiId, err: redactError(error, secrets) },
-      'AI task card could not be finished',
-    );
-  }
-}
-
-async function sendReply(deps: DmTurnDeps, text: string): Promise<DmTurnOutcome> {
-  const secrets = [deps.target.apiKey, ...(deps.secrets ?? [])];
-  // The complete text goes out as a draft first, so the last `draft` carries
-  // the final text before the XMPP message lands. A hook failure is a turn
-  // failure, not a send failure, so it runs before the send's try.
-  deps.beforeFinalSend?.(text);
-  try {
-    await deps.sendMessage(deps.ownerJid, 'chat', text);
-  } catch (error) {
-    deps.logger.warn(
-      { err: redactError(error, secrets), aiId: deps.aiId },
-      'AI reply could not be sent',
-    );
-    return { kind: 'failed', text: '' };
-  }
-  // T-1426: the answer went out. The session log stores its size only, never
-  // the text.
-  deps.log?.append('answer', { bytes: byteLength(text) });
-  return { kind: 'replied', text };
 }

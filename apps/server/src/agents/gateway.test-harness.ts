@@ -90,7 +90,13 @@ export class FakeCore implements XmppCore {
   failJoin = false;
   failLeave = false;
   sent: Array<{ to: string; kind: ChatKind; text: string; opts?: unknown }> = [];
-  corrections: Array<{ chatJid: string; kind: ChatKind; originalId: string; text: string }> = [];
+  corrections: Array<{
+    chatJid: string;
+    kind: ChatKind;
+    originalId: string;
+    text: string;
+    opts?: unknown;
+  }> = [];
   retractions: Array<{ chatJid: string; kind: ChatKind; targetId: string }> = [];
   typing: Array<{ to: string; kind: ChatKind; state: 'composing' | 'paused' }> = [];
   displayed: Array<{ chatJid: string; kind: ChatKind; messageId: string }> = [];
@@ -170,8 +176,9 @@ export class FakeCore implements XmppCore {
     kind: ChatKind,
     originalId: string,
     text: string,
+    opts?: unknown,
   ): Promise<{ id: string }> {
-    this.corrections.push({ chatJid, kind, originalId, text });
+    this.corrections.push({ chatJid, kind, originalId, text, opts });
     return Promise.resolve({ id: 'sent-edit' });
   }
 

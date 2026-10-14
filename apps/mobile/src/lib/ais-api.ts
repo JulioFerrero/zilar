@@ -95,6 +95,8 @@ export interface AisApi {
   // the list can swap the row against server truth without a second GET.
   stopAi(id: string): Promise<PublicAi>;
   resumeAi(id: string): Promise<PublicAi>;
+  /** T-1422: stops the turn running in one chat (not the kill switch). */
+  stopAiTurn(id: string, chatJid: string): Promise<{ stopped: boolean }>;
 }
 
 /** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
@@ -193,6 +195,9 @@ export function createAisApi(
     },
     async resumeAi(id) {
       return toPublicAi(await runApi(client.ais.resume({ params: { id } })));
+    },
+    async stopAiTurn(id, chatJid) {
+      return runApi(client.ais.stopTurn({ params: { id }, payload: { chatJid: chatJid.trim() } }));
     },
   };
 }

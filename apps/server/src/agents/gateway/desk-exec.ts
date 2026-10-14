@@ -39,6 +39,8 @@ export interface DeskClient {
 export interface DeskTurnContext {
   readonly ownerUserId: string;
   readonly client?: DeskClient;
+  /** T-1422: the turn's abort signal, so a stopped turn kills its jail call. */
+  readonly signal?: AbortSignal;
 }
 
 export type DeskToolCallValid = Extract<ValidToolCall, { tool: DeskToolName }>;
@@ -57,6 +59,8 @@ interface DeskRunnerInput {
   aiId: string;
   ownerUserId: string;
   logger: GatewayLogger;
+  /** T-1422: the turn's abort signal, forwarded to every `execute` call. */
+  signal?: AbortSignal;
 }
 
 // Fixed sentences per daemon error code (never raw host text). `DeskQueued` is
@@ -104,7 +108,7 @@ export function createDeskRunner(input: DeskRunnerInput): DeskRunner {
       }
     }
     try {
-      return await runExecute(input.hands, ref, call);
+      return await runExecute(input.hands, ref, call, input.signal);
     } catch (error) {
       return executeFailure(error, call, input);
     }
@@ -126,6 +130,7 @@ export function createTurnDeskRunner(
     aiId,
     ownerUserId: turn.ownerUserId,
     logger,
+    ...(turn.signal === undefined ? {} : { signal: turn.signal }),
   });
 }
 
@@ -194,11 +199,12 @@ async function runExecute(
   hands: Hands,
   ref: DeskRef,
   call: DeskToolCallValid,
+  signal?: AbortSignal,
 ): Promise<ToolExecution> {
   let output = '';
   let exitCode = 0;
   let truncated = false;
-  for await (const chunk of hands.execute(ref, { tool: call.tool, args: call.args })) {
+  for await (const chunk of hands.execute(ref, { tool: call.tool, args: call.args }, signal)) {
     if (chunk.type === 'exit') {
       exitCode = chunk.code;
       truncated = chunk.truncated;
@@ -249,6 +255,10 @@ function executeFailure(
   call: DeskToolCallValid,
   input: DeskRunnerInput,
 ): ToolExecution {
+  // T-1422: a stop landed mid-call; the abort is expected, not a tool failure.
+  if (input.signal?.aborted === true) {
+    return { content: 'the tool call was stopped' };
+  }
   if (error instanceof DeskError) {
     input.logger.info(
       { aiId: input.aiId, tool: call.tool, code: error.code, ok: false },

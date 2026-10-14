@@ -21,6 +21,7 @@ import { createDmTurn } from './gateway/dm-turn';
 import { createGroupIngest } from './gateway/group-ingest';
 import { createGroupTurn } from './gateway/group-turn';
 import { createGatewayLifecycle } from './gateway/lifecycle';
+import { createStopTurn } from './gateway/stop';
 import { createToolExec } from './gateway/tool-exec';
 
 export type {
@@ -61,6 +62,8 @@ export function createAgentGateway(
   const createCore = deps.createCore ?? createXmppCore;
   const draftHub = deps.drafts?.hub ?? sharedDraftHub;
   const sessions = new Map<string, AiSession>();
+  // T-1422: the per-turn stop hook, backed by the live session map.
+  const { stopTurn } = createStopTurn(sessions);
   // AIs another gateway replaced while this process runs. `reconcile` and
   // retries never reconnect them again until the gateway restarts. In memory
   // only, keyed by the gateway's own AI ids.
@@ -302,5 +305,6 @@ export function createAgentGateway(
     size: () => sessions.size,
     aiIds: () => [...sessions.keys()],
     postToChat,
+    stopTurn,
   };
 }

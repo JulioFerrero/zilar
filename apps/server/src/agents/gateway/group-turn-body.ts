@@ -28,6 +28,7 @@ import {
 import { loadDelegationFlags, loadRoomGateState, type RoomGateState } from './db';
 import { resolveTurnDesk, TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER } from './desk-exec';
 import { loadModelTarget } from './model-target';
+import { clearTurnAbort, registerTurnAbort } from './stop';
 import type { GroupTurnContext } from './group-turn';
 import type { TurnLog } from '../log/append';
 
@@ -277,6 +278,9 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     }
     const groupMessages =
       deps.toolsEnabled === true && allowActions ? withToolGuide(messages) : messages;
+    // T-1422: the room turn's abort controller, keyed by the room JID (the
+    // client chat id of a group/topic). The stop route aborts it.
+    const groupAbort = registerTurnAbort(session, roomJid);
     const turnOutcome = yield* Effect.promise(() =>
       runGroupTurn({
         aiId: session.aiId,
@@ -286,6 +290,7 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         senderName,
         messages: groupMessages,
         target,
+        signal: groupAbort.signal,
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
         tools: groupTools,
         executeTool: executeToolCall(
@@ -300,7 +305,9 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
             allowActions,
             delegateTargetIds: new Set(delegateTargets?.map((entry) => entry.id) ?? []),
           },
-          deskEnabled ? { ownerUserId: ai.owner, client: turnDesk.client } : undefined,
+          deskEnabled
+            ? { ownerUserId: ai.owner, client: turnDesk.client, signal: groupAbort.signal }
+            : undefined,
         ),
         ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
         ...(handoffTargets.length === 0 ? {} : { handoffTargets }),
@@ -346,7 +353,7 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         secrets: secretsFor(),
         log,
       }),
-    );
+    ).pipe(Effect.ensuring(Effect.sync(() => clearTurnAbort(session, roomJid, groupAbort))));
     // T-0482: a delegated turn stores its result on the row. The worker's
     // posted text (with the `@<boss> ` prefix) is the stored summary; a
     // failed turn stores whatever was posted instead. Log ids only.

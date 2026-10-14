@@ -5,8 +5,11 @@ import type { ModelTarget } from '../ai/providers';
 import type { ChatUsage } from '../ai/model-client';
 import type { ChatCompletionMessage } from './context';
 import type { DmTurnOutcome } from './dm-turn';
-import { finishProgressQuietly, runToolLoop } from './dm-tool-turn';
+import { runToolLoop } from './dm-tool-turn';
+import { findHandoffIndex } from './handoff';
+import { finishProgressQuietly, stoppedTurn, turnStopped } from './turn-stop';
 import { GROUP_FAILURE_REPLY, cutShortSuffix } from './replies';
+import { sendGroupReply } from './turn-send';
 import {
   actionOfCall,
   executeToolCalls,
@@ -24,7 +27,7 @@ import {
 } from './tool-loop';
 import { remainingTurnBudgetMs } from './turn-budget';
 import { TASK_STATUS_TOOL, type ChatToolDefinition } from './tools';
-import { byteLength, type TurnLog } from './log/append';
+import type { TurnLog } from './log/append';
 
 export interface GroupTurnDeps {
   aiId: string;
@@ -54,6 +57,8 @@ export interface GroupTurnDeps {
   secrets?: readonly string[];
   /** Receives the token counters of every model call in the turn. */
   onUsage?: (usage: ChatUsage) => void;
+  /** T-1422: the turn's abort signal; a stop posts no reply and ends the card. */
+  signal?: AbortSignal;
   /**
    * Tools to advertise to the model. Absent (or empty) = the plain
    * `completeChat` path, unchanged. When present and the model asks for a
@@ -81,9 +86,8 @@ export interface GroupTurnDeps {
   /** T-0106: posts/updates one live progress message. See
    * `DmTurnDeps.reportProgress`. */
   reportProgress?: (stage: string) => Promise<string | null>;
-  /** T-1414: sends the turn's final task-card correction. See
-   * `DmTurnDeps.finishProgress`. */
-  finishProgress?: (state: 'done' | 'failed') => Promise<void>;
+  /** T-1414: sends the turn's final task-card correction, `stopped` included. */
+  finishProgress?: (state: 'done' | 'failed' | 'stopped') => Promise<void>;
   /** T-0106: counts logger. Defaults to a no-op (the group path has no
    * info logger today). */
   turnLogger?: {
@@ -120,27 +124,6 @@ async function reportFailure(
       'AI failure notice failed',
     );
   }
-}
-
-// T-0481: a handoff mention is only offered when the `@<nick>` in the reply
-// text is a whole word: the character after the nick must end the text or be
-// whitespace / punctuation. Case-insensitive, and offsets are in the final
-// wire text (the `@<sender> ` prefix shifted by its length).
-const HANDOFF_BOUNDARY = /[\s.,!?;:'"()[\]{}<>|\u2014\u2013-]/;
-
-function findHandoffIndex(text: string, nick: string): number | null {
-  const needle = `@${nick}`;
-  const lowerNeedle = needle.toLowerCase();
-  for (let index = 0; index + needle.length <= text.length; index += 1) {
-    if (text.slice(index, index + needle.length).toLowerCase() !== lowerNeedle) {
-      continue;
-    }
-    const after = text[index + needle.length];
-    if (after === undefined || HANDOFF_BOUNDARY.test(after)) {
-      return index;
-    }
-  }
-  return null;
 }
 
 // Runs one group turn: typing on, one model call (plain or tool loop),
@@ -196,6 +179,7 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
     ...(deps.secrets === undefined ? {} : { secrets: deps.secrets }),
     ...(deps.onUsage === undefined ? {} : { onUsage: deps.onUsage }),
     ...(deps.log === undefined ? {} : { log: deps.log }),
+    ...(deps.signal === undefined ? {} : { signal: deps.signal }),
   };
   deps.sendTyping(deps.roomJid, 'groupchat', 'composing');
   try {
@@ -207,6 +191,7 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
       messages: deps.messages,
     });
     if (first.toolCalls.length === 0) {
+      if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
       if (first.content === null) {
         throw new ChatCompletionError(200, 'empty reply from the model');
       }
@@ -228,8 +213,10 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
       ...completionInput,
       messages: followUpMessages(deps.messages, first, toolMessages),
     });
+    if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
     return await sendGroupReply(deps, secrets, wire(second.content ?? TRANSIENT_FAILURE_REPLY));
   } catch (error) {
+    if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
     const reason = mapFailureToReply(error);
     deps.log?.append('error', failureLogFields(error));
     deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
@@ -269,6 +256,7 @@ async function runGroupToolTurn(
     secrets?: readonly string[];
     onUsage?: (usage: ChatUsage) => void;
     log?: TurnLog;
+    signal?: AbortSignal;
   },
   secrets: string[],
   wire: (text: string) => { text: string; opts: SendMessageOptions },
@@ -319,6 +307,7 @@ async function runGroupToolTurn(
       ...(deps.log === undefined ? {} : { log: deps.log }),
     });
   } catch (error) {
+    if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
     const failure = mapFailureToReply(error);
     deps.log?.append('error', failureLogFields(error));
     deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
@@ -327,6 +316,7 @@ async function runGroupToolTurn(
     return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
   }
   if (loop.failure !== null) {
+    if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
     await finishProgressQuietly(deps, secrets, 'failed');
     await reportFailure(deps, secrets, loop.failure.reply);
     return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
@@ -339,6 +329,9 @@ async function runGroupToolTurn(
     // the turn with the gate's fixed reply instead of another model call.
     if (deps.checkRoundGate !== undefined) {
       const gate = await deps.checkRoundGate();
+      // A stop that landed while the gate was awaited wins over a budget trip:
+      // the turn posts no reply and the card ends `stopped`.
+      if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
       if (gate !== null && gate.limited) {
         await finishProgressQuietly(deps, secrets, 'failed');
         await reportFailure(deps, secrets, gate.reply);
@@ -358,6 +351,7 @@ async function runGroupToolTurn(
           ? TRANSIENT_FAILURE_REPLY + loop.notices.join('')
           : last.content + cutShortSuffix(last.finishReason) + loop.notices.join('');
     } catch (error) {
+      if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
       const failure = mapFailureToReply(error);
       deps.log?.append('error', failureLogFields(error));
       deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
@@ -365,36 +359,11 @@ async function runGroupToolTurn(
       await reportFailure(deps, secrets, failure);
       return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
     }
+    if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
     await finishProgressQuietly(deps, secrets, 'done');
     return await sendGroupReply(deps, secrets, wire(text));
   }
+  if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
   await finishProgressQuietly(deps, secrets, 'done');
   return await sendGroupReply(deps, secrets, wire(loop.text + loop.notices.join('')));
-}
-
-// Sends the text into the room and shapes the outcome. A failure flag is
-// carried so the result mirrors the success / failure paths the DM tool
-// loop returns (today's `runToolTurn` returns `{ kind: 'failed', text }`
-// when the second call throws).
-async function sendGroupReply(
-  deps: GroupTurnDeps,
-  secrets: string[],
-  outgoing: { text: string; opts: SendMessageOptions },
-  options: { failure: boolean } = { failure: false },
-): Promise<DmTurnOutcome> {
-  try {
-    await deps.sendMessage(deps.roomJid, 'groupchat', outgoing.text, outgoing.opts);
-  } catch (error) {
-    deps.logger.warn(
-      { err: redactError(error, secrets), aiId: deps.aiId },
-      'AI group reply could not be sent',
-    );
-    return { kind: 'failed', text: '' };
-  }
-  if (!options.failure) {
-    deps.log?.append('answer', { bytes: byteLength(outgoing.text) });
-  }
-  return options.failure
-    ? { kind: 'failed', text: outgoing.text }
-    : { kind: 'replied', text: outgoing.text };
 }

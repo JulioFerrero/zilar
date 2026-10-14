@@ -1,13 +1,17 @@
 import type { Progress, ProgressStep } from '@zilar/protocol';
 import { Effect, Schedule } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { Check, Circle, CircleAlert, Square, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
+import { useAisApi } from '@/components/ais/use-ais-api';
 import { Text } from '@/components/ui/text';
 import { ACCENT, DANGER, MUTED_FOREGROUND } from '@/lib/colors';
 import { interruptFiber } from '@/lib/effect/timers';
+import { useQuery } from '@/lib/effect/use-query';
+import { useChatStore } from '@/store/chat-store-provider';
 
 /** Elapsed as `12s`, `2m 14s` or `1h 05m`. */
 function formatElapsed(ms: number): string {
@@ -109,6 +113,30 @@ export function ProgressCard({ data }: { data: Progress }) {
   const steps = data.steps ?? [];
   const expandable = steps.length > 0;
 
+  // T-1422: the Stop button shows only for a working card the viewer can stop:
+  // the server set `can_stop`, and the AI belongs to the viewer (its JID is in
+  // the viewer's own AI list). The chat id is the open chat's.
+  const { api } = useAisApi();
+  const chatJid = useChatStore((state) => state.activeChatId);
+  const [ownedResult] = useQuery(() => Effect.promise(() => api.listAis()), [api, data.ai]);
+  const ownedAi = AsyncResult.isSuccess(ownedResult)
+    ? (ownedResult.value.find((ai) => ai.jid === data.ai) ?? null)
+    : null;
+  const stoppable = isLive(data.state) && data.can_stop === true && ownedAi !== null;
+  // The card the stop was tapped on: "Stopping…" lasts until the next edit.
+  const [stoppedFor, setStoppedFor] = useState<Progress | null>(null);
+  const stopping = stoppedFor === data;
+  const stop = (): void => {
+    if (ownedAi === null || chatJid === null || stopping) {
+      return;
+    }
+    setStoppedFor(data);
+    void api.stopAiTurn(ownedAi.id, chatJid).catch(() => {
+      // The card's next edit never came; let the owner try again.
+      setStoppedFor(null);
+    });
+  };
+
   const header = (
     <>
       <StateIcon state={data.state} reduceMotion={reduceMotion} />
@@ -125,18 +153,36 @@ export function ProgressCard({ data }: { data: Progress }) {
 
   return (
     <View className="min-w-[220px] gap-1.5 py-0.5">
-      {expandable ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ expanded }}
-          onPress={() => setExpanded((open) => !open)}
-          className="flex-row items-center gap-2"
-        >
-          {header}
-        </Pressable>
-      ) : (
-        <View className="flex-row items-center gap-2">{header}</View>
-      )}
+      {/* T-1422: the Stop button sits at the right of the collapsed line; the
+          expand control and the button are siblings. */}
+      <View className="flex-row items-center gap-2">
+        {expandable ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded }}
+            onPress={() => setExpanded((open) => !open)}
+            className="min-w-0 flex-1 flex-row items-center gap-2"
+          >
+            {header}
+          </Pressable>
+        ) : (
+          <View className="min-w-0 flex-1 flex-row items-center gap-2">{header}</View>
+        )}
+        {stoppable ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={stopping ? 'Stopping' : 'Stop task'}
+            disabled={stopping}
+            onPress={stop}
+            className="shrink-0 flex-row items-center gap-1 rounded-full px-2 py-0.5"
+          >
+            <Square size={14} color={MUTED_FOREGROUND} aria-hidden />
+            <Text className="text-[12px] font-medium text-muted-foreground">
+              {stopping ? 'Stopping…' : 'Stop'}
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
 
       {expandable ? (
         expanded ? (

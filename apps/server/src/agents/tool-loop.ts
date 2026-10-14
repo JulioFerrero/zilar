@@ -98,6 +98,8 @@ export interface CompleteChatInput {
    * call (tokens, duration, cost when the catalog knows the model). Best
    * effort: a log failure never fails the call. */
   log?: TurnLog;
+  /** T-1422: the turn's abort signal, threaded through to the model call. */
+  signal?: AbortSignal;
 }
 
 export type ChatCompletionResult = ModelCallResult;
@@ -120,6 +122,7 @@ export async function requestCompletion(input: CompleteChatInput): Promise<ChatC
       ...(input.secrets === undefined ? {} : { secrets: input.secrets }),
       ...(input.onDelta === undefined ? {} : { onDelta: input.onDelta }),
       ...(input.onUsage === undefined ? {} : { onUsage: input.onUsage }),
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
     });
     if (input.log !== undefined) {
       const provider = input.target.provider;

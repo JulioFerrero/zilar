@@ -47,6 +47,11 @@ export function handleAis(data: MockData, request: MockHttpRequest): Response | 
   if (ai === undefined) {
     return notFound('That AI no longer exists.');
   }
+  // T-1422: stop the turn running in one chat, like the real route. The mock
+  // has no live turn, so it answers as if one was running.
+  if (action === 'turns' && request.segments[3] === 'stop' && request.method === 'POST') {
+    return stopTurn(request);
+  }
   if (action === 'stop' && request.method === 'POST') {
     return setStatus(data, ai, 'stopped');
   }
@@ -66,6 +71,19 @@ export function handleAis(data: MockData, request: MockHttpRequest): Response | 
     return noContent();
   }
   return undefined;
+}
+
+// T-1422: `POST /api/ais/:id/turns/stop`. The mock keeps no running turn, so
+// it accepts any non-empty `chatJid` and answers `{ stopped: true }`; the
+// client shows "Stopping…" until the card's next edit (which a mock never
+// sends).
+function stopTurn(request: MockHttpRequest): Response {
+  const body = readJsonBody(request.init);
+  const chatJid = body.chatJid;
+  if (typeof chatJid !== 'string' || chatJid.trim() === '') {
+    return badRequest('invalid_request', 'chatJid is required');
+  }
+  return jsonResponse({ stopped: true });
 }
 
 function createAi(data: MockData, request: MockHttpRequest): Response {

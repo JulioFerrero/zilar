@@ -98,6 +98,19 @@ describe('failTaskCard and finishTaskCard', () => {
     expect(card.summary).toBe('Done in 40s · 1 step');
     expect(card.steps[0]).toMatchObject({ state: 'done' });
   });
+
+  it('resolves the in-progress step when the turn is stopped', () => {
+    const card = finishTaskCard(
+      cardWithSteps(['Running the tool']),
+      'stopped',
+      'Stopped after 40s',
+    );
+
+    expect(card.state).toBe('stopped');
+    expect(card.summary).toBe('Stopped after 40s');
+    // A terminal card must not leave a step spinning.
+    expect(card.steps[0]).toMatchObject({ state: 'failed' });
+  });
 });
 
 describe('taskCardSummary', () => {

@@ -1,5 +1,6 @@
 import type { Logger } from 'pino';
 import { createAisApi } from './ais/api';
+import type { TurnStopper } from './agents/gateway/stop-types';
 import type { AiLogger } from './ais/service';
 import { createAiMemoryApi } from './agents/memory/api';
 import { createAgentTasksApi } from './agents/log/api';
@@ -103,6 +104,9 @@ export interface AppDependencies {
     /** T-1425: whether Zilar cloud desks are wired. Defaults to false. */
     cloud?: boolean;
   };
+  /** T-1422: the live agent gateway's turn-stop hook. Read lazily because the
+   * app is built before the gateway; absent = the route answers `stopped: false`. */
+  getGateway?: () => TurnStopper | null;
   /** Injected by index.ts when the runner hub is on; absent = hub off. */
   isMachineOnline?: (machineId: string) => boolean;
   /**
@@ -221,6 +225,7 @@ export function createApp({
   voiceMaxBytes,
   connections,
   ais,
+  getGateway,
   isMachineOnline,
   machineRegistry,
   audit,
@@ -571,6 +576,7 @@ export function createApp({
     audit: auditRecorder,
     cloud: ais?.cloud ?? false,
     ...(aisCipher === undefined ? {} : { cipher: aisCipher }),
+    ...(getGateway === undefined ? {} : { getGateway }),
   });
   mounts.push(aisApi);
 

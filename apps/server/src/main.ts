@@ -81,7 +81,7 @@ export interface RunningServer {
   db: ServerDatabase | null;
   closeDb: (() => Promise<void>) | null;
   closeHttp: (() => Promise<void>) | null;
-  gateway: Pick<AgentGateway, 'stop' | 'postToChat'> | null;
+  gateway: Pick<AgentGateway, 'stop' | 'postToChat' | 'stopTurn'> | null;
   leader: Pick<LeaderLock, 'stepDown' | 'close'> | null;
   /** How long to keep serving (health 503) before stepping down. 0 in tests. */
   drainMs: number;
@@ -453,6 +453,9 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
       ...(config.RUNNER_HUB_ENABLED ? { isMachineOnline } : {}),
       actionGateway,
       alwaysEligible,
+      // T-1422: the agent gateway is built below; the stop-turn route reads it
+      // lazily, and answers `stopped: false` while it is still null.
+      getGateway: () => running.gateway,
       // T-0105: the same sandbox runner the adapters use. Absent = manual
       // runs answer 501 `runner_unavailable`.
       ...(toolRunner === undefined ? {} : { toolRunner }),

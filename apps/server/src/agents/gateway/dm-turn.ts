@@ -10,13 +10,7 @@ import {
   DM_HISTORY_MESSAGE_LIMIT,
   type ChatCompletionMessage,
 } from '../context';
-import {
-  failureLogFields,
-  mapFailureToReply,
-  runDmTurn,
-  TRANSIENT_FAILURE_REPLY,
-  type ExecuteToolCall,
-} from '../reply';
+import { runDmTurn, TRANSIENT_FAILURE_REPLY, type ExecuteToolCall } from '../reply';
 import { buildTools } from '../tools';
 import { TOOL_STAGE_THINKING } from '../tool-guide';
 import type { createBudgetGate } from './budget';
@@ -37,6 +31,8 @@ import {
 } from './desk-exec';
 import type { RequestActionContext } from './group-turn';
 import { openTurnLog } from '../log/append';
+import { clearTurnAbort, registerTurnAbort } from './stop';
+import { reportDmTurnDefect } from './turn-defect';
 import { recordUsage } from '../../ais/usage-store';
 import type { createLiveSession } from './live';
 import type { MemoryRunner } from './memory';
@@ -295,17 +291,23 @@ export function createDmTurn(ctx: DmTurnContext) {
         );
       }
       const deskEnabled = turnDesk.client !== undefined;
+      // T-1422: the DM turn's abort controller, keyed by the AI's own JID (the
+      // client chat id of an AI DM). The stop route aborts it.
+      const dmAbort = registerTurnAbort(session, session.aiJid);
       const outcome = yield* Effect.promise(() =>
         runDmTurn({
           aiId: session.aiId,
           ownerJid,
           messages: dmMessages,
           target,
+          signal: dmAbort.signal,
           executeTool: executeToolCall(
             session,
             dmChatKey,
             undefined,
-            deskEnabled ? { ownerUserId: ai.owner, client: turnDesk.client } : undefined,
+            deskEnabled
+              ? { ownerUserId: ai.owner, client: turnDesk.client, signal: dmAbort.signal }
+              : undefined,
           ),
           tools: buildTools(deps.actions?.listActions() ?? [], { desk: deskEnabled }),
           ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
@@ -356,7 +358,7 @@ export function createDmTurn(ctx: DmTurnContext) {
           secrets: secretsFor(),
           log: turnLog,
         }),
-      );
+      ).pipe(Effect.ensuring(Effect.sync(() => clearTurnAbort(session, session.aiJid, dmAbort))));
       turnDrafts.end(outcome.kind === 'replied' && sessionIsLive(session) ? 'sent' : 'failed');
       // The 80% heads-ups go out after the reply, so the owner reads the
       // answer first. A failed warning send only logs and never fails the
@@ -373,24 +375,15 @@ export function createDmTurn(ctx: DmTurnContext) {
     });
     yield* turnBody.pipe(
       Effect.catchDefect((error) =>
-        Effect.gen(function* () {
-          // The connection lookup and anything else outside the turn: an
-          // honest short message, never the raw error.
-          logger.warn({ ...failureLogFields(error), aiId: session.aiId }, 'AI turn failed');
-          turnLog.append('error', failureLogFields(error));
-          const reply = mapFailureToReply(error);
-          // There is nobody left to tell when the send itself fails.
-          yield* Effect.promise(() => liveSendMessage(session, ownerJid, 'chat', reply)).pipe(
-            Effect.catchDefect(() => Effect.void),
-          );
-          // The failed `end` goes out only after the failure text was sent (or
-          // its send was attempted): the contract promises `end` comes last.
-          // Typing state is best-effort.
-          yield* Effect.try({
-            try: () => liveSendTyping(session, ownerJid, 'chat', 'paused'),
-            catch: (typingError) => typingError,
-          }).pipe(Effect.ignore);
-          turnDrafts.end('failed');
+        reportDmTurnDefect({
+          session,
+          ownerJid,
+          logger,
+          turnLog,
+          liveSendMessage,
+          liveSendTyping,
+          endDrafts: () => turnDrafts.end('failed'),
+          error,
         }),
       ),
     );

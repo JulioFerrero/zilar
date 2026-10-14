@@ -18,7 +18,12 @@ import {
   UPDATE_PERSONA_TOOL,
 } from '../tools';
 import { createDelegation, getDelegationForAi } from '../delegation/service';
-import { createTurnDeskRunner, isDeskToolCall, runDeskCall } from './desk-exec';
+import {
+  createTurnDeskRunner,
+  isDeskToolCall,
+  runDeskCall,
+  type DeskTurnContext,
+} from './desk-exec';
 import { createRequestActionRunner } from './request-action';
 import {
   ROUND_MAX_HOPS,
@@ -68,7 +73,7 @@ export function createToolExec(ctx: ToolExecContext) {
     session: AiSession,
     chatKey: string,
     context?: RequestActionContext,
-    desk?: { ownerUserId: string },
+    desk?: DeskTurnContext,
   ): ExecuteToolCall {
     const aiId = session.aiId;
     // T-1409: one desk runner per turn, created only when the turn offered the

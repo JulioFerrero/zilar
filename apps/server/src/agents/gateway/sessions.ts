@@ -133,6 +133,7 @@ export function createSessionLifecycle(ctx: SessionLifecycleContext) {
       retryAttempt: 0,
       retryTimer: undefined,
       unsubs: [],
+      turnAborts: new Map(),
       rooms: new Map(),
       roomPending: new Map(),
       roomBusy: new Set(),

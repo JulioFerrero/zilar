@@ -86,6 +86,11 @@ export interface ModelCallInput {
    * `openai-compatible`, which always uses the pinned fetch (T-1396). */
   fetchImpl?: FetchLike;
   /**
+   * T-1422: the turn's abort signal. When it fires, the call fails at once and
+   * the model stream is interrupted, so a stopped turn spends no more time.
+   */
+  signal?: AbortSignal;
+  /**
    * T-1396, test only: options for the custom provider's pinned fetch (an
    * injected DNS resolver, or the allow-private hook for a loopback fake
    * server). A caller-supplied `fetchImpl` never replaces the pinned fetch for
@@ -298,6 +303,34 @@ function isRetryable(error: ChatCompletionError): boolean {
 // resolver / allow-private hook through `pinnedFetchOptions` instead of
 // swapping the fetch. Without a base URL there is nothing safe to call, so the
 // call fails rather than falling back to the default client.
+// T-1422: the fixed failure a stopped turn gets. It is a `status: 0` error
+// (transient) but the retry loop never retries an aborted turn, because the
+// signal is checked in `chat`'s retry condition.
+const TURN_STOPPED_DETAIL = 'the request was stopped';
+
+// T-1422: races one model-call effect against the turn's abort signal, so an
+// abort interrupts the in-flight stream and fails the call at once. Without a
+// signal the effect passes through unchanged.
+function withAbort<A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  signal: AbortSignal | undefined,
+): Effect.Effect<A, E | ChatCompletionError, R> {
+  if (signal === undefined) {
+    return effect;
+  }
+  if (signal.aborted) {
+    return Effect.fail(new ChatCompletionError(0, TURN_STOPPED_DETAIL));
+  }
+  const aborted = Effect.callback<never, ChatCompletionError>((resume) => {
+    const onAbort = (): void => {
+      resume(Effect.fail(new ChatCompletionError(0, TURN_STOPPED_DETAIL)));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    return Effect.sync(() => signal.removeEventListener('abort', onAbort));
+  });
+  return Effect.raceFirst(effect, aborted);
+}
+
 function modelTransport(input: ModelCallInput): FetchLike | undefined {
   if (input.target.provider !== 'openai-compatible') {
     return input.fetchImpl;
@@ -348,12 +381,17 @@ export function chat(input: ModelCallInput): Promise<ModelCallResult> {
           transport as unknown as typeof globalThis.fetch,
         );
   };
-  return Effect.runPromise(
-    Effect.suspend(attempt).pipe(
-      Effect.retry({
-        schedule: Schedule.max([Schedule.recurs(1), Schedule.spaced(RETRY_DELAY_MS)]),
-        while: (error) => !streamed && Date.now() + RETRY_DELAY_MS < deadline && isRetryable(error),
-      }),
-    ),
+  const program = Effect.suspend(attempt).pipe(
+    Effect.retry({
+      schedule: Schedule.max([Schedule.recurs(1), Schedule.spaced(RETRY_DELAY_MS)]),
+      // T-1422: an aborted turn never retries; the error is transient by shape
+      // (status 0) but the owner asked to stop.
+      while: (error) =>
+        !streamed &&
+        input.signal?.aborted !== true &&
+        Date.now() + RETRY_DELAY_MS < deadline &&
+        isRetryable(error),
+    }),
   );
+  return Effect.runPromise(withAbort(program, input.signal));
 }

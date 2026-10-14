@@ -126,6 +126,15 @@ export function resumeAi(id: string): Promise<PublicAi> {
   return callApi((client) => client.ais.resume({ params: { id } }));
 }
 
+// T-1422: stops the turn running in one chat (not the AI kill switch). `id` is
+// the AI's id and `chatJid` the client chat id the owner sees; the answer says
+// whether a turn was actually running.
+export function stopAiTurn(id: string, chatJid: string): Promise<{ stopped: boolean }> {
+  return callApi((client) =>
+    client.ais.stopTurn({ params: { id }, payload: { chatJid: chatJid.trim() } }),
+  );
+}
+
 // T-0091: set or clear the AI's home machine. `null` clears the assignment
 // (the AI runs on the platform); a machine id assigns it. The server
 // answers the fresh public AI, so the panel re-renders against server

@@ -92,12 +92,9 @@ export function finishTaskCard(
   const steps: ProgressStep[] = card.steps.map((step) => ({ ...step }));
   const last = steps[steps.length - 1];
   if (last !== undefined && last.state === 'doing') {
-    if (state === 'done') {
-      last.state = 'done';
-    }
-    if (state === 'failed') {
-      last.state = 'failed';
-    }
+    // A stopped turn is terminal too: the interrupted step must not keep
+    // spinning on a closed card. Only a clean finish is `done`.
+    last.state = state === 'done' ? 'done' : 'failed';
   }
   return { ...card, steps, state, summary };
 }
@@ -152,6 +149,9 @@ export function taskCardPayload(input: {
       title: input.card.title,
       steps: input.card.steps,
       state: input.card.state,
+      // T-1422: a working card can be stopped from its chat; a terminal card
+      // no longer offers the button.
+      ...(input.card.state === 'working' ? { can_stop: true } : {}),
       started_at: input.card.startedAt,
       ...(input.card.summary === null ? {} : { summary: input.card.summary }),
       ...(input.elapsedMs === undefined ? {} : { elapsed_ms: input.elapsedMs }),

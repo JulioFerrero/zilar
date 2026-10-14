@@ -5,6 +5,7 @@ import type { ModelTarget } from '../ai/providers';
 import type { ChatUsage } from '../ai/model-client';
 import type { ChatCompletionMessage } from './context';
 import { runToolTurn } from './dm-tool-turn';
+import { finishProgressQuietly } from './turn-stop';
 import { cutShortSuffix } from './replies';
 import { failureLogFields, mapFailureToReply, redactError } from './tool-exec';
 import type { TurnLog } from './log/append';
@@ -58,6 +59,9 @@ export interface DmTurnDeps {
   onDelta?: (textSoFar: string) => void;
   /** Receives the token counters of every model call in the turn. */
   onUsage?: (usage: ChatUsage) => void;
+  /** T-1422: the turn's abort signal. When it fires, the model call and the
+   * tool loop stop, no reply is posted, and the card ends `stopped`. */
+  signal?: AbortSignal;
   /** Called with the exact final reply text right before its XMPP send. Never
    * called for notices on their own or for failure texts. */
   beforeFinalSend?: (text: string) => void;
@@ -95,11 +99,11 @@ export interface DmTurnDeps {
    * exists (not posted yet, or posting failed). Best effort: a throw or a
    * null never fails the turn. */
   reportProgress?: (stage: string) => Promise<string | null>;
-  /** T-1414: sends the turn's final task-card correction (`state: done` or
-   * `failed`, with `elapsed_ms` and `summary`). Replaces T-0106's
+  /** T-1414: sends the turn's final task-card correction (`state: done`,
+   * `failed` or `stopped`, with `elapsed_ms` and `summary`). Replaces T-0106's
    * `clearProgress`: the card is left in place, never retracted. Best effort:
    * a throw never fails the turn. */
-  finishProgress?: (state: 'done' | 'failed') => Promise<void>;
+  finishProgress?: (state: 'done' | 'failed' | 'stopped') => Promise<void>;
   /** T-0106: counts logger. The loop logs only counts (rounds, tool
    * calls, ms), never content. Defaults to `deps.logger`. */
   turnLogger?: {
@@ -129,6 +133,7 @@ export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
     ...(deps.onDelta === undefined ? {} : { onDelta: deps.onDelta }),
     ...(deps.onUsage === undefined ? {} : { onUsage: deps.onUsage }),
     ...(deps.log === undefined ? {} : { log: deps.log }),
+    ...(deps.signal === undefined ? {} : { signal: deps.signal }),
   };
   deps.sendTyping(deps.ownerJid, 'chat', 'composing');
   try {
@@ -137,6 +142,11 @@ export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
     // back as the final text; an empty first reply throws, like before.
     return await runToolTurn(deps, completionInput, secrets, tools);
   } catch (error) {
+    // T-1422: a stopped turn posts no reply; the card ends `stopped`.
+    if (deps.signal?.aborted === true) {
+      await finishProgressQuietly(deps, secrets, 'stopped');
+      return { kind: 'failed', text: '' };
+    }
     const reply = mapFailureToReply(error);
     deps.log?.append('error', failureLogFields(error));
     deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');

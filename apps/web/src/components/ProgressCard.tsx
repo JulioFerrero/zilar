@@ -1,9 +1,14 @@
 import type { Progress, ProgressStep } from '@zilar/protocol';
 import { Check, Circle, CircleAlert, LoaderCircle, Square, X } from 'lucide-react';
 import { Effect, Fiber, Schedule } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useState } from 'react';
+import { listAis, stopAiTurn } from '@/lib/api/ais';
+import { fromApi } from '@/lib/effect/api-effect';
+import { useQuery } from '@/lib/effect/use-query';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
+import { useChatSelector } from '@/store/ChatStoreProvider';
 
 /** Elapsed as `12s`, `2m 14s` or `1h 05m`. */
 function formatElapsed(ms: number): string {
@@ -127,6 +132,34 @@ export function ProgressCard({ progress }: { progress: Progress }) {
   const steps = progress.steps ?? [];
   const expandable = steps.length > 0;
 
+  // T-1422: the Stop button shows only for a working card the viewer can stop:
+  // the server set `can_stop`, and the AI belongs to the viewer (its JID is in
+  // the viewer's own `GET /api/ais` list). The chat id is the open chat's.
+  const chatJid = useChatSelector((state) => state.activeChatId);
+  const [ownedResult] = useQuery(
+    () =>
+      fromApi(() => listAis()).pipe(
+        Effect.map((list) => list.find((ai) => ai.jid === progress.ai) ?? null),
+      ),
+    [progress.ai],
+  );
+  const ownedAi = AsyncResult.isSuccess(ownedResult) ? ownedResult.value : null;
+  const stoppable = isLive(progress.state) && progress.can_stop === true && ownedAi !== null;
+  // The card the stop was tapped on: "Stopping…" lasts until the next edit
+  // arrives, which changes `progress` and clears this.
+  const [stoppedFor, setStoppedFor] = useState<Progress | null>(null);
+  const stopping = stoppedFor === progress;
+  const stop = (): void => {
+    if (ownedAi === null || chatJid === undefined || stopping) {
+      return;
+    }
+    setStoppedFor(progress);
+    void stopAiTurn(ownedAi.id, chatJid).catch(() => {
+      // The card's next edit never came; let the owner try again.
+      setStoppedFor(null);
+    });
+  };
+
   const header = (
     <>
       <StateIcon state={progress.state} reduceMotion={reduceMotion} />
@@ -143,18 +176,34 @@ export function ProgressCard({ progress }: { progress: Progress }) {
 
   return (
     <div className="bubble-in min-w-[220px] rounded-[12px] p-2.5">
-      {expandable ? (
-        <button
-          type="button"
-          onClick={() => setExpanded((open) => !open)}
-          aria-expanded={expanded}
-          className="flex w-full items-center gap-2 text-left"
-        >
-          {header}
-        </button>
-      ) : (
-        <div className="flex items-center gap-2">{header}</div>
-      )}
+      {/* T-1422: the Stop button sits at the right of the collapsed line; the
+          expand control and the button are siblings, never nested buttons. */}
+      <div className="flex items-center gap-2">
+        {expandable ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((open) => !open)}
+            aria-expanded={expanded}
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          >
+            {header}
+          </button>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center gap-2">{header}</div>
+        )}
+        {stoppable && (
+          <button
+            type="button"
+            onClick={stop}
+            disabled={stopping}
+            aria-label={stopping ? 'Stopping' : 'Stop task'}
+            className="flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-60"
+          >
+            <Square className="size-3.5" aria-hidden="true" />
+            {stopping ? 'Stopping…' : 'Stop'}
+          </button>
+        )}
+      </div>
 
       {expandable ? (
         expanded && (

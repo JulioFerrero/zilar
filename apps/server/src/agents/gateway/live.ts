@@ -11,7 +11,6 @@ import {
 } from './contracts';
 import {
   addTaskCardStep,
-  failTaskCard,
   finishTaskCard,
   startTaskCard,
   taskCardPayload,
@@ -86,7 +85,7 @@ export function createLiveSession(ctx: LiveSessionContext) {
     log?: TurnLog,
   ): {
     reportProgress: (stage: string) => Promise<string | null>;
-    finishProgress: (state: 'done' | 'failed') => Promise<void>;
+    finishProgress: (state: 'done' | 'failed' | 'stopped') => Promise<void>;
   } {
     const taskId = log?.taskId;
     let progressId: string | null = null;
@@ -154,7 +153,7 @@ export function createLiveSession(ctx: LiveSessionContext) {
     // time and the fixed summary. The card stays in place (never retracted);
     // the reply lands below it. Best effort like every other card send.
     const finishProgressEffect = Effect.fnUntraced(function* (
-      state: 'done' | 'failed',
+      state: 'done' | 'failed' | 'stopped',
     ): Effect.fn.Return<void> {
       const current = progressId;
       if (current === null || card === null || !sessionIsLive(session)) {
@@ -162,7 +161,7 @@ export function createLiveSession(ctx: LiveSessionContext) {
       }
       const elapsedMs = Math.max(0, Date.now() - Date.parse(card.startedAt));
       const finished = finishTaskCard(
-        state === 'failed' ? failTaskCard(card) : card,
+        card,
         state,
         taskCardSummary({ state, elapsedMs, stepCount: card.steps.length }),
       );
@@ -189,7 +188,7 @@ export function createLiveSession(ctx: LiveSessionContext) {
     return {
       reportProgress: (stage: string): Promise<string | null> =>
         Effect.runPromise(reportProgressEffect(stage)),
-      finishProgress: (state: 'done' | 'failed'): Promise<void> =>
+      finishProgress: (state: 'done' | 'failed' | 'stopped'): Promise<void> =>
         Effect.runPromise(finishProgressEffect(state)),
     };
   }
