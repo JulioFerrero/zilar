@@ -2,6 +2,17 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-14 12:15: release workflow ready, channel live. No workers running.**
+- **Merged:**
+  - T-1354: `.github/workflows/android-release.yml`. Tag `v*` builds arm64 and universal APKs signed with Julio's key and publishes a GitHub Release; see `docs/RELEASING.md` §7b;
+  - T-1355: channels render as channels (the server no longer sends a General topic for them; client guard; mobile row).
+- **Waiting on Julio:** create the release keystore and add the 5 secrets (commands in §7b), then the lead pushes tag `v0.1.14` and checks the run. Phones on debug-signed builds must uninstall once.
+- **Channel "Zilar Updates"** (@claude_test, private; @julio and @test_julio added) at `/c/gigpdbu5lfkxmgipf%40rooms.chat.zilar.app`. Post there after builds and releases (`tmp/channel-post.mjs "line" "line"`).
+- **README** now has 4 real Android screenshots (`docs/screenshots/android-*.png`; taken by hand from the emulator mock, not by `pnpm screenshots`).
+- **Small follow-ups:**
+  - the "Unread messages" divider once showed above the sender's own channel post;
+  - icons for the first three chat-menu items.
+
 **2026-10-14 ~10:30: Radix removed, docs refreshed. No workers running.**
 - **Julio, 10-14:** "use Base UI instead of Radix, remove Radix overall" (memory `prefer-libraries.md`).
 - **Merged:**

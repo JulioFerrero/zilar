@@ -1394,4 +1394,5 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1353](T-1353-search-overlap.md) | Web search results flow without overlap; request rows hide while searching | 2026-10-14 |
 | [T-1352](T-1352-refresh-screenshots.md) | Docs screenshots and USER_GUIDE text refreshed to today's app | 2026-10-14 |
 | [T-1354](T-1354-android-release-workflow.md) | GitHub Releases: tag v* builds release-signed APKs (arm64 + universal) and publishes them with notes | 2026-10-14 |
+| [T-1356](T-1356-push-diagnostics.md) | Push diagnostics per device in Settings → Notifications (web + mobile) | in-progress | auto | — | Julio 10-14 Android no push |
 | [T-1355](T-1355-channel-shows-as-group.md) | Channels render as channels (no General topic expansion) on web and mobile | 2026-10-14 |
