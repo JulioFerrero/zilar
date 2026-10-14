@@ -29,6 +29,7 @@ import {
 } from './migrations.js';
 import { checkImages } from './images.js';
 import { scopeReport } from './scope.js';
+import { countLines, isSizeChecked, sizeViolations, type SizeFile } from './size.js';
 import { gateSlotsDir, release, tryAcquire } from './slots.js';
 
 interface RunResult {
@@ -123,6 +124,29 @@ function baseMigrationMax(root: string, base: string): number {
     }
   }
   return max;
+}
+
+// The base version's line count, or null when the base has no such file. `git
+// show` exits non-zero for a missing path, which `run` reports as `ok: false`.
+function baseLineCount(root: string, base: string, file: string): number | null {
+  const result = run(root, 'git', ['show', `${base}:${file}`]);
+  return result.ok ? countLines(result.output) : null;
+}
+
+// The size check (T-1427): each changed source file must stay within 400 lines
+// unless the base already had it over the limit and the branch did not grow it.
+function sizeReport(root: string, base: string, files: string[]): string[] {
+  const inputs: SizeFile[] = [];
+  for (const file of files) {
+    if (!isSizeChecked(file)) continue;
+    const onDisk = path.join(root, file);
+    inputs.push({
+      path: file,
+      lines: fs.existsSync(onDisk) ? countLines(fs.readFileSync(onDisk, 'utf8')) : null,
+      baseLines: baseLineCount(root, base, file),
+    });
+  }
+  return sizeViolations(inputs);
 }
 
 export function readWorkspace(root: string): WorkspacePackage[] {
@@ -295,6 +319,16 @@ function main(): void {
         `FAIL  images: ${imageFailures.length} workspace package(s) missing from a Dockerfile`,
       );
       for (const failure of imageFailures) {
+        console.log(`  ${failure}`);
+      }
+    }
+    const sizeFailures = sizeReport(root, base, files);
+    if (sizeFailures.length === 0) {
+      console.log('size: every changed source file is within 400 lines');
+    } else {
+      failed = true;
+      console.log(`FAIL  size: ${sizeFailures.length} changed source file(s) over 400 lines`);
+      for (const failure of sizeFailures) {
         console.log(`  ${failure}`);
       }
     }

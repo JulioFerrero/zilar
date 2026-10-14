@@ -15,6 +15,7 @@ import {
 import { allowedTokens, scopeReport, tokenMatcher } from './scope.js';
 import { checkMigrations, migrationNumber, parseMigrationDiff } from './migrations.js';
 import { checkImagePackages, checkImages, copiedPackageDirs, workspaceDeps } from './images.js';
+import { countLines, isSizeChecked, sizeViolations } from './size.js';
 
 const workspace: WorkspacePackage[] = [
   { name: '@zilar/mobile', dir: 'apps/mobile', hasTests: true },
@@ -189,6 +190,66 @@ describe('image package check', () => {
     const root = fileURLToPath(new URL('../../../..', import.meta.url));
     const failures = checkImages([], (file) => fs.readFileSync(path.join(root, file), 'utf8'));
     expect(failures).toEqual([]);
+  });
+});
+
+describe('file size check', () => {
+  const check = (files: { path: string; lines: number | null; baseLines: number | null }[]) =>
+    sizeViolations(files);
+
+  it('fails a new source file of 401 lines', () => {
+    expect(check([{ path: 'apps/server/src/new.ts', lines: 401, baseLines: null }])).toEqual([
+      'apps/server/src/new.ts: 401 lines (main 0); limit 400',
+    ]);
+  });
+
+  it('fails a file that grew from 372 to 439 lines', () => {
+    expect(
+      check([{ path: 'apps/mobile/src/app/ais/[id].tsx', lines: 439, baseLines: 372 }]),
+    ).toEqual(['apps/mobile/src/app/ais/[id].tsx: 439 lines (main 372); limit 400']);
+  });
+
+  it('passes a file already over the limit that did not grow', () => {
+    expect(check([{ path: 'apps/server/src/main.ts', lines: 569, baseLines: 569 }])).toEqual([]);
+  });
+
+  it('fails a file already over the limit that grew by one line', () => {
+    expect(check([{ path: 'apps/server/src/main.ts', lines: 570, baseLines: 569 }])).toEqual([
+      'apps/server/src/main.ts: 570 lines (main 569); limit 400',
+    ]);
+  });
+
+  it('passes a test file of 900 lines', () => {
+    expect(check([{ path: 'apps/server/src/a.test.ts', lines: 900, baseLines: null }])).toEqual([]);
+  });
+
+  it('exempts tests, mocks, fixtures, generated and declaration files', () => {
+    for (const path of [
+      'apps/server/src/a.spec.ts',
+      'apps/server/src/x/__mocks__/a.ts',
+      'apps/server/src/fixtures/a.ts',
+      'apps/server/src/mock/a.ts',
+      'packages/mock-backend/src/main.ts',
+      'apps/server/src/table.gen.ts',
+      'apps/server/src/app/routeTree.gen.ts',
+      'apps/server/drizzle/meta/a.ts',
+      'apps/server/src/types.d.ts',
+      'apps/server/src/test-harness.ts',
+      'apps/server/src/agents/gateway.test-harness.ts',
+    ]) {
+      expect(isSizeChecked(path)).toBe(false);
+    }
+    expect(isSizeChecked('apps/server/src/main.ts')).toBe(true);
+    expect(isSizeChecked('packages/runner-tunnel/src/runner.ts')).toBe(true);
+    expect(isSizeChecked('docs/a.ts')).toBe(false);
+    expect(isSizeChecked('apps/server/src/main.md')).toBe(false);
+  });
+
+  it('counts lines without a trailing newline as an extra line', () => {
+    expect(countLines('')).toBe(0);
+    expect(countLines('a\n')).toBe(1);
+    expect(countLines('a\nb')).toBe(2);
+    expect(countLines('a\nb\n')).toBe(2);
   });
 });
 

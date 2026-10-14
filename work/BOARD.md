@@ -1439,3 +1439,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1426](T-1426-session-log.md) | Session log behind View steps: events table, route | 2026-10-14 |
 | [T-1425](T-1425-computer-picker.md) | Computer picker per AI on web and mobile | 2026-10-14 |
 | [T-1422](T-1422-stop-ai-turn.md) | Stop a running AI turn from its card (owner only) | 2026-10-14 |
+| [T-1427](T-1427-gate-file-size.md) | Gate: changed files may not grow past 400 lines | 2026-10-14 |
