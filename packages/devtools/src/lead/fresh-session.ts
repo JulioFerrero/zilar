@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { OpenCodeClient } from './client.js';
+import { isGoPaused } from './go-pause.js';
 import { readTaskFrontMatter } from './launch.js';
 import { resolveWorkerModel } from './model-schedule.js';
 import { loadRulesFile } from './prompts.js';
@@ -49,9 +50,11 @@ export async function startFreshWorkerSession(
     input.task,
   );
   // `model: auto` re-resolves when the fresh session starts: it always picks
-  // the Go DeepSeek Flash now (T-1242). Other models keep the record's model
-  // (switch-model may have moved it onto the paid fallback).
-  const resolved = resolveWorkerModel(frontMatterModel, deps.now?.() ?? new Date());
+  // the Go DeepSeek Flash now (T-1242), or the metered DeepSeek API while Go is
+  // paused (T-1421). Other models keep the record's model (switch-model may
+  // have moved it onto the paid fallback).
+  const now = deps.now?.() ?? new Date();
+  const resolved = resolveWorkerModel(frontMatterModel, now, isGoPaused(now));
   const modelString = frontMatterModel === 'auto' ? resolved.model : input.record.model;
   const model = { ...splitModel(modelString), variant: resolved.effortOverride ?? effort };
   const rules = loadRulesFile(path.join(deps.promptsDirPath, 'rules.json'));

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { OpencodeCliClient, type OpenCodeClient } from './client.js';
+import { goPause } from './go-pause.js';
 import { summarizeSession } from './session.js';
 import { loadState, stateFilePath } from './state.js';
 import { findTaskFile } from './launch.js';
@@ -95,4 +96,8 @@ export async function runStatus(): Promise<void> {
     statePath: stateFilePath(),
   });
   console.log(formatStatus(rows));
+  const pause = goPause();
+  if (pause !== undefined) {
+    console.log(`Go paused until ${pause.until}`);
+  }
 }

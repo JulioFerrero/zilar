@@ -1434,3 +1434,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1419](T-1419-task-card-ui.md) | Task card UI on web and mobile; clients apply card edits | 2026-10-14 |
 | [T-1396](T-1396-openai-compatible-provider.md) | Custom OpenAI-compatible provider, SSRF-pinned | 2026-10-14 |
 | [T-1424](T-1424-drop-litellm-tables.md) | Drop the unused LiteLLM tables | 2026-10-14 |
+| [T-1421](T-1421-go-pause.md) | Lead models: pause OpenCode Go until a date | 2026-10-14 |

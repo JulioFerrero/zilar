@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { type OpenCodeClient, type SessionModel } from './client.js';
+import { isGoPaused } from './go-pause.js';
 import type { GitRunner } from './git.js';
 import { loadPrompt, loadRulesFile, renderPrompt, unfilledPlaceholders } from './prompts.js';
 import { updateState } from './state.js';
@@ -232,7 +233,7 @@ export async function launchTask(
   }
   const { file, model: modelString, branch, effort } = readTaskFrontMatter(deps.repoRoot, task);
   const now = deps.now?.() ?? new Date();
-  const resolved = resolveWorkerModel(modelString, now);
+  const resolved = resolveWorkerModel(modelString, now, isGoPaused(now));
   assertAllowedModel(resolved.model);
   const model = { ...splitModel(resolved.model), variant: resolved.effortOverride ?? effort };
   if (modelString === 'auto') {

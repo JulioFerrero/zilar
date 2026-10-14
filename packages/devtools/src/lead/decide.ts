@@ -32,6 +32,9 @@ export interface DecideInput {
   record: TaskRecord;
   sessionState: SessionState;
   quotaError: boolean;
+  // T-1421: true while OpenCode Go is paused; fallbacks then skip every Go
+  // listing. Gathered by the tick so this function stays filesystem-free.
+  goPaused: boolean;
   questionRunning: boolean;
   questionText: string;
   questionIds: string[];
@@ -206,7 +209,7 @@ export function decide(input: DecideInput): Action[] {
     // Fix rounds: the worker stays on the task while status is review, so a
     // quota error here must fall back in place just like todo/in-progress.
     if (input.quotaError) {
-      const workerFallback = fallbackModel(input.record.model);
+      const workerFallback = fallbackModel(input.record.model, input.goPaused);
       if (workerFallback !== undefined) {
         pushWorkerFallback(input.record.model, workerFallback);
         return actions;
@@ -222,7 +225,7 @@ export function decide(input: DecideInput): Action[] {
       input.record.prereview.head === input.head &&
       input.prereviewQuotaError
     ) {
-      const fallback = fallbackModel(input.record.prereview.model ?? FREE_MUSE);
+      const fallback = fallbackModel(input.record.prereview.model ?? FREE_MUSE, input.goPaused);
       if (fallback !== undefined) {
         actions.push({ kind: 'fallback-model', session: 'prereview', model: fallback });
         escalate(`LEAD: FALLBACK ${input.task} pre-review continues on ${label(fallback)}`);
@@ -265,7 +268,7 @@ export function decide(input: DecideInput): Action[] {
   }
 
   if (input.taskStatus === 'planned' && input.quotaError) {
-    const plannedFallback = fallbackModel(input.record.model);
+    const plannedFallback = fallbackModel(input.record.model, input.goPaused);
     if (plannedFallback !== undefined) {
       pushWorkerFallback(input.record.model, plannedFallback);
       return actions;
@@ -278,7 +281,7 @@ export function decide(input: DecideInput): Action[] {
 
   // 5. Quota errors: back off the retry, and escalate at most hourly.
   if (input.quotaError) {
-    const fallback = fallbackModel(input.record.model);
+    const fallback = fallbackModel(input.record.model, input.goPaused);
     if (fallback !== undefined) {
       pushWorkerFallback(input.record.model, fallback);
       return actions;

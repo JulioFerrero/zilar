@@ -7,6 +7,7 @@ import {
   startWorkerSession,
   worktreeFor,
 } from './launch.js';
+import { isGoPaused } from './go-pause.js';
 import { loadRulesFile } from './prompts.js';
 import { appendLog, loadState, updateState } from './state.js';
 import { resolveWorkerVariant } from './model-schedule.js';
@@ -191,7 +192,7 @@ export async function switchModelInPlace(
   }
   assertAllowedModel(newModel);
   const { model: frontMatterModel, effort } = readTaskFrontMatter(worktree, task);
-  const variant = resolveWorkerVariant(frontMatterModel, effort, new Date());
+  const variant = resolveWorkerVariant(frontMatterModel, effort, new Date(), isGoPaused());
 
   await deps.client.switchModel(previous.sessionId, {
     ...splitModel(newModel),

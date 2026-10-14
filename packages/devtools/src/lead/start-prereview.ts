@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { type OpenCodeClient } from './client.js';
+import { isGoPaused, withoutPausedGoModel } from './go-pause.js';
 import { findTaskFile } from './launch.js';
 import { loadPrompt, loadRulesFile, renderPrompt } from './prompts.js';
 import { parseTaskFrontMatter, reviewModel } from './task-file.js';
@@ -40,7 +41,7 @@ export async function startPrereviewSession(deps: PrereviewDeps, head: string): 
   const sessionId = await deps.client.createSession({
     title: `${deps.task} pre-review ${head.slice(0, 7)}`,
     agent: 'build',
-    model: reviewModel(),
+    model: withoutPausedGoModel(reviewModel(), isGoPaused()),
     directory: deps.worktree,
     permissions: loadRulesFile(path.join(deps.promptsDirPath, 'rules.json')),
   });

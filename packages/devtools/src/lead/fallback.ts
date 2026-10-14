@@ -7,12 +7,15 @@ export { DEEPSEEK_FLASH, FREE_MUSE, GO_DEEPSEEK_FLASH, GO_MUSE, PAID_MUSE };
 // DeepSeek API, then to the flat-rate Go Muse, and only a third failure moves
 // it to the billed Meta Muse. The free Muse goes to the Go Muse next, then to
 // the billed one. Each quota error applies one step of the chain.
-export function fallbackModel(model: string): string | undefined {
+//
+// T-1421: while Go is paused the chain skips every Go listing, so the DeepSeek
+// API and the free Muse both go straight to the paid Muse.
+export function fallbackModel(model: string, goPaused = false): string | undefined {
   if (model === GO_DEEPSEEK_FLASH) {
     return DEEPSEEK_FLASH;
   }
   if (model === DEEPSEEK_FLASH || model === FREE_MUSE) {
-    return GO_MUSE;
+    return goPaused ? PAID_MUSE : GO_MUSE;
   }
   return model === GO_MUSE ? PAID_MUSE : undefined;
 }

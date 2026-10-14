@@ -5,6 +5,7 @@ import { type OpenCodeClient } from './client.js';
 import type { FindingCounts } from './decide.js';
 import type { GitRunner } from './git.js';
 import { fallbackModel, FREE_MUSE, PAID_MUSE } from './fallback.js';
+import { isGoPaused, withoutPausedGoModel } from './go-pause.js';
 import { loadPrompt, loadRulesFile, renderPrompt } from './prompts.js';
 import type { SessionState } from './session.js';
 import { reviewModel } from './task-file.js';
@@ -124,7 +125,7 @@ export async function startDoctorSession(
   const sessionId = await deps.client.createSession({
     title: `doctor ${shortHead(input.head)}`,
     agent: 'build',
-    model: reviewModel(),
+    model: withoutPausedGoModel(reviewModel(), isGoPaused()),
     directory: worktree,
     permissions: loadRulesFile(path.join(deps.promptsDirPath, 'rules.json')),
   });
@@ -150,6 +151,8 @@ export interface DecideDoctorInput {
   counts: FindingCounts | undefined;
   verdict: string;
   quotaError: boolean;
+  // T-1421: true while OpenCode Go is paused; fallbacks then skip Go.
+  goPaused: boolean;
 }
 
 export type DoctorAction =
@@ -202,7 +205,7 @@ export function decideDoctor(input: DecideDoctorInput): DoctorAction[] {
     // place, like workers and pre-reviews (T-1362). Once there is nothing to
     // fall back to, the idle checks below run the normal STALLED path.
     if (input.quotaError) {
-      const fallback = fallbackModel(input.doctor.model ?? FREE_MUSE);
+      const fallback = fallbackModel(input.doctor.model ?? FREE_MUSE, input.goPaused);
       if (fallback !== undefined) {
         actions.push({ kind: 'fallback-doctor', model: fallback });
         escalate(

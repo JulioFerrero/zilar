@@ -3,6 +3,7 @@ import path from 'node:path';
 import { type OpenCodeClient } from './client.js';
 import { applyRecordPatch, decide, type Action, type FindingCounts } from './decide.js';
 import { currentHead, type GitRunner } from './git.js';
+import { isGoPaused } from './go-pause.js';
 import { findTaskFile, readTaskFrontMatter } from './launch.js';
 import { loadPrompt, renderPrompt, type PromptName } from './prompts.js';
 import {
@@ -191,7 +192,8 @@ async function applyActions(
         const template: PromptName = 'resume';
         try {
           const { model: frontMatterModel, effort } = readTaskFrontMatter(current.worktree, task);
-          const variant = resolveWorkerVariant(frontMatterModel, effort, new Date());
+          const at = new Date();
+          const variant = resolveWorkerVariant(frontMatterModel, effort, at, isGoPaused(at));
           await deps.client.switchModel(target, { ...splitModel(action.model), variant });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -396,6 +398,7 @@ export async function tickOnce(
         record,
         sessionState: summary.state,
         quotaError: summary.quotaError,
+        goPaused: isGoPaused(new Date(now)),
         questionRunning: summary.questionRunning,
         questionText: summary.questionText,
         questionIds: summary.questionIds,
@@ -551,6 +554,7 @@ async function tickDoctor(
     counts: report.counts,
     verdict: report.verdict,
     quotaError,
+    goPaused: isGoPaused(new Date(options.now)),
   });
   await applyDoctorActions(actions, deps, options.dryRun, doctor);
 }

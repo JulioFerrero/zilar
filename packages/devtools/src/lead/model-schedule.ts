@@ -23,15 +23,19 @@ export function isDeepSeekPeak(now: Date): boolean {
 // Resolves `model: auto` for the given moment. Any other value comes back
 // unchanged so explicit models keep working exactly as before. The moment no
 // longer matters: Go is flat-rate, so auto always picks the Go DeepSeek Flash
-// with `effort: default` (T-1242).
+// with `effort: default` (T-1242). While Go is paused (T-1421) auto starts on
+// the metered DeepSeek API instead, still at `default`.
 export function resolveWorkerModel(
   frontMatterModel: string,
   _now: Date,
+  goPaused = false,
 ): { model: string; effortOverride?: string } {
   if (frontMatterModel !== 'auto') {
     return { model: frontMatterModel };
   }
-  return { model: GO_DEEPSEEK_FLASH, effortOverride: 'default' };
+  return goPaused
+    ? { model: DEEPSEEK_FLASH, effortOverride: 'default' }
+    : { model: GO_DEEPSEEK_FLASH, effortOverride: 'default' };
 }
 
 // The reasoning effort a worker session runs at: the schedule's override when
@@ -43,6 +47,7 @@ export function resolveWorkerVariant(
   frontMatterModel: string,
   taskEffort: string,
   now: Date,
+  goPaused = false,
 ): string {
-  return resolveWorkerModel(frontMatterModel, now).effortOverride ?? taskEffort;
+  return resolveWorkerModel(frontMatterModel, now, goPaused).effortOverride ?? taskEffort;
 }
