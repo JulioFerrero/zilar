@@ -1443,3 +1443,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1430](T-1430-orb-params.md) | Orb params: ballParams and ballSvg, output unchanged | 2026-10-14 |
 | [T-1433](T-1433-sweep-client-findings.md) | Findings sweep (client UX): 57 rechecked on main | 2026-10-14 |
 | [T-1434](T-1434-sweep-server-findings.md) | Findings sweep (server, sec, perf, AI, ops): 59 rechecked | 2026-10-14 |
+| [T-1428](T-1428-one-line-installer.md) | One-line installer: curl | sh, sudo-aware, dry run | 2026-10-14 |

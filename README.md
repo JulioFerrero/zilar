@@ -131,7 +131,17 @@ Early and moving fast, built by one person with an AI team. Chat, AIs, streaming
 
 ## 🚀 Quick start
 
-To install your own Zilar, pick a path in [`docs/INSTALL.md`](docs/INSTALL.md) (Docker in five minutes, Coolify, or bare metal).
+On a fresh Debian or Ubuntu box, one line installs Zilar:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/JulioFerrero/zilar/main/deploy/install.sh | sh
+```
+
+Read [`deploy/install.sh`](deploy/install.sh) first — it is short and it never prints a secret.
+It checks the host, installs Docker (with your consent), fetches a pinned release, runs the
+wizard, starts the stack and runs `doctor`. Prefer to see every step yourself? Pick a path in
+[`docs/INSTALL.md`](docs/INSTALL.md) instead (Docker in five minutes, Coolify, or bare metal).
+
 To hack on it locally:
 
 ```bash
