@@ -1,5 +1,8 @@
 import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { getAiUsage, type AiUsage } from '../../ais/usage';
+import type { ServerDatabase } from '../../db/client';
+import { runSql } from '../../effect/sql';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import { dailyLimitReply, dailyWarningReply, monthlyWarningReply } from '../reply';
 import { loadAiOwnerId } from './db';
@@ -19,9 +22,41 @@ interface BudgetGateContext {
 
 const FAILED = Symbol('failed');
 
+interface AiLimitRow {
+  perDayUsd: string | null;
+  perMonthUsd: string | null;
+}
+
+// T-1437 (AI-15): the AI's own spend bounds, read on their own so a usage-read
+// failure can still tell a limited AI from one with no limit. A `null` bound
+// means no bound for that window; a missing row means the AI has no limits row
+// at all, so it is unlimited. A failed read rejects and the callers treat the
+// unknown bound as limited (money first). `numeric` columns come back as
+// strings, so the per-day cap is converted here.
+async function limitsFor(
+  db: ServerDatabase,
+  aiId: string,
+): Promise<{ hasLimit: boolean; perDayUsd: number | null }> {
+  const [row] = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<AiLimitRow>`SELECT per_day_usd, per_month_usd
+        FROM ai_limits WHERE ai_id = ${aiId} LIMIT 1`;
+    }),
+  );
+  if (row === undefined) {
+    return { hasLimit: false, perDayUsd: null };
+  }
+  return {
+    hasLimit: row.perDayUsd !== null || row.perMonthUsd !== null,
+    perDayUsd: row.perDayUsd === null ? null : Number(row.perDayUsd),
+  };
+}
+
 // Runs a Promise call as an Effect. A rejection (or a synchronous throw) dies
-// with the original value; `onError` logs it (the old `catch` body) and the
-// call answers `FAILED`, so the failure never leaves the turn.
+// with the original value; `onError` observes it (or logs it) and the call
+// answers `FAILED`, so the failure never leaves the turn.
 function attempt<A>(
   run: () => PromiseLike<A>,
   onError: (error: unknown) => void,
@@ -65,26 +100,61 @@ export function createBudgetGate(ctx: BudgetGateContext) {
     );
 
   // The daily-limit check (T-0058), shared by DM and group turns. It runs
-  // before any model call: a null usage fails open (the turn goes ahead), and a
-  // NULL daily bound (T-1408, no limit set) never skips the turn. The fetched
-  // usage is returned so the caller can send the 80% warnings after the reply
-  // without a second read. Only ids are ever logged.
+  // before any model call and a NULL daily bound (T-1408, no limit set) never
+  // skips the turn. A usage-read failure is T-1437 (AI-15): when the AI has a
+  // daily or monthly limit, the gate fails closed (the turn is skipped and the
+  // fixed notice is sent); an AI with no limit keeps the old fail-open path.
+  // An unreadable bound counts as set, so a database outage never lets a
+  // limited AI run past its cap. The fetched usage is returned so the caller
+  // can send the 80% warnings after the reply without a second read. Only ids
+  // are ever logged.
   const checkDailyLimitEffect = Effect.fnUntraced(function* (input: {
     aiId: string;
     chatKey: string;
     sendNotice: (text: string) => Promise<unknown>;
   }): Effect.fn.Return<{ limited: boolean; usage: AiUsage | null }> {
+    let usageError: unknown;
     const fetched = yield* attempt(
       () => usageFor(input.aiId),
       (error) => {
-        logger.warn(
-          { err: toRedactedError(error, secretsFor()), aiId: input.aiId },
-          'AI usage check failed; failing open',
-        );
+        usageError = error;
       },
     );
     if (fetched === FAILED) {
-      return { limited: false, usage: null };
+      const limits = yield* attempt(
+        () => limitsFor(deps.db, input.aiId),
+        () => undefined,
+      );
+      if (limits !== FAILED && !limits.hasLimit) {
+        logger.warn(
+          { err: toRedactedError(usageError, secretsFor()), aiId: input.aiId },
+          'AI usage check failed; failing open (no spend limit set)',
+        );
+        return { limited: false, usage: null };
+      }
+      logger.warn(
+        { err: toRedactedError(usageError, secretsFor()), aiId: input.aiId },
+        'AI usage check failed; failing closed (a spend limit is set)',
+      );
+      const today = utcDay();
+      const key = `${input.aiId}:${input.chatKey}`;
+      if (dailyLimitNotices.get(key) === today) {
+        return { limited: true, usage: null };
+      }
+      const perDayUsd = limits === FAILED ? 0 : (limits.perDayUsd ?? 0);
+      const sent = yield* attempt(
+        () => input.sendNotice(dailyLimitReply(perDayUsd)),
+        (error) => {
+          logger.warn(
+            { err: toRedactedError(error, secretsFor()), aiId: input.aiId },
+            'AI daily-limit notice could not be sent',
+          );
+        },
+      );
+      if (sent !== FAILED) {
+        dailyLimitNotices.set(key, today);
+      }
+      return { limited: true, usage: null };
     }
     const usage = fetched;
     if (usage === null || !usage.dailyLimitReached) {
@@ -173,19 +243,36 @@ export function createBudgetGate(ctx: BudgetGateContext) {
   // call the AI must still be live (kill switch) and still under its
   // daily/monthly limits. A limited AI gets the same fixed budget reply the
   // single-round turn would send; a stopped AI gets the stopped reply and
-  // sends nothing. Usage null fails open, like the pre-turn check.
+  // sends nothing. A usage-read failure is T-1437 (AI-15): a limited AI (or an
+  // unreadable bound) fails closed, an AI with no limit keeps the old
+  // fail-open path.
   const checkDmRoundGateEffect = Effect.fnUntraced(function* (
     session: AiSession,
   ): Effect.fn.Return<{ limited: boolean; reply: string } | null> {
     if (!sessionIsLive(session)) {
       return { limited: true, reply: 'The AI was stopped.' };
     }
+    let usageError: unknown;
     const fetched = yield* attempt(
       () => usageFor(session.aiId),
-      () => undefined,
+      (error) => {
+        usageError = error;
+      },
     );
     if (fetched === FAILED) {
-      return null;
+      const limits = yield* attempt(
+        () => limitsFor(deps.db, session.aiId),
+        () => undefined,
+      );
+      if (limits !== FAILED && !limits.hasLimit) {
+        return null;
+      }
+      logger.warn(
+        { err: toRedactedError(usageError, secretsFor()), aiId: session.aiId },
+        'AI usage check failed before a multi-round turn; failing closed (a spend limit is set)',
+      );
+      const perDayUsd = limits === FAILED ? 0 : (limits.perDayUsd ?? 0);
+      return { limited: true, reply: dailyLimitReply(perDayUsd) };
     }
     const usage = fetched;
     if (usage === null || !usage.dailyLimitReached) {

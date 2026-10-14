@@ -13,6 +13,7 @@ import {
   MAX_PENDING_OUTGOING,
   type ContactRequestsDeps,
 } from './service';
+import { relationFor, relationsFor } from './reads';
 import { searchUsers } from './search';
 
 describe('contact request permissions (T-0994)', () => {
@@ -214,5 +215,41 @@ describe('contact request permissions (T-0994)', () => {
     expect(await searchUsers(deps.db, viewer, 'jo')).toEqual([]);
     expect(await searchUsers(deps.db, viewer, '@jo')).toEqual([]);
     expect(await searchUsers(deps.db, viewer, '  @jo  ')).toEqual([]);
+  });
+
+  // SG-7 (T-1437): the batched read must answer for every user exactly what
+  // the single-user `relationFor` would, across all five relation kinds.
+  it('relationsFor matches relationFor for every user (SG-7)', async () => {
+    const viewer = await seedUser(context, { name: 'Viewer' });
+    const contact = await seedUser(context, { name: 'Contact' });
+    const outgoing = await seedUser(context, { name: 'Outgoing' });
+    const incoming = await seedUser(context, { name: 'Incoming' });
+    const blocked = await seedUser(context, { name: 'Blocked' });
+    const none = await seedUser(context, { name: 'None' });
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO contacts (user_id, contact_user_id, source)
+          VALUES (${viewer}, ${contact}, 'manual')`;
+        yield* sql`INSERT INTO contact_requests (id, from_user_id, to_user_id, status)
+          VALUES (${randomUUID()}, ${viewer}, ${outgoing}, 'pending')`;
+        yield* sql`INSERT INTO contact_requests (id, from_user_id, to_user_id, status)
+          VALUES (${randomUUID()}, ${incoming}, ${viewer}, 'pending')`;
+        yield* sql`INSERT INTO user_blocks (user_id, blocked_user_id)
+          VALUES (${viewer}, ${blocked})`;
+      }),
+    );
+
+    const ids = [contact, outgoing, incoming, blocked, none, viewer];
+    const batched = await relationsFor(deps.db, viewer, ids);
+    for (const id of ids) {
+      expect(batched.get(id)).toBe(await relationFor(deps.db, viewer, id));
+    }
+    expect(batched.get(contact)).toBe('contact');
+    expect(batched.get(outgoing)).toBe('request_sent');
+    expect(batched.get(incoming)).toBe('request_received');
+    expect(batched.get(blocked)).toBe('blocked');
+    expect(batched.get(none)).toBe('none');
+    expect(batched.get(viewer)).toBe('self');
   });
 });

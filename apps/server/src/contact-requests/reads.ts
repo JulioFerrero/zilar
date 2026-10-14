@@ -63,6 +63,9 @@ export async function listContactRequests(
   return { incoming, outgoing };
 }
 
+export type ViewerRelation =
+  'self' | 'blocked' | 'contact' | 'request_sent' | 'request_received' | 'none';
+
 // The relation between the viewer and the owner of a handle, for
 // `GET /api/users/by-handle/:handle`: `self`, `blocked`, `contact`,
 // `request_sent`, `request_received` or `none`. `blocked` is checked first
@@ -72,7 +75,7 @@ export async function relationFor(
   db: ServerDatabase,
   viewerId: string,
   otherId: string,
-): Promise<'self' | 'blocked' | 'contact' | 'request_sent' | 'request_received' | 'none'> {
+): Promise<ViewerRelation> {
   if (viewerId === otherId) {
     return 'self';
   }
@@ -97,6 +100,66 @@ export async function relationFor(
       return 'none' as const;
     }),
   );
+}
+
+// SG-7 (T-1437): the batched form of `relationFor` for a viewer and many
+// others. The result per user is identical to calling `relationFor` for that
+// user alone — `self` first, then `blocked`, `contact`, the pending direction
+// and `none` — but the three probes run once over the whole set instead of
+// three to four times per user. The same query count holds for a search page.
+// Callers that need one relation keep `relationFor`; the batched read is for
+// the people search (`searchUsers`).
+export async function relationsFor(
+  db: ServerDatabase,
+  viewerId: string,
+  otherIds: readonly string[],
+): Promise<Map<string, ViewerRelation>> {
+  const unique = [...new Set(otherIds)];
+  const relations = new Map<string, ViewerRelation>();
+  for (const id of unique) {
+    if (id === viewerId) {
+      relations.set(id, 'self');
+    }
+  }
+  const others = unique.filter((id) => id !== viewerId);
+  if (others.length === 0) {
+    return relations;
+  }
+  const { blocked, contacts, pending } = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const blocked = yield* sql<{ userId: string }>`SELECT blocked_user_id AS "userId"
+        FROM user_blocks WHERE user_id = ${viewerId} AND blocked_user_id IN ${sql.in(others)}`;
+      const contacts = yield* sql<{ userId: string }>`SELECT contact_user_id AS "userId"
+        FROM contacts WHERE user_id = ${viewerId} AND contact_user_id IN ${sql.in(others)}`;
+      const pending = yield* sql<ContactRequestRow>`SELECT * FROM contact_requests
+        WHERE status = 'pending'
+          AND ((from_user_id = ${viewerId} AND to_user_id IN ${sql.in(others)})
+            OR (to_user_id = ${viewerId} AND from_user_id IN ${sql.in(others)}))`;
+      return { blocked, contacts, pending };
+    }),
+  );
+  const blockedIds = new Set(blocked.map((row) => row.userId));
+  const contactIds = new Set(contacts.map((row) => row.userId));
+  const pendingByOther = new Map<string, ViewerRelation>();
+  for (const row of pending) {
+    const outgoing = row.fromUserId === viewerId;
+    const other = outgoing ? row.toUserId : row.fromUserId;
+    pendingByOther.set(other, outgoing ? 'request_sent' : 'request_received');
+  }
+  for (const id of others) {
+    if (blockedIds.has(id)) {
+      relations.set(id, 'blocked');
+    } else if (contactIds.has(id)) {
+      relations.set(id, 'contact');
+    } else if (pendingByOther.has(id)) {
+      relations.set(id, pendingByOther.get(id) as ViewerRelation);
+    } else {
+      relations.set(id, 'none');
+    }
+  }
+  return relations;
 }
 
 export interface OtherUserProfile {

@@ -11,7 +11,7 @@ import { handler } from '../effect/http-core';
 import { HttpError, xmppUnavailable } from '../errors';
 import { cardEditTarget, isLiveAiUiRow } from '../notify/ai-cards';
 import type { RateLimiter } from '../rate-limit';
-import { allowedArchives } from '../search/service';
+import { cachedAllowedArchives } from './archives-cache';
 import { syncPushSubscriptionsForUser } from '../topics/rooms';
 import { readCandidateByOriginId } from './archive-scan';
 import { resolveCandidate } from './candidates';
@@ -167,7 +167,7 @@ export function createPushGroupLayer(
             // A failed archive read is a defect (`orDie`) so the shared error
             // envelope renders it, exactly like the search route.
             const allowed = yield* Effect.tryPromise({
-              try: () => allowedArchives(deps.db, deps.config, userId),
+              try: () => cachedAllowedArchives(deps.db, deps.config, userId),
               catch: () => xmppUnavailable(),
             }).pipe(Effect.orDie);
             const row = yield* Effect.tryPromise({

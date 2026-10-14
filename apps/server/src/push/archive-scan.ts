@@ -1,8 +1,9 @@
 import { Duration, Effect, type Effect as EffectType } from 'effect';
-import { allowedArchives, type ArchivePool, type SearchOwner } from '../search/service';
+import { type ArchivePool, type SearchOwner } from '../search/service';
 import { albumInfoFromXml } from '../xmpp/album-xml';
 import { liveAiUiIds } from '../notify/ai-cards';
 import { albumKey } from './album-key';
+import { cachedAllowedArchives } from './archives-cache';
 import { resolveCandidate } from './candidates';
 import type { ResolvedPushMessage } from './payload';
 import { ArchiveUnavailable, type PushServiceDeps } from './service';
@@ -59,7 +60,7 @@ export const newestMessageForUserEffect = Effect.fnUntraced(function* (
   node: string,
 ): EffectType.fn.Return<NewestScan, ArchiveUnavailable> {
   const allowed = yield* Effect.tryPromise({
-    try: () => allowedArchives(deps.db, deps.config, userId),
+    try: () => cachedAllowedArchives(deps.db, deps.config, userId),
     catch: () => new ArchiveUnavailable(),
   });
   // Per node (device): one publish IQ per node means each device buzzes

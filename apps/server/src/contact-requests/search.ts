@@ -9,7 +9,7 @@ import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { normalizeHandle } from '../handles/rules';
-import { relationFor, type OtherUserProfile } from './reads';
+import { relationFor, relationsFor, type OtherUserProfile } from './reads';
 
 export const USER_SEARCH_MIN_LENGTH = 3;
 export const USER_SEARCH_LIMIT = 10;
@@ -72,15 +72,20 @@ export async function searchUsers(
         LIMIT ${USER_SEARCH_LIMIT}`;
     }),
   );
-  const entries: UserSearchEntry[] = [];
-  for (const row of rows) {
-    entries.push({
-      userId: row.userId,
-      name: row.name.trim() === '' ? 'Unnamed user' : row.name,
-      handle: row.handle,
-      image: row.image,
-      relation: await relationFor(db, viewerId, row.userId),
-    });
-  }
+  // SG-7 (T-1437): one batched read for every row's relation instead of one
+  // `relationFor` round trip per row. The output order and content stay the
+  // same; a row's relation is what `relationFor` would return for it.
+  const relations = await relationsFor(
+    db,
+    viewerId,
+    rows.map((row) => row.userId),
+  );
+  const entries: UserSearchEntry[] = rows.map((row) => ({
+    userId: row.userId,
+    name: row.name.trim() === '' ? 'Unnamed user' : row.name,
+    handle: row.handle,
+    image: row.image,
+    relation: relations.get(row.userId) ?? 'none',
+  }));
   return entries;
 }
