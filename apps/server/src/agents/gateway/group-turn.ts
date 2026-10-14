@@ -1,5 +1,4 @@
 import { Effect } from 'effect';
-import { type AiServiceDeps } from '../../ais/service';
 import { displayNameOf, normBareJid, type ChatCompletionMessage } from '../context';
 import { finishDelegation } from '../delegation/service';
 import { GROUP_FAILURE_REPLY, mapFailureToReply, type ExecuteToolCall } from '../reply';
@@ -18,6 +17,7 @@ import { loadActiveAi, loadGroupTitle, loadRoomGateState, loadTopicName } from '
 import type { createBudgetGate } from './budget';
 import type { createLiveSession } from './live';
 import type { MemoryRunner } from './memory';
+import type { DeskTurnContext } from './desk-exec';
 import { notifyOwnerOfFailure, runGroupTurnBody } from './group-turn-body';
 
 type LiveSession = ReturnType<typeof createLiveSession>;
@@ -56,7 +56,6 @@ export interface GroupTurnContext {
   deps: AgentGatewayDeps;
   logger: GatewayLogger;
   turnLogger: GatewayLogger;
-  baseUrl: string;
   sessions: Map<string, AiSession>;
   roomRounds: Map<string, RoomRound>;
   sessionForAiJid: (bare: string) => AiSession | undefined;
@@ -67,12 +66,12 @@ export interface GroupTurnContext {
   loadMemoryContext: MemoryRunner['loadMemoryContext'];
   startCompaction: MemoryRunner['startCompaction'];
   disconnectAi: (aiId: string) => Promise<void>;
-  secretsFor: (virtualKey?: string) => string[];
-  aiDeps: () => AiServiceDeps;
+  secretsFor: (secret?: string) => string[];
   executeToolCall: (
     session: AiSession,
     chatKey: string,
     context?: RequestActionContext,
+    desk?: DeskTurnContext,
   ) => ExecuteToolCall;
   withToolGuide: (messages: ChatCompletionMessage[]) => ChatCompletionMessage[];
   nowMs: () => number;
@@ -258,7 +257,7 @@ export function createGroupTurn(ctx: GroupTurnContext) {
         Effect.catchDefect(() => Effect.succeed(undefined)),
       );
     }
-    const virtualKeyRef: { value?: string } = {};
+    const secretRef: { value?: string } = {};
     yield* runGroupTurnBody({
       ctx,
       ai,
@@ -273,14 +272,14 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       senderName,
       groupName,
       topicName,
-      virtualKeyRef,
+      secretRef,
     }).pipe(
       Effect.catchDefect((error) =>
         Effect.gen(function* () {
-          // ensureAiModel, the key lookup and anything else outside the turn: an
+          // The connection lookup and anything else outside the turn: an
           // honest short message in the room, never the raw error.
           logger.warn(
-            { err: toRedactedError(error, secretsFor(virtualKeyRef.value)), aiId: session.aiId },
+            { err: toRedactedError(error, secretsFor(secretRef.value)), aiId: session.aiId },
             'AI group turn failed',
           );
           // T-0482: if this was a delegated turn, the model call never happened

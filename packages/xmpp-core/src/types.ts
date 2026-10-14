@@ -149,6 +149,8 @@ export interface TypingEvent {
   chatJid: string;
   fromJid: string;
   state: 'composing' | 'paused' | 'active';
+  /** T-1406: the short fixed status text an AI carries (e.g. "Searching the web"). */
+  status?: string;
   /** True when the chat state is mine (a MUC reflection of my own state). */
   outgoing: boolean;
 }
@@ -208,6 +210,9 @@ export interface SendMessageOptions {
 export interface SendCorrectionOptions {
   /** Offsets are UTF-16 code units; `buildCorrection` writes them as code points. */
   mentions?: MentionInput[];
+  /** T-1414: an `<agent>` payload to carry with the edit, so a correction can
+   * update a task card in place (written exactly like a send). */
+  payload?: Payload;
 }
 
 /** A file we want to upload through XEP-0363. */
@@ -291,7 +296,7 @@ export interface XmppCore extends XmppSuspend {
    * cores still satisfy the interface; callers feature-detect.
    */
   setPushEnabled?: (options: { pushJid: string; node: string; enable: boolean }) => Promise<void>;
-  sendTyping(to: string, kind: ChatKind, state: 'composing' | 'paused'): void;
+  sendTyping(to: string, kind: ChatKind, state: 'composing' | 'paused', status?: string): void;
   markDisplayed(chatJid: string, kind: ChatKind, messageId: string): void;
   on(event: 'status', cb: (s: ConnectionStatus) => void): () => void;
   on(event: 'message', cb: (m: ChatMessage) => void): () => void;
@@ -379,6 +384,11 @@ export interface XmppCoreEffect extends XmppSuspendEffect {
     enable: boolean;
   }): Effect.Effect<void, XmppCoreError>;
   /** Fire and forget: does nothing offline; a failed send becomes an `error` event. */
-  sendTyping(to: string, kind: ChatKind, state: 'composing' | 'paused'): Effect.Effect<void>;
+  sendTyping(
+    to: string,
+    kind: ChatKind,
+    state: 'composing' | 'paused',
+    status?: string,
+  ): Effect.Effect<void>;
   markDisplayed(chatJid: string, kind: ChatKind, messageId: string): Effect.Effect<void>;
 }

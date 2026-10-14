@@ -248,6 +248,7 @@ const runConnect = (argv: string[], io: CliIo): Effect.Effect<void, unknown> =>
             runRunner({
               identity,
               hubUrl,
+              homeDir: storage.homeDir,
               signal: controller.signal,
               logger: (line) => io.stdout(line),
             }),

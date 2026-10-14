@@ -6,13 +6,12 @@ import type { MockSeed } from '../../data';
 
 const CREATED_AT = '2026-09-28T09:00:00.000Z';
 
-/** The default limits the old mocks used when a request carried none. */
-export const defaultAiLimits: AiLimits = { perDayUsd: 2, perMonthUsd: 20 };
-
 /**
  * The owner's AIs. Dev-1 sits on the approved machine; the others start on the
  * platform. `usage: null` means "unavailable", like the contract's optional
- * summary (one AI keeps a real summary so the spend bar renders).
+ * summary. T-1408: Dev-1 has no limits (null bounds) but real spend, so the
+ * usage block renders without a meter; Marketing AI keeps a limit so the meter
+ * still shows.
  */
 export const mockAis: readonly PublicAi[] = [
   {
@@ -24,9 +23,10 @@ export const mockAis: readonly PublicAi[] = [
     jid: 'ai-dev-1@zilar.test',
     status: 'active',
     providerConnectionId: 'conn-openai',
-    limits: { perDayUsd: 2, perMonthUsd: 20 },
-    usage: null,
+    limits: { perDayUsd: null, perMonthUsd: null },
+    usage: { todayUsd: 0.42, windowUsd: 3.1 },
     machineId: 'mach-approved',
+    computerMode: 'off',
     createdAt: CREATED_AT,
   },
   {
@@ -41,6 +41,7 @@ export const mockAis: readonly PublicAi[] = [
     limits: { perDayUsd: 2, perMonthUsd: 20 },
     usage: null,
     machineId: null,
+    computerMode: 'cloud',
     createdAt: CREATED_AT,
   },
   {
@@ -55,6 +56,7 @@ export const mockAis: readonly PublicAi[] = [
     limits: { perDayUsd: 5, perMonthUsd: 50 },
     usage: { todayUsd: 1.7, windowUsd: 6 },
     machineId: null,
+    computerMode: 'off',
     createdAt: CREATED_AT,
   },
 ];
@@ -66,15 +68,16 @@ export function isAiTemplate(value: unknown): value is AiTemplate {
   return typeof value === 'string' && (AI_TEMPLATES as readonly string[]).includes(value);
 }
 
-/** Reads an `AiLimits` body value, falling back to the seed's defaults. */
+/** Reads an `AiLimits` body value; a missing or non-numeric bound is no limit. */
 export function readAiLimits(value: unknown): AiLimits {
   if (value !== null && typeof value === 'object') {
     const record = value as Record<string, unknown>;
-    if (typeof record.perDayUsd === 'number' && typeof record.perMonthUsd === 'number') {
-      return { perDayUsd: record.perDayUsd, perMonthUsd: record.perMonthUsd };
-    }
+    return {
+      perDayUsd: typeof record.perDayUsd === 'number' ? record.perDayUsd : null,
+      perMonthUsd: typeof record.perMonthUsd === 'number' ? record.perMonthUsd : null,
+    };
   }
-  return { ...defaultAiLimits };
+  return { perDayUsd: null, perMonthUsd: null };
 }
 
 export function seedAis(): Partial<MockSeed> {

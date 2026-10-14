@@ -17,6 +17,7 @@ import type {
   TypingEvent,
 } from '../types';
 import { parseAlbum } from './album';
+import { MAX_STATUS_CHARS } from './build-outgoing';
 import {
   parseCorrection,
   parseForward,
@@ -179,10 +180,18 @@ function parseTyping(
     (candidate) => stanza.getChild(candidate, CHAT_STATES_NAMESPACE) !== undefined,
   );
   if (state === undefined) return undefined;
+  // T-1406: an old stanza carries no `<stage/>`; a status an old client sent
+  // without one is absent, and the clients then show the bare dots.
+  const stage = stanza.getChild('stage', AGENT_NAMESPACE)?.text();
+  const status =
+    stage === undefined || stage === ''
+      ? undefined
+      : Array.from(stage).slice(0, MAX_STATUS_CHARS).join('');
   return {
     chatJid: conversationJid(stanza, from, kind, ctx.me),
     fromJid: sender.jid,
     state,
+    ...(status === undefined ? {} : { status }),
     outgoing: sender.outgoing,
   };
 }

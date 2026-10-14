@@ -3,9 +3,9 @@
 // the code, wording and behaviour are unchanged.
 import { Effect } from 'effect';
 import type { ChatMessage } from '@zilar/xmpp-core';
-import { modelNameForAi } from '../../ai/model-entry';
-import { ensureAiModel, type ActiveAiForGateway } from '../../ais/service';
+import { type ActiveAiForGateway } from '../../ais/service';
 import type { AiUsage } from '../../ais/usage';
+import { recordUsage } from '../../ais/usage-store';
 import type { KeyCipher } from '../../connections/crypto';
 import {
   buildGroupMessages,
@@ -15,6 +15,7 @@ import {
 } from '../context';
 import { finishDelegation } from '../delegation/service';
 import { runGroupTurn } from '../reply';
+import { TOOL_STAGE_THINKING } from '../tool-guide';
 import { buildGroupTools } from '../tools';
 import {
   errorName,
@@ -24,12 +25,8 @@ import {
   type RoomPendingMessage,
   type RoomSubscription,
 } from './contracts';
-import {
-  loadDelegationFlags,
-  loadEncryptedVirtualKey,
-  loadRoomGateState,
-  type RoomGateState,
-} from './db';
+import { loadDelegationFlags, loadRoomGateState, type RoomGateState } from './db';
+import { loadModelTarget } from './model-target';
 import type { GroupTurnContext } from './group-turn';
 
 export interface GroupTurnBodyInput {
@@ -48,7 +45,7 @@ export interface GroupTurnBodyInput {
   topicName: string | undefined;
   /** T-1290: filled with the decrypted key so the caller's failure path can
    * redact it from the log line without holding the key itself. */
-  virtualKeyRef: { value?: string };
+  secretRef: { value?: string };
 }
 
 // T-1290 (AI-10): the room hears the fixed `GROUP_FAILURE_REPLY`; the owner
@@ -83,13 +80,12 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     senderName,
     groupName,
     topicName,
-    virtualKeyRef,
+    secretRef,
   } = input;
   const {
     deps,
     logger,
     turnLogger,
-    baseUrl,
     sessions,
     liveSendMessage,
     liveSendTyping,
@@ -98,22 +94,20 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     loadMemoryContext,
     startCompaction,
     secretsFor,
-    aiDeps,
     executeToolCall,
     withToolGuide,
   } = ctx;
 
   return Effect.gen(function* () {
-    yield* Effect.promise(() => ensureAiModel(aiDeps(), session.aiId));
-    const encryptedKey = yield* Effect.promise(() =>
-      loadEncryptedVirtualKey(deps.db, session.aiId),
+    const target = yield* Effect.promise(() =>
+      loadModelTarget(deps.db, deps.cipher as KeyCipher, session.aiId),
     );
-    if (encryptedKey === null) {
-      throw new Error(`AI ${session.aiId} has no virtual key`);
+    if (target === null) {
+      // No active provider connection for this AI: the caller's failure path
+      // sends the room the fixed failure text.
+      throw new Error(`AI ${session.aiId} has no provider connection`);
     }
-    // Decrypted in memory only; never stored, logged or returned.
-    const key = (deps.cipher as KeyCipher).decrypt(encryptedKey);
-    virtualKeyRef.value = key;
+    secretRef.value = target.apiKey;
 
     const history = yield* Effect.promise(() =>
       session.core.loadHistory(roomJid, 'groupchat', {
@@ -124,7 +118,7 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
       Effect.catchDefect((historyError) =>
         Effect.sync((): ChatMessage[] => {
           logger.warn(
-            { err: toRedactedError(historyError, secretsFor(key)), aiId: session.aiId },
+            { err: toRedactedError(historyError, secretsFor(target.apiKey)), aiId: session.aiId },
             'AI group history lookup failed; replying without history',
           );
           return [];
@@ -142,7 +136,7 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         scope: { kind: 'room', room: roomJid },
         aiBareJid: normBareJid(ai.jid),
         now,
-        virtualKey: key,
+        secret: target.apiKey,
       }),
     );
     // The batch is newer than the archive may know: merge the eligible
@@ -229,7 +223,10 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
       canDelegate && handoffTargets.length > 0
         ? handoffTargets.map((target) => ({ id: target.aiId, name: target.nick }))
         : undefined;
-    const groupTools = buildGroupTools(allowedForAction ? actionsList : [], delegateTargets);
+    const groupTools = buildGroupTools(allowedForAction ? actionsList : [], delegateTargets, {
+      // T-1409: the desk tools ride the same flag as their executor.
+      desk: deps.desk !== undefined && ai.computerMode === 'cloud',
+    });
     // The re-check callback runs at tool-execution time. A `plain
     // member` turn never offers `request_action`, so this never fires for
     // them; for an admin/owner turn it queries the same gate so a
@@ -275,29 +272,47 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         senderJid: normBareJid(trigger.fromJid),
         senderName,
         messages: groupMessages,
-        baseUrl: baseUrl,
-        virtualKey: key,
-        model: modelNameForAi(session.aiId),
+        target,
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
         tools: groupTools,
-        executeTool: executeToolCall(session, groupChatKey, {
-          groupId: room.groupId,
-          topicId: room.topicId,
-          roomJid,
-          triggerId: trigger.id,
-          isStillAllowed,
-          allowActions,
-          delegateTargetIds: new Set(delegateTargets?.map((target) => target.id) ?? []),
-        }),
+        executeTool: executeToolCall(
+          session,
+          groupChatKey,
+          {
+            groupId: room.groupId,
+            topicId: room.topicId,
+            roomJid,
+            triggerId: trigger.id,
+            isStillAllowed,
+            allowActions,
+            delegateTargetIds: new Set(delegateTargets?.map((entry) => entry.id) ?? []),
+          },
+          deps.desk !== undefined && ai.computerMode === 'cloud'
+            ? { ownerUserId: ai.owner }
+            : undefined,
+        ),
         ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
         ...(handoffTargets.length === 0 ? {} : { handoffTargets }),
         checkRoundGate: () => budgetGate.checkDmRoundGate(session),
         onFailure: (reason) => notifyOwnerOfFailure(ctx, session, roomJid, reason),
         reportProgress: groupProgress.reportProgress,
-        clearProgress: groupProgress.clearProgress,
+        finishProgress: groupProgress.finishProgress,
         // T-0156: the per-turn counts line (ids and counts only), like the
         // DM path below.
         turnLogger,
+        // T-1405: every model call in the turn adds its tokens and cost to the
+        // AI's `ai_usage` row. Best effort and fire and forget; it can never
+        // fail the turn.
+        onUsage: (usage) => {
+          void recordUsage(
+            { db: deps.db, logger },
+            session.aiId,
+            target.provider,
+            target.model,
+            usage,
+            (deps.now ?? (() => new Date()))(),
+          );
+        },
         sendMessage: async (to, kind, text, opts) => {
           const sent = await liveSendMessage(session, to, kind, text, opts);
           // T-1176 (AI-8): remember the id so a reply quoting this message
@@ -306,7 +321,15 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
           return sent;
         },
         sendTyping: (to, kind, state) => {
-          liveSendTyping(session, to, kind, state);
+          // T-1406: the room turn opens with the fixed "Thinking" status; tool
+          // stages replace it and the final `paused` clears it.
+          liveSendTyping(
+            session,
+            to,
+            kind,
+            state,
+            state === 'composing' ? TOOL_STAGE_THINKING : undefined,
+          );
         },
         logger,
         secrets: secretsFor(),
@@ -343,6 +366,6 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         sendWarning: (text) => liveSendMessage(session, roomJid, 'groupchat', text),
       }),
     );
-    startCompaction(session, groupChatKey, key);
+    startCompaction(session, groupChatKey, target);
   });
 }

@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { Deferred, Effect, Result } from 'effect';
 import {
   CLOSE_AUTH,
@@ -6,13 +7,18 @@ import {
   RunnerClient,
   type RunnerKeypair,
 } from '@zilar/runner-tunnel';
-import type { RunnerIdentity } from './identity.ts';
+import { detectDriver } from './desk/driver.ts';
+import { RunnerDeskHandler } from './desk/handler.ts';
+import { loadPolicy } from './desk/policy.ts';
+import { resolveHomeDir, type RunnerIdentity } from './identity.ts';
 
 export interface RunOptions {
   identity: RunnerIdentity;
   hubUrl: string;
   signal?: AbortSignal;
   logger?: (message: string) => void;
+  /** The identity directory; the desk policy and workspaces live beside it. */
+  homeDir?: string | undefined;
 }
 
 export interface RunResult {
@@ -64,6 +70,21 @@ export const runRunnerEffect = (options: RunOptions): Effect.Effect<RunResult, C
     const log = options.logger ?? ((): void => undefined);
     log('connecting');
 
+    const homeDir = options.homeDir ?? resolveHomeDir(undefined, process.env['ZILAR_RUNNER_HOME']);
+    const driver = yield* Effect.promise(() => detectDriver());
+    const policy = yield* Effect.promise(() => loadPolicy(join(homeDir, 'policy.json')));
+    if (driver.kind === 'none') {
+      log(`desks are off on this host: ${driver.reason}`);
+    } else {
+      log(`desk driver: ${driver.kind}`);
+    }
+    const deskRunner = new RunnerDeskHandler({
+      driver,
+      policy,
+      workspaceRoot: join(homeDir, 'desks'),
+      log,
+    });
+
     const keypair: RunnerKeypair = {
       publicKey: options.identity.publicKey,
       privateKey: options.identity.privateKey,
@@ -75,6 +96,7 @@ export const runRunnerEffect = (options: RunOptions): Effect.Effect<RunResult, C
       keypair,
       exposedPorts: [],
       enableModelListener: false,
+      deskRunner,
       reconnectBaseMs: 250,
       reconnectMaxMs: 5000,
     });

@@ -2,7 +2,7 @@
 // helpers, the inline-SVG image, and the progress and approval cards the Dev AI
 // posts. They mirror `apps/web/src/mock/helpers.ts`, so the demo content is the
 // same, and they return protocol `Payload`s the fake XMPP can emit as-is.
-import type { Payload } from '@zilar/protocol';
+import type { Payload, ProgressStep } from '@zilar/protocol';
 import { JIDS } from './threads/shared';
 
 const WAVEFORM_LENGTH = 40;
@@ -71,12 +71,20 @@ export function file(url: string, name: string, size: number, mime: string): Pay
   return { v: 0, type: 'attachment', data: { kind: 'file', url, name, size, mime } };
 }
 
-/** A Dev AI progress card. */
+/** A Dev AI progress card. T-1414: the task-card fields are optional, so the
+ * old `{ stage, detail, percent }` shape keeps working. */
 export function progressCard(input: {
   stage: string;
   detail?: string;
   percent?: number;
   taskId?: string;
+  title?: string;
+  steps?: ProgressStep[];
+  startedAt?: string;
+  elapsedMs?: number;
+  summary?: string;
+  state?: 'working' | 'done' | 'failed' | 'stopped';
+  canStop?: boolean;
 }): Payload {
   return {
     v: 0,
@@ -87,6 +95,13 @@ export function progressCard(input: {
       stage: input.stage,
       ...(input.detail === undefined ? {} : { detail: input.detail }),
       ...(input.percent === undefined ? {} : { percent: input.percent }),
+      ...(input.title === undefined ? {} : { title: input.title }),
+      ...(input.steps === undefined ? {} : { steps: input.steps }),
+      ...(input.startedAt === undefined ? {} : { started_at: input.startedAt }),
+      ...(input.elapsedMs === undefined ? {} : { elapsed_ms: input.elapsedMs }),
+      ...(input.summary === undefined ? {} : { summary: input.summary }),
+      ...(input.state === undefined ? {} : { state: input.state }),
+      ...(input.canStop === undefined ? {} : { can_stop: input.canStop }),
     },
   };
 }

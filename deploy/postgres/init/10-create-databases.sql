@@ -5,9 +5,6 @@
 -- A .sql file is used instead of a .sh script on purpose: Docker Desktop marks
 -- bind-mounted files as executable, so the image would exec a shell script
 -- instead of sourcing it, and executing a bind mount does not work there.
---
--- Production copy of infra/postgres/init/10-create-databases.sql, minus the
--- LiteLLM role and database: the production stack ships no LiteLLM service.
 
 \getenv zilar_password ZILAR_DB_PASSWORD
 \getenv ejabberd_password EJABBERD_DB_PASSWORD

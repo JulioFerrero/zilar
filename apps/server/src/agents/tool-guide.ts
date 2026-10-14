@@ -27,7 +27,18 @@ export const TOOL_GUIDE: string = TOOL_GUIDE_LINES.join('\n');
 const TOOL_STAGE_BY_TOOL: Record<string, string> = {
   update_persona: 'Updating how I behave',
   revert_persona: 'Undoing the last change',
+  // T-1409: the desk tools.
+  bash: 'Running a command',
+  read: 'Reading files',
+  write: 'Editing files',
+  edit: 'Editing files',
+  grep: 'Searching code',
+  glob: 'Searching code',
+  git: 'Using git',
 };
+
+/** T-1409: the stage while the desk is being provisioned or is queued. */
+export const TOOL_STAGE_WAITING_FOR_COMPUTER = 'Waiting for a computer';
 
 const TOOL_STAGE_BY_ACTION: Record<string, string> = {
   'tool.list': 'Looking up saved tools',
@@ -48,6 +59,9 @@ const TOOL_STAGE_BY_ACTION: Record<string, string> = {
 };
 
 export const TOOL_STAGE_FALLBACK = 'Working on it';
+
+/** T-1406: the status the AI carries before its first tool stage. */
+export const TOOL_STAGE_THINKING = 'Thinking';
 
 export function stageForToolCall(tool: string, action?: string): string {
   if (action !== undefined) {

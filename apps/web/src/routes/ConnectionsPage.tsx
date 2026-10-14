@@ -2,15 +2,15 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { KeyRound, Link, Trash2, X, Zap } from 'lucide-react';
+import { KeyRound, Link, Trash2, Zap } from 'lucide-react';
+import { AddConnectionForm, providerLabel } from '@/components/connections/AddConnectionForm';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
-import { SecretInput, TextInput } from '@/components/ui/text-input';
+import { SecretInput } from '@/components/ui/text-input';
 import {
   type Connection,
   type ConnectionTestResult,
-  createConnection,
   deleteConnection,
   listConnections,
   replaceConnectionKey,
@@ -20,20 +20,6 @@ import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
-
-const PROVIDERS = [
-  { id: 'openai', label: 'OpenAI' },
-  { id: 'anthropic', label: 'Anthropic' },
-  { id: 'google', label: 'Google Gemini' },
-  { id: 'deepseek', label: 'DeepSeek' },
-  { id: 'xai', label: 'xAI' },
-  { id: 'openrouter', label: 'OpenRouter' },
-  { id: 'github', label: 'GitHub' },
-] as const;
-
-function providerLabel(id: string): string {
-  return PROVIDERS.find((provider) => provider.id === id)?.label ?? id;
-}
 
 /** The form's own check: the key is pasted before anything is sent. */
 class KeyMissing extends Data.TaggedError('KeyMissing') {}
@@ -137,6 +123,15 @@ export function ConnectionsPage() {
   );
 }
 
+/** The host of a custom connection's base URL; the raw text if it will not parse. */
+function hostOf(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).host;
+  } catch {
+    return baseUrl;
+  }
+}
+
 type TestOutcome = { readonly ok: boolean; readonly message?: string };
 
 /** The last test result: a failure or a result, kept while the next test runs (as before). */
@@ -208,6 +203,9 @@ function ConnectionRow({
             day: 'numeric',
           }).format(new Date(connection.createdAt))}
         </p>
+        {connection.baseUrl !== null && (
+          <p className="mt-0.5 text-[13px] text-muted-foreground">{hostOf(connection.baseUrl)}</p>
+        )}
         {outcome !== undefined && (
           <p className={outcome.ok ? 'text-[13px] text-online' : 'text-[13px] text-danger'}>
             {outcome.ok ? 'Key works' : outcome.message}
@@ -350,121 +348,6 @@ function ReplaceKeyForm({
         <Button type="button" variant="ghost" size="default" disabled={busy} onClick={onCancel}>
           Cancel
         </Button>
-      </div>
-    </div>
-  );
-}
-
-function AddConnectionForm({ onCancel, onSaved }: { onCancel: () => void; onSaved: () => void }) {
-  const [provider, setProvider] = useState<string>(PROVIDERS[0].id);
-  const [key, setKey] = useState('');
-  const [label, setLabel] = useState('');
-  const [state, save] = useAction(
-    (draft: {
-      readonly provider: string;
-      readonly key: string;
-      readonly label: string;
-    }): Effect.Effect<void, FormError> => {
-      const trimmedKey = draft.key.trim();
-      if (trimmedKey === '') {
-        return Effect.fail(new KeyMissing());
-      }
-      const trimmedLabel = draft.label.trim();
-      return fromApi(() =>
-        createConnection({
-          provider: draft.provider,
-          key: trimmedKey,
-          ...(trimmedLabel === '' ? {} : { label: trimmedLabel }),
-        }),
-      ).pipe(
-        Effect.asVoid,
-        Effect.tap(() => Effect.sync(onSaved)),
-      );
-    },
-  );
-
-  const busy = isWaiting(state);
-  const failure = shownFailure(state);
-  const error =
-    failure === undefined
-      ? ''
-      : failure._tag === 'KeyMissing'
-        ? 'Paste your API key'
-        : messageOf(failure, 'Could not save the connection');
-
-  return (
-    <div className="rounded-xl border border-border bg-surface p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-[16px] font-semibold">New connection</h2>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Close"
-          title="Close"
-          onClick={onCancel}
-          className="rounded-full text-muted-foreground"
-        >
-          <X className="size-4" aria-hidden="true" />
-        </Button>
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-[14px] font-medium">Provider</span>
-          <select
-            value={provider}
-            onChange={(event) => setProvider(event.target.value)}
-            className="rounded-lg border border-input bg-background px-3 py-2 text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40"
-          >
-            {PROVIDERS.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex flex-col gap-1">
-          <span className="text-[14px] font-medium">API key</span>
-          <SecretInput
-            value={key}
-            placeholder="sk-…"
-            maxLength={16384}
-            autoComplete="off"
-            onChange={(event) => setKey(event.target.value)}
-          />
-        </label>
-
-        <label className="flex flex-col gap-1">
-          <span className="text-[14px] font-medium">Label (optional)</span>
-          <TextInput
-            value={label}
-            placeholder="Work project"
-            maxLength={256}
-            onChange={(event) => setLabel(event.target.value)}
-          />
-        </label>
-
-        {error !== '' && (
-          <p role="alert" className="text-[14px] text-danger">
-            {error}
-          </p>
-        )}
-
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            size="lg"
-            disabled={busy}
-            onClick={() => save({ provider, key, label })}
-          >
-            Save
-          </Button>
-          <Button type="button" variant="ghost" size="lg" disabled={busy} onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
       </div>
     </div>
   );

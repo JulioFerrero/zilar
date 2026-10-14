@@ -1,4 +1,4 @@
-import { ApiError, runApi, type PublicAi as ContractAi } from '@zilar/api-contract';
+import { ApiError, runApi, type AiCatalog, type PublicAi as ContractAi } from '@zilar/api-contract';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
@@ -15,8 +15,8 @@ import { createApiClient } from './effect/api-client';
 export type AiTemplate = 'dev' | 'marketing' | 'fun' | 'custom';
 
 export interface AiLimits {
-  perDayUsd: number;
-  perMonthUsd: number;
+  perDayUsd: number | null;
+  perMonthUsd: number | null;
 }
 
 export interface PublicAi {
@@ -38,6 +38,11 @@ export interface PublicAi {
   machineId?: string | null | undefined;
   /** The AI's picture path (`/api/avatars/ai/<id>`); absent on older servers. */
   avatarUrl?: string | undefined;
+  /**
+   * T-1409: where the AI's computer runs. `off` is the default; optional so a
+   * fixture or an older payload stays valid.
+   */
+  computerMode?: 'off' | 'cloud' | 'runner' | 'auto' | undefined;
   createdAt: string;
 }
 
@@ -45,6 +50,8 @@ export interface Connection {
   id: string;
   provider: string;
   label: string | null;
+  /** T-1396: the custom provider's base URL; `null` for every other provider. */
+  baseUrl: string | null;
   status: string;
   createdAt: string;
 }
@@ -64,6 +71,8 @@ export interface UpdateAiInput {
   name?: string;
   persona?: string;
   limits?: AiLimits;
+  /** T-1409: turn the AI's computer on (`cloud`) or off. */
+  computerMode?: 'off' | 'cloud';
 }
 
 export interface AisApi {
@@ -72,6 +81,8 @@ export interface AisApi {
   updateAi(id: string, input: UpdateAiInput): Promise<PublicAi>;
   deleteAi(id: string): Promise<void>;
   listConnections(): Promise<Connection[]>;
+  /** T-1395: the models.dev catalog for the wizard's model step. */
+  getAiCatalog(): Promise<AiCatalog>;
   // T-0080: the owner kill switch. The server answers the fresh public AI so
   // the list can swap the row against server truth without a second GET.
   stopAi(id: string): Promise<PublicAi>;
@@ -108,6 +119,7 @@ function toPublicAi(ai: ContractAi): PublicAi {
     providerConnectionId: ai.providerConnectionId,
     limits: { perDayUsd: ai.limits.perDayUsd, perMonthUsd: ai.limits.perMonthUsd },
     machineId: ai.machineId ?? null,
+    computerMode: ai.computerMode ?? 'off',
     ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
     createdAt: ai.createdAt,
   };
@@ -149,6 +161,7 @@ export function createAisApi(
             ...(input.name === undefined ? {} : { name: input.name.trim() }),
             ...(input.persona === undefined ? {} : { persona: input.persona.trim() }),
             ...(input.limits === undefined ? {} : { limits: input.limits }),
+            ...(input.computerMode === undefined ? {} : { computerMode: input.computerMode }),
           },
         }),
       );
@@ -160,6 +173,9 @@ export function createAisApi(
     async listConnections() {
       const rows = await runApi(client.connections.list());
       return [...rows];
+    },
+    async getAiCatalog() {
+      return runApi(client.ais.catalog());
     },
     async stopAi(id) {
       return toPublicAi(await runApi(client.ais.stop({ params: { id } })));

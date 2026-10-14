@@ -2,14 +2,28 @@ import { useState } from 'react';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useNavigate } from 'react-router';
-import type { ChatSummary } from '@zilar/chat-core';
+import {
+  LLM_PROVIDERS,
+  defaultCatalogModelId,
+  isLlmProvider,
+  type ChatSummary,
+} from '@zilar/chat-core';
+import type { AiCatalogModel } from '@zilar/api-contract';
 import { ChevronDown } from 'lucide-react';
-import { ApiError, createAi, listConnections, type AiTemplate, type Connection } from '@/lib/api';
+import {
+  ApiError,
+  createAi,
+  getAiCatalog,
+  listConnections,
+  type AiTemplate,
+  type Connection,
+} from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
+import { AddConnectionForm } from '@/components/connections/AddConnectionForm';
 import { Button, FieldError } from './AiPageShell';
 import { ConnectionPicker, providerLabel } from './ConnectionPicker';
 import { describeAiError, type AiErrorInfo } from './errors';
@@ -18,12 +32,7 @@ import { validateLimits } from './limits';
 import { ModelPicker } from './ModelPicker';
 import { defaultModelFor, modelSuggestionsFor } from './models';
 import { AI_TEMPLATE_OPTIONS, defaultPersonaFor } from './templates';
-import {
-  buildCreateBody,
-  DEFAULT_DAILY_USD,
-  DEFAULT_MONTHLY_USD,
-  type AiFormState,
-} from './aiForm';
+import { buildCreateBody, type AiFormState } from './aiForm';
 import { Dialog } from '../ui/dialog';
 import { TextArea, TextInput } from '../ui/text-input';
 import { cn } from '@/lib/utils';
@@ -53,10 +62,20 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const storeApi = useChatStoreApi();
 
-  // The connections are read once; the dialog shows the active ones, or why it could not.
-  const [connectionList] = useQuery(() => fromApi(() => listConnections()), []);
+  // The connections are read once; the dialog shows the active, LLM-capable ones
+  // (a GitHub key cannot run an AI), or why it could not.
+  // A key added inline refetches the list and selects the new connection.
+  const [connectionList, refreshConnections] = useQuery(() => fromApi(() => listConnections()), []);
+  // T-1395: the models.dev catalog for the model step. The dialog renders
+  // without it (the static hints remain), so a failure is not fatal.
+  const [catalogResult] = useQuery(() => fromApi(() => getAiCatalog()), []);
+  const catalog = AsyncResult.isSuccess(catalogResult) ? catalogResult.value : null;
+  const catalogModelsFor = (provider: string): readonly AiCatalogModel[] =>
+    catalog?.providers.find((entry) => entry.id === provider)?.models ?? [];
   const connections: Connection[] = AsyncResult.isSuccess(connectionList)
-    ? connectionList.value.filter((connection) => connection.status === 'active')
+    ? connectionList.value.filter(
+        (connection) => connection.status === 'active' && isLlmProvider(connection.provider),
+      )
     : [];
   const loadFailure = isWaiting(connectionList) ? undefined : failureOf(connectionList);
   const loadInfo =
@@ -77,10 +96,12 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
   const [persona, setPersona] = useState(defaultPersonaFor('dev'));
   const [personaTouched, setPersonaTouched] = useState(false);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
+  // The inline add-key form starts open when there is no connection yet.
+  const [addingConnection, setAddingConnection] = useState(true);
   // null means "use the selected provider's default model".
   const [modelDraft, setModelDraft] = useState<string | null>(null);
-  const [day, setDay] = useState(String(DEFAULT_DAILY_USD));
-  const [month, setMonth] = useState(String(DEFAULT_MONTHLY_USD));
+  const [day, setDay] = useState('');
+  const [month, setMonth] = useState('');
   const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
@@ -94,7 +115,10 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
 
   const model =
     modelDraft ??
-    (effectiveConnection === null ? '' : defaultModelFor(effectiveConnection.provider));
+    (effectiveConnection === null
+      ? ''
+      : defaultCatalogModelId(catalogModelsFor(effectiveConnection.provider)) ||
+        defaultModelFor(effectiveConnection.provider));
 
   const limits = validateLimits(day, month);
   const providerConnectionId = effectiveConnection?.id ?? null;
@@ -199,20 +223,27 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
 
         {status === 'ready' && connections.length === 0 && (
           <div className="flex flex-col items-start gap-3">
-            <p className="text-[15px] text-muted-foreground">
-              Add a provider key first, then come back to create an AI.
-            </p>
-            <Button
-              type="button"
-              size="lg"
-              className="rounded-full px-5"
-              onClick={() => {
-                onClose();
-                navigate('/settings/connections');
-              }}
-            >
-              Connections
-            </Button>
+            <p className="text-[15px] text-muted-foreground">Add a provider key to continue.</p>
+            {addingConnection ? (
+              <AddConnectionForm
+                providers={LLM_PROVIDERS}
+                onCancel={() => setAddingConnection(false)}
+                onSaved={(connection) => {
+                  setAddingConnection(false);
+                  setSelectedConnectionId(connection.id);
+                  refreshConnections();
+                }}
+              />
+            ) : (
+              <Button
+                type="button"
+                size="lg"
+                className="rounded-full px-5"
+                onClick={() => setAddingConnection(true)}
+              >
+                Add a provider key
+              </Button>
+            )}
           </div>
         )}
 
@@ -297,6 +328,11 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
                       effectiveConnection === null
                         ? []
                         : modelSuggestionsFor(effectiveConnection.provider)
+                    }
+                    models={
+                      effectiveConnection === null
+                        ? []
+                        : catalogModelsFor(effectiveConnection.provider)
                     }
                     value={model}
                     onChange={(next) => {

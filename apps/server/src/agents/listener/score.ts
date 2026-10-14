@@ -8,6 +8,7 @@
 
 import { Effect, Exit, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
+import type { ModelTarget } from '../../ai/providers';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
 import type { CompleteChatInput, ModelRequestMessage } from '../reply';
@@ -199,9 +200,8 @@ export function parseListenerOutput(
 export interface ScoreRoomInput {
   /** Injected `completeChat`; the listener never advertises tools. */
   complete: (input: CompleteChatInput) => Promise<string>;
-  baseUrl: string;
-  virtualKey: string;
-  model: string;
+  /** The AI's own provider connection, resolved per check. */
+  target: ModelTarget;
   roster: RosterAi[];
   window: ListenerWindowMessage[];
   roomSummary?: string;
@@ -230,9 +230,7 @@ export async function scoreRoom(input: ScoreRoomInput): Promise<ScoreRoomResult 
   let raw: string;
   try {
     raw = await input.complete({
-      baseUrl: input.baseUrl,
-      virtualKey: input.virtualKey,
-      model: input.model,
+      target: input.target,
       messages,
       ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
     });

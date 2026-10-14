@@ -10,8 +10,7 @@ import postgres from 'postgres';
 import type { Logger } from 'pino';
 
 // A dedicated advisory-lock scope, so the leader lock never collides with the
-// per-key `pg_advisory_xact_lock(hashtext(…))` locks already in the database
-// (same precedent as `ENSURE_MODEL_LOCK_SCOPE`, ais/provisioning-keys.ts).
+// per-key `pg_advisory_xact_lock(hashtext(…))` locks already in the database.
 export const LEADER_LOCK_SCOPE = 730034;
 export const LEADER_LOCK_KEY = 1;
 export const LEADER_POLL_MS = 1000;

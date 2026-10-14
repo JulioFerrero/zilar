@@ -3,12 +3,12 @@
 // own archive. Text edits (corrections, retractions) rewrite the mirror and
 // drop every summary that covers the message, which is rebuilt without it.
 
-import { decodePayload } from '@zilar/protocol';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
 import { bareJid } from '../../jid';
+import { decodeAgentPayload, isLiveAiUiRow } from '../../notify/ai-cards';
 import { correctionTarget, retractTarget, stanzaFrom } from '../../search/routes';
 import { extractMediaItems, type ExtractedMediaItem } from '../../media/indexer';
 import type { ArchivePool, ArchiveRow } from '../../search/service';
@@ -47,33 +47,11 @@ export interface IndexMemoryResult {
   done: boolean;
 }
 
-// The agent payload namespace (packages/xmpp-core/src/namespaces.ts). The
-// server cannot import it, so the value is repeated with this pointer. The
-// media indexer reads the same payload for attachments and voice notes; a
-// sticker is the one kind it drops, so it is decoded here to become
-// "[sticker]".
-const AGENT_NAMESPACE = 'urn:zilar:agent:0';
-const AGENT_PATTERN = new RegExp(
-  `<agent\\b[^>]*\\bxmlns\\s*=\\s*["']${AGENT_NAMESPACE}["'][^>]*>([\\s\\S]*?)</agent>`,
-  'i',
-);
-
-function unescapeXmlText(value: string): string {
-  return value
-    .replaceAll('&lt;', '<')
-    .replaceAll('&gt;', '>')
-    .replaceAll('&quot;', '"')
-    .replaceAll('&apos;', "'")
-    .replaceAll('&amp;', '&');
-}
-
+// The agent payload namespace lives in `notify/ai-cards.ts` (the one decoder
+// the media extractor and this indexer share). A sticker is the one media kind
+// this indexer drops, so it is decoded here to become "[sticker]".
 function isSticker(row: ArchiveRow): boolean {
-  const match = AGENT_PATTERN.exec(row.xml);
-  if (match === null) {
-    return false;
-  }
-  const result = decodePayload(unescapeXmlText(match[1] ?? ''));
-  return result.ok && result.payload.type === 'sticker';
+  return decodeAgentPayload(row.xml)?.type === 'sticker';
 }
 
 function cutText(text: string): string {
@@ -103,6 +81,11 @@ function mediaPlaceholder(items: ExtractedMediaItem[]): string | null {
 // body alone for a plain or link-only message, and empty when there is nothing
 // to store.
 export function memoryText(row: ArchiveRow): string {
+  // The live AI UI is not a message: a progress card's stage text is not
+  // something the AI should remember from the conversation (T-1400).
+  if (isLiveAiUiRow(row.xml)) {
+    return '';
+  }
   const body = (row.body ?? '').trim();
   const placeholder = mediaPlaceholder(extractMediaItems(row));
   if (placeholder !== null) {

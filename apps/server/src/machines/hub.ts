@@ -1,9 +1,13 @@
 import { TunnelServer } from '@zilar/runner-tunnel';
 import type { KeyRegistry } from '@zilar/runner-tunnel';
 import { Duration, Effect, Fiber, Schedule } from 'effect';
-import { DEFAULT_LITELLM_BASE_URL } from '../ai/litellm-client';
 import type { ServerDatabase } from '../db/client';
 import { listApprovedMachineKeys } from './service';
+
+// Default address a runner's model listener is reached on in local dev. The
+// listener is deleted with the desk-runner work (desk-runner plan Task G);
+// until then this keeps the same value the dev proxy used to publish on.
+export const DEFAULT_MODEL_GATEWAY_URL = 'http://127.0.0.1:4000';
 
 export interface HubLogger {
   info: (fields: Record<string, unknown>, message: string) => void;
@@ -260,7 +264,7 @@ export async function startRunnerHub({
   // already finds an approved key for everyone who is approved right now.
   await cache.refresh();
 
-  const resolvedGateway = gatewayUrl ?? DEFAULT_LITELLM_BASE_URL;
+  const resolvedGateway = gatewayUrl ?? DEFAULT_MODEL_GATEWAY_URL;
   if (!resolvedGateway.startsWith('http://')) {
     cache.close();
     throw new HubConfigError(

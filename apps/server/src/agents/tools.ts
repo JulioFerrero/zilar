@@ -7,10 +7,17 @@
 // working with the same names and kinds.
 export {
   ACTION_NAME_MAX_LENGTH,
+  BASH_TOOL,
   DELEGATE_TOOL,
+  DESK_TOOL_NAMES,
+  EDIT_TOOL,
+  GIT_TOOL,
+  GLOB_TOOL,
+  GREP_TOOL,
   MEMORY_ZOOM_TOOL,
   PERSONA_MAX_LENGTH,
   PERSONA_SUMMARY_MAX_LENGTH,
+  READ_TOOL,
   RECALL_TOOL,
   REMEMBERED_FACT_MAX_LENGTH,
   REMEMBER_TOOL,
@@ -18,20 +25,30 @@ export {
   REVERT_PERSONA_TOOL,
   TASK_STATUS_TOOL,
   UPDATE_PERSONA_TOOL,
+  WRITE_TOOL,
+  BashArgsSchema,
   DelegateArgsSchema,
+  EditArgsSchema,
+  GitArgsSchema,
+  GlobArgsSchema,
+  GrepArgsSchema,
   MemoryZoomArgsSchema,
+  ReadArgsSchema,
   RecallArgsSchema,
   RememberArgsSchema,
   RequestActionArgsSchema,
   RevertPersonaArgsSchema,
   TaskStatusArgsSchema,
   UpdatePersonaArgsSchema,
+  WriteArgsSchema,
+  isDeskToolName,
 } from './tools/schemas';
-export type { ParsedToolArguments } from './tools/schemas';
+export type { DeskToolName, ParsedToolArguments } from './tools/schemas';
 
 export { TOOL_NAME_MAX_LENGTH, parseToolArguments, safeToolName } from './tools/parse';
 
 export type { ChatToolDefinition } from './tools/definitions';
+export { deskToolDefinitions } from './tools/desk-definitions';
 export {
   MEMORY_TOOLS,
   PERSONA_TOOLS,

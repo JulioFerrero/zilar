@@ -16,7 +16,7 @@ import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { StateMessage } from '@/components/ui/state-message';
 import { providerLabel } from '@/components/ais/ConnectionPicker';
 import { describeAiError } from '@/components/ais/errors';
-import { formatLimit } from '@/components/ais/limits';
+import { formatLimits } from '@/components/ais/limits';
 import { NewAiDialog } from '@/components/ais/NewAiDialog';
 import { templateLabel } from '@/components/ais/templates';
 
@@ -198,9 +198,7 @@ function AiRow({
             Today {formatUsd(ai.usage.todayUsd)}
           </p>
         )}
-        <p className="text-[13px] text-muted-foreground">
-          {formatLimit(ai.limits.perDayUsd)}/day · {formatLimit(ai.limits.perMonthUsd)}/month
-        </p>
+        <p className="text-[13px] text-muted-foreground">{formatLimits(ai.limits)}</p>
         {confirming && (
           <>
             <p className="mt-1 text-[13px] text-danger">

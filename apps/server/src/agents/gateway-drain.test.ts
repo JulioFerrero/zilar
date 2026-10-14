@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { FetchLike } from '../ai/litellm-client';
+import type { FetchLike } from '../ai/http';
 import { createTestContext, type TestContext } from '../test-support';
 import { AI_RESTART_REPLY } from './gateway/contracts';
 import {
   FakeCore,
-  FakeLitellm,
   completionResponse,
   createGatewayHelpers,
   incoming,
@@ -28,7 +27,6 @@ describe('gateway drain on stop', () => {
   });
 
   it('delivers a DM reply that finishes inside the drain window', async () => {
-    const litellm = new FakeLitellm();
     // The model call hangs until `release()`, so `stop()` runs while the turn
     // is in flight; the drain then waits for it.
     let release: () => void = () => undefined;
@@ -46,7 +44,7 @@ describe('gateway drain on stop', () => {
       setGateway: () => undefined,
     });
     const cores: FakeCore[] = [];
-    const { gateway } = helpers.harness(cores, fetchImpl, litellm);
+    const { gateway } = helpers.harness(cores, fetchImpl);
     const { ownerJid, aiJid } = await seedAi(context);
 
     await gateway.start();

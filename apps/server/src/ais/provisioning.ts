@@ -1,14 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { decryptForGatewayUse, findOwnedConnection } from '../connections/service';
+import { isLlmProvider } from '../connections/providers';
+import { findOwnedConnection } from '../connections/service';
 import { ROSTER_GROUP } from '../contacts/service';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import { modelNameForAi } from '../ai/model-entry';
 import { ensureXmppAccount, jidFor, localpartFor } from '../xmpp/provisioning';
-import { isLlmProvider, litellmModelFor } from './litellm-model';
 import {
   type AiServiceDeps,
   type CreateAiInput,
@@ -18,15 +17,14 @@ import {
   resolvePersona,
   updateFailed,
 } from './persona';
-import { VIRTUAL_KEY_BUDGET_DURATION, changeAiModel, virtualKeyAlias } from './provisioning-keys';
 import { aiLocalpart, compensateCreate } from './provisioning-xmpp';
 import { emitAiLifecycle, findOwnedAi, toPublicAi } from './queries';
 
-// Creates an AI: rows, XMPP account, both roster items, a private LiteLLM model
-// for the owner's key, then a capped virtual key that may call only it.
-// All-or-nothing: any external failure rolls everything back and answers 502.
-// The AI is inserted `disabled` and only switched to `active` once every step
-// has succeeded, so a crash can never leave a usable-looking half AI.
+// Creates an AI: rows, XMPP account and both roster items. The provider key is
+// not read here: the AI's turn decrypts the owner's connection per call. All
+// remote failures roll the account back and answer 502. The AI is inserted
+// `disabled` and only switched to `active` once every step has succeeded, so a
+// crash can never leave a usable-looking half AI.
 export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promise<PublicAi> {
   const connection = await findOwnedConnection(deps.db, input.providerConnectionId, input.ownerId);
   if (!connection) {
@@ -80,8 +78,6 @@ export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promi
   );
 
   let registered = false;
-  let keyId: string | undefined;
-  let modelId: string | undefined;
   try {
     await deps.adminClient.registerUser(localpart);
     registered = true;
@@ -95,35 +91,6 @@ export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promi
       groups: [ROSTER_GROUP],
       subs: 'both',
     });
-
-    // The provider key is decrypted once, in memory, and handed to LiteLLM as
-    // its own private model for this AI. It is never stored or returned here;
-    // LiteLLM keeps its own encrypted copy (`store_model_in_db`).
-    const modelName = modelNameForAi(id);
-    const providerKey = await decryptForGatewayUse(deps.db, deps.cipher, connection.id);
-    modelId = await deps.litellm.addModel({
-      modelName,
-      litellmModel: litellmModelFor(connection.provider, input.model),
-      apiKey: providerKey,
-      metadata: { ai_id: id },
-    });
-
-    const issued = await deps.litellm.generateKey({
-      models: [modelName],
-      maxBudget: input.limits.perMonthUsd,
-      budgetDuration: VIRTUAL_KEY_BUDGET_DURATION,
-      keyAlias: virtualKeyAlias(id),
-      metadata: { ai_id: id },
-    });
-    keyId = issued.id;
-    await runSql(
-      deps.db,
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`INSERT INTO llm_virtual_keys (ai_id, litellm_key_id, litellm_model_id, encrypted_key, budget_usd, budget_duration)
-          VALUES (${id}, ${issued.id}, ${modelId}, ${deps.cipher.encrypt(issued.key)}, ${usd(input.limits.perMonthUsd)}, ${VIRTUAL_KEY_BUDGET_DURATION})`;
-      }),
-    );
 
     await runSql(
       deps.db,
@@ -141,8 +108,6 @@ export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promi
       ownerLocalpart,
       ownerJid,
       registered,
-      keyId,
-      modelId,
     });
     throw provisioningFailed();
   }
@@ -156,7 +121,7 @@ export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promi
 }
 
 // Updates an AI's name, persona or limits. The external steps come first, so a
-// gateway or chat-service failure leaves the stored AI unchanged.
+// chat-service failure leaves the stored AI unchanged.
 export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promise<PublicAi> {
   const ai = await findOwnedAi(deps.db, input.id, input.ownerId);
   if (!ai) {
@@ -171,8 +136,8 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
     );
   }
 
-  // The model swap goes first: it is the only step that touches LiteLLM, and
-  // a failure there leaves the name, persona and limits untouched too.
+  // The model swap goes first: a failure there leaves the name, persona and
+  // limits untouched too.
   const newModel = input.model ?? ai.model;
   const newConnectionId = input.providerConnectionId ?? ai.providerConnectionId;
   if (newModel !== ai.model || newConnectionId !== ai.providerConnectionId) {
@@ -197,18 +162,6 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
     }
   }
 
-  if (input.limits !== undefined) {
-    if (ai.litellmKeyId === null) {
-      throw updateFailed();
-    }
-    try {
-      await deps.litellm.updateKey({ key: ai.litellmKeyId, maxBudget: input.limits.perMonthUsd });
-    } catch (error) {
-      deps.logger.warn({ err: error, aiId: ai.id }, 'could not update the AI virtual key cap');
-      throw updateFailed();
-    }
-  }
-
   await runSql(
     deps.db,
     Effect.gen(function* () {
@@ -219,7 +172,8 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
             input.name !== undefined ||
             input.persona !== undefined ||
             input.canDelegate !== undefined ||
-            input.acceptsDelegation !== undefined
+            input.acceptsDelegation !== undefined ||
+            input.computerMode !== undefined
           ) {
             // Every column here is NOT NULL, so a null means "keep the current
             // value": COALESCE gives a partial update.
@@ -228,6 +182,7 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
               persona = COALESCE(${input.persona ?? null}, persona),
               can_delegate = COALESCE(${input.canDelegate ?? null}, can_delegate),
               accepts_delegation = COALESCE(${input.acceptsDelegation ?? null}, accepts_delegation),
+              computer_mode = COALESCE(${input.computerMode ?? null}, computer_mode),
               updated_at = ${new Date()}
               WHERE id = ${ai.id}`;
           }
@@ -236,10 +191,6 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
               per_day_usd = ${usd(input.limits.perDayUsd)},
               per_month_usd = ${usd(input.limits.perMonthUsd)},
               updated_at = ${new Date()}
-              WHERE ai_id = ${ai.id}`;
-            // Keep the key row's stored budget in step with the cap pushed to
-            // LiteLLM above, in the same transaction.
-            yield* sql`UPDATE llm_virtual_keys SET budget_usd = ${usd(input.limits.perMonthUsd)}
               WHERE ai_id = ${ai.id}`;
           }
         }),
@@ -254,6 +205,87 @@ export async function updateAi(deps: AiServiceDeps, input: UpdateAiInput): Promi
   return toPublicAi(updated);
 }
 
+export interface ChangeAiModelInput {
+  id: string;
+  ownerId: string;
+  model: string;
+  providerConnectionId: string;
+}
+
+// Switches an AI to a new model (and optionally a new provider connection).
+// Nothing is registered remotely: the AI row's `model` and
+// `provider_connection_id` are the only state, and each turn reads the owner's
+// connection and decrypts the key itself. The connection is validated exactly
+// as `createAi` does (owned, active, an LLM provider), and the read and the
+// update share one transaction so a concurrent change is never overwritten.
+export async function changeAiModel(deps: AiServiceDeps, input: ChangeAiModelInput): Promise<void> {
+  const model = input.model.trim();
+  if (model === '') {
+    throw new HttpError(400, 'invalid_request', 'A model is required');
+  }
+
+  const ai = await findOwnedAi(deps.db, input.id, input.ownerId);
+  if (!ai) {
+    throw new HttpError(404, 'not_found', 'AI not found');
+  }
+  if (model === ai.model && input.providerConnectionId === ai.providerConnectionId) {
+    return;
+  }
+  // A foreign or missing connection answers the same 404 as a foreign AI, so
+  // existence is never leaked; a known-but-unusable one answers the same 400
+  // `createAi` gives.
+  const connection = await findOwnedConnection(deps.db, input.providerConnectionId, input.ownerId);
+  if (!connection) {
+    throw new HttpError(404, 'not_found', 'AI not found');
+  }
+  if (connection.status !== 'active') {
+    throw new HttpError(400, 'connection_inactive', 'That provider connection is not active');
+  }
+  if (!isLlmProvider(connection.provider)) {
+    throw new HttpError(
+      400,
+      'connection_not_llm',
+      'That provider connection is not an LLM provider',
+    );
+  }
+
+  try {
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql.withTransaction(
+          Effect.gen(function* () {
+            // The state is diffed inside the transaction, so the row the update
+            // lands on is the one just read.
+            const [fresh] = yield* sql<{
+              owner: string;
+              model: string;
+              providerConnectionId: string;
+            }>`SELECT owner, model, provider_connection_id FROM ais
+              WHERE id = ${input.id} LIMIT 1`;
+            if (!fresh || fresh.owner !== input.ownerId) {
+              return yield* Effect.fail(new HttpError(404, 'not_found', 'AI not found'));
+            }
+            if (fresh.model === model && fresh.providerConnectionId === connection.id) {
+              return;
+            }
+            yield* sql`UPDATE ais SET model = ${model},
+              provider_connection_id = ${connection.id}, updated_at = ${new Date()}
+              WHERE id = ${input.id}`;
+          }),
+        );
+      }),
+    );
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error;
+    }
+    deps.logger.warn({ err: error, aiId: input.id }, 'could not switch the AI model');
+    throw updateFailed();
+  }
+}
+
 async function findUserName(db: ServerDatabase, userId: string): Promise<string> {
   const [row] = await runSql(
     db,
@@ -266,8 +298,9 @@ async function findUserName(db: ServerDatabase, userId: string): Promise<string>
 }
 
 // `numeric` columns are strings; two decimal places is the currency precision
-// the schema stores. Comparisons (perDayUsd <= perMonthUsd, the monthly cap)
-// already happened on the numbers at the route boundary.
-function usd(value: number): string {
-  return value.toFixed(2);
+// the schema stores. A `null` bound means "no limit" and is stored as NULL.
+// Comparisons (perDayUsd <= perMonthUsd, the monthly cap) already happened on
+// the numbers at the route boundary.
+function usd(value: number | null): string | null {
+  return value === null ? null : value.toFixed(2);
 }

@@ -1,10 +1,22 @@
 import { Exit, Schema } from 'effect';
 import { firstIssueReason } from '../tool-arg-issues';
 import {
+  BASH_TOOL,
+  BashArgsSchema,
   DELEGATE_TOOL,
   DelegateArgsSchema,
+  EDIT_TOOL,
+  EditArgsSchema,
+  GIT_TOOL,
+  GitArgsSchema,
+  GLOB_TOOL,
+  GlobArgsSchema,
+  GREP_TOOL,
+  GrepArgsSchema,
   MEMORY_ZOOM_TOOL,
   MemoryZoomArgsSchema,
+  READ_TOOL,
+  ReadArgsSchema,
   RECALL_TOOL,
   REMEMBER_TOOL,
   REQUEST_ACTION_TOOL,
@@ -17,6 +29,9 @@ import {
   TaskStatusArgsSchema,
   UPDATE_PERSONA_TOOL,
   UpdatePersonaArgsSchema,
+  WRITE_TOOL,
+  WriteArgsSchema,
+  isDeskToolName,
   type ParsedToolArguments,
 } from './schemas';
 
@@ -52,7 +67,8 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
     toolName !== MEMORY_ZOOM_TOOL &&
     toolName !== REMEMBER_TOOL &&
     toolName !== DELEGATE_TOOL &&
-    toolName !== TASK_STATUS_TOOL
+    toolName !== TASK_STATUS_TOOL &&
+    !isDeskToolName(toolName)
   ) {
     return { ok: false, reason: `unknown tool: ${safeToolName(toolName)}` };
   }
@@ -131,6 +147,102 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
       return { ok: false, reason: parsed.reason };
     }
     return { ok: true, tool: TASK_STATUS_TOOL, task_id: parsed.value.task_id };
+  }
+  if (toolName === BASH_TOOL) {
+    const parsed = decodeToolArguments(BashArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
+    }
+    return {
+      ok: true,
+      tool: BASH_TOOL,
+      args: {
+        command: parsed.value.command,
+        ...(parsed.value.cwd === undefined ? {} : { cwd: parsed.value.cwd }),
+        ...(parsed.value.timeout_ms === undefined ? {} : { timeout_ms: parsed.value.timeout_ms }),
+      },
+    };
+  }
+  if (toolName === READ_TOOL) {
+    const parsed = decodeToolArguments(ReadArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
+    }
+    return {
+      ok: true,
+      tool: READ_TOOL,
+      args: {
+        path: parsed.value.path,
+        ...(parsed.value.offset === undefined ? {} : { offset: parsed.value.offset }),
+        ...(parsed.value.limit === undefined ? {} : { limit: parsed.value.limit }),
+      },
+    };
+  }
+  if (toolName === WRITE_TOOL) {
+    const parsed = decodeToolArguments(WriteArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
+    }
+    return {
+      ok: true,
+      tool: WRITE_TOOL,
+      args: { path: parsed.value.path, content: parsed.value.content },
+    };
+  }
+  if (toolName === EDIT_TOOL) {
+    const parsed = decodeToolArguments(EditArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
+    }
+    return {
+      ok: true,
+      tool: EDIT_TOOL,
+      args: {
+        path: parsed.value.path,
+        oldString: parsed.value.oldString,
+        newString: parsed.value.newString,
+        ...(parsed.value.replaceAll === undefined ? {} : { replaceAll: parsed.value.replaceAll }),
+      },
+    };
+  }
+  if (toolName === GREP_TOOL) {
+    const parsed = decodeToolArguments(GrepArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
+    }
+    return {
+      ok: true,
+      tool: GREP_TOOL,
+      args: {
+        pattern: parsed.value.pattern,
+        ...(parsed.value.path === undefined ? {} : { path: parsed.value.path }),
+        ...(parsed.value.glob === undefined ? {} : { glob: parsed.value.glob }),
+        ...(parsed.value.max_results === undefined
+          ? {}
+          : { max_results: parsed.value.max_results }),
+      },
+    };
+  }
+  if (toolName === GLOB_TOOL) {
+    const parsed = decodeToolArguments(GlobArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
+    }
+    return {
+      ok: true,
+      tool: GLOB_TOOL,
+      args: {
+        pattern: parsed.value.pattern,
+        ...(parsed.value.path === undefined ? {} : { path: parsed.value.path }),
+      },
+    };
+  }
+  if (toolName === GIT_TOOL) {
+    const parsed = decodeToolArguments(GitArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
+    }
+    return { ok: true, tool: GIT_TOOL, args: { args: parsed.value.args } };
   }
   const parsed = decodeToolArguments(RequestActionArgsSchema, parsedJson);
   if (!parsed.ok) {

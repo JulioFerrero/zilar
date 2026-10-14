@@ -8,7 +8,7 @@ import { MUTED_FOREGROUND } from '@/lib/colors';
 import { cn } from '@/lib/utils';
 
 import type { PublicAi } from '../../lib/ais-api';
-import { formatLimit } from './limits';
+import { formatLimits } from './limits';
 import { runStateLabel } from './run-state';
 import { templateLabel } from './templates';
 
@@ -51,9 +51,7 @@ export function AiRow({
         <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
           {templateLabel(ai.template)} · {ai.model}
         </Text>
-        <Text className="text-[13px] text-muted-foreground">
-          {formatLimit(ai.limits.perDayUsd)}/day · {formatLimit(ai.limits.perMonthUsd)}/month
-        </Text>
+        <Text className="text-[13px] text-muted-foreground">{formatLimits(ai.limits)}</Text>
       </View>
       <ChevronRight size={20} color={MUTED_FOREGROUND} />
     </Pressable>

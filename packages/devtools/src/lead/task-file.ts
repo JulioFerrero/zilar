@@ -1,5 +1,20 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { Result, Schema } from 'effect';
+import { loadState } from './state.js';
 import { schemaIssues, taskFrontMatterSchema, type TaskFrontMatter } from './types.js';
+
+// The checkout a command should read a task's file from. A running task's spec
+// lives in its worktree once the task is tracked in `state.json` (a launch from
+// an uncommitted spec never commits it on main); a task still queued has its
+// spec on main. Callers pass the result to `findTaskFile`.
+export function taskFileDir(repoRoot: string, task: string, statePath: string): string {
+  const record = loadState(statePath).tasks[task];
+  if (record !== undefined && fs.existsSync(path.join(record.worktree, 'work'))) {
+    return record.worktree;
+  }
+  return repoRoot;
+}
 
 // The task files are markdown with a small YAML front matter block. There is
 // no YAML dependency allowed, so this parses only the flat `key: value` lines

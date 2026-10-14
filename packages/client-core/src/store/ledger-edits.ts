@@ -4,21 +4,31 @@
 // restoring a message or its edit state after a failed send. Moved unchanged
 // from `store/ledger.ts` (size split).
 import type { EditUpdate, EditsState, ReplyRef } from '@zilar/chat-core';
-import { applyEdit, editsFor, emptyEdits, mentionsEqual, resolveEdits } from '@zilar/chat-core';
+import {
+  applyEdit,
+  editsFor,
+  emptyEdits,
+  isSameAuthor,
+  mentionsEqual,
+  resolveEdits,
+} from '@zilar/chat-core';
+import type { Payload } from '@zilar/protocol';
 import { authorOfChatMessage, isEditStanza, listFor, previewFor } from './ledger-signatures';
 import type { LedgerIds } from './ledger-ids';
 import type { LedgerIncoming } from './ledger-incoming';
-import type { LedgerSet, LedgerState, LedgerStanza, StoreMessage } from './ledger-types';
+import type { CardEdit, LedgerSet, LedgerState, LedgerStanza, StoreMessage } from './ledger-types';
 
 interface LedgerEditsDeps {
   readonly get: () => LedgerState;
   readonly set: LedgerSet;
   readonly ids: LedgerIds;
   readonly incoming: LedgerIncoming;
+  /** The task-card updates a correction carries, newest order wins. */
+  readonly cards: Map<string, CardEdit>;
 }
 
 export function createLedgerEdits(deps: LedgerEditsDeps) {
-  const { get, set } = deps;
+  const { get, set, cards } = deps;
   const { aliasRoot, authorFor, baseTextFor, sameMessage } = deps.ids;
   const { mapMentions } = deps.incoming;
 
@@ -54,6 +64,39 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     return undefined;
   }
 
+  // A correction carrying a progress payload replaces its target's task card
+  // (T-1419). A body-less one still counts: the card is the whole update. Any
+  // other payload type is not a card edit and is ignored.
+  function cardEditFor(message: LedgerStanza): CardEdit | undefined {
+    const correction = message.correction;
+    const payload = message.payload;
+    if (correction === undefined || payload === undefined || payload.type !== 'progress') {
+      return undefined;
+    }
+    return {
+      order: message.timestamp.getTime(),
+      author: authorOfChatMessage(message),
+      payload,
+    };
+  }
+
+  // Remembers a card update under the alias root of its target, so it lands on
+  // whichever id the message is stored under. An update from another author is
+  // ignored, like a text correction, and an older stanza order never overwrites
+  // a newer one.
+  function rememberCard(targetId: string, entry: CardEdit): void {
+    const targetAuthor = authorFor(targetId);
+    if (targetAuthor !== undefined && !isSameAuthor(targetAuthor, entry.author)) {
+      return;
+    }
+    const root = aliasRoot(targetId);
+    const existing = cards.get(root);
+    if (existing !== undefined && existing.order > entry.order) {
+      return;
+    }
+    cards.set(root, entry);
+  }
+
   function applyEditUpdate(chatId: string, update: EditUpdate): void {
     const target = authorFor(update.targetId);
     set((state) => ({
@@ -67,13 +110,21 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
   }
 
   // A correction or retraction message only changes edit state; it never
-  // touches the preview or the unread count.
+  // touches the preview or the unread count. A correction may also carry a
+  // task-card payload, which is remembered even when its body is empty.
   function ingestEdit(message: LedgerStanza): void {
+    const card = cardEditFor(message);
+    if (card !== undefined && message.correction !== undefined) {
+      rememberCard(message.correction.targetId, card);
+    }
     const update = editUpdateFor(message);
-    if (update === undefined) {
+    if (update !== undefined) {
+      applyEditUpdate(message.chatJid, update);
       return;
     }
-    applyEditUpdate(message.chatJid, update);
+    if (card !== undefined) {
+      refreshEdits(message.chatJid);
+    }
   }
 
   function ingestHistoryEdits(messages: readonly LedgerStanza[]): void {
@@ -110,10 +161,24 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     set((state) => ({ edits: { ...state.edits, [chatId]: next } }));
   }
 
+  // The task card a correction carries for one message, when the update comes
+  // from the original's author like a text correction does.
+  function cardFor(message: StoreMessage): Payload | undefined {
+    const entry = cards.get(aliasRoot(message.id));
+    if (entry === undefined) {
+      return undefined;
+    }
+    const author = authorFor(message.id);
+    if (author === undefined || !isSameAuthor(author, entry.author)) {
+      return undefined;
+    }
+    return entry.payload;
+  }
+
   // Applies one message's current edit state. A deleted message keeps only
   // its place and identity (a retraction also drops the local upload state);
   // a corrected one shows the new text and mentions.
-  function withEdits(message: StoreMessage, chatId: string): StoreMessage {
+  function applyTextEdits(message: StoreMessage, chatId: string): StoreMessage {
     const chatEdits = get().edits[chatId];
     const state = chatEdits === undefined ? undefined : editsFor(chatEdits, aliasRoot(message.id));
     if (state === undefined || (!state.edited && !state.deleted)) {
@@ -194,6 +259,20 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     return edited;
   }
 
+  // The rendered message: its edit state, then the task card a correction
+  // replaced. A deleted message keeps no card.
+  function withEdits(message: StoreMessage, chatId: string): StoreMessage {
+    const edited = applyTextEdits(message, chatId);
+    if (edited.deleted === true) {
+      return edited;
+    }
+    const card = cardFor(edited);
+    if (card === undefined || edited.card === card) {
+      return edited;
+    }
+    return { ...edited, card };
+  }
+
   // A reply quote follows its target: the corrected text, or "Deleted
   // message" once the target was retracted.
   function withReplyQuote(list: readonly StoreMessage[], message: StoreMessage): StoreMessage {
@@ -225,7 +304,7 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     const list = listFor(state, chatId);
     if (
       state.edits[chatId] === undefined &&
-      !list.some((m) => m.edited === true || m.deleted === true)
+      !list.some((m) => m.edited === true || m.deleted === true || cards.has(aliasRoot(m.id)))
     ) {
       return;
     }

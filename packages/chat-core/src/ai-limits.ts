@@ -11,51 +11,55 @@ export interface LimitsValidation {
   monthError: string;
 }
 
-// Client twin of the server's LimitsSchema: both amounts must be positive, the
-// day must fit inside the month, and the month is capped. USD, because that is
-// what the server stores.
+// Client twin of the server's LimitsSchema: an empty field means "no limit";
+// a set amount must be positive, the day must fit inside the month, and the
+// month is capped. USD, because that is what the server stores.
 export function validateLimits(dayText: string, monthText: string): LimitsValidation {
   const day = parseAmount(dayText);
   const month = parseAmount(monthText);
+  const dayValue = day === undefined ? null : day;
+  const monthValue = month === undefined ? null : month;
   let dayError = '';
   let monthError = '';
 
-  if (day === null) {
+  if (day === undefined) {
     dayError = 'Enter a daily amount greater than 0';
   }
-  if (month === null) {
+  if (month === undefined) {
     monthError = 'Enter a monthly amount greater than 0';
   }
-  if (day !== null && month !== null && day > month) {
+  if (dayValue !== null && monthValue !== null && dayValue > monthValue) {
     dayError = 'The daily limit must not exceed the monthly limit';
   }
-  if (month !== null && month > MAX_MONTHLY_USD) {
+  if (monthValue !== null && monthValue > MAX_MONTHLY_USD) {
     monthError = `The monthly limit must be at most $${MAX_MONTHLY_USD}`;
   }
 
   return {
     limits:
-      day !== null && month !== null && dayError === '' && monthError === ''
-        ? { perDayUsd: day, perMonthUsd: month }
+      dayError === '' && monthError === ''
+        ? { perDayUsd: dayValue, perMonthUsd: monthValue }
         : null,
     dayError,
     monthError,
   };
 }
 
-function parseAmount(text: string): number | null {
+// `null` for an empty field (no limit), `undefined` for text that is not a
+// positive amount, a number otherwise.
+function parseAmount(text: string): number | null | undefined {
   const trimmed = text.trim();
   if (trimmed === '') {
     return null;
   }
   const value = Number(trimmed);
   if (!Number.isFinite(value) || value <= 0) {
-    return null;
+    return undefined;
   }
   return value;
 }
 
-/** `2` -> `$2`. The server stores plain USD numbers. */
-export function formatLimit(value: number): string {
-  return `$${value}`;
+/** `2` -> `$2`; a `null` bound is shown as "No limit". */
+export function formatLimit(value: number | null): string {
+  return value === null ? 'No limit' : `$${value}`;
 }

@@ -18,12 +18,11 @@ import {
   UPDATE_PERSONA_TOOL,
 } from '../tools';
 import { createDelegation, getDelegationForAi } from '../delegation/service';
-import type { RequestOutcome } from '../../actions/gateway';
+import { createTurnDeskRunner, isDeskToolCall, runDeskCall } from './desk-exec';
+import { createRequestActionRunner } from './request-action';
 import {
   ROUND_MAX_HOPS,
-  denialReasonForModel,
   errorName,
-  formatModelText,
   toRedactedError,
   type AgentGatewayDeps,
   type AiSession,
@@ -48,11 +47,15 @@ interface ToolExecContext {
   roomRounds: Map<string, RoomRound>;
   sessionIsLive: LiveSession['sessionIsLive'];
   pumpRoom: (session: AiSession, roomJid: string) => Promise<void>;
-  secretsFor: (virtualKey?: string) => string[];
+  secretsFor: (secret?: string) => string[];
 }
 
 export function createToolExec(ctx: ToolExecContext) {
   const { deps, logger, sessions, roomRounds, sessionIsLive, pumpRoom, secretsFor } = ctx;
+  const { runRequestAction, runRequestActionEffect } = createRequestActionRunner(
+    deps.actions,
+    logger,
+  );
 
   // Runs one validated tool call against the gateway's own AI id. The id
   // comes from the session, never from the model's arguments, and the
@@ -65,8 +68,12 @@ export function createToolExec(ctx: ToolExecContext) {
     session: AiSession,
     chatKey: string,
     context?: RequestActionContext,
+    desk?: { ownerUserId: string },
   ): ExecuteToolCall {
     const aiId = session.aiId;
+    // T-1409: one desk runner per turn, created only when the turn offered the
+    // desk tools; `null` keeps an improvised call an unknown tool.
+    const deskRunner = createTurnDeskRunner(deps.desk, desk, aiId, logger);
     // The T-0444 cap: at most five facts saved per turn. The counter lives in
     // this closure, which is created once per turn, so it resets with the
     // turn.
@@ -80,6 +87,7 @@ export function createToolExec(ctx: ToolExecContext) {
       if (!sessionIsLive(session)) {
         return { content: 'the AI was stopped' };
       }
+      if (isDeskToolCall(call)) return yield* Effect.promise(() => runDeskCall(deskRunner, call));
       // A group turn offers the memory tools always, and `request_action`
       // only when the trigger is allowed to ask for one. The persona tools
       // are reachable from the owner's DM alone, so a model that improvises
@@ -312,77 +320,6 @@ export function createToolExec(ctx: ToolExecContext) {
     });
     return (call) => Effect.runPromise(execute(call));
   }
-
-  // Routes a `request_action` call into the action gateway. The ai id and
-  // chat ids always come from the session, never from the call: a model
-  // that smuggles `aiId` or `groupId` inside `args` cannot change who is
-  // asked. The mapping below is the exact model-facing wording per
-  // outcome (see spec); no adapter text beyond the success `summary`
-  // reaches the AI. The group context (when present) adjusts the
-  // pending-approval wording — owners see "in this chat", admins see "in
-  // this room" — and tags the request with the room's group and topic ids.
-  const runRequestActionEffect = Effect.fnUntraced(function* (
-    session: AiSession,
-    call: Extract<ValidToolCall, { tool: typeof REQUEST_ACTION_TOOL }>,
-    chat?: { groupId: string; topicId: string },
-  ): Effect.fn.Return<ToolExecution> {
-    const actions = deps.actions;
-    if (actions === undefined) {
-      // No action gateway wired: the tool was never offered, so this call
-      // is treated as an unknown tool and answered honestly.
-      return { content: 'invalid: unknown tool: request_action' };
-    }
-    const outcome = yield* Effect.promise(() =>
-      actions.request({
-        aiId: session.aiId,
-        ...(chat === undefined ? {} : { groupId: chat.groupId, topicId: chat.topicId }),
-        action: call.action,
-        args: call.args,
-        requestedBy: session.aiJid,
-      }),
-    ).pipe(
-      Effect.catchDefect((error) =>
-        // The gateway is best-effort: a thrown error here would mean a bug
-        // we cannot leak. Log the class name only and answer as failed.
-        Effect.sync((): RequestOutcome | null => {
-          logger.warn(
-            { err: errorName(error), aiId: session.aiId, action: call.action },
-            'action gateway request threw',
-          );
-          return null;
-        }),
-      ),
-    );
-    if (outcome === null) {
-      return { content: 'the action failed' };
-    }
-    switch (outcome.status) {
-      case 'executed':
-        return { content: `done: ${outcome.summary}${formatModelText(outcome.modelText)}` };
-      case 'pending_approval':
-        // The card message is the owner's view; the model just gets a
-        // short fixed line so it knows to wait. The wording differs by
-        // chat: in DMs the card appears in the owner's chat, in groups
-        // it appears in the room and only group admins / owners / the
-        // AI's owner get the buttons.
-        return {
-          content:
-            chat === undefined
-              ? "waiting for your owner's approval; a card was posted in this chat"
-              : "waiting for an admin's approval; a card was posted in this room",
-        };
-      case 'failed':
-        return { content: 'the action failed' };
-      case 'denied':
-        return { content: `denied: ${denialReasonForModel(outcome.reason)}` };
-    }
-  });
-
-  const runRequestAction = (
-    session: AiSession,
-    call: Extract<ValidToolCall, { tool: typeof REQUEST_ACTION_TOOL }>,
-    chat?: { groupId: string; topicId: string },
-  ): Promise<ToolExecution> => Effect.runPromise(runRequestActionEffect(session, call, chat));
 
   // T-0106: appends the fixed tool guide to the last user turn. The system
   // prompt builders take no options (their shape is frozen for provider

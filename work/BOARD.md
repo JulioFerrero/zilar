@@ -1376,8 +1376,8 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1334](T-1334-orb-by-name-and-pictures.md) | Avatars: one shared EntityAvatar per app; orb seeded by name; real pictures wherever available | 2026-10-13 |
 | [T-1335](T-1335-photo-bubbles-edge-to-edge.md) | Photos like Telegram: edge to edge in the bubble, time pill on the photo, caption below (mobile + web) | 2026-10-13 |
 | [T-1336](T-1336-requests-in-chat-list.md) | Contact requests as rows at the top of the chat list with inline Accept / Decline (Undo) on mobile and web | 2026-10-13 |
-| [T-1338](T-1338-mobile-viewer-gestures.md) | Mobile photo viewer: swipe, pinch, pan actually work (double-tap blocked them) | in-progress | auto | — | Julio 10-13 |
-| T-1365…T-1388 | Model eval: 12 OpenCode Go models replay T-1361 (B) and T-1356 (A); never merged; plan `docs/audit/model-eval-2026-10.md` | planned | per model | T-1364 | Julio 10-14 |
+| [T-1338](T-1338-mobile-viewer-gestures.md) | Mobile photo viewer gestures (hand-rolled): dropped, superseded by T-1341 | 2026-10-14 |
+| T-1365…T-1392 | Model eval: 12 OpenCode Go models replay T-1361 (B) and T-1356 (A); never merged; results in `docs/audit/model-eval-2026-10.md` | stopped early (Go 402 funds), graded | per model | T-1364 | Julio 10-14 |
 | [T-1337](T-1337-just-sent-photo-loads.md) | Just-sent photos keep the local preview and retry /api/files instead of sticking on Image unavailable (web + mobile) | 2026-10-13 |
 | [T-1339](T-1339-web-viewer-zoom.md) | Web photo viewer: wheel/trackpad/double-click zoom, drag pan, touch swipe, prev/next arrows | 2026-10-13 |
 | [T-1340](T-1340-web-viewer-dblclick.md) | Web viewer: double-click on the photo zooms and toggles back; only a click outside the photo closes | 2026-10-13 |
@@ -1405,3 +1405,31 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1363](T-1363-mobile-dm-marks.md) | Mobile: DM rows keep readUntil/deliveredUntil (group keeps deliveredUntil); dead summariesForTopicsEntry removed | 2026-10-14 |
 | [T-1362](T-1362-go-muse-fallback.md) | Lead tool: Go Muse joins the fallback chain before the paid Muse (workers and reviews) | 2026-10-14 |
 | [T-1364](T-1364-launch-base-ref.md) | Lead tool: launch --base <ref> branches from an older commit and commits the task file (model eval replays) | 2026-10-14 |
+| [T-1393](T-1393-ai-wizard-inline-key.md) | Create an AI: add a provider key inline in the wizard (mobile + web); the new key is selected, no dead end | 2026-10-14 |
+| [T-1394](T-1394-provider-dropdown.md) | Provider dropdown (Base UI web, sheet mobile); GitHub hidden from the AI wizard; shared LLM provider list in chat-core | 2026-10-14 |
+| [T-1397](T-1397-effect-ai-plan-audit.md) | Audit: Effect AI plan to replace LiteLLM (docs/audit/effect-ai-plan.md) | 2026-10-14 |
+| [T-1398](T-1398-agent-ux-plan-audit.md) | Audit: quiet background agent UX plan (docs/audit/agent-ux-plan.md) | 2026-10-14 |
+| [T-1395](T-1395-models-dev-catalog.md) | Model picker from the models.dev catalog: GET /api/ai/catalog (24 h cache, fallback) + searchable pickers with context and prices (web + mobile) | 2026-10-14 |
+| [T-1401](T-1401-provisioning-without-litellm.md) | AI create/edit/delete without LiteLLM; AIs API needs only the key cipher | 2026-10-14 |
+| [T-1402](T-1402-desk-runner-plan-audit.md) | Audit: desk (jail image + tool daemon, gVisor on VPS, desk-agent sidecar, egress proxy) and runner plan (docs/audit/desk-runner-plan.md) | 2026-10-14 |
+| [T-1400](T-1400-ai-cards-never-notify.md) | AI progress cards never notify: push, unread, preview and the push preview route skip progress rows and their edits | 2026-10-14 |
+| [T-1404](T-1404-lead-forget.md) | lead forget: drop finished tasks from the lead state | 2026-10-14 |
+| [T-1399](T-1399-model-client-effect-ai.md) | Every AI model call through an Effect AI ModelClient on the AI's own provider connection; effect 4.0.4; listener off; gateway starts without LiteLLM | 2026-10-14 |
+| [T-1403](T-1403-desk-image-tool-daemon.md) | packages/desk: pinned jail image + desk-tool daemon (bash/read/write/edit/grep/glob/git; path-escape and git https-only hardening) | 2026-10-14 |
+| [T-1405](T-1405-ai-usage-cost.md) | ai_usage table: tokens + cost per AI per UTC day (models.dev prices); spend summary reads it instead of LiteLLM | 2026-10-14 |
+| [T-1406](T-1406-ai-status-line.md) | AI status line: chat state carries a fixed status text shown next to the typing dots (web + mobile); aiStatus wired | 2026-10-14 |
+| [T-1407](T-1407-desk-agent-sidecar.md) | Hands interface + desk-agent sidecar: fixed run flags, shared memory pool + admission, fair queue, idle stop, disk-image workspaces, unix-socket API; app-side cloud hands client | 2026-10-14 |
+| [T-1408](T-1408-optional-ai-limits.md) | AI spending limits optional (no default) end to end; budget gate only for set limits | 2026-10-14 |
+| [T-1410](T-1410-egress-proxy.md) | Desk egress proxy in packages/desk: open web, private/internal IPs blocked (pinned resolution), optional allowlist, host-only log; IP guard moved to packages/desk | 2026-10-14 |
+| [T-1409](T-1409-desk-tools-in-loop.md) | Desk tools (bash, read, write, edit, grep, glob, git) in the agent loop via Hands for computer_mode=cloud; ais.computer_mode (0057) | 2026-10-14 |
+| [T-1412](T-1412-server-image-desk.md) | Hotfix: server image copies packages/desk; gate checks app Dockerfiles copy every @zilar workspace dependency | 2026-10-14 |
+| [T-1411](T-1411-desk-host-install.md) | AI computers install like the rest of Zilar: desk-agent + desk-egress compose services (off behind DESKS_ENABLED / profile desks), ./zilar host-setup (pinned gVisor via reload, 4 GB slice), doctor + init, docs | 2026-10-14 |
+| [T-1415](T-1415-chat-menu-icons.md) | Web chat menu: icons on Topic info, Pinned messages, Media, Search, Chat background | 2026-10-14 |
+| [T-1416](T-1416-unread-divider-own.md) | Unread divider never above your own message (count and id anchors skip own messages; web + mobile) | 2026-10-14 |
+| [T-1413](T-1413-remove-litellm.md) | Remove LiteLLM: client, model entry, config + env, compose lines, dev container; stop reading llm_virtual_keys (tables dropped later) | 2026-10-14 |
+| [T-1414](T-1414-task-card-protocol.md) | Task card protocol: one card per turn edited in place (title, steps, state, summary, elapsed), corrections carry the payload, no retraction | 2026-10-14 |
+| [T-1417](T-1417-runner-desk-ops.md) | Runner desk ops: desk.* tunnel frames, runner runs desks with the shared lifecycle (runsc / docker-vm, no unsandboxed mode), local policy only tightens | 2026-10-14 |
+| [T-1418](T-1418-wire-cloud-hands.md) | Wire the cloud desk client: DESK_IMAGE config, buildDeskClient, gateway gets it when socket + image are set | 2026-10-14 |
+| [T-1420](T-1420-one-commit-per-task.md) | Lead CLI: one commit per task on main | 2026-10-14 |
+| [T-1419](T-1419-task-card-ui.md) | Task card UI on web and mobile; clients apply card edits | 2026-10-14 |
+| [T-1396](T-1396-openai-compatible-provider.md) | Custom OpenAI-compatible provider, SSRF-pinned | 2026-10-14 |

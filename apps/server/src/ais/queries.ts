@@ -1,5 +1,6 @@
 import { Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
+import type { AiComputerMode } from '@zilar/api-contract';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import type { PublicAi } from './persona';
@@ -20,6 +21,7 @@ export async function listAis(db: ServerDatabase, ownerId: string): Promise<Publ
         ais.status,
         ais.provider_connection_id,
         ais.machine_id,
+        ais.computer_mode,
         ais.created_at,
         ai_limits.per_day_usd,
         ai_limits.per_month_usd,
@@ -43,6 +45,9 @@ export interface ActiveAiForGateway {
   owner: string;
   name: string;
   persona: string;
+  // T-1409: the AI's computer mode, so a turn only offers the desk tools when
+  // the desk is actually enabled for it.
+  computerMode: AiComputerMode;
 }
 
 export async function listActiveAisForGateway(db: ServerDatabase): Promise<ActiveAiForGateway[]> {
@@ -56,7 +61,8 @@ export async function listActiveAisForGateway(db: ServerDatabase): Promise<Activ
         ais.localpart,
         ais.owner,
         ais.name,
-        ais.persona
+        ais.persona,
+        ais.computer_mode
       FROM ais
       WHERE ais.status = ${'active'}
       ORDER BY ais.created_at ASC`;
@@ -97,8 +103,8 @@ export function emitAiLifecycle(event: AiLifecycleEvent): void {
 }
 
 // One AI owned by `ownerId`, or null for a missing id and a foreign one alike,
-// so existence is never leaked. The internal shape carries the gateway key id
-// and identity the public shape deliberately omits.
+// so existence is never leaked. The internal shape carries the localpart and
+// identity the public shape deliberately omits.
 export async function findOwnedAi(
   db: ServerDatabase,
   id: string,
@@ -118,17 +124,15 @@ export async function findOwnedAi(
         ais.status,
         ais.provider_connection_id,
         ais.machine_id,
+        ais.computer_mode,
         ais.created_at,
         ai_limits.per_day_usd,
         ai_limits.per_month_usd,
         ais.can_delegate,
         ais.accepts_delegation,
-        ais.localpart,
-        llm_virtual_keys.litellm_key_id,
-        llm_virtual_keys.litellm_model_id
+        ais.localpart
       FROM ais
       INNER JOIN ai_limits ON ai_limits.ai_id = ais.id
-      LEFT JOIN llm_virtual_keys ON llm_virtual_keys.ai_id = ais.id
       WHERE ais.id = ${id} AND ais.owner = ${ownerId}
       LIMIT 1`;
       return row ?? null;
@@ -137,8 +141,7 @@ export async function findOwnedAi(
 }
 
 // One AI by id, with its connection's provider, for the gateway-only paths
-// (`ensureAiModel`) that have no owner in hand. Not exported: no route may use
-// it.
+// that have no owner in hand. Not exported: no route may use it.
 export async function findAiForGateway(
   db: ServerDatabase,
   aiId: string,
@@ -162,8 +165,7 @@ export async function getOwnedAi(
 // transaction's connection.
 //
 // Columns are listed explicitly and camelCased by `transformResultNames`, so
-// the row matches `GatewayAiRecord`; both `ai_limits` and `llm_virtual_keys`
-// carry an `ai_id`, which is why none is selected unaliased.
+// the row matches `GatewayAiRecord`.
 export function findGatewayAiEffect(
   aiId: string,
 ): Effect.Effect<GatewayAiRecord | null, SqlError.SqlError, SqlClient.SqlClient> {
@@ -179,6 +181,7 @@ export function findGatewayAiEffect(
       ais.status,
       ais.provider_connection_id,
       ais.machine_id,
+      ais.computer_mode,
       ais.created_at,
       ais.can_delegate,
       ais.accepts_delegation,
@@ -186,12 +189,9 @@ export function findGatewayAiEffect(
       ais.owner,
       ai_limits.per_day_usd,
       ai_limits.per_month_usd,
-      llm_virtual_keys.litellm_key_id,
-      llm_virtual_keys.litellm_model_id,
       provider_connections.provider
     FROM ais
     INNER JOIN ai_limits ON ai_limits.ai_id = ais.id
-    LEFT JOIN llm_virtual_keys ON llm_virtual_keys.ai_id = ais.id
     INNER JOIN provider_connections ON provider_connections.id = ais.provider_connection_id
     WHERE ais.id = ${aiId}
     LIMIT 1`;
@@ -199,8 +199,8 @@ export function findGatewayAiEffect(
   });
 }
 
-// The internal row: the public columns plus the identity and gateway handles
-// the routes must never answer with.
+// The internal row: the public columns plus the identity the routes must never
+// answer with.
 interface AiRecord {
   id: string;
   name: string;
@@ -212,13 +212,12 @@ interface AiRecord {
   status: 'active' | 'disabled' | 'stopped';
   providerConnectionId: string;
   machineId: string | null;
+  computerMode: AiComputerMode;
   createdAt: Date;
-  perDayUsd: string;
-  perMonthUsd: string;
+  perDayUsd: string | null;
+  perMonthUsd: string | null;
   canDelegate: boolean;
   acceptsDelegation: boolean;
-  litellmKeyId: string | null;
-  litellmModelId: string | null;
 }
 
 // The AI row plus its connection's provider, for the gateway-only paths that
@@ -228,7 +227,7 @@ interface GatewayAiRecord extends AiRecord {
   owner: string;
 }
 
-type PublicAiRow = Omit<AiRecord, 'localpart' | 'litellmKeyId' | 'litellmModelId'>;
+type PublicAiRow = Omit<AiRecord, 'localpart'>;
 
 export function toPublicAi(row: PublicAiRow): PublicAi {
   return {
@@ -241,10 +240,11 @@ export function toPublicAi(row: PublicAiRow): PublicAi {
     status: row.status,
     providerConnectionId: row.providerConnectionId,
     limits: {
-      perDayUsd: Number(row.perDayUsd),
-      perMonthUsd: Number(row.perMonthUsd),
+      perDayUsd: row.perDayUsd === null ? null : Number(row.perDayUsd),
+      perMonthUsd: row.perMonthUsd === null ? null : Number(row.perMonthUsd),
     },
     machineId: row.machineId,
+    computerMode: row.computerMode,
     createdAt: row.createdAt,
     canDelegate: row.canDelegate,
     acceptsDelegation: row.acceptsDelegation,

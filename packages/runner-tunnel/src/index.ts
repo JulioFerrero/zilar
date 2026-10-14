@@ -13,6 +13,7 @@ export {
   STREAM_WINDOW_BYTES,
   decodeBinaryFrame,
   encodeBinaryFrame,
+  isAcceptedProtocolVersion,
   parseControlMessage,
   type BinaryFrame,
   type ControlMessage,
@@ -20,6 +21,30 @@ export {
   type ControlParseOk,
   type MessageDirection,
 } from './protocol.ts';
+export {
+  DeskErrorCodeSchema,
+  DeskRequestError,
+  type DeskErrorCode,
+  type DeskErrorFrame,
+  type DeskEgressFrame,
+  type DeskExecFrame,
+  type DeskLimitsFrame,
+  type DeskProvisionFrame,
+  type DeskQueuedFrame,
+  type DeskReadyFrame,
+  type DeskReplyFrame,
+  type DeskRequestFrame,
+  type DeskStoppedFrame,
+  type DeskStopFrame,
+} from './desk-frames.ts';
+export {
+  DeskRunner,
+  type DeskProvisionOutcome,
+  type DeskRunnerFrame,
+  type DeskRunnerHandler,
+  type DeskStopOutcome,
+} from './desk-runner.ts';
+export { DeskServer, DEFAULT_DESK_REPLY_TIMEOUT_MS } from './desk-server.ts';
 export {
   InMemoryKeyRegistry,
   generateRunnerKeypair,

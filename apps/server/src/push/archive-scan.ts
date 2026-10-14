@@ -1,6 +1,7 @@
 import { Duration, Effect, type Effect as EffectType } from 'effect';
 import { allowedArchives, type ArchivePool, type SearchOwner } from '../search/service';
 import { albumInfoFromXml } from '../xmpp/album-xml';
+import { liveAiUiIds } from '../notify/ai-cards';
 import { albumKey } from './album-key';
 import { resolveCandidate } from './candidates';
 import type { ResolvedPushMessage } from './payload';
@@ -80,6 +81,9 @@ export const newestMessageForUserEffect = Effect.fnUntraced(function* (
     if (rows.length > 0) {
       everSawRows = true;
     }
+    // The live AI UI's origin ids in this read, so a correction or retraction
+    // of a card is skipped as well as the card itself (T-1400).
+    const liveIds = liveAiUiIds(rows);
     const superseded: string[] = [];
     // Oldest first: the oldest unseen fresh row notifies now, so a burst of
     // IQs arrives in order — each IQ takes the next message — and the older
@@ -92,7 +96,7 @@ export const newestMessageForUserEffect = Effect.fnUntraced(function* (
         continue;
       }
       const verdict = yield* Effect.tryPromise({
-        try: () => resolveCandidate(deps, userId, allowed, row),
+        try: () => resolveCandidate(deps, userId, allowed, row, liveIds),
         catch: () => new ArchiveUnavailable(),
       });
       if (verdict.status === 'ok') {

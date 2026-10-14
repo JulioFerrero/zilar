@@ -9,6 +9,7 @@ import { PushGroup, PushSettingsPayload, PushTestPayload } from '@zilar/api-cont
 import { errorClassName } from '../effect/error-utils';
 import { handler } from '../effect/http-core';
 import { HttpError, xmppUnavailable } from '../errors';
+import { cardEditTarget, isLiveAiUiRow } from '../notify/ai-cards';
 import type { RateLimiter } from '../rate-limit';
 import { allowedArchives } from '../search/service';
 import { syncPushSubscriptionsForUser } from '../topics/rooms';
@@ -179,12 +180,24 @@ export function createPushGroupLayer(
             if (row === undefined) {
               throw new HttpError(404, 'not_found', 'Notification not found');
             }
+            // The live AI UI is not a message (T-1400): skip the card and an
+            // edit of one, so an AI progress card's text is never previewed.
+            const editTarget = cardEditTarget(row.xml);
+            const liveIds = new Set<string>();
+            if (editTarget !== null) {
+              const targetRow = yield* Effect.tryPromise({
+                try: () => readCandidateByOriginId(archive, allowed, editTarget),
+                catch: () => xmppUnavailable(),
+              }).pipe(Effect.orDie);
+              if (targetRow !== undefined && isLiveAiUiRow(targetRow.xml)) liveIds.add(editTarget);
+            }
             const verdict = yield* Effect.promise(() =>
               resolveCandidate(
                 { db: deps.db, config: deps.config, now: () => new Date(now()) },
                 userId,
                 allowed,
                 row,
+                liveIds,
               ),
             );
             if (verdict.status !== 'ok') {

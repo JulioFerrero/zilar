@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   gateSteps,
@@ -11,6 +14,7 @@ import {
 } from './plan.js';
 import { allowedTokens, scopeReport, tokenMatcher } from './scope.js';
 import { checkMigrations, migrationNumber, parseMigrationDiff } from './migrations.js';
+import { checkImagePackages, checkImages, copiedPackageDirs, workspaceDeps } from './images.js';
 
 const workspace: WorkspacePackage[] = [
   { name: '@zilar/mobile', dir: 'apps/mobile', hasTests: true },
@@ -134,6 +138,57 @@ describe('migration check', () => {
   it('treats a rename into a migration path as added', () => {
     const diff = parseMigrationDiff('R100\told.md\tapps/server/drizzle/0046_x.sql');
     expect(checkMigrations(diff, 47).failures).toHaveLength(1);
+  });
+});
+
+describe('image package check', () => {
+  const manifest = JSON.stringify({
+    dependencies: { '@zilar/api-contract': 'workspace:*', '@zilar/desk': 'workspace:*' },
+  });
+  const before = [
+    'COPY apps/server apps/server',
+    'COPY packages/api-contract packages/api-contract',
+  ].join('\n');
+
+  it('fails when a workspace dependency has no COPY line and passes once it does', () => {
+    expect(
+      checkImagePackages({ app: 'apps/server', manifest, dockerfile: before, workspace: [] }),
+    ).toEqual([
+      'apps/server/Dockerfile: missing `COPY packages/desk packages/desk` for @zilar/desk',
+    ]);
+    expect(
+      checkImagePackages({
+        app: 'apps/server',
+        manifest,
+        dockerfile: `${before}\nCOPY packages/desk packages/desk`,
+        workspace: [],
+      }),
+    ).toEqual([]);
+  });
+
+  it('ignores a manifest-only COPY and the deliberately excluded mock backend', () => {
+    expect(copiedPackageDirs('COPY packages/desk/package.json packages/desk/')).toEqual(new Set());
+    expect(copiedPackageDirs('COPY packages/desk packages/desk')).toEqual(
+      new Set(['packages/desk']),
+    );
+    const webManifest = JSON.stringify({
+      dependencies: { '@zilar/mock-backend': 'workspace:*' },
+    });
+    expect(workspaceDeps(webManifest)).toEqual(['@zilar/mock-backend']);
+    expect(
+      checkImagePackages({
+        app: 'apps/web',
+        manifest: webManifest,
+        dockerfile: 'COPY apps/web apps/web',
+        workspace: [],
+      }),
+    ).toEqual([]);
+  });
+
+  it('finds no missing package in the real server and web images', () => {
+    const root = fileURLToPath(new URL('../../../..', import.meta.url));
+    const failures = checkImages([], (file) => fs.readFileSync(path.join(root, file), 'utf8'));
+    expect(failures).toEqual([]);
   });
 });
 

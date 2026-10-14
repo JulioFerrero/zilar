@@ -11,7 +11,10 @@ export interface MovedBoard {
 }
 
 // Moves the task's row out of the Active table and appends it to the end of
-// the Done table as `| [T-XXXX](file) | <summary> | <today> |`.
+// the Done table as `| [T-XXXX](file) | <summary> | <today> |`. A task launched
+// from an uncommitted spec skips the board commit, so the Active table may have
+// no row for it: the Done row is appended then, and the Active row is removed
+// when it does exist.
 export function moveBoardRow(
   board: string,
   task: string,
@@ -29,9 +32,6 @@ export function moveBoardRow(
       continue;
     }
     kept.push(line);
-  }
-  if (!removedActive) {
-    throw new Error(`board has no Active row for ${task}`);
   }
   const doneIndex = kept.findIndex((line) => DONE_HEADING.test(line));
   if (doneIndex === -1) {

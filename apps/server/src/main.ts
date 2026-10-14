@@ -13,7 +13,6 @@
 // the finalizer runs `stopServer` under the force-exit.
 import { Cause, Effect, Exit, Fiber, Runtime } from 'effect';
 import type { Logger } from 'pino';
-import { createLitellmAdminClientFromConfig, DEFAULT_LITELLM_BASE_URL } from './ai/litellm-client';
 import { createProductionAnnouncer } from './actions/production-announcer';
 import { buildDemoEchoAdapter } from './actions/demo';
 import { type ActionAnnouncer, createActionGateway } from './actions/gateway';
@@ -51,7 +50,7 @@ import { createArchivePool } from './search/service';
 import { loadPushConfigOrExit, type PushConfig } from './push/config';
 import { sharedDraftHub } from './drafts/hub';
 import { createLogger } from './logger';
-import { assertRunnerHubConfig, type RunnerHub } from './machines/hub';
+import { assertRunnerHubConfig, DEFAULT_MODEL_GATEWAY_URL, type RunnerHub } from './machines/hub';
 import { createDbMachineRegistry } from './machines/registry';
 import {
   ensureWritableDir,
@@ -64,6 +63,7 @@ import { runTool } from './sandbox/run-tool';
 import { buildToolAdapters, type BuildToolAdaptersDeps } from './tools/adapters';
 import type { ToolRunner } from './tools/types';
 import { buildWebToolsAdapters } from './web-tools/adapters';
+import { buildDeskClient } from './hands/wiring';
 
 // How long open connections (SSE streams) get before they are closed, and the
 // point at which a stuck shutdown gives up and exits.
@@ -310,7 +310,7 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
     // comes up after the edge server is listening so the API is not delayed.
     assertRunnerHubConfig({
       enabled: config.RUNNER_HUB_ENABLED,
-      gatewayUrl: config.LITELLM_BASE_URL ?? DEFAULT_LITELLM_BASE_URL,
+      gatewayUrl: DEFAULT_MODEL_GATEWAY_URL,
     });
 
     // One registry, shared with both the machines routes and the hub: the
@@ -456,46 +456,29 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
     // The push component, room reconcile and group notifier are leader-only;
     // they start through `createLeaderWork` once the advisory lock is held.
     // Agent gateway (T-0034): off unless AGENT_GATEWAY_ENABLED=true, and inert
-    // without LiteLLM plus the key cipher. It connects each active AI to XMPP so
-    // owner DMs get replies.
+    // without the key cipher. It connects each active AI to XMPP so owner DMs
+    // get replies; each turn calls the AI's own provider connection.
     const gatewayCipher =
       config.ZILAR_KEY_ENCRYPTION_KEY === undefined
         ? undefined
         : createKeyCipher(config.ZILAR_KEY_ENCRYPTION_KEY);
-    const gatewayLitellm =
-      config.LITELLM_MASTER_KEY === undefined
-        ? undefined
-        : createLitellmAdminClientFromConfig(config);
-    // T-0475: the listener is the platform's own paid feature: it needs the flag,
-    // a model and the master key. Any missing piece keeps it off with one warning
-    // that names no value.
-    const gatewayListener =
-      config.LISTENER_ENABLED &&
-      config.LISTENER_MODEL !== undefined &&
-      config.LITELLM_MASTER_KEY !== undefined
-        ? { model: config.LISTENER_MODEL, virtualKey: config.LITELLM_MASTER_KEY }
-        : undefined;
-    if (config.LISTENER_ENABLED && gatewayListener === undefined) {
+    // T-1399: the listener is a platform-paid feature and there is no platform
+    // key in P0, so it is always off. The flag stays so turning it on names the
+    // reason instead of silently doing nothing.
+    if (config.LISTENER_ENABLED) {
       logger.warn(
-        'listener is enabled but LISTENER_MODEL or LITELLM_MASTER_KEY is missing; staying off',
+        'listener is off until AIs can pay for their own model calls; ignoring LISTENER_ENABLED',
       );
     }
+    const desk = buildDeskClient(config, logger);
     const gateway = createAgentGateway(
       {
         db,
         xmpp: config.xmpp,
         adminClient,
-        ...(gatewayLitellm === undefined ? {} : { litellm: gatewayLitellm }),
         ...(gatewayCipher === undefined ? {} : { cipher: gatewayCipher }),
         ...(archivePool === undefined ? {} : { archive: archivePool }),
         logger,
-        ...(config.LITELLM_BASE_URL === undefined
-          ? {}
-          : { litellmBaseUrl: config.LITELLM_BASE_URL }),
-        ...(config.LITELLM_MASTER_KEY === undefined
-          ? {}
-          : { masterKeyForRedaction: config.LITELLM_MASTER_KEY }),
-        ...(gatewayListener === undefined ? {} : { listener: gatewayListener }),
         // The shared in-process hub: the gateway publishes drafts here and the
         // `/api/drafts/stream` route (mounted in app.ts) streams them out.
         drafts: { hub: sharedDraftHub },
@@ -508,6 +491,7 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
         // loop runs `AGENT_TOOL_MAX_ROUNDS` rounds (1 with tools off).
         toolsEnabled: config.TOOLS_ENABLED,
         toolMaxRounds: config.AGENT_TOOL_MAX_ROUNDS,
+        ...(desk === null ? {} : { desk }),
       },
       { enabled: config.AGENT_GATEWAY_ENABLED },
     );

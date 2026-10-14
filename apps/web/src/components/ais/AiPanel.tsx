@@ -65,8 +65,8 @@ export function AiPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => v
     setAi(next);
     setName(next.name);
     setPersona(next.persona);
-    setDay(String(next.limits.perDayUsd));
-    setMonth(String(next.limits.perMonthUsd));
+    setDay(next.limits.perDayUsd === null ? '' : String(next.limits.perDayUsd));
+    setMonth(next.limits.perMonthUsd === null ? '' : String(next.limits.perMonthUsd));
     setSelectedConnectionId(next.providerConnectionId);
     setModelDraft(next.model);
   };

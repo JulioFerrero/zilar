@@ -12,6 +12,8 @@ import type { CoreContact, CoreMe, CorePorts } from './ports';
 /** The people typing in one chat. */
 export interface CoreTyping {
   names: string[];
+  /** T-1406: the latest AI status text in the chat, when one is live. */
+  status?: string;
 }
 
 /** The live AI draft of one chat: the latest cumulative reply text. */

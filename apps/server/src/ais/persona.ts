@@ -1,11 +1,11 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import type { AiComputerMode } from '@zilar/api-contract';
 import type { KeyCipher } from '../connections/crypto';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
-import type { LitellmAdminClient } from '../ai/litellm-client';
 import { defaultPersonaFor, type AiTemplate } from './templates';
 
 export interface AiLogger {
@@ -13,8 +13,8 @@ export interface AiLogger {
 }
 
 export interface AiLimits {
-  perDayUsd: number;
-  perMonthUsd: number;
+  perDayUsd: number | null;
+  perMonthUsd: number | null;
 }
 
 export interface PublicAi {
@@ -33,6 +33,9 @@ export interface PublicAi {
   // T-0091: the AI's home machine id, or null when it runs on the platform.
   // CamelCase like the rest of the public AI fields.
   machineId: string | null;
+  // T-1409: where the AI's desk runs (`off` by default). Only `cloud` is wired
+  // so far; the column also allows `runner` and `auto`.
+  computerMode: AiComputerMode;
   // T-0474: delegation opt-ins (plan §8, decision 3). `canDelegate` lets the
   // AI hand out tasks; `acceptsDelegation` lets it receive them. Both off by
   // default.
@@ -47,7 +50,6 @@ export interface PublicAi {
 export interface AiServiceDeps {
   db: ServerDatabase;
   adminClient: EjabberdAdminClient;
-  litellm: LitellmAdminClient;
   cipher: KeyCipher;
   logger: AiLogger;
   domain: string;
@@ -74,6 +76,9 @@ export interface UpdateAiInput {
   // T-0474: the two delegation opt-ins, owner only like the rest.
   canDelegate?: boolean;
   acceptsDelegation?: boolean;
+  // T-1409: the owner turns the AI's computer on (`cloud`) or off. Only these
+  // two values are accepted through the API for now.
+  computerMode?: Extract<AiComputerMode, 'off' | 'cloud'>;
 }
 
 // The persona ceiling the API enforces (`CreateAiSchema`), repeated here so a

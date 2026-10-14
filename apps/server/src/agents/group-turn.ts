@@ -1,9 +1,11 @@
 // effect-plain: moved unchanged from apps/server/src/agents/reply.ts (size split)
 import type { ChatKind, SendMessageOptions } from '@zilar/xmpp-core';
-import type { FetchLike } from '../ai/litellm-client';
+import type { FetchLike } from '../ai/http';
+import type { ModelTarget } from '../ai/providers';
+import type { ChatUsage } from '../ai/model-client';
 import type { ChatCompletionMessage } from './context';
 import type { DmTurnOutcome } from './dm-turn';
-import { clearProgressQuietly, runToolLoop } from './dm-tool-turn';
+import { finishProgressQuietly, runToolLoop } from './dm-tool-turn';
 import { GROUP_FAILURE_REPLY, cutShortSuffix } from './replies';
 import {
   actionOfCall,
@@ -34,9 +36,7 @@ export interface GroupTurnDeps {
   /** Display name of the mentioner, prefixing the reply text. */
   senderName: string;
   messages: ChatCompletionMessage[];
-  baseUrl: string;
-  virtualKey: string;
-  model: string;
+  target: ModelTarget;
   fetchImpl?: FetchLike;
   timeoutMs?: number;
   sendMessage: (
@@ -51,6 +51,8 @@ export interface GroupTurnDeps {
   };
   /** Extra secrets to redact from every log line (e.g. the master key). */
   secrets?: readonly string[];
+  /** Receives the token counters of every model call in the turn. */
+  onUsage?: (usage: ChatUsage) => void;
   /**
    * Tools to advertise to the model. Absent (or empty) = the plain
    * `completeChat` path, unchanged. When present and the model asks for a
@@ -78,9 +80,9 @@ export interface GroupTurnDeps {
   /** T-0106: posts/updates one live progress message. See
    * `DmTurnDeps.reportProgress`. */
   reportProgress?: (stage: string) => Promise<string | null>;
-  /** T-0106: removes or replaces the live progress message. See
-   * `DmTurnDeps.clearProgress`. */
-  clearProgress?: () => Promise<void>;
+  /** T-1414: sends the turn's final task-card correction. See
+   * `DmTurnDeps.finishProgress`. */
+  finishProgress?: (state: 'done' | 'failed') => Promise<void>;
   /** T-0106: counts logger. Defaults to a no-op (the group path has no
    * info logger today). */
   turnLogger?: {
@@ -149,7 +151,7 @@ function findHandoffIndex(text: string, nick: string): number | null {
 // posts the honest failure text in the room (never the raw error). XMPP
 // send failures are logged, never thrown.
 export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> {
-  const secrets = [deps.virtualKey, ...(deps.secrets ?? [])];
+  const secrets = [deps.target.apiKey, ...(deps.secrets ?? [])];
   // The mention needs a non-empty name for its offsets: fall back to the
   // sender's JID when no display name is known.
   const name = deps.senderName.trim() === '' ? deps.senderJid : deps.senderName.trim();
@@ -185,12 +187,11 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
     };
   };
   const completionInput = {
-    baseUrl: deps.baseUrl,
-    virtualKey: deps.virtualKey,
-    model: deps.model,
+    target: deps.target,
     ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
     ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }),
     ...(deps.secrets === undefined ? {} : { secrets: deps.secrets }),
+    ...(deps.onUsage === undefined ? {} : { onUsage: deps.onUsage }),
   };
   deps.sendTyping(deps.roomJid, 'groupchat', 'composing');
   try {
@@ -257,12 +258,11 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
 async function runGroupToolTurn(
   deps: GroupTurnDeps,
   completionInput: {
-    baseUrl: string;
-    virtualKey: string;
-    model: string;
+    target: ModelTarget;
     fetchImpl?: FetchLike;
     timeoutMs?: number;
     secrets?: readonly string[];
+    onUsage?: (usage: ChatUsage) => void;
   },
   secrets: string[],
   wire: (text: string) => { text: string; opts: SendMessageOptions },
@@ -314,16 +314,12 @@ async function runGroupToolTurn(
   } catch (error) {
     const failure = mapFailureToReply(error);
     deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
-    if (deps.clearProgress !== undefined) {
-      await clearProgressQuietly(deps, secrets);
-    }
+    await finishProgressQuietly(deps, secrets, 'failed');
     await reportFailure(deps, secrets, failure);
     return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
   }
   if (loop.failure !== null) {
-    if (deps.clearProgress !== undefined) {
-      await clearProgressQuietly(deps, secrets);
-    }
+    await finishProgressQuietly(deps, secrets, 'failed');
     await reportFailure(deps, secrets, loop.failure.reply);
     return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
   }
@@ -336,9 +332,7 @@ async function runGroupToolTurn(
     if (deps.checkRoundGate !== undefined) {
       const gate = await deps.checkRoundGate();
       if (gate !== null && gate.limited) {
-        if (deps.clearProgress !== undefined) {
-          await clearProgressQuietly(deps, secrets);
-        }
+        await finishProgressQuietly(deps, secrets, 'failed');
         await reportFailure(deps, secrets, gate.reply);
         return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
       }
@@ -358,20 +352,14 @@ async function runGroupToolTurn(
     } catch (error) {
       const failure = mapFailureToReply(error);
       deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
-      if (deps.clearProgress !== undefined) {
-        await clearProgressQuietly(deps, secrets);
-      }
+      await finishProgressQuietly(deps, secrets, 'failed');
       await reportFailure(deps, secrets, failure);
       return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
     }
-    if (deps.clearProgress !== undefined) {
-      await clearProgressQuietly(deps, secrets);
-    }
+    await finishProgressQuietly(deps, secrets, 'done');
     return await sendGroupReply(deps, secrets, wire(text));
   }
-  if (deps.clearProgress !== undefined) {
-    await clearProgressQuietly(deps, secrets);
-  }
+  await finishProgressQuietly(deps, secrets, 'done');
   return await sendGroupReply(deps, secrets, wire(loop.text + loop.notices.join('')));
 }
 

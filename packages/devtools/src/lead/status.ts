@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { type OpenCodeClient } from './client.js';
+import { OpencodeCliClient, type OpenCodeClient } from './client.js';
 import { summarizeSession } from './session.js';
-import { loadState } from './state.js';
+import { loadState, stateFilePath } from './state.js';
 import { findTaskFile } from './launch.js';
 import { parseFrontMatter } from './task-file.js';
 
@@ -20,7 +20,7 @@ export interface StatusDeps {
   statePath: string;
 }
 
-function taskStatusOf(worktree: string, task: string): string {
+export function taskStatusOf(worktree: string, task: string): string {
   try {
     const file = findTaskFile(worktree, task);
     const fields = parseFrontMatter(fs.readFileSync(path.join(worktree, 'work', file), 'utf8'));
@@ -85,4 +85,14 @@ export function formatStatus(rows: StatusRow[]): string {
     );
   }
   return lines.join('\n');
+}
+
+// The `lead status` command. It lives here, next to the collector it wraps, so
+// cli.ts stays a dispatcher.
+export async function runStatus(): Promise<void> {
+  const rows = await collectStatus({
+    client: new OpencodeCliClient(),
+    statePath: stateFilePath(),
+  });
+  console.log(formatStatus(rows));
 }

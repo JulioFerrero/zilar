@@ -148,14 +148,6 @@ services:
       # needed. Same rules as the avatar dir: a manual edit orphans previously
       # uploaded wallpapers.
       BACKGROUND_STORAGE_DIR: /data/avatars/backgrounds
-      # See deploy/docker-compose.yml: an empty string fails the `z.url()`
-      # schema, so the default is an unreachable placeholder URL. The AI
-      # module treats "no master key" as "no gateway" and the placeholder is
-      # never called.
-      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://127.0.0.1:9}
-      # Empty means unset (the server treats it as no gateway); never a
-      # placeholder that passes the non-empty check.
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
       AGENT_GATEWAY_ENABLED: ${AGENT_GATEWAY_ENABLED:-false}
       ACTION_DEMO_ENABLED: ${ACTION_DEMO_ENABLED:-false}
       RUNNER_HUB_ENABLED: ${RUNNER_HUB_ENABLED:-false}

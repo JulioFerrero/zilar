@@ -62,10 +62,6 @@ interface TopicIsGeneralRow {
   isGeneral: boolean;
 }
 
-interface EncryptedVirtualKeyRow {
-  encryptedKey: string;
-}
-
 interface TopicMemberRow {
   userId: string;
 }
@@ -83,7 +79,7 @@ export async function loadActiveAi(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<ActiveAiForGateway>`SELECT id, jid, localpart, owner, name, persona
+      return yield* sql<ActiveAiForGateway>`SELECT id, jid, localpart, owner, name, persona, computer_mode
         FROM ais
         WHERE id = ${aiId} AND status = 'active'
         LIMIT 1`;
@@ -253,20 +249,6 @@ export async function loadTopicIsGeneral(
     }),
   );
   return row?.isGeneral ?? null;
-}
-
-export async function loadEncryptedVirtualKey(
-  db: ServerDatabase,
-  aiId: string,
-): Promise<string | null> {
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<EncryptedVirtualKeyRow>`SELECT encrypted_key FROM llm_virtual_keys WHERE ai_id = ${aiId} LIMIT 1`;
-    }),
-  );
-  return row?.encryptedKey ?? null;
 }
 
 export async function loadGroupTitle(db: ServerDatabase, groupId: string): Promise<string | null> {

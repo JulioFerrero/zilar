@@ -45,6 +45,11 @@ FORCE=0
 YES=0
 ENV_FILE=""
 
+# The desk host prep (`./zilar host-setup`) lives in its own file so this
+# script grows by nothing but the dispatch line below.
+# shellcheck source=lib/host-setup.sh
+. "$DEPLOY_DIR/lib/host-setup.sh"
+
 die() {
   echo "$PROG: error: $*" >&2
   exit 1
@@ -78,10 +83,25 @@ run() {
 # under its own project name).
 compose() {
   _file="${COMPOSE_FILE_OVERRIDE:-$COMPOSE_FILE}"
+  # Desk services sit behind the `desks` Compose profile so a default install
+  # is unchanged; DESKS_ENABLED=true turns the profile on here. (The Coolify
+  # app, which does not run this script, sets COMPOSE_PROFILES=desks instead.)
+  _profile=""
+  _desk_socket=""
+  if [ "$(env_get DESKS_ENABLED)" = "true" ]; then
+    _profile="--profile desks"
+    # The server builds its Hands client only when DESK_AGENT_SOCKET is set.
+    # Derive it from the one flag so a self-host install needs no second edit;
+    # an explicit value in the env file wins.
+    if [ -z "$(env_get DESK_AGENT_SOCKET)" ]; then
+      _desk_socket="DESK_AGENT_SOCKET=/run/zilar/desk.sock"
+    fi
+  fi
   if [ "$DRY_RUN" -eq 1 ]; then
-    echo "+ docker compose -f $_file --env-file $ENV_FILE $*"
+    echo "+ ${_desk_socket:+$_desk_socket }docker compose -f $_file --env-file $ENV_FILE $_profile $*"
   else
-    docker compose -f "$_file" --env-file "$ENV_FILE" "$@"
+    # shellcheck disable=SC2086
+    env $_desk_socket docker compose -f "$_file" --env-file "$ENV_FILE" $_profile "$@"
   fi
 }
 
@@ -141,6 +161,9 @@ Usage: $PROG [--env-file=PATH] [--dry-run] <command> [args]
   status                  Show container and health status.
   update                  Pull images, restart, wait until healthy.
   doctor                  Check Docker, ports, DNS, /health and backup freshness, with fix hints.
+  host-setup              One-time host prep for AI computers (desks): install the pinned
+                          gVisor runtime (reload, never restart) and the 4 GB
+                          zilar-desks.slice pool. Needs root; idempotent.
   backup [dir] [--keep N] [--offsite-hint]
                           Write a timestamped archive (default dir: deploy/backups,
                           keep the newest 7). --offsite-hint prints how to copy
@@ -320,7 +343,8 @@ cmd_init() {
 +   3 generated secrets (base64: XMPP_JWT <64 chars>, BETTER_AUTH <44 chars>,
 +     KEY_ENCRYPTION <64 chars>)
 +   push: $([ "$_push_enabled" -eq 1 ] && echo "ENABLED (VAPID pair + PUSH_VAPID_SUBJECT=$_push_subject + component/secret storage keys generated)" || echo "disabled (PUSH_ENABLED=false, no keys written)")
-+   feature flags otherwise all false (gateway, tools, routines, runner hub)
++   feature flags otherwise all false (gateway, tools, routines, runner hub,
++    desks — the AI-computer host prep is a separate 'sudo $PROG host-setup')
 + secrets would NOT be printed — they would live only in $ENV_FILE
 EOF
     [ "$_node_env" = "production" ] && echo "+ (production:) fill SMTP_HOST/SMTP_USER/SMTP_PASSWORD in $ENV_FILE before 'up'"
@@ -444,6 +468,27 @@ $_push_jid_lines
 TOOLS_ENABLED=false
 ROUTINES_ENABLED=false
 WEB_TOOLS_ENABLED=false
+
+# --- Optional: AI computers (desks). Default OFF.
+# Sandboxed computers (gVisor jails) run on this host, in one shared 4 GB
+# pool, with an egress proxy as their only route out. Nothing changes until
+# you flip the switch, and the switch is only useful after the host prep:
+#   1. sudo ./zilar host-setup            # pinned gVisor + the 4 GB slice
+#   2. build/pin DESK_IMAGE below and set DESKS_ENABLED=true
+#   3. ./zilar up
+DESKS_ENABLED=false
+# './zilar up' sets the server's DESK_AGENT_SOCKET automatically while
+# DESKS_ENABLED is true; set DESK_AGENT_SOCKET here only to override it.
+# The one jail image every AI runs, pinned by digest (…@sha256:…). Build it
+# from packages/desk with: pnpm --filter @zilar/desk build, then
+# docker build -t zilar-desk:dev packages/desk ; push it to a registry this
+# host can pull from, and paste the pushed @sha256: reference here. Required
+# once desks are on; left unset here because no digest exists yet.
+# DESK_IMAGE=
+# gVisor runtime for the jails (the VPS has no /dev/kvm, so runsc uses systrap).
+DESK_RUNTIME=runsc
+# The running-jail cap. The 4 GB slice, not this number, is the real limiter.
+DESK_MAX_RUNNING=12
 EOF
   chmod 600 "$ENV_FILE"
 
@@ -466,7 +511,7 @@ cmd_up() {
   require_docker
   _domain="$(env_get ZILAR_DOMAIN)"
   info "starting Zilar (${_domain:-unknown domain})..."
-  run compose up -d --wait "$@"
+  compose up -d --wait "$@"
   if [ "$DRY_RUN" -eq 0 ] && [ -n "$_domain" ]; then
     _scheme="https"
     [ "$_domain" = "localhost" ] && _scheme="https (Caddy local CA — accept the warning)"
@@ -478,32 +523,32 @@ cmd_down() {
   require_env_file
   require_docker
   info "stopping Zilar (data volumes are kept; add -v to wipe everything)..."
-  run compose down "$@"
+  compose down "$@"
 }
 
 cmd_logs() {
   require_env_file
   require_docker
   if [ "$#" -eq 0 ]; then
-    run compose logs -f
+    compose logs -f
   else
-    run compose logs "$@"
+    compose logs "$@"
   fi
 }
 
 cmd_status() {
   require_env_file
   require_docker
-  run compose ps
+  compose ps
 }
 
 cmd_update() {
   require_env_file
   require_docker
   info "pulling the latest images for IMAGE_TAG=$(env_get IMAGE_TAG)..."
-  run compose pull
+  compose pull
   info "restarting and waiting for health..."
-  run compose up -d --wait
+  compose up -d --wait
   info "updated. Migrations run at server startup; back up first if the install matters ('$PROG backup')."
 }
 
@@ -789,6 +834,60 @@ cmd_doctor() {
     esac
   fi
 
+  # 8. Desks (only when DESKS_ENABLED=true): the host is prepared and the
+  #    sidecar answers. Off by default, so most installs see a skip here.
+  if [ "$(env_get DESKS_ENABLED)" = "true" ]; then
+    if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"runsc"'; then
+      doctor_ok "the runsc runtime is registered with Docker"
+    else
+      doctor_bad "the runsc runtime is not registered with Docker" "run 'sudo $PROG host-setup' (installs gVisor and reloads Docker)"
+    fi
+    # Read the unit's *configured* limit, not the live cgroup: a freshly
+    # prepared host has the unit but no materialised cgroup until the first
+    # jail joins it, so a cgroup-path check would false-FAIL there.
+    if _mem_max="$(systemctl show --value -p MemoryMax zilar-desks.slice 2>/dev/null)" && [ -n "$_mem_max" ]; then
+      case "$_mem_max" in
+        4294967296 | 4G)
+          doctor_ok "zilar-desks.slice is installed (MemoryMax=$_mem_max)"
+          ;;
+        *)
+          doctor_bad "zilar-desks.slice has MemoryMax=$_mem_max, not the 4G pool" "edit /etc/systemd/system/zilar-desks.slice or re-run 'sudo $PROG host-setup'"
+          ;;
+      esac
+    else
+      doctor_bad "zilar-desks.slice is missing" "run 'sudo $PROG host-setup' (writes the slice and reloads systemd)"
+    fi
+    if [ -d "$DESK_WORKSPACE_ROOT" ]; then
+      doctor_ok "$DESK_WORKSPACE_ROOT exists"
+    else
+      doctor_bad "$DESK_WORKSPACE_ROOT is missing" "run 'sudo $PROG host-setup' (creates it, mode 0700)"
+    fi
+    if compose ps --status running desk-agent 2>/dev/null | grep -q desk-agent; then
+      if compose exec -T desk-agent node - >/dev/null 2>&1 <<'NODE'
+const net = require('node:net');
+const socket = net.connect(process.env.DESK_AGENT_SOCKET || '/run/zilar/desk.sock');
+let buffer = '';
+socket.setTimeout(5000);
+socket.on('error', () => process.exit(1));
+socket.on('timeout', () => process.exit(1));
+socket.on('connect', () => socket.write(JSON.stringify({ id: 1, method: 'status' }) + '\n'));
+socket.on('data', (chunk) => {
+  buffer += chunk;
+  if (buffer.includes('\n')) process.exit(buffer.includes('"ok":true') ? 0 : 1);
+});
+NODE
+      then
+        doctor_ok "the desk-agent socket answers status"
+      else
+        doctor_bad "the desk-agent socket does not answer status" "run '$PROG logs desk-agent' and look for startup errors"
+      fi
+    else
+      echo "skip: desk-agent is not running (run '$PROG up' first)"
+    fi
+  else
+    echo "skip: desks are off (DESKS_ENABLED is not true — see $ENV_FILE)"
+  fi
+
   if [ "$doctor_fail" -ne 0 ]; then
     die "doctor found problems (see FAIL lines above)"
   fi
@@ -839,7 +938,7 @@ cmd_create_admin() {
     _lifetime="$_uses uses, $_days days"
   fi
   info "minting one invite code ($_lifetime)..."
-  run compose exec -T server node /opt/tsx/node_modules/tsx/dist/cli.mjs src/auth/invite-cli.ts --uses "$_uses" --days "$_days"
+  compose exec -T server node /opt/tsx/node_modules/tsx/dist/cli.mjs src/auth/invite-cli.ts --uses "$_uses" --days "$_days"
   if [ "$DRY_RUN" -eq 0 ]; then
     echo ""
     echo "Open https://${_domain:-<domain>} and sign up${_admin_email:+ with $_admin_email}, pasting the code above."
@@ -1356,6 +1455,7 @@ case "$CMD" in
   status) cmd_status "$@" ;;
   update) cmd_update "$@" ;;
   doctor) cmd_doctor "$@" ;;
+  host-setup) cmd_host_setup "$@" ;;
   backup) cmd_backup "$@" ;;
   restore) cmd_restore "$@" ;;
   create-admin) cmd_create_admin "$@" ;;

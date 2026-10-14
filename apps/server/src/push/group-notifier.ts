@@ -3,6 +3,7 @@ import { SqlClient } from 'effect/sql';
 import type { GroupMemberRow } from '../db/rows';
 import type { TopicRow } from '../topics/access';
 import { runSql } from '../effect/sql';
+import { liveAiUiIds } from '../notify/ai-cards';
 import type { SearchOwner } from '../search/service';
 import { localpartFor } from '../xmpp/provisioning';
 import type { EjabberdAdminClient } from '../xmpp/admin/types';
@@ -123,6 +124,7 @@ async function notifyMemberForRow(
   senderLocalpart: string,
   at: number,
   state: GroupNotifierState,
+  liveIds: ReadonlySet<string>,
 ): Promise<void> {
   const localpart = localpartFor(memberId);
   if (localpart === senderLocalpart) {
@@ -140,8 +142,9 @@ async function notifyMemberForRow(
     peerNames: new Map(),
   };
   // Groupchat page rows carry the archive-only ordering `id`, which
-  // `resolveCandidate` never reads.
-  const verdict = await resolveCandidate(deps.service, memberId, owner, row);
+  // `resolveCandidate` never reads. `liveIds` are the page's live-UI origin
+  // ids, so a card edit is skipped too (T-1400).
+  const verdict = await resolveCandidate(deps.service, memberId, owner, row, liveIds);
   if (verdict.status !== 'ok') {
     return;
   }
@@ -189,6 +192,7 @@ async function notifyRow(
   state: GroupNotifierState,
   row: GroupchatRow,
   at: number,
+  liveIds: ReadonlySet<string>,
 ): Promise<void> {
   if (row.originId === '') {
     return;
@@ -201,7 +205,7 @@ async function notifyRow(
   const senderLocalpart = row.nick.toLowerCase();
   for (const memberId of await memberIdsForTopic(deps, topic)) {
     try {
-      await notifyMemberForRow(deps, memberId, row, senderLocalpart, at, state);
+      await notifyMemberForRow(deps, memberId, row, senderLocalpart, at, state, liveIds);
     } catch {
       // Ids only, never message text.
       deps.logger.warn(
@@ -226,8 +230,11 @@ export async function runGroupNotifierTick(
       afterId: state.cursor.rowId,
       limit: GROUP_NOTIFIER_PAGE_SIZE,
     });
+    // The page's live-UI origin ids, so a progress card and its edits never
+    // notify the room's offline members (T-1400).
+    const liveIds = liveAiUiIds(rows);
     for (const row of rows) {
-      await notifyRow(deps, state, row, at);
+      await notifyRow(deps, state, row, at, liveIds);
       const timestampMicros = toMicros(row.timestamp);
       const rowId = toRowId(row.id);
       if (

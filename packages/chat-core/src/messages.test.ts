@@ -301,24 +301,50 @@ describe('unreadDividerIndex', () => {
   // items: [separator, message 1, message 2, message 3, message 4]
 
   it('places the divider above the first unread message from a count', () => {
-    expect(unreadDividerIndex(items, 2)).toBe(3);
+    expect(unreadDividerIndex(items, 2, 'me')).toBe(3);
   });
 
   it('places the divider after the last read message id', () => {
-    expect(unreadDividerIndex(items, '2')).toBe(3);
+    expect(unreadDividerIndex(items, '2', 'me')).toBe(3);
   });
 
   it('returns null when nothing is unread', () => {
-    expect(unreadDividerIndex(items, 0)).toBeNull();
-    expect(unreadDividerIndex(items, -1)).toBeNull();
+    expect(unreadDividerIndex(items, 0, 'me')).toBeNull();
+    expect(unreadDividerIndex(items, -1, 'me')).toBeNull();
   });
 
   it('returns null when the anchor message is missing', () => {
-    expect(unreadDividerIndex(items, 'nope')).toBeNull();
+    expect(unreadDividerIndex(items, 'nope', 'me')).toBeNull();
   });
 
   it('puts the divider at the top when all messages are unread', () => {
-    expect(unreadDividerIndex(items, 99)).toBe(1);
+    expect(unreadDividerIndex(items, 99, 'me')).toBe(1);
+  });
+
+  it('skips your own last message when counting unread', () => {
+    const own = groupMessages([
+      message({ id: '1', senderId: 'ana', createdAt: at(0, 0) }),
+      message({ id: '2', senderId: 'me', createdAt: at(0, 3) }),
+    ]);
+    // items: [separator, message 1, message 2]; one unread from Ana lands on
+    // her message, never directly above the reader's own.
+    expect(unreadDividerIndex(own, 1, 'me')).toBe(1);
+  });
+
+  it('returns null when only your own messages are unread', () => {
+    const mineOnly = groupMessages([
+      message({ id: '1', senderId: 'me', createdAt: at(0, 0) }),
+      message({ id: '2', senderId: 'me', createdAt: at(0, 3) }),
+    ]);
+    expect(unreadDividerIndex(mineOnly, 2, 'me')).toBeNull();
+
+    const own = groupMessages([
+      message({ id: '1', senderId: 'ana', createdAt: at(0, 0) }),
+      message({ id: '2', senderId: 'me', createdAt: at(0, 3) }),
+      message({ id: '3', senderId: 'me', createdAt: at(0, 6) }),
+    ]);
+    // Only your own messages after the last read one: none of them is unread.
+    expect(unreadDividerIndex(own, '1', 'me')).toBeNull();
   });
 
   it('counts album members so a fully unread album still shows the divider', () => {
@@ -343,7 +369,7 @@ describe('unreadDividerIndex', () => {
       }),
     ]);
     // items: [separator, album], three unread photos behind one item.
-    expect(unreadDividerIndex(album, 3)).toBe(1);
+    expect(unreadDividerIndex(album, 3, 'me')).toBe(1);
   });
 
   it('matches an anchor id on a photo inside an album', () => {
@@ -370,10 +396,10 @@ describe('unreadDividerIndex', () => {
     ]);
     // items: [separator, album, message]; the whole album is read, the divider
     // lands on the message after it.
-    expect(unreadDividerIndex(album, 'a2')).toBe(2);
+    expect(unreadDividerIndex(album, 'a2', 'me')).toBe(2);
   });
 
   it('returns null without message items', () => {
-    expect(unreadDividerIndex(groupMessages([]), 2)).toBeNull();
+    expect(unreadDividerIndex(groupMessages([]), 2, 'me')).toBeNull();
   });
 });

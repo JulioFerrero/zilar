@@ -1,7 +1,27 @@
 import { Exit, Schema } from 'effect';
+import {
+  DeskErrorSchema,
+  DeskExecSchema,
+  DeskProvisionSchema,
+  DeskQueuedSchema,
+  DeskReadySchema,
+  DeskStoppedSchema,
+  DeskStopSchema,
+} from './desk-frames.ts';
 
-/** The only protocol version this spike speaks. */
-export const PROTOCOL_VERSION = 1;
+/** The protocol version this build speaks; desk frames arrived in version 2. */
+export const PROTOCOL_VERSION = 2;
+
+/**
+ * The versions the server still accepts, so a runner from the previous release
+ * keeps pairing (plan §6.1). Version 1 has no desk frames; the hub must only
+ * send `desk.*` to a version-2 runner.
+ */
+const ACCEPTED_PROTOCOL_VERSIONS: readonly number[] = [1, PROTOCOL_VERSION];
+
+export function isAcceptedProtocolVersion(version: number): boolean {
+  return ACCEPTED_PROTOCOL_VERSIONS.includes(version);
+}
 
 /** WebSocket close codes (4000-4999 are application-defined). */
 export const CLOSE_MALFORMED = 4400;
@@ -118,6 +138,10 @@ const runnerToServerSchemas = {
   'tunnel.closed': TunnelClosedSchema,
   'tunnel.pause': TunnelPauseSchema,
   'tunnel.resume': TunnelResumeSchema,
+  'desk.ready': DeskReadySchema,
+  'desk.stopped': DeskStoppedSchema,
+  'desk.error': DeskErrorSchema,
+  queued: DeskQueuedSchema,
 } as const;
 
 const serverToRunnerSchemas = {
@@ -127,6 +151,9 @@ const serverToRunnerSchemas = {
   'tunnel.closed': TunnelClosedSchema,
   'tunnel.pause': TunnelPauseSchema,
   'tunnel.resume': TunnelResumeSchema,
+  'desk.provision': DeskProvisionSchema,
+  'desk.exec': DeskExecSchema,
+  'desk.stop': DeskStopSchema,
 } as const;
 
 export type ControlMessage =
@@ -140,7 +167,14 @@ export type ControlMessage =
   | typeof TunnelClosedSchema.Type
   | typeof TunnelPauseSchema.Type
   | typeof TunnelResumeSchema.Type
-  | typeof ModelOpenSchema.Type;
+  | typeof ModelOpenSchema.Type
+  | typeof DeskProvisionSchema.Type
+  | typeof DeskExecSchema.Type
+  | typeof DeskStopSchema.Type
+  | typeof DeskReadySchema.Type
+  | typeof DeskStoppedSchema.Type
+  | typeof DeskErrorSchema.Type
+  | typeof DeskQueuedSchema.Type;
 
 type ControlSchema =
   | typeof HelloSchema
@@ -153,7 +187,14 @@ type ControlSchema =
   | typeof TunnelClosedSchema
   | typeof TunnelPauseSchema
   | typeof TunnelResumeSchema
-  | typeof ModelOpenSchema;
+  | typeof ModelOpenSchema
+  | typeof DeskProvisionSchema
+  | typeof DeskExecSchema
+  | typeof DeskStopSchema
+  | typeof DeskReadySchema
+  | typeof DeskStoppedSchema
+  | typeof DeskErrorSchema
+  | typeof DeskQueuedSchema;
 
 export type MessageDirection = 'runner-to-server' | 'server-to-runner';
 

@@ -5,7 +5,6 @@
 // provider answered with an HTTP status, but none of the classes above). The
 // classification is the single source of truth for both the reply text and
 // the failure log fields, so the two can never drift.
-import { LitellmApiError } from '../ai/litellm-client';
 import { ChatCompletionError } from './tool-loop';
 
 export type AiFailureKind =
@@ -28,13 +27,10 @@ function statusAndDetail(error: unknown): { status: number; detail: string } {
   if (error instanceof ChatCompletionError) {
     return { status: error.status, detail: error.detail };
   }
-  if (error instanceof LitellmApiError) {
-    return { status: error.status, detail: error.message };
-  }
   return { status: 0, detail: error instanceof Error ? error.message : String(error) };
 }
 
-// Order matters: a LiteLLM hard cap arrives as a 400 with "Budget has been
+// Order matters: a provider hard cap arrives as a 400 with "Budget has been
 // exceeded" (AI-4), so the budget test comes before the status ones.
 export function classifyFailure(error: unknown): AiFailureClass {
   const { status, detail } = statusAndDetail(error);

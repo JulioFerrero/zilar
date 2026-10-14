@@ -290,25 +290,31 @@ export function replyQuoteContent(
 /**
  * Index in `items` at which to render the "Unread messages" divider, i.e. just
  * above the first unread message. The anchor is either the id of the last read
- * message or the unread count. Returns `null` when there is no divider to show.
+ * message or the unread count. `currentUserId` is the reader: their own
+ * messages are never unread, so the divider never lands directly above one.
+ * Returns `null` when there is no divider to show.
  */
 export function unreadDividerIndex(
   items: readonly RenderItem[],
   anchor: string | number,
+  currentUserId: string,
 ): number | null {
   // One position per photo at that item: an album of three counts as three, so
   // the count math below matches what the same three single photos would do.
   const positions: number[] = [];
   const ids: string[] = [];
+  const senders: string[] = [];
   items.forEach((item, index) => {
     if (item.kind === 'message') {
       positions.push(index);
       ids.push(item.message.id);
+      senders.push(item.message.senderId);
     } else if (item.kind === 'album') {
       const members = item.messages.length > 0 ? item.messages : [item.message];
       for (const member of members) {
         positions.push(index);
         ids.push(member.id);
+        senders.push(member.senderId);
       }
     }
   });
@@ -323,12 +329,34 @@ export function unreadDividerIndex(
     if (found === -1) {
       return null;
     }
-    return positions[found + 1] ?? null;
+    for (let i = found + 1; i < total; i += 1) {
+      if (senders[i] !== currentUserId) {
+        return positions[i] ?? null;
+      }
+    }
+    return null;
   }
 
   if (!Number.isFinite(anchor) || anchor <= 0) {
     return null;
   }
-  const firstUnread = Math.max(0, total - Math.floor(anchor));
-  return positions[firstUnread] ?? null;
+  const unread = Math.floor(anchor);
+  let seen = 0;
+  let earliestOther: number | null = null;
+  for (let i = total - 1; i >= 0; i -= 1) {
+    if (senders[i] === currentUserId) {
+      continue;
+    }
+    earliestOther = i;
+    seen += 1;
+    if (seen === unread) {
+      return positions[i] ?? null;
+    }
+  }
+  // Fewer than `unread` messages from someone else: the divider goes above the
+  // first one of theirs, or nowhere when the whole list is the reader's own.
+  if (earliestOther === null) {
+    return null;
+  }
+  return positions[earliestOther] ?? null;
 }

@@ -6,7 +6,7 @@ import type { AiServiceDeps, PublicAi } from './persona';
 import { emitAiLifecycle, findOwnedAi, toPublicAi } from './queries';
 
 // Stops an AI (T-0080): owner-only. It needs only the database, so the kill
-// switch keeps working when LiteLLM, the key cipher or XMPP are down. Accepts only `active`, answers the same
+// switch keeps working when the key cipher or XMPP are down. Accepts only `active`, answers the same
 // 404 as `getOwnedAi` for a foreign or missing id (so existence is never
 // leaked). Idempotent on `stopped` (returns the AI unchanged). `disabled` —
 // provisioning still in flight — answers 409 `not_active` so a resume can

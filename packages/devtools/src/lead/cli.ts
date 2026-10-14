@@ -16,10 +16,11 @@ import { checkSpec, formatProblems } from './spec-check.js';
 import { startPrereviewSession } from './start-prereview.js';
 import { switchModel, switchModelInPlace } from './switch-model.js';
 import { runWatch, runWatchData } from './watch.js';
-import { collectStatus, formatStatus } from './status.js';
+import { runForget } from './forget.js';
+import { runStatus } from './status.js';
 import { currentHead } from './git.js';
 import { loadState, stateFilePath, updateState } from './state.js';
-import { parseTaskFrontMatter } from './task-file.js';
+import { parseTaskFrontMatter, taskFileDir } from './task-file.js';
 
 const HELP = `lead — zero-token supervision of OpenCode workers
 
@@ -34,6 +35,7 @@ Usage: lead <command> [options]
   prereview <T-XXXX>                                        start a Muse pre-review manually
   reply <T-XXXX> <prompt-file> [--fresh]                   interrupt the worker and re-prompt it
   merge <T-XXXX> --summary "<one line>" [--skip-gate]       rebase, run the gate, squash onto main, board, push, clean up
+                                                            ("T-XXXX: summary" is the commit subject, at most 72 characters)
   batch check <T-A> <T-B> ...                               combine the branches on a wave worktree, run install, typecheck and every
                                                             package's tests, write one fix file per task under ~/.zilar-lead/wave/
   batch merge <T-A> <T-B> ...                               merge a checked wave task by task, no gate (refuses when the check is stale)
@@ -41,6 +43,7 @@ Usage: lead <command> [options]
   snapshot                                                  JSON of every task in flight, its step and timings
   dashboard <out.html>                                      the snapshot rendered as the dashboard page
   status                                                    compact table of every tracked task
+  forget <T-XXXX> [...] | --finished [--dry-run]            drop tracked tasks from the state file
   watch [--no-icons]                                          live terminal view of every running task
 
 State lives outside the repo at ~/.zilar-lead/state.json (or ZILAR_LEAD_STATE).
@@ -251,13 +254,14 @@ async function runMerge(positional: string[], args: string[]): Promise<void> {
   const task = positional[0];
   const summary = flagValue(args, '--summary');
   if (task === undefined || summary === undefined || summary.trim().length === 0) {
-    throw new Error('usage: lead merge <T-XXXX> --summary "<one line>"');
+    throw new Error('usage: lead merge <T-XXXX> --summary "<one line, at most 72 characters>"');
   }
   const root = findRepoRoot();
-  const file = findTaskFile(root, task);
-  const frontMatter = parseTaskFrontMatter(fs.readFileSync(path.join(root, 'work', file), 'utf8'));
-  const worktree = path.join(path.dirname(path.resolve(root)), `zilar-${task}`);
   const statePath = stateFilePath();
+  const worktree = path.join(path.dirname(path.resolve(root)), `zilar-${task}`);
+  const dir = taskFileDir(root, task, statePath);
+  const file = findTaskFile(dir, task);
+  const frontMatter = parseTaskFrontMatter(fs.readFileSync(path.join(dir, 'work', file), 'utf8'));
   await mergeTask({
     root,
     task,
@@ -300,8 +304,9 @@ function runSpecCheck(positional: string[]): void {
     throw new Error('usage: lead spec-check <T-XXXX>');
   }
   const root = findRepoRoot();
-  const file = findTaskFile(root, task);
-  const text = fs.readFileSync(path.join(root, 'work', file), 'utf8');
+  const dir = taskFileDir(root, task, stateFilePath());
+  const file = findTaskFile(dir, task);
+  const text = fs.readFileSync(path.join(dir, 'work', file), 'utf8');
   const serverRoot = path.join(root, 'apps', 'server', 'src');
   const problems = checkSpec(text, {
     exists: (relative) => fs.existsSync(path.join(root, relative)),
@@ -356,14 +361,6 @@ async function runSnapshot(positional: string[], page: boolean): Promise<void> {
   console.log(`dashboard written to ${out} (${snapshot.active.length} active)`);
 }
 
-async function runStatus(): Promise<void> {
-  const rows = await collectStatus({
-    client: new OpencodeCliClient(),
-    statePath: stateFilePath(),
-  });
-  console.log(formatStatus(rows));
-}
-
 export async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
   const positional = rest.filter((arg) => !arg.startsWith('--'));
@@ -393,6 +390,8 @@ export async function main(argv: string[]): Promise<void> {
     await runMerge(positional, rest);
   } else if (command === 'batch') {
     await runBatch(positional);
+  } else if (command === 'forget') {
+    await runForget(positional, rest);
   } else if (command === 'status') {
     await runStatus();
   } else if (command === 'watch') {

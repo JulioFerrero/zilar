@@ -2,25 +2,19 @@ import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
+import type { ProviderConnectionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import type { KeyCipher } from './crypto';
 import type { ProviderId } from './providers';
 
-export interface ConnectionRow {
-  id: string;
-  owner: string;
-  provider: string;
-  encryptedKey: string;
-  label: string | null;
-  status: 'active' | 'revoked';
-  createdAt: Date;
-  updatedAt: Date;
-}
+export type ConnectionRow = ProviderConnectionRow;
 
 export interface PublicConnection {
   id: string;
   provider: ProviderId;
   label: string | null;
+  /** T-1396: the custom provider's base URL; `null` for every other provider. */
+  baseUrl: string | null;
   status: 'active' | 'revoked';
   createdAt: Date;
 }
@@ -30,6 +24,7 @@ export interface CreateConnectionInput {
   provider: ProviderId;
   encryptedKey: string;
   label: string | null;
+  baseUrl: string | null;
 }
 
 // Every query runs on the `effect/sql` client registered for this database
@@ -43,6 +38,7 @@ function toPublicConnection(row: ConnectionRow): PublicConnection {
     id: row.id,
     provider: row.provider as ProviderId,
     label: row.label,
+    baseUrl: row.baseUrl,
     status: row.status,
     createdAt: row.createdAt,
   };
@@ -73,8 +69,8 @@ export async function createConnection(
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<ConnectionRow>`INSERT INTO provider_connections
-        (id, owner, provider, encrypted_key, label)
-        VALUES (${randomUUID()}, ${input.owner}, ${input.provider}, ${input.encryptedKey}, ${input.label})
+        (id, owner, provider, encrypted_key, label, base_url)
+        VALUES (${randomUUID()}, ${input.owner}, ${input.provider}, ${input.encryptedKey}, ${input.label}, ${input.baseUrl})
         RETURNING *`;
     }),
   );
@@ -91,10 +87,8 @@ export interface UpdateConnectionKeyInput {
 }
 
 // Replaces the stored key in place (T-1292). One transaction: the row update is
-// owner-scoped, so a row another user owns is not touched (the caller sees null
-// and the route answers 404), and the AIs' `litellm_model_id` is cleared in the
-// same transaction, so `ensureAiModel` registers the model again on their next
-// turn. The plaintext key never enters this shape.
+// owner-scoped, so a row another user owns is not touched and the caller sees
+// null (the route answers 404). The plaintext key never enters this shape.
 export async function updateConnectionKey(
   db: ServerDatabase,
   input: UpdateConnectionKeyInput,
@@ -112,11 +106,6 @@ export async function updateConnectionKey(
           if (!updated) {
             return undefined;
           }
-          yield* sql`UPDATE llm_virtual_keys SET litellm_model_id = NULL
-            WHERE ai_id IN (
-              SELECT id FROM ais
-              WHERE provider_connection_id = ${input.id} AND owner = ${input.owner}
-            )`;
           return updated;
         }),
       );

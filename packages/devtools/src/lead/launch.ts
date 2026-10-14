@@ -177,11 +177,12 @@ export function parseLaunchArgs(args: string[]): LaunchOptions {
   };
 }
 
-// A worktree built from an older commit (a model eval replay) does not contain
-// the task file, which lives on `main`. Copy the spec in and commit it so the
-// worker finds its brief. Both failures are hard: a worker without its spec
-// misses the whole task.
-function commitEvalSpec(deps: LaunchDeps, worktree: string, file: string, task: string): void {
+// A worktree built from an older commit (a model eval replay), or one whose
+// spec is not committed on main, does not contain the task file. Copy the spec
+// in and commit it on the task branch so the worker finds its brief, and main
+// stays free of the extra bookkeeping commit. Both failures are hard: a worker
+// without its spec misses the whole task.
+function commitSpec(deps: LaunchDeps, worktree: string, file: string, message: string): void {
   const relative = path.posix.join('work', file);
   const destination = path.join(worktree, relative);
   try {
@@ -195,9 +196,29 @@ function commitEvalSpec(deps: LaunchDeps, worktree: string, file: string, task: 
   if (!added.ok) {
     throw new Error(`failed to stage ${relative} in ${worktree}`);
   }
-  const committed = deps.runner.run(worktree, ['commit', '-m', `${task}: eval spec`]);
+  const committed = deps.runner.run(worktree, ['commit', '-m', message]);
   if (!committed.ok) {
-    throw new Error(`failed to commit the eval spec ${relative} in ${worktree}`);
+    throw new Error(`failed to commit ${relative} in ${worktree}`);
+  }
+}
+
+// Removes the spec's uncommitted copy from the main checkout once it has been
+// committed on the task branch, so main stays clean. A staged copy is removed
+// through git (index and working tree); an untracked one is unlinked.
+function removeUncommittedSpec(deps: LaunchDeps, relative: string): void {
+  const staged = deps.runner.run(deps.repoRoot, ['ls-files', '--error-unmatch', '--', relative]);
+  if (staged.ok) {
+    const removed = deps.runner.run(deps.repoRoot, ['rm', '-f', '--', relative]);
+    if (!removed.ok) {
+      throw new Error(`failed to remove the staged spec ${relative} from main`);
+    }
+    return;
+  }
+  try {
+    fs.rmSync(path.join(deps.repoRoot, relative));
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`failed to remove the uncommitted spec ${relative} from main: ${detail}`);
   }
 }
 
@@ -241,7 +262,17 @@ export async function launchTask(
     throw new Error(`git worktree add failed for ${worktree} (is ${branch} taken?)`);
   }
   if (ref !== 'main') {
-    commitEvalSpec(deps, worktree, file, task);
+    commitSpec(deps, worktree, file, `${task}: eval spec`);
+  } else {
+    const relative = path.posix.join('work', file);
+    // The spec is already on main: the worktree built from main carries it.
+    const committed = deps.runner.run(deps.repoRoot, ['cat-file', '-e', `HEAD:${relative}`]);
+    if (!committed.ok) {
+      // An uncommitted spec (untracked or staged) is committed on the task
+      // branch and then removed from main, so the task lands as one commit.
+      commitSpec(deps, worktree, file, `${task}: spec`);
+      removeUncommittedSpec(deps, relative);
+    }
   }
   const rules = loadRulesFile(path.join(deps.promptsDirPath, 'rules.json'));
   if (extraRulesFile !== undefined) {

@@ -22,6 +22,9 @@ export const PROVIDER_IDS = [
   'xai',
   'openrouter',
   'github',
+  // T-1396: any service that speaks the OpenAI API, with the user's own base
+  // URL. It is an LLM provider but has no fixed catalog of models.
+  'openai-compatible',
 ] as const;
 
 export type ProviderId = (typeof PROVIDER_IDS)[number];
@@ -35,12 +38,31 @@ export const isProviderId = Schema.is(ProviderIdSchema);
  * The key is trimmed because pasted keys often carry a trailing newline. A
  * client encodes the trimmed form, so it sends `key` and `label` trimmed.
  * Excess keys fail the server decode.
+ *
+ * T-1396: the custom (OpenAI-compatible) provider also sends `baseUrl`, and it
+ * alone requires one — every other provider refuses it. The custom provider
+ * also requires a label, so several connections can be told apart in a list.
  */
 export const CreateConnectionPayload = Schema.Struct({
   provider: ProviderIdSchema,
   key: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(16384)),
   label: Schema.optional(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(256))),
-});
+  baseUrl: Schema.optional(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(300))),
+}).check(
+  Schema.makeFilter((value) => {
+    const custom = value.provider === 'openai-compatible';
+    if (custom && value.baseUrl === undefined) {
+      return 'A base URL is required for an OpenAI-compatible provider';
+    }
+    if (custom && value.label === undefined) {
+      return 'A label is required for an OpenAI-compatible provider';
+    }
+    if (!custom && value.baseUrl !== undefined) {
+      return 'A base URL is only allowed for an OpenAI-compatible provider';
+    }
+    return undefined;
+  }),
+);
 
 export type CreateConnectionPayload = typeof CreateConnectionPayload.Type;
 
@@ -64,6 +86,9 @@ export const ConnectionView = Schema.Struct({
   id: Schema.String,
   provider: Schema.String,
   label: LenientNullableString,
+  // T-1396: the custom provider's base URL; `null` for every other provider
+  // (and for an older server that does not send the field).
+  baseUrl: LenientNullableString,
   status: Schema.String,
   createdAt: Schema.String,
 });

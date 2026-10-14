@@ -1,9 +1,5 @@
 import { Effect } from 'effect';
 import { createXmppCore, type ChatMessage } from '@zilar/xmpp-core';
-import { DEFAULT_LITELLM_BASE_URL, type LitellmAdminClient } from '../ai/litellm-client';
-import { modelNameForAi } from '../ai/model-entry';
-import type { AiServiceDeps } from '../ais/service';
-import type { KeyCipher } from '../connections/crypto';
 import { sharedDraftHub } from '../drafts/hub';
 import { normBareJid } from './context';
 import {
@@ -63,7 +59,6 @@ export function createAgentGateway(
   const reconcileIntervalMs = config.reconcileIntervalMs ?? RECONCILE_INTERVAL_MS;
   const retryBaseMs = config.retryBaseDelayMs ?? RETRY_BASE_DELAY_MS;
   const createCore = deps.createCore ?? createXmppCore;
-  const baseUrl = deps.litellmBaseUrl ?? DEFAULT_LITELLM_BASE_URL;
   const draftHub = deps.drafts?.hub ?? sharedDraftHub;
   const sessions = new Map<string, AiSession>();
   // AIs another gateway replaced while this process runs. `reconcile` and
@@ -88,7 +83,6 @@ export function createAgentGateway(
   const roomListener = createRoomListener({
     deps,
     logger,
-    baseUrl,
     secretsFor,
     sessions,
     roomRounds,
@@ -128,23 +122,8 @@ export function createAgentGateway(
     return normBareJid(`${roomLocalpart}@${deps.xmpp.mucDomain}`);
   }
 
-  function aiDeps(): AiServiceDeps {
-    return {
-      db: deps.db,
-      adminClient: deps.adminClient,
-      // Checked in `start`: both are present whenever a session runs.
-      litellm: deps.litellm as LitellmAdminClient,
-      cipher: deps.cipher as KeyCipher,
-      logger,
-      domain: deps.xmpp.domain,
-    };
-  }
-
-  function secretsFor(virtualKey?: string): string[] {
-    return [
-      ...(virtualKey === undefined ? [] : [virtualKey]),
-      ...(deps.masterKeyForRedaction === undefined ? [] : [deps.masterKeyForRedaction]),
-    ];
+  function secretsFor(secret?: string): string[] {
+    return secret === undefined ? [] : [secret];
   }
 
   // The budget gate owns the in-memory notice state, the daily-limit check,
@@ -154,8 +133,6 @@ export function createAgentGateway(
   const { loadMemoryContext, startCompaction } = createMemoryRunner({
     deps,
     logger,
-    baseUrl,
-    modelNameForAi,
     secretsFor,
     nowMs,
     toRedactedError,
@@ -188,7 +165,6 @@ export function createAgentGateway(
     deps,
     logger,
     turnLogger,
-    baseUrl,
     sessionIsLive,
     liveSendMessage,
     liveSendTyping,
@@ -199,7 +175,6 @@ export function createAgentGateway(
     startCompaction,
     disconnectAi,
     secretsFor,
-    aiDeps,
     executeToolCall,
     withToolGuide,
     draftHub,
@@ -230,7 +205,6 @@ export function createAgentGateway(
     deps,
     logger,
     turnLogger,
-    baseUrl,
     sessions,
     roomRounds,
     sessionForAiJid: (bare) => sessionForAiJid(bare),
@@ -242,7 +216,6 @@ export function createAgentGateway(
     startCompaction,
     disconnectAi,
     secretsFor,
-    aiDeps,
     executeToolCall,
     withToolGuide,
     nowMs,

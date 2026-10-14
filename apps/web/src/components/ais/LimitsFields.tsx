@@ -28,7 +28,7 @@ export function LimitsFields({
             inputMode="decimal"
             value={day}
             onChange={(event) => onDayChange(event.target.value)}
-            placeholder="2"
+            placeholder="No limit"
             className="w-32"
           />
         </div>
@@ -44,7 +44,7 @@ export function LimitsFields({
             inputMode="decimal"
             value={month}
             onChange={(event) => onMonthChange(event.target.value)}
-            placeholder="20"
+            placeholder="No limit"
             className="w-32"
           />
         </div>
@@ -52,7 +52,7 @@ export function LimitsFields({
       </label>
 
       <p className="text-[13px] text-muted-foreground">
-        Amounts are in USD. The monthly cap is what the AI's provider key can spend.
+        Optional. Leave empty for no limit. Amounts are in USD.
       </p>
     </div>
   );

@@ -26,7 +26,7 @@ interface SessionLifecycleContext {
   createCore: (options: XmppCoreOptions) => XmppCore;
   retryBaseMs: number;
   logger: GatewayLogger;
-  secretsFor: (virtualKey?: string) => string[];
+  secretsFor: (secret?: string) => string[];
   roomJidFor: (roomLocalpart: string) => string;
   nowMs: () => number;
   isStarted: () => boolean;

@@ -12,13 +12,14 @@ import {
   CLOSE_UNKNOWN_TYPE,
   CLOSE_VERSION,
   MAX_WS_PAYLOAD_BYTES,
-  PROTOCOL_VERSION,
+  isAcceptedProtocolVersion,
   parseControlMessage,
   type ControlMessage,
 } from './protocol.ts';
 import { randomNonce, verifyNonce, type KeyRegistry } from './keys.ts';
 import { StreamMux, TunnelClosedError, attachSocketToStream } from './mux.ts';
 import { TunnelHttpAgent, createLoopbackPair } from './http-agent.ts';
+import { DeskServer } from './desk-server.ts';
 
 const HOP_BY_HOP_HEADERS = new Set(['connection', 'keep-alive', 'transfer-encoding', 'upgrade']);
 
@@ -101,6 +102,7 @@ export class TunnelServer {
   private readonly previews = new Map<string, { runnerId: string; port: number }>();
   private readonly heartbeatFiber: Fiber.Fiber<number, never>;
   private readonly unsubscribeRevoke: () => void;
+  readonly desk: DeskServer;
   private closed = false;
   private droppedFromDeadConns = 0;
 
@@ -113,6 +115,7 @@ export class TunnelServer {
     this.heartbeatTimeoutMs = validated.heartbeatTimeoutMs;
     this.handshakeTimeoutMs = validated.handshakeTimeoutMs;
     this.highWaterMarkBytes = validated.highWaterMarkBytes;
+    this.desk = new DeskServer((runnerId) => this.live.get(runnerId)?.mux ?? null);
 
     this.httpServer = http.createServer((req, res) => {
       void this.handlePreviewRequest(req, res);
@@ -369,6 +372,7 @@ export class TunnelServer {
     if (conn.runnerId !== null && this.live.get(conn.runnerId) === conn) {
       this.live.delete(conn.runnerId);
     }
+    if (conn.runnerId !== null) this.desk.failRunner(conn.runnerId);
   }
 
   private closeWith(conn: ServerConn, code: number, reason: string): void {
@@ -421,7 +425,7 @@ export class TunnelServer {
   }
 
   private handleHello(conn: ServerConn, runnerId: string, protocolVersion: number): void {
-    if (protocolVersion !== PROTOCOL_VERSION) {
+    if (!isAcceptedProtocolVersion(protocolVersion)) {
       this.closeWith(conn, CLOSE_VERSION, `unsupported protocol version ${protocolVersion}`);
       return;
     }
@@ -502,6 +506,7 @@ export class TunnelServer {
         // Validated and accepted; liveness itself is tracked by ping/pong.
         break;
       default:
+        if (this.desk.route(conn.runnerId, message)) break;
         this.closeWith(conn, CLOSE_UNKNOWN_TYPE, 'message not allowed after authentication');
         break;
     }

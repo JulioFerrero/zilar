@@ -1,5 +1,7 @@
 // effect-plain: moved unchanged from apps/server/src/agents/reply.ts (size split)
-import type { FetchLike } from '../ai/litellm-client';
+import type { FetchLike } from '../ai/http';
+import type { ModelTarget } from '../ai/providers';
+import type { ChatUsage } from '../ai/model-client';
 import type { DmTurnDeps, DmTurnOutcome } from './dm-turn';
 import type { GroupTurnDeps } from './group-turn';
 import { cutShortSuffix } from './replies';
@@ -53,13 +55,12 @@ export async function runToolLoop(input: {
   messages: ModelRequestMessage[];
   tools: ChatToolDefinition[];
   completionInput: {
-    baseUrl: string;
-    virtualKey: string;
-    model: string;
+    target: ModelTarget;
     fetchImpl?: FetchLike;
     timeoutMs?: number;
     secrets?: readonly string[];
     onDelta?: (textSoFar: string) => void;
+    onUsage?: (usage: ChatUsage) => void;
   };
   maxRounds: number;
   executeTool?: ExecuteToolCall;
@@ -220,13 +221,12 @@ export async function runToolLoop(input: {
 export async function runToolTurn(
   deps: DmTurnDeps,
   completionInput: {
-    baseUrl: string;
-    virtualKey: string;
-    model: string;
+    target: ModelTarget;
     fetchImpl?: FetchLike;
     timeoutMs?: number;
     secrets?: readonly string[];
     onDelta?: (textSoFar: string) => void;
+    onUsage?: (usage: ChatUsage) => void;
   },
   secrets: string[],
   tools: ChatToolDefinition[],
@@ -266,9 +266,7 @@ export async function runToolTurn(
     // no notices (none were earned yet).
     const failure = mapFailureToReply(error);
     deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
-    if (deps.clearProgress !== undefined) {
-      await clearProgressQuietly(deps, secrets);
-    }
+    await finishProgressQuietly(deps, secrets, 'failed');
     try {
       await deps.sendMessage(deps.ownerJid, 'chat', failure);
     } catch (sendError) {
@@ -281,9 +279,7 @@ export async function runToolTurn(
     return { kind: 'failed', text: failure };
   }
   if (loop.failure !== null) {
-    if (deps.clearProgress !== undefined) {
-      await clearProgressQuietly(deps, secrets);
-    }
+    await finishProgressQuietly(deps, secrets, 'failed');
     const text = loop.failure.reply + loop.notices.join('');
     try {
       await deps.sendMessage(deps.ownerJid, 'chat', text);
@@ -305,9 +301,7 @@ export async function runToolTurn(
     if (deps.checkRoundGate !== undefined) {
       const gate = await deps.checkRoundGate();
       if (gate !== null && gate.limited) {
-        if (deps.clearProgress !== undefined) {
-          await clearProgressQuietly(deps, secrets);
-        }
+        await finishProgressQuietly(deps, secrets, 'failed');
         const text = gate.reply + loop.notices.join('');
         try {
           await deps.sendMessage(deps.ownerJid, 'chat', text);
@@ -336,9 +330,7 @@ export async function runToolTurn(
     } catch (error) {
       const failure = mapFailureToReply(error);
       deps.logger.warn({ ...failureLogFields(error), aiId: deps.aiId }, 'AI reply failed');
-      if (deps.clearProgress !== undefined) {
-        await clearProgressQuietly(deps, secrets);
-      }
+      await finishProgressQuietly(deps, secrets, 'failed');
       const text = failure + loop.notices.join('');
       try {
         await deps.sendMessage(deps.ownerJid, 'chat', text);
@@ -351,36 +343,33 @@ export async function runToolTurn(
       }
       return { kind: 'failed', text };
     }
-    if (deps.clearProgress !== undefined) {
-      await clearProgressQuietly(deps, secrets);
-    }
+    await finishProgressQuietly(deps, secrets, 'done');
     return sendReply(deps, text);
   }
 
-  if (deps.clearProgress !== undefined) {
-    await clearProgressQuietly(deps, secrets);
-  }
+  await finishProgressQuietly(deps, secrets, 'done');
   return sendReply(deps, loop.text + loop.notices.join(''));
 }
 
-// T-0106: clears the live progress message, best effort. A throw never
-// fails the turn: it warns with the AI id only, never content.
-export async function clearProgressQuietly(
+// T-1414: closes the turn's task card, best effort. A throw never fails the
+// turn: it warns with the AI id only, never content.
+export async function finishProgressQuietly(
   deps: DmTurnDeps | GroupTurnDeps,
   secrets: string[],
+  state: 'done' | 'failed',
 ): Promise<void> {
   try {
-    await deps.clearProgress?.();
+    await deps.finishProgress?.(state);
   } catch (error) {
     deps.logger.warn(
       { aiId: deps.aiId, err: redactError(error, secrets) },
-      'AI progress message could not be cleared',
+      'AI task card could not be finished',
     );
   }
 }
 
 async function sendReply(deps: DmTurnDeps, text: string): Promise<DmTurnOutcome> {
-  const secrets = [deps.virtualKey, ...(deps.secrets ?? [])];
+  const secrets = [deps.target.apiKey, ...(deps.secrets ?? [])];
   // The complete text goes out as a draft first, so the last `draft` carries
   // the final text before the XMPP message lands. A hook failure is a turn
   // failure, not a send failure, so it runs before the send's try.

@@ -1,5 +1,15 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { ArrowLeft, Lock, MoreVertical, Search, Users } from 'lucide-react';
+import {
+  ArrowLeft,
+  Bookmark,
+  Images,
+  Info,
+  Lock,
+  MoreVertical,
+  Palette,
+  Search,
+  Users,
+} from 'lucide-react';
 import { Data, Effect } from 'effect';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -17,6 +27,13 @@ import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 
 const ARCHIVE_ERROR = 'Could not archive the topic.';
 const NO_NAMES: string[] = [];
+
+/**
+ * T-1406: client-core writes a status beside the typing names; the web store's
+ * `TypingState` (outside this task's Allowed files) types only `names`, so the
+ * header reads the status through a widened record.
+ */
+type TypingStatus = { status?: string };
 
 /** The topic could not be archived (the store rejected the patch). */
 class ArchiveFailed extends Data.TaggedError('ArchiveFailed') {}
@@ -42,13 +59,19 @@ export function ChatHeader({
   const storeApi = useChatStoreApi();
   const typingNames = useChatSelector((s) => s.typing[chat.id]?.names);
   const names = typingNames ?? NO_NAMES;
+  const aiStatusText = useChatSelector(
+    (s) => (s.typing[chat.id] as TypingStatus | undefined)?.status,
+  );
   const hasDraft = useChatSelector((s) => s.drafts[chat.id] !== undefined);
   const storedGroupTitle = useChatSelector((s) => s.groupInfo(chat.id)?.title);
   const typing = typingLabel(chat, names);
   // An AI draft in flight reads `writing…`, the D24 wording (ui-style.md §5).
   const writing = chat.isAI && hasDraft;
   const working = chat.isAI && chat.aiStatus === 'working';
-  const subtitle = writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date()));
+  // T-1406: while the AI carries a status it reads next to the dots, e.g.
+  // "Searching the web…"; with no status the line keeps the plain dots.
+  const aiLine = aiStatusText === undefined ? undefined : `${aiStatusText}…`;
+  const subtitle = aiLine ?? (writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date())));
   const isTopic = chat.topic !== undefined;
   // T-0124: a channel feed is one row (General keeps the group chat id), not
   // a topic row; the panel is the channel panel, like the group panel.
@@ -134,7 +157,7 @@ export function ChatHeader({
       </div>
       <div className="flex items-center gap-1 text-[12px] leading-4 text-muted-foreground">
         <span className="truncate">{subtitle}</span>
-        {(working || typing !== undefined) && !writing && <TypingDots />}
+        {(working || typing !== undefined || aiLine !== undefined) && !writing && <TypingDots />}
       </div>
     </>
   );
@@ -187,6 +210,7 @@ export function ChatHeader({
             <>
               {groupInfoItem}
               <MenuItem
+                icon={Info}
                 onSelect={() => {
                   setMenuOpen(false);
                   openPanel?.();
@@ -195,6 +219,7 @@ export function ChatHeader({
                 Topic info
               </MenuItem>
               <MenuItem
+                icon={Bookmark}
                 onSelect={() => {
                   setMenuOpen(false);
                   storeApi.getState().setPinsPanel(chat.id);
@@ -203,6 +228,7 @@ export function ChatHeader({
                 Pinned messages
               </MenuItem>
               <MenuItem
+                icon={Images}
                 onSelect={() => {
                   setMenuOpen(false);
                   onOpenMedia?.();
@@ -211,6 +237,7 @@ export function ChatHeader({
                 Media, files and links
               </MenuItem>
               <MenuItem
+                icon={Search}
                 onSelect={() => {
                   setMenuOpen(false);
                   onSearch();
@@ -219,6 +246,7 @@ export function ChatHeader({
                 Search
               </MenuItem>
               <MenuItem
+                icon={Palette}
                 onSelect={() => {
                   setMenuOpen(false);
                   setBackgroundOpen(true);
@@ -248,6 +276,7 @@ export function ChatHeader({
             <>
               {groupInfoItem}
               <MenuItem
+                icon={Bookmark}
                 onSelect={() => {
                   setMenuOpen(false);
                   storeApi.getState().setPinsPanel(chat.id);
@@ -256,6 +285,7 @@ export function ChatHeader({
                 Pinned messages
               </MenuItem>
               <MenuItem
+                icon={Images}
                 onSelect={() => {
                   setMenuOpen(false);
                   onOpenMedia?.();
@@ -264,6 +294,7 @@ export function ChatHeader({
                 Media, files and links
               </MenuItem>
               <MenuItem
+                icon={Palette}
                 onSelect={() => {
                   setMenuOpen(false);
                   setBackgroundOpen(true);

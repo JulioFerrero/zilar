@@ -27,6 +27,7 @@ import {
   parseMigrationDiff,
   type MigrationDiff,
 } from './migrations.js';
+import { checkImages } from './images.js';
 import { scopeReport } from './scope.js';
 import { gateSlotsDir, release, tryAcquire } from './slots.js';
 
@@ -278,6 +279,22 @@ function main(): void {
       failed = true;
       console.log(`FAIL  migrations: ${migration.failures.length} added file(s) out of sequence`);
       for (const failure of migration.failures) {
+        console.log(`  ${failure}`);
+      }
+    }
+    const imageFailures = checkImages(readWorkspace(root), (file) =>
+      fs.readFileSync(path.join(root, file), 'utf8'),
+    );
+    if (imageFailures.length === 0) {
+      console.log(
+        'images: every workspace package an app image needs is copied into its Dockerfile',
+      );
+    } else {
+      failed = true;
+      console.log(
+        `FAIL  images: ${imageFailures.length} workspace package(s) missing from a Dockerfile`,
+      );
+      for (const failure of imageFailures) {
         console.log(`  ${failure}`);
       }
     }

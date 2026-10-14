@@ -32,6 +32,9 @@ export const DEFAULT_REPLY_DELAY_MS = 1500;
 
 const ROOM_REPLY_TEXT = ['Sounds good.', 'On it.', 'Thanks for the update.', 'Got it.'] as const;
 
+/** T-1406: the two fixed statuses the AI's chat state carries before its reply. */
+const MOCK_AI_STATUSES = ['Searching the web', 'Running a command'] as const;
+
 export interface MockXmppCoreOptions extends XmppCoreOptions {
   /**
    * Milliseconds before a seeded member answers a room send. Defaults to
@@ -83,20 +86,47 @@ export function createMockXmppCore(data: MockData, options: MockXmppCoreOptions)
   };
 
   // A room send gets a short reply from a seeded member, unless disabled. The
-  // timer is tracked so a disconnect cancels a reply that has not fired yet.
+  // timers are tracked so a disconnect cancels a reply that has not fired yet.
+  const emitLater = (ms: number, run: () => void): void => {
+    const timer = setTimeout(() => {
+      pendingReplies.delete(timer);
+      run();
+    }, ms);
+    pendingReplies.add(timer);
+  };
+
+  // T-1406: the AI's chat state carries two short statuses before its reply, so
+  // `?mock=1` shows "<status>…" next to the dots and then the answer. Only an
+  // AI replier emits them; a human's reply stays a plain reply.
+  const isAiMember = (jid: string): boolean =>
+    data.people.find((person) => person.jid === jid)?.kind === 'ai';
+
   const scheduleReply = (roomJid: string, kind: ChatKind): void => {
     const delayMs = options.replyDelayMs ?? DEFAULT_REPLY_DELAY_MS;
     if (delayMs <= 0) {
       return;
     }
-    const timer = setTimeout(() => {
-      pendingReplies.delete(timer);
-      const member = nextReplyMember(data, roomJid, replyTurn);
-      if (member === undefined) {
-        return;
-      }
-      const text = ROOM_REPLY_TEXT[replyTurn % ROOM_REPLY_TEXT.length] ?? ROOM_REPLY_TEXT[0];
-      replyTurn += 1;
+    const turn = replyTurn;
+    const member = nextReplyMember(data, roomJid, turn);
+    if (member === undefined) {
+      return;
+    }
+    replyTurn += 1;
+    if (isAiMember(member.jid)) {
+      MOCK_AI_STATUSES.forEach((status, index) => {
+        emitLater(Math.round((delayMs * (index + 1)) / (MOCK_AI_STATUSES.length + 1)), () => {
+          fake.emit('typing', {
+            chatJid: roomJid,
+            fromJid: member.jid,
+            state: 'composing',
+            status,
+            outgoing: false,
+          });
+        });
+      });
+    }
+    emitLater(delayMs, () => {
+      const text = ROOM_REPLY_TEXT[turn % ROOM_REPLY_TEXT.length] ?? ROOM_REPLY_TEXT[0];
       const reply: ChatMessage = {
         id: nextId('mock-reply'),
         chatJid: roomJid,
@@ -110,8 +140,7 @@ export function createMockXmppCore(data: MockData, options: MockXmppCoreOptions)
       };
       data.appendMessage(roomJid, reply);
       fake.emit('message', reply);
-    }, delayMs);
-    pendingReplies.add(timer);
+    });
   };
 
   const core: FakeXmppCore = {

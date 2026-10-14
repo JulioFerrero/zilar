@@ -52,6 +52,7 @@ export function createMessageLedger(deps: MessageLedgerDeps) {
     originClaims: new Map(),
     authors: new Map(),
     baseTexts: new Map(),
+    cards: new Map(),
   };
 
   // `ids` needs the edit and reaction refresh paths, which are built after it;
@@ -66,7 +67,7 @@ export function createMessageLedger(deps: MessageLedgerDeps) {
   const identity = createLedgerIdentity({ get, deps });
   const reactions = createLedgerReactions({ get, set, ids, identity });
   const incoming = createLedgerIncoming({ get, set, deps, ids, identity, reactions });
-  const edits = createLedgerEdits({ get, set, ids, incoming });
+  const edits = createLedgerEdits({ get, set, ids, incoming, cards: maps.cards });
   const mutators = createLedgerMutators({ set, ids });
 
   // Forgets every id the ledger knows, for a store whose sign-out resets it.
@@ -77,6 +78,7 @@ export function createMessageLedger(deps: MessageLedgerDeps) {
     maps.originClaims.clear();
     maps.authors.clear();
     maps.baseTexts.clear();
+    maps.cards.clear();
   }
 
   return {

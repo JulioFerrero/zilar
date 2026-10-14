@@ -14,6 +14,7 @@ import {
 } from './protocol.ts';
 import { signNonce, type RunnerKeypair } from './keys.ts';
 import { StreamMux, TunnelClosedError, attachSocketToStream } from './mux.ts';
+import { DeskRunner, type DeskRunnerHandler } from './desk-runner.ts';
 
 const stringUrl: Schema.String = Schema.String.check(
   Schema.makeFilter((value) => {
@@ -75,6 +76,8 @@ export interface RunnerOptions {
   exposedPorts?: number[] | undefined;
   /** Listen on 127.0.0.1 as the desk's LLM base URL. Default true. */
   enableModelListener?: boolean | undefined;
+  /** The runner's desk handler (plan §6.1); absent means the runner refuses desks. */
+  deskRunner?: DeskRunnerHandler | undefined;
   reconnectBaseMs?: number | undefined;
   reconnectMaxMs?: number | undefined;
   handshakeTimeoutMs?: number | undefined;
@@ -104,6 +107,7 @@ export class RunnerClient {
   private readonly reconnectMaxMs: number;
   private readonly handshakeTimeoutMs: number;
   private readonly highWaterMarkBytes: number;
+  private readonly deskRunner: DeskRunner;
 
   private ws: WebSocket | null = null;
   private mux: StreamMux | null = null;
@@ -144,6 +148,7 @@ export class RunnerClient {
     this.reconnectMaxMs = validated.reconnectMaxMs;
     this.handshakeTimeoutMs = validated.handshakeTimeoutMs;
     this.highWaterMarkBytes = validated.highWaterMarkBytes;
+    this.deskRunner = new DeskRunner(options.deskRunner ?? null);
   }
 
   /** Successful authentications since start (reconnects re-authenticate). */
@@ -545,6 +550,11 @@ export class RunnerClient {
         break;
       case 'tunnel.resume':
         mux.handleResume(message.stream_id);
+        break;
+      case 'desk.provision':
+      case 'desk.exec':
+      case 'desk.stop':
+        this.deskRunner.handle(mux, message);
         break;
       case 'challenge':
       case 'ready':

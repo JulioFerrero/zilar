@@ -37,12 +37,14 @@ function UsageMeter({ label, text, fraction }: { label: string; text: string; fr
 }
 
 /**
- * The AI's spend (T-0058): today's spend against the daily cap and the key's
- * current spend against the monthly cap. LiteLLM tracks spend in batches, so
- * the numbers lag a turn or two — the help text says so.
+ * The AI's spend (T-0058): today's spend and the last 30 days. T-1408: a bound
+ * the owner set gets a meter and an "of $limit"; an unset bound shows the spend
+ * alone, with no meter.
  */
 export function UsageBlock({ ai }: { ai: PublicAi }) {
   const usage = ai.usage ?? null;
+  const perDayUsd = ai.limits.perDayUsd;
+  const perMonthUsd = ai.limits.perMonthUsd;
   return (
     <section aria-label="Usage" className="flex flex-col gap-2">
       <h3 className="text-[14px] font-medium">Usage</h3>
@@ -50,21 +52,29 @@ export function UsageBlock({ ai }: { ai: PublicAi }) {
         <p className="text-[13px] text-muted-foreground">Usage unavailable</p>
       ) : (
         <>
-          <UsageMeter
-            label="Today's spend"
-            text={`Today ${formatUsd(usage.todayUsd)} of ${formatUsd(ai.limits.perDayUsd)}`}
-            fraction={ai.limits.perDayUsd > 0 ? usage.todayUsd / ai.limits.perDayUsd : 1}
-          />
-          <UsageMeter
-            label="30-day window spend"
-            text={`30-day window ${formatUsd(usage.windowUsd)} of ${formatUsd(ai.limits.perMonthUsd)}`}
-            fraction={ai.limits.perMonthUsd > 0 ? usage.windowUsd / ai.limits.perMonthUsd : 1}
-          />
+          {perDayUsd === null ? (
+            <p className="text-[13px] text-muted-foreground">Today {formatUsd(usage.todayUsd)}</p>
+          ) : (
+            <UsageMeter
+              label="Today's spend"
+              text={`Today ${formatUsd(usage.todayUsd)} of ${formatUsd(perDayUsd)}`}
+              fraction={perDayUsd > 0 ? usage.todayUsd / perDayUsd : 1}
+            />
+          )}
+          {perMonthUsd === null ? (
+            <p className="text-[13px] text-muted-foreground">
+              30 days {formatUsd(usage.windowUsd)}
+            </p>
+          ) : (
+            <UsageMeter
+              label="30-day window spend"
+              text={`30 days ${formatUsd(usage.windowUsd)} of ${formatUsd(perMonthUsd)}`}
+              fraction={perMonthUsd > 0 ? usage.windowUsd / perMonthUsd : 1}
+            />
+          )}
         </>
       )}
-      <p className="text-[13px] text-muted-foreground">
-        Spend updates within a minute or two; the daily limit may let a last reply through.
-      </p>
+      <p className="text-[13px] text-muted-foreground">Spend updates after each reply.</p>
     </section>
   );
 }

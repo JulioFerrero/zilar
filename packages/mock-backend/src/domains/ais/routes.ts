@@ -4,7 +4,7 @@
 // create/edit bounds; the app's client decodes and the contract tests cover
 // that, exactly like the old mock.
 
-import type { PublicAi } from '@zilar/api-contract';
+import type { AiCatalog, PublicAi } from '@zilar/api-contract';
 import { isAiTemplate, readAiLimits } from './seed';
 import type { MockData } from '../../state';
 import {
@@ -18,6 +18,15 @@ import {
 } from '../../http/shared';
 
 export function handleAis(data: MockData, request: MockHttpRequest): Response | undefined {
+  // T-1395: `/api/ai/catalog`, the wizard's model step in mock mode. GET only;
+  // other methods fall through like every other route here.
+  if (
+    request.method === 'GET' &&
+    request.segments[0] === 'ai' &&
+    request.segments[1] === 'catalog'
+  ) {
+    return jsonResponse(MOCK_CATALOG);
+  }
   if (request.segments[0] !== 'ais') {
     return undefined;
   }
@@ -69,6 +78,7 @@ function createAi(data: MockData, request: MockHttpRequest): Response {
       typeof body.providerConnectionId === 'string' ? body.providerConnectionId : 'conn-openai',
     limits: readAiLimits(body.limits),
     machineId: null,
+    computerMode: 'off',
     createdAt: new Date().toISOString(),
   };
   data.putAi(created);
@@ -89,6 +99,9 @@ function patchAi(data: MockData, ai: PublicAi, request: MockHttpRequest): Respon
     ...(typeof body.canDelegate === 'boolean' ? { canDelegate: body.canDelegate } : {}),
     ...(typeof body.acceptsDelegation === 'boolean'
       ? { acceptsDelegation: body.acceptsDelegation }
+      : {}),
+    ...(body.computerMode === 'off' || body.computerMode === 'cloud'
+      ? { computerMode: body.computerMode }
       : {}),
   };
   data.putAi(updated);
@@ -136,3 +149,117 @@ function assignMachine(data: MockData, ai: PublicAi, request: MockHttpRequest): 
 function isApprovedMachine(data: MockData, machineId: string): boolean {
   return data.machines.some((machine) => machine.id === machineId && machine.status === 'approved');
 }
+
+// T-1395: a small, fixed catalog for the wizard's model step in mock mode.
+const MOCK_CATALOG: AiCatalog = {
+  source: 'fallback',
+  fetchedAt: '2026-10-14T00:00:00.000Z',
+  providers: [
+    {
+      id: 'openai',
+      name: 'OpenAI',
+      models: [
+        {
+          id: 'gpt-4o-mini',
+          name: 'GPT-4o mini',
+          contextTokens: 128000,
+          inputPricePerMTok: 0.15,
+          outputPricePerMTok: 0.6,
+          toolCalls: true,
+          reasoning: false,
+          releaseDate: '2024-07-18',
+        },
+        {
+          id: 'gpt-4o',
+          name: 'GPT-4o',
+          contextTokens: 128000,
+          inputPricePerMTok: 2.5,
+          outputPricePerMTok: 10,
+          toolCalls: true,
+          reasoning: false,
+          releaseDate: '2024-05-13',
+        },
+      ],
+    },
+    {
+      id: 'anthropic',
+      name: 'Anthropic',
+      models: [
+        {
+          id: 'claude-sonnet-4-5',
+          name: 'Claude Sonnet 4.5',
+          contextTokens: 200000,
+          inputPricePerMTok: 3,
+          outputPricePerMTok: 15,
+          toolCalls: true,
+          reasoning: true,
+          releaseDate: '2025-09-29',
+        },
+      ],
+    },
+    {
+      id: 'google',
+      name: 'Google',
+      models: [
+        {
+          id: 'gemini-2.5-flash',
+          name: 'Gemini 2.5 Flash',
+          contextTokens: 1048576,
+          inputPricePerMTok: 0.3,
+          outputPricePerMTok: 2.5,
+          toolCalls: true,
+          reasoning: true,
+          releaseDate: '2025-06-17',
+        },
+      ],
+    },
+    {
+      id: 'deepseek',
+      name: 'DeepSeek',
+      models: [
+        {
+          id: 'deepseek-chat',
+          name: 'DeepSeek Chat',
+          contextTokens: 128000,
+          inputPricePerMTok: 0.27,
+          outputPricePerMTok: 1.1,
+          toolCalls: true,
+          reasoning: false,
+          releaseDate: '2025-01-01',
+        },
+      ],
+    },
+    {
+      id: 'xai',
+      name: 'xAI',
+      models: [
+        {
+          id: 'grok-4',
+          name: 'Grok 4',
+          contextTokens: 256000,
+          inputPricePerMTok: 3,
+          outputPricePerMTok: 15,
+          toolCalls: true,
+          reasoning: true,
+          releaseDate: '2025-07-09',
+        },
+      ],
+    },
+    {
+      id: 'openrouter',
+      name: 'OpenRouter',
+      models: [
+        {
+          id: 'openai/gpt-4o',
+          name: 'GPT-4o',
+          contextTokens: 128000,
+          inputPricePerMTok: 2.5,
+          outputPricePerMTok: 10,
+          toolCalls: true,
+          reasoning: false,
+          releaseDate: '2024-05-13',
+        },
+      ],
+    },
+  ],
+};

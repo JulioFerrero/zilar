@@ -11,6 +11,7 @@ import {
   TASK_STATUS_TOOL,
   UPDATE_PERSONA_TOOL,
 } from './schemas';
+import { deskToolDefinitions } from './desk-definitions';
 
 export interface ChatToolDefinition {
   type: 'function';
@@ -225,14 +226,17 @@ export const TASK_STATUS_TOOL_DEF: ChatToolDefinition = {
 // actions (the production default while `ACTION_DEMO_ENABLED` is off and no
 // real adapters are wired) a `request_action` call still falls through to
 // `invalid: unknown tool`, while `recall` / `memory_zoom` / `remember` keep
-// working.
+// working. T-1409: `opts.desk` appends the seven desk tools when the AI has a
+// cloud computer.
 export function buildTools(
   actions: ReadonlyArray<{ name: string; description: string }>,
+  opts?: { desk?: boolean },
 ): ChatToolDefinition[] {
-  if (actions.length === 0) {
-    return [...PERSONA_TOOLS, ...MEMORY_TOOLS];
-  }
-  return [...PERSONA_TOOLS, ...MEMORY_TOOLS, buildRequestActionTool(actions)];
+  const base =
+    actions.length === 0
+      ? [...PERSONA_TOOLS, ...MEMORY_TOOLS]
+      : [...PERSONA_TOOLS, ...MEMORY_TOOLS, buildRequestActionTool(actions)];
+  return opts?.desk === true ? [...base, ...deskToolDefinitions()] : base;
 }
 
 // The tools array for one group turn: always the three memory tools (T-0444),
@@ -242,15 +246,18 @@ export function buildTools(
 // memory tools alone, so a plain member's turn still carries no action tool.
 // T-0482: when `delegateTargets` is non-empty (the AI may delegate and at
 // least one accepting AI is in the room) `delegate` and `task_status` are
-// appended. Without targets the output is unchanged.
+// appended. Without targets the output is unchanged. T-1409: `opts.desk`
+// appends the seven desk tools when the AI has a cloud computer.
 export function buildGroupTools(
   actions: ReadonlyArray<{ name: string; description: string }>,
   delegateTargets?: ReadonlyArray<{ id: string; name: string }>,
+  opts?: { desk?: boolean },
 ): ChatToolDefinition[] {
   const base =
     actions.length === 0 ? [...MEMORY_TOOLS] : [...MEMORY_TOOLS, buildRequestActionTool(actions)];
-  if (delegateTargets === undefined || delegateTargets.length === 0) {
-    return base;
-  }
-  return [...base, buildDelegateTool(delegateTargets), TASK_STATUS_TOOL_DEF];
+  const withDelegation =
+    delegateTargets === undefined || delegateTargets.length === 0
+      ? base
+      : [...base, buildDelegateTool(delegateTargets), TASK_STATUS_TOOL_DEF];
+  return opts?.desk === true ? [...withDelegation, ...deskToolDefinitions()] : withDelegation;
 }

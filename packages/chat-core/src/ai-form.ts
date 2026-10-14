@@ -1,14 +1,11 @@
 export type AiTemplateId = 'dev' | 'marketing' | 'fun' | 'custom';
 
+// T-1408: a `null` bound means the owner set no limit. New AIs start with both
+// empty, so the create body carries nulls and the server stores NULL.
 export interface AiLimitsUsd {
-  perDayUsd: number;
-  perMonthUsd: number;
+  perDayUsd: number | null;
+  perMonthUsd: number | null;
 }
-
-// Safe defaults for the quick-create dialog. They are named so the UI and the
-// tests share one source; the server caps the month at MAX_MONTHLY_USD.
-export const DEFAULT_DAILY_USD = 1;
-export const DEFAULT_MONTHLY_USD = 10;
 
 /** The form fields both apps send in a create request. */
 export interface AiCreateFields {

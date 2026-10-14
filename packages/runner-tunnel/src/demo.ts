@@ -169,7 +169,7 @@ async function main(): Promise<void> {
         await liveRunner.start();
         const health = await httpThrough(`${liveRunner.modelUrl as string}/health/liveliness`);
         rows.push([
-          'gated: LiteLLM /health/liveliness through the tunnel',
+          'gated: model service /health/liveliness through the tunnel',
           health.status === 200 ? 'ok' : 'FAIL',
           `status ${health.status} body ${health.body.toString('utf8').slice(0, 120)}`,
         ]);

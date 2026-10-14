@@ -4,6 +4,7 @@ import {
   ApprovalRule,
   PublicApproval,
   isProviderId,
+  type AiCatalog,
   type AiLimits,
   type AiTemplate,
   type AiUsage,
@@ -45,6 +46,8 @@ export interface UpdateAiInput {
   // T-0478: the owner's delegation opt-ins.
   canDelegate?: boolean;
   acceptsDelegation?: boolean;
+  // T-1409: the owner turns the AI's computer on (`cloud`) or off.
+  computerMode?: 'off' | 'cloud';
 }
 
 export async function listAis(): Promise<PublicAi[]> {
@@ -54,6 +57,11 @@ export async function listAis(): Promise<PublicAi[]> {
 
 export function getAi(id: string): Promise<PublicAi> {
   return callApi((client) => client.ais.detail({ params: { id } }));
+}
+
+// T-1395: the models.dev catalog behind the wizard's model step.
+export function getAiCatalog(): Promise<AiCatalog> {
+  return callApi((client) => client.ais.catalog());
 }
 
 // The server trims these strings before its length checks; the contract
@@ -89,6 +97,7 @@ export function updateAi(id: string, input: UpdateAiInput): Promise<PublicAi> {
         ...(input.acceptsDelegation === undefined
           ? {}
           : { acceptsDelegation: input.acceptsDelegation }),
+        ...(input.computerMode === undefined ? {} : { computerMode: input.computerMode }),
       },
     }),
   );
@@ -137,6 +146,8 @@ export interface CreateConnectionInput {
   provider: string;
   key: string;
   label?: string;
+  /** T-1396: required for `openai-compatible`, refused for every other provider. */
+  baseUrl?: string;
 }
 
 export function createConnection(input: CreateConnectionInput): Promise<Connection> {
@@ -151,6 +162,7 @@ export function createConnection(input: CreateConnectionInput): Promise<Connecti
         provider,
         key: input.key.trim(),
         ...(input.label === undefined ? {} : { label: input.label.trim() }),
+        ...(input.baseUrl === undefined ? {} : { baseUrl: input.baseUrl.trim() }),
       },
     }),
   );
@@ -170,8 +182,8 @@ export async function deleteConnection(id: string): Promise<void> {
 }
 
 // T-1292: replaces the key of an existing connection in place, so the AIs using
-// it keep working. The server clears their `litellm_model_id`, so the model is
-// registered again on their next turn. The key is trimmed like at create.
+// it keep working; the AI's next turn reads and decrypts the new key. The key
+// is trimmed like at create.
 export function replaceConnectionKey(id: string, key: string): Promise<Connection> {
   return callApi((client) =>
     client.connections.update({ params: { id }, payload: { key: key.trim() } }),

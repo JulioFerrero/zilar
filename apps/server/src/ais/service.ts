@@ -1,7 +1,7 @@
 // Barrel for the AI service (T-0956): the original `ais/service.ts` was split
-// into feature modules (`queries`, `provisioning`, `provisioning-keys`,
-// `provisioning-xmpp`, `persona`, `status`). Importers keep this path and every
-// name and kind it exported before.
+// into feature modules (`queries`, `provisioning`, `provisioning-xmpp`,
+// `persona`, `status`). Importers keep this path and every name and kind it
+// exported before.
 
 export { MAX_MONTHLY_USD } from '@zilar/api-contract';
 
@@ -24,15 +24,8 @@ export {
   onAiLifecycle,
 } from './queries';
 
-export { createAi, updateAi } from './provisioning';
-
-export type { ChangeAiModelInput } from './provisioning-keys';
-export {
-  VIRTUAL_KEY_BUDGET_DURATION,
-  changeAiModel,
-  ensureAiModel,
-  virtualKeyAlias,
-} from './provisioning-keys';
+export type { ChangeAiModelInput } from './provisioning';
+export { changeAiModel, createAi, updateAi } from './provisioning';
 
 export { aiLocalpart, deleteAi } from './provisioning-xmpp';
 

@@ -1,6 +1,8 @@
 // effect-plain: moved unchanged from apps/server/src/agents/reply.ts (size split)
 import type { ChatKind } from '@zilar/xmpp-core';
-import type { FetchLike } from '../ai/litellm-client';
+import type { FetchLike } from '../ai/http';
+import type { ModelTarget } from '../ai/providers';
+import type { ChatUsage } from '../ai/model-client';
 import type { ChatCompletionMessage } from './context';
 import { runToolTurn } from './dm-tool-turn';
 import { cutShortSuffix } from './replies';
@@ -45,15 +47,16 @@ export interface DmTurnDeps {
   aiId: string;
   ownerJid: string;
   messages: ChatCompletionMessage[];
-  baseUrl: string;
-  virtualKey: string;
-  model: string;
+  /** The AI's own provider connection, resolved per turn. */
+  target: ModelTarget;
   /** Runs one validated persona tool call against the AI's own row. */
   executeTool?: ExecuteToolCall;
   fetchImpl?: FetchLike;
   timeoutMs?: number;
   /** Receives the cumulative reply text while the model writes (drafts). */
   onDelta?: (textSoFar: string) => void;
+  /** Receives the token counters of every model call in the turn. */
+  onUsage?: (usage: ChatUsage) => void;
   /** Called with the exact final reply text right before its XMPP send. Never
    * called for notices on their own or for failure texts. */
   beforeFinalSend?: (text: string) => void;
@@ -91,9 +94,11 @@ export interface DmTurnDeps {
    * exists (not posted yet, or posting failed). Best effort: a throw or a
    * null never fails the turn. */
   reportProgress?: (stage: string) => Promise<string | null>;
-  /** T-0106: removes or replaces the live progress message once the final
-   * text is sent. Best effort: a throw never fails the turn. */
-  clearProgress?: () => Promise<void>;
+  /** T-1414: sends the turn's final task-card correction (`state: done` or
+   * `failed`, with `elapsed_ms` and `summary`). Replaces T-0106's
+   * `clearProgress`: the card is left in place, never retracted. Best effort:
+   * a throw never fails the turn. */
+  finishProgress?: (state: 'done' | 'failed') => Promise<void>;
   /** T-0106: counts logger. The loop logs only counts (rounds, tool
    * calls, ms), never content. Defaults to `deps.logger`. */
   turnLogger?: {
@@ -110,16 +115,15 @@ export type DmTurnOutcome = { kind: 'replied'; text: string } | { kind: 'failed'
 // honest failure text instead — never the raw error. XMPP send failures are
 // logged, never thrown: there is nobody left to tell.
 export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
-  const secrets = [deps.virtualKey, ...(deps.secrets ?? [])];
+  const secrets = [deps.target.apiKey, ...(deps.secrets ?? [])];
   const tools = deps.tools ?? PERSONA_TOOLS;
   const completionInput = {
-    baseUrl: deps.baseUrl,
-    virtualKey: deps.virtualKey,
-    model: deps.model,
+    target: deps.target,
     ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
     ...(deps.timeoutMs === undefined ? {} : { timeoutMs: deps.timeoutMs }),
     ...(deps.secrets === undefined ? {} : { secrets: deps.secrets }),
     ...(deps.onDelta === undefined ? {} : { onDelta: deps.onDelta }),
+    ...(deps.onUsage === undefined ? {} : { onUsage: deps.onUsage }),
   };
   deps.sendTyping(deps.ownerJid, 'chat', 'composing');
   try {

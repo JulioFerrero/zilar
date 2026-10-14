@@ -173,6 +173,7 @@ export {
   deleteAi,
   deleteConnection,
   getAi,
+  getAiCatalog,
   getApproval,
   listAiApprovalRules,
   listAis,

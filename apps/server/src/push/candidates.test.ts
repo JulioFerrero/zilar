@@ -196,6 +196,69 @@ describe('resolveCandidate', () => {
     expect(await resolveCandidate(deps, userId, ownerFor(userId), row)).toEqual({ status: 'skip' });
   });
 
+  it('skips a progress card', async () => {
+    const userId = await seedUser(context);
+    const peer = `ana@${context.config.xmpp.domain}`;
+    const row: ArchiveCandidate = {
+      owner: localpartFor(userId),
+      barePeer: peer,
+      kind: 'chat',
+      nick: '',
+      originId: 'progress-1',
+      timestamp: 0,
+      text: 'Searching the web',
+      xml: `<message type="chat" from="ana/phone"><body>Searching the web</body><agent xmlns="urn:zilar:agent:0">{"v":0,"type":"progress","data":{"ai":"ana@${context.config.xmpp.domain}","stage":"Searching the web"}}</agent></message>`,
+    };
+    const allowed: SearchOwner = { ...ownerFor(userId), peerNames: new Map([[peer, 'Ana']]) };
+    expect(await resolveCandidate(deps, userId, allowed, row)).toEqual({ status: 'skip' });
+  });
+
+  it('skips a correction of a progress card', async () => {
+    const userId = await seedUser(context);
+    const peer = `ana@${context.config.xmpp.domain}`;
+    const row: ArchiveCandidate = {
+      owner: localpartFor(userId),
+      barePeer: peer,
+      kind: 'chat',
+      nick: '',
+      originId: 'progress-2',
+      timestamp: 0,
+      text: 'Working',
+      xml: `<message type="chat" from="ana/phone"><body>Working</body><replace xmlns="urn:xmpp:message-correct:0" id="progress-1"/></message>`,
+    };
+    const allowed: SearchOwner = { ...ownerFor(userId), peerNames: new Map([[peer, 'Ana']]) };
+    expect(await resolveCandidate(deps, userId, allowed, row, new Set(['progress-1']))).toEqual({
+      status: 'skip',
+    });
+  });
+
+  it('notifies a normal AI message', async () => {
+    const userId = await seedUser(context);
+    const peer = `ana@${context.config.xmpp.domain}`;
+    const row: ArchiveCandidate = {
+      owner: localpartFor(userId),
+      barePeer: peer,
+      kind: 'chat',
+      nick: '',
+      originId: 'answer-1',
+      timestamp: 0,
+      text: 'Here is the answer',
+      xml: `<message type="chat" from="${peer}/desk"><body>Here is the answer</body></message>`,
+    };
+    const allowed: SearchOwner = { ...ownerFor(userId), peerNames: new Map([[peer, 'Ana']]) };
+    expect(await resolveCandidate(deps, userId, allowed, row, new Set(['progress-1']))).toEqual({
+      status: 'ok',
+      message: {
+        chatJid: peer,
+        chatKind: 'dm',
+        senderName: 'Ana',
+        place: 'Ana',
+        text: 'Here is the answer',
+        messageId: 'answer-1',
+      },
+    });
+  });
+
   it('skips a room message from the user', async () => {
     const userId = await seedUser(context);
     const { groupId } = await seedGroup(context, userId, [{ userId, role: 'owner' }], []);

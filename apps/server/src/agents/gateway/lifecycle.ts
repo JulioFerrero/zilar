@@ -26,7 +26,7 @@ interface GatewayLifecycleContext {
   config: AgentGatewayConfig;
   logger: GatewayLogger;
   reconcileIntervalMs: number;
-  secretsFor: (virtualKey?: string) => string[];
+  secretsFor: (secret?: string) => string[];
   sessions: Map<string, AiSession>;
   superseded: Set<string>;
   connectAi: (record: ActiveAiForGateway) => Promise<void>;
@@ -134,8 +134,8 @@ export function createGatewayLifecycle(ctx: GatewayLifecycleContext) {
       logger.info({}, 'agent gateway is disabled');
       return;
     }
-    if (deps.litellm === undefined || deps.cipher === undefined) {
-      logger.warn({}, 'agent gateway needs LiteLLM and the key cipher; staying off');
+    if (deps.cipher === undefined) {
+      logger.warn({}, 'agent gateway needs the key cipher; staying off');
       return;
     }
     started = true;

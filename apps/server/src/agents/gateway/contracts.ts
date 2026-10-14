@@ -2,7 +2,8 @@ import { Effect, type Fiber } from 'effect';
 import type { Payload } from '@zilar/protocol';
 import type { XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
 import type { ActionGateway, DeniedReason } from '../../actions/gateway';
-import { redactSecrets, type FetchLike, type LitellmAdminClient } from '../../ai/litellm-client';
+import { redactSecrets, type FetchLike } from '../../ai/http';
+import type { ModelTarget } from '../../ai/providers';
 import type { KeyCipher } from '../../connections/crypto';
 import type { ServerDatabase } from '../../db/client';
 import type { DraftHub } from '../../drafts/hub';
@@ -10,6 +11,7 @@ import type { ArchivePool } from '../../search/service';
 import type { EjabberdAdminClient } from '../../xmpp/admin-client';
 import type { XmppConfig } from '../../xmpp/config';
 import type { completeChat } from '../reply';
+import type { DeskClient } from './desk-exec';
 
 export interface GatewayLogger {
   info: (fields: Record<string, unknown>, message: string) => void;
@@ -20,8 +22,6 @@ export interface AgentGatewayDeps {
   db: ServerDatabase;
   xmpp: XmppConfig;
   adminClient: EjabberdAdminClient;
-  /** Absent when LiteLLM is not configured: the gateway stays off. */
-  litellm?: LitellmAdminClient;
   /** Absent when the key master key is not configured: the gateway stays off. */
   cipher?: KeyCipher;
   logger: GatewayLogger;
@@ -29,16 +29,14 @@ export interface AgentGatewayDeps {
    * calls, ms — ids and counts only, never content). Falls back to
    * `logger` so production keeps the line the T-0106 review deferred. */
   turnLogger?: GatewayLogger;
-  litellmBaseUrl?: string;
-  /** Only used to redact log lines; never sent anywhere. */
-  masterKeyForRedaction?: string;
   /** T-0475: the server-paid room listener (plan §2). Absent means the
    * listener is off, so a room message without an AI mention wakes nobody.
-   * `quietMs` and `everyN` tune the debounce (defaults below). `complete`
-   * is injected in tests. */
+   * T-1399: the listener is off in P0 (no platform key), so production never
+   * sets this; the type stays so the listener still compiles. `quietMs` and
+   * `everyN` tune the debounce (defaults below). `complete` is injected in
+   * tests. */
   listener?: {
-    model: string;
-    virtualKey: string;
+    target: ModelTarget;
     quietMs?: number;
     everyN?: number;
     complete?: typeof completeChat;
@@ -62,6 +60,10 @@ export interface AgentGatewayDeps {
   toolMaxRounds?: number;
   /** Memory archive. Absent means memory is read but never indexed. */
   archive?: ArchivePool;
+  /** T-1409: the cloud desk client (Hands plus the pinned image). Present only
+   * when the sidecar is wired (`DESK_AGENT_SOCKET`); a turn offers the desk
+   * tools only for an AI whose `computer_mode` is `cloud`. */
+  desk?: DeskClient;
 }
 
 export interface AgentGatewayConfig {

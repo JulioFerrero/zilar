@@ -3,12 +3,16 @@ packages:
   - packages/*
 
 catalog:
-  '@effect/atom-react': 4.0.2
+  '@effect/ai-anthropic': 4.0.4
+  '@effect/ai-openai': 4.0.4
+  '@effect/ai-openai-compat': 4.0.4
+  '@effect/ai-openrouter': 4.0.4
+  '@effect/atom-react': 4.0.4
   '@xmpp/client': ^0.14.0
   better-auth: ^1.7.6
   clsx: ^2.1.1
   class-variance-authority: ^0.7.1
-  effect: ^4.0.2
+  effect: ^4.0.4
   scheduler: ^0.27.0
   tailwind-merge: ^3.7.0
   tsx: ^4.23.15

@@ -11,10 +11,12 @@ import type { ServerDatabase } from '../db/client';
 import type { ChatReadRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { bareJid, ownBareJid } from '../jid';
+import { liveAiUiIds } from '../notify/ai-cards';
 import { allowedArchives, type ArchivePool, type SearchOwner } from '../search/service';
 import { stanzaFrom, timestampToIso } from '../search/snippet';
 import { albumInfoFromXml } from '../xmpp/album-xml';
 import { localpartFor } from '../xmpp/provisioning';
+import { newestUnskippedRow, skipUnreadRow } from './unread-skip';
 
 export interface ChatUnread {
   unread: number;
@@ -33,6 +35,9 @@ export type UnreadScope = { kind: 'dm'; peer: string } | { kind: 'room'; room: s
 
 // More than fit on a badge: the count stops here (one row past the cap).
 const UNREAD_CAP = 100;
+// The fallback read below the mark looks this far back per chat for the newest
+// real message when a run of live-AI-UI rows sits above it (T-1400).
+const NEWEST_SCAN_ROWS = 25;
 // A chat with no read mark counts from here only, so a first sign-in does
 // not show thousands of old messages as unread.
 const NO_MARK_WINDOW_DAYS = 30;
@@ -178,9 +183,11 @@ function buildUnreadQuery(
 
 // The newest row of every chat with no row after its mark, whatever its age:
 // the preview for chats the page above missed. One query in total — a values
-// list of (chat key, username, bare peer) joined `LATERAL` to one newest-row
-// lookup each, inside the same `(username, timestamp)` index. Chats whose key
-// is absent from the caller's archive scope match nothing, so they never leak.
+// list of (chat key, username, bare peer) joined `LATERAL` to one lookup each,
+// inside the same `(username, timestamp)` index. Chats whose key is absent from
+// the caller's archive scope match nothing, so they never leak. Each chat's
+// lookup reads `NEWEST_SCAN_ROWS` rows so a run of live-AI-UI rows can be
+// walked past to the newest real message (T-1400); the caller picks it.
 function buildNewestQuery(
   allowed: SearchOwner,
   missing: ChatThreshold[],
@@ -209,6 +216,7 @@ function buildNewestQuery(
   const keyList = next(keys);
   const ownerList = next(owners);
   const peerList = next(peers);
+  const cap = next(String(NEWEST_SCAN_ROWS));
   return {
     text: `SELECT scope.chat_jid AS "chatJid", newest."barePeer", newest.kind,
       newest.nick, newest."originId", newest.timestamp, newest.text, newest.xml
@@ -220,9 +228,10 @@ function buildNewestQuery(
         FROM archive
         WHERE username = scope.owner
           AND (scope.peer = '' OR bare_peer = scope.peer)
-        ORDER BY timestamp DESC LIMIT 1
+        ORDER BY timestamp DESC LIMIT ${cap}
       ) AS newest ON true
-      WHERE newest."originId" IS NOT NULL`,
+      WHERE newest."originId" IS NOT NULL
+      ORDER BY scope.chat_jid, newest.timestamp DESC`,
     values,
   };
 }
@@ -247,9 +256,16 @@ export function summarizeUnread(
 ): Record<string, ChatUnread> {
   const answer: Record<string, ChatUnread> = {};
   const counted = new Map<string, Set<string>>();
+  // The batch's live-UI origin ids, read once for the skip below (T-1400).
+  const liveIds = liveAiUiIds(page);
   for (const row of page) {
     const chat = chats.find((entry) => entry.jid.toLowerCase() === row.chatJid.toLowerCase());
     if (chat === undefined) {
+      continue;
+    }
+    // The live AI UI and its edits are not messages: they neither count nor
+    // become the preview, so the loop keeps walking to the newest real message.
+    if (skipUnreadRow(row.xml, liveIds)) {
       continue;
     }
     const current = answer[chat.jid];
@@ -360,9 +376,12 @@ export async function unreadForChats(
   const newest = buildNewestQuery(allowed, missing);
   if (newest !== null) {
     const rows = (await archive.query(newest.text, newest.values)) as unknown as ArchiveUnreadRow[];
-    for (const row of rows) {
-      const chat = missing.find((entry) => entry.jid.toLowerCase() === row.chatJid.toLowerCase());
-      if (chat === undefined) {
+    for (const chat of missing) {
+      // Newest first: the first row that is neither live AI UI nor an edit of
+      // one is the preview, so a chat the card alone pushed past its mark
+      // keeps showing its newest real message (T-1400).
+      const row = newestUnskippedRow(rows, chat.jid);
+      if (row === undefined) {
         continue;
       }
       answer[chat.jid] = {

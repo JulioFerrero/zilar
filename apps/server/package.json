@@ -13,12 +13,17 @@
     "db:migrate": "tsx --env-file-if-exists=.env src/db/migrate-cli.ts"
   },
   "dependencies": {
-    "@effect/platform-node": "4.0.2",
-    "@effect/sql-pg": "4.0.2",
+    "@effect/ai-anthropic": "catalog:",
+    "@effect/ai-openai": "catalog:",
+    "@effect/ai-openai-compat": "catalog:",
+    "@effect/ai-openrouter": "catalog:",
+    "@effect/platform-node": "4.0.4",
+    "@effect/sql-pg": "4.0.4",
     "@types/web-push": "^3.6.4",
     "@xmpp/client": "catalog:",
     "@xmpp/component": "^0.14.0",
     "@zilar/api-contract": "workspace:*",
+    "@zilar/desk": "workspace:*",
     "@zilar/protocol": "workspace:*",
     "@zilar/runner-tunnel": "workspace:*",
     "@zilar/xmpp-core": "workspace:*",
@@ -33,7 +38,7 @@
     "ws": "^8.22.0"
   },
   "devDependencies": {
-    "@effect/sql-pglite": "4.0.2",
+    "@effect/sql-pglite": "4.0.4",
     "@electric-sql/pglite": "^0.5.8",
     "@types/nodemailer": "^8.0.2",
     "esbuild": "0.28.2",

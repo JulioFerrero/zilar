@@ -10,6 +10,33 @@ export const REMEMBER_TOOL = 'remember';
 // T-0482: the delegation tools (plan `listener-delegation-plan.md` §4.1-§4.3).
 export const DELEGATE_TOOL = 'delegate';
 export const TASK_STATUS_TOOL = 'task_status';
+// T-1409: the desk tools, offered only when the AI has a cloud computer. The
+// names match the daemon's tool table (`packages/desk/README.md`) and OpenCode's
+// where they overlap (plan §3.3).
+export const BASH_TOOL = 'bash';
+export const READ_TOOL = 'read';
+export const WRITE_TOOL = 'write';
+export const EDIT_TOOL = 'edit';
+export const GREP_TOOL = 'grep';
+export const GLOB_TOOL = 'glob';
+export const GIT_TOOL = 'git';
+
+export const DESK_TOOL_NAMES = [
+  BASH_TOOL,
+  READ_TOOL,
+  WRITE_TOOL,
+  EDIT_TOOL,
+  GREP_TOOL,
+  GLOB_TOOL,
+  GIT_TOOL,
+] as const;
+
+export type DeskToolName = (typeof DESK_TOOL_NAMES)[number];
+
+/** True for one of the seven desk tool names; used by the parser and executor. */
+export function isDeskToolName(name: string): name is DeskToolName {
+  return (DESK_TOOL_NAMES as readonly string[]).includes(name);
+}
 
 // The same ceiling the API enforces on a persona (`CreateAiSchema`).
 export const PERSONA_MAX_LENGTH = 4000;
@@ -74,6 +101,73 @@ export const TaskStatusArgsSchema = struct({
   task_id: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
 });
 
+// T-1409: the desk tools' arguments. They mirror the daemon's tool table
+// (`packages/desk/README.md`); the daemon validates them again, so these are
+// only the shape checks that turn a bad model call into `invalid: …`.
+export const DESK_PATH_MAX_LENGTH = 1024;
+export const DESK_COMMAND_MAX_LENGTH = 8000;
+export const DESK_CONTENT_MAX_LENGTH = 1_000_000;
+export const DESK_TIMEOUT_MAX_MS = 600_000;
+
+const deskPath = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(DESK_PATH_MAX_LENGTH));
+
+export const BashArgsSchema = struct({
+  command: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(DESK_COMMAND_MAX_LENGTH)),
+  cwd: Schema.optional(deskPath),
+  timeout_ms: Schema.optional(
+    Schema.Number.check(
+      Schema.isInt(),
+      Schema.isGreaterThanOrEqualTo(1),
+      Schema.isLessThanOrEqualTo(DESK_TIMEOUT_MAX_MS),
+    ),
+  ),
+});
+
+export const ReadArgsSchema = struct({
+  path: deskPath,
+  offset: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))),
+  limit: Schema.optional(Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))),
+});
+
+export const WriteArgsSchema = struct({
+  path: deskPath,
+  content: Schema.String.check(Schema.isMaxLength(DESK_CONTENT_MAX_LENGTH)),
+});
+
+export const EditArgsSchema = struct({
+  path: deskPath,
+  oldString: Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(DESK_CONTENT_MAX_LENGTH),
+  ),
+  newString: Schema.String.check(Schema.isMaxLength(DESK_CONTENT_MAX_LENGTH)),
+  replaceAll: Schema.optional(Schema.Boolean),
+});
+
+export const GrepArgsSchema = struct({
+  pattern: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(2000)),
+  path: Schema.optional(deskPath),
+  glob: Schema.optional(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(512))),
+  max_results: Schema.optional(
+    Schema.Number.check(
+      Schema.isInt(),
+      Schema.isGreaterThanOrEqualTo(1),
+      Schema.isLessThanOrEqualTo(1000),
+    ),
+  ),
+});
+
+export const GlobArgsSchema = struct({
+  pattern: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(1024)),
+  path: Schema.optional(deskPath),
+});
+
+export const GitArgsSchema = struct({
+  args: Schema.mutable(
+    Schema.Array(Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(1024))),
+  ).check(Schema.isMaxLength(64)),
+});
+
 // `args` is a JSON object (never an array, never a primitive): a JSON
 // object is the shape every adapter's zod schema expects. `action` rides
 // through to the gateway unchanged, but its pattern is checked so a
@@ -109,4 +203,5 @@ export type ParsedToolArguments =
       return_format?: string;
     }
   | { ok: true; tool: typeof TASK_STATUS_TOOL; task_id: string }
+  | { ok: true; tool: DeskToolName; args: Record<string, unknown> }
   | { ok: false; reason: string };

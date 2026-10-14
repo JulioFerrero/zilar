@@ -1,5 +1,6 @@
 import { Data, Duration, Effect } from 'effect';
-import { redactSecrets } from '../ai/litellm-client';
+import { redactSecrets } from '../ai/http';
+import { createPinnedFetch } from './pinned-fetch';
 import type { ProviderId } from './providers';
 
 // "Test key" probe. Each provider gets one cheap GET that returns 2xx only when
@@ -12,13 +13,17 @@ export type ProbeOutcome = { ok: true } | { ok: false; message: string };
 export type FetchLike = (input: string, init: RequestInit) => Promise<Response>;
 
 export interface ProviderProbe {
-  testKey(provider: ProviderId, key: string): Promise<ProbeOutcome>;
+  /**
+   * T-1396: `baseUrl` is the stored URL for the OpenAI-compatible provider and
+   * ignored by every other one.
+   */
+  testKey(provider: ProviderId, key: string, baseUrl?: string | null): Promise<ProbeOutcome>;
 }
 
 const PROBE_TIMEOUT_MS = 10_000;
 
 interface Endpoint {
-  buildUrl: (key: string) => string;
+  buildUrl: (key: string, baseUrl: string | null) => string;
   buildHeaders: (key: string) => Record<string, string>;
 }
 
@@ -56,6 +61,11 @@ const ENDPOINTS: Record<ProviderId, Endpoint> = {
       'x-github-api-version': '2022-11-28',
     }),
   },
+  // T-1396: the user's own base URL; the key is a bearer token like OpenAI's.
+  'openai-compatible': {
+    buildUrl: (_key, baseUrl) => `${baseUrl ?? ''}/models`,
+    buildHeaders: (key) => ({ authorization: `Bearer ${key}` }),
+  },
 };
 
 // A failed or timed-out fetch. Internal only: it never reaches a caller, it is
@@ -78,19 +88,33 @@ function outcomeFor(response: Response): ProbeOutcome {
   return { ok: false, message: 'The provider returned an unexpected response' };
 }
 
+// T-1396: for a custom endpoint only a 2xx means the key works; a 401/403 is a
+// bad key and everything else (including a 404 on a base URL without `/models`)
+// is "unreachable", the honest answer from the spec.
+function outcomeForCustom(response: Response): ProbeOutcome {
+  if (response.status === 401 || response.status === 403) {
+    return { ok: false, message: 'The provider rejected the key' };
+  }
+  if (response.ok) {
+    return { ok: true };
+  }
+  return { ok: false, message: 'The provider is unreachable' };
+}
+
 // Every outcome is a value, so the effect has no error channel. The fetch
 // receives the Effect abort signal, which fires when the probe is interrupted.
 export function testKeyEffect(
   fetchImpl: FetchLike,
-): (provider: ProviderId, key: string) => Effect.Effect<ProbeOutcome> {
+): (provider: ProviderId, key: string, baseUrl: string | null) => Effect.Effect<ProbeOutcome> {
   return Effect.fnUntraced(function* (
     provider: ProviderId,
     key: string,
+    baseUrl: string | null,
   ): Effect.fn.Return<ProbeOutcome> {
     const endpoint = ENDPOINTS[provider];
     const probe = Effect.tryPromise({
       try: (signal) =>
-        fetchImpl(endpoint.buildUrl(key), {
+        fetchImpl(endpoint.buildUrl(key, baseUrl), {
           method: 'GET',
           headers: endpoint.buildHeaders(key),
           signal,
@@ -106,8 +130,9 @@ export function testKeyEffect(
     // and not a false success. The message carries no detail from the error
     // object because a URL (Google puts the key in the query) could echo the
     // key back.
+    const mapOutcome = provider === 'openai-compatible' ? outcomeForCustom : outcomeFor;
     return yield* probe.pipe(
-      Effect.map(outcomeFor),
+      Effect.map(mapOutcome),
       Effect.catchTag('ProbeUnreachable', () =>
         Effect.succeed<ProbeOutcome>({ ok: false, message: 'The provider is unreachable' }),
       ),
@@ -116,10 +141,17 @@ export function testKeyEffect(
 }
 
 export function createProviderProbe(fetchImpl: FetchLike = fetch): ProviderProbe {
-  const probeKey = testKeyEffect(fetchImpl);
   return {
-    testKey(provider, key) {
-      return Effect.runPromise(probeKey(provider, key));
+    testKey(provider, key, baseUrl = null) {
+      // A custom endpoint is only ever called through the pinned fetch, which
+      // re-resolves and refuses a private address on every probe.
+      if (provider === 'openai-compatible') {
+        if (baseUrl === null || baseUrl === '') {
+          return Promise.resolve({ ok: false, message: 'The provider is unreachable' });
+        }
+        return Effect.runPromise(testKeyEffect(createPinnedFetch(baseUrl))(provider, key, baseUrl));
+      }
+      return Effect.runPromise(testKeyEffect(fetchImpl)(provider, key, baseUrl));
     },
   };
 }

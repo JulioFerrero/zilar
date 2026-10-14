@@ -51,7 +51,7 @@ interface GroupIngestContext {
   sessions: Map<string, AiSession>;
   roomRounds: Map<string, RoomRound>;
   noteListenerMessage: ReturnType<typeof createRoomListener>['noteListenerMessage'];
-  secretsFor: (virtualKey?: string) => string[];
+  secretsFor: (secret?: string) => string[];
   runGroupSessionTurn: (
     session: AiSession,
     roomJid: string,

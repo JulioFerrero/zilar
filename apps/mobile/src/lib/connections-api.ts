@@ -22,6 +22,8 @@ export interface ProviderConnection {
   id: string;
   provider: string;
   label: string | null;
+  /** T-1396: the custom provider's base URL; `null` for every other provider. */
+  baseUrl: string | null;
   status: string;
   createdAt: string;
 }
@@ -30,6 +32,8 @@ export interface CreateConnectionInput {
   provider: string;
   key: string;
   label?: string;
+  /** T-1396: required for `openai-compatible`, refused for every other provider. */
+  baseUrl?: string;
 }
 
 export interface ConnectionTestResult {
@@ -54,6 +58,7 @@ export function buildCreateConnectionBody(input: CreateConnectionInput): Record<
     provider: input.provider,
     key: input.key,
     ...(input.label === undefined ? {} : { label: input.label }),
+    ...(input.baseUrl === undefined ? {} : { baseUrl: input.baseUrl }),
   };
 }
 
@@ -81,6 +86,7 @@ export function createConnectionsApi(
             provider,
             key: input.key.trim(),
             ...(input.label === undefined ? {} : { label: input.label.trim() }),
+            ...(input.baseUrl === undefined ? {} : { baseUrl: input.baseUrl.trim() }),
           },
         }),
       );

@@ -1,37 +1,7 @@
 // effect-plain: moved unchanged from apps/server/src/media/indexer.ts (size split)
-import { decodePayload, type Payload } from '@zilar/protocol';
+import { decodeAgentPayload, isLiveAiUiRow } from '../notify/ai-cards';
 import type { ArchiveRow } from '../search/service';
 import type { ExtractedMediaItem, MediaKind, MediaLink } from './indexer';
-
-// The agent payload namespace (packages/xmpp-core/src/namespaces.ts). The
-// server cannot import it, so the value is repeated with this pointer.
-const AGENT_NAMESPACE = 'urn:zilar:agent:0';
-const AGENT_PATTERN = new RegExp(
-  `<agent\\b[^>]*\\bxmlns\\s*=\\s*["']${AGENT_NAMESPACE}["'][^>]*>([\\s\\S]*?)</agent>`,
-  'i',
-);
-
-// The parser unescapes the five XML entities (in this order, so an escaped
-// ampersand is not double-decoded).
-function unescapeXmlText(value: string): string {
-  return value
-    .replaceAll('&lt;', '<')
-    .replaceAll('&gt;', '>')
-    .replaceAll('&quot;', '"')
-    .replaceAll('&apos;', "'")
-    .replaceAll('&amp;', '&');
-}
-
-// Small defensive regex readers, like `stanzaFrom`/`tagAttribute` in
-// search/routes.ts — a missing or malformed element is null, never a throw.
-function decodeAgentPayload(xml: string): Payload | null {
-  const match = AGENT_PATTERN.exec(xml);
-  if (match === null) {
-    return null;
-  }
-  const result = decodePayload(unescapeXmlText(match[1] ?? ''));
-  return result.ok ? result.payload : null;
-}
 
 // The link rule copied from `packages/chat-core/src/links.ts` (which the server
 // does not depend on): only `http(s)` URLs, trailing sentence punctuation
@@ -115,6 +85,11 @@ export function extractLinks(text: string): MediaLink[] {
 // the body. Pure and total: malformed XML, invalid JSON or a bad payload gives
 // only the links, or nothing.
 export function extractMediaItems(row: ArchiveRow): ExtractedMediaItem[] {
+  // The live AI UI (a progress card) is not a message: its stage text is not
+  // content, so it contributes no media and no links (T-1400).
+  if (isLiveAiUiRow(row.xml)) {
+    return [];
+  }
   try {
     return extractMediaItemsUnsafe(row);
   } catch {

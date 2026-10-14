@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
-import { Plus, Zap } from 'lucide-react-native';
+import { isLlmProvider } from '@zilar/chat-core';
+import { Zap } from 'lucide-react-native';
 import { useRef, useState } from 'react';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { View } from 'react-native';
@@ -10,20 +11,21 @@ import { RequireAisAuth } from '@/components/ais/require-ais-auth';
 import { describeAisError, type AisErrorInfo } from '@/components/ais/errors';
 import { buildCreateInput, type WizardForm } from '@/components/ais/form';
 import { LimitsFields } from '@/components/ais/limits-fields';
-import { formatLimit, validateLimits } from '@/components/ais/limits';
+import { validateLimits } from '@/components/ais/limits';
 import { ModelPicker } from '@/components/ais/model-picker';
-import { ProviderPicker } from '@/components/ais/provider-picker';
-import { providerLabel } from '@/components/ais/providers';
+import { defaultCatalogModelId, defaultModelFor } from '@/components/ais/models';
+import { ProviderStep } from '@/components/ais/provider-step';
+import { ReviewStep } from '@/components/ais/review-step';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { TemplateCards } from '@/components/ais/template-cards';
-import { defaultPersonaFor, templateLabel } from '@/components/ais/templates';
+import { defaultPersonaFor } from '@/components/ais/templates';
 import { useAisApi } from '@/components/ais/use-ais-api';
 import { WizardSteps } from '@/components/ais/wizard-steps';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
-import type { AiLimits, AiTemplate, Connection, CreateAiInput } from '@/lib/ais-api';
+import type { AiTemplate, Connection, CreateAiInput } from '@/lib/ais-api';
 import { ACCENT } from '@/lib/colors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
@@ -58,8 +60,8 @@ function CreateAiWizard() {
   const { api } = useAisApi();
 
   const [form, setForm] = useState<WizardForm>(INITIAL_FORM);
-  const [day, setDay] = useState('2');
-  const [month, setMonth] = useState('20');
+  const [day, setDay] = useState('');
+  const [month, setMonth] = useState('');
   const [step, setStep] = useState(1);
   // Guards against a double tap landing before React re-renders the disabled
   // button, so one Create can never POST twice.
@@ -70,11 +72,22 @@ function CreateAiWizard() {
   const [listed, reloadConnections] = useQuery(
     () =>
       rawCall(() => api.listConnections()).pipe(
-        Effect.map((list) => list.filter((connection) => connection.status === 'active')),
+        Effect.map((list) =>
+          list.filter(
+            (connection) => connection.status === 'active' && isLlmProvider(connection.provider),
+          ),
+        ),
       ),
     [api],
   );
   const connections: Connection[] = AsyncResult.isSuccess(listed) ? listed.value : [];
+  // T-1395: the models.dev catalog for step 4. A failure is not fatal: the
+  // picker falls back to the static suggestions.
+  const [catalogResult] = useQuery(() => rawCall(() => api.getAiCatalog()), [api]);
+  const catalogModelsFor = (provider: string) =>
+    AsyncResult.isSuccess(catalogResult)
+      ? (catalogResult.value.providers.find((entry) => entry.id === provider)?.models ?? [])
+      : [];
   const loading = isWaiting(listed) || AsyncResult.isInitial(listed);
   const loadFailure = isWaiting(listed) ? undefined : failureOf(listed);
   const loadError: AisErrorInfo =
@@ -122,6 +135,20 @@ function CreateAiWizard() {
     } else {
       router.back();
     }
+  };
+
+  // T-1395: leaving the provider step prefills the catalog's default model
+  // (the first that calls tools), or the static default, when none is set.
+  const goNext = (): void => {
+    if (step === 3 && form.model.trim() === '' && selectedConnection !== null) {
+      const fallback =
+        defaultCatalogModelId(catalogModelsFor(selectedConnection.provider)) ||
+        defaultModelFor(selectedConnection.provider);
+      if (fallback !== '') {
+        setForm((previous) => ({ ...previous, model: fallback }));
+      }
+    }
+    setStep(step + 1);
   };
 
   const [created, createAi] = useAction((input: CreateAiInput) =>
@@ -210,7 +237,7 @@ function CreateAiWizard() {
               </Button>
             ) : null}
             {step < LAST_STEP ? (
-              <Button className="flex-1" disabled={!canAdvance} onPress={() => setStep(step + 1)}>
+              <Button className="flex-1" disabled={!canAdvance} onPress={goNext}>
                 <Text>Next</Text>
               </Button>
             ) : (
@@ -268,26 +295,28 @@ function CreateAiWizard() {
             </View>
           )}
 
-          {step === 3 &&
-            (connections.length === 0 ? (
-              <View className="items-center gap-3 rounded-xl border border-divider p-6">
-                <Text className="text-center text-[15px] text-muted-foreground">
-                  Add a provider key in the web app: menu → Connections
-                </Text>
-              </View>
-            ) : (
-              <ProviderPicker
-                connections={connections}
-                value={form.providerConnectionId}
-                onChange={(providerConnectionId) =>
-                  setForm((previous) => ({ ...previous, providerConnectionId }))
-                }
-              />
-            ))}
+          {step === 3 && (
+            <ProviderStep
+              connections={connections}
+              value={form.providerConnectionId}
+              // Switching provider clears the model, so the next step prefills
+              // the new provider's default (web does the same).
+              onChange={(providerConnectionId) =>
+                setForm((previous) => ({ ...previous, providerConnectionId, model: '' }))
+              }
+              onSaved={(connection) => {
+                reloadConnections();
+                setForm((previous) => ({ ...previous, providerConnectionId: connection.id }));
+              }}
+            />
+          )}
 
           {step === 4 && (
             <ModelPicker
               provider={selectedConnection?.provider ?? ''}
+              models={
+                selectedConnection === null ? [] : catalogModelsFor(selectedConnection.provider)
+              }
               value={form.model}
               onChange={(model) => setForm((previous) => ({ ...previous, model }))}
             />
@@ -316,59 +345,5 @@ function CreateAiWizard() {
         </View>
       </AisScreenShell>
     </KeyboardAvoidingView>
-  );
-}
-
-function ReviewStep({
-  form,
-  limits,
-  connection,
-}: {
-  form: WizardForm;
-  limits: AiLimits | null;
-  connection: Connection | null;
-}) {
-  const rows: Array<[string, string]> = [
-    ['Name', form.name.trim()],
-    ['Template', templateLabel(form.template)],
-    ['Provider', connection === null ? '—' : providerLabel(connection.provider)],
-    ['Model', form.model.trim()],
-    [
-      'Limits',
-      limits === null
-        ? '—'
-        : `${formatLimit(limits.perDayUsd)}/day · ${formatLimit(limits.perMonthUsd)}/month`,
-    ],
-  ];
-  return (
-    <View className="gap-3">
-      <View className="overflow-hidden rounded-xl border border-divider">
-        {rows.map(([label, value], index) => (
-          <View
-            key={label}
-            className={
-              index === 0
-                ? 'flex-row items-start gap-3 px-3 py-2.5'
-                : 'flex-row items-start gap-3 border-t border-divider px-3 py-2.5'
-            }
-          >
-            <Text className="w-20 shrink-0 text-[13px] text-muted-foreground">{label}</Text>
-            <Text className="min-w-0 flex-1 text-[15px] text-foreground">{value}</Text>
-          </View>
-        ))}
-      </View>
-      <View>
-        <Text className="text-[13px] font-medium text-muted-foreground">Persona</Text>
-        <Text className="mt-1 rounded-lg bg-muted px-3 py-2 text-[14px] text-foreground">
-          {form.persona.trim() === '' ? '—' : form.persona}
-        </Text>
-      </View>
-      <View className="flex-row items-center gap-1.5">
-        <Plus size={14} color={ACCENT} />
-        <Text className="flex-1 text-[13px] text-muted-foreground">
-          Creating this AI provisions its chat account and issues a capped provider key.
-        </Text>
-      </View>
-    </View>
   );
 }

@@ -1,0 +1,129 @@
+import { Select as BaseSelect } from '@base-ui/react/select';
+import { Check, ChevronDown } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { cn } from '@/lib/utils';
+import { FIELD_INPUT } from './text-input';
+
+export interface SelectOption {
+  readonly value: string;
+  readonly label: string;
+}
+
+export interface SelectProps {
+  /** The options, in display order. */
+  options: readonly SelectOption[];
+  /** The selected value, or `null` for nothing yet (the placeholder shows). */
+  value: string | null;
+  onValueChange: (value: string) => void;
+  /** The accessible name of the field, used on the trigger and the popup list. */
+  label: string;
+  /** Shown on the trigger when no option is selected. */
+  placeholder?: string;
+  disabled?: boolean;
+  /** Extra classes for the trigger. */
+  className?: string;
+}
+
+/** Above this many options the popup grows a filter input. */
+const FILTER_THRESHOLD = 8;
+
+const TRIGGER =
+  'flex w-full items-center justify-between gap-2 rounded-lg border border-input bg-background px-3 py-2 text-left text-[15px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40 data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
+
+const PANEL =
+  'max-h-[var(--available-height)] min-w-[180px] overflow-y-auto rounded-xl border border-border-strong bg-surface py-1 shadow-lg outline-none';
+
+const ITEM =
+  'flex w-full items-center gap-2 px-3 py-2 text-left text-[15px] select-none outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-list-hover data-[selected]:font-medium';
+
+/**
+ * A single-choice dropdown built on Base UI `Select`, styled like the kit
+ * `Menu`: the panel is portalled, it flips and shifts to stay inside the
+ * viewport, and Base UI supplies the keyboard support (arrows, Home/End,
+ * typeahead, Escape, focus back to the trigger). A list longer than
+ * `FILTER_THRESHOLD` options gets a filter input above the list.
+ */
+export function Select({
+  options,
+  value,
+  onValueChange,
+  label,
+  placeholder,
+  disabled,
+  className,
+}: SelectProps) {
+  const filterable = options.length > FILTER_THRESHOLD;
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!filterable || needle === '') {
+      return options;
+    }
+    return options.filter((option) => option.label.toLowerCase().includes(needle));
+  }, [filterable, options, query]);
+
+  return (
+    <BaseSelect.Root
+      items={options}
+      value={value}
+      onValueChange={(next: string | null) => {
+        if (next !== null) {
+          onValueChange(next);
+        }
+      }}
+      disabled={disabled ?? false}
+      onOpenChange={(open) => {
+        if (!open) {
+          setQuery('');
+        }
+      }}
+    >
+      <BaseSelect.Trigger className={cn(TRIGGER, className)} aria-label={label}>
+        <BaseSelect.Value placeholder={placeholder} className="min-w-0 flex-1 truncate" />
+        <BaseSelect.Icon className="shrink-0 text-muted-foreground">
+          <ChevronDown className="size-4" aria-hidden="true" />
+        </BaseSelect.Icon>
+      </BaseSelect.Trigger>
+      <BaseSelect.Portal>
+        <BaseSelect.Positioner
+          className="z-50"
+          side="bottom"
+          align="start"
+          sideOffset={4}
+          collisionPadding={8}
+        >
+          <BaseSelect.Popup className={PANEL} aria-label={label}>
+            {filterable && (
+              <div className="px-1 pt-1">
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Filter…"
+                  aria-label={`Filter ${label}`}
+                  className={cn(FIELD_INPUT, 'h-9 py-1')}
+                />
+              </div>
+            )}
+            <BaseSelect.List>
+              {filtered.map((option) => (
+                <BaseSelect.Item key={option.value} value={option.value} className={ITEM}>
+                  <BaseSelect.ItemText className="min-w-0 flex-1 truncate">
+                    {option.label}
+                  </BaseSelect.ItemText>
+                  <BaseSelect.ItemIndicator className="shrink-0 text-accent">
+                    <Check className="size-4" aria-hidden="true" />
+                  </BaseSelect.ItemIndicator>
+                </BaseSelect.Item>
+              ))}
+            </BaseSelect.List>
+            {filtered.length === 0 && (
+              <p className="px-3 py-2 text-[14px] text-muted-foreground">No matches</p>
+            )}
+          </BaseSelect.Popup>
+        </BaseSelect.Positioner>
+      </BaseSelect.Portal>
+    </BaseSelect.Root>
+  );
+}

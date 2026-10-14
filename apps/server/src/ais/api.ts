@@ -12,8 +12,7 @@ import {
   AisSchemaErrors,
   type PublicAi as WireAi,
 } from '@zilar/api-contract';
-import type { Logger } from 'pino';
-import type { LitellmAdminClient } from '../ai/litellm-client';
+import { getAiCatalog } from '../ai/catalog';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
@@ -32,6 +31,7 @@ import {
   type EffectApiMount,
 } from '../effect/http-core';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import { toLogger } from './http-logger';
 import {
   assignMachine,
   createAi,
@@ -41,7 +41,6 @@ import {
   resumeAi,
   stopAi,
   updateAi,
-  type AiLimits,
   type AiLogger,
   type PublicAi,
 } from './service';
@@ -53,9 +52,8 @@ export interface AisApiDependencies {
   config: ServerConfig;
   adminClient: EjabberdAdminClient;
   logger: AiLogger;
-  /** Absent when the gateway or the key master key is not configured: routes
-   * that touch an AI answer 503 instead of failing halfway. */
-  litellm?: LitellmAdminClient;
+  /** Absent when the key cipher is not configured: routes that touch an AI
+   * answer 503 instead of failing halfway. */
   cipher?: KeyCipher;
   /** Audit recorder (T-0083): when present, a successful stop / resume that
    * actually flipped the AI's status writes one entry; an idempotent repeat
@@ -64,8 +62,9 @@ export interface AisApiDependencies {
   audit?: AuditRecorder;
 }
 
-// The spend summary the AI list and detail carry (T-0058). Null when LiteLLM
-// cannot be reached: the UI shows "unavailable" and turns fail open.
+// The spend summary the AI list and detail carry (T-0058). Null when the usage
+// read fails or times out (T-1405: it now reads `ai_usage`): the UI shows
+// "unavailable" and turns fail open.
 export interface AiUsageSummary {
   todayUsd: number;
   windowUsd: number;
@@ -73,9 +72,8 @@ export interface AiUsageSummary {
 
 export type PublicAiWithUsage = PublicAi & { usage: AiUsageSummary | null };
 
-// One AI's usage read may hang with LiteLLM, so every read races this
-// timeout: on timeout the AI answers `usage: null` rather than holding the
-// whole list.
+// The usage read is a database sum, but it still races this timeout so a slow
+// database answers `usage: null` rather than holding the whole list.
 export const USAGE_TIMEOUT_MS = 2_000;
 
 // The service rows carry `createdAt` as a `Date`; the wire carries its ISO
@@ -83,17 +81,6 @@ export const USAGE_TIMEOUT_MS = 2_000;
 // the view.
 function toWire(ai: PublicAi | PublicAiWithUsage): WireAi {
   return { ...ai, createdAt: ai.createdAt.toISOString() };
-}
-
-// The route `logger` only warns, but the error envelope logs defects with
-// `error`. Both read the same `(fields, message)` pair, so adapt one to the
-// other without touching the service's logger shape.
-function toLogger(logger: AiLogger): Logger {
-  return {
-    error: (fields: Record<string, unknown>, message: string) => {
-      logger.warn(fields, message);
-    },
-  } as unknown as Logger;
 }
 
 const renderSchemaError: SchemaErrorRender = (error) =>
@@ -106,17 +93,15 @@ const renderSchemaError: SchemaErrorRender = (error) =>
 // body on an unconfigured server still answers 503, not 400. `requires:
 // CurrentUser` is satisfied by `Session`. The gate needs no decode, so it
 // also covers the no-payload writes (delete) for free; stop/resume/machine
-// need only the DB and skip it, as they did before.
+// need only the DB and skip it, as they did before. The only requirement is
+// the key cipher (to seal provider keys at rest).
 
-function configuredLayer(deps: {
-  litellm?: LitellmAdminClient;
-  cipher?: KeyCipher;
-}): Layer.Layer<AisConfigured> {
+function configuredLayer(deps: { cipher?: KeyCipher }): Layer.Layer<AisConfigured> {
   return Layer.succeed(
     AisConfigured,
     AisConfigured.of(
       Effect.fnUntraced(function* (httpEffect) {
-        if (deps.litellm === undefined || deps.cipher === undefined) {
+        if (deps.cipher === undefined) {
           const request = yield* HttpServerRequest.HttpServerRequest;
           return httpErrorResponse(
             requestIdOf(request),
@@ -134,28 +119,23 @@ const AisApi = HttpApi.make('ais').add(AisGroup);
 export function createAisApi(deps: AisApiDependencies): EffectApiMount {
   const logger = deps.logger;
   const effectLogger = toLogger(logger);
-  const litellm = deps.litellm;
   const cipher = deps.cipher;
   const audit = deps.audit;
 
-  const requireConfigured = (): { cipher: KeyCipher; litellm: LitellmAdminClient } => {
+  const requireConfigured = (): { cipher: KeyCipher } => {
     // Unreachable when called through create/patch/remove: the AisConfigured
     // endpoint middleware already answered 503. Kept as a backstop so the
     // handler never runs half-configured.
-    if (cipher === undefined || litellm === undefined) {
+    if (cipher === undefined) {
       throw new HttpError(503, 'ais_unavailable', 'AI management is not configured on this server');
     }
-    return { cipher, litellm };
+    return { cipher };
   };
 
-  const serviceDeps = (configured: {
-    cipher: KeyCipher;
-    litellm: LitellmAdminClient;
-  }): Parameters<typeof createAi>[0] => ({
+  const serviceDeps = (configured: { cipher: KeyCipher }): Parameters<typeof createAi>[0] => ({
     db: deps.db,
     adminClient: deps.adminClient,
     cipher: configured.cipher,
-    litellm: configured.litellm,
     logger,
     domain: deps.config.xmpp.domain,
   });
@@ -177,15 +157,12 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
     );
   };
 
-  // Reads one AI's usage with a per-AI timeout. Without a LiteLLM client, or
-  // on any failure or timeout, the AI answers `usage: null`: spend is
-  // best-effort decoration on the management API, never a reason to fail it.
+  // Reads one AI's usage with a per-AI timeout. On any failure or timeout the
+  // AI answers `usage: null`: spend is best-effort decoration on the
+  // management API, never a reason to fail it.
   const withUsage = async (ai: PublicAi): Promise<PublicAiWithUsage> => {
-    if (litellm === undefined) {
-      return { ...ai, usage: null };
-    }
     const usage = await Promise.race([
-      getAiUsage({ db: deps.db, litellm, logger }, ai.id).catch(() => null),
+      getAiUsage({ db: deps.db }, ai.id).catch(() => null),
       new Promise<null>((resolve) => setTimeout(() => resolve(null), USAGE_TIMEOUT_MS)),
     ]);
     if (usage === null) {
@@ -221,6 +198,11 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
           return rows.map(toWire);
         }),
       )
+      // T-1395: read-only models.dev catalog; needs no configured gateway.
+      .handle(
+        'catalog',
+        handler(effectLogger, () => getAiCatalog()),
+      )
       .handle(
         'detail',
         handler(effectLogger, async (request, user) => {
@@ -244,7 +226,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
             ...(payload.persona === undefined ? {} : { persona: payload.persona }),
             providerConnectionId: payload.providerConnectionId,
             model: payload.model,
-            limits: { ...payload.limits } as AiLimits,
+            limits: payload.limits ?? { perDayUsd: null, perMonthUsd: null },
           });
           return toWire(created);
         }),
@@ -259,7 +241,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
             ownerId: user.id,
             ...(payload.name === undefined ? {} : { name: payload.name }),
             ...(payload.persona === undefined ? {} : { persona: payload.persona }),
-            ...(payload.limits === undefined ? {} : { limits: { ...payload.limits } as AiLimits }),
+            ...(payload.limits === undefined ? {} : { limits: payload.limits }),
             ...(payload.model === undefined ? {} : { model: payload.model }),
             ...(payload.providerConnectionId === undefined
               ? {}
@@ -268,6 +250,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
             ...(payload.acceptsDelegation === undefined
               ? {}
               : { acceptsDelegation: payload.acceptsDelegation }),
+            ...(payload.computerMode === undefined ? {} : { computerMode: payload.computerMode }),
           });
           return toWire(updated);
         }),
@@ -283,8 +266,8 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
       // prevents the gateway from waking it back up; resume reconnects it. Both
       // answer the public AI, so the panel can re-render against the server
       // truth without a second GET. Unlike the other writes they need only the
-      // database: a kill switch must work when LiteLLM, the cipher or the
-      // gateway are not configured or are down.
+      // database: a kill switch must work when the cipher or the gateway are
+      // not configured or are down.
       //
       // T-0083: when an `audit` recorder is wired in, a real status flip writes
       // one entry (`ai.stopped` / `ai.resumed`); an idempotent repeat writes
@@ -385,12 +368,7 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, effectLogger)),
     Layer.provide(schemaErrorLayerFor(AisSchemaErrors, effectLogger, renderSchemaError)),
-    Layer.provide(
-      configuredLayer({
-        ...(litellm === undefined ? {} : { litellm }),
-        ...(cipher === undefined ? {} : { cipher }),
-      }),
-    ),
+    Layer.provide(configuredLayer(cipher === undefined ? {} : { cipher })),
   );
 
   return mountApi(AisApi, apiLayer);

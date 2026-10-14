@@ -4,6 +4,7 @@ import type { GroupRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import type { SearchOwner } from '../search/service';
 import { bareJid, ownBareJid } from '../jid';
+import { isLiveAiUiEdit, isLiveAiUiRow } from '../notify/ai-cards';
 import { stanzaFrom } from '../search/routes';
 import { canSeeTopic, type TopicRow } from '../topics/access';
 import { albumInfoFromXml } from '../xmpp/album-xml';
@@ -19,13 +20,25 @@ type CandidateVerdict =
 // route can call it without the push component's cipher, sender or logger.
 type CandidateDeps = Pick<PushServiceDeps, 'db' | 'config' | 'now'>;
 
+// A reader that is not walking a batch passes no live-UI ids: a correction or
+// retraction then skips only when the row is not an edit of a known card.
+const NO_LIVE_IDS: ReadonlySet<string> = new Set<string>();
+
 export async function resolveCandidate(
   deps: CandidateDeps,
   userId: string,
   allowed: SearchOwner,
   row: ArchiveCandidate,
+  liveIds: ReadonlySet<string> = NO_LIVE_IDS,
 ): Promise<CandidateVerdict> {
   if (row.originId === '') {
+    return { status: 'skip' };
+  }
+  // The live AI UI (a progress card) is not a message, and neither is a
+  // correction or retraction that edits one (T-1400): never notify for them.
+  // The card itself carries the payload; a card edit only names its target, so
+  // `liveIds` is the batch's live-UI origin ids the caller already read.
+  if (isLiveAiUiRow(row.xml) || isLiveAiUiEdit(row.xml, liveIds)) {
     return { status: 'skip' };
   }
   // A retraction archives with the stock fallback sentence as its text:

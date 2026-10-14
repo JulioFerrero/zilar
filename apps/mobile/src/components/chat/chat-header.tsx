@@ -16,6 +16,13 @@ import type { ChatSummary } from '@/lib/types';
 import { useChatStore } from '@/store/chat-store-provider';
 
 /**
+ * T-1406: client-core writes a status beside the typing names; the mobile
+ * store's `TypingState` (outside this task's Allowed files) types only `names`,
+ * so the header reads the status through a widened record.
+ */
+type TypingStatus = { status?: string };
+
+/**
  * The `@handle` of a DM's peer, when the contact list knows one (T-1192,
  * MUX-11). A DM row's id is the peer's bare jid, the same string a contact
  * carries; a contact whose id needs the server's hash fallback resolves to no
@@ -73,14 +80,20 @@ export function ChatHeader({
   const contacts = useChatStore((state) => state.contacts);
   const dmHandle = dmHandleFor(chat, contacts);
   const names = useChatStore((state) => state.typing[chat.id]?.names);
+  const aiStatusText = useChatStore(
+    (state) => (state.typing[chat.id] as TypingStatus | undefined)?.status,
+  );
   const hasDraft = useChatStore((state) => state.drafts[chat.id] !== undefined);
   const typing = typingLabel(chat, names ?? []);
   const writing = chat.isAI && (typing !== undefined || hasDraft);
   // T-1192 (MUX-15): while the connection is not online the status line wins
   // over the subtitle and the typing hint, the way the chat list shows it.
   const connection = connectionLabel(status);
+  // T-1406: while the AI carries a status it reads next to the dots, e.g.
+  // "Searching the web…"; with no status the line keeps the plain dots.
+  const aiLine = aiStatusText === undefined ? undefined : `${aiStatusText}…`;
   const subtitle =
-    connection ?? (writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date())));
+    connection ?? aiLine ?? (writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date())));
   const working = chat.isAI && chat.aiStatus === 'working';
   const isTopic = chat.topic !== undefined;
   const groupTarget = onOpenGroup !== undefined ? (chat.groupId ?? undefined) : undefined;
@@ -122,7 +135,9 @@ export function ChatHeader({
         <Text numberOfLines={1} className="shrink text-[12px] leading-4 text-muted-foreground">
           {subtitle}
         </Text>
-        {working || writing ? <TypingDots color={MUTED_FOREGROUND} /> : null}
+        {working || writing || aiLine !== undefined ? (
+          <TypingDots color={MUTED_FOREGROUND} />
+        ) : null}
       </View>
     </View>
   );

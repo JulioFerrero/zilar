@@ -33,8 +33,8 @@ export function createCore(options: XmppCoreOptions, deps: CoreDependencies = {}
     loadHistory: (chatJid, kind, opts) => Effect.runPromise(core.loadHistory(chatJid, kind, opts)),
     requestUploadSlot: (request) => Effect.runPromise(core.requestUploadSlot(request)),
     setPushEnabled: (pushOptions) => Effect.runPromise(core.setPushEnabled(pushOptions)),
-    sendTyping: (to, kind, state) => {
-      Effect.runFork(core.sendTyping(to, kind, state));
+    sendTyping: (to, kind, state, status) => {
+      Effect.runFork(core.sendTyping(to, kind, state, status));
     },
     markDisplayed: (chatJid, kind, messageId) => {
       Effect.runFork(core.markDisplayed(chatJid, kind, messageId));

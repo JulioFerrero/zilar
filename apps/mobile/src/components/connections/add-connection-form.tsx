@@ -1,27 +1,19 @@
 import { Effect } from 'effect';
+import { AI_PROVIDER_IDS } from '@zilar/chat-core';
 import { Eye, EyeOff, X } from 'lucide-react-native';
 import { useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { providerLabel } from '@/components/ais/providers';
 import { keyAfterSave, saveConnection } from '@/components/connections/save-connection';
 import { useConnectionsApi } from '@/components/connections/use-connections-api';
 import { Button } from '@/components/ui/button';
+import { SelectSheet } from '@/components/ui/select-sheet';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { ICON } from '@/lib/colors';
 import type { ProviderConnection } from '@/lib/connections-api';
 import { useAction } from '@/lib/effect/use-action';
-
-const PROVIDERS = [
-  'openai',
-  'anthropic',
-  'google',
-  'deepseek',
-  'xai',
-  'openrouter',
-  'github',
-] as const;
 
 /**
  * The add form: a provider picker and a secure key field. The key lives in
@@ -31,20 +23,35 @@ const PROVIDERS = [
 export function AddConnectionForm({
   onCancel,
   onSaved,
+  providers = AI_PROVIDER_IDS,
 }: {
   onCancel: () => void;
   onSaved: (connection: ProviderConnection) => void;
+  /**
+   * Which provider ids to offer. Defaults to every provider; the AI wizard
+   * passes the LLM ones only, because a GitHub key cannot run an AI.
+   */
+  providers?: readonly string[];
 }) {
   const { api } = useConnectionsApi();
-  const [provider, setProvider] = useState<string>(PROVIDERS[0]);
+  const [provider, setProvider] = useState<string>(providers[0] ?? 'openai');
   const [key, setKey] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
   const [label, setLabel] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // T-1396: the custom provider is the only one with a base URL, and the only
+  // one whose label is required.
+  const isCustom = provider === 'openai-compatible';
 
   const [, saveForm] = useAction(
-    (draft: { readonly provider: string; readonly key: string; readonly label: string }) =>
+    (draft: {
+      readonly provider: string;
+      readonly key: string;
+      readonly label: string;
+      readonly baseUrl?: string;
+    }) =>
       Effect.sync(() => {
         setBusy(true);
         setError('');
@@ -76,7 +83,22 @@ export function AddConnectionForm({
       setError('Paste your API key.');
       return;
     }
-    saveForm({ provider, key: trimmedKey, label: label.trim() });
+    const trimmedBaseUrl = baseUrl.trim();
+    if (isCustom && trimmedBaseUrl === '') {
+      setError('Enter a base URL.');
+      return;
+    }
+    const trimmedLabel = label.trim();
+    if (isCustom && trimmedLabel === '') {
+      setError('Enter a label.');
+      return;
+    }
+    saveForm({
+      provider,
+      key: trimmedKey,
+      label: trimmedLabel,
+      ...(isCustom ? { baseUrl: trimmedBaseUrl } : {}),
+    });
   };
 
   return (
@@ -96,36 +118,28 @@ export function AddConnectionForm({
 
       <View className="gap-1">
         <Text className="text-[14px] font-medium text-foreground">Provider</Text>
-        <View className="flex-row flex-wrap gap-2">
-          {PROVIDERS.map((id) => {
-            const selected = id === provider;
-            return (
-              <Pressable
-                key={id}
-                accessibilityRole="radio"
-                accessibilityState={{ selected }}
-                accessibilityLabel={providerLabel(id)}
-                onPress={() => setProvider(id)}
-                className={
-                  selected
-                    ? 'rounded-full bg-accent px-3 py-1.5 active:opacity-90'
-                    : 'rounded-full border border-border-strong px-3 py-1.5 active:bg-surface-raised'
-                }
-              >
-                <Text
-                  className={
-                    selected
-                      ? 'text-[14px] font-medium text-accent-foreground'
-                      : 'text-[14px] text-foreground'
-                  }
-                >
-                  {providerLabel(id)}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <SelectSheet
+          label="Provider"
+          value={provider}
+          options={providers.map((id) => ({ value: id, label: providerLabel(id) }))}
+          onChange={setProvider}
+        />
       </View>
+
+      {isCustom ? (
+        <View className="gap-1">
+          <Text className="text-[14px] font-medium text-foreground">Base URL</Text>
+          <TextField
+            value={baseUrl}
+            onChangeText={setBaseUrl}
+            accessibilityLabel="Base URL"
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={300}
+            placeholder="https://api.groq.com/openai/v1"
+          />
+        </View>
+      ) : null}
 
       <View className="gap-1">
         <Text className="text-[14px] font-medium text-foreground">API key</Text>
@@ -154,7 +168,9 @@ export function AddConnectionForm({
       </View>
 
       <View className="gap-1">
-        <Text className="text-[14px] font-medium text-foreground">Label (optional)</Text>
+        <Text className="text-[14px] font-medium text-foreground">
+          {isCustom ? 'Label' : 'Label (optional)'}
+        </Text>
         <TextField
           value={label}
           onChangeText={setLabel}

@@ -41,7 +41,7 @@ function AmountField({
   );
 }
 
-/** Wizard step 5: the USD daily and monthly caps, with the server's rules. */
+/** Wizard step 5: the optional USD daily and monthly caps, with the server's rules. */
 export function LimitsFields({
   day,
   month,
@@ -63,7 +63,7 @@ export function LimitsFields({
         label="Per day (USD)"
         accessibilityLabel="Per day amount"
         value={day}
-        placeholder="2"
+        placeholder="No limit"
         error={dayError}
         onChange={onDayChange}
       />
@@ -71,12 +71,12 @@ export function LimitsFields({
         label="Per month (USD)"
         accessibilityLabel="Per month amount"
         value={month}
-        placeholder="20"
+        placeholder="No limit"
         error={monthError}
         onChange={onMonthChange}
       />
       <Text className="text-[13px] text-muted-foreground">
-        Amounts are in USD. The monthly cap is what the AI's provider key can spend.
+        Optional. Leave empty for no limit. Amounts are in USD.
       </Text>
     </View>
   );

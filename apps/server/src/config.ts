@@ -36,6 +36,11 @@ function isPostgresUrl(value: string): string | undefined {
 const anyUrlSchema = Schema.String.pipe(Schema.check(Schema.makeFilter(isAnyUrl)));
 const databaseUrlSchema = Schema.String.pipe(Schema.check(Schema.makeFilter(isPostgresUrl)));
 const nonEmptyStringSchema = Schema.String.pipe(Schema.check(Schema.isMinLength(1)));
+// A pinned reference (`<name>@sha256:<64 hex>`); a tag-only value is refused.
+function isPinnedImage(value: string): string | undefined {
+  return /^[^@\s]+@sha256:[0-9a-f]{64}$/.test(value) ? undefined : 'invalid pinned image';
+}
+const pinnedImageSchema = Schema.String.pipe(Schema.check(Schema.makeFilter(isPinnedImage)));
 
 // A key that is absent (or `undefined`) falls back to `fallback`, matching
 // zod's `.default()` / preprocess `?? default` behaviour, and the decoded type
@@ -120,15 +125,10 @@ const serverConfigSchema = Schema.Struct({
   BETTER_AUTH_SECRET: Schema.String.pipe(Schema.check(Schema.isMinLength(32))),
   BETTER_AUTH_URL: Schema.optional(anyUrlSchema),
   WEB_ORIGINS: withDefault(webOriginsSchema, 'http://localhost:5173'),
-  // LLM gateway (LiteLLM). Both are optional so the server still boots in
-  // environments without a gateway; the AI module refuses to call LiteLLM
-  // when the master key is absent. The base URL has a default applied there.
-  LITELLM_BASE_URL: Schema.optional(anyUrlSchema),
   // Search (T-0117): connection string for a read-only role on the
   // ejabberd MAM archive. Absent → GET /api/search answers 501 and the
   // web hides the feature.
   XMPP_ARCHIVE_DATABASE_URL: Schema.optional(databaseUrlSchema),
-  LITELLM_MASTER_KEY: Schema.optional(nonEmptyStringSchema),
   // GitHub App (one App for the platform). Optional so the server still
   // boots without git integration; all three must be set together.
   GITHUB_APP_ID: Schema.optional(nonEmptyStringSchema),
@@ -183,9 +183,9 @@ const serverConfigSchema = Schema.Struct({
   ),
   // Envelope-encryption master key for provider keys stored in
   // `provider_connections`. Optional so the server still boots without it;
-  // the connections module refuses to start when it is absent (mirrors how
-  // LITELLM_MASTER_KEY is handled by the AI module). At least 32 bytes, so a
-  // weak key fails validation at startup rather than encrypting at rest.
+  // the connections module refuses to start when it is absent. At least 32
+  // bytes, so a weak key fails validation at startup rather than encrypting at
+  // rest.
   ZILAR_KEY_ENCRYPTION_KEY: Schema.optional(
     Schema.String.pipe(Schema.check(Schema.isMinLength(32))),
   ),
@@ -230,7 +230,7 @@ const serverConfigSchema = Schema.Struct({
   // Runner hub (T-0071): off by default. When enabled, the server accepts
   // tunnel connections from approved machines on RUNNER_HUB_PORT (default
   // 3189) bound to 127.0.0.1. The HTTP-only gateway requirement is checked
-  // in index.ts once the LiteLLM base URL is known.
+  // at startup.
   RUNNER_HUB_ENABLED: booleanFlagSchema(),
   // Routines scheduler (T-0104): when true, `index.ts` starts the
   // scheduler that fires due routines. Off by default; enabling it also
@@ -254,10 +254,8 @@ const serverConfigSchema = Schema.Struct({
   // the server decides which AI answers a room message without an @mention.
   // Off by default; the per-group switch is inert while this is off.
   LISTENER_ENABLED: booleanFlagSchema(),
-  // The LiteLLM model name the listener calls (T-0475, plan §2.2). It is
-  // paid with the server's LiteLLM master key, never an AI's own key, so
-  // one room costs the platform, not any owner. Unset means the listener
-  // stays off even when `LISTENER_ENABLED` is true.
+  // The model name the listener calls (T-0475, plan §2.2). Unset means the
+  // listener stays off even when `LISTENER_ENABLED` is true.
   LISTENER_MODEL: Schema.optional(listenerModelSchema),
   // Model-side tool rounds (T-0106): how many tool rounds one AI turn
   // may run. Integer 1 to 10. Unset = 1 when `TOOLS_ENABLED` is off
@@ -281,6 +279,11 @@ const serverConfigSchema = Schema.Struct({
     ),
     '5000',
   ),
+  // Desk sidecar socket (T-1407): the host service that runs the desk jails,
+  // spoken by the cloud `Hands` adapter. Unset means no cloud computer.
+  DESK_AGENT_SOCKET: Schema.optional(nonEmptyStringSchema),
+  // The pinned jail image (`<name>@sha256:<64 hex>`, T-1418); unset = off.
+  DESK_IMAGE: Schema.optional(pinnedImageSchema),
 });
 
 type RawServerConfig = Schema.Schema.Type<typeof serverConfigSchema>;
@@ -412,13 +415,14 @@ function formatIssues(details: ReadonlyArray<ConfigDetail>): string {
 // them exactly as zod's `?? default` did.
 const EMPTY_MEANS_UNSET_KEYS = [
   'ZILAR_KEY_ENCRYPTION_KEY',
-  'LITELLM_MASTER_KEY',
   'MAIL_TRANSPORT',
   'SMTP_HOST',
   'SMTP_USER',
   'SMTP_PASSWORD',
   'MAIL_FROM',
   'MAIL_REPLY_TO',
+  'DESK_AGENT_SOCKET',
+  'DESK_IMAGE',
 ] as const;
 
 function emptyMailSettingsAsUnset(

@@ -154,6 +154,8 @@ export function writeChatListCache(userId: string, chats: readonly ChatSummary[]
         online: undefined,
         onlineCount: undefined,
         lastSeenAt: undefined,
+        // T-1406: `aiStatus` is live too; never paint a stale "working".
+        aiStatus: undefined,
         lastMessage:
           chat.lastMessage === undefined
             ? undefined

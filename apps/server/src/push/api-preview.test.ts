@@ -296,6 +296,60 @@ describe('GET /api/push/preview', () => {
     expect(errorCode(json)).toBe('not_found');
   });
 
+  it('answers 404 for an AI progress card and for an edit of one', async () => {
+    const { alice, peer } = await setupDm();
+    const owner = localpartFor(alice.id);
+    const card = `<message type="chat" from="${peer}/desk"><body>Searching</body><agent xmlns="urn:zilar:agent:0">{"v":0,"type":"progress","data":{"ai":"${peer}","stage":"Searching"}}</agent></message>`;
+    const correction = `<message type="chat" from="${peer}/desk"><body>Working</body><replace xmlns="urn:xmpp:message-correct:0" id="card-1"/></message>`;
+    const retraction = `<message type="chat" from="${peer}/desk"><body>…attempted to retract…</body><retract xmlns="urn:xmpp:message-retract:1" id="card-1"/></message>`;
+    await seedArchive(archiveClient, [
+      {
+        owner,
+        peer: `${peer}/desk`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'card-1',
+        txt: 'Searching',
+        xml: card,
+      },
+      {
+        owner,
+        peer: `${peer}/desk`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'edit-1',
+        txt: 'Working',
+        xml: correction,
+      },
+      {
+        owner,
+        peer: `${peer}/desk`,
+        barePeer: peer,
+        kind: 'chat',
+        nick: '',
+        originId: 'retract-1',
+        txt: '…',
+        xml: retraction,
+      },
+      dmRow(owner, peer, 'origin-answer', 'Here is the answer'),
+    ]);
+
+    // The card and its edits are not messages: no preview, like a muted or
+    // hidden row (T-1400). The edit only names its target, so the route reads
+    // it; the retraction is skipped by the resolver's retraction rule anyway.
+    for (const id of ['card-1', 'edit-1', 'retract-1']) {
+      const { status, json } = await preview(alice.cookie, id);
+      expect(status).toBe(404);
+      expect(errorCode(json)).toBe('not_found');
+    }
+    // A real message still previews.
+    const answer = await preview(alice.cookie, 'origin-answer');
+    expect(answer.status).toBe(200);
+    expect(answer.json).toEqual({ title: 'Bob', body: 'Here is the answer', chatId: peer });
+  });
+
   it('answers 401 without a session', async () => {
     const { status } = await preview(undefined, 'origin-1');
 

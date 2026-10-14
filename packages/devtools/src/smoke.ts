@@ -4,8 +4,8 @@
 //
 // It fails with a non-zero exit code and one message per check when the stack
 // is not healthy. It talks to the stack the same way a developer would: docker
-// compose exec for Postgres and ejabberd, HTTP for the ejabberd admin API and
-// LiteLLM, and a real XMPP WebSocket handshake for ejabberd.
+// compose exec for Postgres and ejabberd, HTTP for the ejabberd admin API, and
+// a real XMPP WebSocket handshake for ejabberd.
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -20,13 +20,11 @@ const XMPP_DOMAIN = 'zilar.localhost';
 const ADMIN_JID = `admin@${XMPP_DOMAIN}`;
 const XMPP_WEBSOCKET_URL = 'ws://127.0.0.1:5280/ws';
 const EJABBERD_API_URL = 'http://127.0.0.1:5280/api/status';
-const LITELLM_LIVELINESS_URL = 'http://127.0.0.1:4000/health/liveliness';
 const TIMEOUT_MS = 10_000;
 
 const POSTGRES_USERS = [
   { user: 'zilar', database: 'zilar' },
   { user: 'ejabberd', database: 'ejabberd' },
-  { user: 'litellm', database: 'litellm' },
 ];
 
 type Check = {
@@ -36,13 +34,12 @@ type Check = {
 
 const checks: Check[] = [
   {
-    name: 'Postgres accepts a connection for the users zilar, ejabberd and litellm',
+    name: 'Postgres accepts a connection for the users zilar and ejabberd',
     run: checkPostgres,
   },
   { name: 'ejabberd reports "started" (ejabberdctl status)', run: checkEjabberdStatus },
   { name: 'ejabberd answers /api/status with admin auth', run: checkEjabberdApi },
   { name: 'ejabberd accepts the XMPP WebSocket <open/> handshake', run: checkEjabberdWebSocket },
-  { name: 'LiteLLM liveness endpoint answers 200', run: checkLitellm },
 ];
 
 function compose(args: string[]): string {
@@ -115,13 +112,6 @@ async function checkEjabberdWebSocket(): Promise<void> {
   const reply = await requestXmppOpen(XMPP_WEBSOCKET_URL, XMPP_DOMAIN, TIMEOUT_MS);
   if (reply.from !== null && reply.from !== XMPP_DOMAIN) {
     throw new Error(`server answered from "${reply.from}", expected "${XMPP_DOMAIN}"`);
-  }
-}
-
-async function checkLitellm(): Promise<void> {
-  const response = await fetch(LITELLM_LIVELINESS_URL, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-  if (response.status !== 200) {
-    throw new Error(`${LITELLM_LIVELINESS_URL} returned HTTP ${response.status}`);
   }
 }
 

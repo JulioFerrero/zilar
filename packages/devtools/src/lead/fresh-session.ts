@@ -44,7 +44,10 @@ export async function startFreshWorkerSession(
   deps: FreshSessionDeps,
   input: { task: string; record: TaskRecord; title: string; prompt: string },
 ): Promise<{ sessionId: string; model: string }> {
-  const { model: frontMatterModel, effort } = readTaskFrontMatter(deps.repoRoot, input.task);
+  const { model: frontMatterModel, effort } = readTaskFrontMatter(
+    input.record.worktree,
+    input.task,
+  );
   // `model: auto` re-resolves when the fresh session starts: it always picks
   // the Go DeepSeek Flash now (T-1242). Other models keep the record's model
   // (switch-model may have moved it onto the paid fallback).

@@ -1,4 +1,6 @@
 import { Effect } from 'effect';
+import type { ModelTarget } from '../../ai/providers';
+import { recordUsage } from '../../ais/usage-store';
 import type { AgentGatewayDeps, AiSession, GatewayLogger } from './contracts';
 import type { MemoryContext } from '../context';
 import { compactMemoryEffect } from '../memory/compactor';
@@ -9,9 +11,7 @@ import { completeChat } from '../reply';
 export interface MemoryRunnerContext {
   deps: Pick<AgentGatewayDeps, 'db' | 'archive' | 'fetchImpl'>;
   logger: GatewayLogger;
-  baseUrl: string;
-  modelNameForAi: (aiId: string) => string;
-  secretsFor: (virtualKey?: string) => string[];
+  secretsFor: (secret?: string) => string[];
   nowMs: () => number;
   toRedactedError: (error: unknown, secrets: readonly string[]) => Error;
   checkDmRoundGate: (session: AiSession) => Promise<{ limited: boolean; reply: string } | null>;
@@ -26,24 +26,16 @@ export interface MemoryRunner {
     aiBareJid: string;
     ownerName?: string | undefined;
     now: Date;
-    virtualKey?: string | undefined;
+    /** Used only to redact log lines; never sent anywhere. */
+    secret?: string | undefined;
   }) => Promise<MemoryContext>;
-  startCompaction: (session: AiSession, chatKey: string, virtualKey: string) => void;
+  startCompaction: (session: AiSession, chatKey: string, target: ModelTarget) => void;
 }
 
 type LoadMemoryInput = Parameters<MemoryRunner['loadMemoryContext']>[0];
 
 export function createMemoryRunner(ctx: MemoryRunnerContext): MemoryRunner {
-  const {
-    deps,
-    logger,
-    baseUrl,
-    modelNameForAi,
-    secretsFor,
-    nowMs,
-    toRedactedError,
-    checkDmRoundGate,
-  } = ctx;
+  const { deps, logger, secretsFor, nowMs, toRedactedError, checkDmRoundGate } = ctx;
 
   // Indexes this chat when an archive is configured, then reads its pinned
   // facts and memory block. It never throws and never logs text: a failure
@@ -71,7 +63,7 @@ export function createMemoryRunner(ctx: MemoryRunnerContext): MemoryRunner {
         Effect.catchDefect((error) =>
           Effect.sync(() => {
             logger.warn(
-              { err: toRedactedError(error, secretsFor(input.virtualKey)), aiId: input.aiId },
+              { err: toRedactedError(error, secretsFor(input.secret)), aiId: input.aiId },
               'AI memory index failed; replying with stored memory',
             );
           }),
@@ -92,7 +84,7 @@ export function createMemoryRunner(ctx: MemoryRunnerContext): MemoryRunner {
       Effect.catchDefect((error) =>
         Effect.sync((): MemoryContext => {
           logger.warn(
-            { err: toRedactedError(error, secretsFor(input.virtualKey)), aiId: input.aiId },
+            { err: toRedactedError(error, secretsFor(input.secret)), aiId: input.aiId },
             'AI memory read failed; replying without stored memory',
           );
           return { facts: [], lines: [] };
@@ -111,7 +103,7 @@ export function createMemoryRunner(ctx: MemoryRunnerContext): MemoryRunner {
   const compactionEffect = Effect.fnUntraced(function* (
     session: AiSession,
     chatKey: string,
-    virtualKey: string,
+    target: ModelTarget,
   ): Effect.fn.Return<void> {
     const gate = yield* Effect.promise(() => checkDmRoundGate(session));
     if (gate !== null) {
@@ -124,12 +116,22 @@ export function createMemoryRunner(ctx: MemoryRunnerContext): MemoryRunner {
       chatKey,
       complete: (prompt) =>
         completeChat({
-          baseUrl,
-          virtualKey,
-          model: modelNameForAi(session.aiId),
+          target,
           messages: [{ role: 'user', content: prompt }],
           ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
           secrets: secretsFor(),
+          // T-1405: compaction is a model call too; count its tokens and cost
+          // against the AI. Best effort and fire and forget.
+          onUsage: (usage) => {
+            void recordUsage(
+              { db: deps.db, logger },
+              session.aiId,
+              target.provider,
+              target.model,
+              usage,
+              new Date(nowMs()),
+            );
+          },
         }),
     });
     if (built > 0) {
@@ -140,18 +142,18 @@ export function createMemoryRunner(ctx: MemoryRunnerContext): MemoryRunner {
     }
   });
 
-  function startCompaction(session: AiSession, chatKey: string, virtualKey: string): void {
+  function startCompaction(session: AiSession, chatKey: string, target: ModelTarget): void {
     const key = `${session.aiId}:${chatKey}`;
     if (runningCompactions.has(key)) {
       return;
     }
     runningCompactions.add(key);
     Effect.runFork(
-      compactionEffect(session, chatKey, virtualKey).pipe(
+      compactionEffect(session, chatKey, target).pipe(
         Effect.catchDefect((error) =>
           Effect.sync(() => {
             logger.warn(
-              { err: toRedactedError(error, secretsFor(virtualKey)), aiId: session.aiId },
+              { err: toRedactedError(error, secretsFor(target.apiKey)), aiId: session.aiId },
               'AI memory compaction failed',
             );
           }),

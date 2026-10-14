@@ -9,6 +9,7 @@
     "start": "tsx src/cli.ts"
   },
   "dependencies": {
+    "@zilar/desk": "workspace:*",
     "@zilar/runner-tunnel": "workspace:*",
     "effect": "catalog:"
   },

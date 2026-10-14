@@ -16,32 +16,46 @@ export const AiTemplate = Schema.Literals(AI_TEMPLATES);
 
 export type AiTemplate = typeof AiTemplate.Type;
 
+// T-1409: where an AI's computer (desk) runs. `off` is the default and means
+// none; the column also allows `runner` and `auto`, but only `off` and `cloud`
+// may be set through the API for now.
+export const AI_COMPUTER_MODES = ['off', 'cloud', 'runner', 'auto'] as const;
+
+export const AiComputerMode = Schema.Literals(AI_COMPUTER_MODES);
+
+export type AiComputerMode = typeof AiComputerMode.Type;
+
 /** The server ceiling for an AI's monthly spend limit. */
 export const MAX_MONTHLY_USD = 200;
 
 /**
- * Both bounds finite and positive, the day inside the month, the month under
+ * Both bounds optional: `null` means the owner set no limit. When a bound is
+ * set it must be finite and positive, the day inside the month, the month under
  * the server ceiling.
  */
 export const AiLimitsPayload = Schema.Struct({
-  perDayUsd: Schema.Number.check(
-    Schema.makeFilter((value) =>
-      Number.isFinite(value) && value > 0 ? undefined : 'perDayUsd must be positive',
+  perDayUsd: Schema.NullOr(
+    Schema.Number.check(
+      Schema.makeFilter((value) =>
+        Number.isFinite(value) && value > 0 ? undefined : 'perDayUsd must be positive',
+      ),
     ),
   ),
-  perMonthUsd: Schema.Number.check(
-    Schema.makeFilter((value) =>
-      Number.isFinite(value) && value > 0 ? undefined : 'perMonthUsd must be positive',
+  perMonthUsd: Schema.NullOr(
+    Schema.Number.check(
+      Schema.makeFilter((value) =>
+        Number.isFinite(value) && value > 0 ? undefined : 'perMonthUsd must be positive',
+      ),
     ),
   ),
 }).check(
   Schema.makeFilter((value) =>
-    value.perDayUsd <= value.perMonthUsd
+    value.perDayUsd === null || value.perMonthUsd === null || value.perDayUsd <= value.perMonthUsd
       ? undefined
       : 'perDayUsd must not be greater than perMonthUsd',
   ),
   Schema.makeFilter((value) =>
-    value.perMonthUsd <= MAX_MONTHLY_USD
+    value.perMonthUsd === null || value.perMonthUsd <= MAX_MONTHLY_USD
       ? undefined
       : `perMonthUsd must be at most ${MAX_MONTHLY_USD}`,
   ),
@@ -55,14 +69,14 @@ const ConnectionId = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength
 const Model = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 const MachineId = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(128));
 
-/** Strict: an unknown key is a 400. */
+/** Strict: an unknown key is a 400. An absent `limits` means no limits. */
 export const CreateAiPayload = Schema.Struct({
   name: Name,
   template: AiTemplate,
   persona: Schema.optional(Persona),
   providerConnectionId: ConnectionId,
   model: Model,
-  limits: AiLimitsPayload,
+  limits: Schema.optional(AiLimitsPayload),
 });
 
 /** Strict, any subset, but a new provider connection needs an explicit model. */
@@ -75,6 +89,9 @@ export const UpdateAiPayload = Schema.Struct({
   // T-0474: the two delegation opt-ins (plan §8, decision 3). Owner only.
   canDelegate: Schema.optional(Schema.Boolean),
   acceptsDelegation: Schema.optional(Schema.Boolean),
+  // T-1409: the owner turns the AI's computer on (`cloud`) or off. Only these
+  // two values are settable through the API for now.
+  computerMode: Schema.optional(Schema.Literals(['off', 'cloud'])),
 }).check(
   Schema.makeFilter((value) =>
     value.providerConnectionId === undefined || value.model !== undefined
@@ -88,15 +105,17 @@ export const AssignMachinePayload = Schema.Struct({
   machineId: Schema.NullOr(MachineId),
 });
 
+// T-1408: a `null` bound means the owner set no limit; the budget check and
+// the warnings only run for a bound that is set.
 export const AiLimits = Schema.Struct({
-  perDayUsd: Schema.Number,
-  perMonthUsd: Schema.Number,
+  perDayUsd: Schema.NullOr(Schema.Number),
+  perMonthUsd: Schema.NullOr(Schema.Number),
 });
 
 export type AiLimits = typeof AiLimits.Type;
 
 // T-0058: the AI's spend summary. Null (or absent from an older server) when
-// LiteLLM cannot be reached.
+// the spend read fails.
 export const AiUsage = Schema.Struct({
   todayUsd: Schema.Number,
   windowUsd: Schema.Number,
@@ -127,10 +146,50 @@ export const PublicAi = Schema.Struct({
   avatarUrl: Schema.optional(Schema.String),
   canDelegate: Schema.optional(Schema.Boolean),
   acceptsDelegation: Schema.optional(Schema.Boolean),
+  // T-1409: the AI's computer mode. Optional so a payload from an older
+  // server still parses; a missing value reads as `off`.
+  computerMode: Schema.optional(AiComputerMode),
   createdAt: Schema.String,
 });
 
 export type PublicAi = typeof PublicAi.Type;
+
+// T-1395: the models.dev catalog behind the wizard's model step. The server
+// fetches models.dev, keeps our six LLM providers (identity ids, see
+// `apps/server/src/ai/catalog.ts`) and caches the result for 24 h. The
+// answer groups the models per provider, newest first. `source` says where it
+// came from: a live fetch, the last good copy, or the static list.
+export const AiCatalogModel = Schema.Struct({
+  /** Exactly the model id the provider expects (OpenRouter: `vendor/model`). */
+  id: Schema.String,
+  name: Schema.String,
+  /** Context window in tokens; 0 when the catalog did not say. */
+  contextTokens: Schema.Number,
+  /** USD per million tokens; null when the catalog did not say. */
+  inputPricePerMTok: Schema.NullOr(Schema.Number),
+  outputPricePerMTok: Schema.NullOr(Schema.Number),
+  toolCalls: Schema.Boolean,
+  reasoning: Schema.Boolean,
+  releaseDate: Schema.String,
+});
+
+export type AiCatalogModel = typeof AiCatalogModel.Type;
+
+export const AiCatalogProvider = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  models: Schema.Array(AiCatalogModel),
+});
+
+export type AiCatalogProvider = typeof AiCatalogProvider.Type;
+
+export const AiCatalog = Schema.Struct({
+  providers: Schema.Array(AiCatalogProvider),
+  source: Schema.Literals(['models.dev', 'cache', 'fallback']),
+  fetchedAt: Schema.String,
+});
+
+export type AiCatalog = typeof AiCatalog.Type;
 
 const AiIdParams = Schema.Struct({ id: Schema.String });
 
@@ -173,6 +232,11 @@ export const AisGroup = HttpApiGroup.make('ais')
       payload: AssignMachinePayload,
       success: PublicAi,
     }).annotate(HttpApi.PayloadParseOptions, { onExcessProperty: 'error' }),
+    // T-1395: the models.dev model catalog; read-only, so it needs no
+    // configured gateway. Path is `/api/ai/catalog` (group prefix `/api`).
+    HttpApiEndpoint.get('catalog', '/ai/catalog', {
+      success: AiCatalog,
+    }),
   )
   .middleware(Session)
   .middleware(AisSchemaErrors)

@@ -119,11 +119,56 @@ describe('runner identity over the wire', () => {
     expect(code).toBe(CLOSE_UNKNOWN_TYPE);
   });
 
-  it('rejects an old protocol version', async () => {
+  it('rejects an unsupported protocol version', async () => {
     pair = await startTunnelPair();
-    const raw = await rawHandshake(pair.server, pair.runnerId, () => 'eA==', PROTOCOL_VERSION - 1);
+    const raw = await rawHandshake(pair.server, pair.runnerId, () => 'eA==', PROTOCOL_VERSION + 1);
     await waitFor(() => raw.closed, 5000, 'version rejection');
     expect(raw.closeCode).toBe(CLOSE_VERSION);
+    raw.destroy();
+  });
+
+  it('still accepts a runner on the previous protocol version', async () => {
+    pair = await startTunnelPair();
+    const keypair = pair.keypair;
+    const raw = await rawHandshake(
+      pair.server,
+      pair.runnerId,
+      (nonce) => signNonce(keypair.privateKey, nonce),
+      PROTOCOL_VERSION - 1,
+    );
+    await waitFor(() => raw.texts.length > 1 || raw.closed, 5000, 'ready');
+    expect(raw.closed).toBe(false);
+    raw.destroy();
+  });
+
+  it('refuses a desk frame before authentication', async () => {
+    pair = await startTunnelPair();
+    const { code } = await wsCloseCode(pair.server, (ws) => {
+      ws.send(
+        JSON.stringify({
+          type: 'hello',
+          runner_id: 'runner-1',
+          runner_version: '0.1.0',
+          protocol_version: PROTOCOL_VERSION,
+        }),
+      );
+      ws.send(JSON.stringify({ type: 'desk.ready', desk_id: 'desk-1' }));
+    });
+    expect(code).toBe(CLOSE_UNKNOWN_TYPE);
+  });
+
+  it('refuses desk.provision from the runner direction', async () => {
+    pair = await startTunnelPair();
+    const keypair = pair.keypair;
+    pair.registry.approve('raw-desk', keypair.publicKey);
+    const raw = await rawHandshake(pair.server, 'raw-desk', (nonce) =>
+      signNonce(keypair.privateKey, nonce),
+    );
+    await waitFor(() => raw.texts.length > 1 || raw.closed, 5000, 'ready');
+    expect(raw.closed).toBe(false);
+    raw.sendText(JSON.stringify({ type: 'desk.provision', desk_id: 'desk-1' }));
+    await waitFor(() => raw.closed, 5000, 'wrong-direction rejection');
+    expect(raw.closeCode).toBe(CLOSE_UNKNOWN_TYPE);
     raw.destroy();
   });
 

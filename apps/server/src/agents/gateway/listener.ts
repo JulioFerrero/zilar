@@ -27,8 +27,7 @@ import {
 interface RoomListenerContext {
   deps: AgentGatewayDeps;
   logger: GatewayLogger;
-  baseUrl: string;
-  secretsFor: (virtualKey?: string) => string[];
+  secretsFor: (secret?: string) => string[];
   sessions: Map<string, AiSession>;
   roomRounds: Map<string, RoomRound>;
   sessionIsLive: (session: AiSession) => boolean;
@@ -37,17 +36,8 @@ interface RoomListenerContext {
 }
 
 export function createRoomListener(ctx: RoomListenerContext) {
-  const {
-    deps,
-    logger,
-    baseUrl,
-    secretsFor,
-    sessions,
-    roomRounds,
-    sessionIsLive,
-    isStarted,
-    pumpRoom,
-  } = ctx;
+  const { deps, logger, secretsFor, sessions, roomRounds, sessionIsLive, isStarted, pumpRoom } =
+    ctx;
 
   // T-0475: the listener's per-room debounce windows (see RoomListenerState).
   const roomListeners = new Map<string, RoomListenerState>();
@@ -181,9 +171,7 @@ export function createRoomListener(ctx: RoomListenerContext) {
       const result = yield* attempt(() =>
         scoreRoom({
           complete: listener.complete ?? completeChat,
-          baseUrl,
-          virtualKey: listener.virtualKey,
-          model: listener.model,
+          target: listener.target,
           roster,
           window,
           eagerness: group.listenerEagerness,
@@ -200,7 +188,7 @@ export function createRoomListener(ctx: RoomListenerContext) {
         Effect.sync(() => {
           logger.warn(
             {
-              err: toRedactedError(Cause.squash(cause), secretsFor(listener.virtualKey)),
+              err: toRedactedError(Cause.squash(cause), secretsFor(listener.target.apiKey)),
               groupId: state.groupId,
             },
             'AI listener check failed',

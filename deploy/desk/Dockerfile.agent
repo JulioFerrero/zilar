@@ -1,0 +1,78 @@
+# The desk service image: desk-agent (the privileged sidecar that runs the
+# jails) and desk-egress (the unprivileged egress proxy), both built from
+# packages/desk. One image with two entry points: the two services differ only
+# in privilege and command (see the compose files), so a second image would
+# duplicate the whole workspace build for no gain.
+#
+# Build from the repo root, like the server image:
+#
+#   docker build -f deploy/desk/Dockerfile.agent .
+#
+# Multi-stage: a builder installs the workspace with pnpm and bundles the two
+# entry points with esbuild (`packages/desk/build.mjs` bundles the in-jail
+# daemon; these two bundles are built here because the sidecar and the proxy
+# run on the host, not in a jail). The runtime stage adds the host tools the
+# sidecar drives inside its container: the Docker CLI (the socket is mounted
+# in), and mount/losetup/mkfs.ext4 for the loop-mounted workspace images.
+
+FROM docker:27-cli AS dockercli
+
+FROM node:24.11.1-alpine AS builder
+
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
+
+WORKDIR /repo
+
+# Dependency manifests first so this layer is cached until they change.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY packages/desk/package.json packages/desk/
+
+RUN pnpm install --frozen-lockfile
+
+COPY packages/desk packages/desk
+
+# The sidecar, as one self-contained ESM file (everything but node built-ins
+# is inlined, so the runtime image needs no node_modules).
+RUN cd packages/desk \
+  && pnpm exec esbuild src/agent/main.ts \
+    --bundle --platform=node --target=node24 --format=esm \
+    --outfile=dist/desk-agent
+
+# The egress proxy. It lands with T-1410; until packages/desk/src/egress/main.ts
+# exists, leave a stub that fails loudly at startup instead of failing the
+# build, so the desk-agent half of the image is usable on its own.
+RUN cd packages/desk \
+  && if [ -f src/egress/main.ts ]; then \
+    pnpm exec esbuild src/egress/main.ts \
+      --bundle --platform=node --target=node24 --format=esm \
+      --outfile=dist/desk-egress; \
+  else \
+    printf 'console.error("desk-egress unavailable: this image was built before packages/desk/src/egress/main.ts (T-1410) existed"); process.exit(1);\n' > dist/desk-egress; \
+  fi
+
+FROM node:24.11.1-alpine AS runtime
+
+# Loop-mounted workspace images (plan §4.2): mkfs.ext4 from e2fsprogs; mount,
+# umount, mountpoint and losetup from util-linux. The sidecar runs privileged
+# with the host /dev, so these act on the host kernel through the container.
+RUN apk add --no-cache e2fsprogs util-linux
+
+# The Docker CLI (static, from the official image): the sidecar drives the
+# host daemon over the mounted /var/run/docker.sock, never the API directly.
+COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
+
+# Non-root user for desk-egress. desk-agent overrides it with user "0:0"
+# (mount/losetup and the Docker socket need root). /run/zilar-egress is the
+# registry-socket mountpoint; create it owned by this user so a fresh named
+# volume seeds with the right ownership.
+RUN addgroup -S desk && adduser -S desk -G desk \
+  && mkdir -p /run/zilar-egress \
+  && chown desk:desk /run/zilar-egress
+
+WORKDIR /app
+COPY --from=builder /repo/packages/desk/dist/desk-agent /app/desk-agent
+COPY --from=builder /repo/packages/desk/dist/desk-egress /app/desk-egress
+
+# The compose services set the command and, for desk-agent, the user.
+USER desk

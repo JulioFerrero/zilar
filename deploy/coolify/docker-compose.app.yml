@@ -174,14 +174,6 @@ services:
       # needed. Same rules as the avatar dir: a manual edit orphans previously
       # uploaded wallpapers.
       BACKGROUND_STORAGE_DIR: /data/avatars/backgrounds
-      # See deploy/docker-compose.yml: an empty string fails the `z.url()`
-      # schema, so the default is an unreachable placeholder URL. The AI
-      # module treats "no master key" as "no gateway" and the placeholder is
-      # never called.
-      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://127.0.0.1:9}
-      # Empty means unset (the server treats it as no gateway); never a
-      # placeholder that passes the non-empty check.
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
       AGENT_GATEWAY_ENABLED: ${AGENT_GATEWAY_ENABLED:-false}
       ACTION_DEMO_ENABLED: ${ACTION_DEMO_ENABLED:-false}
       RUNNER_HUB_ENABLED: ${RUNNER_HUB_ENABLED:-false}
@@ -227,6 +219,13 @@ services:
       TOOLS_ENABLED: ${TOOLS_ENABLED:-false}
       ROUTINES_ENABLED: ${ROUTINES_ENABLED:-false}
       WEB_TOOLS_ENABLED: ${WEB_TOOLS_ENABLED:-false}
+      # Desk sidecar socket (T-1407): see deploy/docker-compose.yml. Empty by
+      # default (empty means unset), so no Hands client is built while desks
+      # are off; Coolify does not run ./zilar, so set it to
+      # /run/zilar/desk.sock together with DESKS_ENABLED=true.
+      DESK_AGENT_SOCKET: ${DESK_AGENT_SOCKET:-}
+      # The pinned jail image the Hands client runs; empty means unset (off).
+      DESK_IMAGE: ${DESK_IMAGE:-}
     expose:
       - '3000'
     healthcheck:
@@ -247,6 +246,9 @@ services:
     volumes:
       - sticker-data:/data/stickers
       - avatar-data:/data/avatars
+      # The desk-agent socket (DESK_AGENT_SOCKET above): empty unless the desk
+      # services run (DESKS_ENABLED=true). Shared with desk-agent only.
+      - desk-socket:/run/zilar
 
   web:
     build:
@@ -270,6 +272,111 @@ services:
       retries: 12
       start_period: 10s
 
+  # --- AI computers (desks), off unless DESKS_ENABLED=true ---------------
+  # The Coolify app does not run ./zilar, so set COMPOSE_PROFILES=desks (and
+  # DESKS_ENABLED=true) in the app's environment to start these. desk-agent is
+  # the only service with the Docker socket; desk-egress is a jail's only way
+  # to the web. The host prep Compose cannot do (gVisor, the shared memory-pool
+  # slice) is `sudo ./zilar host-setup` on the host once.
+  desk-agent:
+    profiles: ['desks']
+    build:
+      context: .
+      dockerfile: deploy/desk/Dockerfile.agent
+    image: zilar-desk-agent:local
+    # on-failure, not unless-stopped: the guard below exits 0 while desks are
+    # off, and an exit-0 container must stay stopped.
+    restart: on-failure
+    user: '0:0'
+    privileged: true
+    # One image, two entry points: this service is the sidecar (desk-egress
+    # picks the proxy below). The guard is belt-and-braces: even if Coolify
+    # ignores the `desks` profile, the container exits 0 at once unless
+    # DESKS_ENABLED=true.
+    command:
+      - sh
+      - -c
+      - >-
+        test "$${DESKS_ENABLED:-false}" = "true" ||
+        { echo "desks disabled (DESKS_ENABLED is not true)"; exit 0; };
+        exec node /app/desk-agent
+    environment:
+      DESKS_ENABLED: ${DESKS_ENABLED:-false}
+      DESK_RUNTIME: ${DESK_RUNTIME:-runsc}
+      DESK_NETWORK: desk-net
+      DESK_CGROUP_PARENT: zilar-desks.slice
+      DESK_MAX_RUNNING: ${DESK_MAX_RUNNING:-12}
+      DESK_IMAGE: ${DESK_IMAGE:-}
+      DESK_WORKSPACE_ROOT: /var/lib/zilar/desks
+      DESK_WORKSPACE_MODE: image
+      DESK_AGENT_SOCKET: /run/zilar/desk.sock
+      DESK_EGRESS_PROXY: http://desk-egress:3128
+      DESK_EGRESS_REGISTRY_SOCKET: /run/zilar-egress/desk-egress.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/zilar/desks:/var/lib/zilar/desks
+      - /dev:/dev
+      - desk-socket:/run/zilar
+      - desk-egress-socket:/run/zilar-egress
+    healthcheck:
+      test: ['CMD-SHELL', 'test -S /run/zilar/desk.sock']
+      interval: 15s
+      start_interval: 2s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  desk-egress:
+    profiles: ['desks']
+    build:
+      context: .
+      dockerfile: deploy/desk/Dockerfile.agent
+    image: zilar-desk-agent:local
+    # on-failure, not unless-stopped: the guard below exits 0 while desks are
+    # off, and an exit-0 container must stay stopped.
+    restart: on-failure
+    # The guard is belt-and-braces: even if Coolify ignores the `desks`
+    # profile, the container exits 0 at once unless DESKS_ENABLED=true.
+    command:
+      - sh
+      - -c
+      - >-
+        test "$${DESKS_ENABLED:-false}" = "true" ||
+        { echo "desks disabled (DESKS_ENABLED is not true)"; exit 0; };
+        exec node /app/desk-egress
+    environment:
+      DESKS_ENABLED: ${DESKS_ENABLED:-false}
+      DESK_EGRESS_PORT: '3128'
+      DESK_EGRESS_REGISTRY_SOCKET: /run/zilar-egress/desk-egress.sock
+    volumes:
+      - desk-egress-socket:/run/zilar-egress
+    networks:
+      - desk-net
+      - desk-out
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          const s=require('node:net').connect(3128,'127.0.0.1');
+          s.on('connect',()=>process.exit(0));
+          s.on('error',()=>process.exit(1));
+      interval: 15s
+      start_interval: 2s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+networks:
+  # The jails' network: internal (no route out), and only desk-egress is on it
+  # as the way off. A fixed name so the sidecar's `--network desk-net` finds it.
+  desk-net:
+    name: desk-net
+    internal: true
+  # desk-egress's own way out to the public web; no other desk container joins.
+  desk-out:
+
 volumes:
   postgres-data:
   ejabberd-database:
@@ -278,3 +385,7 @@ volumes:
   sticker-data:
   # Profile pictures (AVATAR_STORAGE_DIR=/data/avatars on `server` above).
   avatar-data:
+  # The desk-agent unix socket, shared with `server` (DESK_AGENT_SOCKET).
+  desk-socket:
+  # The egress policy registry socket, shared by desk-agent and desk-egress.
+  desk-egress-socket:

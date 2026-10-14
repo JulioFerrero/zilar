@@ -40,4 +40,20 @@ export const devAiMessages: readonly MockMessageSeed[] = [
       'Details are in [the review](https://example.com/reviews/42).',
     ].join('\n'),
   }),
+  msg('dai-8', DEV1, ago(0, 18, 12), {
+    payload: progressCard({
+      stage: 'Review finished',
+      title: 'Reviewing the open PRs',
+      taskId: 't-21',
+      state: 'done',
+      elapsedMs: 134_000,
+      summary: 'Done in 2m 14s · 4 steps · 1 failed',
+      steps: [
+        { id: 'rev-1', label: 'Read both pull requests', state: 'done' },
+        { id: 'rev-2', label: 'Run the test suites', state: 'failed' },
+        { id: 'rev-3', label: 'Check the bundle size', state: 'done' },
+        { id: 'rev-4', label: 'Write the review summary', state: 'done' },
+      ],
+    }),
+  }),
 ];

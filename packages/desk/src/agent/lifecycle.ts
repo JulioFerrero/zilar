@@ -1,0 +1,256 @@
+// effect-plain: the jail lifecycle is an async state machine over the Docker
+// layer, the workspace and admission; there is no Effect runtime on the host.
+import { DeskError } from '../protocol';
+import type { DeskChunk, DeskRef, DeskSpec, DeskToolCall, SnapshotRef } from '../hands';
+import type { Admission } from './admission';
+import type { AgentConfig } from './config';
+import type { DockerLayer } from './docker';
+import type { EgressRegistrar } from './egress';
+import { deskName, type Workspaces } from './workspace';
+
+export interface DeskStatus {
+  readonly running: readonly DeskRef[];
+  readonly queued: number;
+}
+
+export type ProvisionResult =
+  | { readonly kind: 'ready'; readonly ref: DeskRef }
+  | { readonly kind: 'queued'; readonly position: number };
+
+interface DeskRecord {
+  readonly ref: DeskRef;
+  readonly spec: DeskSpec;
+  lastUsedAt: number;
+}
+
+export interface LifecycleDeps {
+  readonly docker: DockerLayer;
+  readonly workspaces: Workspaces;
+  readonly admission: Admission;
+  readonly config: AgentConfig;
+  /** The egress proxy registry, or null/absent when jails get no proxy. */
+  readonly egress?: EgressRegistrar | null;
+  readonly now?: () => number;
+  readonly log?: (message: string) => void;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Owns the jail lifecycle (plan §4.2): provision is idempotent per `DeskKey`,
+ * idle jails stop after `idleMs` (the workspace survives), `stop` keeps the
+ * workspace, and `Stop all` kills every `desk-*` container.
+ */
+export class Lifecycle {
+  private readonly records = new Map<string, DeskRecord>();
+  private readonly inflight = new Map<string, Promise<ProvisionResult>>();
+  private readonly now: () => number;
+  private readonly log: (message: string) => void;
+  private readonly egress: EgressRegistrar | null;
+
+  constructor(private readonly deps: LifecycleDeps) {
+    this.now = deps.now ?? (() => Date.now());
+    this.log = deps.log ?? (() => {});
+    this.egress = deps.egress ?? null;
+  }
+
+  /** The sidecar only ever runs the configured pinned image. */
+  private assertPinnedImage(spec: DeskSpec): void {
+    if (spec.imageDigest !== this.deps.config.docker.image) {
+      throw new DeskError('jail_unavailable', 'image digest is not the pinned desk image');
+    }
+  }
+
+  /**
+   * A `DeskRef` is only valid when its `id` is the deterministic name of its
+   * own `key`; otherwise a caller could name another owner's jail while sending
+   * its own key (Task C multiplexes all owners through one `Hands`). An unknown
+   * desk and a desk the caller may not see answer the same `not_provisioned`.
+   */
+  private assertRef(ref: DeskRef): void {
+    if (ref.id !== deskName(ref.key)) {
+      throw new DeskError('not_provisioned', 'no live desk for this key');
+    }
+  }
+
+  async provision(spec: DeskSpec): Promise<ProvisionResult> {
+    this.assertPinnedImage(spec);
+    const name = deskName(spec.key);
+    const existing = this.records.get(name);
+    if (existing !== undefined) {
+      existing.lastUsedAt = this.now();
+      return { kind: 'ready', ref: existing.ref };
+    }
+    // One in-flight provision per key: a concurrent caller joins the same
+    // promise instead of running a second `create` that would fail name-in-use.
+    const inflight = this.inflight.get(name);
+    if (inflight !== undefined) {
+      return inflight;
+    }
+    const task = this.provisionNew(name, spec).finally(() => {
+      this.inflight.delete(name);
+    });
+    this.inflight.set(name, task);
+    return task;
+  }
+
+  private async provisionNew(name: string, spec: DeskSpec): Promise<ProvisionResult> {
+    const admitted = await this.deps.admission.tryAcquire(spec.ownerUserId, name);
+    if (!admitted.granted) {
+      return { kind: 'queued', position: admitted.position };
+    }
+    const ref: DeskRef = { id: name, key: spec.key };
+    let registered = false;
+    try {
+      const proxyUrl = await this.registerEgress(name, spec);
+      registered = proxyUrl !== null;
+      if (!(await this.deps.docker.inspect(name))) {
+        const directory = await this.deps.workspaces.ensure(spec.key, spec.limits.diskBytes);
+        await this.deps.docker.create(name, spec, directory, proxyUrl);
+        await this.deps.docker.start(name);
+      }
+      this.records.set(name, { ref, spec, lastUsedAt: this.now() });
+      return { kind: 'ready', ref };
+    } catch (error) {
+      if (registered) {
+        await this.unregisterEgress(name);
+      }
+      try {
+        await this.deps.docker.remove(name);
+      } catch (removeError) {
+        this.log(`desk ${name}: could not remove the failed jail: ${errorMessage(removeError)}`);
+      }
+      try {
+        await this.deps.workspaces.release(spec.key);
+      } catch (releaseError) {
+        this.log(`desk ${name}: could not release the workspace: ${errorMessage(releaseError)}`);
+      } finally {
+        // Free the slot even when the workspace release throws, or the pool
+        // permanently loses it.
+        this.deps.admission.release(name);
+      }
+      throw error instanceof DeskError
+        ? error
+        : new DeskError('jail_unavailable', 'could not provision the desk');
+    }
+  }
+
+  /** Registers the desk with the egress proxy and returns the jail's proxy URL. */
+  private async registerEgress(name: string, spec: DeskSpec): Promise<string | null> {
+    if (this.egress === null) {
+      return null;
+    }
+    try {
+      return await this.egress.register(name, spec.egress?.allowedHosts ?? null);
+    } catch {
+      throw new DeskError('jail_unavailable', 'could not reach the egress proxy');
+    }
+  }
+
+  /** Unregisters the desk; a failure is logged and dropped, never thrown. */
+  private async unregisterEgress(name: string): Promise<void> {
+    if (this.egress === null) {
+      return;
+    }
+    try {
+      await this.egress.unregister(name);
+    } catch (error) {
+      this.log(`desk ${name}: could not unregister from the egress proxy: ${errorMessage(error)}`);
+    }
+  }
+
+  execute(ref: DeskRef, call: DeskToolCall, signal?: AbortSignal): AsyncIterable<DeskChunk> {
+    return this.runCall(ref, call, signal);
+  }
+
+  private async *runCall(
+    ref: DeskRef,
+    call: DeskToolCall,
+    signal?: AbortSignal,
+  ): AsyncIterable<DeskChunk> {
+    this.assertRef(ref);
+    const record = this.records.get(ref.id);
+    if (record === undefined) {
+      throw new DeskError('not_provisioned', 'no live desk for this key');
+    }
+    record.lastUsedAt = this.now();
+    if (!(await this.deps.docker.inspect(ref.id))) {
+      throw new DeskError('jail_unavailable', 'the jail is not running');
+    }
+    yield* this.deps.docker.run(ref.id, call, signal);
+  }
+
+  /** Kills the jail; the workspace image survives unless `keepWorkspace` is false. */
+  async stop(ref: DeskRef, opts?: { readonly keepWorkspace?: boolean }): Promise<void> {
+    this.assertRef(ref);
+    this.records.delete(ref.id);
+    try {
+      await this.deps.docker.remove(ref.id);
+      if (opts?.keepWorkspace === false) {
+        await this.deps.workspaces.remove(ref.key);
+      } else {
+        await this.deps.workspaces.release(ref.key);
+      }
+    } finally {
+      // Mount/umount syscalls can throw after the container is gone; the slot
+      // must still be freed or the pool permanently loses it.
+      this.deps.admission.release(ref.id);
+      await this.unregisterEgress(ref.id);
+    }
+  }
+
+  async snapshot(ref: DeskRef, label: string): Promise<SnapshotRef> {
+    this.assertRef(ref);
+    const bytes = await this.deps.workspaces.snapshot(ref.key, label);
+    return { deskId: ref.id, label, bytes };
+  }
+
+  status(): DeskStatus {
+    return {
+      running: [...this.records.values()].map((record) => record.ref),
+      queued: this.deps.admission.queued,
+    };
+  }
+
+  /** Idle jails (no `execute` for `idleMs`) are stopped; a caller runs this on a timer. */
+  async sweepIdle(): Promise<readonly DeskRef[]> {
+    const cutoff = this.now() - this.deps.config.idleMs;
+    const stopped: DeskRef[] = [];
+    for (const record of Array.from(this.records.values())) {
+      if (record.lastUsedAt <= cutoff) {
+        await this.stop(record.ref);
+        stopped.push(record.ref);
+      }
+    }
+    return stopped;
+  }
+
+  /**
+   * `Stop all`: every desk container is removed, wherever it came from. Every
+   * record's workspace is released even if one release throws; records and
+   * admission are always cleared, and the number of failures is returned.
+   */
+  async stopAll(): Promise<number> {
+    for (const name of await this.deps.docker.listDeskNames()) {
+      await this.deps.docker.remove(name);
+    }
+    let failures = 0;
+    const deskIds = [...this.records.keys()];
+    for (const record of this.records.values()) {
+      try {
+        await this.deps.workspaces.release(record.spec.key);
+      } catch (error) {
+        failures += 1;
+        this.log(`desk ${record.ref.id}: could not release the workspace: ${errorMessage(error)}`);
+      }
+    }
+    this.records.clear();
+    this.deps.admission.clear();
+    for (const deskId of deskIds) {
+      await this.unregisterEgress(deskId);
+    }
+    return failures;
+  }
+}

@@ -9,12 +9,21 @@ import {
   type AiSession,
   type GatewayLogger,
 } from './contracts';
+import {
+  addTaskCardStep,
+  failTaskCard,
+  finishTaskCard,
+  startTaskCard,
+  taskCardPayload,
+  taskCardSummary,
+  type TaskCard,
+} from '../task-card';
 
 interface LiveSessionContext {
   sessions: Map<string, AiSession>;
   deps: Pick<AgentGatewayDeps, 'db' | 'xmpp'>;
   logger: GatewayLogger;
-  secretsFor: (virtualKey?: string) => string[];
+  secretsFor: (secret?: string) => string[];
   roomJidFor: (roomLocalpart: string) => string;
 }
 
@@ -58,23 +67,29 @@ export function createLiveSession(ctx: LiveSessionContext) {
     return Effect.runPromise(liveSendMessageEffect(session, to, kind, text, opts));
   }
 
-  // T-0106: posts one live progress message for a multi-round turn and
-  // updates it at each round (XMPP message correction, the same mechanism
-  // streaming replies use). Stage texts come from the fixed table in
-  // `agents/tool-guide.ts` — never model text, never tool output. Best
-  // effort: a failed post or update warns with ids only and the turn
-  // continues. Resolves with the progress message id when one was posted,
-  // else null.
+  // T-1414: one task card per turn — a `progress` message posted once, then
+  // edited in place with corrections that carry the full payload. Stage texts
+  // come from the fixed table in `agents/tool-guide.ts` — never model text,
+  // never tool output. Corrections are throttled to at most one per second, so
+  // a fast turn writes few MAM rows; the final correction always goes out with
+  // `state`, `elapsed_ms` and `summary`. Nothing is retracted: the card stays
+  // above the reply. Best effort: a failed post or update warns with ids only
+  // and the turn continues.
+  const PROGRESS_THROTTLE_MS = 1_000;
+
   function liveProgressReporter(
     session: AiSession,
     to: string,
     kind: ChatKind,
     aiJid: string,
+    taskId?: string,
   ): {
     reportProgress: (stage: string) => Promise<string | null>;
-    clearProgress: () => Promise<void>;
+    finishProgress: (state: 'done' | 'failed') => Promise<void>;
   } {
     let progressId: string | null = null;
+    let card: TaskCard | null = null;
+    let lastSentAtMs = 0;
 
     // The sends are lifted with plain `Effect.promise`: a rejection dies with
     // the original error, and `catchDefect` logs it (ids only) like the old
@@ -85,7 +100,24 @@ export function createLiveSession(ctx: LiveSessionContext) {
       if (!sessionIsLive(session)) {
         return null;
       }
-      const payload = { v: 0 as const, type: 'progress' as const, data: { ai: aiJid, stage } };
+      // T-1406: the same fixed stage text rides the chat state, next to the
+      // card. Both come from one place, so they never disagree.
+      liveSendStatus(session, to, kind, stage);
+      const nextCard =
+        card === null
+          ? startTaskCard(stage, new Date().toISOString())
+          : addTaskCardStep(card, stage);
+      card = nextCard;
+      // Every correction carries the full payload, so a throttled update is
+      // never lost: the next one (or the final one) brings it along.
+      if (progressId !== null && Date.now() - lastSentAtMs < PROGRESS_THROTTLE_MS) {
+        return progressId;
+      }
+      const payload = taskCardPayload({
+        ai: aiJid,
+        ...(taskId === undefined ? {} : { taskId }),
+        card: nextCard,
+      });
       return yield* Effect.gen(function* () {
         const current = progressId;
         if (current === null) {
@@ -93,16 +125,19 @@ export function createLiveSession(ctx: LiveSessionContext) {
             session.core.sendMessage(to, kind, stage, { payload }),
           );
           progressId = sent.id === '' ? null : sent.id;
-          return progressId;
+        } else {
+          yield* Effect.promise(() =>
+            session.core.sendCorrection(to, kind, current, stage, { payload }),
+          );
         }
-        yield* Effect.promise(() => session.core.sendCorrection(to, kind, current, stage));
+        lastSentAtMs = Date.now();
         return progressId;
       }).pipe(
         Effect.catchDefect((error) =>
           Effect.sync(() => {
             logger.warn(
               { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
-              'AI progress message could not be sent',
+              'AI task card could not be updated',
             );
             return progressId;
           }),
@@ -110,33 +145,47 @@ export function createLiveSession(ctx: LiveSessionContext) {
       );
     });
 
-    // The final text replaces the progress line: clients render the
-    // newest message, and the progress card drops out of view. A
-    // correction keeps one bubble instead of leaving a stale
-    // "working on it" line next to the answer. Best effort like
-    // every other progress send.
-    const clearProgressEffect = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
+    // The last correction closes the card: the terminal `state`, the elapsed
+    // time and the fixed summary. The card stays in place (never retracted);
+    // the reply lands below it. Best effort like every other card send.
+    const finishProgressEffect = Effect.fnUntraced(function* (
+      state: 'done' | 'failed',
+    ): Effect.fn.Return<void> {
       const current = progressId;
-      if (current === null || !sessionIsLive(session)) {
+      if (current === null || card === null || !sessionIsLive(session)) {
         return;
       }
-      yield* Effect.promise(() => session.core.sendRetraction(to, kind, current)).pipe(
+      const elapsedMs = Math.max(0, Date.now() - Date.parse(card.startedAt));
+      const finished = finishTaskCard(
+        state === 'failed' ? failTaskCard(card) : card,
+        state,
+        taskCardSummary({ state, elapsedMs, stepCount: card.steps.length }),
+      );
+      const payload = taskCardPayload({
+        ai: aiJid,
+        ...(taskId === undefined ? {} : { taskId }),
+        card: finished,
+        elapsedMs,
+      });
+      yield* Effect.promise(() =>
+        session.core.sendCorrection(to, kind, current, finished.stage, { payload }),
+      ).pipe(
         Effect.catchDefect((error) =>
           Effect.sync(() => {
             logger.warn(
               { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
-              'AI progress message could not be cleared',
+              'AI task card could not be finished',
             );
           }),
         ),
       );
-      progressId = null;
     });
 
     return {
       reportProgress: (stage: string): Promise<string | null> =>
         Effect.runPromise(reportProgressEffect(stage)),
-      clearProgress: (): Promise<void> => Effect.runPromise(clearProgressEffect()),
+      finishProgress: (state: 'done' | 'failed'): Promise<void> =>
+        Effect.runPromise(finishProgressEffect(state)),
     };
   }
 
@@ -145,11 +194,19 @@ export function createLiveSession(ctx: LiveSessionContext) {
     to: string,
     kind: ChatKind,
     state: 'composing' | 'paused',
+    status?: string,
   ): void {
     if (!sessionIsLive(session)) {
       return;
     }
-    session.core.sendTyping(to, kind, state);
+    session.core.sendTyping(to, kind, state, status);
+  }
+
+  // T-1406: the AI's chat state carries its short fixed status text ("Thinking",
+  // a `TOOL_STAGE_*` line). It goes out as a composing state, so it clears with
+  // the `paused` the turn sends at the end and leaves nothing in history.
+  function liveSendStatus(session: AiSession, to: string, kind: ChatKind, status: string): void {
+    liveSendTyping(session, to, kind, 'composing', status);
   }
 
   function liveMarkDisplayed(
@@ -267,6 +324,7 @@ export function createLiveSession(ctx: LiveSessionContext) {
     liveSendMessage,
     liveProgressReporter,
     liveSendTyping,
+    liveSendStatus,
     liveMarkDisplayed,
     postToChat,
   };

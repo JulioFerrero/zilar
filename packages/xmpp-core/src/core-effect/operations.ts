@@ -89,7 +89,12 @@ export type OperationsApi = {
     node: string;
     enable: boolean;
   }) => Effect.Effect<void, XmppCoreError>;
-  sendTyping: (to: string, kind: ChatKind, state: 'composing' | 'paused') => Effect.Effect<void>;
+  sendTyping: (
+    to: string,
+    kind: ChatKind,
+    state: 'composing' | 'paused',
+    status?: string,
+  ) => Effect.Effect<void>;
   markDisplayed: (chatJid: string, kind: ChatKind, messageId: string) => Effect.Effect<void>;
 };
 
@@ -228,6 +233,7 @@ export function createOperations(runtime: CoreRuntime): OperationsApi {
         kind,
         originalId,
         text,
+        payload: opts.payload,
         mentions: opts.mentions,
       }),
     );
@@ -255,8 +261,11 @@ export function createOperations(runtime: CoreRuntime): OperationsApi {
     to: string,
     kind: ChatKind,
     state: 'composing' | 'paused',
+    status?: string,
   ): Effect.Effect<void> {
-    return sendQuietlyIfOnline(() => buildTyping({ to, kind, state }));
+    return sendQuietlyIfOnline(() =>
+      buildTyping({ to, kind, state, ...(status === undefined ? {} : { status }) }),
+    );
   }
 
   function markDisplayedEffect(

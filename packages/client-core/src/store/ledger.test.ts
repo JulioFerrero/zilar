@@ -470,4 +470,55 @@ describe('the message ledger: payload cards', () => {
     expect(bubble?.card).toEqual(progress);
     expect(bubble?.text).toBeUndefined();
   });
+
+  // T-1419: a correction carrying a progress payload replaces the target's
+  // card, the same way a text correction replaces its text.
+  it('replaces the card from a correction payload, newest order wins', () => {
+    const card = (stage: string, state: 'working' | 'done' = 'working'): Payload => ({
+      v: 0,
+      type: 'progress',
+      data: { ai: BOB, stage, state },
+    });
+    const h = harness();
+    h.receive(stanza({ id: 'card-1', fromJid: BOB, outgoing: false, payload: card('Working') }));
+
+    // A body-less correction still updates the card.
+    h.receive(
+      stanza({
+        id: 'fix-1',
+        fromJid: BOB,
+        outgoing: false,
+        timestamp: new Date(6_000),
+        correction: { targetId: 'card-1' },
+        payload: card('Done', 'done'),
+      }),
+    );
+    expect(h.messages()[0]?.card).toEqual(card('Done', 'done'));
+
+    // An older correction never wins.
+    h.receive(
+      stanza({
+        id: 'fix-old',
+        fromJid: BOB,
+        outgoing: false,
+        timestamp: new Date(4_000),
+        correction: { targetId: 'card-1' },
+        payload: card('Stale'),
+      }),
+    );
+    expect(h.messages()[0]?.card).toEqual(card('Done', 'done'));
+
+    // A correction from another author is ignored.
+    h.receive(
+      stanza({
+        id: 'fix-other',
+        fromJid: ANA,
+        outgoing: false,
+        timestamp: new Date(7_000),
+        correction: { targetId: 'card-1' },
+        payload: card('Hijacked'),
+      }),
+    );
+    expect(h.messages()[0]?.card).toEqual(card('Done', 'done'));
+  });
 });

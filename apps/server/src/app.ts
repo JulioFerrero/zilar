@@ -1,5 +1,4 @@
 import type { Logger } from 'pino';
-import { createLitellmAdminClientFromConfig, type LitellmAdminClient } from './ai/litellm-client';
 import { createAisApi } from './ais/api';
 import type { AiLogger } from './ais/service';
 import { createAiMemoryApi } from './agents/memory/api';
@@ -96,9 +95,8 @@ export interface AppDependencies {
     probe?: ProviderProbe;
     logger?: ConnectionsLogger;
   };
-  /** Overrides the AI routes; tests inject a fake LiteLLM and key cipher. */
+  /** Overrides the AI routes; tests inject a fake cipher. */
   ais?: {
-    litellm?: LitellmAdminClient;
     cipher?: KeyCipher;
     logger?: AiLogger;
   };
@@ -553,16 +551,10 @@ export function createApp({
   });
   mounts.push(connectionsApi);
 
-  // AIs always mount. Creating one needs both the key cipher (to seal its
-  // gateway key) and the LiteLLM admin client; when either is missing every
-  // write route answers 503 (`ais_unavailable`) rather than failing halfway.
-  // The LLM client is built from the config here, so `index.ts` needs no change.
+  // AIs always mount. Creating one needs the key cipher (to seal the provider
+  // connection's key); when it is missing every write route answers 503
+  // (`ais_unavailable`) rather than failing halfway.
   const aisCipher = ais?.cipher ?? connectionsCipher;
-  const aisLitellm =
-    ais?.litellm ??
-    (config.LITELLM_MASTER_KEY === undefined
-      ? undefined
-      : createLitellmAdminClientFromConfig(config));
   const aisApi = createAisApi({
     auth,
     db,
@@ -571,7 +563,6 @@ export function createApp({
     logger: ais?.logger ?? logger,
     audit: auditRecorder,
     ...(aisCipher === undefined ? {} : { cipher: aisCipher }),
-    ...(aisLitellm === undefined ? {} : { litellm: aisLitellm }),
   });
   mounts.push(aisApi);
 

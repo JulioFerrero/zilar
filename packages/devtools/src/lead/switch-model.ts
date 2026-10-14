@@ -89,7 +89,7 @@ export async function switchModel(
   }
   assertAllowedModel(newModel);
   const model = splitModel(newModel);
-  const { file, branch } = readTaskFrontMatter(deps.repoRoot, task);
+  const { file, branch } = readTaskFrontMatter(worktree, task);
 
   const rules = loadRulesFile(path.join(deps.promptsDirPath, 'rules.json'));
   if (extraRulesFile !== undefined) {
@@ -190,7 +190,7 @@ export async function switchModelInPlace(
     throw new Error(`worktree is missing for ${task}: ${worktree}`);
   }
   assertAllowedModel(newModel);
-  const { model: frontMatterModel, effort } = readTaskFrontMatter(deps.repoRoot, task);
+  const { model: frontMatterModel, effort } = readTaskFrontMatter(worktree, task);
   const variant = resolveWorkerVariant(frontMatterModel, effort, new Date());
 
   await deps.client.switchModel(previous.sessionId, {

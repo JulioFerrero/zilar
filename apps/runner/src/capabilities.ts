@@ -3,6 +3,7 @@ import { statfs } from 'node:fs/promises';
 import os from 'node:os';
 import { promisify } from 'node:util';
 import { Schema } from 'effect';
+import { detectDriver } from './desk/driver.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -103,21 +104,8 @@ function detectPower(platform: NodeJS.Platform): string {
 // A failing probe becomes an empty list, never an error: a missing docker
 // must not stop the rest of the capability report.
 async function detectDrivers(deps: CapabilityDeps): Promise<string[]> {
-  const drivers: string[] = [];
-  try {
-    const { stdout } = await deps.execFile(
-      'docker',
-      ['version', '--format', '{{.Server.Version}}'],
-      { timeout: 3000, maxBuffer: 4096 },
-    );
-    const version = stdout.trim();
-    if (version.length > 0 && version.length <= MAX_STRING) {
-      drivers.push('docker');
-    }
-  } catch {
-    // No docker, or it timed out.
-  }
-  return drivers.slice(0, MAX_DRIVERS);
+  const driver = await detectDriver({ platform: deps.os.platform(), execFile: deps.execFile });
+  return [...driver.labels].slice(0, MAX_DRIVERS);
 }
 
 export async function detectCapabilities(

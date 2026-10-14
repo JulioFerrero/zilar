@@ -6,6 +6,7 @@ export {
   RETRACTION_FALLBACK_BODY,
   buildRetraction,
   buildTyping,
+  MAX_STATUS_CHARS,
   buildDisplayed,
   buildPingRequest,
   buildPingResult,

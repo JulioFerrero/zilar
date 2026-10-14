@@ -176,9 +176,9 @@ export class AiMemoryWriteRateLimit extends HttpApiMiddleware.Service<
 >()('zilar/effect/http/AiMemoryWriteRateLimit') {}
 
 /**
- * The 503 availability gate of the AI routes that need LiteLLM and the key
- * cipher. It runs before the payload is decoded: a malformed body on an
- * unconfigured server still answers 503, not 400.
+ * The 503 availability gate of the AI routes that need the key cipher. It runs
+ * before the payload is decoded: a malformed body on an unconfigured server
+ * still answers 503, not 400.
  */
 export class AisConfigured extends HttpApiMiddleware.Service<
   AisConfigured,

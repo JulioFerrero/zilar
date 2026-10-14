@@ -10,6 +10,7 @@ import type {
   ReactionsState,
   UiMessage,
 } from '@zilar/chat-core';
+import type { Payload } from '@zilar/protocol';
 import type { ChatMessage } from '@zilar/xmpp-core';
 
 /** A received stanza as the ledger reads it: `ChatMessage` without `kind`, which it never reads. */
@@ -73,11 +74,23 @@ export interface OriginClaim {
 }
 
 /**
+ * The card a correction replaces its target with (T-1419): the full progress
+ * payload, the author the update must come from like a text correction, and the
+ * stanza order that decides the newest.
+ */
+export interface CardEdit {
+  readonly order: number;
+  readonly author: EditAuthor;
+  readonly payload: Payload;
+}
+
+/**
  * The id side tables the ledger keeps for a store's lifetime: the optimistic
  * local id to server id aliases, the resolved server ids, the sender-generated
  * origin ids and their per-chat claims, the authors as their stanzas described
- * them, and the base texts a reverted edit restores. They are created by
- * `createMessageLedger` and shared with the moved id module.
+ * them, the base texts a reverted edit restores, and the task-card updates a
+ * correction carries. They are created by `createMessageLedger` and shared with
+ * the moved id module.
  */
 export interface LedgerMaps {
   readonly aliases: Map<string, string>;
@@ -86,4 +99,5 @@ export interface LedgerMaps {
   readonly originClaims: Map<string, OriginClaim>;
   readonly authors: Map<string, EditAuthor>;
   readonly baseTexts: Map<string, string>;
+  readonly cards: Map<string, CardEdit>;
 }

@@ -31,6 +31,7 @@ export * from './routines';
 export * from './ai-form';
 export * from './ai-limits';
 export * from './ai-models';
+export * from './ai-providers';
 export * from './ai-templates';
 export * from './ai-errors';
 export * from './ai-activity';

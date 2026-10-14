@@ -120,7 +120,7 @@ export const MessageList = memo(function MessageList({
   const handleStartSelect = useLatestCallback(selection?.onStart);
   const selectedIds = selection?.ids;
   const [initialUnread] = useState(() => chat.unread);
-  const dividerIndex = unreadDividerIndex(items, initialUnread);
+  const dividerIndex = unreadDividerIndex(items, initialUnread, meId);
   // PERF-3: draw only the newest window of render items. The unread divider is
   // the anchor, so it is always drawn; a jump can widen the window (T-1278).
   const { windowItems, start, hasHidden, reveals, grow } = useMessageWindow(

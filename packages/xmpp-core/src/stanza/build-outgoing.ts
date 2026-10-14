@@ -1,5 +1,5 @@
 import { xml, type XmppElement } from '@xmpp/client';
-import { encodePayload, type ForwardOrigin, type Payload } from '@zilar/protocol';
+import { type ForwardOrigin, type Payload } from '@zilar/protocol';
 import {
   AGENT_NAMESPACE,
   CARBONS_NAMESPACE,
@@ -22,6 +22,7 @@ import {
 } from '../namespaces';
 import type { ChatKind, MentionInput, MessageAlbum, UploadSlot } from '../types';
 import { albumElement } from './album';
+import { pushPayloadElement } from './payload-element';
 import { MAX_MENTIONS, codePointLength, codePointOffset, sanitizeReactions } from './reactions';
 
 // ---------------------------------------------------------------------------
@@ -98,15 +99,13 @@ export function buildMessage(options: {
   const body = `${replyPrefix}${options.text}`;
   const children: XmppElement[] = [xml('body', {}, body)];
 
-  if (options.payload !== undefined) {
-    children.push(xml('agent', { xmlns: AGENT_NAMESPACE }, encodePayload(options.payload)));
-  }
+  pushPayloadElement(children, options.payload);
 
   // ejabberd's archive (mod_mam) only keeps a message that has text or an
   // explicit store hint. A voice note has an empty body and its data in the
   // payload, so without the hint it showed live but was gone after a reload
   // (device test 2026-10-03). The hint also covers any other body-less payload.
-  if (options.payload !== undefined || options.text === '') {
+  if (options.payload === undefined && options.text === '') {
     children.push(xml('store', { xmlns: HINTS_NAMESPACE }));
   }
 
@@ -147,12 +146,12 @@ export function buildCorrection(options: {
   kind: ChatKind;
   originalId: string;
   text: string;
+  payload?: Payload | undefined;
   mentions?: MentionInput[] | undefined;
 }): XmppElement {
-  const children: XmppElement[] = [
-    xml('body', {}, options.text),
-    xml('replace', { xmlns: CORRECTION_NAMESPACE, id: options.originalId }),
-  ];
+  const children: XmppElement[] = [xml('body', {}, options.text)];
+  children.push(xml('replace', { xmlns: CORRECTION_NAMESPACE, id: options.originalId }));
+  pushPayloadElement(children, options.payload);
   pushMentionReferences(children, options.text, options.mentions);
   return xml('message', { type: options.kind, to: options.to, id: options.id }, ...children);
 }
@@ -211,16 +210,32 @@ function pushMentionReferences(
   }
 }
 
+// T-1406: the AI's chat state may carry one short fixed status text (a stage
+// like "Running tests"). It is capped so a caller can never send a paragraph,
+// and it stays inside the body-less, non-stored chat-state message, so it
+// leaves no trace in history.
+export const MAX_STATUS_CHARS = 80;
+
+function capStatus(status: string | undefined): string | undefined {
+  if (status === undefined) {
+    return undefined;
+  }
+  const capped = Array.from(status).slice(0, MAX_STATUS_CHARS).join('');
+  return capped === '' ? undefined : capped;
+}
+
 export function buildTyping(options: {
   to: string;
   kind: ChatKind;
   state: 'composing' | 'paused' | 'active';
+  status?: string;
 }): XmppElement {
-  return xml(
-    'message',
-    { type: options.kind, to: options.to },
-    xml(options.state, { xmlns: CHAT_STATES_NAMESPACE }),
-  );
+  const children: XmppElement[] = [xml(options.state, { xmlns: CHAT_STATES_NAMESPACE })];
+  const status = capStatus(options.status);
+  if (status !== undefined) {
+    children.push(xml('stage', { xmlns: AGENT_NAMESPACE }, status));
+  }
+  return xml('message', { type: options.kind, to: options.to }, ...children);
 }
 
 export function buildDisplayed(options: {

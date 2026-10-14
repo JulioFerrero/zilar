@@ -190,7 +190,7 @@ async function applyActions(
         const target = current.sessionId;
         const template: PromptName = 'resume';
         try {
-          const { model: frontMatterModel, effort } = readTaskFrontMatter(deps.repoRoot, task);
+          const { model: frontMatterModel, effort } = readTaskFrontMatter(current.worktree, task);
           const variant = resolveWorkerVariant(frontMatterModel, effort, new Date());
           await deps.client.switchModel(target, { ...splitModel(action.model), variant });
         } catch (error) {
@@ -447,8 +447,9 @@ export async function tickOnce(
   if (!options.dryRun) {
     // Re-read the file so writes from other commands during the tick are
     // kept. A record is written back only when the task is still there with
-    // the same session: a task merged (gone) or relaunched (new session)
-    // during the tick keeps what the file says.
+    // the same session: a task merged or forgotten (gone) or relaunched (new
+    // session) during the tick keeps what the file says. A forgotten task is
+    // therefore never re-added, so the next tick neither resumes nor nudges it.
     updateState(deps.statePath, (fresh) => {
       for (const [task, record] of updated) {
         const current = fresh.tasks[task];

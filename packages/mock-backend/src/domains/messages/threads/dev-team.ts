@@ -56,7 +56,18 @@ export const devTeamMessages: readonly MockMessageSeed[] = [
   msg('dev-26', ANA, ago(0, 9, 53), { body: 'Also checked landscape.' }),
   msg('dev-27', YOU, ago(0, 10, 0), { body: 'Thanks everyone.' }),
   msg('dev-28', DEV1, ago(0, 10, 30), {
-    payload: progressCard({ stage: 'Writing release notes', taskId: 't-17' }),
+    payload: progressCard({
+      stage: 'Drafting the changelog',
+      title: 'Writing release notes',
+      taskId: 't-17',
+      state: 'working',
+      startedAt: new Date(Date.now() - 60_000).toISOString(),
+      steps: [
+        { id: 'rel-1', label: 'Collect the merged pull requests', state: 'done' },
+        { id: 'rel-2', label: 'Draft the release notes', state: 'doing' },
+        { id: 'rel-3', label: 'Publish to docs/CHANGELOG.md', state: 'planned' },
+      ],
+    }),
   }),
   msg('dev-29', DEV1, ago(0, 10, 32), { body: 'Release notes drafted in docs/CHANGELOG.md.' }),
   msg('dev-31', LUIS, ago(0, 11, 0), {

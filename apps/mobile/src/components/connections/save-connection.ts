@@ -20,7 +20,7 @@ export interface ConnectionSaveOutcome {
  */
 export function saveConnection(
   api: ConnectionsApi,
-  input: { provider: string; key: string; label: string },
+  input: { provider: string; key: string; label: string; baseUrl?: string },
 ): Promise<ConnectionSaveOutcome> {
   return runMobile(
     Effect.tryPromise({
@@ -29,6 +29,7 @@ export function saveConnection(
           provider: input.provider,
           key: input.key,
           ...(input.label === '' ? {} : { label: input.label }),
+          ...(input.baseUrl === undefined ? {} : { baseUrl: input.baseUrl }),
         }),
       catch: (cause: unknown) => cause,
     }).pipe(

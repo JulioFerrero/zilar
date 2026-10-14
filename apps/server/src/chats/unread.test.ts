@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { SearchOwner } from '../search/service';
+import { newestUnskippedRow } from './unread-skip';
 import { summarizeUnread } from './unread';
 
 const PEER = 'ana@zilar.test';
@@ -46,6 +47,18 @@ function plainXml(): string {
   return `<message type="chat" from="${PEER}/phone"><body>hello</body></message>`;
 }
 
+function progressXml(): string {
+  return `<message type="chat" from="ai@zilar.test/desk"><body>Searching</body><agent xmlns="urn:zilar:agent:0">{"v":0,"type":"progress","data":{"ai":"ai@zilar.test","stage":"Searching"}}</agent></message>`;
+}
+
+function correctionXml(target: string): string {
+  return `<message type="chat" from="ai@zilar.test/desk"><body>Working</body><replace xmlns="urn:xmpp:message-correct:0" id="${target}"/></message>`;
+}
+
+function retractionXml(target: string): string {
+  return `<message type="chat" from="ai@zilar.test/desk"><body>…attempted to retract…</body><retract xmlns="urn:xmpp:message-retract:1" id="${target}"/></message>`;
+}
+
 describe('summarizeUnread', () => {
   it('counts a same-album run once and previews the photo count when newest', () => {
     const page: UnreadRows = [
@@ -81,5 +94,47 @@ describe('summarizeUnread', () => {
     const answer = summarizeUnread(page, CHATS, ALLOWED, OWN_LOCALPART, OWN_JID, DOMAIN);
 
     expect(answer[CHAT_JID]?.unread).toBe(2);
+  });
+
+  it('skips a card, its edit and its retraction: only the answer counts and previews', () => {
+    // Newest first, like the batch read: the answer arrived last.
+    const page: UnreadRows = [
+      dmRow('answer', plainXml(), 'Here is the answer'),
+      dmRow('retract', retractionXml('card')),
+      dmRow('edit', correctionXml('card')),
+      dmRow('card', progressXml()),
+    ];
+
+    const answer = summarizeUnread(page, CHATS, ALLOWED, OWN_LOCALPART, OWN_JID, DOMAIN);
+
+    expect(answer[CHAT_JID]?.unread).toBe(1);
+    expect(answer[CHAT_JID]?.lastMessage?.id).toBe('answer');
+    expect(answer[CHAT_JID]?.lastMessage?.text).toBe('Here is the answer');
+  });
+
+  it('leaves the badge and the preview alone when the only new row is a card', () => {
+    const page: UnreadRows = [dmRow('card', progressXml())];
+
+    const answer = summarizeUnread(page, CHATS, ALLOWED, OWN_LOCALPART, OWN_JID, DOMAIN);
+
+    // No counted row and no preview: the fallback read below the mark supplies
+    // the chat's newest real message (or none), never the card.
+    expect(answer[CHAT_JID]).toBeUndefined();
+  });
+
+  it('walks past a card run to the newest real row, whatever the row order', () => {
+    const base = BigInt(Date.now()) * 1000n;
+    const at = (offset: bigint) => base + offset;
+    // Deliberately out of order: the timestamp sort, not the input order, must
+    // pick the newest real row (the answer that arrives after the card).
+    const rows: UnreadRows = [
+      { ...dmRow('older', plainXml(), 'older message'), timestamp: at(0n) },
+      { ...dmRow('answer', plainXml(), 'the answer'), timestamp: at(5n) },
+      { ...dmRow('card', progressXml()), timestamp: at(2n) },
+      { ...dmRow('retract', retractionXml('card')), timestamp: at(4n) },
+      { ...dmRow('edit', correctionXml('card')), timestamp: at(3n) },
+    ];
+
+    expect(newestUnskippedRow(rows, CHAT_JID)?.originId).toBe('answer');
   });
 });

@@ -10,7 +10,7 @@ There is one rule the rest follows from: **all code reaches `main` the same way.
   LEAD (Claude Opus) ──────────────────────────────────────────────────┐
   │ 1 facts: read the code (or launch an audit task)                   │
   │ 2 design brief from the DESIGNER (Sonnet), screens only            │
-  │ 3 spec + `lead spec-check` + board row                             │
+  │ 3 spec in work/ (uncommitted) + `lead spec-check`                  │
   │ 4 `lead launch T-XXXX`  (max 4 at once)                            │
   └──────────────┬─────────────────────────────────────────────────────┘
                  v
@@ -49,13 +49,13 @@ There is one rule the rest follows from: **all code reaches `main` the same way.
 
 1. **Facts.** The lead reads every file the task will touch. When the facts are spread over many files or unclear (for example "what does web do here?"), the lead launches an audit task (like T-0195) that writes the facts down with `file:line`, and waits for it.
 2. **Design (screens only).** For a new screen or visible change, the lead asks the designer for a brief. The designer gets the relevant code, `docs/design/ui-style.md` and emulator screenshots of the screens next to it. The brief names exact components, spacing, text sizes, colours (by token), states (loading, empty, error) and copy. The lead pastes the brief into the spec.
-3. **Spec.** The lead writes the spec with `work/TEMPLATE.md`: verified facts with `file:line`, Allowed files, numbered steps, checks and acceptance. Then `lead spec-check T-XXXX`, the board row and a commit.
-4. **Launch.** `lead launch T-XXXX` when a slot is free: at most 4 workers, 20 seconds apart.
+3. **Spec.** The lead writes the spec with `work/TEMPLATE.md`: verified facts with `file:line`, Allowed files, numbered steps, checks and acceptance. Then `lead spec-check T-XXXX`. The spec stays uncommitted: `lead launch` commits it on the task branch as `T-XXXX: spec` and removes it from main, so the task lands as one commit. No board row is needed — the merge appends the Done row.
+4. **Launch.** `lead launch T-XXXX` when a slot is free: at most 4 workers, 20 seconds apart. An uncommitted spec is copied onto the task branch and cleared from main.
 5. **Work.** The worker codes, runs `pnpm gate` until it prints GATE PASS, sets `status: review` and commits. The autopilot answers its permission requests and nudges it when it stalls.
 6. **Pre-review.** The autopilot starts it. When it finds must-fix or should-fix items, the autopilot sends them back to the worker, at most twice, then hands the packet to the lead.
 7. **Packet.** The autopilot prints `PACKET READY [CLEAN]` or `[NEEDS LEAD]`. The lead reads `PREREVIEW.md` and the diff. Anything that must change goes back to the worker as a numbered prompt (`lead reply`), however small.
 8. **Emulator check.** For mobile screens: `pnpm phone:smoke <branch>`. The lead looks at every screenshot; for a designed screen the designer compares the screenshots with its brief. A crash or a visual problem goes back to the worker as a prompt.
-9. **Merge.** The lead writes the Review in the task file, sets `status: merged`, commits, then runs `lead merge T-XXXX --summary "..."`. That command rebases, runs the gate again and refuses to merge on red.
+9. **Merge.** The lead writes the Review in the task file, sets `status: merged`, commits, then runs `lead merge T-XXXX --summary "..."`. That command rebases, runs the gate again and refuses to merge on red. The subject is `T-XXXX: summary` and must be at most 72 characters. The merge stages the spec, the Report, the Review, the board row and a modified `work/NOW.md` into the task's single commit.
 10. **After the merge.** Refresh the dashboard, launch the next task.
 
 A problem found after a merge (by the doctor, Julio or the lead) becomes a new small task. It never becomes a direct edit on `main`.

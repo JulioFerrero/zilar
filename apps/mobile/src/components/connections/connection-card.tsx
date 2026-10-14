@@ -8,6 +8,15 @@ import { ICON } from '@/lib/colors';
 import type { ProviderConnection } from '@/lib/connections-api';
 
 /**
+ * The host of a custom connection's base URL, e.g. `api.groq.com`. The server
+ * stores a validated https URL, so a plain split is enough and never throws.
+ */
+function hostOf(baseUrl: string): string {
+  const withoutScheme = baseUrl.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+  return withoutScheme.split('/')[0] ?? baseUrl;
+}
+
+/**
  * One provider row, either the normal view with Test / Remove or the inline
  * confirm that replaces it. The parent keys it by connection id.
  */
@@ -85,6 +94,11 @@ export function ConnectionCard({
         <Text numberOfLines={1} className="mt-0.5 text-[13px] text-muted-foreground">
           {connection.label ?? 'No label'}
         </Text>
+        {connection.baseUrl !== null ? (
+          <Text numberOfLines={1} className="mt-0.5 text-[13px] text-muted-foreground">
+            {hostOf(connection.baseUrl)}
+          </Text>
+        ) : null}
         {works ? <Text className="text-[13px] text-online">Key works</Text> : null}
         {testError !== undefined ? (
           <Text accessibilityRole="alert" className="text-[13px] text-danger">

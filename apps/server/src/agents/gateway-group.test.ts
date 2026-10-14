@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { FetchLike } from '../ai/litellm-client';
+import type { FetchLike } from '../ai/http';
 import { TEST_XMPP_DOMAIN, createTestContext, type TestContext } from '../test-support';
 import { seedGroup, seedUser } from '../test-support/seed';
 import { localpartFor } from '../xmpp/provisioning';
@@ -16,7 +16,6 @@ import { TOOL_TURN_WALL_CLOCK_MS } from './tool-loop';
 import { TOOL_TURN_MIN_CALL_MS, remainingTurnBudgetMs } from './turn-budget';
 import {
   FakeCore,
-  FakeLitellm,
   completionResponse,
   createGatewayHelpers,
   jsonResponse,
@@ -126,7 +125,6 @@ describe('group reply wakes the AI (T-1176)', () => {
   });
 
   it('answers a reply that quotes the AI message id, with no mention', async () => {
-    const litellm = new FakeLitellm();
     const calls: Call[] = [];
     const fetchImpl: FetchLike = (url, init) => {
       calls.push({ url, init });
@@ -137,7 +135,7 @@ describe('group reply wakes the AI (T-1176)', () => {
       setGateway: () => undefined,
     });
     const cores: FakeCore[] = [];
-    const { gateway } = helpers.harness(cores, fetchImpl, litellm);
+    const { gateway } = helpers.harness(cores, fetchImpl);
     const { aiId, ownerId, ownerJid, aiJid } = await seedGatewayAi(context);
     await seedGroup(context, ownerId, [{ userId: ownerId, role: 'owner' }], [aiId]);
 
@@ -247,7 +245,6 @@ describe('group mentions from different senders (T-1290)', () => {
   });
 
   it('runs one turn per sender instead of merging them', async () => {
-    const litellm = new FakeLitellm();
     const calls: Call[] = [];
     let releaseFirst: (() => void) | undefined;
     let signalFirstStarted = (): void => undefined;
@@ -270,7 +267,7 @@ describe('group mentions from different senders (T-1290)', () => {
       setGateway: () => undefined,
     });
     const cores: FakeCore[] = [];
-    const { gateway } = helpers.harness(cores, fetchImpl, litellm);
+    const { gateway } = helpers.harness(cores, fetchImpl);
     const { aiId, ownerId, ownerJid, aiJid } = await seedGatewayAi(context);
     const secondId = await seedUser(context, { name: 'Second' });
     const thirdId = await seedUser(context, { name: 'Third' });
@@ -338,7 +335,6 @@ describe('group turn failure notice (T-1290)', () => {
   });
 
   it('sends the fixed room line plus one owner DM, then no second DM that day', async () => {
-    const litellm = new FakeLitellm();
     const fetchImpl: FetchLike = () =>
       Promise.resolve(jsonResponse({ error: { message: 'invalid api key' } }, 401));
     const helpers = createGatewayHelpers({
@@ -346,7 +342,7 @@ describe('group turn failure notice (T-1290)', () => {
       setGateway: () => undefined,
     });
     const cores: FakeCore[] = [];
-    const { gateway } = helpers.harness(cores, fetchImpl, litellm);
+    const { gateway } = helpers.harness(cores, fetchImpl);
     const { aiId, ownerId, ownerJid, aiJid } = await seedGatewayAi(context);
     await seedGroup(context, ownerId, [{ userId: ownerId, role: 'owner' }], [aiId]);
 

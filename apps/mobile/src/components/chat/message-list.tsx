@@ -168,7 +168,7 @@ export function MessageList({
   // to a page that had not loaded yet, so older pages prepended on scroll shifted
   // every position and left the divider above an old message.
   const [initialUnread] = useState(() => chat.unread);
-  const dividerIndex = unreadDividerIndex(items, initialUnread);
+  const dividerIndex = unreadDividerIndex(items, initialUnread, currentUserId);
 
   const entries = useMemo(() => {
     const list: ListEntry[] = [];

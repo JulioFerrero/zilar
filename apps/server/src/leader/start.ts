@@ -6,7 +6,7 @@
 // here; `createLeaderLock` calls `start()` when this instance wins the advisory
 // lock and `stop()` when it steps down (or shuts down).
 import type { Logger } from 'pino';
-import { DEFAULT_LITELLM_BASE_URL, redactSecrets } from '../ai/litellm-client';
+import { redactSecrets } from '../ai/http';
 import type { ActionGateway } from '../actions/gateway';
 import { startRecoveryStuckTimer, type RecoveryStuckHandle } from '../actions/gateway';
 import type { AgentGateway } from '../agents/gateway';
@@ -14,7 +14,7 @@ import { startApprovalsSweeper, type ApprovalsSweeperHandle } from '../approvals
 import type { AuditRecorder } from '../audit/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { startRunnerHub, type RunnerHub } from '../machines/hub';
+import { DEFAULT_MODEL_GATEWAY_URL, startRunnerHub, type RunnerHub } from '../machines/hub';
 import type { DbMachineRegistry } from '../machines/registry';
 import { startPushComponent, type PushComponentHandle } from '../push/component';
 import { pushConfigError, type PushConfig } from '../push/config';
@@ -150,7 +150,7 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
       registry: deps.machineRegistry,
       logger,
       port: config.RUNNER_HUB_PORT,
-      gatewayUrl: config.LITELLM_BASE_URL ?? DEFAULT_LITELLM_BASE_URL,
+      gatewayUrl: DEFAULT_MODEL_GATEWAY_URL,
     })
       .then((hub) => {
         runnerHub = hub;
@@ -170,10 +170,11 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
   // dropped on connect).
   function startGatewayWork(): void {
     void deps.gateway.start().catch((error: unknown) => {
-      const secrets = config.LITELLM_MASTER_KEY === undefined ? [] : [config.LITELLM_MASTER_KEY];
-      const err = new Error(redactSecrets(messageOf(error), secrets));
+      // The generic credential rule still strips any provider key a start
+      // failure might echo.
+      const err = new Error(redactSecrets(messageOf(error), []));
       if (error instanceof Error) {
-        err.stack = redactSecrets(error.stack ?? '', secrets);
+        err.stack = redactSecrets(error.stack ?? '', []);
       }
       logger.error({ err }, 'agent gateway failed to start');
     });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { FetchLike } from '../ai/litellm-client';
+import type { FetchLike } from '../ai/http';
+import type { ModelTarget } from '../ai/providers';
 import {
   BUDGET_EXCEEDED_REPLY,
   ChatCompletionError,
@@ -18,35 +19,64 @@ import { CONTEXT_TOO_LONG_REPLY, MODEL_NOT_FOUND_REPLY, RATE_LIMITED_REPLY } fro
 import { redactError } from './tool-exec';
 import { requestCompletion } from './tool-loop';
 
-// A minimal `200 application/json` chat-completions answer. The loop accepts
-// the plain-JSON shape as well as SSE, so the fakes need no stream plumbing.
-function jsonResponse(body: unknown): Response {
-  return new Response(JSON.stringify(body), {
+const TARGET: ModelTarget = {
+  provider: 'deepseek',
+  apiKey: 'sk-virtual',
+  model: 'test-model',
+};
+
+// The transport streams, so every fake answers with OpenAI-compatible SSE.
+function sse(events: readonly string[]): Response {
+  return new Response(events.join(''), {
     status: 200,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'text/event-stream' },
   });
+}
+
+function chunk(delta: Record<string, unknown>, finishReason: string | null): string {
+  return `data: ${JSON.stringify({
+    id: 'chatcmpl-test',
+    object: 'chat.completion.chunk',
+    created: 0,
+    model: 'test-model',
+    choices: [{ index: 0, delta, finish_reason: finishReason }],
+  })}\n\n`;
+}
+
+function usageLine(): string {
+  return `data: ${JSON.stringify({
+    id: 'chatcmpl-test',
+    object: 'chat.completion.chunk',
+    created: 0,
+    model: 'test-model',
+    choices: [],
+    usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+  })}\n\n`;
 }
 
 // One round that asks for one valid `recall` call.
 function toolCallResponse(id: string, query: string): Response {
-  return jsonResponse({
-    choices: [
+  return sse([
+    chunk(
       {
-        message: {
-          tool_calls: [
-            {
-              id,
-              function: { name: 'recall', arguments: JSON.stringify({ query }) },
-            },
-          ],
-        },
+        tool_calls: [
+          {
+            index: 0,
+            id,
+            type: 'function',
+            function: { name: 'recall', arguments: JSON.stringify({ query }) },
+          },
+        ],
       },
-    ],
-  });
+      'tool_calls',
+    ),
+    usageLine(),
+    'data: [DONE]\n\n',
+  ]);
 }
 
 function textResponse(content: string): Response {
-  return jsonResponse({ choices: [{ message: { content } }] });
+  return sse([chunk({ content }, null), chunk({}, 'stop'), usageLine(), 'data: [DONE]\n\n']);
 }
 
 const silentLogger = { warn: () => undefined };
@@ -94,9 +124,7 @@ describe('requestCompletion retry', () => {
     };
 
     const result = await requestCompletion({
-      baseUrl: 'http://litellm.test',
-      virtualKey: 'sk-virtual',
-      model: 'test-model',
+      target: TARGET,
       messages: [{ role: 'user', content: 'hi' }],
       fetchImpl,
     });
@@ -114,9 +142,7 @@ describe('requestCompletion retry', () => {
 
     await expect(
       requestCompletion({
-        baseUrl: 'http://litellm.test',
-        virtualKey: 'sk-virtual',
-        model: 'test-model',
+        target: TARGET,
         messages: [{ role: 'user', content: 'hi' }],
         fetchImpl,
         timeoutMs: 100,
@@ -161,9 +187,7 @@ describe('runToolLoop caps and redaction', () => {
       messages,
       tools: [],
       completionInput: {
-        baseUrl: 'http://litellm.test',
-        virtualKey: 'sk-virtual',
-        model: 'test-model',
+        target: TARGET,
         fetchImpl,
       },
       maxRounds: TOOL_TURN_MAX_CALLS + 10,
@@ -216,9 +240,7 @@ describe('runToolLoop caps and redaction', () => {
       messages,
       tools: [],
       completionInput: {
-        baseUrl: 'http://litellm.test',
-        virtualKey: 'sk-virtual',
-        model: 'test-model',
+        target: TARGET,
         fetchImpl,
       },
       maxRounds: 2,
@@ -255,9 +277,7 @@ describe('failure logs (AI-22)', () => {
       aiId: 'ai-1',
       ownerJid: 'owner@zilar.localhost',
       messages: [{ role: 'user', content: 'hi' }],
-      baseUrl: 'http://litellm.test',
-      virtualKey: 'sk-virtual',
-      model: 'test-model',
+      target: TARGET,
       fetchImpl,
       sendMessage: async () => undefined,
       sendTyping: () => undefined,

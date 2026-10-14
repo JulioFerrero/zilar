@@ -8,17 +8,7 @@ import type {
   XmppCore,
   XmppCoreOptions,
 } from '@zilar/xmpp-core';
-import {
-  LitellmApiError,
-  type AddModelInput,
-  type FetchLike,
-  type GenerateVirtualKeyInput,
-  type LitellmAdminClient,
-  type ModelListing,
-  type UpdateVirtualKeyInput,
-  type VirtualKey,
-  type VirtualKeyInfo,
-} from '../ai/litellm-client';
+import type { FetchLike } from '../ai/http';
 import { createKeyCipher } from '../connections/crypto';
 import type { ActionGateway } from '../actions/gateway';
 import type { ArchivePool } from '../search/service';
@@ -31,7 +21,6 @@ import { type DraftHub } from '../drafts/hub';
 
 export const MASTER_KEY = 'test-master-key-0000000000000000000000';
 export const PROVIDER_KEY = 'sk-provider-key-do-not-leak';
-export const VIRTUAL_KEY = 'sk-virtual-gateway-key-do-not-leak';
 
 export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -40,8 +29,55 @@ export function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+// One OpenAI-compatible SSE chunk. The transport always streams (`stream: true`),
+// so every model fake answers with these.
+function sseChunk(delta: Record<string, unknown>, finishReason: string | null): string {
+  return `data: ${JSON.stringify({
+    id: 'chatcmpl-test',
+    object: 'chat.completion.chunk',
+    created: 0,
+    model: 'test-model',
+    choices: [{ index: 0, delta, finish_reason: finishReason }],
+  })}\n\n`;
+}
+
+function usageChunk(): string {
+  return `data: ${JSON.stringify({
+    id: 'chatcmpl-test',
+    object: 'chat.completion.chunk',
+    created: 0,
+    model: 'test-model',
+    choices: [],
+    usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+  })}\n\n`;
+}
+
+export function sseResponse(events: readonly string[]): Response {
+  return new Response(events.join(''), {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream' },
+  });
+}
+
 export function completionResponse(content: string): Response {
-  return jsonResponse({ choices: [{ message: { content } }] });
+  return sseResponse([
+    sseChunk({ content }, null),
+    sseChunk({}, 'stop'),
+    usageChunk(),
+    'data: [DONE]\n\n',
+  ]);
+}
+
+/** One tool call followed by the server's end-of-stream markers. */
+export function toolCallResponse(id: string, name: string, argsJson: string): Response {
+  return sseResponse([
+    sseChunk(
+      { tool_calls: [{ index: 0, id, type: 'function', function: { name, arguments: argsJson } }] },
+      'tool_calls',
+    ),
+    usageChunk(),
+    'data: [DONE]\n\n',
+  ]);
 }
 
 export class FakeCore implements XmppCore {
@@ -205,136 +241,6 @@ export class FakeCore implements XmppCore {
   }
 }
 
-export interface FakeLitellmOptions {
-  /** Appended to the model and token ids, so a leak check can grep for it. */
-  idSuffix?: string;
-  /** The `maxBudget` that `getKeyInfo` answers. */
-  keyInfoMaxBudget?: number | null;
-}
-
-/** One LiteLLM stand-in for the gateway, AI service, usage and routes tests. */
-export class FakeLitellm implements LitellmAdminClient {
-  readonly added: AddModelInput[] = [];
-  /** The ids `addModel` handed out, in order. */
-  readonly createdIds: string[] = [];
-  readonly generated: GenerateVirtualKeyInput[] = [];
-  readonly updated: UpdateVirtualKeyInput[] = [];
-  readonly deleted: string[] = [];
-  readonly revoked: string[] = [];
-  /** Every model/key call in order, so tests can assert the swap ordering. */
-  readonly order: string[] = [];
-  /** The keys `getKeyInfo` was asked about, in order. */
-  readonly seenKeys: string[] = [];
-  /** Models `listModels` returns, so tests can plant a stray `ai-<id>`. */
-  listed: ModelListing[] = [];
-  /** Key spend `getKeyInfo` answers, by token id. Unset keys spend 0. */
-  readonly spendByKey = new Map<string, number>();
-  failKeyInfo = false;
-  hangKeyInfo = false;
-  failGenerate = false;
-  failUpdate = false;
-  failRevoke = false;
-  failAdd = false;
-  failDelete = false;
-  private readonly idSuffix: string;
-  private readonly keyInfoMaxBudget: number | null;
-  private modelCounter = 0;
-  private keyCounter = 0;
-
-  constructor(options: FakeLitellmOptions = {}) {
-    this.idSuffix = options.idSuffix ?? '';
-    this.keyInfoMaxBudget = options.keyInfoMaxBudget === undefined ? 20 : options.keyInfoMaxBudget;
-  }
-
-  addModel(input: AddModelInput): Promise<string> {
-    this.added.push(input);
-    this.order.push('addModel');
-    if (this.failAdd) {
-      // Shaped like the real client's errors: redacted before throwing, so a
-      // gateway that echoes keys back never reaches the service log.
-      return Promise.reject(new LitellmApiError('model/new', 400, 'gateway down [redacted]'));
-    }
-    this.modelCounter += 1;
-    const id = `model-${this.modelCounter}${this.idSuffix}`;
-    this.createdIds.push(id);
-    return Promise.resolve(id);
-  }
-
-  deleteModel(modelId: string): Promise<void> {
-    this.order.push('deleteModel');
-    if (this.failDelete) {
-      return Promise.reject(new Error('gateway down'));
-    }
-    this.deleted.push(modelId);
-    return Promise.resolve();
-  }
-
-  listModels(): Promise<ModelListing[]> {
-    return Promise.resolve([...this.listed]);
-  }
-
-  generateKey(input: GenerateVirtualKeyInput): Promise<VirtualKey> {
-    this.generated.push(input);
-    this.order.push('generateKey');
-    if (this.failGenerate) {
-      return Promise.reject(new Error('gateway down, master was sk-master-must-not-leak'));
-    }
-    this.keyCounter += 1;
-    return Promise.resolve({
-      id: `tok-${this.keyCounter}${this.idSuffix}`,
-      key: `sk-virtual-${this.keyCounter}-do-not-leak`,
-      keyAlias: input.keyAlias ?? null,
-      maxBudget: input.maxBudget ?? null,
-      spend: 0,
-      models: input.models,
-    });
-  }
-
-  getKeyInfo(key: string): Promise<VirtualKeyInfo> {
-    this.seenKeys.push(key);
-    if (this.hangKeyInfo) {
-      return new Promise<VirtualKeyInfo>(() => undefined);
-    }
-    if (this.failKeyInfo) {
-      return Promise.reject(new Error('LiteLLM is down'));
-    }
-    return Promise.resolve({
-      keyAlias: null,
-      maxBudget: this.keyInfoMaxBudget,
-      spend: this.spendByKey.get(key) ?? 0,
-      tpmLimit: null,
-      rpmLimit: null,
-      blocked: null,
-      models: [],
-    });
-  }
-
-  updateKey(input: UpdateVirtualKeyInput): Promise<VirtualKeyInfo> {
-    this.updated.push(input);
-    this.order.push('updateKey');
-    if (this.failUpdate) {
-      return Promise.reject(new Error('gateway down'));
-    }
-    return Promise.resolve({
-      keyAlias: null,
-      maxBudget: input.maxBudget ?? null,
-      spend: 0,
-      tpmLimit: null,
-      rpmLimit: null,
-      blocked: null,
-      models: input.models ?? [],
-    });
-  }
-
-  revokeKey(key: string): Promise<void> {
-    this.revoked.push(key);
-    if (this.failRevoke) {
-      return Promise.reject(new Error('gateway down'));
-    }
-    return Promise.resolve();
-  }
-}
-
 export function captureLogger() {
   const calls: Array<{ level: string; fields: Record<string, unknown>; message: string }> = [];
   return {
@@ -372,7 +278,7 @@ export interface SeededAi {
 
 export async function seedAi(
   context: TestContext,
-  overrides: { modelId?: string | null; name?: string } = {},
+  overrides: { name?: string; computerMode?: 'off' | 'cloud' } = {},
 ): Promise<SeededAi> {
   const ownerId = randomUUID();
   await testSql(context)(
@@ -392,7 +298,7 @@ export async function seedAi(
       yield* sql`INSERT INTO provider_connections ${sql.insert({
         id: connectionId,
         owner: ownerId,
-        provider: 'openai',
+        provider: 'deepseek',
         encrypted_key: createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY),
         label: null,
       })}`;
@@ -411,23 +317,16 @@ export async function seedAi(
         template: 'dev',
         persona: 'A helpful persona.',
         provider_connection_id: connectionId,
-        model: 'gpt-4o-mini',
+        model: 'deepseek-chat',
         localpart,
         jid: aiJid,
         status: 'active',
+        computer_mode: overrides.computerMode ?? 'off',
       })}`;
       yield* sql`INSERT INTO ai_limits ${sql.insert({
         ai_id: aiId,
         per_day_usd: '1.00',
         per_month_usd: '20.00',
-      })}`;
-      yield* sql`INSERT INTO llm_virtual_keys ${sql.insert({
-        ai_id: aiId,
-        litellm_key_id: 'tok-1',
-        litellm_model_id: overrides.modelId === undefined ? 'model-1' : overrides.modelId,
-        encrypted_key: createKeyCipher(MASTER_KEY).encrypt(VIRTUAL_KEY),
-        budget_usd: '20.00',
-        budget_duration: '30d',
       })}`;
     }),
   );
@@ -480,7 +379,6 @@ export function createGatewayHelpers(access: {
   function harness(
     cores: FakeCore[],
     fetchImpl: FetchLike,
-    litellm: FakeLitellm,
     config: {
       enabled?: boolean;
       retryBaseDelayMs?: number;
@@ -493,6 +391,7 @@ export function createGatewayHelpers(access: {
       turnLogger?: GatewayLogger;
       archive?: ArchivePool;
       listener?: AgentGatewayDeps['listener'];
+      desk?: AgentGatewayDeps['desk'];
     } = {},
   ): {
     gateway: AgentGateway;
@@ -521,12 +420,9 @@ export function createGatewayHelpers(access: {
       db: access.getContext().db,
       xmpp: access.getContext().xmppConfig,
       adminClient: access.getContext().adminClient,
-      litellm,
       cipher: createKeyCipher(MASTER_KEY),
       logger,
       turnLogger,
-      litellmBaseUrl: 'http://litellm.test:4000',
-      masterKeyForRedaction: MASTER_KEY,
       createCore: (options) => {
         const core = new FakeCore(options);
         if (failConnect(cores.length)) {
@@ -545,6 +441,7 @@ export function createGatewayHelpers(access: {
       ...(config.toolMaxRounds === undefined ? {} : { toolMaxRounds: config.toolMaxRounds }),
       ...(config.archive === undefined ? {} : { archive: config.archive }),
       ...(config.listener === undefined ? {} : { listener: config.listener }),
+      ...(config.desk === undefined ? {} : { desk: config.desk }),
     };
     const created = createAgentGateway(deps, {
       enabled: config.enabled ?? true,

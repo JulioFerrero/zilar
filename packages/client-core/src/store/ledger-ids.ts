@@ -25,6 +25,7 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     originClaims: messageOriginClaims,
     authors: messageAuthors,
     baseTexts: messageBaseTexts,
+    cards: messageCards,
   } = deps.maps;
 
   // A message may be known under its optimistic local id and later under its
@@ -53,6 +54,7 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
       // lookup finds them.
       migrateReactionTargets(rootRight, rootLeft);
       migrateEditTargets(rootRight, rootLeft);
+      migrateCardEntries(rootRight, rootLeft);
       migrateIdMap(messageOriginIds, rootRight, rootLeft);
       migrateIdMap(messageAuthors, rootRight, rootLeft);
       migrateIdMap(messageBaseTexts, rootRight, rootLeft);
@@ -88,6 +90,20 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
     for (const chatId of Object.keys(next)) {
       refreshEdits(chatId);
     }
+  }
+
+  // Keeps the newest card update when two message ids turn out to be one, like
+  // `mergeEdits` does for edit state.
+  function migrateCardEntries(from: string, to: string): void {
+    const source = messageCards.get(from);
+    if (source === undefined) {
+      return;
+    }
+    const existing = messageCards.get(to);
+    messageCards.set(
+      to,
+      existing === undefined || source.order > existing.order ? source : existing,
+    );
   }
 
   function migrateReactionTargets(from: string, to: string): void {
@@ -235,9 +251,10 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
   }
 
   // PERF-13: drops every entry of the messages a chat just pruned from its
-  // `messagesByChat` (`prune.ts`, PERF-3), so the ledger's six id maps
+  // `messagesByChat` (`prune.ts`, PERF-3), so the ledger's per-message maps
   // (`aliases`, `serverIds`, `originIds`, `originClaims`, `authors`,
-  // `baseTexts`, all in `LedgerMaps`) do not grow for the life of the session.
+  // `baseTexts` and `cards`, all in `LedgerMaps`) do not grow for the life of
+  // the session.
   // `messageIds` are the dropped bubble ids as stored.
   function forgetMessages(chatId: string, messageIds: readonly string[]): void {
     if (messageIds.length === 0) {
@@ -261,6 +278,7 @@ export function createLedgerIds(deps: LedgerIdsDeps) {
       messageOriginIds.delete(id);
       messageAuthors.delete(id);
       messageBaseTexts.delete(id);
+      messageCards.delete(id);
       // The claim is keyed by chat and origin id (`rememberOriginId`).
       if (originId !== undefined) {
         messageOriginClaims.delete(`${chatId}|${originId}`);

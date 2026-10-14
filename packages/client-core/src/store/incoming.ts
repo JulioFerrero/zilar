@@ -5,6 +5,7 @@
 // callbacks over the shared `ctx`. The timers and the best-effort work they
 // start (the typing clear, the badge) run as fibers.
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
+import { isAiJid } from '@zilar/protocol';
 import type { ChatMessage, Occupant, PresenceEvent } from '@zilar/xmpp-core';
 import type { CoreCtx } from './ctx';
 import { confirmDelivered } from './delivered';
@@ -17,7 +18,7 @@ import {
   sortMessages,
   withoutDraft,
 } from './rows';
-import { addTyper, clearChatTyping, removeTyper, TYPING_CLEAR_MS } from './typing';
+import { addTyper, clearChatTyping, removeTyper, setStatus, TYPING_CLEAR_MS } from './typing';
 
 // A typing line clears this long after the last composing event: still
 // exported from the incoming path, so the apps' re-export keeps working.
@@ -212,7 +213,13 @@ export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
 
 export function handleTyping(
   ctx: CoreCtx,
-  event: { chatJid: string; fromJid: string; state: string; outgoing: boolean },
+  event: {
+    chatJid: string;
+    fromJid: string;
+    state: string;
+    status?: string;
+    outgoing: boolean;
+  },
 ): void {
   // A MUC reflects my own chat states back to me. When the sender cannot be
   // resolved to a real JID, xmpp-core marks the reflection `outgoing` and keeps
@@ -229,7 +236,14 @@ export function handleTyping(
   } as ChatMessage);
   if (event.state === 'composing') {
     addTyper(ctx, chatId, event.fromJid, name);
+    // T-1406: only an AI sender may carry a status text. A human client can
+    // otherwise send `composing` plus an arbitrary stage and spoof the AI
+    // status line in a DM or a group, so the sender decides, not the field.
+    if (event.status !== undefined && isAiJid(event.fromJid)) {
+      setStatus(ctx, chatId, event.fromJid, event.status);
+    }
   } else {
+    // `paused`/`active` clears the status too.
     removeTyper(ctx, chatId, event.fromJid);
   }
 }

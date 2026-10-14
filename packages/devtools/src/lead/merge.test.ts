@@ -487,23 +487,21 @@ describe('mergeTask process cleanup', () => {
 });
 
 describe('mergeTask squash failures', () => {
-  it('leaves main untouched when the board row is unparseable (board validated before squash)', async () => {
+  it('leaves main untouched when the board has no Done section', async () => {
     const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
     git(harness.worktree, ['add', '.']);
     git(harness.worktree, ['commit', '-qam', 'feature']);
-    // Hand-edited board row with no link, which `moveBoardRow` cannot parse.
+    // No Done section, which `moveBoardRow` requires: it must throw before the
+    // squash stages anything into main's index.
     const broken = fs
       .readFileSync(path.join(harness.root, 'work', 'BOARD.md'), 'utf8')
-      .replace(
-        '| [T-0099](T-0099-demo.md) | Demo | in-progress |',
-        '| T-0099 | Demo | in-progress |',
-      );
+      .replace('## Done', '## Finished');
     fs.writeFileSync(path.join(harness.root, 'work', 'BOARD.md'), broken);
     git(harness.root, ['add', '.']);
     git(harness.root, ['commit', '-qam', 'break board']);
 
-    await expect(mergeTask(options(harness))).rejects.toThrow(/board has no Active row/);
+    await expect(mergeTask(options(harness))).rejects.toThrow(/board has no Done section/);
     // Main is left with a clean tree: no staged squash changes, so a fixed
     // board makes the merge re-runnable.
     const porcelain = spawnSync('git', ['status', '--porcelain'], {
@@ -576,5 +574,105 @@ describe('mergeTask gate', () => {
     expect(fs.existsSync(path.join(harness.root, 'feature.txt'))).toBe(false);
     expect(fs.existsSync(harness.worktree)).toBe(true);
     expect(harness.dropped).toEqual([]);
+  });
+});
+
+describe('mergeTask board row and NOW.md (T-1420)', () => {
+  it('appends the done row when the board has no Active row for the task', async () => {
+    const harness = setup('todo', 'merged');
+    const boardFile = path.join(harness.root, 'work', 'BOARD.md');
+    const withoutActive = fs
+      .readFileSync(boardFile, 'utf8')
+      .replace('| [T-0099](T-0099-demo.md) | Demo | in-progress |\n', '');
+    fs.writeFileSync(boardFile, withoutActive);
+    git(harness.root, ['add', '.']);
+    git(harness.root, ['commit', '-qam', 'drop active row']);
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+
+    await mergeTask(options(harness));
+
+    const board = fs.readFileSync(boardFile, 'utf8');
+    expect(board).not.toContain('| Demo | in-progress |');
+    expect(board).toContain('| [T-0099](T-0099-demo.md) | Demo summary | 2026-09-29 |');
+  });
+
+  it('stages a modified work/NOW.md into the squash commit', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.root, 'work', 'NOW.md'), 'live notes\n');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+
+    await mergeTask(options(harness));
+
+    const files = spawnSync('git', ['show', '--name-only', '--format=', 'HEAD'], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout;
+    expect(files).toContain('work/NOW.md');
+    expect(fs.readFileSync(path.join(harness.root, 'work', 'NOW.md'), 'utf8')).toBe('live notes\n');
+    const porcelain = spawnSync('git', ['status', '--porcelain'], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout.trim();
+    expect(porcelain).toBe('');
+  });
+
+  it('stages a tracked, unstaged-modified work/NOW.md into the squash commit', async () => {
+    const harness = setup('todo', 'merged');
+    const nowFile = path.join(harness.root, 'work', 'NOW.md');
+    fs.writeFileSync(nowFile, 'committed notes\n');
+    git(harness.root, ['add', 'work/NOW.md']);
+    git(harness.root, ['commit', '-qm', 'track NOW.md']);
+    // An unstaged edit to a tracked file: porcelain emits ` M work/NOW.md`,
+    // which the trim turns into `M work/NOW.md`.
+    fs.writeFileSync(nowFile, 'live notes\n');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+
+    await mergeTask(options(harness));
+
+    const files = spawnSync('git', ['show', '--name-only', '--format=', 'HEAD'], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout;
+    expect(files).toContain('work/NOW.md');
+    expect(fs.readFileSync(nowFile, 'utf8')).toBe('live notes\n');
+    const porcelain = spawnSync('git', ['status', '--porcelain'], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout.trim();
+    expect(porcelain).toBe('');
+  });
+
+  it('ignores an untracked spec of another task in the dirty check', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.root, 'work', 'T-1234-other.md'), '---\n---\n');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+
+    await mergeTask(options(harness));
+
+    expect(fs.existsSync(path.join(harness.root, 'feature.txt'))).toBe(true);
+  });
+});
+
+describe('mergeTask subject limit', () => {
+  it('refuses a 73-character subject and names its length', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+    const summary = 'x'.repeat(65); // 'T-0099: ' + 65 = 73 characters.
+
+    await expect(mergeTask(options(harness, summary))).rejects.toThrow(
+      /73 characters, over the 72/,
+    );
+    expect(harness.dropped).toEqual([]);
+    expect(fs.existsSync(path.join(harness.root, 'feature.txt'))).toBe(false);
   });
 });

@@ -1,13 +1,2 @@
-const PROVIDER_LABELS: Record<string, string> = {
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-  google: 'Google Gemini',
-  deepseek: 'DeepSeek',
-  xai: 'xAI',
-  openrouter: 'OpenRouter',
-  github: 'GitHub',
-};
-
-export function providerLabel(id: string): string {
-  return PROVIDER_LABELS[id] ?? id;
-}
+// T-1394: the labels moved to @zilar/chat-core so web and mobile share one list.
+export { providerLabel } from '@zilar/chat-core';

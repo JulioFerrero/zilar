@@ -1,7 +1,7 @@
 ---
 id: T-1338
 title: "Mobile photo viewer gestures actually work: swipe left/right between photos, pinch to zoom, drag to move a zoomed photo, double-tap zoom, swipe down to close — today only double-tap works (the double-tap gesture blocks the others)"
-status: todo
+status: dropped
 milestone: M5
 branch: task/T-1338-mobile-viewer-gestures
 model: auto
@@ -65,3 +65,4 @@ pnpm gate
 ## Report (written by the worker when done)
 
 ## Review (written by Claude)
+Lead, 2026-10-14: dropped, never merged. Superseded by T-1341 (mobile viewer on react-native-zoom-toolkit, which Julio called perfect). The worktree and branch were deleted unmerged during the 10-14 cleanup Julio approved.

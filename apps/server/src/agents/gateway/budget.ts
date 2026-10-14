@@ -1,5 +1,4 @@
 import { Effect } from 'effect';
-import type { LitellmAdminClient } from '../../ai/litellm-client';
 import { getAiUsage, type AiUsage } from '../../ais/usage';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import { dailyLimitReply, dailyWarningReply, monthlyWarningReply } from '../reply';
@@ -15,7 +14,7 @@ interface BudgetGateContext {
   deps: AgentGatewayDeps;
   logger: GatewayLogger;
   sessionIsLive: (session: AiSession) => boolean;
-  secretsFor: (virtualKey?: string) => string[];
+  secretsFor: (secret?: string) => string[];
 }
 
 const FAILED = Symbol('failed');
@@ -56,36 +55,27 @@ export function createBudgetGate(ctx: BudgetGateContext) {
     return (deps.now ?? (() => new Date()))().toISOString().slice(0, 10);
   }
 
-  const usageFor = (litellm: LitellmAdminClient, aiId: string): Promise<AiUsage | null> =>
+  const usageFor = (aiId: string): Promise<AiUsage | null> =>
     getAiUsage(
       {
         db: deps.db,
-        litellm,
-        logger,
         ...(deps.now === undefined ? {} : { now: deps.now }),
       },
       aiId,
     );
 
-  // The soft daily-limit check (T-0058), shared by DM and group turns. It
-  // runs before any model call: a null usage fails open (the turn goes
-  // ahead — the monthly cap is still enforced by LiteLLM itself), while a
-  // reached limit sends the fixed notice at most once per AI per chat per UTC
-  // day and skips the turn. The fetched usage is returned so the caller can
-  // send the 80% warnings after the reply without a second read. Only ids
-  // are ever logged: the usage read addresses the key by its token id, never
-  // by the secret.
+  // The daily-limit check (T-0058), shared by DM and group turns. It runs
+  // before any model call: a null usage fails open (the turn goes ahead), and a
+  // NULL daily bound (T-1408, no limit set) never skips the turn. The fetched
+  // usage is returned so the caller can send the 80% warnings after the reply
+  // without a second read. Only ids are ever logged.
   const checkDailyLimitEffect = Effect.fnUntraced(function* (input: {
     aiId: string;
     chatKey: string;
     sendNotice: (text: string) => Promise<unknown>;
   }): Effect.fn.Return<{ limited: boolean; usage: AiUsage | null }> {
-    const litellm = deps.litellm;
-    if (litellm === undefined) {
-      return { limited: false, usage: null };
-    }
     const fetched = yield* attempt(
-      () => usageFor(litellm, input.aiId),
+      () => usageFor(input.aiId),
       (error) => {
         logger.warn(
           { err: toRedactedError(error, secretsFor()), aiId: input.aiId },
@@ -105,8 +95,11 @@ export function createBudgetGate(ctx: BudgetGateContext) {
     if (dailyLimitNotices.get(key) === today) {
       return { limited: true, usage };
     }
+    // `perDayUsd` is non-null here: `dailyLimitReached` is only true for a set
+    // bound. The `?? 0` is an unreachable fallback that keeps the type checker
+    // happy without a non-null assertion.
     const sent = yield* attempt(
-      () => input.sendNotice(dailyLimitReply(usage.perDayUsd)),
+      () => input.sendNotice(dailyLimitReply(usage.perDayUsd ?? 0)),
       (error) => {
         logger.warn(
           { err: toRedactedError(error, secretsFor()), aiId: input.aiId },
@@ -142,7 +135,7 @@ export function createBudgetGate(ctx: BudgetGateContext) {
       const key = `${input.aiId}:${input.chatKey}:daily-warning`;
       if (dailyWarningNotices.get(key) !== today) {
         const sent = yield* attempt(
-          () => input.sendWarning(dailyWarningReply(usage.todayUsd, usage.perDayUsd)),
+          () => input.sendWarning(dailyWarningReply(usage.todayUsd, usage.perDayUsd ?? 0)),
           (error) => {
             logger.warn(
               { err: toRedactedError(error, secretsFor()), aiId: input.aiId },
@@ -160,7 +153,7 @@ export function createBudgetGate(ctx: BudgetGateContext) {
       const key = `${input.aiId}:${input.chatKey}:monthly-warning`;
       if (monthlyWarningNotices.get(key) !== today) {
         const sent = yield* attempt(
-          () => input.sendWarning(monthlyWarningReply(usage.windowUsd, usage.perMonthUsd)),
+          () => input.sendWarning(monthlyWarningReply(usage.windowUsd, usage.perMonthUsd ?? 0)),
           (error) => {
             logger.warn(
               { err: toRedactedError(error, secretsFor()), aiId: input.aiId },
@@ -187,12 +180,8 @@ export function createBudgetGate(ctx: BudgetGateContext) {
     if (!sessionIsLive(session)) {
       return { limited: true, reply: 'The AI was stopped.' };
     }
-    const litellm = deps.litellm;
-    if (litellm === undefined) {
-      return null;
-    }
     const fetched = yield* attempt(
-      () => usageFor(litellm, session.aiId),
+      () => usageFor(session.aiId),
       () => undefined,
     );
     if (fetched === FAILED) {
@@ -202,7 +191,7 @@ export function createBudgetGate(ctx: BudgetGateContext) {
     if (usage === null || !usage.dailyLimitReached) {
       return null;
     }
-    return { limited: true, reply: dailyLimitReply(usage.perDayUsd) };
+    return { limited: true, reply: dailyLimitReply(usage.perDayUsd ?? 0) };
   });
 
   // T-1290 (AI-10): DMs the AI's owner the real reason a room turn failed, at

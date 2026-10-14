@@ -35,6 +35,7 @@ import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import { handler, mountApi, sessionLayer, type EffectApiMount } from '../effect/http-core';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { resolvePublic, validateBaseUrl } from './base-url';
 import type { KeyCipher } from './crypto';
 import { redactKey, createProviderProbe, type ProviderProbe } from './probe';
 import type { ProviderId } from './providers';
@@ -87,6 +88,21 @@ function toWire(connection: PublicConnection): ConnectionView {
 // Marks a body that is not JSON at all, so the handler can answer `Invalid
 // JSON body` instead of the schema-violation text (JSON never yields a symbol).
 const INVALID_JSON = Symbol('connections/invalid-json');
+
+// T-1396: the save-time guard for a custom base URL. The shape check runs
+// first (https, no credentials/query/fragment, port 443), then the host is
+// resolved and a private address refused, so an internal host is rejected at
+// save as well as on every later probe and model call. The fixed message never
+// carries the URL, and a rejection travels as an `HttpError` defect (400).
+async function validatedBaseUrl(raw: string): Promise<string> {
+  try {
+    const normalized = validateBaseUrl(raw);
+    await resolvePublic(new URL(normalized).hostname);
+    return normalized;
+  } catch {
+    throw new HttpError(400, 'invalid_request', 'The base URL must be a public https address');
+  }
+}
 
 // `create` declares its payload in the contract for the derived client but is
 // served with `handleRaw`: the body is decoded by hand in the handler (see the
@@ -154,14 +170,19 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
               throw new HttpError(400, 'invalid_request', 'Invalid connection request');
             }
             const body = decoded.value;
-            const created = yield* Effect.promise(() =>
-              createConnectionRow(deps.db, {
+            const created = yield* Effect.promise(async () => {
+              const baseUrl =
+                body.provider === 'openai-compatible'
+                  ? await validatedBaseUrl(body.baseUrl ?? '')
+                  : null;
+              return createConnectionRow(deps.db, {
                 owner: user.id,
                 provider: body.provider,
                 encryptedKey: keyCipher.encrypt(body.key),
                 label: body.label ?? null,
-              }),
-            );
+                baseUrl,
+              });
+            });
             return toWire(created);
           }),
         ),
@@ -231,7 +252,7 @@ export function createConnectionsApi(deps: ConnectionsApiDependencies): EffectAp
             // throw into a surrounding `try`; map it to a value so the
             // redacted log below runs instead of a bare 500.
             const probed = yield* Effect.promise(() =>
-              probeImpl.testKey(connection.provider as ProviderId, key),
+              probeImpl.testKey(connection.provider as ProviderId, key, connection.baseUrl),
             ).pipe(
               Effect.map((outcome) => ({ failed: false as const, outcome })),
               Effect.catchDefect((defect) => Effect.succeed({ failed: true as const, defect })),

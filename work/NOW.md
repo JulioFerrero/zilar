@@ -2,6 +2,191 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-14 23:30: the rewrite is approved (Julio: the 174-commit version); it runs after T-1396 merges.**
+- **The dry run passed** (`/Users/julio/.claude/jobs/ab934c68/tmp/rewrite/REPORT.md`).
+- **Apply:**
+  - stop the autopilot;
+  - `node build.mjs --fetch --gap 2 --min-side 2 --branch compact-main-gap2 --out gap2 --tag-prefix compact-gap2-`, then `./verify.sh repo origin/main compact-main-gap2 gap2/map.tsv`;
+  - `push --force-with-lease`; re-point the tags; reset the doctor and phone-build worktrees; fix `state.json`; restart.
+- **Merged:** T-1419 (the task card UI) and T-1420 (one commit per task).
+
+**2026-10-14 22:45: git history rewrite in preparation; launches held.**
+- **Julio chose:**
+  - fewer lead commits (no lone NOW, spec or board commits; CLAUDE.md updated);
+  - clear titles (72 characters at most);
+  - a **history rewrite**: fold the bookkeeping, squash the early era, and group series such as the Effect 4.0 migration.
+- **The dry run:** a Sonnet agent builds `compact-main` in a scratch clone (`/Users/julio/.claude/jobs/ab934c68/tmp/rewrite/`), with no push.
+- **Applying it** needs 0 workers: hold launches, let T-1396, T-1419 and T-1420 finish, rebuild on the latest main, confirm with Julio, then `push --force-with-lease` and re-point the tags.
+- **Merged:**
+  - T-1414: the task card protocol;
+  - T-1417: runner desk ops;
+  - T-1418: wire the cloud desk client.
+- **Running:**
+  - T-1396: custom provider, migration 0058;
+  - T-1419: the task card UI;
+  - T-1420: one commit per task in the lead CLI.
+- **Next after the rewrite:**
+  - Stop (UX Task E);
+  - the session log (F, a migration);
+  - the RunnerHands adapter and hub wiring;
+  - drop `llm_virtual_keys`.
+
+**2026-10-14 22:10: LiteLLM is gone from production; local git cleaned.**
+- **Merged and live:**
+  - T-1411: the desk install kit; live check: no desk containers, server socket empty;
+  - T-1413: LiteLLM removed; live at `30f88fa02`, healthy, 0 errors, the gateway flag on with no "disabled" log;
+  - T-1415: menu icons;
+  - T-1416: the unread divider.
+- **Local git cleanup** (Julio OK'd): 371 branches, 17 old worktrees, the 2 pre-compaction history branches and the remote `spike/T-0118-push` were deleted. The recovery list is `~/.zilar-lead/branches-before-cleanup-2026-10-14.txt`; don't `gc --prune` before 2027-01.
+- **The git history audit** (a Sonnet agent, read-only) is running and writes to `docs/audit/git-history-audit.md`. **No history rewrite without Julio's OK.**
+- **Running:**
+  - T-1414: the task card, in pre-review;
+  - T-1417: runner desk ops, in fix round 1;
+  - T-1396: the custom OpenAI-compatible provider, rewritten for Effect AI, migration 0058;
+  - T-1418: wiring the cloud desk client.
+- **Next:** drop `llm_virtual_keys`/`ai_daily_spend` after T-1396's migration lands (one schema task at a time).
+
+**2026-10-14 21:25: 6 workers** (Julio asked to run more in parallel).
+- **Running:**
+  - T-1411: the install kit;
+  - T-1413: LiteLLM removal;
+  - T-1414: the task card protocol and server;
+  - T-1415: web chat menu icons;
+  - T-1416: the unread divider skips your own messages;
+  - T-1417: runner desk ops.
+- **Next (each waits on a running task):**
+  - after T-1413: wire `buildHands` in `main.ts` plus a `DESK_IMAGE` config; the server `RunnerHands` adapter plus hub wiring (needs T-1417); drop `llm_virtual_keys` (after T-1413 is the only release live);
+  - after T-1414: the card UI with Stop (UX Task D);
+  - after T-1414 merges: Stop (Task E); then the session log (Task F, migration 0058).
+
+**2026-10-14 21:05: auto-deploy is unblocked.**
+- T-1412 merged and deployed `a47d15870`, which carries T-1409, T-1410 and T-1412.
+- **Live checks:**
+  - `/health` is ok with that commit;
+  - `/api/ais` answers 401 without a session (the route is mounted);
+  - "migrations applied: 58";
+  - `ais.computer_mode` exists with default `'off'`;
+  - no desk containers;
+  - no error logs in 15 minutes.
+
+**2026-10-14 20:50: T-1409 merged** (desk tools in the loop, plus migration 0057 `computer_mode`; inert in production, since nothing wires the Hands yet).
+- **Running:**
+  - T-1412: the hotfix, in pre-review;
+  - T-1411: the install kit, in a lead hardening round (the socket env empty by default; desk services exit 0 unless `DESKS_ENABLED`);
+  - T-1413: LiteLLM removal (no migration; the table drop comes later).
+- **After T-1412 deploys,** live-check:
+  - `GET /api/ais` (it now carries `computerMode`);
+  - `/health`;
+  - over SSH, that no desk container runs.
+- **Follow-up, not yet specced:** wire `buildHands` in `main.ts`, plus a `DESK_IMAGE` config.
+
+**2026-10-14 20:35: auto-deploy is blocked.**
+- **What broke:** the Coolify build of `f0cf8f571` (T-1410) failed at `apps/server/Dockerfile:77` because the image doesn't copy `packages/desk`.
+- **Impact:** production still runs `c23de833c` (T-1408); nothing is down.
+- **The fix:** T-1412, launched; it also adds a gate check so a missing package can't recur.
+- **Until it lands, merges don't deploy.** After it merges, watch `/health` for the new commit.
+- **Merged since the last entry:** T-1410, the egress proxy.
+
+**2026-10-14 20:20: P0 is done; P1 has started; P2 is half built.**
+- **Merged and checked:**
+  - T-1403: desk image and daemon;
+  - T-1405: `ai_usage`; migration 0055 is live and the table exists;
+  - T-1406: status line, checked on web mock and the emulator;
+  - T-1407: the desk-agent sidecar;
+  - T-1408: optional limits (migration 0056), checked on web and the emulator.
+- **Running:**
+  - T-1409: desk tools in the loop, plus `ais.computer_mode` (migration 0057);
+  - T-1410: egress proxy (the IP guard moves to `packages/desk`);
+  - T-1411: host install kit, files only.
+- **Next:**
+  - P0 Task 6, the LiteLLM clean-up, after T-1409 (both touch the gateway and `ais`);
+  - UX Task C (task card and Stop) after T-1409;
+  - Task F (GitHub App token injection) needs Julio to create the App.
+- **Needs Julio:**
+  - the OK to run the T-1411 install kit on the VPS: gVisor via a docker *reload* (no container restarts), the 4 GB slice, two systemd units, then a Coolify socket mount;
+  - his first AI DM in production, to verify a reply and an `ai_usage` row.
+- T-1396 (custom provider), when resumed, must take the next free migration number (after 0057).
+
+**2026-10-14 19:10: AI replies are on in production.**
+- **T-1399 merged** (Effect AI ModelClient; Effect 4.0.4). The lead checked:
+  - the phone smoke passed;
+  - the web loads headless.
+- **Merged:** T-1400 (cards never notify), T-1401 (provisioning without LiteLLM), T-1404 (`lead forget`; 44 finished entries dropped).
+- **Coolify:** `AGENT_GATEWAY_ENABLED=true` on zilar-chat (production entry only, with Julio's OK) and a redeploy. In the new container the flag is on, the "gateway is disabled" line is gone, and there are no errors.
+- **Waiting on Julio:**
+  - add a provider key in Connections;
+  - create an AI;
+  - DM it; then the lead checks the logs for the turn.
+- **T-1403:** the desk image and daemon, in its third pre-review.
+- **Next specs:**
+  - P0 Task 3 (`ai_usage` table and cost) and Task 4 (owner budgets);
+  - Task 6 (drop the LiteLLM env and tables);
+  - UX Tasks B-I (status line, task card, Stop, View steps), now unblocked.
+
+**2026-10-14 18:30: the agent system is designed; Julio decided the 4 open points.**
+- **Plan:** `docs/design/agent-system.md` (memory `agent-system-decisions.md`).
+  - The brain (the agent loop and model calls) stays in the server, using **Effect AI, with no LiteLLM**.
+  - The hands are a gVisor jail per active task on the **current VPS**, stopped when idle. Installing gVisor still needs Julio's OK when it happens.
+  - **Runners** run the same image and daemon on the user's machine and must stay equal to the cloud.
+  - Default network: the open web through the proxy. No default budget.
+- **Build order:** P0 AIs answer in production (production has no LiteLLM, so AIs can't reply live today) → P1 status line and task card → P2 computer → P3 runner → P4 browser → P5 MCP → P6 scale.
+- **T-1396** (OpenAI-compatible provider) stays paused: its LiteLLM `api_base` part is replaced by P0.
+- **T-1394 merged:**
+  - checked on web (headless, mock): the Base UI dropdown lists 7 providers;
+  - checked on the emulator (mock build): the sheet lists 7 providers and picking one updates the field;
+  - the phone smoke passed.
+- **Merged and live:**
+  - **T-1395:** checked on the emulator. On live, logged out it answers 401, and models.dev answers 200 from the prod container (5.6 MB, all 6 providers).
+  - **T-1401:** checked on live. The AIs API needs only the cipher, and `ZILAR_KEY_ENCRYPTION_KEY` is set (presence checked only). `AGENT_GATEWAY_ENABLED` is not `true`, so AIs can't reply until Julio OKs the flip, after T-1399.
+- **T-1402 merged:** `docs/audit/desk-runner-plan.md`. The lead ran its read-only VPS checks:
+  - ext4, so no XFS quotas;
+  - 7.2 GB available, which fits about 3 jails at 2 GB;
+  - Docker runc; 38 containers.
+- **Julio asked about brig.sh:** a local microVM CLI that needs KVM. Noted as a possible runner backend for P3, not for the VPS.
+- **T-1400:** fix round 1 is running: an outer ORDER BY, and the preview route skips card edits.
+- **Audits merged:**
+  - T-1397: `docs/audit/effect-ai-plan.md`, tasks 1-6;
+  - T-1398: `docs/audit/agent-ux-plan.md`, tasks A-I. The lead answered its open questions in the Review.
+- **Running:**
+  - T-1399: P0-1, every model call through Effect AI on the AI's own connection; listener off;
+  - T-1400: UX Task A, progress cards never notify;
+  - T-1401: P0-5, provisioning without LiteLLM; the AIs API needs only the cipher;
+  - T-1402: audit of the desk and runner (reusing `apps/runner`, `runner-tunnel`, `machines`).
+- **Next:**
+  - after T-1399: plan tasks 3-4 (`ai_usage` table and budgets), then task 6 (drop LiteLLM env and table);
+  - UX Tasks B-I after T-1399, since they share `agents/*`.
+- **Live needs Julio** (Coolify env, his OK): `AGENT_GATEWAY_ENABLED=true`, while the key cipher `ZILAR_KEY_ENCRYPTION_KEY` stays set. Then Julio adds his own provider key in Connections and DMs an AI.
+
+**2026-10-14 16:35: T-1393 merged.** Create an AI now adds a provider key inline (mobile and web). Build `dd1bff6a` was sent to Julio's DM (the phone was unplugged). Check on his account: with no keys, step 3 shows the form and Next turns on after saving. Julio OK'd the paid models while Go is out of funds.
+
+**2026-10-14 16:25: model eval stopped and graded. OpenCode Go is out of funds (402 "Insufficient account funds" on every model).**
+- **Results:** `docs/audit/model-eval-2026-10.md` and the dashboard https://claude.ai/artifact/DjHj8aNx3uRRRQz6vGEruU.
+  - DeepSeek V4.1 Flash and Muse 1.3 scored 10/10 on both tasks.
+  - Luna, GLM, MiMo and Space Bunny scored 10 on B.
+  - Haiku 3, Cat Jam 2.
+  - Qwen, MiniMax and LongCat were disqualified (they read the fix commit). Step 5 never ran.
+- **Eval worktrees** `zilar-T-1365..T-1392` are kept for inspection, statuses eval-done, eval-stopped or eval-dq. Delete them with the branches when Julio is done.
+- **While Go is out:** new workers start on Go DeepSeek, which fails at once, so the fallback runs them on the metered DeepSeek API.
+
+**2026-10-14 15:20: Android push works end to end; model eval wave 1 running.**
+- **Push, live and verified on Julio's phone** (vivo needs Autostart + background power on):
+  - T-1357: ejabberd `include_body` static, so pushes publish;
+  - T-1358: notifications show;
+  - T-1359: entry-file wake task;
+  - T-1360: one `result` reply per publish (the @xmpp callee sent `service-unavailable`).
+- **Mobile rows:**
+  - T-1361: DM unread kept (the mobile mapper hard-coded 0);
+  - T-1363: DM ticks survive a restart.
+- **Lead tool:**
+  - T-1362: Go Muse before paid Muse (autopilot restarted);
+  - T-1364: `launch --base`.
+- **Model eval** (`docs/audit/model-eval-2026-10.md`):
+  - T-1365..T-1376 replay T-1361 (B, base `fce08c06c`); T-1377..T-1388 replay T-1356 (A, base `d3b297545`);
+  - runs end at `status: eval-done` and are never merged; my Monitor prints `EVAL T-XXXX <status>`;
+  - wave 1 = T-1365..T-1372;
+  - when all are done: grade with the rubric, fill in Results, publish the report, then delete the eval worktrees and branches.
+- **Next:** install a fresh main build on Julio's phone and re-check test 12 (the DM badge).
+
 **2026-10-14 13:20: Android push debugging. Workers: T-1357, T-1358. Julio is at lunch; the phone is unplugged.**
 - **Cause, found live** (VPS SSH, memory `vps-ssh-access.md`):
   - (1) A paused XMPP session (the app closed, 600 s resume window) gets no push. ejabberd never publishes to the component, and the group notifier counts the paused session as online. This is T-1357.

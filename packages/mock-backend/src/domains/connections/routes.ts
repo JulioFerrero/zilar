@@ -60,6 +60,7 @@ function createConnection(data: MockData, request: MockHttpRequest): Response {
     id: data.nextConnectionId(),
     provider: typeof body.provider === 'string' && body.provider !== '' ? body.provider : 'openai',
     label: typeof body.label === 'string' && body.label !== '' ? body.label : null,
+    baseUrl: typeof body.baseUrl === 'string' && body.baseUrl !== '' ? body.baseUrl : null,
     status: 'active',
     createdAt: new Date().toISOString(),
   };

@@ -1,8 +1,6 @@
 // Replacing a provider key in place (T-1292): the owner swaps the key without
-// a new connection, the stored copy stays encrypted, the AIs on the connection
-// have their `litellm_model_id` cleared so the model registers again, another
-// user sees the same 404 as an unknown id, and the key never reaches a response.
-import { randomUUID } from 'node:crypto';
+// a new connection, the stored copy stays encrypted, another user sees the same
+// 404 as an unknown id, and the key never reaches a response.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -14,7 +12,6 @@ import {
   createTestContext,
   testSql,
   TEST_BASE_URL,
-  TEST_XMPP_DOMAIN,
   type SignedInUser,
   type TestContext,
 } from '../test-support';
@@ -57,21 +54,6 @@ describe('replacing a provider key', () => {
     return body.id;
   }
 
-  // An AI owned by `ownerId` on `connectionId`, with a registered model id.
-  async function seedAi(ownerId: string, connectionId: string): Promise<string> {
-    const aiId = randomUUID();
-    await testSql(context)(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        yield* sql`INSERT INTO ais (id, owner, name, template, persona, provider_connection_id, model, localpart, jid, status)
-          VALUES (${aiId}, ${ownerId}, ${'Keyed AI'}, ${'dev'}, ${'A persona'}, ${connectionId}, ${'gpt-4o-mini'}, ${`ai-${aiId}`}, ${`ai-${aiId}@${TEST_XMPP_DOMAIN}`}, ${'active'})`;
-        yield* sql`INSERT INTO llm_virtual_keys (ai_id, litellm_key_id, litellm_model_id, encrypted_key, budget_usd, budget_duration)
-          VALUES (${aiId}, ${`tok-${aiId}`}, ${'model-1'}, ${cipher.encrypt('sk-virtual-do-not-leak')}, ${'20.00'}, ${'30d'})`;
-      }),
-    );
-    return aiId;
-  }
-
   async function storedKey(connectionId: string): Promise<string> {
     const rows = await testSql(context)(
       Effect.gen(function* () {
@@ -83,19 +65,6 @@ describe('replacing a provider key', () => {
     return rows[0]!.encryptedKey;
   }
 
-  async function modelIdFor(aiId: string): Promise<string | null> {
-    const rows = await testSql(context)(
-      Effect.gen(function* () {
-        const sql = yield* SqlClient.SqlClient;
-        return yield* sql<{
-          litellmModelId: string | null;
-        }>`SELECT litellm_model_id FROM llm_virtual_keys
-          WHERE ai_id = ${aiId} LIMIT 1`;
-      }),
-    );
-    return rows[0]!.litellmModelId;
-  }
-
   function replaceKey(user: SignedInUser, connectionId: string, key: string): Promise<Response> {
     return app.request(`${TEST_BASE_URL}/api/connections/${connectionId}`, {
       method: 'PATCH',
@@ -104,19 +73,18 @@ describe('replacing a provider key', () => {
     });
   }
 
-  it("stores the new key encrypted and clears the AIs' model id", async () => {
+  it('stores the new key encrypted', async () => {
     const owner = await bootstrapUser(context, app, 'owner@example.com');
     const connectionId = await createConnection(owner);
-    const aiId = await seedAi(owner.id, connectionId);
-    expect(await modelIdFor(aiId)).toBe('model-1');
+    const oldStored = await storedKey(connectionId);
 
     const response = await replaceKey(owner, connectionId, NEW_KEY);
 
     expect(response.status).toBe(200);
     const stored = await storedKey(connectionId);
     expect(stored).not.toBe(OLD_KEY);
+    expect(stored).not.toBe(oldStored);
     expect(cipher.decrypt(stored)).toBe(NEW_KEY);
-    expect(await modelIdFor(aiId)).toBeNull();
   });
 
   it('answers 404 for a connection owned by someone else', async () => {

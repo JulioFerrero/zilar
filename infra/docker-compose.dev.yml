@@ -1,4 +1,4 @@
-# Zilar local development infrastructure: Postgres (pgvector), ejabberd and LiteLLM.
+# Zilar local development infrastructure: Postgres (pgvector) and ejabberd.
 #
 #   pnpm infra:up      start everything and wait for the healthchecks
 #   pnpm infra:down    stop the containers, keep the data volumes
@@ -6,8 +6,8 @@
 #   pnpm infra:reset   delete the data volumes (asks for confirmation)
 #
 # Secrets come from infra/.env (git-ignored, see infra/.env.example). Every
-# published port binds to 127.0.0.1 only. Image tags and the LiteLLM digest are
-# pinned on purpose; do not switch to floating tags.
+# published port binds to 127.0.0.1 only. Image tags are pinned on purpose; do
+# not switch to floating tags.
 
 name: zilar-dev
 
@@ -25,7 +25,6 @@ services:
       POSTGRES_DB: postgres
       ZILAR_DB_PASSWORD: ${ZILAR_DB_PASSWORD:?ZILAR_DB_PASSWORD is required in infra/.env}
       EJABBERD_DB_PASSWORD: ${EJABBERD_DB_PASSWORD:?EJABBERD_DB_PASSWORD is required in infra/.env}
-      LITELLM_DB_PASSWORD: ${LITELLM_DB_PASSWORD:?LITELLM_DB_PASSWORD is required in infra/.env}
       # Optional: creates the read-only search role on a fresh data volume.
       ZILAR_ARCHIVE_DB_PASSWORD: ${ZILAR_ARCHIVE_DB_PASSWORD:-}
     volumes:
@@ -82,40 +81,6 @@ services:
       timeout: 10s
       retries: 30
       start_period: 20s
-    networks:
-      - zilar
-
-  litellm:
-    # LiteLLM proxy 1.102.1, pinned by digest. Never use 1.82.7 or 1.82.8:
-    # those releases were compromised.
-    image: ghcr.io/berriai/litellm@sha256:87f34979b9f8cb274fac90ca8a4fdda07d8480de22755562a26adeb95ce20d02
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    ports:
-      - '127.0.0.1:4000:4000'
-    environment:
-      DATABASE_URL: postgresql://litellm:${LITELLM_DB_PASSWORD:?LITELLM_DB_PASSWORD is required in infra/.env}@postgres:5432/litellm
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY is required in infra/.env}
-      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?LITELLM_SALT_KEY is required in infra/.env}
-      PLACEHOLDER_API_KEY: ${PLACEHOLDER_API_KEY:-CHANGE_ME}
-    volumes:
-      - ./litellm/config.yaml:/app/config.yaml:ro
-    command: ['--config', '/app/config.yaml', '--port', '4000', '--host', '0.0.0.0']
-    healthcheck:
-      # The image has no curl, so the healthcheck uses its bundled Python.
-      test:
-        [
-          'CMD',
-          'python',
-          '-c',
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=5)",
-        ]
-      interval: 10s
-      timeout: 10s
-      retries: 30
-      start_period: 30s
     networks:
       - zilar
 

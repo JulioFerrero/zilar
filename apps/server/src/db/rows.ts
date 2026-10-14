@@ -104,6 +104,21 @@ export interface GroupRoleRow {
   createdAt: Date;
 }
 
+// Row of the `provider_connections` table. `baseUrl` (migration 0058) is the
+// user's own OpenAI-compatible endpoint, validated and stored at create; it is
+// `null` for every other provider.
+export interface ProviderConnectionRow {
+  id: string;
+  owner: string;
+  provider: string;
+  encryptedKey: string;
+  label: string | null;
+  baseUrl: string | null;
+  status: 'active' | 'revoked';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // Row of the `ais` table.
 export interface AisRow {
   id: string;
@@ -118,6 +133,9 @@ export interface AisRow {
   jid: string;
   status: 'active' | 'disabled' | 'stopped';
   machineId: string | null;
+  // T-1409: where the AI's desk runs. `off` (default), `cloud` (Zilar cloud),
+  // `runner` (the owner's machine) or `auto`; only `cloud` is wired so far.
+  computerMode: 'off' | 'cloud' | 'runner' | 'auto';
   canDelegate: boolean;
   acceptsDelegation: boolean;
   createdAt: Date;
@@ -255,6 +273,21 @@ export interface PushSubscriptionRow {
 export interface PushSettingRow {
   userId: string;
   showPreviews: boolean;
+  updatedAt: Date;
+}
+
+// Row of the `ai_usage` table (T-1405): one row per AI per UTC day, added to
+// after every model call. The token columns are `bigint` (a read would come
+// back as a string; nothing reads them here) and `costUsd` is `numeric`, which
+// node-postgres returns as a string, like the other numeric rows.
+export interface AiUsageRow {
+  aiId: string;
+  day: Date;
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  cacheWriteTokens: number;
+  costUsd: string;
   updatedAt: Date;
 }
 

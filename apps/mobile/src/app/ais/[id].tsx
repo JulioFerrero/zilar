@@ -66,8 +66,8 @@ function EditAi() {
 
   const [name, setName] = useState('');
   const [persona, setPersona] = useState('');
-  const [day, setDay] = useState('2');
-  const [month, setMonth] = useState('20');
+  const [day, setDay] = useState('');
+  const [month, setMonth] = useState('');
   // The connection and machine pickers (mirror web `AiPanel`): the active
   // connections and the owner's machines, loaded beside the AI so a failure
   // here never blocks the rest of the screen.
@@ -94,8 +94,8 @@ function EditAi() {
     setLoaded(ai);
     setName(ai.name);
     setPersona(ai.persona);
-    setDay(String(ai.limits.perDayUsd));
-    setMonth(String(ai.limits.perMonthUsd));
+    setDay(ai.limits.perDayUsd === null ? '' : String(ai.limits.perDayUsd));
+    setMonth(ai.limits.perMonthUsd === null ? '' : String(ai.limits.perMonthUsd));
     setSelectedConnectionId(ai.providerConnectionId);
     setModelDraft(ai.model);
     setHomeMachineId(ai.machineId ?? null);

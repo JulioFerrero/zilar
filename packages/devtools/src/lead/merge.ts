@@ -54,6 +54,32 @@ function taskStatus(options: MergeOptions): string {
   return parseFrontMatter(text)['status'] ?? '';
 }
 
+// The path after `git status --porcelain`'s status columns and the space.
+// `porcelainLines` trims each line, and an unstaged change (` M work/NOW.md`)
+// already has a leading space, so the trim collapses it to `M work/NOW.md`:
+// slicing a fixed 3 characters would cut into the path (`ork/NOW.md`). The
+// first space ends the columns — one column when the trim ate the leading
+// space, two otherwise (`?? work/...`, `M  work/...`).
+function porcelainPath(line: string): string {
+  const oneColumn = line[1] === ' ' && line[2] !== ' ';
+  return line.slice(oneColumn ? 2 : 3);
+}
+
+// Main's dirty check ignores the lead's own bookkeeping: `work/NOW.md` rides
+// along into the next squash, and untracked specs of other tasks launch in
+// parallel. This task's own untracked spec stays an error: a launch removes it.
+function isIgnorableMainChange(line: string, task: string): boolean {
+  const path = porcelainPath(line);
+  if (path === 'work/NOW.md') {
+    return true;
+  }
+  return (
+    line.startsWith('??') &&
+    /^work\/T-\d+-[^/]+\.md$/.test(path) &&
+    !path.startsWith(`work/${task}-`)
+  );
+}
+
 // Default production seams: reach for the real lsof/ps, identify ourselves
 // with the actual lead pid/parent so we never kill the lead by accident, and
 // print to stdout so the line shows up in the same stream the user invokes
@@ -115,10 +141,18 @@ async function stopWorktreeProcessesForMerge(options: MergeOptions): Promise<voi
 // judgment: on a rebase conflict it aborts and reports the conflicted files,
 // and it never resolves anything automatically.
 export async function mergeTask(options: MergeOptions): Promise<void> {
-  const mainDirty = porcelainLines(options.runner, options.root);
-  if (mainDirty.length > 0) {
+  const subject = `${options.task}: ${options.summary}`;
+  if (subject.length > 72) {
     throw new MergeError(
-      `refusing to merge: main checkout has uncommitted changes (${mainDirty.join(', ')})`,
+      `refusing to merge: the subject is ${subject.length} characters, over the 72 limit: ${subject}`,
+    );
+  }
+  const mainDirty = porcelainLines(options.runner, options.root);
+  const nowModified = mainDirty.some((line) => porcelainPath(line) === 'work/NOW.md');
+  const blocking = mainDirty.filter((line) => !isIgnorableMainChange(line, options.task));
+  if (blocking.length > 0) {
+    throw new MergeError(
+      `refusing to merge: main checkout has uncommitted changes (${blocking.join(', ')})`,
     );
   }
   const status = taskStatus(options);
@@ -167,8 +201,8 @@ export async function mergeTask(options: MergeOptions): Promise<void> {
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
   // Compute the new board text BEFORE the squash stages anything into
-  // main's index: a board throw (e.g. a hand-edited row `moveBoardRow`
-  // cannot parse) must leave main untouched so the merge stays re-runnable.
+  // main's index: a board throw (e.g. a board with no Done section) must
+  // leave main untouched so the merge stays re-runnable.
   const boardFile = path.join(options.root, 'work', 'BOARD.md');
   const boardText = moveBoardRow(
     options.readText(boardFile),
@@ -185,6 +219,13 @@ export async function mergeTask(options: MergeOptions): Promise<void> {
   const staged = options.runner.run(options.root, ['add', 'work/BOARD.md']);
   if (!staged.ok) {
     throw new MergeError('board stage failed');
+  }
+  // The lead's live notes ride along into the task's single commit.
+  if (nowModified) {
+    const stagedNow = options.runner.run(options.root, ['add', 'work/NOW.md']);
+    if (!stagedNow.ok) {
+      throw new MergeError('NOW.md stage failed');
+    }
   }
   const body = [`Squashed from ${options.branch}:`, ...subjects.map((s) => `- ${s}`)].join('\n');
   const committed = options.runner.run(options.root, [
@@ -206,6 +247,7 @@ export async function mergeTask(options: MergeOptions): Promise<void> {
     '--',
     '.',
     ':(exclude)work/BOARD.md',
+    ':(exclude)work/NOW.md',
   ]);
   if (!same.ok) {
     throw new MergeError(`squash result differs from ${options.branch}; nothing pushed`);

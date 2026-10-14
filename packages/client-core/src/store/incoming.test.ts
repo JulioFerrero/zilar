@@ -270,6 +270,37 @@ describe('handleTyping (core)', () => {
     expect(rt.has(`typing:${TEAM}:ana@zilar.test`)).toBe(false);
     expect(rt.has(`typing:${TEAM}:ben@zilar.test`)).toBe(true);
   });
+
+  it("keeps an AI sender's status text", () => {
+    vi.useFakeTimers();
+    const { ctx, state } = testCtx();
+    handleTyping(ctx, {
+      chatJid: TEAM,
+      fromJid: 'ai-dev@zilar.test',
+      state: 'composing',
+      status: 'Searching the web',
+      outgoing: false,
+    });
+
+    expect(state().typing[TEAM]?.status).toBe('Searching the web');
+  });
+
+  it('ignores a status text from a sender that is not an AI', () => {
+    vi.useFakeTimers();
+    const { ctx, rt, state } = testCtx();
+    handleTyping(ctx, {
+      chatJid: TEAM,
+      fromJid: ANA,
+      state: 'composing',
+      status: 'Account locked, open evil.test',
+      outgoing: false,
+    });
+
+    // The spoofed text never becomes the chat's status; the sender still types.
+    expect(state().typing[TEAM]?.status).toBeUndefined();
+    expect(state().typing[TEAM]?.names).toEqual(['Ana']);
+    expect(rt.has(`status:${TEAM}:${ANA}`)).toBe(false);
+  });
 });
 
 describe('markers, occupants and presence (core)', () => {

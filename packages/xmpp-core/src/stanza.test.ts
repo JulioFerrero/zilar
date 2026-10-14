@@ -21,6 +21,7 @@ import {
   parseReactions,
   parseRetraction,
   parseUploadSlot,
+  MAX_STATUS_CHARS,
   RETRACTION_FALLBACK_BODY,
   sanitizeReactions,
   type ParseContext,
@@ -148,6 +149,25 @@ describe('buildTyping, buildDisplayed, presence and carbons', () => {
     });
     expect(stanza.attrs).toMatchObject({ type: 'groupchat', to: 'project@rooms.zilar.localhost' });
     expect(stanza.getChild('composing', CHAT_STATES_NAMESPACE)).toBeDefined();
+  });
+
+  it('carries an optional status next to the chat state, capped at 80 chars', () => {
+    const stanza = buildTyping({
+      to: 'project@rooms.zilar.localhost',
+      kind: 'groupchat',
+      state: 'composing',
+      status: 'Running tests',
+    });
+    expect(stanza.getChild('composing', CHAT_STATES_NAMESPACE)).toBeDefined();
+    expect(stanza.getChild('stage', AGENT_NAMESPACE)?.text()).toBe('Running tests');
+
+    const long = buildTyping({
+      to: 'alice@zilar.localhost',
+      kind: 'chat',
+      state: 'composing',
+      status: 'x'.repeat(MAX_STATUS_CHARS + 5),
+    });
+    expect(long.getChild('stage', AGENT_NAMESPACE)?.text()).toBe('x'.repeat(MAX_STATUS_CHARS));
   });
 
   it('builds a displayed marker for a message id', () => {
@@ -455,6 +475,31 @@ describe('decodeMessageStanza: replies, typing and displayed', () => {
         outgoing: false,
       });
     }
+  });
+
+  it('parses a status from a chat state, and an old stanza without one parses too', () => {
+    const stanza = xml(
+      'message',
+      { from: 'alice@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat' },
+      xml('composing', { xmlns: CHAT_STATES_NAMESPACE }),
+      xml('stage', { xmlns: AGENT_NAMESPACE }, 'Searching the web'),
+    );
+    const decoded = decodeMessageStanza(stanza, ctx);
+    expect(decoded.message).toBeUndefined();
+    expect(decoded.typing).toEqual({
+      chatJid: 'alice@zilar.localhost',
+      fromJid: 'alice@zilar.localhost',
+      state: 'composing',
+      status: 'Searching the web',
+      outgoing: false,
+    });
+
+    const old = xml(
+      'message',
+      { from: 'alice@zilar.localhost', to: 'bob@zilar.localhost', type: 'chat' },
+      xml('paused', { xmlns: CHAT_STATES_NAMESPACE }),
+    );
+    expect(decodeMessageStanza(old, ctx).typing?.status).toBeUndefined();
   });
 
   it('parses a displayed marker', () => {
@@ -1331,6 +1376,39 @@ describe('XEP-0308 corrections and XEP-0424 retractions', () => {
       begin: '5',
       end: '9',
     });
+  });
+
+  it('carries an agent payload on a correction, exactly like a send', () => {
+    const payload: Payload = {
+      v: 0,
+      type: 'progress',
+      data: { ai: 'ai-1@zilar.localhost', stage: 'Running the tool', state: 'working' },
+    };
+    const stanza = buildCorrection({
+      id: 'm-c2',
+      to: 'bob@zilar.localhost',
+      kind: 'chat',
+      originalId: 'origin-2',
+      text: 'Running the tool',
+      payload,
+    });
+
+    const agent = stanza.getChild('agent', AGENT_NAMESPACE);
+    expect(agent?.text()).toBe(encodePayload(payload));
+    expect(stanza.getChild('store', HINTS_NAMESPACE)).toBeDefined();
+  });
+
+  it('leaves a payload-less correction unchanged', () => {
+    const stanza = buildCorrection({
+      id: 'm-c3',
+      to: 'bob@zilar.localhost',
+      kind: 'chat',
+      originalId: 'origin-3',
+      text: 'the new text',
+    });
+
+    expect(stanza.getChild('agent', AGENT_NAMESPACE)).toBeUndefined();
+    expect(stanza.getChild('store', HINTS_NAMESPACE)).toBeUndefined();
   });
 
   it('builds a retraction with the target, the fallback and the store hint', () => {

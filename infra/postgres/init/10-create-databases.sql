@@ -8,7 +8,6 @@
 
 \getenv zilar_password ZILAR_DB_PASSWORD
 \getenv ejabberd_password EJABBERD_DB_PASSWORD
-\getenv litellm_password LITELLM_DB_PASSWORD
 
 SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', 'zilar', :'zilar_password')
 WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'zilar') \gexec
@@ -19,11 +18,6 @@ SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', 'ejabberd', :'ejabberd_passwor
 WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'ejabberd') \gexec
 SELECT format('CREATE DATABASE %I OWNER %I', 'ejabberd', 'ejabberd')
 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'ejabberd') \gexec
-
-SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', 'litellm', :'litellm_password')
-WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'litellm') \gexec
-SELECT format('CREATE DATABASE %I OWNER %I', 'litellm', 'litellm')
-WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'litellm') \gexec
 
 -- pgvector ships with the image; make it available to our server's database.
 \connect zilar

@@ -284,3 +284,57 @@ describe('decodePayload', () => {
     }
   });
 });
+
+describe('ProgressSchema (T-1414 task card)', () => {
+  it('keeps an old payload valid', () => {
+    const old = '{"v":0,"type":"progress","data":{"ai":"dev-1@ai.example.com","stage":"Thinking"}}';
+
+    expect(decodePayload(old)).toEqual({
+      ok: true,
+      payload: {
+        v: 0,
+        type: 'progress',
+        data: { ai: 'dev-1@ai.example.com', stage: 'Thinking' },
+      },
+    });
+  });
+
+  it('accepts a full task-card payload', () => {
+    const payload: Payload = {
+      v: 0,
+      type: 'progress',
+      data: {
+        ai: 'dev-1@ai.example.com',
+        task_id: 't-17',
+        stage: 'Running the tool',
+        title: 'Reading files',
+        steps: [
+          { id: 'step-1', label: 'Reading files', state: 'done' },
+          { id: 'step-2', label: 'Running the tool', state: 'doing' },
+        ],
+        started_at: '2026-10-14T09:00:00Z',
+        elapsed_ms: 134_000,
+        summary: 'Done in 2m 14s · 2 steps',
+        state: 'working',
+        can_stop: true,
+      },
+    };
+
+    expect(decodePayload(encodePayload(payload))).toEqual({ ok: true, payload });
+  });
+
+  it('refuses more than 20 steps', () => {
+    const steps = Array.from({ length: 21 }, (_, index) => ({
+      id: `step-${index + 1}`,
+      label: 'Working',
+      state: 'planned',
+    }));
+    const envelope = JSON.stringify({
+      v: 0,
+      type: 'progress',
+      data: { ai: 'dev-1@ai.example.com', stage: 'Working', steps },
+    });
+
+    expect(decodePayload(envelope).ok).toBe(false);
+  });
+});
