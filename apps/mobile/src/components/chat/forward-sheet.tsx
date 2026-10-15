@@ -92,7 +92,17 @@ export function ForwardSheet({
   };
 
   return (
-    <BottomSheet visible onClose={onClose} closeLabel="Close forward" title="Forward">
+    <BottomSheet
+      visible
+      onClose={onClose}
+      closeLabel="Close forward"
+      title="Forward"
+      footer={
+        <Button disabled={selected.length === 0} onPress={send}>
+          <Text>{forwardSendLabel(selected.length)}</Text>
+        </Button>
+      }
+    >
       <SearchField
         value={query}
         onChangeText={setQuery}
@@ -133,14 +143,6 @@ export function ForwardSheet({
           onChangeText={setComment}
           multiline
         />
-      </View>
-      <View className="mt-3 flex-row justify-end gap-2">
-        <Button variant="outline" onPress={onClose}>
-          <Text>Cancel</Text>
-        </Button>
-        <Button disabled={selected.length === 0} onPress={send}>
-          <Text>{forwardSendLabel(selected.length)}</Text>
-        </Button>
       </View>
     </BottomSheet>
   );

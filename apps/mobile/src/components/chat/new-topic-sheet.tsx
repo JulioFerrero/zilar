@@ -96,7 +96,21 @@ export function NewTopicSheet({
   const shownError = localError !== '' ? localError : error;
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} closeLabel="Close new topic" title="New topic">
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      closeLabel="Close new topic"
+      title="New topic"
+      footer={
+        <Button
+          accessibilityLabel="Create topic"
+          disabled={busy || name.trim() === ''}
+          onPress={create}
+        >
+          <Text>{busy ? 'Creating…' : 'Create'}</Text>
+        </Button>
+      }
+    >
       <Text className="mt-1 text-[14px] text-muted-foreground">in {groupTitle}</Text>
 
       <Text className="mt-4 text-[14px] font-medium text-foreground">Name</Text>
@@ -254,19 +268,6 @@ export function NewTopicSheet({
           {shownError}
         </Text>
       ) : null}
-
-      <View className="mt-4 flex-row justify-end gap-2">
-        <Button variant="ghost" accessibilityLabel="Cancel" onPress={onClose}>
-          <Text>Cancel</Text>
-        </Button>
-        <Button
-          accessibilityLabel="Create topic"
-          disabled={busy || name.trim() === ''}
-          onPress={create}
-        >
-          <Text>{busy ? 'Creating…' : 'Create'}</Text>
-        </Button>
-      </View>
     </BottomSheet>
   );
 }

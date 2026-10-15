@@ -1,6 +1,6 @@
 import { TrueSheet } from '@lodev09/react-native-true-sheet';
 import { palette } from '@zilar/ui-tokens';
-import { ChevronLeft } from 'lucide-react-native';
+import { ChevronLeft, X } from 'lucide-react-native';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { ScrollView, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,10 +23,16 @@ type BottomSheetProps = {
   title?: string;
   /** A dark back key on the header's left, when given. */
   onBack?: () => void;
-  /** Keys on the header's right (a close key, or Shuffle and Reset). */
+  /** Keys on the header's right. A titled sheet gets the default close key when this is `undefined`; `null` hides it. */
   headerRight?: ReactNode;
   /** A sticky row under the scroll view, kept above the keyboard. */
   footer?: ReactNode;
+  /**
+   * Whether a drag, a backdrop tap or Android back may dismiss the sheet.
+   * Defaults to `true`; a sheet that must not be dismissed mid-action (a busy
+   * import) passes `false` so the native dismissal cannot desync `visible`.
+   */
+  dismissible?: boolean;
   /** A `max-h-[NN%]` class; the panel is capped at that share of the screen. */
   maxHeightClassName?: string;
   children?: ReactNode;
@@ -56,6 +62,10 @@ function maxHeightFraction(className: string): number {
  * `panel` colour with a top hairline and the 36×4 grabber (`ui-style.md` §2); the
  * header row (an optional back key, the title, optional right keys) and the
  * `footer` row sit outside the scroll view, so a long body scrolls between them.
+ * A titled sheet gets the standard close key on the header's right by default
+ * (T-1443); pass `headerRight={null}` to hide it or your own keys to replace it.
+ * Pass `dismissible={false}` while an action runs, so a drag, a backdrop tap or
+ * Android back cannot hide the sheet while its `visible` stays true.
  * The top padding keeps the header clear of the native grabber, which the
  * library draws inside the sheet's top edge and offers no content inset for.
  */
@@ -67,6 +77,7 @@ export function BottomSheet({
   onBack,
   headerRight,
   footer,
+  dismissible = true,
   maxHeightClassName = 'max-h-[85%]',
   children,
 }: BottomSheetProps) {
@@ -103,7 +114,7 @@ export function BottomSheet({
       grabber
       grabberOptions={{ width: 36, height: 4, cornerRadius: 2, color: '#333333', adaptive: false }}
       dimmed
-      dismissible
+      dismissible={dismissible}
       accessibilityOptions={{ grabberLabel: closeLabel }}
       onDidDismiss={() => {
         presented.current = false;
@@ -125,7 +136,15 @@ export function BottomSheet({
             >
               {title ?? ''}
             </Text>
-            {headerRight}
+            {headerRight === undefined ? (
+              title !== undefined ? (
+                <IconButton label={closeLabel} className="h-9 w-9 rounded-xl" onPress={onClose}>
+                  <X size={16} color={ICON} />
+                </IconButton>
+              ) : null
+            ) : (
+              headerRight
+            )}
           </View>
         ) : null}
         <ScrollView

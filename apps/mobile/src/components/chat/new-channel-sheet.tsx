@@ -1,5 +1,4 @@
 import { useCallback, useState } from 'react';
-import { Pressable, View } from 'react-native';
 
 import {
   buildChannelCreateInput,
@@ -8,13 +7,18 @@ import {
   type CreateVisibility,
 } from '@/components/chat/visibility-fields';
 import { useDirectoryApi } from '@/components/directory/use-directory-api';
+import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
+
 /**
  * The new-channel sheet (T-0144): a title plus an optional description
  * (≤ 300, the channel's short blurb). The screen creates the channel
  * through the store and navigates to it; failures read inline, never raw.
+ * On the kit bottom sheet (T-1443): Create sits in the sticky footer and the
+ * header's close key is the way out. Its parent still mounts it inside the
+ * new-chat dialog (see the T-1443 Report).
  */
 export function NewChannelSheet({
   busy,
@@ -66,11 +70,18 @@ export function NewChannelSheet({
   };
 
   return (
-    <Pressable
-      onPress={() => {}}
-      className="w-full max-w-xs rounded-2xl border border-border-strong bg-surface p-4"
+    <BottomSheet
+      visible
+      onClose={onClose}
+      dismissible={!busy}
+      closeLabel="Close new channel"
+      title="New channel"
+      footer={
+        <Button accessibilityLabel="Create channel" disabled={!canCreate} onPress={create}>
+          <Text>{busy ? 'Creating…' : 'Create'}</Text>
+        </Button>
+      }
     >
-      <Text className="text-[16px] font-semibold text-foreground">New channel</Text>
       <Text className="mt-1 text-[14px] text-muted-foreground">
         Only you and the admins you add will post. Everyone else subscribes.
       </Text>
@@ -123,14 +134,6 @@ export function NewChannelSheet({
           {error}
         </Text>
       ) : null}
-      <View className="mt-3 flex-row justify-end gap-2">
-        <Button variant="ghost" accessibilityLabel="Cancel" disabled={busy} onPress={onClose}>
-          <Text>Cancel</Text>
-        </Button>
-        <Button accessibilityLabel="Create channel" disabled={!canCreate} onPress={create}>
-          <Text>{busy ? 'Creating…' : 'Create'}</Text>
-        </Button>
-      </View>
-    </Pressable>
+    </BottomSheet>
   );
 }
