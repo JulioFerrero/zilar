@@ -201,22 +201,26 @@ export function createAttachmentPicker(sizeReader?: SizeReader): AttachmentPicke
     NativeFailure
   > {
     const result = yield* Effect.tryPromise({
-      try: () => DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true }),
+      try: () => DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: true }),
       catch: () => new NativeFailure({ message: PICK_FAILED_MESSAGE }),
     });
     if (result.canceled) {
       return { status: 'cancelled' };
     }
-    const asset = result.assets[0];
-    if (asset === undefined) {
+    const assets = result.assets;
+    if (assets.length === 0) {
       return { status: 'cancelled' };
     }
-    return yield* withRealSize({
-      uri: asset.uri,
-      name: asset.name,
-      mimeType: asset.mimeType,
-      size: asset.size,
-    });
+    // Every selected document goes through the same size read and rules as a
+    // library pick (T-1536), so several files stage together.
+    return yield* pickedFromAssets(
+      assets.map((asset) => ({
+        uri: asset.uri,
+        name: asset.name,
+        mimeType: asset.mimeType,
+        size: asset.size,
+      })),
+    );
   });
 
   return {

@@ -1,3 +1,4 @@
+import type { AlbumRef } from '@zilar/chat-core';
 import { type Attachment } from '@zilar/protocol';
 import { Data, Effect, Fiber } from 'effect';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -58,24 +59,56 @@ export function captionOptions(text: string, replyTo: ReplyRef | undefined): Sen
   };
 }
 
-/** Telegram's album cap (T-1246 picker): only 2..10 picks become one album. */
+/** The most files the composer stages and sends at once (T-1536). */
+const MAX_STAGED_FILES = 10;
+const MAX_FILES_MESSAGE = 'You can send up to 10 files at once.';
+
+/** Telegram's album rule: only two or more pictures share one album. */
 const ALBUM_MIN = 2;
-const ALBUM_MAX = 10;
+
+/** One message of a multi-file send: the file and its album membership, if any. */
+interface AttachmentSend {
+  file: PickedFile;
+  album?: AlbumRef;
+}
 
 /**
- * One album id for a pick of 2..10 pictures, or `undefined` when the pick must
- * send as today (a single file, a mixed pick, a non-image file, or more than
- * the cap). The image test is `classifyMobileFile` — the same one the send
- * pipeline uses — so an SVG or HEIC pick is never marked as an album member
- * that would then render as a dropped tile. The id is the app's own
- * `randomUuid` (`lib/polyfills`, installed as the runtime's
- * `crypto.randomUUID` on Hermes), matching the web sender (T-1268).
+ * Plans a send (T-1536). Two or more staged pictures become one album, and an
+ * album groups only *consecutive* messages (`groupMessages`), so all staged
+ * images go first in pick order (their `index` counted among the images,
+ * `count` the image count) and every other file follows in pick order. With
+ * fewer than two images the pick order is kept and nothing is marked as an
+ * album.
  */
-function albumIdForPicks(picks: readonly PickedFile[]): string | undefined {
-  if (picks.length < ALBUM_MIN || picks.length > ALBUM_MAX) {
-    return undefined;
+function attachmentSends(picks: readonly PickedFile[]): AttachmentSend[] {
+  const images = picks.filter((file) => classifyMobileFile(file) === 'image');
+  if (images.length < ALBUM_MIN) {
+    return picks.map((file) => ({ file }));
   }
-  return picks.every((file) => classifyMobileFile(file) === 'image') ? randomUuid() : undefined;
+  const id = randomUuid();
+  const sends: AttachmentSend[] = images.map((file, index) => ({
+    file,
+    album: { id, index, count: images.length },
+  }));
+  for (const file of picks) {
+    if (classifyMobileFile(file) !== 'image') {
+      sends.push({ file });
+    }
+  }
+  return sends;
+}
+
+/**
+ * Appends a pick's files to the staged ones, keeping the first ten (T-1536).
+ * `overflow` is true when a file was dropped, so the caller shows the cap
+ * sentence in the attach error.
+ */
+function appendPicks(
+  current: readonly PickedFile[],
+  incoming: readonly PickedFile[],
+): { files: PickedFile[]; overflow: boolean } {
+  const next = [...current, ...incoming];
+  return { files: next.slice(0, MAX_STAGED_FILES), overflow: next.length > MAX_STAGED_FILES };
 }
 
 /**
@@ -135,9 +168,14 @@ export function useComposerMedia({
             setAttachError(result.message);
             return;
           }
-          // A pick stages every file in the composer's strip and closes the
-          // sheet, so the strip and the send button are visible right away.
-          setPicks(result.files);
+          // A pick adds to the staged files (T-1536) and closes the sheet, so
+          // the strip and the send button are visible right away. Past the cap
+          // the first ten stay and the attach error explains why.
+          const staged = appendPicks(picks, result.files);
+          setPicks(staged.files);
+          if (staged.overflow) {
+            setAttachError(MAX_FILES_MESSAGE);
+          }
           setAttachOpen(false);
         }),
       ),
@@ -202,29 +240,23 @@ export function useComposerMedia({
     sendGif(gif);
   };
 
-  // A pick stages one or more files (T-1246): Send sends one message per
-  // item in order, the composer text and the reply quote going on the first
-  // only (web sends the same way). Two to ten photos share one album id, so
-  // they group into one grid bubble (T-1271); a single or mixed pick sends as
-  // today. The sheet closes and the composer clears. Returns whether it
+  // A pick stages several files (T-1536): when two or more are pictures they
+  // send first, in pick order, as one album (`attachmentSends`); every other
+  // file follows. With fewer than two pictures the pick order is kept and no
+  // album marker is set. The composer text and the reply quote ride the first
+  // message sent. The sheet closes and the composer clears. Returns whether it
   // handled the send, so the caller falls through to text.
   const sendPicked = (): boolean => {
     if (picks.length === 0) {
       return false;
     }
     if (onSendAttachment !== undefined) {
-      const albumId = albumIdForPicks(picks);
-      picks.forEach((file, index) => {
+      attachmentSends(picks).forEach((send, index) => {
         const caption = index === 0 ? captionOptions(text, replyTo) : {};
-        if (albumId === undefined) {
-          onSendAttachment(file, caption);
-          return;
-        }
-        const options: SendAttachmentOptions = {
-          ...caption,
-          album: { id: albumId, index, count: picks.length },
-        };
-        onSendAttachment(file, options);
+        onSendAttachment(
+          send.file,
+          send.album === undefined ? caption : { ...caption, album: send.album },
+        );
       });
     }
     setPicks([]);
@@ -234,9 +266,10 @@ export function useComposerMedia({
     return true;
   };
 
-  /** Removes one staged file from the strip. */
+  /** Removes one staged file from the strip and clears the attach error. */
   const removePick = (index: number) => {
     setPicks((current) => current.filter((_, position) => position !== index));
+    setAttachError(undefined);
   };
 
   const openAttach = () => {
@@ -265,20 +298,26 @@ export function useComposerMedia({
   };
 
   // A demo attachment becomes a staged file: the gradient URL is the preview
-  // URI (never fetched), and the store sends the same wire shape.
+  // URI (never fetched), and the store sends the same wire shape. Like a real
+  // pick it adds to what is staged (T-1536).
   const demoPick = (attachment: Attachment) => {
     setAttachError(undefined);
-    setPicks([demoPickedFile(attachment)]);
+    const staged = appendPicks(picks, [demoPickedFile(attachment)]);
+    setPicks(staged.files);
+    if (staged.overflow) {
+      setAttachError(MAX_FILES_MESSAGE);
+    }
     setAttachOpen(false);
   };
 
   // The Gallery tab's send (T-1320): the selected assets arrive as picked files
-  // and go straight into the composer strip, exactly like today's library pick
-  // (the same `setPicks(result.files)` + close above), so albums (T-1246) and
-  // captions keep working. `sendPicked` reads the same `picks`.
+  // and are added to the composer strip, exactly like a library pick (the same
+  // append + close above), so albums (T-1271) and captions keep working.
+  // `sendPicked` reads the same `picks`.
   const stageFiles = (files: PickedFile[]) => {
-    setAttachError(undefined);
-    setPicks(files);
+    const staged = appendPicks(picks, files);
+    setPicks(staged.files);
+    setAttachError(staged.overflow ? MAX_FILES_MESSAGE : undefined);
     setAttachOpen(false);
   };
 

@@ -1,9 +1,11 @@
+import { fileExtension } from '@zilar/chat-core';
 import { FileText, Image as ImageIcon, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { Image, Pressable, ScrollView, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
-import { ICON } from '@/lib/colors';
+import { classifyMobileFile, formatFileSize } from '@/lib/attachments';
+import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import { well } from '@/lib/depth';
 
 /** One staged file as the strip renders it: a thumbnail plus its name and size. */
@@ -11,9 +13,14 @@ export type PickedPreview = {
   uri: string;
   name: string;
   size?: number | undefined;
+  /** The picker MIME type, so the strip tells a photo from any other file. */
+  mimeType?: string | undefined;
 };
 
+/** The single-file row's thumbnail (T-1246). */
 const THUMB_SIZE = 64;
+/** A several-file strip tile (T-1536). */
+const TILE_SIZE = 72;
 
 function PreviewThumb({ preview, iconColor }: { preview: PickedPreview; iconColor: string }) {
   const [failed, setFailed] = useState(false);
@@ -33,6 +40,49 @@ function PreviewThumb({ preview, iconColor }: { preview: PickedPreview; iconColo
         style={{ width: THUMB_SIZE, height: THUMB_SIZE }}
         resizeMode="cover"
       />
+    </View>
+  );
+}
+
+/** One photo tile of the several-file strip: the image, cover-cropped (T-1536). */
+function PhotoTile({ preview }: { preview: PickedPreview }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <View className="h-[72px] w-[72px] items-center justify-center rounded-[10px] border border-edge bg-surface">
+        <ImageIcon size={18} color={MUTED_FOREGROUND} />
+      </View>
+    );
+  }
+  return (
+    <Image
+      source={{ uri: preview.uri }}
+      accessibilityLabel={preview.name}
+      onError={() => setFailed(true)}
+      className="h-[72px] w-[72px] rounded-[10px] border border-edge"
+      style={{ width: TILE_SIZE, height: TILE_SIZE }}
+      resizeMode="cover"
+    />
+  );
+}
+
+/** One other-file tile: the icon, the upper-case extension and the size. */
+function FileTile({ preview }: { preview: PickedPreview }) {
+  const extension = fileExtension(preview.name);
+  const size = preview.size === undefined ? '' : formatFileSize(preview.size);
+  return (
+    <View
+      accessibilityRole="image"
+      accessibilityLabel={size === '' ? preview.name : `${preview.name}, ${size}`}
+      className="h-[72px] w-[72px] items-center justify-center gap-[3px] rounded-[10px] border border-edge bg-surface"
+    >
+      <FileText size={18} color={MUTED_FOREGROUND} />
+      {extension === '' ? null : (
+        <Text className="font-mono-medium text-[10px] text-[#d4d4d4]">{extension}</Text>
+      )}
+      {size === '' ? null : (
+        <Text className="font-mono text-[10px] text-subtle-foreground">{size}</Text>
+      )}
     </View>
   );
 }
@@ -74,34 +124,40 @@ function PickedPreviewRow({
   );
 }
 
-/** The several-file strip: thumbnails side by side, each with an x to drop it. */
+/**
+ * The several-file strip (T-1536): one 72 px tile per staged file, a photo
+ * shown as the image and any other file as its icon, extension and size, each
+ * with an x to drop it.
+ */
 function PickedStripRow({
   previews,
   onRemove,
-  iconColor,
 }: {
   previews: PickedPreview[];
   onRemove: ((index: number) => void) | undefined;
-  iconColor: string;
 }) {
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 8, paddingHorizontal: 4, paddingVertical: 4 }}
+      contentContainerStyle={{ gap: 10, paddingHorizontal: 4, paddingVertical: 4 }}
     >
       {previews.map((preview, index) => (
         <View key={`${index}:${preview.uri}`}>
-          <PreviewThumb preview={preview} iconColor={iconColor} />
+          {classifyMobileFile(preview) === 'image' ? (
+            <PhotoTile preview={preview} />
+          ) : (
+            <FileTile preview={preview} />
+          )}
           {onRemove === undefined ? null : (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Remove ${preview.name}`}
               hitSlop={8}
               onPress={() => onRemove(index)}
-              className="absolute -right-1.5 -top-1.5 h-5 w-5 items-center justify-center rounded-full bg-black/70"
+              className="absolute -right-1.5 -top-1.5 h-5 w-5 items-center justify-center rounded-full bg-black/80"
             >
-              <X size={12} color="#ffffff" />
+              <X size={11} color="#ffffff" />
             </Pressable>
           )}
         </View>
@@ -111,9 +167,9 @@ function PickedStripRow({
 }
 
 /**
- * The composer's staged attachment strip (T-1246): one file keeps the earlier
- * single-preview row exactly; several show as a horizontal strip of
- * thumbnails, each removable. Pure view: the composer owns the picking.
+ * The composer's staged attachment strip (T-1246, T-1536): one file keeps the
+ * earlier single-preview row exactly; several show as 72 px tiles, each
+ * removable. Pure view: the composer owns the picking.
  */
 export function PickedStrip({
   previews,
@@ -125,18 +181,17 @@ export function PickedStrip({
   if (previews.length === 0) {
     return null;
   }
-  const iconColor = ICON;
   const first = previews[0];
   if (previews.length === 1 && first !== undefined) {
     return (
       <PickedPreviewRow
         preview={first}
         onRemove={onRemove === undefined ? undefined : () => onRemove(0)}
-        iconColor={iconColor}
+        iconColor={ICON}
       />
     );
   }
-  return <PickedStripRow previews={previews} onRemove={onRemove} iconColor={iconColor} />;
+  return <PickedStripRow previews={previews} onRemove={onRemove} />;
 }
 
 function formatPreviewSize(bytes: number): string {

@@ -79,6 +79,8 @@ type ComposerInputRowProps = {
   onInputHeightChange: (height: number) => void;
   canSend: boolean;
   editing: boolean;
+  /** The staged file count, so the send key names several files (T-1536). */
+  stagedCount: number;
   onSend: () => void;
   onOpenAttach: () => void;
   onOpenSheet: () => void;
@@ -102,6 +104,7 @@ export function ComposerInputRow({
   onInputHeightChange,
   canSend,
   editing,
+  stagedCount,
   onSend,
   onOpenAttach,
   onOpenSheet,
@@ -114,6 +117,13 @@ export function ComposerInputRow({
 }: ComposerInputRowProps) {
   const { pressed, reduceMotion, setPressed } = useKeyPress();
   const iconColor = ICON;
+  // The send key names several staged files (T-1536); one file or none keeps
+  // today's "Send message"/"Save edit" label.
+  const sendLabel = editing
+    ? 'Save edit'
+    : stagedCount >= 2
+      ? `Send ${stagedCount} files`
+      : 'Send message';
   return (
     <View
       className="flex-row items-end gap-1 rounded-[14px] p-2"
@@ -153,7 +163,7 @@ export function ComposerInputRow({
       {canSend ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={editing ? 'Save edit' : 'Send message'}
+          accessibilityLabel={sendLabel}
           hitSlop={8}
           onPress={() => {
             tap();

@@ -193,13 +193,16 @@ export function Composer({
     onCloseSheet: sheet.closeSheet,
   });
 
-  const placeholder = composerPlaceholder(title);
-  // The staged files as the strip renders them: a thumbnail, the name and the
-  // size, in the order the user picked them (T-1246).
+  // With staged files the input takes the caption (T-1536); the chat's own
+  // placeholder shows otherwise.
+  const placeholder = media.picks.length > 0 ? 'Add a caption' : composerPlaceholder(title);
+  // The staged files as the strip renders them: a thumbnail, the name, the
+  // size and the MIME type, in the order the user picked them (T-1246).
   const pickedPreviews = media.picks.map((file) => ({
     uri: file.uri,
     name: file.name,
     size: file.size,
+    mimeType: file.mimeType,
   }));
 
   const handleSend = () => {
@@ -261,6 +264,7 @@ export function Composer({
         inputHeight={inputHeight}
         onInputHeightChange={(height) => setInputHeight(text === '' ? MIN_INPUT_HEIGHT : height)}
         canSend={media.canSend}
+        stagedCount={media.picks.length}
         editing={editTarget !== undefined}
         onSend={handleSend}
         onOpenAttach={media.openAttach}
