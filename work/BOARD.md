@@ -1487,3 +1487,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1472](T-1472-mobile-new-ai-followups.md) | Mobile New AI notice on chat, grey Zilar, no dead highlight | 2026-10-15 |
 | [T-1473](T-1473-mobile-add-key-sheet.md) | Mobile Add key sheet on a shared key-check hook | 2026-10-15 |
 | [T-1475](T-1475-add-key-chip-provider-name.md) | Add key chip shows the provider name | 2026-10-15 |
+| [T-1476](T-1476-web-sidebar-recency-order.md) | Web sidebar orders chats by recency like mobile | 2026-10-15 |

@@ -1,5 +1,5 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { folderUnreadTotal, sortTopics } from '@zilar/chat-core';
+import { chatSortTime, folderUnreadTotal, sortTopics } from '@zilar/chat-core';
 import type { ChatStoreState } from './store';
 import { activeFolderOf, matchesFolder } from './selectors';
 
@@ -24,12 +24,13 @@ function groupTitleOf(chat: ChatSummary): string {
 /**
  * Folds the flat chat list into sidebar groups: every topic of a group nests
  * under its group header; DMs and AI chats stand alone. Per-user archived
- * chats are hidden here (they live in the Archived section). Pinned singles
- * and pinned groups (via the General room's pref) float to the top, newer
- * pins first; inside a group, pinned topics float above the rest with
- * General first among the unpinned. Search keeps a group header when any of
- * its topics matches by name, or when the group's own name contains the
- * query (then it shows all its topics). Folders treat a topic like its group (a topic
+ * chats are hidden here (they live in the Archived section). Groups and
+ * singleton chats share one list sorted pinned first (via the General room's
+ * pref, newer pins first), then newest activity first, ties by title; inside a
+ * group, pinned topics float above the rest with General first among the
+ * unpinned. Search keeps a group header when any of its topics matches by
+ * name, or when the group's own name contains the query (then it shows all its
+ * topics). Folders treat a topic like its group (a topic
  * matches when its own row does).
  */
 export function groupChats(state: ChatStoreState): ChatGroup[] {
@@ -82,7 +83,7 @@ export function groupChats(state: ChatStoreState): ChatGroup[] {
   for (const chat of singles) {
     groups.push({ key: `chat:${chat.id}`, title: chat.title, groupId: undefined, topics: [chat] });
   }
-  return sortGroupsPinnedFirst(groups);
+  return sortGroups(groups);
 }
 
 // A group's pin stamp: the General topic's (the pref lives on the General
@@ -93,12 +94,28 @@ function groupPinTime(group: ChatGroup): number {
   return row?.pinnedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
 }
 
-function sortGroupsPinnedFirst(groups: ChatGroup[]): ChatGroup[] {
-  if (!groups.some((group) => groupPinTime(group) !== Number.NEGATIVE_INFINITY)) {
-    return groups;
+// A group's recency: the newest activity among its topics. A singleton group
+// has one topic, so this is its own row's time.
+function groupSortTime(group: ChatGroup): number {
+  return Math.max(Number.NEGATIVE_INFINITY, ...group.topics.map((topic) => chatSortTime(topic)));
+}
+
+// Newer first; equal stamps compare equal, including two -Infinity stamps
+// (subtracting infinities would give NaN and freeze the sort).
+function compareNewestFirst(left: number, right: number): number {
+  if (left === right) {
+    return 0;
   }
+  return right > left ? 1 : -1;
+}
+
+function sortGroups(groups: ChatGroup[]): ChatGroup[] {
   return [...groups].sort((left, right) => {
-    const time = groupPinTime(right) - groupPinTime(left);
+    const pin = compareNewestFirst(groupPinTime(left), groupPinTime(right));
+    if (pin !== 0) {
+      return pin;
+    }
+    const time = compareNewestFirst(groupSortTime(left), groupSortTime(right));
     return time !== 0 ? time : left.title.localeCompare(right.title);
   });
 }

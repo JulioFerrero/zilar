@@ -70,7 +70,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - `use-new-ai-flow.ts` went from 400 to 261 lines, on a shared `use-key-check` hook;
   - the emulator checks passed: Save adds a row, closing after a check leaves no key, and New AI still works.
   - Nit for later: the done Provider chip reads "✓ Provider", not the provider's name.
-- **Running:** T-1474, so that a new AI's chat leads the chat list. The emulator showed mobile's own `DmEntrySchema` dropping `createdAt`; the fix is sent. Web uses the contract and is fine. This is a server change, so a deploy check follows the merge.
+- **Merged: T-1475.** The Add key chip shows the provider's name ("✓ DeepSeek"), checked on the emulator.
+- **Running:**
+  - **T-1474: a new AI's chat leads the chat list.**
+    - The first fix added `createdAt` to mobile's own `DmEntrySchema`, but the emulator still shows the new chat near the bottom.
+    - Web works: the new chat leads the DMs.
+    - The worker is tracing the mobile cause with a store test.
+    - It is a server change, so a deploy check follows the merge.
+  - **T-1476:** the web sidebar listed every group above every DM, sorting only by pin. It now orders by recency like mobile (a parity bug found while checking T-1474).
 - **T-1445 history:**
   - **T-1445: mobile New AI.** The phone walk passed every step:
     - the footer, the provider dots and the keyboard-safe key step;
