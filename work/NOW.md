@@ -11,7 +11,9 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1500 merged: the plan is in `docs/audit/ai-work-plan.md` (8 steps; the lead's decisions are in its Review). Next is its T1, the server read model;
   - T-1502 (the Telegram importer keeps video stickers) merged and live at `3bb8c90aa` (0 errors, 0 warnings);
   - T-1501 (web sticker upload keeps motion) merged; the New pack grid follows;
-  - T-1503 (web Connections), T-1504 (AI `lastFailure` on the AI list), T-1505 (AI work step 1, the server read model plus an index migration) and T-1507 (phone stickers render with `expo-image`) are running;
+  - T-1504 (AI `lastFailure` on the AI list) merged;
+  - T-1508 (web Group info step 2) is running;
+  - T-1503 (web Connections), T-1505 (AI work step 1, the server read model plus an index migration) and T-1507 (phone stickers render with `expo-image`) are running;
   - T-1506 (web lean Settings) is specced and waits for T-1503.
 - **1. Web and server, while Julio is at the PC (2 workers at a time):**
   1. web sticker upload keeps motion (today a GIF freezes on its first frame) and the New pack grid;

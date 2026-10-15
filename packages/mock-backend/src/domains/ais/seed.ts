@@ -11,7 +11,8 @@ const CREATED_AT = '2026-09-28T09:00:00.000Z';
  * platform. `usage: null` means "unavailable", like the contract's optional
  * summary. T-1408: Dev-1 has no limits (null bounds) but real spend, so the
  * usage block renders without a meter; Marketing AI keeps a limit so the meter
- * still shows.
+ * still shows. T-1504: QA-1 is the failing AI (a rejected key) and Marketing AI
+ * has reached its $5 daily limit (amber); Dev-1 is healthy.
  */
 export const mockAis: readonly PublicAi[] = [
   {
@@ -25,6 +26,7 @@ export const mockAis: readonly PublicAi[] = [
     providerConnectionId: 'conn-openai',
     limits: { perDayUsd: null, perMonthUsd: null },
     usage: { todayUsd: 0.42, windowUsd: 3.1 },
+    lastFailure: null,
     machineId: 'mach-approved',
     computerMode: 'off',
     createdAt: CREATED_AT,
@@ -40,6 +42,7 @@ export const mockAis: readonly PublicAi[] = [
     providerConnectionId: 'conn-openai',
     limits: { perDayUsd: 2, perMonthUsd: 20 },
     usage: null,
+    lastFailure: { kind: 'key_rejected', at: CREATED_AT },
     machineId: null,
     computerMode: 'cloud',
     createdAt: CREATED_AT,
@@ -54,7 +57,8 @@ export const mockAis: readonly PublicAi[] = [
     status: 'active',
     providerConnectionId: 'conn-anthropic',
     limits: { perDayUsd: 5, perMonthUsd: 50 },
-    usage: { todayUsd: 1.7, windowUsd: 6 },
+    usage: { todayUsd: 5, windowUsd: 9.4 },
+    lastFailure: null,
     machineId: null,
     computerMode: 'off',
     createdAt: CREATED_AT,

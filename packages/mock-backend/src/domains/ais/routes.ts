@@ -102,6 +102,7 @@ function createAi(data: MockData, request: MockHttpRequest): Response {
     providerConnectionId:
       typeof body.providerConnectionId === 'string' ? body.providerConnectionId : 'conn-openai',
     limits: readAiLimits(body.limits),
+    lastFailure: null,
     machineId: null,
     computerMode: 'off',
     createdAt: new Date().toISOString(),

@@ -148,7 +148,9 @@ export type AiUsage = typeof AiUsage.Type;
  * platform; a non-string value reads as `null`, and an absent key (an older
  * server) stays absent. `avatarUrl`
  * (T-0165) is absent when the AI has no picture. The delegation opt-ins
- * (T-0478) are optional so older payloads parse (read as off).
+ * (T-0478) are optional so older payloads parse (read as off). T-1504:
+ * `lastFailure` is the AI's latest logged turn failure no answer has followed,
+ * or null when it is healthy.
  */
 export const PublicAi = Schema.Struct({
   id: Schema.String,
@@ -161,6 +163,12 @@ export const PublicAi = Schema.Struct({
   providerConnectionId: Schema.String,
   limits: AiLimits,
   usage: Schema.optional(Schema.NullOr(AiUsage)),
+  // T-1504: the AI's latest logged turn failure that no answer has followed,
+  // or null when it is healthy. Optional so a payload from an older server
+  // still parses. `kind` is a plain string so a newer server's kind decodes.
+  lastFailure: Schema.optional(
+    Schema.NullOr(Schema.Struct({ kind: Schema.String, at: Schema.String })),
+  ),
   machineId: LenientOptionalNullableString,
   avatarUrl: Schema.optional(Schema.String),
   canDelegate: Schema.optional(Schema.Boolean),

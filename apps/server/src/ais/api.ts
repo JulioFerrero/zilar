@@ -38,6 +38,7 @@ import {
   type AiLogger,
   type PublicAi,
 } from './service';
+import { withLastFailures } from './health';
 import { getAiUsage } from './usage';
 
 export interface AisApiDependencies {
@@ -163,7 +164,9 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
           // Owner only, as today: every id here came from the owner's own listing.
           // The reads run in parallel so one slow AI never holds the whole list.
           const rows = await Promise.all(withAvatarList.map((ai) => withUsage(ai)));
-          return rows.map(toWire);
+          // T-1504: one failure read for the whole list, never one per AI.
+          const decorated = await withLastFailures(deps.db, rows);
+          return decorated.map(toWire);
         }),
       )
       // T-1395: read-only models.dev catalog; needs no configured gateway.
@@ -184,7 +187,9 @@ export function createAisApi(deps: AisApiDependencies): EffectApiMount {
             throw new HttpError(404, 'not_found', 'AI not found');
           }
           const [withAvatar] = await withAvatars([ai]);
-          return toWire(await withUsage(withAvatar ?? ai));
+          const withUsageAi = await withUsage(withAvatar ?? ai);
+          const [decorated] = await withLastFailures(deps.db, [withUsageAi]);
+          return toWire(decorated ?? withUsageAi);
         }),
       )
       .handle(
