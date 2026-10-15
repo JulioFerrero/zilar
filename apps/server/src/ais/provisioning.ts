@@ -33,7 +33,7 @@ export async function createAi(deps: AiServiceDeps, input: CreateAiInput): Promi
   if (connection.status !== 'active') {
     throw new HttpError(400, 'connection_inactive', 'That provider connection is not active');
   }
-  if (!isLlmProvider(connection.provider)) {
+  if (!isLlmProvider(connection.provider, connection.baseUrl !== null)) {
     throw new HttpError(
       400,
       'connection_not_llm',
@@ -247,7 +247,7 @@ export async function changeAiModel(deps: AiServiceDeps, input: ChangeAiModelInp
   if (connection.status !== 'active') {
     throw new HttpError(400, 'connection_inactive', 'That provider connection is not active');
   }
-  if (!isLlmProvider(connection.provider)) {
+  if (!isLlmProvider(connection.provider, connection.baseUrl !== null)) {
     throw new HttpError(
       400,
       'connection_not_llm',

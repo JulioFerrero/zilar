@@ -1,12 +1,14 @@
 // AI provisioning with the key cipher set and no remote gateway (the
 // production shape): creating, editing and deleting an AI works. No provider
 // key is read on the write path. The refusals for a foreign connection and a
-// non-LLM one survive.
+// non-LLM one survive, and a catalog connection whose stored base URL is the
+// only proof it is an LLM provider keeps working across a restart (T-1441).
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { createApp } from '../app';
+import { resetCatalogCache } from '../ai/catalog';
 import { createKeyCipher } from '../connections/crypto';
 import {
   bootstrapUser,
@@ -41,13 +43,17 @@ describe('AI provisioning without a remote gateway', () => {
     await context.close();
   });
 
-  async function addConnection(ownerId: string, provider = 'openai'): Promise<string> {
+  async function addConnection(
+    ownerId: string,
+    provider = 'openai',
+    baseUrl: string | null = null,
+  ): Promise<string> {
     const id = randomUUID();
     await testSql(context)(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label)
-          VALUES (${id}, ${ownerId}, ${provider}, ${createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY)}, ${null})`;
+        yield* sql`INSERT INTO provider_connections (id, owner, provider, encrypted_key, label, base_url)
+          VALUES (${id}, ${ownerId}, ${provider}, ${createKeyCipher(MASTER_KEY).encrypt(PROVIDER_KEY)}, ${null}, ${baseUrl})`;
       }),
     );
     return id;
@@ -165,5 +171,21 @@ describe('AI provisioning without a remote gateway', () => {
 
     const ok = await postAi(owner.cookie, createBody(ownerConnection));
     expect(ok.status).toBe(201);
+  });
+
+  it('creates an AI from a catalog connection with a stored base URL and a cold map', async () => {
+    const user = await bootstrapUser(context, app, 'owner@example.com');
+    // A fresh process: the in-memory catalog base URL map is empty (T-1441), so
+    // this provider id is known only through the connection's stored URL.
+    resetCatalogCache();
+    const connectionId = await addConnection(user.id, 'together', 'https://api.together.xyz/v1');
+
+    const created = await postAi(user.cookie, createBody(connectionId));
+    expect(created.status).toBe(201);
+    expect(await created.json()).toMatchObject({
+      status: 'active',
+      providerConnectionId: connectionId,
+    });
+    expect(await counts()).toEqual({ ais: 1, limits: 1 });
   });
 });
