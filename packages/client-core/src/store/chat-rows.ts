@@ -12,103 +12,14 @@
 // name, never a sender id, so `senderId` carries the sender name (display
 // only: the row preview reads `senderName`, never `senderId`). The merge rule
 // (`mergeUnread`) lives here too, so no barrel change is needed.
-import type {
-  ChatSummary,
-  TopicAiActivity,
-  TopicAiState,
-  TopicInfo,
-  UiMessage,
-} from '@zilar/chat-core';
-import { Exit, Schema } from 'effect';
-import {
-  Topic as TopicSchema,
-  type ChatEntry,
-  type GroupBackground,
-  type Topic,
-} from '@zilar/api-contract';
+import type { ChatSummary, UiMessage } from '@zilar/chat-core';
+import type { ChatEntry } from '@zilar/api-contract';
+import { archiveMarkOf, createdAtOf, previewMessageOf, unreadOf } from './row-helpers';
+import type { ServerRowFields } from './row-helpers';
+import { chatEntryTopics, summaryForTopic } from './topic-rows';
 
-/** The `/api/chats` unread fields, read loosely (both apps decode entries
- * on their own, and an older server omits them). */
-export interface ServerRowFields {
-  readonly unread?: unknown;
-  readonly lastMessage?: unknown;
-  /** T-1318: when the chat was created or the caller joined, an ISO datetime. */
-  readonly createdAt?: unknown;
-  /** T-1238: the delivered mark, an archive id in the caller's terms. */
-  readonly deliveredUntil?: unknown;
-  /** T-1311: the peer's read mark (DMs), an archive id in the caller's terms. */
-  readonly readUntil?: unknown;
-}
-
-function archiveMarkOf(raw: unknown): string | undefined {
-  return typeof raw === 'string' && raw !== '' ? raw : undefined;
-}
-
-/** T-1318: the chat's creation/join time from the wire, or undefined when unusable. */
-function createdAtOf(raw: unknown): Date | undefined {
-  if (typeof raw !== 'string') {
-    return undefined;
-  }
-  const date = new Date(raw);
-  return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
-function unreadOf(raw: unknown): number {
-  return typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 ? raw : 0;
-}
-
-function previewParts(
-  raw: unknown,
-):
-  | { id: string; text: string; senderName?: string | undefined; archiveId?: string | undefined }
-  | undefined {
-  if (typeof raw !== 'object' || raw === null) {
-    return undefined;
-  }
-  const value = raw as {
-    id?: unknown;
-    text?: unknown;
-    senderName?: unknown;
-    archiveId?: unknown;
-  };
-  if (typeof value.id !== 'string' || typeof value.text !== 'string') {
-    return undefined;
-  }
-  // T-1214: the preview keeps the origin id as its `id` (markers, quote
-  // jumps and dedupe all key on it); the archive id rides separately as
-  // the read mark for `clearActiveChatRead` / `recordRead`.
-  const archiveId =
-    typeof value.archiveId === 'string' && value.archiveId !== '' ? value.archiveId : undefined;
-  return value.senderName === undefined || typeof value.senderName === 'string'
-    ? { id: value.id, text: value.text, senderName: value.senderName, archiveId }
-    : { id: value.id, text: value.text, archiveId };
-}
-
-/** The server preview as a display-only `UiMessage` (see the header). */
-export function previewMessageOf(chatId: string, raw: unknown): UiMessage | undefined {
-  const parts = previewParts(raw);
-  if (parts === undefined) {
-    return undefined;
-  }
-  const at = (raw as { at?: unknown }).at;
-  if (typeof at !== 'string') {
-    return undefined;
-  }
-  const createdAt = new Date(at);
-  if (Number.isNaN(createdAt.getTime())) {
-    return undefined;
-  }
-  return {
-    id: parts.id,
-    chatId,
-    senderId: parts.senderName ?? '',
-    senderName: parts.senderName ?? '',
-    text: parts.text,
-    createdAt,
-    status: 'sent',
-    ...(parts.archiveId === undefined ? {} : { archiveId: parts.archiveId }),
-  };
-}
+export type { ServerRowFields } from './row-helpers';
+export { previewMessageOf, chatEntryTopics };
 
 function previewAt(message: UiMessage | undefined): number {
   return message?.createdAt.getTime() ?? Number.NEGATIVE_INFINITY;
@@ -149,74 +60,6 @@ export function mergeUnread(
     return { ...merged, unread: 0 };
   }
   return merged;
-}
-
-/** A topic row the viewer may see; a malformed row decodes to `null` and is dropped. */
-function topicOf(raw: unknown): Topic | null {
-  const decoded = Schema.decodeUnknownExit(TopicSchema)(raw);
-  return Exit.isSuccess(decoded) ? decoded.value : null;
-}
-
-/**
- * The validated topics of one group entry: a malformed row is dropped, never
- * rendered. An entry without `topics` (older server) yields none, so the group
- * keeps its single legacy row.
- */
-export function chatEntryTopics(entry: {
-  readonly topics?: readonly unknown[] | undefined;
-}): Topic[] {
-  const rows = entry.topics;
-  if (!Array.isArray(rows)) {
-    return [];
-  }
-  const topics: Topic[] = [];
-  for (const raw of rows) {
-    const topic = topicOf(raw);
-    if (topic !== null) {
-      topics.push(topic);
-    }
-  }
-  return topics;
-}
-
-function topicInfoOf(topic: Topic): TopicInfo {
-  return {
-    id: topic.id,
-    glyph: topic.glyph,
-    kind: topic.kind,
-    status: topic.status,
-    visibility: topic.visibility,
-    isGeneral: topic.isGeneral,
-    archived: false,
-    doneAt: topic.doneAt ?? null,
-    owner: topic.owner,
-    linkUrl: topic.linkUrl,
-    linkLabel: topic.linkLabel,
-    activity: topicActivityOf(topic),
-  };
-}
-
-// T-1514: the AI activity of one topic. A missing field (an older server) or an
-// entry with an unknown state (a newer one) is left out; the known three keep,
-// in the server's order.
-function topicActivityOf(topic: Topic): TopicAiActivity[] {
-  const rows: TopicAiActivity[] = [];
-  for (const entry of topic.activity ?? []) {
-    if (isTopicAiState(entry.state)) {
-      rows.push({
-        aiId: entry.aiId,
-        name: entry.name,
-        ...(entry.jid === undefined ? {} : { jid: entry.jid }),
-        ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
-        state: entry.state,
-      });
-    }
-  }
-  return rows;
-}
-
-function isTopicAiState(state: string): state is TopicAiState {
-  return state === 'working' || state === 'waiting' || state === 'done';
 }
 
 /** One DM, or one group without topics, maps to a single row. */
@@ -274,69 +117,6 @@ function summaryFor(entry: ChatEntry, server: ServerRowFields | undefined): Chat
           myRole: entry.role,
         }
       : {}),
-  };
-}
-
-/**
- * One topic becomes its own chat row (T-0111), keyed by the topic's room JID.
- * The General topic keeps the group's old chat id, so existing `/c/<jid>`
- * deep links open it. T-0124: a channel's General topic is its feed, so the
- * row carries the channel fields too.
- */
-function summaryForTopic(
-  groupTitle: string,
-  groupId: string,
-  topic: Topic,
-  channel: {
-    subscriberCount: number;
-    description: string | null;
-    role: 'owner' | 'admin' | 'member';
-  } | null,
-  visibility: 'private' | 'public',
-  handle: string | null,
-  avatarUrl: string | undefined,
-  groupBackground: GroupBackground | undefined,
-  server: ServerRowFields | undefined,
-): ChatSummary {
-  const unread = server === undefined ? 0 : unreadOf(server.unread);
-  const lastMessage =
-    server?.lastMessage === undefined
-      ? undefined
-      : previewMessageOf(topic.chatJid, server.lastMessage);
-  const deliveredUntil = server === undefined ? undefined : archiveMarkOf(server.deliveredUntil);
-  const createdAt = server === undefined ? undefined : createdAtOf(server.createdAt);
-  return {
-    id: topic.chatJid,
-    title: topic.name,
-    kind: 'group',
-    isAI: false,
-    space: 'personal',
-    unread,
-    muted: false,
-    memberCount: topic.memberCount,
-    onlineCount: 0,
-    // T-0164: topic rows keep their group's visibility + handle, so the
-    // header and the list paint the "Public" label on topics too.
-    visibility,
-    handle,
-    // T-0165: topic rows keep their group's picture too.
-    ...(avatarUrl === undefined ? {} : { avatarUrl }),
-    // T-0466: topic rows keep their group's shared background too.
-    ...(groupBackground === undefined ? {} : { groupBackground }),
-    ...(lastMessage === undefined ? {} : { lastMessage }),
-    ...(createdAt === undefined ? {} : { createdAt }),
-    ...(deliveredUntil === undefined ? {} : { deliveredUntil }),
-    ...(channel === null
-      ? {}
-      : {
-          chatKind: 'channel' as const,
-          subscriberCount: channel.subscriberCount,
-          description: channel.description,
-          myRole: channel.role,
-        }),
-    groupId,
-    groupTitle,
-    topic: topicInfoOf(topic),
   };
 }
 

@@ -1556,3 +1556,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1539](T-1539-mobile-topic-activity-marks.md) | Phone topic rows and the AIs here sheet show the AIs at work | 2026-10-15 |
 | [T-1540](T-1540-mobile-remove-task-strip.md) | Phone drops the task strip; link and done rows in topic info | 2026-10-15 |
 | [T-1536](T-1536-mobile-several-files.md) | Phone sends several files at once; photos go as one album | 2026-10-15 |
+| [T-1547](T-1547-split-chat-rows.md) | Split client-core chat-rows.ts: topic mappers and row helpers | 2026-10-15 |
