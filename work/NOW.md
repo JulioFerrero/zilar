@@ -55,7 +55,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 - **T-1468: the lead client and CLI are split.** `--help` is byte-identical, and `status`/`spec-check` work from main.
   - The lead restarted the autopilot at 04:07 on the new code.
   - The old one ignored SIGTERM through the pnpm wrapper, so the lead stopped it from the inner node process outward. Exactly one runs, with no errors.
-- **400-line rule:** every source file is now at or under 400 lines except `packages/devtools/src/lead/autopilot.ts` (671), left for a daytime session.
+- **400-line rule:** every source file was at or under 400 lines except `packages/devtools/src/lead/autopilot.ts` (671). T-1481 split it later the same night.
 - **Then:** T-1469: web New AI and Add key delete the key the dialog created when closed before Create or Save (the lead's rule; after Create or Save, the key is kept).
 - **Main check at `cc235e002`:** typecheck 16/16, devtools 97 tests, mock-backend 7, all green.
 - **Specs ready for after T-1445 merges:**
@@ -85,8 +85,17 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 - **Mobile sweep on the T-1480 APK (mock):**
   - the Dev AI review bubble fits, and its code and table scroll inside. Mobile Markdown tables render now, so the board's old "no tables" follow-up is removed;
   - the remaining gaps (subtitles, word keys on Machines and My AIs) are all in the waiting canvases.
-- **Running: T-1481.** It splits `packages/devtools/src/lead/autopilot.ts` (671 lines, the last file over 400) under `lead/autopilot/`, a pure move.
-  - After the merge the lead restarts the autopilot, stopping it inner node process first as in T-1468.
+- **Merged: T-1481.** `lead/autopilot.ts` is split under `lead/autopilot/`.
+  - Every source file is now under 400 lines. The only files over are three test harnesses (exempt) and the `apps/mobile/src/lib/emoji-data.ts` data table (435).
+  - The move is line-exact, and all 46 lead tests pass.
+  - The lead restarted the autopilot at 07:27, inner node process first. Exactly one runs, ticking with no errors.
+- **Running: T-1482.** Reply and Edit focus the composer on mobile and web.
+  - The emulator showed Reply leaving the composer unfocused, so typed text went nowhere until the user tapped the field.
+  - Web leaves focus on the body, which a touch user can't type into.
+- **Running: T-1483.** A group header never shows more online than members.
+  - Mobile showed "QA squad › General, 2 members, 3 online": the AI counts as online but not as a member.
+  - The fix applies the store's `max(members, online)` rule inside the shared `chatSubtitle`.
+- **Mobile interaction walk (emulator, mock):** send, reply with quote, the 👍 reaction and the @mention picker work. Two bugs found: T-1482 and T-1483.
 - **Web interaction walk (headless, mock, 1280 px):** send, reply, edit and New group all work, and the sent chat moves to the top of the list. 0 errors.
 - **Web sweep (lead, headless, mock, 390 and 1280 px, 23 routes):** no page overflows and no console errors after T-1477. Found and fixed: T-1477, T-1478, T-1479, T-1480.
 - **New canvas for Julio: "Stickers"**, https://claude.ai/artifact/GiBcaeJcuprSGGFBb3Xc3H. Four boards: web My packs and Discover, phone My packs and Pack actions.

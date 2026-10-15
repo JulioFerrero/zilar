@@ -32,8 +32,9 @@ export function chatSubtitle(chat: ChatSummary, now: Date): string {
     return `${count} ${count === 1 ? 'subscriber' : 'subscribers'}`;
   }
   if (chat.kind === 'group') {
-    const members = chat.memberCount ?? 0;
     const online = chat.onlineCount ?? 0;
+    // Everyone online is a member, and the room's occupants include AIs (the same rule as `handleOccupants`).
+    const members = Math.max(chat.memberCount ?? 0, online);
     return online > 0 ? `${members} members, ${online} online` : `${members} members`;
   }
   if (chat.online === true) {

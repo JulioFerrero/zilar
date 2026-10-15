@@ -1494,3 +1494,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1474](T-1474-new-ai-chat-leads-list.md) | A new AI's chat leads the chat list on web and mobile | 2026-10-15 |
 | [T-1480](T-1480-composer-placeholder-one-line.md) | Composer placeholder stays on one line on web and mobile | 2026-10-15 |
 | [T-1481](T-1481-autopilot-split.md) | Split the lead autopilot under lead/autopilot/ | 2026-10-15 |
+| [T-1483](T-1483-subtitle-online-not-above-members.md) | Group header never shows more online than members | 2026-10-15 |
