@@ -6,6 +6,7 @@ import {
   previewKind,
   previewPrefix,
   shouldRenderMarkdown,
+  topicActivityView,
   type ChatSummary,
   type PreviewKind,
   type UiMessage,
@@ -28,6 +29,7 @@ import {
 import { memo, useState } from 'react';
 import { Link } from 'react-router';
 import { EntityAvatar } from './EntityAvatar';
+import { AiActivityMarks } from './topic/AiActivityMarks';
 import { ChatActionsMenu } from './ChatActionsMenu';
 import { cn } from '@/lib/utils';
 import { useBlockedJids } from '@/lib/blockedJids';
@@ -93,6 +95,9 @@ export function TopicRow({
   const typingText = typing === undefined ? undefined : `${typing}…`;
   const isPrivate = chat.topic?.visibility === 'private';
   const glyph = chat.topic?.glyph ?? chat.title.charAt(0).toUpperCase() ?? '?';
+  const topic = chat.topic;
+  const activity =
+    topic === undefined ? undefined : topicActivityView(topic.activity, topic.doneAt);
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -123,7 +128,12 @@ export function TopicRow({
             {chat.pinnedAt !== undefined && (
               <Pin aria-label="Pinned" className="size-3.5 shrink-0 text-subtle-foreground" />
             )}
-            <span className="truncate text-[14px] leading-5 font-semibold text-foreground">
+            <span
+              className={cn(
+                'truncate text-[14px] leading-5 font-semibold',
+                activity?.done === true ? 'text-muted-foreground' : 'text-foreground',
+              )}
+            >
               {chat.title}
             </span>
             {isPrivate && (
@@ -134,6 +144,9 @@ export function TopicRow({
             )}
             {chat.isAI && <AiBadge />}
             <span className="ml-auto flex shrink-0 items-center gap-2 pl-1.5">
+              {topic !== undefined && (
+                <AiActivityMarks activity={topic.activity} doneAt={topic.doneAt} />
+              )}
               {chat.muted && (
                 <VolumeX aria-label="Muted" className="size-4 text-subtle-foreground" />
               )}

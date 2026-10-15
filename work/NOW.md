@@ -12,21 +12,23 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - AI work steps 1–3 and 5 (read model, topic-list activity, `topics.done_at` (migration 0064, live), live refresh);
     - the View steps audit (`docs/audit/view-steps-plan.md`, lead decisions in T-1522).
     - **Live last checked at `3f024a0fd`:** 0 errors, 3 "AI is offline" warnings at container start only, and the changed routes answer 401 signed out.
+  - **Also merged:** T-1526 (phone Machines, smoke checked), T-1531 (sticker lists show the owner's @handle).
   - **Running (8):**
-    - T-1525 (phone sticker upload keeps motion);
-    - T-1526 (phone Machines);
-    - T-1529 (AI work step 4: the last @mentioned AI follows a topic; migration 0065; the one schema task);
-    - T-1530 (View steps server route);
-    - T-1531 (sticker lists carry the @handle; "New pack" copy);
-    - T-1532 (AI work 6a: web topic rows and the "AIs here" key);
+    - T-1525 (phone sticker upload keeps motion; fix round: refuse a moving WebP/PNG over 512 KiB early);
+    - T-1529 (AI work step 4: the last @mentioned AI follows a topic; migration 0065; the one schema task; autofix round);
+    - T-1530 (View steps server route; autofix round);
+    - T-1532 (AI work 6a: web topic rows and the "AIs here" key; headless check passed; fix round: Stop only on your own AIs);
     - T-1533 (phone Stickers My packs and pack sheet);
     - T-1534 (AI work 6b: web drops the task strip, link row, Mark as done). **Merge only after T-1529.**
+    - T-1536 (phone several files at once);
+    - T-1537 (web status line above the topic composer; activity entries gain `jid`).
+  - **Written, waiting:** T-1535 (web View steps panel; launch after T-1530 merges).
   - **Decisions (Julio, 10-15):** the topic link moves to a row in the topic info panel (T8 keeps `link_url`/`link_label`); the last @mentioned AI follows a topic.
   - **Next to spec:**
-    - View steps: web panel, then phone sheet (after T-1530);
-    - AI work: T7 phone UI (marks, "AIs here" sheet, no task strip), then T8 (drop kind/status/owner after a phone release);
-    - the composer status line ("Dev-1 is working · QA-1 is waiting for you"), web and phone;
-    - phone twins: New pack grid (after T-1525), several files at once, Group info (audit first: the phone has only header sheets), channel info;
+    - View steps: phone sheet (after T-1535);
+    - AI work: T7a phone topic-row marks plus the "AIs here" sheet (reuse chat-core `topicActivityView` from T-1532), T7b phone drops the task strip with a link row and Mark as done in `topic-info-sheet.tsx` (349 lines, so new files), the phone status line (after T-1537), then T8 (drop kind/status/owner after a phone release);
+    - phone twins: New pack grid (after T-1525), Group info (audit first: the phone has only header sheets), channel info;
+    - phone sticker MIME follow-up from T-1525 (widen the `'image/webp' | 'image/png'` union in `pack-editor.ts`, `stickers-api.ts`, `use-pack-items.ts`);
     - web `AiHealthRow` to switch to chat-core's `aiHealth`;
     - phone dead code: `runStateLabel`, `formatLimits`, `SCREEN_DECISIONS`, `approvalStatusLabel`.
 - **1. Web and server, while Julio is at the PC (2 workers at a time):**

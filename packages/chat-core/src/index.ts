@@ -40,6 +40,7 @@ export * from './ai-templates';
 export * from './ai-errors';
 export * from './ai-activity';
 export * from './topics';
+export * from './topic-activity';
 export * from './money';
 export * from './search';
 export * from './user-agent';

@@ -20,6 +20,7 @@ import { ChatBackgroundDialog } from './ChatBackgroundDialog';
 import { ChatPrefMenuItems } from './ChatActionsMenu';
 import { ConfirmDialog } from './ConfirmDialog';
 import { TypingDots } from './TypingDots';
+import { AisHereKey } from './topic/AisHereKey';
 import { IconButton } from './ui/icon-button';
 import { Menu, MenuItem } from './ui/menu';
 import { statusLabel } from '@/components/chatList/rowsSelector';
@@ -197,6 +198,7 @@ export function ChatHeader({
           {actionError}
         </span>
       )}
+      {isTopic && <AisHereKey chat={chat} />}
       <IconButton aria-label="Search in chat" onClick={onSearch}>
         <Search className="size-5" aria-hidden="true" />
       </IconButton>

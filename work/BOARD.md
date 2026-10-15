@@ -1541,3 +1541,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1524](T-1524-mobile-pack-link.md) | Phone sticker pack link page and the /stickers/ app link | 2026-10-15 |
 | [T-1526](T-1526-mobile-machines.md) | Phone Machines: pending code card, lean rows, details sheet | 2026-10-15 |
 | [T-1531](T-1531-sticker-owner-handle.md) | Sticker lists show the owner's @handle; empty texts say New pack | 2026-10-15 |
+| [T-1532](T-1532-web-topic-activity-marks.md) | Web topic rows and the AIs here key show the AIs at work | 2026-10-15 |
