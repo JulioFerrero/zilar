@@ -285,3 +285,18 @@ size: every changed source file is within 400 lines
 GATE PASS
 ```
 `status` stays `review`.
+
+## Review (written by Claude)
+Lead, 2026-10-15: approved and merged.
+- **Pre-review:** clean, with 1 nit, for head `f455dc801`, after 2 automatic fix rounds.
+- **The lead read the diff:**
+  - `finishProgressEffect` logs `card_<state>` only when a card closes;
+  - `runningAiIds(roomJid)` scans the live sessions' `roomBusy`;
+  - `topicAiActivity` makes two batched queries plus the gateway call, each one best-effort;
+  - 8 database tests;
+  - `0063` is index-only with `lock_timeout`.
+- **Live table:** read-only check, `agent_task_events` has 0 rows and is 40 kB, so the index build is instant.
+- **Nit accepted:** `LIKE 'card_%'`, where `_` matches any character; no writer produces such a stage.
+- **Follow-ups for step 2:**
+  - type `runningAiIds` on the gateway handle the routes get;
+  - the old `{ stage: 'stopped' }` row next to `card_stopped` is harmless.
