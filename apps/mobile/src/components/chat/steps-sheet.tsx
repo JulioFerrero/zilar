@@ -80,7 +80,7 @@ function fallbackSteps(card: Progress): DisplayStep[] {
   return (card.steps ?? []).map((step) => ({
     id: step.id,
     label: step.label,
-    state: step.state === 'planned' ? 'stopped' : step.state,
+    state: step.state === 'planned' || step.state === 'doing' ? 'stopped' : step.state,
     durationMs: null,
     approved: false,
     actions: [],

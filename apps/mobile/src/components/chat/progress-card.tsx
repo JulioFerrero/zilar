@@ -1,3 +1,4 @@
+import { formatClock } from '@zilar/chat-core';
 import type { Progress, ProgressStep } from '@zilar/protocol';
 import { Effect, Schedule } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
@@ -13,19 +14,6 @@ import { ACCENT, DANGER, MUTED_FOREGROUND } from '@/lib/colors';
 import { interruptFiber } from '@/lib/effect/timers';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatStore } from '@/store/chat-store-provider';
-
-/** Elapsed as `12s`, `2m 14s` or `1h 05m`. */
-function formatElapsed(ms: number): string {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  if (totalSeconds < 60) {
-    return `${totalSeconds}s`;
-  }
-  const minutes = Math.floor(totalSeconds / 60);
-  if (minutes < 60) {
-    return `${minutes}m ${totalSeconds % 60}s`;
-  }
-  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
-}
 
 /** A card without a terminal state is still working. */
 function isLive(state: Progress['state']): boolean {
@@ -148,7 +136,7 @@ export function ProgressCard({ data }: { data: Progress }) {
       </Text>
       {elapsed === undefined ? null : (
         <Text className="shrink-0 font-mono text-[12px] text-muted-foreground">
-          {formatElapsed(elapsed)}
+          {formatClock(elapsed)}
         </Text>
       )}
     </>

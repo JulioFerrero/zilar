@@ -7,22 +7,10 @@ import { useSearchParams } from 'react-router';
 import { listAis, stopAiTurn } from '@/lib/api/ais';
 import { fromApi } from '@/lib/effect/api-effect';
 import { useQuery } from '@/lib/effect/use-query';
+import { formatClock } from '@/lib/format-duration';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import { useChatSelector } from '@/store/ChatStoreProvider';
-
-/** Elapsed as `12s`, `2m 14s` or `1h 05m`. */
-function formatElapsed(ms: number): string {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  if (totalSeconds < 60) {
-    return `${totalSeconds}s`;
-  }
-  const minutes = Math.floor(totalSeconds / 60);
-  if (minutes < 60) {
-    return `${minutes}m ${totalSeconds % 60}s`;
-  }
-  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
-}
 
 /** A card without a terminal state is still working. */
 function isLive(state: Progress['state']): boolean {
@@ -184,7 +172,7 @@ export function ProgressCard({ progress }: { progress: Progress }) {
       </span>
       {elapsed !== undefined && (
         <span className="shrink-0 font-mono text-[12px] tabular-nums text-muted-foreground">
-          {formatElapsed(elapsed)}
+          {formatClock(elapsed)}
         </span>
       )}
     </>

@@ -1578,3 +1578,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1565](T-1565-split-push-api-handlers.md) | Split push/api-handlers.ts: the test route moves out | 2026-10-15 |
 | [T-1562](T-1562-mobile-view-steps.md) | Phone View steps sheet on a finished task card | 2026-10-15 |
 | [T-1567](T-1567-sticker-convert-logs-pino.md) | Sticker conversion failures log through pino | 2026-10-15 |
+| [T-1568](T-1568-card-timer-mss.md) | Task card timers show m:ss on web and phone | 2026-10-15 |
