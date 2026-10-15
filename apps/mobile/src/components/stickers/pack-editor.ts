@@ -100,14 +100,6 @@ export function formErrorFor(error: unknown): string {
   return 'Could not save the pack. Try again.';
 }
 
-/** `512 x 380 px, 94 KB` for the new-sticker row (brief §4). */
-export function formatPreparedSize(width: number, height: number, bytes: number): string {
-  const kib = bytes / 1024;
-  const rounded = Math.round(kib * 10) / 10;
-  const size = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-  return `${width} x ${height} px, ${size} KB`;
-}
-
 /**
  * Whether the pack lookup failed because the pack is gone or not the
  * caller's own: those show the fixed sentences instead of the load error.

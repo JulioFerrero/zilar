@@ -15,6 +15,11 @@ type SettingsScreenShellProps = {
   onBack?: (() => void) | undefined;
   /** A header action, e.g. the profile screen's save state. */
   right?: ReactNode;
+  /**
+   * Draws only Back and `right` in the key row, then the title at 28 px at the
+   * top of the content (the Stickers boards). The subtitle is not shown.
+   */
+  largeTitle?: boolean;
   children: ReactNode;
 };
 
@@ -24,29 +29,39 @@ export function SettingsScreenShell({
   subtitle,
   onBack,
   right,
+  largeTitle = false,
   children,
 }: SettingsScreenShellProps) {
   const insets = useSafeAreaInsets();
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View
-        className={cn('flex-row items-center gap-1 py-2', onBack === undefined ? 'px-4' : 'px-2')}
+        className={cn(
+          'flex-row items-center py-2',
+          largeTitle ? 'justify-between' : 'gap-1',
+          onBack === undefined ? 'px-4' : 'px-2',
+        )}
       >
         {onBack === undefined ? null : (
           <IconButton label="Back" onPress={onBack}>
             <ChevronLeft size={24} color={ICON} />
           </IconButton>
         )}
-        <View className="min-w-0 flex-1">
-          <Text numberOfLines={1} className="text-[20px] font-semibold leading-6 text-foreground">
-            {title}
-          </Text>
-          {subtitle !== undefined ? (
-            <Text numberOfLines={1} className="mt-0.5 text-[14px] leading-5 text-muted-foreground">
-              {subtitle}
+        {largeTitle ? null : (
+          <View className="min-w-0 flex-1">
+            <Text numberOfLines={1} className="text-[20px] font-semibold leading-6 text-foreground">
+              {title}
             </Text>
-          ) : null}
-        </View>
+            {subtitle !== undefined ? (
+              <Text
+                numberOfLines={1}
+                className="mt-0.5 text-[14px] leading-5 text-muted-foreground"
+              >
+                {subtitle}
+              </Text>
+            ) : null}
+          </View>
+        )}
         {right}
       </View>
       <ScrollView
@@ -58,7 +73,17 @@ export function SettingsScreenShell({
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets
       >
-        <View className="p-4">{children}</View>
+        <View className="p-4">
+          {largeTitle ? (
+            <Text
+              numberOfLines={1}
+              className="text-[28px] font-semibold leading-8 mb-4 text-foreground"
+            >
+              {title}
+            </Text>
+          ) : null}
+          {children}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

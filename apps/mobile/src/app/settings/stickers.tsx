@@ -154,6 +154,7 @@ function StickersBody() {
   return (
     <SettingsScreenShell
       title="Stickers"
+      largeTitle
       onBack={() => router.back()}
       right={
         <IconButton label="New pack" onPress={() => router.push('/settings/sticker-pack')}>
@@ -223,6 +224,9 @@ function StickersBody() {
             onSearch={loadDiscover}
             onAdd={addPack}
             onRemove={askRemove}
+            onOpenPackLink={(packId) =>
+              router.push({ pathname: '/stickers/[packId]', params: { packId } })
+            }
           />
         ) : null}
 

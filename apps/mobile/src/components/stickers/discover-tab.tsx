@@ -1,16 +1,19 @@
-import { View } from 'react-native';
+import { Check, CircleMinus, Plus } from 'lucide-react-native';
+import { ActivityIndicator, View } from 'react-native';
 
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { SearchField } from '@/components/ui/search-field';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
+import { ICON, SEEN } from '@/lib/colors';
 import type { StickerPack } from '@/lib/stickers';
 import { PackCard } from '@/components/stickers/pack-card';
 import { DISCOVER_ERROR } from '@/components/stickers/use-stickers-panel';
 
 /**
- * The Discover tab: the shared-pack search and the pack rows with their
- * Add or Remove action.
+ * The Discover tab: the shared-pack search and the lean pack rows, with an
+ * add key or a check plus a remove key, inside the same bordered list as
+ * My packs.
  */
 export function DiscoverTab({
   discover,
@@ -26,6 +29,7 @@ export function DiscoverTab({
   onSearch,
   onAdd,
   onRemove,
+  onOpenPackLink,
 }: {
   discover: StickerPack[] | undefined;
   discoverBusy: boolean;
@@ -40,6 +44,8 @@ export function DiscoverTab({
   onSearch: (search: string) => void;
   onAdd: (packId: string) => void;
   onRemove: (pack: StickerPack) => void;
+  /** Opens the pack link page (`/stickers/<id>`). */
+  onOpenPackLink: (packId: string) => void;
 }) {
   return (
     <View className="gap-2">
@@ -81,37 +87,42 @@ export function DiscoverTab({
           </Text>
         </View>
       ) : (
-        <View className="gap-2">
-          {discover.map((pack) => {
+        <View className="overflow-hidden rounded-2xl border border-border bg-surface">
+          {discover.map((pack, index) => {
             const added = panelIds.has(pack.id);
             return (
               <PackCard
                 key={pack.id}
+                inList
+                divider={index < discover.length - 1}
                 pack={pack}
                 token={token}
+                accessibilityLabel={`Open ${pack.title}`}
+                onPress={() => onOpenPackLink(pack.id)}
                 action={
                   added ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0"
-                      accessibilityLabel={`Remove ${pack.title}`}
-                      disabled={busy}
-                      onPress={() => onRemove(pack)}
-                    >
-                      <Text>Remove</Text>
-                    </Button>
+                    <View className="flex-row items-center gap-2">
+                      <Check size={18} color={SEEN} aria-hidden />
+                      <IconButton
+                        label={`Remove ${pack.title} from panel`}
+                        disabled={busy}
+                        onPress={() => onRemove(pack)}
+                      >
+                        <CircleMinus size={18} color={ICON} />
+                      </IconButton>
+                    </View>
                   ) : (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="shrink-0"
-                      accessibilityLabel={`Add ${pack.title}`}
+                    <IconButton
+                      label={`Add ${pack.title}`}
                       disabled={busy}
                       onPress={() => onAdd(pack.id)}
                     >
-                      <Text>{busyId === pack.id ? 'Adding…' : 'Add'}</Text>
-                    </Button>
+                      {busyId === pack.id ? (
+                        <ActivityIndicator size="small" color={ICON} />
+                      ) : (
+                        <Plus size={18} color={ICON} />
+                      )}
+                    </IconButton>
                   )
                 }
               />

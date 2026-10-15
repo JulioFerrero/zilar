@@ -46,13 +46,7 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
   return (
     <SettingsScreenShell
       title={editor.packId === undefined ? 'New pack' : 'Edit pack'}
-      subtitle={
-        editor.packId === undefined
-          ? 'Name it, pick images, save.'
-          : editor.title === ''
-            ? undefined
-            : editor.title
-      }
+      largeTitle
       onBack={editor.onBack}
     >
       {editor.status === 'loading' ? <StateMessage kind="loading" title="Loading pack…" /> : null}
