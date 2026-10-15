@@ -126,6 +126,9 @@ export const MessageBubble = memo(function MessageBubble({
   // the bubble hides the text body, but keeps `hasText` for copy and the text
   // on the message for replies and search.
   const bodyText = hasText && !hidesBodyText(message.card);
+  // A work (progress) card stands alone (T-1618): like `bigEmoji`, the message
+  // draws no bubble surface around it and the card's own box is the only one.
+  const standaloneCard = message.card?.type === 'progress';
 
   // A reply quote click: scroll when loaded, else load around it then scroll (PinnedBanner.tsx:40-55).
   const [, openQuote] = useAction((messageId: string) =>
@@ -268,12 +271,18 @@ export const MessageBubble = memo(function MessageBubble({
         ) : (
           <div
             data-bubble-look={
-              bigEmoji ? undefined : own ? 'outgoing' : generating ? 'generating' : 'incoming'
+              bigEmoji || standaloneCard
+                ? undefined
+                : own
+                  ? 'outgoing'
+                  : generating
+                    ? 'generating'
+                    : 'incoming'
             }
             className={cn(
               'relative flex min-w-0 flex-col',
               own ? 'max-w-[min(520px,100%)]' : 'max-w-[min(560px,100%)]',
-              bigEmoji
+              bigEmoji || standaloneCard
                 ? undefined
                 : cn(
                     'rounded-[14px] bg-clip-padding text-[14px] leading-[1.5]',

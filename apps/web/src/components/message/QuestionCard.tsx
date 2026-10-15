@@ -4,12 +4,13 @@ import { cn } from '@/lib/utils';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
 
 /**
- * A question card draws itself in place of the message's fallback body text
- * (T-1578): the bubble hides the text, but the text stays on the message for
- * copy, replies and search.
+ * A question card (T-1578) and a work/progress card (T-1618) draw themselves in
+ * place of the message's fallback body text: the bubble hides the text, but the
+ * text stays on the message for copy, replies and search. Other cards keep
+ * theirs.
  */
 export function hidesBodyText(card: { type: string } | undefined): boolean {
-  return card?.type === 'question';
+  return card?.type === 'question' || card?.type === 'progress';
 }
 
 /**

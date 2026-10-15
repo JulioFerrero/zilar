@@ -244,7 +244,9 @@ export function AttachmentBody({
       )}
 
       {message.card !== undefined && (
-        <div className="px-3 py-1.5">
+        // T-1618: a work card stands alone; only the other cards get the
+        // bubble's inner padding box.
+        <div className={cn(message.card.type !== 'progress' && 'px-3 py-1.5')}>
           {message.card.type === 'progress' && <ProgressCard progress={message.card.data} />}
           {message.card.type === 'approval.request' && (
             <ApprovalCard
@@ -265,7 +267,8 @@ export function AttachmentBody({
 
       {!hasText &&
         (message.voice !== undefined ||
-          message.card !== undefined ||
+          // T-1618: a work card's own timer is its time; no clock or "edited".
+          (message.card !== undefined && message.card.type !== 'progress') ||
           (attachmentFile && !videoAttachment)) && (
           <div className="flex justify-end px-3 pb-2">
             <MessageMeta
