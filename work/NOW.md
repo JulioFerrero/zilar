@@ -57,14 +57,19 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - The old one ignored SIGTERM through the pnpm wrapper, so the lead stopped it from the inner node process outward. Exactly one runs, with no errors.
 - **400-line rule:** every source file is now at or under 400 lines except `packages/devtools/src/lead/autopilot.ts` (671), left for a daytime session.
 - **Then:** T-1469: web New AI and Add key delete the key the dialog created when closed before Create or Save (the lead's rule; after Create or Save, the key is kept).
+- **Main check at `cc235e002`:** typecheck 16/16, devtools 97 tests, mock-backend 7, all green.
+- **Specs ready for after T-1445 merges:**
+  - T-1471: the Provider field shows "OpenAI-compatible" (web showed the raw id, mobile "Select…"), and the mobile step chips stay on one line;
+  - T-1472: the partial notice shows on the new chat, the inert highlight code goes, and Zilar greys out when cloud is off.
 - **Running:**
   - **T-1445: mobile New AI.** The phone walk passed every step:
     - the footer, the provider dots and the keyboard-safe key step;
     - the orb by name, Setup, and Machine needing a machine.
-  - **What is left:**
-    - after Create, the new chat opened on "Chat not found", because the chat wasn't added to the store as web does. The fix is sent.
-    - one capture-timeout guard.
-  - Then the lead re-runs the create on the emulator and merges.
+  - **Fixed since:**
+    - the chat is added to the store before opening (as web does);
+    - a capture-timeout guard.
+  - **Mock gap, fixed:** in mock, the new AI still landed on "Chat not found", because the mock `createAi` made no chat and a refresh dropped the row. T-1470 merged that fix.
+  - **Last round:** OpenAI-compatible needs a free "Model id" field (it has no catalog models), as web has. Then the lead walks it on a main build and merges.
 - **Next:** `main.ts` after `app.ts` deploys cleanly, then the mobile Connections add-key sheet after T-1445.
 - **New canvas for Julio: "Connections"**, https://claude.ai/artifact/FVDHKSMiJaWvjxXx5sa8on. Web and phone, lean:
   - no subtitle and no duplicate heading; "Add key" is the page's primary;
@@ -87,22 +92,35 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - the duplicate Profile row is gone (the You card opens Profile);
   - Sign out is a red row at the end.
   - The rows are the shared `packages/chat-core/src/settings-items.ts` list, so the change is to stop rendering `subtitle` on both apps.
-- **More lean gaps** (from the phone sweep at font scale 1.3 and web at 390 px; no layout bugs left there):
-  - mobile Connections has a subtitle (it is in the Connections canvas);
-  - Approvals and Machines have page subtitles and "pending" word badges;
-  - Machines shows "● Online" as a dot plus a word;
-  - Approvals has a manual Refresh key.
-  - These go with Task H's approvals canvas.
+- **New canvas for Julio: "Approvals"** (Task H plus the lean gaps), https://claude.ai/artifact/E5nfkSk1vJLMq4UXDkQTs7. Web and phone, six boards:
+  - **One card per task.** "Dev-1 asks to run 3 actions" has one countdown (the earliest expiry, mono "58 min") and one row per request: a checkbox, the action in mono (`tool.save`, `tool.run`, `merge_pull_request`), the summary and the worst-case cost.
+    - The footer is a ⋮ key ("Always allow tool.run here", "Show details"), then "Deny 2" and the primary "Approve 2", so the counts follow the ticks.
+    - After deciding, the card collapses to "Dev-1 ran 2 of 3 actions" with a check or a cross per action.
+  - **The Approvals page:** the same cards, each headed by the AI's orb, its name and the chat · topic link.
+    - Gone: the subtitle, the "Waiting for you" heading, the "pending" word badge and the Refresh key (it polls).
+    - A single request has no checkbox.
+  - **Machines:** a dot instead of the word: amber = waiting, green = online.
+    - No subtitle. The fingerprint sits in a well grouped in fours, with one line telling you to approve only if the runner shows the same code.
+    - One ⋮ menu (Rename, Fingerprint, Revoke) replaces the loose pencil, fingerprint block and Revoke key.
+    - The assigned AI shows as its orb plus name.
+    - Revoked is a collapsed row with a count.
+    - On the phone, an approved machine is a row that opens its sheet.
+  - **Server part (Task H in `docs/audit/agent-ux-plan.md:615`):** a nullable `approvals.task_id` (expand-only), one announcer card per task, and decisions still per request.
 - **New canvas for Julio: "View steps"**, https://claude.ai/artifact/7YV3tdKH1k8LSBBZtsXzxk.
   - Web: a right panel. Phone: a hugging sheet.
   - It shows real event kinds from T-1426 (status, model call, tool call/result, approval, answer) with the real tool names (bash, read, edit, grep, git).
   - One row is expanded to show the redacted output.
   - Specs follow once he approves.
+- **New canvas for Julio: "Empty chat and files"** (MUX-27 and WUX-27), https://claude.ai/artifact/CTECqZ1VChng6ySBwjjv5w. Web and phone:
+  - **A new AI's empty chat:** the orb large, the name, and the model · provider in mono, plus three starter chips that send their text.
+    - "What can you do?" comes first for every template.
+    - Then two per template. Dev: "Review my last change", "Plan a small feature". Marketing and Fun get their own pair; Custom gets only the first chip.
+  - **An empty DM:** "No messages yet" with a greeting sticker from the user's own packs, sent on a tap (Telegram's pattern). With no packs, only the line shows.
+  - **Several files:** a mixed pick (photos plus a PDF and a ZIP) stages up to 10 in the composer strip.
+    - A file tile shows a file icon, the extension and the size in mono.
+    - Send posts the photos as one album and each file as its own message, with the caption on the first.
+    - Today web keeps only the first file of a mixed pick (`useComposerAttachments.ts:123-131`), and the mobile file picker takes one file.
 - **Morning UI list (each needs a canvas or a decision):**
-  - Task H, approvals batching: one card listing a task's requests;
-  - AI health on My AIs (AI-22);
-  - an action in the messages empty state (MUX-27);
-  - multi-file attach (WUX-27);
   - predictive back (MUX-24), which needs a native build to test.
 - **Decision to confirm (T-1448):** Stop pauses following until the AI is @mentioned again or re-assigned. The pause lives in memory, so a server restart resumes following.
 - **Waiting for Julio:**

@@ -1,3 +1,4 @@
+import type { ChatSummary } from '@zilar/chat-core';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Effect } from 'effect';
 import { Plus, Zap } from 'lucide-react-native';
@@ -9,6 +10,7 @@ import { AiActionsSheet } from '@/components/ais/ai-actions-sheet';
 import { AiRow } from '@/components/ais/ai-row';
 import { DeleteConfirmDialog } from '@/components/ais/delete-confirm';
 import { describeAisError, type AisErrorInfo } from '@/components/ais/errors';
+import { NewAiSheet } from '@/components/ais/new-ai/new-ai-sheet';
 import { type RunAction } from '@/components/ais/run-state';
 import { AisScreenShell } from '@/components/ais/screen-shell';
 import { useAisApi } from '@/components/ais/use-ais-api';
@@ -16,9 +18,11 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
+import { Toast, type ToastMessage } from '@/components/ui/toast';
 import { ACCENT, ICON } from '@/lib/colors';
 import { ACCENT_FOREGROUND } from '@/lib/depth';
 import { AisApiError, type PublicAi } from '@/lib/ais-api';
+import { useChatStoreApi } from '@/store/chat-store-provider';
 
 type PageStatus = 'loading' | 'ready' | 'error';
 
@@ -51,6 +55,7 @@ function AisList() {
   const params = useLocalSearchParams<{ highlight?: string }>();
   const highlightId = typeof params.highlight === 'string' ? params.highlight : null;
   const { api } = useAisApi();
+  const store = useChatStoreApi();
 
   const [ais, setAis] = useState<PublicAi[]>([]);
   const [status, setStatus] = useState<PageStatus>('loading');
@@ -59,6 +64,17 @@ function AisList() {
   const [actionAi, setActionAi] = useState<PublicAi | null>(null);
   const [confirmAi, setConfirmAi] = useState<PublicAi | null>(null);
   const [deleteError, setDeleteError] = useState('');
+  // T-1445: the New AI sheet and the one-line notice when part of a create
+  // could not be saved (the AI itself was created).
+  const [newAiOpen, setNewAiOpen] = useState(false);
+  // T-1445: a fresh session on each open, so a closed sheet never reopens on an
+  // old provider's name or key (the sheet stays mounted to animate its close).
+  const [newAiSession, setNewAiSession] = useState(0);
+  const openNewAi = (): void => {
+    setNewAiSession((session) => session + 1);
+    setNewAiOpen(true);
+  };
+  const [toast, setToast] = useState<ToastMessage | null>(null);
   // T-0095: the kill switch state. `runError` renders inline in the sheet on
   // failure (the sheet stays open so the owner can retry), and a 409 also
   // reloads the list because the AI changed under them. The action runs one
@@ -163,6 +179,36 @@ function AisList() {
     router.push({ pathname: '/ais/[id]', params: { id: ai.id } });
   };
 
+  // T-1445: the New AI sheet finished. The AI's chat is not in the roster yet,
+  // so add it before opening it, as web does; the roster refresh reconciles the
+  // row later. A partial save shows one notice over the list.
+  const handleCreated = (ai: PublicAi, partialFailure: boolean): void => {
+    setNewAiOpen(false);
+    if (partialFailure) {
+      setToast({
+        id: Date.now(),
+        text: 'AI created. Some settings could not be saved.',
+        tone: 'notice',
+      });
+    }
+    const summary: ChatSummary = {
+      id: ai.jid,
+      title: ai.name,
+      kind: 'dm',
+      isAI: true,
+      space: 'personal',
+      unread: 0,
+      muted: false,
+      online: false,
+    };
+    store.setState((state) => ({
+      chats: state.chats.some((chat) => chat.id === summary.id)
+        ? state.chats
+        : [summary, ...state.chats],
+    }));
+    router.push({ pathname: '/chat/[id]', params: { id: ai.jid } });
+  };
+
   const askDelete = (ai: PublicAi): void => {
     setActionAi(null);
     setDeleteError('');
@@ -202,7 +248,7 @@ function AisList() {
         subtitle="Your AIs, their model and their spending limits."
         scroll
         right={
-          <IconButton label="Create AI" onPress={() => router.push('/ais/new')}>
+          <IconButton label="Create AI" onPress={openNewAi}>
             <Plus size={22} color={ICON} />
           </IconButton>
         }
@@ -226,7 +272,7 @@ function AisList() {
             <Text className="px-4 text-center text-[15px] text-muted-foreground">
               You have no AIs yet. Create one to give it a chat account and a budget.
             </Text>
-            <Button onPress={() => router.push('/ais/new')}>
+            <Button onPress={openNewAi}>
               <Plus size={16} color={ACCENT_FOREGROUND} />
               <Text>Create an AI</Text>
             </Button>
@@ -246,6 +292,13 @@ function AisList() {
           </View>
         )}
       </AisScreenShell>
+
+      <NewAiSheet
+        key={newAiSession}
+        visible={newAiOpen}
+        onClose={() => setNewAiOpen(false)}
+        onCreated={handleCreated}
+      />
 
       <AiActionsSheet
         ai={actionAi}
@@ -279,6 +332,8 @@ function AisList() {
         onCancel={() => setConfirmAi(null)}
         onConfirm={confirmDelete}
       />
+
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </>
   );
 }
