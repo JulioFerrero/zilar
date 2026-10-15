@@ -147,13 +147,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - **`get.zilar.app` served a stale installer** (from `54633f5b9`, no `--desks-host`). The landing uses Coolify's public-repo source (`source_id 0`), which gets no webhooks, so it never auto-deploys.
       - **Julio approved:** tag **v0.2.1**, then fix the landing.
       - **T-1607 is running:** `images.yml` attaches `install.sh` to the release after the images, and the landing redirects to `releases/latest/download/install.sh`.
-    - **Next, in order:**
-      1. merge T-1606, wait for the fresh-install test to go green;
-      2. merge T-1607;
-      3. tag v0.2.1 (images, the `install.sh` asset, the APKs);
-      4. redeploy the landing once by hand (it then redirects for good);
-      5. on the VPS, run `curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host`;
-      6. check that the card flips, then run one real job.
+    - **Done:**
+      - **T-1606 merged:** the fresh-install test is green on `da4b2e15f`, and live `desk-egress` is healthy with 0 restarts.
+      - **T-1607 and T-1608 merged.**
+      - **v0.2.1 tagged** on `df3471bf3` (CI green): images run 38812219602, Android 38812219809.
+    - **Next:**
+      1. once the release has `install.sh`, redeploy the landing by hand (it then redirects for good);
+      2. check that `curl get.zilar.app` equals the asset;
+      3. on the VPS, run `curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host`;
+      4. check that the card flips, then run one real job.
     - **The target:** desk services in every stack; the agent waits for gVisor and then turns on by itself; the image follows the release; the server asks the agent; one host command.
     - **Then:** run the same one command on live, with nothing manual.
   - **Found:** fresh installs have `AGENT_GATEWAY_ENABLED=false` (all three compose files plus `./zilar init`), so new AIs never answer. **Julio: on by default. T-1601 merged** (the compose files, `./zilar init`, the env examples and the docs; the server schema default stays `false`).

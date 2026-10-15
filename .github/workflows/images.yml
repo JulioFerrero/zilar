@@ -321,7 +321,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: [build]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # `tip` is skipped on tags, so the job needs a status function (v0.2.1 was skipped).
+    if: ${{ !cancelled() && needs.build.result == 'success' && startsWith(github.ref, 'refs/tags/v') }}
     permissions:
       contents: write
     env:
