@@ -141,8 +141,19 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - **T-1603:** the server asks the agent through a cached status probe;
       - **T-1604:** the card text "Needs setup on your server".
     - **T-1605 is also running:** the compose files without profiles, guards or `DESKS_ENABLED`, plus the scripts, docs and deploy tests.
-    - **⚠ Merge order: T-1602, then T-1603, then T-1605** (T-1604 any time). If T-1605 lands first, live starts the always-on agent with the old code, which requires `DESK_IMAGE`.
-    - **Then live:** the one host command on the VPS (`--desks-host`), check that the card flips, then run one real job.
+    - **All merged in order** (T-1602, T-1603, T-1604, T-1605).
+      - **Live:** the desk agent runs idle (`desk-agent: waiting for the runsc runtime`), the server is healthy, and chat `/health` is 200.
+      - **The bug found:** `desk-egress` crash-loops (`listen EACCES /run/zilar/egress.sock`) because the compose files set `DESK_EGRESS_REGISTRY_SOCKET` while the code reads `DESK_EGRESS_REGISTRY`. It was latent until egress ran. CI's fresh-install test fails on `1f421cc28` for the same reason. **Hotfix T-1606 is running.**
+    - **`get.zilar.app` served a stale installer** (from `54633f5b9`, no `--desks-host`). The landing uses Coolify's public-repo source (`source_id 0`), which gets no webhooks, so it never auto-deploys.
+      - **Julio approved:** tag **v0.2.1**, then fix the landing.
+      - **T-1607 is running:** `images.yml` attaches `install.sh` to the release after the images, and the landing redirects to `releases/latest/download/install.sh`.
+    - **Next, in order:**
+      1. merge T-1606, wait for the fresh-install test to go green;
+      2. merge T-1607;
+      3. tag v0.2.1 (images, the `install.sh` asset, the APKs);
+      4. redeploy the landing once by hand (it then redirects for good);
+      5. on the VPS, run `curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host`;
+      6. check that the card flips, then run one real job.
     - **The target:** desk services in every stack; the agent waits for gVisor and then turns on by itself; the image follows the release; the server asks the agent; one host command.
     - **Then:** run the same one command on live, with nothing manual.
   - **Found:** fresh installs have `AGENT_GATEWAY_ENABLED=false` (all three compose files plus `./zilar init`), so new AIs never answer. **Julio: on by default. T-1601 merged** (the compose files, `./zilar init`, the env examples and the docs; the server schema default stays `false`).

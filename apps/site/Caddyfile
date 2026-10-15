@@ -6,24 +6,21 @@
 }
 
 :80 {
-  # The bare installer host answers with the one-line installer at any path, so
-  # https://get.zilar.app and https://get.zilar.app/anything both work. It is not
-  # part of the www redirect below. The script is copied into the image by the
-  # Dockerfile (deploy/install.sh).
+  # The bare installer host redirects to the one-line installer attached to the
+  # latest GitHub Release, at any path, so https://get.zilar.app and
+  # https://get.zilar.app/anything both work. It is not part of the www redirect
+  # below. The release asset is uploaded by images.yml on a version tag (T-1607),
+  # so the served script always matches the newest images with no landing redeploy.
   @installer host get.zilar.app
   handle @installer {
-    rewrite * /install.sh
-    header Content-Type "text/x-shellscript; charset=utf-8"
     header Cache-Control "no-cache"
-    file_server
+    redir https://github.com/JulioFerrero/zilar/releases/latest/download/install.sh 302
   }
 
-  # The landing's own hosts also serve the installer at /install.sh, with the
-  # same headers.
+  # The landing's own hosts redirect /install.sh the same way.
   handle /install.sh {
-    header Content-Type "text/x-shellscript; charset=utf-8"
     header Cache-Control "no-cache"
-    file_server
+    redir https://github.com/JulioFerrero/zilar/releases/latest/download/install.sh 302
   }
 
   # www is the main address: the bare domain redirects to it (Traefik already

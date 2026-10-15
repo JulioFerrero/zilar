@@ -29,6 +29,8 @@ short, and it never prints a secret. It:
 
 Running it again updates `deploy/` and keeps your `.env`.
 
+`get.zilar.app` redirects to the latest release's `install.sh`, so `curl -fsSL https://get.zilar.app | sh` always installs the newest release; pin a version with `--version vX.Y.Z`.
+
 **Flags** (`sh install.sh --help` prints the same):
 
 | Flag | Meaning |

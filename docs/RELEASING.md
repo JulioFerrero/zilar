@@ -19,6 +19,8 @@ git push origin vX.Y.Z
 
 A tag `v*` starts the GitHub Actions workflow "Production images": four images (postgres, ejabberd, server, web); `latest` follows the release. Watch it with `gh run list --limit 3`. It normally takes 3 to 10 minutes. If one job hangs (it once ran 53 minutes), `gh run cancel <id>` and `gh run rerun <id>`.
 
+Once every image is published, the same run attaches `deploy/install.sh` to the tag's GitHub Release as the asset `install.sh` (T-1607). It is race-safe with the "Android release" workflow, which creates or updates that release for the APKs. `get.zilar.app` redirects to `releases/latest/download/install.sh`, so the one-line installer always matches the newest release's images and files, with no landing redeploy.
+
 ## 3. Restart an install that runs the published images
 
 This applies only to an install that runs the published images: a Coolify Service, or the plain stack. The git-built Application deploys itself instead (§9).

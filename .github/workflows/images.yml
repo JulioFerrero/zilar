@@ -308,3 +308,36 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=MIT
+
+  # T-1607: get.zilar.app redirects to the installer attached to the latest GitHub
+  # Release, so the served script always matches the newest images with no landing
+  # redeploy. This job attaches deploy/install.sh once every image is published
+  # (needs: build, which waits for the whole matrix). android-release.yml creates or
+  # updates the same release on the same tag push, so the job is race-safe: upload
+  # when the release exists, else create it, and fall back to upload if create loses
+  # the race.
+  installer:
+    name: Attach the installer to the release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Attach install.sh to the release
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" deploy/install.sh --clobber
+          elif ! gh release create "$TAG" deploy/install.sh --title "$TAG" --notes "Zilar $TAG"; then
+            # android-release.yml may have created the release between the view and
+            # the create; the release now exists, so upload the asset instead.
+            gh release upload "$TAG" deploy/install.sh --clobber
+          fi

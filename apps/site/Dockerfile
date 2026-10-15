@@ -25,8 +25,6 @@ FROM caddy:2.10.2-alpine AS runtime
 
 COPY apps/site/Caddyfile /etc/caddy/Caddyfile
 COPY --from=builder /repo/apps/site/dist /srv/zilar-site
-# The one-line installer served at /install.sh (see the Caddyfile).
-COPY deploy/install.sh /srv/zilar-site/install.sh
 
 EXPOSE 80
 
