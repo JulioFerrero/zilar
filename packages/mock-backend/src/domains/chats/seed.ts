@@ -46,7 +46,9 @@ export const chats: readonly ChatEntry[] = [
     handle: null,
   },
   { kind: 'dm', chatJid: 'ai-dev-1@zilar.test', title: 'Dev-1', isAi: true },
+  { kind: 'dm', chatJid: 'ai-qa-1@zilar.test', title: 'QA-1', isAi: true },
   { kind: 'dm', chatJid: 'marta@zilar.test', title: 'Marta', userId: 'u-marta', isAi: false },
+  { kind: 'dm', chatJid: 'marco@zilar.test', title: 'Marco', userId: 'u-marco', isAi: false },
   {
     kind: 'group',
     chatJid: groupRoomJid('g-familia'),

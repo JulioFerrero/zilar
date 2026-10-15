@@ -32,6 +32,7 @@ export * from './ai-form';
 export * from './ai-limits';
 export * from './ai-models';
 export * from './ai-providers';
+export * from './ai-suggestions';
 export * from './new-ai';
 export * from './connection-check';
 export * from './ai-templates';

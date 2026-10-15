@@ -28,7 +28,7 @@ type TypingStatus = { status?: string };
  * carries; a contact whose id needs the server's hash fallback resolves to no
  * chat and no handle, so the header stays inert.
  */
-function dmHandleFor(chat: ChatSummary, contacts: Contact[]): string | undefined {
+export function dmHandleFor(chat: ChatSummary, contacts: Contact[]): string | undefined {
   if (chat.kind !== 'dm' || chat.isAI) {
     return undefined;
   }

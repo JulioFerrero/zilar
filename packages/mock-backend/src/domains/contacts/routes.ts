@@ -41,5 +41,6 @@ function contactsOf(data: MockData): readonly Contact[] {
       userId: person.id,
       name: person.name,
       jid: person.jid,
+      ...(person.handle === undefined ? {} : { handle: person.handle }),
     }));
 }

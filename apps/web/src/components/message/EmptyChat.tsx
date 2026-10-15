@@ -1,4 +1,4 @@
-import { providerLabel, type ChatSummary } from '@zilar/chat-core';
+import { aiSuggestions, providerLabel, type ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { listAis, listConnections, type AiTemplate } from '@/lib/api';
@@ -15,18 +15,6 @@ interface AiEmptyInfo {
   /** The mono model line: `<model>` or `<model> · <provider>`. */
   model: string;
 }
-
-/** The chips an AI offers by template (docs/design/mockups/empty-chat/Main.dc.html). */
-const SUGGESTIONS: Record<string, readonly string[]> = {
-  dev: ['What can you do?', 'Review my last change', 'Plan a small feature'],
-  marketing: ['What can you do?', 'Write a launch post', 'Improve this headline'],
-};
-
-const DEFAULT_SUGGESTIONS: readonly string[] = [
-  'What can you do?',
-  'Summarize a link for me',
-  'Help me plan my day',
-];
 
 /**
  * The empty chat canvas (T-1511). A DM shows only the person's picture, name
@@ -74,7 +62,7 @@ export function EmptyChat({ chat }: { chat: ChatSummary }) {
   const ai = AsyncResult.isSuccess(aiResult) ? aiResult.value : null;
 
   if (chat.isAI) {
-    const suggestions = (ai === null ? undefined : SUGGESTIONS[ai.template]) ?? DEFAULT_SUGGESTIONS;
+    const suggestions = aiSuggestions(ai === null ? '' : ai.template);
     return (
       <div className="flex flex-col items-center gap-4">
         <EntityAvatar chat={chat} size={72} ai />

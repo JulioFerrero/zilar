@@ -6,8 +6,8 @@ import {
 } from '@zilar/chat-core';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, View } from 'react-native';
-import { MessageSquare } from 'lucide-react-native';
 
+import { EmptyChat } from '@/components/chat/empty-chat';
 import { JumpToBottom } from '@/components/chat/jump-to-bottom';
 import { LoadError } from '@/components/chat/load-error';
 import { MessageListRow, type ListEntry } from '@/components/chat/message-list-row';
@@ -16,7 +16,6 @@ import { useMessageListScroll } from '@/components/chat/use-message-list-scroll'
 import { useStableHandler, useStableReact } from '@/components/chat/use-stable-handlers';
 import type { VoicePlayerHost } from '@/components/chat/voice-player';
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
-import { StateMessage } from '@/components/ui/state-message';
 import { useBlockedJids, filterBlockedMessages } from '@/lib/blocked-users';
 import { runLater } from '@/lib/effect/timers';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -300,16 +299,7 @@ export function MessageList({
         />
       );
     }
-    return (
-      <View className="flex-1 items-center justify-center p-8">
-        <StateMessage
-          kind="empty"
-          icon={MessageSquare}
-          title="No messages yet"
-          hint="Send a message to start the conversation."
-        />
-      </View>
-    );
+    return <EmptyChat chat={chat} />;
   }
 
   return (
