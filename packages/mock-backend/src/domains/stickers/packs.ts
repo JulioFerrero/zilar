@@ -10,6 +10,7 @@ import {
   readJsonBody,
   type MockHttpRequest,
 } from '../../http/shared';
+import { ownerHandle } from './owner-handle';
 import { mockStickerFileUrl, mockStickerId, type MockSticker, type MockStickerPack } from './seed';
 
 const MAX_PACK_STICKERS = 120;
@@ -21,7 +22,8 @@ export function handlePacks(data: MockData, request: MockHttpRequest): Response 
     if (request.method === 'GET') {
       const packs = data.stickerPanel
         .map((id) => data.stickerPacks.find((pack) => pack.id === id))
-        .filter((pack): pack is MockStickerPack => pack !== undefined);
+        .filter((pack): pack is MockStickerPack => pack !== undefined)
+        .map((pack) => ({ ...pack, ownerHandle: ownerHandle(data, pack.ownerId) }));
       return jsonResponse({ packs });
     }
     if (request.method === 'POST') {
@@ -34,10 +36,13 @@ export function handlePacks(data: MockData, request: MockHttpRequest): Response 
       return undefined;
     }
     const query = (request.query.get('q') ?? '').trim().toLowerCase();
-    const packs = data.stickerPacks.filter(
-      (pack) =>
-        pack.visibility === 'server' && (query === '' || pack.title.toLowerCase().includes(query)),
-    );
+    const packs = data.stickerPacks
+      .filter(
+        (pack) =>
+          pack.visibility === 'server' &&
+          (query === '' || pack.title.toLowerCase().includes(query)),
+      )
+      .map((pack) => ({ ...pack, ownerHandle: ownerHandle(data, pack.ownerId) }));
     return jsonResponse({ packs, next: null });
   }
   if (first === 'import' && second === 'telegram') {

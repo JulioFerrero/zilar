@@ -11,8 +11,8 @@ import {
   type MockHttpRequest,
 } from '../../http/shared';
 import { handlePacks } from './packs';
+import { ownerHandle } from './owner-handle';
 import { stickerArt, type MockSticker, type MockStickerPack } from './seed';
-import { personHandle } from '../handles/check';
 
 const MAX_PANEL_PACKS = 200;
 const MAX_FAVORITES = 200;
@@ -115,15 +115,6 @@ function handlePackLink(data: MockData, request: MockHttpRequest): Response | un
 /** An imported pack is visible only to the viewer who imported it. */
 function isHiddenImported(data: MockData, pack: MockStickerPack): boolean {
   return pack.importedFrom !== undefined && pack.ownerId !== data.me.id;
-}
-
-/** The owner's handle, from the viewer row or a seed person, else null. */
-function ownerHandle(data: MockData, ownerId: string): string | null {
-  if (ownerId === data.me.id) {
-    return data.me.handle;
-  }
-  const person = data.people.find((entry) => entry.id === ownerId);
-  return person === undefined ? null : personHandle(data, person.id);
 }
 
 function handleFavorites(data: MockData, request: MockHttpRequest): Response | undefined {

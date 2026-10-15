@@ -20,6 +20,15 @@ function countLabel(pack: StickerPack): string {
   return `${count} sticker${count === 1 ? '' : 's'}`;
 }
 
+// A pack that may belong to someone else (Added, Discover) also shows its
+// owner's handle when the list carried one. My own packs keep the count alone.
+function ownerCountLabel(pack: StickerPack): string {
+  if (pack.ownerHandle === undefined || pack.ownerHandle === null) {
+    return countLabel(pack);
+  }
+  return `${countLabel(pack)} · @${pack.ownerHandle}`;
+}
+
 /** The name (with the shared globe), the count line and room for one action. */
 function PackRowText({ pack, shared, meta }: { pack: StickerPack; shared: boolean; meta: string }) {
   return (
@@ -93,7 +102,7 @@ export function AddedPackRow({ pack, setters }: { pack: StickerPack; setters: Pa
   return (
     <li className={ROW_CLASS}>
       <PackThumbs thumbs={thumbsOf(pack)} size={THUMB_SIZE} />
-      <PackRowText pack={pack} shared={false} meta={countLabel(pack)} />
+      <PackRowText pack={pack} shared={false} meta={ownerCountLabel(pack)} />
       <IconButton aria-label={`Remove ${pack.title} from panel`} onClick={() => runRemove()}>
         <CircleMinus className="size-4" aria-hidden="true" />
       </IconButton>
@@ -116,7 +125,7 @@ export function DiscoverPackRow({
   return (
     <li className={ROW_CLASS}>
       <PackThumbs thumbs={thumbsOf(pack)} size={THUMB_SIZE} />
-      <PackRowText pack={pack} shared={false} meta={countLabel(pack)} />
+      <PackRowText pack={pack} shared={false} meta={ownerCountLabel(pack)} />
       {added ? (
         <IconButton
           aria-label={`${pack.title} is in your panel. Remove`}

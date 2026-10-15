@@ -102,6 +102,10 @@ export const StickerPack = Schema.Struct({
   visibility: StickerVisibility,
   // Set by the Telegram importer (`telegram:<name>`); absent otherwise.
   importedFrom: Schema.optional(Schema.String),
+  // The owner's handle, where a list carries it (panel, discover); a missing
+  // handle is null. Optional so an older server's reply still decodes; the pack
+  // link below makes it required.
+  ownerHandle: Schema.optional(Schema.NullOr(Schema.String)),
   stickers: lenientArray(Sticker),
   createdAt: Schema.String,
   updatedAt: Schema.String,

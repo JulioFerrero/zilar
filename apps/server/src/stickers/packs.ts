@@ -25,6 +25,29 @@ import {
   toPackView,
 } from './storage';
 
+/**
+ * The owner handles for a page's packs in one read, keyed by user id; a user
+ * with no handle is absent (the caller turns that into `null`).
+ */
+async function loadOwnerHandles(
+  deps: StickersServiceDeps,
+  ownerIds: readonly string[],
+): Promise<Map<string, string>> {
+  const unique = [...new Set(ownerIds)];
+  if (unique.length === 0) {
+    return new Map();
+  }
+  const rows = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string; handle: string }>`SELECT user_id, handle FROM handles
+        WHERE user_id IN ${sql.in(unique)}`;
+    }),
+  );
+  return new Map(rows.map((row) => [row.userId, row.handle]));
+}
+
 export async function listPanelPacks(
   deps: StickersServiceDeps,
   userId: string,
@@ -72,7 +95,11 @@ export async function listPanelPacks(
     }
     views.push(toPackView(deps, pack, byPack.get(link.packId) ?? []));
   }
-  return views;
+  const handles = await loadOwnerHandles(
+    deps,
+    views.map((view) => view.ownerId),
+  );
+  return views.map((view) => ({ ...view, ownerHandle: handles.get(view.ownerId) ?? null }));
 }
 
 export async function createPack(
@@ -291,5 +318,12 @@ export async function discoverPacks(
     }
   }
   const views = page.map((pack) => toPackView(deps, pack, stickersByPack.get(pack.id) ?? []));
-  return { packs: views, next };
+  const handles = await loadOwnerHandles(
+    deps,
+    views.map((view) => view.ownerId),
+  );
+  return {
+    packs: views.map((view) => ({ ...view, ownerHandle: handles.get(view.ownerId) ?? null })),
+    next,
+  };
 }

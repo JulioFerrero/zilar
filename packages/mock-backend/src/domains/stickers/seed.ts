@@ -35,6 +35,9 @@ export interface MockStickerPack {
 
 const CATS_ID = '11111111-1111-4111-8111-111111111111';
 const MOODS_ID = '11111111-1111-4111-8111-111111111222';
+const SPACE_CATS_ID = '11111111-1111-4111-8111-111111111333';
+/** Marta owns one shared pack, so the panel carries a pack someone else owns. */
+const MARTA_ID = 'u-marta';
 
 const CATS: ReadonlyArray<readonly [id: string, emoji: string]> = [
   ['21111111-1111-4111-8111-111111111111', '🐱'],
@@ -54,6 +57,17 @@ const MOODS: ReadonlyArray<readonly [id: string, emoji: string]> = [
   ['21111111-1111-4111-8111-111111111226', '👍'],
 ];
 
+const SPACE_CATS: ReadonlyArray<readonly [id: string, emoji: string]> = [
+  ['21111111-1111-4111-8111-111111111321', '🚀'],
+  ['21111111-1111-4111-8111-111111111322', '🪐'],
+  ['21111111-1111-4111-8111-111111111323', '🌙'],
+  ['21111111-1111-4111-8111-111111111324', '⭐'],
+  ['21111111-1111-4111-8111-111111111325', '🌌'],
+  ['21111111-1111-4111-8111-111111111326', '☄️'],
+  ['21111111-1111-4111-8111-111111111327', '🛸'],
+  ['21111111-1111-4111-8111-111111111328', '🌍'],
+];
+
 /** The gradient and glyph behind each demo sticker, keyed by its id. */
 const STICKER_ART: Readonly<Record<string, readonly [from: string, to: string, glyph: string]>> = {
   '21111111-1111-4111-8111-111111111111': ['#fbbf24', '#f97316', '🐱'],
@@ -68,6 +82,14 @@ const STICKER_ART: Readonly<Record<string, readonly [from: string, to: string, g
   '21111111-1111-4111-8111-111111111224': ['#86efac', '#16a34a', '🎉'],
   '21111111-1111-4111-8111-111111111225': ['#93c5fd', '#1d4ed8', '❤️'],
   '21111111-1111-4111-8111-111111111226': ['#fdba74', '#ea580c', '👍'],
+  '21111111-1111-4111-8111-111111111321': ['#818cf8', '#4338ca', '🚀'],
+  '21111111-1111-4111-8111-111111111322': ['#f0abfc', '#a21caf', '🪐'],
+  '21111111-1111-4111-8111-111111111323': ['#fde68a', '#b45309', '🌙'],
+  '21111111-1111-4111-8111-111111111324': ['#fef08a', '#ca8a04', '⭐'],
+  '21111111-1111-4111-8111-111111111325': ['#a5b4fc', '#1e1b4b', '🌌'],
+  '21111111-1111-4111-8111-111111111326': ['#fdba74', '#c2410c', '☄️'],
+  '21111111-1111-4111-8111-111111111327': ['#6ee7b7', '#047857', '🛸'],
+  '21111111-1111-4111-8111-111111111328': ['#93c5fd', '#1d4ed8', '🌍'],
 };
 
 /** The SVG art behind one demo sticker, keyed by its id; `undefined` when gone. */
@@ -106,11 +128,12 @@ function pack(
   id: string,
   title: string,
   cells: ReadonlyArray<readonly [id: string, emoji: string]>,
+  ownerId: string = currentUser.id,
 ): MockStickerPack {
   const now = '2026-09-20T10:00:00.000Z';
   return {
     id,
-    ownerId: currentUser.id,
+    ownerId,
     title,
     visibility: 'server',
     stickers: cells.map(([stickerId, emoji]) => ({
@@ -131,8 +154,12 @@ function pack(
 /** The seeded packs, the panel order and the (empty) favorite list. */
 export function seedStickerPacks(): Partial<MockSeed> {
   return {
-    stickerPacks: [pack(CATS_ID, 'Cats', CATS), pack(MOODS_ID, 'Moods', MOODS)],
-    stickerPanel: [CATS_ID, MOODS_ID],
+    stickerPacks: [
+      pack(CATS_ID, 'Cats', CATS),
+      pack(MOODS_ID, 'Moods', MOODS),
+      pack(SPACE_CATS_ID, 'Space cats', SPACE_CATS, MARTA_ID),
+    ],
+    stickerPanel: [CATS_ID, MOODS_ID, SPACE_CATS_ID],
     stickerFavorites: [],
   };
 }

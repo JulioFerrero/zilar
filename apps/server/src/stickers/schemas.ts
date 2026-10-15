@@ -42,6 +42,8 @@ export interface StickerPackView {
   visibility: StickerVisibility;
   /** Set by the Telegram importer (`telegram:<name>`); absent otherwise. */
   importedFrom?: string;
+  /** The owner's handle where a list carries it (panel, discover); null if none. */
+  ownerHandle?: string | null;
   stickers: StickerView[];
   createdAt: string;
   updatedAt: string;

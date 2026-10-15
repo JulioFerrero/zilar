@@ -204,7 +204,7 @@ export function StickersPage() {
               <section aria-label="My packs">
                 {myPacks.length === 0 ? (
                   <p className="text-[14px] text-muted-foreground">
-                    No packs yet. Make one from your photos with Create pack, or import one from
+                    No packs yet. Make one from your photos with New pack, or import one from
                     Telegram.
                   </p>
                 ) : (
@@ -259,7 +259,7 @@ export function StickersPage() {
                 <StateMessage kind="loading" size="inline" title="Loading…" />
               ) : discover.length === 0 ? (
                 <p className="text-[14px] text-muted-foreground">
-                  No shared packs found. Try another search, or make your own with Create pack.
+                  No shared packs found. Try another search, or make your own with New pack.
                 </p>
               ) : (
                 <ul className="overflow-hidden rounded-xl border border-border bg-surface">
