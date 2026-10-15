@@ -1483,3 +1483,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1469](T-1469-web-close-drops-created-key.md) | Web: closing New AI or Add key drops the key it created | 2026-10-15 |
 | [T-1470](T-1470-mock-new-ai-chat.md) | Mock: a new AI gets its DM chat | 2026-10-15 |
 | [T-1445](T-1445-mobile-new-ai-flow.md) | Mobile New AI flow as one kit sheet | 2026-10-15 |
+| [T-1471](T-1471-provider-label-and-step-chips.md) | OpenAI-compatible label and one-line step chips | 2026-10-15 |

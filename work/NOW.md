@@ -61,7 +61,12 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 - **Specs ready for after T-1445 merges:**
   - T-1471: the Provider field shows "OpenAI-compatible" (web showed the raw id, mobile "Select…"), and the mobile step chips stay on one line;
   - T-1472: the partial notice shows on the new chat, the inert highlight code goes, and Zilar greys out when cloud is off.
-- **Running:**
+- **Merged: T-1445, mobile New AI** (`ba7a331a8`). The last fix: closing the sheet during Create no longer deletes the new AI's key. Web was already safe, since its dialog can't close while busy.
+  - **The lead walked main on the emulator (mock):** DeepSeek → key → name → Create lands in the new chat, and the chat stays in the list after a refresh. The mobile suite passes (247 tests).
+  - **Minor, not fixed:** a new chat with no messages sorts near the bottom of the chat list; Telegram puts it on top. It needs a look at how the list orders chats with no last message.
+- **Running:** T-1471 (Provider label, step chips) and T-1472 (partial notice, Zilar greyed, dead highlight code).
+- **Next:** T-1473, the mobile Add key sheet (twin of web T-1454), on a `use-key-check` hook split out of the 400-line New AI hook. It launches after T-1471, since both touch `provider-step.tsx` and `new-ai-sheet.tsx`.
+- **T-1445 history:**
   - **T-1445: mobile New AI.** The phone walk passed every step:
     - the footer, the provider dots and the keyboard-safe key step;
     - the orb by name, Setup, and Machine needing a machine.

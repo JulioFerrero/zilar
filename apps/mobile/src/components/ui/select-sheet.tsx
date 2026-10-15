@@ -19,6 +19,8 @@ export interface SelectSheetOption {
 /** A pinned row under the list, e.g. "OpenAI-compatible" with a plus icon. */
 export interface SelectSheetFooterOption {
   readonly label: string;
+  /** When the field's value equals this, the trigger shows `label`. */
+  readonly value?: string;
   readonly onPress: () => void;
 }
 
@@ -61,6 +63,10 @@ export function SelectSheet({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const selected = options.find((option) => option.value === value) ?? null;
+  const currentLabel =
+    footerOption !== undefined && footerOption.value !== undefined && footerOption.value === value
+      ? footerOption.label
+      : (selected?.label ?? placeholder);
   const filterable = options.length > FILTER_THRESHOLD;
   const needle = query.trim().toLowerCase();
   const shown =
@@ -82,7 +88,7 @@ export function SelectSheet({
     <View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={`${label}: ${selected?.label ?? placeholder}`}
+        accessibilityLabel={`${label}: ${currentLabel}`}
         accessibilityState={{ disabled, expanded: open }}
         disabled={disabled}
         onPress={() => setOpen(true)}
@@ -91,9 +97,7 @@ export function SelectSheet({
           disabled && 'opacity-50',
         )}
       >
-        <Text className="min-w-0 flex-1 text-[15px] text-foreground">
-          {selected?.label ?? placeholder}
-        </Text>
+        <Text className="min-w-0 flex-1 text-[15px] text-foreground">{currentLabel}</Text>
         <ChevronDown size={16} color={ICON} />
       </Pressable>
 

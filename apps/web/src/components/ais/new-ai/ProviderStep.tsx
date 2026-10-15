@@ -22,6 +22,7 @@ export function ProviderStep({ keys }: { keys: KeyCheck }) {
           triggerPlaceholder="Choose a provider"
           footerItem={{
             label: 'OpenAI-compatible',
+            value: 'openai-compatible',
             onSelect: () => keys.chooseProvider('openai-compatible'),
           }}
         />

@@ -33,6 +33,7 @@ export function ProviderStep({ flow }: { flow: NewAiFlow }) {
           searchPlaceholder="Filter providers"
           footerOption={{
             label: 'OpenAI-compatible',
+            value: 'openai-compatible',
             onPress: () => flow.selectProvider('openai-compatible'),
           }}
         />

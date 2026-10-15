@@ -70,7 +70,12 @@ export function StepTrack({ steps, current, onStepPress, accessibilityLabel }: S
             style={active ? segment : undefined}
           >
             {done ? <Check size={11} strokeWidth={2.8} color={MUTED_FOREGROUND} /> : null}
-            <Text className={cn('text-[12px] font-medium', labelTone)}>{step.label}</Text>
+            <Text
+              numberOfLines={1}
+              className={cn('min-w-0 shrink text-[12px] font-medium', labelTone)}
+            >
+              {step.label}
+            </Text>
           </Pressable>
         );
       })}

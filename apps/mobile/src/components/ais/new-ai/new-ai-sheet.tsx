@@ -17,12 +17,6 @@ import { ProviderStep } from './provider-step';
 import { SetupStep } from './setup-step';
 import { useNewAiFlow } from './use-new-ai-flow';
 
-/** "DeepSeek V4 Flash" reads as "V4 Flash" in the 34 px step track. */
-function shortModelLabel(model: string): string {
-  const words = model.split(/[\s/_-]+/u).filter((word) => word !== '');
-  return words.length <= 2 ? model : words.slice(-2).join(' ');
-}
-
 /**
  * T-1445: the New AI sheet (the approved phone boards). One hugging `BottomSheet`
  * holds the Provider → Key → Model → Setup steps, the orb sub-view and the
@@ -45,6 +39,11 @@ export function NewAiSheet({
     flow.providerChoices.find((choice) => choice.id === flow.providerId)?.label ??
     flow.providerId ??
     'Provider';
+  const modelName =
+    flow.modelOptions.find((option) => option.value === flow.model)?.label ?? flow.model;
+  const modelLabel = modelName.startsWith(`${providerLabel} `)
+    ? modelName.slice(providerLabel.length + 1)
+    : modelName;
   const trackSteps: StepTrackStep[] = [
     {
       value: 'provider',
@@ -54,7 +53,7 @@ export function NewAiSheet({
     { value: 'key', label: 'Key', done: flow.step === 'model' || flow.step === 'setup' },
     {
       value: 'model',
-      label: flow.model === '' ? 'Model' : shortModelLabel(flow.model),
+      label: flow.model === '' ? 'Model' : modelLabel,
       done: flow.step === 'setup',
     },
     { value: 'setup', label: 'Setup' },

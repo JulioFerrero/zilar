@@ -14,6 +14,8 @@ export interface ComboboxOption {
 
 export interface ComboboxFooterItem {
   readonly label: string;
+  /** When the field's value equals this, the trigger shows `label`. */
+  readonly value?: string;
   readonly onSelect: () => void;
 }
 
@@ -90,7 +92,11 @@ export function Combobox({
     >
       <BaseCombobox.Trigger className={cn(TRIGGER, className)} aria-label={label}>
         <span className="min-w-0 flex-1 truncate text-left">
-          <BaseCombobox.Value placeholder={triggerPlaceholder} />
+          {footerItem !== undefined && footerItem.value === value ? (
+            <span className="truncate">{footerItem.label}</span>
+          ) : (
+            <BaseCombobox.Value placeholder={triggerPlaceholder} />
+          )}
         </span>
         <BaseCombobox.Icon className="shrink-0 text-subtle-foreground">
           <ChevronDown className="size-4" aria-hidden="true" />
