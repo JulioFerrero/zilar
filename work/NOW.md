@@ -77,7 +77,11 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - Web works: the new chat leads the DMs.
     - The worker is tracing the mobile cause with a store test.
     - It is a server change, so a deploy check follows the merge.
-  - **T-1476:** the web sidebar listed every group above every DM, sorting only by pin. It now orders by recency like mobile (a parity bug found while checking T-1474).
+- **Merged: T-1476.** The web sidebar orders groups and chats together by recency, like mobile.
+  - It used to list every group above every DM.
+  - The headless check caught a NaN comparator (`-Infinity - -Infinity`) that made the first version a no-op.
+  - Mobile's `chat-list.ts:72` has the same NaN pattern, and T-1474 is fixing it.
+- **Live at 06:30:** `/health` was ok at `abb548cfe`, with every baseline route unchanged. A watch waits for T-1476's deploy.
 - **T-1445 history:**
   - **T-1445: mobile New AI.** The phone walk passed every step:
     - the footer, the provider dots and the keyboard-safe key step;

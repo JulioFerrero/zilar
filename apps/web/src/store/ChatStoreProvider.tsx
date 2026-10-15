@@ -35,7 +35,9 @@ export function ChatStoreProvider({
     let cancelled = false;
     void loadMockXmpp().then((createXmpp) => {
       if (!cancelled) {
-        setCreated(createRealChatStore({ createXmpp }));
+        // Mock mode has no draft stream: an `EventSource` would bypass the mock
+        // fetch and 404 against vite, so the port is a no-op.
+        setCreated(createRealChatStore({ createXmpp, openDrafts: () => () => undefined }));
       }
     });
     return () => {
