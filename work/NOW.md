@@ -51,6 +51,13 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - The daily certificate check (T-1462) now covers `zilar.app` too (OPS-19).
   - `docs/RELEASING.md` is rewritten for the git-built Application: deploys follow watch paths without waiting for CI, and a rollback is a revert or a redeploy (OPS-5).
   - Both findings sweeps have an "Updates after the sweep" list. Still open: UI-15 and MUX-19, on your list.
+  - Checked: a manual run of the certificate check passed, with 77 days left on both hosts. Live stays at `c4e85ae52` as expected, because T-1489 and T-1490 touch no watch path.
+- **iOS Simulator check** (mock release build of main `cdc41afbb`, iPhone 17 Pro, iOS 26.5):
+  - The chat list matches Android: recency order, requests on top.
+  - At the accessibility-large text size the rows grow, text is capped at 1.4×, and long lines truncate cleanly.
+  - **Not checked on iOS:** the screens behind a deep link. iOS asks "Open in Zilar?" for `zilar://`, and this Mac has no tool to tap the Simulator. `idb` isn't installed, and scripting the Simulator window needs macOS accessibility permission, which the lead won't grant. If you want deeper iOS QA at night, installing `idb` would allow it; that is your call.
+- **T-1491 merged:** the mock AI DM is titled "Dev-1" (the AI's name, as in production) instead of "Dev AI". Checked headless on web mock. It touches `packages/`, so it deploys; mock data only.
+- **Lead slip:** `lead merge` adds the `T-XXXX:` prefix itself, so the T-1489 and T-1490 subjects read "T-1489: T-1489: …". They are pushed and left as they are; the memory now notes it.
 - **Audit rows the lead closed:** MP-9 is not actionable, because a group's first reader marking a message read matches Telegram's two checks.
 
 **2026-10-15, night (updated 03:10 CEST): what merged since the 03:00 entry, in order.** Earlier versions of this entry carried wrong clock times; the order is right.

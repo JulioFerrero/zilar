@@ -1503,3 +1503,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1488](T-1488-contact-panel-key.md) | Contact info panel gets its own React key | 2026-10-15 |
 | [T-1489](T-1489-predictive-back.md) | T-1489: Android predictive back is on (MUX-24) | 2026-10-15 |
 | [T-1490](T-1490-ci-dead-deploy-cert-check.md) | T-1490: Drop the dead deploy job; cert check covers zilar.app | 2026-10-15 |
+| [T-1491](T-1491-mock-dev-ai-title.md) | Mock AI DM is titled with the AI's name (Dev-1) | 2026-10-15 |
