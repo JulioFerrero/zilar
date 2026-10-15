@@ -113,7 +113,24 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - **T-1591 deleted** (worktree and local branch; it was never pushed; its last commit `fe790478b` is in the reflog).
   - **v0.2.0 tagged and pushed** on `b5ce1c272` (main's CI green).
     - **The images run succeeded:** all six, and `zilar-{server,web,desk,desk-agent}:v0.2.0` answer an anonymous pull with 200. The GitHub tags API lists v0.2.0 first, so the one-liner's default is now v0.2.0, and that tag has `deploy/lib/preflight.sh`.
-    - **The Android release failed** at `setup-android@v3` (run 38788684166): the runner's cmdline-tools 16.0 has no `tools` package. **T-1595** sets `packages: 'platform-tools'`. Then `gh workflow run android-release.yml --ref main -f tag=v0.2.0`.
+    - **The Android release failed** at `setup-android@v3` (run 38788684166): the runner's cmdline-tools 16.0 has no `tools` package.
+      - **Fixed by T-1595** (merged, `packages: 'platform-tools'`).
+      - **The manual re-run** (run 38789672910) got past setup, then **stopped at "Check the release secrets"**: none of the 5 `ZILAR_ANDROID_*` / `ZILAR_GOOGLE_SERVICES_JSON_BASE64` repo secrets is set.
+        - This workflow has never succeeded since T-1354.
+        - No `~/zilar-release.keystore` exists. No v0.2.0 GitHub Release, no APKs.
+        - **Julio created the release key** (`~/zilar-release.keystore`) and set the 5 secrets; the lead checked the names.
+        - **Re-run 38796094483 succeeded:** https://github.com/JulioFerrero/zilar/releases/tag/v0.2.0 has `zilar-v0.2.0-arm64.apk` (71 MB), `-universal.apk` (139 MB) and `SHA256SUMS`. The workflow verified the release signature and the server URL.
+          - **Phones on debug builds** must uninstall once.
+          - **Build time:** 22.5 min. The arm64 pass took 12.5 min (cold Gradle, about 4 min before the first CMake), and the universal pass about 10 min (4 ABIs).
+          - **Speed-up ideas:** one pass with ABI splits, ARM-only ABIs, and the Gradle cache plus ccache; Blacksmith runners if still slow. **Julio said leave it** (2026-10-15): releases are rare, so 22 min is fine.
+  - **Flaky test:**
+    - main's CI on `38c7c5695` failed `run-tool.test.ts:254` ("truncates 100 KB of console.log output": `result.ok` false). It's the same failure as runs 38754273319 and 38734680918, about 3 in 60, and not caused by T-1595.
+    - Re-running the failed job went **green**.
+    - **T-1596 is running:** make the failure show `error.kind`, reproduce under load, and fix the cause in the sandbox (the limits stay the same).
+  - **README rewrite (Julio: "cooler, simpler, professional"): T-1597 running.**
+    - The lead wrote the full text in the spec; the worker places it word for word and checks the links.
+    - **What changes:** about 150 lines instead of 250; the `get.zilar.app` one-liner plus the Coolify path; the stack now Effect (no Hono, Drizzle or LiteLLM).
+    - **The product gap the README states:** the phone app's server URL is fixed at build time (`apps/mobile/src/lib/auth.ts:14`), so the release APKs only work with `chat.zilar.app`. A server picker in the app: **Julio said not now, maybe in the future** (2026-10-15). Don't spec it.
   - **T-1594: the Coolify catalog demo is draft PR #1,** https://github.com/JulioFerrero/zilar/pull/1 (branch `task/T-1594-coolify-catalog-demo-pr`, task status `blocked`, never merge).
     - **Contents:** the pinned `v0.2.0` template, the logo, the coolify-docs page and both PR texts.
     - **Before a real submission (1,000 stars needed):** deploy that exact pinned file once.

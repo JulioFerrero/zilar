@@ -1,250 +1,148 @@
 <div align="center">
 
-<img src="assets/brand/icon.png" alt="Zilar" width="132" />
+<img src="assets/brand/icon.png" alt="Zilar" width="112" />
 
 # Zilar
 
-**A self-hosted messenger where AI agents are people in the chat.**<br>
-Create an AI, add it to a group, and give it work. You own the keys, the compute and the data.
+**Your friends and your AIs, in one chat.**
 
-![Node 24](https://img.shields.io/badge/node-24-339933?logo=nodedotjs&logoColor=white)
-![pnpm 10](https://img.shields.io/badge/pnpm-10-F69220?logo=pnpm&logoColor=white)
-![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
-![XMPP](https://img.shields.io/badge/chat-XMPP%20%C2%B7%20ejabberd-2B6CB0)
-![Self-hosted](https://img.shields.io/badge/self--hosted-yes-2EA043)
-![Status](https://img.shields.io/badge/status-early%20%C2%B7%20in%20active%20development-orange)
-![License MIT](https://img.shields.io/badge/license-MIT-blue)
+A self-hosted messenger where AIs are members of the conversation,<br>
+with spending limits, approvals and an audit log enforced by the server.
 
-[Features](#-what-it-does) · [How it works](#-how-it-works) · [Safety](#-safety-is-code-not-prompts) · [Quick start](#-quick-start) · [Docs](#-docs)
+[![Release](https://img.shields.io/github/v/release/JulioFerrero/zilar?color=8a8f98&label=release)](https://github.com/JulioFerrero/zilar/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-8a8f98)](LICENSE)
+[![Self-hosted](https://img.shields.io/badge/self--hosted-Docker%20%C2%B7%20Coolify-8a8f98)](#install)
+
+[Website](https://zilar.app) · [Features](#features) · [Install](#install) · [How it works](#how-it-works) · [Develop](#develop) · [Docs](#docs)
 
 </div>
 
----
+<br>
 
-Think of the messenger you already use, but some of the people in the room are AIs you own, living on your Mac, a home server or a VPS. Friends, family and work groups work as usual. The AIs join your DMs and groups, answer @mentions, stream their replies, and can be given real work under rules the **platform** enforces: spending caps, approvals for risky actions, an audit trail, and a kill switch. No rule lives only in a prompt.
+![A group topic in Zilar, where people and an AI work on a release together](docs/screenshots/topic-desktop.png)
 
-> *Zilar* is the Basque word for silver.
+## Why Zilar
 
-## ✨ What it does
+In most apps, AI lives in a sidebar. In Zilar, an AI is someone in the chat. You create it, give it a persona, add it to a group and @mention it like anyone else. It replies in the thread, streams as it writes, and asks you when it needs a decision.
 
-| | |
-|---|---|
-| 💬 **Real chat** | DMs and groups over XMPP: history, typing, read receipts, replies, reactions, edit and delete, attachments, @mentions |
-| 🤖 **AIs as people** | Create an AI in one screen, give it a persona, add it to a group, change it just by asking it in chat |
-| 🧠 **AI memory** | Your AI remembers durable facts and chat context on its own, with a *What it remembers* view you can edit |
-| 🔑 **Bring your own keys** | Any provider, keys encrypted at rest, every AI behind a **hard money cap** |
-| 🧵 **Topics** | Groups have forum-style topics: public or private, a task strip with owners, AIs per topic; plus per-user mute, archive and pin, pinned messages, and search across everything (prefix and typo tolerant) |
-| 🔗 **Invites, roles, channels** | Shareable group invite links, named roles with private-topic access and approver rights, one-way channels where only admins post |
-| 🎙️ **Voice notes, transcribed on your phone** | Hold to record, release to send. On an Android phone a Transcribe button turns a voice note into text with the Whistle model running on the device: free, offline, private |
-| 👥 **Contacts** | Find people by exact @handle, send and accept contact requests |
-| 🏷️ **Stickers and GIFs** | User-made sticker packs, a creator, favorites, and GIF search that stays private (GIFs need the owner's provider key) |
-| 🖼️ **Media, files and links** | Every chat keeps Media / Files / Links / Voice tabs so what was shared is one tap away; uploads load only for chat members through `/api/files` |
-| ↩️ **Forwarding and multi-select** | Forward one message or several to another chat in order, with an optional comment |
-| 🎨 **Chat backgrounds** | A preset or your own uploaded image as a chat background; groups set theirs by owner/admin |
-| 🗂️ **Chat folders** | Server-backed folders with a reorderable page, a folder editor, and chips on web and mobile |
-| 🚫 **Blocking** | Block and unblock people; blocked people stay out of your previews and group messages |
-| 🔔 **Notifications** | Installable app with web push: per-device subscription, mute-aware, dismiss-on-read (needs HTTPS on a real deploy) |
-| ⚡ **Streaming replies** | Answers appear as they are written, on web and mobile |
-| ✋ **Approvals** | Risky actions become cards in the chat: *Approve*, *Deny*, or *Always allow here* (per chat, revocable) |
-| 🛑 **Kill switch** | Stop any AI instantly; nothing it was doing can land afterwards |
-| 🧾 **Audit log** | Append-only: the database itself refuses edits and deletes |
-| 🖥️ **Bring your own compute** | Pair your Mac, a Linux box or a VPS as a machine; AIs run where you decide |
-| 🧰 **AI-built tools** *(in progress)* | "Every morning post gold, the S&P 500 and BTC": the AI writes the tool, keeps it versioned, runs it in a sandbox, and posts on a schedule after you approve |
-| 📱 **Web and mobile** | React web app and an Expo (React Native) app with the same dark, tactile design |
+It all runs on your own server, with your own model keys. The rules that matter (limits, approvals, the kill switch) are code on the server, not instructions in a prompt.
 
-The complete table of every feature and change, with status and the task that built it, is in **[`docs/FEATURES.md`](docs/FEATURES.md)**.
+> _Zilar_ is the Basque word for silver.
 
-## 👀 See it
+## Features
 
-The web app in action (demo data — the guide walks through every screen):
+**A complete messenger**
 
-![Chat list with topics](docs/screenshots/topics-desktop.png)
-![Topic with the task strip](docs/screenshots/topic-desktop.png)
-![Approval card](docs/screenshots/approval-desktop.png)
-![Message search](docs/screenshots/search-desktop.png)
+- DMs and groups with replies, reactions, edits, files, voice notes, mentions and read receipts
+- Topics with a task strip, roles, invite links, pinned messages, channels and chat folders
+- Search across every chat and topic, forgiving of typos
+- Sticker packs made from your own photos, and GIF search through a privacy proxy
+- No passwords: sign-in codes arrive by email
 
-The Android app (same demo data):
+**AIs as members**
 
-<p>
-  <img src="docs/screenshots/android-chats.png" alt="Android: chat list with contact requests" width="200" />
-  <img src="docs/screenshots/android-topics.png" alt="Android: a group's topics" width="200" />
-  <img src="docs/screenshots/android-topic.png" alt="Android: a topic with an AI reply" width="200" />
-  <img src="docs/screenshots/android-message-menu.png" alt="Android: message menu sheet" width="200" />
+- Create one in a single screen: name, persona, model
+- Works in DMs and groups, answers @mentions and streams its replies
+- Remembers what matters, with a memory view you can edit
+- Bring your own keys for Anthropic, OpenAI, OpenRouter or any OpenAI-compatible API, encrypted at rest
+
+**Safety enforced by the server**
+
+| Guarantee      | How                                                                                                         |
+| -------------- | ----------------------------------------------------------------------------------------------------------- |
+| Spending limit | An optional daily limit per AI, checked before every turn                                                   |
+| Approvals      | Risky actions wait for your yes, and the approved arguments run exactly once                                |
+| Kill switch    | Stop an AI at once; nothing it started can land afterwards                                                  |
+| Audit log      | Append-only: the database itself refuses edits and deletes                                                  |
+| Tool sandbox   | AI-written tools run in QuickJS/WebAssembly, with a GET-only `fetch` to sites you approved (off by default) |
+| AI computers   | An AI can get its own computer, sandboxed with gVisor (preview, off by default)                             |
+
+**Web and Android.** The web app installs like an app and sends push notifications. The Android app is on [Releases](https://github.com/JulioFerrero/zilar/releases).
+
+<p align="center">
+  <img src="docs/screenshots/android-chats.png" alt="Android: the chat list" width="23%" />
+  <img src="docs/screenshots/android-topics.png" alt="Android: a group's topics" width="23%" />
+  <img src="docs/screenshots/android-topic.png" alt="Android: a topic with an AI reply" width="23%" />
+  <img src="docs/screenshots/android-message-menu.png" alt="Android: the message menu" width="23%" />
 </p>
 
-The full tour, with a screenshot on every screen, is in **[`docs/USER_GUIDE.md`](docs/USER_GUIDE.md)**.
+## Install
 
-## 🧭 How it works
+You need a Linux server (x86_64 or arm64), a domain that points at it with ports 80 and 443 open, and an SMTP account for the sign-in emails.
+
+**One line**, on Debian or Ubuntu:
+
+```bash
+curl -fsSL https://get.zilar.app | sh
+```
+
+The script checks the host and prints a report, installs Docker if you agree, pulls the release images, sets everything up and runs a health check. [Read it first](deploy/install.sh): it is short and never prints a secret.
+
+**Coolify**: create a _Docker Compose Empty_ resource, paste [`deploy/coolify/docker-compose.yml`](deploy/coolify/docker-compose.yml), set your domain and deploy. Coolify generates every secret.
+
+**Step by step**: [`docs/INSTALL.md`](docs/INSTALL.md) covers plain Docker, Coolify, AI computers and bare metal.
+
+> The Android APKs on Releases connect to `chat.zilar.app`. For your own server, build the app with your address ([`docs/RELEASING.md`](docs/RELEASING.md)).
+
+## How it works
 
 ```mermaid
 flowchart LR
-  subgraph Clients
-    W[Web app<br/>React + Vite]
-    M[Mobile app<br/>Expo]
-  end
-  subgraph Server["Your server"]
-    API[Zilar API<br/>Hono + Drizzle]
-    X[(ejabberd<br/>XMPP + history)]
-    DB[(Postgres<br/>+ pgvector)]
-    L[LiteLLM<br/>capped keys]
-    G[Agent gateway<br/>+ action gateway]
-    S[Tool sandbox<br/>QuickJS / WASM]
-  end
-  R[Your machines<br/>runner app]
-  W & M <-->|messages| X
-  W & M -->|REST + SSE| API
-  API --- DB
-  X --- G
-  G -->|LLM calls| L
-  G -->|approved actions| API
-  G --> S
-  R <-->|one WebSocket tunnel| API
+  W[Web app] -->|chat, XMPP| X[(ejabberd)]
+  A[Android app] -->|chat, XMPP| X
+  W -->|HTTPS API| S[Zilar server]
+  A -->|HTTPS API| S
+  S <-->|AI accounts| X
+  S --- DB[(Postgres)]
+  S -->|your key| P[Model provider]
+  S --> T[Tool sandbox]
+  S --> D[AI computers]
 ```
 
-- **Chat is XMPP.** People and AIs are ordinary accounts; the server creates them and issues short-lived JWTs, so there are no chat passwords to leak.
-- **AIs are gateway sessions.** Each active AI is online through the agent gateway. Every model call goes through LiteLLM with that AI's own capped key.
-- **Actions are gated.** The AI asks the action gateway; a pure policy decides *allow*, *deny* or *needs approval*; approved args are stored and run **exactly once**.
+- **Chat is XMPP**, served by ejabberd. People and AIs are ordinary accounts, and clients log in with short-lived tokens from the server, so there are no chat passwords to leak.
+- **The server** is TypeScript on [Effect](https://effect.website), with Postgres. It runs accounts, AIs, approvals and the audit log, and calls your model provider with your own key.
+- **AI work is gated.** Risky actions go through one gateway that allows, denies or asks you, and the tool sandbox and AI computers only run what that gateway lets through.
 
-## 🛡️ Safety is code, not prompts
+## Develop
 
-| Guarantee | How |
-|---|---|
-| An AI can never overspend | LiteLLM virtual key with a hard cap, enforced before the call |
-| A risky action never runs without a human | Tier 2 actions create an approval card; the stored arguments are hashed and executed once |
-| "Always allow" stays inside one chat | Rules are exact on (AI, chat, action), need an admin in groups, never apply to actions with a cost |
-| A stopped AI does nothing | Kill switch checked by the action gateway, the standing rules and every message-send path (routines will honour it too) |
-| History cannot be rewritten | The audit table refuses `UPDATE` and `DELETE` with a database trigger |
-| AI-written code cannot escape | Runs in QuickJS/WebAssembly in a worker: no filesystem, no env, no process; `fetch` is GET-only, HTTPS-only, to an exact allowlist, with DNS pinning and a private-address guard |
-| Secrets stay secret | Provider keys sealed with AES-256-GCM; logs are redacted; tool code never sees a key |
-
-## 🚦 Status
-
-Early and moving fast, built by one person with an AI team. Chat, AIs, streaming, approvals, the kill switch, the audit log, machines and the tool sandbox are merged; several pieces are merged but still waiting for a live check on real devices ([`docs/LIVE_CHECKS_2026-09-29.md`](docs/LIVE_CHECKS_2026-09-29.md)). Not production-ready: expect rough edges.
-
-| Milestone | State |
-|---|---|
-| M1 Chat on real data (web + mobile) | ✅ done |
-| M2 AIs that talk (create, keys, caps, streaming, groups) | ✅ done |
-| M3 Bring your own machine (registry, runner, tunnel) | 🟡 registry, runner and hub merged; desks and docker driver next |
-| M4 AIs that act (approvals, gateway, rules, tools) | 🟡 approvals, gateway, sandbox, routines and web tools merged (off by default); UI next |
-| M5 A complete daily messenger (topics, search, pins, stickers, install) | 🟡 topics, chat prefs, pins, search, invites, roles, channels, stickers, GIFs, push and the install wizard merged (several need keys, HTTPS or a device check); voice notes, on-device transcripts, mobile GIFs and contacts merged; the phone now has the settings screens, sticker management and import, approvals, machines, integrations, Explore, and the AI tools/routines/activity screens; AI memory, forwarding and multi-select, the media panel, blocking and chat folders merged on web and mobile, chat backgrounds on web and server (mobile next), and uploads behind membership on the web (the Caddy cutover and the mobile switch are still open); notification settings blocked on server push ([`docs/ROADMAP_M5.md`](docs/ROADMAP_M5.md), [`docs/ROADMAP_MOBILE_PARITY.md`](docs/ROADMAP_MOBILE_PARITY.md)) |
-
-## 🚀 Quick start
-
-On a fresh Debian or Ubuntu box, one line installs Zilar:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/JulioFerrero/zilar/main/deploy/install.sh | sh
-```
-
-Read [`deploy/install.sh`](deploy/install.sh) first — it is short and it never prints a secret.
-It checks the host, installs Docker (with your consent), fetches a pinned release, runs the
-wizard, starts the stack and runs `doctor`. Prefer to see every step yourself? Pick a path in
-[`docs/INSTALL.md`](docs/INSTALL.md) instead (Docker in five minutes, Coolify, or bare metal).
-
-To hack on it locally:
+Node 24 and pnpm 10, then:
 
 ```bash
 pnpm install
-cp infra/.env.example infra/.env   # then replace every CHANGE_ME
-pnpm infra:up                      # Postgres, ejabberd, LiteLLM
-pnpm dev                           # server :3000 (PORT overrides), web :5173
+cp infra/.env.example infra/.env   # replace every CHANGE_ME
+pnpm infra:up                      # Postgres and ejabberd in Docker
+pnpm dev                           # server on :3000, web on :5173
 ```
 
-The details, prerequisites and every script are below in [Development](#development).
-
-## 🗂️ Repository
-
-| Path | What |
-|---|---|
-| `apps/web` | React web app |
-| `apps/mobile` | Expo (React Native) app |
-| `apps/server` | API, agent gateway, action gateway, approvals, audit, tools |
-| `apps/runner` | The program you install on your own machines |
-| `packages/protocol` | Versioned message payload schemas (`zod`) |
-| `packages/xmpp-core`, `chat-core` | XMPP client and the shared chat logic both apps use |
-| `packages/runner-tunnel` | The WebSocket tunnel between server and runners |
-| `packages/devtools` | The `lead` CLI that runs the AI worker team |
-| `infra` | Docker Compose: Postgres, ejabberd, LiteLLM |
-
-## 📚 Docs
-
-| File | What |
-|---|---|
-| [`docs/FEATURES.md`](docs/FEATURES.md) | Every feature and change, with status and task ids |
-| [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) | The full design: architecture, roadmap, risks, open questions |
-| [`docs/SERVER_CONFIG.md`](docs/SERVER_CONFIG.md) | Every environment variable, flag, migration and job |
-| [`docs/TOOL_SANDBOX.md`](docs/TOOL_SANDBOX.md) | The tool contract, limits and threat model |
-| [`docs/ROADMAP_MOBILE_PARITY.md`](docs/ROADMAP_MOBILE_PARITY.md) | Every web feature on the phone, task by task |
-| [`docs/RELEASING.md`](docs/RELEASING.md) | Tag, deploy and verify a release; the Android and iOS build recipes |
-| [`docs/LIVE_CHECKS_2026-09-29.md`](docs/LIVE_CHECKS_2026-09-29.md) | What still needs a human on real devices |
-| [`docs/design/ui-style.md`](docs/design/ui-style.md) | The visual language |
-| [`AGENTS.md`](AGENTS.md) | Rules for AI workers |
-| [`work/README.md`](work/README.md) · [`work/BOARD.md`](work/BOARD.md) | How work is organized; the live task board |
-
----
-
-## Development
-
-Prerequisites: **Node 24** (see `.nvmrc`) and **pnpm 10** (see `packageManager` in `package.json`; `corepack enable` or `npm install -g pnpm@10`).
+Before a pull request, run the same checks as CI:
 
 ```bash
-pnpm install
+pnpm format:check && pnpm lint && pnpm typecheck && pnpm test
 ```
 
-Start the dev servers — `@zilar/server` on <http://localhost:3000> (`PORT` overrides it), `@zilar/web` on <http://localhost:5173>:
+| Path                                                      | What                                              |
+| --------------------------------------------------------- | ------------------------------------------------- |
+| `apps/web`, `apps/mobile`                                 | The web app (React) and the phone app (Expo)      |
+| `apps/server`                                             | API, AI turns, approvals, audit log, tool sandbox |
+| `apps/site`                                               | The website at zilar.app                          |
+| `packages/xmpp-core`, `packages/chat-core`                | The XMPP client and the chat logic both apps share |
+| `packages/desk`                                           | AI computers                                      |
+| `deploy`                                                  | The installer and the Docker and Coolify setups   |
 
-```bash
-pnpm dev
-```
+## Docs
 
-Checks (the same ones CI runs):
+- [Install](docs/INSTALL.md): [Docker](docs/INSTALL_DOCKER.md), Coolify and [bare metal](docs/INSTALL_BARE_METAL.md)
+- [User guide](docs/USER_GUIDE.md): every screen, with screenshots
+- [Server configuration](docs/SERVER_CONFIG.md): every environment variable and flag
+- [Tool sandbox](docs/TOOL_SANDBOX.md): the contract, the limits and the threat model
+- [Releasing](docs/RELEASING.md): tags, images and the Android and iOS builds
+- [Features](docs/FEATURES.md) and [design](docs/PROJECT_PLAN.md): the full list and the plan behind it
+- [AGENTS.md](AGENTS.md): how the AI team that builds Zilar works
 
-```bash
-pnpm format:check   # Prettier
-pnpm lint           # oxlint
-pnpm typecheck      # tsc --noEmit, every package
-pnpm test           # Vitest, every package
-pnpm build          # Turborepo, builds the web app
-```
+## Status
 
-`pnpm format` rewrites files in place. Apps live in `apps/*`, shared libraries in `packages/*`.
+Zilar is young and changes quickly. It runs every day at [chat.zilar.app](https://chat.zilar.app), but expect rough edges, and back up your server.
 
-### Infrastructure
+## License
 
-The backing services run in Docker Compose (Docker Desktop, or any Docker with Compose v2):
-
-- **Postgres** with pgvector, one database and user each for our server (`zilar`), ejabberd (`ejabberd`) and LiteLLM (`litellm`)
-- **ejabberd** on the XMPP domain `zilar.localhost`, group chats on `rooms.zilar.localhost`, admin account `admin@zilar.localhost`
-- **LiteLLM** as the LLM gateway, with a placeholder model and no real provider keys
-
-`infra/.env` is git-ignored; create it once and replace every `CHANGE_ME`:
-
-```bash
-cp infra/.env.example infra/.env
-```
-
-`infra/.env` also holds the XMPP login secret (`ZILAR_XMPP_JWT_SECRET`, at least 32 random bytes) and the admin JID (`EJABBERD_ADMIN_JID`). The ejabberd container derives its HS256 JWT signing key from the secret on start, and `@zilar/server` signs the short-lived tokens clients log in with.
-
-| Script | Does |
-|---|---|
-| `pnpm infra:up` | Start every service and wait until the healthchecks pass |
-| `pnpm infra:down` | Stop the containers, keeping the data volumes |
-| `pnpm infra:logs` | Follow the logs |
-| `pnpm infra:smoke` | Check Postgres users, ejabberd (status, admin API, WebSocket) and LiteLLM |
-| `pnpm xmpp:e2e` | Create users and a members-only room, log in with JWTs and check live messages plus MAM history |
-| `pnpm infra:reset` | Delete the data volumes, after confirmation |
-
-Everything binds to `127.0.0.1` only:
-
-| Service | Endpoints | Notes |
-|---|---|---|
-| Postgres | `127.0.0.1:5432` | pgvector enabled in the `zilar` database |
-| ejabberd | `127.0.0.1:5222` (c2s), `127.0.0.1:5280` (`/ws`, `/upload`, `/api`) | In-band registration and s2s federation are off |
-| LiteLLM | `127.0.0.1:4000` | `master_key` and `database_url` come from `infra/.env` |
-
-Configs live in `infra/`: `docker-compose.dev.yml`, `ejabberd/ejabberd.yml`, `litellm/config.yaml` and `postgres/init/`. Images are pinned to exact tags (LiteLLM by digest); never use LiteLLM 1.82.7 or 1.82.8, those releases were compromised.
-
-## 📄 License
-
-MIT, see [`LICENSE`](LICENSE).
+[MIT](LICENSE) © 2026 Julio Ferrero
