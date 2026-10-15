@@ -20,13 +20,84 @@ export interface UsageStoreDeps {
   logger?: UsageStoreLogger;
 }
 
+// T-1461: every in-flight `recordUsage` promise, keyed by AI id. The budget
+// gate settles these before it reads `ai_usage`, so a fast tool loop or
+// back-to-back turns cannot read spend that is missing the write that just
+// finished. The writes stay fire and forget: this map only observes them.
+const pendingUsage = new Map<string, Set<Promise<void>>>();
+
+const DEFAULT_SETTLE_TIMEOUT_MS = 3000;
+
+// Observes one in-flight write until it settles, then forgets it. The write
+// itself is the caller's; both outcomes (settled or not) drop it from the map.
+function trackPendingUsage(aiId: string, write: Promise<void>): void {
+  let inFlight = pendingUsage.get(aiId);
+  if (inFlight === undefined) {
+    inFlight = new Set();
+    pendingUsage.set(aiId, inFlight);
+  }
+  const set = inFlight;
+  set.add(write);
+  const forget = (): void => {
+    set.delete(write);
+    if (set.size === 0 && pendingUsage.get(aiId) === set) {
+      pendingUsage.delete(aiId);
+    }
+  };
+  // `then` with both handlers, so a rejection still forgets the write and the
+  // derived promise never rejects (the write itself never rejects anyway).
+  void write.then(forget, forget);
+}
+
+/**
+ * Waits for the AI's current in-flight usage writes to reach `ai_usage`, or
+ * `timeoutMs`, whichever comes first. Never rejects: a hanging write cannot
+ * hold a turn open past the timeout. The budget gate calls this before it
+ * reads spend so a fast loop cannot run on stale counters.
+ */
+export async function settlePendingUsage(
+  aiId: string,
+  timeoutMs = DEFAULT_SETTLE_TIMEOUT_MS,
+): Promise<void> {
+  const inFlight = pendingUsage.get(aiId);
+  if (inFlight === undefined || inFlight.size === 0) {
+    return;
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const settled = Promise.allSettled(inFlight).then(() => undefined);
+    const timeout = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, timeoutMs);
+    });
+    await Promise.race([settled, timeout]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 /**
  * Adds one call's usage to the AI's `ai_usage` row for the UTC day `now` falls
  * in. The cost is computed from the catalog prices (see `ai/cost.ts`); the
  * whole thing is best effort: a failure logs with the AI id only and resolves,
- * so a turn is never failed by its own accounting.
+ * so a turn is never failed by its own accounting. T-1461: the returned promise
+ * is tracked so the budget gate can wait for it (bounded) before reading spend.
  */
-export async function recordUsage(
+export function recordUsage(
+  deps: UsageStoreDeps,
+  aiId: string,
+  provider: string,
+  model: string,
+  usage: ChatUsage,
+  now: Date,
+): Promise<void> {
+  const write = writeUsage(deps, aiId, provider, model, usage, now);
+  trackPendingUsage(aiId, write);
+  return write;
+}
+
+async function writeUsage(
   deps: UsageStoreDeps,
   aiId: string,
   provider: string,

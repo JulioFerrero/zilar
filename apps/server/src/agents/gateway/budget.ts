@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { getAiUsage, type AiUsage } from '../../ais/usage';
+import { settlePendingUsage } from '../../ais/usage-store';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
@@ -90,14 +91,19 @@ export function createBudgetGate(ctx: BudgetGateContext) {
     return (deps.now ?? (() => new Date()))().toISOString().slice(0, 10);
   }
 
-  const usageFor = (aiId: string): Promise<AiUsage | null> =>
-    getAiUsage(
+  const usageFor = async (aiId: string): Promise<AiUsage | null> => {
+    // T-1461: a write from the call that just finished may still be in flight
+    // (fire and forget). Wait for it, bounded, so the gate never reads spend
+    // that is missing the last call or calls.
+    await settlePendingUsage(aiId);
+    return getAiUsage(
       {
         db: deps.db,
         ...(deps.now === undefined ? {} : { now: deps.now }),
       },
       aiId,
     );
+  };
 
   // The daily-limit check (T-0058), shared by DM and group turns. It runs
   // before any model call and a NULL daily bound (T-1408, no limit set) never

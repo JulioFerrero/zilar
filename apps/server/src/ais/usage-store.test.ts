@@ -5,8 +5,22 @@ import { SqlClient } from 'effect/sql';
 import { ensureModelPrices, resetCatalogCache } from '../ai/catalog';
 import { priceKey, setModelPrices } from '../ai/cost';
 import { createKeyCipher } from '../connections/crypto';
+import { runSql } from '../effect/sql';
 import { createTestContext, TEST_XMPP_DOMAIN, testSql, type TestContext } from '../test-support';
-import { recordUsage } from './usage-store';
+import { flushMicrotasks } from '../test-support/wait';
+import { recordUsage, settlePendingUsage } from './usage-store';
+
+// T-1461: the ordering tests below replace `runSql` with a controlled promise
+// so they can hold a usage upsert "in flight". `testSql` does not go through
+// `runSql`, so the real test database is untouched. The base implementation is
+// the real one; `runSqlMock.real` restores it between tests.
+const runSqlMock = vi.hoisted(() => ({ real: undefined as unknown }));
+
+vi.mock('../effect/sql', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../effect/sql')>();
+  runSqlMock.real = actual.runSql;
+  return { ...actual, runSql: vi.fn(actual.runSql) };
+});
 
 const MASTER_KEY = 'test-master-key-0000000000000000000000';
 const PROVIDER_KEY = 'sk-provider-key-do-not-leak';
@@ -175,6 +189,92 @@ describe('recordUsage', () => {
 
     expect(logger.calls).toHaveLength(1);
     expect(logger.calls[0]?.fields['aiId']).toBe(missingAiId);
+  });
+});
+
+// T-1461 (AI-15 remainder): the budget gate waits for the AI's in-flight spend
+// writes before it reads `ai_usage`, so a fast tool loop cannot run on stale
+// counters. `runSql` is stubbed so a test can hold the upsert in flight.
+describe('settlePendingUsage', () => {
+  let context: TestContext;
+
+  beforeEach(async () => {
+    context = await createTestContext();
+    vi.mocked(runSql).mockReset();
+    vi.mocked(runSql).mockImplementation(runSqlMock.real as typeof runSql);
+    setModelPrices(
+      new Map([
+        [
+          priceKey(PROVIDER, MODEL),
+          {
+            inputPerMTok: 2.5,
+            outputPerMTok: 15,
+            cacheReadPerMTok: null,
+            cacheWritePerMTok: null,
+          },
+        ],
+      ]),
+    );
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  function deferredWrite(): { promise: Promise<void>; resolve: () => void } {
+    let resolve: () => void = () => {};
+    const promise = new Promise<void>((fulfil) => {
+      resolve = fulfil;
+    });
+    return { promise, resolve };
+  }
+
+  it('waits for the in-flight write before it settles', async () => {
+    const aiId = randomUUID();
+    const upsert = deferredWrite();
+    vi.mocked(runSql).mockImplementationOnce(() => upsert.promise);
+
+    const write = recordUsage(
+      { db: context.db, logger: captureLogger() },
+      aiId,
+      PROVIDER,
+      MODEL,
+      USAGE,
+      new Date('2026-10-14T08:00:00Z'),
+    );
+
+    let settled = false;
+    const settling = settlePendingUsage(aiId).then(() => {
+      settled = true;
+    });
+
+    await flushMicrotasks();
+    expect(settled).toBe(false);
+
+    upsert.resolve();
+    await settling;
+    await write;
+    expect(settled).toBe(true);
+  });
+
+  it('resolves within the timeout when the write hangs', async () => {
+    const aiId = randomUUID();
+    vi.mocked(runSql).mockImplementationOnce(() => new Promise<void>(() => {}));
+
+    void recordUsage(
+      { db: context.db, logger: captureLogger() },
+      aiId,
+      PROVIDER,
+      MODEL,
+      USAGE,
+      new Date('2026-10-14T08:00:00Z'),
+    );
+
+    await expect(settlePendingUsage(aiId, 30)).resolves.toBeUndefined();
+  });
+
+  it('resolves at once when nothing is pending', async () => {
+    await expect(settlePendingUsage(randomUUID())).resolves.toBeUndefined();
   });
 });
 
