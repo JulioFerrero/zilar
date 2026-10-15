@@ -2,6 +2,38 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**Plan after the canvas reviews (2026-10-15, midday).** Julio has nothing more to review. Every approved canvas's boards and README are parked in the job's tmp `parked/<name>/`, and each rides its first task into `docs/design/mockups/<name>/`. Done so far: group-info, stickers, approvals. Still parked: ai-work (on T-1500), connections, lean-settings, ai-health, view-steps, empty-chat.
+
+**Order:**
+- **0. Running:**
+  - T-1499 (web approvals, simpler) is in pre-review;
+  - T-1500 merged: the plan is in `docs/audit/ai-work-plan.md` (8 steps; the lead's decisions are in its Review). Next is its T1, the server read model;
+  - T-1501 (web sticker upload keeps motion; the New pack grid follows) and T-1502 (the Telegram importer keeps video stickers) are coding.
+- **1. Web and server, while Julio is at the PC (2 workers at a time):**
+  1. web sticker upload keeps motion (today a GIF freezes on its first frame) and the New pack grid;
+  2. the Telegram importer keeps video stickers (split `stickers/telegram.ts`, 399 lines, first);
+  3. web Connections;
+  4. web Settings home (lean);
+  5. web My AIs (AI health; first check which health data the server has);
+  6. web Group info step 2 (Leave, More menu, member rows; fix the member row with no name);
+  7. web Group info step 3 (channel and Subscribers);
+  8. web empty chats and several files;
+  9. web Machines;
+  10. web View steps (first check that tool calls can be grouped by card step);
+  11. web Stickers page tabs and drag.
+- **2. AI work in topics, after T-1500's plan:**
+  - the server read model and live updates;
+  - web: sidebar marks, the header's "AIs here", the status line, the sheet;
+  - handoff lines and question chips;
+  - drop topic kind, status, owner and link last (one schema task at a time);
+  - then mobile.
+- **3. Mobile twins, when Julio is away from the PC (up to 8 workers, at most 3 mobile):**
+  - stickers: `expo-image`, the link page plus the `/stickers/` app link, New pack, the video picker;
+  - approvals, the Group info screen, Settings home, My AIs, Connections, empty chats and files, View steps, AI work.
+- **Also:**
+  - install a fresh build on Julio's phone as soon as `adb devices` shows it;
+  - small follow-ups (sticker conversion logs through pino).
+
 **Morning summary for Julio (2026-10-15, written 07:50 CEST, updated 09:30).** Details for each item are further down.
 - **Since 07:50:**
   - T-1489: Android predictive back is on, tested on every back path;
@@ -23,7 +55,11 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - **approved** ("so much better … i like it"). The boards and README ride T-1500 into `docs/design/mockups/ai-work/`;
   - **T-1500, running:** an audit that maps turns, task cards, handoffs, approvals and live updates, inventories topic kind, status, owner and link, and writes the step plan in `docs/audit/ai-work-plan.md`.
 - **Connections canvas approved** (Julio: "connects are okay"). Boards and README are parked in `parked/connections/`.
-- **View steps:** Julio likes it, but "something says its not right"; it needs a small rework (next).
+- **View steps reworked, waiting for Julio:**
+  - the panel and sheet now show the same steps as the card, each one opening to its actions (command, ✓ or ✕, duration, output on a failure);
+  - one time format;
+  - no model-call rows, no tokens or money, no "Answered" row;
+  - an approved step carries a shield-check icon.
 - **Approvals work:**
   - **T-1498 (server: approvals carry `aiName` and `groupName`, one query each) merged;**
   - **T-1499 (web: the simpler card and Approvals page) is launched after T-1498.**

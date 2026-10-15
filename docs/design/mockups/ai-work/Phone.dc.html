@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AI work in a topic, phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed}a:hover{color:#ffffff}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.key-icon{background:linear-gradient(180deg,#2c2c2c,#151515);border:1px solid #050505;color:#d4d4d4;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.65),0 1px 0 rgba(0,0,0,.95),0 3px 6px -1px rgba(0,0,0,.75)}
+.well{background:#0c0c0c;box-shadow:inset 0 2px 6px rgba(0,0,0,.9),inset 0 1px 1px rgba(0,0,0,.8),inset 0 0 0 1px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.06)}
+.kb{width:40px;height:40px;box-sizing:border-box;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dev{background:radial-gradient(circle at 35% 30%,#c4b5fd,#4338ca 55%,#1e1b4b)}
+.qa{background:radial-gradient(circle at 35% 30%,#bbf7d0,#15803d 55%,#052e16)}
+.mini{position:relative;width:22px;height:22px;border-radius:999px;flex-shrink:0}
+.amber{position:absolute;right:-2px;bottom:-2px;width:9px;height:9px;border-radius:999px;background:#f59e0b;box-shadow:0 0 0 2px #1c1c1c}
+.step{display:flex;align-items:center;gap:10px;font-size:15px;line-height:21px}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; display: flex; flex-direction: column; background-color: #0a0a0a; background-image: radial-gradient(#1c1c1c 1px, transparent 1px); background-size: 22px 22px">
+  <div style="height: 64px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: #0a0a0a; border-bottom: 1px solid #1a1a1a">
+    <button type="button" aria-label="Back" class="key-icon kb"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></button>
+    <span style="flex-grow: 1; min-width: 0; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Checkout button hidden on Safari</span>
+    <a href="PhoneSheet.dc.html" aria-label="AIs here: Dev-1 working, QA-1 waiting for you" class="key-icon" style="height: 40px; padding: 0 10px; box-sizing: border-box; border-radius: 12px; display: flex; align-items: center; gap: 6px">
+      <span class="mini dev"><svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true" style="position: absolute; left: -4px; top: -4px"><circle cx="15" cy="15" r="13.5" stroke="#ededed" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="56 29"></circle></svg></span>
+      <span class="mini qa"><span class="amber"></span></span>
+    </a>
+  </div>
+
+  <div style="flex-grow: 1; padding: 14px 12px; display: flex; flex-direction: column; justify-content: flex-end; gap: 12px">
+    <div style="display: flex; gap: 8px; align-items: flex-end">
+      <span aria-hidden="true" class="dev" style="width: 28px; height: 28px; border-radius: 999px; flex-shrink: 0"></span>
+      <section aria-label="Dev-1 is working: Fix the checkout button" style="flex-grow: 1; padding: 14px; border-radius: 14px; background: #141414; border: 1px solid #232323; display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; align-items: center; gap: 8px">
+          <span style="flex-grow: 1; font-size: 16px; font-weight: 600">Fix the checkout button</span>
+          <span class="mono" style="font-size: 12px; color: #a1a1a1">1:12</span>
+          <button type="button" aria-label="Stop Dev-1" class="key-icon kb"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg></button>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px">
+          <span class="step" style="color: #a1a1a1"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" role="img" aria-label="Done"><circle cx="8" cy="8" r="7" fill="#22c55e"></circle><path d="M4.9 8.3l2.1 2.1 4.1-4.5" stroke="#0a0a0a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>Find the cause</span>
+          <span class="step" style="color: #a1a1a1"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" role="img" aria-label="Done"><circle cx="8" cy="8" r="7" fill="#22c55e"></circle><path d="M4.9 8.3l2.1 2.1 4.1-4.5" stroke="#0a0a0a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>Patch the safe-area padding</span>
+          <span class="step" style="font-weight: 500"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" role="img" aria-label="Doing"><circle cx="8" cy="8" r="6.5" stroke="#333" stroke-width="1.6"></circle><path d="M8 1.5a6.5 6.5 0 0 1 6.5 6.5" stroke="#ededed" stroke-width="1.6" stroke-linecap="round"></path></svg>Run the tests</span>
+          <span class="step" style="color: #737373"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" role="img" aria-label="Next"><circle cx="8" cy="8" r="6.5" stroke="#333" stroke-width="1.6"></circle></svg>Open the pull request</span>
+        </div>
+      </section>
+    </div>
+
+    <div style="align-self: center; display: flex; align-items: center; gap: 8px; font-size: 14px; color: #a1a1a1">
+      <span aria-hidden="true" class="dev" style="width: 16px; height: 16px; border-radius: 999px"></span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+      <span aria-hidden="true" class="qa" style="width: 16px; height: 16px; border-radius: 999px"></span>
+      <span>Check it on an iPhone</span>
+    </div>
+
+    <div style="display: flex; gap: 8px; align-items: flex-end">
+      <span aria-hidden="true" class="qa" style="width: 28px; height: 28px; border-radius: 999px; flex-shrink: 0"></span>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <div style="padding: 10px 14px; border-radius: 18px; background: #141414; border: 1px solid #232323; font-size: 15px">Which iOS should I test on?</div>
+        <div style="display: flex; gap: 8px">
+          <button type="button" class="key-icon" style="height: 40px; padding: 0 16px; border-radius: 999px; font: 500 15px 'Geist', sans-serif">iOS 17</button>
+          <button type="button" class="key-icon" style="height: 40px; padding: 0 16px; border-radius: 999px; font: 500 15px 'Geist', sans-serif">iOS 18</button>
+          <button type="button" class="key-icon" style="height: 40px; padding: 0 16px; border-radius: 999px; font: 500 15px 'Geist', sans-serif">Both</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex-shrink: 0; padding: 8px 12px 28px 12px; background: #0a0a0a; border-top: 1px solid #1a1a1a; display: flex; flex-direction: column; gap: 8px">
+    <div role="status" style="display: flex; align-items: center; gap: 8px; padding: 0 4px; font-size: 14px; color: #a1a1a1">
+      <span class="mini dev" style="width: 16px; height: 16px"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" style="position: absolute; left: -4px; top: -4px"><circle cx="12" cy="12" r="10.5" stroke="#ededed" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="44 22"></circle></svg></span>
+      <span style="flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis"><span style="color: #ededed">Dev-1</span> is running the tests</span>
+      <span class="mono" style="font-size: 12px">+1</span>
+    </div>
+    <span class="well" style="height: 44px; border-radius: 14px; display: flex; align-items: center; padding: 0 14px; font-size: 15px; color: #8a8a8a">Message</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

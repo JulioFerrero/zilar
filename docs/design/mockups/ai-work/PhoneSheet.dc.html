@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIs here, phone sheet</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed}a:hover{color:#ffffff}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.key-icon{background:linear-gradient(180deg,#2c2c2c,#151515);border:1px solid #050505;color:#d4d4d4;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.65),0 1px 0 rgba(0,0,0,.95),0 3px 6px -1px rgba(0,0,0,.75)}
+.kb{width:40px;height:40px;box-sizing:border-box;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dev{background:radial-gradient(circle at 35% 30%,#c4b5fd,#4338ca 55%,#1e1b4b)}
+.qa{background:radial-gradient(circle at 35% 30%,#bbf7d0,#15803d 55%,#052e16)}
+.mk{background:radial-gradient(circle at 35% 30%,#fef9c3,#a16207 55%,#3f2a05)}
+.orb{position:relative;width:40px;height:40px;border-radius:999px;flex-shrink:0}
+.amber{position:absolute;right:-1px;bottom:-1px;width:12px;height:12px;border-radius:999px;background:#f59e0b;box-shadow:0 0 0 2px #0a0a0a}
+.row{display:flex;align-items:center;gap:12px;min-height:68px;padding:0 16px;border-bottom:1px solid #1a1a1a;text-decoration:none}
+.name{font-size:16px;font-weight:600}
+.what{font-size:14px;color:#a1a1a1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #0a0a0a">
+  <div aria-hidden="true" style="position: absolute; inset: 0; background-image: radial-gradient(#1c1c1c 1px, transparent 1px); background-size: 22px 22px"></div>
+  <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.6)"></div>
+
+  <div role="dialog" aria-label="AIs here" style="position: absolute; left: 0; right: 0; bottom: -1px; background: #0a0a0a; border-top: 1px solid #1f1f1f; border-radius: 16px 16px 0 0; display: flex; flex-direction: column; padding-bottom: 34px">
+    <span aria-hidden="true" style="align-self: center; width: 36px; height: 4px; margin-top: 8px; border-radius: 2px; background: #333333"></span>
+    <div style="padding: 10px 16px 12px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #1f1f1f">
+      <h2 style="margin: 0; flex-grow: 1; font-size: 17px; font-weight: 600; letter-spacing: -0.02em">AIs here</h2>
+      <button type="button" aria-label="Add an AI" class="key-icon kb"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+      <a href="Phone.dc.html" aria-label="Close" class="key-icon kb"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></a>
+    </div>
+
+    <div class="row">
+      <span class="orb dev" role="img" aria-label="Dev-1, working"><svg width="50" height="50" viewBox="0 0 50 50" fill="none" aria-hidden="true" style="position: absolute; left: -5px; top: -5px"><circle cx="25" cy="25" r="23" stroke="#ededed" stroke-width="2" stroke-linecap="round" stroke-dasharray="100 45"></circle></svg></span>
+      <span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+        <span class="name">Dev-1</span>
+        <span class="what">Running the tests · <span class="mono" style="font-size: 12px">1:12</span></span>
+      </span>
+      <button type="button" aria-label="Stop Dev-1" class="key-icon kb"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"></rect></svg></button>
+    </div>
+
+    <a href="Phone.dc.html" class="row">
+      <span class="orb qa" role="img" aria-label="QA-1, waiting for you"><span class="amber"></span></span>
+      <span style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+        <span class="name">QA-1</span>
+        <span class="what" style="color: #f59e0b">Waiting for you</span>
+      </span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+    </a>
+
+    <div class="row" style="border-bottom: 0">
+      <span class="orb mk" aria-hidden="true"></span>
+      <span style="flex-grow: 1; min-width: 0" class="name">Marketing AI</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
