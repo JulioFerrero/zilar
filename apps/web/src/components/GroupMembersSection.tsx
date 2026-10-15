@@ -1,55 +1,53 @@
 import { Effect } from 'effect';
-import { Fragment, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link, UserPlus } from 'lucide-react';
+import { useState } from 'react';
 import type { GroupDetail, GroupRole } from '@/lib/api';
-import { deleteGroup } from '@/lib/api/groups';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { FieldError } from './ais/AiPageShell';
 import { EntityAvatar } from './EntityAvatar';
 import { HandleSuffix } from './HandleSuffix';
+import { MemberRow } from './group-info/MemberRow';
 import { PanelFailure, apiStep, messageOf } from './panels/groupPanelOps';
-import { roleLabel } from './panels/role-label';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Dialog } from './ui/dialog';
-import { TextInput } from './ui/text-input';
+import { ListRow } from './ui/list-row';
+import { SearchField } from './ui/search-field';
 
 /**
- * Group members (T-1183): role chips, Remove for owners and admins (never on
- * the owner or yourself), Add members from the contacts, and Leave group for
- * non-owners. Errors show inline; the server enforces the same rules.
+ * Group members (T-1183, redrawn in T-1508): a search field, the Add members
+ * and Invite with a link rows for managers, and one rounded group of
+ * `MemberRow`s. Leave and delete moved to the root page and its More menu;
+ * every row's actions live in its ⋮ menu. Errors show inline; the server
+ * enforces the same rules.
  */
 export function GroupMembersSection({
   chatId,
   info,
   me,
   rolesByUser,
-  onClose,
+  onOpenLinks,
   openPickerOnMount = false,
 }: {
   chatId: string;
   info: GroupDetail;
   me: string | undefined;
   rolesByUser: Map<string, GroupRole[]>;
-  onClose: () => void;
+  /** Opens the Invite links page from the "Invite with a link" row. */
+  onOpenLinks: () => void;
   /** T-1494: the root's Add key lands here with the picker already open. */
   openPickerOnMount?: boolean;
 }) {
   const storeApi = useChatStoreApi();
-  const navigate = useNavigate();
   const contacts = useChatSelector((s) => s.contacts);
   const meRole = info.members.find((member) => member.userId === me)?.role;
   const isManager = meRole === 'owner' || meRole === 'admin';
   const isOwner = meRole === 'owner';
 
+  const [query, setQuery] = useState('');
   const [pickerOpen, setPickerOpen] = useState(openPickerOnMount);
   const [selected, setSelected] = useState<string[]>([]);
-  const [confirmingId, setConfirmingId] = useState<string | undefined>(undefined);
-  const [transferConfirmingId, setTransferConfirmingId] = useState<string | undefined>(undefined);
-  const [leaveConfirming, setLeaveConfirming] = useState(false);
-  const [deleteConfirming, setDeleteConfirming] = useState(false);
-  const [deleteName, setDeleteName] = useState('');
 
   // One action for the section, as in GroupRolesSection: buttons disable while
   // a change runs, and the last failure stays visible.
@@ -84,239 +82,58 @@ export function GroupMembersSection({
     );
   };
 
-  const removeMember = (userId: string): void => {
-    run(
-      () => storeApi.getState().removeGroupMember(chatId, userId),
-      'Could not remove the member.',
-      () => setConfirmingId(undefined),
-    );
-  };
-
-  // T-1190: the owner hands the group to another member. The detail refreshes,
-  // so the panel repaints with the caller as an admin and Leave group appears.
-  const transferOwner = (userId: string): void => {
-    run(
-      () => storeApi.getState().transferGroupOwner(chatId, userId),
-      'Could not hand over the group.',
-      () => setTransferConfirmingId(undefined),
-    );
-  };
-
-  const leaveGroup = (): void => {
-    run(
-      () => storeApi.getState().leaveChannel(chatId),
-      'Could not leave the group.',
-      () => {
-        onClose();
-        navigate('/');
-      },
-    );
-  };
-
-  // T-1243: the owner deletes the group for everyone. On success the chat
-  // closes, the chat list refreshes (the row drops) and the caller goes home.
-  const deleteGroupNow = (): void => {
-    run(
-      () => deleteGroup(info.id),
-      'Could not delete the group.',
-      () => {
-        storeApi.getState().refreshChats();
-        onClose();
-        navigate('/');
-      },
-    );
-  };
+  const needle = query.trim().toLowerCase();
+  const visibleMembers =
+    needle === ''
+      ? info.members
+      : info.members.filter(
+          (member) =>
+            member.name.toLowerCase().includes(needle) ||
+            (member.handle ?? '').toLowerCase().includes(needle),
+        );
 
   return (
-    <section aria-label="Members" className="flex flex-col gap-1">
-      <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Members</h2>
+    <section aria-label="Members" className="flex flex-col gap-2">
+      <SearchField
+        aria-label="Search members"
+        placeholder="Search"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
 
-      {info.members.map((member) => {
-        const label = roleLabel(member.role);
-        // The fresh roles list wins over the group detail's snapshot (T-0116).
-        const chipRoles = rolesByUser.get(member.userId) ?? member.roles ?? [];
-        const removable = isManager && member.role !== 'owner' && member.userId !== me;
-        const transferable = isOwner && member.userId !== me;
-        const confirming = confirmingId === member.userId;
-        const transferConfirming = transferConfirmingId === member.userId;
-        return (
-          <Fragment key={member.userId}>
-            <div className="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-list-hover">
-              <EntityAvatar person={member} size={32} />
-              <span className="min-w-0 flex-1 truncate text-[14px]">
-                {member.name} <HandleSuffix handle={member.handle} />
-              </span>
-              {chipRoles.map((role) => (
-                <RoleChip key={role.id} name={role.name} />
-              ))}
-              {label !== undefined && <RoleChip name={label} />}
-              {transferable && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="shrink-0 text-muted-foreground"
-                  aria-label={`Make ${member.name} the owner`}
-                  disabled={busy}
-                  onClick={() => setTransferConfirmingId(member.userId)}
-                >
-                  Make owner
-                </Button>
-              )}
-              {removable && (
-                <Button
-                  type="button"
-                  variant={confirming ? 'destructive' : 'ghost'}
-                  size="sm"
-                  className="shrink-0 text-muted-foreground"
-                  aria-label={
-                    confirming ? `Confirm removing ${member.name}` : `Remove ${member.name}`
-                  }
-                  disabled={busy}
-                  onClick={() =>
-                    confirming ? removeMember(member.userId) : setConfirmingId(member.userId)
-                  }
-                >
-                  Remove
-                </Button>
-              )}
-              {confirming && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => setConfirmingId(undefined)}
-                >
-                  Cancel
-                </Button>
-              )}
-            </div>
-            {transferConfirming && (
-              <div className="flex flex-wrap items-center gap-2 px-2 pb-1">
-                <span className="text-[13px] text-muted-foreground">
-                  Make {member.name} the owner? You become an admin.
-                </span>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  className="shrink-0"
-                  aria-label={`Confirm making ${member.name} the owner`}
-                  disabled={busy}
-                  onClick={() => transferOwner(member.userId)}
-                >
-                  Make owner
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={busy}
-                  onClick={() => setTransferConfirmingId(undefined)}
-                >
-                  Cancel
-                </Button>
-              </div>
-            )}
-          </Fragment>
-        );
-      })}
-      {isManager && addable.length > 0 && (
-        <div className="px-2 pt-1">
-          <Button
-            type="button"
-            variant="outline"
-            size="lg"
-            className="rounded-full px-4"
+      {isManager && (
+        <div className="divide-y divide-divider overflow-hidden rounded-xl border border-border bg-surface">
+          <ListRow
+            icon={<UserPlus className="size-4" aria-hidden="true" />}
+            title="Add members"
             onClick={() => setPickerOpen(true)}
-          >
-            Add members
-          </Button>
-        </div>
-      )}
-      {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
-      {isOwner && (
-        <p className="px-2 text-[13px] text-muted-foreground">
-          To leave, make someone else the owner first.
-        </p>
-      )}
-      {isOwner && deleteConfirming && (
-        <div className="mx-2 flex flex-col gap-2 rounded-xl border border-danger/40 px-3 py-2">
-          <p className="text-[13px] text-muted-foreground">
-            Delete {info.title} for everyone? All topics and messages go away. This can&apos;t be
-            undone.
-          </p>
-          <TextInput
-            aria-label="Type the group name to confirm"
-            placeholder={info.title}
-            value={deleteName}
-            onChange={(event) => setDeleteName(event.target.value)}
           />
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              disabled={busy || deleteName.trim() !== info.title}
-              onClick={deleteGroupNow}
-            >
-              Delete group
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={() => {
-                setDeleteConfirming(false);
-                setDeleteName('');
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
+          <ListRow
+            icon={<Link className="size-4" aria-hidden="true" />}
+            title="Invite with a link"
+            onClick={onOpenLinks}
+          />
         </div>
       )}
-      {isOwner && !deleteConfirming && (
-        <div className="flex items-center gap-2 px-2 pt-1">
-          <Button
-            type="button"
-            variant="destructive"
-            size="lg"
-            className="rounded-full px-4"
-            disabled={busy}
-            onClick={() => setDeleteConfirming(true)}
-          >
-            Delete group
-          </Button>
-        </div>
-      )}
-      {meRole !== undefined && meRole !== 'owner' && (
-        <div className="flex items-center gap-2 px-2 pt-1">
-          <Button
-            type="button"
-            variant={leaveConfirming ? 'destructive' : 'outline'}
-            size="lg"
-            className="rounded-full px-4"
-            disabled={busy}
-            onClick={leaveConfirming ? leaveGroup : () => setLeaveConfirming(true)}
-          >
-            {leaveConfirming ? 'Leave' : 'Leave group'}
-          </Button>
-          {leaveConfirming && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="lg"
-              disabled={busy}
-              onClick={() => setLeaveConfirming(false)}
-            >
-              Cancel
-            </Button>
-          )}
-        </div>
-      )}
+
+      <div className="divide-y divide-divider overflow-hidden rounded-xl border border-border bg-surface">
+        {visibleMembers.map((member) => (
+          <MemberRow
+            key={member.userId}
+            member={member}
+            roles={rolesByUser.get(member.userId) ?? member.roles ?? []}
+            me={me}
+            chatId={chatId}
+            isManager={isManager}
+            isOwner={isOwner}
+            busy={busy}
+            run={run}
+          />
+        ))}
+      </div>
+
+      {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
+
       <Dialog
         open={pickerOpen}
         onClose={closePicker}
@@ -354,14 +171,5 @@ export function GroupMembersSection({
         </div>
       </Dialog>
     </section>
-  );
-}
-
-/** A small monospace chip for a custom role name or a member's role. */
-function RoleChip({ name }: { name: string }) {
-  return (
-    <span className="font-mono rounded-[5px] border border-badge-muted px-1 text-[10px] leading-[15px] text-muted-foreground">
-      {name}
-    </span>
   );
 }

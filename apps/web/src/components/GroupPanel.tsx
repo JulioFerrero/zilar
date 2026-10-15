@@ -1,7 +1,6 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { Image } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { CreatedInviteLink, GroupAi, GroupInviteLink, GroupRole, PublicAi } from '@/lib/api';
 import { createGroupInviteLink, revokeGroupInviteLink } from '@/lib/api';
@@ -18,7 +17,6 @@ import { AiMemoryDialog } from './ais/AiMemoryDialog';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
 import { ChatBackgroundDialog } from './ChatBackgroundDialog';
 import { FieldError } from './ais/AiPageShell';
-import { ListRow } from './ui/list-row';
 import { Sheet } from './ui/sheet';
 import { StateMessage } from './ui/state-message';
 import { InviteLinksSection } from './InviteLinksSection';
@@ -179,13 +177,17 @@ export function GroupPanel({
         <GroupInfoRoot
           chat={chat}
           title={panelTitle}
+          groupId={info?.id}
           memberCount={memberCount}
           aisCount={info?.ais.length ?? 0}
           linksCount={isManager ? links.length : undefined}
           isManager={isManager}
+          isOwner={isOwner}
+          canLeave={meRole !== undefined && meRole !== 'owner'}
           onClose={onClose}
           onSearch={onSearch}
           onOpenMedia={onOpenMedia}
+          onOpenBackground={() => setBackgroundOpen(true)}
           onOpenPage={openPage}
           onAddMembers={openMembersWithPicker}
         />
@@ -206,7 +208,7 @@ export function GroupPanel({
                     info={info}
                     me={me}
                     rolesByUser={rolesByUser}
-                    onClose={onClose}
+                    onOpenLinks={() => setPage('links')}
                     openPickerOnMount={pickerOnMount}
                   />
 
@@ -325,18 +327,6 @@ export function GroupPanel({
                       available={info.listener?.available === true}
                       eagerness={info.listener?.eagerness ?? 'normal'}
                     />
-                  )}
-
-                  {/* T-0466: the group's shared background, managers only. */}
-                  {isManager && (
-                    <section aria-label="Group background" className="px-2">
-                      <ListRow
-                        icon={<Image />}
-                        title="Group background"
-                        chevron
-                        onClick={() => setBackgroundOpen(true)}
-                      />
-                    </section>
                   )}
 
                   {/* T-0164: public visibility with a handle — the owner only. */}

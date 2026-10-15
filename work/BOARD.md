@@ -1524,3 +1524,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1505](T-1505-ai-activity-read-model.md) | AI work step 1: per-topic AI activity read model | 2026-10-15 |
 | [T-1513](T-1513-mobile-approvals-simple.md) | Phone approvals: simple card and one list of rows | 2026-10-15 |
 | [T-1510](T-1510-web-ai-health.md) | Web My AIs shows each AI's health and today's spend | 2026-10-15 |
+| [T-1508](T-1508-web-group-info-step2.md) | Web group info: More menu, Leave row, redrawn member rows | 2026-10-15 |

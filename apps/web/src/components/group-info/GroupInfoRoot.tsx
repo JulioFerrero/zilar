@@ -7,23 +7,28 @@ import {
   Bot,
   Image as ImageIcon,
   Link,
+  MoreHorizontal,
   Pin,
   Search,
   Settings,
   ShieldCheck,
+  Trash2,
   UserPlus,
   Users,
   Wrench,
   X,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { PanelFailure } from '../panels/groupPanelOps';
 import { EntityAvatar } from '../EntityAvatar';
 import { IconButton } from '../ui/icon-button';
 import { ListRow } from '../ui/list-row';
+import { Menu, MenuItem } from '../ui/menu';
 import { PanelKey } from '../ui/panel-key';
+import { DeleteGroupDialog, LeaveGroupRow } from './GroupExit';
 
 /** The pages of the group info panel; `root` is the page itself (T-1494). */
 export type GroupInfoPageId =
@@ -56,31 +61,43 @@ function count(value: number): ReactNode {
 export function GroupInfoRoot({
   chat,
   title,
+  groupId,
   memberCount,
   aisCount,
   linksCount,
   isManager,
+  isOwner,
+  canLeave,
   onClose,
   onSearch,
   onOpenMedia,
+  onOpenBackground,
   onOpenPage,
   onAddMembers,
 }: {
   chat: ChatSummary;
   title: string;
+  /** The group's id, for the More key's Delete group dialog. */
+  groupId: string | undefined;
   memberCount: number;
   aisCount: number;
   linksCount: number | undefined;
   isManager: boolean;
+  isOwner: boolean;
+  /** A member who is not the owner: show the red Leave group row. */
+  canLeave: boolean;
   onClose: () => void;
   onSearch: () => void;
   onOpenMedia: () => void;
+  onOpenBackground: () => void;
   onOpenPage: (page: GroupInfoPageId) => void;
   onAddMembers: () => void;
 }) {
   const storeApi = useChatStoreApi();
   const pinCount = useChatSelector((s) => s.pinsByChat[chat.id]?.length ?? 0);
   const muted = chat.muted === true;
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const [muteState, runMute] = useAction((next: boolean) =>
     Effect.tryPromise({
@@ -125,6 +142,47 @@ export function GroupInfoRoot({
           />
           <PanelKey label="Search" icon={Search} onClick={onSearch} />
           {isManager && <PanelKey label="Add" icon={UserPlus} onClick={onAddMembers} />}
+          {(isManager || isOwner) && (
+            // Menu needs its own trigger element, so the fourth key carries the
+            // PanelKey layout itself instead of wrapping `PanelKey`.
+            <div className="flex w-16 flex-col items-center gap-1.5">
+              <Menu
+                open={moreOpen}
+                onOpenChange={setMoreOpen}
+                label="More"
+                trigger={
+                  <IconButton aria-label="More">
+                    <MoreHorizontal className="size-[18px]" aria-hidden="true" />
+                  </IconButton>
+                }
+              >
+                {isManager && (
+                  <MenuItem
+                    icon={ImageIcon}
+                    onSelect={() => {
+                      setMoreOpen(false);
+                      onOpenBackground();
+                    }}
+                  >
+                    Group background
+                  </MenuItem>
+                )}
+                {isOwner && (
+                  <MenuItem
+                    icon={Trash2}
+                    destructive
+                    onSelect={() => {
+                      setMoreOpen(false);
+                      setDeleteOpen(true);
+                    }}
+                  >
+                    Delete group
+                  </MenuItem>
+                )}
+              </Menu>
+              <span className="text-[12px] text-muted-foreground">More</span>
+            </div>
+          )}
         </div>
 
         {muteError !== undefined && (
@@ -217,8 +275,19 @@ export function GroupInfoRoot({
               />
             </nav>
           )}
+
+          {/* The red bottom row: non-owners leave here; the owner deletes from More. */}
+          {canLeave && <LeaveGroupRow chatId={chat.id} title={title} onClose={onClose} />}
         </div>
       </div>
+
+      <DeleteGroupDialog
+        groupId={groupId}
+        title={title}
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onDeleted={onClose}
+      />
     </>
   );
 }

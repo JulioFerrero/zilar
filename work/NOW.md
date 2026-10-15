@@ -13,18 +13,22 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1501 (web sticker upload keeps motion) merged; the New pack grid follows;
   - T-1504 (AI `lastFailure` on the AI list) merged;
   - T-1507 (phone stickers render with `expo-image`) merged; the mock smoke passed. Check an animated sticker on Julio's next phone build;
-  - running (8):
-    - T-1505 (AI work step 1);
-    - T-1506 (web lean Settings; fix round: hide the duplicate Profile row);
-    - T-1508 (web Group info step 2);
-    - T-1509 (web New pack grid);
+  - **merged since midday:**
+    - T-1505 (AI work step 1, read model plus index migration 0063);
+    - T-1506 (web lean Settings);
     - T-1510 (web My AIs with health);
     - T-1511 (web empty chats);
     - T-1512 (web several files);
-    - T-1513 (phone approvals, simpler);
+    - T-1513 (phone approvals);
+  - **running:**
+    - T-1508 (web Group info step 2; fix round: the ⋮ key to the kit's 36 px);
+    - T-1509 (web New pack grid; fix round: GIF/video preview URLs revoked, a bug from T-1501);
+    - T-1514 (AI work step 2: the topic list carries activity);
+    - T-1515 (phone lean Settings);
+    - T-1516 (phone Connections);
+  - **decision (Julio):** the topic link moves to a row in the topic's info panel, so the plan's T8 keeps `link_url`/`link_label`;
   - **next to spec:**
-    - AI work step 2, after T-1505 (topic list carries the activity);
-    - phone twins: Settings, My AIs, Connections, empty chats, New pack, the link page, Group info;
+    - phone twins: My AIs, empty chats, New pack, the link page, Group info;
     - web Machines;
     - web View steps;
     - web Stickers tabs and drag;
