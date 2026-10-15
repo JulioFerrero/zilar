@@ -5,7 +5,6 @@ import { AiBadge } from '@/components/chat/ai-badge';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
-import { cn } from '@/lib/utils';
 
 import type { PublicAi } from '../../lib/ais-api';
 import { formatLimits } from './limits';
@@ -13,24 +12,13 @@ import { runStateLabel } from './run-state';
 import { templateLabel } from './templates';
 
 /** One row of the My AIs list: avatar, name, template, model and limits. */
-export function AiRow({
-  ai,
-  highlighted,
-  onPress,
-}: {
-  ai: PublicAi;
-  highlighted: boolean;
-  onPress: () => void;
-}) {
+export function AiRow({ ai, onPress }: { ai: PublicAi; onPress: () => void }) {
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={ai.name}
       onPress={onPress}
-      className={cn(
-        'flex-row items-center gap-3 rounded-xl border px-3 py-2.5 active:bg-list-hover',
-        highlighted ? 'border-accent bg-surface-raised' : 'border-transparent',
-      )}
+      className="flex-row items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 active:bg-list-hover"
     >
       <EntityAvatar person={{ id: ai.jid, name: ai.name, avatarUrl: ai.avatarUrl }} size={44} ai />
       <View className="min-w-0 flex-1">

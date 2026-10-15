@@ -145,6 +145,17 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
     }
   }, [screen]);
 
+  // A partial AI create lands here with `?notice=partial`: a quiet notice shown
+  // once, mirroring the search-jump miss above.
+  const partialNotice = screen.partialNotice;
+  const clearPartialNotice = screen.setPartialNotice;
+  useEffect(() => {
+    if (partialNotice) {
+      showToast('AI created. Some settings could not be saved.', 'notice');
+      clearPartialNotice(false);
+    }
+  }, [partialNotice, clearPartialNotice]);
+
   return (
     <View className="flex-1">
       <MessageList

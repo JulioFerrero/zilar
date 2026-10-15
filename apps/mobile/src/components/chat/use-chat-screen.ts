@@ -20,7 +20,7 @@ import type { ReplyRef, UiMessage } from '@/lib/types';
  */
 export function useChatScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id: string; notFound?: string }>();
+  const params = useLocalSearchParams<{ id: string; notFound?: string; notice?: string }>();
   const chatId = typeof params.id === 'string' ? params.id : '';
   const chat = useChatStore((state) => state.chats.find((item) => item.id === chatId));
   const chatsLoad = useChatStore((state) => state.chatsLoad);
@@ -69,6 +69,9 @@ export function useChatScreen() {
   // `?notFound=1`: the chat opens at its bottom with a short inline notice.
   // Local state, dismissed once, so going back and re-entering clears it.
   const [jumpMissed, setJumpMissed] = useState(params.notFound === '1');
+  // A partial AI create lands here with `?notice=partial`: a quiet notice shown
+  // once, like the search-jump miss above (T-1472).
+  const [partialNotice, setPartialNotice] = useState(params.notice === 'partial');
   const [statusOpen, setStatusOpen] = useState(false);
   const [ownerOpen, setOwnerOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -279,6 +282,8 @@ export function useChatScreen() {
     chat,
     chatsLoad,
     chatId,
+    partialNotice,
+    setPartialNotice,
     isTopic,
     groupName,
     replyTo,

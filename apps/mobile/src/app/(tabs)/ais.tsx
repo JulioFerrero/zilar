@@ -1,5 +1,5 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Effect } from 'effect';
 import { Plus, Zap } from 'lucide-react-native';
 import { useCallback, useRef, useState } from 'react';
@@ -18,7 +18,6 @@ import { Button } from '@/components/ui/button';
 import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { Toast, type ToastMessage } from '@/components/ui/toast';
 import { ACCENT, ICON } from '@/lib/colors';
 import { ACCENT_FOREGROUND } from '@/lib/depth';
 import { AisApiError, type PublicAi } from '@/lib/ais-api';
@@ -52,8 +51,6 @@ export default function AisScreen() {
 
 function AisList() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ highlight?: string }>();
-  const highlightId = typeof params.highlight === 'string' ? params.highlight : null;
   const { api } = useAisApi();
   const store = useChatStoreApi();
 
@@ -64,8 +61,8 @@ function AisList() {
   const [actionAi, setActionAi] = useState<PublicAi | null>(null);
   const [confirmAi, setConfirmAi] = useState<PublicAi | null>(null);
   const [deleteError, setDeleteError] = useState('');
-  // T-1445: the New AI sheet and the one-line notice when part of a create
-  // could not be saved (the AI itself was created).
+  // T-1445: the New AI sheet. A partial save is reported by the chat screen it
+  // opens, so the notice is not lost behind the sheet.
   const [newAiOpen, setNewAiOpen] = useState(false);
   // T-1445: a fresh session on each open, so a closed sheet never reopens on an
   // old provider's name or key (the sheet stays mounted to animate its close).
@@ -74,7 +71,6 @@ function AisList() {
     setNewAiSession((session) => session + 1);
     setNewAiOpen(true);
   };
-  const [toast, setToast] = useState<ToastMessage | null>(null);
   // T-0095: the kill switch state. `runError` renders inline in the sheet on
   // failure (the sheet stays open so the owner can retry), and a 409 also
   // reloads the list because the AI changed under them. The action runs one
@@ -181,16 +177,10 @@ function AisList() {
 
   // T-1445: the New AI sheet finished. The AI's chat is not in the roster yet,
   // so add it before opening it, as web does; the roster refresh reconciles the
-  // row later. A partial save shows one notice over the list.
+  // row later. A partial save rides a `notice` param into the chat, which shows
+  // one notice and clears it so it never reappears.
   const handleCreated = (ai: PublicAi, partialFailure: boolean): void => {
     setNewAiOpen(false);
-    if (partialFailure) {
-      setToast({
-        id: Date.now(),
-        text: 'AI created. Some settings could not be saved.',
-        tone: 'notice',
-      });
-    }
     const summary: ChatSummary = {
       id: ai.jid,
       title: ai.name,
@@ -206,7 +196,10 @@ function AisList() {
         ? state.chats
         : [summary, ...state.chats],
     }));
-    router.push({ pathname: '/chat/[id]', params: { id: ai.jid } });
+    router.push({
+      pathname: '/chat/[id]',
+      params: partialFailure ? { id: ai.jid, notice: 'partial' } : { id: ai.jid },
+    });
   };
 
   const askDelete = (ai: PublicAi): void => {
@@ -282,12 +275,7 @@ function AisList() {
         {status === 'ready' && ais.length > 0 && (
           <View className="gap-1">
             {ais.map((ai) => (
-              <AiRow
-                key={ai.id}
-                ai={ai}
-                highlighted={ai.id === highlightId}
-                onPress={() => setActionAi(ai)}
-              />
+              <AiRow key={ai.id} ai={ai} onPress={() => setActionAi(ai)} />
             ))}
           </View>
         )}
@@ -332,8 +320,6 @@ function AisList() {
         onCancel={() => setConfirmAi(null)}
         onConfirm={confirmDelete}
       />
-
-      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </>
   );
 }

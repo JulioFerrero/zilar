@@ -11,6 +11,8 @@ export interface SegmentedOption {
   label: string;
   /** An optional lucide icon, drawn at 15 px inline with the label. */
   icon?: LucideIcon;
+  /** A disabled option is not pressable and draws at `opacity-50`. */
+  disabled?: boolean;
 }
 
 export interface SegmentedControlProps {
@@ -58,6 +60,7 @@ export function SegmentedControl({
     >
       {options.map((option) => {
         const selected = option.value === value;
+        const disabled = option.disabled === true;
         const Icon = option.icon;
         const labelTone = selected
           ? isChoice
@@ -68,16 +71,21 @@ export function SegmentedControl({
           <Pressable
             key={`${option.value}-${selected ? 'on' : 'off'}`}
             accessibilityRole={isRadio ? 'radio' : 'tab'}
-            accessibilityState={isRadio ? { checked: selected } : { selected }}
+            accessibilityState={{
+              ...(isRadio ? { checked: selected } : { selected }),
+              ...(disabled ? { disabled: true } : {}),
+            }}
             accessibilityLabel={option.label}
+            disabled={disabled}
             onPress={() => {
-              if (!selected) {
+              if (!disabled && !selected) {
                 onChange(option.value);
               }
             }}
             className={cn(
               'flex-1 flex-row items-center justify-center gap-1.5 rounded-[7px]',
               isChoice ? 'h-10' : 'h-[34px]',
+              disabled && 'opacity-50',
             )}
             style={selected ? (isChoice ? primaryKey : segment) : undefined}
           >

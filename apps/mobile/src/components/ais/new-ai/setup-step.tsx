@@ -28,6 +28,9 @@ export function SetupStep({ flow }: { flow: NewAiFlow }) {
     ...(machine.online === true ? { dot: 'online' as const } : {}),
   }));
   const needsMachine = flow.computer === 'runner' || flow.computer === 'auto';
+  const computerOptions = COMPUTER_OPTIONS.map((option) =>
+    option.value === 'cloud' ? { ...option, disabled: !flow.cloud } : option,
+  );
 
   return (
     <View className="gap-5">
@@ -38,7 +41,7 @@ export function SetupStep({ flow }: { flow: NewAiFlow }) {
           tone="choice"
           accessibilityLabel="Computer"
           value={flow.computer}
-          options={COMPUTER_OPTIONS}
+          options={computerOptions}
           onChange={(value) => flow.setComputer(value as ComputerMode)}
         />
         {needsMachine ? (
