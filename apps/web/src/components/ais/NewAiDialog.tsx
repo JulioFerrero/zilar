@@ -1,376 +1,88 @@
-import { useState } from 'react';
-import { Effect } from 'effect';
-import { AsyncResult } from 'effect/reactivity';
 import { useNavigate } from 'react-router';
-import {
-  LLM_PROVIDERS,
-  defaultCatalogModelId,
-  isLlmProvider,
-  type ChatSummary,
-} from '@zilar/chat-core';
-import type { AiCatalogModel } from '@zilar/api-contract';
-import { ChevronDown } from 'lucide-react';
-import {
-  ApiError,
-  createAi,
-  getAiCatalog,
-  listConnections,
-  type AiTemplate,
-  type Connection,
-} from '@/lib/api';
-import { fromApi } from '@/lib/effect/api-effect';
-import type { ApiFailure } from '@/lib/effect/errors';
-import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { useQuery } from '@/lib/effect/use-query';
+import type { ChatSummary } from '@zilar/chat-core';
+import type { PublicAi } from '@/lib/api';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
-import { AddConnectionForm } from '@/components/connections/AddConnectionForm';
-import { Button, FieldError } from './AiPageShell';
-import { ConnectionPicker, providerLabel } from './ConnectionPicker';
-import { describeAiError, type AiErrorInfo } from './errors';
-import { LimitsFields } from './LimitsFields';
-import { validateLimits } from './limits';
-import { ModelPicker } from './ModelPicker';
-import { defaultModelFor, modelSuggestionsFor } from './models';
-import { AI_TEMPLATE_OPTIONS, defaultPersonaFor } from './templates';
-import { buildCreateBody, type AiFormState } from './aiForm';
+import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
-import { TextArea, TextInput } from '../ui/text-input';
-import { cn } from '@/lib/utils';
-import { StateMessage } from '@/components/ui/state-message';
-
-type DialogStatus = 'loading' | 'ready' | 'unavailable' | 'error';
-
-// An api.ts failure keeps its server answer: it is rebuilt as the ApiError that
-// describeAiError reads. A failure with no status did not come from the server,
-// so it shows the fixed fallback sentence instead of the thrown text.
-function describeFailure(failure: ApiFailure, fallback: string): AiErrorInfo {
-  if (failure.status === 0) {
-    return { message: fallback, unavailable: false };
-  }
-  return describeAiError(
-    new ApiError(failure.status, failure.code, failure.message, failure.detail),
-    fallback,
-  );
-}
+import { DialogStepper } from '../ui/dialog-stepper';
+import { KeyStep } from './new-ai/KeyStep';
+import { ModelStep } from './new-ai/ModelStep';
+import { ProviderStep } from './new-ai/ProviderStep';
+import { SetupStep } from './new-ai/SetupStep';
+import { useNewAiFlow } from './new-ai/useNewAiFlow';
 
 /**
- * The one-screen "New AI" dialog: a name, a template and Create. Everything else
- * keeps a safe default and lives behind "More options". It mirrors the chrome of
- * NewGroupDialog.
+ * The New AI wizard: Provider · Key · Model · Setup, then Create AI. The shell
+ * owns the dialog, the step bar and the footer; each step is its own component
+ * and the shared state lives in `useNewAiFlow`.
  */
 export function NewAiDialog({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const storeApi = useChatStoreApi();
 
-  // The connections are read once; the dialog shows the active, LLM-capable ones
-  // (a GitHub key cannot run an AI), or why it could not.
-  // A key added inline refetches the list and selects the new connection.
-  const [connectionList, refreshConnections] = useQuery(() => fromApi(() => listConnections()), []);
-  // T-1395: the models.dev catalog for the model step. The dialog renders
-  // without it (the static hints remain), so a failure is not fatal.
-  const [catalogResult] = useQuery(() => fromApi(() => getAiCatalog()), []);
-  const catalog = AsyncResult.isSuccess(catalogResult) ? catalogResult.value : null;
-  const catalogModelsFor = (provider: string): readonly AiCatalogModel[] =>
-    catalog?.providers.find((entry) => entry.id === provider)?.models ?? [];
-  const connections: Connection[] = AsyncResult.isSuccess(connectionList)
-    ? connectionList.value.filter(
-        (connection) => connection.status === 'active' && isLlmProvider(connection.provider),
-      )
-    : [];
-  const loadFailure = isWaiting(connectionList) ? undefined : failureOf(connectionList);
-  const loadInfo =
-    loadFailure === undefined
-      ? null
-      : describeFailure(loadFailure, 'Could not load your connections');
-  const status: DialogStatus = AsyncResult.isSuccess(connectionList)
-    ? 'ready'
-    : loadInfo === null
-      ? 'loading'
-      : loadInfo.unavailable
-        ? 'unavailable'
-        : 'error';
-  const errorMessage = loadInfo?.message ?? '';
-
-  const [name, setName] = useState('');
-  const [template, setTemplate] = useState<AiTemplate>('dev');
-  const [persona, setPersona] = useState(defaultPersonaFor('dev'));
-  const [personaTouched, setPersonaTouched] = useState(false);
-  const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
-  // The inline add-key form starts open when there is no connection yet.
-  const [addingConnection, setAddingConnection] = useState(true);
-  // null means "use the selected provider's default model".
-  const [modelDraft, setModelDraft] = useState<string | null>(null);
-  const [day, setDay] = useState('');
-  const [month, setMonth] = useState('');
-  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
-  const [submitError, setSubmitError] = useState('');
-
-  // Esc, the backdrop, Cancel and the actions footer all close via the kit
-  // `Dialog`; the focus effect below still moves focus into the name input.
-
-  const effectiveConnection =
-    connections.length === 1
-      ? connections[0]!
-      : (connections.find((connection) => connection.id === selectedConnectionId) ?? null);
-
-  const model =
-    modelDraft ??
-    (effectiveConnection === null
-      ? ''
-      : defaultCatalogModelId(catalogModelsFor(effectiveConnection.provider)) ||
-        defaultModelFor(effectiveConnection.provider));
-
-  const limits = validateLimits(day, month);
-  const providerConnectionId = effectiveConnection?.id ?? null;
-  const customNeedsPersona = template === 'custom' && persona.trim() === '';
-  const formReady =
-    name.trim() !== '' &&
-    providerConnectionId !== null &&
-    model.trim() !== '' &&
-    limits.limits !== null &&
-    !customNeedsPersona;
-
-  // One create at a time: a second click while the call waits is dropped (mode 'ignore').
-  const [submitState, submit] = useAction<void, void, ApiFailure>(() => {
-    const form: AiFormState = {
-      name,
-      template,
-      persona,
-      personaTouched,
-      providerConnectionId,
-      model,
-      day,
-      month,
-    };
-    const body = buildCreateBody(form, limits.limits);
-    if (body === null || !formReady) {
-      return Effect.void;
-    }
-    return Effect.sync(() => setSubmitError('')).pipe(
-      Effect.andThen(fromApi(() => createAi(body))),
-      Effect.tap((created) =>
-        Effect.sync(() => {
-          const summary: ChatSummary = {
-            id: created.jid,
-            title: created.name,
-            kind: 'dm',
-            isAI: true,
-            space: 'personal',
-            unread: 0,
-            muted: false,
-            online: false,
-          };
-          // Show the new AI in the list immediately. The store's T-0033 roster
-          // refresh reconciles it a moment later; a chat already there is kept.
-          storeApi.setState((state) => ({
-            chats: state.chats.some((chat) => chat.id === created.jid)
-              ? state.chats
-              : [summary, ...state.chats],
-          }));
-          onClose();
-          navigate(`/c/${encodeURIComponent(created.jid)}`);
-        }),
-      ),
-      Effect.catchTag('ApiFailure', (failure) =>
-        Effect.sync(() =>
-          setSubmitError(describeFailure(failure, 'Could not create the AI').message),
-        ),
-      ),
-    );
+  const flow = useNewAiFlow({
+    onClose,
+    onCreated: (created: PublicAi) => {
+      const summary: ChatSummary = {
+        id: created.jid,
+        title: created.name,
+        kind: 'dm',
+        isAI: true,
+        space: 'personal',
+        unread: 0,
+        muted: false,
+        online: false,
+      };
+      // Show the new AI in the list immediately; the roster refresh reconciles
+      // it a moment later and a chat already there is kept.
+      storeApi.setState((state) => ({
+        chats: state.chats.some((chat) => chat.id === created.jid)
+          ? state.chats
+          : [summary, ...state.chats],
+      }));
+      onClose();
+      navigate(`/c/${encodeURIComponent(created.jid)}`);
+    },
   });
-  const submitting = isWaiting(submitState);
-  const canSubmit = formReady && !submitting;
-
-  const chooseTemplate = (next: AiTemplate): void => {
-    setTemplate(next);
-    setPersona(defaultPersonaFor(next));
-    setPersonaTouched(false);
-  };
-
-  const chooseConnection = (id: string): void => {
-    setSelectedConnectionId(id);
-    // Switching provider re-prefills that provider's default model.
-    setModelDraft(null);
-  };
 
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={flow.close}
       title="New AI"
-      size="sm"
-      actions={
+      size="lg"
+      busy={flow.busy}
+      stepper={<DialogStepper steps={flow.steps} current={flow.step} onStep={flow.goToStep} />}
+      error={flow.error === '' ? undefined : flow.error}
+      onSubmit={(event) => {
+        event.preventDefault();
+        flow.primary();
+      }}
+      footer={
         <>
-          <Button type="button" variant="ghost" size="lg" onClick={onClose}>
-            Cancel
-          </Button>
-          {status === 'ready' && connections.length > 0 && (
-            <Button type="button" size="lg" disabled={!canSubmit} onClick={() => submit()}>
-              {submitting ? 'Creating…' : 'Create'}
+          {flow.step > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="lg"
+              className="key-icon mr-auto text-foreground"
+              disabled={flow.busy}
+              onClick={flow.back}
+            >
+              Back
             </Button>
           )}
+          <Button type="submit" size="lg" disabled={flow.primaryDisabled}>
+            {flow.primaryLabel}
+          </Button>
         </>
       }
     >
-      <div className="mt-3">
-        {status === 'loading' && <StateMessage kind="loading" size="inline" title="Loading…" />}
-
-        {(status === 'unavailable' || status === 'error') && (
-          <p role="alert" className="text-[15px] text-danger">
-            {errorMessage}
-          </p>
-        )}
-
-        {status === 'ready' && connections.length === 0 && (
-          <div className="flex flex-col items-start gap-3">
-            <p className="text-[15px] text-muted-foreground">Add a provider key to continue.</p>
-            {addingConnection ? (
-              <AddConnectionForm
-                providers={LLM_PROVIDERS}
-                onCancel={() => setAddingConnection(false)}
-                onSaved={(connection) => {
-                  setAddingConnection(false);
-                  setSelectedConnectionId(connection.id);
-                  refreshConnections();
-                }}
-              />
-            ) : (
-              <Button
-                type="button"
-                size="lg"
-                className="rounded-full px-5"
-                onClick={() => setAddingConnection(true)}
-              >
-                Add a provider key
-              </Button>
-            )}
-          </div>
-        )}
-
-        {status === 'ready' && connections.length > 0 && (
-          <div className="flex flex-col gap-4">
-            <label className="flex flex-col gap-1">
-              <span className="text-[14px] font-medium">Name</span>
-              <TextInput
-                autoFocus
-                aria-label="Name"
-                value={name}
-                maxLength={64}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Dev-1"
-              />
-            </label>
-
-            <div className="flex flex-col gap-2">
-              <span className="text-[14px] font-medium">Template</span>
-              <div role="radiogroup" aria-label="Template" className="flex flex-wrap gap-2">
-                {AI_TEMPLATE_OPTIONS.map((option) => {
-                  const selected = option.id === template;
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => chooseTemplate(option.id)}
-                      className={cn(
-                        'rounded-full border px-3 py-1.5 text-[14px] transition-colors',
-                        selected
-                          ? 'border-accent bg-accent/10 font-medium text-accent'
-                          : 'border-divider text-muted-foreground hover:bg-list-hover hover:text-foreground',
-                      )}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {connections.length === 1 && (
-              <p className="text-[13px] text-muted-foreground">
-                Using {providerLabel(connections[0]!.provider)}.
-              </p>
-            )}
-
-            {connections.length > 1 && (
-              <div className="flex flex-col gap-2">
-                <span className="text-[14px] font-medium">Provider</span>
-                <ConnectionPicker
-                  connections={connections}
-                  value={selectedConnectionId}
-                  onChange={chooseConnection}
-                />
-              </div>
-            )}
-
-            <div className="flex flex-col gap-3 border-t border-divider pt-3">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-expanded={moreOptionsOpen}
-                onClick={() => setMoreOptionsOpen((value) => !value)}
-                className="self-start px-1 text-[14px] font-medium text-accent hover:text-accent"
-              >
-                More options
-                <ChevronDown
-                  className={cn('size-4 transition-transform', moreOptionsOpen && 'rotate-180')}
-                  aria-hidden="true"
-                />
-              </Button>
-
-              {moreOptionsOpen && (
-                <div className="flex flex-col gap-4">
-                  <ModelPicker
-                    provider={effectiveConnection?.provider ?? ''}
-                    suggestions={
-                      effectiveConnection === null
-                        ? []
-                        : modelSuggestionsFor(effectiveConnection.provider)
-                    }
-                    models={
-                      effectiveConnection === null
-                        ? []
-                        : catalogModelsFor(effectiveConnection.provider)
-                    }
-                    value={model}
-                    onChange={(next) => {
-                      setModelDraft(next);
-                    }}
-                  />
-
-                  <label className="flex flex-col gap-1">
-                    <span className="text-[14px] font-medium">Persona</span>
-                    <TextArea
-                      aria-label="Persona"
-                      rows={5}
-                      maxLength={4000}
-                      value={persona}
-                      onChange={(event) => {
-                        setPersona(event.target.value);
-                        setPersonaTouched(true);
-                      }}
-                      placeholder="Describe how this AI should behave…"
-                      className="min-h-0"
-                    />
-                  </label>
-
-                  <LimitsFields
-                    day={day}
-                    month={month}
-                    dayError={limits.dayError}
-                    monthError={limits.monthError}
-                    onDayChange={setDay}
-                    onMonthChange={setMonth}
-                  />
-                </div>
-              )}
-            </div>
-
-            {submitError !== '' && <FieldError>{submitError}</FieldError>}
-          </div>
-        )}
+      <div className="flex flex-col gap-4">
+        {flow.step === 0 && <ProviderStep flow={flow} />}
+        {flow.step === 1 && <KeyStep flow={flow} />}
+        {flow.step === 2 && <ModelStep flow={flow} />}
+        {flow.step === 3 && <SetupStep flow={flow} />}
       </div>
     </Dialog>
   );

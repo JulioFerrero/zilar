@@ -35,14 +35,14 @@ function computerChoices(cloud: boolean, hasMachine: boolean): ComputerChoice[] 
     },
     {
       mode: 'cloud',
-      label: 'Zilar cloud',
+      label: 'Zilar',
       description: cloud ? 'Runs on a Zilar cloud computer' : 'Not available yet',
       icon: Cloud,
       disabled: !cloud,
     },
     {
       mode: 'runner',
-      label: 'My machine',
+      label: 'Machine',
       description: hasMachine ? 'Runs on your home machine' : 'Pick a machine first',
       icon: Laptop,
       disabled: !hasMachine,
