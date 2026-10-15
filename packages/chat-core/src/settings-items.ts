@@ -79,6 +79,14 @@ export const SETTINGS_ITEMS = [
     group: 'server',
   },
   {
+    id: 'folders',
+    title: 'Chat folders',
+    subtitle: 'Sort chats into folders.',
+    icon: 'folders',
+    href: '/settings/folders',
+    group: 'chats',
+  },
+  {
     id: 'stickers',
     title: 'Stickers',
     subtitle: 'Your packs, shared packs and favorites.',
@@ -109,14 +117,6 @@ export const SETTINGS_ITEMS = [
     icon: 'devices',
     href: '/settings/devices',
     group: 'account',
-  },
-  {
-    id: 'folders',
-    title: 'Chat folders',
-    subtitle: 'Sort chats into folders.',
-    icon: 'folders',
-    href: '/settings/folders',
-    group: 'chats',
   },
   {
     id: 'notifications',

@@ -41,10 +41,6 @@ export function SettingsHubPage() {
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
   const user = auth.user;
-  const handle = user?.handle;
-  // The @handle line, or the email while the handle is unknown/unclaimed.
-  const secondary =
-    typeof handle === 'string' && handle !== '' ? `@${handle}` : (user?.email ?? '');
 
   const approvalsBadge =
     pendingApprovals !== null && pendingApprovals > 0
@@ -53,21 +49,20 @@ export function SettingsHubPage() {
         : String(pendingApprovals)
       : null;
 
-  // Integrations is owner-only (the same condition as the menu had); a group
-  // whose only row is hidden (Server) drops its empty card.
+  // The profile card above already opens Profile, so the row is hidden from the
+  // Account card. Integrations is owner-only (the same condition as the menu
+  // had); a group whose only row is hidden (Server) drops its empty card.
   const groups = webSettingsGroups()
     .map((group) => ({
       ...group,
-      rows: group.rows.filter((row) => row.id !== 'integrations' || isServerOwner),
+      rows: group.rows.filter(
+        (row) => row.id !== 'profile' && (row.id !== 'integrations' || isServerOwner),
+      ),
     }))
     .filter((group) => group.rows.length > 0);
 
   return (
-    <SettingsShell
-      title="Settings"
-      subtitle="Your account, chats and AIs."
-      onBack={() => navigate('/')}
-    >
+    <SettingsShell title="Settings" onBack={() => navigate('/')}>
       <div className={SETTINGS_COLUMN}>
         {user !== undefined && (
           <Link
@@ -79,7 +74,7 @@ export function SettingsHubPage() {
               <span className="truncate text-[16px] leading-5 font-semibold text-foreground">
                 {user.name}
               </span>
-              <span className="truncate text-[14px] text-muted-foreground">{secondary}</span>
+              <span className="truncate text-[14px] text-muted-foreground">{user.email}</span>
             </span>
             <ChevronRight className="size-4 shrink-0 text-subtle-foreground" aria-hidden="true" />
           </Link>
@@ -107,7 +102,6 @@ export function SettingsHubPage() {
                     key={row.id}
                     icon={<Icon className="size-4" aria-hidden="true" />}
                     title={row.title}
-                    subtitle={row.subtitle}
                     chevron
                     href={row.href}
                     {...(badge === undefined ? {} : { trailing: badge })}

@@ -13,7 +13,21 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1501 (web sticker upload keeps motion) merged; the New pack grid follows;
   - T-1504 (AI `lastFailure` on the AI list) merged;
   - T-1507 (phone stickers render with `expo-image`) merged; the mock smoke passed. Check an animated sticker on Julio's next phone build;
-  - T-1508 (web Group info step 2), T-1509 (web New pack grid), T-1510 (web My AIs with health) and T-1506 (web lean Settings) are running;
+  - running (8):
+    - T-1505 (AI work step 1);
+    - T-1506 (web lean Settings; fix round: hide the duplicate Profile row);
+    - T-1508 (web Group info step 2);
+    - T-1509 (web New pack grid);
+    - T-1510 (web My AIs with health);
+    - T-1511 (web empty chats);
+    - T-1512 (web several files);
+    - T-1513 (phone approvals, simpler);
+  - **next to spec:**
+    - AI work step 2, after T-1505 (topic list carries the activity);
+    - phone twins: Settings, My AIs, Connections, empty chats, New pack, the link page, Group info;
+    - web Machines;
+    - web View steps;
+    - web Stickers tabs and drag;
   - T-1503 (web Connections) merged, checked headless;
   - T-1505 (AI work step 1, the server read model plus an index migration) and T-1507 (phone stickers render with `expo-image`) are running;
   - T-1506 (web lean Settings) is specced and waits for T-1503.
