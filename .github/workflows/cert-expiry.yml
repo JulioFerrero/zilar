@@ -1,8 +1,9 @@
 name: Certificate expiry
 
-# Reads the TLS certificate the chat host presents and fails when it expires in
-# under 14 days, so a silent automatic-renewal failure alerts the owner (GitHub
-# emails the owner about a failing scheduled run). No secrets, no checkout.
+# Checks the TLS certificates of the public hosts once a day. A failing
+# scheduled run is emailed to the owner by GitHub, which is the alert. Let's
+# Encrypt renews a certificate once 30 days are left, so under 14 days left
+# means the renewal failed. No secrets, no checkout.
 on:
   schedule:
     - cron: '17 6 * * *'
@@ -12,35 +13,33 @@ permissions:
   contents: read
 
 jobs:
-  expiry:
+  certificates:
     name: Check TLS certificate expiry
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check certificate end date
+      - name: Verify certificate expiry
         run: |
           set -euo pipefail
-          hosts=("chat.zilar.app")
-          threshold=14
           failed=0
-          for host in "${hosts[@]}"; do
-            echo "=== $host:443 ==="
-            if ! enddate=$(openssl s_client -servername "$host" -connect "$host:443" </dev/null 2>/dev/null \
-              | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2) || [ -z "$enddate" ]; then
-              echo "::error::$host: could not read the certificate end date"
+          for host in chat.zilar.app zilar.app; do
+            raw=$(echo | openssl s_client -servername "$host" -connect "$host:443" 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null || true)
+            enddate="${raw#notAfter=}"
+            if [ -z "$enddate" ]; then
+              echo "::error::$host: could not read the TLS certificate end date"
               failed=1
               continue
             fi
-            if ! expires=$(date -d "$enddate" +%s 2>/dev/null); then
+            end_epoch=$(date -d "$enddate" +%s 2>/dev/null) || {
               echo "::error::$host: could not parse the certificate end date '$enddate'"
               failed=1
               continue
-            fi
-            days=$(( (expires - $(date +%s)) / 86400 ))
-            echo "end date: $enddate"
-            echo "days left: $days"
-            if [ "$days" -lt "$threshold" ]; then
-              echo "::error::$host: certificate expires in $days days (fewer than $threshold)"
+            }
+            now_epoch=$(date +%s)
+            days=$(( (end_epoch - now_epoch) / 86400 ))
+            echo "$host: $days days left ($enddate)"
+            if [ "$days" -lt 14 ]; then
+              echo "::error::$host: certificate expires in $days days; the renewal has failed"
               failed=1
             fi
           done

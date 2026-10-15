@@ -46,8 +46,11 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - the delete dialog and the image viewer;
     - Settings subpages;
     - back on the list leaves the app.
-- **Running (09:10):**
-  - T-1490, CI: it deletes the dead Coolify Service deploy job (OPS-18) and adds a daily certificate-expiry check for `chat.zilar.app` and `zilar.app` (OPS-19). `docs/RELEASING.md` rides it, rewritten for the git-built Application (OPS-5 rollback, §9).
+- **T-1490 merged (CI):**
+  - The dead Coolify Service deploy job is gone from `images.yml` (OPS-18).
+  - The daily certificate check (T-1462) now covers `zilar.app` too (OPS-19).
+  - `docs/RELEASING.md` is rewritten for the git-built Application: deploys follow watch paths without waiting for CI, and a rollback is a revert or a redeploy (OPS-5).
+  - Both findings sweeps have an "Updates after the sweep" list. Still open: UI-15 and MUX-19, on your list.
 - **Audit rows the lead closed:** MP-9 is not actionable, because a group's first reader marking a message read matches Telegram's two checks.
 
 **2026-10-15, night (updated 03:10 CEST): what merged since the 03:00 entry, in order.** Earlier versions of this entry carried wrong clock times; the order is right.

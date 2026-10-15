@@ -8,7 +8,7 @@ How a release goes from `main` to a running Coolify install. Written from the re
 2. Know what the release contains: `git log vPREV..HEAD --oneline`.
 3. Migrations: `git diff vPREV..HEAD --stat -- apps/server/drizzle`. A release with a migration changes the live database on restart. Say so in the tag message and take a backup first (`./deploy/zilar backup` on the host, or the scheduled one).
 
-Note on tagging vs auto-deploy: since T-0260 the live install updates itself on every green `main` (§9), so a tag is not what ships the server. Tags are for named milestones and for the mobile release builds (§7, §8), which are built from a commit; the everyday deploy follows `main`.
+Note on tagging vs auto-deploy: the live install is a Coolify Application built from git, and it deploys itself on every push to `main` that touches its watch paths (§9), so a tag is not what ships the server. Tags are for named milestones and for the mobile release builds (§7, §8), which are built from a commit; the everyday deploy follows `main`.
 
 ## 2. Tag
 
@@ -19,7 +19,9 @@ git push origin vX.Y.Z
 
 A tag `v*` starts the GitHub Actions workflow "Production images": four images (postgres, ejabberd, server, web); `latest` follows the release. Watch it with `gh run list --limit 3`. It normally takes 3 to 10 minutes. If one job hangs (it once ran 53 minutes), `gh run cancel <id>` and `gh run rerun <id>`.
 
-## 3. Restart the live service
+## 3. Restart an install that runs the published images
+
+This applies only to an install that runs the published images: a Coolify Service, or the plain stack. The git-built Application deploys itself instead (§9).
 
 Note the server container's hostname first (it appears as `hostname` in every server log line). Then restart with `pull_latest` so Coolify pulls the new images:
 
@@ -43,7 +45,10 @@ The old container keeps answering while the new one starts, so a 200 from `/heal
 
 ## 6. If it goes wrong
 
-Set `IMAGE_TAG` to the previous tag and restart again. A migration is not undone by that: restore the backup if the migration was destructive.
+- **The git-built Application:** revert the bad commit on `main` and push. Coolify builds and deploys the revert like any other push. For a faster rollback, redeploy an earlier deployment from the Application's Deployments list in Coolify.
+- **An install on the published images:** set `IMAGE_TAG` to the previous tag (or a `sha-…` tag, §9) and restart again.
+
+Neither undoes a migration: restore the backup if the migration was destructive.
 
 ## 7. Android release build (sideload on a phone)
 
@@ -139,48 +144,30 @@ xcrun devicectl device install app --device <coredevice-id> <dir>/Build/Products
 
 Facts that cost time: `xcodebuild -destination` wants the hardware id (`00008140-…`), `devicectl` wants the CoreDevice id (a UUID); `expo prebuild --no-install` skips CocoaPods, so run `pod install`; the Whistle transcription module is Android only and does nothing on iOS.
 
-## 9. Auto-deploy on green main
+## 9. Auto-deploy from main
 
-Since T-0260, the live install updates itself after every push to `main` whose CI passes, instead of waiting for a hand-made tag. The "Production images" workflow listens for the CI workflow finishing on `main` and does nothing unless that run concluded `success`:
+Since 2026-10-11 the live install is a Coolify **Application** built from git with `deploy/coolify/docker-compose.app.yml`. The GitHub Actions deploy to a Coolify Service is gone (T-1490).
 
-1. It checks out the exact commit CI verified (`workflow_run.head_sha`) and builds the four images for amd64 only (the live host is x86_64; the arm64 leg hung for 3h18m, run 37911863834), with the GitHub Actions build cache. Version tags still build amd64 and arm64.
+- **What deploys:** Coolify's GitHub App starts a build on every push to `main` that touches one of the Application's watch paths: `apps/server/**`, `apps/web/**`, `packages/**`, `deploy/**`, the root `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `turbo.json` and `tsconfig.base.json`.
+  - A push that touches only `apps/mobile/**`, `work/` or `docs/` does not deploy, and `/health` keeps the previous commit.
+- **It does not wait for CI.** Every merge goes through the gate first, and CI on `main` still runs. Check it after merges with `gh run list --workflow ci.yml --branch main --limit 3`.
+- **The commit is visible:** "Include source commit in build" is on, so `/health` reports the deployed commit.
+- **Verify a deploy:** `/health` shows the merged commit with `"ok": true`, an authenticated route answers 401, and the server container's name changes.
+- **Pause it:** turn off Auto Deploy in the Application's settings in Coolify. That is a Coolify setting, so it is the owner's call.
+- **Roll back:** see §6.
+
+### The published images
+
+The "Production images" workflow still builds the four images for installs that run them (the plain stack and `install.sh`). It listens for the CI workflow finishing on `main` and does nothing unless that run concluded `success`:
+
+1. It checks out the exact commit CI verified (`workflow_run.head_sha`) and builds the four images for amd64 only (the arm64 leg hung for 3h18m, run 37911863834), with the GitHub Actions build cache. Version tags still build amd64 and arm64.
 2. It pushes each image as `latest` and as `sha-<first 12 characters of the commit>`, and bakes that commit into the server image as `ZILAR_COMMIT` (see `apps/server/Dockerfile`).
-3. The `deploy` job restarts the live Coolify service with "pull latest", so Coolify pulls the new `latest` images.
-4. It then polls `<ZILAR_PUBLIC_URL>/health` every 15 s for up to 10 minutes until the response has `"ok": true` and `"commit"` equal to the merged sha. The job fails if that never happens.
 
-Because merges land every few minutes, green-main builds overlap and can finish out of order, so before building a `tip` job compares the triggering sha with the last commit on `main` that changed code (not `work/`, `docs/` or `*.md`, since docs-only pushes skip CI, T-0754) and a stale run skips building and deploying (it still ends green). A workflow-level `publish-main` concurrency group (`cancel-in-progress: false`) also serializes green-main runs so a newer one waits behind the run in flight, while tag and PR builds stay independent. On the CI side, a `ci-${{ github.ref }}` concurrency group with `cancel-in-progress: true` cancels an older `main` run as soon as a newer push arrives, so only a green run on the tip builds and deploys.
+Because merges land every few minutes, green-main builds overlap and can finish out of order, so before building a `tip` job compares the triggering sha with the last commit on `main` that changed code (not `work/`, `docs/` or `*.md`, since docs-only pushes skip CI, T-0754) and a stale run skips building (it still ends green). A workflow-level `publish-main` concurrency group (`cancel-in-progress: false`) also serializes green-main runs so a newer one waits behind the run in flight, while tag and PR builds stay independent. On the CI side, a `ci-${{ github.ref }}` concurrency group with `cancel-in-progress: true` cancels an older `main` run as soon as a newer push arrives.
 
-A `deploy-live` concurrency group (`cancel-in-progress: false`) means two merges never deploy at once: the newer run waits for the one in flight.
+The `GITHUB_TOKEN` that Actions provides logs in to GHCR; no extra registry secret is needed. An image-based install can pin a `sha-…` tag with `IMAGE_TAG` (§6).
 
-### Secrets and variables
-
-Set these as repository secrets (names only):
-
-- `COOLIFY_URL` — base URL of the Coolify instance, no trailing slash.
-- `COOLIFY_TOKEN` — a Coolify API token allowed to restart the service.
-- `COOLIFY_SERVICE_UUID` — the uuid of the live service.
-- `ZILAR_PUBLIC_URL` — optional; defaults to `https://chat.zilar.app`. A repository variable of the same name is also accepted.
-
-The `GITHUB_TOKEN` that Actions provides logs in to GHCR; no extra registry secret is needed.
-
-### Pause auto-deploy
-
-Any of these stops only the `deploy` job, while the images are still built and published:
-
-- set a repository variable `AUTO_DEPLOY=off`; or
-- delete (or rename) `COOLIFY_URL`, `COOLIFY_TOKEN` or `COOLIFY_SERVICE_UUID`.
-
-The job logs a clear line whenever it skips.
-
-### Roll back
-
-`latest` follows every green `main`, so a bad merge is live shortly after. Every green build also pushes an immutable `sha-…` tag:
-
-1. Pick the last good `sha-…` tag from the workflow run or the GHCR package page.
-2. In Coolify set the stack variable `IMAGE_TAG` to that tag and restart the service.
-3. Revert the bad commit on `main`; the revert's green CI publishes and deploys `latest` again.
-
-Migrations run at server start, so rolling back the image does not undo a migration. Restore the nightly backup if the migration was destructive (see §6).
+Migrations run at server start, so no rollback undoes a migration. Restore the nightly backup if the migration was destructive (see §6).
 
 ### Backups
 

@@ -82,3 +82,19 @@ files can be batched together. Line numbers are on this branch.
 - **not actionable: 5** — MUX-31, WUX-16, WUX-31, WUX-40, WUX-41
 
 Total: 57.
+
+## Updates after the sweep (lead, 2026-10-15)
+
+The table and counts above are as of the sweep. Since then:
+
+- **Now fixed:**
+  - MUX-18: fonts are capped at 1.4× and the rows grow with them (T-1436; tables follow in T-1486);
+  - MUX-20: the auth screens avoid the keyboard (T-1436);
+  - MUX-24: predictive back is on, tested on Android 16 (T-1489);
+  - WUX-17: Skip on the handle gate is remembered (T-1435);
+  - WUX-18: the invite check shows a spinner (T-1435).
+- **Partly done before, now complete:**
+  - MUX-17: the search clear key is easier to hit (T-1436);
+  - MUX-22: send and the quick reactions give haptics (T-1436).
+- **Not actionable:** MP-9, because the group rule matches Telegram (see its row).
+- **Still open:** UI-15 and MUX-19, both on Julio's list.

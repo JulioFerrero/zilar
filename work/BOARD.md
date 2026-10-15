@@ -1502,3 +1502,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1487](T-1487-sandbox-log-test-flake.md) | Sandbox log test gets wide limits, ending a CI flake | 2026-10-15 |
 | [T-1488](T-1488-contact-panel-key.md) | Contact info panel gets its own React key | 2026-10-15 |
 | [T-1489](T-1489-predictive-back.md) | T-1489: Android predictive back is on (MUX-24) | 2026-10-15 |
+| [T-1490](T-1490-ci-dead-deploy-cert-check.md) | T-1490: Drop the dead deploy job; cert check covers zilar.app | 2026-10-15 |

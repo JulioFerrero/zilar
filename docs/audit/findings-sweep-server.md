@@ -95,3 +95,21 @@ The 8 `needs Julio` rows: SEC-15, PERF-8, PERF-10, PERF-16, PERF-18, OPS-4,
 OPS-9, OPS-15.
 
 The 1 `obsolete` row: AI-16.
+
+## Updates after the sweep (lead, 2026-10-15)
+
+The table and counts above are as of the sweep. Since then:
+
+- **Now fixed:**
+  - AI-17: AIs get the user's local time (T-1440, `user_profiles.time_zone`);
+  - SG-7: people search has no N+1 (T-1437);
+  - AI-15: the budget gate fails closed when a limit is set (T-1437);
+  - SEC-12: the instance owner is stored (T-1450);
+  - OPS-1: `deploy/coolify/scheduled-backup.md` describes the Application's jobs (T-1439);
+  - OPS-5: `docs/RELEASING.md` §6 puts revert-and-push and redeploying an earlier deployment first;
+  - OPS-18: the GitHub Actions deploy to a Coolify Service is deleted (T-1490), and `docs/RELEASING.md` §9 describes the Application's own deploy on watch paths. Deploying without waiting for CI is a Coolify setting, so it is Julio's call.
+- **Now partly done:**
+  - OPS-7: the ejabberd schema check on `/health` and `docs/ops/OPS_LOG.md` exist (T-1453). Still to do: the image is pinned by tag (`deploy/ejabberd/Dockerfile:19`).
+  - OPS-12: `docs/INSTALL_DOCKER.md` points Coolify users at `deploy/coolify/docker-compose.app.yml` (T-1439). Still to do: `deploy/coolify/docker-compose.yml` still exists.
+  - OPS-14: a written restore drill exists (`docs/ops/restore-drill.md`, T-1439). Still to do: it has never been run.
+  - OPS-19: a daily certificate check covers `chat.zilar.app` and `zilar.app` (T-1462, T-1490). Coolify notifications need Julio.

@@ -5,7 +5,7 @@ on:
   push:
     tags:
       - 'v*'
-  # A green CI run on main publishes latest and deploys it (see docs/RELEASING.md §9).
+  # A green CI run on main publishes latest; the live install deploys itself from git (docs/RELEASING.md §9).
   workflow_run:
     workflows: [CI]
     types: [completed]
@@ -280,76 +280,3 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=MIT
-
-  deploy:
-    name: Deploy to Coolify
-    runs-on: ubuntu-latest
-    # Incident T-0750: a stalled job held the publish-main group for 3h18m.
-    timeout-minutes: 20
-    needs: [tip, build]
-    # event == 'push' keeps a fork PR that happens to use a branch named main
-    # from building and deploying attacker code (see PREREVIEW finding 1).
-    # A stale run (tip check said latest != true) never deploys.
-    # always() is needed so a skipped `tip` (tag/PR path) does not block, but it
-    # also ignores upstream failure: require build == 'success' so a failed matrix
-    # leg (no new latest/sha pushed) never restarts the live service.
-    if: always() && github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && needs.tip.outputs.latest == 'true' && needs.build.result == 'success'
-    # Two merges must never deploy at once; a newer run waits for the old one.
-    concurrency:
-      group: deploy-live
-      cancel-in-progress: false
-    steps:
-      - name: Check whether auto-deploy is configured
-        id: config
-        env:
-          AUTO_DEPLOY: ${{ vars.AUTO_DEPLOY }}
-          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
-          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
-          COOLIFY_SERVICE_UUID: ${{ secrets.COOLIFY_SERVICE_UUID }}
-        run: |
-          if [ "${AUTO_DEPLOY:-}" = "off" ]; then
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Auto-deploy disabled by the AUTO_DEPLOY repository variable; skipping."
-          elif [ -z "${COOLIFY_URL:-}" ] || [ -z "${COOLIFY_TOKEN:-}" ] || [ -z "${COOLIFY_SERVICE_UUID:-}" ]; then
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Auto-deploy skipped: set COOLIFY_URL, COOLIFY_TOKEN and COOLIFY_SERVICE_UUID to enable it."
-          else
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      # The token is passed through the environment and never echoed.
-      - name: Restart the live service and pull latest
-        if: steps.config.outputs.enabled == 'true'
-        env:
-          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
-          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
-          COOLIFY_SERVICE_UUID: ${{ secrets.COOLIFY_SERVICE_UUID }}
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error \
-            --request POST \
-            --header "Authorization: Bearer ${COOLIFY_TOKEN}" \
-            "${COOLIFY_URL%/}/api/v1/services/${COOLIFY_SERVICE_UUID}/restart?latest=true"
-          echo "Restart queued with latest=true."
-
-      - name: Wait until /health reports the new commit
-        if: steps.config.outputs.enabled == 'true'
-        env:
-          PUBLIC_URL: ${{ secrets.ZILAR_PUBLIC_URL || vars.ZILAR_PUBLIC_URL || 'https://chat.zilar.app' }}
-          EXPECTED_COMMIT: ${{ github.event.workflow_run.head_sha }}
-        run: |
-          set -euo pipefail
-          endpoint="${PUBLIC_URL%/}/health"
-          for attempt in $(seq 1 40); do
-            body="$(curl --fail --silent --show-error "$endpoint" 2>/dev/null || true)"
-            commit="$(printf '%s' "$body" | jq -r '.commit // empty' 2>/dev/null || true)"
-            ok="$(printf '%s' "$body" | jq -r '.ok // false' 2>/dev/null || true)"
-            if [ "$commit" = "$EXPECTED_COMMIT" ] && [ "$ok" = "true" ]; then
-              echo "Live service reports commit ${commit}."
-              exit 0
-            fi
-            echo "Attempt ${attempt}/40: commit='${commit}' ok='${ok}'; retrying in 15s."
-            sleep 15
-          done
-          echo "Timed out after 10 minutes waiting for ${EXPECTED_COMMIT} to be live." >&2
-          exit 1
