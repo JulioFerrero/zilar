@@ -7,7 +7,6 @@ import { fromApi } from '@/lib/effect/api-effect';
 import { type ApiFailure } from '@/lib/effect/errors';
 import { useQuery } from '@/lib/effect/use-query';
 import { ContactProfileRow } from './ContactProfileRow';
-import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
 import { TextInput } from './ui/text-input';
 
@@ -87,18 +86,14 @@ export function AddContactDialog({
       title="Add contact"
       description="Type their @username to find them."
       size="sm"
-      actions={
-        <Button type="button" size="lg" onClick={onClose}>
-          Close
-        </Button>
-      }
+      error={lookup.state === 'error' ? lookup.message : undefined}
     >
       <div className="mt-4">
         <TextInput
           id="add-contact-handle"
           label="Username"
           value={query}
-          autoFocus
+          data-autofocus
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
@@ -112,11 +107,6 @@ export function AddContactDialog({
         {lookup.state === 'missing' && trimmed !== '' && (
           <p className="text-[14px] text-muted-foreground">
             No one with that username. Check the spelling.
-          </p>
-        )}
-        {lookup.state === 'error' && (
-          <p role="alert" className="text-[14px] text-danger">
-            {lookup.message}
           </p>
         )}
         {lookup.state === 'found' && (

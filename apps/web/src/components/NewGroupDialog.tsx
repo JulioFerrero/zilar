@@ -1,6 +1,6 @@
 import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { checkGroupHandle } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
@@ -11,6 +11,7 @@ import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { NewGroupMembers } from './NewGroupMembers';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
+import { DialogStepper } from './ui/dialog-stepper';
 import { SegmentedControl } from './ui/segmented-control';
 import { TextArea, TextInput } from './ui/text-input';
 
@@ -73,6 +74,15 @@ export function NewGroupDialog({
   const [visibility, setVisibility] = useState<'private' | 'public'>('private');
   const [handle, setHandle] = useState('');
   const trimmedHandle = handle.trim();
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // Moving to the Name step unmounts the Members keys, so focus would land on
+  // the body; the kit only focuses on dialog open, so focus the Name field here.
+  useEffect(() => {
+    if (step === 'title') {
+      nameInputRef.current?.focus();
+    }
+  }, [step]);
 
   const [checkResult] = useQuery(
     () => checkHandle(visibility, trimmedHandle),
@@ -142,27 +152,43 @@ export function NewGroupDialog({
       title={step === 'members' ? 'Add members' : channel ? 'Channel name' : 'Group name'}
       ariaLabel={dialogLabel}
       size="sm"
-      actions={
+      busy={isWaiting(createState)}
+      error={createFailure === undefined ? undefined : createErrorText(createFailure, channel)}
+      stepper={
+        <DialogStepper
+          steps={[
+            {
+              label: 'Members',
+              value: `${selected.length} ${selected.length === 1 ? 'member' : 'members'}`,
+            },
+            { label: 'Name' },
+          ]}
+          current={step === 'members' ? 0 : 1}
+          onStep={() => setStep('members')}
+        />
+      }
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (step === 'members') {
+          setStep('title');
+          return;
+        }
+        if (isWaiting(createState)) {
+          return;
+        }
+        runCreate();
+      }}
+      footer={
         step === 'members' ? (
-          <>
-            <Button type="button" variant="ghost" size="lg" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="button" size="lg" onClick={() => setStep('title')}>
-              Next
-            </Button>
-          </>
+          <Button type="submit" size="lg">
+            Next
+          </Button>
         ) : (
           <>
             <Button type="button" variant="ghost" size="lg" onClick={() => setStep('members')}>
               Back
             </Button>
-            <Button
-              type="button"
-              size="lg"
-              disabled={isWaiting(createState)}
-              onClick={() => runCreate()}
-            >
+            <Button type="submit" size="lg" disabled={isWaiting(createState)}>
               Create
             </Button>
           </>
@@ -175,7 +201,8 @@ export function NewGroupDialog({
         <>
           <div className="mt-3">
             <TextInput
-              autoFocus
+              ref={nameInputRef}
+              data-autofocus
               value={title}
               maxLength={100}
               onChange={(event) => setTitle(event.target.value)}
@@ -270,11 +297,6 @@ export function NewGroupDialog({
                 </div>
               )}
             </>
-          )}
-          {createFailure !== undefined && (
-            <p role="alert" className="mt-2 text-[14px] text-danger">
-              {createErrorText(createFailure, channel)}
-            </p>
           )}
         </>
       )}

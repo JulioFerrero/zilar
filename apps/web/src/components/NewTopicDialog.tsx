@@ -177,28 +177,24 @@ export function NewTopicDialog({
       title="New topic"
       description={`in ${detail?.title ?? chat?.groupTitle ?? 'the group'}`}
       size="sm"
-      actions={
-        <>
-          <Button
-            type="button"
-            variant="ghost"
-            size="lg"
-            className="rounded-full px-4"
-            onClick={onClose}
-            disabled={busy}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            size="lg"
-            className="rounded-full px-5"
-            disabled={busy || name.trim().length === 0}
-            onClick={() => runCreate()}
-          >
-            {busy ? 'Creating…' : 'Create topic'}
-          </Button>
-        </>
+      busy={busy}
+      error={createFailure === undefined ? undefined : topicErrorText(createFailure)}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (busy || name.trim().length === 0) {
+          return;
+        }
+        runCreate();
+      }}
+      footer={
+        <Button
+          type="submit"
+          size="lg"
+          className="rounded-full px-5"
+          disabled={busy || name.trim().length === 0}
+        >
+          {busy ? 'Creating…' : 'Create topic'}
+        </Button>
       }
     >
       <label className="mt-4 flex flex-col gap-1">
@@ -206,6 +202,7 @@ export function NewTopicDialog({
         <TextInput
           aria-label="Topic name"
           value={name}
+          data-autofocus
           maxLength={80}
           onChange={(event) => setName(event.target.value)}
           placeholder="e.g. Checkout bug"
@@ -350,12 +347,6 @@ export function NewTopicDialog({
             </>
           )}
         </div>
-      )}
-
-      {createFailure !== undefined && (
-        <p role="alert" className="mt-3 text-[13px] text-danger">
-          {topicErrorText(createFailure)}
-        </p>
       )}
     </Dialog>
   );

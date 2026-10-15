@@ -61,20 +61,10 @@ export function NewMessageDialog({
         title="New message"
         description="Invite a friend to start a conversation, or type their @username in the search bar above."
         size="sm"
-        actions={
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              className="h-9 rounded-full px-4"
-            >
-              Close
-            </Button>
-            <Button type="button" onClick={onInvite} className="h-9 rounded-full px-4">
-              Invite a friend
-            </Button>
-          </>
+        footer={
+          <Button type="button" onClick={onInvite} className="h-9 rounded-full px-4">
+            Invite a friend
+          </Button>
         }
       />
     );
@@ -117,7 +107,7 @@ export function NewMessageDialog({
   return (
     <Dialog open onClose={onClose} title="New message" size="sm">
       <SearchField
-        autoFocus
+        data-autofocus
         value={query}
         onChange={(event) => {
           setQuery(event.target.value);

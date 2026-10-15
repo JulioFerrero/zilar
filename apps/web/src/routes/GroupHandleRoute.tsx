@@ -140,28 +140,20 @@ export function GroupHandleRoute({ atHandle }: { atHandle?: string | undefined }
         title="Couldn't open this link"
         ariaLabel={`Open @${handle}`}
         size="sm"
-        actions={
-          <>
-            <Button
-              type="button"
-              size="lg"
-              onClick={() => {
-                setKept(undefined);
-                retryLookup();
-              }}
-            >
-              Retry
-            </Button>
-            <Button type="button" variant="ghost" size="lg" onClick={close}>
-              Close
-            </Button>
-          </>
+        error={view.message}
+        footer={
+          <Button
+            type="button"
+            size="lg"
+            onClick={() => {
+              setKept(undefined);
+              retryLookup();
+            }}
+          >
+            Retry
+          </Button>
         }
-      >
-        <p role="alert" className="mt-2 text-center text-[14px] text-muted-foreground">
-          {view.message}
-        </p>
-      </Dialog>
+      />
     );
   }
   return null;
@@ -222,7 +214,26 @@ function GroupHandleCard({ entry, onClose }: { entry: DirectoryEntry; onClose: (
   };
 
   return (
-    <Dialog open onClose={onClose} title={entry.title} ariaLabel={`Join ${entry.title}`} size="sm">
+    <Dialog
+      open
+      onClose={onClose}
+      title={entry.title}
+      ariaLabel={`Join ${entry.title}`}
+      size="sm"
+      busy={busy}
+      error={error}
+      footer={
+        <Button type="button" size="lg" disabled={busy} onClick={() => join()}>
+          {busy
+            ? 'Joining…'
+            : entry.joined
+              ? 'Open'
+              : entry.kind === 'channel'
+                ? 'Join the channel'
+                : 'Join the group'}
+        </Button>
+      }
+    >
       <div className="text-center">
         <div className="flex justify-center">
           <EntityAvatar chat={entry} size={56} />
@@ -235,31 +246,6 @@ function GroupHandleCard({ entry, onClose }: { entry: DirectoryEntry; onClose: (
           {entry.memberCount} {entry.memberCount === 1 ? 'member' : 'members'}
           {entry.kind === 'channel' ? ' · Channel' : ''}
         </p>
-        {error !== undefined && (
-          <p role="alert" className="mt-3 text-[14px] text-danger">
-            {error}
-          </p>
-        )}
-        <Button
-          type="button"
-          size="lg"
-          disabled={busy}
-          onClick={() => join()}
-          className="mt-5 w-full"
-        >
-          {busy
-            ? 'Joining…'
-            : entry.joined
-              ? 'Open'
-              : entry.kind === 'channel'
-                ? 'Join the channel'
-                : 'Join the group'}
-        </Button>
-        <div className="mt-3 flex justify-center">
-          <Button type="button" variant="ghost" size="lg" onClick={onClose}>
-            Close
-          </Button>
-        </div>
       </div>
     </Dialog>
   );

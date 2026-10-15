@@ -13,17 +13,24 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1437: server. People search has no N+1, push archive lookups are cached for 15 s, and the AI budget fails closed when a limit is set. It is live, with 0 errors.
   - T-1438: the web image serves `/install.sh`, and the host `get.zilar.app` answers with the script.
   - T-1439: ops docs. Backups are described for the Coolify Application, there is a restore drill (`docs/ops/restore-drill.md`, RTO 60 min), and the install doc points to the right compose.
-- **Running:**
-  - T-1431: the web dialog kit (in review);
-  - T-1440: AIs know the user's local time and time zone (migration 0061);
+- **Merged later (~05:30):**
+  - T-1431: the web dialog kit;
+  - T-1440: AIs know the user's local time (live; migration 0061 is applied, with `user_profiles.time_zone` present, and 0 errors);
   - T-1441: catalog connections keep working after a restart;
-  - T-1442: the shared New AI logic in chat-core (provider list, key check, orb swatches);
-  - T-1443: mobile sheets on the approved standard (part 1).
+  - T-1442: the shared New AI logic in chat-core.
+- **Running (8):**
+  - T-1443: mobile sheets on the standard (part 1, kit close key);
+  - T-1444: the web New AI flow;
+  - T-1445: the mobile New AI flow;
+  - T-1446: the web create dialogs on the standard;
+  - T-1447: the other web dialogs on the standard;
+  - T-1448: an AI that owns a topic follows it (Task I);
+  - T-1449: polling every 5 min while online (PERF-11);
+  - T-1450: a stored instance owner (SEC-12).
 - **Next:**
-  - the mobile New AI flow, after T-1442;
-  - the web New AI flow, after T-1431 and T-1442;
-  - web dialog migrations E1-E3, after T-1431;
-  - mobile sheets part 2 (Visibility, Invite links, Roles), after T-1443.
+  - mobile sheets part 2 (Visibility, Invite links, Roles), after T-1443;
+  - the Connections pages reuse the new key step, after T-1444 and T-1445.
+- **Decision to confirm (T-1448):** Stop pauses following until the AI is @mentioned again or re-assigned. The pause lives in memory, so a server restart resumes following.
 - **Waiting for Julio:**
   - **get.zilar.app:** the Porkbun A record `get` → 152.53.146.96. Then the lead adds the domain to zilar-chat in Coolify (already OK'd).
   - **`ejabberd-database`** has no Coolify volume backup yet; the step is in `deploy/coolify/scheduled-backup.md`.
