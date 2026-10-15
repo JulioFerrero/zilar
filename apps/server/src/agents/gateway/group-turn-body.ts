@@ -13,6 +13,8 @@ import {
   normBareJid,
   type ChatCompletionMessage,
 } from '../context';
+import { promptNow } from '../prompt-time';
+import { timeZoneForJid } from '../../auth/profile-time-zone';
 import { finishDelegation } from '../delegation/service';
 import { runGroupTurn } from '../reply';
 import { TOOL_STAGE_THINKING } from '../tool-guide';
@@ -133,7 +135,10 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     );
 
     const now = (deps.now ?? (() => new Date()))();
-    const today = now.toISOString().slice(0, 10);
+    const senderZone = yield* Effect.promise(() =>
+      timeZoneForJid(deps.db, normBareJid(trigger.fromJid)),
+    );
+    const today = promptNow(now, senderZone);
     const memory = yield* Effect.promise(() =>
       loadMemoryContext({
         aiId: session.aiId,

@@ -59,12 +59,40 @@ export type Invite = AuthInvite;
 export type XmppToken = XmppTokenResult;
 
 export function getMe(): Promise<Me> {
-  return callApi((client) => client.auth.me());
+  return callApi((client) => client.auth.me()).then((me) => {
+    void reportTimeZoneOnce(me);
+    return me;
+  });
 }
 
-// The contract encodes the trimmed name (the server trimmed it anyway).
-export function updateMe(name: string): Promise<Me> {
-  return callApi((client) => client.auth.patchMe({ payload: { name: name.trim() } }));
+// The contract encodes the trimmed name (the server trimmed it anyway). T-1440:
+// an optional time zone rides the same payload when the browser reported one.
+export function updateMe(name: string, timeZone?: string): Promise<Me> {
+  return callApi((client) =>
+    client.auth.patchMe({
+      payload: { name: name.trim(), ...(timeZone === undefined ? {} : { timeZone }) },
+    }),
+  );
+}
+
+// T-1440: report the browser's IANA zone once per app start when it differs
+// from the stored one. Silent and best effort: a failure retries next start.
+let timeZoneReported = false;
+
+async function reportTimeZoneOnce(me: Me): Promise<void> {
+  if (timeZoneReported) {
+    return;
+  }
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (zone === '' || zone === me.timeZone) {
+    return;
+  }
+  timeZoneReported = true;
+  try {
+    await updateMe(me.name, zone);
+  } catch {
+    // Ignored: a failure only means the next start tries again.
+  }
 }
 
 export async function getChats(): Promise<ChatEntry[]> {

@@ -20,6 +20,11 @@ export interface Me {
    * from the session while a screen's own `GET /me` is still in flight.
    */
   avatarUrl?: string | undefined;
+  /**
+   * The user's IANA time zone (T-1440). Optional so a payload from a server
+   * without one still decodes; readers treat an absent one as "unknown".
+   */
+  timeZone?: string | undefined;
 }
 
 /**
@@ -33,7 +38,9 @@ export type AuthApiError = ApiError;
 // The routes come from the client derived from the shared contract
 // (`@zilar/api-contract`, `auth.ts`, T-0895). The profile here is the narrow
 // view the app needs; an absent `jid` reads as `null`.
-function toMe(profile: Pick<AuthMe, 'id' | 'email' | 'name' | 'jid' | 'bio' | 'avatarUrl'>): Me {
+function toMe(
+  profile: Pick<AuthMe, 'id' | 'email' | 'name' | 'jid' | 'bio' | 'avatarUrl' | 'timeZone'>,
+): Me {
   return {
     id: profile.id,
     email: profile.email,
@@ -44,6 +51,8 @@ function toMe(profile: Pick<AuthMe, 'id' | 'email' | 'name' | 'jid' | 'bio' | 'a
     ...(profile.bio === undefined ? {} : { bio: profile.bio }),
     // Same for the picture (T-1334): absent stays absent.
     ...(profile.avatarUrl === undefined ? {} : { avatarUrl: profile.avatarUrl }),
+    // Same for the time zone (T-1440): absent stays absent.
+    ...(profile.timeZone === undefined ? {} : { timeZone: profile.timeZone }),
   };
 }
 
@@ -56,7 +65,34 @@ export async function fetchMe(
   token: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<Me> {
-  return toMe(await runApi(clientFor(apiUrl, token, fetchImpl).auth.me()));
+  const me = toMe(await runApi(clientFor(apiUrl, token, fetchImpl).auth.me()));
+  void reportTimeZoneOnce(apiUrl, token, me, fetchImpl);
+  return me;
+}
+
+// T-1440: report the device's IANA zone once per app start when it differs from
+// the stored one. Silent and best effort: a failure retries next start.
+let timeZoneReported = false;
+
+async function reportTimeZoneOnce(
+  apiUrl: string,
+  token: string,
+  me: Me,
+  fetchImpl: typeof fetch,
+): Promise<void> {
+  if (timeZoneReported) {
+    return;
+  }
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  if (zone === '' || zone === me.timeZone) {
+    return;
+  }
+  timeZoneReported = true;
+  try {
+    await updateMe(apiUrl, token, me.name, fetchImpl, zone);
+  } catch {
+    // Ignored: a failure only means the next start tries again.
+  }
 }
 
 export async function updateMe(
@@ -64,11 +100,15 @@ export async function updateMe(
   token: string,
   name: string,
   fetchImpl: typeof fetch = fetch,
+  timeZone?: string,
 ): Promise<Me> {
   // The contract encodes the trimmed name (the server trimmed it anyway). The
-  // reply is the updated user without `jid`, which reads as `null`.
+  // reply is the updated user without `jid`, which reads as `null`. T-1440: a
+  // time zone rides the same payload when the app reports one.
   const patched = await runApi(
-    clientFor(apiUrl, token, fetchImpl).auth.patchMe({ payload: { name: name.trim() } }),
+    clientFor(apiUrl, token, fetchImpl).auth.patchMe({
+      payload: { name: name.trim(), ...(timeZone === undefined ? {} : { timeZone }) },
+    }),
   );
   return toMe({ ...patched, jid: null });
 }

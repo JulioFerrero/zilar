@@ -1454,3 +1454,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1431](T-1431-web-dialog-kit.md) | Web dialog kit: close key, footer, stepper, combobox, choice | 2026-10-15 |
 | [T-1441](T-1441-catalog-ai-restart.md) | Catalog connections back an AI right after a restart | 2026-10-15 |
 | [T-1442](T-1442-new-ai-shared.md) | New AI shared logic: providers, key check, orb swatches | 2026-10-15 |
+| [T-1440](T-1440-ai-local-time.md) | AIs know the user's local date and time zone | 2026-10-15 |

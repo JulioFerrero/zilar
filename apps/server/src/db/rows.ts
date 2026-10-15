@@ -333,10 +333,12 @@ export interface ChatDeliveryRow {
 }
 
 // Row of the `user_profiles` table (T-1258): the short profile bio, in its own
-// table so Better Auth's `user` table stays as Better Auth expects it.
+// table so Better Auth's `user` table stays as Better Auth expects it. T-1440
+// adds the user's IANA time zone (nullable) beside it.
 export interface UserProfileRow {
   userId: string;
   bio: string;
+  timeZone: string | null;
   updatedAt: Date;
 }
 

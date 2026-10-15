@@ -10,6 +10,8 @@ import {
   DM_HISTORY_MESSAGE_LIMIT,
   type ChatCompletionMessage,
 } from '../context';
+import { promptNow } from '../prompt-time';
+import { timeZoneFor } from '../../auth/profile-time-zone';
 import { runDmTurn, TRANSIENT_FAILURE_REPLY, type ExecuteToolCall } from '../reply';
 import { buildTools } from '../tools';
 import { TOOL_STAGE_THINKING } from '../tool-guide';
@@ -222,7 +224,7 @@ export function createDmTurn(ctx: DmTurnContext) {
 
       const ownerName = yield* Effect.promise(() => loadOwnerName(deps.db, ai.owner));
       const now = (deps.now ?? (() => new Date()))();
-      const today = now.toISOString().slice(0, 10);
+      const today = promptNow(now, yield* Effect.promise(() => timeZoneFor(deps.db, ai.owner)));
       const memory = yield* Effect.promise(() =>
         loadMemoryContext({
           aiId: session.aiId,

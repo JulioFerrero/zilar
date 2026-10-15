@@ -44,6 +44,7 @@ import { findXmppAccount } from '../xmpp/provisioning';
 import type { Auth } from './auth';
 import { createInvite, findInviteByCode, findUsableInvite, revokeInvite } from './invites';
 import { bioForUser, upsertProfileBio } from './profile-bio';
+import { isValidTimeZone, timeZoneFor, upsertProfileTimeZone } from './profile-time-zone';
 import { listSessions, revokeSession } from './sessions';
 import { cancelDeletion, deletionStatus, requestDeletion } from './deletion-request';
 import { createExportHandler } from './export';
@@ -246,6 +247,11 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
     if (!Exit.isSuccess(exit)) {
       throw new HttpError(400, 'invalid_request', updateMeMessage(raw));
     }
+    // T-1440: validate the zone before any write, so a refused PATCH has no
+    // side effects (no rename, no bio write, no roster refresh).
+    if (exit.value.timeZone !== undefined && !isValidTimeZone(exit.value.timeZone)) {
+      throw new HttpError(400, 'invalid_request', 'timeZone must be a valid IANA time zone');
+    }
     // Update through Better Auth's own API so its hooks and
     // validation apply.
     await deps.auth.api.updateUser({ headers, body: { name: exit.value.name } });
@@ -258,6 +264,10 @@ export function createAuthApi(deps: AuthApiDependencies): EffectApiMount {
     // carries one (`''` clears it). The bio is never logged.
     if (exit.value.bio !== undefined) {
       await upsertProfileBio(deps.db, user.id, exit.value.bio);
+    }
+    // T-1440: the zone lives beside the bio; it was validated above.
+    if (exit.value.timeZone !== undefined) {
+      await upsertProfileTimeZone(deps.db, user.id, exit.value.timeZone);
     }
     // The nickname must follow the name in every contact's roster.
     // Best-effort: a failure leaves the rows unsynced and the token
@@ -333,10 +343,12 @@ async function meView(
   createdAt: string;
   jid: string | null;
   bio?: string;
+  timeZone?: string;
 }> {
   const sessionUser = await sessionUserById(deps, userId);
   const account = await findXmppAccount(deps.db, userId);
   const bio = await bioForUser(deps.db, userId);
+  const timeZone = await timeZoneFor(deps.db, userId);
   const [handleRow] = await runSql(
     deps.db,
     Effect.gen(function* () {
@@ -361,6 +373,7 @@ async function meView(
         : String(sessionUser.createdAt),
     jid: account?.jid ?? null,
     ...(bio === null ? {} : { bio }),
+    ...(timeZone === null ? {} : { timeZone }),
   };
 }
 

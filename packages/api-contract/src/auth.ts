@@ -54,11 +54,13 @@ export const AuthBio = Schema.Trim.pipe(
 /**
  * Non-strict: unknown keys are stripped. `name` stays required — every caller
  * sends it (web `updateMe`, `apps/web/src/lib/api/chats.ts:66-67`; mobile
- * `updateMe`, `apps/mobile/src/lib/auth-api.ts:42-51`).
+ * `updateMe`, `apps/mobile/src/lib/auth-api.ts:42-51`). `timeZone` is the
+ * caller's IANA zone (T-1440): a value the server validates and stores.
  */
 export const UpdateMePayload = Schema.Struct({
   name: AuthDisplayName,
   bio: Schema.optional(AuthBio),
+  timeZone: Schema.optional(Schema.String),
 });
 
 /**
@@ -75,6 +77,8 @@ export const AuthMe = Schema.Struct({
   createdAt: Schema.optional(Schema.String),
   jid: Schema.optional(Schema.NullOr(Schema.String)),
   bio: Schema.optional(Schema.String),
+  /** T-1440: the user's IANA time zone; absent when never reported. */
+  timeZone: Schema.optional(Schema.String),
 });
 
 export type AuthMe = typeof AuthMe.Type;

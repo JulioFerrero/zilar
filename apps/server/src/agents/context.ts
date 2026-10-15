@@ -27,7 +27,7 @@ export interface DmContextInput {
   aiName: string;
   persona: string;
   ownerName: string;
-  /** Today's date, already formatted, e.g. "2026-09-28". */
+  /** The local date and time line, e.g. "Thursday, 15 October 2026, 04:12 (Europe/Madrid)". */
   today: string;
   /** Bare JID of the AI, to recognise its own turns. */
   aiJid: string;
@@ -52,8 +52,8 @@ function isNonEmptyText(body: unknown): body is string {
   return typeof body === 'string' && body.trim() !== '';
 }
 
-// The fixed prefix: persona, one platform line, today's date. It stays
-// identical between turns, so providers can cache it cheaply.
+// The fixed prefix: persona, one platform line, the local date and time. It
+// stays brief so providers can cache the persona cheaply.
 export function buildSystemMessage(input: {
   aiName: string;
   persona: string;
@@ -67,7 +67,7 @@ export function buildSystemMessage(input: {
   return joinPrefix([
     persona,
     platform,
-    `Today is ${input.today}.`,
+    `It is ${input.today}.`,
     'You can change your own persona with update_persona when your owner asks you to change how you behave from now on.',
   ]);
 }
@@ -77,7 +77,7 @@ export interface GroupContextInput {
   persona: string;
   /** Display name of the person who mentioned the AI. */
   senderName: string;
-  /** Today's date, already formatted, e.g. "2026-09-28". */
+  /** The local date and time line, e.g. "Thursday, 15 October 2026, 04:12 (Europe/Madrid)". */
   today: string;
   /** Bare JID of the AI, to recognise its own turns. */
   aiJid: string;
@@ -135,7 +135,7 @@ export function buildGroupSystemMessage(input: {
       : `Other AIs here you can hand a question to: ${handoffNames
           .map((nick) => `@${nick}`)
           .join(', ')}. Write their @name in your reply only when they should take over.`;
-  return joinPrefix([persona, platform, `Today is ${input.today}.`, handoff]);
+  return joinPrefix([persona, platform, `It is ${input.today}.`, handoff]);
 }
 
 function joinPrefix(parts: string[]): string {
