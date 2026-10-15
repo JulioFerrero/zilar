@@ -121,9 +121,9 @@ Empty `PUSH_*`/`FCM_*` values mean "unset" so Compose's `${VAR:-}` can leave the
 | `AGENT_GATEWAY_ENABLED` | No | `false` in the server; every install sets `true` (the compose files, `./zilar init`, the `.env` examples; T-1601) | Keeps every active AI online over XMPP and replies to owner DMs and group mentions (`server-schema.ts:127-130`, `agents/gateway/lifecycle.ts:133-140`). | No |
 | `ACTION_DEMO_ENABLED` | No | `false` | Registers the harmless `demo.echo` action so the approval flow can be proven end to end (`server-schema.ts:131-135`, `startup/components.ts:134`). | No |
 | `RUNNER_HUB_ENABLED` | No | `false` | Starts the runner hub tunnel on `RUNNER_HUB_PORT` bound to `127.0.0.1` (`server-schema.ts:136-139`, `leader/start.ts:147-167`). | No |
-| `ROUTINES_ENABLED` | No | `false` | Runs the routines scheduler; needs a tool runner (see `TOOLS_ENABLED`) (`server-schema.ts:140-144`, `routines/wiring.ts:40-49`). | No |
-| `TOOLS_ENABLED` | No | `false` | Builds the sandbox tool runner and registers `tool.*`/`routine.*` adapters (`server-schema.ts:145-151`, `startup/components.ts:119-122`). | No |
-| `WEB_TOOLS_ENABLED` | No | `false` | Registers the gateway web tools `web.fetch`/`wikipedia`/`price`/`feed`/`search` (`server-schema.ts:152-157`, `startup/components.ts:129-132`). | No |
+| `ROUTINES_ENABLED` | No | `false` in the server; every install sets `true` (T-1613) | Runs the routines scheduler; needs a tool runner (see `TOOLS_ENABLED`) (`server-schema.ts:140-144`, `routines/wiring.ts:40-49`). | No |
+| `TOOLS_ENABLED` | No | `false` in the server; every install sets `true` (T-1613) | Builds the sandbox tool runner and registers `tool.*`/`routine.*` adapters (`server-schema.ts:145-151`, `startup/components.ts:119-122`). | No |
+| `WEB_TOOLS_ENABLED` | No | `false` in the server; every install sets `true` (T-1613) | Registers the gateway web tools `web.fetch`/`wikipedia`/`price`/`feed`/`search` (`server-schema.ts:152-157`, `startup/components.ts:129-132`). | No |
 | `LISTENER_ENABLED` | No | `false` | Group listener switch; currently always off — the server logs and ignores it until AIs pay for their own model calls (`server-schema.ts:158-161`, `startup/components.ts:204-211`). | No |
 | `LISTENER_MODEL` | No | — | Model the listener would score with; inert while `LISTENER_ENABLED` is ignored (`server-schema.ts:162-164`). | No |
 | `AGENT_TOOL_MAX_ROUNDS` | No | `1` with tools off, `6` with tools on | Tool rounds one AI turn may run (integer `1`–`10`; `server-schema.ts:165-169`, `load.ts:111-117`). | No |

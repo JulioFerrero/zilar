@@ -216,9 +216,9 @@ services:
       # account JSON on one line. Empty = native push off.
       FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
       FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
-      TOOLS_ENABLED: ${TOOLS_ENABLED:-false}
-      ROUTINES_ENABLED: ${ROUTINES_ENABLED:-false}
-      WEB_TOOLS_ENABLED: ${WEB_TOOLS_ENABLED:-false}
+      TOOLS_ENABLED: ${TOOLS_ENABLED:-true}
+      ROUTINES_ENABLED: ${ROUTINES_ENABLED:-true}
+      WEB_TOOLS_ENABLED: ${WEB_TOOLS_ENABLED:-true}
       # Desk sidecar socket (T-1407): see deploy/docker-compose.yml. Fixed:
       # the desk agent runs in every stack, and computers turn on as soon as
       # the host has gVisor (run the --desks-host command once on the host).

@@ -466,9 +466,9 @@ PUSH_ENABLED=$_push_enabled_value
 # (browsers must re-enable): it is backed up with this file, never
 # regenerated on an existing install.
 $_push_jid_lines
-TOOLS_ENABLED=false
-ROUTINES_ENABLED=false
-WEB_TOOLS_ENABLED=false
+TOOLS_ENABLED=true
+ROUTINES_ENABLED=true
+WEB_TOOLS_ENABLED=true
 
 # --- AI computers (desks). Always on; idle until the host has gVisor.
 # Sandboxed computers (gVisor jails) run on this host, in one shared 4 GB

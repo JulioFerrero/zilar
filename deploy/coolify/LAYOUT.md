@@ -200,9 +200,9 @@ carry a different name on the resource: `ARCHIVE_DB_PASSWORD` is
 | `PUSH_STORAGE_KEY`                     | zilar-server                                                               | optional                                                                                                       |
 | `FCM_SERVICE_ACCOUNT_JSON`             | zilar-server                                                               | optional                                                                                                       |
 | `FCM_PROJECT_ID`                       | zilar-server                                                               | optional                                                                                                       |
-| `TOOLS_ENABLED`                        | zilar-server                                                               | optional (default `false`)                                                                                     |
-| `ROUTINES_ENABLED`                     | zilar-server                                                               | optional (default `false`)                                                                                     |
-| `WEB_TOOLS_ENABLED`                    | zilar-server                                                               | optional (default `false`)                                                                                     |
+| `TOOLS_ENABLED`                        | zilar-server                                                               | optional (default `true`)                                                                                      |
+| `ROUTINES_ENABLED`                     | zilar-server                                                               | optional (default `true`)                                                                                      |
+| `WEB_TOOLS_ENABLED`                    | zilar-server                                                               | optional (default `true`)                                                                                      |
 
 `zilar-web` reads no variable. The old `SERVICE_URL_WEB_80: /` is not needed:
 the web App's domain comes from its Coolify domain setting.
