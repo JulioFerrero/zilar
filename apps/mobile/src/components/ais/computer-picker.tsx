@@ -35,7 +35,7 @@ function computerChoices(cloud: boolean, hasMachine: boolean): ComputerChoice[] 
     {
       mode: 'cloud',
       label: 'Zilar',
-      description: cloud ? 'Runs on a Zilar cloud computer' : 'Not available yet',
+      description: cloud ? 'Runs on a Zilar cloud computer' : 'Needs setup on your server',
       icon: Cloud,
       disabled: !cloud,
     },

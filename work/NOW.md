@@ -135,7 +135,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - **Docs:** fixed `FEATURES.md`, `INSTALL_DOCKER.md`, `PROJECT_PLAN.md` and `LEAD_PLAYBOOK.md`. **T-1600 merged:** `SERVER_CONFIG.md` was rewritten from the schema (174 lines, 64 variables).
     - **Julio to do:** delete the 4 dead lines in his local env files (`infra/.env`: `LITELLM_DB_PASSWORD`, `LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`; `apps/server/.env`: `LITELLM_MASTER_KEY`). The lead doesn't open those files.
   - **AI computers without variables (Julio: "easy, part of the install and update flow"):**
-    - **T-1599 (audit) is running** and will write `docs/deploy/ai-computers-auto-plan.md`.
+    - **T-1599 (audit) merged:** `docs/deploy/ai-computers-auto-plan.md`. The lead decided its open questions; see T-1599 › Review.
+    - **Running:**
+      - **T-1602:** the agent waits for gVisor and pins its own image;
+      - **T-1603:** the server asks the agent through a cached status probe;
+      - **T-1604:** the card text "Needs setup on your server".
+    - **T-1605 is also running:** the compose files without profiles, guards or `DESKS_ENABLED`, plus the scripts, docs and deploy tests.
+    - **⚠ Merge order: T-1602, then T-1603, then T-1605** (T-1604 any time). If T-1605 lands first, live starts the always-on agent with the old code, which requires `DESK_IMAGE`.
+    - **Then live:** the one host command on the VPS (`--desks-host`), check that the card flips, then run one real job.
     - **The target:** desk services in every stack; the agent waits for gVisor and then turns on by itself; the image follows the release; the server asks the agent; one host command.
     - **Then:** run the same one command on live, with nothing manual.
   - **Found:** fresh installs have `AGENT_GATEWAY_ENABLED=false` (all three compose files plus `./zilar init`), so new AIs never answer. **Julio: on by default. T-1601 merged** (the compose files, `./zilar init`, the env examples and the docs; the server schema default stays `false`).

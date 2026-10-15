@@ -25,9 +25,9 @@ export const AiComputerMode = Schema.Literals(AI_COMPUTER_MODES);
 
 export type AiComputerMode = typeof AiComputerMode.Type;
 
-// T-1425: what the Computer picker may offer. `cloud` is true when the server
-// has the cloud desk client wired; when it is false the picker disables the
-// cloud option with "Not available yet".
+// T-1425: what the Computer picker may offer. `cloud` is true when the server's
+// desk agent answers ready (gVisor installed on the host); when it is false the
+// picker disables the cloud option with "Needs setup on your server".
 export const AiComputerOptions = Schema.Struct({
   cloud: Schema.Boolean,
 });
