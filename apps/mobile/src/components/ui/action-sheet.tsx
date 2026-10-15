@@ -13,6 +13,13 @@ type ActionSheetProps = {
   visible: boolean;
   onClose: () => void;
   /**
+   * Fires after every native dismissal, whether a user dismissal or one the
+   * `visible` effect asked for. A caller that hands off to another sheet
+   * presents it here, so the two never present and dismiss in the same commit
+   * (which leaves the next sheet without its dimmed backdrop).
+   */
+  onDismissed?: () => void;
+  /**
    * The label for the sheet's drag handle (the kit used it for the backdrop).
    * Kept so the call sites don't change; see the T-1348 Report.
    */
@@ -34,13 +41,16 @@ type ActionSheetProps = {
  * last one. `onDidDismiss` reports a user dismissal (drag, backdrop tap,
  * Android back) back to `onClose`; a dismissal the `visible` effect asks for is
  * not reported, so a caller that swaps one sheet for another (for example a
- * delete confirm) is not closed by its own dismiss. The content's top padding
+ * delete confirm) is not closed by its own dismiss. `onDismissed` fires after
+ * every dismissal, user or programmatic, so a caller can present a follow-up
+ * sheet only once this one has fully closed. The content's top padding
  * (`pt-6`) keeps its first row clear of the native grabber, which the library
  * draws inside the sheet's top edge and offers no content inset for.
  */
 export function ActionSheet({
   visible,
   onClose,
+  onDismissed,
   closeLabel,
   header,
   title,
@@ -83,11 +93,12 @@ export function ActionSheet({
       accessibilityOptions={{ grabberLabel: closeLabel }}
       onDidDismiss={() => {
         presented.current = false;
-        if (dismissedByEffect.current) {
-          dismissedByEffect.current = false;
-          return;
+        const dismissedByVisible = dismissedByEffect.current;
+        dismissedByEffect.current = false;
+        if (!dismissedByVisible) {
+          onClose();
         }
-        onClose();
+        onDismissed?.();
       }}
     >
       <View className="pb-2 pt-6">

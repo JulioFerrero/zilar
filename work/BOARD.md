@@ -1463,3 +1463,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1452](T-1452-web-polish-batch.md) | Web: connection status in the chat header, folder name focus | 2026-10-15 |
 | [T-1444](T-1444-web-new-ai-flow.md) | Web New AI flow from the approved boards | 2026-10-15 |
 | [T-1453](T-1453-ejabberd-schema-check.md) | Startup check of ejabberd table shapes; OPS_LOG for manual SQL | 2026-10-15 |
+| [T-1451](T-1451-mobile-sheets-part2.md) | Mobile: New chat actions as modal kit sheets, no Cancel keys | 2026-10-15 |

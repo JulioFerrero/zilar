@@ -145,6 +145,18 @@ export function VisibilitySheet({
       onClose={onClose}
       closeLabel="Close visibility settings"
       title="Visibility"
+      onBack={confirmingPrivate ? onCancelPrivate : undefined}
+      footer={
+        <Button
+          accessibilityLabel={confirmingPrivate ? 'Confirm going private' : 'Save visibility'}
+          disabled={busy}
+          onPress={onSave}
+        >
+          <Text>
+            {busy ? 'Saving…' : confirmingPrivate ? 'Confirm going private' : 'Save visibility'}
+          </Text>
+        </Button>
+      }
     >
       <View
         accessibilityRole="radiogroup"
@@ -227,31 +239,13 @@ export function VisibilitySheet({
       )}
       {saved && <Text className="mt-2 text-[14px] text-muted-foreground">Saved.</Text>}
 
-      <View className="mt-3 flex-row flex-wrap gap-2 pb-2">
-        <Button
-          accessibilityLabel={confirmingPrivate ? 'Confirm going private' : 'Save visibility'}
-          disabled={busy}
-          onPress={onSave}
-        >
-          <Text>
-            {busy ? 'Saving…' : confirmingPrivate ? 'Confirm going private' : 'Save visibility'}
-          </Text>
-        </Button>
-        {confirmingPrivate && (
-          <Button
-            variant="outline"
-            accessibilityLabel="Cancel going private"
-            onPress={onCancelPrivate}
-          >
-            <Text>Cancel</Text>
-          </Button>
-        )}
-        {shareLink !== null && (
+      {shareLink !== null && (
+        <View className="mt-3 flex-row flex-wrap gap-2 pb-2">
           <Button variant="outline" accessibilityLabel="Copy share link" onPress={copyShareLink}>
             <Text>{copied ? 'Copied' : 'Copy share link'}</Text>
           </Button>
-        )}
-      </View>
+        </View>
+      )}
     </BottomSheet>
   );
 }

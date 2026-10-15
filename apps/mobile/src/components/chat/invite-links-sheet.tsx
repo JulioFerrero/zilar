@@ -183,6 +183,11 @@ export function InviteLinksSheet({
       onClose={onClose}
       closeLabel="Close invite links"
       title="Invite links"
+      footer={
+        <Button accessibilityLabel="Create invite link" disabled={busy} onPress={submit}>
+          <Text>{busy ? 'Creating…' : 'Create invite link'}</Text>
+        </Button>
+      }
     >
       {createdUrl !== undefined ? (
         <CreatedInviteLinkView
@@ -233,14 +238,6 @@ export function InviteLinksSheet({
           />
         </View>
       </View>
-      <Button
-        accessibilityLabel="Create invite link"
-        disabled={busy}
-        onPress={submit}
-        className="mt-3"
-      >
-        <Text>{busy ? 'Creating…' : 'Create invite link'}</Text>
-      </Button>
       {shownError !== '' ? (
         <Text accessibilityRole="alert" className="mt-2 text-[14px] text-danger">
           {shownError}

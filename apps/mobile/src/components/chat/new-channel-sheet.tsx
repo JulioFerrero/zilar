@@ -17,15 +17,17 @@ import { TextField } from '@/components/ui/text-field';
  * (≤ 300, the channel's short blurb). The screen creates the channel
  * through the store and navigates to it; failures read inline, never raw.
  * On the kit bottom sheet (T-1443): Create sits in the sticky footer and the
- * header's close key is the way out. Its parent still mounts it inside the
- * new-chat dialog (see the T-1443 Report).
+ * header's close key is the way out. The new-chat menu mounts it with
+ * `visible` while its action is chosen (T-1451).
  */
 export function NewChannelSheet({
+  visible,
   busy,
   error,
   onCreate,
   onClose,
 }: {
+  visible: boolean;
   busy: boolean;
   error: string;
   onCreate: (input: {
@@ -52,6 +54,26 @@ export function NewChannelSheet({
   );
   const { check, checking, reset } = useHandleCheck(visibility, handle, checkHandle);
 
+  // The sheet is always mounted (`visible`), so a reopen must not carry the
+  // previous draft or its inline error. A successful create closes the sheet
+  // from the parent, so reset on `visible`, not on the close key. The
+  // adjusted-state render pattern keeps it out of an effect (the lint rule
+  // flags synchronous setState inside effects).
+  if (
+    !visible &&
+    (title !== '' ||
+      description !== '' ||
+      visibility !== 'private' ||
+      handle !== '' ||
+      localError !== '')
+  ) {
+    setTitle('');
+    setDescription('');
+    setVisibility('private');
+    setHandle('');
+    setLocalError('');
+  }
+
   const trimmed = title.trim();
   const tooLong = description.length > 300;
   const canCreate = trimmed !== '' && !tooLong && !busy;
@@ -71,7 +93,7 @@ export function NewChannelSheet({
 
   return (
     <BottomSheet
-      visible
+      visible={visible}
       onClose={onClose}
       dismissible={!busy}
       closeLabel="Close new channel"

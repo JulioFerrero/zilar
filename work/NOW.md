@@ -23,14 +23,16 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1446 and T-1447: web dialogs on the standard (one close key, no Cancel, Enter submits);
   - T-1449: the chat list and pins poll every 5 min while online;
   - T-1450: a stored instance owner. It is live; the owner row is claimed the first time Julio opens Integrations or voice settings.
-- **Running (6):**
-  - T-1444: the web New AI flow;
+- **Merged ~07:30:**
+  - **T-1444: the web New AI flow, live.** The lead walked it headless against the boards.
+  - T-1452: web shows the connection line in the chat header.
+  - T-1453: the ejabberd schema check is live (`/health` shows `"ejabberdSchema":"ok"`), and `docs/ops/OPS_LOG.md` exists.
+  - T-1298 was dropped, as T-1436 covered it.
+- **Running:**
   - T-1445: the mobile New AI flow;
-  - T-1448: an AI follows the topic it owns;
-  - T-1451: mobile sheets part 2 (the New chat actions, Visibility, Invite links);
-  - T-1452: web polish (connection line in the header, folder focus);
-  - T-1453: the ejabberd schema check plus `docs/ops/OPS_LOG.md`.
-- **Next:** the Connections pages reuse the new key step, after T-1444 and T-1445.
+  - T-1448: an AI follows the topic it owns (decision: General accepts a group AI as owner);
+  - T-1451: mobile sheets part 2. The phone smoke caught a non-modal sheet after the New chat menu, and a fix is sent;
+  - T-1454: the web Add key dialog on Connections, with Zilar disabled rather than hidden.
 - **New canvas for Julio: "View steps"**, https://claude.ai/artifact/7YV3tdKH1k8LSBBZtsXzxk.
   - Web: a right panel. Phone: a hugging sheet.
   - It shows real event kinds from T-1426 (status, model call, tool call/result, approval, answer) with the real tool names (bash, read, edit, grep, git).

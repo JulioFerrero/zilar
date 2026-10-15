@@ -9,9 +9,8 @@ import {
   Plus,
   Users,
 } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, Share } from 'react-native';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useMemo, useRef, useState } from 'react';
+import { Pressable, Share } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
@@ -30,13 +29,6 @@ import { ACCENT_FOREGROUND, KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey }
 import { useChatStore } from '@/store/chat-store-provider';
 
 type NewChatAction = 'channel' | 'message' | 'invite' | 'join';
-
-/**
- * The action-dialog scroll keeps Create taps while the sheet keyboard is
- * open (T-0234): a tap on Create creates at once instead of only dismissing
- * the keyboard. Pure so tests can cover it without mounting the dialog.
- */
-export const CREATE_SHEETS_SCROLL_TAPS_PERSIST = 'handled' as const;
 
 /**
  * Creating a channel, or opening its screen, failed. `reason` is the original
@@ -76,6 +68,13 @@ export function NewChatButton() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [topicPickerOpen, setTopicPickerOpen] = useState(false);
   const [action, setAction] = useState<NewChatAction | undefined>(undefined);
+  // The menu and each action are separate native sheets (T-1451). A hand-off
+  // must wait for the current sheet to finish dismissing, or the next one
+  // presents in the same commit and comes up without its dimmed backdrop.
+  // `afterMenu` holds the follow-up to run once the menu has closed;
+  // `pendingInvite` marks the New message → Invite hand-off.
+  const afterMenu = useRef<(() => void) | undefined>(undefined);
+  const pendingInvite = useRef(false);
   const createChannel = useChatStore((state) => state.createChannel);
   // Closes the dialog and opens the new group's screen; a throw here reads
   // like a failed create.
@@ -125,8 +124,28 @@ export function NewChatButton() {
   );
 
   const openDialog = (next: NewChatAction) => {
+    afterMenu.current = () => setAction(next);
     setMenuOpen(false);
-    setAction(next);
+  };
+
+  // Runs when the menu sheet has fully dismissed: an item tap queued a
+  // follow-up in `afterMenu`, a user dismissal queues nothing.
+  const menuDismissed = () => {
+    const run = afterMenu.current;
+    afterMenu.current = undefined;
+    run?.();
+  };
+
+  // `Invite a friend` hands off from the New message sheet to the Invite
+  // sheet; the second presents only after the first has dismissed.
+  const inviteFromMessage = () => {
+    pendingInvite.current = true;
+    setAction(undefined);
+  };
+  const messageClosed = () => {
+    const invite = pendingInvite.current;
+    pendingInvite.current = false;
+    setAction(invite ? 'invite' : undefined);
   };
 
   // Pastes a link in the menu: the form parses it locally and the app opens
@@ -167,6 +186,7 @@ export function NewChatButton() {
       <ActionSheet
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}
+        onDismissed={menuDismissed}
         closeLabel="Close new chat menu"
       >
         <ActionSheetItem
@@ -191,8 +211,8 @@ export function NewChatButton() {
           label="New topic"
           icon={Hash}
           onPress={() => {
+            afterMenu.current = () => setTopicPickerOpen(true);
             setMenuOpen(false);
-            setTopicPickerOpen(true);
           }}
         />
         <ActionSheetItem
@@ -213,57 +233,37 @@ export function NewChatButton() {
         onPick={openNewTopic}
       />
 
-      <Modal
-        visible={action !== undefined}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAction(undefined)}
-      >
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-          <ScrollView
-            keyboardShouldPersistTaps={CREATE_SHEETS_SCROLL_TAPS_PERSIST}
-            contentContainerStyle={{
-              flexGrow: 1,
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: 16,
-            }}
-            className="flex-1 bg-black/40"
-          >
-            <Pressable
-              accessibilityLabel="Close dialog"
-              onPress={() => setAction(undefined)}
-              className="absolute inset-0"
-            />
-            {action === 'join' ? (
-              <JoinLinkForm onSubmit={joinWithToken} />
-            ) : action === 'channel' ? (
-              <NewChannelSheet
-                busy={channelBusy}
-                error={channelError}
-                onCreate={create}
-                onClose={() => {
-                  if (!channelBusy) {
-                    setAction(undefined);
-                  }
-                }}
-              />
-            ) : action === 'message' ? (
-              <NewMessageSheet
-                onInvite={() => setAction('invite')}
-                onClose={() => setAction(undefined)}
-              />
-            ) : action === 'invite' ? (
-              <InviteSheet
-                api={invitesApi}
-                copyText={inviteShare.copyText}
-                shareText={inviteShare.shareText}
-                onClose={() => setAction(undefined)}
-              />
-            ) : null}
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
+      <NewChannelSheet
+        visible={action === 'channel'}
+        busy={channelBusy}
+        error={channelError}
+        onCreate={create}
+        onClose={() => {
+          if (!channelBusy) {
+            setAction(undefined);
+          }
+        }}
+      />
+
+      <NewMessageSheet
+        visible={action === 'message'}
+        onInvite={inviteFromMessage}
+        onClose={messageClosed}
+      />
+
+      <InviteSheet
+        visible={action === 'invite'}
+        api={invitesApi}
+        copyText={inviteShare.copyText}
+        shareText={inviteShare.shareText}
+        onClose={() => setAction(undefined)}
+      />
+
+      <JoinLinkForm
+        visible={action === 'join'}
+        onSubmit={joinWithToken}
+        onClose={() => setAction(undefined)}
+      />
     </>
   );
 }

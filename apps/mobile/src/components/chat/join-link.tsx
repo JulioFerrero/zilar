@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Text } from '../../components/ui/text';
 import { TextField } from '../ui/text-field';
@@ -220,13 +221,31 @@ export function JoinLinkBody(props: {
 }
 
 /**
- * The paste-a-link form for the new-chat menu: one field, one button. The
- * raw text is parsed locally (`extractJoinToken`); junk never reaches the
- * server, and the token never appears in any message.
+ * The paste-a-link form for the new-chat menu (T-1451): one field, one
+ * primary. On the kit bottom sheet, the `Continue` primary is the sticky
+ * footer and the header's close key is the way out. The raw text is parsed
+ * locally (`extractJoinToken`); junk never reaches the server, and the token
+ * never appears in any message.
  */
-export function JoinLinkForm({ onSubmit }: { onSubmit: (token: string) => void }) {
+export function JoinLinkForm({
+  visible,
+  onSubmit,
+  onClose,
+}: {
+  visible: boolean;
+  onSubmit: (token: string) => void;
+  onClose: () => void;
+}) {
   const [raw, setRaw] = useState('');
   const [error, setError] = useState('');
+
+  // The sheet is always mounted (`visible`), so a reopen must not carry the
+  // previous open's link text or its local parse error. Reset on close with
+  // the adjusted-state render pattern (no set-state-in-effect).
+  if (!visible && (raw !== '' || error !== '')) {
+    setRaw('');
+    setError('');
+  }
 
   const submit = (): void => {
     const token = extractJoinToken(raw);
@@ -239,8 +258,17 @@ export function JoinLinkForm({ onSubmit }: { onSubmit: (token: string) => void }
   };
 
   return (
-    <View className="w-full max-w-xs rounded-2xl border border-border-strong bg-surface p-4">
-      <Text className="text-[16px] font-semibold text-foreground">Join with a link</Text>
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      closeLabel="Close join with a link"
+      title="Join with a link"
+      footer={
+        <Button accessibilityLabel="Continue with link" onPress={submit}>
+          <Text>Continue</Text>
+        </Button>
+      }
+    >
       <Text className="mt-1 text-[14px] text-muted-foreground">
         Paste the invite link a group admin shared with you.
       </Text>
@@ -259,14 +287,6 @@ export function JoinLinkForm({ onSubmit }: { onSubmit: (token: string) => void }
           {error}
         </Text>
       ) : null}
-      <Button
-        variant="default"
-        className="mt-3"
-        accessibilityLabel="Continue with link"
-        onPress={submit}
-      >
-        <Text>Continue</Text>
-      </Button>
-    </View>
+    </BottomSheet>
   );
 }
