@@ -1,0 +1,47 @@
+name: Certificate expiry
+
+# Reads the TLS certificate the chat host presents and fails when it expires in
+# under 14 days, so a silent automatic-renewal failure alerts the owner (GitHub
+# emails the owner about a failing scheduled run). No secrets, no checkout.
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  expiry:
+    name: Check TLS certificate expiry
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check certificate end date
+        run: |
+          set -euo pipefail
+          hosts=("chat.zilar.app")
+          threshold=14
+          failed=0
+          for host in "${hosts[@]}"; do
+            echo "=== $host:443 ==="
+            if ! enddate=$(openssl s_client -servername "$host" -connect "$host:443" </dev/null 2>/dev/null \
+              | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2) || [ -z "$enddate" ]; then
+              echo "::error::$host: could not read the certificate end date"
+              failed=1
+              continue
+            fi
+            if ! expires=$(date -d "$enddate" +%s 2>/dev/null); then
+              echo "::error::$host: could not parse the certificate end date '$enddate'"
+              failed=1
+              continue
+            fi
+            days=$(( (expires - $(date +%s)) / 86400 ))
+            echo "end date: $enddate"
+            echo "days left: $days"
+            if [ "$days" -lt "$threshold" ]; then
+              echo "::error::$host: certificate expires in $days days (fewer than $threshold)"
+              failed=1
+            fi
+          done
+          exit "$failed"

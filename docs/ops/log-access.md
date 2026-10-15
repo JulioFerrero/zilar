@@ -82,3 +82,7 @@ WHERE key = 'instance.owner_user_id';
 The value is a `user.id`. If the stored user no longer exists, nobody is the
 owner until this row is updated.
 
+## Alerts
+
+- **TLS certificate expiry:** `.github/workflows/cert-expiry.yml` runs daily and fails, which emails the owner, when the `chat.zilar.app` certificate expires in under 14 days.
+
