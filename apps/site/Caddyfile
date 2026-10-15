@@ -6,6 +6,26 @@
 }
 
 :80 {
+  # The bare installer host answers with the one-line installer at any path, so
+  # https://get.zilar.app and https://get.zilar.app/anything both work. It is not
+  # part of the www redirect below. The script is copied into the image by the
+  # Dockerfile (deploy/install.sh).
+  @installer host get.zilar.app
+  handle @installer {
+    rewrite * /install.sh
+    header Content-Type "text/x-shellscript; charset=utf-8"
+    header Cache-Control "no-cache"
+    file_server
+  }
+
+  # The landing's own hosts also serve the installer at /install.sh, with the
+  # same headers.
+  handle /install.sh {
+    header Content-Type "text/x-shellscript; charset=utf-8"
+    header Cache-Control "no-cache"
+    file_server
+  }
+
   # www is the main address: the bare domain redirects to it (Traefik already
   # terminated TLS for both names).
   @apex host zilar.app
