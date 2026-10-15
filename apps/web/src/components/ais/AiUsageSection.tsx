@@ -1,10 +1,6 @@
 import type { PublicAi } from '@/lib/api';
+import { formatUsd } from '@/lib/format-usd';
 import { cn } from '@/lib/utils';
-
-/** `$2` -> `$2.00`. Server amounts are plain USD numbers. */
-function formatUsd(value: number): string {
-  return `$${value.toFixed(2)}`;
-}
 
 /**
  * One thin spend meter: a well track with a `#ededed` fill, turning

@@ -2,6 +2,7 @@ import type { ChatSummary } from '@zilar/chat-core';
 import {
   ArrowLeft,
   Bookmark,
+  Globe,
   Images,
   Info,
   Lock,
@@ -151,13 +152,10 @@ export function ChatHeader({
         <span className="truncate text-[15px] leading-5 font-semibold">{chat.title}</span>
         {chat.isAI && <AiBadge />}
         {chat.visibility === 'public' && (
-          <span className="shrink-0 text-[12px] leading-5 text-muted-foreground">Public</span>
+          <Globe role="img" aria-label="Public" className="size-3.5 text-muted-foreground" />
         )}
         {isTopic && chat.topic?.visibility === 'private' && (
-          <span className="flex shrink-0 items-center gap-1 rounded-full border border-border px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-            <Lock className="size-3" aria-hidden="true" />
-            Private
-          </span>
+          <Lock role="img" aria-label="Private" className="size-3.5 text-muted-foreground" />
         )}
       </div>
       <div

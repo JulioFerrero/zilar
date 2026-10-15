@@ -79,27 +79,10 @@ export function ApprovalsPage() {
     });
 
   return (
-    <SettingsShell
-      title="Approvals"
-      subtitle="Requests from your AIs that are waiting for you."
-      onBack={() => navigate('/settings')}
-    >
+    <SettingsShell title="Approvals" onBack={() => navigate('/settings')}>
       <div className={SETTINGS_COLUMN}>
         {status === 'ready' && ordered.length > 0 && (
           <section aria-label="Pending approvals" className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-[16px] font-semibold">Waiting for you</h2>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="rounded-full px-3"
-                onClick={() => refresh()}
-              >
-                Refresh
-              </Button>
-            </div>
-
             <ul className="divide-y divide-divider overflow-hidden rounded-[12px] border border-divider bg-surface">
               {ordered.map((approval) => (
                 <li key={approval.id}>
@@ -116,18 +99,6 @@ export function ApprovalsPage() {
 
         {status === 'ready' && ordered.length === 0 && (
           <section aria-label="Pending approvals" className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-[16px] font-semibold">Waiting for you</h2>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="rounded-full px-3"
-                onClick={() => refresh()}
-              >
-                Refresh
-              </Button>
-            </div>
             <StateMessage kind="empty" icon={ShieldCheck} title="Nothing is waiting for you." />
           </section>
         )}

@@ -7,6 +7,7 @@ import { ApiError, deleteAi, type PublicAi } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { formatUsd } from '@/lib/format-usd';
 import { cn } from '@/lib/utils';
 import { AiBadge } from '@/components/AiBadge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -16,11 +17,6 @@ import { describeAiError } from '@/components/ais/errors';
 import { formatLimit } from '@/components/ais/limits';
 import { IconButton } from '@/components/ui/icon-button';
 import { Menu, MenuItem } from '@/components/ui/menu';
-
-/** `$2` -> `$2.00`. Server amounts are plain USD numbers. */
-function formatUsd(value: number): string {
-  return `$${value.toFixed(2)}`;
-}
 
 /** The last failure, hidden while a new call runs (the page cleared it at once before). */
 function shownFailure<A, E>(state: AsyncResult.AsyncResult<A, E>): E | undefined {
