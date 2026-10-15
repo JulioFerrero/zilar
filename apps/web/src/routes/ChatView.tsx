@@ -3,6 +3,7 @@ import { Effect } from 'effect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { AiPanel } from '@/components/ais/AiPanel';
+import { AiStatusLine } from '@/components/topic/AiStatusLine';
 import { ChannelComposerBar } from '@/components/ChannelComposerBar';
 import { ChannelPanel } from '@/components/ChannelPanel';
 import { ChatHeader } from '@/components/ChatHeader';
@@ -292,12 +293,15 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
         ) : chat.chatKind === 'channel' ? (
           <ChannelComposerBar chat={chat} />
         ) : (
-          <Composer
-            chatId={chat.id}
-            replyTo={replyTo}
-            onCancelReply={cancelReply}
-            onOpenStickersSettings={() => navigate('/settings/stickers')}
-          />
+          <>
+            <AiStatusLine chat={chat} />
+            <Composer
+              chatId={chat.id}
+              replyTo={replyTo}
+              onCancelReply={cancelReply}
+              onOpenStickersSettings={() => navigate('/settings/stickers')}
+            />
+          </>
         )}
         {panel === 'ai' && chat.isAI && <AiPanel chat={chat} onClose={() => setPanel(undefined)} />}
         {panel === 'group' && groupChat !== undefined && chat.chatKind !== 'channel' && (

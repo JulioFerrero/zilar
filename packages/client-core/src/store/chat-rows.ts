@@ -206,6 +206,7 @@ function topicActivityOf(topic: Topic): TopicAiActivity[] {
       rows.push({
         aiId: entry.aiId,
         name: entry.name,
+        ...(entry.jid === undefined ? {} : { jid: entry.jid }),
         ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
         state: entry.state,
       });

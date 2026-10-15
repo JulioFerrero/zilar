@@ -47,6 +47,8 @@ export interface TopicRoleView {
 export interface TopicActivityEntry {
   aiId: string;
   name: string;
+  /** T-1537: the AI's bare JID, so the client can match its live card. */
+  jid?: string;
   avatarUrl?: string;
   state: AiActivityState;
 }

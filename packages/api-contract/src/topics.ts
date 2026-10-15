@@ -187,6 +187,8 @@ export type ApproverRole = typeof ApproverRole.Type;
 export const TopicActivity = mutableStruct({
   aiId: Schema.String,
   name: Schema.String,
+  /** T-1537: the AI's bare JID, so the client can match its live card. */
+  jid: Schema.optional(Schema.String),
   avatarUrl: Schema.optional(Schema.String),
   state: Schema.String,
 });

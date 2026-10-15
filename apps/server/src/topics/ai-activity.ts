@@ -181,19 +181,20 @@ const STATE_ORDER: Record<AiActivityState, number> = { working: 0, waiting: 1, d
 // waiting, then done, then by name. An AI with no name row is left out.
 function activityEntries(
   entries: TopicAiActivity[],
-  names: Map<string, string>,
+  names: Map<string, { name: string; jid: string }>,
   avatars: Map<string, string>,
 ): TopicActivityEntry[] {
   const rows: TopicActivityEntry[] = [];
   for (const entry of entries) {
-    const name = names.get(entry.aiId);
-    if (name === undefined) {
+    const ai = names.get(entry.aiId);
+    if (ai === undefined) {
       continue;
     }
     const avatarId = avatars.get(entry.aiId);
     rows.push({
       aiId: entry.aiId,
-      name,
+      name: ai.name,
+      jid: ai.jid,
       ...(avatarId === undefined ? {} : { avatarUrl: avatarUrlFor(avatarId) }),
       state: entry.state,
     });
@@ -204,8 +205,11 @@ function activityEntries(
   );
 }
 
-// One read for the whole batch: the names of the AIs that appear in it.
-async function aiNamesById(db: ServerDatabase, aiIds: string[]): Promise<Map<string, string>> {
+// One read for the whole batch: the name and JID of the AIs that appear in it.
+async function aiNamesById(
+  db: ServerDatabase,
+  aiIds: string[],
+): Promise<Map<string, { name: string; jid: string }>> {
   if (aiIds.length === 0) {
     return new Map();
   }
@@ -213,11 +217,11 @@ async function aiNamesById(db: ServerDatabase, aiIds: string[]): Promise<Map<str
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ id: string; name: string }>`SELECT id, name FROM ais
+      return yield* sql<{ id: string; name: string; jid: string }>`SELECT id, name, jid FROM ais
         WHERE id IN ${sql.in(aiIds)}`;
     }),
   );
-  return new Map(rows.map((row) => [row.id, row.name]));
+  return new Map(rows.map((row) => [row.id, { name: row.name, jid: row.jid }]));
 }
 
 function addTo(index: Map<string, Set<string>>, key: string, value: string): void {

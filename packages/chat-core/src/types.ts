@@ -137,6 +137,8 @@ export type TopicAiState = 'working' | 'waiting' | 'done';
 export interface TopicAiActivity {
   aiId: string;
   name: string;
+  /** T-1537: the AI's bare JID, to match the live card in the chat. */
+  jid?: string;
   avatarUrl?: string;
   state: TopicAiState;
 }

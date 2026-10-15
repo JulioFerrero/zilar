@@ -1551,3 +1551,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1541](T-1541-web-album-order.md) | Web sends an album's photos together, then the other files | 2026-10-15 |
 | [T-1544](T-1544-split-chats-unread.md) | Split chats/unread.ts: the archive SQL builders move out | 2026-10-15 |
 | [T-1543](T-1543-split-chats-api.md) | Split chats/api.ts: the list and mark handlers move out | 2026-10-15 |
+| [T-1537](T-1537-web-ai-status-line.md) | Web status line above a topic's composer shows the AIs at work | 2026-10-15 |

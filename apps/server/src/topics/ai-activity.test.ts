@@ -98,6 +98,7 @@ interface Fixture {
   context: TestContext;
   ownerId: string;
   aiId: string;
+  aiJid: string;
   groupId: string;
   generalTopicId: string;
   secondTopicId: string;
@@ -106,7 +107,7 @@ interface Fixture {
 async function seedFixture(): Promise<Fixture> {
   const context = await createTestContext();
   const ownerId = await seedUser(context, { name: 'Owner' });
-  const { aiId } = await seedAi(context, ownerId, {});
+  const { aiId, jid: aiJid } = await seedAi(context, ownerId, {});
   const { groupId, generalTopicId } = await seedGroup(
     context,
     ownerId,
@@ -114,7 +115,7 @@ async function seedFixture(): Promise<Fixture> {
     [aiId],
   );
   const secondTopicId = await seedTopic(context, groupId, ownerId, 'Second');
-  return { context, ownerId, aiId, groupId, generalTopicId, secondTopicId };
+  return { context, ownerId, aiId, aiJid, groupId, generalTopicId, secondTopicId };
 }
 
 function topicsFor(fixture: Fixture): AiActivityTopic[] {
@@ -399,7 +400,9 @@ describe('withTopicActivity (T-1514)', () => {
   });
 
   it('adds the names in state order for two views', async () => {
-    const { aiId: qaAiId } = await seedAi(fixture.context, fixture.ownerId, { name: 'QA-1' });
+    const { aiId: qaAiId, jid: qaJid } = await seedAi(fixture.context, fixture.ownerId, {
+      name: 'QA-1',
+    });
     // General: QA-1 waits on an approval, Dev-1's last card is done.
     await seedApproval(fixture.context, {
       aiId: qaAiId,
@@ -438,12 +441,12 @@ describe('withTopicActivity (T-1514)', () => {
     );
 
     expect(views[0]?.activity).toEqual([
-      { aiId: qaAiId, name: 'QA-1', state: 'waiting' },
-      { aiId: fixture.aiId, name: 'Helper AI', state: 'done' },
+      { aiId: qaAiId, name: 'QA-1', jid: qaJid, state: 'waiting' },
+      { aiId: fixture.aiId, name: 'Helper AI', jid: fixture.aiJid, state: 'done' },
     ]);
     expect(views[1]?.activity).toEqual([
-      { aiId: fixture.aiId, name: 'Helper AI', state: 'working' },
-      { aiId: qaAiId, name: 'QA-1', state: 'waiting' },
+      { aiId: fixture.aiId, name: 'Helper AI', jid: fixture.aiJid, state: 'working' },
+      { aiId: qaAiId, name: 'QA-1', jid: qaJid, state: 'waiting' },
     ]);
   });
 

@@ -18,6 +18,8 @@ export interface TopicViewSource {
   groupMemberCount(groupId: string): number;
   role(roleId: string): TopicRoleSource | undefined;
   aiName(aiId: string): string;
+  /** T-1537: the AI's bare JID, so the client can match its live card. */
+  aiJid(aiId: string): string | undefined;
 }
 
 /** The contract `Topic` row of one topic, with `memberCount` and its roles. */
@@ -56,13 +58,18 @@ export function buildTopicView(topic: MockTopic, source: TopicViewSource): Topic
     ais: topic.aiIds.map((aiId) => ({ id: aiId, name: source.aiName(aiId) })),
     roles,
     approverRole: approver === null ? null : { id: approver.id, name: approver.name },
-    // T-1514: the topic's AI activity, empty for an idle topic.
-    activity: (topic.activity ?? []).map((entry) => ({
-      aiId: entry.aiId,
-      name: entry.name,
-      ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
-      state: entry.state,
-    })),
+    // T-1514: the topic's AI activity, empty for an idle topic. T-1537: each
+    // entry carries the AI's JID, resolved from the AI rows.
+    activity: (topic.activity ?? []).map((entry) => {
+      const jid = source.aiJid(entry.aiId);
+      return {
+        aiId: entry.aiId,
+        name: entry.name,
+        ...(jid === undefined ? {} : { jid }),
+        ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
+        state: entry.state,
+      };
+    }),
   };
 }
 
@@ -80,6 +87,7 @@ export function viewSourceFromData(data: MockData): TopicViewSource {
         : { id: role.id, name: role.name, memberIds: role.memberIds };
     },
     aiName: (aiId) => data.ais.find((ai) => ai.id === aiId)?.name ?? 'An AI',
+    aiJid: (aiId) => data.ais.find((ai) => ai.id === aiId)?.jid,
   };
 }
 
