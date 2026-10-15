@@ -28,6 +28,7 @@ export function FolderIconPicker({
             type="text"
             value={name}
             maxLength={FOLDER_NAME_MAX}
+            data-autofocus
             onChange={(event) => setName(event.target.value)}
             placeholder="Folder name"
             className="min-w-0 flex-1 bg-transparent text-[15px] focus-visible:outline-none"

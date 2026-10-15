@@ -21,6 +21,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { TypingDots } from './TypingDots';
 import { IconButton } from './ui/icon-button';
 import { Menu, MenuItem } from './ui/menu';
+import { statusLabel } from '@/components/chatList/rowsSelector';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { chatSubtitle, typingLabel } from '@/lib/format';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -59,6 +60,9 @@ export function ChatHeader({
   const storeApi = useChatStoreApi();
   const typingNames = useChatSelector((s) => s.typing[chat.id]?.names);
   const names = typingNames ?? NO_NAMES;
+  // T-1452 (WUX-14): the connection line lives in the header like mobile
+  // (T-1192/MUX-15) and Telegram, not above the composer.
+  const connection = statusLabel(useChatSelector((s) => s.status));
   const aiStatusText = useChatSelector(
     (s) => (s.typing[chat.id] as TypingStatus | undefined)?.status,
   );
@@ -71,7 +75,8 @@ export function ChatHeader({
   // T-1406: while the AI carries a status it reads next to the dots, e.g.
   // "Searching the web…"; with no status the line keeps the plain dots.
   const aiLine = aiStatusText === undefined ? undefined : `${aiStatusText}…`;
-  const subtitle = aiLine ?? (writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date())));
+  const subtitle =
+    connection ?? aiLine ?? (writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date())));
   const isTopic = chat.topic !== undefined;
   // T-0124: a channel feed is one row (General keeps the group chat id), not
   // a topic row; the panel is the channel panel, like the group panel.
@@ -155,7 +160,10 @@ export function ChatHeader({
           </span>
         )}
       </div>
-      <div className="flex items-center gap-1 text-[12px] leading-4 text-muted-foreground">
+      <div
+        role="status"
+        className="flex items-center gap-1 text-[12px] leading-4 text-muted-foreground"
+      >
         <span className="truncate">{subtitle}</span>
         {(working || typing !== undefined || aiLine !== undefined) && !writing && <TypingDots />}
       </div>

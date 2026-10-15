@@ -85,9 +85,9 @@ function RequireAuth({ children }: { children: ReactNode }) {
   // always allowed, so the app works without a handle. Only when the handle
   // is known-absent (`null`): while the user or `getMe()` is still loading
   // (`undefined`) the gate does nothing — no Navigate, no flash. The
-  // dismissal lives in `lib/handleGate` (sessionStorage per user id, with
-  // an in-memory fallback) and is honored here, so a skip is not asked
-  // again until the next browser session.
+  // dismissal lives in `lib/handleGate` (localStorage per user, cleared on
+  // sign-out, with an in-memory fallback) and is honored here, so a skip is
+  // not asked again for that user.
   if (
     auth.user !== undefined &&
     auth.user.handle === null &&

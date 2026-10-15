@@ -1,7 +1,7 @@
 ---
 id: T-1298
 title: "Mobile batch 3: auth screens avoid the keyboard on small phones (MUX-20); fixed heights don't clip at the largest font size (MUX-18); predictive back is enabled (MUX-24); literal hex colours move to tokens (MUX-31)"
-status: todo
+status: dropped
 milestone: M5
 branch: task/T-1298-mobile-layout-batch
 model: auto
@@ -50,3 +50,7 @@ pnpm gate
 ## Report (written by the worker when done)
 
 ## Review (written by Claude)
+Lead, 2026-10-15: dropped. It was never launched, and its items are covered elsewhere:
+- MUX-18 and MUX-20 shipped in T-1436.
+- MUX-24 (predictive back) waits for a native build test and is on NOW.md's list.
+- MUX-31 is not actionable per the findings sweep (dark only, D24).

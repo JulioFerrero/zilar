@@ -1460,3 +1460,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1447](T-1447-web-dialogs-other.md) | Web dialogs: no Cancel/Close footer, kit error line and busy | 2026-10-15 |
 | [T-1449](T-1449-poll-less-when-online.md) | Chat list and pins poll every 5 min while XMPP is online | 2026-10-15 |
 | [T-1450](T-1450-stored-instance-owner.md) | Instance owner stored once; one isOwner for settings | 2026-10-15 |
+| [T-1452](T-1452-web-polish-batch.md) | Web: connection status in the chat header, folder name focus | 2026-10-15 |

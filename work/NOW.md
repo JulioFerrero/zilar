@@ -18,18 +18,30 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1440: AIs know the user's local time (live; migration 0061 is applied, with `user_profiles.time_zone` present, and 0 errors);
   - T-1441: catalog connections keep working after a restart;
   - T-1442: the shared New AI logic in chat-core.
-- **Running (8):**
-  - T-1443: mobile sheets on the standard (part 1, kit close key);
+- **Merged ~06:30:**
+  - T-1443: mobile sheets on the kit with a default close key;
+  - T-1446 and T-1447: web dialogs on the standard (one close key, no Cancel, Enter submits);
+  - T-1449: the chat list and pins poll every 5 min while online;
+  - T-1450: a stored instance owner. It is live; the owner row is claimed the first time Julio opens Integrations or voice settings.
+- **Running (6):**
   - T-1444: the web New AI flow;
   - T-1445: the mobile New AI flow;
-  - T-1446: the web create dialogs on the standard;
-  - T-1447: the other web dialogs on the standard;
-  - T-1448: an AI that owns a topic follows it (Task I);
-  - T-1449: polling every 5 min while online (PERF-11);
-  - T-1450: a stored instance owner (SEC-12).
-- **Next:**
-  - mobile sheets part 2 (Visibility, Invite links, Roles), after T-1443;
-  - the Connections pages reuse the new key step, after T-1444 and T-1445.
+  - T-1448: an AI follows the topic it owns;
+  - T-1451: mobile sheets part 2 (the New chat actions, Visibility, Invite links);
+  - T-1452: web polish (connection line in the header, folder focus);
+  - T-1453: the ejabberd schema check plus `docs/ops/OPS_LOG.md`.
+- **Next:** the Connections pages reuse the new key step, after T-1444 and T-1445.
+- **New canvas for Julio: "View steps"**, https://claude.ai/artifact/7YV3tdKH1k8LSBBZtsXzxk.
+  - Web: a right panel. Phone: a hugging sheet.
+  - It shows real event kinds from T-1426 (status, model call, tool call/result, approval, answer) with the real tool names (bash, read, edit, grep, git).
+  - One row is expanded to show the redacted output.
+  - Specs follow once he approves.
+- **Morning UI list (each needs a canvas or a decision):**
+  - Task H, approvals batching: one card listing a task's requests;
+  - AI health on My AIs (AI-22);
+  - an action in the messages empty state (MUX-27);
+  - multi-file attach (WUX-27);
+  - predictive back (MUX-24), which needs a native build to test.
 - **Decision to confirm (T-1448):** Stop pauses following until the AI is @mentioned again or re-assigned. The pause lives in memory, so a server restart resumes following.
 - **Waiting for Julio:**
   - **get.zilar.app:** the Porkbun A record `get` → 152.53.146.96. Then the lead adds the domain to zilar-chat in Coolify (already OK'd).

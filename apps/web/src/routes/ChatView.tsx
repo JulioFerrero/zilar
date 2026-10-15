@@ -22,7 +22,6 @@ import { PinsPanel } from '@/components/PinsPanel';
 import { TaskStrip } from '@/components/TaskStrip';
 import { TopicPanel } from '@/components/TopicPanel';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
-import { statusLabel } from '@/components/chatList/rowsSelector';
 import { runWeb } from '@/lib/effect/runtime';
 import { replyRef } from '@/lib/format';
 import { useMediaQuery } from '@/lib/useMediaQuery';
@@ -57,7 +56,6 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
   const topicNotice = useChatSelector((s) => s.topicNotice);
   const storedPinsPanel = useChatSelector((s) => s.pinsPanel);
   const chats = useChatSelector((s) => s.chats);
-  const connection = statusLabel(useChatSelector((s) => s.status));
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [panel, setPanel] = useState<OpenPanel | undefined>(() =>
@@ -286,14 +284,6 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
           selection={selection}
           selecting={selectedIds !== null}
         />
-        {connection !== undefined && (
-          <p
-            role="status"
-            className="shrink-0 border-t border-divider bg-panel px-4 py-1.5 text-center text-[12px] text-muted-foreground"
-          >
-            {connection}
-          </p>
-        )}
         {selectedIds !== null ? (
           <SelectionBar
             chat={chat}
