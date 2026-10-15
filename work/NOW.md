@@ -137,7 +137,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - The emulator is back at font scale 1.0.
   - **Its CI on main failed once** on a flaky server sandbox test (`run-tool.test.ts` › "truncates 100 KB of console.log output", default 2 s CPU limit on a saturated runner). It was the first CI failure in 30 main runs.
   - Because of it, T-1486 did not deploy (live stayed at `756f7276e`). The lead re-ran the failed job.
-- **Running: T-1487.** The flaky test gets the wide limits its sibling tests already use. Test-only.
+- **Merged: T-1487.** The flaky test gets the wide limits its sibling tests already use (test-only, 48 of 48 pass). The rerun of the failed CI job went green.
+  - Live at `15d19fa73` (T-1486 plus T-1487): health ok, 0 errors.
+- **Running: T-1488.** On web, opening a DM's Contact info logged React's duplicate-key error: `MessageList` and `ContactPanel` are siblings keyed by the same chat id. Found in a headless walk of the info panels.
+  - The topic and group panels are clean.
 - **Mobile interaction walk (emulator, mock):** send, reply with quote, the 👍 reaction and the @mention picker work. Two bugs found: T-1482 and T-1483.
 - **Web interaction walk (headless, mock, 1280 px):** send, reply, edit and New group all work, and the sent chat moves to the top of the list. 0 errors.
 - **Web sweep (lead, headless, mock, 390 and 1280 px, 23 routes):** no page overflows and no console errors after T-1477. Found and fixed: T-1477, T-1478, T-1479, T-1480.

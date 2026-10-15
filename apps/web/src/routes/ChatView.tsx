@@ -317,7 +317,7 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
         )}
         {panel === 'contact' && contactChat !== undefined && (
           <ContactPanel
-            key={contactChat.id}
+            key={`contact:${contactChat.id}`}
             chat={contactChat}
             onClose={() => setPanel(undefined)}
             onSearch={() => {

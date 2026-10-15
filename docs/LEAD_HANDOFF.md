@@ -101,3 +101,8 @@ The autopilot starts a Muse doctor session once main stays quiet 10 minutes: it 
 
 ## Server and deploy facts
 Coolify service `zilar` uuid `zogjtvwnoh9rqo96h7e7ajz1` (restart with `pull_latest: true`, verify the server `hostname` in the logs changes and an authed route answers 401). CI on main has a known flaky test (`packages/runner-tunnel`/runner `connect.test.ts`) and a legacy-name guard (`packages/devtools/src/no-legacy-name.test.ts`: the old product name must not appear in tracked files).
+
+**A merge deploys only after CI on main is green.** "Production images" runs on CI's success, then Coolify builds.
+- When `/health` does not move to the new commit within about 5 minutes, check CI first: `gh run list --workflow ci.yml --branch main --limit 3`.
+- A one-off test flake there skips the deploy silently. Rerun it with `gh run rerun <id> --failed`, then spec a stabilising task.
+- On 2026-10-15 the sandbox log test did this to T-1486; T-1487 fixed it.
