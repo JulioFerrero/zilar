@@ -8,6 +8,7 @@ import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
+import type { StickerConverter } from './convert';
 
 export const STICKER_UPLOAD_RATE_LIMIT_MAX = 60;
 export const STICKER_UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
@@ -28,6 +29,8 @@ export interface StickersRoutesDependencies {
   importLimiter?: { allow: (key: string) => boolean };
   /** Injected in tests so the import never touches the network. */
   telegramClient?: import('./telegram-import').TelegramClient;
+  /** Overrides the ffmpeg sticker converter; the app wires the pino-logging one. */
+  converter?: StickerConverter;
   /**
    * Resolves the bot token per request: the env value wins when set, else
    * the stored integrations value, else none. `app.ts` wires the integrations

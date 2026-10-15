@@ -38,17 +38,18 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - T-1551 (phone status line; one fix round so "+1" sits right after the text; smoke checked);
     - T-1557 (phone stickers: large titles, Private/Shared switch, lean Discover; smoke checked);
     - T-1558, T-1559, T-1560 and T-1563 (splits of `build-outgoing.ts`, `auth/api.ts`, client-core `history.ts` and the phone history effects; the lead ran the xmpp-core suite for T-1558: 150 passed);
-    - T-1561 (web dead `formatLimits`).
+    - T-1561 (web dead `formatLimits`);
+    - T-1564 (phone sticker types: a kept moving file declares its real MIME type; **check a moving GIF upload on Julio's next phone build**);
+    - T-1565 (split `push/api-handlers.ts`);
+    - T-1562 (phone View steps sheet; one fix round so the steps load only when the sheet opens; smoke checked).
     
     **Live at `6676826c9`** (includes every server change above; later commits are phone and docs only): 0 errors, 0 warnings; `/api/chats`, `/api/agents/tasks/x/steps`, `/api/topics/x` and `/api/sticker-packs` answer 401 signed out. The `topics.follower_ai_id` column exists (backfill 0 rows: no live topic had an owner AI).
-  - **Running (6):**
+  - **Running (4):**
     - T-1552 (phone Group info root; plan T1);
-    - T-1562 (phone View steps sheet; `formatClock` moves to chat-core);
-    - T-1564 (phone sticker types: a kept moving file declares its real MIME type; Discover typed `PanelPack`);
-    - T-1565 (split `push/api-handlers.ts`: the test route moves out);
     - T-1566 (audit and step plan: handoff lines and question reply chips; no "ask people" tool exists yet);
-    - T-1567 (sticker conversion failures log through pino).
-  - **Deploy check running** for `53ff0eb2c` (`/api/me`, avatars, AIs, chats, sticker packs).
+    - T-1567 (sticker conversion failures log through pino; fix round: the converter was dropped by `serviceDeps()`);
+    - T-1568 (web and phone task cards show `m:ss`; the steps fallbacks map a leftover `doing` step to stopped).
+  - **Deploy check running** for `851f68e7d` (every server change so far: `/api/me`, avatars, push, AIs, chats, sticker packs).
   - **Decisions (Julio, 10-15):** the topic link moves to a row in the topic info panel (T8 keeps `link_url`/`link_label`); the last @mentioned AI follows a topic.
   - **Next to spec:**
     - AI work T8 (drop kind/status/owner after a phone release);

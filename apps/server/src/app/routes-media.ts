@@ -5,6 +5,7 @@ import { createAvatarsApi } from '../avatars/api';
 import { createBackgroundsApi } from '../backgrounds/api';
 import { createGetBotToken } from '../integrations/routes';
 import { settingsCipherFor } from '../setup/settings';
+import { createStickerConverter } from '../stickers/convert';
 import { createStickersApi } from '../stickers/api';
 import type { RouteWiring } from './deps';
 import { opt } from './opt';
@@ -28,6 +29,11 @@ export function mediaRoutes({ deps, base, audit }: RouteWiring): EffectApiMount[
     storageDir: deps.stickerStorageDir ?? config.STICKER_STORAGE_DIR,
     audit,
     getBotToken,
+    // T-1567: conversion failures go to the pino log, not `console.warn`.
+    converter: createStickerConverter({
+      warn: (summary, stderrTail) =>
+        base.logger.warn({ stderrTail }, `sticker conversion failed: ${summary}`),
+    }),
     ...opt('now', deps.stickerNow),
     ...opt('uploadLimiter', deps.uploadLimiter),
     ...opt('telegramClient', deps.telegramClient),

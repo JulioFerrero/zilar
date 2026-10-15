@@ -77,6 +77,7 @@ export function createStickersGroupLayer(
       db: deps.db,
       storageDir: deps.storageDir,
       ...(deps.audit === undefined ? {} : { audit: deps.audit }),
+      ...(deps.converter === undefined ? {} : { converter: deps.converter }),
     };
   }
 

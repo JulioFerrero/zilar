@@ -70,9 +70,14 @@ export interface StickerConverter {
   toAnimatedWebp(bytes: Uint8Array, kind: ConvertibleKind): Promise<Uint8Array>;
 }
 
+/** Reports a conversion failure with a short summary and the stderr tail. */
+export type StickerConvertWarn = (summary: string, stderrTail: string) => void;
+
 export interface StickerConverterPaths {
   ffmpeg?: string;
   ffprobe?: string;
+  /** Called on a conversion failure; defaults to a console log line. */
+  warn?: StickerConvertWarn;
 }
 
 const FfprobeJson = Schema.fromJsonString(
@@ -109,9 +114,17 @@ function convertFailed(): HttpError {
 }
 
 /** Logs the exit code (when there is one) and the tail of stderr, never the
- *  file's bytes. */
-function logConvertFailure(summary: string, stderr: string): void {
+ *  file's bytes. Uses the injected `warn` when present, else the console. */
+function logConvertFailure(
+  warn: StickerConvertWarn | undefined,
+  summary: string,
+  stderr: string,
+): void {
   const tail = stderr.slice(-300);
+  if (warn !== undefined) {
+    warn(summary, tail);
+    return;
+  }
   console.warn(`[stickers] ${summary}${tail === '' ? '' : `: ${tail}`}`);
 }
 
@@ -157,35 +170,41 @@ async function runOrFail(
   command: string,
   args: string[],
   timeoutMs: number,
+  warn: StickerConvertWarn | undefined,
 ): Promise<CommandResult> {
   let result: CommandResult;
   try {
     result = await Effect.runPromise(runCommand(command, args, timeoutMs));
   } catch (error) {
     if (error instanceof FfmpegError) {
-      logConvertFailure(`${command} could not be run`, error.message);
+      logConvertFailure(warn, `${command} could not be run`, error.message);
       throw convertFailed();
     }
     throw error;
   }
   if (result.code !== 0) {
-    logConvertFailure(`${command} exited with code ${result.code}`, result.stderr);
+    logConvertFailure(warn, `${command} exited with code ${result.code}`, result.stderr);
     throw convertFailed();
   }
   return result;
 }
 
-async function probeVideo(ffprobe: string, inputPath: string): Promise<ProbedVideo> {
+async function probeVideo(
+  ffprobe: string,
+  inputPath: string,
+  warn: StickerConvertWarn | undefined,
+): Promise<ProbedVideo> {
   const result = await runOrFail(
     ffprobe,
     ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', inputPath],
     FFPROBE_TIMEOUT_MS,
+    warn,
   );
   let output: FfprobeOutput;
   try {
     output = Schema.decodeUnknownSync(FfprobeJson)(result.stdout);
   } catch {
-    logConvertFailure('ffprobe did not return JSON', result.stderr);
+    logConvertFailure(warn, 'ffprobe did not return JSON', result.stderr);
     throw convertFailed();
   }
   const video = (output.streams ?? []).find((stream) => stream.codec_type === 'video');
@@ -210,6 +229,7 @@ async function convertWithFfmpeg(
   inputPath: string,
   outputPath: string,
   codecName: string | undefined,
+  warn: StickerConvertWarn | undefined,
 ): Promise<Uint8Array> {
   for (const quality of QUALITY_LEVELS) {
     await runOrFail(
@@ -240,12 +260,13 @@ async function convertWithFfmpeg(
         outputPath,
       ],
       FFMPEG_TIMEOUT_MS,
+      warn,
     );
     let output: Buffer;
     try {
       output = await readFile(outputPath);
     } catch {
-      logConvertFailure('ffmpeg produced no output', '');
+      logConvertFailure(warn, 'ffmpeg produced no output', '');
       throw convertFailed();
     }
     if (output.byteLength <= STICKER_MAX_BYTES) {
@@ -260,6 +281,7 @@ async function convertWithFfmpeg(
 export function createStickerConverter(paths: StickerConverterPaths = {}): StickerConverter {
   const ffmpeg = paths.ffmpeg ?? 'ffmpeg';
   const ffprobe = paths.ffprobe ?? 'ffprobe';
+  const warn = paths.warn;
 
   return {
     toAnimatedWebp(bytes: Uint8Array, kind: ConvertibleKind): Promise<Uint8Array> {
@@ -269,8 +291,8 @@ export function createStickerConverter(paths: StickerConverterPaths = {}): Stick
           const inputPath = join(dir, `input.${kind}`);
           const outputPath = join(dir, 'out.webp');
           await writeFile(inputPath, bytes);
-          const probed = await probeVideo(ffprobe, inputPath);
-          return await convertWithFfmpeg(ffmpeg, inputPath, outputPath, probed.codecName);
+          const probed = await probeVideo(ffprobe, inputPath, warn);
+          return await convertWithFfmpeg(ffmpeg, inputPath, outputPath, probed.codecName, warn);
         } finally {
           await rm(dir, { recursive: true, force: true }).catch(() => {});
         }
