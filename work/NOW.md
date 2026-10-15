@@ -39,10 +39,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1458: small splits, plus a mock test that had been red on main since T-1355.
   - T-1459: web OpenAI-compatible never reuses an old endpoint.
 - **Main checks:** client-core 162, chat-core 122, xmpp-core 150, protocol 55, runner-tunnel 25 and desk 96 tests pass, plus server 701. The one red mock test is fixed by T-1458.
+- **Then:**
+  - T-1456: the runner-tunnel split;
+  - T-1462: a daily TLS expiry check. The first run passed: the chat.zilar.app certificate ends Dec 31 2026, 77 days left;
+  - T-1463: the mobile chat row title truncates, so "N subscribers" no longer overlaps the time at large fonts (checked on the emulator at 1.3).
 - **Running:**
   - T-1445: mobile New AI. The phone smoke found the sheet's primary key collapsed with no label, and a fix is sent;
-  - T-1456: the runner-tunnel split;
-  - T-1460: the server `app.ts` split.
+  - T-1460: the server `app.ts` split;
+  - T-1461: the budget waits for in-flight spend writes;
+  - T-1464: mobile SearchField at large fonts.
 - **Next:** `main.ts` after `app.ts` deploys cleanly, then the mobile Connections add-key sheet after T-1445.
 - **New canvas for Julio: "Connections"**, https://claude.ai/artifact/FVDHKSMiJaWvjxXx5sa8on. Web and phone, lean:
   - no subtitle and no duplicate heading; "Add key" is the page's primary;

@@ -32,18 +32,20 @@ export function SearchField({
   className,
   placeholderTextColor,
   value,
+  style,
   ...props
 }: SearchFieldProps) {
   return (
     <View
-      className={cn('h-10 flex-row items-center gap-2 rounded-xl px-3', containerClassName)}
+      className={cn('min-h-10 flex-row items-center gap-2 rounded-xl px-3', containerClassName)}
       style={well}
     >
       <Icon size={16} color={MUTED_FOREGROUND} />
       <TextInput
         value={value}
         placeholderTextColor={placeholderTextColor ?? MUTED_FOREGROUND}
-        className={cn('flex-1 text-[15px] text-foreground', className)}
+        className={cn('flex-1 py-0 text-[15px] text-foreground', className)}
+        style={[{ textAlignVertical: 'center' }, style]}
         {...props}
       />
       {onClear !== undefined && typeof value === 'string' && value !== '' ? (
