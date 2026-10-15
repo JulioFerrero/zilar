@@ -114,6 +114,8 @@ export type RoutineStatus = 'active' | 'paused' | 'needs_approval';
 export interface ToolsApi {
   listAiTools(aiId: string): Promise<ToolListItem[]>;
   listAiRoutines(aiId: string): Promise<Routine[]>;
+  listGroupTools(groupId: string): Promise<ToolListItem[]>;
+  listGroupRoutines(groupId: string): Promise<Routine[]>;
 }
 
 /**
@@ -167,6 +169,12 @@ export function createToolsApi(
     },
     async listAiRoutines(aiId) {
       return [...(await runApi(client.routines.listForAi({ params: { id: aiId } })))];
+    },
+    async listGroupTools(groupId) {
+      return [...(await runApi(client.tools.listForGroup({ params: { id: groupId } })))];
+    },
+    async listGroupRoutines(groupId) {
+      return [...(await runApi(client.routines.listForGroup({ params: { id: groupId } })))];
     },
     pauseRoutine(id) {
       return runApi(client.routines.pause({ params: { id } }));

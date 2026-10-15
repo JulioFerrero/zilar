@@ -29,32 +29,53 @@ export type AiActivityState = {
 };
 
 /**
- * Loads the first activity page for one AI. Any failure is the api's own
+ * What the activity list is about: one AI or one group. The audit endpoint
+ * takes exactly one of `aiId` / `groupId` (contract `audit.ts`), so the list
+ * and its paging read the same shape for both scopes (web's `AuditScope`).
+ */
+export type AuditScope = { aiId: string } | { groupId: string };
+
+/** Reads one page of the scope's activity, whichever scope it is. */
+function listScopeActivity(
+  api: AuditApi,
+  scope: AuditScope,
+  before?: string,
+): Promise<{ entries: PublicAuditEntry[]; next: string | null }> {
+  return 'aiId' in scope
+    ? api.listAiAudit(scope.aiId, before)
+    : api.listGroupAudit(scope.groupId, before);
+}
+
+/**
+ * Loads the first activity page for one scope. Any failure is the api's own
  * error, passed through unchanged, so a caller sees the same class.
  */
-export const loadAiActivityEffect = (api: AuditApi, aiId: string) =>
-  Effect.tryPromise({ try: () => api.listAiAudit(aiId), catch: (cause) => cause }).pipe(
+export const loadActivityEffect = (api: AuditApi, scope: AuditScope) =>
+  Effect.tryPromise({ try: () => listScopeActivity(api, scope), catch: (cause) => cause }).pipe(
     Effect.map((page) => ({ entries: page.entries, next: page.next })),
   );
 
-/** Promise form of `loadAiActivityEffect`: any failure throws. */
-export const loadAiActivity = (
+/** Promise form of `loadActivityEffect`: any failure throws. */
+export const loadActivity = (
   api: AuditApi,
-  aiId: string,
+  scope: AuditScope,
 ): Promise<{ entries: PublicAuditEntry[]; next: string | null }> =>
-  Effect.runPromise(loadAiActivityEffect(api, aiId));
+  Effect.runPromise(loadActivityEffect(api, scope));
 
 /**
  * Appends the next activity page, de-duplicated by id (the server cursor is
  * inclusive on retries). Any failure fails the Effect; the caller keeps the rows.
  */
-export const appendAiActivityEffect = (
+export const appendActivityEffect = (
   api: AuditApi,
-  aiId: string,
+  scope: AuditScope,
   before: string,
   current: PublicAuditEntry[],
 ) =>
-  Effect.tryPromise({ try: () => api.listAiAudit(aiId, before), catch: (cause) => cause }).pipe(
+  Effect.tryPromise({
+    try: () => listScopeActivity(api, scope, before),
+    catch: (cause) => cause,
+  }).pipe(
     Effect.map((page) => {
       const seen = new Set(current.map((entry) => entry.id));
       const entries = [...current];
@@ -68,14 +89,14 @@ export const appendAiActivityEffect = (
     }),
   );
 
-/** Promise form of `appendAiActivityEffect`: any failure throws. */
-export const appendAiActivity = (
+/** Promise form of `appendActivityEffect`: any failure throws. */
+export const appendActivity = (
   api: AuditApi,
-  aiId: string,
+  scope: AuditScope,
   before: string,
   current: PublicAuditEntry[],
 ): Promise<{ entries: PublicAuditEntry[]; next: string | null }> =>
-  Effect.runPromise(appendAiActivityEffect(api, aiId, before, current));
+  Effect.runPromise(appendActivityEffect(api, scope, before, current));
 
 function ActivityRow({ entry, now }: { entry: PublicAuditEntry; now: Date }) {
   const at = new Date(entry.at);
@@ -179,10 +200,29 @@ export function AiActivityHeader({ ready, onRefresh }: { ready: boolean; onRefre
   );
 }
 /**
+ * `AiActivity` reads one scope (T-0213, T-1573): the AI edit screen passes
+ * `aiId`, the Group info Activity page passes `groupId`. Exactly one of them
+ * is set. `showHeader` lets the group page use the page's own title instead of
+ * the section's small heading (the board's "no headings" rule); the AI screen
+ * keeps the default.
+ */
+type AiActivityProps = { api: AuditApi; showHeader?: boolean } & (
+  { aiId: string; groupId?: never } | { groupId: string; aiId?: never }
+);
+
+/** The one scope the props hold; both never-set is impossible by construction. */
+function scopeOf(aiId: string | undefined, groupId: string | undefined): AuditScope {
+  return aiId !== undefined ? { aiId } : { groupId: groupId ?? '' };
+}
+
+/**
  * The Activity section of the AI edit screen (T-0213, read only): what the AI
  * did, with web's descriptions and relative times, Refresh, and Load more.
+ * T-1573 lets it read a group's activity too, for the Group info page.
  */
-export function AiActivity({ api, aiId }: { api: AuditApi; aiId: string }) {
+export function AiActivity(props: AiActivityProps) {
+  const { api, showHeader = true } = props;
+  const { aiId, groupId } = props;
   const [state, setState] = useState<AiActivityState>({
     status: 'loading',
     entries: [],
@@ -196,8 +236,9 @@ export function AiActivity({ api, aiId }: { api: AuditApi; aiId: string }) {
   const loadingMoreRef = useRef(false);
 
   useEffect(() => {
-    // Unmount or a new aiId interrupts the load, so a late answer never lands.
-    const load = loadAiActivityEffect(api, aiId).pipe(
+    // Unmount, a new scope or a reload interrupts the load, so a late answer
+    // never lands.
+    const load = loadActivityEffect(api, scopeOf(aiId, groupId)).pipe(
       Effect.matchEffect({
         onFailure: () =>
           Effect.sync(() =>
@@ -225,7 +266,7 @@ export function AiActivity({ api, aiId }: { api: AuditApi; aiId: string }) {
     return () => {
       interruptFiber(fiber);
     };
-  }, [api, aiId, reloadTick]);
+  }, [api, aiId, groupId, reloadTick]);
 
   const loadMore = (): void => {
     if (state.next === null || state.loadingMore || loadingMoreRef.current) {
@@ -236,7 +277,7 @@ export function AiActivity({ api, aiId }: { api: AuditApi; aiId: string }) {
     loadingMoreRef.current = true;
     setState((current) => ({ ...current, loadingMore: true }));
     Effect.runFork(
-      appendAiActivityEffect(api, aiId, cursor, base).pipe(
+      appendActivityEffect(api, scopeOf(aiId, groupId), cursor, base).pipe(
         Effect.matchEffect({
           onFailure: () =>
             Effect.sync(() =>
@@ -273,7 +314,9 @@ export function AiActivity({ api, aiId }: { api: AuditApi; aiId: string }) {
 
   return (
     <View accessibilityLabel="Activity" className="gap-1">
-      <AiActivityHeader ready={state.status === 'ready'} onRefresh={refresh} />
+      {showHeader ? (
+        <AiActivityHeader ready={state.status === 'ready'} onRefresh={refresh} />
+      ) : null}
       <AiActivityContent state={state} onRetry={refresh} onLoadMore={loadMore} />
     </View>
   );

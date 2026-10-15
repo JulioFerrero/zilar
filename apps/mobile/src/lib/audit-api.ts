@@ -23,6 +23,7 @@ export interface AuditPage {
 
 export interface AuditApi {
   listAiAudit(aiId: string, before?: string): Promise<AuditPage>;
+  listGroupAudit(groupId: string, before?: string): Promise<AuditPage>;
 }
 
 /** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
@@ -45,6 +46,18 @@ export function createAuditApi(
         client.audit.list({
           query: {
             aiId,
+            limit: AUDIT_PAGE_LIMIT,
+            ...(before === undefined || before === '' ? {} : { before }),
+          },
+        }),
+      );
+      return { entries: [...page.entries], next: page.next };
+    },
+    async listGroupAudit(groupId, before) {
+      const page = await runApi(
+        client.audit.list({
+          query: {
+            groupId,
             limit: AUDIT_PAGE_LIMIT,
             ...(before === undefined || before === '' ? {} : { before }),
           },

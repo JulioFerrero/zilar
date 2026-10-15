@@ -1,0 +1,81 @@
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { ChevronLeft } from 'lucide-react-native';
+import { ScrollView, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import {
+  ROUTINES_LOAD_FAILED_MESSAGE,
+  RoutinesSectionContent,
+  type RoutinesSectionState,
+} from '@/components/ais/routines-section';
+import { ToolsSectionContent, sectionStateOf } from '@/components/ais/tools-section';
+import { useToolsApi } from '@/components/ais/use-tools-api';
+import { IconButton } from '@/components/ui/icon-button';
+import { Text } from '@/components/ui/text';
+import { ICON } from '@/lib/colors';
+import { useQuery } from '@/lib/effect/use-query';
+import { ToolsApiError, type Routine, type ToolListItem, type ToolsApi } from '@/lib/tools-api';
+
+/**
+ * The Tools and routines page of Group info (T-1573), after `Phone.dc.html`
+ * and the web group panel: the group-scoped tools and routines, read only.
+ * The rows and the loading/error/empty states are the AI screen's own
+ * `ToolsSectionContent` / `RoutinesSectionContent`.
+ */
+
+/** A 404 or an unparseable response: the list reads as empty, not an error. */
+const isEmptyListError = (error: unknown): boolean =>
+  error instanceof ToolsApiError && (error.status === 404 || error.code === 'invalid_response');
+
+/** Loads the group's tools; a missing or unparseable list reads as empty. */
+const loadGroupTools = (api: ToolsApi, groupId: string) =>
+  Effect.tryPromise({ try: () => api.listGroupTools(groupId), catch: (error) => error }).pipe(
+    Effect.catchIf(isEmptyListError, () => Effect.succeed<ToolListItem[]>([])),
+  );
+
+/** Loads the group's routines; a missing or unparseable list reads as empty. */
+const loadGroupRoutines = (api: ToolsApi, groupId: string) =>
+  Effect.tryPromise({ try: () => api.listGroupRoutines(groupId), catch: (cause) => cause }).pipe(
+    Effect.catchIf(isEmptyListError, () => Effect.succeed<Routine[]>([])),
+  );
+
+/** The routines body state; the tools side uses `sectionStateOf`. */
+function routinesStateOf(load: AsyncResult.AsyncResult<Routine[], unknown>): RoutinesSectionState {
+  if (AsyncResult.isSuccess(load)) {
+    return { status: 'ready', routines: load.value, message: '' };
+  }
+  if (AsyncResult.isFailure(load)) {
+    return { status: 'error', routines: [], message: ROUTINES_LOAD_FAILED_MESSAGE };
+  }
+  return { status: 'loading', routines: [], message: '' };
+}
+
+export function ToolsPage({ groupId, onBack }: { groupId: string; onBack: () => void }) {
+  const { api } = useToolsApi();
+  const [toolsLoad, reloadTools] = useQuery(() => loadGroupTools(api, groupId), [api, groupId]);
+  const [routinesLoad, reloadRoutines] = useQuery(
+    () => loadGroupRoutines(api, groupId),
+    [api, groupId],
+  );
+
+  return (
+    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+      <View className="h-14 flex-row items-center gap-2 px-3">
+        <IconButton label="Back" onPress={onBack}>
+          <ChevronLeft size={18} color={ICON} />
+        </IconButton>
+        <Text className="text-[28px] font-semibold tracking-[-0.02em] text-foreground">
+          Tools and routines
+        </Text>
+      </View>
+
+      <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+        <View className="gap-3 px-4 pt-1">
+          <ToolsSectionContent state={sectionStateOf(toolsLoad, [])} onRetry={reloadTools} />
+          <RoutinesSectionContent state={routinesStateOf(routinesLoad)} onRetry={reloadRoutines} />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}

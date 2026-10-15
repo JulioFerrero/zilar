@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Trash2 } from 'lucide-react-native';
-import { useEffect, useMemo, useState } from 'react';
+import { type ComponentProps, useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
@@ -11,9 +11,15 @@ import { useGroupInviteLinks } from '@/components/chat/use-group-invite-links';
 import { useGroupRoles } from '@/components/chat/use-group-roles';
 import { useGroupVisibility } from '@/components/chat/use-group-visibility';
 import { VisibilitySheet } from '@/components/chat/visibility-sheet';
-import { GroupInfoRoot } from '@/components/group-info/root-page';
-import { AisPage } from '@/components/group-info/ais-page';
+import { useGroupRules } from '@/components/group-info/allowed-page';
+import {
+  GroupContentSheets,
+  GroupInfoPages,
+  type GroupInfoPage,
+  useGroupContent,
+} from '@/components/group-info/group-info-pages';
 import { MembersPage } from '@/components/group-info/members-page';
+import { GroupInfoRoot } from '@/components/group-info/root-page';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
@@ -50,7 +56,8 @@ function GroupInfo() {
   const [leaveOpen, setLeaveOpen] = useState(false);
   // T-1569: the Group info page switch. The pages are rendered beside the
   // sheets so the Members page's Invite links and Roles rows reuse them.
-  const [page, setPage] = useState<'root' | 'members' | 'ais'>('root');
+  // T-1573 adds the Content pages (tools, activity, always allowed).
+  const [page, setPage] = useState<GroupInfoPage>('root');
   // The root's Add key lands on the Members page with the picker already open.
   const [pickerOnMount, setPickerOnMount] = useState(false);
 
@@ -78,6 +85,10 @@ function GroupInfo() {
   const roles = useGroupRoles(groupId, members);
   const links = useGroupInviteLinks(groupId);
   const visibility = useGroupVisibility(groupId);
+  // T-1573: the Content rows' sheets (media and pins, chat-scoped) and the
+  // pins count; the always-allowed rules feed the root count and the page.
+  const content = useGroupContent(groupChatId);
+  const groupRules = useGroupRules(groupId, isManager);
 
   const closeDelete = () => {
     if (!manage.busy) {
@@ -119,8 +130,16 @@ function GroupInfo() {
     }
   };
 
-  const openAis = () => {
-    setPage('ais');
+  const openActivity = () => {
+    if (isManager) {
+      setPage('activity');
+    }
+  };
+
+  const openAllowed = () => {
+    if (isManager) {
+      setPage('allowed');
+    }
   };
 
   const closePage = () => {
@@ -128,52 +147,63 @@ function GroupInfo() {
     setPage('root');
   };
 
-  const pageContent =
-    page === 'members' ? (
-      <MembersPage
-        groupId={groupId}
-        members={members}
-        roles={roles.roles}
-        me={currentUserId}
-        isManager={isManager}
-        isOwner={isOwner}
-        contacts={contacts}
-        openPickerOnMount={pickerOnMount}
-        onOpenLinks={openLinks}
-        onOpenRoles={openRoles}
-        onBack={closePage}
-      />
-    ) : page === 'ais' ? (
-      <AisPage groupId={groupId} ais={groupAis} isManager={isManager} onBack={closePage} />
-    ) : (
-      <GroupInfoRoot
-        groupChatId={groupChatId ?? groupId}
-        chatReady={chatReady}
-        title={groupTitle}
-        memberCount={groupDetail === undefined ? undefined : members.length + groupAis.length}
-        peopleCount={groupDetail === undefined ? undefined : members.length}
-        aisCount={groupDetail === undefined ? undefined : groupAis.length}
-        isManager={isManager}
-        isOwner={isOwner}
-        onBack={() => goBackOrHome(router)}
-        onSearch={() => {
-          if (groupChatId !== undefined) {
-            router.push({ pathname: '/', params: { searchChat: groupChatId } });
-          }
-        }}
-        onAdd={openMembersWithPicker}
-        onMore={() => setMoreOpen(true)}
-        onOpenMembers={openMembers}
-        onOpenAis={openAis}
-        onOpenLinks={openLinks}
-        onOpenSettings={openSettings}
-        onLeave={() => setLeaveOpen(true)}
-      />
-    );
+  const rootProps: ComponentProps<typeof GroupInfoRoot> = {
+    groupChatId: groupChatId ?? groupId,
+    chatReady,
+    title: groupTitle,
+    memberCount: groupDetail === undefined ? undefined : members.length + groupAis.length,
+    peopleCount: groupDetail === undefined ? undefined : members.length,
+    aisCount: groupDetail === undefined ? undefined : groupAis.length,
+    pinsCount: content.pinsCount,
+    allowedCount: groupRules.status === 'ready' ? groupRules.rules.length : undefined,
+    isManager,
+    isOwner,
+    onBack: () => goBackOrHome(router),
+    onSearch: () => {
+      if (groupChatId !== undefined) {
+        router.push({ pathname: '/', params: { searchChat: groupChatId } });
+      }
+    },
+    onAdd: openMembersWithPicker,
+    onMore: () => setMoreOpen(true),
+    onOpenMembers: openMembers,
+    onOpenAis: () => setPage('ais'),
+    onOpenLinks: openLinks,
+    onOpenSettings: openSettings,
+    onLeave: () => setLeaveOpen(true),
+    onOpenMedia: content.openMedia,
+    onOpenPins: content.openPins,
+    onOpenTools: () => setPage('tools'),
+    onOpenActivity: openActivity,
+    onOpenAllowed: openAllowed,
+  };
+
+  const membersProps: ComponentProps<typeof MembersPage> = {
+    groupId,
+    members,
+    roles: roles.roles,
+    me: currentUserId,
+    isManager,
+    isOwner,
+    contacts,
+    openPickerOnMount: pickerOnMount,
+    onOpenLinks: openLinks,
+    onOpenRoles: openRoles,
+    onBack: closePage,
+  };
 
   return (
     <>
-      {pageContent}
+      <GroupInfoPages
+        page={page}
+        onBack={closePage}
+        groupId={groupId}
+        ais={groupAis}
+        isManager={isManager}
+        rules={groupRules}
+        root={rootProps}
+        members={membersProps}
+      />
 
       <ActionSheet
         visible={moreOpen}
@@ -298,6 +328,8 @@ function GroupInfo() {
         onCancelPrivate={visibility.cancelPrivate}
         onClose={visibility.close}
       />
+
+      <GroupContentSheets content={content} />
     </>
   );
 }

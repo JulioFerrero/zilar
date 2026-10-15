@@ -1,4 +1,16 @@
-import { Bot, ChevronLeft, Link2, LogOut, Settings, Users } from 'lucide-react-native';
+import {
+  Activity,
+  Bot,
+  ChevronLeft,
+  Image,
+  Link2,
+  LogOut,
+  Pin,
+  Settings,
+  ShieldCheck,
+  Users,
+  Wrench,
+} from 'lucide-react-native';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -21,6 +33,10 @@ type GroupInfoRootProps = {
   peopleCount: number | undefined;
   /** The group's AIs, for the AIs row; `undefined` when not loaded. */
   aisCount: number | undefined;
+  /** The group chat's pins, for the Pinned messages row; `undefined` when not loaded. */
+  pinsCount: number | undefined;
+  /** The group's always-allowed rules; `undefined` when not loaded. */
+  allowedCount: number | undefined;
   isManager: boolean;
   isOwner: boolean;
   onBack: () => void;
@@ -32,16 +48,23 @@ type GroupInfoRootProps = {
   onOpenLinks: () => void;
   onOpenSettings: () => void;
   onLeave: () => void;
+  onOpenMedia: () => void;
+  onOpenPins: () => void;
+  onOpenTools: () => void;
+  onOpenActivity: () => void;
+  onOpenAllowed: () => void;
 };
 
 const memberLabel = (count: number): string => `${count} ${count === 1 ? 'member' : 'members'}`;
 
 /**
  * The group info root page (T-1552), after `Phone.dc.html`: a back key, the
- * group picture, name and combined member count, the four keys, the People and
- * Settings rows, and the red Leave group row for non-owners. Thin view: the
- * route mounts the sheets and owns the writes. T-1569 adds the AIs row and
- * disables the keys until the group's own chat row is loaded.
+ * group picture, name and combined member count, the four keys, the People,
+ * Content and Settings rows, and the red Leave group row for non-owners. Thin
+ * view: the route mounts the sheets and owns the writes. T-1569 adds the AIs
+ * row and disables the keys until the group's own chat row is loaded; T-1573
+ * adds the Content group (Shared media, Pinned messages, Tools and routines,
+ * and Activity and Always allowed for managers).
  */
 export function GroupInfoRoot({
   groupChatId,
@@ -50,6 +73,8 @@ export function GroupInfoRoot({
   memberCount,
   peopleCount,
   aisCount,
+  pinsCount,
+  allowedCount,
   isManager,
   isOwner,
   onBack,
@@ -61,6 +86,11 @@ export function GroupInfoRoot({
   onOpenLinks,
   onOpenSettings,
   onLeave,
+  onOpenMedia,
+  onOpenPins,
+  onOpenTools,
+  onOpenActivity,
+  onOpenAllowed,
 }: GroupInfoRootProps) {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
@@ -105,6 +135,26 @@ export function GroupInfoRoot({
             <InfoRow icon={Users} label="Members" count={peopleCount} onPress={onOpenMembers} />
             <InfoRow icon={Bot} label="AIs" count={aisCount} onPress={onOpenAis} />
             {isManager ? <InfoRow icon={Link2} label="Invite links" onPress={onOpenLinks} /> : null}
+          </InfoRowGroup>
+
+          {/* T-1573: the Content group, between People and Settings, after
+              `Phone.dc.html:64-90`. Activity and Always allowed are for
+              managers; every row opens a page. */}
+          <InfoRowGroup>
+            <InfoRow icon={Image} label="Shared media" onPress={onOpenMedia} />
+            <InfoRow icon={Pin} label="Pinned messages" count={pinsCount} onPress={onOpenPins} />
+            <InfoRow icon={Wrench} label="Tools and routines" onPress={onOpenTools} />
+            {isManager ? (
+              <InfoRow icon={Activity} label="Activity" onPress={onOpenActivity} />
+            ) : null}
+            {isManager ? (
+              <InfoRow
+                icon={ShieldCheck}
+                label="Always allowed"
+                count={allowedCount}
+                onPress={onOpenAllowed}
+              />
+            ) : null}
           </InfoRowGroup>
 
           {isOwner ? (

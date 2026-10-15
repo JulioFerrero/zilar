@@ -58,10 +58,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - a question closes on the first reply or after 24 h;
     - the activity carries the question's message id;
     - topics only.
-  - **Running (3):**
-    - T-1569 (phone Group info T2: Members and AIs pages, store add/remove actions, T1 nits);
-    - T-1570 (split `group-turn-body.ts` before the handoff marker);
-    - T-1571 (questions step 3: migration `0066_ai_questions.sql` and the service; the only schema task).
+  - **Also merged:**
+    - T-1569 (phone Group info T2: Members and AIs pages; smoke shows Members 4, AIs 2);
+    - T-1570 (split `group-turn-body.ts`);
+    - T-1571 (questions step 3: migration `0066_ai_questions.sql` and the service, with a cap of 20 open questions per AI). **Live at `55db3a8e1`:** 0 errors; the `ai_questions` table has 14 columns, its 3 indexes and the primary key.
+  - **Running (2):**
+    - T-1572 (handoff step 1: the `handoff.line` payload on AI replies; the phone falls back to text for a card it does not render);
+    - T-1573 (phone Group info T3: the Content group and its pages).
+  - **Notes for the later question steps:** step 4 must stamp `message_id` only on an open row. Steps 6 and 7 must check that the person can see the topic (same 404 for unknown and forbidden), and step 7 must add a `LIMIT` to `listOpenQuestions`.
   - **Full check on main `2c2c08d25`:** green, with typecheck 16/16 and 1,917 tests (13 packages).
   - **Decisions (Julio, 10-15):** the topic link moves to a row in the topic info panel (T8 keeps `link_url`/`link_label`); the last @mentioned AI follows a topic.
   - **Next to spec:**
