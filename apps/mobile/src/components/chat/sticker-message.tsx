@@ -1,8 +1,9 @@
 import { formatTime, type UiMessage } from '@zilar/chat-core';
 import type { Sticker } from '@zilar/protocol';
 import { Effect, Fiber } from 'effect';
+import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
-import { Image, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { Ticks } from '@/components/chat/ticks';
 import { Text } from '@/components/ui/text';
@@ -72,7 +73,7 @@ export function StickerMessage({ sticker, message, outgoing, onLongPress }: Stic
           accessibilityLabel={alt}
           onError={() => setBroken(true)}
           style={{ width: STICKER_SIZE, aspectRatio: ratio, maxHeight: STICKER_SIZE }}
-          resizeMode="contain"
+          contentFit="contain"
         />
       ) : (
         <View

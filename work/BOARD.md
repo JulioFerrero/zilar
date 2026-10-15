@@ -1517,3 +1517,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1501](T-1501-web-sticker-motion.md) | Web sticker upload keeps GIF and video motion | 2026-10-15 |
 | [T-1504](T-1504-ai-last-failure.md) | AI list carries each AI's last unanswered failure | 2026-10-15 |
 | [T-1503](T-1503-web-connections.md) | Web Connections: one key list with status dots and a menu | 2026-10-15 |
+| [T-1507](T-1507-mobile-stickers-expo-image.md) | Phone stickers render with expo-image so they move | 2026-10-15 |

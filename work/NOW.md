@@ -12,7 +12,8 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1502 (the Telegram importer keeps video stickers) merged and live at `3bb8c90aa` (0 errors, 0 warnings);
   - T-1501 (web sticker upload keeps motion) merged; the New pack grid follows;
   - T-1504 (AI `lastFailure` on the AI list) merged;
-  - T-1508 (web Group info step 2) is running;
+  - T-1507 (phone stickers render with `expo-image`) merged; the mock smoke passed. Check an animated sticker on Julio's next phone build;
+  - T-1508 (web Group info step 2), T-1509 (web New pack grid), T-1510 (web My AIs with health) and T-1506 (web lean Settings) are running;
   - T-1503 (web Connections) merged, checked headless;
   - T-1505 (AI work step 1, the server read model plus an index migration) and T-1507 (phone stickers render with `expo-image`) are running;
   - T-1506 (web lean Settings) is specced and waits for T-1503.

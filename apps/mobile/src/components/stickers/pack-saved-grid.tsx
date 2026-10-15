@@ -1,5 +1,6 @@
+import { Image } from 'expo-image';
 import { ImagePlus, X } from 'lucide-react-native';
-import { Image as RNImage, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
@@ -55,10 +56,10 @@ export function PackSavedGrid({
             style={{ width: tile, height: tile }}
           >
             {isSameOriginStickerUrl(sticker.url, API_URL) ? (
-              <RNImage
+              <Image
                 source={stickerImageSource(sticker.url, API_URL, token)}
                 style={{ width: tile - 8, height: tile - 8 }}
-                resizeMode="contain"
+                contentFit="contain"
               />
             ) : null}
             {sticker.emoji !== null ? (

@@ -1,5 +1,6 @@
+import { Image } from 'expo-image';
 import { Sticker } from 'lucide-react-native';
-import { Image, View } from 'react-native';
+import { View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
@@ -55,7 +56,7 @@ export function PackCard({
                   <Image
                     source={stickerImageSource(sticker.url, API_URL, token)}
                     style={{ width: 28, height: 28 }}
-                    resizeMode="contain"
+                    contentFit="contain"
                   />
                 ) : null}
               </View>

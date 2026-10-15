@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
+import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, View } from 'react-native';
+import { Modal, Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { StateMessage } from '@/components/ui/state-message';
@@ -306,7 +307,7 @@ function StickerThumb({
       source={stickerImageSource(sticker.url, API_URL, token)}
       accessibilityLabel={label}
       style={{ width: size, height: size }}
-      resizeMode="contain"
+      contentFit="contain"
     />
   );
 }

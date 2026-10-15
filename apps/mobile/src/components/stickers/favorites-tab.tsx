@@ -1,5 +1,6 @@
+import { Image } from 'expo-image';
 import { Star } from 'lucide-react-native';
-import { Image, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { StateMessage } from '@/components/ui/state-message';
@@ -46,7 +47,7 @@ export function FavoritesTab({
                   source={stickerImageSource(sticker.url, API_URL, token)}
                   accessibilityLabel={sticker.emoji ?? 'Sticker'}
                   style={{ width: tile - 8, height: tile - 8 }}
-                  resizeMode="contain"
+                  contentFit="contain"
                 />
               ) : (
                 <Text accessibilityLabel={sticker.emoji ?? 'Sticker'}>{sticker.emoji ?? ''}</Text>
