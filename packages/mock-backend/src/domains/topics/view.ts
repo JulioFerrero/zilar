@@ -55,6 +55,13 @@ export function buildTopicView(topic: MockTopic, source: TopicViewSource): Topic
     ais: topic.aiIds.map((aiId) => ({ id: aiId, name: source.aiName(aiId) })),
     roles,
     approverRole: approver === null ? null : { id: approver.id, name: approver.name },
+    // T-1514: the topic's AI activity, empty for an idle topic.
+    activity: (topic.activity ?? []).map((entry) => ({
+      aiId: entry.aiId,
+      name: entry.name,
+      ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
+      state: entry.state,
+    })),
   };
 }
 

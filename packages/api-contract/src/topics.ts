@@ -180,6 +180,19 @@ export const ApproverRole = mutableStruct({ id: Schema.String, name: Schema.Stri
 export type ApproverRole = typeof ApproverRole.Type;
 
 /**
+ * T-1514: one AI at work in a topic. `state` stays a plain string so a newer
+ * server's state still decodes; the client keeps the three it knows.
+ */
+export const TopicActivity = mutableStruct({
+  aiId: Schema.String,
+  name: Schema.String,
+  avatarUrl: Schema.optional(Schema.String),
+  state: Schema.String,
+});
+
+export type TopicActivity = typeof TopicActivity.Type;
+
+/**
  * A topic row. An unknown `kind`, `status` or `visibility` from a newer server
  * reads as `chat`, `open` and `private` (hiding is safer than leaking).
  * `roles` and `approverRole` are absent on older servers.
@@ -202,6 +215,9 @@ export const Topic = mutableStruct({
   ais: Schema.mutable(Schema.Array(TopicAi)),
   roles: Schema.optional(Schema.mutable(Schema.Array(TopicRole))),
   approverRole: Schema.optional(Schema.NullOr(ApproverRole)),
+  /** T-1514: the AIs at work in this topic (idle ones left out). Absent on
+   * older servers and on the single-topic routes. */
+  activity: Schema.optional(Schema.mutable(Schema.Array(TopicActivity))),
 });
 
 export type Topic = typeof Topic.Type;

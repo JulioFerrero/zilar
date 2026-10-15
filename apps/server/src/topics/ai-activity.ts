@@ -10,8 +10,10 @@
 import { Effect } from 'effect';
 import { SqlClient, type Statement } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
-import type { TurnWatcher } from '../agents/gateway/stop-types';
+import type { TurnStopper, TurnWatcher } from '../agents/gateway/stop-types';
+import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import { runSql } from '../effect/sql';
+import type { TopicActivityEntry, TopicView } from './access';
 
 export type AiActivityState = 'working' | 'waiting' | 'done';
 
@@ -123,6 +125,99 @@ export async function topicAiActivity(
     );
   }
   return activity;
+}
+
+// T-1514: the app's `getGateway` is typed as a `TurnStopper` (its stop-turn
+// user); the live gateway also carries the `TurnWatcher` read model. Hand the
+// gateway over as a watcher only when it has one, so a stop-only double reads
+// as nobody working instead of throwing.
+export function turnWatcherOf(gateway: TurnStopper | TurnWatcher | null): TurnWatcher | null {
+  return gateway !== null && 'runningAiIds' in gateway ? gateway : null;
+}
+
+// T-1514: the topic list's AI activity. One `topicAiActivity` call covers the
+// whole batch; one read then loads the names and one the pictures of every AI
+// that appears. Best-effort like the read model: any failure leaves every
+// view's `activity` empty rather than failing the list.
+export interface TopicActivityDeps {
+  db: ServerDatabase;
+  /** Absent when the gateway is off; read as "no AI is working". */
+  getGateway?: () => TurnWatcher | null;
+}
+
+export async function withTopicActivity(
+  deps: TopicActivityDeps,
+  views: TopicView[],
+): Promise<TopicView[]> {
+  if (views.length === 0) {
+    return views;
+  }
+  try {
+    const topics: AiActivityTopic[] = views.map((view) => ({
+      topicId: view.id,
+      groupId: view.groupId,
+      roomJid: view.chatJid,
+      isGeneral: view.isGeneral,
+    }));
+    const activity = await topicAiActivity(
+      { db: deps.db, getGateway: deps.getGateway ?? (() => null) },
+      topics,
+    );
+    const aiIds = [...new Set([...activity.values()].flat().map((entry) => entry.aiId))];
+    const names = await aiNamesById(deps.db, aiIds);
+    const avatars = await avatarIdsByOwner(deps.db, 'ai', aiIds);
+    return views.map((view) => ({
+      ...view,
+      activity: activityEntries(activity.get(view.id) ?? [], names, avatars),
+    }));
+  } catch {
+    return views.map((view) => ({ ...view, activity: [] }));
+  }
+}
+
+const STATE_ORDER: Record<AiActivityState, number> = { working: 0, waiting: 1, done: 2 };
+
+// The entries of one view, named by the AI rows and ordered working, then
+// waiting, then done, then by name. An AI with no name row is left out.
+function activityEntries(
+  entries: TopicAiActivity[],
+  names: Map<string, string>,
+  avatars: Map<string, string>,
+): TopicActivityEntry[] {
+  const rows: TopicActivityEntry[] = [];
+  for (const entry of entries) {
+    const name = names.get(entry.aiId);
+    if (name === undefined) {
+      continue;
+    }
+    const avatarId = avatars.get(entry.aiId);
+    rows.push({
+      aiId: entry.aiId,
+      name,
+      ...(avatarId === undefined ? {} : { avatarUrl: avatarUrlFor(avatarId) }),
+      state: entry.state,
+    });
+  }
+  return rows.sort(
+    (left, right) =>
+      STATE_ORDER[left.state] - STATE_ORDER[right.state] || left.name.localeCompare(right.name),
+  );
+}
+
+// One read for the whole batch: the names of the AIs that appear in it.
+async function aiNamesById(db: ServerDatabase, aiIds: string[]): Promise<Map<string, string>> {
+  if (aiIds.length === 0) {
+    return new Map();
+  }
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string; name: string }>`SELECT id, name FROM ais
+        WHERE id IN ${sql.in(aiIds)}`;
+    }),
+  );
+  return new Map(rows.map((row) => [row.id, row.name]));
 }
 
 function addTo(index: Map<string, Set<string>>, key: string, value: string): void {

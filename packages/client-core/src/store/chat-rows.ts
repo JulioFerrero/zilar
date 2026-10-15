@@ -12,7 +12,13 @@
 // name, never a sender id, so `senderId` carries the sender name (display
 // only: the row preview reads `senderName`, never `senderId`). The merge rule
 // (`mergeUnread`) lives here too, so no barrel change is needed.
-import type { ChatSummary, TopicInfo, UiMessage } from '@zilar/chat-core';
+import type {
+  ChatSummary,
+  TopicAiActivity,
+  TopicAiState,
+  TopicInfo,
+  UiMessage,
+} from '@zilar/chat-core';
 import { Exit, Schema } from 'effect';
 import {
   Topic as TopicSchema,
@@ -185,7 +191,30 @@ function topicInfoOf(topic: Topic): TopicInfo {
     owner: topic.owner,
     linkUrl: topic.linkUrl,
     linkLabel: topic.linkLabel,
+    activity: topicActivityOf(topic),
   };
+}
+
+// T-1514: the AI activity of one topic. A missing field (an older server) or an
+// entry with an unknown state (a newer one) is left out; the known three keep,
+// in the server's order.
+function topicActivityOf(topic: Topic): TopicAiActivity[] {
+  const rows: TopicAiActivity[] = [];
+  for (const entry of topic.activity ?? []) {
+    if (isTopicAiState(entry.state)) {
+      rows.push({
+        aiId: entry.aiId,
+        name: entry.name,
+        ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
+        state: entry.state,
+      });
+    }
+  }
+  return rows;
+}
+
+function isTopicAiState(state: string): state is TopicAiState {
+  return state === 'working' || state === 'waiting' || state === 'done';
 }
 
 /** One DM, or one group without topics, maps to a single row. */

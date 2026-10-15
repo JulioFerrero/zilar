@@ -7,6 +7,7 @@ import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { ChatsGroup } from '@zilar/api-contract';
 import type { Logger } from 'pino';
 import { listAis } from '../ais/service';
+import type { TurnWatcher } from '../agents/gateway/stop-types';
 import type { Auth } from '../auth/auth';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerConfig } from '../config';
@@ -15,6 +16,7 @@ import type { ServerDatabase } from '../db/client';
 import { listGroupsForUser, type GroupBackground, type GroupRole } from '../groups/service';
 import { type ArchivePool } from '../search/service';
 import { toTopicViews, type TopicView } from '../topics/access';
+import { withTopicActivity } from '../topics/ai-activity';
 import { visibleTopicsForGroups } from '../topics/visible-batch';
 import {
   handler,
@@ -123,6 +125,8 @@ export interface ChatsApiDependencies {
   // T-1245: the ejabberd admin client the live delivered notice sends through.
   // Optional: with no client the notice is skipped and nothing else changes.
   adminClient?: EjabberdAdminClient;
+  /** T-1514: the live gateway's turn read model for each topic's AI activity. */
+  getGateway?: () => TurnWatcher | null;
   /** Injected in tests so the rate-limit window can advance without waiting. */
   now?: () => number;
 }
@@ -230,11 +234,14 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
                 user.id,
               ),
             );
-            const views = yield* Effect.promise(() =>
-              toTopicViews(
-                deps.db,
-                groupEntries.flatMap((entry) => topicsByGroup.get(entry.groupId) ?? []),
-                deps.config.xmpp.mucDomain,
+            const views = yield* Effect.promise(async () =>
+              withTopicActivity(
+                deps,
+                await toTopicViews(
+                  deps.db,
+                  groupEntries.flatMap((entry) => topicsByGroup.get(entry.groupId) ?? []),
+                  deps.config.xmpp.mucDomain,
+                ),
               ),
             );
             // `toTopicViews` sorts General-first then by name; splitting its

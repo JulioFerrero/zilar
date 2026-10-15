@@ -5,7 +5,13 @@ import { SqlClient } from 'effect/sql';
 import type { TurnWatcher } from '../agents/gateway/stop-types';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
-import { topicAiActivity, type AiActivityState, type AiActivityTopic } from './ai-activity';
+import {
+  topicAiActivity,
+  withTopicActivity,
+  type AiActivityState,
+  type AiActivityTopic,
+} from './ai-activity';
+import type { TopicView } from './access';
 
 const ROOM_GENERAL = 'general@rooms.zilar.localhost';
 const ROOM_SECOND = 'second@rooms.zilar.localhost';
@@ -356,5 +362,100 @@ describe('topicAiActivity (T-1505)', () => {
     expect(states(activity, fixture.secondTopicId)).toEqual([
       { aiId: fixture.aiId, state: 'working' },
     ]);
+  });
+});
+
+function viewOf(topicId: string, groupId: string, chatJid: string, isGeneral: boolean): TopicView {
+  return {
+    id: topicId,
+    groupId,
+    name: isGeneral ? 'General' : 'Second',
+    glyph: 'T',
+    chatJid,
+    visibility: 'public',
+    kind: 'chat',
+    status: 'open',
+    owner: null,
+    linkUrl: null,
+    linkLabel: null,
+    isGeneral,
+    archived: false,
+    memberCount: 1,
+    ais: [],
+    roles: [],
+    approverRole: null,
+  };
+}
+
+describe('withTopicActivity (T-1514)', () => {
+  let fixture: Fixture;
+
+  beforeEach(async () => {
+    fixture = await seedFixture();
+  });
+
+  afterEach(async () => {
+    await fixture.context.close();
+  });
+
+  it('adds the names in state order for two views', async () => {
+    const { aiId: qaAiId } = await seedAi(fixture.context, fixture.ownerId, { name: 'QA-1' });
+    // General: QA-1 waits on an approval, Dev-1's last card is done.
+    await seedApproval(fixture.context, {
+      aiId: qaAiId,
+      groupId: fixture.groupId,
+      topicId: fixture.generalTopicId,
+      requestedBy: fixture.ownerId,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await seedCard(fixture.context, {
+      aiId: fixture.aiId,
+      ownerId: fixture.ownerId,
+      chatJid: ROOM_GENERAL,
+      stage: 'card_done',
+      at: new Date(Date.now() - 60_000),
+      taskId: randomUUID(),
+      seq: 1,
+    });
+    // Second: Dev-1 works, QA-1 waits.
+    await seedApproval(fixture.context, {
+      aiId: qaAiId,
+      groupId: fixture.groupId,
+      topicId: fixture.secondTopicId,
+      requestedBy: fixture.ownerId,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    const views = await withTopicActivity(
+      {
+        db: fixture.context.db,
+        getGateway: () => fakeGateway({ [ROOM_SECOND]: [fixture.aiId] }),
+      },
+      [
+        viewOf(fixture.generalTopicId, fixture.groupId, ROOM_GENERAL, true),
+        viewOf(fixture.secondTopicId, fixture.groupId, ROOM_SECOND, false),
+      ],
+    );
+
+    expect(views[0]?.activity).toEqual([
+      { aiId: qaAiId, name: 'QA-1', state: 'waiting' },
+      { aiId: fixture.aiId, name: 'Helper AI', state: 'done' },
+    ]);
+    expect(views[1]?.activity).toEqual([
+      { aiId: fixture.aiId, name: 'Helper AI', state: 'working' },
+      { aiId: qaAiId, name: 'QA-1', state: 'waiting' },
+    ]);
+  });
+
+  it('leaves every view empty when the read fails', async () => {
+    const views = await withTopicActivity(
+      { db: { kind: 'postgres', url: 'postgres://unused' }, getGateway: () => null },
+      [
+        viewOf(fixture.generalTopicId, fixture.groupId, ROOM_GENERAL, true),
+        viewOf(fixture.secondTopicId, fixture.groupId, ROOM_SECOND, false),
+      ],
+    );
+
+    expect(views.map((view) => view.activity)).toEqual([[], []]);
   });
 });

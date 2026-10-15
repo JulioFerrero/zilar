@@ -130,6 +130,17 @@ export interface TopicOwner {
   name: string;
 }
 
+/** T-1514: the three AI activity states a topic row may carry. */
+export type TopicAiState = 'working' | 'waiting' | 'done';
+
+/** T-1514: one AI at work in a topic, as the list shows it. */
+export interface TopicAiActivity {
+  aiId: string;
+  name: string;
+  avatarUrl?: string;
+  state: TopicAiState;
+}
+
 /**
  * The task strip of a group topic (T-0111). Present only on chats that are
  * topics; absent on DMs and AI chats. The General topic carries `isGeneral`
@@ -146,6 +157,8 @@ export interface TopicInfo {
   owner: TopicOwner | null;
   linkUrl: string | null;
   linkLabel: string | null;
+  /** T-1514: the AIs at work in this topic, idle ones left out. */
+  activity: TopicAiActivity[];
 }
 
 export interface ChatSummary {

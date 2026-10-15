@@ -12,6 +12,7 @@ import type { GroupMemberRow, TopicRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { holdsTopicRole, topicRoleHolderIds } from '../roles/service';
+import type { AiActivityState } from './ai-activity';
 
 export const topicVisibilitySchema = Schema.Literals(['public', 'private']);
 export type TopicVisibility = typeof topicVisibilitySchema.Type;
@@ -42,6 +43,14 @@ export interface TopicRoleView {
   memberCount: number;
 }
 
+/** T-1514: one AI at work in a topic, with its state and its picture. */
+export interface TopicActivityEntry {
+  aiId: string;
+  name: string;
+  avatarUrl?: string;
+  state: AiActivityState;
+}
+
 export interface TopicView {
   id: string;
   groupId: string;
@@ -63,6 +72,9 @@ export interface TopicView {
   roles: TopicRoleView[];
   /** T-0116: the role whose holders may decide approvals here, if any. */
   approverRole: { id: string; name: string } | null;
+  /** T-1514: the AIs at work in this topic (idle ones left out), filled on the
+   * list routes only; absent on the single-topic routes. */
+  activity?: TopicActivityEntry[];
 }
 
 export interface TopicAiView {

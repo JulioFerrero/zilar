@@ -12,6 +12,17 @@ export interface MockTopicOwner {
   readonly name: string;
 }
 
+/** T-1514: the three AI activity states a mock topic row may carry. */
+export type MockTopicAiState = 'working' | 'waiting' | 'done';
+
+/** T-1514: one AI at work in a topic, mirroring the wire shape. */
+export interface MockTopicActivity {
+  readonly aiId: string;
+  readonly name: string;
+  readonly avatarUrl?: string;
+  readonly state: MockTopicAiState;
+}
+
 /**
  * One live topic. The plain fields are patched in place through `putTopic`; the
  * id lists are always replaced, never mutated.
@@ -34,6 +45,8 @@ export interface MockTopic {
   aiIds: string[];
   roleIds: string[];
   approverRoleId: string | null;
+  /** T-1514: the AIs at work here; absent on most rows (idle). */
+  activity?: readonly MockTopicActivity[];
 }
 
 declare module '../../data' {

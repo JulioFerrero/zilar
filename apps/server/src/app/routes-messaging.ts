@@ -2,6 +2,7 @@
 // mount order (T-1460, plan #48). Each `create*Api` gets the shared `base`
 // deps object instead of repeating `db`/`config`/`logger`/`auth`.
 import type { EffectApiMount } from '../effect/http-core';
+import type { TurnWatcher } from '../agents/gateway/stop-types';
 import { createAgentTasksApi } from '../agents/log/api';
 import { createAiMemoryApi } from '../agents/memory/api';
 import { createAuthApi } from '../auth/api';
@@ -27,6 +28,7 @@ import { createRolesApi } from '../roles/api';
 import { createSearchApi } from '../search/api';
 import { createSetupApi } from '../setup/api';
 import { createTopicsApi } from '../topics/api';
+import { turnWatcherOf } from '../topics/ai-activity';
 import type { RouteWiring } from './deps';
 import { opt } from './opt';
 
@@ -92,9 +94,24 @@ export function messagingRoutes({
   mounts.push(agentTasksApi);
   const pinsApi = createPinsApi({ ...base, audit });
   mounts.push(pinsApi);
-  const topicsApi = createTopicsApi({ ...base, adminClient, audit });
+  // T-1514: the live agent gateway is typed as a `TurnStopper` here; hand its
+  // `TurnWatcher` read model to the topic-list routes when it carries one.
+  const gateway = deps.getGateway;
+  const getTurnWatcher =
+    gateway === undefined ? undefined : (): TurnWatcher | null => turnWatcherOf(gateway());
+  const topicsApi = createTopicsApi({
+    ...base,
+    adminClient,
+    audit,
+    ...opt('getGateway', getTurnWatcher),
+  });
   mounts.push(topicsApi);
-  const chatsApi = createChatsApi({ ...base, adminClient, archive: deps.archive });
+  const chatsApi = createChatsApi({
+    ...base,
+    adminClient,
+    archive: deps.archive,
+    ...opt('getGateway', getTurnWatcher),
+  });
   mounts.push(chatsApi);
   // Chat prefs and folders (T-0113/T-0232) on the Effect adapter: session
   // required, one write budget each; the sweep asserts every route answers 401

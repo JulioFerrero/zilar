@@ -1527,3 +1527,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1508](T-1508-web-group-info-step2.md) | Web group info: More menu, Leave row, redrawn member rows | 2026-10-15 |
 | [T-1515](T-1515-mobile-lean-settings.md) | Phone Settings tab is lean: one-line rows, e-mail on the card | 2026-10-15 |
 | [T-1509](T-1509-web-new-pack-grid.md) | Web new pack is a sticker grid; GIF previews load again | 2026-10-15 |
+| [T-1514](T-1514-ai-activity-in-topic-list.md) | Topic list carries each topic's AI activity | 2026-10-15 |

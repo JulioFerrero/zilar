@@ -10,6 +10,7 @@ import { Effect, Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
 import { TopicsCreateRateLimit, TopicsGroup } from '@zilar/api-contract';
+import type { TurnWatcher } from '../agents/gateway/stop-types';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
@@ -32,6 +33,7 @@ import {
   toTopicViews,
   visibleTopics,
 } from './access';
+import { withTopicActivity } from './ai-activity';
 import {
   addTopicAi,
   addTopicMember,
@@ -57,6 +59,8 @@ export interface TopicsApiDependencies {
   adminClient: EjabberdAdminClient;
   logger: Logger;
   audit?: AuditRecorder;
+  /** T-1514: the live gateway's turn read model for each topic's AI activity. */
+  getGateway?: () => TurnWatcher | null;
   /** Injected in tests so the rate-limit window can advance without waiting. */
   now?: () => number;
 }
@@ -92,7 +96,11 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
             const rows = yield* Effect.promise(() =>
               visibleTopics(deps.db, request.params.id, user.id),
             );
-            return { topics: yield* Effect.promise(() => toTopicViews(deps.db, rows, mucDomain)) };
+            return {
+              topics: yield* Effect.promise(async () =>
+                withTopicActivity(deps, await toTopicViews(deps.db, rows, mucDomain)),
+              ),
+            };
           }),
         ),
       )

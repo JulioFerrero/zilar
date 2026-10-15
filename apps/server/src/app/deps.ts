@@ -56,7 +56,9 @@ export interface AppDependencies {
     cloud?: boolean;
   };
   /** T-1422: the live agent gateway's turn-stop hook. Read lazily because the
-   * app is built before the gateway; absent = the route answers `stopped: false`. */
+   * app is built before the gateway; absent = the route answers `stopped: false`.
+   * T-1514: the same live gateway also carries the `TurnWatcher` read model the
+   * topic list reads; `routes-messaging.ts` narrows it there. */
   getGateway?: () => TurnStopper | null;
   /** Injected by index.ts when the runner hub is on; absent = hub off. */
   isMachineOnline?: (machineId: string) => boolean;

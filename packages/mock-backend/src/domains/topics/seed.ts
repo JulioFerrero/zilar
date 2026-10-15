@@ -32,6 +32,7 @@ const devTeamTopics: readonly MockTopic[] = [
     aiIds: [],
     roleIds: [],
     approverRoleId: null,
+    activity: [{ aiId: 'ai-dev-1', name: 'Dev-1', state: 'done' }],
   },
   {
     id: 't-devteam-bug',
@@ -51,6 +52,10 @@ const devTeamTopics: readonly MockTopic[] = [
     aiIds: ['ai-dev-1'],
     roleIds: [],
     approverRoleId: null,
+    activity: [
+      { aiId: 'ai-dev-1', name: 'Dev-1', state: 'working' },
+      { aiId: 'ai-qa-1', name: 'QA-1', state: 'waiting' },
+    ],
   },
   {
     id: 't-devteam-ui',
