@@ -1,24 +1,29 @@
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
 import { useRouter } from 'expo-router';
 import { Server } from 'lucide-react-native';
+import { useMemo } from 'react';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { RequireAuth } from '@/auth/RequireAuth';
+import { useAisApi } from '@/components/ais/use-ais-api';
 import { AddMachineSheet } from '@/components/machines/add-machine-sheet';
 import { ApprovedMachines } from '@/components/machines/approved-machines';
+import { groupAisByMachine } from '@/components/machines/machine-row';
 import { MachinesHeader } from '@/components/machines/machines-header';
 import { PendingMachines } from '@/components/machines/pending-machines';
 import { RevokedMachines } from '@/components/machines/revoked-machines';
 import { useMachinesList } from '@/components/machines/use-machines-list';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { StateMessage } from '@/components/ui/state-message';
+import { useQuery } from '@/lib/effect/use-query';
 
 /**
- * Settings → Machines (mirrors web's `MachinesPage`): pending machines with
- * Approve / Deny, approved with Rename / Revoke, revoked with Delete, plus
- * the add flow showing the pairing code and command with Copy. Web's
- * `SettingsShell` has no mobile twin, so the screen uses the same frame as
- * the settings requests screen.
+ * Settings → Machines (T-1526, the phone twin of web's `MachinesPage` T-1518):
+ * the pending machines as amber cards with Deny / Approve, the other machines
+ * as one rounded list whose rows open a sheet with Rename and Revoke, and a
+ * Revoked row that toggles the old machines under the card. No status words.
  */
 export default function MachinesScreen() {
   return (
@@ -30,6 +35,7 @@ export default function MachinesScreen() {
 
 function MachinesList() {
   const router = useRouter();
+  const { api: aisApi } = useAisApi();
   const {
     status,
     errorInfo,
@@ -64,6 +70,12 @@ function MachinesList() {
     cancelRename,
     toggleRevoked,
   } = useMachinesList();
+
+  // The owner's AIs, loaded once for the row pictures and the sheet's names.
+  // A failed read groups nothing, so the list simply shows no pictures.
+  const [aiResult] = useQuery(() => Effect.promise(() => aisApi.listAis()), [aisApi]);
+  const ais = AsyncResult.isSuccess(aiResult) ? aiResult.value : null;
+  const aisByMachine = useMemo(() => groupAisByMachine(ais), [ais]);
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
@@ -112,9 +124,10 @@ function MachinesList() {
             />
           ) : null}
 
-          {status === 'ready' && approved.length > 0 ? (
+          {status === 'ready' && (approved.length > 0 || revoked.length > 0) ? (
             <ApprovedMachines
               machines={approved}
+              aisByMachine={aisByMachine}
               busyId={busyId}
               actionErrors={actionErrors}
               renamingId={renamingId}
@@ -124,16 +137,17 @@ function MachinesList() {
               onSaveRename={saveRename}
               onRename={openRename}
               onRevoke={askRevoke}
+              revokedCount={revoked.length}
+              showRevoked={showRevoked}
+              onToggleRevoked={toggleRevoked}
             />
           ) : null}
 
-          {status === 'ready' && revoked.length > 0 ? (
+          {status === 'ready' && showRevoked && revoked.length > 0 ? (
             <RevokedMachines
               machines={revoked}
               busyId={busyId}
               actionErrors={actionErrors}
-              showRevoked={showRevoked}
-              onToggle={toggleRevoked}
               onDelete={askDelete}
             />
           ) : null}

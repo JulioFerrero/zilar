@@ -5,7 +5,10 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
 
-/** The screen's top bar: back, title and the Add button once the list is ready. */
+/**
+ * The screen's top bar (T-1526): Back on the left, Add on the right and the
+ * large title under them. There is no subtitle.
+ */
 export function MachinesHeader({
   onBack,
   onAdd,
@@ -16,23 +19,20 @@ export function MachinesHeader({
   showAdd: boolean;
 }) {
   return (
-    <View className="flex-row items-center gap-1 px-2 py-2">
-      <IconButton label="Back" onPress={onBack}>
-        <ChevronLeft size={24} color={ICON} />
-      </IconButton>
-      <View className="min-w-0 flex-1">
-        <Text numberOfLines={1} className="text-[20px] font-semibold leading-6 text-foreground">
-          Machines
-        </Text>
-        <Text numberOfLines={1} className="mt-0.5 text-[14px] leading-5 text-muted-foreground">
-          Computers where your AIs can work.
-        </Text>
-      </View>
-      {showAdd ? (
-        <IconButton label="Add machine" onPress={onAdd}>
-          <Plus size={22} color={ICON} />
+    <View className="px-4">
+      <View className="-mx-2 flex-row items-center justify-between py-2">
+        <IconButton label="Back" onPress={onBack}>
+          <ChevronLeft size={24} color={ICON} />
         </IconButton>
-      ) : null}
+        {showAdd ? (
+          <IconButton label="Add machine" onPress={onAdd}>
+            <Plus size={22} color={ICON} />
+          </IconButton>
+        ) : null}
+      </View>
+      <Text className="mb-4 mt-1 text-[28px] font-semibold leading-8 text-foreground">
+        Machines
+      </Text>
     </View>
   );
 }

@@ -2,44 +2,33 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-**Plan after the canvas reviews (2026-10-15, midday).** Julio has nothing more to review. Every approved canvas's boards and README are parked in the job's tmp `parked/<name>/`, and each rides its first task into `docs/design/mockups/<name>/`. Done so far: group-info, stickers, approvals. Still parked: ai-work (on T-1500), connections, lean-settings, ai-health, view-steps, empty-chat.
+**Plan after the canvas reviews (2026-10-15).** Every approved canvas's boards are in `docs/design/mockups/<name>/`. Julio's rules: up to 8 workers, at most 3 mobile; estimates are in worker minutes (about 35–60 min from launch to merge).
 
 **Order:**
 - **0. Running:**
-  - **Julio, 10-15 midday:** "you can use all the workers you like", so up to 8 workers, at most 3 mobile;
-  - T-1499 (web approvals, simpler) merged, checked headless;
-  - T-1500 merged: the plan is in `docs/audit/ai-work-plan.md` (8 steps; the lead's decisions are in its Review). Next is its T1, the server read model;
-  - T-1502 (the Telegram importer keeps video stickers) merged and live at `3bb8c90aa` (0 errors, 0 warnings);
-  - T-1501 (web sticker upload keeps motion) merged; the New pack grid follows;
-  - T-1504 (AI `lastFailure` on the AI list) merged;
-  - T-1507 (phone stickers render with `expo-image`) merged; the mock smoke passed. Check an animated sticker on Julio's next phone build;
-  - **merged since midday:**
-    - T-1505 (AI work step 1, read model plus index migration 0063);
-    - T-1506 (web lean Settings);
-    - T-1510 (web My AIs with health);
-    - T-1511 (web empty chats);
-    - T-1512 (web several files);
-    - T-1513 (phone approvals);
-  - **also merged:**
-    - T-1508 (web Group info step 2);
-    - T-1509 (web New pack grid plus the GIF preview fix);
-    - T-1514 (AI work step 2; live at `aa729ab70`: 0 errors, 3 "AI is offline" warnings at container start only, `/api/chats` 401 signed out);
-    - T-1515 (phone lean Settings);
-  - **running (8):**
-    - T-1516 (phone Connections);
-    - T-1517 (phone My AIs with health, shared `aiHealth` in chat-core);
-    - T-1518 (web Machines; fix round: code well in groups of 4, outline Deny, no status words in the cards);
-    - T-1519 (web channel info pages);
-    - T-1520 (phone empty chats; the mock gets contact handles and 2 empty chats);
-    - T-1521 (AI work step 3: `topics.done_at`, migration 0064; the one schema task);
-    - T-1522 (View steps audit, plan only; the boards are on its branch);
-    - T-1523 (web Stickers tabs and drag);
-  - **estimates are now in worker minutes** (Julio asked how they were computed; they were unmeasured day guesses);
-  - **decision (Julio):** the topic link moves to a row in the topic's info panel, so the plan's T8 keeps `link_url`/`link_label`;
-  - **next to spec:**
-    - phone twins: New pack grid, the pack link page plus the `/stickers/` app link, several files at once, Group info (the phone has no info screen today, only header sheets: audit first), channel info, Machines, Stickers tabs;
-    - AI work T4 (owner following → `topic_follow`, schema: after T-1521), T5 (live notices), T6 web UI, T7 phone UI, T8 (drop the old columns; keep the link);
-    - View steps tasks from the T-1522 plan.
+  - **Merged today (10-15):** T-1498 to T-1528, except the running ones below. Highlights:
+    - web: approvals, Connections, lean Settings, My AIs health, Group info steps 1–2, channel info, empty chats, several files, New pack grid, Stickers tabs, Machines;
+    - phone: approvals, lean Settings, Connections, My AIs health, empty chats, the pack link page and `/stickers/` App Link, `expo-image` stickers;
+    - AI work steps 1–3 and 5 (read model, topic-list activity, `topics.done_at` (migration 0064, live), live refresh);
+    - the View steps audit (`docs/audit/view-steps-plan.md`, lead decisions in T-1522).
+    - **Live last checked at `3f024a0fd`:** 0 errors, 3 "AI is offline" warnings at container start only, and the changed routes answer 401 signed out.
+  - **Running (8):**
+    - T-1525 (phone sticker upload keeps motion);
+    - T-1526 (phone Machines);
+    - T-1529 (AI work step 4: the last @mentioned AI follows a topic; migration 0065; the one schema task);
+    - T-1530 (View steps server route);
+    - T-1531 (sticker lists carry the @handle; "New pack" copy);
+    - T-1532 (AI work 6a: web topic rows and the "AIs here" key);
+    - T-1533 (phone Stickers My packs and pack sheet);
+    - T-1534 (AI work 6b: web drops the task strip, link row, Mark as done). **Merge only after T-1529.**
+  - **Decisions (Julio, 10-15):** the topic link moves to a row in the topic info panel (T8 keeps `link_url`/`link_label`); the last @mentioned AI follows a topic.
+  - **Next to spec:**
+    - View steps: web panel, then phone sheet (after T-1530);
+    - AI work: T7 phone UI (marks, "AIs here" sheet, no task strip), then T8 (drop kind/status/owner after a phone release);
+    - the composer status line ("Dev-1 is working · QA-1 is waiting for you"), web and phone;
+    - phone twins: New pack grid (after T-1525), several files at once, Group info (audit first: the phone has only header sheets), channel info;
+    - web `AiHealthRow` to switch to chat-core's `aiHealth`;
+    - phone dead code: `runStateLabel`, `formatLimits`, `SCREEN_DECISIONS`, `approvalStatusLabel`.
 - **1. Web and server, while Julio is at the PC (2 workers at a time):**
   1. web sticker upload keeps motion (today a GIF freezes on its first frame) and the New pack grid;
   2. the Telegram importer keeps video stickers (split `stickers/telegram.ts`, 399 lines, first);

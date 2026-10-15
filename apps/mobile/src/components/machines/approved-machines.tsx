@@ -1,15 +1,23 @@
+import { useState } from 'react';
 import { View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
-import { Card, SectionLabel } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
+import type { PublicAi } from '@/lib/ais-api';
 import type { Machine } from '@/lib/machines-api';
-import { MachineCard } from './machine-card';
+import { MachineRow, RevokedToggleRow } from './machine-row';
+import { MachineSheet } from './machine-sheet';
 
-/** Approved machines with Rename (inline editor) and Revoke. */
+/**
+ * The approved machines in one rounded list (T-1526), each row opening a
+ * sheet, plus the Revoked toggle row at the end when any machine is revoked.
+ * The inline rename editor is today's; it replaces the row while renaming.
+ */
 export function ApprovedMachines({
   machines,
+  aisByMachine,
   busyId,
   actionErrors,
   renamingId,
@@ -19,8 +27,13 @@ export function ApprovedMachines({
   onSaveRename,
   onRename,
   onRevoke,
+  revokedCount,
+  showRevoked,
+  onToggleRevoked,
 }: {
   machines: Machine[];
+  /** The owner's AIs by home machine id; empty when the AI read failed. */
+  aisByMachine: Map<string, PublicAi[]>;
   busyId: string | null;
   actionErrors: Record<string, string>;
   renamingId: string | null;
@@ -30,14 +43,23 @@ export function ApprovedMachines({
   onSaveRename: (id: string) => void;
   onRename: (machine: Machine) => void;
   onRevoke: (id: string) => void;
+  revokedCount: number;
+  showRevoked: boolean;
+  onToggleRevoked: () => void;
 }) {
+  const [open, setOpen] = useState<Machine | null>(null);
+  const openAis = open === null ? [] : (aisByMachine.get(open.id) ?? []);
+
+  const closeSheet = (): void => {
+    setOpen(null);
+  };
+
   return (
-    <View accessibilityLabel="Your machines" className="gap-2">
-      <SectionLabel>Your machines</SectionLabel>
+    <>
       <Card>
         {machines.map((machine) =>
           renamingId === machine.id ? (
-            <View key={machine.id} className="gap-2 px-3 py-2.5">
+            <View key={machine.id} className="gap-2 px-4 py-3">
               <Text className="text-[14px] font-medium text-foreground">Rename</Text>
               <TextField
                 value={renameDraft}
@@ -73,37 +95,38 @@ export function ApprovedMachines({
               </View>
             </View>
           ) : (
-            <MachineCard
+            <MachineRow
               key={machine.id}
               machine={machine}
-              busy={busyId === machine.id}
-              error={actionErrors[machine.id] ?? ''}
-              actions={
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    accessibilityLabel={`Rename ${machine.name}`}
-                    disabled={busyId === machine.id}
-                    onPress={() => onRename(machine)}
-                  >
-                    <Text>Rename</Text>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    accessibilityLabel={`Revoke ${machine.name}`}
-                    disabled={busyId === machine.id}
-                    onPress={() => onRevoke(machine.id)}
-                  >
-                    <Text>Revoke</Text>
-                  </Button>
-                </>
-              }
+              ai={aisByMachine.get(machine.id)?.[0]}
+              onPress={() => setOpen(machine)}
             />
           ),
         )}
+
+        {revokedCount > 0 ? (
+          <RevokedToggleRow count={revokedCount} expanded={showRevoked} onPress={onToggleRevoked} />
+        ) : null}
       </Card>
-    </View>
+
+      <MachineSheet
+        machine={open}
+        aiNames={openAis.map((ai) => ai.name)}
+        visible={open !== null}
+        onClose={closeSheet}
+        onRename={() => {
+          if (open !== null) {
+            onRename(open);
+          }
+          closeSheet();
+        }}
+        onRevoke={() => {
+          if (open !== null) {
+            onRevoke(open.id);
+          }
+          closeSheet();
+        }}
+      />
+    </>
   );
 }
