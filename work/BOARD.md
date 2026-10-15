@@ -1514,3 +1514,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1500](T-1500-ai-work-audit.md) | AI work in topics: audit and step plan | 2026-10-15 |
 | [T-1499](T-1499-web-approvals-simple.md) | Web approvals: one simple card and one list of rows | 2026-10-15 |
 | [T-1502](T-1502-telegram-video-stickers.md) | Telegram importer keeps video stickers as animated WebP | 2026-10-15 |
+| [T-1501](T-1501-web-sticker-motion.md) | Web sticker upload keeps GIF and video motion | 2026-10-15 |

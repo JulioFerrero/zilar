@@ -1,5 +1,5 @@
-import { ChevronDown, ChevronUp, CircleAlert, X } from 'lucide-react';
-import { formatStickerSize } from '@/lib/sticker-images';
+import { ChevronDown, ChevronUp, CircleAlert, Repeat, X } from 'lucide-react';
+import { formatStickerBytes, formatStickerSize } from '@/lib/sticker-images';
 import { Button } from '@/components/ui/button';
 import { SortableHandle, SortableItem, SortableList } from '@/components/ui/sortable-list';
 import { TextInput } from '@/components/ui/text-input';
@@ -14,6 +14,11 @@ export interface PackEditorItemsProps {
   onRetry: (key: string) => void;
   onSetEmoji: (key: string, value: string) => void;
   onRemove: (key: string) => void;
+}
+
+/** A moving file keeps its motion, so its row shows the loop badge. */
+function isMoving(item: PackEditorItem): boolean {
+  return item.motion === 'animated' || item.motion === 'video';
 }
 
 /** The sticker rows: preview, emoji, drag handle plus Up/Down, retry and remove. */
@@ -75,7 +80,11 @@ export function PackEditorItems({
                 {item.error === undefined ? (
                   <span className="checkerboard flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-lg">
                     {item.blob !== undefined ? (
-                      <BlobPreview blob={item.blob} alt={item.name} />
+                      <BlobPreview
+                        blob={item.blob}
+                        alt={item.name}
+                        video={item.motion === 'video'}
+                      />
                     ) : item.serverUrl !== undefined ? (
                       <img
                         src={item.serverUrl}
@@ -98,10 +107,17 @@ export function PackEditorItems({
                       {item.error}
                     </span>
                   ) : (
-                    <span className="text-[13px] text-muted-foreground">
-                      {formatStickerSize(item.width, item.height, item.bytes)}
-                      {item.status === 'uploading' && ' · Uploading…'}
-                      {item.status === 'done' && ' · Uploaded'}
+                    <span className="flex items-center gap-1 text-[13px] text-muted-foreground">
+                      {isMoving(item) && (
+                        <Repeat className="size-3.5 shrink-0" role="img" aria-label="Moves" />
+                      )}
+                      <span>
+                        {item.width === 0
+                          ? formatStickerBytes(item.bytes)
+                          : formatStickerSize(item.width, item.height, item.bytes)}
+                        {item.status === 'uploading' && ' · Uploading…'}
+                        {item.status === 'done' && ' · Uploaded'}
+                      </span>
                     </span>
                   )}
                   {item.error === undefined && item.blob !== undefined && (

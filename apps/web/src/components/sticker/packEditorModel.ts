@@ -23,6 +23,8 @@ export interface PackEditorItem {
   width: number;
   height: number;
   bytes: number;
+  /** A moving file (GIF, video, animated WebP, APNG): shown with the loop badge. */
+  motion?: 'none' | 'animated' | 'video' | undefined;
   emoji: string;
   status: PackEditorItemStatus;
   error?: string | undefined;
@@ -47,7 +49,8 @@ export interface PackEditorProps {
   deleteSticker?: typeof deletePackSticker;
 }
 
-export const PACK_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif';
+export const PACK_ACCEPT =
+  'image/png,image/jpeg,image/webp,image/gif,video/webm,video/mp4,video/quicktime,.webm,.mp4,.mov';
 
 /** The image preparation function, injectable in tests. */
 export type PrepareSticker = typeof prepareStickerImage;
@@ -121,6 +124,7 @@ function prepareItem(file: File, prepare: PrepareSticker): Effect.Effect<PackEdi
         width: prepared.width,
         height: prepared.height,
         bytes: prepared.bytes,
+        motion: prepared.motion,
         emoji: '',
         status: 'ready',
       }),

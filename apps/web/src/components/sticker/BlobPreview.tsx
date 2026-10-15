@@ -9,7 +9,16 @@ import { useEffect, useState } from 'react';
  * reusing a revoked URL. A browser without `createObjectURL` gets the
  * placeholder the editor always had.
  */
-export function BlobPreview({ blob, alt }: { blob: Blob; alt: string }) {
+export function BlobPreview({
+  blob,
+  alt,
+  video,
+}: {
+  blob: Blob;
+  alt: string;
+  /** A moving video previews through `<video>`; anything else through `<img>`. */
+  video?: boolean | undefined;
+}) {
   // Created once per mount (never in an effect, so no set-state-in-effect):
   // the blob per item never changes, and a StrictMode remount recreates
   // instead of reusing a revoked URL.
@@ -30,6 +39,19 @@ export function BlobPreview({ blob, alt }: { blob: Blob; alt: string }) {
   );
   if (url === '') {
     return <span className="text-[13px] text-muted-foreground">…</span>;
+  }
+  if (video === true) {
+    return (
+      <video
+        src={url}
+        muted
+        loop
+        autoPlay
+        playsInline
+        className="max-h-16 max-w-16 object-contain"
+        aria-label={alt}
+      />
+    );
   }
   return <img src={url} alt={alt} className="max-h-16 max-w-16 object-contain" />;
 }

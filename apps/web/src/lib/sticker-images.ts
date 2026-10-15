@@ -1,19 +1,27 @@
 /**
- * Client-side sticker preparation (T-0121): decodes a picked image, fits it
- * inside 512 x 512 keeping the ratio, and encodes it as WebP (PNG fallback)
+ * Client-side sticker preparation (T-0121): decodes a picked still image, fits
+ * it inside 512 x 512 keeping the ratio, and encodes it as WebP (PNG fallback)
  * within 512 KiB. The server validates everything again (T-0120); this only
  * gets files ready so the upload rarely fails.
  *
- * The module is pure: `decode`/`encode` are injectable so tests use fakes
- * and never touch a canvas. Production passes the browser defaults that use
- * `createImageBitmap` (a GIF decodes to its first frame: a still) and a
- * `<canvas>` encode.
+ * Moving files (GIF, video, animated WebP, APNG) skip the canvas entirely
+ * (T-1501): the file goes to the server as it is, so it keeps its motion. The
+ * server converts a GIF or video to an animated WebP (T-1496) and stores an
+ * animated WebP or APNG unchanged.
+ *
+ * The module is pure: `decode`/`encode` are injectable so tests use fakes and
+ * never touch a canvas. Production passes the browser defaults that use
+ * `createImageBitmap` (only for stills here: a GIF would decode to its first
+ * frame) and a `<canvas>` encode.
  */
 import { fitStickerSize, STICKER_PREP_MAX_DIM } from '@zilar/chat-core';
 import { Data, Effect } from 'effect';
+import { sniffMotion, type MotionKind } from './sticker-motion';
 
 export { fitStickerSize, STICKER_PREP_MAX_DIM };
 export const STICKER_PREP_MAX_BYTES = 512 * 1024;
+/** The server's raw-upload cap for a moving file it converts (T-1496). */
+export const STICKER_PREP_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
 /** WebP qualities tried from first to last; the first result under the cap wins. */
 export const STICKER_PREP_QUALITY_STEPS = [0.92, 0.8, 0.7, 0.6, 0.5] as const;
 export const STICKER_PREP_ACCEPTED_TYPES = [
@@ -21,9 +29,14 @@ export const STICKER_PREP_ACCEPTED_TYPES = [
   'image/jpeg',
   'image/webp',
   'image/gif',
+  'video/webm',
+  'video/mp4',
+  'video/quicktime',
 ] as const;
 
 export type StickerPrepMime = 'image/webp' | 'image/png';
+/** `'video'` needs a `<video>` preview; `'animated'` is a GIF, WebP or APNG. */
+export type StickerPrepMotion = 'none' | 'animated' | 'video';
 export type PrepFailureReason =
   'unsupported_type' | 'decode_failed' | 'encode_failed' | 'too_large';
 
@@ -41,6 +54,9 @@ export class PrepError extends Error {
 
 /** One encode call failed; the next step decides what to do. */
 class EncodeAttemptFailed extends Data.TaggedError('EncodeAttemptFailed') {}
+
+/** Reading the leading bytes failed; treated as "no motion detected". */
+class SniffFailed extends Data.TaggedError('SniffFailed') {}
 
 export interface PrepBitmap {
   width: number;
@@ -67,13 +83,24 @@ export interface PrepResult {
   width: number;
   height: number;
   bytes: number;
+  /** Whether the preview must animate, and with which element. */
+  motion: StickerPrepMotion;
 }
 
 function isAcceptedType(type: string): boolean {
   return (STICKER_PREP_ACCEPTED_TYPES as readonly string[]).includes(type);
 }
 
-/** Decodes with `createImageBitmap`: a GIF yields its first frame (a still). */
+function isReadableBitmap(decoded: PrepBitmap): boolean {
+  return (
+    Number.isFinite(decoded.width) &&
+    Number.isFinite(decoded.height) &&
+    decoded.width > 0 &&
+    decoded.height > 0
+  );
+}
+
+/** Decodes a still with `createImageBitmap`; moving files skip this. */
 function decodeWithBitmap(file: Blob): Promise<PrepBitmap> {
   // Never closed here: a closed bitmap is detached and `drawImage` throws,
   // so it stays open until `releaseBitmap` runs after the final encode.
@@ -143,25 +170,117 @@ export function prepareStickerImage(
 function prepareEffect(file: File, deps: PrepDeps): Effect.Effect<PrepResult, PrepError> {
   const name = file.name !== '' ? file.name : 'image';
   return Effect.gen(function* () {
-    if (!isAcceptedType(file.type)) {
+    const kind = yield* Effect.tryPromise({
+      try: () => sniffMotion(file),
+      catch: () => new SniffFailed(),
+    }).pipe(Effect.orElseSucceed((): MotionKind | null => null));
+    // A `.mov` may arrive with an empty type, so a sniffed kind also accepts it.
+    if (!isAcceptedType(file.type) && kind === null) {
       return yield* Effect.fail(
         new PrepError(
           'unsupported_type',
           name,
-          `${name}: only PNG, JPEG, WebP or GIF images work as stickers.`,
+          `${name}: only PNG, JPEG, WebP, GIF images and short videos work as stickers.`,
         ),
       );
     }
+    if (kind === 'gif' || kind === 'video') {
+      return yield* keepMovingFile(name, file, kind === 'video' ? 'video' : 'animated');
+    }
+    if (kind === 'animated-webp' || kind === 'apng') {
+      return yield* keepAnimatedFile(name, file, kind, deps);
+    }
+    return yield* prepareStill(name, file, deps);
+  });
+}
+
+/** A GIF or video goes to the server raw; the server converts it (T-1496). */
+function keepMovingFile(
+  name: string,
+  file: File,
+  motion: 'animated' | 'video',
+): Effect.Effect<PrepResult, PrepError> {
+  if (file.size > STICKER_PREP_UPLOAD_MAX_BYTES) {
+    return Effect.fail(
+      new PrepError('too_large', name, `${name}: over 4 MiB. Try a shorter clip.`),
+    );
+  }
+  const result: PrepResult = {
+    blob: file,
+    mime: 'image/webp',
+    width: 0,
+    height: 0,
+    bytes: file.size,
+    motion,
+  };
+  return Effect.succeed(result);
+}
+
+/** An animated WebP or APNG is already a sticker; only its size is checked. */
+function keepAnimatedFile(
+  name: string,
+  file: File,
+  kind: 'animated-webp' | 'apng',
+  deps: PrepDeps,
+): Effect.Effect<PrepResult, PrepError> {
+  if (file.size > STICKER_PREP_MAX_BYTES) {
+    return Effect.fail(
+      new PrepError('too_large', name, `${name}: a moving WebP or PNG must be under 512 KiB.`),
+    );
+  }
+  return Effect.gen(function* () {
+    // Decoded only to read its size, then released; the file itself is kept.
     const decoded = yield* Effect.tryPromise({
       try: () => deps.decode(file),
       catch: () => new PrepError('decode_failed', name, `${name}: the image could not be read.`),
     });
-    if (
-      !Number.isFinite(decoded.width) ||
-      !Number.isFinite(decoded.height) ||
-      decoded.width <= 0 ||
-      decoded.height <= 0
-    ) {
+    return yield* measureAnimated(name, file, kind, decoded).pipe(
+      Effect.ensuring(
+        Effect.try(() => deps.release?.(decoded.image)).pipe(Effect.orElseSucceed(() => undefined)),
+      ),
+    );
+  });
+}
+
+function measureAnimated(
+  name: string,
+  file: File,
+  kind: 'animated-webp' | 'apng',
+  decoded: PrepBitmap,
+): Effect.Effect<PrepResult, PrepError> {
+  if (!isReadableBitmap(decoded)) {
+    return Effect.fail(
+      new PrepError('decode_failed', name, `${name}: the image could not be read.`),
+    );
+  }
+  if (decoded.width > STICKER_PREP_MAX_DIM || decoded.height > STICKER_PREP_MAX_DIM) {
+    return Effect.fail(
+      new PrepError('too_large', name, `${name}: a moving WebP or PNG must be at most 512 × 512.`),
+    );
+  }
+  const result: PrepResult = {
+    blob: file,
+    mime: kind === 'apng' ? 'image/png' : 'image/webp',
+    width: decoded.width,
+    height: decoded.height,
+    bytes: file.size,
+    motion: 'animated',
+  };
+  return Effect.succeed(result);
+}
+
+/** A still goes through the canvas: decode, fit, encode (T-0121). */
+function prepareStill(
+  name: string,
+  file: File,
+  deps: PrepDeps,
+): Effect.Effect<PrepResult, PrepError> {
+  return Effect.gen(function* () {
+    const decoded = yield* Effect.tryPromise({
+      try: () => deps.decode(file),
+      catch: () => new PrepError('decode_failed', name, `${name}: the image could not be read.`),
+    });
+    if (!isReadableBitmap(decoded)) {
       return yield* Effect.fail(
         new PrepError('decode_failed', name, `${name}: the image could not be read.`),
       );
@@ -211,6 +330,7 @@ function encodeStages(
         width: size.width,
         height: size.height,
         bytes: blob.size,
+        motion: 'none',
       };
     }
     // The browser cannot encode WebP, or no quality fits: one PNG attempt.
@@ -233,14 +353,32 @@ function encodeStages(
         ),
       );
     }
-    return { blob, mime: 'image/png', width: size.width, height: size.height, bytes: blob.size };
+    return {
+      blob,
+      mime: 'image/png',
+      width: size.width,
+      height: size.height,
+      bytes: blob.size,
+      motion: 'none',
+    };
   });
+}
+
+/** One decimal, with no trailing ".0": used by both size formatters. */
+function roundToOneDecimal(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
 /** "320 x 410 · 84 KiB" for the editor preview. */
 export function formatStickerSize(width: number, height: number, bytes: number): string {
-  const kib = bytes / 1024;
-  const rounded = Math.round(kib * 10) / 10;
-  const size = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-  return `${width}×${height} · ${size} KiB`;
+  return `${width}×${height} · ${roundToOneDecimal(bytes / 1024)} KiB`;
+}
+
+/** "84 KiB" or "1.2 MiB" for a moving file the canvas never measured. */
+export function formatStickerBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) {
+    return `${roundToOneDecimal(bytes / (1024 * 1024))} MiB`;
+  }
+  return `${roundToOneDecimal(bytes / 1024)} KiB`;
 }
