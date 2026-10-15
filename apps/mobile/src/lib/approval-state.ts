@@ -12,22 +12,6 @@ export type ApprovalCardState =
   | { kind: 'error' }
   | { kind: 'ready'; approval: PublicApproval };
 
-export function approvalStatusLabel(approval: PublicApproval): string {
-  switch (approval.status) {
-    case 'pending':
-      return 'Pending';
-    case 'approved_once':
-    case 'approved_always':
-      return 'Approved';
-    case 'denied':
-      return 'Denied';
-    case 'consumed':
-      return 'Already used';
-    case 'expired':
-      return 'Expired';
-  }
-}
-
 // A 404 means the viewer may not decide this request (or it does not exist):
 // the card then shows no buttons and no error. Any other failure on the first
 // load surfaces the request text with a Retry button.

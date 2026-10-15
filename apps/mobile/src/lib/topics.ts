@@ -1,11 +1,4 @@
-import {
-  parseUrl,
-  sortTopics,
-  type ChatSummary,
-  type TopicInfo,
-  type TopicKind,
-  type TopicStatus,
-} from '@zilar/chat-core';
+import { parseUrl, sortTopics, type ChatSummary, type TopicInfo } from '@zilar/chat-core';
 
 import type { ChatFolder } from './types';
 
@@ -151,47 +144,6 @@ export function topicInFolder(chat: ChatSummary, folder: ChatFolder): boolean {
     case 'work':
       return chat.space === 'work';
   }
-}
-
-const TYPE_LABEL: Record<TopicKind, string> = {
-  chat: 'TOPIC',
-  task: 'TASK',
-  bug: 'BUG',
-  ui: 'UI',
-  routine: 'ROUTINE',
-};
-
-/** The type chip of the task strip: TOPIC for `chat`, GENERAL for General. */
-export function topicTypeLabel(topic: TopicInfo | undefined): string {
-  if (topic === undefined) {
-    return 'TOPIC';
-  }
-  if (topic.isGeneral) {
-    return 'GENERAL';
-  }
-  return TYPE_LABEL[topic.kind] ?? 'TOPIC';
-}
-
-const STATUS_LABEL: Record<TopicStatus, string> = {
-  open: 'Open',
-  in_progress: 'In progress',
-  in_review: 'In review',
-  blocked: 'Blocked',
-  done: 'Done',
-};
-
-/** The status chip label, always paired with its dot, never color alone. */
-export function topicStatusLabel(status: TopicStatus): string {
-  return STATUS_LABEL[status] ?? 'Open';
-}
-
-/** The task-strip owner label. */
-export function topicOwnerLabel(topic: TopicInfo | undefined): string {
-  const owner = topic?.owner;
-  if (owner === null || owner === undefined) {
-    return 'No owner';
-  }
-  return `Owner: ${owner.name}`;
 }
 
 /** Only `https:` URLs render as links; anything else is plain text or hidden. */

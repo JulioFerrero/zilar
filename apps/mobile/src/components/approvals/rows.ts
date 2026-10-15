@@ -90,20 +90,6 @@ export function mergeRulesFanOut(settled: RulesFanOut[]): OwnedScreenRule[] | nu
   );
 }
 
-/**
- * Decisions for the screen's pending tab: Approve once (`approve_once`),
- * Always (`approve_always`, the standing rule) and Deny (`deny`).
- */
-export const SCREEN_DECISIONS: ReadonlyArray<{
-  decision: ApprovalDecision;
-  label: string;
-  busyLabel: string;
-}> = [
-  { decision: 'approve_once', label: 'Approve once', busyLabel: 'Approving…' },
-  { decision: 'approve_always', label: 'Always', busyLabel: 'Allowing…' },
-  { decision: 'deny', label: 'Deny', busyLabel: 'Denying…' },
-];
-
 export type DecideOutcome =
   | { kind: 'decided'; approval: PublicApproval }
   | { kind: 'gone'; message: string }

@@ -21,19 +21,3 @@ export function runAction(ai: Pick<PublicAi, 'status'>): RunAction | null {
   }
   return null;
 }
-
-/**
- * The visible state label for the AI row. `active` shows nothing (the row is
- * alive and clear), `stopped` gets a clear "Stopped" pill, and `disabled` —
- * provisioning in flight — gets "Setting up" so the owner is not misled into
- * thinking the AI is paused.
- */
-export function runStateLabel(status: PublicAi['status']): string {
-  if (status === 'stopped') {
-    return 'Stopped';
-  }
-  if (status === 'disabled') {
-    return 'Setting up';
-  }
-  return '';
-}
