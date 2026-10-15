@@ -179,13 +179,21 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
     });
   };
 
+  // Closing before Create or Save drops what the dialog created, verified or
+  // not: `abandonKeyCheck` leaves a verified connection alone. A saved key
+  // (`created: false`) belongs to the user and is never deleted.
+  const dropCreatedConnection = (state: KeyCheckState): void => {
+    if (!state.created || state.connectionId === null) return;
+    void deleteConnection(state.connectionId).catch(() => {});
+  };
+
   const abandon = (): void => {
     const pending = pendingCheck.current;
     pendingCheck.current = null;
-    void abandonKeyCheck(KEY_CHECK_API, keyState);
-    // The check may still create (or already created) a connection; abandon its
+    dropCreatedConnection(keyState);
+    // The check may still create (or already created) a connection; drop its
     // resolved state too, so nothing is left behind with a live key.
-    if (pending !== null) void pending.then((result) => abandonKeyCheck(KEY_CHECK_API, result));
+    if (pending !== null) void pending.then((result) => dropCreatedConnection(result));
   };
 
   const providerText = choices.find((choice) => choice.id === providerId)?.label ?? '';

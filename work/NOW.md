@@ -52,7 +52,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 - **Then:**
   - **T-1466: `main.ts` split into `startup/`.** It is live at `332501d75` with a clean boot, 0 errors, 0 warnings, and the same route answers.
   - T-1467: phone builds and the local release recipe clear Metro's cache.
-- **400-line rule:** every source file is now at or under 400 lines except the three lead tooling files (`autopilot.ts` 671, `client.ts` 421, `cli.ts` 414), kept on purpose.
+- **T-1468: the lead client and CLI are split.** `--help` is byte-identical, and `status`/`spec-check` work from main.
+  - The lead restarted the autopilot at 04:07 on the new code.
+  - The old one ignored SIGTERM through the pnpm wrapper, so the lead stopped it from the inner node process outward. Exactly one runs, with no errors.
+- **400-line rule:** every source file is now at or under 400 lines except `packages/devtools/src/lead/autopilot.ts` (671), left for a daytime session.
 - **Running:**
   - T-1445: mobile New AI. The latest round adds double-tap guards on Create and Continue and resets after a failed check. Then the lead's phone walk.
 - **Next:** `main.ts` after `app.ts` deploys cleanly, then the mobile Connections add-key sheet after T-1445.
@@ -83,7 +86,6 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - Machines shows "● Online" as a dot plus a word;
   - Approvals has a manual Refresh key.
   - These go with Task H's approvals canvas.
-- **Kept over 400 lines on purpose:** the lead tooling files (`autopilot.ts`, `cli.ts`, `client.ts`) stay over 400 for now, because the autopilot runs from them.
 - **New canvas for Julio: "View steps"**, https://claude.ai/artifact/7YV3tdKH1k8LSBBZtsXzxk.
   - Web: a right panel. Phone: a hugging sheet.
   - It shows real event kinds from T-1426 (status, model call, tool call/result, approval, answer) with the real tool names (bash, read, edit, grep, git).
