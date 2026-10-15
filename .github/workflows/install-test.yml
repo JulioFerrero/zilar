@@ -28,7 +28,7 @@ jobs:
   install:
     name: Install and check a fresh stack
     runs-on: ubuntu-latest
-    # The install pulls four images, applies 67 migrations and waits for the
+    # The install pulls four images, applies every migration and waits for the
     # stack, so keep a ceiling above the usual 8-12 minutes.
     timeout-minutes: 25
     # workflow_run fires for failed and PR runs too; run only after a green main
@@ -112,12 +112,22 @@ jobs:
           code="$($curl_https -o /dev/null -w '%{http_code}' https://localhost/api/me)"
           [ "$code" = "401" ] || { echo "::error::/api/me answered $code, want 401"; exit 1; }
 
+          # HTTP/2 has no Upgrade handshake, so force HTTP/1.1 for the upgrade
+          # request. --max-time 5: on a 101 the server answers with its headers
+          # and then the connection is a tunnel curl does not speak, so curl
+          # waits out the timeout (hence || true) and the code comes from -w.
           echo "GET /xmpp-ws/ws (WebSocket upgrade)"
-          code="$($curl_https -o /dev/null -w '%{http_code}' \
+          ws="$($curl_https --http1.1 --max-time 5 -o /dev/null -D - -w '\n%{http_code}' \
             -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
             -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+            -H 'Sec-WebSocket-Protocol: xmpp' \
             https://localhost/xmpp-ws/ws || true)"
-          [ "$code" = "101" ] || { echo "::error::/xmpp-ws/ws answered $code, want 101"; exit 1; }
+          code="$(printf '%s\n' "$ws" | tail -n 1)"
+          if [ "$code" != "101" ]; then
+            printf '%s\n' "$ws"
+            echo "::error::/xmpp-ws/ws answered $code, want 101"
+            exit 1
+          fi
 
           echo "health, auth and WebSocket checks passed"
 

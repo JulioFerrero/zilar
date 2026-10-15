@@ -84,8 +84,11 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - T-1585 (installer check report and Docker stop; AI computers on only after a real sandbox run; 50 install tests pass);
     - T-1584 (Coolify layout files; **the rehearsal must prove `/xmpp-ws/api` is unreachable**, since the ejabberd admin API shares that listener);
     - T-1587 (phone channel Content, Settings and More. The channel screen now opens: a boot race had sent it to the chat list. **The phone Group info plan T1–T6 is done.**)
+    - T-1583 (fresh-install CI workflow `install-test.yml`).
+      - **First manual run, 38772833055:** the install on an empty runner worked; `/health` 200 `ok:true` (image commit `047f7377d`); `/api/me` 401.
+      - **But `/xmpp-ws/ws` answered 200, not 101:** curl most likely negotiated HTTP/2. **T-1589** forces HTTP/1.1; the migrations check is still to run.
   - **Running (2):**
-    - T-1583 (fresh-install CI test; pre-review);
+    - T-1589 (the WebSocket check over HTTP/1.1; dispatch the workflow again after merge);
     - T-1588 (installer Coolify mode through Coolify's API; reference `docs/deploy/coolify-api-notes.md`, committed on its branch). The lead refused an outside call to httpbin.org.
   - **Phone follow-ups:**
     - a failed channel delete says "group";
