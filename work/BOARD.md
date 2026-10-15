@@ -1537,3 +1537,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1527](T-1527-web-lean-leftovers.md) | Web lean leftovers: approvals header, Public and Private icons | 2026-10-15 |
 | [T-1528](T-1528-live-ai-activity-refresh.md) | Topic list refreshes when an AI card starts, ends or asks | 2026-10-15 |
 | [T-1522](T-1522-view-steps-audit.md) | View steps audit: data, route design and task list | 2026-10-15 |
+| [T-1517](T-1517-mobile-ai-health.md) | Phone My AIs shows each AI's health and today's spend | 2026-10-15 |

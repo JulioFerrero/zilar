@@ -38,6 +38,16 @@ export interface PublicAi {
   status: 'active' | 'disabled' | 'stopped';
   providerConnectionId: string;
   limits: AiLimits;
+  /**
+   * T-0058: the AI's spend summary, `null` when the spend read failed. Optional
+   * so an older server's payload stays valid.
+   */
+  usage?: { todayUsd: number; windowUsd: number } | null | undefined;
+  /**
+   * T-1504: the AI's latest turn failure no answer has followed, or `null` when
+   * it is healthy. Optional so an older server's payload stays valid.
+   */
+  lastFailure?: { kind: string; at: string } | null | undefined;
   // T-0091: the AI's home machine id, or null when it runs on the
   // platform. Optional so older payloads stay valid; a missing or non-string
   // value maps to null. CamelCase like the rest of the public AI fields.
@@ -115,8 +125,9 @@ export function buildCreateBody(input: CreateAiInput): Record<string, unknown> {
   };
 }
 
-// Only the fields this app renders; the usage, avatar and delegation fields
-// of the wire payload are for the web. A missing `machineId` reads as `null`.
+// Only the fields this app renders; the avatar and delegation fields of the
+// wire payload are for the web. A missing `machineId` reads as `null`, a
+// missing `usage` or `lastFailure` (an older server) reads as `null`.
 function toPublicAi(ai: ContractAi): PublicAi {
   return {
     id: ai.id,
@@ -128,6 +139,8 @@ function toPublicAi(ai: ContractAi): PublicAi {
     status: ai.status,
     providerConnectionId: ai.providerConnectionId,
     limits: { perDayUsd: ai.limits.perDayUsd, perMonthUsd: ai.limits.perMonthUsd },
+    usage: ai.usage ?? null,
+    lastFailure: ai.lastFailure ?? null,
     machineId: ai.machineId ?? null,
     computerMode: ai.computerMode ?? 'off',
     ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),

@@ -29,6 +29,7 @@ export * from './store/ledger';
 export * from './chat-prefs';
 export * from './routines';
 export * from './ai-form';
+export * from './ai-health';
 export * from './ai-limits';
 export * from './ai-models';
 export * from './ai-providers';

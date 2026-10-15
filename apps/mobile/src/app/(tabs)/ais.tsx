@@ -241,10 +241,9 @@ function AisList() {
     <>
       <AisScreenShell
         title="My AIs"
-        subtitle="Your AIs, their model and their spending limits."
         scroll
         right={
-          <IconButton label="Create AI" onPress={openNewAi}>
+          <IconButton label="New AI" onPress={openNewAi}>
             <Plus size={22} color={ICON} />
           </IconButton>
         }
@@ -276,9 +275,14 @@ function AisList() {
         )}
 
         {status === 'ready' && ais.length > 0 && (
-          <View className="gap-1">
-            {ais.map((ai) => (
-              <AiRow key={ai.id} ai={ai} onPress={() => setActionAi(ai)} />
+          <View className="overflow-hidden rounded-2xl border border-divider bg-surface">
+            {ais.map((ai, index) => (
+              <AiRow
+                key={ai.id}
+                ai={ai}
+                last={index === ais.length - 1}
+                onPress={() => setActionAi(ai)}
+              />
             ))}
           </View>
         )}
