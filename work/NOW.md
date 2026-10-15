@@ -81,7 +81,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - It used to list every group above every DM.
   - The headless check caught a NaN comparator (`-Infinity - -Infinity`) that made the first version a no-op.
   - Mobile's `chat-list.ts:72` has the same NaN pattern, and T-1474 is fixing it.
-- **Live at 06:30:** `/health` was ok at `abb548cfe`, with every baseline route unchanged. A watch waits for T-1476's deploy.
+- **Live at 06:32:** `27a3ddb8e` (T-1476), `/health` ok, baseline routes unchanged, 0 errors and 0 warnings in 20 min.
+- **T-1474 found the real mobile cause:** the same NaN comparator in `chat-list.ts:72` (Hermes-specific, V8 hides it). With the fix, the emulator shows the new AI chat on top. The packet is pending.
+- **Merged: T-1477.** Web mock mode no longer opens a live `/api/drafts/stream` (it 404'd 12 times per sweep).
+- **Running: T-1478.** At 390 px on web, an AI reply with a code block or table stretched its bubble past the screen and clipped the text. The fix caps the bubble at `min(560px, 100%)`.
 - **T-1445 history:**
   - **T-1445: mobile New AI.** The phone walk passed every step:
     - the footer, the provider dots and the keyboard-safe key step;

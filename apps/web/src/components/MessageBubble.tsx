@@ -298,8 +298,8 @@ export const MessageBubble = memo(function MessageBubble({
               bigEmoji ? undefined : own ? 'outgoing' : generating ? 'generating' : 'incoming'
             }
             className={cn(
-              'relative flex flex-col',
-              own ? 'max-w-[520px]' : 'max-w-[560px]',
+              'relative flex min-w-0 flex-col',
+              own ? 'max-w-[min(520px,100%)]' : 'max-w-[min(560px,100%)]',
               bigEmoji
                 ? undefined
                 : cn(
