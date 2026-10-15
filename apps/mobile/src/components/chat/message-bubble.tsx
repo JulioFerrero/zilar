@@ -5,6 +5,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { BubbleGesture } from '@/components/chat/bubble-gesture';
+import { HandoffLine } from '@/components/chat/handoff-line';
 import { rendersMarkdown } from '@/components/chat/markdown-decision';
 import { BubbleActionsSheet, openMessageMenu } from '@/components/chat/message-bubble-actions';
 import { isMediaFirstMessage } from '@/components/chat/media-bubble';
@@ -70,6 +71,8 @@ function MessageBubbleImpl({
   const reduceMotion = useReducedMotion();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // T-1575: the handoff line replaces the bubble; a press toggles the full one.
+  const [handoffOpen, setHandoffOpen] = useState(false);
   const outgoing = message.senderId === currentUserId;
   const mediaHosts = useChatStore((state) => state.mediaTrustedHosts) ?? EMPTY_HOSTS;
   const mediaFirst = isMediaFirstMessage(message, mediaHosts);
@@ -149,6 +152,9 @@ function MessageBubbleImpl({
   // A sticker renders without a bubble (validated against `StickerSchema`;
   // an invalid payload falls back to the body text like an unknown client).
   const sticker = stickerOf(message);
+  // T-1575: a `handoff.line` card renders the small centred line instead of the
+  // bubble, exactly like a sticker skips it.
+  const handoff = message.card?.type === 'handoff.line' ? message.card.data : undefined;
   // An attachment message carries the caption as its text: copy text is the
   // caption, pins and replies keep working (the reply quote shows the
   // caption via `previewBody`), and delete removes the whole message.
@@ -178,6 +184,104 @@ function MessageBubbleImpl({
     );
   }
 
+  const bubbleColumn = (
+    <View className={cn('max-w-[80%] shrink', outgoing ? 'items-end' : 'items-start')}>
+      <BubbleGesture
+        message={message}
+        onReact={onReact}
+        enabled={selecting !== true && !draft}
+        className="relative"
+      >
+        {sticker !== undefined ? (
+          <StickerBubble
+            sticker={sticker}
+            message={message}
+            outgoing={outgoing}
+            showSenderName={showSenderName}
+            failed={failedSticker}
+            onRetry={onRetrySticker}
+            onLongPress={openMenu}
+          />
+        ) : bigEmoji ? (
+          <BigEmojiBubble
+            message={message}
+            text={text}
+            outgoing={outgoing}
+            generating={generating}
+            reduceMotion={reduceMotion}
+            onLongPress={generating ? () => {} : openMenu}
+          />
+        ) : (
+          <Pressable
+            onLongPress={generating ? undefined : openMenu}
+            delayLongPress={LONG_PRESS_MS}
+            accessibilityLabel={messageAccessibilityLabel(message, outgoing)}
+            className={cn('rounded-[14px]', mediaFirst ? 'overflow-hidden' : 'px-3 py-2')}
+            style={bubbleStyle(
+              outgoing ? 'outgoing' : everLive ? 'generating' : 'incoming',
+              isLastInGroup,
+            )}
+          >
+            {everLive ? (
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  StyleSheet.absoluteFill,
+                  bubbleStyle('incoming', isLastInGroup),
+                  { opacity: swap },
+                ]}
+              />
+            ) : null}
+            <MessageMenuProvider openMenu={generating ? undefined : openMenu}>
+              <MessageBubbleContent
+                message={message}
+                outgoing={outgoing}
+                generating={generating}
+                showSenderName={showSenderName}
+                hasAttachment={hasAttachment}
+                mediaFirst={mediaFirst}
+                showMarkdown={showMarkdown}
+                text={text}
+                textColor={textColor}
+                metaColor={metaColor}
+                reduceMotion={reduceMotion}
+                meJid={meJid}
+                onRetryAttachment={onRetryAttachment}
+                onCancelAttachment={onCancelAttachment}
+                onOpenAttachment={onOpenAttachment}
+                openingAttachmentId={openingAttachmentId}
+                onRetryVoice={onRetryVoice}
+                onCancelVoice={onCancelVoice}
+                voiceHost={voiceHost}
+              />
+            </MessageMenuProvider>
+          </Pressable>
+        )}
+        {isLastInGroup ? (
+          <BubbleTail
+            outgoing={outgoing}
+            // Match the body: the well colour while recessed/generating, and
+            // the gradient's bottom stop once the incoming look is in.
+            color={outgoing ? '#dedede' : generating ? WELL_BACKGROUND : '#161616'}
+          />
+        ) : null}
+      </BubbleGesture>
+      {isLastInGroup && message.reactions !== undefined && message.reactions.length > 0 ? (
+        <ReactionChips
+          reactions={message.reactions}
+          outgoing={outgoing}
+          onToggle={
+            onReact === undefined
+              ? undefined
+              : (emoji) => {
+                  react(message, emoji);
+                }
+          }
+        />
+      ) : null}
+    </View>
+  );
+
   return (
     <>
       <SwipeToReply
@@ -197,7 +301,7 @@ function MessageBubbleImpl({
               <Checkbox checked={selected} disabled={!canForward} />
             </View>
           ) : null}
-          {!outgoing && isGroup ? (
+          {!outgoing && isGroup && handoff === undefined ? (
             showAvatar ? (
               <EntityAvatar
                 person={{ id: message.senderId, name: message.senderName }}
@@ -208,101 +312,19 @@ function MessageBubbleImpl({
               <View className="mr-2" style={{ width: 34 }} />
             )
           ) : null}
-          <View className={cn('max-w-[80%] shrink', outgoing ? 'items-end' : 'items-start')}>
-            <BubbleGesture
-              message={message}
-              onReact={onReact}
-              enabled={selecting !== true && !draft}
-              className="relative"
-            >
-              {sticker !== undefined ? (
-                <StickerBubble
-                  sticker={sticker}
-                  message={message}
-                  outgoing={outgoing}
-                  showSenderName={showSenderName}
-                  failed={failedSticker}
-                  onRetry={onRetrySticker}
-                  onLongPress={openMenu}
-                />
-              ) : bigEmoji ? (
-                <BigEmojiBubble
-                  message={message}
-                  text={text}
-                  outgoing={outgoing}
-                  generating={generating}
-                  reduceMotion={reduceMotion}
-                  onLongPress={generating ? () => {} : openMenu}
-                />
-              ) : (
-                <Pressable
-                  onLongPress={generating ? undefined : openMenu}
-                  delayLongPress={LONG_PRESS_MS}
-                  accessibilityLabel={messageAccessibilityLabel(message, outgoing)}
-                  className={cn('rounded-[14px]', mediaFirst ? 'overflow-hidden' : 'px-3 py-2')}
-                  style={bubbleStyle(
-                    outgoing ? 'outgoing' : everLive ? 'generating' : 'incoming',
-                    isLastInGroup,
-                  )}
-                >
-                  {everLive ? (
-                    <Animated.View
-                      pointerEvents="none"
-                      style={[
-                        StyleSheet.absoluteFill,
-                        bubbleStyle('incoming', isLastInGroup),
-                        { opacity: swap },
-                      ]}
-                    />
-                  ) : null}
-                  <MessageMenuProvider openMenu={generating ? undefined : openMenu}>
-                    <MessageBubbleContent
-                      message={message}
-                      outgoing={outgoing}
-                      generating={generating}
-                      showSenderName={showSenderName}
-                      hasAttachment={hasAttachment}
-                      mediaFirst={mediaFirst}
-                      showMarkdown={showMarkdown}
-                      text={text}
-                      textColor={textColor}
-                      metaColor={metaColor}
-                      reduceMotion={reduceMotion}
-                      meJid={meJid}
-                      onRetryAttachment={onRetryAttachment}
-                      onCancelAttachment={onCancelAttachment}
-                      onOpenAttachment={onOpenAttachment}
-                      openingAttachmentId={openingAttachmentId}
-                      onRetryVoice={onRetryVoice}
-                      onCancelVoice={onCancelVoice}
-                      voiceHost={voiceHost}
-                    />
-                  </MessageMenuProvider>
-                </Pressable>
-              )}
-              {isLastInGroup ? (
-                <BubbleTail
-                  outgoing={outgoing}
-                  // Match the body: the well colour while recessed/generating, and
-                  // the gradient's bottom stop once the incoming look is in.
-                  color={outgoing ? '#dedede' : generating ? WELL_BACKGROUND : '#161616'}
-                />
-              ) : null}
-            </BubbleGesture>
-            {isLastInGroup && message.reactions !== undefined && message.reactions.length > 0 ? (
-              <ReactionChips
-                reactions={message.reactions}
-                outgoing={outgoing}
-                onToggle={
-                  onReact === undefined
-                    ? undefined
-                    : (emoji) => {
-                        react(message, emoji);
-                      }
-                }
+          {handoff !== undefined ? (
+            <View className="min-w-0 flex-1 items-center">
+              <HandoffLine
+                card={handoff}
+                chatId={message.chatId}
+                senderName={message.senderName}
+                onToggle={() => setHandoffOpen((open) => !open)}
               />
-            ) : null}
-          </View>
+              {handoffOpen ? <View className="mt-1 w-full">{bubbleColumn}</View> : null}
+            </View>
+          ) : (
+            bubbleColumn
+          )}
           {selecting ? (
             <Pressable
               accessibilityRole="checkbox"

@@ -1,9 +1,10 @@
 import type { ChatSummary, RenderItem, UiMessage } from '@zilar/chat-core';
-import { Fragment, type RefObject } from 'react';
+import { Fragment, useState, type RefObject } from 'react';
 import { DateSeparator } from './DateSeparator';
 import { MessageBubble } from './MessageBubble';
 import { UnreadDivider } from './UnreadDivider';
 import { AlbumMembersProvider } from './message/AlbumGrid';
+import { HandoffLine } from './message/HandoffLine';
 
 export interface MessageListRowProps {
   item: RenderItem;
@@ -46,7 +47,9 @@ export function messageRowKey(
  * One row of the message list: the unread divider, a date separator, or a
  * message bubble. An album item renders its head bubble, whose attachment body
  * swaps in the grid, with the item's grouped members handed to the grid so it
- * draws exactly that run (T-1268).
+ * draws exactly that run (T-1268). A `handoff.line` card renders the small
+ * centred handoff line instead of the bubble, which a click toggles below it
+ * (T-1575).
  */
 export function MessageListRow({
   item,
@@ -74,29 +77,47 @@ export function MessageListRow({
         ? draftTurnId
         : finishedDraftMessages[item.message.id];
   const albumMembers = item.kind === 'album' ? item.messages : null;
+  const card = item.kind === 'separator' ? undefined : item.message.card;
+  const handoff = card?.type === 'handoff.line' ? card.data : undefined;
+  const handoffSender = item.kind === 'separator' ? '' : item.message.senderName;
+  const [handoffOpen, setHandoffOpen] = useState(false);
+  const bubble =
+    item.kind === 'separator' ? null : (
+      <MessageBubble
+        message={item.message}
+        chat={chat}
+        firstInGroup={item.firstInGroup}
+        lastInGroup={item.lastInGroup}
+        currentUserId={meId}
+        meJid={meJid}
+        onReply={onReply}
+        {...(onForward === undefined ? {} : { onForward })}
+        selecting={selecting}
+        selected={selectionIds !== undefined && selectionIds.has(item.message.id)}
+        {...(onToggleSelect === undefined ? {} : { onToggleSelect })}
+        {...(onStartSelect === undefined ? {} : { onStartSelect })}
+        draft={isDraft}
+        {...(revealTurnId === undefined ? {} : { revealTurnId })}
+      />
+    );
   return (
     <Fragment>
       {dividerIndex === index && <UnreadDivider ref={dividerRef} />}
       <AlbumMembersProvider messages={albumMembers}>
         {item.kind === 'separator' ? (
           <DateSeparator date={item.date} />
+        ) : handoff !== undefined ? (
+          <>
+            <HandoffLine
+              card={handoff}
+              chat={chat}
+              senderName={handoffSender}
+              onToggle={() => setHandoffOpen((open) => !open)}
+            />
+            {handoffOpen && bubble}
+          </>
         ) : (
-          <MessageBubble
-            message={item.message}
-            chat={chat}
-            firstInGroup={item.firstInGroup}
-            lastInGroup={item.lastInGroup}
-            currentUserId={meId}
-            meJid={meJid}
-            onReply={onReply}
-            {...(onForward === undefined ? {} : { onForward })}
-            selecting={selecting}
-            selected={selectionIds !== undefined && selectionIds.has(item.message.id)}
-            {...(onToggleSelect === undefined ? {} : { onToggleSelect })}
-            {...(onStartSelect === undefined ? {} : { onStartSelect })}
-            draft={isDraft}
-            {...(revealTurnId === undefined ? {} : { revealTurnId })}
-          />
+          bubble
         )}
       </AlbumMembersProvider>
     </Fragment>

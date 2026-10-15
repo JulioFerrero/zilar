@@ -1,6 +1,6 @@
 // The Dev team room (`dev-team@rooms.zilar.test`), web's `c-devteam`: the
 // checkout-fix storyline with the Dev AI's progress cards and the approval.
-import { approvalCard, image, progressCard, voice } from '../builders';
+import { approvalCard, handoffLine, image, progressCard, voice } from '../builders';
 import { ago, JIDS, msg, type MockMessageSeed } from './shared';
 import { MOCK_RELEASE_NOTES_TASK_ID } from '../../agent-tasks/events';
 
@@ -22,6 +22,11 @@ export const devTeamMessages: readonly MockMessageSeed[] = [
   }),
   msg('dev-6', DEV1, ago(3, 9, 14), {
     payload: progressCard({ stage: 'Running tests', percent: 33, taskId: 't-17' }),
+  }),
+  msg('dev-33', DEV1, ago(3, 9, 15), {
+    body: '@QA-1 check it on an iPhone',
+    mentions: [{ jid: JIDS.qa1, begin: 0, end: 5 }],
+    payload: handoffLine(JIDS.dev1, [JIDS.qa1], 'check it on an iPhone'),
   }),
   msg('dev-7', DEV1, ago(3, 9, 20), {
     body: 'Found it: the sticky footer covers the button on iOS 17.',

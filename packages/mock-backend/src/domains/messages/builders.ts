@@ -106,6 +106,11 @@ export function progressCard(input: {
   };
 }
 
+/** The small handoff line an AI reply carries when it hands work to another AI. */
+export function handoffLine(from: string, to: string[], task: string): Payload {
+  return { v: 0, type: 'handoff.line', data: { from, to, task } };
+}
+
 /** The seeded approval request the Dev AI posts in the Dev team room. */
 export function approvalCard(): Payload {
   return {
