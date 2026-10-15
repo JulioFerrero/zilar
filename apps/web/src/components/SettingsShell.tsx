@@ -13,11 +13,14 @@ import { Button } from '@/components/ui/button';
 export function SettingsShell({
   title,
   subtitle,
+  action,
   onBack,
   children,
 }: {
   title: string;
-  subtitle: string;
+  subtitle?: string;
+  /** An optional key at the right end of the title row (T-1503). */
+  action?: ReactNode;
   onBack: () => void;
   children: ReactNode;
 }) {
@@ -37,8 +40,11 @@ export function SettingsShell({
             <ArrowLeft className="size-5" aria-hidden="true" />
           </Button>
           <h1 className="text-[20px] leading-7 font-semibold">{title}</h1>
+          {action !== undefined && <div className="ml-auto shrink-0">{action}</div>}
         </div>
-        <p className="mt-1 text-[14px] text-muted-foreground">{subtitle}</p>
+        {subtitle !== undefined && (
+          <p className="mt-1 text-[14px] text-muted-foreground">{subtitle}</p>
+        )}
       </header>
       <div className="flex-1 overflow-auto p-4">{children}</div>
     </div>
