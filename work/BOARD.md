@@ -1635,3 +1635,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1624](T-1624-web-tools-logger.md) | Web tools log through the server logger | 2026-10-15 |
 | [T-1628](T-1628-split-xmpp-lifecycle.md) | Split the keepalive out of xmpp-core lifecycle.ts | 2026-10-15 |
 | [T-1621](T-1621-smart-wake-plan.md) | Plan: smart wake for AIs in group chats | 2026-10-15 |
+| [T-1627](T-1627-split-gateway-dm-turn.md) | Split the turn input out of gateway/dm-turn.ts | 2026-10-15 |

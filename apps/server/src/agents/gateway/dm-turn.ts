@@ -12,9 +12,7 @@ import {
 } from '../context';
 import { promptNow } from '../prompt-time';
 import { timeZoneFor } from '../../auth/profile-time-zone';
-import { runDmTurn, TRANSIENT_FAILURE_REPLY, type ExecuteToolCall } from '../reply';
-import { buildTools } from '../tools';
-import { TOOL_STAGE_THINKING } from '../tool-guide';
+import { TRANSIENT_FAILURE_REPLY, type ExecuteToolCall } from '../reply';
 import type { createBudgetGate } from './budget';
 import {
   isAiSender,
@@ -26,19 +24,13 @@ import {
 } from './contracts';
 import { loadActiveAi, loadOwnerName } from './db';
 import { loadModelTarget } from './model-target';
-import {
-  resolveTurnDesk,
-  TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER,
-  type DeskTurnContext,
-} from './desk-exec';
+import { type DeskTurnContext } from './desk-exec';
+import { runDmTurnInput } from './dm-turn-input';
 import type { RequestActionContext } from './group-turn';
 import { openTurnLog } from '../log/append';
-import { clearTurnAbort, registerTurnAbort } from './stop';
 import { reportDmTurnDefect } from './turn-defect';
-import { recordUsage } from '../../ais/usage-store';
 import type { createLiveSession } from './live';
 import type { MemoryRunner } from './memory';
-import { turnLimits } from './turn-rounds';
 
 type LiveSession = ReturnType<typeof createLiveSession>;
 
@@ -46,7 +38,7 @@ type LiveSession = ReturnType<typeof createLiveSession>;
 // factory takes the shared live session, budget gate, memory runner and the
 // gateway callbacks the moved code closes over, and returns the same
 // `pumpSessionEffect` the gateway forks. A pure move: no logic or wording changed.
-interface DmTurnContext {
+export interface DmTurnContext {
   deps: AgentGatewayDeps;
   logger: GatewayLogger;
   turnLogger: GatewayLogger;
@@ -74,18 +66,15 @@ export function createDmTurn(ctx: DmTurnContext) {
   const {
     deps,
     logger,
-    turnLogger,
     sessionIsLive,
     liveSendMessage,
     liveSendTyping,
     liveMarkDisplayed,
-    liveProgressReporter,
     budgetGate,
     loadMemoryContext,
     startCompaction,
     disconnectAi,
     secretsFor,
-    executeToolCall,
     withToolGuide,
     draftHub,
   } = ctx;
@@ -283,85 +272,17 @@ export function createDmTurn(ctx: DmTurnContext) {
       // T-0106/T-1414: multi-round turns post one task card, edited in place
       // and closed with a final `done`/`failed` correction. Best effort: the
       // turn never fails over it.
-      const dmProgress = liveProgressReporter(session, ownerJid, 'chat', ai.jid, turnLog);
-      // T-1423: resolve the AI's computer for this turn (cloud or its runner).
-      // T-1409: the tools are offered only when it resolves to hands; the list
-      // and the executor see the same flag.
-      const turnDesk = yield* Effect.promise(() => resolveTurnDesk(deps, ai));
-      if (turnDesk.waiting) {
-        yield* Effect.promise(() =>
-          dmProgress.reportProgress(TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER),
-        );
-      }
-      const deskEnabled = turnDesk.client !== undefined;
-      // T-1422: the DM turn's abort controller, keyed by the AI's own JID (the
-      // client chat id of an AI DM). The stop route aborts it.
-      const dmAbort = registerTurnAbort(session, session.aiJid);
-      const outcome = yield* Effect.promise(() =>
-        runDmTurn({
-          aiId: session.aiId,
-          ownerJid,
-          messages: dmMessages,
-          target,
-          signal: dmAbort.signal,
-          executeTool: executeToolCall(
-            session,
-            dmChatKey,
-            undefined,
-            deskEnabled
-              ? { ownerUserId: ai.owner, client: turnDesk.client, signal: dmAbort.signal }
-              : undefined,
-          ),
-          tools: buildTools(deps.actions?.listActions() ?? [], { desk: deskEnabled }),
-          ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
-          ...turnLimits(deps.toolMaxRounds, deskEnabled),
-          checkRoundGate: () => budgetGate.checkDmRoundGate(session),
-          reportProgress: dmProgress.reportProgress,
-          finishProgress: dmProgress.finishProgress,
-          // T-0156: wires the per-turn counts line (ids and counts only,
-          // never content) into production — the wire the T-0106 review
-          // deferred.
-          turnLogger,
-          onDelta: (textSoFar) => {
-            if (sessionIsLive(session)) {
-              turnDrafts.push(textSoFar);
-            }
-          },
-          // T-1405: every model call in the turn adds its tokens and cost to
-          // the AI's `ai_usage` row. Best effort and fire and forget; it can
-          // never fail the turn.
-          onUsage: (usage) => {
-            void recordUsage(
-              { db: deps.db, logger },
-              session.aiId,
-              target.usageProvider ?? target.provider,
-              target.model,
-              usage,
-              (deps.now ?? (() => new Date()))(),
-            );
-          },
-          beforeFinalSend: (text) => {
-            if (sessionIsLive(session)) {
-              turnDrafts.flush(text);
-            }
-          },
-          sendMessage: (to, kind, text) => liveSendMessage(session, to, kind, text),
-          // T-1406: a composing send opens the turn with the fixed "Thinking"
-          // status; the tool stages replace it, and the final `paused` clears it.
-          sendTyping: (to, kind, state) => {
-            liveSendTyping(
-              session,
-              to,
-              kind,
-              state,
-              state === 'composing' ? TOOL_STAGE_THINKING : undefined,
-            );
-          },
-          logger,
-          secrets: secretsFor(),
-          log: turnLog,
-        }),
-      ).pipe(Effect.ensuring(Effect.sync(() => clearTurnAbort(session, session.aiJid, dmAbort))));
+      const outcome = yield* runDmTurnInput({
+        ctx,
+        ai,
+        session,
+        ownerJid,
+        messages: dmMessages,
+        target,
+        chatKey: dmChatKey,
+        drafts: turnDrafts,
+        log: turnLog,
+      });
       turnDrafts.end(outcome.kind === 'replied' && sessionIsLive(session) ? 'sent' : 'failed');
       // The 80% heads-ups go out after the reply, so the owner reads the
       // answer first. A failed warning send only logs and never fails the
