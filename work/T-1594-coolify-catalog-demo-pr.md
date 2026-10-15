@@ -1,7 +1,7 @@
 ---
 id: T-1594
 title: "Demo of the Coolify catalog submission (Julio asked to see it as a draft PR in our repo, not merged): deploy/coolify/catalog/ mirrors the two upstream repos — coolify/templates/compose/zilar.yaml (pinned v0.2.0 images, Coolify's template rules), coolify/svgs/zilar.svg, coolify-docs/content/docs/services/zilar.mdx plus its logo, and PR.md with both pull request texts"
-status: review
+status: blocked
 milestone: M5
 branch: task/T-1594-coolify-catalog-demo-pr
 model: auto
@@ -189,3 +189,16 @@ outside the six new catalog files was changed.
   spelling it is a one-word edit.
 - `desk-net` keeps its fixed `name: desk-net` and `internal: true` (needed), and
   `desk-out` is kept as the spec's step 1 requires.
+
+## Review (written by Claude)
+
+**Approved as a demo. Opened as a draft PR in our repo; never merged into main** (Julio, 2026-10-15).
+
+- **Pre-review:** clean, with 2 nits.
+- **What the lead checked:**
+  - **The pinned images:** all six are `ghcr.io/julioferrero/zilar-*:v0.2.0`, and v0.2.0 was tagged the same evening.
+  - **The header** follows Coolify's format.
+  - **The layout** mirrors both upstream repos: `coolify/templates/compose/zilar.yaml`, `coolify/svgs/zilar.svg`, `coolify-docs/content/docs/services/zilar.mdx`, `coolify-docs/public/images/services/zilar.svg`, plus `PR.md` with both PR texts.
+- **Nit 1, kept in mind for a real submission:** the rehearsal deployed T-1592's template (variable image tag, explicit restarts and volumes), not this pinned copy. Before submitting upstream, deploy this exact file once more through Docker Compose Empty.
+- **Eligibility:** Coolify's catalog needs 1,000 GitHub stars, and Zilar has 0.
+- **Status:** `blocked`, so the autopilot leaves it alone; the branch stays as the draft PR.
