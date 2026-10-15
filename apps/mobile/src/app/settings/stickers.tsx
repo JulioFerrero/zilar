@@ -1,16 +1,24 @@
+import { Effect } from 'effect';
 import { useRouter } from 'expo-router';
+import { Plus } from 'lucide-react-native';
+import { useRef, useState } from 'react';
 import { View } from 'react-native';
 
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
 import { DiscoverTab } from '@/components/stickers/discover-tab';
 import { FavoritesTab } from '@/components/stickers/favorites-tab';
+import { PackSheet } from '@/components/stickers/pack-sheet';
 import { PacksTab } from '@/components/stickers/packs-tab';
 import { TelegramImportSheet } from '@/components/stickers/telegram-import-sheet';
 import { type StickerTab, useStickersPanel } from '@/components/stickers/use-stickers-panel';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { IconButton } from '@/components/ui/icon-button';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { StateMessage } from '@/components/ui/state-message';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
+import { ICON } from '@/lib/colors';
+import { fromApi } from '@/lib/effect/api-effect';
+import type { StickerPack } from '@/lib/stickers';
 
 export { favoriteTileSize } from '@/components/stickers/tile-size';
 
@@ -24,13 +32,16 @@ const isStickerTab = (value: string): value is StickerTab =>
   TABS.some((entry) => entry.key === value);
 
 const LOAD_ERROR = 'Could not load your stickers.';
+const VISIBILITY_ERROR = 'Could not change who can find this pack. Try again.';
+const DELETE_ERROR = 'Could not delete the pack. Try again.';
 
 /**
  * Settings → Stickers (T-0187, the mobile twin of web's `StickersPage`):
- * the panel packs in order with Remove and move up/down, the shared
+ * the panel packs in a lean list that opens the pack sheet, the shared
  * Discover packs with search and Add, and the starred Favorites grid.
- * The pack editor lives at `/settings/sticker-pack` (T-0191) and the
- * Telegram importer in `TelegramImportSheet` (T-0207).
+ * The pack editor lives at `/settings/sticker-pack` (T-0191), the Telegram
+ * importer in `TelegramImportSheet` (T-0207) and the New pack key in the
+ * header (T-1533).
  */
 export default function StickersScreen() {
   return (
@@ -77,11 +88,78 @@ function StickersBody() {
     tile,
   } = useStickersPanel();
 
+  const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
+  const [visibilityBusy, setVisibilityBusy] = useState(false);
+  const [visibilityError, setVisibilityError] = useState('');
+  const [deletingPack, setDeletingPack] = useState<StickerPack | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const deleteBusyRef = useRef(false);
+
+  const selectedPack =
+    selectedPackId === null ? null : (packs.find((pack) => pack.id === selectedPackId) ?? null);
+  const selectedIndex =
+    selectedPack === null ? -1 : packs.findIndex((pack) => pack.id === selectedPack.id);
+
+  const openEditor = (packId: string): void =>
+    router.push({ pathname: '/settings/sticker-pack', params: { id: packId } });
+
+  const closeSheet = (): void => {
+    setSelectedPackId(null);
+    setVisibilityError('');
+  };
+
+  const changeVisibility = (pack: StickerPack, visibility: 'private' | 'server'): void => {
+    if (visibilityBusy) {
+      return;
+    }
+    setVisibilityBusy(true);
+    setVisibilityError('');
+    Effect.runFork(
+      fromApi(() => api.patchStickerPack(pack.id, { visibility })).pipe(
+        Effect.tap(() => Effect.sync(() => reload())),
+        Effect.catch(() => Effect.sync(() => setVisibilityError(VISIBILITY_ERROR))),
+        Effect.ensuring(Effect.sync(() => setVisibilityBusy(false))),
+      ),
+    );
+  };
+
+  const confirmDelete = (): void => {
+    if (deletingPack === null || deleteBusyRef.current) {
+      return;
+    }
+    const packId = deletingPack.id;
+    deleteBusyRef.current = true;
+    setDeleteBusy(true);
+    setDeleteError('');
+    Effect.runFork(
+      fromApi(() => api.deleteStickerPack(packId)).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            setDeletingPack(null);
+            reload();
+          }),
+        ),
+        Effect.catch(() => Effect.sync(() => setDeleteError(DELETE_ERROR))),
+        Effect.ensuring(
+          Effect.sync(() => {
+            deleteBusyRef.current = false;
+            setDeleteBusy(false);
+          }),
+        ),
+      ),
+    );
+  };
+
   return (
     <SettingsScreenShell
       title="Stickers"
-      subtitle="Your packs, shared packs and favorites."
       onBack={() => router.back()}
+      right={
+        <IconButton label="New pack" onPress={() => router.push('/settings/sticker-pack')}>
+          <Plus size={18} color={ICON} />
+        </IconButton>
+      }
     >
       <View className="gap-4">
         <SegmentedControl
@@ -117,12 +195,14 @@ function StickersBody() {
             meId={meId}
             busy={busy}
             actionError={actionError}
-            onMove={movePack}
             onRemove={askRemove}
-            onEdit={(packId) =>
-              router.push({ pathname: '/settings/sticker-pack', params: { id: packId } })
+            onOpenPack={(packId) => {
+              setVisibilityError('');
+              setSelectedPackId(packId);
+            }}
+            onOpenPackLink={(packId) =>
+              router.push({ pathname: '/stickers/[packId]', params: { packId } })
             }
-            onCreate={() => router.push('/settings/sticker-pack')}
             onImport={openImport}
             onOpenDiscover={() => openTab('discover')}
           />
@@ -158,6 +238,34 @@ function StickersBody() {
         ) : null}
       </View>
 
+      <PackSheet
+        pack={selectedPack}
+        token={token}
+        meId={meId}
+        busy={busy}
+        canMoveUp={selectedIndex > 0}
+        canMoveDown={selectedIndex >= 0 && selectedIndex < packs.length - 1}
+        visibilityBusy={visibilityBusy}
+        visibilityError={visibilityError}
+        onMove={movePack}
+        onEdit={(packId) => {
+          closeSheet();
+          openEditor(packId);
+        }}
+        onMakePrivate={(pack) => changeVisibility(pack, 'private')}
+        onMakeShared={(pack) => changeVisibility(pack, 'server')}
+        onRemove={(pack) => {
+          closeSheet();
+          askRemove(pack);
+        }}
+        onDelete={(pack) => {
+          closeSheet();
+          setDeleteError('');
+          setDeletingPack(pack);
+        }}
+        onClose={closeSheet}
+      />
+
       <ConfirmDialog
         visible={confirming !== null}
         title="Remove this pack?"
@@ -174,6 +282,22 @@ function StickersBody() {
         onConfirm={confirmRemove}
         confirmAccessibilityLabel={
           confirming === null ? 'Remove pack' : `Remove ${confirming.title}`
+        }
+        destructive
+      />
+
+      <ConfirmDialog
+        visible={deletingPack !== null}
+        title="Delete this pack?"
+        message="The pack and its files are deleted. Messages already sent keep their sticker URL, which no longer loads a sticker."
+        error={deleteError}
+        confirmLabel="Delete"
+        busyLabel="Deleting…"
+        busy={deleteBusy}
+        onCancel={() => setDeletingPack(null)}
+        onConfirm={confirmDelete}
+        confirmAccessibilityLabel={
+          deletingPack === null ? 'Delete pack' : `Delete ${deletingPack.title}`
         }
         destructive
       />

@@ -1,77 +1,118 @@
 import { Image } from 'expo-image';
-import { Sticker } from 'lucide-react-native';
-import { View } from 'react-native';
+import { ChevronRight, Globe, Sticker } from 'lucide-react-native';
+import { Pressable, View } from 'react-native';
 
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
 import { MUTED_FOREGROUND } from '@/lib/colors';
-import { isSameOriginStickerUrl, stickerImageSource, type StickerPack } from '@/lib/stickers';
+import { isSameOriginStickerUrl, stickerImageSource } from '@/lib/stickers';
+import type { PanelPack } from '@/lib/stickers-api';
 import { cn } from '@/lib/utils';
 import { packCountLabel } from '@/components/stickers/tile-size';
 
-/** One pack row: the thumbnail strip, the title and count, and the action. */
+/** The meta line under the pack name: the count, plus the source or owner. */
+function packMeta(pack: PanelPack, own: boolean): string {
+  const count = packCountLabel(pack.stickers.length);
+  if (own) {
+    return pack.importedFrom === undefined ? count : `${count} · Telegram`;
+  }
+  return pack.ownerHandle === undefined || pack.ownerHandle === null
+    ? count
+    : `${count} · @${pack.ownerHandle}`;
+}
+
+/**
+ * One lean pack row (T-1533): four 36 px thumbs, the name with a globe when
+ * shared, the meta line and a trailing control. My packs and Added render it
+ * as a row inside one bordered list; Discover keeps its own card.
+ */
 export function PackCard({
   pack,
   token,
-  action,
-  children,
   meId,
+  onPress,
+  action,
+  accessibilityLabel,
+  inList = false,
+  divider = true,
 }: {
-  pack: StickerPack;
+  pack: PanelPack;
   token: string | undefined;
-  /** Discover rows pass Add/Remove here; My packs rows render none (brief §3). */
-  action?: React.ReactNode;
-  children?: React.ReactNode;
-  /** The signed-in user id: own packs get the subtitle and the Edit pill. */
+  /** The signed-in user id: own packs show "Telegram" instead of a handle. */
   meId?: string | undefined;
+  /** Makes the row pressable, adding a chevron unless `action` is given. */
+  onPress?: (() => void) | undefined;
+  /** The trailing control; Discover passes Add/Remove. */
+  action?: React.ReactNode;
+  /** Defaults to the pack title. */
+  accessibilityLabel?: string;
+  /** A row inside a bordered list: no card of its own. */
+  inList?: boolean;
+  /** Draw the hairline below the row. Defaults to true in list mode. */
+  divider?: boolean;
 }) {
-  const thumbs = pack.stickers.slice(0, 3);
+  const thumbs = pack.stickers.slice(0, 4);
   const own = meId !== undefined && pack.ownerId !== undefined && pack.ownerId === meId;
-  const subtitle =
-    own && pack.importedFrom !== undefined
-      ? `${packCountLabel(pack.stickers.length)} · Imported`
-      : own && pack.visibility === 'server'
-        ? `${packCountLabel(pack.stickers.length)} · Shared`
-        : own
-          ? `${packCountLabel(pack.stickers.length)} · Private`
-          : packCountLabel(pack.stickers.length);
-  return (
-    <View className="gap-1 rounded-xl border border-border bg-surface px-3 py-2.5">
-      <View className="flex-row items-center gap-3">
-        <View accessibilityElementsHidden className="flex-row">
-          {thumbs.length === 0 ? (
-            <View className="h-9 w-9 items-center justify-center rounded-[10px] border border-border bg-surface-raised">
-              <Sticker size={18} color={MUTED_FOREGROUND} />
+  const trailing =
+    action ?? (onPress === undefined ? null : <ChevronRight size={16} color={MUTED_FOREGROUND} />);
+  const body = (
+    <View className="flex-row items-center gap-3">
+      <View accessibilityElementsHidden className="flex-row gap-1">
+        {thumbs.length === 0 ? (
+          <View className="h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-raised">
+            <Sticker size={18} color={MUTED_FOREGROUND} />
+          </View>
+        ) : (
+          thumbs.map((sticker) => (
+            <View
+              key={sticker.id}
+              className="h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-surface-raised"
+            >
+              {isSameOriginStickerUrl(sticker.url, API_URL) ? (
+                <Image
+                  source={stickerImageSource(sticker.url, API_URL, token)}
+                  style={{ width: 36, height: 36 }}
+                  contentFit="contain"
+                />
+              ) : null}
             </View>
-          ) : (
-            thumbs.map((sticker, index) => (
-              <View
-                key={sticker.id}
-                className={cn(
-                  'h-9 w-9 items-center justify-center rounded-[10px] border border-border bg-surface-raised',
-                  index === 0 ? '' : '-ml-2',
-                )}
-              >
-                {isSameOriginStickerUrl(sticker.url, API_URL) ? (
-                  <Image
-                    source={stickerImageSource(sticker.url, API_URL, token)}
-                    style={{ width: 28, height: 28 }}
-                    contentFit="contain"
-                  />
-                ) : null}
-              </View>
-            ))
-          )}
-        </View>
-        <View className="min-w-0 flex-1">
-          <Text numberOfLines={1} className="text-[15px] font-medium text-foreground">
+          ))
+        )}
+      </View>
+      <View className="min-w-0 flex-1">
+        <View className="flex-row items-center gap-1.5">
+          <Text numberOfLines={1} className="shrink text-[15px] font-semibold text-foreground">
             {pack.title}
           </Text>
-          <Text className="text-[13px] text-muted-foreground">{subtitle}</Text>
+          {pack.visibility === 'server' ? (
+            <Globe size={14} color={MUTED_FOREGROUND} accessibilityLabel="Shared" />
+          ) : null}
         </View>
-        {action === undefined ? null : <View className="shrink-0">{action}</View>}
+        <Text numberOfLines={1} className="text-[14px] text-muted-foreground">
+          {packMeta(pack, own)}
+        </Text>
       </View>
-      {children}
+      {trailing === null ? null : <View className="shrink-0">{trailing}</View>}
     </View>
+  );
+  const container = cn(
+    'px-3 py-2.5',
+    inList
+      ? divider
+        ? 'border-b border-divider'
+        : undefined
+      : 'rounded-xl border border-border bg-surface',
+  );
+  return onPress === undefined ? (
+    <View className={container}>{body}</View>
+  ) : (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? pack.title}
+      onPress={onPress}
+      className={cn(container, 'active:bg-surface-raised')}
+    >
+      {body}
+    </Pressable>
   );
 }

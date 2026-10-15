@@ -1,16 +1,18 @@
-import { ChevronDown, ChevronUp, Download, Pencil, Plus, Sticker } from 'lucide-react-native';
-import { View } from 'react-native';
+import { CircleMinus, Download, Sticker } from 'lucide-react-native';
+import { Pressable, View } from 'react-native';
 
-import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
-import { ACCENT_FOREGROUND, ICON } from '@/lib/colors';
+import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 import type { StickerPack } from '@/lib/stickers';
+import type { PanelPack } from '@/lib/stickers-api';
 import { PackCard } from '@/components/stickers/pack-card';
 
 /**
- * The My packs tab: the New pack and Import actions and the reorderable pack
- * rows with their Edit and Remove controls.
+ * The My packs tab (T-1533): one lean list of your own packs that opens the
+ * pack sheet, the Import from Telegram row, and the Added list of other
+ * people's packs with a remove key.
  */
 export function PacksTab({
   packs,
@@ -18,56 +20,42 @@ export function PacksTab({
   meId,
   busy,
   actionError,
-  onMove,
   onRemove,
-  onEdit,
-  onCreate,
+  onOpenPack,
+  onOpenPackLink,
   onImport,
   onOpenDiscover,
 }: {
-  packs: StickerPack[];
+  packs: PanelPack[];
   token: string | undefined;
   meId: string | undefined;
   busy: boolean;
   actionError: string;
-  onMove: (packId: string, direction: -1 | 1) => void;
   onRemove: (pack: StickerPack) => void;
-  onEdit: (packId: string) => void;
-  onCreate: () => void;
+  /** Opens the pack action sheet. */
+  onOpenPack: (packId: string) => void;
+  /** Opens the pack link page (`/stickers/<id>`). */
+  onOpenPackLink: (packId: string) => void;
   onImport: () => void;
   onOpenDiscover: () => void;
 }) {
+  // While the viewer id is still unknown, every pack counts as your own so no
+  // Added row flashes a remove key on a pack you own.
+  const own =
+    meId === undefined
+      ? packs
+      : packs.filter((pack) => pack.ownerId === undefined || pack.ownerId === meId);
+  const added = meId === undefined ? [] : packs.filter((pack) => pack.ownerId !== meId);
+
   return (
     <View className="gap-2">
-      <View className="flex-row items-center justify-between">
-        <Text className="text-[16px] font-semibold text-foreground">My packs</Text>
-        <Button
-          variant="default"
-          size="sm"
-          accessibilityLabel="Create a new sticker pack"
-          disabled={busy}
-          onPress={onCreate}
-        >
-          <Plus size={16} color={ACCENT_FOREGROUND} />
-          <Text>New pack</Text>
-        </Button>
-      </View>
-      <Button
-        variant="outline"
-        className="h-11 rounded-xl"
-        accessibilityLabel="Import from Telegram"
-        disabled={busy}
-        onPress={onImport}
-      >
-        <Download size={16} color={ICON} />
-        <Text className="text-[15px] text-foreground">Import from Telegram</Text>
-      </Button>
       {actionError !== '' ? (
         <Text accessibilityRole="alert" className="text-[14px] text-danger">
           {actionError}
         </Text>
       ) : null}
-      {packs.length === 0 ? (
+
+      {own.length === 0 ? (
         <StateMessage
           kind="empty"
           icon={Sticker}
@@ -78,63 +66,64 @@ export function PacksTab({
             onPress: onOpenDiscover,
           }}
         />
-      ) : (
-        <View className="gap-2">
-          {packs.map((pack, index) => (
-            <PackCard key={pack.id} pack={pack} token={token} meId={meId}>
-              <View className="mt-2 flex-row items-center justify-between border-t border-divider pt-2">
-                <View className="flex-row gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 rounded-lg"
-                    hitSlop={4}
-                    accessibilityLabel={`Move ${pack.title} up`}
-                    disabled={busy || index === 0}
-                    onPress={() => onMove(pack.id, -1)}
-                  >
-                    <ChevronUp size={20} color={ICON} />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 rounded-lg"
-                    hitSlop={4}
-                    accessibilityLabel={`Move ${pack.title} down`}
-                    disabled={busy || index === packs.length - 1}
-                    onPress={() => onMove(pack.id, 1)}
-                  >
-                    <ChevronDown size={20} color={ICON} />
-                  </Button>
-                </View>
-                <View className="flex-row items-center gap-2">
-                  {meId !== undefined && pack.ownerId !== undefined && pack.ownerId === meId ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      accessibilityLabel={`Edit ${pack.title}`}
-                      disabled={busy}
-                      onPress={() => onEdit(pack.id)}
-                    >
-                      <Pencil size={14} color={ICON} />
-                      <Text>Edit</Text>
-                    </Button>
-                  ) : null}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    accessibilityLabel={`Remove ${pack.title}`}
+      ) : null}
+
+      <View className="overflow-hidden rounded-2xl border border-border bg-surface">
+        {own.map((pack) => (
+          <PackCard
+            key={pack.id}
+            inList
+            pack={pack}
+            token={token}
+            meId={meId}
+            accessibilityLabel={`Open ${pack.title}`}
+            onPress={() => onOpenPack(pack.id)}
+          />
+        ))}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Import from Telegram"
+          disabled={busy}
+          onPress={onImport}
+          className="flex-row items-center gap-3 px-3 py-3 active:bg-surface-raised disabled:opacity-50"
+        >
+          <View className="h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-raised">
+            <Download size={18} color={MUTED_FOREGROUND} />
+          </View>
+          <Text className="text-[15px] text-muted-foreground">Import from Telegram</Text>
+        </Pressable>
+      </View>
+
+      {added.length > 0 ? (
+        <View className="mt-4 gap-2">
+          <Text className="ml-1 text-[12px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+            Added
+          </Text>
+          <View className="overflow-hidden rounded-2xl border border-border bg-surface">
+            {added.map((pack, index) => (
+              <PackCard
+                key={pack.id}
+                inList
+                divider={index < added.length - 1}
+                pack={pack}
+                token={token}
+                meId={meId}
+                accessibilityLabel={`Open ${pack.title}`}
+                onPress={() => onOpenPackLink(pack.id)}
+                action={
+                  <IconButton
+                    label={`Remove ${pack.title} from panel`}
                     disabled={busy}
                     onPress={() => onRemove(pack)}
                   >
-                    <Text>Remove</Text>
-                  </Button>
-                </View>
-              </View>
-            </PackCard>
-          ))}
+                    <CircleMinus size={18} color={ICON} />
+                  </IconButton>
+                }
+              />
+            ))}
+          </View>
         </View>
-      )}
+      ) : null}
     </View>
   );
 }

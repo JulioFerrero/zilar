@@ -12,22 +12,33 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - AI work steps 1–3 and 5 (read model, topic-list activity, `topics.done_at` (migration 0064, live), live refresh);
     - the View steps audit (`docs/audit/view-steps-plan.md`, lead decisions in T-1522).
     - **Live last checked at `3f024a0fd`:** 0 errors, 3 "AI is offline" warnings at container start only, and the changed routes answer 401 signed out.
-  - **Also merged:** T-1526 (phone Machines, smoke checked), T-1531 (sticker lists show the owner's @handle; live at `4c76df01c`: 0 errors, sticker routes 401 signed out), T-1532 (web topic marks and the "AIs here" key).
-  - **Running (8):**
-    - T-1525 (phone sticker upload keeps motion; fix round: refuse a moving WebP/PNG over 512 KiB early);
-    - T-1529 (AI work step 4: the last @mentioned AI follows a topic; migration 0065; the one schema task; autofix round);
-    - T-1530 (View steps server route; autofix round);
-    - T-1538 (web health row on chat-core `aiHealth`; refactor only);
-    - T-1533 (phone Stickers My packs and pack sheet);
-    - T-1534 (AI work 6b: web drops the task strip, link row, Mark as done). **Merge only after T-1529.**
-    - T-1536 (phone several files at once);
-    - T-1537 (web status line above the topic composer; activity entries gain `jid`).
-  - **Written, waiting:** T-1535 (web View steps panel; launch after T-1530 merges); T-1539 (AI work 7a: phone topic marks and the "AIs here" sheet; launch when a mobile slot frees).
+  - **Also merged:**
+    - T-1526 (phone Machines, smoke checked);
+    - T-1531 (sticker lists show the owner's @handle; live at `4c76df01c`: 0 errors, sticker routes 401 signed out);
+    - T-1532 (web topic marks and the "AIs here" key);
+    - T-1538 (web health row on chat-core `aiHealth`; identical output on main and the branch);
+    - T-1530 (View steps route);
+    - T-1529 (the last @mentioned AI follows a topic; migration 0065);
+    - T-1534 (web drops the task strip; link row and Mark as done);
+    - T-1525 (phone sticker upload keeps motion; **check a moving GIF upload on Julio's next phone build**).
+    
+    The deploy check for `22755dff7` (migration 0065 plus the steps route) is running.
+  - **Running (7):**
+    - T-1533 (phone Stickers My packs; smoke running);
+    - T-1535 (web View steps panel);
+    - T-1536 (phone several files; fix round: photos send first as the album, then files);
+    - T-1537 (web status line; fix round: use only the AI's newest card);
+    - T-1539 (AI work 7a: phone topic marks and the "AIs here" sheet);
+    - T-1541 (web: the same album-order fix);
+    - T-1542 (phone Group info audit, plan only).
+  - **Written, waiting:** T-1540 (AI work 7b: phone drops the task strip; launch when a mobile slot frees).
+  - **Next free web slot:** split `apps/server/src/topics/access.ts` and `packages/client-core/src/store/chat-rows.ts` (399 lines each after T-1537), after T-1537 merges.
   - **Decisions (Julio, 10-15):** the topic link moves to a row in the topic info panel (T8 keeps `link_url`/`link_label`); the last @mentioned AI follows a topic.
   - **Next to spec:**
     - View steps: phone sheet (after T-1535);
-    - AI work: T7b phone drops the task strip with a link row and Mark as done in `topic-info-sheet.tsx` (349 lines, so new files), the phone status line (after T-1537), then T8 (drop kind/status/owner after a phone release);
-    - phone twins: New pack grid (after T-1525), Group info (audit first: the phone has only header sheets), channel info;
+    - AI work: the phone status line (after T-1537), then T8 (drop kind/status/owner after a phone release);
+    - phone twins: New pack grid (T-1525 merged, so ready), Group info and channel info (from T-1542's plan);
+    - phone stickers: Discover rows and the 28 px large title follow-ups from T-1533;
     - phone sticker MIME follow-up from T-1525 (widen the `'image/webp' | 'image/png'` union in `pack-editor.ts`, `stickers-api.ts`, `use-pack-items.ts`);
     - phone dead code: `runStateLabel`, `formatLimits`, `SCREEN_DECISIONS`, `approvalStatusLabel`.
 - **1. Web and server, while Julio is at the PC (2 workers at a time):**

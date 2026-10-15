@@ -60,11 +60,21 @@ function toStickerItem(row: ContractSticker): StickerItem | null {
   };
 }
 
+/**
+ * One panel pack as My packs shows it: the list rows may carry the owner's
+ * handle. The list and Discover payloads do not include it yet (T-1531 adds it
+ * on the server), so it stays absent and the Added rows show only the count.
+ */
+export type PanelPack = StickerPack & { ownerHandle?: string | null };
+
 /** One contract pack as the panel shows it; out-of-bounds stickers are dropped. */
-function toStickerPack(row: ContractStickerPack): StickerPack | null {
+function toStickerPack(
+  row: ContractStickerPack & { ownerHandle?: string | null },
+): PanelPack | null {
   if (row.id === '') {
     return null;
   }
+  const ownerHandle = row.ownerHandle;
   return {
     id: row.id,
     title: row.title,
@@ -73,6 +83,9 @@ function toStickerPack(row: ContractStickerPack): StickerPack | null {
     ...(row.importedFrom === undefined || row.importedFrom === ''
       ? {}
       : { importedFrom: row.importedFrom }),
+    ...(ownerHandle === undefined || ownerHandle === null || ownerHandle === ''
+      ? {}
+      : { ownerHandle }),
     stickers: row.stickers.flatMap((sticker) => toStickerItem(sticker) ?? []),
   };
 }
