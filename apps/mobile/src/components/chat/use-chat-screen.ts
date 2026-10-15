@@ -10,7 +10,6 @@ import { mayArchiveTopic } from '@/lib/topics';
 import { useChatStore } from '@/store/chat-store-provider';
 import type { BannerPin } from '@/components/chat/pinned-banner';
 import type { SheetPin } from '@/components/chat/pins-sheet';
-import type { TopicStatus } from '@/lib/topics-api';
 import type { ReplyRef, UiMessage } from '@/lib/types';
 
 /**
@@ -72,12 +71,8 @@ export function useChatScreen() {
   // A partial AI create lands here with `?notice=partial`: a quiet notice shown
   // once, like the search-jump miss above (T-1472).
   const [partialNotice, setPartialNotice] = useState(params.notice === 'partial');
-  const [statusOpen, setStatusOpen] = useState(false);
-  const [ownerOpen, setOwnerOpen] = useState(false);
-  const [linkOpen, setLinkOpen] = useState(false);
-  const [linkUrl, setLinkUrl] = useState('');
-  const [linkLabel, setLinkLabel] = useState('');
-  const [stripError, setStripError] = useState('');
+  // The topic rows in the info sheet (link, done) report a save failure here.
+  const [topicError, setTopicError] = useState('');
   const [pinsOpen, setPinsOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
   const [pinIndex, setPinIndex] = useState(0);
@@ -216,30 +211,14 @@ export function useChatScreen() {
   const isPrivateMember =
     chat?.topic?.visibility !== 'private' ||
     infoMembers.some((member) => member.userId === myUserId);
-  const ownerCandidates = [
-    ...(detail?.members.map((member) => ({
-      kind: 'user' as const,
-      id: member.userId,
-      name: member.name,
-    })) ?? []),
-    ...infoAis.map((ai) => ({ kind: 'ai' as const, id: ai.id, name: ai.name })),
-  ];
 
   const patch = (input: Parameters<typeof patchTopic>[1]): void => {
-    setStripError('');
+    setTopicError('');
     runInBackground(() => patchTopic(chatId, input), {
       // The row keeps its server state (the store only applies the patch on
       // success), so a failure needs no rollback, just the inline error.
-      onFailure: () => setStripError('Could not save. Try again.'),
+      onFailure: () => setTopicError('Could not save. Try again.'),
     });
-  };
-
-  const chooseStatus = (next: TopicStatus): void => {
-    setStatusOpen(false);
-    if (next === chat?.topic?.status) {
-      return;
-    }
-    patch({ status: next });
   };
 
   const refreshInfoRoles = () => {
@@ -316,21 +295,9 @@ export function useChatScreen() {
     canPinChat,
     pinFor,
     patch,
-    chooseStatus,
     openGroup,
-    ownerCandidates,
-    statusOpen,
-    setStatusOpen,
-    ownerOpen,
-    setOwnerOpen,
-    linkOpen,
-    setLinkOpen,
-    linkUrl,
-    setLinkUrl,
-    linkLabel,
-    setLinkLabel,
-    stripError,
-    setStripError,
+    topicError,
+    setTopicError,
     infoOpen,
     setInfoOpen,
     infoMembers,

@@ -92,6 +92,8 @@ export interface PatchTopicInput {
   visibility?: TopicVisibility;
   memberIds?: string[];
   confirmExposeHistory?: boolean;
+  /** T-1540: mark the topic done (`true`) or reopen it (`false`). */
+  done?: boolean;
 }
 
 /** Replaces a private topic's roles and picks its approver role (T-0116). */

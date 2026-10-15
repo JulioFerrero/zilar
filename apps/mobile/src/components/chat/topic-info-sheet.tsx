@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { TopicDoneRow } from '@/components/chat/topic-done-row';
+import { TopicLinkRow } from '@/components/chat/topic-link-row';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
@@ -10,7 +12,7 @@ import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND, FOREGROUND } from '@/lib/colors';
 import { approverLine, approverOptions, topicAccessRows } from '@/lib/roles';
 import type { CustomGroupRole } from '@/lib/roles-api';
-import type { ApproverRole, TopicMember, TopicRole } from '@/lib/topics-api';
+import type { ApproverRole, PatchTopicInput, TopicMember, TopicRole } from '@/lib/topics-api';
 import type { ChatSummary } from '@/lib/types';
 
 /**
@@ -73,6 +75,9 @@ export function TopicInfoSheet({
   onPickApprover,
   onRetryRoles,
   onRetryGroupRoles,
+  patch,
+  patchError,
+  onPatchError,
   onOpenAiMemory,
 }: {
   chat: ChatSummary | null;
@@ -105,6 +110,12 @@ export function TopicInfoSheet({
   onPickApprover: (roleId: string | null) => void;
   onRetryRoles: () => void;
   onRetryGroupRoles: () => void;
+  /** The topic patch the link and done rows use (T-1540). */
+  patch: (input: PatchTopicInput) => void;
+  /** A link or done save failure, shown under the link row. */
+  patchError: string;
+  /** Sets (or clears) `patchError`, e.g. the link's https check. */
+  onPatchError: (message: string) => void;
   /** Opens the "What <AI> remembers" sheet for an AI. When unset the AI
    * rows show no memory button. */
   onOpenAiMemory?: (ai: { id: string; name: string }) => void;
@@ -141,6 +152,15 @@ export function TopicInfoSheet({
               </Text>
             </View>
             {topic.visibility === 'private' ? <Lock size={16} color={MUTED_FOREGROUND} /> : null}
+          </View>
+
+          <View className="gap-1">
+            <TopicLinkRow topic={topic} patch={patch} onError={onPatchError} />
+            {patchError !== '' ? (
+              <Text accessibilityRole="alert" className="px-3 text-[13px] text-danger">
+                {patchError}
+              </Text>
+            ) : null}
           </View>
 
           <View>
@@ -319,6 +339,8 @@ export function TopicInfoSheet({
               Roles are only available on private topics.
             </Text>
           )}
+
+          <TopicDoneRow doneAt={topic.doneAt} patch={patch} onError={onPatchError} />
 
           <View className="flex-row justify-end gap-2">
             {topic.visibility === 'private' && isMember && !topic.isGeneral ? (

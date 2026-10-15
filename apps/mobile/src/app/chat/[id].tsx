@@ -11,12 +11,10 @@ import { ChatThread } from '@/components/chat/chat-thread';
 import { composerBarFor } from '@/components/chat/composer-mentions';
 import { PinnedBanner } from '@/components/chat/pinned-banner';
 import { MessageListSkeleton } from '@/components/chat/skeleton';
-import { TaskStrip } from '@/components/chat/task-strip';
 import { TopicInfoHost } from '@/components/chat/topic-info-host';
 import { useChatScreen } from '@/components/chat/use-chat-screen';
 import { StateMessage } from '@/components/ui/state-message';
 import { goBackOrHome } from '@/lib/navigation';
-import { httpsTopicUrl } from '@/lib/topics';
 
 export default function ChatScreen() {
   return (
@@ -72,21 +70,6 @@ function Chat() {
     groupName,
     openInfo,
     openGroup,
-    statusOpen,
-    setStatusOpen,
-    chooseStatus,
-    ownerOpen,
-    setOwnerOpen,
-    ownerCandidates,
-    linkOpen,
-    setLinkOpen,
-    linkUrl,
-    setLinkUrl,
-    linkLabel,
-    setLinkLabel,
-    stripError,
-    setStripError,
-    patch,
   } = screen;
 
   if (!isTopic) {
@@ -181,62 +164,6 @@ function Chat() {
         topicGroupName={groupName}
         onOpenInfo={openInfo}
         onOpenGroup={openGroup}
-      />
-      <TaskStrip
-        chat={chat}
-        statusOpen={statusOpen}
-        onToggleStatus={() => {
-          setStatusOpen((value) => !value);
-          setOwnerOpen(false);
-          setLinkOpen(false);
-        }}
-        onChooseStatus={chooseStatus}
-        ownerOpen={ownerOpen}
-        onToggleOwner={() => {
-          setOwnerOpen((value) => !value);
-          setStatusOpen(false);
-          setLinkOpen(false);
-        }}
-        onChooseOwner={(owner) => {
-          setOwnerOpen(false);
-          const current = chat.topic?.owner;
-          const same =
-            (owner === null && current === null) ||
-            (owner !== null &&
-              current !== null &&
-              current !== undefined &&
-              owner.kind === current.kind &&
-              owner.id === current.id);
-          if (same) {
-            return;
-          }
-          patch({ owner: owner === null ? null : { kind: owner.kind, id: owner.id } });
-        }}
-        ownerCandidates={ownerCandidates}
-        linkOpen={linkOpen}
-        onToggleLink={() => {
-          setLinkUrl(chat.topic?.linkUrl ?? '');
-          setLinkLabel(chat.topic?.linkLabel ?? '');
-          setLinkOpen((value) => !value);
-          setStatusOpen(false);
-          setOwnerOpen(false);
-        }}
-        linkUrl={linkUrl}
-        linkLabel={linkLabel}
-        onChangeLinkUrl={setLinkUrl}
-        onChangeLinkLabel={setLinkLabel}
-        onSaveLink={() => {
-          const trimmed = linkUrl.trim();
-          if (trimmed !== '' && httpsTopicUrl(trimmed) === undefined) {
-            setStripError('Link must be an https URL.');
-            return;
-          }
-          setLinkOpen(false);
-          const nextUrl = trimmed === '' ? null : trimmed;
-          const nextLabel = linkLabel.trim() === '' ? null : linkLabel.trim().slice(0, 40);
-          patch({ linkUrl: nextUrl, linkLabel: nextLabel });
-        }}
-        error={stripError}
       />
       <PinnedBanner
         pins={pins}

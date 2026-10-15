@@ -107,6 +107,9 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
         }
         onRetryRoles={onRetryRoles}
         onRetryGroupRoles={onRetryGroupRoles}
+        patch={screen.patch}
+        patchError={screen.topicError}
+        onPatchError={screen.setTopicError}
         onOpenAiMemory={(ai) => {
           screen.setInfoOpen(false);
           screen.setMemoryAi(ai);

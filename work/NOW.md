@@ -22,27 +22,31 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - T-1534 (web drops the task strip; link row and Mark as done);
     - T-1525 (phone sticker upload keeps motion; **check a moving GIF upload on Julio's next phone build**);
     - T-1533 (phone Stickers My packs, smoke checked);
-    - T-1541 (web sends an album's photos together).
+    - T-1541 (web sends an album's photos together);
+    - T-1544 and T-1543 (splits of `chats/unread.ts` and `chats/api.ts`);
+    - T-1537 (web status line above the topic composer);
+    - T-1545 (split of the web store types);
+    - T-1539 (phone topic marks and the "AIs here" key; smoke checked).
     
-    **Live at `4dca770cc`:** 0 errors; `/api/chats`, `/api/agents/tasks/x/steps` and `/api/sticker-packs` answer 401 signed out; the `topics.follower_ai_id` column exists (backfill 0 rows: no live topic had an owner AI).
+    **Live at `4dca770cc`:** 0 errors; `/api/chats`, `/api/agents/tasks/x/steps` and `/api/sticker-packs` answer 401 signed out; the `topics.follower_ai_id` column exists (backfill 0 rows: no live topic had an owner AI). The deploy check for `7b9b85d17` is running.
   - **Running (8):**
-    - T-1535 (web View steps panel);
-    - T-1536 (phone several files; fix round: photos send first as the album, then files);
-    - T-1537 (web status line; fix round: use only the AI's newest card);
-    - T-1539 (AI work 7a: phone topic marks and the "AIs here" sheet);
-    - T-1540 (AI work 7b: phone drops the task strip);
-    - T-1542 (phone Group info audit, plan only);
-    - T-1543 (split `chats/api.ts`);
-    - T-1544 (split `chats/unread.ts`).
-  - **Next free web slot:** split `apps/server/src/topics/access.ts` and `packages/client-core/src/store/chat-rows.ts` (399 lines each after T-1537), after T-1537 merges.
+    - T-1535 (web View steps panel; fix round: the AI's picture in groups, no chevron without actions, drop a stale `steps` param);
+    - T-1536 (phone several files; **second lead fix round:** photos first as one album, overruling the pre-review's run-based order; the spec in the worktree is updated);
+    - T-1540 (AI work 7b: phone drops the task strip; smoke running);
+    - T-1542 (phone Group info audit; autofix round);
+    - T-1546 (split `topics/access.ts`, 400 lines);
+    - T-1547 (split `client-core` `chat-rows.ts`);
+    - T-1548 (phone New/Edit pack as one grid);
+    - T-1549 (split `MessageBubble.tsx`: the flags move to a pure function).
   - **Decisions (Julio, 10-15):** the topic link moves to a row in the topic info panel (T8 keeps `link_url`/`link_label`); the last @mentioned AI follows a topic.
   - **Next to spec:**
     - View steps: phone sheet (after T-1535);
     - AI work: the phone status line (after T-1537), then T8 (drop kind/status/owner after a phone release);
-    - phone twins: New pack grid (T-1525 merged, so ready), Group info and channel info (from T-1542's plan);
+    - phone Group info and channel info (from T-1542's plan); check "6 members, 2 AIs" on the phone group header against "AIs count as members";
     - phone stickers: Discover rows and the 28 px large title follow-ups from T-1533;
     - phone sticker MIME follow-up from T-1525 (widen the `'image/webp' | 'image/png'` union in `pack-editor.ts`, `stickers-api.ts`, `use-pack-items.ts`);
-    - phone dead code: `runStateLabel`, `formatLimits`, `SCREEN_DECISIONS`, `approvalStatusLabel`.
+    - phone dead code (after T-1540): `runStateLabel`, `formatLimits`, `SCREEN_DECISIONS`, `approvalStatusLabel`, and `topicStatusLabel`/`topicTypeLabel`/`topicOwnerLabel` in `lib/topics.ts`;
+    - more 400-line splits: `packages/xmpp-core/src/core-effect/lifecycle.ts` (400), `packages/client-core/src/store/lifecycle.ts` (400), `apps/web/src/store/effects/ports.ts` (400), `packages/xmpp-core/src/stanza/build-outgoing.ts`, `packages/client-core/src/store/history.ts`, `apps/server/src/push/api-handlers.ts`, `apps/server/src/avatars/service.ts`, `apps/server/src/auth/api.ts`, `apps/server/src/actions/decisions.ts`, `apps/mobile/src/store/effects/history.ts` (399 each).
 - **1. Web and server, while Julio is at the PC (2 workers at a time):**
   1. web sticker upload keeps motion (today a GIF freezes on its first frame) and the New pack grid;
   2. the Telegram importer keeps video stickers (split `stickers/telegram.ts`, 399 lines, first);
