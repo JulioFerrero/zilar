@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { runTool } from './run-tool';
+import type { RunToolResult } from './types';
 import type { HostFetcher } from './host-fetch';
 
 const textEncoder = new TextEncoder();
+
+// A failed run's `error` is nested, and vitest's `toMatchObject` prints only the
+// keys it diffed, so a plain `{ ok: true }` leaves the failure report as
+// `{ ok: false, error: { …(2) } }` with no kind. Folding `error` in when the run
+// failed makes the report show `error.kind` and `error.message`.
+function expectOk(result: RunToolResult): void {
+  expect(result).toMatchObject(result.ok ? { ok: true } : { ok: true, error: undefined });
+}
 
 function jsonFetcher(body: unknown, status = 200): HostFetcher {
   return async () => ({ status, body: textEncoder.encode(JSON.stringify(body)) });
@@ -38,7 +47,7 @@ describe('runTool happy path', () => {
       allowedHosts: [],
       fetcher: NO_NETWORK_FETCHER,
     });
-    expect(result.ok).toBe(true);
+    expectOk(result);
     if (result.ok) {
       expect(result.output).toEqual({ text: 't', data: { n: 1 } });
     }
@@ -56,7 +65,7 @@ describe('runTool happy path', () => {
       fetcher: jsonFetcher({ price: 42 }),
       resolver: PUBLIC_RESOLVER,
     });
-    expect(result.ok).toBe(true);
+    expectOk(result);
     if (result.ok) {
       expect(result.output).toEqual({ text: 'BTC: $42', data: { price: 42, echo: 7 } });
       expect(result.fetchCount).toBe(1);
@@ -74,7 +83,7 @@ describe('runTool happy path', () => {
       fetcher: async () => ({ status: 200, body: textEncoder.encode('plain') }),
       resolver: PUBLIC_RESOLVER,
     });
-    expect(result.ok).toBe(true);
+    expectOk(result);
     if (result.ok) {
       expect(result.output).toEqual({ text: 'plain' });
     }
@@ -92,7 +101,7 @@ describe('runTool happy path', () => {
       allowedHosts: [],
       fetcher: NO_NETWORK_FETCHER,
     });
-    expect(result.ok).toBe(true);
+    expectOk(result);
     expect(result.logs).toBe('a 1\nb\nc');
   });
 
@@ -102,7 +111,7 @@ describe('runTool happy path', () => {
       allowedHosts: [],
       fetcher: NO_NETWORK_FETCHER,
     });
-    expect(result.ok).toBe(true);
+    expectOk(result);
     if (result.ok) {
       expect(result.output).toEqual({ text: 'got:null' });
     }
@@ -134,7 +143,7 @@ describe('runTool limits', () => {
       resolver: PUBLIC_RESOLVER,
       limits: { cpuMs: 1500, wallMs: 10000, fetchTimeoutMs: 5000 },
     });
-    expect(result.ok).toBe(true);
+    expectOk(result);
     if (result.ok) {
       expect(result.output).toEqual({ text: 'fetched:worked' });
     }
@@ -251,7 +260,7 @@ describe('runTool limits', () => {
       fetcher: NO_NETWORK_FETCHER,
       limits: { cpuMs: 20000, wallMs: 20000 },
     });
-    expect(result.ok).toBe(true);
+    expectOk(result);
     expect(Buffer.byteLength(result.logs, 'utf8')).toBeLessThanOrEqual(4 * 1024 + 64);
     expect(result.logs.endsWith('…')).toBe(true);
   });
@@ -383,7 +392,7 @@ describe('runTool escape attempts', () => {
       allowedHosts: [],
       fetcher: NO_NETWORK_FETCHER,
     });
-    expect(result.ok).toBe(true);
+    expectOk(result);
     if (result.ok) {
       expect(result.output).toEqual({ text: 'undefined,undefined,undefined,undefined' });
     }
@@ -430,7 +439,7 @@ describe('runTool escape attempts', () => {
       allowedHosts: [],
       fetcher: NO_NETWORK_FETCHER,
     });
-    expect(result.ok).toBe(true);
+    expectOk(result);
     if (result.ok) {
       expect(result.output).toEqual({ text: '42,43,undefined' });
     }
@@ -447,7 +456,7 @@ describe('runTool escape attempts', () => {
       allowedHosts: [],
       fetcher: NO_NETWORK_FETCHER,
     });
-    expect(result.ok).toBe(true);
+    expectOk(result);
     if (result.ok) {
       expect(result.output).toEqual({ text: 'undefined' });
     }
@@ -463,14 +472,14 @@ describe('runTool escape attempts', () => {
       allowedHosts: [],
       fetcher: NO_NETWORK_FETCHER,
     });
-    expect(pollute.ok).toBe(true);
+    expectOk(pollute);
     const second = await runTool({
       source: `export default async function run() { return 'seen:' + String({}).zilarPolluted; }`,
       input: null,
       allowedHosts: [],
       fetcher: NO_NETWORK_FETCHER,
     });
-    expect(second.ok).toBe(true);
+    expectOk(second);
     if (second.ok) {
       expect(second.output).toEqual({ text: 'seen:undefined' });
     }
@@ -488,7 +497,7 @@ describe('runTool escape attempts', () => {
       allowedHosts: [],
       fetcher: NO_NETWORK_FETCHER,
     });
-    expect(result.ok).toBe(true);
+    expectOk(result);
     if (result.ok) {
       const parsed = JSON.parse(result.output.text) as {
         hasFetch: boolean;
@@ -605,7 +614,7 @@ describe('runTool fetch rules', () => {
       },
       resolver: PUBLIC_RESOLVER,
     });
-    expect(mixed.ok).toBe(true);
+    expectOk(mixed);
     expect(seen).toEqual(['api.example.com']);
     const trailingDot = await runTool({
       source: `export default async function run() { await fetch('https://API.Example.COM./x'); return 'ok'; }`,
@@ -617,7 +626,7 @@ describe('runTool fetch rules', () => {
       },
       resolver: PUBLIC_RESOLVER,
     });
-    expect(trailingDot.ok).toBe(true);
+    expectOk(trailingDot);
     const puny = await runTool({
       source: `export default async function run() { await fetch('https://xn--mnchen-3ya.de/x'); return 'ok'; }`,
       input: null,
@@ -628,7 +637,7 @@ describe('runTool fetch rules', () => {
       },
       resolver: PUBLIC_RESOLVER,
     });
-    expect(puny.ok).toBe(true);
+    expectOk(puny);
   });
 
   it('does not follow a 302 and exposes no location header', async () => {
@@ -643,7 +652,7 @@ describe('runTool fetch rules', () => {
       fetcher: async () => ({ status: 302, body: new Uint8Array(0) }),
       resolver: PUBLIC_RESOLVER,
     });
-    expect(result.ok).toBe(true);
+    expectOk(result);
     if (result.ok) {
       expect(result.output).toEqual({ text: '302:false::undefined' });
     }
@@ -710,7 +719,7 @@ describe('runTool fetch rules', () => {
         return calls === 1 ? ['93.184.216.34'] : ['127.0.0.1'];
       },
     });
-    expect(result.ok).toBe(true);
+    expectOk(result);
     expect(seen).toEqual(['93.184.216.34']);
     expect(calls).toBe(1);
   });
@@ -725,7 +734,7 @@ describe('runTool fetch rules', () => {
         allowedHosts: [],
         fetcher: NO_NETWORK_FETCHER,
       });
-      expect(result.ok).toBe(true);
+      expectOk(result);
       if (result.ok) {
         expect(result.output).toEqual({ text: 'cwd-ok' });
       }
@@ -742,6 +751,6 @@ describe('runTool fetch rules', () => {
       fetcher: NO_NETWORK_FETCHER,
       limits: { wallMs: 120_000, memoryBytes: 512 * 1024 * 1024, maxFetches: 100 },
     });
-    expect(result.ok).toBe(true);
+    expectOk(result);
   });
 });

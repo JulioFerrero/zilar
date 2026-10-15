@@ -96,6 +96,12 @@ function sanitizeMessage(message: string): string {
     .slice(0, 300);
 }
 
+// The worker's V8 heap holds the harness (Effect, the QuickJS glue, and the tsx
+// loader under test), ~45 MiB, plus queued log lines — never the tool's own
+// memory, which the wasm heap caps with `setMemoryLimit`. The old 16 MiB
+// headroom left V8 a couple of MiB of slack and it aborted the worker under load.
+const WORKER_HEAP_HEADROOM_BYTES = 96 * 1024 * 1024;
+
 export async function runTool(params: RunToolParams): Promise<RunToolResult> {
   const startedAt = Date.now();
   const limits = resolveLimits(params.limits);
@@ -149,9 +155,8 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
       limits,
     },
     resourceLimits: {
-      maxOldGenerationSizeMb: Math.max(
-        32,
-        Math.ceil((limits.memoryBytes + 16 * 1024 * 1024) / (1024 * 1024)),
+      maxOldGenerationSizeMb: Math.ceil(
+        (limits.memoryBytes + WORKER_HEAP_HEADROOM_BYTES) / (1024 * 1024),
       ),
       stackSizeMb: 8,
     },

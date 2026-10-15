@@ -127,7 +127,8 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - main's CI on `38c7c5695` failed `run-tool.test.ts:254` ("truncates 100 KB of console.log output": `result.ok` false). It's the same failure as runs 38754273319 and 38734680918, about 3 in 60, and not caused by T-1595.
     - Re-running the failed job went **green**.
     - **T-1596 is running:** make the failure show `error.kind`, reproduce under load, and fix the cause in the sandbox (the limits stay the same).
-  - **README rewrite (Julio: "cooler, simpler, professional"): T-1597 running.**
+  - **README rewrite (Julio: "cooler, simpler, professional"): T-1597 merged** (`6b172791e`).
+    - **Checked on github.com** (headless, desktop and phone width): no broken images, and the diagram renders.
     - The lead wrote the full text in the spec; the worker places it word for word and checks the links.
     - **What changes:** about 150 lines instead of 250; the `get.zilar.app` one-liner plus the Coolify path; the stack now Effect (no Hono, Drizzle or LiteLLM).
     - **The product gap the README states:** the phone app's server URL is fixed at build time (`apps/mobile/src/lib/auth.ts:14`), so the release APKs only work with `chat.zilar.app`. A server picker in the app: **Julio said not now, maybe in the future** (2026-10-15). Don't spec it.
