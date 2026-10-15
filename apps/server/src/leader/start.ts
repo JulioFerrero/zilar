@@ -10,6 +10,7 @@ import { redactSecrets } from '../ai/http';
 import type { ActionGateway } from '../actions/gateway';
 import { startRecoveryStuckTimer, type RecoveryStuckHandle } from '../actions/gateway';
 import type { AgentGateway } from '../agents/gateway';
+import { initTopicFollow } from '../agents/gateway/topic-follow';
 import { startApprovalsSweeper, type ApprovalsSweeperHandle } from '../approvals/sweeper';
 import { startTaskEventRetention, type TaskEventRetentionHandle } from '../agents/log/retention';
 import type { AuditRecorder } from '../audit/service';
@@ -196,6 +197,12 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
     async start(): Promise<void> {
       startPush();
       startRunnerHubWork();
+      // T-1493: reload the saved Stop pauses before the gateway reads them. A
+      // failed load is logged and ignored: following simply resumes until the
+      // next Stop, which is better than never starting the gateway.
+      await initTopicFollow(db).catch((error: unknown) => {
+        logger.error({ err: messageOf(error) }, 'saved topic follow pauses failed to load');
+      });
       startGatewayWork();
       approvalsSweeper = startApprovalsSweeper({ db, audit: deps.audit, logger });
       taskEventRetention = startTaskEventRetention({ db, logger });

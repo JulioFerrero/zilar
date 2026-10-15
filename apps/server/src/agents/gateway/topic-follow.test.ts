@@ -22,7 +22,7 @@ import type { AgentGatewayDeps, AiSession, GatewayLogger } from './contracts';
 import { createGroupIngest } from './group-ingest';
 import { tick, waitFor } from '../gateway.test-harness';
 import { createStopTurn } from './stop';
-import { followingAiFor } from './topic-follow';
+import { followingAiFor, initTopicFollow, resetTopicFollowStateForTests } from './topic-follow';
 
 const silentLogger: GatewayLogger = { info: () => {}, warn: () => {} };
 
@@ -90,6 +90,35 @@ interface Turn {
   roomJid: string;
 }
 
+// The saved Stop pause of a room's topic. The pause and the resume are written
+// fire-and-forget (the message path never waits on them), so a test polls this
+// instead of asserting the instant after the call.
+async function followPausedAt(context: TestContext, room: string): Promise<Date | null> {
+  const localpart = room.split('@')[0] ?? room;
+  const [row] = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ followPausedAt: Date | null }>`
+        SELECT follow_paused_at FROM topics WHERE room_localpart = ${localpart}`;
+    }),
+  );
+  return row?.followPausedAt ?? null;
+}
+
+async function waitForFollowPaused(
+  context: TestContext,
+  room: string,
+  paused: boolean,
+): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (((await followPausedAt(context, room)) !== null) === paused) {
+      return;
+    }
+    await tick(10);
+  }
+  throw new Error(`the topic follow pause never became ${paused ? 'set' : 'clear'}`);
+}
+
 function ingestFor(context: TestContext, sessions: Map<string, AiSession>, turns: Turn[]) {
   return createGroupIngest({
     deps: { db: context.db } as unknown as AgentGatewayDeps,
@@ -133,6 +162,7 @@ describe('a topic owner follows its topic (T-1448)', () => {
   });
 
   afterEach(async () => {
+    resetTopicFollowStateForTests();
     await context.close();
   });
 
@@ -230,6 +260,50 @@ describe('a topic owner follows its topic (T-1448)', () => {
       message(room, expectedJid(human), 'm-3', 'plain after mention'),
     );
     await waitFor(() => turns.length === 2);
+  });
+
+  it('a Stop pause survives a restart', async () => {
+    const human = await seedUser(context);
+    const { aiId, jid } = await seedAi(context, human);
+    const room = roomJid();
+    const { groupId } = await seedGroup(context, human, [{ userId: human, role: 'owner' }], [aiId]);
+    await seedOwnedTopic(context, groupId, human, room, aiId);
+
+    const session = sessionFor(aiId, jid, room);
+    const turns: Turn[] = [];
+    const ingest = ingestFor(context, new Map([[aiId, session]]), turns);
+
+    // Gateway start: remember the database and load the (empty) pause set.
+    await initTopicFollow(context.db);
+
+    // Stop saves the pause in memory and in the topic row.
+    createStopTurn(new Map([[aiId, session]])).stopTurn(aiId, room);
+    await waitForFollowPaused(context, room, true);
+
+    // A restart forgets memory and reloads the pause from the row.
+    resetTopicFollowStateForTests();
+    await initTopicFollow(context.db);
+
+    // The reloaded pause holds: a plain human message queues nothing. The
+    // paused room short-circuits before the async owner lookup, so
+    // `handleRoomIncoming` returns no promise; awaiting a broken check (which
+    // returns `followOwnedTopic`'s promise) would let a queued turn appear only
+    // after the assertion, so asserting the absence of the promise pins it down.
+    const pending = ingest.handleRoomIncoming(
+      session,
+      message(room, expectedJid(human), 'm-1', 'plain after restart'),
+    );
+    expect(pending).toBeUndefined();
+    await pending;
+    expect(turns).toHaveLength(0);
+
+    // A mention resumes following and clears the saved pause.
+    ingest.handleRoomIncoming(
+      session,
+      message(room, expectedJid(human), 'm-2', '@Helper hi', [{ jid, begin: 0, end: 7 }]),
+    );
+    await waitFor(() => turns.length === 1);
+    await waitForFollowPaused(context, room, false);
   });
 
   it('does not queue a follow whose owner lookup lands after Stop', async () => {

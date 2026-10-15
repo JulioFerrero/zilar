@@ -1506,3 +1506,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1491](T-1491-mock-dev-ai-title.md) | Mock AI DM is titled with the AI's name (Dev-1) | 2026-10-15 |
 | [T-1492](T-1492-ais-count-as-members.md) | AIs count as members in groups and topics | 2026-10-15 |
 | [T-1494](T-1494-web-group-info-pages.md) | Web group info root page with subpages and panel keys | 2026-10-15 |
+| [T-1493](T-1493-save-follow-pause.md) | Save an AI's Stop pause on a followed topic | 2026-10-15 |

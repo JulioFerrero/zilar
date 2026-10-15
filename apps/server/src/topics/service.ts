@@ -257,6 +257,8 @@ export async function patchTopic(
   if (input.owner !== undefined) {
     patch.ownerUserId = ownerUserId ?? null;
     patch.ownerAiId = ownerAiId ?? null;
+    // T-1493: a new owner never inherits the old owner's Stop pause.
+    patch.followPausedAt = null;
   }
   if (input.linkUrl !== undefined) patch.linkUrl = input.linkUrl ?? null;
   if (input.linkLabel !== undefined) patch.linkLabel = input.linkLabel ?? null;
