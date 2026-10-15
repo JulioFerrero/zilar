@@ -26,10 +26,10 @@ import { ComposerFailure, fork } from './useVoiceRecorder';
 
 const GIF_LOAD_FAILED = 'Could not load that GIF. Try another.';
 /** Telegram's cap, and the mobile picker's `selectionLimit` (T-1246). */
-const MAX_ALBUM_PHOTOS = 10;
+const MAX_FILES = 10;
 const FILE_EMPTY = 'That file is empty.';
 const FILE_TOO_LARGE = 'That file is larger than 50 MB.';
-const ALBUM_TOO_MANY = 'You can send up to 10 photos at once.';
+const TOO_MANY_FILES = 'You can send up to 10 files at once.';
 
 /** The single inline refusal a chosen file gets, before any request. */
 function refusal(file: File): string | undefined {
@@ -108,26 +108,15 @@ export function useComposerAttachments({
   const attachment = staged[0];
 
   // The picker, paste and drop all funnel their files through here. An empty
-  // or oversized file is refused inline, before any request. An all-photo pick
-  // stages up to ten photos as one album; anything else (a file, or a mixed
-  // pick) keeps the single-attachment behaviour. A `media` pick (the "Photo or
-  // video" entry, a drop or a paste) also opens the send dialog.
+  // or oversized file is refused inline, before any request. A pick of up to
+  // ten files is staged in pick order, each tagged by `classify`; a longer
+  // pick keeps the first ten and shows the cap. A `media` pick (the "Photo or
+  // video" entry, a drop or a paste) also opens the send dialog, but only when
+  // every chosen file is media.
   const acceptFiles = useCallback((files: readonly File[], options?: { media?: boolean }): void => {
     setAttachmentError(undefined);
     const chosen = [...files];
-    const first = chosen[0];
-    if (first === undefined) {
-      return;
-    }
-    const isMedia = options?.media === true && chosen.every(isMediaFile);
-    if (!chosen.every((file) => classify(file) === 'image')) {
-      const error = refusal(first);
-      if (error !== undefined) {
-        setAttachmentError(error);
-        return;
-      }
-      setStaged([{ file: first, kind: classify(first) }]);
-      setAttachDialogOpen(isMedia);
+    if (chosen.length === 0) {
       return;
     }
     for (const file of chosen) {
@@ -137,10 +126,11 @@ export function useComposerAttachments({
         return;
       }
     }
-    if (chosen.length > MAX_ALBUM_PHOTOS) {
-      setAttachmentError(ALBUM_TOO_MANY);
+    if (chosen.length > MAX_FILES) {
+      setAttachmentError(TOO_MANY_FILES);
     }
-    setStaged(chosen.slice(0, MAX_ALBUM_PHOTOS).map((file) => ({ file, kind: 'image' as const })));
+    const isMedia = options?.media === true && chosen.every(isMediaFile);
+    setStaged(chosen.slice(0, MAX_FILES).map((file) => ({ file, kind: classify(file) })));
     setAttachDialogOpen(isMedia);
   }, []);
 

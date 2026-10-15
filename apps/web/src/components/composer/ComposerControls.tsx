@@ -247,7 +247,13 @@ export function ComposerControls({
         ) : canSend ? (
           <Button
             type="button"
-            aria-label={isEditing ? 'Save edit' : 'Send message'}
+            aria-label={
+              isEditing
+                ? 'Save edit'
+                : staged.length > 1
+                  ? `Send ${staged.length} files`
+                  : 'Send message'
+            }
             onClick={() => (isEditing ? saveEdit() : send())}
             className="size-9 rounded-[10px] p-0"
           >
