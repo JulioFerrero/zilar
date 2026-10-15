@@ -1,5 +1,6 @@
 import { lightToPlain } from '@zilar/chat-core';
 import { ArrowUp, Check, Paperclip, Smile, X } from 'lucide-react-native';
+import type { RefObject } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
 import { tap } from '@/components/chat/haptics';
@@ -86,6 +87,8 @@ type ComposerInputRowProps = {
   replyTo: ReplyRef | undefined;
   onCancelReply: () => void;
   onSendVoice: ((recording: SendVoiceRecording, options?: SendTextOptions) => void) | undefined;
+  /** The input's ref, so Reply and Edit can focus it (T-1482). */
+  inputRef?: RefObject<TextInput | null> | undefined;
 };
 
 /** The composer's input row: attach, auto-growing input, emoji and mic/send. */
@@ -107,6 +110,7 @@ export function ComposerInputRow({
   replyTo,
   onCancelReply,
   onSendVoice,
+  inputRef,
 }: ComposerInputRowProps) {
   const { pressed, reduceMotion, setPressed } = useKeyPress();
   const iconColor = ICON;
@@ -121,6 +125,7 @@ export function ComposerInputRow({
             <Paperclip size={20} color={iconColor} />
           </IconButton>
           <TextInput
+            ref={inputRef}
             value={text}
             onChangeText={onChangeText}
             multiline

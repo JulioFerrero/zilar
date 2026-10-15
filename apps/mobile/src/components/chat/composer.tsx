@@ -1,6 +1,6 @@
 import { type Attachment } from '@zilar/protocol';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AttachSheet } from '@/components/chat/attach-sheet';
@@ -119,8 +119,22 @@ export function Composer({
   const [seededFor, setSeededFor] = useState<string | undefined>(undefined);
   if (editingId !== seededFor) {
     setSeededFor(editingId);
-    setEditText(editingId === undefined ? '' : (targetText ?? ''));
+    const seed = editingId === undefined ? '' : (targetText ?? '');
+    setEditText(seed);
+    // The caret goes to the end of the seeded text, as in Telegram (T-1482).
+    setSelection(editingId === undefined ? undefined : { start: seed.length, end: seed.length });
   }
+
+  // Reply and Edit focus the composer, as in Telegram (T-1482): the effect is
+  // keyed on the reply's message id and the edit key.
+  const inputRef = useRef<TextInput>(null);
+  const replyId = replyTo?.id;
+  useEffect(() => {
+    if (replyId === undefined && editingId === undefined) {
+      return;
+    }
+    inputRef.current?.focus();
+  }, [replyId, editingId]);
 
   const mentions = useComposerMentions({
     chatKey,
@@ -256,6 +270,7 @@ export function Composer({
         replyTo={replyTo}
         onCancelReply={onCancelReply}
         onSendVoice={onSendVoice}
+        inputRef={inputRef}
       />
       <EmojiSheet
         open={sheet.sheetOpen}

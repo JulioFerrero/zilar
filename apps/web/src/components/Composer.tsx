@@ -30,7 +30,6 @@ export function Composer({
   // The chat the tracked mentions belong to, so a chat switch resets them below.
   const [trackedChatId, setTrackedChatId] = useState(chatId);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useComposerFocus(chatId, textareaRef);
   // The message being edited, in this chat only.
   const editing = useChatSelector((s) => {
     const target = s.editTarget;
@@ -41,6 +40,8 @@ export function Composer({
   const editingId = editing?.id;
   const editingText = editing?.text;
   const editingMentions = editing?.mentions;
+  // Reply and Edit focus the composer (T-1482).
+  useComposerFocus(chatId, textareaRef, replyTo?.id ?? editingId);
   const lastEditingIdRef = useRef<string | undefined>(undefined);
   const actionError =
     storedActionError !== undefined && storedActionError.chatId === chatId

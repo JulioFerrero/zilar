@@ -57,6 +57,7 @@ export function focusComposer(): boolean {
 export function useComposerFocus(
   chatId: string,
   textareaRef: RefObject<HTMLTextAreaElement | null>,
+  focusKey?: string | undefined,
 ): void {
   const isWide = useMediaQuery(WIDE_QUERY);
   // Read through a ref so the focus effect below depends on `chatId` alone: a
@@ -82,4 +83,12 @@ export function useComposerFocus(
     }
     textareaRef.current?.focus();
   }, [chatId, textareaRef]);
+
+  // Reply and Edit focus the composer, as in Telegram: on every layout width.
+  useEffect(() => {
+    if (focusKey === undefined) {
+      return;
+    }
+    focusComposer();
+  }, [focusKey]);
 }
