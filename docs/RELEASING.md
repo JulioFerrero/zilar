@@ -56,6 +56,8 @@ cd apps/mobile
 export JAVA_HOME=$(/usr/libexec/java_home -v 17) ANDROID_HOME=<android sdk>
 pnpm exec expo prebuild --platform android --clean --no-install
 cd android
+# A stale Metro cache drops new expo-router routes; clear it before bundling.
+rm -rf "${TMPDIR:-/tmp}/metro-cache"
 EXPO_PUBLIC_ZILAR_API_URL=https://<domain> NODE_ENV=production ./gradlew assembleRelease --console=plain
 # about 6 minutes; output: app/build/outputs/apk/release/app-release.apk (~120 MB, all ABIs)
 adb -s <device> install -r app/build/outputs/apk/release/app-release.apk

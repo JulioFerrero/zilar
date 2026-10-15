@@ -51,6 +51,8 @@ LAST_COMMIT="$(cat "$STATE_DIR/commit" 2>/dev/null || true)"
 LAST_MOCK="$(cat "$STATE_DIR/mock" 2>/dev/null || true)"
 
 cd apps/mobile
+# A stale Metro cache drops new expo-router routes (its require.context list is cached).
+rm -rf "${TMPDIR:-/tmp}/metro-cache"
 if [ ! -d android ] || [ "$FINGERPRINT" != "$LAST_FINGERPRINT" ]; then
   echo "native inputs changed: prebuild + full release build (about 6 minutes)"
   pnpm exec expo prebuild --platform android --clean --no-install >/dev/null

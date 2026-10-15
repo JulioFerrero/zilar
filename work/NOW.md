@@ -43,11 +43,16 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1456: the runner-tunnel split;
   - T-1462: a daily TLS expiry check. The first run passed: the chat.zilar.app certificate ends Dec 31 2026, 77 days left;
   - T-1463: the mobile chat row title truncates, so "N subscribers" no longer overlaps the time at large fonts (checked on the emulator at 1.3).
+- **Then:**
+  - **T-1460: `app.ts` split into `app/` route modules.** It is live at `4668884bf`, every checked route answers exactly as before, and there are 0 errors.
+  - **T-1461:** the budget gate waits (up to 3 s) for in-flight spend writes before reading spend.
+  - **T-1464:** the mobile search field stays centred and unclipped at large fonts.
+  - **T-1465:** mobile unknown routes show the Zilar "Page not found" instead of Expo's stock page with its Sitemap link.
+- **Found:** local phone builds reuse Metro's cache, which silently dropped T-1465's new route file from the APK. Clearing `$TMPDIR/metro-cache` fixed it, and T-1467 makes the scripts and the release recipe clear it. **Any APK built locally for Julio must use a clean cache**; CI releases are not affected.
 - **Running:**
-  - T-1445: mobile New AI. The phone smoke found the sheet's primary key collapsed with no label, and a fix is sent;
-  - T-1460: the server `app.ts` split;
-  - T-1461: the budget waits for in-flight spend writes;
-  - T-1464: mobile SearchField at large fonts.
+  - T-1445: mobile New AI, last round (error text, orb size guard), then the lead's phone walk;
+  - T-1466: the server `main.ts` split;
+  - T-1467: the Metro cache fix.
 - **Next:** `main.ts` after `app.ts` deploys cleanly, then the mobile Connections add-key sheet after T-1445.
 - **New canvas for Julio: "Connections"**, https://claude.ai/artifact/FVDHKSMiJaWvjxXx5sa8on. Web and phone, lean:
   - no subtitle and no duplicate heading; "Add key" is the page's primary;
@@ -65,8 +70,12 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - **Health:** a dot on the orb (green works, red failing, amber paused by its limit), plus a short reason in place of the model line, from the real failure kinds (`key_rejected` → "Key rejected · Replace key", `budget` → "Daily limit reached").
   - **Actions:** one ⋮ key per row on web replaces the three icon keys.
   - **Server part, after approval:** keep the last turn failure (kind and time) per AI, return it as `lastFailure` on `GET /api/ais`, and clear it on the next good turn. A `key_rejected` would also mark the key in Connections.
-- **More lean gaps seen at font scale 1.3** (each needs a canvas):
-  - Settings has a subtitle on every row and under the title;
+- **New canvas for Julio: "Lean settings"**, https://claude.ai/artifact/3WnTiRt4EiUHEywTMjz8Bf. Web and phone:
+  - one line per row (icon key, label, count pill, chevron), with no row descriptions and no page subtitle;
+  - the duplicate Profile row is gone (the You card opens Profile);
+  - Sign out is a red row at the end.
+  - The rows are the shared `packages/chat-core/src/settings-items.ts` list, so the change is to stop rendering `subtitle` on both apps.
+- **More lean gaps seen at font scale 1.3:**
   - mobile Connections has a subtitle (it is in the Connections canvas).
 - **Kept over 400 lines on purpose:** the lead tooling files (`autopilot.ts`, `cli.ts`, `client.ts`) stay over 400 for now, because the autopilot runs from them.
 - **New canvas for Julio: "View steps"**, https://claude.ai/artifact/7YV3tdKH1k8LSBBZtsXzxk.
