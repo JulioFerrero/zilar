@@ -325,7 +325,18 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
           />
         )}
         {panel === 'group' && chat.chatKind === 'channel' && (
-          <ChannelPanel chat={chat} onClose={() => setPanel(undefined)} />
+          <ChannelPanel
+            chat={chat}
+            onClose={() => setPanel(undefined)}
+            onSearch={() => {
+              setPanel(undefined);
+              startChatSearch();
+            }}
+            onOpenMedia={() => {
+              setPanel(undefined);
+              setMediaOpen(true);
+            }}
+          />
         )}
         {panel === 'contact' && contactChat !== undefined && (
           <ContactPanel

@@ -83,7 +83,8 @@ export function LeaveGroupRow({
 /**
  * The owner deletes the group for everyone (T-1243). The typed group name gates
  * the destructive key; on success the chat list refreshes, the panel closes and
- * the caller goes home. Errors show in the dialog.
+ * the caller goes home. Errors show in the dialog. The channel panel reuses it
+ * with `noun="channel"` (T-1519).
  */
 export function DeleteGroupDialog({
   groupId,
@@ -91,6 +92,7 @@ export function DeleteGroupDialog({
   open,
   onClose,
   onDeleted,
+  noun = 'group',
 }: {
   groupId: string | undefined;
   title: string;
@@ -99,6 +101,8 @@ export function DeleteGroupDialog({
   onClose: () => void;
   /** Closes the whole group info panel after a successful delete. */
   onDeleted: () => void;
+  /** The entity being deleted; drives the dialog's labels. */
+  noun?: 'group' | 'channel';
 }) {
   const storeApi = useChatStoreApi();
   const navigate = useNavigate();
@@ -123,7 +127,7 @@ export function DeleteGroupDialog({
       return;
     }
     runDelete(
-      apiStep(() => deleteGroup(groupId), 'Could not delete the group.').pipe(
+      apiStep(() => deleteGroup(groupId), `Could not delete the ${noun}.`).pipe(
         Effect.tap(() =>
           Effect.sync(() => {
             storeApi.getState().refreshChats();
@@ -139,8 +143,8 @@ export function DeleteGroupDialog({
     <Dialog
       open={open}
       onClose={dismiss}
-      title="Delete group"
-      ariaLabel="Delete group"
+      title={`Delete ${noun}`}
+      ariaLabel={`Delete ${noun}`}
       size="sm"
       busy={busy}
       error={error}
@@ -156,7 +160,7 @@ export function DeleteGroupDialog({
             disabled={busy || name.trim() !== title}
             onClick={deleteGroupNow}
           >
-            Delete group
+            Delete {noun}
           </Button>
         </>
       }
@@ -166,7 +170,7 @@ export function DeleteGroupDialog({
       </p>
       <TextInput
         className="mt-3"
-        aria-label="Type the group name to confirm"
+        aria-label={`Type the ${noun} name to confirm`}
         placeholder={title}
         value={name}
         onChange={(event) => setName(event.target.value)}

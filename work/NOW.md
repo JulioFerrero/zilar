@@ -20,21 +20,26 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - T-1511 (web empty chats);
     - T-1512 (web several files);
     - T-1513 (phone approvals);
-  - **running:**
-    - T-1508 (web Group info step 2; fix round: the ⋮ key to the kit's 36 px);
-    - T-1509 (web New pack grid; fix round: GIF/video preview URLs revoked, a bug from T-1501);
-    - T-1514 (AI work step 2: the topic list carries activity);
+  - **also merged:**
+    - T-1508 (web Group info step 2);
+    - T-1509 (web New pack grid plus the GIF preview fix);
+    - T-1514 (AI work step 2; live at `aa729ab70`: 0 errors, 3 "AI is offline" warnings at container start only, `/api/chats` 401 signed out);
     - T-1515 (phone lean Settings);
+  - **running (8):**
     - T-1516 (phone Connections);
+    - T-1517 (phone My AIs with health, shared `aiHealth` in chat-core);
+    - T-1518 (web Machines; fix round: code well in groups of 4, outline Deny, no status words in the cards);
+    - T-1519 (web channel info pages);
+    - T-1520 (phone empty chats; the mock gets contact handles and 2 empty chats);
+    - T-1521 (AI work step 3: `topics.done_at`, migration 0064; the one schema task);
+    - T-1522 (View steps audit, plan only; the boards are on its branch);
+    - T-1523 (web Stickers tabs and drag);
+  - **estimates are now in worker minutes** (Julio asked how they were computed; they were unmeasured day guesses);
   - **decision (Julio):** the topic link moves to a row in the topic's info panel, so the plan's T8 keeps `link_url`/`link_label`;
   - **next to spec:**
-    - phone twins: My AIs, empty chats, New pack, the link page, Group info;
-    - web Machines;
-    - web View steps;
-    - web Stickers tabs and drag;
-  - T-1503 (web Connections) merged, checked headless;
-  - T-1505 (AI work step 1, the server read model plus an index migration) and T-1507 (phone stickers render with `expo-image`) are running;
-  - T-1506 (web lean Settings) is specced and waits for T-1503.
+    - phone twins: New pack grid, the pack link page plus the `/stickers/` app link, several files at once, Group info (the phone has no info screen today, only header sheets: audit first), channel info, Machines, Stickers tabs;
+    - AI work T4 (owner following → `topic_follow`, schema: after T-1521), T5 (live notices), T6 web UI, T7 phone UI, T8 (drop the old columns; keep the link);
+    - View steps tasks from the T-1522 plan.
 - **1. Web and server, while Julio is at the PC (2 workers at a time):**
   1. web sticker upload keeps motion (today a GIF freezes on its first frame) and the New pack grid;
   2. the Telegram importer keeps video stickers (split `stickers/telegram.ts`, 399 lines, first);

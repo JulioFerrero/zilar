@@ -23,33 +23,41 @@ import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { ActivitySection } from './ais/AiActivity';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
-import { PinsSection } from './PinsPanel';
-import { AiBadge } from './AiBadge';
-import { FieldError } from './ais/AiPageShell';
-import { EntityAvatar } from './EntityAvatar';
-import { Button } from './ui/button';
-import { Sheet } from './ui/sheet';
-import { StateMessage } from './ui/state-message';
 import { InviteLinksSection } from './InviteLinksSection';
 import { VisibilitySection } from './VisibilitySection';
-import { ChannelAdminsSection, GroupAiRow } from './panels/ChannelAdminsSection';
-import { ChannelHeader } from './panels/ChannelHeader';
+import { ChannelAisPage } from './channel-info/ChannelAisPage';
+import { ChannelInfoRoot } from './channel-info/ChannelInfoRoot';
+import { CHANNEL_INFO_TITLES, type ChannelInfoPageId } from './channel-info/ChannelInfoRoot';
+import { ChannelAdminsPage, ChannelSubscribersPage } from './channel-info/ChannelPeople';
+import { GroupInfoPage } from './group-info/GroupInfoPage';
 import {
   type ChannelFailure,
   describeFailure,
   failureText,
   storeCall,
 } from './panels/channelPanelOps';
+import { Sheet } from './ui/sheet';
+import { StateMessage } from './ui/state-message';
 
 /**
- * The channel info panel (T-0124): the feed's description, the subscriber
- * count, invite links (admins), admins management (owner), the AIs that post
- * (admin-level, voice-gated by the room), and Leave channel for subscribers.
- * The subscriber audience is visible to admins only — subscribers see the
- * count plus who posts (the admins slice, which is public the way every
- * admin post carries its name), never the audience.
+ * The channel info panel (T-0124): a root page with the picture, the count and
+ * the Mute / Search / Share / More keys over the grouped lists, and one subpage
+ * per row holding the sections that used to stack in a single scroll (T-1519).
+ * The subscriber audience is visible to managers only — subscribers see the
+ * count plus who posts (the admins slice, which is public the way every admin
+ * post carries its name), never the audience.
  */
-export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => void }) {
+export function ChannelPanel({
+  chat,
+  onClose,
+  onSearch,
+  onOpenMedia,
+}: {
+  chat: ChatSummary;
+  onClose: () => void;
+  onSearch: () => void;
+  onOpenMedia: () => void;
+}) {
   const storeApi = useChatStoreApi();
   const navigate = useNavigate();
 
@@ -62,6 +70,7 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
   const description = chat.description ?? info?.description ?? null;
   const groupId = info?.id;
 
+  const [page, setPage] = useState<ChannelInfoPageId>('root');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pendingAiId, setPendingAiId] = useState<string | undefined>(undefined);
   const [confirmingId, setConfirmingId] = useState<string | undefined>(undefined);
@@ -75,8 +84,8 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
   const myAis = AsyncResult.isSuccess(myAisQuery) ? myAisQuery.value : [];
 
   // T-0124: subscribers never see the audience (`GET /api/groups/:id`
-  // strips `members` for them), but the Admins section still names who
-  // posts: the members endpoint answers the admins slice to subscribers
+  // strips `members` for them), but the Admins page still names who posts:
+  // the members endpoint answers the admins slice to subscribers
   // (owner/admins only — who posts is public, every admin post carries its
   // name — while the subscriber audience stays hidden). Managers read the
   // full list from the detail they already hold, so no second request.
@@ -212,7 +221,7 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
     adminsList.find((member) => member.userId === ai.ownerId)?.name ??
     'someone';
 
-  // The audience list: admins see everyone (names + roles) from the detail;
+  // The audience list: managers see everyone (names + roles) from the detail;
   // subscribers see only who posts (the admins slice, loaded above) — the
   // subscriber audience stays hidden everywhere.
   const audience = isManager ? (info?.members ?? []) : [];
@@ -221,157 +230,112 @@ export function ChannelPanel({ chat, onClose }: { chat: ChatSummary; onClose: ()
 
   return (
     <Sheet open onClose={onClose} ariaLabel={`${chat.title} channel info`}>
-      <ChannelHeader chat={chat} count={count} onClose={onClose} />
-
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-        {description !== null && description !== '' && (
-          <section aria-label="Description" className="px-2">
-            <p className="text-[14px] text-muted-foreground">{description}</p>
-          </section>
-        )}
-
-        {info === undefined && <StateMessage kind="loading" size="inline" title="Loading…" />}
-
-        {info !== undefined && (
-          <>
-            <ChannelAdminsSection
-              isManager={isManager}
-              audience={audience}
-              isOwner={isOwner}
-              me={me}
-              roleBusy={roleBusy}
-              flipRole={flipRole}
-              roleError={roleError}
-              adminsLoaded={adminsLoaded}
-              adminsFailure={adminsFailure}
-              admins={admins}
-            />
-
-            <section aria-label="AIs" className="flex flex-col gap-1">
-              <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">AIs</h2>
-              {info.ais.length === 0 && (
-                <p className="px-2 text-[13px] text-muted-foreground">
-                  No AIs post in this channel yet.
-                </p>
+      {page === 'root' ? (
+        <ChannelInfoRoot
+          chat={chat}
+          title={chat.title}
+          groupId={groupId}
+          count={count}
+          handle={info?.handle ?? null}
+          description={description}
+          adminsCount={isManager ? admins.length : adminsLoaded ? adminsList.length : undefined}
+          aisCount={info?.ais.length ?? 0}
+          linksCount={isManager ? linksList.length : undefined}
+          isManager={isManager}
+          isOwner={isOwner}
+          canLeave={!isManager}
+          leaving={leaving}
+          leaveError={leaveError}
+          onLeave={() => leave()}
+          onClose={onClose}
+          onSearch={onSearch}
+          onOpenMedia={onOpenMedia}
+          onOpenPage={setPage}
+        />
+      ) : (
+        <GroupInfoPage
+          title={CHANNEL_INFO_TITLES[page]}
+          noun="channel"
+          onBack={() => setPage('root')}
+          onClose={onClose}
+        >
+          {info === undefined ? (
+            <StateMessage kind="loading" size="inline" title="Loading…" />
+          ) : (
+            <>
+              {page === 'admins' && (
+                <ChannelAdminsPage
+                  admins={admins}
+                  loading={isManager ? false : !adminsLoaded && adminsFailure === undefined}
+                  failure={isManager ? undefined : adminsFailure}
+                />
               )}
-              {info.ais.map((ai) => (
-                <GroupAiRow
-                  key={ai.aiId}
+
+              {page === 'subscribers' && isManager && (
+                <ChannelSubscribersPage
+                  members={audience}
+                  me={me}
+                  isOwner={isOwner}
+                  roleBusy={roleBusy}
+                  flipRole={flipRole}
+                  roleError={roleError}
+                />
+              )}
+
+              {page === 'ais' && (
+                <ChannelAisPage
                   chatId={chat.id}
-                  ai={ai}
-                  addedBy={ownerName(ai)}
-                  canRemove={ai.ownerId === me || isManager}
-                  confirming={confirmingId === ai.aiId}
+                  ais={info.ais}
+                  ownerNameOf={ownerName}
+                  canRemove={(ai) => ai.ownerId === me || isManager}
+                  isManager={isManager}
+                  eligibleAis={eligibleAis}
+                  pickerOpen={pickerOpen}
+                  addingId={addingId}
+                  onPick={pickAi}
+                  onOpenPicker={() => setPickerOpen(true)}
+                  onClosePicker={() => setPickerOpen(false)}
+                  confirmingId={confirmingId}
                   onConfirm={setConfirmingId}
+                  errorMessage={errorMessage}
                   onError={setErrorMessage}
                 />
-              ))}
-
-              {isManager && eligibleAis.length > 0 && (
-                <div className="mt-1 flex flex-col gap-2 px-2">
-                  <p className="text-[12px] text-muted-foreground">
-                    An AI posts here only when its owner is a channel admin.
-                  </p>
-                  {pickerOpen ? (
-                    <div className="flex flex-col gap-1">
-                      {eligibleAis.map((ai) => (
-                        <Button
-                          key={ai.id}
-                          type="button"
-                          variant="outline"
-                          disabled={addingId !== undefined}
-                          onClick={() => pickAi(ai.id)}
-                          className="h-auto justify-start gap-2 rounded-xl px-2 py-1.5 text-left text-[14px] font-normal"
-                        >
-                          <EntityAvatar
-                            person={{ id: ai.jid, name: ai.name, avatarUrl: ai.avatarUrl }}
-                            size={28}
-                            ai
-                          />
-                          <span className="min-w-0 flex-1 truncate">{ai.name}</span>
-                          <AiBadge />
-                          {addingId === ai.id && (
-                            <span className="text-[12px] text-muted-foreground">Adding…</span>
-                          )}
-                        </Button>
-                      ))}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="self-start"
-                        disabled={addingId !== undefined}
-                        onClick={() => setPickerOpen(false)}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      type="button"
-                      size="lg"
-                      className="self-start rounded-full px-4"
-                      onClick={() => setPickerOpen(true)}
-                    >
-                      Add my AI
-                    </Button>
-                  )}
-                </div>
               )}
-            </section>
 
-            {isManager && <ActivitySection scope={{ groupId: info.id }} />}
+              {page === 'links' && isManager && (
+                <InviteLinksSection
+                  links={linksList}
+                  busy={isWaiting(createState)}
+                  error={linksError}
+                  created={createdLink === undefined ? undefined : { url: createdLink.url }}
+                  onCreate={(input) => createLink(input)}
+                  onRevoke={revokeLink}
+                  onDismissCreated={() => setCreatedLink(undefined)}
+                />
+              )}
 
-            {isManager && <AlwaysAllowedList scope={{ groupId: info.id }} />}
+              {/* T-0086: room activity, owners and admins only. */}
+              {page === 'activity' && isManager && <ActivitySection scope={{ groupId: info.id }} />}
 
-            <PinsSection
-              chatId={chat.id}
-              onOpen={() => storeApi.getState().setPinsPanel(chat.id)}
-            />
+              {/* T-0100: the standing rules for this channel, managers only. */}
+              {page === 'allowed' && isManager && (
+                <AlwaysAllowedList scope={{ groupId: info.id }} />
+              )}
 
-            {isManager && (
-              <InviteLinksSection
-                links={linksList}
-                busy={isWaiting(createState)}
-                error={linksError}
-                created={createdLink === undefined ? undefined : { url: createdLink.url }}
-                onCreate={(input) => createLink(input)}
-                onRevoke={revokeLink}
-                onDismissCreated={() => setCreatedLink(undefined)}
-              />
-            )}
-
-            {/* T-0164: public visibility with a handle — the owner only. */}
-            {isOwner && info !== undefined && (
-              <VisibilitySection
-                chatId={chat.id}
-                groupId={info.id}
-                visibility={info.visibility ?? 'private'}
-                handle={info.handle ?? null}
-                title={info.title}
-              />
-            )}
-
-            {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
-
-            {!isManager && (
-              <div className="flex flex-col gap-2 px-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="lg"
-                  className="self-start rounded-full px-4"
-                  disabled={leaving}
-                  onClick={() => leave()}
-                >
-                  {leaving ? 'Leaving…' : 'Leave channel'}
-                </Button>
-                {leaveError !== '' && <FieldError>{leaveError}</FieldError>}
-              </div>
-            )}
-          </>
-        )}
-      </div>
+              {/* T-0164: public visibility with a handle — the owner only. */}
+              {page === 'settings' && isOwner && (
+                <VisibilitySection
+                  chatId={chat.id}
+                  groupId={info.id}
+                  visibility={info.visibility ?? 'private'}
+                  handle={info.handle ?? null}
+                  title={info.title}
+                />
+              )}
+            </>
+          )}
+        </GroupInfoPage>
+      )}
     </Sheet>
   );
 }
