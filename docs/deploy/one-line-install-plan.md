@@ -62,18 +62,11 @@ Each step is a task unless it says otherwise.
 4. **`install.sh` check phase.** It prints a report: OS, CPU architecture, RAM, disk, ports, the virtualization type (`systemd-detect-virt`), whether Docker runs or can be installed, whether Coolify is present, and one real gVisor sandbox run.
    - Without Docker it stops with the message Julio chose.
    - AI computers are offered only when the sandbox run passed.
-5. **`install.sh` Coolify mode.** With a pasted token it:
-   - creates the project, `zilar-core`, `zilar-server` and `zilar-web` through Coolify's API (the API can create a service from a raw compose file and an app from a Docker image);
-   - generates the secrets and fills in the variables;
-   - runs `host-setup` when AI computers are on;
-   - deploys and waits for health;
-   - saves a root-only copy of the secrets and tells the user to keep it off the server. Live lacks that copy today (OPS-9).
-6. **`get.zilar.app`:** the landing app serves the script from the latest release.
-   - **Julio:** the DNS record, and the OK for the landing app's domain change.
-7. **Rehearsal (lead, no task):** run the Coolify mode on the live Coolify into a scratch project with an sslip.io domain, like the `zdt-spike` project, with AI computers off.
-   - **Julio's OK:** turning AI computers on in the rehearsal installs gVisor on the live host. That is a Docker reload, not a restart.
-8. **Live cutover (Julio picks the time):** `chat.zilar.app` moves to the target layout.
-   - The existing app becomes `zilar-core` and keeps its volumes.
+5. ~~**`install.sh` Coolify mode** with an API token~~: built in T-1588 and removed in T-1593, after Julio chose the template. When Coolify is found, the installer now points to the template (`deploy/coolify/docker-compose.yml`, T-1592), and `--desks-host` does the AI computer host prep and prints the four variables.
+6. **`get.zilar.app`:** **done** (T-1590). The landing app serves `deploy/install.sh`; Julio added the DNS record.
+7. **Rehearsal:** **done.** The template deployed in a scratch project on our Coolify 4.4.6 and passed every check (T-1592 › Review). The scratch project is deleted. Still open: a rehearsal with AI computers on, which installs gVisor on the live host (a Docker reload, not a restart) and needs Julio's OK.
+8. **Live cutover (Julio picks the time):** `chat.zilar.app` moves to the split layout.
+   - **The data:** Coolify prefixes each resource's volumes with its uuid (live: `qccydpow4rw0zcel9yisk44s_postgres-data`), so a new `zilar-core` would get new volumes. The cutover needs an explicit data move (a dump and restore, or copying the volumes), not "keep the volumes".
    - Server and web become image apps; Julio copies the secrets in the Coolify UI.
    - **Downtime:** one planned outage of about 2 minutes; deploys are rolling after it.
    - **Julio:** the GitHub secret for Coolify's deploy API.

@@ -24,10 +24,12 @@
 #  11. a failed get.docker.com download dies at the docker step — after the
 #      fetch, before configure;
 #  12. a re-run with a new --domain prints the kept .env domain and warns;
-#  13. Coolify found hands over to Coolify mode (needs a Coolify API token:
-#      with --yes, ZILAR_COOLIFY_TOKEN), touching neither deploy/ nor Docker;
+#  13. Coolify found prints the template path and the --desks-host command and
+#      exits 0, touching neither deploy/ nor Docker;
 #  14. a container-based VPS (openvz) stops with the why/what-works message;
-#  15. AI computers (--desks) turn on only after the gVisor sandbox passes.
+#  15. AI computers (--desks) turn on only after the gVisor sandbox passes;
+#  16. --desks-host prints the four Coolify variables once the sandbox passes;
+#  17. a failed sandbox makes --desks-host exit 1 with the reason.
 #
 # Usage: sh deploy/tests/install.test.sh
 # Exit 0 when every check passes, 1 on the first failure.
@@ -64,8 +66,7 @@ STUB
 chmod +x "$T/zilar-main/deploy/zilar"
 printf 'services: {}\n' >"$T/zilar-main/deploy/docker-compose.yml"
 cp "$ROOT/deploy/lib/preflight.sh" "$T/zilar-main/deploy/lib/preflight.sh"
-cp "$ROOT/deploy/lib/coolify-api.sh" "$T/zilar-main/deploy/lib/coolify-api.sh"
-cp "$ROOT/deploy/lib/coolify-mode.sh" "$T/zilar-main/deploy/lib/coolify-mode.sh"
+cp "$ROOT/deploy/lib/desk-image.sh" "$T/zilar-main/deploy/lib/desk-image.sh"
 printf '#!/bin/sh\nexit 0\n' >"$T/zilar-main/deploy/tests/host-setup.test.sh"
 tar -czf "$T/zilar-main.tar.gz" -C "$T" zilar-main
 STUB_TARBALL="$T/zilar-main.tar.gz"
@@ -97,7 +98,7 @@ for _step in check fetch "host report" docker configure up doctor; do
   fi
 done
 
-if grep -qF "Coolify found -> Coolify mode" "$T/plan.log" && \
+if grep -qF "Coolify found -> print the Coolify template" "$T/plan.log" && \
    grep -qF "container-based VPS" "$T/plan.log" && \
    grep -qF "Docker cannot run" "$T/plan.log"; then
   ok "the dry run prints the report items and the decision branches"
@@ -236,44 +237,39 @@ else
   ok "a failed Docker download stops before configure"
 fi
 
-# --- 2e. Coolify found: the Coolify path runs, the plain install untouched ---
+# --- 2e. Coolify found: point at the template, change nothing ---------------
 
-# A running `coolify` container means the host runs Coolify: the installer hands
-# over to Coolify mode instead of the plain install. Coolify mode needs a
-# Coolify API token; with --yes and no ZILAR_COOLIFY_TOKEN it stops with a clear
-# message naming the variable, before copying deploy/ or touching Docker. (The
-# full Coolify flow has its own test, deploy/tests/coolify-mode.test.sh.)
+# A running `coolify` container means the host runs Coolify: Zilar is a
+# one-click template there, so the installer prints the template path and the
+# --desks-host command, exits 0, and copies nothing or touches Docker.
 mkdir -p "$T/coolifybin"
 cat >"$T/coolifybin/docker" <<'STUB'
 #!/bin/sh
 case "$1" in ps) echo coolify ;; esac
 exit 0
 STUB
-# Stub jq and openssl so the run stops at the token, not at a missing tool.
-printf '#!/bin/sh\nexit 0\n' >"$T/coolifybin/jq"
-printf '#!/bin/sh\nexit 0\n' >"$T/coolifybin/openssl"
-chmod +x "$T/coolifybin/docker" "$T/coolifybin/jq" "$T/coolifybin/openssl"
+chmod +x "$T/coolifybin/docker"
 COOLIFY_DIR="$T/coolify"
 status=0
 PATH="$T/coolifybin:$PATH" ZILAR_INSTALL_TARBALL="$STUB_TARBALL" \
   ZILAR_INSTALL_SKIP_CHECKS=1 \
-  sh "$INSTALL" --yes --domain chat.example.com --admin-email ops@example.com \
-  --version main --dir "$COOLIFY_DIR" >"$T/coolify.log" 2>&1 || status=$?
-if [ "$status" -ne 0 ] && grep -qF "Coolify mode" "$T/coolify.log" && \
-   grep -qF "ZILAR_COOLIFY_TOKEN" "$T/coolify.log"; then
-  ok "Coolify found hands over to Coolify mode and names ZILAR_COOLIFY_TOKEN"
+  sh "$INSTALL" --version main --dir "$COOLIFY_DIR" >"$T/coolify.log" 2>&1 || status=$?
+if [ "$status" -eq 0 ] && \
+   grep -qF "https://raw.githubusercontent.com/JulioFerrero/zilar/main/deploy/coolify/docker-compose.yml" "$T/coolify.log" && \
+   grep -qF "sudo sh -s -- --desks-host" "$T/coolify.log"; then
+  ok "Coolify found prints the template path and --desks-host and exits 0"
 else
-  bad "Coolify found did not hand over to Coolify mode ($(tail -n 1 "$T/coolify.log"))"
+  bad "Coolify found did not point at the template ($(tail -n 1 "$T/coolify.log"))"
 fi
 if [ -e "$COOLIFY_DIR/zilar" ] || grep -q "^==> docker\$" "$T/coolify.log"; then
   bad "the Coolify path copied deploy/ or reached Docker"
 else
   ok "the Coolify path leaves the host untouched"
 fi
-if grep -qF "not available in this version" "$T/coolify.log"; then
-  bad "the Coolify path still prints the old 'not in this version' message"
+if grep -qi "coolify token\|api token" "$T/coolify.log"; then
+  bad "the Coolify path still asks for an API token"
 else
-  ok "the old 'not in this version' message is gone"
+  ok "the Coolify path no longer mentions an API token"
 fi
 
 # --- 2f. a container-based VPS stops with the clear message -------------
@@ -303,41 +299,81 @@ else
   ok "the openvz stop happens before configure"
 fi
 
-# --- 2g. a release from before T-1588 has no Coolify libs ----------------
+# --- 2g. --desks-host runs only the host prep and prints the variables ----
 
-# install.sh --version T fetches release T; a release from before this task has
-# no deploy/lib/coolify-*.sh. Requiring them would kill the plain Docker path on
-# a non-Coolify host, so their absence must be tolerated: only the Coolify
-# branch needs them (and it stops clearly when they are gone).
-mkdir -p "$T/zilar-old/deploy/lib"
-cp "$ROOT/deploy/lib/preflight.sh" "$T/zilar-old/deploy/lib/preflight.sh"
-cat >"$T/zilar-old/deploy/zilar" <<'STUB'
+# On a Coolify host the stack lives in Coolify, so --desks-host skips the
+# install: it runs host-setup from the fetched tree, proves the gVisor sandbox,
+# pins the jail image by digest and prints the four variables as KEY=value.
+# The stub tarball's `zilar` is a stub, and a stub `docker` answers the sandbox
+# run, the pull and the inspect, so the test is offline.
+mkdir -p "$T/deskbin"
+cat >"$T/deskbin/docker" <<'STUB'
 #!/bin/sh
-printf '%s\n' "$*" >>"${ZILAR_STUB_LOG:-/dev/null}"
+case "$1" in
+  image) echo "ghcr.io/julioferrero/zilar-desk@sha256:1111111111111111111111111111111111111111111111111111111111111111" ;;
+esac
 exit 0
 STUB
-chmod +x "$T/zilar-old/deploy/zilar"
-printf 'services: {}\n' >"$T/zilar-old/deploy/docker-compose.yml"
-tar -czf "$T/zilar-old.tar.gz" -C "$T" zilar-old
-mkdir -p "$T/plainbin"
-printf '#!/bin/sh\nexit 0\n' >"$T/plainbin/docker"
-printf '#!/bin/sh\nexec "$@"\n' >"$T/plainbin/sudo"
-chmod +x "$T/plainbin/docker" "$T/plainbin/sudo"
-OLD_DIR="$T/old"
+printf '#!/bin/sh\nexec "$@"\n' >"$T/deskbin/sudo"
+chmod +x "$T/deskbin/docker" "$T/deskbin/sudo"
+: >"$T/desks-host.log"
+DESK_DIR="$T/desks-host"
 status=0
-PATH="$T/plainbin:$PATH" ZILAR_INSTALL_TARBALL="$T/zilar-old.tar.gz" \
-  ZILAR_INSTALL_SKIP_CHECKS=1 \
-  sh "$INSTALL" --yes --domain chat.example.com --admin-email ops@example.com \
-  --version v1.2.3 --dir "$OLD_DIR" >"$T/old.log" 2>&1 || status=$?
-if [ "$status" -eq 0 ] && [ -x "$OLD_DIR/zilar" ]; then
-  ok "an old release without the Coolify libs still installs on a plain host"
+PATH="$T/deskbin:$T/bin:$PATH" ZILAR_INSTALL_TARBALL="$STUB_TARBALL" \
+  ZILAR_INSTALL_SKIP_CHECKS=1 ZILAR_STUB_LOG="$T/desks-host.stub" \
+  sh "$INSTALL" --desks-host --version main --dir "$DESK_DIR" \
+  >"$T/desks-host.log" 2>&1 || status=$?
+if [ "$status" -eq 0 ] && \
+   grep -qF "ghcr.io/julioferrero/zilar-desk@sha256:" "$T/desks-host.log"; then
+  ok "--desks-host prints a jail image pinned by digest"
 else
-  bad "an old release without the Coolify libs died ($(tail -n 1 "$T/old.log"))"
+  bad "--desks-host did not print a pinned image ($(tail -n 1 "$T/desks-host.log"))"
 fi
-if grep -qF "no deploy/lib/coolify" "$T/old.log"; then
-  bad "the plain path still requires the Coolify libs"
+if grep -q '^DESKS_ENABLED=true$' "$T/desks-host.log" && \
+   grep -q '^COMPOSE_PROFILES=desks$' "$T/desks-host.log" && \
+   grep -q '^DESK_IMAGE=ghcr.io/julioferrero/zilar-desk@sha256:' "$T/desks-host.log" && \
+   grep -q '^DESK_AGENT_SOCKET=/run/zilar/desk.sock$' "$T/desks-host.log"; then
+  ok "--desks-host prints the four Coolify variables"
 else
-  ok "the plain path does not require the Coolify libs"
+  bad "--desks-host did not print the four variables ($(tail -n 1 "$T/desks-host.log"))"
+fi
+if grep -qF "redeploy" "$T/desks-host.log" && grep -q "^host-setup$" "$T/desks-host.stub"; then
+  ok "--desks-host runs host-setup and says to redeploy"
+else
+  bad "--desks-host did not run host-setup or say to redeploy"
+fi
+if [ -e "$DESK_DIR/zilar" ]; then
+  bad "--desks-host installed the stack"
+else
+  ok "--desks-host skips the install"
+fi
+
+# A failing sandbox stops with the reason and exit 1, printing no variables.
+mkdir -p "$T/deskfailbin"
+cat >"$T/deskfailbin/docker" <<'STUB'
+#!/bin/sh
+for a in "$@"; do
+  case "$a" in --runtime=runsc) echo "runsc: no such file or directory" >&2; exit 1 ;; esac
+done
+exit 0
+STUB
+printf '#!/bin/sh\nexec "$@"\n' >"$T/deskfailbin/sudo"
+chmod +x "$T/deskfailbin/docker" "$T/deskfailbin/sudo"
+DESKFAIL_DIR="$T/desks-host-fail"
+status=0
+PATH="$T/deskfailbin:$T/bin:$PATH" ZILAR_INSTALL_TARBALL="$STUB_TARBALL" \
+  ZILAR_INSTALL_SKIP_CHECKS=1 \
+  sh "$INSTALL" --desks-host --version main --dir "$DESKFAIL_DIR" \
+  >"$T/desks-host-fail.log" 2>&1 || status=$?
+if [ "$status" -ne 0 ] && grep -qF "AI computers can't run on this host: runsc: no such file or directory" "$T/desks-host-fail.log"; then
+  ok "--desks-host fails the sandbox with the reason and exit 1"
+else
+  bad "--desks-host did not stop on a failed sandbox ($(tail -n 1 "$T/desks-host-fail.log"))"
+fi
+if grep -q '^DESK_IMAGE=' "$T/desks-host-fail.log"; then
+  bad "--desks-host printed the variables after a failed sandbox"
+else
+  ok "--desks-host prints no variables when the sandbox fails"
 fi
 
 # --- 3. --yes needs --domain and never prompts --------------------------

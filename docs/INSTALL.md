@@ -15,14 +15,10 @@ short, and it never prints a secret. It:
    directory, and prints a host report (OS and version, CPU architecture, RAM, free
    disk, ports 80/443, virtualization, Docker, Coolify);
 2. stops early, with a clear message, when the host is a container-based VPS that
-   cannot run Docker (asking the provider to turn on nesting is the fix) — or, when
-   Coolify is found, installs into Coolify through its API instead: it asks for a
-   Coolify API token (under Coolify's "Keys & Tokens"; with `--yes`, read from
-   `ZILAR_COOLIFY_TOKEN`) and creates project "Zilar" with the `zilar-core` service
-   and the `zilar-server` and `zilar-web` image apps, fills in the generated
-   secrets and derived variables, deploys, waits for `/health`, offers AI
-   computers, writes a root-only copy of the secrets to
-   `/root/zilar-secrets-<date>.env` and mints the first invite code;
+   cannot run Docker (asking the provider to turn on nesting is the fix) — or,
+   when Coolify is found, stops after the report and points you at the one-click
+   template instead of installing on the host (see "On a host that runs Coolify"
+   below);
 3. installs Docker from [get.docker.com](https://get.docker.com) if it is missing,
    only after you say yes, then proves it runs with `docker run --rm hello-world`;
 4. extracts only `deploy/` into `/opt/zilar` and runs `./zilar init` (passing the
@@ -42,7 +38,8 @@ Running it again updates `deploy/` and keeps your `.env`.
 | `--domain HOST` | public host for Zilar (`init` asks when omitted) |
 | `--admin-email EMAIL` | address of the first account (`init` asks when omitted) |
 | `--desks` | also run `./zilar host-setup`, then turn AI computers on once the gVisor sandbox passes |
-| `--yes` | no prompts (needs `--domain` and `--admin-email`; on a Coolify host, also `ZILAR_COOLIFY_TOKEN`) |
+| `--desks-host` | on a Coolify host: run only the AI-computer host prep and print the four variables to set in Coolify |
+| `--yes` | no prompts (needs `--domain` and `--admin-email`) |
 | `--dry-run` | print the plan, change nothing |
 
 **Non-interactively** (automation, cloud-init):
@@ -55,15 +52,27 @@ curl -fsSL https://raw.githubusercontent.com/JulioFerrero/zilar/main/deploy/inst
 Add `--desks` to prepare the host for AI computers; add `--version v1.2.3` to pin a release.
 To review the plan first, run `sh install.sh --dry-run`.
 
-On a host that runs Coolify, the installer takes the Coolify path: it asks for a
-Coolify API token (create one under "Keys & Tokens"). With `--yes` it reads the
-token from `ZILAR_COOLIFY_TOKEN` instead, so a cloud-init run can install into
-Coolify without a prompt:
+On a host that runs Coolify, the installer stops after the host report and points
+you at the one-click template instead of installing on the host:
+
+1. In Coolify, create a resource from a Docker Compose file (New Resource →
+   Docker Compose Empty) and paste
+   `https://raw.githubusercontent.com/JulioFerrero/zilar/main/deploy/coolify/docker-compose.yml`
+   — or pick "Zilar" once it is in Coolify's catalog.
+2. Set the domain on the `web` service and deploy.
+
+AI computers need gVisor and a memory pool on the host, which Coolify cannot
+install. Run one host command and it prints the four values to set on the Zilar
+service in Coolify, then redeploy:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/JulioFerrero/zilar/main/deploy/install.sh | ZILAR_COOLIFY_TOKEN=CHANGE_ME sh -s -- \
-  --yes --domain chat.example.com --admin-email you@example.com
+curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host
 ```
+
+`--desks-host` runs only the host prep and a real gVisor sandbox check, then
+prints `DESKS_ENABLED`, `COMPOSE_PROFILES`, `DESK_IMAGE` (pinned by digest) and
+`DESK_AGENT_SOCKET`. It also works on a plain-Docker host, but there `--desks`
+(above) sets the same switch for you.
 
 Your own chat server, where people and your AIs talk together. Pick one
 path — they all run the same code:

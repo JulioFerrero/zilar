@@ -100,7 +100,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - The landing app's domains are now `zilar.app`, `www.zilar.app` and `get.zilar.app`. A manual deploy (`7rjctopzgikchutmruiyov4u`, 31 s) shipped `54633f5b9`.
     - `curl https://get.zilar.app` answers 200 `text/x-shellscript` with a valid certificate, byte-identical to `deploy/install.sh`. `zilar.app` still redirects 301 to www; www answers 200, and before/after screenshots match (0 page errors).
     - **Found:** the landing had not deployed since 2026-10-02. Its only deployments were API-made, and auto-deploy never fired, so the 10-02→now site changes (file splits only, same `index.html`) shipped with this deploy. `watch_paths` is empty. **Follow-up:** find out why the landing gets no push webhooks (zilar-chat does).
-  - **Running:** T-1592 (Coolify template), T-1593 (the installer's Coolify branch and `--desks-host`).
+  - **T-1592 merged** (the Coolify one-click template, `deploy/coolify/docker-compose.yml`). **The rehearsal on our Coolify passed:**
+    - scratch project, sslip.io domain; Coolify generated all 9 secrets; healthy in under 2 minutes with 0 restarts;
+    - the desk services weren't created, since the profile is honoured;
+    - `/health` 200, `/api/me` 401, `/` 200, WebSocket 101 and `/xmpp-ws/api` 404, over a real Let's Encrypt certificate; 0 server errors;
+    - the service, its volumes and the project are deleted.
+  - **T-1591** stays parked: the API mode it extended is being removed. Delete its worktree and branch after T-1593 merges.
+  - **Running:** T-1593 (the installer's Coolify branch and `--desks-host`).
+  - **Julio OK'd tagging v0.2.0** after T-1593 merges.
+  - **Coolify catalog:** upstream needs **1,000 GitHub stars**, and Zilar has 0. So **T-1594** builds a demo of both upstream PRs (template plus required docs page) under `deploy/coolify/catalog/`. The lead opens it as a **draft PR in our repo, never merged**, per Julio.
   - **Still before users can use the one-liner by default:** the rehearsal (now the template in a scratch project, no token), then tag v0.2.0 (Julio OK'd after the rehearsal). The latest tag, v0.1.13, has no `preflight.sh`, so until then use `--version main`.
   - **Old Running list:**
     - T-1588 (installer Coolify mode through Coolify's API; reference `docs/deploy/coolify-api-notes.md`, committed on its branch). The lead refused an outside call to httpbin.org.

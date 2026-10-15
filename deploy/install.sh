@@ -14,7 +14,7 @@ PROG="zilar-install"; REPO="JulioFerrero/zilar"; IMAGE_OWNER="julioferrero"; DEF
 CODELOAD="https://codeload.github.com"; API_URL="${ZILAR_INSTALL_API_URL:-https://api.github.com}"
 MIN_DISK_MB=10240; MIN_RAM_MB=2048; WARN_RAM_MB=4096
 VERSION=""; DIR="$DEFAULT_DIR"; DOMAIN=""; ADMIN_EMAIL=""; COMMIT=""
-DESKS=0; YES=0; DRY_RUN=0; SUDO=""; DESK_SANDBOX_ERR=""
+DESKS=0; DESKS_HOST=0; YES=0; DRY_RUN=0; SUDO=""; DESK_SANDBOX_ERR=""
 
 die() { echo "$PROG: error: $*" >&2; exit 1; }
 info() { echo "$PROG: $*"; }
@@ -42,17 +42,19 @@ consent() {
 usage() {
   cat <<EOF
 Usage: install.sh [--version TAG|main] [--dir PATH] [--domain HOST]
-                  [--admin-email EMAIL] [--desks] [--yes] [--dry-run]
+                  [--admin-email EMAIL] [--desks] [--desks-host] [--yes] [--dry-run]
 
   --version  release to install (default: the latest v* tag, else main)
   --dir      where deploy/ is extracted (default: $DEFAULT_DIR)
   --domain / --admin-email  passed to ./zilar init; it prompts when omitted
   --desks    also run ./zilar host-setup   --yes  no prompts   --dry-run  plan
+  --desks-host  run only the AI-computer host prep and the sandbox check, then
+             print the variables to set on the Zilar service in Coolify
 
-On a host that already runs Coolify, Zilar installs into Coolify through its API
-instead of on the host: the installer asks for a Coolify API token (with --yes,
-ZILAR_COOLIFY_TOKEN) and creates project Zilar with zilar-core, zilar-server and
-zilar-web.
+On a host that already runs Coolify, Zilar is a one-click template: create a new
+Docker Compose Empty resource, paste
+https://raw.githubusercontent.com/JulioFerrero/zilar/main/deploy/coolify/docker-compose.yml,
+set the domain on web and deploy. This installer changes nothing there.
 EOF
 }
 
@@ -68,6 +70,7 @@ parse_args() {
       --domain) [ "$#" -ge 2 ] || die "--domain needs a value"; DOMAIN="$2"; shift 2 ;;
       --admin-email) [ "$#" -ge 2 ] || die "--admin-email needs a value"; ADMIN_EMAIL="$2"; shift 2 ;;
       --desks) DESKS=1; shift ;;
+      --desks-host) DESKS_HOST=1; shift ;;
       --yes|-y) YES=1; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       -h|--help) usage; exit 0 ;;
@@ -77,6 +80,7 @@ parse_args() {
 }
 
 validate_args() {
+  if [ "$DESKS_HOST" -eq 1 ]; then return 0; fi
   if [ "$YES" -eq 1 ]; then
     [ -n "$DOMAIN" ] || die "--yes needs --domain <host> (there are no prompts in --yes mode)"
     [ -n "$ADMIN_EMAIL" ] || die "--yes needs --admin-email <you@example.com> (there are no prompts in --yes mode)"
@@ -145,9 +149,7 @@ resolve_commit() {
 # untouched: a cut-off download, or a stop in the report, must change nothing.
 fetch_release() {
   _tmp="$(mktemp -d "${TMPDIR:-/tmp}/zilar-install.XXXXXX")"
-  # The exit trap also removes COOLIFY_TMP (Coolify mode's root-only dir with the
-  # token and the request bodies), whether or not it lives under $_tmp.
-  trap 'rm -rf "$_tmp"; [ -z "${COOLIFY_TMP:-}" ] || rm -rf "$COOLIFY_TMP"' EXIT INT TERM
+  trap 'rm -rf "$_tmp"' EXIT INT TERM
   if [ -n "${ZILAR_INSTALL_TARBALL:-}" ]; then
     [ -f "$ZILAR_INSTALL_TARBALL" ] || die "ZILAR_INSTALL_TARBALL=$ZILAR_INSTALL_TARBALL is not a file"
     cp "$ZILAR_INSTALL_TARBALL" "$_tmp/zilar.tar.gz"
@@ -183,13 +185,8 @@ preflight_plan() {
   echo "    items: os and version (/etc/os-release); CPU architecture, RAM and free disk;"
   echo "           ports 80 and 443; Docker (docker info); virtualization (systemd-detect-virt);"
   echo "           Coolify (a container named coolify, or /data/coolify/source)."
-  echo "    branch: Coolify found -> Coolify mode: ask for a Coolify API token (or ZILAR_COOLIFY_TOKEN"
-  echo "            with --yes) and create the layout through the Coolify API, in order:"
-  echo "            GET /version, GET /servers, GET /projects, POST /projects, POST /services,"
-  echo "            PATCH /services/{uuid}, PATCH /services/{uuid}/envs/bulk, POST /deploy,"
-  echo "            POST /applications/dockerimage (server), storages, envs/bulk, POST /deploy,"
-  echo "            POST /applications/dockerimage (web), POST /deploy, then wait for /health;"
-  echo "            then the AI computers, the root-only secrets copy and the first invite code"
+  echo "    branch: Coolify found -> print the Coolify template address and the --desks-host"
+  echo "            command for AI computers, then stop, changing nothing"
   echo "    branch: container-based VPS (openvz, or lxc without Docker) -> stop and explain"
   echo "    branch: Docker cannot run (docker run --rm hello-world fails) -> stop and explain"
   echo "    branch: otherwise -> the plain Docker install below"
@@ -207,13 +204,6 @@ phase_report() {
   phase "host report"
   if [ "$DRY_RUN" -eq 1 ]; then preflight_plan; return 0; fi
   [ -f "$_root/deploy/lib/preflight.sh" ] || die "the release has no deploy/lib/preflight.sh"
-  # Coolify mode is sourced first so preflight_decide can run it. A release from
-  # before T-1588 has neither lib and the plain path never needs them, so their
-  # absence is not an error: preflight_decide stops clearly if Coolify is found.
-  if [ -f "$_root/deploy/lib/coolify-api.sh" ] && [ -f "$_root/deploy/lib/coolify-mode.sh" ]; then
-    . "$_root/deploy/lib/coolify-api.sh"
-    . "$_root/deploy/lib/coolify-mode.sh"
-  fi
   . "$_root/deploy/lib/preflight.sh"
   preflight_run      # prints the report; exits 0 on Coolify, or stops clearly
   install_deploy     # plain path only (the Coolify branch exited above)
@@ -319,6 +309,49 @@ phase_desks() {
   else info "AI computers stay off: $DESK_SANDBOX_ERR"; fi
 }
 
+# --- 6b. AI computers on a Coolify host (--desks-host) ------------------
+
+# `--desks-host` skips the install. On a Linux host with Docker it runs only
+# the AI-computer host prep and the sandbox check, then prints the variables
+# that turn AI computers on in the Coolify template. A Coolify host has no
+# deploy/.env to edit, so the values are printed, not written.
+desks_host() {
+  if [ "$DRY_RUN" -eq 1 ]; then
+    phase "host-setup"
+    echo "    + $SUDO <tmp>/deploy/zilar host-setup"
+    echo "    + $SUDO docker run --rm --runtime=runsc hello-world   # proves the sandbox runs"
+    echo "    + docker pull ghcr.io/$IMAGE_OWNER/zilar-desk:<version tag>, then inspect for its digest"
+    echo "    + prints DESKS_ENABLED=true, COMPOSE_PROFILES=desks, DESK_IMAGE=<repo>@sha256:<digest>,"
+    echo "             DESK_AGENT_SOCKET=/run/zilar/desk.sock"
+    return 0
+  fi
+
+  [ -f "$_root/deploy/lib/desk-image.sh" ] || die "the release has no deploy/lib/desk-image.sh"
+  . "$_root/deploy/lib/desk-image.sh"
+  command -v docker >/dev/null 2>&1 || die "--desks-host needs Docker installed and running"
+  _tag="latest"; case "$VERSION" in v*) _tag="$VERSION" ;; esac
+  _ref="$(_desk_image_ref "$IMAGE_OWNER" "$_tag")"
+
+  phase "host-setup"
+  info "installing gVisor and changing Docker's config; Docker is reloaded (SIGHUP), never restarted"
+  run $SUDO "$_root/deploy/zilar" host-setup
+
+  if ! desk_sandbox; then
+    die "AI computers can't run on this host: $DESK_SANDBOX_ERR"
+  fi
+  info "the gVisor sandbox runs (docker run --rm --runtime=runsc hello-world passed)"
+
+  _digest="$(resolve_desk_digest "$_ref")" ||
+    die "cannot pin the jail image $_ref — check the network and that the image is published"
+
+  echo ""
+  echo "Set these on the Zilar service in Coolify, then redeploy:"
+  echo "DESKS_ENABLED=true"
+  echo "COMPOSE_PROFILES=desks"
+  echo "DESK_IMAGE=$_digest"
+  echo "DESK_AGENT_SOCKET=/run/zilar/desk.sock"
+}
+
 # --- 7. start -----------------------------------------------------------
 
 phase_up() { phase "up"; run_in "$DIR" $SUDO ./zilar up; }
@@ -347,9 +380,11 @@ main() {
   parse_args "$@"
   validate_args
   if [ "$DRY_RUN" -eq 1 ]; then info "dry run: printing the plan, changing nothing"
+  elif [ "$DESKS_HOST" -eq 1 ]; then info "preparing this host for AI computers (the Zilar stack itself is installed from Coolify)"
   else info "installing Zilar into $DIR (read deploy/install.sh if you have not)"; fi
   phase_check
   phase_fetch
+  if [ "$DESKS_HOST" -eq 1 ]; then desks_host; return 0; fi
   phase_report
   phase_docker
   phase_configure

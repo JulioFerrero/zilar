@@ -126,22 +126,21 @@ pf_coolify() {
   fi
   if [ "$_found" -eq 1 ]; then
     PREFLIGHT_COOLIFY=1
-    pf_line "coolify" "stop" "found — Zilar will install into Coolify instead"
+    pf_line "coolify" "stop" "found — install Zilar from the Coolify template instead"
   else
     pf_line "coolify" "ok" "not found"
   fi
 }
 
-# The decision after the report. Exits 0 on the Coolify path (through Coolify's
-# API), stops with the clear message on a host that cannot run Docker, and
-# otherwise returns so install.sh follows the plain Docker path.
+# The decision after the report. On a host that runs Coolify it prints the
+# template path and the --desks-host command, then exits 0 with the host
+# untouched; a host that cannot run Docker stops with the clear message;
+# otherwise it returns so install.sh follows the plain Docker path.
 preflight_decide() {
   if [ "$PREFLIGHT_COOLIFY" -eq 1 ]; then
     echo ""
-    info "Coolify detected: installing Zilar into Coolify through its API (Coolify mode)."
-    command -v coolify_run >/dev/null 2>&1 ||
-      die "this release has no Coolify mode (deploy/lib/coolify-mode.sh)"
-    coolify_run   # ask for the token, create the layout, deploy, wait for health
+    info "Coolify found. Install Zilar from Coolify: New Resource → Docker Compose Empty → paste https://raw.githubusercontent.com/JulioFerrero/zilar/main/deploy/coolify/docker-compose.yml (or pick \"Zilar\" once it is in Coolify's catalog), set the domain on web, deploy."
+    info "AI computers on this host: curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host"
     exit 0
   fi
   case "$PREFLIGHT_VIRT" in
