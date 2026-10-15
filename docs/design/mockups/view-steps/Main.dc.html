@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>View steps, web panel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed}a:hover{color:#ffffff}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.key-icon{background:linear-gradient(180deg,#2c2c2c,#151515);border:1px solid #050505;color:#d4d4d4;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.65),0 1px 0 rgba(0,0,0,.95),0 3px 6px -1px rgba(0,0,0,.75)}
+.well{background:#0c0c0c;box-shadow:inset 0 2px 6px rgba(0,0,0,.9),inset 0 1px 1px rgba(0,0,0,.8),inset 0 0 0 1px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.06)}
+.kb{width:36px;height:36px;box-sizing:border-box;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.dev{background:radial-gradient(circle at 35% 30%,#c4b5fd,#4338ca 55%,#1e1b4b)}
+.step{display:flex;align-items:center;gap:10px;font-size:14px;line-height:20px}
+.dur{font-family:'Geist Mono',monospace;font-size:12px;color:#8a8a8a;font-variant-numeric:tabular-nums}
+.shead{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:0 12px;border:0;border-radius:10px;background:transparent;color:#ededed;font:500 14px 'Geist',sans-serif;text-align:left;box-sizing:border-box}
+.act{display:flex;align-items:center;gap:10px;min-height:32px;padding:0 12px 0 42px;font-size:13px}
+.cmd{flex-grow:1;min-width:0;font-family:'Geist Mono',monospace;font-size:12.5px;color:#d4d4d4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; padding: 12px; display: flex; gap: 12px; background: #000000; overflow: hidden">
+  <div style="width: 300px; flex-shrink: 0; background: #0a0a0a; border: 1px solid #1f1f1f; border-radius: 16px"></div>
+
+  <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; background-color: #0a0a0a; background-image: radial-gradient(#1c1c1c 1px, transparent 1px); background-size: 22px 22px; border: 1px solid #1f1f1f; border-radius: 16px; overflow: hidden">
+    <div style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid #1f1f1f; background: #0a0a0a">
+      <span aria-hidden="true" class="dev" style="width: 32px; height: 32px; border-radius: 999px"></span>
+      <span style="font-size: 15px; font-weight: 600">Dev-1</span>
+    </div>
+    <div style="flex-grow: 1; padding: 20px 24px; display: flex; flex-direction: column; justify-content: flex-end; gap: 14px">
+      <div style="align-self: flex-end; max-width: 420px; padding: 9px 14px; border-radius: 16px; background: #ededed; color: #0a0a0a; font-size: 14px">The pay button is under the home bar on small iPhones. Fix it?</div>
+
+      <div style="align-self: flex-start; display: flex; gap: 10px; align-items: flex-end">
+        <span aria-hidden="true" class="dev" style="width: 28px; height: 28px; border-radius: 999px; flex-shrink: 0"></span>
+        <section aria-label="Dev-1 finished: Fix the checkout button" style="width: 380px; box-sizing: border-box; padding: 14px 16px; border-radius: 12px; background: #141414; border: 1px solid #ededed; box-shadow: 0 0 0 1px #ededed; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; align-items: center; gap: 8px">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" role="img" aria-label="Done"><circle cx="8" cy="8" r="7" fill="#22c55e"></circle><path d="M4.9 8.3l2.1 2.1 4.1-4.5" stroke="#0a0a0a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <span style="flex-grow: 1; font-size: 15px; font-weight: 600">Fix the checkout button</span>
+            <span class="dur">4:12</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; padding-left: 24px; font-size: 13px; color: #a1a1a1">
+            <span>Find the cause</span>
+            <span>Patch the safe-area padding</span>
+            <span>Run the tests</span>
+            <span>Open the pull request</span>
+          </div>
+          <a href="#steps" style="display: flex; align-items: center; gap: 6px; padding-top: 10px; border-top: 1px solid #232323; font-size: 13px; font-weight: 500; text-decoration: none">
+            <span style="flex-grow: 1">View steps</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8a8a8a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+          </a>
+        </section>
+      </div>
+
+      <div style="align-self: flex-start; margin-left: 38px; max-width: 420px; padding: 9px 14px; border-radius: 16px; background: #141414; border: 1px solid #232323; font-size: 14px; line-height: 20px">Opened PR #42 with a safe-area guard. Tests pass on iOS 17 and Android.</div>
+    </div>
+    <div style="flex-shrink: 0; padding: 10px 16px 14px 16px; border-top: 1px solid #1f1f1f; background: #0a0a0a">
+      <div class="well" style="height: 38px; border-radius: 11px; display: flex; align-items: center; padding: 0 12px; font-size: 14px; color: #8a8a8a">Message Dev-1</div>
+    </div>
+  </div>
+
+  <aside id="steps" aria-label="Steps" style="width: 380px; flex-shrink: 0; background: #0a0a0a; border: 1px solid #1f1f1f; border-radius: 16px; display: flex; flex-direction: column; overflow: hidden">
+    <div style="height: 64px; flex-shrink: 0; padding: 0 12px 0 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #1f1f1f">
+      <span aria-hidden="true" class="dev" style="width: 24px; height: 24px; border-radius: 999px; flex-shrink: 0"></span>
+      <h2 style="margin: 0; flex-grow: 1; min-width: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Fix the checkout button</h2>
+      <span class="dur">4:12</span>
+      <button type="button" aria-label="Close steps" class="key-icon kb"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+    </div>
+
+    <div style="flex-grow: 1; overflow: hidden; padding: 8px; display: flex; flex-direction: column; gap: 2px">
+      <button type="button" aria-expanded="false" class="shead">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" role="img" aria-label="Done"><circle cx="8" cy="8" r="7" fill="#22c55e"></circle><path d="M4.9 8.3l2.1 2.1 4.1-4.5" stroke="#0a0a0a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <span style="flex-grow: 1">Find the cause</span>
+        <span class="dur">0:48</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+      </button>
+
+      <button type="button" aria-expanded="false" class="shead">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" role="img" aria-label="Done"><circle cx="8" cy="8" r="7" fill="#22c55e"></circle><path d="M4.9 8.3l2.1 2.1 4.1-4.5" stroke="#0a0a0a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <span style="flex-grow: 1">Patch the safe-area padding</span>
+        <span class="dur">0:20</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+      </button>
+
+      <div style="background: #111111; border-radius: 10px; padding-bottom: 8px">
+        <button type="button" aria-expanded="true" class="shead">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" role="img" aria-label="Done"><circle cx="8" cy="8" r="7" fill="#22c55e"></circle><path d="M4.9 8.3l2.1 2.1 4.1-4.5" stroke="#0a0a0a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          <span style="flex-grow: 1">Run the tests</span>
+          <span class="dur">1:19</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+        </button>
+        <div class="act">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.6" stroke-linecap="round" role="img" aria-label="Failed"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+          <span class="cmd">pnpm test checkout</span>
+          <span class="dur">0:41</span>
+        </div>
+        <div class="well mono" style="margin: 2px 12px 6px 42px; padding: 8px 10px; border-radius: 8px; font-size: 11.5px; line-height: 17px; color: #a1a1a1; white-space: pre; overflow: hidden">FAIL  Pay.test.tsx
+  expected bottom ≥ 34, got 16</div>
+        <div class="act">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Done"><path d="M5 12l5 5L20 7"></path></svg>
+          <span class="cmd">edit src/checkout/Sheet.tsx</span>
+          <span class="dur">0:00</span>
+        </div>
+        <div class="act">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Done"><path d="M5 12l5 5L20 7"></path></svg>
+          <span class="cmd">pnpm test checkout</span>
+          <span class="dur">0:38</span>
+        </div>
+      </div>
+
+      <button type="button" aria-expanded="false" class="shead">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" role="img" aria-label="Done"><circle cx="8" cy="8" r="7" fill="#22c55e"></circle><path d="M4.9 8.3l2.1 2.1 4.1-4.5" stroke="#0a0a0a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <span style="flex-grow: 1">Open the pull request</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="You approved this step"><path d="M12 3l7 3v6c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6z"></path><path d="M9 12l2 2 4-4"></path></svg>
+        <span class="dur">0:15</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+      </button>
+    </div>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
