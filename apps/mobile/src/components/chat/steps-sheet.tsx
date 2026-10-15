@@ -1,0 +1,306 @@
+import type { TaskStep, TaskStepAction } from '@zilar/api-contract';
+import { formatClock, type AvatarPersonInput } from '@zilar/chat-core';
+import type { Progress } from '@zilar/protocol';
+import { Effect } from 'effect';
+import { AsyncResult } from 'effect/reactivity';
+import { useGlobalSearchParams } from 'expo-router';
+import { Check, ChevronDown, ChevronRight, ShieldCheck, Square, X } from 'lucide-react-native';
+import { useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, View } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
+
+import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { BottomSheet } from '@/components/ui/bottom-sheet';
+import { IconButton } from '@/components/ui/icon-button';
+import { StateMessage } from '@/components/ui/state-message';
+import { Text } from '@/components/ui/text';
+import { createAgentTasksApi, type AgentTasksApi } from '@/lib/agent-tasks-api';
+import { API_URL } from '@/lib/auth';
+import { ACCENT, DANGER, ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { well } from '@/lib/depth';
+import { fromApi } from '@/lib/effect/api-effect';
+import { failureOf } from '@/lib/effect/use-action';
+import { useQuery } from '@/lib/effect/use-query';
+import { getSessionToken } from '@/lib/session-token';
+import { cn } from '@/lib/utils';
+import { ENV_MOCK, mockParamAllowed, mockToken } from '@/mock/gate';
+
+/** Builds the mock-mode `AgentTasksApi` on the shared mock backend, behind a
+ * literal build-time condition: Metro folds it to `false` in a release build, so
+ * the mock module stays out of the bundle (the recipe of `use-ais-api`). */
+function createMockAgentTasks(): AgentTasksApi {
+  if (__DEV__ || process.env.EXPO_PUBLIC_ZILAR_MOCK) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { mockFetch } = require('@/mock/backend') as typeof import('@/mock/backend');
+    return createAgentTasksApi(mockToken, mockFetch, API_URL);
+  }
+  throw new Error('The mock API is not part of this build');
+}
+
+/** The mock gate the sibling `use-*-api` hooks use: the route's `?mock=` param or
+ * the bundle-time `EXPO_PUBLIC_ZILAR_MOCK` env, with `false`/`0`/empty off. */
+function stepsMockActive(
+  envMock: string | undefined,
+  params: Record<string, string | string[] | undefined>,
+  paramAllowed: boolean,
+): boolean {
+  const rawParam = params['mock'];
+  const param = paramAllowed ? (Array.isArray(rawParam) ? rawParam[0] : rawParam) : undefined;
+  const requested = param !== undefined ? param : envMock;
+  if (requested === undefined || requested === '' || requested === '0') {
+    return false;
+  }
+  return requested !== 'false';
+}
+
+/** One rendered row: the server's step, or a card step when the log is gone. */
+interface DisplayStep {
+  id: string;
+  label: string;
+  state: TaskStep['state'];
+  /** Absent on a card-only fallback step, which carries no duration. */
+  durationMs: number | null;
+  approved: boolean;
+  actions: readonly TaskStepAction[];
+}
+
+function toDisplayStep(step: TaskStep): DisplayStep {
+  return {
+    id: step.id,
+    label: step.label,
+    state: step.state,
+    durationMs: step.durationMs,
+    approved: step.approved,
+    actions: step.actions,
+  };
+}
+
+/** The card's own steps, with no actions, when the log is empty or gone. */
+function fallbackSteps(card: Progress): DisplayStep[] {
+  return (card.steps ?? []).map((step) => ({
+    id: step.id,
+    label: step.label,
+    state: step.state === 'planned' ? 'stopped' : step.state,
+    durationMs: null,
+    approved: false,
+    actions: [],
+  }));
+}
+
+/** The state icon of one step row; a status is never a word. */
+function StepStateIcon({
+  state,
+  reduceMotion,
+}: {
+  state: DisplayStep['state'];
+  reduceMotion: boolean;
+}) {
+  if (state === 'done') {
+    return <Check size={16} color={ACCENT} aria-hidden />;
+  }
+  if (state === 'failed') {
+    return <X size={16} color={DANGER} aria-hidden />;
+  }
+  if (state === 'doing') {
+    return <ActivityIndicator size="small" color={ACCENT} animating={!reduceMotion} />;
+  }
+  return <Square size={16} color={MUTED_FOREGROUND} aria-hidden />;
+}
+
+/** One step: its header toggles the actions logged under it. */
+function StepRow({
+  step,
+  open,
+  reduceMotion,
+  onToggle,
+}: {
+  step: DisplayStep;
+  open: boolean;
+  reduceMotion: boolean;
+  onToggle: () => void;
+}) {
+  // Only a step with actions expands; one without shows no chevron and is not
+  // a toggle.
+  const expandable = step.actions.length > 0;
+  const Chevron = open ? ChevronDown : ChevronRight;
+  const content = (
+    <>
+      <StepStateIcon state={step.state} reduceMotion={reduceMotion} />
+      <Text numberOfLines={1} className="min-w-0 flex-1 text-[14px] font-medium text-foreground">
+        {step.label}
+      </Text>
+      {step.approved ? (
+        <ShieldCheck size={14} color={MUTED_FOREGROUND} accessibilityLabel="Approved" />
+      ) : null}
+      {step.durationMs !== null ? (
+        <Text className="shrink-0 font-mono text-[12px] text-muted-foreground">
+          {formatClock(step.durationMs)}
+        </Text>
+      ) : null}
+      {expandable ? <Chevron size={16} color={MUTED_FOREGROUND} aria-hidden /> : null}
+    </>
+  );
+  return (
+    <View className={cn('rounded-[10px]', open && 'bg-surface-raised')}>
+      {expandable ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          onPress={onToggle}
+          className="min-h-[52px] flex-row items-center gap-2.5"
+        >
+          {content}
+        </Pressable>
+      ) : (
+        <View className="min-h-[52px] flex-row items-center gap-2.5">{content}</View>
+      )}
+
+      {open
+        ? step.actions.map((action, index) => (
+            <View key={`${step.id}:${index}`}>
+              <View className="min-h-10 flex-row items-center gap-2.5 pl-7">
+                {action.ok ? (
+                  <Check size={14} color={ACCENT} aria-hidden />
+                ) : (
+                  <X size={14} color={DANGER} aria-hidden />
+                )}
+                <Text
+                  numberOfLines={1}
+                  className="min-w-0 flex-1 font-mono text-[13px] text-foreground"
+                >
+                  {action.command}
+                </Text>
+                <Text className="shrink-0 font-mono text-[12px] text-muted-foreground">
+                  {formatClock(action.durationMs)}
+                </Text>
+              </View>
+              {!action.ok && action.error !== undefined ? (
+                <View style={well} className="mb-2 ml-7 rounded-lg px-2.5 py-2">
+                  <Text className="font-mono text-[12px] leading-[17px] text-muted-foreground">
+                    {action.error}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ))
+        : null}
+    </View>
+  );
+}
+
+/**
+ * The phone's "View steps" sheet (T-1562), the mobile twin of web's
+ * `StepsPanel` (T-1535): the card's own steps with the actions logged under
+ * each, opened from a finished card's "View steps" row. It lists the same steps
+ * as the card — never model calls, tokens, money or the answer — and reads the
+ * card's title, total and AI from the card message. A 404 or an empty log (the
+ * log is kept 30 days) falls back to the card's steps with no actions.
+ */
+export function StepsSheet({
+  visible,
+  onClose,
+  taskId,
+  card,
+  aiName,
+  aiAvatarUrl,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  taskId: string;
+  card: Progress;
+  aiName?: string | undefined;
+  aiAvatarUrl?: string | undefined;
+}) {
+  const reduceMotion = useReducedMotion();
+  const params = useGlobalSearchParams();
+  const mock = stepsMockActive(
+    ENV_MOCK,
+    params,
+    mockParamAllowed({ dev: __DEV__, envMock: ENV_MOCK }),
+  );
+  const api = useMemo(
+    () => (mock ? createMockAgentTasks() : createAgentTasksApi(getSessionToken)),
+    [mock],
+  );
+
+  const [result, refresh] = useQuery(
+    // The steps are fetched only while the sheet is open: a chat full of
+    // finished cards must not make one request per card. A reopen starts a new
+    // request; the closed sheet requests nothing (`Effect.never`), like
+    // `invite-sheet.tsx`.
+    () => (visible ? fromApi(() => api.getTaskSteps(taskId)) : Effect.never),
+    [api, taskId, visible],
+  );
+  const failure = AsyncResult.isFailure(result) ? failureOf(result) : undefined;
+  const loaded = AsyncResult.isSuccess(result) ? result.value.steps : undefined;
+  const gone = loaded === undefined ? failure?.status === 404 : loaded.length === 0;
+  const steps: DisplayStep[] =
+    loaded !== undefined && loaded.length > 0
+      ? loaded.map(toDisplayStep)
+      : gone
+        ? fallbackSteps(card)
+        : [];
+  const loading = loaded === undefined && failure === undefined;
+  const errored = failure !== undefined && failure.status !== 404;
+
+  // The step holding the first failed action starts open; the reader's choice
+  // resets when the sheet closes, so it re-defaults the next time.
+  const defaultOpen = steps.find((step) => step.actions.some((action) => !action.ok))?.id ?? null;
+  const [chosenOpen, setChosenOpen] = useState<string | null>();
+  const openId = chosenOpen === undefined ? defaultOpen : chosenOpen;
+  const toggle = (id: string): void => setChosenOpen(openId === id ? null : id);
+  const close = (): void => {
+    setChosenOpen(undefined);
+    onClose();
+  };
+
+  const aiPerson: AvatarPersonInput = {
+    id: card.ai,
+    name: aiName ?? card.ai,
+    ...(aiAvatarUrl === undefined ? {} : { avatarUrl: aiAvatarUrl }),
+  };
+
+  return (
+    <BottomSheet visible={visible} onClose={close} closeLabel="Close steps">
+      <View className="flex-row items-center gap-2.5 border-b border-divider pb-3">
+        <EntityAvatar person={aiPerson} size={28} ai />
+        <Text
+          numberOfLines={1}
+          className="min-w-0 flex-1 text-[16px] font-semibold text-foreground"
+        >
+          {card.title ?? card.stage}
+        </Text>
+        {card.elapsed_ms !== undefined ? (
+          <Text className="shrink-0 font-mono text-[12px] text-muted-foreground">
+            {formatClock(card.elapsed_ms)}
+          </Text>
+        ) : null}
+        <IconButton label="Close steps" onPress={close}>
+          <X size={16} color={ICON} />
+        </IconButton>
+      </View>
+
+      <View className="pt-1">
+        {loading ? <StateMessage kind="loading" size="inline" title="Loading…" /> : null}
+        {errored ? (
+          <StateMessage
+            kind="error"
+            title="Could not load the steps."
+            action={{ label: 'Retry', onPress: refresh }}
+          />
+        ) : null}
+        {!loading && !errored
+          ? steps.map((step) => (
+              <StepRow
+                key={step.id}
+                step={step}
+                open={openId === step.id}
+                reduceMotion={reduceMotion}
+                onToggle={() => toggle(step.id)}
+              />
+            ))
+          : null}
+      </View>
+    </BottomSheet>
+  );
+}

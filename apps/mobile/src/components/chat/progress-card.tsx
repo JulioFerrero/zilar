@@ -1,12 +1,13 @@
 import type { Progress, ProgressStep } from '@zilar/protocol';
 import { Effect, Schedule } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { Check, Circle, CircleAlert, Square, X } from 'lucide-react-native';
+import { Check, ChevronRight, Circle, CircleAlert, Square, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 
 import { useAisApi } from '@/components/ais/use-ais-api';
+import { StepsSheet } from '@/components/chat/steps-sheet';
 import { Text } from '@/components/ui/text';
 import { ACCENT, DANGER, MUTED_FOREGROUND } from '@/lib/colors';
 import { interruptFiber } from '@/lib/effect/timers';
@@ -92,6 +93,7 @@ function StepIcon({
 export function ProgressCard({ data }: { data: Progress }) {
   const reduceMotion = useReducedMotion();
   const [expanded, setExpanded] = useState(false);
+  const [stepsOpen, setStepsOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const ticking = isLive(data.state) && data.started_at !== undefined;
 
@@ -112,6 +114,7 @@ export function ProgressCard({ data }: { data: Progress }) {
   const elapsed = elapsedFor(data, now);
   const steps = data.steps ?? [];
   const expandable = steps.length > 0;
+  const taskId = data.task_id;
 
   // T-1422: the Stop button shows only for a working card the viewer can stop:
   // the server set `can_stop`, and the AI belongs to the viewer (its JID is in
@@ -208,6 +211,31 @@ export function ProgressCard({ data }: { data: Progress }) {
           ) : null}
         </>
       )}
+
+      {/* T-1562: a finished card of the viewer's own AI opens the full steps. */}
+      {taskId !== undefined && !isLive(data.state) && ownedAi !== null ? (
+        <>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="View steps"
+            onPress={() => setStepsOpen(true)}
+            className="flex-row items-center gap-1.5 border-t border-divider pt-2"
+          >
+            <Text className="min-w-0 flex-1 text-[13px] font-medium text-foreground">
+              View steps
+            </Text>
+            <ChevronRight size={14} color={MUTED_FOREGROUND} aria-hidden />
+          </Pressable>
+          <StepsSheet
+            visible={stepsOpen}
+            onClose={() => setStepsOpen(false)}
+            taskId={taskId}
+            card={data}
+            aiName={ownedAi.name}
+            aiAvatarUrl={ownedAi.avatarUrl}
+          />
+        </>
+      ) : null}
     </View>
   );
 }

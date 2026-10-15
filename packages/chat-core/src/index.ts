@@ -1,5 +1,6 @@
 export * from './types';
 export * from './format';
+export * from './format-duration';
 export * from './failures';
 export * from './avatar';
 export * from './avatar-seed';
