@@ -4,14 +4,8 @@
 // Effect edge (`apps/server/src/effect/edge.ts`). Its service runs on effect/sql.
 
 import { Effect, Layer } from 'effect';
-import { HttpServerRequest } from 'effect/http';
-import { HttpApi, HttpApiBuilder } from 'effect/http-api';
-import {
-  AisConfigured,
-  AisGroup,
-  AisSchemaErrors,
-  type PublicAi as WireAi,
-} from '@zilar/api-contract';
+import { HttpApiBuilder } from 'effect/http-api';
+import { AisSchemaErrors, type PublicAi as WireAi } from '@zilar/api-contract';
 import { getAiCatalog } from '../ai/catalog';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
@@ -22,16 +16,14 @@ import type { ServerDatabase } from '../db/client';
 import { HttpError } from '../errors';
 import {
   handler,
-  httpErrorResponse,
   mountApi,
-  requestIdOf,
   schemaErrorLayerFor,
   sessionLayer,
-  type SchemaErrorRender,
   type EffectApiMount,
 } from '../effect/http-core';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import type { TurnStopper } from '../agents/gateway/stop-types';
+import { AisApi, configuredLayer, renderSchemaError } from './api-layers';
 import { toLogger } from './http-logger';
 import { stopTurn } from './stop-turn';
 import {
@@ -90,39 +82,6 @@ export const USAGE_TIMEOUT_MS = 2_000;
 function toWire(ai: PublicAi | PublicAiWithUsage): WireAi {
   return { ...ai, createdAt: ai.createdAt.toISOString() };
 }
-
-const renderSchemaError: SchemaErrorRender = (error) =>
-  Effect.succeed(
-    new HttpError(400, 'invalid_request', error.cause.message || 'Invalid AI request'),
-  );
-
-// Runs the 503 availability gate before the payload is decoded, exactly like
-// the old routes' `requireConfigured()` -> `safeParse` order: a malformed
-// body on an unconfigured server still answers 503, not 400. `requires:
-// CurrentUser` is satisfied by `Session`. The gate needs no decode, so it
-// also covers the no-payload writes (delete) for free; stop/resume/machine
-// need only the DB and skip it, as they did before. The only requirement is
-// the key cipher (to seal provider keys at rest).
-
-function configuredLayer(deps: { cipher?: KeyCipher }): Layer.Layer<AisConfigured> {
-  return Layer.succeed(
-    AisConfigured,
-    AisConfigured.of(
-      Effect.fnUntraced(function* (httpEffect) {
-        if (deps.cipher === undefined) {
-          const request = yield* HttpServerRequest.HttpServerRequest;
-          return httpErrorResponse(
-            requestIdOf(request),
-            new HttpError(503, 'ais_unavailable', 'AI management is not configured on this server'),
-          );
-        }
-        return yield* httpEffect;
-      }),
-    ),
-  );
-}
-
-const AisApi = HttpApi.make('ais').add(AisGroup);
 
 export function createAisApi(deps: AisApiDependencies): EffectApiMount {
   const logger = deps.logger;
