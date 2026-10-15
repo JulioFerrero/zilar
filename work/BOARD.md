@@ -1558,3 +1558,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1536](T-1536-mobile-several-files.md) | Phone sends several files at once; photos go as one album | 2026-10-15 |
 | [T-1547](T-1547-split-chat-rows.md) | Split client-core chat-rows.ts: topic mappers and row helpers | 2026-10-15 |
 | [T-1546](T-1546-split-topics-access.md) | Split topics/access.ts: types and AI access move out | 2026-10-15 |
+| [T-1549](T-1549-split-message-bubble.md) | Split MessageBubble.tsx: the derived flags move to bubbleFlags | 2026-10-15 |
