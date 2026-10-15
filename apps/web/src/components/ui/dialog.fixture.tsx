@@ -1,6 +1,8 @@
+import { ArrowUpRight, Eye, Lock } from 'lucide-react';
 import { useRef, useState, type ReactNode } from 'react';
 import { Button } from './button';
 import { Dialog } from './dialog';
+import { DialogStepper } from './dialog-stepper';
 
 function OpenDialog({
   title,
@@ -78,6 +80,85 @@ function ConfirmLikeDialog() {
   );
 }
 
+function NewAiKeyDialog() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <Button variant="outline" onClick={() => setOpen(true)}>
+        Open New AI dialog
+      </Button>
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title="New AI"
+        size="lg"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setOpen(false);
+        }}
+        stepper={
+          <DialogStepper
+            steps={[
+              { label: 'Provider', value: 'DeepSeek' },
+              { label: 'Key' },
+              { label: 'Model' },
+              { label: 'Setup' },
+            ]}
+            current={1}
+            onStep={() => {}}
+          />
+        }
+        footer={
+          <>
+            <Button size="lg" variant="outline" onClick={() => setOpen(false)}>
+              Back
+            </Button>
+            <Button size="lg" type="submit">
+              Continue
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <label htmlFor="k-key" className="text-[13px] font-medium">
+              API key
+            </label>
+            <a
+              href="https://platform.deepseek.com/api_keys"
+              className="flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"
+            >
+              Get one <ArrowUpRight className="size-3" aria-hidden="true" />
+            </a>
+          </div>
+          <div className="well-surface flex h-10 items-center gap-2.5 rounded-[10px] px-3">
+            <Lock className="size-3.5 shrink-0 text-subtle-foreground" aria-hidden="true" />
+            <input
+              id="k-key"
+              type="password"
+              defaultValue="sk-0000000000000000"
+              data-autofocus
+              className="min-w-0 flex-1 bg-transparent font-mono text-[13px] tracking-[1px] text-foreground outline-none"
+            />
+            <span
+              role="img"
+              aria-label="Key works"
+              className="size-2 shrink-0 rounded-full bg-online ring-2 ring-well"
+            />
+            <button
+              type="button"
+              aria-label="Show key"
+              className="shrink-0 text-subtle-foreground hover:text-foreground"
+            >
+              <Eye className="size-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      </Dialog>
+    </div>
+  );
+}
+
 export default {
   Default: (
     <OpenDialog title="Edit group" description="Change how this group looks to its members.">
@@ -123,4 +204,5 @@ export default {
       </div>
     </OpenDialog>
   ),
+  NewAiKeyStep: <NewAiKeyDialog />,
 };

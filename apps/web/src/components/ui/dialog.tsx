@@ -1,6 +1,8 @@
-import type { ReactNode, RefObject } from 'react';
+import type { FormEvent, ReactNode, RefObject } from 'react';
+import { useRef } from 'react';
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 import { cn } from '@/lib/utils';
+import { DialogBody, DialogError, DialogFooter, DialogHeader } from './dialog-parts';
 
 export interface DialogProps {
   open: boolean;
@@ -8,9 +10,20 @@ export interface DialogProps {
   title: string;
   description?: string;
   children?: ReactNode;
+  /** Keys in the footer, aligned right. Kept for existing dialogs. */
   actions?: ReactNode;
+  /** A custom footer that replaces `actions` and gets the hairline treatment. */
+  footer?: ReactNode;
+  /** Optional step bar, for example a `DialogStepper`. */
+  stepper?: ReactNode;
+  /** A fixed error line above the footer. */
+  error?: ReactNode;
+  /** When set, the body and footer are wrapped in a form so Enter submits. */
+  onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
+  /** While busy, Escape, the backdrop and the close key are all off. */
+  busy?: boolean;
   size?: 'sm' | 'md' | 'lg';
-  /** Element to focus on open instead of the first focusable child. */
+  /** Element to focus on open instead of the first `[data-autofocus]` element. */
   initialFocusRef?: RefObject<HTMLElement | null>;
   /** Accessible name when it should differ from the visible title. */
   ariaLabel?: string;
@@ -28,7 +41,8 @@ export interface DialogProps {
 /**
  * A generic dialog shell built on Base UI `Dialog` (portal, focus trap, Escape and
  * scroll lock). Escape closes it, focus moves in on open and back to the opener
- * on close, and the actions sit right-aligned in a footer.
+ * on close. It has a header with a close key, an optional step bar, a scrolling
+ * body, an optional error line and a footer with a hairline.
  */
 export function Dialog({
   open,
@@ -37,23 +51,49 @@ export function Dialog({
   description,
   children,
   actions,
+  footer,
+  stepper,
+  error,
+  onSubmit,
+  busy = false,
   size = 'md',
   initialFocusRef,
   ariaLabel,
   dismissable = true,
   forceRenderBackdrop = false,
 }: DialogProps) {
+  const popupRef = useRef<HTMLDivElement>(null);
+  const closable = dismissable && !busy;
+
+  // First focus goes to `[data-autofocus]` when one exists, otherwise to the
+  // popup itself so the header close key is never focused first.
+  const focusTarget = (): HTMLElement | null => {
+    if (initialFocusRef !== undefined && initialFocusRef.current !== null) {
+      return initialFocusRef.current;
+    }
+    return popupRef.current?.querySelector<HTMLElement>('[data-autofocus]') ?? popupRef.current;
+  };
+
+  const body = (
+    <>
+      <DialogBody>{children}</DialogBody>
+      {error === undefined ? null : <DialogError>{error}</DialogError>}
+      {footer === undefined && actions === undefined ? null : (
+        <DialogFooter>{footer ?? actions}</DialogFooter>
+      )}
+    </>
+  );
+
   return (
     <DialogPrimitive.Root
       open={open}
-      disablePointerDismissal={!dismissable}
+      disablePointerDismissal={!closable}
       onOpenChange={(nextOpen, eventDetails) => {
         if (nextOpen) {
           return;
         }
-        // `dismissable={false}` keeps the dialog open on Escape: Base UI reports
-        // it as `escape-key`, and cancelling the change leaves it mounted.
-        if (!dismissable && eventDetails.reason === 'escape-key') {
+        // `dismissable={false}` and `busy` cancel Base UI's Escape close.
+        if (!closable && eventDetails.reason === 'escape-key') {
           eventDetails.cancel();
           return;
         }
@@ -63,30 +103,34 @@ export function Dialog({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Backdrop
           forceRender={forceRenderBackdrop}
-          className="fixed inset-0 z-40 bg-black/40"
+          className="fixed inset-0 z-40 bg-black/60"
         />
-        <DialogPrimitive.Viewport className="fixed inset-0 z-40 flex items-center justify-center p-4">
+        <DialogPrimitive.Viewport className="fixed inset-0 z-40 flex items-center justify-center p-4 max-sm:items-end max-sm:p-0">
           <DialogPrimitive.Popup
-            initialFocus={initialFocusRef}
+            ref={popupRef}
+            initialFocus={focusTarget}
             {...(ariaLabel === undefined
               ? {}
               : { 'aria-label': ariaLabel, 'aria-labelledby': undefined })}
             className={cn(
-              'flex max-h-[85vh] w-full flex-col rounded-2xl border border-border bg-panel p-5 shadow-xl outline-none',
+              'flex max-h-[85vh] w-full flex-col rounded-2xl border border-border bg-panel shadow-[0_24px_60px_rgba(0,0,0,0.8)] outline-none',
+              'max-sm:max-w-none max-sm:rounded-b-none',
               size === 'sm' ? 'max-w-sm' : size === 'lg' ? 'max-w-lg' : 'max-w-md',
             )}
           >
-            <DialogPrimitive.Title className="shrink-0 text-[18px] font-semibold tracking-[-0.02em]">
-              {title}
-            </DialogPrimitive.Title>
-            {description === undefined ? null : (
-              <DialogPrimitive.Description className="mt-1 shrink-0 text-[14px] text-muted-foreground">
-                {description}
-              </DialogPrimitive.Description>
-            )}
-            <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
-            {actions === undefined ? null : (
-              <div className="mt-5 flex shrink-0 justify-end gap-2">{actions}</div>
+            <DialogHeader
+              title={title}
+              {...(description === undefined ? {} : { description })}
+              {...(stepper === undefined ? {} : { stepper })}
+              onClose={onClose}
+              closeDisabled={busy}
+            />
+            {onSubmit === undefined ? (
+              <div className="flex min-h-0 flex-1 flex-col">{body}</div>
+            ) : (
+              <form noValidate onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+                {body}
+              </form>
             )}
           </DialogPrimitive.Popup>
         </DialogPrimitive.Viewport>

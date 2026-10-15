@@ -2,6 +2,42 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**2026-10-15 ~04:30: night work. Wave 1 is mostly merged, the findings sweeps are done, and batches from them are running.**
+- **Merged:**
+  - T-1428: the one-line installer. `https://chat.zilar.app/install.sh` is live as `text/x-shellscript`.
+  - T-1429: every models.dev OpenAI-compatible provider can back an AI.
+  - T-1432: the mobile sheet kit.
+  - T-1433 and T-1434: the findings sweeps. The client sweep found 57 (32 fixed, 13 partly, 7 open, 5 not actionable); the server sweep found 59 (7 open, 17 partly, 8 need Julio, 1 obsolete). See `docs/audit/findings-sweep-client.md` and `findings-sweep-server.md`.
+  - T-1435: web. Skip on the handle gate is remembered, the invite check shows a spinner, and a new deploy offers Reload.
+  - T-1436: mobile. The search clear key is easier to hit, fonts are capped, the auth screens stay clear of the keyboard, send and quick reactions give haptics, and "Chat not found" has a Back action.
+  - T-1437: server. People search has no N+1, push archive lookups are cached for 15 s, and the AI budget fails closed when a limit is set. It is live, with 0 errors.
+  - T-1438: the web image serves `/install.sh`, and the host `get.zilar.app` answers with the script.
+  - T-1439: ops docs. Backups are described for the Coolify Application, there is a restore drill (`docs/ops/restore-drill.md`, RTO 60 min), and the install doc points to the right compose.
+- **Running:**
+  - T-1431: the web dialog kit (in review);
+  - T-1440: AIs know the user's local time and time zone (migration 0061);
+  - T-1441: catalog connections keep working after a restart;
+  - T-1442: the shared New AI logic in chat-core (provider list, key check, orb swatches);
+  - T-1443: mobile sheets on the approved standard (part 1).
+- **Next:**
+  - the mobile New AI flow, after T-1442;
+  - the web New AI flow, after T-1431 and T-1442;
+  - web dialog migrations E1-E3, after T-1431;
+  - mobile sheets part 2 (Visibility, Invite links, Roles), after T-1443.
+- **Waiting for Julio:**
+  - **get.zilar.app:** the Porkbun A record `get` → 152.53.146.96. Then the lead adds the domain to zilar-chat in Coolify (already OK'd).
+  - **`ejabberd-database`** has no Coolify volume backup yet; the step is in `deploy/coolify/scheduled-backup.md`.
+  - **The 8 "needs Julio" server findings:** SEC-15, PERF-8, PERF-10, PERF-16, PERF-18, OPS-4, OPS-9 and OPS-15.
+  - **Brief §2.8:** a 60% backdrop and a red glossy key for destructive confirms. Not used until he says yes.
+  - **Client items that need a design or a decision:**
+    - MUX-13 and MUX-19: share, which needs native modules;
+    - MUX-21: an anchored menu;
+    - MUX-23: replying from a notification;
+    - WUX-10: settings in the aside;
+    - MP-9: group read receipts;
+    - UI-15: live pins;
+    - WUX-39: a sound toggle.
+
 **2026-10-15 03:00: the New AI redesign is approved; wave 1 is running (5 workers).**
 - **Design:** canvas https://claude.ai/artifact/WMbGfFmbgAHeuEKKHvBg2k (Julio: "10/10").
   - D24 only.
