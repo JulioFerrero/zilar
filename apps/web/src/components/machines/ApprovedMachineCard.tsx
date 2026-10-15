@@ -4,7 +4,6 @@ import type { Machine } from '@/lib/api';
 import { FieldError } from '@/components/ais/AiPageShell';
 import { Button } from '@/components/ui/button';
 import { TextInput } from '@/components/ui/text-input';
-import { cn } from '@/lib/utils';
 import { hardwareLine } from './PendingMachineCard';
 
 interface ApprovedMachineCardProps {
@@ -79,11 +78,6 @@ export function ApprovedMachineCard({
 
   const online = machine.online === true;
   const lastSeen = machine.lastSeenAt;
-  const status = online
-    ? 'Online'
-    : lastSeen === null
-      ? 'Never connected'
-      : `Offline · last seen ${formatRelative(lastSeen)}`;
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-divider bg-surface p-4">
@@ -126,25 +120,22 @@ export function ApprovedMachineCard({
             </div>
           )}
         </div>
-        <span
-          className={cn(
-            'flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px]',
-            online
-              ? 'bg-surface-raised text-foreground'
-              : lastSeen === null
-                ? 'bg-surface-raised text-muted-foreground'
-                : 'bg-surface-raised text-muted-foreground',
-          )}
-        >
+        {online ? (
           <span
-            aria-hidden="true"
-            className={cn(
-              'inline-block size-2 rounded-full',
-              online ? 'bg-online' : 'bg-muted-foreground',
-            )}
+            role="img"
+            aria-label="Online"
+            className="inline-block size-2 shrink-0 rounded-full bg-online"
           />
-          {status}
-        </span>
+        ) : (
+          <span className="flex shrink-0 items-center gap-1.5 text-[12px] text-muted-foreground">
+            <span
+              role="img"
+              aria-label="Offline"
+              className="inline-block size-2 shrink-0 rounded-full bg-muted-foreground"
+            />
+            {lastSeen !== null && <span>last seen {formatRelative(lastSeen)}</span>}
+          </span>
+        )}
       </div>
 
       <p className="font-mono text-[13px] text-muted-foreground wrap-anywhere">

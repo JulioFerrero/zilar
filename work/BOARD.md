@@ -1531,3 +1531,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1519](T-1519-web-channel-info.md) | Web channel info: root page, subpages, Subscribers with icons | 2026-10-15 |
 | [T-1520](T-1520-mobile-empty-chats.md) | Phone empty chats; the mock gets handles and two empty chats | 2026-10-15 |
 | [T-1521](T-1521-topic-done-flag.md) | AI work step 3: a person marks a topic done (topics.done_at) | 2026-10-15 |
+| [T-1518](T-1518-web-machines.md) | Web Machines: pending code card, plain rows with a details sheet | 2026-10-15 |

@@ -26,14 +26,9 @@ export function RevokedMachineCard({
 }: RevokedMachineCardProps) {
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-divider bg-surface/60 p-4 opacity-80">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-medium">{machine.name}</p>
-          <p className="text-[13px] wrap-anywhere text-muted-foreground">{hardwareLine(machine)}</p>
-        </div>
-        <span className="rounded-full bg-badge-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-          Revoked
-        </span>
+      <div className="min-w-0">
+        <p className="truncate text-[15px] font-medium">{machine.name}</p>
+        <p className="text-[13px] wrap-anywhere text-muted-foreground">{hardwareLine(machine)}</p>
       </div>
       <p className="text-[13px] text-muted-foreground">
         Revoked {formatRevokedAt(machine.approvedAt ?? machine.createdAt)}

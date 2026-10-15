@@ -5,10 +5,10 @@ interface AddMachineButtonProps {
   onClick: () => void;
 }
 
-/** The one "Add machine" button every machines section header uses. */
+/** The "Add machine" primary key at the right end of the Machines header (T-1518). */
 export function AddMachineButton({ onClick }: AddMachineButtonProps) {
   return (
-    <Button type="button" size="lg" className="rounded-full px-5" onClick={onClick}>
+    <Button type="button" size="lg" onClick={onClick}>
       <Plus aria-hidden="true" />
       Add machine
     </Button>
