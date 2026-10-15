@@ -48,9 +48,17 @@ export interface ApprovalsApiDependencies {
   alwaysEligible?: AlwaysEligiblePredicate;
 }
 
+// The AI and group display names a wire approval carries. Supplied by
+// `approvalNames` (one query per table, not one per row) and merged in by
+// `decoratePublic`.
+export type WireApprovalInput = ReturnType<typeof toPublicApproval> & {
+  aiName: string;
+  groupName: string | null;
+};
+
 // Dates travel as ISO strings (what `JSON.stringify` wrote before the
 // contract declared the views), so the handlers map the service rows.
-export function toWireApproval(row: ReturnType<typeof toPublicApproval>): PublicApproval {
+export function toWireApproval(row: WireApprovalInput): PublicApproval {
   return {
     ...row,
     decidedAt: row.decidedAt === null ? null : row.decidedAt.toISOString(),
@@ -160,8 +168,73 @@ export function decoratePublic(
   row: ReturnType<typeof toPublicApproval>,
   alwaysEligible: AlwaysEligiblePredicate,
   isManager: boolean,
+  names: { aiName: string; groupName: string | null } = { aiName: '', groupName: null },
 ): PublicApproval {
-  return toWireApproval({ ...row, alwaysEligible: isManager && alwaysEligible(row.action) });
+  return toWireApproval({
+    ...row,
+    ...names,
+    alwaysEligible: isManager && alwaysEligible(row.action),
+  });
+}
+
+// The AI id → name and group id → title maps for a batch of rows: one query
+// for the AIs and one for the groups — never one query per row. A batch with
+// no group skips the second query; an id that no longer exists gets no entry,
+// so callers fall back to `''` or `null` (deleted AI/group).
+export interface ApprovalNames {
+  aiNames: Map<string, string>;
+  groupNames: Map<string, string>;
+}
+
+export async function approvalNames(
+  db: ServerDatabase,
+  rows: ReadonlyArray<{ aiId: string; groupId: string | null }>,
+): Promise<ApprovalNames> {
+  const aiIds = [...new Set(rows.map((row) => row.aiId))];
+  const groupIds = [
+    ...new Set(rows.map((row) => row.groupId).filter((id): id is string => id !== null)),
+  ];
+  const aiNames = new Map<string, string>();
+  if (aiIds.length > 0) {
+    const aiRows = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string; name: string }>`SELECT id, name FROM ais
+          WHERE id IN ${sql.in(aiIds)}`;
+      }),
+    );
+    for (const row of aiRows) {
+      aiNames.set(row.id, row.name);
+    }
+  }
+  const groupNames = new Map<string, string>();
+  if (groupIds.length > 0) {
+    const groupRows = await runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ id: string; title: string }>`SELECT id, title FROM groups
+          WHERE id IN ${sql.in(groupIds)}`;
+      }),
+    );
+    for (const row of groupRows) {
+      groupNames.set(row.id, row.title);
+    }
+  }
+  return { aiNames, groupNames };
+}
+
+// One row's names from the batch maps: a missing AI is `''`, a row with no
+// group (or a deleted group) is `null`.
+export function namesForApproval(
+  names: ApprovalNames,
+  row: { aiId: string; groupId: string | null },
+): { aiName: string; groupName: string | null } {
+  return {
+    aiName: names.aiNames.get(row.aiId) ?? '',
+    groupName: row.groupId === null ? null : (names.groupNames.get(row.groupId) ?? null),
+  };
 }
 
 // The topic names for rows the viewer can see, keyed by topic id. A row

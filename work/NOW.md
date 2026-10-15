@@ -20,9 +20,13 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 - **Approved today, boards plus README parked in the job's tmp folder `parked/<name>/`; each rides its first task into `docs/design/mockups/<name>/`:** Group info (on T-1494, merged), Stickers (on T-1495), Approvals, Lean settings, AI health. Specs for the last three are not written yet.
 - **Topic status: full rework (Julio: "not just ui but also functionality"; several AIs per chat, look at how Grok Bot does it):**
   - research (Grok Bot docs and reviews, Linear agent sessions, Slack assistant status) and a proposal on the same canvas, retitled "AI work in topics" (https://claude.ai/artifact/Nps8Bw9wgCq8swJZoRx3T7);
-  - waiting for Julio.
+  - **approved** ("so much better … i like it"). The boards and README ride T-1500 into `docs/design/mockups/ai-work/`;
+  - **T-1500, running:** an audit that maps turns, task cards, handoffs, approvals and live updates, inventories topic kind, status, owner and link, and writes the step plan in `docs/audit/ai-work-plan.md`.
+- **Connections canvas approved** (Julio: "connects are okay"). Boards and README are parked in `parked/connections/`.
+- **View steps:** Julio likes it, but "something says its not right"; it needs a small rework (next).
 - **Approvals work:**
-  - **T-1498 (server: approvals carry `aiName` and `groupName`, one query each), spec-check passed, waiting for a slot;**
+  - **T-1498 (server: approvals carry `aiName` and `groupName`, one query each) merged;**
+  - **T-1499 (web: the simpler card and Approvals page) is launched after T-1498.**
   - next: the web card and Approvals page per the boards (needs T-1498), then web Machines, then the phone twins.
 - **Approvals canvas redone and approved** (Julio first said "too many things", "make it simpler and more clear"; then "much better i like it now"):
   - one request per card: "Dev-1 asks", the summary, then Deny / Approve, with "Always allow" as quiet text. No money shown anywhere (Julio: "i dont like the money part");

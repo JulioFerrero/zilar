@@ -13,6 +13,7 @@ import { canSeeTopic } from '../topics/access';
 import {
   type ApprovalsApiDependencies,
   type ApprovalsRouteLogger,
+  approvalNames,
   approverNamesForRow,
   canManageRuleFor,
   decoratePublic,
@@ -21,6 +22,7 @@ import {
   loadTopicRow,
   loadTopicsForGroup,
   managedGroupIdsForUser,
+  namesForApproval,
   toWireRule,
   visibleTopicName,
   visibleTopicNames,
@@ -90,6 +92,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
             const topicNames = yield* Effect.promise(() =>
               visibleTopicNames(deps.db, user.id, approvals),
             );
+            const names = yield* Effect.promise(() => approvalNames(deps.db, approvals));
             return approvals.map((row) =>
               decoratePublic(
                 {
@@ -98,6 +101,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
                 },
                 alwaysEligibleFn,
                 row.groupId === null || managedGroupIds.has(row.groupId),
+                namesForApproval(names, row),
               ),
             );
           }),
@@ -118,6 +122,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
               (yield* Effect.promise(() =>
                 isGroupManager(deps.db, approval.groupId as string, user.id),
               ));
+            const names = yield* Effect.promise(() => approvalNames(deps.db, [approval]));
             return decoratePublic(
               {
                 ...approval,
@@ -127,6 +132,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
               },
               alwaysEligibleFn,
               isManager,
+              namesForApproval(names, approval),
             );
           }),
         ),
@@ -220,6 +226,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
             const approverNames = yield* Effect.promise(() =>
               approverNamesForTopics(deps.db, [updated.topicId]),
             );
+            const names = yield* Effect.promise(() => approvalNames(deps.db, [updated]));
             return decoratePublic(
               toPublicApproval(
                 updated,
@@ -233,6 +240,7 @@ export function createApprovalsApi(deps: ApprovalsApiDependencies): EffectApiMou
                 (yield* Effect.promise(() =>
                   isGroupManager(deps.db, updated.groupId as string, user.id),
                 )),
+              namesForApproval(names, updated),
             );
           }),
         ),

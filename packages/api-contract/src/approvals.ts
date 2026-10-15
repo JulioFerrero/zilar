@@ -37,13 +37,18 @@ const WorstCase = Schema.Struct({
 /**
  * One approval as the caller sees it. `topicId`/`topicName` are optional so
  * older payloads parse (a missing topic reads like a group approval);
- * `alwaysEligible` and `approverNames` default when an older server omits
- * them, and the card then hides the third button and the approver line.
+ * `alwaysEligible`, `approverNames`, `aiName` and `groupName` default when an
+ * older server omits them, and the card then hides the third button, the
+ * approver line and the AI/group names.
  */
 export const PublicApproval = Schema.Struct({
   id: Schema.String,
   aiId: Schema.String,
   groupId: Schema.NullOr(Schema.String),
+  aiName: Schema.String.pipe(Schema.withDecodingDefaultTypeKey(Effect.succeed(''))),
+  groupName: Schema.NullOr(Schema.String).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null)),
+  ),
   topicId: Schema.optional(Schema.NullOr(Schema.String)),
   topicName: Schema.optional(Schema.NullOr(Schema.String)),
   action: Schema.String,

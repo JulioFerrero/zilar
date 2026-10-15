@@ -17,7 +17,7 @@ export function handleApprovals(data: MockData, request: MockHttpRequest): Respo
     if (request.method !== 'GET') {
       return undefined;
     }
-    return jsonResponse(pendingApprovals(data));
+    return jsonResponse(pendingApprovals(data).map((approval) => withNames(data, approval)));
   }
   const id = decodeURIComponent(request.segments[1] ?? '');
   const approval = data.approvals.find((item) => item.id === id);
@@ -25,7 +25,7 @@ export function handleApprovals(data: MockData, request: MockHttpRequest): Respo
     return errorResponse('not_found', 'Approval not found', 404);
   }
   if (request.segments.length === 2 && request.method === 'GET') {
-    return jsonResponse(approval);
+    return jsonResponse(withNames(data, approval));
   }
   if (
     request.segments.length === 3 &&
@@ -37,7 +37,7 @@ export function handleApprovals(data: MockData, request: MockHttpRequest): Respo
   return undefined;
 }
 
-function pendingApprovals(data: MockData): readonly unknown[] {
+function pendingApprovals(data: MockData): ReadonlyArray<MockData['approvals'][number]> {
   const now = Date.now();
   return data.approvals.filter(
     (approval) => approval.status === 'pending' && new Date(approval.expiresAt).getTime() > now,
@@ -66,7 +66,21 @@ function decide(
   } else {
     approval.status = decision === 'deny' ? 'denied' : 'approved_once';
   }
-  return jsonResponse(approval);
+  return jsonResponse(withNames(data, approval));
+}
+
+// The AI and group display names the clients show ("Dev-1 · Dev team"), read
+// from the mock's own tables like the server does. A missing AI is `''`; an
+// absent or missing group is `null`.
+function withNames(
+  data: MockData,
+  approval: MockData['approvals'][number],
+): MockData['approvals'][number] & { aiName: string; groupName: string | null } {
+  return {
+    ...approval,
+    aiName: data.findAi(approval.aiId)?.name ?? '',
+    groupName: approval.groupId === null ? null : (data.findGroup(approval.groupId)?.title ?? null),
+  };
 }
 
 function addRule(data: MockData, approval: MockData['approvals'][number]): void {
