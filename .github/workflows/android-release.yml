@@ -206,7 +206,9 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file "$out/notes.md"
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
-          else
-            gh release create "$RELEASE_TAG" "${assets[@]}" --title "$RELEASE_TAG" --notes-file "$out/notes.md"
+          elif ! gh release create "$RELEASE_TAG" "${assets[@]}" --title "$RELEASE_TAG" --notes-file "$out/notes.md"; then
+            # images.yml (T-1607) may have created the release between the view and the create; our notes must win.
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file "$out/notes.md"
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
           fi
           echo "Published ${RELEASE_TAG}."
