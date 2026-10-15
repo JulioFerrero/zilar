@@ -1611,3 +1611,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1598](T-1598-remove-tunnel-model-path.md) | Remove the tunnel's model path, the last LiteLLM code | 2026-10-15 |
 | [T-1601](T-1601-ais-on-by-default.md) | AIs answer on a fresh install (gateway on by default) | 2026-10-15 |
 | [T-1600](T-1600-server-config-doc-regen.md) | Server config reference rewritten from the current schema | 2026-10-15 |
+| [T-1599](T-1599-audit-ai-computers-auto.md) | Audit: AI computers that turn on with one host command | 2026-10-15 |

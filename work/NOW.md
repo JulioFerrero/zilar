@@ -132,13 +132,13 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - **Coolify:** `LITELLM_BASE_URL` and `LITELLM_MASTER_KEY` deleted from `zilar-chat` (4 entries).
     - **This Mac:** the old dev container (it was still running), its 1.67 GB image, and the `litellm` database and role are removed. The VPS and GitHub were already clean.
     - **T-1598 merged:** the tunnel's model path, port 4000 and the root log file are gone.
-    - **Docs:** fixed `FEATURES.md`, `INSTALL_DOCKER.md`, `PROJECT_PLAN.md` and `LEAD_PLAYBOOK.md`; **T-1600 is running** to regenerate `SERVER_CONFIG.md`.
+    - **Docs:** fixed `FEATURES.md`, `INSTALL_DOCKER.md`, `PROJECT_PLAN.md` and `LEAD_PLAYBOOK.md`. **T-1600 merged:** `SERVER_CONFIG.md` was rewritten from the schema (174 lines, 64 variables).
     - **Julio to do:** delete the 4 dead lines in his local env files (`infra/.env`: `LITELLM_DB_PASSWORD`, `LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`; `apps/server/.env`: `LITELLM_MASTER_KEY`). The lead doesn't open those files.
   - **AI computers without variables (Julio: "easy, part of the install and update flow"):**
     - **T-1599 (audit) is running** and will write `docs/deploy/ai-computers-auto-plan.md`.
     - **The target:** desk services in every stack; the agent waits for gVisor and then turns on by itself; the image follows the release; the server asks the agent; one host command.
     - **Then:** run the same one command on live, with nothing manual.
-  - **Found:** fresh installs have `AGENT_GATEWAY_ENABLED=false` (all three compose files plus `./zilar init`), so new AIs never answer. **Julio: on by default. T-1601 is running** (the compose files, `./zilar init`, the env examples and the docs; the server schema default stays `false`).
+  - **Found:** fresh installs have `AGENT_GATEWAY_ENABLED=false` (all three compose files plus `./zilar init`), so new AIs never answer. **Julio: on by default. T-1601 merged** (the compose files, `./zilar init`, the env examples and the docs; the server schema default stays `false`).
   - **README rewrite (Julio: "cooler, simpler, professional"): T-1597 merged** (`6b172791e`).
     - **Checked on github.com** (headless, desktop and phone width): no broken images, and the diagram renders.
     - The lead wrote the full text in the spec; the worker places it word for word and checks the links.
