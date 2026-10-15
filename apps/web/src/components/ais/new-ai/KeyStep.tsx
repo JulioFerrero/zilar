@@ -1,18 +1,18 @@
 import { useState } from 'react';
 import { ArrowUpRight, Eye, EyeOff, Lock } from 'lucide-react';
-import type { NewAiFlow } from './useNewAiFlow';
+import type { KeyCheck } from './useKeyCheck';
 
 /** Step 2: the provider key, with a lock, a reveal key and a green dot when it works. */
-export function KeyStep({ flow }: { flow: NewAiFlow }) {
+export function KeyStep({ keys }: { keys: KeyCheck }) {
   const [revealed, setRevealed] = useState(false);
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center">
         <span className="flex-1 text-[13px] font-medium">API key</span>
-        {flow.keyPage !== null && (
+        {keys.keyPage !== null && (
           <a
-            href={flow.keyPage}
+            href={keys.keyPage}
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"
@@ -29,13 +29,13 @@ export function KeyStep({ flow }: { flow: NewAiFlow }) {
           aria-label="API key"
           type={revealed ? 'text' : 'password'}
           autoComplete="off"
-          value={flow.key}
+          value={keys.key}
           maxLength={16384}
-          placeholder={flow.keyPlaceholder}
-          onChange={(event) => flow.setKey(event.target.value)}
+          placeholder={keys.keyPlaceholder}
+          onChange={(event) => keys.setKey(event.target.value)}
           className="min-w-0 flex-1 bg-transparent font-mono text-[13px] tracking-wider text-foreground outline-none placeholder:tracking-normal placeholder:text-subtle-foreground"
         />
-        {flow.keyVerified && (
+        {keys.keyVerified && (
           <span
             role="img"
             aria-label="Key works"
@@ -57,9 +57,9 @@ export function KeyStep({ flow }: { flow: NewAiFlow }) {
         </button>
       </div>
 
-      {flow.keyError !== '' && (
+      {keys.keyError !== '' && (
         <p role="alert" className="text-[13px] text-danger">
-          {flow.keyError}
+          {keys.keyError}
         </p>
       )}
     </div>

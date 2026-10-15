@@ -1465,3 +1465,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1453](T-1453-ejabberd-schema-check.md) | Startup check of ejabberd table shapes; OPS_LOG for manual SQL | 2026-10-15 |
 | [T-1451](T-1451-mobile-sheets-part2.md) | Mobile: New chat actions as modal kit sheets, no Cancel keys | 2026-10-15 |
 | [T-1448](T-1448-ai-follows-owned-topic.md) | An AI that owns a topic follows it until reassigned or Stop | 2026-10-15 |
+| [T-1454](T-1454-web-add-key-dialog.md) | Web Connections adds keys with the New AI provider and key steps | 2026-10-15 |

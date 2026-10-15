@@ -6,7 +6,7 @@ import type { NewAiFlow } from './useNewAiFlow';
 function computerOptions(cloudAvailable: boolean): SegmentedOption[] {
   return [
     { value: 'off', label: 'Off', icon: Power },
-    ...(cloudAvailable ? [{ value: 'cloud', label: 'Zilar', icon: Cloud }] : []),
+    { value: 'cloud', label: 'Zilar', icon: Cloud, disabled: !cloudAvailable },
     { value: 'runner', label: 'Machine', icon: Server },
     { value: 'auto', label: 'Auto', icon: Sparkles },
   ];

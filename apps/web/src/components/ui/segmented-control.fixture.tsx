@@ -36,6 +36,25 @@ function ChoiceControl() {
   );
 }
 
+function DisabledChoice() {
+  const [value, setValue] = useState('off');
+  return (
+    <SegmentedControl
+      options={[
+        { value: 'off', label: 'Off', icon: Power },
+        { value: 'zilar', label: 'Zilar', icon: Cloud, disabled: true },
+        { value: 'machine', label: 'Machine', icon: Server },
+        { value: 'auto', label: 'Auto', icon: Sparkles },
+      ]}
+      value={value}
+      onChange={setValue}
+      ariaLabel="Computer"
+      mode="radio"
+      tone="choice"
+    />
+  );
+}
+
 export default {
   WithCounts: <Controlled />,
   WithoutCounts: (
@@ -51,4 +70,5 @@ export default {
   ),
   LastSelected: <Controlled initial="ais" />,
   Choice: <ChoiceControl />,
+  Disabled: <DisabledChoice />,
 };

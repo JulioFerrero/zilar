@@ -28,11 +28,16 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1452: web shows the connection line in the chat header.
   - T-1453: the ejabberd schema check is live (`/health` shows `"ejabberdSchema":"ok"`), and `docs/ops/OPS_LOG.md` exists.
   - T-1298 was dropped, as T-1436 covered it.
+- **Merged ~08:30:**
+  - **T-1448: an AI that owns a topic follows it**, until it is reassigned or stopped. General accepts a group AI as its owner. The first merge failed the gate (the runner's typecheck), and it is fixed.
+  - **T-1451:** the New chat actions on mobile are modal kit sheets. The phone smoke caught and fixed an undimmed, click-through sheet.
+- **Combined check on main:** typecheck 16/16, server tests 99 files and 701 tests, all green.
 - **Running:**
-  - T-1445: the mobile New AI flow;
-  - T-1448: an AI follows the topic it owns (decision: General accepts a group AI as owner);
-  - T-1451: mobile sheets part 2. The phone smoke caught a non-modal sheet after the New chat menu, and a fix is sent;
-  - T-1454: the web Add key dialog on Connections, with Zilar disabled rather than hidden.
+  - T-1445: the mobile New AI flow, in a fix round (a Base URL edit orphaned a created key);
+  - T-1454: the web Add key dialog, with the same fix. That orphan bug is live in the web New AI flow until T-1454 merges.
+  - T-1455: removing an AI clears it as topic owner;
+  - T-1456, T-1457 and T-1458: 400-line splits (runner-tunnel, server config plus `ais/api.ts`, two small files).
+- **Next:** split server `app.ts` and `main.ts`, one at a time, after T-1457 deploys cleanly. The lead tooling files (`autopilot.ts`, `cli.ts`, `client.ts`) stay over 400 for now, because the autopilot runs from them.
 - **New canvas for Julio: "View steps"**, https://claude.ai/artifact/7YV3tdKH1k8LSBBZtsXzxk.
   - Web: a right panel. Phone: a hugging sheet.
   - It shows real event kinds from T-1426 (status, model call, tool call/result, approval, answer) with the real tool names (bash, read, edit, grep, git).

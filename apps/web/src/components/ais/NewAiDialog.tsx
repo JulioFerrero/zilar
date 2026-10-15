@@ -79,8 +79,8 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
       }
     >
       <div className="flex flex-col gap-4">
-        {flow.step === 0 && <ProviderStep flow={flow} />}
-        {flow.step === 1 && <KeyStep flow={flow} />}
+        {flow.step === 0 && <ProviderStep keys={flow.keys} />}
+        {flow.step === 1 && <KeyStep keys={flow.keys} />}
         {flow.step === 2 && <ModelStep flow={flow} />}
         {flow.step === 3 && <SetupStep flow={flow} />}
       </div>

@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router';
 import { Data, Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { KeyRound, Link, Trash2, Zap } from 'lucide-react';
-import { AddConnectionForm, providerLabel } from '@/components/connections/AddConnectionForm';
+import { providerLabel } from '@zilar/chat-core';
+import { AddKeyDialog } from '@/components/connections/AddKeyDialog';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { Button } from '@/components/ui/button';
 import { StateMessage } from '@/components/ui/state-message';
@@ -40,7 +41,7 @@ export function ConnectionsPage() {
   const navigate = useNavigate();
   const [list, refresh] = useQuery(() => fromApi(() => listConnections()), []);
   const [removedIds, setRemovedIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [showForm, setShowForm] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   const connections = AsyncResult.isSuccess(list) ? list.value : undefined;
@@ -71,52 +72,46 @@ export function ConnectionsPage() {
           />
         )}
 
-        {connections !== undefined && visible.length === 0 && !showForm && (
+        {connections !== undefined && visible.length === 0 && !adding && (
           <StateMessage
             kind="empty"
             icon={Link}
             title="No provider connections yet"
-            action={{ label: 'Add a connection', onClick: () => setShowForm(true) }}
+            action={{ label: 'Add a connection', onClick: () => setAdding(true) }}
           />
         )}
 
-        {connections !== undefined && (visible.length > 0 || showForm) && (
-          <div className="flex flex-col gap-4">
-            {visible.length > 0 && (
-              <section aria-label="Connections" className="flex flex-col gap-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="text-[16px] font-semibold">Connections</h2>
-                  {!showForm && (
-                    <Button type="button" size="default" onClick={() => setShowForm(true)}>
-                      Add a connection
-                    </Button>
-                  )}
-                </div>
-                <ul className="flex flex-col gap-2">
-                  {visible.map((connection) => (
-                    <ConnectionRow
-                      key={connection.id}
-                      connection={connection}
-                      confirming={confirmingId === connection.id}
-                      onAskRemove={() => setConfirmingId(connection.id)}
-                      onCancelRemove={() => setConfirmingId(null)}
-                      onRemoved={markRemoved}
-                    />
-                  ))}
-                </ul>
-              </section>
-            )}
+        {connections !== undefined && visible.length > 0 && (
+          <section aria-label="Connections" className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-[16px] font-semibold">Connections</h2>
+              <Button type="button" size="default" onClick={() => setAdding(true)}>
+                Add a connection
+              </Button>
+            </div>
+            <ul className="flex flex-col gap-2">
+              {visible.map((connection) => (
+                <ConnectionRow
+                  key={connection.id}
+                  connection={connection}
+                  confirming={confirmingId === connection.id}
+                  onAskRemove={() => setConfirmingId(connection.id)}
+                  onCancelRemove={() => setConfirmingId(null)}
+                  onRemoved={markRemoved}
+                />
+              ))}
+            </ul>
+          </section>
+        )}
 
-            {showForm && (
-              <AddConnectionForm
-                onCancel={() => setShowForm(false)}
-                onSaved={() => {
-                  setShowForm(false);
-                  refresh();
-                }}
-              />
-            )}
-          </div>
+        {adding && (
+          <AddKeyDialog
+            onClose={() => setAdding(false)}
+            onSaved={() => {
+              setAdding(false);
+              refresh();
+            }}
+          />
         )}
       </div>
     </SettingsShell>

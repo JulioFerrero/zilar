@@ -9,6 +9,8 @@ export interface SegmentedOption {
   count?: number;
   /** A lucide icon drawn before the label; only used by the `choice` tone. */
   icon?: LucideIcon;
+  /** Rendered muted and not selectable; arrow keys skip it. */
+  disabled?: boolean;
 }
 
 export interface SegmentedControlProps {
@@ -39,17 +41,43 @@ export function SegmentedControl({
 }: SegmentedControlProps) {
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  const move = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
+  const firstEnabled = (): number | undefined => {
+    const index = options.findIndex((option) => option.disabled !== true);
+    return index === -1 ? undefined : index;
+  };
+
+  const lastEnabled = (): number | undefined => {
+    for (let index = options.length - 1; index >= 0; index -= 1) {
+      if (options[index]?.disabled !== true) {
+        return index;
+      }
+    }
+    return undefined;
+  };
+
+  /** The next enabled option from `from` in `direction`, wrapping once. */
+  const enabledFrom = (from: number, direction: 1 | -1): number | undefined => {
     const last = options.length - 1;
+    let index = from;
+    for (let step = 0; step < options.length; step += 1) {
+      index = direction === 1 ? (index >= last ? 0 : index + 1) : index <= 0 ? last : index - 1;
+      if (options[index]?.disabled !== true) {
+        return index;
+      }
+    }
+    return undefined;
+  };
+
+  const move = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
     let next: number | undefined;
     if (event.key === 'ArrowRight') {
-      next = index === last ? 0 : index + 1;
+      next = enabledFrom(index, 1);
     } else if (event.key === 'ArrowLeft') {
-      next = index === 0 ? last : index - 1;
+      next = enabledFrom(index, -1);
     } else if (event.key === 'Home') {
-      next = 0;
+      next = firstEnabled();
     } else if (event.key === 'End') {
-      next = last;
+      next = lastEnabled();
     }
     if (next === undefined) {
       return;
@@ -76,6 +104,7 @@ export function SegmentedControl({
     >
       {options.map((option, index) => {
         const active = option.value === value;
+        const disabled = option.disabled === true;
         const Icon = option.icon;
         return (
           <button
@@ -86,9 +115,11 @@ export function SegmentedControl({
             type="button"
             role={isRadio ? 'radio' : 'tab'}
             {...(isRadio ? { 'aria-checked': active } : { 'aria-selected': active })}
-            tabIndex={active ? 0 : -1}
+            {...(disabled ? { 'aria-disabled': true } : {})}
+            disabled={disabled}
+            tabIndex={disabled ? -1 : active ? 0 : -1}
             onClick={() => {
-              if (option.value !== value) {
+              if (!disabled && option.value !== value) {
                 onChange(option.value);
               }
             }}
@@ -98,11 +129,13 @@ export function SegmentedControl({
               isChoice
                 ? 'h-[34px] gap-[7px] rounded-[7px] px-3 text-[13px] leading-none'
                 : 'h-[30px] gap-1.5 rounded-[7px] px-3 text-[13px]',
-              active
-                ? isChoice
-                  ? 'segment-choice'
-                  : 'segment-raised text-foreground'
-                : 'text-muted-foreground hover:text-foreground',
+              disabled
+                ? 'text-subtle-foreground opacity-50'
+                : active
+                  ? isChoice
+                    ? 'segment-choice'
+                    : 'segment-raised text-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
             )}
           >
             {Icon === undefined ? null : <Icon className="size-4" aria-hidden="true" />}

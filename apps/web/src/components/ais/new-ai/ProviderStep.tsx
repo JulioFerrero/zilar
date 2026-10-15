@@ -1,33 +1,33 @@
 import { Combobox } from '@/components/ui/combobox';
-import type { NewAiFlow } from './useNewAiFlow';
+import type { KeyCheck } from './useKeyCheck';
 
 /** Step 1: the provider, with an OpenAI-compatible endpoint at the bottom. */
-export function ProviderStep({ flow }: { flow: NewAiFlow }) {
+export function ProviderStep({ keys }: { keys: KeyCheck }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <span className="text-[13px] font-medium">Provider</span>
         <Combobox
           label="Provider"
-          options={flow.providerChoices
+          options={keys.choices
             .filter((choice) => choice.id !== 'openai-compatible')
             .map((choice) => ({
               value: choice.id,
               label: choice.label,
               ...(choice.hasKey ? { dot: 'online' as const } : {}),
             }))}
-          value={flow.providerId}
-          onValueChange={flow.chooseProvider}
+          value={keys.providerId}
+          onValueChange={keys.chooseProvider}
           placeholder="Search providers"
           triggerPlaceholder="Choose a provider"
           footerItem={{
             label: 'OpenAI-compatible',
-            onSelect: () => flow.chooseProvider('openai-compatible'),
+            onSelect: () => keys.chooseProvider('openai-compatible'),
           }}
         />
       </div>
 
-      {flow.isCompatible && (
+      {keys.isCompatible && (
         <>
           <label className="flex flex-col gap-2">
             <span className="text-[13px] font-medium">Base URL</span>
@@ -36,13 +36,13 @@ export function ProviderStep({ flow }: { flow: NewAiFlow }) {
                 aria-label="Base URL"
                 type="url"
                 autoComplete="off"
-                value={flow.baseUrl}
+                value={keys.baseUrl}
                 maxLength={300}
                 placeholder="https://api.example.com/v1"
-                onChange={(event) => flow.setBaseUrl(event.target.value)}
+                onChange={(event) => keys.setBaseUrl(event.target.value)}
                 className="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-foreground outline-none placeholder:text-subtle-foreground"
               />
-              {flow.baseUrlReachable && (
+              {keys.baseUrlReachable && (
                 <span
                   role="img"
                   aria-label="Reachable"
@@ -59,10 +59,10 @@ export function ProviderStep({ flow }: { flow: NewAiFlow }) {
                 aria-label="Name"
                 type="text"
                 autoComplete="off"
-                value={flow.compatibleName}
+                value={keys.compatibleName}
                 maxLength={256}
                 placeholder="Together"
-                onChange={(event) => flow.setCompatibleName(event.target.value)}
+                onChange={(event) => keys.setCompatibleName(event.target.value)}
                 className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-subtle-foreground"
               />
             </span>
