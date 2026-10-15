@@ -1561,3 +1561,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1549](T-1549-split-message-bubble.md) | Split MessageBubble.tsx: the derived flags move to bubbleFlags | 2026-10-15 |
 | [T-1550](T-1550-mobile-dead-labels.md) | Phone drops dead status and strip label helpers | 2026-10-15 |
 | [T-1542](T-1542-mobile-group-info-audit.md) | Phone Group info audit: plan and six tasks | 2026-10-15 |
+| [T-1548](T-1548-mobile-new-pack-grid.md) | Phone pack editor shows one sticker grid with a tile sheet | 2026-10-15 |

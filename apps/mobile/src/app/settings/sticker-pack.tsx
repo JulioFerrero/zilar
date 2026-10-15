@@ -1,10 +1,12 @@
 import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import { View, useWindowDimensions } from 'react-native';
 
 import { RequireStickersAuth } from '@/components/stickers/require-stickers-auth';
 import { PackActions } from '@/components/stickers/pack-actions';
-import { PackFreshList } from '@/components/stickers/pack-fresh-list';
-import { PackSavedGrid } from '@/components/stickers/pack-saved-grid';
+import { MAX_PACK_STICKERS } from '@/components/stickers/pack-editor';
+import { PackGrid, type PackTileSelection } from '@/components/stickers/pack-grid';
+import { PackTileSheet } from '@/components/stickers/pack-tile-sheet';
 import { PackVisibilityField } from '@/components/stickers/pack-visibility-field';
 import { usePackEditor, type PackEditorDeps } from '@/components/stickers/use-pack-editor';
 import { Button } from '@/components/ui/button';
@@ -39,6 +41,7 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
   const { width: windowWidth } = useWindowDimensions();
   const editor = usePackEditor({ picker, preparer });
   const tile = favoriteTileSize(windowWidth);
+  const [selection, setSelection] = useState<PackTileSelection | null>(null);
 
   return (
     <SettingsScreenShell
@@ -107,28 +110,48 @@ function StickerPackBody({ picker, preparer }: StickerPackScreenDeps) {
           />
 
           <View className="gap-2">
-            <PackSavedGrid
-              count={editor.count}
+            <View className="flex-row items-baseline justify-between">
+              <Text className="text-[16px] font-semibold text-foreground">Stickers</Text>
+              <Text className="font-mono text-[13px] text-muted-foreground">
+                {editor.count} / {MAX_PACK_STICKERS}
+              </Text>
+            </View>
+            <PackGrid
               visibleSaved={editor.visibleSaved}
+              fresh={editor.fresh}
+              preparing={editor.preparing}
               tile={tile}
               token={editor.token}
               saving={editor.saving}
-              preparing={editor.preparing}
               packFull={editor.packFull}
-              skippedNote={editor.skippedNote}
-              packId={editor.packId}
-              freshCount={editor.fresh.length}
               onPickImages={editor.pickImages}
-              onRemoveSaved={editor.removeSaved}
+              onSelect={setSelection}
             />
-            <PackFreshList
-              fresh={editor.fresh}
-              saving={editor.saving}
-              onEmojiChange={editor.changeEmoji}
-              onRetry={editor.retryItem}
-              onRemove={editor.removeFresh}
-            />
+            {editor.skippedNote ? (
+              <Text className="text-[13px] text-muted-foreground">
+                Only 120 stickers fit in a pack. Extra images were skipped.
+              </Text>
+            ) : null}
           </View>
+
+          <PackTileSheet
+            selection={selection}
+            visibleSaved={editor.visibleSaved}
+            fresh={editor.fresh}
+            token={editor.token}
+            saving={editor.saving}
+            onClose={() => setSelection(null)}
+            onChangeEmoji={editor.changeEmoji}
+            onRetry={editor.retryItem}
+            onRemoveSaved={(stickerId) => {
+              setSelection(null);
+              editor.removeSaved(stickerId);
+            }}
+            onRemoveFresh={(key) => {
+              setSelection(null);
+              editor.removeFresh(key);
+            }}
+          />
 
           <PackActions
             saving={editor.saving}
