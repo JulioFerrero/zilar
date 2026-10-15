@@ -1572,3 +1572,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1558](T-1558-split-build-outgoing.md) | Split build-outgoing.ts: the control stanza builders move out | 2026-10-15 |
 | [T-1559](T-1559-split-auth-api.md) | Split auth/api.ts: the /me view moves out | 2026-10-15 |
 | [T-1560](T-1560-split-client-core-history.md) | Split client-core history.ts: types and state helpers move out | 2026-10-15 |
+| [T-1563](T-1563-split-mobile-history-effects.md) | Split phone history effects: the core history adapter moves out | 2026-10-15 |
