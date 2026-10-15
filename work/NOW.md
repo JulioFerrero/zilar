@@ -186,6 +186,20 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - **The proposal:** the card stands alone; the title and steps are the AI's own plan; the live command shows under the current step; a single command is one compact line.
       - **This needs a decision:** the plan text and the commands are model text shown in chat (View steps already shows the commands).
     - **Tonight's test room:** "ai test › General" (@Deepseek), as @claude_test via the persistent Playwright profile.
+  - **Night 10-16 results (live):**
+    - **Verified at 01:41:** a typed `@Deepseek` (T-1617) woke the AI. Its computer ran `curl` through the proxy (`HTTP/1.1 200 Connection Established`), wrote `/workspace/hello.txt` (owned by `desk`, 6 bytes; T-1615), and listed it. The web work card showed no bubble, no fallback text and no "edited" row (T-1618).
+    - **Phone twin T-1619:** verified on the emulator (mock smoke) — the card is one box.
+    - **Then at 01:45 the proxy returned 407:** the jail from 23:41 outlived two deploys (`desk-agent` never runs `stopAll` on SIGTERM), and the restarted proxy had lost its in-memory registration. **T-1626 is running:** `stopAll` on SIGTERM and at start, and re-register a known jail on each provision. T-1620 (merged) recreates unknown jails.
+    - **Merged tonight:** T-1616 (Yahoo prices plus `argsExample`), T-1617, T-1618, T-1619, T-1620, T-1622 (group-turn split), T-1623 (the bash tool says what the computer has), T-1624 (web tools logger).
+    - **Running:** T-1625 (no doubled `@Name @Name` at the start of a reply), T-1626, T-1627 and T-1628 (size splits), T-1614 (scheduled-jobs plan), T-1621 (smart-wake plan).
+    - **In group rooms, actions (`web.*`, routines) are offered only when an owner or admin triggers the turn** (`group-turn-body.ts:199`), so @claude_test can't test `web.price` or routines. **Julio must test the morning-prices routine himself.**
+    - **❓ Decision for Julio (SEC-13b):** the computer IS offered to any group member who mentions the AI.
+      - **What that means:** tonight @claude_test, a plain member, ran Julio's AI's computer. A computer reply can take 15 minutes and 80 calls on the owner's key, and with no daily limit set nothing caps it.
+      - **The options:**
+        - (a) the computer only when the owner or a room admin asks;
+        - (b) a per-AI "Who can use the computer" setting;
+        - (c) a default daily limit for AIs with a computer.
+      - **The lead recommends (a) now, then (b).** T-1630 re-checks the open server findings and records it.
     - **Leftover inert variables on `zilar-chat`:** `DESKS_ENABLED=false`, empty `DESK_AGENT_SOCKET` and empty `DESK_IMAGE`. They're harmless; delete them on a quiet day.
     - **The target:** desk services in every stack; the agent waits for gVisor and then turns on by itself; the image follows the release; the server asks the agent; one host command.
     - **Then:** run the same one command on live, with nothing manual.

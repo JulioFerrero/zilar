@@ -1,23 +1,17 @@
 import { type XmppClient, type XmppCredentialsProvider, type XmppStatus } from '@xmpp/client';
 import { Deferred, Effect } from 'effect';
 import { ConnectTimeout, ConnectionFailed, Disconnected, type XmppCoreError } from '../errors';
-import {
-  buildAvailablePresence,
-  buildCarbonsEnable,
-  buildJoinPresence,
-  buildPingRequest,
-} from '../stanza';
+import { buildAvailablePresence, buildCarbonsEnable, buildJoinPresence } from '../stanza';
 import { schedule } from '../timers';
 import type { ConnectionStatus } from '../types';
 import {
   CONNECT_TIMEOUT_MS,
-  DEFAULT_KEEPALIVE_MS,
-  DEFAULT_KEEPALIVE_TIMEOUT_MS,
   WATCHDOG_SCHEDULE_MS,
   attempt,
   toError,
   type CoreRuntime,
 } from './config';
+import { createKeepalive } from './keepalive';
 import { createTokenAuth } from './token-auth';
 
 export type LifecycleApi = {
@@ -154,12 +148,16 @@ export function createLifecycle(runtime: CoreRuntime): LifecycleApi {
   // under its line budget; the credentials provider is what the client calls.
   const tokenAuth = createTokenAuth(runtime);
 
+  // The keepalive lives in `keepalive.ts`; it reaches `disconnectQuietly`
+  // (declared below, hoisted) to tear down a dead connection.
+  const keepalive = createKeepalive(runtime, disconnectQuietly);
+
   // The reconnect attempt counter, the cold-start flag and the keepalive make
   // up the per-attempt online state: every teardown resets them.
   function resetOnlineState(): void {
     runtime.reconnectAttempt = 0;
     runtime.coldAttemptSeen = false;
-    stopKeepalive();
+    keepalive.stopKeepalive();
   }
 
   const stopAfterFailure = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
@@ -184,24 +182,6 @@ export function createLifecycle(runtime: CoreRuntime): LifecycleApi {
     }
   }
 
-  function keepaliveEnabled(): boolean {
-    const idle = runtime.options.keepaliveMs ?? DEFAULT_KEEPALIVE_MS;
-    const timeout = runtime.options.keepaliveTimeoutMs ?? DEFAULT_KEEPALIVE_TIMEOUT_MS;
-    return idle > 0 && timeout > 0;
-  }
-
-  function stopKeepalive(): void {
-    runtime.keepalivePingId = undefined;
-    if (runtime.keepaliveIdleTimer !== undefined) {
-      runtime.keepaliveIdleTimer();
-      runtime.keepaliveIdleTimer = undefined;
-    }
-    if (runtime.keepaliveReplyTimer !== undefined) {
-      runtime.keepaliveReplyTimer();
-      runtime.keepaliveReplyTimer = undefined;
-    }
-  }
-
   // Drives the library's wait before its next auto-reconnect: the schedule
   // in `reconnect.delay` is read when the retry is queued, so setting it at
   // the start of every attempt governs the wait after that attempt fails.
@@ -220,76 +200,10 @@ export function createLifecycle(runtime: CoreRuntime): LifecycleApi {
     );
   }
 
-  // While online, pings the server domain after `keepaliveMs` without any
-  // received stanza; without a reply in `keepaliveTimeoutMs` the connection
-  // counts as dead and is torn down so the normal path reconnects.
-  function startKeepalive(): void {
-    stopKeepalive();
-    if (!keepaliveEnabled() || !runtime.desiredOnline) return;
-    runtime.keepaliveIdleTimer = schedule(
-      runtime.options.keepaliveMs ?? DEFAULT_KEEPALIVE_MS,
-      () => {
-        runtime.keepaliveIdleTimer = undefined;
-        Effect.runFork(sendKeepalivePing());
-      },
-    );
-  }
-
-  const sendKeepalivePing = Effect.fnUntraced(function* (): Effect.fn.Return<void> {
-    const current = runtime.xmpp;
-    if (current === undefined || !runtime.desiredOnline || runtime.currentStatus !== 'online') {
-      return;
-    }
-    const id = runtime.generateId();
-    runtime.keepalivePingId = id;
-    const sent = yield* attempt(() =>
-      current.send(buildPingRequest({ id, to: runtime.options.domain })),
-    ).pipe(
-      Effect.as(true),
-      Effect.orElseSucceed(() => false),
-    );
-    if (!sent) {
-      runtime.keepalivePingId = undefined;
-      reconnectDeadConnection();
-      return;
-    }
-    runtime.keepaliveReplyTimer = schedule(
-      runtime.options.keepaliveTimeoutMs ?? DEFAULT_KEEPALIVE_TIMEOUT_MS,
-      () => {
-        runtime.keepaliveReplyTimer = undefined;
-        runtime.keepalivePingId = undefined;
-        reconnectDeadConnection();
-      },
-    );
-  });
-
-  // The keepalive found a dead connection: tear the socket down. The
-  // resulting `disconnect` status lets the library reconnect through the
-  // normal path (status `reconnecting`, then `online` again).
-  function reconnectDeadConnection(): void {
-    stopKeepalive();
-    const current = runtime.xmpp;
-    if (current === undefined || !runtime.desiredOnline) return;
-    disconnectQuietly(current);
-  }
-
   // The stream may already be dead (or its disconnect may throw): the
   // disconnect status still fires and the normal path reconnects.
   function disconnectQuietly(current: XmppClient): void {
     Effect.runFork(attempt(() => current.disconnect()).pipe(Effect.ignore));
-  }
-
-  function handleKeepaliveReply(id: string): boolean {
-    if (runtime.keepalivePingId === undefined || runtime.keepalivePingId !== id) return false;
-    runtime.keepalivePingId = undefined;
-    if (runtime.keepaliveReplyTimer !== undefined) {
-      runtime.keepaliveReplyTimer();
-      runtime.keepaliveReplyTimer = undefined;
-    }
-    // A result or an error both prove the connection is alive: a fresh idle
-    // period starts.
-    startKeepalive();
-    return true;
   }
 
   const afterOnline = Effect.fnUntraced(function* (current: XmppClient): Effect.fn.Return<void> {
@@ -383,16 +297,16 @@ export function createLifecycle(runtime: CoreRuntime): LifecycleApi {
   return {
     setStatus,
     stopWatchdog,
-    stopKeepalive,
+    stopKeepalive: keepalive.stopKeepalive,
     applyRawStatus,
     setReconnectDelay,
     finishConnect,
-    startKeepalive,
-    keepaliveEnabled,
+    startKeepalive: keepalive.startKeepalive,
+    keepaliveEnabled: keepalive.keepaliveEnabled,
     afterOnline,
     stopAfterFailure,
     disconnectQuietly,
-    handleKeepaliveReply,
+    handleKeepaliveReply: keepalive.handleKeepaliveReply,
     credentials: tokenAuth.credentials,
     connect: connectEffect,
     disconnect: disconnectEffect,
