@@ -1,5 +1,6 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import { invalidateTopicFollow } from '../agents/gateway/topic-follow';
 import type { ServerDatabase } from '../db/client';
 import { HttpError, xmppUnavailable } from '../errors';
 import { runSql } from '../effect/sql';
@@ -45,6 +46,7 @@ export async function assertOwner(
   db: ServerDatabase,
   groupId: string,
   owner: { kind: 'user' | 'ai'; id: string } | null | undefined,
+  topicId?: string,
 ): Promise<{ ownerUserId: string | null; ownerAiId: string | null }> {
   if (owner === undefined || owner === null) {
     return { ownerUserId: null, ownerAiId: null };
@@ -56,15 +58,29 @@ export async function assertOwner(
     }
     return { ownerUserId: owner.id, ownerAiId: null };
   }
-  const [ai] = await runSql(
+  // T-1448: an AI owner must be one of the topic's AIs, so the owner follows
+  // the topic it owns. For a normal topic that is `topic_ais`; the General
+  // topic has no `topic_ais` rows, so its AIs are the group's `group_ais`. At
+  // create there is no topic yet, so an AI owner is refused the same way.
+  if (topicId === undefined) {
+    throw new HttpError(400, 'invalid_request', 'Add the AI to the topic first');
+  }
+  const [linked] = await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ id: string }>`SELECT id FROM ais WHERE id = ${owner.id} LIMIT 1`;
+      return yield* sql<{ aiId: string }>`
+        SELECT ai_id FROM topic_ais
+        WHERE topic_id = ${topicId} AND ai_id = ${owner.id}
+        UNION
+        SELECT ga.ai_id FROM group_ais ga
+        INNER JOIN topics t ON t.group_id = ga.group_id
+        WHERE t.id = ${topicId} AND t.is_general = true AND ga.ai_id = ${owner.id}
+        LIMIT 1`;
     }),
   );
-  if (!ai) {
-    throw new HttpError(400, 'invalid_request', 'The topic owner AI was not found');
+  if (!linked) {
+    throw new HttpError(400, 'invalid_request', 'Add the AI to the topic first');
   }
   return { ownerUserId: null, ownerAiId: owner.id };
 }
@@ -219,6 +235,9 @@ export async function removeTopicMember(
           WHERE id = ${topic.id}`;
       }),
     );
+    // T-1448: archiving drops the room's follow, so a plain message within the
+    // 15 s cache window cannot still wake the ex-owner AI.
+    invalidateTopicFollow(topic.roomLocalpart);
     updated = (await getTopic(deps.db, topic.id)) ?? topic;
     // The room still holds the just-removed members: desired members is now
     // empty, so the sync below removes everyone from the room.

@@ -7,6 +7,7 @@
 // chat or an AI the caller did not name.
 import type { AiSession } from './contracts';
 import type { TurnStopper } from './stop-types';
+import { pauseFollow } from './topic-follow';
 
 /**
  * Registers the controller for a turn about to start and returns it. A newer
@@ -34,6 +35,9 @@ export function clearTurnAbort(
 export function createStopTurn(sessions: Map<string, AiSession>): TurnStopper {
   return {
     stopTurn(aiId: string, chatJid: string): boolean {
+      // T-1448: stopping a turn in a followed room also pauses following, so a
+      // plain message cannot restart it. A later mention resumes following.
+      pauseFollow(aiId, chatJid);
       const session = sessions.get(aiId);
       if (session === undefined) {
         return false;

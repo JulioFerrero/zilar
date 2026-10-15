@@ -14,6 +14,7 @@ import {
   type RoomRound,
 } from './contracts';
 import type { createRoomListener } from './listener';
+import { followingAiFor, isFollowPaused, resumeFollow } from './topic-follow';
 
 // T-1176 (AI-8): a reply to the AI's own message wakes it, like Telegram,
 // even without an `@` mention. Zilar's own clients quote a reply by id only
@@ -84,7 +85,7 @@ export function createGroupIngest(ctx: GroupIngestContext) {
   // M2 rule 1 (§9.4): a person @mentions AIs, and only those AIs reply. Every
   // check that needs no database runs here; the sender's membership and the
   // rate limit are checked fresh at turn time.
-  function handleRoomIncoming(session: AiSession, message: ChatMessage): void {
+  function handleRoomIncoming(session: AiSession, message: ChatMessage): Promise<void> | undefined {
     // An edit or a retraction in a room is never a mention: it starts no turn.
     if (message.correction !== undefined || message.retraction !== undefined) {
       return;
@@ -150,9 +151,14 @@ export function createGroupIngest(ctx: GroupIngestContext) {
       noteListenerMessage(roomJid, room, message, body);
     }
     if (!mentioned) {
-      // No mention, nobody replies (M2 rule 3).
-      return;
+      // T-1448: an AI that owns this topic follows it — a plain human message
+      // reaches it with no `@`, until Stop pauses it. AI senders never trigger
+      // following, so two AIs cannot loop. The returned promise settles when
+      // the check is done; the gateway ignores it, tests await it.
+      return followOwnedTopic(session, message, roomJid, body);
     }
+    // T-1448: a real mention or reply restarts following for this room.
+    resumeFollow(session.aiId, roomJid);
     const fromBare = normBareJid(message.fromJid);
     let handoff = false;
     if (isAiSender(fromBare)) {
@@ -180,6 +186,55 @@ export function createGroupIngest(ctx: GroupIngestContext) {
       }
       handoff = true;
     }
+    queueRoomTurn(session, roomJid, message, body, handoff);
+  }
+
+  // T-1448: the topic owner is read asynchronously (the cache may miss), so
+  // the follow check runs on the effect runtime like the pump. A sender that
+  // is an AI, or a room this AI paused with Stop, is skipped without a read;
+  // those paths return no promise. The returned promise settles when the check
+  // is done, so a caller can wait for it instead of guessing at a delay.
+  function followOwnedTopic(
+    session: AiSession,
+    message: ChatMessage,
+    roomJid: string,
+    body: string,
+  ): Promise<void> | undefined {
+    if (isAiSender(normBareJid(message.fromJid)) || isFollowPaused(session.aiId, roomJid)) {
+      return undefined;
+    }
+    return Effect.runPromise(
+      Effect.promise(() => followingAiFor(deps.db, roomJid)).pipe(
+        Effect.flatMap((ownerAiId) =>
+          Effect.sync(() => {
+            // Re-check the pause: Stop can land while the owner lookup is in
+            // flight, and it must suppress this follow too.
+            if (ownerAiId === session.aiId && !isFollowPaused(session.aiId, roomJid)) {
+              queueRoomTurn(session, roomJid, message, body, false);
+            }
+          }),
+        ),
+        Effect.catchDefect((error) =>
+          Effect.sync(() => {
+            logger.warn(
+              { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
+              'AI topic follow check failed',
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  // The queue step shared by a mention, a reply and a followed topic. Messages
+  // arriving during a turn coalesce per room; the pump starts (or continues).
+  function queueRoomTurn(
+    session: AiSession,
+    roomJid: string,
+    message: ChatMessage,
+    body: string,
+    handoff: boolean,
+  ): void {
     const queued = session.roomPending.get(roomJid) ?? [];
     queued.push({
       id: message.id,

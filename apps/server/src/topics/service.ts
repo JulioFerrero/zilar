@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import { invalidateTopicFollow, resumeFollow } from '../agents/gateway/topic-follow';
 import { isUniqueViolation } from '../effect/error-utils';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
@@ -241,7 +242,7 @@ export async function patchTopic(
   const { ownerUserId, ownerAiId } =
     input.owner === undefined
       ? { ownerUserId: undefined, ownerAiId: undefined }
-      : await assertOwner(deps.db, topic.groupId, input.owner);
+      : await assertOwner(deps.db, topic.groupId, input.owner, topic.id);
   const nextLinkUrl = input.linkUrl === undefined ? topic.linkUrl : (input.linkUrl ?? null);
   const nextLinkLabel = input.linkLabel === undefined ? topic.linkLabel : (input.linkLabel ?? null);
   if (input.linkUrl !== undefined || input.linkLabel !== undefined) {
@@ -273,6 +274,15 @@ export async function patchTopic(
       yield* sql`UPDATE topics SET ${sql.update(snakeCaseKeys(patch))} WHERE id = ${topic.id}`;
     }),
   );
+  // T-1448: a new owner, or a change to the archive flag, decides who follows
+  // this topic, so drop the cached lookup. Assigning an AI owner again also
+  // clears its Stop pause, so following restarts without waiting for a mention.
+  if (input.owner !== undefined || input.archived !== undefined) {
+    invalidateTopicFollow(topic.roomLocalpart);
+    if (ownerAiId !== undefined && ownerAiId !== null) {
+      resumeFollow(ownerAiId, topic.roomLocalpart);
+    }
+  }
   if (goingPrivate) {
     const memberIds = [...new Set(input.memberIds ?? [])];
     if (!memberIds.includes(input.actorId)) {
