@@ -1453,3 +1453,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1436](T-1436-mobile-small-ux.md) | Mobile: clear hit target, font caps, keyboard-safe auth, haptics | 2026-10-14 |
 | [T-1431](T-1431-web-dialog-kit.md) | Web dialog kit: close key, footer, stepper, combobox, choice | 2026-10-15 |
 | [T-1441](T-1441-catalog-ai-restart.md) | Catalog connections back an AI right after a restart | 2026-10-15 |
+| [T-1442](T-1442-new-ai-shared.md) | New AI shared logic: providers, key check, orb swatches | 2026-10-15 |

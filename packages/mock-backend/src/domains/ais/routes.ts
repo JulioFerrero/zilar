@@ -184,6 +184,8 @@ function isApprovedMachine(data: MockData, machineId: string): boolean {
 }
 
 // T-1395: a small, fixed catalog for the wizard's model step in mock mode.
+// T-1442: the providers carry `kind` and `docUrl` like the real server, plus one
+// OpenAI-compatible provider, so the New AI flow has something to show.
 const MOCK_CATALOG: AiCatalog = {
   source: 'fallback',
   fetchedAt: '2026-10-14T00:00:00.000Z',
@@ -191,6 +193,8 @@ const MOCK_CATALOG: AiCatalog = {
     {
       id: 'openai',
       name: 'OpenAI',
+      kind: 'native',
+      docUrl: 'https://platform.openai.com/docs',
       models: [
         {
           id: 'gpt-4o-mini',
@@ -217,6 +221,8 @@ const MOCK_CATALOG: AiCatalog = {
     {
       id: 'anthropic',
       name: 'Anthropic',
+      kind: 'native',
+      docUrl: 'https://docs.anthropic.com',
       models: [
         {
           id: 'claude-sonnet-4-5',
@@ -233,6 +239,8 @@ const MOCK_CATALOG: AiCatalog = {
     {
       id: 'google',
       name: 'Google',
+      kind: 'native',
+      docUrl: 'https://ai.google.dev/gemini-api/docs',
       models: [
         {
           id: 'gemini-2.5-flash',
@@ -249,6 +257,8 @@ const MOCK_CATALOG: AiCatalog = {
     {
       id: 'deepseek',
       name: 'DeepSeek',
+      kind: 'native',
+      docUrl: 'https://api-docs.deepseek.com',
       models: [
         {
           id: 'deepseek-chat',
@@ -265,6 +275,8 @@ const MOCK_CATALOG: AiCatalog = {
     {
       id: 'xai',
       name: 'xAI',
+      kind: 'native',
+      docUrl: 'https://docs.x.ai',
       models: [
         {
           id: 'grok-4',
@@ -281,6 +293,8 @@ const MOCK_CATALOG: AiCatalog = {
     {
       id: 'openrouter',
       name: 'OpenRouter',
+      kind: 'native',
+      docUrl: 'https://openrouter.ai/docs',
       models: [
         {
           id: 'openai/gpt-4o',
@@ -291,6 +305,24 @@ const MOCK_CATALOG: AiCatalog = {
           toolCalls: true,
           reasoning: false,
           releaseDate: '2024-05-13',
+        },
+      ],
+    },
+    {
+      id: 'together',
+      name: 'Together AI',
+      kind: 'compatible',
+      docUrl: 'https://docs.together.ai',
+      models: [
+        {
+          id: 'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+          name: 'Llama 3.3 70B Turbo',
+          contextTokens: 131072,
+          inputPricePerMTok: 0.88,
+          outputPricePerMTok: 0.88,
+          toolCalls: true,
+          reasoning: false,
+          releaseDate: '2024-12-06',
         },
       ],
     },

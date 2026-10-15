@@ -45,6 +45,8 @@ export interface ConnectionsApi {
   listConnections(): Promise<ProviderConnection[]>;
   createConnection(input: CreateConnectionInput): Promise<ProviderConnection>;
   testConnection(id: string): Promise<ConnectionTestResult>;
+  /** T-1442: replaces the key of an existing connection in place, like web. */
+  replaceConnectionKey(id: string, key: string): Promise<ProviderConnection>;
   deleteConnection(id: string): Promise<void>;
 }
 
@@ -93,6 +95,12 @@ export function createConnectionsApi(
     },
     testConnection(id) {
       return runApi(client.connections.test({ params: { id } }));
+    },
+    // T-1292 on web, T-1442 here: replacing the key keeps the AIs using the
+    // connection working; the next turn reads and decrypts the new key. The key
+    // is trimmed like at create.
+    replaceConnectionKey(id, key) {
+      return runApi(client.connections.update({ params: { id }, payload: { key: key.trim() } }));
     },
     async deleteConnection(id) {
       await runApi(client.connections.remove({ params: { id } }));
