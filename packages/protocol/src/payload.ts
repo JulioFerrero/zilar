@@ -3,6 +3,7 @@ import { ApprovalDecisionSchema, ApprovalRequestSchema } from './approval';
 import { AttachmentSchema } from './attachment';
 import { decodeOrThrow, isValid } from './common';
 import { HandoffSchema } from './handoff';
+import { HandoffLineSchema } from './handoff-line';
 import { PollSchema, PollVoteSchema } from './poll';
 import { CostSchema, PreviewSchema, ProgressSchema } from './progress';
 import { StickerSchema } from './sticker';
@@ -15,6 +16,11 @@ export const MAX_PAYLOAD_BYTES = 64 * 1024;
 export const PayloadSchema = Schema.Union([
   Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('task'), data: TaskSchema }),
   Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('handoff'), data: HandoffSchema }),
+  Schema.Struct({
+    v: Schema.Literal(0),
+    type: Schema.Literal('handoff.line'),
+    data: HandoffLineSchema,
+  }),
   Schema.Struct({
     v: Schema.Literal(0),
     type: Schema.Literal('approval.request'),

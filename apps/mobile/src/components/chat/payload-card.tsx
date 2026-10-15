@@ -30,3 +30,13 @@ export function PayloadCard({ card }: { card: Payload }) {
       return null;
   }
 }
+
+// T-1572: the card types `PayloadCard` actually draws. `attachment-body`
+// takes the card branch only for these, so any other payload (a
+// `handoff.line`, or a card a released build does not know yet) falls through
+// to the normal text body instead of an empty bubble.
+const RENDERED_CARD_TYPES: ReadonlySet<string> = new Set(['progress', 'approval.request']);
+
+export function isRenderedCard(card: { type: string }): boolean {
+  return RENDERED_CARD_TYPES.has(card.type);
+}

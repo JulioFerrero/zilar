@@ -1,4 +1,5 @@
 // effect-plain: moved unchanged from apps/server/src/agents/reply.ts (size split)
+import type { Payload } from '@zilar/protocol';
 import type { ChatKind, SendMessageOptions } from '@zilar/xmpp-core';
 import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/providers';
@@ -6,7 +7,7 @@ import type { ChatUsage } from '../ai/model-client';
 import type { ChatCompletionMessage } from './context';
 import type { DmTurnOutcome } from './dm-turn';
 import { runToolLoop } from './dm-tool-turn';
-import { findHandoffIndex } from './handoff';
+import { buildHandoffLine, findHandoffIndex } from './handoff';
 import { finishProgressQuietly, stoppedTurn, turnStopped } from './turn-stop';
 import { GROUP_FAILURE_REPLY, cutShortSuffix } from './replies';
 import { sendGroupReply } from './turn-send';
@@ -31,6 +32,11 @@ import type { TurnLog } from './log/append';
 
 export interface GroupTurnDeps {
   aiId: string;
+  /**
+   * T-1572: the AI's own bare JID, the `from` of the handoff marker. The group
+   * gateway always passes it; with no JID, `wire()` attaches no marker.
+   */
+  aiJid?: string;
   /** Bare JID of the room the reply goes to. */
   roomJid: string;
   /** The room message that mentioned the AI; the reply points at it. */
@@ -141,7 +147,20 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
   // The mention needs a non-empty name for its offsets: fall back to the
   // sender's JID when no display name is known.
   const name = deps.senderName.trim() === '' ? deps.senderJid : deps.senderName.trim();
-  const wire = (text: string): { text: string; opts: SendMessageOptions } => {
+  // T-1572: the handoff marker attached to a success reply only. A fixed
+  // failure reply never carries it (see the `withHandoff` flag below).
+  const handoffPayload = (text: string): Payload | undefined => {
+    if (deps.aiJid === undefined) {
+      return undefined;
+    }
+    const line = buildHandoffLine({
+      fromJid: deps.aiJid,
+      text,
+      targets: deps.handoffTargets ?? [],
+    });
+    return line === null ? undefined : { v: 0, type: 'handoff.line', data: line };
+  };
+  const wire = (text: string, withHandoff = false): { text: string; opts: SendMessageOptions } => {
     const prefix = `@${name} `;
     const mentions: NonNullable<SendMessageOptions['mentions']> = [
       { jid: deps.senderJid.toLowerCase(), begin: 0, end: name.length + 1 },
@@ -164,11 +183,13 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
         end: prefix.length + index + nick.length + 1,
       });
     }
+    const payload = withHandoff ? handoffPayload(text) : undefined;
     return {
       text: prefix + text,
       opts: {
         replyTo: { id: deps.triggerId },
         mentions,
+        ...(payload === undefined ? {} : { payload }),
       },
     };
   };
@@ -195,7 +216,7 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
       if (first.content === null) {
         throw new ChatCompletionError(200, 'empty reply from the model');
       }
-      return await sendGroupReply(deps, secrets, wire(first.content));
+      return await sendGroupReply(deps, secrets, wire(first.content, true));
     }
     // No tools were advertised, so any tool call the model improvised is
     // invalid: answer `invalid: unknown tool` for each call and make one
@@ -214,7 +235,11 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
       messages: followUpMessages(deps.messages, first, toolMessages),
     });
     if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
-    return await sendGroupReply(deps, secrets, wire(second.content ?? TRANSIENT_FAILURE_REPLY));
+    return await sendGroupReply(
+      deps,
+      secrets,
+      wire(second.content ?? TRANSIENT_FAILURE_REPLY, second.content !== null),
+    );
   } catch (error) {
     if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
     const reason = mapFailureToReply(error);
@@ -259,7 +284,7 @@ async function runGroupToolTurn(
     signal?: AbortSignal;
   },
   secrets: string[],
-  wire: (text: string) => { text: string; opts: SendMessageOptions },
+  wire: (text: string, withHandoff?: boolean) => { text: string; opts: SendMessageOptions },
 ): Promise<DmTurnOutcome> {
   const tools = deps.tools ?? [];
   const maxRounds = deps.maxRounds ?? 1;
@@ -339,6 +364,7 @@ async function runGroupToolTurn(
       }
     }
     let text: string;
+    let modelText = false;
     try {
       const last = await requestCompletion({
         ...completionInput,
@@ -346,10 +372,12 @@ async function runGroupToolTurn(
         messages: loop.messages,
         ...(maxRounds <= 1 ? { tools } : {}),
       });
-      text =
-        last.content === null
-          ? TRANSIENT_FAILURE_REPLY + loop.notices.join('')
-          : last.content + cutShortSuffix(last.finishReason) + loop.notices.join('');
+      if (last.content === null) {
+        text = TRANSIENT_FAILURE_REPLY + loop.notices.join('');
+      } else {
+        text = last.content + cutShortSuffix(last.finishReason) + loop.notices.join('');
+        modelText = true;
+      }
     } catch (error) {
       if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
       const failure = mapFailureToReply(error);
@@ -361,9 +389,9 @@ async function runGroupToolTurn(
     }
     if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
     await finishProgressQuietly(deps, secrets, 'done');
-    return await sendGroupReply(deps, secrets, wire(text));
+    return await sendGroupReply(deps, secrets, wire(text, modelText));
   }
   if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
   await finishProgressQuietly(deps, secrets, 'done');
-  return await sendGroupReply(deps, secrets, wire(loop.text + loop.notices.join('')));
+  return await sendGroupReply(deps, secrets, wire(loop.text + loop.notices.join(''), true));
 }

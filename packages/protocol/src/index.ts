@@ -10,6 +10,7 @@ export * from './voice';
 export * from './attachment';
 export * from './forward';
 export * from './handoff';
+export * from './handoff-line';
 export * from './payload';
 export * from './sticker';
 export { protocolVersion, minClientProtocol, isClientOutdated } from './version';

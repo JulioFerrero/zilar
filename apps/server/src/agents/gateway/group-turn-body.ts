@@ -260,6 +260,7 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     const turnOutcome = yield* Effect.promise(() =>
       runGroupTurn({
         aiId: session.aiId,
+        aiJid: ai.jid,
         roomJid,
         triggerId: trigger.id,
         senderJid: normBareJid(trigger.fromJid),

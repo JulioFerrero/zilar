@@ -1585,3 +1585,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1569](T-1569-mobile-group-info-people.md) | Phone Group info: Members and AIs pages, add and remove | 2026-10-15 |
 | [T-1571](T-1571-ai-questions-table.md) | AI questions: the ai_questions table and its service | 2026-10-15 |
 | [T-1573](T-1573-mobile-group-info-content.md) | Phone Group info: Content pages (media, pins, tools, activity) | 2026-10-15 |
+| [T-1572](T-1572-handoff-marker.md) | Handoff marker: AI replies carry a handoff.line payload | 2026-10-15 |

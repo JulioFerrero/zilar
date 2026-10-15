@@ -13,7 +13,7 @@ import {
   DraftCaret,
   GeneratingLabel,
 } from '@/components/chat/message-bubble-decor';
-import { PayloadCard } from '@/components/chat/payload-card';
+import { PayloadCard, isRenderedCard } from '@/components/chat/payload-card';
 import {
   BubbleInlineMeta,
   META_OVERLAY,
@@ -179,7 +179,7 @@ export function MessageBubbleContent({
           onRetryAttachment={onRetryAttachment}
           onCancelAttachment={onCancelAttachment}
         />
-      ) : message.card ? (
+      ) : message.card && isRenderedCard(message.card) ? (
         <>
           <PayloadCard card={message.card} />
           <BubbleMeta
