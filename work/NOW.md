@@ -75,8 +75,12 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - the duplicate Profile row is gone (the You card opens Profile);
   - Sign out is a red row at the end.
   - The rows are the shared `packages/chat-core/src/settings-items.ts` list, so the change is to stop rendering `subtitle` on both apps.
-- **More lean gaps seen at font scale 1.3:**
-  - mobile Connections has a subtitle (it is in the Connections canvas).
+- **More lean gaps** (from the phone sweep at font scale 1.3 and web at 390 px; no layout bugs left there):
+  - mobile Connections has a subtitle (it is in the Connections canvas);
+  - Approvals and Machines have page subtitles and "pending" word badges;
+  - Machines shows "● Online" as a dot plus a word;
+  - Approvals has a manual Refresh key.
+  - These go with Task H's approvals canvas.
 - **Kept over 400 lines on purpose:** the lead tooling files (`autopilot.ts`, `cli.ts`, `client.ts`) stay over 400 for now, because the autopilot runs from them.
 - **New canvas for Julio: "View steps"**, https://claude.ai/artifact/7YV3tdKH1k8LSBBZtsXzxk.
   - Web: a right panel. Phone: a hugging sheet.
