@@ -6,3 +6,11 @@
 export interface TurnStopper {
   stopTurn: (aiId: string, chatJid: string) => boolean;
 }
+
+// T-1505: the read side of the gateway's in-memory turn state, for the topic
+// AI activity read model. Import-free for the same reason as `TurnStopper`: the
+// reader only needs the type, not the XMPP core behind the gateway contracts.
+export interface TurnWatcher {
+  /** Ids of the live sessions with a turn in flight in one bare room JID. */
+  runningAiIds: (roomJid: string) => string[];
+}

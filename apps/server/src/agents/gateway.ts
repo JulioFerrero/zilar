@@ -22,6 +22,7 @@ import { createGroupIngest } from './gateway/group-ingest';
 import { createGroupTurn } from './gateway/group-turn';
 import { createGatewayLifecycle } from './gateway/lifecycle';
 import { createStopTurn } from './gateway/stop';
+import type { TurnWatcher } from './gateway/stop-types';
 import { createToolExec } from './gateway/tool-exec';
 
 export type {
@@ -54,7 +55,7 @@ export {
 export function createAgentGateway(
   deps: AgentGatewayDeps,
   config: AgentGatewayConfig,
-): AgentGateway {
+): AgentGateway & TurnWatcher {
   const logger = deps.logger;
   const turnLogger = deps.turnLogger ?? deps.logger;
   const reconcileIntervalMs = config.reconcileIntervalMs ?? RECONCILE_INTERVAL_MS;
@@ -304,6 +305,17 @@ export function createAgentGateway(
     reconcile,
     size: () => sessions.size,
     aiIds: () => [...sessions.keys()],
+    // T-1505: the ids of the live sessions with a turn in flight in one room,
+    // so the topic activity read model can mark those AIs as working.
+    runningAiIds: (roomJid: string) => {
+      const ids: string[] = [];
+      for (const session of sessions.values()) {
+        if (session.roomBusy.has(roomJid)) {
+          ids.push(session.aiId);
+        }
+      }
+      return ids;
+    },
     postToChat,
     stopTurn,
   };

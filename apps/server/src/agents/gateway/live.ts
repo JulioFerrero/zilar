@@ -159,6 +159,10 @@ export function createLiveSession(ctx: LiveSessionContext) {
       if (current === null || card === null || !sessionIsLive(session)) {
         return;
       }
+      // T-1505: one session-log row records that the card was closed and how,
+      // so the topic activity read model can tell a card that finished `done`
+      // from one that failed or was stopped. A turn with no card logs nothing.
+      log?.append('status', { stage: `card_${state}` });
       const elapsedMs = Math.max(0, Date.now() - Date.parse(card.startedAt));
       const finished = finishTaskCard(
         card,
