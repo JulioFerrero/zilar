@@ -140,7 +140,7 @@ services:
       DESK_WORKSPACE_MODE: image
       DESK_AGENT_SOCKET: /run/zilar/desk.sock
       DESK_EGRESS_PROXY: http://desk-egress:3128
-      DESK_EGRESS_REGISTRY_SOCKET: /run/zilar-egress/desk-egress.sock
+      DESK_EGRESS_REGISTRY: /run/zilar-egress/desk-egress.sock
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/zilar/desks:/var/lib/zilar/desks
@@ -161,7 +161,7 @@ services:
     command: ['node', '/app/desk-egress']
     environment:
       DESK_EGRESS_PORT: '3128'
-      DESK_EGRESS_REGISTRY_SOCKET: /run/zilar-egress/desk-egress.sock
+      DESK_EGRESS_REGISTRY: /run/zilar-egress/desk-egress.sock
     volumes:
       - desk-egress-socket:/run/zilar-egress
     networks:

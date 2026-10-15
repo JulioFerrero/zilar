@@ -1617,3 +1617,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1603](T-1603-server-asks-desk-agent.md) | Server asks the desk agent whether it is ready | 2026-10-15 |
 | [T-1605](T-1605-desks-always-in-stack.md) | AI computer services in every stack; one host command | 2026-10-15 |
 | [T-1607](T-1607-installer-from-latest-release.md) | get.zilar.app redirects to the latest release's install.sh | 2026-10-15 |
+| [T-1606](T-1606-egress-registry-env-name.md) | Desk egress reads its registry socket setting | 2026-10-15 |

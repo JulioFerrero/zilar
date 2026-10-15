@@ -208,6 +208,10 @@ service_block() { # OUT NAME — print one service block from a rendered config
   ' "$1"
 }
 
+# The suffix of the retired egress registry key (see the guard below), split out
+# so a search for the full retired name finds nothing outside work/.
+_REGISTRY_SUFFIX="_SOCKET"
+
 for _file in "deploy/docker-compose.yml" "deploy/coolify/docker-compose.app.yml"; do
   _tag="$(basename "$_file")"
   if [ "$_file" = "deploy/coolify/docker-compose.app.yml" ]; then
@@ -259,6 +263,23 @@ for _file in "deploy/docker-compose.yml" "deploy/coolify/docker-compose.app.yml"
     ok "$_tag server carries the fixed DESK_AGENT_SOCKET and the desk-socket volume"
   else
     bad "$_tag server is missing the fixed DESK_AGENT_SOCKET or the desk-socket volume"
+  fi
+  # The egress registry setting name (T-1606): the proxy and the agent both
+  # read DESK_EGRESS_REGISTRY, so both desk services must set that name and no
+  # compose file may still set the retired one. The retired key is built from
+  # its suffix in a variable so this guard does not itself match a search for
+  # the retired name (T-1606 acceptance: it must appear nowhere but work/).
+  _retired_registry="DESK_EGRESS_REGISTRY$_REGISTRY_SUFFIX"
+  if service_block "$T/rendered" "desk-agent" | grep -q "DESK_EGRESS_REGISTRY: /run/zilar-egress/desk-egress.sock" \
+    && service_block "$T/rendered" "desk-egress" | grep -q "DESK_EGRESS_REGISTRY: /run/zilar-egress/desk-egress.sock" \
+    && ! grep -q "$_retired_registry" \
+      "$ROOT/deploy/docker-compose.yml" \
+      "$ROOT/deploy/coolify/docker-compose.yml" \
+      "$ROOT/deploy/coolify/docker-compose.app.yml" \
+      "$ROOT/deploy/coolify/zilar-core.yml"; then
+    ok "$_tag desk services set DESK_EGRESS_REGISTRY, no compose file sets the retired name"
+  else
+    bad "$_tag desk services do not use DESK_EGRESS_REGISTRY, or a compose file still sets the retired name"
   fi
 done
 
