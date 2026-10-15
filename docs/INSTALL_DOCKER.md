@@ -3,8 +3,10 @@
 Five minutes from a fresh clone to your own Zilar behind HTTPS: Postgres,
 ejabberd (chat), the Zilar server, the web app and Caddy (automatic HTTPS)
 as Docker containers. AIs need no extra service: each one calls its model
-provider directly with its owner's own key. They start answering once
-`AGENT_GATEWAY_ENABLED=true` is set in `.env` (`./zilar init` writes `false`). The fastest way
+provider directly with its owner's own key. They answer by default; set
+`AGENT_GATEWAY_ENABLED=false` in `.env` to keep them silent. Installs made
+before this change have `false` in their `.env`; change it to `true` to turn
+AIs on. The fastest way
 uses the install helper (`deploy/zilar`); the manual steps are underneath
 so you can see everything the helper does.
 

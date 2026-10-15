@@ -155,7 +155,7 @@ services:
       # needed. Same rules as the avatar dir: a manual edit orphans previously
       # uploaded wallpapers.
       BACKGROUND_STORAGE_DIR: /data/avatars/backgrounds
-      AGENT_GATEWAY_ENABLED: ${AGENT_GATEWAY_ENABLED:-false}
+      AGENT_GATEWAY_ENABLED: ${AGENT_GATEWAY_ENABLED:-true}
       ACTION_DEMO_ENABLED: ${ACTION_DEMO_ENABLED:-false}
       RUNNER_HUB_ENABLED: ${RUNNER_HUB_ENABLED:-false}
       RUNNER_HUB_PORT: 3189
