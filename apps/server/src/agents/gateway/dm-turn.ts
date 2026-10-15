@@ -38,6 +38,7 @@ import { reportDmTurnDefect } from './turn-defect';
 import { recordUsage } from '../../ais/usage-store';
 import type { createLiveSession } from './live';
 import type { MemoryRunner } from './memory';
+import { turnLimits } from './turn-rounds';
 
 type LiveSession = ReturnType<typeof createLiveSession>;
 
@@ -313,7 +314,7 @@ export function createDmTurn(ctx: DmTurnContext) {
           ),
           tools: buildTools(deps.actions?.listActions() ?? [], { desk: deskEnabled }),
           ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
-          ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
+          ...turnLimits(deps.toolMaxRounds, deskEnabled),
           checkRoundGate: () => budgetGate.checkDmRoundGate(session),
           reportProgress: dmProgress.reportProgress,
           finishProgress: dmProgress.finishProgress,

@@ -34,6 +34,7 @@ import { loadModelTarget } from './model-target';
 import { clearTurnAbort, registerTurnAbort } from './stop';
 import type { GroupTurnContext } from './group-turn';
 import type { TurnLog } from '../log/append';
+import { turnLimits } from './turn-rounds';
 
 export interface GroupTurnBodyInput {
   ctx: GroupTurnContext;
@@ -293,7 +294,7 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
             ? { ownerUserId: ai.owner, client: turnDesk.client, signal: groupAbort.signal }
             : undefined,
         ),
-        ...(deps.toolMaxRounds === undefined ? {} : { maxRounds: deps.toolMaxRounds }),
+        ...turnLimits(deps.toolMaxRounds, deskEnabled),
         ...(handoffTargets.length === 0 ? {} : { handoffTargets }),
         checkRoundGate: () => budgetGate.checkDmRoundGate(session),
         onFailure: (reason) => notifyOwnerOfFailure(ctx, session, roomJid, reason),

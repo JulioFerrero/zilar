@@ -14,6 +14,7 @@ import {
   requestCompletion,
   type CompleteChatInput,
   type ExecuteToolCall,
+  type TurnCaps,
 } from './tool-loop';
 import { PERSONA_TOOLS, type ChatToolDefinition } from './tools';
 
@@ -82,6 +83,9 @@ export interface DmTurnDeps {
    * today's behaviour, byte for byte. The gateway passes
    * `AGENT_TOOL_MAX_ROUNDS` (6 when `TOOLS_ENABLED` is on). */
   maxRounds?: number;
+  /** T-1611: the turn's caps for the shared tool loop. Defaults to
+   * `CHAT_TURN_CAPS`; a computer turn passes `COMPUTER_TURN_CAPS`. */
+  caps?: TurnCaps;
   /** T-0106: a gate the turn checks before every model call. Null = the AI
    * may proceed (live, under budget, usage unavailable). Non-null with
    * `limited: true` = stop the loop and send the fixed reply. In

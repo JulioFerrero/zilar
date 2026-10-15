@@ -1621,3 +1621,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1608](T-1608-android-release-create-race.md) | Android release survives the release-create race | 2026-10-15 |
 | [T-1609](T-1609-installer-job-condition.md) | Installer job runs on tags (status function) | 2026-10-15 |
 | [T-1610](T-1610-host-setup-installs-prereqs.md) | host-setup installs bzip2 and jq when missing | 2026-10-15 |
+| [T-1611](T-1611-desk-turns-multi-round.md) | Computer turns get 40 rounds, 80 calls and 15 minutes | 2026-10-15 |

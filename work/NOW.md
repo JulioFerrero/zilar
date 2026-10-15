@@ -157,11 +157,19 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - **the landing was redeployed:** `get.zilar.app` now answers 302 to `releases/latest/download/install.sh` and serves exactly v0.2.1's script.
     - **VPS `--desks-host` (v0.2.1) failed safely:** `tar -xjf gvisor.tar.bz2` found no `bzip2`. Nothing changed: `daemon.json` untouched, no backup, all 39 containers up.
       - **T-1610 is running:** host-setup installs `bzip2` and `jq` itself through apt-get/dnf/yum/apk, before any change.
-    - **Next:**
-      1. merge T-1610;
-      2. tag v0.2.2 (it checks T-1609: the installer job must run);
-      3. on the VPS, run `curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host` again;
-      4. check that the card flips, then run one real job.
+    - **T-1610 merged.** v0.2.2 tagged on `692148b9d` (CI green).
+      - **The images and the installer job succeeded,** so T-1609 is verified and the latest release is v0.2.2.
+      - Android run 38817447672 was still building at 22:39.
+    - **✅ AI computers are ON on live (2026-10-15 ~22:45 UTC), using only the product flow:**
+      - **The command:** `curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host` on the VPS.
+      - **What it did:** installed `bzip2` itself, then gVisor 20261005.0 (runsc registered, `daemon.json.bak` made), the `zilar-desks.slice` pool (4 GB) and `/var/lib/zilar/desks`. The sandbox check passed, and all 39 containers stayed up.
+      - **The agent switched by itself** from "waiting for the runsc runtime" to `ready (ghcr.io/julioferrero/zilar-desk@sha256:ce2ffa42…)`. No variable, no redeploy.
+      - **From the server container,** a `status` over `/run/zilar/desk.sock` gives `ready: true, detail: null, running: 0`.
+    - **Julio's first real job (22:44 UTC) failed:** "create hello.txt and list the directories" returned "I couldn't reply just now" twice.
+      - **The computer works:** the jail started at 22:42, and a command ran in it.
+      - **The cause:** live has `TOOLS_ENABLED=false`, so every turn gets **1 tool round**. The follow-up call wanted a second tool call, its text was null, and the turn returned the transient failure.
+      - **T-1611 is running.** Julio asked for realistic limits, not 6 rounds. Fix round 1: with the computer on, a reply gets **40 rounds, 80 tool calls and 15 minutes**, and each model call waits at most 5 minutes. Chat turns keep 12 calls and 120 s. Ignore the earlier clean packet, which was for the 6-round head. Retest after it deploys.
+    - **Leftover inert variables on `zilar-chat`:** `DESKS_ENABLED=false`, empty `DESK_AGENT_SOCKET` and empty `DESK_IMAGE`. They're harmless; delete them on a quiet day.
     - **The target:** desk services in every stack; the agent waits for gVisor and then turns on by itself; the image follows the release; the server asks the agent; one host command.
     - **Then:** run the same one command on live, with nothing manual.
   - **Found:** fresh installs have `AGENT_GATEWAY_ENABLED=false` (all three compose files plus `./zilar init`), so new AIs never answer. **Julio: on by default. T-1601 merged** (the compose files, `./zilar init`, the env examples and the docs; the server schema default stays `false`).

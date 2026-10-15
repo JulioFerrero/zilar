@@ -14,7 +14,6 @@ import {
   TOOL_CAPPED_RESULT,
   TOOL_REPEAT_RESULT,
   TOOL_RESULT_MAX_CHARS,
-  TOOL_TURN_MAX_CALLS,
   type ChatCompletionResult,
   type ExecuteToolCall,
   type ModelRequestMessage,
@@ -96,6 +95,8 @@ export async function runLoopRound(input: {
   result: ChatCompletionResult;
   previousSignature: string | null;
   executedCalls: number;
+  /** T-1611: the turn's total call cap (`caps.maxCalls`). */
+  maxCalls: number;
   executeTool?: ExecuteToolCall;
   executeAdvertised?: ExecuteToolCall;
   logger: { warn: (fields: Record<string, unknown>, message: string) => void };
@@ -148,7 +149,7 @@ export async function runLoopRound(input: {
       }
     }
   }
-  const remaining = TOOL_TURN_MAX_CALLS - input.executedCalls;
+  const remaining = input.maxCalls - input.executedCalls;
   const runnable = input.result.toolCalls.slice(0, Math.max(0, remaining));
   const dropped = input.result.toolCalls.slice(runnable.length);
   const { toolMessages, notices, stages, outcomes } = await executeToolCalls({

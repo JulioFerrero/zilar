@@ -25,6 +25,7 @@ import {
   requestCompletion,
   type ExecuteToolCall,
   type ModelRequestMessage,
+  type TurnCaps,
 } from './tool-loop';
 import { remainingTurnBudgetMs } from './turn-budget';
 import { TASK_STATUS_TOOL, type ChatToolDefinition } from './tools';
@@ -77,11 +78,11 @@ export interface GroupTurnDeps {
    */
   tools?: ChatToolDefinition[];
   executeTool?: ExecuteToolCall;
-  /** T-0106: how many tool rounds this turn may run. Defaults to 1:
-   * first model call with tools, execute, exactly one follow-up call —
-   * today's behaviour, byte for byte. The gateway passes
-   * `AGENT_TOOL_MAX_ROUNDS` (6 when `TOOLS_ENABLED` is on). */
+  /** T-0106: how many tool rounds this turn may run. Defaults to 1 (the
+   * legacy single-round shape). The gateway passes `AGENT_TOOL_MAX_ROUNDS`. */
   maxRounds?: number;
+  /** T-1611: the turn's caps (chat by default; a computer turn passes its own). */
+  caps?: TurnCaps;
   /** T-0106: checked before every model call (budget + kill switch). See
    * `DmTurnDeps.checkRoundGate`. */
   checkRoundGate?: () => Promise<{ limited: boolean; reply: string } | null>;
@@ -320,6 +321,7 @@ async function runGroupToolTurn(
       tools,
       completionInput,
       maxRounds,
+      ...(deps.caps === undefined ? {} : { caps: deps.caps }),
       ...(executeAdvertised === undefined ? {} : { executeTool: executeAdvertised }),
       logger: deps.logger,
       turnLogger,
@@ -368,7 +370,7 @@ async function runGroupToolTurn(
     try {
       const last = await requestCompletion({
         ...completionInput,
-        timeoutMs: remainingTurnBudgetMs(startedAt, nowMs),
+        timeoutMs: remainingTurnBudgetMs(startedAt, nowMs, deps.caps?.wallClockMs),
         messages: loop.messages,
         ...(maxRounds <= 1 ? { tools } : {}),
       });

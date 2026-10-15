@@ -14,13 +14,13 @@ import {
   actionOfCall,
 } from './tool-exec';
 import {
+  CHAT_TURN_CAPS,
   ChatCompletionError,
-  TOOL_TURN_MAX_CALLS,
-  TOOL_TURN_WALL_CLOCK_MS,
   TRANSIENT_FAILURE_REPLY,
   requestCompletion,
   type ExecuteToolCall,
   type ModelRequestMessage,
+  type TurnCaps,
 } from './tool-loop';
 import { remainingTurnBudgetMs } from './turn-budget';
 import type { ChatToolDefinition } from './tools';
@@ -36,9 +36,9 @@ import type { TurnLog } from './log/append';
 // - `checkRoundGate` runs before each model call: an over-budget or
 //   stopped AI runs no further round and sends nothing (the caller sends
 //   the gate's fixed reply, like a model failure);
-// - the wall clock (`TOOL_TURN_WALL_CLOCK_MS`) and the total call cap
-//   (`TOOL_TURN_MAX_CALLS`) stop the loop; when the rounds run out, the
-//   last model call is made WITHOUT tools so the AI must answer in text
+// - the turn's caps (`caps`: the chat caps unless a computer turn passes its
+//   own) stop the loop; when the rounds run out, the last model call is made
+//   WITHOUT tools so the AI must answer in text
 //   (`maxRounds: 1` keeps the legacy shape instead — see below);
 // - a round that repeats the previous round's calls exactly gets the
 //   "already done" result without executing;
@@ -68,6 +68,9 @@ export async function runToolLoop(input: {
     signal?: AbortSignal;
   };
   maxRounds: number;
+  /** T-1611: the turn's caps. Defaults to `CHAT_TURN_CAPS`; a turn with the
+   * AI's computer on passes `COMPUTER_TURN_CAPS`. */
+  caps?: TurnCaps;
   executeTool?: ExecuteToolCall;
   executeAdvertised?: ExecuteToolCall;
   logger: { warn: (fields: Record<string, unknown>, message: string) => void };
@@ -89,6 +92,7 @@ export async function runToolLoop(input: {
   messages: ModelRequestMessage[];
 }> {
   const startedAt = input.turnStartMs;
+  const caps = input.caps ?? CHAT_TURN_CAPS;
   let messages = input.messages;
   let rounds = 0;
   let executedCalls = 0;
@@ -103,7 +107,7 @@ export async function runToolLoop(input: {
     for (let round = 1; round <= input.maxRounds; round += 1) {
       // T-1422: a stop drops the loop before another round.
       if (input.completionInput.signal?.aborted === true) break;
-      if (input.nowMs() - startedAt >= TOOL_TURN_WALL_CLOCK_MS) {
+      if (input.nowMs() - startedAt >= caps.wallClockMs) {
         break;
       }
       if (input.checkRoundGate !== undefined) {
@@ -129,7 +133,7 @@ export async function runToolLoop(input: {
       const lastCall = lastRound && round > 1;
       const result = await requestCompletion({
         ...input.completionInput,
-        timeoutMs: remainingTurnBudgetMs(startedAt, input.nowMs),
+        timeoutMs: remainingTurnBudgetMs(startedAt, input.nowMs, caps.wallClockMs),
         messages,
         ...(lastCall ? {} : { tools: input.tools }),
       });
@@ -180,6 +184,7 @@ export async function runToolLoop(input: {
         result,
         previousSignature,
         executedCalls,
+        maxCalls: caps.maxCalls,
         ...(input.executeTool === undefined ? {} : { executeTool: input.executeTool }),
         ...(input.executeAdvertised === undefined ? {} : { executeTool: input.executeAdvertised }),
         logger: input.logger,
@@ -196,7 +201,7 @@ export async function runToolLoop(input: {
       previousSignature = step.previousSignature;
       executedCalls = step.executedCalls;
       progressPosted = step.progressPosted;
-      if (executedCalls >= TOOL_TURN_MAX_CALLS) {
+      if (executedCalls >= caps.maxCalls) {
         break;
       }
     }
@@ -263,6 +268,7 @@ export async function runToolTurn(
       tools,
       completionInput,
       maxRounds,
+      ...(deps.caps === undefined ? {} : { caps: deps.caps }),
       ...(deps.executeTool === undefined ? {} : { executeTool: deps.executeTool }),
       logger: deps.logger,
       turnLogger,
@@ -346,7 +352,7 @@ export async function runToolTurn(
     try {
       const last = await requestCompletion({
         ...completionInput,
-        timeoutMs: remainingTurnBudgetMs(startedAt, nowMs),
+        timeoutMs: remainingTurnBudgetMs(startedAt, nowMs, deps.caps?.wallClockMs),
         messages: loop.messages,
         ...(maxRounds <= 1 ? { tools } : {}),
       });

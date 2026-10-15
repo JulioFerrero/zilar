@@ -168,10 +168,23 @@ export async function requestCompletion(input: CompleteChatInput): Promise<ChatC
 
 // T-0106: per-turn caps for the multi-round tool loop. The wall clock keeps
 // one long turn from holding the pump forever; the call cap keeps a looping
-// model from executing unbounded side effects. Both are fixed, not config:
-// `AGENT_TOOL_MAX_ROUNDS` is the only knob.
+// model from executing unbounded side effects. Chat turns keep these fixed,
+// not config — `AGENT_TOOL_MAX_ROUNDS` is the only knob; a turn with the AI's
+// computer on uses the computer-sized caps below instead.
 export const TOOL_TURN_WALL_CLOCK_MS = 120_000;
 export const TOOL_TURN_MAX_CALLS = 12;
+
+export type TurnCaps = { maxCalls: number; wallClockMs: number };
+// T-1611: a computer job writes, installs, runs, fixes and re-runs, so it
+// needs far more room than a chat turn. The last model call is still made
+// without tools, and `MODEL_CALL_MAX_MS` still bounds a single model call.
+export const CHAT_TURN_CAPS: TurnCaps = {
+  maxCalls: TOOL_TURN_MAX_CALLS,
+  wallClockMs: TOOL_TURN_WALL_CLOCK_MS,
+};
+export const COMPUTER_TURN_MAX_ROUNDS = 40;
+export const COMPUTER_TURN_CAPS: TurnCaps = { maxCalls: 80, wallClockMs: 15 * 60_000 };
+export const MODEL_CALL_MAX_MS = 300_000;
 
 // T-0106: each tool result fed back to the model is truncated to this many
 // characters. Adapter summaries are already short; `modelText` (tool source,
