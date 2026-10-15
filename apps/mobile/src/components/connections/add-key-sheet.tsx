@@ -10,11 +10,6 @@ import { Text } from '@/components/ui/text';
 
 import { useKeyCheck } from './use-key-check';
 
-const STEPS: StepTrackStep[] = [
-  { value: 'provider', label: 'Provider' },
-  { value: 'key', label: 'Key' },
-];
-
 /**
  * The Connections page's Add key sheet: the same Provider and Key steps as the
  * New AI flow. Continue runs the key check (which creates the connection), then
@@ -31,6 +26,15 @@ export function AddKeySheet({
 }) {
   const keys = useKeyCheck();
   const [step, setStep] = useState(0);
+
+  const providerLabel =
+    keys.providerChoices.find((choice) => choice.id === keys.providerId)?.label ??
+    keys.providerId ??
+    'Provider';
+  const steps: StepTrackStep[] = [
+    { value: 'provider', label: keys.providerId === null ? 'Provider' : providerLabel },
+    { value: 'key', label: 'Key' },
+  ];
 
   const close = (): void => {
     keys.abandon();
@@ -77,7 +81,7 @@ export function AddKeySheet({
     >
       <View className="gap-4">
         <StepTrack
-          steps={STEPS}
+          steps={steps}
           current={step === 0 ? 'provider' : 'key'}
           onStepPress={() => {
             if (!keys.checking) setStep(0);

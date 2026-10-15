@@ -65,10 +65,12 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - **The lead walked main on the emulator (mock):** DeepSeek → key → name → Create lands in the new chat, and the chat stays in the list after a refresh. The mobile suite passes (247 tests).
   - **Found:** a new AI chat with no messages sorts near the bottom of the chat list. The server sends `createdAt` only for groups (T-1318). T-1474 is specced.
 - **Merged: T-1471.** Web and mobile show "OpenAI-compatible" in the Provider field, and the mobile step chips stay on one line with the model named as on web. Both checked (headless and emulator).
-- **Running:**
-  - **T-1472.** The lead's emulator check caught that the partial notice never showed (a `setParams` clear dropped it). The fix uses the proven `notFound` pattern.
-  - **T-1473:** the mobile Add key sheet on a shared `use-key-check` hook.
-- **Next:** T-1474, so that a new AI's chat leads the chat list (contract, server, mock and both apps). It launches after T-1472, since both touch mobile `ais.tsx`.
+- **Merged: T-1472.** The emulator caught a notice that never showed (a `setParams` clear dropped it). After the fix, the partial-save notice shows on the new chat.
+- **Merged: T-1473**, the mobile Add key sheet:
+  - `use-new-ai-flow.ts` went from 400 to 261 lines, on a shared `use-key-check` hook;
+  - the emulator checks passed: Save adds a row, closing after a check leaves no key, and New AI still works.
+  - Nit for later: the done Provider chip reads "✓ Provider", not the provider's name.
+- **Running:** T-1474, so that a new AI's chat leads the chat list. The emulator showed mobile's own `DmEntrySchema` dropping `createdAt`; the fix is sent. Web uses the contract and is fine. This is a server change, so a deploy check follows the merge.
 - **T-1445 history:**
   - **T-1445: mobile New AI.** The phone walk passed every step:
     - the footer, the provider dots and the keyboard-safe key step;
