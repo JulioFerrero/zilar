@@ -1575,3 +1575,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1563](T-1563-split-mobile-history-effects.md) | Split phone history effects: the core history adapter moves out | 2026-10-15 |
 | [T-1557](T-1557-mobile-stickers-polish.md) | Phone stickers: large titles, visibility switch, lean Discover | 2026-10-15 |
 | [T-1564](T-1564-mobile-sticker-types.md) | Phone sticker types: a kept moving file declares its real type | 2026-10-15 |
+| [T-1565](T-1565-split-push-api-handlers.md) | Split push/api-handlers.ts: the test route moves out | 2026-10-15 |

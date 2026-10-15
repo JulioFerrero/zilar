@@ -11,6 +11,11 @@ import { pushConfigError, type PushConfig } from './config';
 // the handlers decode them by hand. Settings and test are strict.
 export const STRICT_DECODE = { onExcessProperty: 'error' } as const;
 
+// The test wake's chat id, shared with the mobile handler: the data-only
+// FCM wake `{ chatId: 'zilar:test', serverId }` draws the fixed "Push
+// notifications work on this device." text on the phone.
+export const TEST_WAKE_CHAT_ID = 'zilar:test';
+
 // Builds the per-instance `requirePush` gate: it answers 404 while push is
 // disabled and 503 while it is enabled but not configured.
 export function createRequirePush(deps: { push: PushConfig }): () => { storageKey: string } {
