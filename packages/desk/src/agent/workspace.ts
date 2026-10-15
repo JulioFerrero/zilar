@@ -10,6 +10,9 @@ import type { AgentConfig } from './config';
 
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
+/** The jail's user id; must match `useradd -u 10001` in `packages/desk/Dockerfile`. */
+export const JAIL_UID = 10001;
+
 /** Refuses any id that is not a single safe path segment. */
 export function assertSafeId(value: string): void {
   if (!SAFE_ID.test(value)) {
@@ -85,12 +88,14 @@ async function ensureImage(image: string, mountDir: string, diskBytes: number): 
   await mkdir(mountDir, { recursive: true });
   if (!(await exists(image))) {
     await execFile('truncate', ['-s', String(diskBytes), image]);
-    await execFile('mkfs.ext4', ['-q', '-F', image]);
+    await execFile('mkfs.ext4', ['-q', '-F', '-E', `root_owner=${JAIL_UID}:${JAIL_UID}`, image]);
   }
-  if (await isMounted(mountDir)) {
-    return;
+  if (!(await isMounted(mountDir))) {
+    await execFile('mount', ['-o', 'loop,rw', image, mountDir]);
   }
-  await execFile('mount', ['-o', 'loop,rw', image, mountDir]);
+  // The disk's root folder belongs to root when mkfs made it; give it to the
+  // jail user. Only the root, not recursively, so old images are fixed too.
+  await execFile('chown', [`${JAIL_UID}:${JAIL_UID}`, mountDir]);
 }
 
 async function isMounted(mountDir: string): Promise<boolean> {

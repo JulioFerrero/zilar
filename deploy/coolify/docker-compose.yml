@@ -298,7 +298,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # A real host path: loop images need one (plan §4.2).
-      - /var/lib/zilar/desks:/var/lib/zilar/desks
+      # The agent loop-mounts each AI's disk here; rshared lets the host (and the jail's bind mount) see it.
+      - /var/lib/zilar/desks:/var/lib/zilar/desks:rshared
       - /dev:/dev
       - desk-socket:/run/zilar
       - desk-egress-socket:/run/zilar-egress

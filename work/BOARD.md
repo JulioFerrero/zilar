@@ -1624,3 +1624,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1611](T-1611-desk-turns-multi-round.md) | Computer turns get 40 rounds, 80 calls and 15 minutes | 2026-10-15 |
 | [T-1612](T-1612-jail-reaches-egress-proxy.md) | AI computers reach the egress proxy under gVisor; jail gets curl | 2026-10-15 |
 | [T-1613](T-1613-ai-tools-on-by-default.md) | AI tools, routines and web tools on by default | 2026-10-15 |
+| [T-1615](T-1615-workspace-reaches-jail.md) | AI disk reaches its computer, owned by the jail user | 2026-10-15 |

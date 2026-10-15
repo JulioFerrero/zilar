@@ -286,6 +286,21 @@ for _file in "deploy/docker-compose.yml" "deploy/coolify/docker-compose.app.yml"
   fi
 done
 
+# --- 3b. the agent's desks bind propagates (T-1615) ---------------------
+#
+# The agent loop-mounts each AI's disk under /var/lib/zilar/desks. The bind of
+# that host folder into the agent must be rshared, or the mount never reaches
+# the host, and Docker then binds the host's empty, root-owned folder into the
+# jail as /workspace. Every compose file has to say so.
+for _file in "deploy/docker-compose.yml" "deploy/coolify/docker-compose.yml" \
+  "deploy/coolify/docker-compose.app.yml" "deploy/coolify/zilar-core.yml"; do
+  if grep -qF -- "- /var/lib/zilar/desks:/var/lib/zilar/desks:rshared" "$ROOT/$_file"; then
+    ok "$_file mounts the desks root rshared"
+  else
+    bad "$_file does not mount the desks root rshared"
+  fi
+done
+
 # --- 4. doctor desk checks (fresh host: unit present, cgroup not) -------
 #
 # host-setup writes /etc/systemd/system/zilar-desks.slice, but systemd only

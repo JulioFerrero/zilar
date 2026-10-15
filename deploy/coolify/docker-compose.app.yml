@@ -309,7 +309,8 @@ services:
       DESK_EGRESS_REGISTRY: /run/zilar-egress/desk-egress.sock
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /var/lib/zilar/desks:/var/lib/zilar/desks
+      # The agent loop-mounts each AI's disk here; rshared lets the host (and the jail's bind mount) see it.
+      - /var/lib/zilar/desks:/var/lib/zilar/desks:rshared
       - /dev:/dev
       - desk-socket:/run/zilar
       - desk-egress-socket:/run/zilar-egress
