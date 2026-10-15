@@ -1,41 +1,26 @@
 // effect-plain: the New AI wizard is plain React state; its async is the shared key-check and create calls over the injected promise APIs, the same promise-edge adapter shape the AI screens already use.
-import type { AiCatalog } from '@zilar/api-contract';
 import {
-  checkKey,
   clampOrbLight,
   defaultCatalogModelId,
   defaultModelFor,
   defaultPersonaFor,
-  isLlmProvider,
-  keyPageFor,
-  keyPlaceholderFor,
   modelSuggestionsFor,
   orbParamsFor,
-  providerChoices,
   shuffleOrb,
   validateLimits,
   type AiTemplateId,
-  type KeyCheckState,
 } from '@zilar/chat-core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { ComputerMode } from '@/components/ais/computer-picker';
 import { describeAisError } from '@/components/ais/errors';
-import {
-  EMPTY_KEY_STATE,
-  buildCreateInput,
-  discardCreatedKey,
-  keyCheckBaseState,
-  keyStateAfterBaseUrlEdit,
-  settleNewAiKeyCheck,
-  type WizardForm,
-} from '@/components/ais/form';
+import { buildCreateInput, type WizardForm } from '@/components/ais/form';
 import { useAisApi } from '@/components/ais/use-ais-api';
-import { useConnectionsApi } from '@/components/connections/use-connections-api';
+import { useKeyCheck } from '@/components/connections/use-key-check';
 import { applyMachineChange } from '@/components/machines/machine-change';
 import { useMachinesApi } from '@/components/machines/use-machines-api';
 import type { SelectSheetOption } from '@/components/ui/select-sheet';
-import { AisApiError, type Connection, type PublicAi } from '@/lib/ais-api';
+import { AisApiError, type PublicAi } from '@/lib/ais-api';
 import type { Machine } from '@/lib/machines-api';
 
 import { saveOrbAvatar } from './orb-upload';
@@ -44,22 +29,6 @@ export type NewAiStep = 'provider' | 'key' | 'model' | 'setup';
 
 export type OrbParams = ReturnType<typeof orbParamsFor>;
 
-function newestConnection(connections: readonly Connection[], provider: string): Connection | null {
-  const mine = connections.filter((connection) => connection.provider === provider);
-  return mine.reduce<Connection | null>(
-    (best, next) => (best !== null && best.createdAt > next.createdAt ? best : next),
-    null,
-  );
-}
-
-/** T-1445: a pick clears Base URL/Name; OpenAI-compatible never reuses a saved key. */
-export function providerSelection(connections: readonly Connection[], provider: string) {
-  const saved = provider === 'openai-compatible' ? null : newestConnection(connections, provider);
-  const keyState =
-    saved === null ? EMPTY_KEY_STATE : { connectionId: saved.id, created: false, verified: true };
-  return { keyState, baseUrl: '', connectionName: '' };
-}
-
 /** T-1445: the flow's state and actions; the sheet and its steps stay thin. */
 export function useNewAiFlow({
   onCreated,
@@ -67,25 +36,10 @@ export function useNewAiFlow({
   onCreated: (ai: PublicAi, partialFailure: boolean) => void;
 }) {
   const { api } = useAisApi();
-  const { api: connectionsApi } = useConnectionsApi();
   const { api: machinesApi } = useMachinesApi();
 
   const [step, setStep] = useState<NewAiStep>('provider');
   const [orbOpen, setOrbOpen] = useState(false);
-  const [providerId, setProviderId] = useState<string | null>(null);
-  const [baseUrl, setBaseUrl] = useState('');
-  const [connectionName, setConnectionName] = useState('');
-  const [providerError, setProviderError] = useState('');
-  const [keyValue, setKeyValue] = useState('');
-  const [showKey, setShowKey] = useState(false);
-  const [keyState, setKeyStateState] = useState<KeyCheckState>(EMPTY_KEY_STATE);
-  const keyStateRef = useRef(keyState);
-  function setKeyState(next: KeyCheckState): void {
-    keyStateRef.current = next;
-    setKeyStateState(next);
-  }
-  const [keyMessage, setKeyMessage] = useState('');
-  const [checking, setChecking] = useState(false);
   const [name, setName] = useState('');
   const [template, setTemplate] = useState<AiTemplateId>('dev');
   const [model, setModel] = useState('');
@@ -97,30 +51,25 @@ export function useNewAiFlow({
   const [month, setMonth] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [catalog, setCatalog] = useState<AiCatalog | null>(null);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [cloud, setCloud] = useState(false);
-  const checkToken = useRef(0);
   const createRef = useRef(false);
-  const keyCheckRef = useRef(false);
-  const closedRef = useRef(false);
+
+  // The provider, the compatible fields and the key check are shared with the
+  // Connections page's Add key sheet, so the steps read `flow.keys`.
+  const keys = useKeyCheck({
+    onProviderChange: () => setModel(''),
+    onVerified: () => goToModel(),
+  });
 
   useEffect(() => {
     let active = true;
     void (async () => {
-      const [listed, catalogResult, options, machineList] = await Promise.allSettled([
-        api.listConnections(),
-        api.getAiCatalog(),
+      const [options, machineList] = await Promise.allSettled([
         api.getComputerOptions(),
         machinesApi.listMachines(),
       ]);
       if (!active) return;
-      if (listed.status === 'fulfilled') {
-        const rows = listed.value.filter((c) => c.status === 'active' && isLlmProvider(c.provider));
-        setConnections(rows);
-      }
-      if (catalogResult.status === 'fulfilled') setCatalog(catalogResult.value);
       if (options.status === 'fulfilled') setCloud(options.value.cloud);
       if (machineList.status === 'fulfilled') {
         setMachines(machineList.value.filter((machine) => machine.status === 'approved'));
@@ -128,47 +77,24 @@ export function useNewAiFlow({
     })();
     return () => {
       active = false;
-      checkToken.current += 1;
-      closedRef.current = true;
-      if (!createRef.current) void discardCreatedKey(connectionsApi, keyStateRef.current);
     };
-  }, [api, connectionsApi, machinesApi]);
+  }, [api, machinesApi]);
 
   const limits = validateLimits(day, month);
-  const choices = useMemo(() => providerChoices(catalog, connections), [catalog, connections]);
   const catalogModels = useMemo(() => {
-    const provider = catalog?.providers.find((entry) => entry.id === providerId);
+    const provider = keys.catalog?.providers.find((entry) => entry.id === keys.providerId);
     return provider?.models ?? [];
-  }, [catalog, providerId]);
+  }, [keys.catalog, keys.providerId]);
   const modelOptions: SelectSheetOption[] =
     catalogModels.length > 0
       ? catalogModels.map((entry) => ({ value: entry.id, label: entry.name }))
-      : modelSuggestionsFor(providerId ?? '').map((value) => ({ value, label: value }));
-  const isCompatible = providerId === 'openai-compatible';
+      : modelSuggestionsFor(keys.providerId ?? '').map((value) => ({ value, label: value }));
   const orbParams = orbEdited && orb !== null ? orb : orbParamsFor(name.trim() || 'ai');
-
-  function selectProvider(id: string): void {
-    // T-1445: a switch drops our old connection (verified deleted, unverified abandoned)
-    // and stales an in-flight check.
-    checkToken.current += 1;
-    setChecking(false);
-    void discardCreatedKey(connectionsApi, keyState);
-    const picked = providerSelection(connections, id);
-    setProviderId(id);
-    setProviderError('');
-    setKeyValue('');
-    setShowKey(false);
-    setKeyMessage('');
-    setModel('');
-    setBaseUrl(picked.baseUrl);
-    setConnectionName(picked.connectionName);
-    setKeyState(picked.keyState);
-  }
 
   function goToModel(): void {
     const fallback =
       (catalogModels.length > 0 ? defaultCatalogModelId(catalogModels) : '') ||
-      defaultModelFor(providerId ?? '');
+      defaultModelFor(keys.providerId ?? '');
     if (model.trim() === '' && fallback !== '') setModel(fallback);
     setStep('model');
   }
@@ -176,49 +102,11 @@ export function useNewAiFlow({
   function advance(): void {
     setError('');
     if (step === 'provider') {
-      if (providerId === null) return;
-      if (isCompatible && (baseUrl.trim() === '' || connectionName.trim() === '')) {
-        setProviderError(baseUrl.trim() === '' ? 'Enter a base URL.' : 'Enter a name.');
-        return;
-      }
-      setStep('key');
+      if (keys.continueProvider()) setStep('key');
       return;
     }
     if (step === 'key') {
-      if (keyState.verified && keyValue.trim() === '') {
-        goToModel();
-        return;
-      }
-      if (keyValue.trim() === '' || checking) {
-        setKeyMessage('Paste your key.');
-        return;
-      }
-      if (keyCheckRef.current) return;
-      keyCheckRef.current = true;
-      setChecking(true);
-      setKeyMessage('');
-      const token = checkToken.current + 1;
-      checkToken.current = token;
-      void (async () => {
-        const result = await checkKey(connectionsApi, keyCheckBaseState(keyValue, keyState), {
-          provider: providerId ?? '',
-          key: keyValue.trim(),
-          ...(connectionName.trim() === '' ? {} : { label: connectionName.trim() }),
-          ...(isCompatible ? { baseUrl: baseUrl.trim() } : {}),
-        });
-        if (!(await settleNewAiKeyCheck(connectionsApi, token, checkToken.current, result))) return;
-        setChecking(false);
-        setKeyState(result);
-        if (result.verified) {
-          setKeyValue('');
-          setShowKey(false);
-          goToModel();
-        } else {
-          setKeyMessage(result.message ?? 'Could not check the key. Try again.');
-        }
-      })().finally(() => {
-        keyCheckRef.current = false;
-      });
+      keys.continueKey();
       return;
     }
     if (step === 'model') setStep('setup');
@@ -231,7 +119,7 @@ export function useNewAiFlow({
       template,
       persona: defaultPersonaFor(template),
       personaTouched: false,
-      providerConnectionId: keyState.connectionId,
+      providerConnectionId: keys.connectionId,
       model,
     };
     const input = buildCreateInput(form, limits.limits);
@@ -242,6 +130,7 @@ export function useNewAiFlow({
       return;
     }
     createRef.current = true;
+    keys.beginCreate();
     setCreating(true);
     setError('');
     void (async () => {
@@ -253,11 +142,11 @@ export function useNewAiFlow({
         const fixed = 'Could not create the AI.';
         setError(cause instanceof AisApiError ? describeAisError(cause, fixed).message : fixed);
         // A close during the POST left the key to this create: it failed, so drop it.
-        if (closedRef.current) void discardCreatedKey(connectionsApi, keyStateRef.current);
+        keys.finishCreate(false);
         return;
       }
       // The connection is now the AI's, so closing must not delete it.
-      setKeyState(EMPTY_KEY_STATE);
+      keys.finishCreate(true);
       let partial = false;
       if (orbEdited) {
         try {
@@ -291,7 +180,7 @@ export function useNewAiFlow({
   }
 
   function goToStep(value: string): void {
-    if (checking) return;
+    if (keys.checking) return;
     if (value === 'provider' && step !== 'provider') setStep('provider');
     else if (value === 'key' && (step === 'model' || step === 'setup')) setStep('key');
     else if (value === 'model' && step === 'setup') setStep('model');
@@ -302,24 +191,17 @@ export function useNewAiFlow({
     setOrbEdited(true);
   }
 
-  // T-1445: a Base URL or Name edit drops our connection for the old endpoint and starts
-  // the key over empty; a saved key (`created: false`) is left to the user.
-  function editEndpoint(set: (value: string) => void, value: string): void {
-    set(value);
-    void discardCreatedKey(connectionsApi, keyState);
-    setKeyState(keyStateAfterBaseUrlEdit(keyState));
-  }
-
   const needsMachine = (computer === 'runner' || computer === 'auto') && machineId === null;
   const primaryDisabled =
-    checking ||
+    keys.checking ||
     creating ||
-    (step === 'provider' && providerId === null) ||
-    (step === 'key' && !keyState.verified && keyValue.trim() === '') ||
+    (step === 'provider' && keys.providerId === null) ||
+    (step === 'key' && !keys.keyVerified && keys.keyValue.trim() === '') ||
     (step === 'model' && (name.trim() === '' || model.trim() === '')) ||
     (step === 'setup' && (limits.limits === null || needsMachine));
 
   return {
+    keys,
     step,
     goToStep,
     back,
@@ -328,39 +210,18 @@ export function useNewAiFlow({
         ? creating
           ? 'Creating…'
           : 'Create AI'
-        : checking
+        : keys.checking
           ? 'Checking…'
           : 'Continue',
     primaryDisabled,
-    busy: checking || creating,
+    busy: keys.checking || creating,
     advance,
     create,
     error,
-    abandon: (): void => {
-      checkToken.current += 1;
-      closedRef.current = true;
-      if (!createRef.current) void discardCreatedKey(connectionsApi, keyStateRef.current);
-    },
+    abandon: () => keys.abandon(),
     orbOpen,
     openOrb: () => setOrbOpen(true),
     closeOrb: () => setOrbOpen(false),
-    providerChoices: choices,
-    providerId,
-    selectProvider,
-    isCompatible,
-    baseUrl,
-    setBaseUrl: (value: string) => editEndpoint(setBaseUrl, value),
-    connectionName,
-    setConnectionName: (value: string) => editEndpoint(setConnectionName, value),
-    providerError,
-    keyValue,
-    setKeyValue,
-    showKey,
-    toggleShowKey: () => setShowKey((previous) => !previous),
-    keyMessage,
-    keyPlaceholder: keyState.verified ? 'Saved key' : keyPlaceholderFor(providerId ?? ''),
-    keyPageUrl: providerId === null ? null : keyPageFor(providerId, catalog),
-    keyVerified: keyState.verified,
     name,
     setName,
     template,

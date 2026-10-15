@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import type { KeyCheckApi } from '@zilar/chat-core';
 
@@ -9,14 +9,6 @@ import {
   keyStateAfterBaseUrlEdit,
   settleNewAiKeyCheck,
 } from '@/components/ais/form';
-import type { Connection } from '@/lib/ais-api';
-
-import { providerSelection } from './use-new-ai-flow';
-
-// The hook's API clients read route params; the wizard's own logic never does.
-vi.mock('expo-router', () => ({
-  useGlobalSearchParams: () => ({}),
-}));
 
 const EMPTY = { connectionId: null, created: false, verified: false } as const;
 
@@ -160,34 +152,5 @@ describe('dropCreatedKey (T-1445)', () => {
     await dropCreatedKey(api, failed);
 
     expect(deleted).toEqual([]);
-  });
-});
-
-function connection(id: string, provider: string, createdAt: string): Connection {
-  return { id, provider, label: null, baseUrl: null, status: 'active', createdAt };
-}
-
-describe('providerSelection (T-1445)', () => {
-  it('never preselects a saved OpenAI-compatible connection', () => {
-    const connections = [connection('compat', 'openai-compatible', '2026-10-01T00:00:00.000Z')];
-
-    expect(providerSelection(connections, 'openai-compatible')).toEqual({
-      keyState: EMPTY,
-      baseUrl: '',
-      connectionName: '',
-    });
-  });
-
-  it('keeps the newest saved connection for another provider', () => {
-    const connections = [
-      connection('old', 'deepseek', '2026-09-01T00:00:00.000Z'),
-      connection('new', 'deepseek', '2026-10-01T00:00:00.000Z'),
-    ];
-
-    expect(providerSelection(connections, 'deepseek')).toEqual({
-      keyState: { connectionId: 'new', created: false, verified: true },
-      baseUrl: '',
-      connectionName: '',
-    });
   });
 });

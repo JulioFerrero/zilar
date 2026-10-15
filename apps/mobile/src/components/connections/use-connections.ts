@@ -14,7 +14,7 @@ type PageStatus = 'loading' | 'ready' | 'error';
 
 /**
  * The connections screen's state and handlers: the loaded list, the page
- * status, the Test and Remove flows and the add-form visibility.
+ * status and the Test and Remove flows.
  *
  * The state stays in React `useState` as before; each network call is an
  * Effect run by `useAction`, which writes the results back into that state.
@@ -27,7 +27,6 @@ export function useConnections() {
   const [connections, setConnections] = useState<ProviderConnection[]>([]);
   const [status, setStatus] = useState<PageStatus>('loading');
   const [errorInfo, setErrorInfo] = useState<ConnectionsErrorInfo>({ message: '' });
-  const [showForm, setShowForm] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, boolean>>({});
   const [testErrors, setTestErrors] = useState<Record<string, string>>({});
@@ -146,15 +145,12 @@ export function useConnections() {
     connections,
     status,
     errorInfo,
-    showForm,
     testingId,
     testResults,
     testErrors,
     confirmingId,
     removeError,
     busy,
-    setConnections,
-    setShowForm,
     reload,
     runTest,
     removeConnection,

@@ -6,15 +6,16 @@ import { Text } from '@/components/ui/text';
 import { TextField } from '@/components/ui/text-field';
 import { ICON, MUTED_FOREGROUND } from '@/lib/colors';
 
-import type { NewAiFlow } from './use-new-ai-flow';
+import type { KeyCheck } from '@/components/connections/use-key-check';
 
 /**
  * Step 2 (PhoneKey.dc.html): one well field with a lock, a green dot once the
  * key works, a show toggle and "Get one". A provider with a saved connection
- * starts verified, so Continue needs no typing.
+ * starts verified, so Continue needs no typing. Shared by the New AI flow and
+ * the Add key sheet.
  */
-export function KeyStep({ flow }: { flow: NewAiFlow }) {
-  const pageUrl = flow.keyPageUrl;
+export function KeyStep({ keys }: { keys: KeyCheck }) {
+  const pageUrl = keys.keyPageUrl;
   return (
     <View className="gap-2">
       <View className="flex-row items-center">
@@ -35,29 +36,29 @@ export function KeyStep({ flow }: { flow: NewAiFlow }) {
       <View className="flex-row items-center gap-2 rounded-[10px] border border-border-strong bg-well px-3">
         <Lock size={15} color={MUTED_FOREGROUND} />
         <TextField
-          value={flow.keyValue}
-          onChangeText={flow.setKeyValue}
+          value={keys.keyValue}
+          onChangeText={keys.setKeyValue}
           accessibilityLabel="API key"
-          placeholder={flow.keyPlaceholder}
-          secureTextEntry={!flow.showKey}
+          placeholder={keys.keyPlaceholder}
+          secureTextEntry={!keys.showKey}
           autoCapitalize="none"
           autoCorrect={false}
           maxLength={16384}
           className="min-w-0 flex-1 border-0 bg-transparent px-0"
         />
-        {flow.keyVerified ? <View className="h-2 w-2 rounded-full bg-online" /> : null}
+        {keys.keyVerified ? <View className="h-2 w-2 rounded-full bg-online" /> : null}
         <IconButton
-          label={flow.showKey ? 'Hide key' : 'Show key'}
+          label={keys.showKey ? 'Hide key' : 'Show key'}
           className="h-9 w-9 rounded-full"
-          onPress={flow.toggleShowKey}
+          onPress={keys.toggleShowKey}
         >
-          {flow.showKey ? <EyeOff size={16} color={ICON} /> : <Eye size={16} color={ICON} />}
+          {keys.showKey ? <EyeOff size={16} color={ICON} /> : <Eye size={16} color={ICON} />}
         </IconButton>
       </View>
 
-      {flow.keyMessage !== '' ? (
+      {keys.keyMessage !== '' ? (
         <Text accessibilityRole="alert" className="text-[13px] text-danger">
-          {flow.keyMessage}
+          {keys.keyMessage}
         </Text>
       ) : null}
     </View>

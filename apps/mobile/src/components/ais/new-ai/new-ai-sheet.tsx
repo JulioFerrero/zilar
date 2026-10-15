@@ -36,8 +36,8 @@ export function NewAiSheet({
   const capture = useRef<OrbCaptureHandle>(null);
 
   const providerLabel =
-    flow.providerChoices.find((choice) => choice.id === flow.providerId)?.label ??
-    flow.providerId ??
+    flow.keys.providerChoices.find((choice) => choice.id === flow.keys.providerId)?.label ??
+    flow.keys.providerId ??
     'Provider';
   const modelName =
     flow.modelOptions.find((option) => option.value === flow.model)?.label ?? flow.model;
@@ -47,7 +47,7 @@ export function NewAiSheet({
   const trackSteps: StepTrackStep[] = [
     {
       value: 'provider',
-      label: flow.providerId === null ? 'Provider' : providerLabel,
+      label: flow.keys.providerId === null ? 'Provider' : providerLabel,
       done: flow.step !== 'provider',
     },
     { value: 'key', label: 'Key', done: flow.step === 'model' || flow.step === 'setup' },
@@ -123,8 +123,8 @@ export function NewAiSheet({
         ) : (
           <View className="gap-4">
             <StepTrack steps={trackSteps} current={flow.step} onStepPress={flow.goToStep} />
-            {flow.step === 'provider' ? <ProviderStep flow={flow} /> : null}
-            {flow.step === 'key' ? <KeyStep flow={flow} /> : null}
+            {flow.step === 'provider' ? <ProviderStep keys={flow.keys} /> : null}
+            {flow.step === 'key' ? <KeyStep keys={flow.keys} /> : null}
             {flow.step === 'model' ? <ModelStep flow={flow} /> : null}
             {flow.step === 'setup' ? <SetupStep flow={flow} /> : null}
             {flow.error !== '' ? (
