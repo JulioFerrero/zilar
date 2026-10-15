@@ -13,10 +13,8 @@ import { StateMessage } from '@/components/ui/state-message';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { ApprovalRow } from '@/components/approvals/ApprovalRow';
 import { ApprovalsListSkeleton } from '@/components/approvals/ApprovalsListSkeleton';
-import { expiresInText } from '@/components/approvals/formatRelative';
 
 const REFRESH_INTERVAL_MS = 30_000;
-const COUNTDOWN_TICK_MS = 60_000;
 const NOTICE_TIMEOUT_MS = 3000;
 const STALE_NOTICE_TIMEOUT_MS = 5000;
 
@@ -26,7 +24,6 @@ const STALE_NOTICE_TIMEOUT_MS = 5000;
  */
 export function ApprovalsPage() {
   const navigate = useNavigate();
-  const [now, setNow] = useState<Date>(() => new Date());
   const [notice, setNotice] = useState('');
   // Requests decided in this session: a list response that was already in
   // flight when the decision landed must not bring their rows back.
@@ -51,22 +48,9 @@ export function ApprovalsPage() {
   // interval after mount; unmounting interrupts it.
   useQuery(
     () =>
-      Effect.sync(() => {
-        setNow(new Date());
-        refresh();
-      }).pipe(
+      Effect.sync(() => refresh()).pipe(
         Effect.repeat(Schedule.spaced(REFRESH_INTERVAL_MS)),
         Effect.delay(REFRESH_INTERVAL_MS),
-      ),
-    [],
-  );
-  // Also tick `now` every minute so the "expires in" countdown updates
-  // without a full reload.
-  useQuery(
-    () =>
-      Effect.sync(() => setNow(new Date())).pipe(
-        Effect.repeat(Schedule.spaced(COUNTDOWN_TICK_MS)),
-        Effect.delay(COUNTDOWN_TICK_MS),
       ),
     [],
   );
@@ -116,12 +100,11 @@ export function ApprovalsPage() {
               </Button>
             </div>
 
-            <ul className="flex flex-col gap-2">
+            <ul className="divide-y divide-divider overflow-hidden rounded-[12px] border border-divider bg-surface">
               {ordered.map((approval) => (
                 <li key={approval.id}>
                   <PendingApproval
                     approval={approval}
-                    now={now}
                     onDecided={markDecided}
                     onNotice={showNotice}
                   />
@@ -173,12 +156,10 @@ export function ApprovalsPage() {
 /** One pending request. Each row runs its own decision, so two rows can be decided at once. */
 function PendingApproval({
   approval,
-  now,
   onDecided,
   onNotice,
 }: {
   approval: PublicApproval;
-  now: Date;
   onDecided: (id: string) => void;
   onNotice: (message: string, durationMs: number) => void;
 }) {
@@ -217,7 +198,6 @@ function PendingApproval({
   return (
     <ApprovalRow
       approval={approval}
-      expiresIn={expiresInText(approval.expiresAt, now)}
       busy={busy}
       actionError={failure === undefined ? '' : decisionMessage(failure)}
       onApprove={() => start('approve')}

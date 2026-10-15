@@ -6,7 +6,8 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 
 **Order:**
 - **0. Running:**
-  - T-1499 (web approvals, simpler) is in pre-review;
+  - **Julio, 10-15 midday:** "you can use all the workers you like", so up to 8 workers, at most 3 mobile;
+  - T-1499 (web approvals, simpler) merged, checked headless;
   - T-1500 merged: the plan is in `docs/audit/ai-work-plan.md` (8 steps; the lead's decisions are in its Review). Next is its T1, the server read model;
   - T-1501 (web sticker upload keeps motion; the New pack grid follows) and T-1502 (the Telegram importer keeps video stickers) are coding.
 - **1. Web and server, while Julio is at the PC (2 workers at a time):**

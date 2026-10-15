@@ -1,4 +1,4 @@
-import { Plus, Search, Settings } from 'lucide-react';
+import { Check, Plus, Search, Settings } from 'lucide-react';
 import { IconButton } from './icon-button';
 
 export default {
@@ -30,6 +30,11 @@ export default {
   Disabled: (
     <IconButton aria-label="Disabled" disabled>
       <Plus size={18} />
+    </IconButton>
+  ),
+  Primary: (
+    <IconButton aria-label="Approve" variant="primary">
+      <Check size={18} />
     </IconButton>
   ),
 };

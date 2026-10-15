@@ -1,11 +1,11 @@
-import { ShieldAlert } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import type { PublicApproval } from '@/lib/api';
-import { Button, FieldError } from '@/components/ais/AiPageShell';
-import { worstCaseText } from './formatRelative';
+import { FieldError } from '@/components/ais/AiPageShell';
+import { Avatar } from '@/components/Avatar';
+import { IconButton } from '@/components/ui/icon-button';
 
 interface ApprovalRowProps {
   approval: PublicApproval;
-  expiresIn: string;
   busy: null | 'approve' | 'deny';
   actionError: string;
   onApprove: () => void;
@@ -13,70 +13,44 @@ interface ApprovalRowProps {
 }
 
 /**
- * A pending approval in the inbox: action name, summary, optional details and
- * worst case, the relative expiry, and Approve / Deny. No "always allow".
+ * A pending approval in the inbox: the AI's picture, the summary and
+ * "AI · chat", then Deny and Approve as icon keys. No "always allow".
  */
-export function ApprovalRow({
-  approval,
-  expiresIn,
-  busy,
-  actionError,
-  onApprove,
-  onDeny,
-}: ApprovalRowProps) {
+export function ApprovalRow({ approval, busy, actionError, onApprove, onDeny }: ApprovalRowProps) {
   const disableButtons = busy !== null;
-  const cost = worstCaseText(approval.worstCase);
+  const where =
+    approval.groupName === null ? approval.aiName : `${approval.aiName} · ${approval.groupName}`;
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-divider bg-surface p-4">
-      <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-1 basis-40 items-center gap-2">
-          <ShieldAlert className="size-4 shrink-0 text-accent" aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate text-[16px] font-semibold">
-            {approval.action}
-          </span>
+    <div className="flex flex-col">
+      <div className="flex items-center gap-3.5 px-4 py-3.5">
+        <Avatar seed={approval.aiName} name={approval.aiName} size={32} />
+        <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+          <span className="truncate text-[15px] font-medium">{approval.summary}</span>
+          {where !== '' && (
+            <span className="truncate text-[13px] text-muted-foreground">{where}</span>
+          )}
         </div>
-        <span className="shrink-0 rounded-full bg-badge-muted px-2 py-0.5 text-[11px] text-foreground">
-          pending
-        </span>
-      </div>
-
-      <p className="text-[14px] leading-5 break-words">{approval.summary}</p>
-
-      {approval.details !== null && (
-        <p className="text-[13px] leading-5 text-muted-foreground break-words">
-          {approval.details}
-        </p>
-      )}
-
-      {cost !== '' && <p className="text-[13px] text-muted-foreground">{cost}</p>}
-
-      <p className="text-[13px] text-muted-foreground">expires {expiresIn}</p>
-
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          className="px-3"
-          disabled={disableButtons}
-          onClick={onApprove}
-          aria-label={`Approve ${approval.action}`}
-        >
-          {busy === 'approve' ? 'Approving…' : 'Approve'}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="px-3"
+        <IconButton
+          aria-label={`Deny: ${approval.summary}`}
           disabled={disableButtons}
           onClick={onDeny}
-          aria-label={`Deny ${approval.action}`}
         >
-          {busy === 'deny' ? 'Denying…' : 'Deny'}
-        </Button>
+          <X size={16} />
+        </IconButton>
+        <IconButton
+          variant="primary"
+          aria-label={`Approve: ${approval.summary}`}
+          disabled={disableButtons}
+          onClick={onApprove}
+        >
+          <Check size={16} />
+        </IconButton>
       </div>
-
-      {actionError !== '' && <FieldError>{actionError}</FieldError>}
+      {actionError !== '' && (
+        <div className="px-4 pb-3.5">
+          <FieldError>{actionError}</FieldError>
+        </div>
+      )}
     </div>
   );
 }
