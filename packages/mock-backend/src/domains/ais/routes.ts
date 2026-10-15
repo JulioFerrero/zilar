@@ -7,6 +7,7 @@
 import type { AiCatalog, PublicAi } from '@zilar/api-contract';
 import { isAiTemplate, readAiLimits } from './seed';
 import type { MockData } from '../../state';
+import { addChat } from '../directory/groups';
 import {
   badRequest,
   conflict,
@@ -106,6 +107,7 @@ function createAi(data: MockData, request: MockHttpRequest): Response {
     createdAt: new Date().toISOString(),
   };
   data.putAi(created);
+  addChat(data, { kind: 'dm', chatJid: created.jid, title: created.name, isAi: true });
   return jsonResponse(created, 201);
 }
 

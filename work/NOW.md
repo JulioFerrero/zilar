@@ -56,8 +56,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - The lead restarted the autopilot at 04:07 on the new code.
   - The old one ignored SIGTERM through the pnpm wrapper, so the lead stopped it from the inner node process outward. Exactly one runs, with no errors.
 - **400-line rule:** every source file is now at or under 400 lines except `packages/devtools/src/lead/autopilot.ts` (671), left for a daytime session.
+- **Then:** T-1469: web New AI and Add key delete the key the dialog created when closed before Create or Save (the lead's rule; after Create or Save, the key is kept).
 - **Running:**
-  - T-1445: mobile New AI. The latest round adds double-tap guards on Create and Continue and resets after a failed check. Then the lead's phone walk.
+  - **T-1445: mobile New AI.** The phone walk passed every step:
+    - the footer, the provider dots and the keyboard-safe key step;
+    - the orb by name, Setup, and Machine needing a machine.
+  - **What is left:**
+    - after Create, the new chat opened on "Chat not found", because the chat wasn't added to the store as web does. The fix is sent.
+    - one capture-timeout guard.
+  - Then the lead re-runs the create on the emulator and merges.
 - **Next:** `main.ts` after `app.ts` deploys cleanly, then the mobile Connections add-key sheet after T-1445.
 - **New canvas for Julio: "Connections"**, https://claude.ai/artifact/FVDHKSMiJaWvjxXx5sa8on. Web and phone, lean:
   - no subtitle and no duplicate heading; "Add key" is the page's primary;
