@@ -20,6 +20,7 @@ import { MediaViewerProvider } from '@/components/media/MediaViewer';
 import { SelectionBar } from '@/components/SelectionBar';
 import { PinnedBanner } from '@/components/PinnedBanner';
 import { PinsPanel } from '@/components/PinsPanel';
+import { StepsPanel } from '@/components/StepsPanel';
 import { TopicPanel } from '@/components/TopicPanel';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { runWeb } from '@/lib/effect/runtime';
@@ -57,7 +58,7 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
   const storedPinsPanel = useChatSelector((s) => s.pinsPanel);
   const chats = useChatSelector((s) => s.chats);
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [panel, setPanel] = useState<OpenPanel | undefined>(() =>
     initialPanel(searchParams.get('panel'), chat),
   );
@@ -216,6 +217,24 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
 
   const notice = topicNotice?.chatId === chat.id ? topicNotice : undefined;
   const pinsPanel = storedPinsPanel?.chatId === chat.id ? storedPinsPanel : undefined;
+  // T-1535: the Steps panel opens only for a card in this chat; a leftover or
+  // bad `steps` param mounts nothing and is dropped. Close keeps the rest.
+  const stepsTaskId = searchParams.get('steps');
+  const stepsCard = useChatSelector((state) =>
+    state.messagesByChat[chat.id]?.some(
+      (message) => message.card?.type === 'progress' && message.card.data.task_id === stepsTaskId,
+    ),
+  );
+  const closeSteps = useCallback((): void => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('steps');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+  useEffect(() => {
+    if (stepsTaskId !== null && stepsCard === false) {
+      closeSteps();
+    }
+  }, [stepsTaskId, stepsCard, closeSteps]);
 
   // T-1249: the group panel opens for every group, topics included. A topic
   // row is not the group's chat, so hand the panel the group's General topic
@@ -357,6 +376,9 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
         )}
         {pinsPanel !== undefined && (
           <PinsPanel chatId={chat.id} onClose={() => storeApi.getState().setPinsPanel(undefined)} />
+        )}
+        {stepsTaskId !== null && stepsCard === true && (
+          <StepsPanel chatId={chat.id} taskId={stepsTaskId} onClose={closeSteps} />
         )}
         {mediaOpen && <ChatMediaPanel chatId={chat.id} onClose={() => setMediaOpen(false)} />}
         {forwarding !== null && (

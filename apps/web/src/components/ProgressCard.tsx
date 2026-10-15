@@ -1,8 +1,9 @@
 import type { Progress, ProgressStep } from '@zilar/protocol';
-import { Check, Circle, CircleAlert, LoaderCircle, Square, X } from 'lucide-react';
+import { Check, ChevronRight, Circle, CircleAlert, LoaderCircle, Square, X } from 'lucide-react';
 import { Effect, Fiber, Schedule } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router';
 import { listAis, stopAiTurn } from '@/lib/api/ais';
 import { fromApi } from '@/lib/effect/api-effect';
 import { useQuery } from '@/lib/effect/use-query';
@@ -160,6 +161,21 @@ export function ProgressCard({ progress }: { progress: Progress }) {
     });
   };
 
+  // T-1535: a finished card whose AI is the viewer's own opens the Steps panel.
+  // The panel's task id rides the URL, so it survives a reload and needs no
+  // store state.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const canViewSteps =
+    progress.task_id !== undefined && !isLive(progress.state) && ownedAi !== null;
+  const viewSteps = (): void => {
+    if (progress.task_id === undefined) {
+      return;
+    }
+    const next = new URLSearchParams(searchParams);
+    next.set('steps', progress.task_id);
+    setSearchParams(next, { replace: true });
+  };
+
   const header = (
     <>
       <StateIcon state={progress.state} reduceMotion={reduceMotion} />
@@ -228,6 +244,17 @@ export function ProgressCard({ progress }: { progress: Progress }) {
             <p className="mt-1 text-[13px] text-muted-foreground">{progress.detail}</p>
           )}
         </>
+      )}
+
+      {canViewSteps && (
+        <button
+          type="button"
+          onClick={viewSteps}
+          className="mt-2 flex w-full items-center gap-1.5 border-t border-divider pt-2 text-left text-[13px] font-medium"
+        >
+          <span className="min-w-0 flex-1">View steps</span>
+          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </button>
       )}
     </div>
   );
