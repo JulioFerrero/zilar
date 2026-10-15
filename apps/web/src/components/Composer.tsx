@@ -348,6 +348,7 @@ export function Composer({
     }
     if (event.key === 'Escape' && replyTo !== undefined) {
       event.preventDefault();
+      event.stopPropagation();
       onCancelReply();
       return;
     }

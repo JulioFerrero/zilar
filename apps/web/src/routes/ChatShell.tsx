@@ -37,6 +37,11 @@ export function ChatShell() {
       if (event.key !== 'Escape' || chatId === undefined) {
         return;
       }
+      // An Escape a dialog, menu or the composer already handled never closes
+      // the chat too.
+      if (event.defaultPrevented) {
+        return;
+      }
       if (isWide && searchOpen) {
         return;
       }

@@ -89,15 +89,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - Every source file is now under 400 lines. The only files over are three test harnesses (exempt) and the `apps/mobile/src/lib/emoji-data.ts` data table (435).
   - The move is line-exact, and all 46 lead tests pass.
   - The lead restarted the autopilot at 07:27, inner node process first. Exactly one runs, ticking with no errors.
-- **Running: T-1482.** Reply and Edit focus the composer on mobile and web.
+- **T-1482, why:** Reply and Edit should focus the composer on mobile and web.
   - The emulator showed Reply leaving the composer unfocused, so typed text went nowhere until the user tapped the field.
   - Web leaves focus on the body, which a touch user can't type into.
 - **T-1483:** a group header never shows more online than members.
   - Mobile showed "QA squad › General, 2 members, 3 online": the AI counts as online but not as a member.
   - The fix applies the store's `max(members, online)` rule inside the shared `chatSubtitle`.
-- **T-1482 status:** Reply focus works on both apps, and Edit focus works on web with the caret at the end. On mobile, Edit left the caret at the start, so fix round 1 is out.
-- **Merged: T-1483.** The function was checked from the worktree; the emulator check comes with the next main APK.
-- **Specced, to launch after T-1482: T-1484.** On web, one Escape while replying cancels the reply *and* closes the chat (an existing bug on main). The fix makes the first Escape cancel the reply only.
+- **Merged: T-1482.** Reply and Edit focus the composer on both apps. Edit puts the caret at the end; fix round 1 corrected mobile, which had it at the start. Checked on the emulator and headless.
+- **Merged: T-1483.** The function was checked from the worktree; the emulator check runs on the main APK being built.
+- **Running: T-1484.** On web, one Escape while replying cancels the reply *and* closes the chat (an existing bug on main). The fix makes the first Escape cancel the reply only.
 - **Mobile interaction walk (emulator, mock):** send, reply with quote, the 👍 reaction and the @mention picker work. Two bugs found: T-1482 and T-1483.
 - **Web interaction walk (headless, mock, 1280 px):** send, reply, edit and New group all work, and the sent chat moves to the top of the list. 0 errors.
 - **Web sweep (lead, headless, mock, 390 and 1280 px, 23 routes):** no page overflows and no console errors after T-1477. Found and fixed: T-1477, T-1478, T-1479, T-1480.
