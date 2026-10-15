@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { findOwnedAi } from '../ais/service';
+import { invalidateTopicFollow } from '../agents/gateway/topic-follow';
 import { deleteRoomMemoryEffect } from '../agents/memory/store';
 import { revokeActiveRulesForAiInGroupEffect } from '../approvals/rules';
 import type { ServerDatabase } from '../db/client';
@@ -184,6 +185,9 @@ export async function removeGroupAi(
     throw new HttpError(404, 'not_found', 'That AI is not in this group');
   }
 
+  // T-1455: the topic rooms read inside the transaction, kept after the commit
+  // so each room's own follow cache can be dropped once the AI is gone.
+  let topicRows: ReadonlyArray<{ id: string; roomLocalpart: string }> = [];
   try {
     await runSql(
       db,
@@ -201,13 +205,17 @@ export async function removeGroupAi(
             // of that group. The rows are deleted in the same transaction as the
             // rules/tools cleanup below; every non-General topic room is re-synced
             // after the commit (the gateway leaves through the same event).
-            const topicRows = yield* sql<{ id: string; roomLocalpart: string }>`SELECT id,
+            topicRows = yield* sql<{ id: string; roomLocalpart: string }>`SELECT id,
               room_localpart FROM topics WHERE group_id = ${input.groupId}`;
             const topicIds = topicRows.map((row) => row.id);
             if (topicIds.length > 0) {
               yield* sql`DELETE FROM topic_ais
                 WHERE topic_id IN ${sql.in(topicIds)} AND ai_id = ${input.aiId}`;
             }
+            // T-1455: the removed AI stops owning any topic of the group,
+            // General included, so no owner chip names an AI that is gone.
+            yield* sql`UPDATE topics SET owner_ai_id = NULL, updated_at = now()
+              WHERE group_id = ${input.groupId} AND owner_ai_id = ${input.aiId}`;
             // T-0099: an "always" rule tied to this (AI, group) pair must
             // die with the membership. Personal rules and other-group rules
             // are unaffected. `now` is the same timestamp the admin client
@@ -245,6 +253,12 @@ export async function removeGroupAi(
     );
   } catch (error) {
     throw mapXmppError(error);
+  }
+
+  // T-1455: every room whose owner AI was just removed drops its cached owner,
+  // so a plain message cannot still wake the ex-owner within the cache window.
+  for (const topic of topicRows) {
+    invalidateTopicFollow(topic.roomLocalpart);
   }
 
   // Every topic room of the group where the AI had a row loses it. Best

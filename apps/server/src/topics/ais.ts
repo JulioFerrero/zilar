@@ -1,5 +1,6 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import { invalidateTopicFollow } from '../agents/gateway/topic-follow';
 import { deleteRoomMemoryEffect } from '../agents/memory/store';
 import { revokeActiveRulesForAiInTopic } from '../approvals/rules';
 import { runSql } from '../effect/sql';
@@ -145,10 +146,18 @@ export async function removeTopicAi(
     deps.db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql`
+      yield* sql`
         DELETE FROM topic_ais WHERE topic_id = ${topic.id} AND ai_id = ${aiId}`;
+      // T-1455: a removed AI stops owning the topic, so the owner chip never
+      // names an AI that is no longer there.
+      yield* sql`
+        UPDATE topics SET owner_ai_id = NULL, updated_at = now()
+        WHERE id = ${topic.id} AND owner_ai_id = ${aiId}`;
     }),
   );
+  // T-1448/T-1455: the owner changed, so drop the room's cached follow lookup
+  // instead of letting a plain message wake the ex-owner for up to 15 s.
+  invalidateTopicFollow(topic.roomLocalpart);
   // T-0110: removing the AI from the topic revokes its rules and deletes
   // its tools in that topic. Personal-chat rows are unaffected.
   const now = new Date();

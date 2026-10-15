@@ -1467,3 +1467,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1448](T-1448-ai-follows-owned-topic.md) | An AI that owns a topic follows it until reassigned or Stop | 2026-10-15 |
 | [T-1454](T-1454-web-add-key-dialog.md) | Web Connections adds keys with the New AI provider and key steps | 2026-10-15 |
 | [T-1457](T-1457-split-server-config.md) | Split server config.ts into config/ modules; ais/api under 400 | 2026-10-15 |
+| [T-1455](T-1455-clear-removed-ai-owner.md) | Removing an AI clears it as topic owner | 2026-10-15 |
