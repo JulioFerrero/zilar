@@ -1605,3 +1605,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1590](T-1590-landing-serves-installer.md) | Landing app serves the installer on get.zilar.app | 2026-10-15 |
 | [T-1592](T-1592-coolify-template.md) | Coolify one-click template with AI computer services | 2026-10-15 |
 | [T-1593](T-1593-installer-coolify-template-path.md) | Installer points Coolify users to the template; --desks-host | 2026-10-15 |
+| [T-1595](T-1595-android-release-setup-fix.md) | Android release installs only platform-tools | 2026-10-15 |

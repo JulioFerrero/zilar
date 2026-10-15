@@ -105,8 +105,18 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - the desk services weren't created, since the profile is honoured;
     - `/health` 200, `/api/me` 401, `/` 200, WebSocket 101 and `/xmpp-ws/api` 404, over a real Let's Encrypt certificate; 0 server errors;
     - the service, its volumes and the project are deleted.
-  - **T-1591** stays parked: the API mode it extended is being removed. Delete its worktree and branch after T-1593 merges.
-  - **Running:** T-1593 (the installer's Coolify branch and `--desks-host`).
+  - **T-1593 merged:**
+    - when Coolify is found, the installer points to the template;
+    - `--desks-host` does the AI computer host prep and prints the 4 variables;
+    - the API mode is removed;
+    - 57 install tests pass.
+  - **T-1591 deleted** (worktree and local branch; it was never pushed; its last commit `fe790478b` is in the reflog).
+  - **v0.2.0 tagged and pushed** on `b5ce1c272` (main's CI green).
+    - **The images run succeeded:** all six, and `zilar-{server,web,desk,desk-agent}:v0.2.0` answer an anonymous pull with 200. The GitHub tags API lists v0.2.0 first, so the one-liner's default is now v0.2.0, and that tag has `deploy/lib/preflight.sh`.
+    - **The Android release failed** at `setup-android@v3` (run 38788684166): the runner's cmdline-tools 16.0 has no `tools` package. **T-1595** sets `packages: 'platform-tools'`. Then `gh workflow run android-release.yml --ref main -f tag=v0.2.0`.
+  - **T-1594: the Coolify catalog demo is draft PR #1,** https://github.com/JulioFerrero/zilar/pull/1 (branch `task/T-1594-coolify-catalog-demo-pr`, task status `blocked`, never merge).
+    - **Contents:** the pinned `v0.2.0` template, the logo, the coolify-docs page and both PR texts.
+    - **Before a real submission (1,000 stars needed):** deploy that exact pinned file once.
   - **Julio OK'd tagging v0.2.0** after T-1593 merges.
   - **Coolify catalog:** upstream needs **1,000 GitHub stars**, and Zilar has 0. So **T-1594** builds a demo of both upstream PRs (template plus required docs page) under `deploy/coolify/catalog/`. The lead opens it as a **draft PR in our repo, never merged**, per Julio.
   - **Still before users can use the one-liner by default:** the rehearsal (now the template in a scratch project, no token), then tag v0.2.0 (Julio OK'd after the rehearsal). The latest tag, v0.1.13, has no `preflight.sh`, so until then use `--version main`.
