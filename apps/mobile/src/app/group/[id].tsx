@@ -8,21 +8,14 @@ import { RequireAuth } from '@/auth/RequireAuth';
 import { ChannelScreen } from '@/components/chat/channel-screen';
 import { groupAction, rawCall } from '@/components/chat/group-action';
 import { GroupHeader } from '@/components/chat/group-header';
-import { useGroupManage } from '@/components/chat/group-manage-section';
-import { GroupRolesSheet } from '@/components/chat/group-roles-sheet';
 import { GroupTopicList } from '@/components/chat/group-topic-list';
-import { InviteLinksSheet } from '@/components/chat/invite-links-sheet';
 import { NewTopicSheet } from '@/components/chat/new-topic-sheet';
 import {
   TopicActionsSheet,
   type TopicPrefAction,
   type TopicSheetAction,
 } from '@/components/chat/topic-sheets';
-import { useGroupInviteLinks } from '@/components/chat/use-group-invite-links';
 import { useGroupNewTopic } from '@/components/chat/use-group-new-topic';
-import { useGroupRoles } from '@/components/chat/use-group-roles';
-import { useGroupVisibility } from '@/components/chat/use-group-visibility';
-import { mayChangeVisibility, VisibilitySheet } from '@/components/chat/visibility-sheet';
 import { Text } from '@/components/ui/text';
 import { mutedUntilFor } from '@/lib/chat-prefs';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
@@ -99,30 +92,12 @@ function GroupTopics() {
     () => groupAis.filter((ai) => ownedAis.some((owned) => owned.id === ai.aiId)),
     [groupAis, ownedAis],
   );
-  const canManageLinks = useMemo(
-    () =>
-      members.some(
-        (member) =>
-          member.userId === currentUserId && (member.role === 'owner' || member.role === 'admin'),
-      ),
-    [members, currentUserId],
-  );
   const canCreate = mayCreateTopic({
     members,
     meUserId: currentUserId,
     membersCanCreateTopics: groupDetail?.membersCanCreateTopics === true,
   });
-  const myRole = members.find((member) => member.userId === currentUserId)?.role;
-  const canChangeVisibility = mayChangeVisibility(myRole);
 
-  // T-1251: the members-and-roles sheet's manage section (Leave, Make owner,
-  // Delete group). The wiring lives in `useGroupManage` to keep this screen
-  // under the 400-line limit.
-  const manage = useGroupManage({ groupId, groupChatId, isOwner: myRole === 'owner' });
-
-  const roles = useGroupRoles(groupId, members);
-  const links = useGroupInviteLinks(groupId);
-  const visibility = useGroupVisibility(groupId);
   const newTopic = useGroupNewTopic({ groupChatId, myAis: myAisInGroup });
 
   // T-1289/MUX-29: the "+" menu's New topic picker lands here with
@@ -233,13 +208,8 @@ function GroupTopics() {
               : members.length) + groupAis.length,
           topicCount: activeTopics.length,
         })}
-        canManageLinks={canManageLinks}
-        canChangeVisibility={canChangeVisibility}
         onBack={() => goBackOrHome(router)}
         onOpenInfo={() => router.push({ pathname: '/group-info/[id]', params: { id: groupId } })}
-        onOpenLinks={links.open}
-        onOpenVisibility={visibility.open}
-        onOpenRoles={roles.open}
       />
 
       {notice !== undefined ? (
@@ -303,60 +273,6 @@ function GroupTopics() {
         error={newTopic.error}
         onCreate={newTopic.create}
         onClose={newTopic.close}
-      />
-      <InviteLinksSheet
-        visible={links.visible}
-        links={links.links}
-        busy={links.busy}
-        error={links.error}
-        createdUrl={links.createdUrl}
-        revokingId={links.revokingId}
-        now={links.now}
-        share={links.share}
-        onCreate={links.create}
-        onRevoke={links.revoke}
-        onDismissCreated={links.dismissCreated}
-        onClose={links.close}
-      />
-      <GroupRolesSheet
-        visible={roles.visible}
-        groupTitle={groupTitle}
-        members={roles.members}
-        roles={roles.roles}
-        rolesError={roles.loadError}
-        isManager={roles.isManager}
-        busy={roles.busy}
-        error={roles.error}
-        onRetryRoles={roles.retry}
-        onCreateRole={roles.createRole}
-        onRenameRole={roles.renameRole}
-        onDeleteRole={roles.deleteRole}
-        onToggleMember={roles.toggleMember}
-        onClose={() => {
-          if (!manage.busy) {
-            roles.close();
-          }
-        }}
-        manage={manage}
-      />
-      <VisibilitySheet
-        visible={visibility.visible}
-        groupTitle={groupTitle}
-        visibility={visibility.truth?.visibility ?? 'private'}
-        handle={visibility.truth?.handle ?? null}
-        live={{ picked: visibility.picked, typed: visibility.typed }}
-        busy={visibility.busy}
-        checking={visibility.checking}
-        check={visibility.check}
-        error={visibility.error}
-        saved={visibility.saved}
-        confirmingPrivate={visibility.confirmingPrivate}
-        share={links.share}
-        onPick={visibility.pick}
-        onHandleChange={visibility.changeHandle}
-        onSave={visibility.save}
-        onCancelPrivate={visibility.cancelPrivate}
-        onClose={visibility.close}
       />
     </SafeAreaView>
   );

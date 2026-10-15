@@ -1,6 +1,6 @@
 import { Effect, Exit, Schema, SchemaGetter } from 'effect';
 import { struct } from '@zilar/protocol';
-import { ChatLastMessage, GroupBackground } from '@zilar/api-contract';
+import { ChatLastMessage, GroupBackground, GroupListener } from '@zilar/api-contract';
 
 import type { ChatEntry, GroupAi, GroupDetail, GroupMember, Me, XmppToken } from './chat-api';
 import { parseTopic } from './topics-api';
@@ -143,6 +143,11 @@ const GroupDetailRawSchema = struct({
   createdBy: Schema.String,
   members: Schema.mutable(Schema.Array(GroupMemberRawSchema)),
   membersCanCreateTopics: LenientSwitchSchema,
+  // T-1574: the group's picture (relative `/api/avatars/<id>` path) and its
+  // AI-listener settings. Both are absent on older servers, like web's
+  // contract detail; the parsed detail then matches the contract type.
+  avatarUrl: Schema.optional(Schema.String),
+  listener: Schema.optional(GroupListener),
   // T-0144: absent on older servers (treated as a group); malformed channel
   // fields reject the detail rather than rendering half of it.
   kind: Schema.optional(Schema.Literals(['group', 'channel'])),
@@ -269,6 +274,8 @@ export function parseGroupDetail(value: unknown): GroupDetail | null {
     ...(raw.membersCanCreateTopics === undefined
       ? {}
       : { membersCanCreateTopics: raw.membersCanCreateTopics }),
+    ...(raw.avatarUrl === undefined ? {} : { avatarUrl: raw.avatarUrl }),
+    ...(raw.listener === undefined ? {} : { listener: raw.listener }),
     ...(raw.kind === undefined ? {} : { kind: raw.kind }),
     ...(raw.description === undefined ? {} : { description: raw.description }),
   };

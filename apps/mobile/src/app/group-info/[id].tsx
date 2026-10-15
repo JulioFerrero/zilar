@@ -20,6 +20,7 @@ import {
 } from '@/components/group-info/group-info-pages';
 import { MembersPage } from '@/components/group-info/members-page';
 import { GroupInfoRoot } from '@/components/group-info/root-page';
+import { SettingsPage } from '@/components/group-info/settings-page';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
@@ -107,6 +108,12 @@ function GroupInfo() {
   };
 
   const openSettings = () => {
+    if (isManager) {
+      setPage('settings');
+    }
+  };
+
+  const openVisibility = () => {
     if (isOwner) {
       visibility.open();
     }
@@ -192,6 +199,18 @@ function GroupInfo() {
     onBack: closePage,
   };
 
+  const settingsProps: ComponentProps<typeof SettingsPage> = {
+    groupId,
+    title: groupTitle,
+    avatarUrl: groupDetail?.avatarUrl,
+    membersCanCreateTopics: groupDetail?.membersCanCreateTopics === true,
+    listener: groupDetail?.listener,
+    isManager,
+    isOwner,
+    onBack: closePage,
+    onOpenVisibility: openVisibility,
+  };
+
   return (
     <>
       <GroupInfoPages
@@ -203,6 +222,7 @@ function GroupInfo() {
         rules={groupRules}
         root={rootProps}
         members={membersProps}
+        settings={settingsProps}
       />
 
       <ActionSheet

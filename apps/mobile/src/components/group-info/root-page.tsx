@@ -64,7 +64,8 @@ const memberLabel = (count: number): string => `${count} ${count === 1 ? 'member
  * view: the route mounts the sheets and owns the writes. T-1569 adds the AIs
  * row and disables the keys until the group's own chat row is loaded; T-1573
  * adds the Content group (Shared media, Pinned messages, Tools and routines,
- * and Activity and Always allowed for managers).
+ * and Activity and Always allowed for managers); T-1574 shows the Settings row
+ * to managers, like web.
  */
 export function GroupInfoRoot({
   groupChatId,
@@ -157,7 +158,11 @@ export function GroupInfoRoot({
             ) : null}
           </InfoRowGroup>
 
-          {isOwner ? (
+          {/* T-1574: the Settings row is for managers, like web
+              (`GroupInfoRoot.tsx:265`). Each control inside keeps its own
+              rule: picture and switches for managers, visibility for the
+              owner. */}
+          {isManager ? (
             <InfoRowGroup>
               <InfoRow icon={Settings} label="Settings" onPress={onOpenSettings} />
             </InfoRowGroup>

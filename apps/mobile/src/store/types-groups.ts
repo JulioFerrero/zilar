@@ -1,3 +1,4 @@
+import type { PatchGroupPayload } from '@zilar/api-contract';
 import type { MentionMember } from '@zilar/chat-core';
 
 import type { GroupDetail } from '../lib/chat-api';
@@ -149,6 +150,14 @@ export interface ChatStoreGroups {
    * Rejects on failure.
    */
   deleteGroup: (groupId: string) => Promise<void>;
+  /**
+   * Patches a group's settings (T-1574): "Members can create topics" and the
+   * AI listener/eagerness, over `groups.patch`. Callers pass only the keys
+   * they set. The detail is reloaded so the settings page repaints with
+   * server truth, and the chat list refreshes. Owners/admins only, enforced
+   * by the server. Rejects on failure.
+   */
+  patchGroupSettings: (groupId: string, patch: PatchGroupPayload) => Promise<void>;
   /**
    * Adds people to a group (T-1569): the detail is reloaded so the members
    * page repaints with server truth, and the chat list refreshes.

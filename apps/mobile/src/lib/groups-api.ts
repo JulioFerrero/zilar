@@ -1,4 +1,4 @@
-import { ApiError, runApi } from '@zilar/api-contract';
+import { ApiError, omitUndefined, runApi, type PatchGroupPayload } from '@zilar/api-contract';
 
 import { API_URL } from './auth';
 import type { GroupMember, TokenProvider } from './chat-api';
@@ -76,6 +76,13 @@ export interface GroupsApi {
    * room is destroyed. Rejects on failure.
    */
   deleteGroup(groupId: string): Promise<void>;
+  /**
+   * Patches a group's settings (T-1574): "Members can create topics", the AI
+   * listener and eagerness, over `PATCH /api/groups/:id`. Callers send only
+   * the keys they set; the payload drops the undefined ones so an untouched
+   * field is never cleared. Rejects on failure.
+   */
+  patchGroupSettings(groupId: string, patch: PatchGroupPayload): Promise<void>;
 }
 
 /** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
@@ -157,6 +164,12 @@ export function createGroupsApi(
     // T-1243: the route answers 204 with no body.
     deleteGroup: async (groupId) => {
       await runApi(client.groups.deleteGroup({ params: { id: groupId } }));
+    },
+    // T-1574: only the keys the caller set go over the wire (`omitUndefined`),
+    // so a patch of one setting never clears another; the fresh detail the
+    // route answers is dropped, the store reloads it.
+    patchGroupSettings: async (groupId, patch) => {
+      await runApi(client.groups.patch({ params: { id: groupId }, payload: omitUndefined(patch) }));
     },
   };
 }

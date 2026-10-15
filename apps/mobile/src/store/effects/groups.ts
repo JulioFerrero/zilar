@@ -17,6 +17,7 @@ import {
   makeGroupMembershipActions,
   type GroupMembershipActions,
 } from './group-membership-actions';
+import { makeGroupSettingsActions, type GroupSettingsActions } from './group-settings-actions';
 import { Ports } from './ports';
 import { failAfter, lift, orElse, type StoreCtx } from './runtime';
 
@@ -59,7 +60,7 @@ export type GroupActions = Pick<
 >;
 
 export interface Groups {
-  readonly actions: GroupActions & GroupMembershipActions;
+  readonly actions: GroupActions & GroupMembershipActions & GroupSettingsActions;
   /** Loads the detail of a group once; `force` reloads it. A load in flight serves every caller. */
   ensureGroupDetail(groupId: string, force?: boolean): Effect.Effect<void, never, Ports>;
   /** The member names of a chat's group, from the shared detail load. */
@@ -268,7 +269,7 @@ export function makeGroups(ctx: StoreCtx): Groups {
       () => refreshQuietly,
     );
 
-  const actions: GroupActions & GroupMembershipActions = {
+  const actions: GroupActions & GroupMembershipActions & GroupSettingsActions = {
     ...makeGroupActions(ctx, {
       groupDetails,
       groupRolesById,
@@ -284,6 +285,7 @@ export function makeGroups(ctx: StoreCtx): Groups {
       removeTopicMemberEffect,
     }),
     ...makeGroupMembershipActions(ctx, { ensureGroupDetail, refreshQuietly }),
+    ...makeGroupSettingsActions(ctx, { ensureGroupDetail, refreshQuietly }),
   };
 
   return { actions, ensureGroupDetail, ensureGroupMembers, joinGroups };

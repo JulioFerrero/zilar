@@ -10,6 +10,7 @@ import { AisPage } from '@/components/group-info/ais-page';
 import { AllowedPage, type GroupRulesHandle } from '@/components/group-info/allowed-page';
 import { MembersPage } from '@/components/group-info/members-page';
 import { GroupInfoRoot } from '@/components/group-info/root-page';
+import { SettingsPage } from '@/components/group-info/settings-page';
 import { ToolsPage } from '@/components/group-info/tools-page';
 import type { GroupAi } from '@/lib/chat-api';
 import { runInBackground } from '@/lib/effect/run-in-background';
@@ -21,10 +22,12 @@ import { useChatStore } from '@/store/chat-store-provider';
  * media/pins state, so `[id].tsx` stays a composition and under 400 lines.
  */
 
-export type GroupInfoPage = 'root' | 'members' | 'ais' | 'tools' | 'activity' | 'allowed';
+export type GroupInfoPage =
+  'root' | 'members' | 'ais' | 'tools' | 'activity' | 'allowed' | 'settings';
 
 type RootProps = ComponentProps<typeof GroupInfoRoot>;
 type MembersProps = ComponentProps<typeof MembersPage>;
+type SettingsProps = ComponentProps<typeof SettingsPage>;
 
 /**
  * The Content rows' state: media and pins are chat-scoped (the group's own
@@ -181,9 +184,9 @@ export function GroupContentSheets({ content }: { content: GroupContent }) {
 }
 
 /**
- * The page switch (T-1569, T-1573): one page per `page`, all full screen with
- * the root's back key. `root` and `members` arrive whole so the route only
- * builds their props once.
+ * The page switch (T-1569, T-1573, T-1574): one page per `page`, all full
+ * screen with the root's back key. `root`, `members` and `settings` arrive
+ * whole so the route only builds their props once.
  */
 export function GroupInfoPages({
   page,
@@ -194,6 +197,7 @@ export function GroupInfoPages({
   rules,
   root,
   members,
+  settings,
 }: {
   page: GroupInfoPage;
   onBack: () => void;
@@ -203,9 +207,13 @@ export function GroupInfoPages({
   rules: GroupRulesHandle;
   root: RootProps;
   members: MembersProps;
+  settings: SettingsProps;
 }) {
   if (page === 'members') {
     return <MembersPage {...members} />;
+  }
+  if (page === 'settings') {
+    return <SettingsPage {...settings} />;
   }
   if (page === 'ais') {
     return <AisPage groupId={groupId} ais={ais} isManager={isManager} onBack={onBack} />;
