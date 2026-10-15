@@ -49,15 +49,28 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     **Live at `b6b5d4923`** (every server change so far): 0 errors and only the 3 usual "AI is offline" warnings at container start; `/api/me`, avatars, push, AIs, chats and sticker packs answer 401 signed out. A 502 in between was a container restart.
     
     **Live at `6676826c9`** (includes every server change above; later commits are phone and docs only): 0 errors, 0 warnings; `/api/chats`, `/api/agents/tasks/x/steps`, `/api/topics/x` and `/api/sticker-packs` answer 401 signed out. The `topics.follower_ai_id` column exists (backfill 0 rows: no live topic had an owner AI).
-  - **Running (2):**
-    - T-1566 (audit and step plan: handoff lines and question reply chips; no "ask people" tool exists yet);
-    - T-1569 (phone Group info T2: Members and AIs pages, store add/remove actions, T1 nits).
+  - **Merged:** T-1566, the handoff lines and question chips plan (`docs/audit/handoff-questions-plan.md`, 8 steps). The lead's answers to its 8 open questions are in its Review; Julio can override any:
+    - a server-set handoff marker;
+    - `delegate` calls and handoff mentions both count;
+    - a new `ai_questions` table;
+    - a chip tap sends a normal reply;
+    - anyone who can post may answer;
+    - a question closes on the first reply or after 24 h;
+    - the activity carries the question's message id;
+    - topics only.
+  - **Running (3):**
+    - T-1569 (phone Group info T2: Members and AIs pages, store add/remove actions, T1 nits);
+    - T-1570 (split `group-turn-body.ts` before the handoff marker);
+    - T-1571 (questions step 3: migration `0066_ai_questions.sql` and the service; the only schema task).
   - **Full check on main `2c2c08d25`:** green, with typecheck 16/16 and 1,917 tests (13 packages).
   - **Decisions (Julio, 10-15):** the topic link moves to a row in the topic info panel (T8 keeps `link_url`/`link_label`); the last @mentioned AI follows a topic.
   - **Next to spec:**
     - AI work T8 (drop kind/status/owner after a phone release);
     - phone Group info T3–T6 from the plan, one at a time (each touches `root-page.tsx` and the screen); T3 after T-1569;
-    - handoff lines and question chips: the steps from T-1566's plan, web and phone twins together;
+    - handoff lines and question chips, the plan's steps in order:
+      - step 1 (the handoff marker) after T-1570, then step 2 (the web and phone line);
+      - steps 4 → 5 → 6 after T-1571;
+      - then 7 → 8;
     - `packages/xmpp-core/src/core-effect/lifecycle.ts` is exactly 400 lines (one big closure); split it before any change touches it.
 - **1. Web and server, while Julio is at the PC (2 workers at a time):**
   1. web sticker upload keeps motion (today a GIF freezes on its first frame) and the New pack grid;

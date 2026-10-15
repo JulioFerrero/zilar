@@ -27,8 +27,9 @@ import {
   type RoomPendingMessage,
   type RoomSubscription,
 } from './contracts';
-import { loadDelegationFlags, loadRoomGateState, type RoomGateState } from './db';
+import { loadRoomGateState, type RoomGateState } from './db';
 import { resolveTurnDesk, TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER } from './desk-exec';
+import { resolveHandoffRoster } from './group-turn-roster';
 import { loadModelTarget } from './model-target';
 import { clearTurnAbort, registerTurnAbort } from './stop';
 import type { GroupTurnContext } from './group-turn';
@@ -168,38 +169,8 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         timestamp: item.timestamp,
         outgoing: false,
       }));
-    // T-0481: the other AIs in this room that may receive a handoff. T-0482:
-    // the same read carries this AI's `canDelegate` and each target's AI id,
-    // so the delegation tools can list the roster. One database read for the
-    // turn; a lookup failure just means no targets and no delegation tools,
-    // and the turn runs unchanged.
-    const otherSessions = [...sessions.values()].filter(
-      (candidate) => candidate.aiId !== session.aiId && candidate.rooms.has(roomJid),
-    );
-    let handoffTargets: { aiId: string; nick: string; jid: string }[] = [];
-    let canDelegate = false;
-    if (otherSessions.length > 0) {
-      // Best effort: no handoff targets, the turn runs as before.
-      yield* Effect.promise(() =>
-        loadDelegationFlags(deps.db, [
-          session.aiId,
-          ...otherSessions.map((candidate) => candidate.aiId),
-        ]),
-      ).pipe(
-        Effect.map((rows) => {
-          canDelegate = rows.find((row) => row.id === session.aiId)?.canDelegate ?? false;
-          const accepting = new Set(rows.filter((row) => row.accepts).map((row) => row.id));
-          handoffTargets = otherSessions.flatMap((candidate) => {
-            const subscription = candidate.rooms.get(roomJid);
-            if (subscription === undefined || !accepting.has(candidate.aiId)) {
-              return [];
-            }
-            return [{ aiId: candidate.aiId, nick: subscription.nick, jid: candidate.aiJid }];
-          });
-        }),
-        Effect.catchDefect(() => Effect.void),
-      );
-    }
+    const roster = yield* resolveHandoffRoster(deps.db, sessions, session, roomJid);
+    const { handoffTargets, canDelegate } = roster;
     const messages: ChatCompletionMessage[] = buildGroupMessages({
       aiName: ai.name,
       persona: ai.persona,
