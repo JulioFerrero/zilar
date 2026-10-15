@@ -53,13 +53,14 @@ export interface ActionGatewayDependencies {
 // public surface right now; `onApprovalDecided` is wired into the
 // approvals route, and `recoverStuck` runs at startup and on a timer.
 // `listActions` is the read-only view the agent gateway uses to build the
-// `request_action` tool definition: every registered action's name and
-// description, sorted by name so the order is stable for the model.
+// `request_action` tool definition: every registered action's name,
+// description and args example, sorted by name so the order is stable for
+// the model.
 export interface ActionGateway {
   request: (params: RequestParams) => Promise<RequestOutcome>;
   onApprovalDecided: (approvalId: string) => Promise<void>;
   recoverStuck: () => Promise<void>;
-  listActions: () => Array<{ name: string; description: string }>;
+  listActions: () => Array<{ name: string; description: string; argsExample?: string }>;
 }
 
 export interface RequestParams {
@@ -90,14 +91,19 @@ export function createActionGateway(deps: ActionGatewayDependencies): ActionGate
   };
 }
 
-// The model-facing view of the registry: just name + description, sorted
-// by name so the tool definition the AI sees is the same on every turn.
-// The full adapter (tier, schema, execute) stays behind the gateway.
+// The model-facing view of the registry: name, description and the args
+// example, sorted by name so the tool definition the AI sees is the same on
+// every turn. The full adapter (tier, schema, execute) stays behind the
+// gateway.
 function listActions(
   deps: ActionGatewayDependencies,
-): Array<{ name: string; description: string }> {
+): Array<{ name: string; description: string; argsExample?: string }> {
   return Object.values(deps.adapters)
-    .map((adapter) => ({ name: adapter.name, description: adapter.description }))
+    .map((adapter) => ({
+      name: adapter.name,
+      description: adapter.description,
+      ...(adapter.argsExample === undefined ? {} : { argsExample: adapter.argsExample }),
+    }))
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 

@@ -36,6 +36,7 @@ export function webFetchAdapter(state: WebToolsState): ActionAdapter<unknown> {
     name: 'web.fetch',
     description: 'Fetch one public https page and read it as plain text.',
     tier: 1,
+    argsExample: '{"url":"https://example.com"}',
     argsSchema: webFetchArgsSchema as unknown as ArgsSchema<unknown>,
     describe: (args) => {
       const parsed = args as { url: string };

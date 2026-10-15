@@ -24,6 +24,7 @@ export function webSearchAdapter(state: WebToolsState): ActionAdapter<unknown> {
     description:
       'Best-effort web search (unreliable); never put private or sensitive text in the query.',
     tier: 1,
+    argsExample: '{"query":"weather in Madrid"}',
     argsSchema: webSearchArgsSchema as unknown as ArgsSchema<unknown>,
     describe: (args) => {
       const parsed = args as { query: string };

@@ -176,6 +176,16 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - **On live since 2026-10-16 ~23:00 UTC:** `TOOLS_ENABLED`, `ROUTINES_ENABLED` and `WEB_TOOLS_ENABLED` are true on `zilar-chat` (production entries only). Health is 200.
       - **T-1613 is running:** the same three are on by default for new installs.
       - **T-1614 is running:** the audit and plan for scheduled AI jobs (prompt routines with the computer). Then a D24 canvas for Julio, then specs.
+    - **More found on 10-16:**
+      - **`/workspace` is read-only and empty:** the agent's loop mount wasn't propagated (rprivate), and `mkfs` made the disk root-owned. **T-1615 merged** (rshared, plus `root_owner`/`chown` 10001).
+      - **`web.price` is broken:** Stooq's CSV API is gone (404/403).
+      - **The AI guesses action args:** no `argsExample` reaches the model.
+      - **T-1616 is running** (Yahoo `^GSPC`/`GC=F` replaces Stooq; an `argsExample` per action).
+    - **Waiting for Julio — the AI work card canvas:** https://claude.ai/artifact/CydmLX7ieYyYdUdsWrPbwW (6 boards: web/phone × working/done/one command).
+      - **His complaint:** the card sits inside a bubble, the fallback text repeats, there's an "edited" label, and the text is a generic "Running a command".
+      - **The proposal:** the card stands alone; the title and steps are the AI's own plan; the live command shows under the current step; a single command is one compact line.
+      - **This needs a decision:** the plan text and the commands are model text shown in chat (View steps already shows the commands).
+    - **Tonight's test room:** "ai test › General" (@Deepseek), as @claude_test via the persistent Playwright profile.
     - **Leftover inert variables on `zilar-chat`:** `DESKS_ENABLED=false`, empty `DESK_AGENT_SOCKET` and empty `DESK_IMAGE`. They're harmless; delete them on a quiet day.
     - **The target:** desk services in every stack; the agent waits for gVisor and then turns on by itself; the image follows the release; the server asks the agent; one host command.
     - **Then:** run the same one command on live, with nothing manual.

@@ -37,6 +37,7 @@ export function toolListAdapter(state: AdapterState): ActionAdapter<unknown> {
     name: 'tool.list',
     description: 'List the tools and routines in this topic, with versions, hosts and schedules.',
     tier: 0,
+    argsExample: '{}',
     argsSchema: toolListArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: () => ({ summary: 'List the tools and routines in this topic' }),
     execute: async (ctx, _args) => {
@@ -69,6 +70,7 @@ export function toolReadAdapter(state: AdapterState): ActionAdapter<unknown> {
     name: 'tool.read',
     description: "Read one tool's source and hosts in this topic, optionally at an older version.",
     tier: 0,
+    argsExample: '{"name":"daily-report"}',
     argsSchema: toolReadArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as { name: string; version?: number };
@@ -113,6 +115,8 @@ export function toolSaveAdapter(state: AdapterState): ActionAdapter<unknown> {
     name: 'tool.save',
     description: 'Save a new version of a tool in this topic and test-run it in the sandbox.',
     tier: 1,
+    argsExample:
+      '{"name":"daily-report","description":"Fetch prices","source":"return 1","hosts":["api.example.com"],"message":"v1"}',
     argsSchema: toolSaveArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as { name: string };
@@ -209,6 +213,7 @@ export function toolRunAdapter(state: AdapterState): ActionAdapter<unknown> {
     name: 'tool.run',
     description: "Run this topic's tool now and post its output into the topic.",
     tier: 1,
+    argsExample: '{"name":"daily-report"}',
     argsSchema: toolRunArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as { name: string };
@@ -280,6 +285,7 @@ export function toolRevertAdapter(state: AdapterState): ActionAdapter<unknown> {
     name: 'tool.revert',
     description: 'Revert a tool in this topic to an older version (appends a new version).',
     tier: 1,
+    argsExample: '{"name":"daily-report","toVersion":1}',
     argsSchema: toolRevertArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as { name: string; toVersion: number };

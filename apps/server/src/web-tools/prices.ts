@@ -4,24 +4,24 @@
 //   (`GET https://api.coingecko.com/api/v3/simple/price?ids=<id>&vs_currencies=usd&include_last_updated_at=true`),
 //   with a small built-in symbol table (`BTC→bitcoin`, `ETH→ethereum`,
 //   …). A symbol with no row is reported as unknown, never guessed.
-// - indexes, stocks, gold through Stooq's public CSV quote endpoint
-//   (`GET https://stooq.com/q/l/?s=<s>&f=sd2t2ohlcv&h&e=csv`, one row per
-//   symbol: `Symbol,Date,Time,Open,High,Low,Close,Volume`), parsed with a
-//   strict CSV line parser. `N/D` and empty fields mean "no quote".
+// - indexes, stocks, gold through Yahoo's chart endpoint
+//   (`GET https://query1.finance.yahoo.com/v8/finance/chart/<symbol>?range=1d&interval=1d`,
+//   one request per symbol), reading `chart.result[0].meta`. Stooq's CSV
+//   endpoint this replaced is gone (404/403).
 //
 // Both hosts are fixed. Every number must be finite or the symbol is
 // reported as unavailable. No API key anywhere.
-import { Exit, Schema } from 'effect';
+import { Schema } from 'effect';
 
 export const COINGECKO_HOST = 'api.coingecko.com';
-export const STOOQ_HOST = 'stooq.com';
+export const YAHOO_HOST = 'query1.finance.yahoo.com';
 
 export const MAX_PRICE_SYMBOLS = 10;
 
 export const PRICE_SYMBOL_PATTERN = /^[A-Za-z0-9.^=_-]{1,20}$/;
 
 // The only crypto the adapter knows: anything else is reported as an
-// unknown symbol so the model can retry it as a Stooq symbol instead.
+// unknown symbol so the model can retry it as a Yahoo symbol instead.
 export const CRYPTO_IDS: Record<string, string> = {
   BTC: 'bitcoin',
   ETH: 'ethereum',
@@ -44,14 +44,46 @@ export function coingeckoUrl(ids: string[]): string {
   return `https://${COINGECKO_HOST}/api/v3/simple/price?${params.toString()}`;
 }
 
-export function stooqUrl(symbols: string[]): string {
-  const params = new URLSearchParams({
-    s: symbols.join(','),
-    f: 'sd2t2ohlcv',
-    h: '',
-    e: 'csv',
-  });
-  return `https://${STOOQ_HOST}/q/l/?${params.toString()}`;
+export function yahooUrl(symbol: string): string {
+  return `https://${YAHOO_HOST}/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`;
+}
+
+// Old Stooq spellings (and plain names the model reaches for) resolve to
+// Yahoo tickers, case-insensitively and before the lookup. Anything else
+// passes through; a Stooq-style `.us` suffix is dropped (`aapl.us` →
+// `AAPL`).
+const YAHOO_ALIASES: Record<string, string> = {
+  SPX: '^GSPC',
+  '^SPX': '^GSPC',
+  SP500: '^GSPC',
+  GOLD: 'GC=F',
+  XAU: 'GC=F',
+  XAUUSD: 'GC=F',
+  SILVER: 'SI=F',
+  XAG: 'SI=F',
+  XAGUSD: 'SI=F',
+  NDX: '^NDX',
+  NASDAQ100: '^NDX',
+  DJI: '^DJI',
+  DOW: '^DJI',
+};
+
+// A human name for a Yahoo ticker that is not obvious, shown in the
+// price line.
+export const YAHOO_LABELS: Record<string, string> = {
+  'GC=F': 'gold (COMEX futures)',
+};
+
+export function resolveYahooSymbol(input: string): string {
+  const upper = input.toUpperCase();
+  const alias = YAHOO_ALIASES[upper];
+  if (alias !== undefined) {
+    return alias;
+  }
+  if (upper.endsWith('.US') && upper.length > 3) {
+    return upper.slice(0, -3);
+  }
+  return input;
 }
 
 const coingeckoSchema = Schema.Record(
@@ -63,13 +95,6 @@ const coingeckoSchema = Schema.Record(
     ),
   }),
 );
-
-const stooqRowSchema = Schema.Struct({
-  symbol: Schema.String.pipe(Schema.check(Schema.isMinLength(1))),
-  date: Schema.String,
-  time: Schema.String,
-  close: Schema.Finite,
-});
 
 export interface PriceLine {
   symbol: string;
@@ -118,110 +143,50 @@ export function coingeckoLines(
   return { lines, unknownIds };
 }
 
-export interface StooqQuote {
+const yahooMetaSchema = Schema.Struct({
+  regularMarketPrice: Schema.Finite,
+  regularMarketTime: Schema.optional(Schema.Finite),
+  currency: Schema.optional(Schema.String),
+  symbol: Schema.optional(Schema.String),
+});
+
+const yahooChartSchema = Schema.Struct({
+  chart: Schema.Struct({
+    result: Schema.optional(Schema.NullOr(Schema.Array(Schema.Struct({ meta: yahooMetaSchema })))),
+    error: Schema.optional(Schema.NullOr(Schema.Unknown)),
+  }),
+});
+
+export interface YahooQuote {
+  price: number;
+  currency: string;
+  time: number | undefined;
   symbol: string;
-  date: string;
-  time: string;
-  close: number;
 }
 
-// Stooq CSV: header `Symbol,Date,Time,Open,High,Low,Close,Volume`, one
-// row per symbol. `N/D`, empty and non-finite closes are unavailable,
-// never zero. Rows keyed by upper-cased symbol; the first data row wins.
-export function parseStooqCsv(body: string): Map<string, StooqQuote> {
-  const quotes = new Map<string, StooqQuote>();
-  const lines = body.split(/\r?\n/);
-  if (lines.length < 2) {
-    return quotes;
+// Yahoo chart JSON: a non-null `chart.error`, a missing `result`, or a
+// non-finite `regularMarketPrice` all mean "unavailable". `currency`
+// falls back to USD, `symbol` to empty; `regularMarketTime` (unix
+// seconds) is optional.
+export function parseYahooChart(body: string): YahooQuote | null {
+  let parsed: typeof yahooChartSchema.Type;
+  try {
+    parsed = Schema.decodeUnknownSync(yahooChartSchema)(JSON.parse(body));
+  } catch {
+    return null;
   }
-  const header = splitCsvLine(lines[0] ?? '');
-  const columns = new Map(header.map((name, index) => [name.trim().toLowerCase(), index]));
-  const at = (row: string[], name: string): string | null => {
-    const index = columns.get(name);
-    if (index === undefined || index >= row.length) {
-      return null;
-    }
-    return (row[index] ?? '').trim();
+  const error = parsed.chart.error;
+  if (error !== null && error !== undefined) {
+    return null;
+  }
+  const result = parsed.chart.result?.[0];
+  if (result === undefined) {
+    return null;
+  }
+  return {
+    price: result.meta.regularMarketPrice,
+    currency: result.meta.currency ?? 'USD',
+    time: result.meta.regularMarketTime,
+    symbol: result.meta.symbol ?? '',
   };
-  for (const line of lines.slice(1)) {
-    if (line.trim().length === 0) {
-      continue;
-    }
-    const row = splitCsvLine(line);
-    const symbol = at(row, 'symbol');
-    const closeRaw = at(row, 'close');
-    if (symbol === null || symbol.length === 0 || closeRaw === null || closeRaw.length === 0) {
-      continue;
-    }
-    if (/^n\/d$/i.test(closeRaw)) {
-      continue;
-    }
-    const close = Number(closeRaw);
-    if (!Number.isFinite(close)) {
-      continue;
-    }
-    const key = symbol.toUpperCase();
-    if (quotes.has(key)) {
-      continue;
-    }
-    const checked = Schema.decodeUnknownExit(stooqRowSchema)({
-      symbol,
-      date: at(row, 'date') ?? '',
-      time: at(row, 'time') ?? '',
-      close,
-    });
-    if (!Exit.isSuccess(checked)) {
-      continue;
-    }
-    quotes.set(key, checked.value);
-  }
-  return quotes;
-}
-
-// One comma-separated line, honouring double-quoted fields and `""`
-// escapes. Unclosed quotes read to end of line; never throws.
-export function splitCsvLine(line: string): string[] {
-  const fields: string[] = [];
-  let field = '';
-  let quoted = false;
-  let pos = 0;
-  while (pos < line.length) {
-    const char = line[pos] as string;
-    if (quoted) {
-      if (char === '"') {
-        if (line[pos + 1] === '"') {
-          field += '"';
-          pos += 2;
-          continue;
-        }
-        quoted = false;
-        pos += 1;
-        continue;
-      }
-      field += char;
-      pos += 1;
-      continue;
-    }
-    if (char === '"') {
-      quoted = true;
-      pos += 1;
-      continue;
-    }
-    if (char === ',') {
-      fields.push(field);
-      field = '';
-      pos += 1;
-      continue;
-    }
-    field += char;
-    pos += 1;
-  }
-  fields.push(field);
-  return fields;
-}
-
-export function stooqStamp(quote: { date: string; time: string }): string {
-  const stamp =
-    quote.date.length > 0 ? `${quote.date}${quote.time.length > 0 ? ` ${quote.time}` : ''}` : '';
-  return stamp.length === 0 ? 'unknown' : stamp;
 }

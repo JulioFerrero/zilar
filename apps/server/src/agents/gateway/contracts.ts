@@ -324,7 +324,7 @@ export function denialReasonForModel(reason: DeniedReason): string {
     case 'unknown_action':
       return 'unknown action';
     case 'invalid_args':
-      return 'invalid arguments';
+      return 'invalid arguments; use the Args shown for this action';
     case 'ai_not_active':
       return 'the AI is not active';
     case 'ai_not_in_group':

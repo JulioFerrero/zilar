@@ -123,20 +123,29 @@ export const MEMORY_TOOLS: ChatToolDefinition[] = [
 ];
 
 // The minimal description the AI sees for `request_action`: it lists every
-// registered action as `name — description`. The list is sorted by name so
-// the tool definition is stable across turns. The platform runs whatever
-// the approval is granted for; the AI must never claim an action happened
-// until it sees the outcome in the next model reply.
+// registered action as `name — description Args: <example>`. The list is
+// sorted by name so the tool definition is stable across turns. The
+// `Args` example is a valid call for that action, so the model sees the
+// exact field names. The platform runs whatever the approval is granted
+// for; the AI must never claim an action happened until it sees the
+// outcome in the next model reply.
 function describeRequestAction(
-  actions: ReadonlyArray<{ name: string; description: string }>,
+  actions: ReadonlyArray<{ name: string; description: string; argsExample?: string }>,
 ): string {
-  const list = actions.map((action) => `${action.name} — ${action.description}`).join('; ');
+  const list = actions
+    .map((action) =>
+      action.argsExample === undefined
+        ? `${action.name} — ${action.description}`
+        : `${action.name} — ${action.description} Args: ${action.argsExample}`,
+    )
+    .join('; ');
   return (
     'Ask the platform to run one of the registered actions below. The platform ' +
     'will ask your owner for approval when needed (a card appears in this chat) ' +
     'and will tell you what happened in the next reply. Never claim an action ' +
     'happened until you see its outcome. `action` is the registered name, ' +
-    '`args` is a JSON object matching the action. Available actions: ' +
+    '`args` is a JSON object matching the action (see the Args shown for it). ' +
+    'Available actions: ' +
     `${list}.`
   );
 }
@@ -144,7 +153,7 @@ function describeRequestAction(
 // The tool definition the model sees for `request_action`. Kept in one
 // place so `buildTools` and its tests share it.
 export function buildRequestActionTool(
-  actions: ReadonlyArray<{ name: string; description: string }>,
+  actions: ReadonlyArray<{ name: string; description: string; argsExample?: string }>,
 ): ChatToolDefinition {
   return {
     type: 'function',
@@ -260,7 +269,7 @@ export const TASK_STATUS_TOOL_DEF: ChatToolDefinition = {
 // working. T-1409: `opts.desk` appends the seven desk tools when the AI has a
 // cloud computer.
 export function buildTools(
-  actions: ReadonlyArray<{ name: string; description: string }>,
+  actions: ReadonlyArray<{ name: string; description: string; argsExample?: string }>,
   opts?: { desk?: boolean },
 ): ChatToolDefinition[] {
   const base =
@@ -281,7 +290,7 @@ export function buildTools(
 // appends the seven desk tools when the AI has a cloud computer. T-1576:
 // `opts.askPeople` appends `ask_people` when a person triggered the turn.
 export function buildGroupTools(
-  actions: ReadonlyArray<{ name: string; description: string }>,
+  actions: ReadonlyArray<{ name: string; description: string; argsExample?: string }>,
   delegateTargets?: ReadonlyArray<{ id: string; name: string }>,
   opts?: { desk?: boolean; askPeople?: boolean },
 ): ChatToolDefinition[] {

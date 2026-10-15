@@ -194,6 +194,7 @@ export function toolApproveHostsAdapter(state: AdapterState): ActionAdapter<unkn
     name: 'tool.approve_hosts',
     description: 'Allow a tool in this topic to contact its declared hosts (needs approval).',
     tier: 2,
+    argsExample: '{"name":"daily-report"}',
     argsSchema: toolApproveHostsArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     prepareArgs: async (ctx, args) => {
       const actionCtx = ctx as ActionContext;
@@ -262,6 +263,7 @@ export function toolRevokeHostsAdapter(state: AdapterState): ActionAdapter<unkno
     name: 'tool.revoke_hosts',
     description: "Revoke a tool's approved hosts in this topic (it keeps running offline).",
     tier: 1,
+    argsExample: '{"name":"daily-report"}',
     argsSchema: toolRevokeHostsArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as { name: string };

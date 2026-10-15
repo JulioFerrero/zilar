@@ -93,6 +93,9 @@ export interface ActionCost {
 // (`summary` is the bolded line, `details` the body, both bounded).
 // `description` is one short line the model sees in the `request_action`
 // tool definition, so it knows what each adapter does without a long card.
+// `argsExample` (T-1616) is a compact JSON object of valid args the model
+// also sees there, next to the action, so it calls with the right field
+// names; its own `argsSchema` accepts it.
 // `execute` performs the side effect and returns the success summary.
 //
 // `allowAlways` (T-0099) opts the adapter in to the standing-rule flow:
@@ -106,6 +109,13 @@ export interface ActionAdapter<Args> {
   description: string;
   tier: 0 | 1 | 2;
   argsSchema: ArgsSchema<Args>;
+  /**
+   * A compact JSON object of valid args, at most
+   * `ADAPTER_ARGS_EXAMPLE_MAX_LENGTH` characters, that the model sees in
+   * the `request_action` tool definition next to the action. Its own
+   * `argsSchema` accepts it (checked by `args-example.test.ts`).
+   */
+  argsExample?: string;
   describe: (args: Args) => { summary: string; details?: string };
   estimateCost?: (args: Args) => ActionCost;
   /**
@@ -134,6 +144,10 @@ export interface ActionAdapter<Args> {
 // The hard ceiling on an adapter's description: short enough to fit one
 // line in the `request_action` tool definition next to the action name.
 export const ADAPTER_DESCRIPTION_MAX_LENGTH = 200;
+
+// The hard ceiling on an adapter's `argsExample`: a compact one-line JSON
+// object the model reads in the `request_action` tool definition.
+export const ADAPTER_ARGS_EXAMPLE_MAX_LENGTH = 200;
 
 // A registry is a plain object indexed by adapter name. The gateway keeps
 // it in a typed record so an unknown action answers `unknown_action`
@@ -175,6 +189,14 @@ export function buildRegistry(adapters: ReadonlyArray<ActionAdapter<unknown>>): 
     if (adapter.description.length > ADAPTER_DESCRIPTION_MAX_LENGTH) {
       throw new AdapterRegistryError(
         `adapter "${adapter.name}" description is over ${ADAPTER_DESCRIPTION_MAX_LENGTH} characters`,
+      );
+    }
+    if (
+      adapter.argsExample !== undefined &&
+      adapter.argsExample.length > ADAPTER_ARGS_EXAMPLE_MAX_LENGTH
+    ) {
+      throw new AdapterRegistryError(
+        `adapter "${adapter.name}" argsExample is over ${ADAPTER_ARGS_EXAMPLE_MAX_LENGTH} characters`,
       );
     }
     if (typeof adapter.describe !== 'function') {

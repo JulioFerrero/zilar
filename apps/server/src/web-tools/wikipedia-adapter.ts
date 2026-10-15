@@ -104,6 +104,7 @@ export function webWikipediaAdapter(state: WebToolsState): ActionAdapter<unknown
     name: 'web.wikipedia',
     description: 'Read a short Wikipedia summary of a topic (keyless, fixed host).',
     tier: 0,
+    argsExample: '{"query":"Ada Lovelace","lang":"en"}',
     argsSchema: webWikipediaArgsSchema as unknown as ArgsSchema<unknown>,
     describe: (args) => {
       const parsed = args as { query: string };

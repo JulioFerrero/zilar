@@ -1625,3 +1625,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1612](T-1612-jail-reaches-egress-proxy.md) | AI computers reach the egress proxy under gVisor; jail gets curl | 2026-10-15 |
 | [T-1613](T-1613-ai-tools-on-by-default.md) | AI tools, routines and web tools on by default | 2026-10-15 |
 | [T-1615](T-1615-workspace-reaches-jail.md) | AI disk reaches its computer, owned by the jail user | 2026-10-15 |
+| [T-1616](T-1616-prices-and-action-args.md) | Prices from Yahoo; every action shows the model its args | 2026-10-15 |

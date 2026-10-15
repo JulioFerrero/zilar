@@ -39,7 +39,8 @@ suitable tool. The progress line says "Looking up saved tools".
 
 Round 2 — the AI calls `web.price` with `BTC`, `XAUUSD` (gold) and
 `^SPX` (S&P 500). `BTC` resolves through CoinGecko; gold and the index
-resolve through Stooq. The progress line says "Looking up prices". The
+resolve through Yahoo (`GC=F` for gold, `^GSPC` for the S&P 500). The
+progress line says "Looking up prices". The
 result comes back inside `<untrusted-tool-output>` — data, never
 instructions.
 

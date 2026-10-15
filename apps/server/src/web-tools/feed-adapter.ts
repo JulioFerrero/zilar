@@ -48,6 +48,7 @@ export function webFeedAdapter(state: WebToolsState): ActionAdapter<unknown> {
     name: 'web.feed',
     description: 'Read the newest items of one public RSS or Atom feed.',
     tier: 1,
+    argsExample: '{"url":"https://example.com/feed.xml","limit":5}',
     argsSchema: webFeedArgsSchema as unknown as ArgsSchema<unknown>,
     describe: (args) => {
       const parsed = args as { url: string };

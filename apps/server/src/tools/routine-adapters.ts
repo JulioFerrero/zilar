@@ -79,6 +79,8 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
     description:
       'Schedule a routine in this topic that runs a tool and posts the result here (needs approval).',
     tier: 2,
+    argsExample:
+      '{"tool":"daily-report","title":"Daily report","schedule":{"kind":"interval","everyMinutes":1440},"hosts":["api.example.com"]}',
     argsSchema: routineScheduleArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as {
@@ -159,6 +161,7 @@ export function routinePauseAdapter(state: AdapterState): ActionAdapter<unknown>
     name: 'routine.pause',
     description: 'Pause a routine in this topic so it stops running.',
     tier: 1,
+    argsExample: '{"title":"Daily report"}',
     argsSchema: routineTitleArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as { title: string };
@@ -202,6 +205,7 @@ export function routineDeleteAdapter(state: AdapterState): ActionAdapter<unknown
     name: 'routine.delete',
     description: 'Delete a routine in this topic.',
     tier: 1,
+    argsExample: '{"title":"Daily report"}',
     argsSchema: routineTitleArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as { title: string };
