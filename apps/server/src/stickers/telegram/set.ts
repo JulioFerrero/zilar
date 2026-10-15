@@ -6,8 +6,10 @@ export interface TelegramStickerEntry {
   /** The opaque `file_id` needed for the `getFile` call. Never logged. */
   fileId: string;
   emoji: string | null;
-  /** True for animated (`.tgs`) and video (`.webm`) stickers: skipped. */
+  /** True for animated Lottie (`.tgs`) stickers: skipped. */
   animated: boolean;
+  /** True for video (`.webm`) stickers: converted to an animated WebP. */
+  video: boolean;
 }
 
 export interface TelegramStickerSet {
@@ -35,7 +37,14 @@ const stickerFileSchema = {
   isAnimated(value: unknown): boolean {
     if (value !== null && typeof value === 'object') {
       const record = value as Record<string, unknown>;
-      return record.is_animated === true || record.is_video === true;
+      return record.is_animated === true;
+    }
+    return false;
+  },
+  isVideo(value: unknown): boolean {
+    if (value !== null && typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      return record.is_video === true;
     }
     return false;
   },
@@ -52,7 +61,13 @@ function toStickerEntry(raw: unknown): TelegramStickerEntry | undefined {
     return undefined;
   }
   const emoji = typeof record.emoji === 'string' && record.emoji !== '' ? record.emoji : null;
-  return { sourceId, fileId, emoji, animated: stickerFileSchema.isAnimated(raw) };
+  return {
+    sourceId,
+    fileId,
+    emoji,
+    animated: stickerFileSchema.isAnimated(raw),
+    video: stickerFileSchema.isVideo(raw),
+  };
 }
 
 export function toStickerSet(name: string, raw: unknown): TelegramStickerSet {

@@ -1513,3 +1513,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1498](T-1498-approval-names.md) | Approvals carry the AI and group names | 2026-10-15 |
 | [T-1500](T-1500-ai-work-audit.md) | AI work in topics: audit and step plan | 2026-10-15 |
 | [T-1499](T-1499-web-approvals-simple.md) | Web approvals: one simple card and one list of rows | 2026-10-15 |
+| [T-1502](T-1502-telegram-video-stickers.md) | Telegram importer keeps video stickers as animated WebP | 2026-10-15 |
