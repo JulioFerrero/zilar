@@ -1565,3 +1565,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1556](T-1556-split-web-ports.md) | Split web ports.ts: the ApiClient and StorageLike types move out | 2026-10-15 |
 | [T-1555](T-1555-split-client-core-lifecycle.md) | Split client-core lifecycle.ts: the XMPP connect block moves out | 2026-10-15 |
 | [T-1535](T-1535-web-view-steps.md) | Web View steps panel: a task card's steps with their actions | 2026-10-15 |
+| [T-1554](T-1554-split-actions-decisions.md) | Split actions/decisions.ts: the approval path moves out | 2026-10-15 |
