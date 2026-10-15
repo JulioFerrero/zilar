@@ -24,7 +24,7 @@ import {
   LEADER_POLL_MS,
 } from '../leader/lock';
 import { createLeaderWork } from '../leader/start';
-import { assertRunnerHubConfig, DEFAULT_MODEL_GATEWAY_URL, type RunnerHub } from '../machines/hub';
+import type { RunnerHub } from '../machines/hub';
 import { createDbMachineRegistry } from '../machines/registry';
 import { loadPushConfigOrExit, type PushConfig } from '../push/config';
 import { runTool } from '../sandbox/run-tool';
@@ -44,14 +44,6 @@ export function startComponents(boot: BootedServer, running: RunningServer): Eff
 
     const adminClient = createEjabberdAdminClient(config.xmpp);
     const auth = createAuth({ db, config, mailer: currentMailer, adminClient, logger });
-
-    // Runner hub (T-0071): validated here so a misconfiguration fails fast with
-    // a single clear message, before the HTTP server starts. The actual listener
-    // comes up after the edge server is listening so the API is not delayed.
-    assertRunnerHubConfig({
-      enabled: config.RUNNER_HUB_ENABLED,
-      gatewayUrl: DEFAULT_MODEL_GATEWAY_URL,
-    });
 
     // One registry, shared with both the machines routes and the hub: the
     // route's approve/revoke notifies must reach the hub's listener set.

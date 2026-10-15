@@ -16,7 +16,7 @@ import { startTaskEventRetention, type TaskEventRetentionHandle } from '../agent
 import type { AuditRecorder } from '../audit/service';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { DEFAULT_MODEL_GATEWAY_URL, startRunnerHub, type RunnerHub } from '../machines/hub';
+import { startRunnerHub, type RunnerHub } from '../machines/hub';
 import type { DbMachineRegistry } from '../machines/registry';
 import { startPushComponent, type PushComponentHandle } from '../push/component';
 import { pushConfigError, type PushConfig } from '../push/config';
@@ -153,7 +153,6 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
       registry: deps.machineRegistry,
       logger,
       port: config.RUNNER_HUB_PORT,
-      gatewayUrl: DEFAULT_MODEL_GATEWAY_URL,
     })
       .then((hub) => {
         runnerHub = hub;

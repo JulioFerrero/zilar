@@ -31,7 +31,6 @@ export const RunnerOptionsSchema = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed('0.1.0')),
   ),
   exposedPorts: Schema.Array(portSchema).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
-  enableModelListener: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   reconnectBaseMs: Schema.Number.check(
     Schema.isInt(),
     Schema.isGreaterThanOrEqualTo(10),
@@ -64,8 +63,6 @@ export interface RunnerOptions {
   runnerVersion?: string | undefined;
   /** Ports the server may open on this machine. Anything else is refused. */
   exposedPorts?: number[] | undefined;
-  /** Listen on 127.0.0.1 as the desk's LLM base URL. Default true. */
-  enableModelListener?: boolean | undefined;
   /** The runner's desk handler (plan §6.1); absent means the runner refuses desks. */
   deskRunner?: DeskRunnerHandler | undefined;
   reconnectBaseMs?: number | undefined;

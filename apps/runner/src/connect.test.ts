@@ -6,7 +6,7 @@ import {
   generateRunnerKeypair,
   TunnelServer,
 } from '@zilar/runner-tunnel';
-import { startFakeGateway, waitFor } from '../../../packages/runner-tunnel/src/test-harness.ts';
+import { waitFor } from '../../../packages/runner-tunnel/src/test-harness.ts';
 import { mapFailure, hubUrlFromServer, runRunner, validateHubUrl } from './connect.ts';
 import { buildIdentity } from './identity.ts';
 
@@ -23,11 +23,10 @@ function buildTestIdentity(machineId: string): ReturnType<typeof buildIdentity> 
 
 describe('runRunner', () => {
   it('connects an approved key, then stops cleanly on signal', async () => {
-    const gateway = await startFakeGateway();
     const registry = new InMemoryKeyRegistry();
     const identity = buildTestIdentity('runner-1');
     registry.approve(identity.machineId, identity.publicKey);
-    const server = await TunnelServer.start({ registry, gatewayUrl: gateway.url }, 0);
+    const server = await TunnelServer.start({ registry }, 0);
     try {
       const controller = new AbortController();
       const done = runRunner({
@@ -42,15 +41,13 @@ describe('runRunner', () => {
       expect(result.status).toBe('stopped');
     } finally {
       await server.close().catch(() => undefined);
-      await gateway.close().catch(() => undefined);
     }
   });
 
   it('exits non-zero when the key is not approved', async () => {
-    const gateway = await startFakeGateway();
     const registry = new InMemoryKeyRegistry();
     const identity = buildTestIdentity('runner-unknown');
-    const server = await TunnelServer.start({ registry, gatewayUrl: gateway.url }, 0);
+    const server = await TunnelServer.start({ registry }, 0);
     try {
       const result = await runRunner({
         identity,
@@ -61,16 +58,14 @@ describe('runRunner', () => {
       expect(server.isRunnerLive(identity.machineId)).toBe(false);
     } finally {
       await server.close().catch(() => undefined);
-      await gateway.close().catch(() => undefined);
     }
   });
 
   it('returns revoked when the server closes with revoke code', async () => {
-    const gateway = await startFakeGateway();
     const registry = new InMemoryKeyRegistry();
     const identity = buildTestIdentity('runner-revoked');
     registry.approve(identity.machineId, identity.publicKey);
-    const server = await TunnelServer.start({ registry, gatewayUrl: gateway.url }, 0);
+    const server = await TunnelServer.start({ registry }, 0);
     try {
       const controller = new AbortController();
       const states: string[] = [];
@@ -90,7 +85,6 @@ describe('runRunner', () => {
       void controller;
     } finally {
       await server.close().catch(() => undefined);
-      await gateway.close().catch(() => undefined);
     }
   });
 

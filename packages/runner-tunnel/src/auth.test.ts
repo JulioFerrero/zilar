@@ -16,7 +16,6 @@ import { TunnelServer } from './server.ts';
 import {
   closeTunnelPair,
   rawHandshake,
-  startFakeGateway,
   startTunnelPair,
   waitFor,
   wsCloseCode,
@@ -40,9 +39,8 @@ describe('runner identity over the wire', () => {
   });
 
   it('refuses a runner whose key was never approved', async () => {
-    const gateway = await startFakeGateway();
     const registry = new InMemoryKeyRegistry();
-    const server = await TunnelServer.start({ registry, gatewayUrl: gateway.url }, 0);
+    const server = await TunnelServer.start({ registry }, 0);
     const runner = new RunnerClient({
       serverUrl: server.wsUrl,
       runnerId: 'stranger',
@@ -55,7 +53,6 @@ describe('runner identity over the wire', () => {
     } finally {
       await runner.stop().catch(() => undefined);
       await server.close().catch(() => undefined);
-      await gateway.close().catch(() => undefined);
     }
   });
 
@@ -187,39 +184,6 @@ describe('runner identity over the wire', () => {
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(raw.closed).toBe(false);
     expect((pair?.server.unknownStreamsDropped ?? 0) - before).toBeGreaterThanOrEqual(1);
-    raw.destroy();
-  });
-
-  it('closes a model.open with an even stream id (server ids only)', async () => {
-    pair = await startTunnelPair();
-    const keypair = generateRunnerKeypair();
-    pair.registry.approve('raw-5', keypair.publicKey);
-    const raw = await rawHandshake(pair.server, 'raw-5', (nonce) =>
-      signNonce(keypair.privateKey, nonce),
-    );
-    await waitFor(() => raw.texts.length > 1 || raw.closed, 5000, 'ready');
-    expect(raw.closed).toBe(false);
-    raw.sendText(JSON.stringify({ type: 'model.open', stream_id: 2 }));
-    await waitFor(() => raw.closed, 5000, 'even id rejection');
-    expect(raw.closeCode).toBe(CLOSE_MALFORMED);
-    raw.destroy();
-  });
-
-  it('closes a model.open with an already-live stream id', async () => {
-    pair = await startTunnelPair();
-    const keypair = generateRunnerKeypair();
-    pair.registry.approve('raw-6', keypair.publicKey);
-    const raw = await rawHandshake(pair.server, 'raw-6', (nonce) =>
-      signNonce(keypair.privateKey, nonce),
-    );
-    await waitFor(() => raw.texts.length > 1 || raw.closed, 5000, 'ready');
-    expect(raw.closed).toBe(false);
-    raw.sendText(JSON.stringify({ type: 'model.open', stream_id: 1 }));
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(raw.closed).toBe(false);
-    raw.sendText(JSON.stringify({ type: 'model.open', stream_id: 1 }));
-    await waitFor(() => raw.closed, 5000, 'duplicate id rejection');
-    expect(raw.closeCode).toBe(CLOSE_MALFORMED);
     raw.destroy();
   });
 

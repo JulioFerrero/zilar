@@ -1608,3 +1608,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1595](T-1595-android-release-setup-fix.md) | Android release installs only platform-tools | 2026-10-15 |
 | [T-1597](T-1597-readme-rewrite.md) | New README: simpler, current install and stack | 2026-10-15 |
 | [T-1596](T-1596-flaky-run-tool-log-test.md) | Sandbox worker heap headroom fixes the flaky log test | 2026-10-15 |
+| [T-1598](T-1598-remove-tunnel-model-path.md) | Remove the tunnel's model path, the last LiteLLM code | 2026-10-15 |

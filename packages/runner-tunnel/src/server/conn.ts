@@ -40,8 +40,6 @@ export interface PendingOpen {
  */
 export interface ServerRuntime {
   readonly registry: KeyRegistry;
-  readonly gatewayHost: string;
-  readonly gatewayPort: number;
   readonly heartbeatIntervalMs: number;
   readonly heartbeatTimeoutMs: number;
   readonly handshakeTimeoutMs: number;

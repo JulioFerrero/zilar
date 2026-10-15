@@ -28,7 +28,6 @@ export class TunnelServer {
   private readonly rt: ServerRuntime;
 
   private constructor(registry: KeyRegistry, validated: ServerOptionsDecoded) {
-    const gateway = new URL(validated.gatewayUrl);
     const live = new Map<string, ServerConn>();
     const desk = new DeskServer((runnerId) => live.get(runnerId)?.mux ?? null);
     let rt: ServerRuntime;
@@ -61,8 +60,6 @@ export class TunnelServer {
 
     rt = {
       registry,
-      gatewayHost: gateway.hostname,
-      gatewayPort: gateway.port === '' ? 80 : Number(gateway.port),
       heartbeatIntervalMs: validated.heartbeatIntervalMs,
       heartbeatTimeoutMs: validated.heartbeatTimeoutMs,
       handshakeTimeoutMs: validated.handshakeTimeoutMs,
@@ -100,7 +97,6 @@ export class TunnelServer {
     const validated = Schema.decodeUnknownSync(ServerOptionsSchema, {
       onExcessProperty: 'error',
     })({
-      gatewayUrl: options.gatewayUrl,
       heartbeatIntervalMs: options.heartbeatIntervalMs,
       heartbeatTimeoutMs: options.heartbeatTimeoutMs,
       handshakeTimeoutMs: options.handshakeTimeoutMs,

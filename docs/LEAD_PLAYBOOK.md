@@ -293,7 +293,7 @@ git worktree remove ../zilar-T-XXXX && git branch -d task/T-XXXX-name
 
 ## 12. The local dev stack and live testing
 
-- **Infra:** `pnpm infra:up` / `infra:smoke` / `xmpp:e2e` (Postgres 18 + pgvector, ejabberd 26.07, LiteLLM 1.102.1 pinned by digest). There's no MinIO: its images were deleted on 2026-09-11, so uploads use ejabberd's upload volume for now.
+- **Infra:** `pnpm infra:up` / `infra:smoke` / `xmpp:e2e` (Postgres 18 + pgvector, ejabberd 26.07). LiteLLM was removed in T-1413; the local container, image and database were deleted on 2026-10-15. There's no MinIO: its images were deleted on 2026-09-11, so uploads use ejabberd's upload volume for now.
 - **Ports:**
   - **3000 belongs to Julio's own Next.js app.** Never use it.
   - The Zilar server runs on **3188**.

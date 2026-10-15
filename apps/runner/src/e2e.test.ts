@@ -158,7 +158,6 @@ describe('runner e2e (real server + real hub)', () => {
       registry: e2e.registry,
       logger: e2e.context.logger,
       port: 0,
-      gatewayUrl: 'http://127.0.0.1:65535',
       refreshMs: 60_000,
       pollIntervalMs: 50,
     });

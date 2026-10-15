@@ -4,13 +4,7 @@ import { createHash } from 'node:crypto';
 import { InMemoryKeyRegistry, generateRunnerKeypair } from './keys.ts';
 import { RunnerClient } from './runner.ts';
 import { TunnelServer } from './server.ts';
-import {
-  httpThrough,
-  patternBytes,
-  sha256Hex,
-  startFakeDesk,
-  startFakeGateway,
-} from './test-harness.ts';
+import { httpThrough, patternBytes, sha256Hex, startFakeDesk } from './test-harness.ts';
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -24,12 +18,11 @@ async function timeOnce(fn: () => Promise<void>): Promise<number> {
 }
 
 async function main(): Promise<void> {
-  const gateway = await startFakeGateway();
   const desk = await startFakeDesk();
   const registry = new InMemoryKeyRegistry();
   const keypair = generateRunnerKeypair();
   registry.approve('demo-runner', keypair.publicKey);
-  const server = await TunnelServer.start({ registry, gatewayUrl: gateway.url }, 0);
+  const server = await TunnelServer.start({ registry }, 0);
   const runner = new RunnerClient({
     serverUrl: server.wsUrl,
     runnerId: 'demo-runner',
@@ -94,16 +87,6 @@ async function main(): Promise<void> {
       `token ${token.slice(0, 8)}…`,
     );
 
-    const model = await httpThrough(`${runner.modelUrl as string}/v1/chat`, {
-      method: 'POST',
-      body: '{}',
-    });
-    check(
-      'model traffic to gateway',
-      model.status === 200 && gateway.received.length === 1,
-      gateway.received[0]?.url ?? 'no request',
-    );
-
     const direct: number[] = [];
     for (let i = 0; i < 50; i += 1) {
       direct.push(await timeOnce(() => httpThrough(`${desk.url}/hello`).then(() => undefined)));
@@ -149,46 +132,14 @@ async function main(): Promise<void> {
       digest.digest('hex') === sha256Hex(patternBytes(fiftyMb)) && peakDeltaMb < 64,
       `peak heap +${peakDeltaMb.toFixed(1)} MB`,
     );
-
-    if (process.env.ZILAR_TUNNEL_INTEGRATION === '1') {
-      const liveRegistry = new InMemoryKeyRegistry();
-      const liveKey = generateRunnerKeypair();
-      liveRegistry.approve('live-runner', liveKey.publicKey);
-      const liveServer = await TunnelServer.start(
-        { registry: liveRegistry, gatewayUrl: 'http://127.0.0.1:4000' },
-        0,
-      );
-      const liveRunner = new RunnerClient({
-        serverUrl: liveServer.wsUrl,
-        runnerId: 'live-runner',
-        keypair: liveKey,
-        exposedPorts: [],
-        enableModelListener: true,
-      });
-      try {
-        await liveRunner.start();
-        const health = await httpThrough(`${liveRunner.modelUrl as string}/health/liveliness`);
-        rows.push([
-          'gated: model service /health/liveliness through the tunnel',
-          health.status === 200 ? 'ok' : 'FAIL',
-          `status ${health.status} body ${health.body.toString('utf8').slice(0, 120)}`,
-        ]);
-      } finally {
-        await liveRunner.stop().catch(() => undefined);
-        await liveServer.close().catch(() => undefined);
-      }
-    }
   } finally {
     await runner.stop().catch(() => undefined);
     await server.close().catch(() => undefined);
     await desk.close().catch(() => undefined);
-    await gateway.close().catch(() => undefined);
   }
 
   const width = Math.max(...rows.map(([a]) => a.length));
-  console.log(
-    '\nrunner-tunnel demo: one WebSocket carries engine API + model traffic + previews\n',
-  );
+  console.log('\nrunner-tunnel demo: one WebSocket carries engine API + previews\n');
   for (const [proven, result, detail] of rows) {
     console.log(`${proven.padEnd(width)}  ${result}  ${detail}`);
   }

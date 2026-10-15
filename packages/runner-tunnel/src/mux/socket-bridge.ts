@@ -6,8 +6,8 @@ import type { StreamSink } from './types.ts';
 
 /**
  * Bridge a real TCP socket to one tunnel stream, both directions, with
- * backpressure. Used for desk sockets, gateway sockets and the loopback
- * sockets behind the HTTP agent, so every path shares the same behavior.
+ * backpressure. Used for desk sockets and the loopback sockets behind the
+ * HTTP agent, so every path shares the same behavior.
  * `onStreamFailed` runs after the socket is destroyed with the stream error,
  * so owners holding the other end of a loopback pair can fail it the same way.
  */

@@ -6,11 +6,6 @@ import type { RunnerDesk } from '../hands/runner-hands';
 import { bindRunnerDesk } from './runner-desk';
 import { listApprovedMachineKeys } from './service';
 
-// Default address a runner's model listener is reached on in local dev. The
-// listener is deleted with the desk-runner work (desk-runner plan Task G);
-// until then this keeps the same value the dev proxy used to publish on.
-export const DEFAULT_MODEL_GATEWAY_URL = 'http://127.0.0.1:4000';
-
 export interface HubLogger {
   info: (fields: Record<string, unknown>, message: string) => void;
   warn: (fields: Record<string, unknown>, message: string) => void;
@@ -215,7 +210,6 @@ export interface StartRunnerHubOptions {
   registry: HubMachineLookup;
   logger: HubLogger;
   port: number;
-  gatewayUrl?: string;
   heartbeatIntervalMs?: number;
   heartbeatTimeoutMs?: number;
   handshakeTimeoutMs?: number;
@@ -251,7 +245,6 @@ export async function startRunnerHub({
   registry,
   logger,
   port,
-  gatewayUrl,
   heartbeatIntervalMs,
   heartbeatTimeoutMs,
   handshakeTimeoutMs,
@@ -271,18 +264,9 @@ export async function startRunnerHub({
   // already finds an approved key for everyone who is approved right now.
   await cache.refresh();
 
-  const resolvedGateway = gatewayUrl ?? DEFAULT_MODEL_GATEWAY_URL;
-  if (!resolvedGateway.startsWith('http://')) {
-    cache.close();
-    throw new HubConfigError(
-      `runner hub gateway url must be http:// (got ${scrubScheme(resolvedGateway)})`,
-    );
-  }
-
   const server = await TunnelServer.start(
     {
       registry: cache,
-      gatewayUrl: resolvedGateway,
       ...(heartbeatIntervalMs === undefined ? {} : { heartbeatIntervalMs }),
       ...(heartbeatTimeoutMs === undefined ? {} : { heartbeatTimeoutMs }),
       ...(handshakeTimeoutMs === undefined ? {} : { handshakeTimeoutMs }),
@@ -361,36 +345,4 @@ export async function startRunnerHub({
 
     port: server.port,
   };
-}
-
-export class HubConfigError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'HubConfigError';
-  }
-}
-
-// Some misconfiguration is fatal at startup. Validate the gateway URL the
-// same way the tunnel does, so the failure is named rather than a ZodError
-// from inside `TunnelServer.start`.
-export function assertRunnerHubConfig(options: { enabled: boolean; gatewayUrl: string }): void {
-  if (!options.enabled) {
-    return;
-  }
-  if (!options.gatewayUrl.startsWith('http://')) {
-    throw new HubConfigError(
-      `RUNNER_HUB_ENABLED requires an http:// gateway url (got ${scrubScheme(options.gatewayUrl)})`,
-    );
-  }
-}
-
-// Replace any non-http scheme with a redacted placeholder, so the error
-// message can be logged without echoing the whole URL.
-function scrubScheme(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return `${parsed.protocol}//<redacted>`;
-  } catch {
-    return 'invalid-url';
-  }
 }

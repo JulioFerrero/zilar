@@ -1,6 +1,5 @@
 import { Effect, Schema } from 'effect';
 import type { KeyRegistry } from '../keys.ts';
-import { stringUrl } from '../runner/options.ts';
 
 export const HOP_BY_HOP_HEADERS = new Set([
   'connection',
@@ -10,7 +9,6 @@ export const HOP_BY_HOP_HEADERS = new Set([
 ]);
 
 export const ServerOptionsSchema = Schema.Struct({
-  gatewayUrl: stringUrl.check(Schema.isStartingWith('http://')),
   heartbeatIntervalMs: Schema.Number.check(
     Schema.isInt(),
     Schema.isGreaterThanOrEqualTo(10),
@@ -38,8 +36,6 @@ export type ServerOptionsDecoded = typeof ServerOptionsSchema.Type;
 
 export interface TunnelServerOptions {
   registry: KeyRegistry;
-  /** The one gateway model traffic may reach, e.g. `http://127.0.0.1:4000`. HTTP only for the spike. */
-  gatewayUrl: string;
   heartbeatIntervalMs?: number | undefined;
   heartbeatTimeoutMs?: number | undefined;
   handshakeTimeoutMs?: number | undefined;

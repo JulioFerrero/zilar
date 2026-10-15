@@ -1,7 +1,6 @@
 // effect-plain: moved unchanged from packages/runner-tunnel/src/server.ts (size split)
-import net from 'node:net';
-import { StreamMux, TunnelClosedError, attachSocketToStream } from '../mux.ts';
-import { CLOSE_MALFORMED, CLOSE_UNKNOWN_TYPE, type ControlMessage } from '../protocol.ts';
+import { TunnelClosedError } from '../mux.ts';
+import { CLOSE_UNKNOWN_TYPE, type ControlMessage } from '../protocol.ts';
 import { closeWith } from './conn.ts';
 import type { ServerConn, ServerRuntime } from './conn.ts';
 
@@ -15,9 +14,6 @@ export function handleReadyMessage(
     return;
   }
   switch (message.type) {
-    case 'model.open':
-      handleModelOpen(rt, conn, mux, message.stream_id);
-      break;
     case 'tunnel.refused':
       failStream(conn, message.stream_id, `tunnel refused: ${message.reason}`);
       break;
@@ -51,23 +47,4 @@ export function failStream(conn: ServerConn, streamId: number, reason: string): 
   if (conn.mux !== null) {
     conn.mux.failStream(streamId, new TunnelClosedError(reason));
   }
-}
-
-function handleModelOpen(
-  rt: ServerRuntime,
-  conn: ServerConn,
-  mux: StreamMux,
-  streamId: number,
-): void {
-  // Stream ids are split by parity: the server opens even ids, the runner
-  // odd ones. An even or already-live id is a buggy or hostile runner.
-  if (streamId % 2 === 0 || mux.hasStream(streamId)) {
-    closeWith(conn, CLOSE_MALFORMED, `bad model.open stream id ${streamId}`);
-    return;
-  }
-  // The bytes are piped to the one configured gateway, whatever they say:
-  // absolute-form URLs and foreign Host headers still land on the gateway
-  // because the destination never comes from the request.
-  const gateway = net.connect(rt.gatewayPort, rt.gatewayHost);
-  attachSocketToStream(mux, streamId, gateway);
 }

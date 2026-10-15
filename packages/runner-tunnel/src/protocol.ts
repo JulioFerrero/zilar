@@ -124,16 +124,10 @@ export const TunnelResumeSchema = Schema.Struct({
   stream_id: streamIdSchema,
 });
 
-export const ModelOpenSchema = Schema.Struct({
-  type: Schema.Literal('model.open'),
-  stream_id: streamIdSchema,
-});
-
 const runnerToServerSchemas = {
   hello: HelloSchema,
   auth: AuthSchema,
   heartbeat: HeartbeatSchema,
-  'model.open': ModelOpenSchema,
   'tunnel.refused': TunnelRefusedSchema,
   'tunnel.closed': TunnelClosedSchema,
   'tunnel.pause': TunnelPauseSchema,
@@ -167,7 +161,6 @@ export type ControlMessage =
   | typeof TunnelClosedSchema.Type
   | typeof TunnelPauseSchema.Type
   | typeof TunnelResumeSchema.Type
-  | typeof ModelOpenSchema.Type
   | typeof DeskProvisionSchema.Type
   | typeof DeskExecSchema.Type
   | typeof DeskStopSchema.Type
@@ -187,7 +180,6 @@ type ControlSchema =
   | typeof TunnelClosedSchema
   | typeof TunnelPauseSchema
   | typeof TunnelResumeSchema
-  | typeof ModelOpenSchema
   | typeof DeskProvisionSchema
   | typeof DeskExecSchema
   | typeof DeskStopSchema

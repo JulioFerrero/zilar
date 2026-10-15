@@ -1,5 +1,4 @@
 import { Cause, Duration, Effect, Exit, Fiber } from 'effect';
-import type { Server } from 'node:net';
 import type { WebSocket } from 'ws';
 import { DeskRunner } from '../desk-runner.ts';
 import type { RunnerKeypair } from '../keys.ts';
@@ -14,7 +13,6 @@ import {
 import { closeQuietly } from '../ws-close.ts';
 import { interruptHeartbeat, notifyClosed } from './connection.ts';
 import { connectOnce } from './handshake.ts';
-import { startModelListener } from './model-listener.ts';
 import { computeBackoff, type RunnerOptions, type RunnerOptionsDecoded } from './options.ts';
 
 /**
@@ -28,7 +26,6 @@ export interface RunnerRuntime {
   readonly keypair: RunnerKeypair;
   readonly runnerVersion: string;
   readonly exposedPorts: readonly number[];
-  readonly enableModelListener: boolean;
   readonly reconnectBaseMs: number;
   readonly reconnectMaxMs: number;
   readonly handshakeTimeoutMs: number;
@@ -37,7 +34,6 @@ export interface RunnerRuntime {
 
   ws: WebSocket | null;
   mux: StreamMux | null;
-  modelServer: Server | null;
   heartbeatFiber: Fiber.Fiber<unknown, unknown> | null;
   runFiber: Fiber.Fiber<unknown, unknown> | null;
   started: boolean;
@@ -60,7 +56,6 @@ export function createRunnerRuntime(
     keypair: options.keypair,
     runnerVersion: validated.runnerVersion,
     exposedPorts: validated.exposedPorts,
-    enableModelListener: validated.enableModelListener,
     reconnectBaseMs: validated.reconnectBaseMs,
     reconnectMaxMs: validated.reconnectMaxMs,
     handshakeTimeoutMs: validated.handshakeTimeoutMs,
@@ -68,7 +63,6 @@ export function createRunnerRuntime(
     deskRunner: new DeskRunner(options.deskRunner ?? null),
     ws: null,
     mux: null,
-    modelServer: null,
     heartbeatFiber: null,
     runFiber: null,
     started: false,
@@ -118,13 +112,10 @@ function emitFailed(rt: RunnerRuntime, err: Error): void {
   }
 }
 
-/** Start the model listener and connect. Resolves on the first authentication. */
+/** Connect. Resolves on the first authentication. */
 export async function startRunner(rt: RunnerRuntime): Promise<void> {
   if (rt.started) {
     throw new Error('runner already started');
-  }
-  if (rt.enableModelListener) {
-    rt.modelServer = await startModelListener(() => rt.mux);
   }
   rt.started = true;
   await new Promise<void>((resolve, reject) => {
@@ -151,13 +142,6 @@ export async function stopRunner(rt: RunnerRuntime): Promise<void> {
     closeQuietly(rt.ws);
   }
   rt.ws = null;
-  if (rt.modelServer !== null) {
-    const server = rt.modelServer;
-    rt.modelServer = null;
-    await new Promise<void>((resolve) => {
-      server.close(() => resolve());
-    });
-  }
   notifyClosed(rt);
   const fiber = rt.runFiber;
   rt.runFiber = null;

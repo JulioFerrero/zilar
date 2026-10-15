@@ -95,7 +95,6 @@ export const runRunnerEffect = (options: RunOptions): Effect.Effect<RunResult, C
       runnerId: options.identity.machineId,
       keypair,
       exposedPorts: [],
-      enableModelListener: false,
       deskRunner,
       reconnectBaseMs: 250,
       reconnectMaxMs: 5000,

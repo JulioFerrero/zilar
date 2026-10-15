@@ -4,7 +4,7 @@ Everything that exists in the repository today, grouped by area, with the task t
 
 | Mark | Meaning |
 |---|---|
-| ✅ **Live** | Used or clicked through on the real stack (server + ejabberd + Postgres + LiteLLM) by Julio or the lead |
+| ✅ **Live** | Used or clicked through on the real stack (server + ejabberd + Postgres) by Julio or the lead |
 | 🟡 **Merged** | Merged with green checks (format, lint, typecheck, tests, build) and reviewed line by line; the live check is still open (steps in [`LIVE_CHECKS_2026-09-29.md`](LIVE_CHECKS_2026-09-29.md)) |
 | 🧭 **Planned** | Specified, not built yet |
 
@@ -71,8 +71,9 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Feature | What it does | Where | Status | Tasks |
 |---|---|---|---|---|
 | Create and manage AIs | One-screen New AI, in-chat panel (name, persona, limits, model), My AIs, two-step delete | web, mobile | ✅ Live (web) · 🟡 (mobile) | T-0030, T-0032, T-0037, T-0039, T-0052 |
-| Bring your own keys | Provider keys encrypted at rest (AES-256-GCM), Test/Remove, per-AI private LiteLLM model | server, web | ✅ Live | T-0028, T-0033 |
-| Hard spending caps | Every AI gets a LiteLLM virtual key capped in money; cap enforced before the call | server | ✅ Live | T-0007, T-0030 |
+| Bring your own keys | Provider keys encrypted at rest (AES-256-GCM), Test/Remove; every model call goes straight from the server to the provider through Effect AI with the owner's key, decrypted per call (Anthropic, OpenAI, OpenRouter, any OpenAI-compatible API) | server, web | ✅ Live | T-0028, T-1394, T-1396, T-1399 |
+| Spending limits | Every model call is counted per AI per day (tokens and cost, prices from the models.dev catalog); an optional daily limit is checked before every turn and fails closed when usage can't be read | server | ✅ Live | T-1405, T-1437 |
+| No LiteLLM | The LiteLLM gateway and its virtual keys were removed; its tables are dropped (migration `0059`) | server, infra | ✅ | T-1401, T-1413 |
 | Costs and daily limit | Today and 30-day spend in the panel, soft daily limit before each turn, 80% budget notice | web, server | ✅ Live (costs) · 🟡 (notice) | T-0058, T-0066 |
 | AIs answer in chat | Every active AI is online over XMPP; the owner's DMs get replies; honest failure texts | server | ✅ Live | T-0034, T-0050 |
 | Streaming replies | Drafts stream over SSE and reveal smoothly, then hand over to the final message with no jump | server, web, mobile | ✅ Live (web) · 🟡 (mobile) | T-0041, T-0043, T-0044, T-0045, T-0056 |
@@ -141,7 +142,7 @@ Task ids (`T-0042`) point to `work/T-XXXX-*.md`: the spec, the worker's report a
 | Feature | What it does | Where | Status | Tasks |
 |---|---|---|---|---|
 | Monorepo | pnpm + Turborepo; apps and shared packages | repo | ✅ | T-0001, T-0012 |
-| Local infrastructure | Postgres 18 with pgvector, ejabberd, LiteLLM in Docker Compose; `pnpm infra:up`, `infra:smoke`, `xmpp:e2e` | infra | ✅ Live | T-0002 |
+| Local infrastructure | Postgres 18 with pgvector and ejabberd in Docker Compose; `pnpm infra:up`, `infra:smoke`, `xmpp:e2e` | infra | ✅ Live | T-0002, T-1413 |
 | Server foundation | zod config, redacted logs, JSON errors, request ids, Drizzle migrations at startup, PGlite tests | server | ✅ Live | T-0014 |
 | Protocol | Versioned payload schemas for rich messages (cards, progress, attachments, approvals) | package | ✅ | T-0013 |
 | Server configuration reference | Every env var, flag, migration, background job and health check | docs | ✅ | T-0094 → [`SERVER_CONFIG.md`](SERVER_CONFIG.md) |

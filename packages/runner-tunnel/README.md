@@ -1,20 +1,19 @@
 # @zilar/runner-tunnel
 
-One outbound WebSocket per runner carries the desk's engine API (HTTP + SSE),
-the AI's model traffic back to the LLM gateway, and private preview URLs. The
-runner only ever dials out, so it works behind home routers. It began as the
-spike for `docs/PROJECT_PLAN.md` §11.8; M3 built on it (the machine registry,
-the runner app and the hub are merged).
+One outbound WebSocket per runner carries the desk's engine API (HTTP + SSE)
+and private preview URLs. The runner only ever dials out, so it works behind
+home routers. It began as the spike for `docs/PROJECT_PLAN.md` §11.8; M3 built
+on it (the machine registry, the runner app and the hub are merged).
 
 ## Layout
 
 - `src/protocol.ts` — control-message schemas (zod) and the binary frame codec.
 - `src/keys.ts` — ed25519 runner identity and the approved-keys registry.
 - `src/mux.ts` — stream multiplexing, backpressure, and socket bridging.
-- `src/server.ts` — the platform side: handshake, engine dial-out, model
-  forwarding, preview URLs, heartbeats.
-- `src/runner.ts` — the runner side: dial-out, auth, port allowlist, model
-  listener, reconnect with capped backoff.
+- `src/server.ts` — the platform side: handshake, engine dial-out, preview
+  URLs, heartbeats.
+- `src/runner.ts` — the runner side: dial-out, auth, port allowlist, reconnect
+  with capped backoff.
 - `src/http-agent.ts` — an `http.Agent` whose connections travel the tunnel.
 - `src/demo.ts` — the demo (`pnpm --filter @zilar/runner-tunnel demo`).
 
@@ -50,7 +49,7 @@ const registry = new InMemoryKeyRegistry();
 const keypair = generateRunnerKeypair();
 registry.approve('office-linux', keypair.publicKey);
 
-const server = await TunnelServer.start({ registry, gatewayUrl: 'http://127.0.0.1:4000' }, 0);
+const server = await TunnelServer.start({ registry }, 0);
 const runner = new RunnerClient({
   serverUrl: server.wsUrl,
   runnerId: 'office-linux',
@@ -67,30 +66,13 @@ http.get('http://desk:3000/api/session', { agent }, (res) => {
   // ... chunked bodies and SSE arrive exactly as if direct
 });
 
-// Model traffic: point the desk's LLM base URL at runner.modelUrl
-// (http://127.0.0.1:<port>); bytes are forwarded to the gateway URL only.
-
 // Previews: share a runner port behind an unguessable token.
 const token = server.createPreviewToken('office-linux', 3000);
 // GET <previewBaseUrl>/preview/<token>/...  (unknown token or gone runner: 404)
 ```
 
-## Demo and the gated LiteLLM check
-
-`pnpm --filter @zilar/runner-tunnel demo` starts a server, a runner, a fake
-desk and a fake gateway on localhost, proves items 3–5 of the task, and prints
-latencies (median of 50, direct vs tunnel) plus the 50 MB slow-reader peak.
-
-With `ZILAR_TUNNEL_INTEGRATION=1`, the demo additionally points the
-model-traffic path at the real LiteLLM on `http://127.0.0.1:4000` and fetches
-`GET /health/liveliness` through the tunnel. No key is used or printed.
-
 ## Security notes
 
-- The model listener binds `127.0.0.1` only, and the server dials the one
-  configured gateway URL no matter what the bytes say (absolute-form URLs and
-  foreign `Host` headers still land on the gateway). The runner can never make
-  the server connect elsewhere.
 - The preview token is the capability: anyone holding it can load the page.
   Room-member authorization on previews is still open (M3 hardening; see the
   open list in `work/BOARD.md`).

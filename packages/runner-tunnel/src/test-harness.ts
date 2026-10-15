@@ -152,70 +152,11 @@ export async function startFakeDesk(): Promise<FakeDesk> {
   };
 }
 
-export interface FakeGateway {
-  port: number;
-  url: string;
-  received: Array<{ method: string; url: string; host: string; body: Buffer }>;
-  connections: number;
-  close(): Promise<void>;
-}
-
-export async function startFakeGateway(): Promise<FakeGateway> {
-  const received: FakeGateway['received'] = [];
-  const state = { connections: 0 };
-  const server = http.createServer((req, res) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => {
-      chunks.push(chunk);
-    });
-    req.on('end', () => {
-      received.push({
-        method: req.method ?? '',
-        url: req.url ?? '',
-        host: req.headers.host ?? '',
-        body: Buffer.concat(chunks),
-      });
-      if ((req.url ?? '').startsWith('/hang')) {
-        return; // Never respond: the tunnel drop must fail the request.
-      }
-      res.writeHead(200, { 'content-type': 'application/json', connection: 'close' });
-      res.end(JSON.stringify({ ok: true, url: req.url ?? '' }));
-    });
-  });
-  server.on('connection', () => {
-    state.connections += 1;
-  });
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      server.removeListener('error', reject);
-      resolve();
-    });
-  });
-  const address = server.address();
-  if (typeof address === 'string' || address === null) {
-    throw new Error('fake gateway is not listening');
-  }
-  return {
-    port: address.port,
-    url: `http://127.0.0.1:${address.port}`,
-    received,
-    get connections() {
-      return state.connections;
-    },
-    close: () =>
-      new Promise<void>((resolve) => {
-        server.close(() => resolve());
-      }),
-  };
-}
-
 export interface TunnelPair {
   registry: InMemoryKeyRegistry;
   server: TunnelServer;
   runner: RunnerClient;
   desk: FakeDesk;
-  gateway: FakeGateway;
   runnerId: string;
   keypair: { publicKey: string; privateKey: string };
 }
@@ -227,9 +168,7 @@ export async function startTunnelPair(options?: {
   handshakeTimeoutMs?: number;
   reconnectBaseMs?: number;
   reconnectMaxMs?: number;
-  enableModelListener?: boolean;
 }): Promise<TunnelPair> {
-  const gateway = await startFakeGateway();
   const desk = await startFakeDesk();
   const registry = new InMemoryKeyRegistry();
   const runnerId = 'runner-1';
@@ -238,7 +177,6 @@ export async function startTunnelPair(options?: {
   const server = await TunnelServer.start(
     {
       registry,
-      gatewayUrl: gateway.url,
       heartbeatIntervalMs: options?.heartbeatIntervalMs,
       heartbeatTimeoutMs: options?.heartbeatTimeoutMs,
       handshakeTimeoutMs: options?.handshakeTimeoutMs,
@@ -253,17 +191,15 @@ export async function startTunnelPair(options?: {
     reconnectBaseMs: options?.reconnectBaseMs,
     reconnectMaxMs: options?.reconnectMaxMs,
     handshakeTimeoutMs: options?.handshakeTimeoutMs,
-    enableModelListener: options?.enableModelListener,
   });
   await runner.start();
-  return { registry, server, runner, desk, gateway, runnerId, keypair };
+  return { registry, server, runner, desk, runnerId, keypair };
 }
 
 export async function closeTunnelPair(pair: TunnelPair): Promise<void> {
   await pair.runner.stop().catch(() => undefined);
   await pair.server.close().catch(() => undefined);
   await pair.desk.close().catch(() => undefined);
-  await pair.gateway.close().catch(() => undefined);
 }
 
 export interface HttpResult {

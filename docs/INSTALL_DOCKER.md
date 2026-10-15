@@ -2,8 +2,9 @@
 
 Five minutes from a fresh clone to your own Zilar behind HTTPS: Postgres,
 ejabberd (chat), the Zilar server, the web app and Caddy (automatic HTTPS)
-as Docker containers. No LiteLLM ships in this stack — AI features stay off
-unless you point Zilar at your own gateway (see below). The fastest way
+as Docker containers. AIs need no extra service: each one calls its model
+provider directly with its owner's own key. They start answering once
+`AGENT_GATEWAY_ENABLED=true` is set in `.env` (`./zilar init` writes `false`). The fastest way
 uses the install helper (`deploy/zilar`); the manual steps are underneath
 so you can see everything the helper does.
 

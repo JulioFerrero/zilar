@@ -7,6 +7,12 @@
 > **Repo:** `JulioFerrero/zilar` (private)
 >
 > This document collects everything decided and researched so far, the proposed architecture, the MVP scope, the roadmap, the risks, and every open question. Anything marked **(proposal)** still needs Julio's OK.
+>
+> **Note (2026-10-15):** this is the original design, kept as a record. Two of its decisions are superseded:
+> - **There is no LLM gateway any more.** LiteLLM was removed (T-1399, T-1401, T-1413): the server calls each provider directly through Effect AI with the owner's key, decrypted per call, and an optional daily limit per AI is checked before every turn (T-1405).
+> - **AI computers never call models,** so no placeholder keys exist.
+>
+> The current design is [`docs/design/agent-system.md`](design/agent-system.md). Mentions of LiteLLM below describe the plan as it was.
 
 ---
 
@@ -56,7 +62,7 @@ We are building a self-hosted, messenger-style platform where **people and AI ag
 | Platform backend | A TypeScript **server** that owns accounts, AIs, context building, delegation, approvals, budgets and the audit log |
 | AI engine | **OpenCode** running inside each desk, driven by the server through our own interface **(proposal)** |
 | Compute | **Runners**, a small app anyone installs on any machine. It connects out to the platform and hosts desks. |
-| Keys | **Bring your own API key** per AI. Real keys live only in the platform's LLM gateway (LiteLLM), and desks only get capped placeholder keys. |
+| Keys | **Bring your own API key** per AI. Keys are encrypted at rest on the server and decrypted per call; desks never see a key (originally: a LiteLLM gateway with capped placeholder keys, superseded). |
 | Who speaks | A cheap **listener AI** in each room reads everything and wakes the right AI. Expensive AIs sleep until needed. |
 
 **Verdict:** this is feasible, and a real MVP is realistic. Each piece has been built and proven separately in 2025–2026. The work is integration and keeping the scope tight. See [§4](#4-will-it-work-feasibility).
@@ -82,7 +88,7 @@ We are building a self-hosted, messenger-style platform where **people and AI ag
 | **BYOK / BYOC** | Bring your own key / bring your own compute. |
 | **JID** | An XMPP address, like `ana@example.com`. The *bare JID* has no device suffix. |
 | **MUC / MAM** | Multi-User Chat (groups) and Message Archive Management (history sync). |
-| **LLM gateway** | LiteLLM. It holds real provider keys and enforces per-AI budgets. |
+| **LLM gateway** | None today: the server calls providers directly through Effect AI and enforces an optional daily limit per AI (originally LiteLLM, removed in T-1413). |
 
 ---
 
@@ -208,7 +214,7 @@ This is an estimate, not a promise. One developer working full time with an AI c
 │                    ├─ git proxy + action adapters (Ads, ...)        uploads, desk snapshots   │
 │                    └─ push relay (XEP-0357 → Expo → APNs/FCM)                                 │
 │                                                                                               │
-│  LiteLLM (pinned): real provider keys, a virtual key per AI, budgets                          │
+│  Model calls: Effect AI, straight to the provider with the owner's key                        │
 └───────────────────────────────────────────────┬───────────────────────────────────────────────┘
                                                 │ one outbound WebSocket per runner (port 443)
          ┌──────────────────────────────────────┼──────────────────────────────────────┐
@@ -230,7 +236,7 @@ This is an estimate, not a promise. One developer working full time with an AI c
 | **ejabberd** | Chat sessions, DMs, groups, history, uploads, push hooks | ejabberd in Docker with a Postgres backend |
 | **Server** | Everything the platform owns (see diagram) | TypeScript on Node LTS, Hono, Drizzle, Better Auth, pg-boss for jobs |
 | **Agent gateway** | Connects each AI to XMPP, builds context, runs listeners, routes and delegates | Module of the server at first. Can split out later. |
-| **LLM gateway** | Holds real keys, issues a virtual key per AI, enforces budgets | LiteLLM (Python container, pinned by digest) |
+| **Model calls** | Call the provider with the owner's key, count tokens and cost, enforce the daily limit | Effect AI inside the server (originally LiteLLM, removed in T-1413) |
 | **Git proxy and action adapters** | Adds credentials, enforces branch rules and spending rules | Module of the server at first |
 | **Runner** | Installed on user machines. Creates desks, tunnels traffic, reports capabilities | TypeScript compiled with Bun into a single binary |
 | **Desk** | Sandboxed computer for one AI in one project | Docker (+gVisor), VM, or macOS VM, with OpenCode inside |
