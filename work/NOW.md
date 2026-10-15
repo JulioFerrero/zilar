@@ -2,8 +2,8 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-**2026-10-15 ~04:30: night work. Wave 1 is mostly merged, the findings sweeps are done, and batches from them are running.**
-- **Merged:**
+**2026-10-15, night (updated 03:10 CEST): what merged since the 03:00 entry, in order.** Earlier versions of this entry carried wrong clock times; the order is right.
+- **Merged, first batch:**
   - T-1428: the one-line installer. `https://chat.zilar.app/install.sh` is live as `text/x-shellscript`.
   - T-1429: every models.dev OpenAI-compatible provider can back an AI.
   - T-1432: the mobile sheet kit.
@@ -13,31 +13,39 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1437: server. People search has no N+1, push archive lookups are cached for 15 s, and the AI budget fails closed when a limit is set. It is live, with 0 errors.
   - T-1438: the web image serves `/install.sh`, and the host `get.zilar.app` answers with the script.
   - T-1439: ops docs. Backups are described for the Coolify Application, there is a restore drill (`docs/ops/restore-drill.md`, RTO 60 min), and the install doc points to the right compose.
-- **Merged later (~05:30):**
+- **Then:**
   - T-1431: the web dialog kit;
   - T-1440: AIs know the user's local time (live; migration 0061 is applied, with `user_profiles.time_zone` present, and 0 errors);
   - T-1441: catalog connections keep working after a restart;
   - T-1442: the shared New AI logic in chat-core.
-- **Merged ~06:30:**
+- **Then:**
   - T-1443: mobile sheets on the kit with a default close key;
   - T-1446 and T-1447: web dialogs on the standard (one close key, no Cancel, Enter submits);
   - T-1449: the chat list and pins poll every 5 min while online;
   - T-1450: a stored instance owner. It is live; the owner row is claimed the first time Julio opens Integrations or voice settings.
-- **Merged ~07:30:**
+- **Then:**
   - **T-1444: the web New AI flow, live.** The lead walked it headless against the boards.
   - T-1452: web shows the connection line in the chat header.
   - T-1453: the ejabberd schema check is live (`/health` shows `"ejabberdSchema":"ok"`), and `docs/ops/OPS_LOG.md` exists.
   - T-1298 was dropped, as T-1436 covered it.
-- **Merged ~08:30:**
+- **Then:**
   - **T-1448: an AI that owns a topic follows it**, until it is reassigned or stopped. General accepts a group AI as its owner. The first merge failed the gate (the runner's typecheck), and it is fixed.
   - **T-1451:** the New chat actions on mobile are modal kit sheets. The phone smoke caught and fixed an undimmed, click-through sheet.
 - **Combined check on main:** typecheck 16/16, server tests 99 files and 701 tests, all green.
+- **Then:**
+  - T-1454: web Connections uses the Add key dialog. It also fixed the live orphaned-key bug.
+  - T-1455: removing an AI clears it as topic owner.
+  - T-1457: the config split, live and healthy.
+  - T-1458: small splits, plus a mock test that had been red on main since T-1355.
+  - T-1459: web OpenAI-compatible never reuses an old endpoint.
+- **Main checks:** client-core 162, chat-core 122, xmpp-core 150, protocol 55, runner-tunnel 25 and desk 96 tests pass, plus server 701. The one red mock test is fixed by T-1458.
 - **Running:**
-  - T-1445: the mobile New AI flow, in a fix round (a Base URL edit orphaned a created key);
-  - T-1454: the web Add key dialog, with the same fix. That orphan bug is live in the web New AI flow until T-1454 merges.
-  - T-1455: removing an AI clears it as topic owner;
-  - T-1456, T-1457 and T-1458: 400-line splits (runner-tunnel, server config plus `ais/api.ts`, two small files).
-- **Next:** split server `app.ts` and `main.ts`, one at a time, after T-1457 deploys cleanly. The lead tooling files (`autopilot.ts`, `cli.ts`, `client.ts`) stay over 400 for now, because the autopilot runs from them.
+  - T-1445: mobile New AI. The phone smoke found the sheet's primary key collapsed with no label, and a fix is sent;
+  - T-1456: the runner-tunnel split;
+  - T-1460: the server `app.ts` split.
+- **Next:** `main.ts` after `app.ts` deploys cleanly, then the mobile Connections add-key sheet after T-1445.
+- **For the canvas list:** the Connections page itself (it still has the "active" word badges and a subtitle).
+- **Kept over 400 lines on purpose:** the lead tooling files (`autopilot.ts`, `cli.ts`, `client.ts`) stay over 400 for now, because the autopilot runs from them.
 - **New canvas for Julio: "View steps"**, https://claude.ai/artifact/7YV3tdKH1k8LSBBZtsXzxk.
   - Web: a right panel. Phone: a hugging sheet.
   - It shows real event kinds from T-1426 (status, model call, tool call/result, approval, answer) with the real tool names (bash, read, edit, grep, git).
