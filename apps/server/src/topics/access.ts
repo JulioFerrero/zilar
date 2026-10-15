@@ -4,89 +4,17 @@
 //
 // Rows keep their camelCase shapes: `transformResultNames` camelCases the
 // `topics` and `group_members` columns into `TopicRow` and the row types here.
+//
+// T-1546: the schemas and view types live in `./types`, and the AI-in-topic
+// checks in `./ai-access`; this file re-exports them all, so importers stay.
 
-import { Effect, Schema } from 'effect';
+import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { GroupMemberRow, TopicRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
-import { holdsTopicRole, topicRoleHolderIds } from '../roles/service';
-import type { AiActivityState } from './ai-activity';
-
-export const topicVisibilitySchema = Schema.Literals(['public', 'private']);
-export type TopicVisibility = typeof topicVisibilitySchema.Type;
-
-export const topicKindSchema = Schema.Literals(['chat', 'task', 'bug', 'ui', 'routine']);
-export type TopicKind = typeof topicKindSchema.Type;
-
-export const topicStatusSchema = Schema.Literals([
-  'open',
-  'in_progress',
-  'in_review',
-  'blocked',
-  'done',
-]);
-export type TopicStatus = typeof topicStatusSchema.Type;
-
-export type { TopicRow };
-
-export interface TopicOwnerView {
-  kind: 'user' | 'ai';
-  id: string;
-  name: string;
-}
-
-export interface TopicRoleView {
-  id: string;
-  name: string;
-  memberCount: number;
-}
-
-/** T-1514: one AI at work in a topic, with its state and its picture. */
-export interface TopicActivityEntry {
-  aiId: string;
-  name: string;
-  /** T-1537: the AI's bare JID, so the client can match its live card. */
-  jid?: string;
-  avatarUrl?: string;
-  state: AiActivityState;
-}
-
-export interface TopicView {
-  id: string;
-  groupId: string;
-  name: string;
-  glyph: string;
-  chatJid: string;
-  visibility: TopicVisibility;
-  kind: TopicKind;
-  status: TopicStatus;
-  owner: TopicOwnerView | null;
-  linkUrl: string | null;
-  linkLabel: string | null;
-  isGeneral: boolean;
-  archived: boolean;
-  /** T-1521: when a person marked the topic done, an ISO time, null when open.
-   * Set on every route by `buildTopicView`; optional only so older fixtures
-   * that predate the field still typecheck. */
-  doneAt?: string | null;
-  memberCount: number;
-  /** AIs added to this topic (never private names). */
-  ais: TopicAiView[];
-  /** T-0116: roles with access to this topic (empty for public topics). */
-  roles: TopicRoleView[];
-  /** T-0116: the role whose holders may decide approvals here, if any. */
-  approverRole: { id: string; name: string } | null;
-  /** T-1514: the AIs at work in this topic (idle ones left out), filled on the
-   * list routes only; absent on the single-topic routes. */
-  activity?: TopicActivityEntry[];
-}
-
-export interface TopicAiView {
-  id: string;
-  name: string;
-}
+import { holdsTopicRole } from '../roles/service';
 
 const MISSING_TOPIC_MESSAGE = 'Topic not found';
 // Byte-identical for a missing topic id and for a topic the caller may not
@@ -295,101 +223,19 @@ export async function canCreateTopic(
   return membersCanCreateTopics;
 }
 
-// Whether an AI may currently be in a topic's room: the derived rule that
-// keeps an AI from reading a conversation its owner cannot see. For a public
-// non-General topic a `topic_ais` row counts as today (the AI must also be
-// active and in the group — checked by the callers). For a private topic the
-// row counts only while the AI's owner holds a `topic_members` row for that
-// topic (and is still a group member): when the owner is removed from the
-// topic, or the topic is made private without the owner in `memberIds`, the
-// AI drops out of the room automatically, and comes back when the owner is
-// added again. The rows are never deleted: this is evaluated live, so it can
-// never drift. General topics have no `topic_ais` rows and always answer
-// false here.
-export async function aiMayBeInTopic(
-  db: ServerDatabase,
-  topic: TopicRow,
-  ai: { id: string; owner: string; status: string },
-): Promise<boolean> {
-  if (topic.isGeneral || topic.archivedAt !== null || ai.status !== 'active') {
-    return false;
-  }
-  const [row] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ aiId: string }>`SELECT ai_id FROM topic_ais
-        WHERE topic_id = ${topic.id} AND ai_id = ${ai.id}
-        LIMIT 1`;
-    }),
-  );
-  if (!row) {
-    return false;
-  }
-  if (topic.visibility !== 'private') {
-    return true;
-  }
-  return canSeeTopic(db, topic, ai.owner);
-}
-
-// The AI ids currently allowed in one topic under `aiMayBeInTopic`: the
-// fast path for the gateway listing, which needs the allowed set per AI.
-// Takes the narrow slice of the topic row the rule reads, so callers with a
-// partial select (like the gateway listing) can pass it directly.
-export async function allowedTopicAiIds(
-  db: ServerDatabase,
-  topic: Pick<TopicRow, 'id' | 'groupId' | 'visibility' | 'isGeneral' | 'archivedAt'>,
-): Promise<Set<string>> {
-  if (topic.isGeneral || topic.archivedAt !== null) {
-    return new Set();
-  }
-  const rows = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{
-        aiId: string;
-        owner: string;
-        status: string;
-      }>`SELECT ta.ai_id, a.owner, a.status
-        FROM topic_ais ta
-        INNER JOIN ais a ON a.id = ta.ai_id
-        WHERE ta.topic_id = ${topic.id}`;
-    }),
-  );
-  const active = rows.filter((row) => row.status === 'active');
-  if (topic.visibility !== 'private') {
-    return new Set(active.map((row) => row.aiId));
-  }
-  const memberRows = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ userId: string }>`SELECT user_id FROM topic_members
-        WHERE topic_id = ${topic.id}`;
-    }),
-  );
-  const memberIds = new Set(memberRows.map((row) => row.userId));
-  // T-0116: an owner who reaches the private topic only through a role
-  // keeps their AI in the room, like the room sync does.
-  for (const holder of await topicRoleHolderIds(db, topic.id, topic.groupId)) {
-    memberIds.add(holder);
-  }
-  const groupRows = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ userId: string }>`SELECT user_id FROM group_members
-        WHERE group_id = ${topic.groupId}`;
-    }),
-  );
-  const groupIds = new Set(groupRows.map((row) => row.userId));
-  return new Set(
-    active
-      .filter((row) => memberIds.has(row.owner) && groupIds.has(row.owner))
-      .map((row) => row.aiId),
-  );
-}
+export type {
+  TopicActivityEntry,
+  TopicAiView,
+  TopicKind,
+  TopicOwnerView,
+  TopicRoleView,
+  TopicRow,
+  TopicStatus,
+  TopicView,
+  TopicVisibility,
+} from './types';
+export { topicKindSchema, topicStatusSchema, topicVisibilitySchema } from './types';
+export { aiMayBeInTopic, allowedTopicAiIds } from './ai-access';
 
 export {
   countTopicMembers,
