@@ -109,10 +109,20 @@ export function useKeyCheck({ onProviderChange, onVerified }: UseKeyCheckOptions
 
   const chooseProvider = (id: string): void => {
     setProviderId(id);
-    const saved =
-      connections
-        .filter((connection) => connection.provider === id && connection.status === 'active')
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null;
+    // A provider switch starts the compatible fields empty, so an endpoint typed
+    // for the previous choice never carries over to the next one.
+    setBaseUrl('');
+    setCompatibleName('');
+    // OpenAI-compatible never reuses a saved connection: its saved endpoint may
+    // differ from the one the user is about to enter, so the key starts empty
+    // and unverified. Every other provider keeps its newest active connection.
+    let saved: Connection | null = null;
+    if (id !== 'openai-compatible') {
+      saved =
+        connections
+          .filter((connection) => connection.provider === id && connection.status === 'active')
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null;
+    }
     setUsingSavedKey(saved !== null);
     setKeyValue('');
     setKeyError('');
