@@ -85,6 +85,14 @@ jobs:
           - name: zilar-ejabberd
             file: deploy/ejabberd/Dockerfile
             context: deploy
+          # The desk services both run this one sidecar image (deploy/desk/Dockerfile.agent).
+          - name: zilar-desk-agent
+            file: deploy/desk/Dockerfile.agent
+            context: .
+          # The jail image every AI runs (packages/desk/Dockerfile).
+          - name: zilar-desk
+            file: packages/desk/Dockerfile
+            context: packages/desk
     steps:
       - uses: actions/checkout@v7
         with:
@@ -125,6 +133,26 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The jail image (packages/desk/Dockerfile) copies dist/desk-tool, which
+      # no other image needs and which is gitignored: bundle it from source in
+      # this same checkout, so the Dockerfile's COPY finds it.
+      - name: Set up pnpm for the desk tool bundle
+        if: matrix.name == 'zilar-desk'
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node for the desk tool bundle
+        if: matrix.name == 'zilar-desk'
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Build the desk tool bundle for the jail image
+        if: matrix.name == 'zilar-desk'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @zilar/desk build
 
       # The one amd64 build of the server image (T-0861). It is loaded into the local
       # docker, smoke-started below, and then pushed as it is on a green main (the

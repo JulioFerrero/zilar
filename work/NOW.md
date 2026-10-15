@@ -73,7 +73,27 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - T-1578 (questions step 5: the question card with reply chips on web and phone; checked headless and on the phone).
   - **Julio, 17:45: no new tasks until we talk.** He also asked about running AIs on Zilar cloud. The lead's check: desks are off on live (no `runsc`, no desk containers, no desk image built in CI, 0 paired machines). The enable steps are in `docs/RELEASING.md` §10 and wait for his decision.
     - T-1581 (phone Group info T5: the channel info root and its subscribers page; code-checked; the mock channel has no feed topic, so `/group/g-acme` can't be smoke-checked; fix that in T6).
-  - **Running: none.** Waiting to talk with Julio before launching anything.
+  - **Julio, 2026-10-15 evening: one-line install** (plan `docs/deploy/one-line-install-plan.md`).
+    - **His decisions:**
+      - Coolify through its API with a token;
+      - no Docker → stop with a clear message (bare metal stays a manual guide);
+      - live moves to the users' published-images layout "without downtime or strange hacks", after one planned ~2 min cutover;
+      - `get.zilar.app` is served by the landing app.
+    - **He said:** "start all code steps", and keep the earlier work going too.
+  - **Running (6):**
+    - T-1582 (desk images in CI; the plain stack pulls them; `zilar up` pins `DESK_IMAGE`);
+    - T-1583 (fresh-install CI test after Production images);
+    - T-1584 (Coolify split layout: `zilar-core.yml` and `LAYOUT.md`);
+    - T-1585 (installer bootstrap, check report and Docker stop; AI computers on only after a real sandbox run);
+    - T-1586 (questions step 8: "AIs here" opens the question);
+    - T-1587 (phone channel Content, Settings and More; the mock channel opens).
+  - **Next:**
+    - the Coolify-mode installer, after T-1584 and T-1585;
+    - `get.zilar.app` on the landing app (needs Julio's DNS record);
+    - the rehearsal in a scratch Coolify project, then the live cutover at a time Julio picks.
+  - **Found while checking:**
+    - `install.sh --desks` runs host-setup but never sets `DESKS_ENABLED=true` (T-1585 fixes it);
+    - Coolify runs on the VPS itself, so a reset loses every secret unless Julio exports them (OPS-9).
   - **Live at `df406f717`** (includes the questions server work): 0 errors and 2 "AI is offline" warnings at container start; `/api/me`, `/api/chats`, `/api/topics/x` and `/api/agents/tasks/x/steps` answer 401 signed out.
   - **Next:**
     - step 8 (the "AIs here" row opens the question; a question refreshes the topic list), after T-1578, so it can seed the mock's `questionId`;

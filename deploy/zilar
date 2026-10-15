@@ -49,6 +49,9 @@ ENV_FILE=""
 # script grows by nothing but the dispatch line below.
 # shellcheck source=lib/host-setup.sh
 . "$DEPLOY_DIR/lib/host-setup.sh"
+# The desk jail-image pin (`./zilar up` fills an empty DESK_IMAGE).
+# shellcheck source=lib/desk-image.sh
+. "$DEPLOY_DIR/lib/desk-image.sh"
 
 die() {
   echo "$PROG: error: $*" >&2
@@ -474,16 +477,15 @@ WEB_TOOLS_ENABLED=false
 # pool, with an egress proxy as their only route out. Nothing changes until
 # you flip the switch, and the switch is only useful after the host prep:
 #   1. sudo ./zilar host-setup            # pinned gVisor + the 4 GB slice
-#   2. build/pin DESK_IMAGE below and set DESKS_ENABLED=true
+#   2. set DESKS_ENABLED=true             # './zilar up' then pins DESK_IMAGE below
 #   3. ./zilar up
 DESKS_ENABLED=false
 # './zilar up' sets the server's DESK_AGENT_SOCKET automatically while
 # DESKS_ENABLED is true; set DESK_AGENT_SOCKET here only to override it.
-# The one jail image every AI runs, pinned by digest (…@sha256:…). Build it
-# from packages/desk with: pnpm --filter @zilar/desk build, then
-# docker build -t zilar-desk:dev packages/desk ; push it to a registry this
-# host can pull from, and paste the pushed @sha256: reference here. Required
-# once desks are on; left unset here because no digest exists yet.
+# The one jail image every AI runs, pinned by digest (…@sha256:…). With desks
+# on and this empty, './zilar up' pulls the published image
+# (ghcr.io/<IMAGE_OWNER>/zilar-desk:<IMAGE_TAG>) and writes its digest here;
+# a value set by hand wins. Left unset because './zilar up' fills it.
 # DESK_IMAGE=
 # gVisor runtime for the jails (the VPS has no /dev/kvm, so runsc uses systrap).
 DESK_RUNTIME=runsc
@@ -509,6 +511,7 @@ EOF
 cmd_up() {
   require_env_file
   require_docker
+  pin_desk_image
   _domain="$(env_get ZILAR_DOMAIN)"
   info "starting Zilar (${_domain:-unknown domain})..."
   compose up -d --wait "$@"

@@ -194,20 +194,19 @@ Desks are sandboxed AI computers (gVisor jails) that run on the install host. Th
 
    `host-setup` installs the pinned gVisor runtime, reloads Docker (a SIGHUP — the running containers keep running; never a restart), writes the 4 GB `zilar-desks.slice` and creates the workspace root. It is idempotent.
 
-2. Build and pin the jail image, then put its digest in `deploy/.env`:
+2. Turn desks on and start the stack:
 
    ```
-   pnpm --filter @zilar/desk build
-   docker build -t zilar-desk:dev packages/desk
-   # push it, then set: DESK_IMAGE=<registry>/zilar-desk@sha256:...
-   ```
-
-3. Turn desks on and start the stack:
-
-   ```
-   # in deploy/.env: DESKS_ENABLED=true and DESK_IMAGE=...@sha256:...
+   # in deploy/.env: DESKS_ENABLED=true
    ./deploy/zilar up
    ```
+
+   `./deploy/zilar up` pins `DESK_IMAGE` for you: while `DESKS_ENABLED=true` and
+   `DESK_IMAGE` is empty, it pulls the published jail image
+   (`ghcr.io/<IMAGE_OWNER>/zilar-desk:<IMAGE_TAG>`) and writes its digest into
+   `deploy/.env` as `DESK_IMAGE=…@sha256:…`. A value set by hand wins. A failed
+   pull or digest read stops `up` with a clear message — it never writes a tag
+   without a digest.
 
    One flag is enough: `./deploy/zilar up` turns the `desks` profile on and sets the server's `DESK_AGENT_SOCKET` to `/run/zilar/desk.sock` while `DESKS_ENABLED=true` (set it in `deploy/.env` only to override). With the flag off, `DESK_AGENT_SOCKET` stays empty and the server builds no Hands client.
 
@@ -215,7 +214,7 @@ Desks are sandboxed AI computers (gVisor jails) that run on the install host. Th
 
 ### Coolify
 
-`host-setup` runs once on the host (it is not a container). In the Application's environment set `DESKS_ENABLED=true`, `DESK_IMAGE=...@sha256:...`, `DESK_AGENT_SOCKET=/run/zilar/desk.sock` and `COMPOSE_PROFILES=desks` (the Coolify app does not run `./zilar`, so both the profile and the socket come from variables). The next deploy starts `desk-agent` and `desk-egress`.
+`host-setup` runs once on the host (it is not a container). In the Application's environment set `DESKS_ENABLED=true`, `DESK_IMAGE=...@sha256:...`, `DESK_AGENT_SOCKET=/run/zilar/desk.sock` and `COMPOSE_PROFILES=desks` (the Coolify app does not run `./zilar`, so it never auto-pins: both the digest, the profile and the socket come from variables). The next deploy starts `desk-agent` and `desk-egress`. Until the layout change (plan step 8), the Coolify app still builds `desk-agent` from git (`deploy/coolify/docker-compose.app.yml`), not from the published image.
 
 ### How it fits together
 

@@ -299,10 +299,7 @@ services:
   # runtime and the shared memory-pool slice) is `sudo ./zilar host-setup`.
   desk-agent:
     profiles: ['desks']
-    build:
-      context: ..
-      dockerfile: deploy/desk/Dockerfile.agent
-    image: zilar-desk-agent:local
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-desk-agent:${IMAGE_TAG:-latest}
     # on-failure, not unless-stopped: the guard below exits 0 while desks are
     # off, and an exit-0 container must stay stopped.
     restart: on-failure
@@ -354,10 +351,7 @@ services:
 
   desk-egress:
     profiles: ['desks']
-    build:
-      context: ..
-      dockerfile: deploy/desk/Dockerfile.agent
-    image: zilar-desk-agent:local
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-desk-agent:${IMAGE_TAG:-latest}
     # on-failure, not unless-stopped: the guard below exits 0 while desks are
     # off, and an exit-0 container must stay stopped.
     restart: on-failure
