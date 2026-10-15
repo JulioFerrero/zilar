@@ -1620,3 +1620,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1606](T-1606-egress-registry-env-name.md) | Desk egress reads its registry socket setting | 2026-10-15 |
 | [T-1608](T-1608-android-release-create-race.md) | Android release survives the release-create race | 2026-10-15 |
 | [T-1609](T-1609-installer-job-condition.md) | Installer job runs on tags (status function) | 2026-10-15 |
+| [T-1610](T-1610-host-setup-installs-prereqs.md) | host-setup installs bzip2 and jq when missing | 2026-10-15 |

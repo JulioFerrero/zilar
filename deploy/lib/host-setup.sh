@@ -59,13 +59,82 @@ _desk_verify_runsc() {
   die "docker does not list runsc after the reload — the config is written, but this Docker needs 'systemctl restart docker' to pick it up"
 }
 
+# The two tiny prerequisites the rest of this step needs: bzip2 unpacks the
+# gVisor .tar.bz2 and jq merges daemon.json. A fresh server often has neither,
+# and a run that dies at `tar -xjf` after downloading the bundle is exactly
+# what this avoids. Runs right after the root check and before any download,
+# so a host where it fails is left untouched; honours --dry-run (prints the
+# command it would run, changes nothing).
+ensure_host_pkgs() {
+  _pkgs=""
+  for _c in bzip2 jq; do
+    command -v "$_c" >/dev/null 2>&1 || _pkgs="$_pkgs $_c"
+  done
+  [ -n "$_pkgs" ] || return 0
+  _pkgs="${_pkgs# }"
+
+  # Detect the host's package manager once.
+  _pm=""
+  for _m in apt-get dnf yum apk; do
+    if command -v "$_m" >/dev/null 2>&1; then
+      _pm="$_m"
+      break
+    fi
+  done
+  [ -n "$_pm" ] || die "cannot install $_pkgs: no package manager found (tried apt-get, dnf, yum, apk) — install them by hand, then re-run"
+
+  if [ "$DRY_RUN" -eq 1 ]; then
+    case "$_pm" in
+      apt-get)
+        echo "+ DEBIAN_FRONTEND=noninteractive apt-get update -qq"
+        # shellcheck disable=SC2086
+        echo "+ apt-get install -y -qq $_pkgs"
+        ;;
+      # shellcheck disable=SC2086
+      dnf) echo "+ dnf install -y $_pkgs" ;;
+      # shellcheck disable=SC2086
+      yum) echo "+ yum install -y $_pkgs" ;;
+      # shellcheck disable=SC2086
+      apk) echo "+ apk add --no-cache $_pkgs" ;;
+    esac
+    return 0
+  fi
+
+  info "installing $_pkgs (needed to unpack gVisor)"
+  case "$_pm" in
+    apt-get)
+      DEBIAN_FRONTEND=noninteractive apt-get update -qq
+      # shellcheck disable=SC2086
+      apt-get install -y -qq $_pkgs
+      ;;
+    # shellcheck disable=SC2086
+    dnf) dnf install -y $_pkgs ;;
+    # shellcheck disable=SC2086
+    yum) yum install -y $_pkgs ;;
+    # shellcheck disable=SC2086
+    apk) apk add --no-cache $_pkgs ;;
+  esac
+
+  # After installing, prove each command is really on PATH (a failed install
+  # must stop here, before the gVisor download).
+  for _c in $_pkgs; do
+    need_cmd "$_c" "install $_c with your package manager (apt-get/dnf/yum/apk), then re-run"
+  done
+}
+
 cmd_host_setup() {
   [ "$#" -eq 0 ] || die "host-setup takes no arguments"
 
   if [ "$DRY_RUN" -eq 0 ]; then
     [ "$(id -u)" -eq 0 ] || die "host-setup needs root (try: sudo $PROG host-setup)"
+  fi
+
+  # Install bzip2/jq (if missing) before anything else, so a host where this
+  # fails is left untouched. Runs in dry runs too (prints the command).
+  ensure_host_pkgs
+
+  if [ "$DRY_RUN" -eq 0 ]; then
     need_cmd curl "install curl (apt-get install -y curl)"
-    need_cmd jq "install jq (apt-get install -y jq)"
     need_cmd sha512sum "install coreutils"
     need_cmd tar "install tar"
     need_cmd systemctl "host-setup needs systemd (systemctl)"

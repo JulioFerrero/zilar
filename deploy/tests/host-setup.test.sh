@@ -16,6 +16,9 @@
 #   4. `doctor` reads the desk slice from the systemd unit, not the live
 #      cgroup, so a freshly prepared but idle host does not false-FAIL; a host
 #      without the runsc runtime only warns.
+#   5. host-setup installs a missing bzip2 (and jq) with the host's package
+#      manager before it downloads anything, and calls no package manager when
+#      both are already present (T-1610).
 #
 # Usage: sh deploy/tests/host-setup.test.sh
 # Exit 0 when every check passes, 1 on the first failure.
@@ -350,6 +353,67 @@ if grep -q "host not set up for AI computers" "$T/doctor-norunsc.log" \
   ok "a host without runsc only warns"
 else
   bad "a host without runsc did not warn cleanly"
+fi
+
+# --- 5. host-setup installs bzip2/jq before touching anything -----------
+#
+# The 2026-10-15 live run died at `tar -xjf gvisor.tar.bz2` because the host
+# had no bzip2 (and often no jq). host-setup must install the missing small
+# prerequisites with the host's package manager before any download. A fake
+# PATH hides the real tools: `id` fakes root, a recording `apt-get` stub
+# captures the call, and `dirname`/`sed` are linked from the host (the script
+# needs them to start).
+
+mkdir -p "$T/pkgbin"
+ln -s "$(command -v dirname)" "$T/pkgbin/dirname"
+ln -s "$(command -v sed)" "$T/pkgbin/sed"
+cat >"$T/pkgbin/id" <<'STUB'
+#!/bin/sh
+echo 0
+STUB
+chmod +x "$T/pkgbin/id"
+cat >"$T/pkgbin/apt-get" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >>"$PKG_LOG"
+exit 0
+STUB
+chmod +x "$T/pkgbin/apt-get"
+printf '#!/bin/sh\nexit 0\n' >"$T/pkgbin/jq"
+chmod +x "$T/pkgbin/jq"
+
+# bzip2 missing (no stub): a real run installs it via apt-get, then the
+# re-check proves it is still absent and stops before the download.
+: >"$T/apt.log"
+if PKG_LOG="$T/apt.log" PATH="$T/pkgbin" "$ZILAR" host-setup >"$T/pkg-missing.log" 2>&1; then
+  bad "host-setup succeeded with bzip2 missing (expected install, then a failed re-check)"
+else
+  if grep -qF "installing bzip2 (needed to unpack gVisor)" "$T/pkg-missing.log" \
+    && grep -qF "update -qq" "$T/apt.log" \
+    && grep -qF "install -y -qq bzip2" "$T/apt.log"; then
+    ok "host-setup installs a missing bzip2 with apt-get before the download"
+  else
+    bad "host-setup did not install a missing bzip2 with apt-get"
+  fi
+  if grep -qF "needs 'bzip2'" "$T/pkg-missing.log"; then
+    ok "host-setup re-checks a package the install did not provide"
+  else
+    bad "host-setup did not re-check bzip2 after installing"
+  fi
+fi
+
+# Both present: no package manager is called at all. The run stops at the
+# next plain need_cmd (curl is absent from the fake PATH).
+printf '#!/bin/sh\nexit 0\n' >"$T/pkgbin/bzip2"
+chmod +x "$T/pkgbin/bzip2"
+: >"$T/apt.log"
+if PKG_LOG="$T/apt.log" PATH="$T/pkgbin" "$ZILAR" host-setup >"$T/pkg-present.log" 2>&1; then
+  bad "host-setup unexpectedly succeeded with a minimal fake PATH"
+else
+  if [ ! -s "$T/apt.log" ] && ! grep -qF "installing" "$T/pkg-present.log"; then
+    ok "host-setup calls no package manager when bzip2 and jq are present"
+  else
+    bad "host-setup called a package manager although bzip2 and jq were present"
+  fi
 fi
 
 rm -rf "$T"

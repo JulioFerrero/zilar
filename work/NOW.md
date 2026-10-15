@@ -151,10 +151,16 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - **T-1606 merged:** the fresh-install test is green on `da4b2e15f`, and live `desk-egress` is healthy with 0 restarts.
       - **T-1607 and T-1608 merged.**
       - **v0.2.1 tagged** on `df3471bf3` (CI green): images run 38812219602, Android 38812219809.
+    - **The v0.2.1 release:**
+      - images and APKs built;
+      - the installer job was **skipped** (the `tip` skip propagated). The lead uploaded `install.sh` by hand, and **T-1609 merged** the `if` fix;
+      - **the landing was redeployed:** `get.zilar.app` now answers 302 to `releases/latest/download/install.sh` and serves exactly v0.2.1's script.
+    - **VPS `--desks-host` (v0.2.1) failed safely:** `tar -xjf gvisor.tar.bz2` found no `bzip2`. Nothing changed: `daemon.json` untouched, no backup, all 39 containers up.
+      - **T-1610 is running:** host-setup installs `bzip2` and `jq` itself through apt-get/dnf/yum/apk, before any change.
     - **Next:**
-      1. once the release has `install.sh`, redeploy the landing by hand (it then redirects for good);
-      2. check that `curl get.zilar.app` equals the asset;
-      3. on the VPS, run `curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host`;
+      1. merge T-1610;
+      2. tag v0.2.2 (it checks T-1609: the installer job must run);
+      3. on the VPS, run `curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host` again;
       4. check that the card flips, then run one real job.
     - **The target:** desk services in every stack; the agent waits for gVisor and then turns on by itself; the image follows the release; the server asks the agent; one host command.
     - **Then:** run the same one command on live, with nothing manual.
