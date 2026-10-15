@@ -78,11 +78,26 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - Emulator: Heron leads, and a cold start is clean.
   - **Live at `8746ae2e8`:** health ok, routes unchanged, 0 errors and 0 warnings.
   - The new `createdAt` on `/api/chats` is not called live; it needs a session.
-- **Running: T-1480.** The composer placeholder stays on one line on web and mobile.
+- **Merged: T-1480.** The composer placeholder stays on one line on web and mobile.
   - A long topic title wrapped "Message <title>": web grew the empty composer, and mobile clipped the second line.
   - A shared helper falls back to "Message" for titles over 18 characters, and an empty composer stays one line tall.
+  - Checked headless and on the emulator. Live at `7ab4af197` with 0 errors.
+- **Mobile sweep on the T-1480 APK (mock):**
+  - the Dev AI review bubble fits, and its code and table scroll inside. Mobile Markdown tables render now, so the board's old "no tables" follow-up is removed;
+  - the remaining gaps (subtitles, word keys on Machines and My AIs) are all in the waiting canvases.
+- **Running: T-1481.** It splits `packages/devtools/src/lead/autopilot.ts` (671 lines, the last file over 400) under `lead/autopilot/`, a pure move.
+  - After the merge the lead restarts the autopilot, stopping it inner node process first as in T-1468.
+- **Web interaction walk (headless, mock, 1280 px):** send, reply, edit and New group all work, and the sent chat moves to the top of the list. 0 errors.
 - **Web sweep (lead, headless, mock, 390 and 1280 px, 23 routes):** no page overflows and no console errors after T-1477. Found and fixed: T-1477, T-1478, T-1479, T-1480.
-- **For a canvas: the Stickers page is below the lean standard.** Each pack row has six loose keys (↑, ↓, Make private, Edit, Remove from panel, Delete) and a "Shared" word chip.
+- **New canvas for Julio: "Stickers"**, https://claude.ai/artifact/GiBcaeJcuprSGGFBb3Xc3H. Four boards: web My packs and Discover, phone My packs and Pack actions.
+  - **Header:** no subtitle and no duplicate "My packs" heading. "New pack" is the primary, and "Import from Telegram" is a secondary key on web and the last row on the phone.
+  - **Web gets the phone's tabs:** My packs · Discover · Favorites, replacing three stacked sections.
+  - **Pack rows:** the "Shared" word becomes a globe icon after the title (private is the default, `apps/server/src/stickers/packs.ts:106`).
+    - On web, one ⋮ menu (Edit, Make private, Remove from panel, Delete) replaces the six loose keys.
+    - On the phone, a row opens a kit sheet with a sticker preview and the same actions.
+    - Imported packs read "12 stickers · Telegram".
+  - **Discover:** search as you type (no Search key), "Add" on each row, and a green check key for packs already added.
+  - **Open point:** the web grip means drag to reorder, which needs a library (dnd-kit on web, a reorderable list on mobile). The fallback is Move up and Move down in the menu.
 - **Merged: T-1476.** The web sidebar orders groups and chats together by recency, like mobile.
   - It used to list every group above every DM.
   - The headless check caught a NaN comparator (`-Infinity - -Infinity`) that made the first version a no-op.
