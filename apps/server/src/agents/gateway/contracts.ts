@@ -61,10 +61,11 @@ export interface AgentGatewayDeps {
   toolMaxRounds?: number;
   /** Memory archive. Absent means memory is read but never indexed. */
   archive?: ArchivePool;
-  /** T-1409: the cloud desk client (Hands plus the pinned image). Present only
-   * when the sidecar is wired (`DESK_AGENT_SOCKET`); a turn offers the desk
-   * tools only for an AI whose `computer_mode` is `cloud`. */
-  desk?: DeskClient;
+  /** T-1409: the cloud desk client (Hands plus the pinned image). T-1603: a
+   * cached probe, read once per turn; a not-ready agent means no cloud desk for
+   * that turn. A turn offers the desk tools only for an AI whose
+   * `computer_mode` is `cloud`. */
+  desk?: () => Promise<DeskClient | null>;
   /** T-1423: the runner hub's desk ops, read lazily per turn (the hub starts
    * after the gateway is built). Absent or returning null keeps `runner` and
    * `auto` unavailable. */

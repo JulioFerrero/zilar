@@ -1,31 +1,25 @@
 import type { Logger } from 'pino';
-import type { DeskClient } from '../agents/gateway/desk-exec';
 import type { ServerConfig } from '../config';
 import { createCloudHands, type Hands } from './cloud-hands';
+import { createDeskProbe, type DeskProbe } from './desk-status';
 
-/**
- * The cloud `Hands` adapter, built only when `DESK_AGENT_SOCKET` is set.
- */
-export function buildHands(config: ServerConfig): Hands | null {
-  return config.DESK_AGENT_SOCKET === undefined ? null : createCloudHands(config.DESK_AGENT_SOCKET);
+/** The cloud `Hands` adapter over the desk agent's socket (always buildable:
+ * the socket path has a default, so the server never guesses from env). */
+export function buildHands(config: ServerConfig): Hands {
+  return createCloudHands(config.DESK_AGENT_SOCKET);
 }
 
 /**
- * T-1418: the gateway's desk client, built only when the sidecar socket and the
- * pinned image are both configured. It logs once at start-up (ids only) why
- * desks are off, so a default install behaves as today.
+ * T-1603: the cached read-only probe the gateway and the AI routes ask whether
+ * Zilar cloud desks are ready. It returns a `DeskClient` only when the agent
+ * answers ready with a pinned image; `null` covers a stopped or old agent and
+ * `DESK_IMAGE` remains the image override for an old agent.
  */
-export function buildDeskClient(config: ServerConfig, logger: Logger): DeskClient | null {
-  const hands = buildHands(config);
-  if (hands === null) {
-    logger.info('desks: off (DESK_AGENT_SOCKET unset)');
-    return null;
-  }
-  const imageDigest = config.DESK_IMAGE;
-  if (imageDigest === undefined) {
-    logger.info('desks: off (DESK_IMAGE unset)');
-    return null;
-  }
-  logger.info({ imageDigest }, 'desks: on');
-  return { hands, imageDigest };
+export function buildDeskProbe(config: ServerConfig, logger: Logger): DeskProbe {
+  return createDeskProbe({
+    socketPath: config.DESK_AGENT_SOCKET,
+    hands: buildHands(config),
+    ...(config.DESK_IMAGE === undefined ? {} : { overrideImage: config.DESK_IMAGE }),
+    logger,
+  });
 }

@@ -101,10 +101,20 @@ export async function* socketLines(socket: Socket): AsyncIterable<string> {
   }
 }
 
-/** Sends one request and resolves with its single reply line (parsed). */
-function requestReply(socketPath: string, payload: unknown): Promise<unknown> {
+/** Sends one request and resolves with its single reply line (parsed). T-1603:
+ * exported for the desk status probe, which aborts the wait after its own
+ * timeout so the socket never lingers. */
+export function requestReply(
+  socketPath: string,
+  payload: unknown,
+  signal?: AbortSignal,
+): Promise<unknown> {
   return (async () => {
     const socket = await openSocket(socketPath);
+    const onAbort = (): void => {
+      socket.destroy();
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
     try {
       socket.write(`${JSON.stringify(payload)}\n`);
       for await (const line of socketLines(socket)) {
@@ -112,6 +122,7 @@ function requestReply(socketPath: string, payload: unknown): Promise<unknown> {
       }
       throw new DeskError('jail_unavailable', 'the desk agent closed the connection');
     } finally {
+      signal?.removeEventListener('abort', onAbort);
       socket.destroy();
     }
   })();

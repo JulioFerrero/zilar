@@ -1,11 +1,12 @@
-// T-1418: the desk client is built only when both the sidecar socket and the
-// pinned image are set; a tag-only DESK_IMAGE is refused by the config.
+// T-1603: the desk probe is always built (the socket path has a default); the
+// server asks the agent instead of guessing from DESK_IMAGE. `DESK_IMAGE`
+// stays an optional override for an old agent.
 
 import { describe, expect, it } from 'vitest';
 import { ConfigError, loadServerConfig } from '../config';
 import { createLogger } from '../logger';
 import { TEST_SECRET } from '../test-support';
-import { buildDeskClient } from './wiring';
+import { buildDeskProbe } from './wiring';
 
 const baseEnv = {
   DATABASE_URL: 'postgres://user:hunter2@127.0.0.1:5432/zilar',
@@ -25,29 +26,25 @@ function build(env: Record<string, string | undefined>) {
       logs.push(line);
     },
   });
-  return { client: buildDeskClient(config, logger), logs };
+  return { config, probe: buildDeskProbe(config, logger), logs };
 }
 
-describe('buildDeskClient', () => {
-  it('is null with neither variable set', () => {
-    const { client, logs } = build({});
-    expect(client).toBeNull();
-    expect(logs.join()).toContain('desks: off');
+describe('buildDeskProbe', () => {
+  it('always returns a probe', () => {
+    const { probe } = build({});
+    expect(typeof probe).toBe('function');
   });
 
-  it('is null with only the socket set', () => {
-    const { client } = build({ DESK_AGENT_SOCKET: '/run/zilar/desk.sock' });
-    expect(client).toBeNull();
+  it('asks the agent: a missing socket answers null without throwing', async () => {
+    const { probe } = build({ DESK_AGENT_SOCKET: '/run/zilar/does-not-exist.sock' });
+    await expect(probe()).resolves.toBeNull();
   });
+});
 
-  it('builds a client with the pinned digest when both are set', () => {
-    const { client, logs } = build({
-      DESK_AGENT_SOCKET: '/run/zilar/desk.sock',
-      DESK_IMAGE: DIGEST,
-    });
-    expect(client?.imageDigest).toBe(DIGEST);
-    expect(client?.hands).toBeDefined();
-    expect(logs.join()).toContain('desks: on');
+describe('DESK_AGENT_SOCKET', () => {
+  it('defaults to the agent socket', () => {
+    const { config } = build({});
+    expect(config.DESK_AGENT_SOCKET).toBe('/run/zilar/desk.sock');
   });
 });
 
@@ -56,5 +53,10 @@ describe('DESK_IMAGE', () => {
     expect(() => loadServerConfig({ ...baseEnv, DESK_IMAGE: 'zilar-desk:dev' })).toThrow(
       ConfigError,
     );
+  });
+
+  it('accepts a pinned image as the override', () => {
+    const { config } = build({ DESK_IMAGE: DIGEST });
+    expect(config.DESK_IMAGE).toBe(DIGEST);
   });
 });

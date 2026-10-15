@@ -52,8 +52,9 @@ export interface AppDependencies {
   ais?: {
     cipher?: KeyCipher;
     logger?: AiLogger;
-    /** T-1425: whether Zilar cloud desks are wired. Defaults to false. */
-    cloud?: boolean;
+    /** T-1425/T-1603: asks the desk probe whether Zilar cloud desks are ready.
+     * Defaults to false. */
+    cloud?: () => Promise<boolean>;
   };
   /** T-1422: the live agent gateway's turn-stop hook. Read lazily because the
    * app is built before the gateway; absent = the route answers `stopped: false`.

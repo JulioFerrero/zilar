@@ -14,7 +14,7 @@ import { createAuth } from '../auth/auth';
 import { createKeyCipher } from '../connections/crypto';
 import { sharedDraftHub } from '../drafts/hub';
 import { serveEdgeOnNode } from '../effect/node-serve';
-import { buildDeskClient } from '../hands/wiring';
+import { buildDeskProbe } from '../hands/wiring';
 import { markLeader } from '../health-status';
 import {
   createLeaderLock,
@@ -163,9 +163,10 @@ export function startComponents(boot: BootedServer, running: RunningServer): Eff
     // value echoed) instead of dialling a broken URL — see push/config.ts.
     const push: PushConfig = yield* Effect.sync(() => loadPushConfigOrExit(process.env));
 
-    // T-1425: built here so the AI routes can report whether Zilar cloud desks
-    // are available (`desk !== null`); the gateway below reuses the same value.
-    const desk = buildDeskClient(config, logger);
+    // T-1425/T-1603: the cached desk probe, built once. The AI routes and the
+    // gateway both read it: whether the desk agent answers ready decides if
+    // Zilar cloud desks are offered.
+    const deskProbe = buildDeskProbe(config, logger);
 
     const app = createApp({
       db,
@@ -173,7 +174,7 @@ export function startComponents(boot: BootedServer, running: RunningServer): Eff
       config,
       auth,
       adminClient,
-      ais: { cloud: desk !== null },
+      ais: { cloud: async () => (await deskProbe()) !== null },
       mailer: currentMailer,
       machineRegistry,
       // Message search (T-0117): a separate small pool on the ejabberd archive
@@ -229,7 +230,7 @@ export function startComponents(boot: BootedServer, running: RunningServer): Eff
         // loop runs `AGENT_TOOL_MAX_ROUNDS` rounds (1 with tools off).
         toolsEnabled: config.TOOLS_ENABLED,
         toolMaxRounds: config.AGENT_TOOL_MAX_ROUNDS,
-        ...(desk === null ? {} : { desk }),
+        desk: deskProbe,
         // T-1423: the runner hub, read lazily because it starts after this.
         runnerDesk: () => runnerHub,
       },

@@ -108,7 +108,7 @@ export function aiRoutes({ deps, base, audit, mailer, gateway }: RouteWiring): E
     adminClient: deps.adminClient,
     logger: deps.ais?.logger ?? logger,
     audit,
-    cloud: deps.ais?.cloud ?? false,
+    ...opt('cloud', deps.ais?.cloud),
     ...opt('cipher', aisCipher),
     ...opt('getGateway', deps.getGateway),
   });

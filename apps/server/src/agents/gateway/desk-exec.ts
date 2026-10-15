@@ -139,7 +139,9 @@ export const TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER = 'Waiting for your computer';
 
 export interface TurnDeskDeps {
   readonly db: ServerDatabase;
-  readonly desk?: DeskClient | undefined;
+  /** T-1603: the cached cloud probe; awaited once per turn. Absent means no
+   * cloud computer at all. */
+  readonly desk?: (() => Promise<DeskClient | null>) | undefined;
   readonly runnerDesk?: (() => RunnerDeskSource | null) | undefined;
 }
 
@@ -159,7 +161,9 @@ export interface TurnDesk {
 /** Resolves the AI's computer for one turn. Called per turn, so a runner that
  * goes offline is seen at once; no hub and no desk env stays `{ waiting: false }`. */
 export async function resolveTurnDesk(deps: TurnDeskDeps, input: DeskTurnInput): Promise<TurnDesk> {
-  const cloud = deps.desk ?? null;
+  // T-1603: the cloud client is a cached probe, awaited once per turn. A not
+  // ready agent is simply "no cloud computer" (never a hard failure).
+  const cloud = (await deps.desk?.()) ?? null;
   const hub = deps.runnerDesk?.() ?? null;
   if (cloud === null && hub === null) {
     return { waiting: false };

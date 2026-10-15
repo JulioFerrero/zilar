@@ -72,7 +72,7 @@ describe('desk tools in a DM turn', () => {
     });
     const cores: FakeCore[] = [];
     const { gateway } = helpers.harness(cores, fetchImpl, {
-      desk: { hands, imageDigest: 'zilar-desk@sha256:abc' },
+      desk: async () => ({ hands, imageDigest: 'zilar-desk@sha256:abc' }),
     });
     const { aiId, ownerJid, aiJid } = await seedAi(context, { computerMode: 'cloud' });
 

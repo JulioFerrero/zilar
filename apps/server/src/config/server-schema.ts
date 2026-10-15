@@ -185,9 +185,12 @@ export const serverConfigSchema = Schema.Struct({
     '5000',
   ),
   // Desk sidecar socket (T-1407): the host service that runs the desk jails,
-  // spoken by the cloud `Hands` adapter. Unset means no cloud computer.
-  DESK_AGENT_SOCKET: Schema.optional(nonEmptyStringSchema),
-  // The pinned jail image (`<name>@sha256:<64 hex>`, T-1418); unset = off.
+  // spoken by the cloud `Hands` adapter. T-1603: the agent's default location;
+  // the server asks the agent whether it is ready instead of requiring this.
+  DESK_AGENT_SOCKET: withDefault(nonEmptyStringSchema, '/run/zilar/desk.sock'),
+  // The pinned jail image (`<name>@sha256:<64 hex>`, T-1418). T-1603: an
+  // override for an old agent that does not report a pinned image; unset means
+  // the image comes from the agent's own status.
   DESK_IMAGE: Schema.optional(pinnedImageSchema),
 });
 
