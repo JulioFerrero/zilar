@@ -81,7 +81,6 @@ function ProfileHeaderCard({
   if (name === '') {
     return null;
   }
-  const handle = profile?.handle ?? null;
   // T-1329/T-1334: the ball is seeded by the display name; the picture shows
   // from the session's cached profile while `GET /me` loads, then from the
   // profile. The email is the profile's, the same source the own profile
@@ -100,7 +99,7 @@ function ProfileHeaderCard({
           {name}
         </Text>
         <Text numberOfLines={1} className="mt-0.5 text-[14px] text-muted-foreground">
-          {handle === null ? email : `@${handle}`}
+          {email}
         </Text>
       </View>
       <ChevronRight size={18} color={MUTED_FOREGROUND} />
@@ -126,7 +125,6 @@ function GroupCard({
             key={row.id}
             icon={<IconTile testID={row.iconTestId}>{hubIcon(row.icon)}</IconTile>}
             title={row.title}
-            subtitle={row.subtitle}
             {...(row.id === 'requests' ? { count: pendingRequests } : {})}
             accessibilityLabel={row.accessibilityLabel}
             onPress={() => onOpen(row.href)}
@@ -204,7 +202,7 @@ function SettingsHub() {
   }, [router, signOut]);
 
   return (
-    <SettingsScreenShell title="Settings" subtitle="Your account, chats and AIs.">
+    <SettingsScreenShell title="Settings">
       <View className="gap-6">
         {loading ? (
           <View className="items-center py-4">

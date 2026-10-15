@@ -40,6 +40,14 @@ export const SETTINGS_GROUP_LABELS: Record<SettingsGroup, string> = {
   server: 'Server',
 };
 
+/**
+ * The phone hub hides two shared entries: the `profile` row (the header card
+ * already opens the profile) and the whole `server` group (Integrations is web
+ * only). The shared registry stays the single source; web keeps both.
+ */
+const PHONE_HIDDEN_ROWS: ReadonlySet<string> = new Set(['profile']);
+const PHONE_HIDDEN_GROUPS: ReadonlySet<SettingsGroup> = new Set(['server']);
+
 function toHubRow(item: (typeof SETTINGS_ITEMS)[number]): SettingsHubRow {
   return {
     id: item.id,
@@ -60,12 +68,12 @@ export function settingsHubRows(): SettingsHubRow[] {
   );
 }
 
-/** The hub cards, one per group, in the group order. */
+/** The phone hub cards, in the group order, without the hidden rows and groups. */
 export function settingsHubGroups(): SettingsHubGroup[] {
   const rows = settingsHubRows();
-  return SETTINGS_GROUP_ORDER.map((group) => ({
+  return SETTINGS_GROUP_ORDER.filter((group) => !PHONE_HIDDEN_GROUPS.has(group)).map((group) => ({
     group,
     label: SETTINGS_GROUP_LABELS[group],
-    rows: rows.filter((row) => row.group === group),
+    rows: rows.filter((row) => row.group === group && !PHONE_HIDDEN_ROWS.has(row.id)),
   }));
 }
