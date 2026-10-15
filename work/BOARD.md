@@ -1596,3 +1596,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1581](T-1581-mobile-channel-info-root.md) | Phone channel info root and Subscribers page | 2026-10-15 |
 | [T-1582](T-1582-desk-images-in-ci.md) | CI publishes the AI computer images; zilar up pins the jail | 2026-10-15 |
 | [T-1586](T-1586-ais-here-opens-question.md) | A waiting AI in AIs here opens its question in the chat | 2026-10-15 |
+| [T-1585](T-1585-install-preflight.md) | Installer checks the host first and stops clearly without Docker | 2026-10-15 |

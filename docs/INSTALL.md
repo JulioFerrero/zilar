@@ -11,12 +11,19 @@ curl -fsSL https://raw.githubusercontent.com/JulioFerrero/zilar/main/deploy/inst
 Read [`../deploy/install.sh`](../deploy/install.sh) before you pipe it into a shell — it is
 short, and it never prints a secret. It:
 
-1. checks the host (10 GB free disk, 2 GB RAM, ports 80 and 443 free, `curl` and `tar`);
-2. installs Docker from [get.docker.com](https://get.docker.com), only after you say yes;
-3. downloads the latest release, or the `main` branch, and extracts only `deploy/` into
-   `/opt/zilar`;
-4. runs `./zilar init` (passing the official `ghcr.io/julioferrero` images);
-5. optionally runs `./zilar host-setup` for AI computers (gVisor);
+1. checks `curl`, `tar` and that the host is Linux, fetches the release into a temp
+   directory, and prints a host report (OS and version, CPU architecture, RAM, free
+   disk, ports 80/443, virtualization, Docker, Coolify);
+2. stops early, with a clear message, when the host is a container-based VPS that
+   cannot run Docker (asking the provider to turn on nesting is the fix) — or, when
+   Coolify is found, says Zilar will install into Coolify and exits (Coolify mode is
+   not in this version yet);
+3. installs Docker from [get.docker.com](https://get.docker.com) if it is missing,
+   only after you say yes, then proves it runs with `docker run --rm hello-world`;
+4. extracts only `deploy/` into `/opt/zilar` and runs `./zilar init` (passing the
+   official `ghcr.io/julioferrero` images);
+5. optionally runs `./zilar host-setup` for AI computers (gVisor) and turns them on
+   (`DESKS_ENABLED=true`) only after a real gVisor sandbox run passes;
 6. runs `./zilar up` and `./zilar doctor`, then prints the URL and `./zilar create-admin`.
 
 Running it again updates `deploy/` and keeps your `.env`.
@@ -29,7 +36,7 @@ Running it again updates `deploy/` and keeps your `.env`.
 | `--dir PATH` | where `deploy/` is extracted (default: `/opt/zilar`) |
 | `--domain HOST` | public host for Zilar (`init` asks when omitted) |
 | `--admin-email EMAIL` | address of the first account (`init` asks when omitted) |
-| `--desks` | also run `./zilar host-setup` (gVisor for AI computers) |
+| `--desks` | also run `./zilar host-setup`, then turn AI computers on once the gVisor sandbox passes |
 | `--yes` | no prompts (needs `--domain` and `--admin-email`) |
 | `--dry-run` | print the plan, change nothing |
 

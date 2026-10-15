@@ -1,11 +1,12 @@
 #!/bin/sh
 #
-# One-line installer tests (T-1428). Shell-only and offline; needs `sh` and
-# `tar`. Proves, without a Linux host, a network or Docker:
+# One-line installer tests (T-1428, T-1585). Shell-only and offline; needs `sh`
+# and `tar`. Proves, without a Linux host, a network or Docker:
 #
-#   1. `--dry-run --yes` prints the planned steps in order (check, docker,
-#      fetch, configure, up, doctor), with the image tag following the version
-#      (main -> :latest, a v* release keeps its tag);
+#   1. `--dry-run --yes` prints the planned steps in order (check, fetch, host
+#      report, docker, configure, up, doctor) and the report's branches, with
+#      the image tag following the version (main -> :latest, a v* release keeps
+#      its tag);
 #   2. `--desks` adds host-setup, before `up`;
 #   3. a missing `--domain` with `--yes` fails clearly (and `--yes` never
 #      prompts);
@@ -20,8 +21,13 @@
 #   9. as root (uid 0) `--desks` plans zilar host-setup without sudo;
 #  10. as non-root with sudo, the plan prefixes the fetch, the Docker install
 #      and every ./zilar step with sudo;
-#  11. a failed get.docker.com download dies at the docker step;
-#  12. a re-run with a new --domain prints the kept .env domain and warns.
+#  11. a failed get.docker.com download dies at the docker step — after the
+#      fetch, before configure;
+#  12. a re-run with a new --domain prints the kept .env domain and warns;
+#  13. Coolify found exits 0 with its message, touching neither deploy/ nor
+#      Docker;
+#  14. a container-based VPS (openvz) stops with the why/what-works message;
+#  15. AI computers (--desks) turn on only after the gVisor sandbox passes.
 #
 # Usage: sh deploy/tests/install.test.sh
 # Exit 0 when every check passes, 1 on the first failure.
@@ -49,7 +55,7 @@ OPT="$T/opt"
 
 # A local tarball shaped like codeload's: <repo>-<ref>/deploy/... The `zilar`
 # inside is a stub so a real run could never start a stack.
-mkdir -p "$T/zilar-main/deploy/tests"
+mkdir -p "$T/zilar-main/deploy/tests" "$T/zilar-main/deploy/lib"
 cat >"$T/zilar-main/deploy/zilar" <<'STUB'
 #!/bin/sh
 printf '%s\n' "$*" >>"${ZILAR_STUB_LOG:-/dev/null}"
@@ -57,6 +63,7 @@ exit 0
 STUB
 chmod +x "$T/zilar-main/deploy/zilar"
 printf 'services: {}\n' >"$T/zilar-main/deploy/docker-compose.yml"
+cp "$ROOT/deploy/lib/preflight.sh" "$T/zilar-main/deploy/lib/preflight.sh"
 printf '#!/bin/sh\nexit 0\n' >"$T/zilar-main/deploy/tests/host-setup.test.sh"
 tar -czf "$T/zilar-main.tar.gz" -C "$T" zilar-main
 STUB_TARBALL="$T/zilar-main.tar.gz"
@@ -74,7 +81,7 @@ else
 fi
 
 _prev=0
-for _step in check docker fetch configure up doctor; do
+for _step in check fetch "host report" docker configure up doctor; do
   _line="$(grep -n "^==> $_step\$" "$T/plan.log" | head -n 1 | cut -d: -f1 || true)"
   if [ -z "$_line" ]; then
     bad "the plan is missing the '$_step' step"
@@ -87,6 +94,14 @@ for _step in check docker fetch configure up doctor; do
     _prev="$_line"
   fi
 done
+
+if grep -qF "Coolify found -> Coolify mode" "$T/plan.log" && \
+   grep -qF "container-based VPS" "$T/plan.log" && \
+   grep -qF "Docker cannot run" "$T/plan.log"; then
+  ok "the dry run prints the report items and the decision branches"
+else
+  bad "the dry run does not print the report branches"
+fi
 
 if grep -qF -- "--image-owner julioferrero --image-tag latest" "$T/plan.log"; then
   ok "the plan installs the official images (main -> :latest)"
@@ -184,12 +199,13 @@ else
   bad "the non-root plan misses a sudo-prefixed ./zilar step ($(grep -i 'zilar' "$T/user-plan.log" || true))"
 fi
 
-# --- 2d. a failed Docker download dies before the fetch -----------------
+# --- 2d. a failed Docker download dies before configure -----------------
 
 # A dead get.docker.com download must stop the install instead of piping an
-# empty script into sh and marching on to fetch (S1). `curl`/`docker` are
-# stubbed so the run takes the install path and the download fails; the run
-# must die at the docker step, before the fetch.
+# empty script into sh and marching on (S1). The fetch now runs before Docker,
+# so the run stops at the docker step — after the report and the deploy copy —
+# and never reaches configure. `curl`/`docker` are stubbed so the run takes the
+# install path and the download fails.
 mkdir -p "$T/failbin"
 printf '#!/bin/sh\nexit 1\n' >"$T/failbin/docker"
 printf '#!/bin/sh\nexit 1\n' >"$T/failbin/curl"
@@ -207,10 +223,71 @@ if [ "$status" -ne 0 ] && grep -qF "could not download the Docker installer" "$T
 else
   bad "a failed Docker download did not die ($(tail -n 1 "$T/dockerfail.log"))"
 fi
-if grep -q "^==> fetch\$" "$T/dockerfail.log" || [ -e "$FAIL_DIR/zilar" ]; then
-  bad "the install reached fetch after the Docker download failed"
+if [ -x "$FAIL_DIR/zilar" ] && grep -q "^==> host report\$" "$T/dockerfail.log"; then
+  ok "a failed Docker download stops after the report and the deploy copy"
 else
-  ok "a failed Docker download stops before the fetch"
+  bad "the report/deploy did not run before the Docker download failed"
+fi
+if grep -q "^==> configure\$" "$T/dockerfail.log" || grep -q "^==> up\$" "$T/dockerfail.log"; then
+  bad "the install reached configure/up after the Docker download failed"
+else
+  ok "a failed Docker download stops before configure"
+fi
+
+# --- 2e. Coolify found: exit 0, the plain install untouched -------------
+
+# A running `coolify` container means the host runs Coolify: the installer says
+# so, points at Coolify mode, and exits 0 without copying deploy/ or touching
+# Docker. The docker stub answers `ps` with a coolify container.
+mkdir -p "$T/coolifybin"
+cat >"$T/coolifybin/docker" <<'STUB'
+#!/bin/sh
+case "$1" in ps) echo coolify ;; esac
+exit 0
+STUB
+chmod +x "$T/coolifybin/docker"
+COOLIFY_DIR="$T/coolify"
+status=0
+PATH="$T/coolifybin:$PATH" ZILAR_INSTALL_TARBALL="$STUB_TARBALL" \
+  ZILAR_INSTALL_SKIP_CHECKS=1 \
+  sh "$INSTALL" --yes --domain chat.example.com --admin-email ops@example.com \
+  --version main --dir "$COOLIFY_DIR" >"$T/coolify.log" 2>&1 || status=$?
+if [ "$status" -eq 0 ] && grep -qF "Coolify mode" "$T/coolify.log"; then
+  ok "Coolify found exits 0 with the Coolify-mode message"
+else
+  bad "Coolify found did not exit 0 with the message ($(tail -n 1 "$T/coolify.log"))"
+fi
+if [ -e "$COOLIFY_DIR/zilar" ] || grep -q "^==> docker\$" "$T/coolify.log"; then
+  bad "the Coolify path copied deploy/ or reached Docker"
+else
+  ok "the Coolify path leaves the host untouched"
+fi
+
+# --- 2f. a container-based VPS stops with the clear message -------------
+
+# systemd-detect-virt answers openvz: a container VPS that usually cannot run
+# Docker. The installer prints the report, stops with why/what-works, and never
+# reaches configure or up.
+mkdir -p "$T/openvzbin"
+printf '#!/bin/sh\necho openvz\n' >"$T/openvzbin/systemd-detect-virt"
+printf '#!/bin/sh\nexit 1\n' >"$T/openvzbin/docker"
+chmod +x "$T/openvzbin/systemd-detect-virt" "$T/openvzbin/docker"
+OPENVZ_DIR="$T/openvz"
+status=0
+PATH="$T/openvzbin:$PATH" ZILAR_INSTALL_TARBALL="$STUB_TARBALL" \
+  ZILAR_INSTALL_SKIP_CHECKS=1 \
+  sh "$INSTALL" --yes --domain chat.example.com --admin-email ops@example.com \
+  --version main --dir "$OPENVZ_DIR" >"$T/openvz.log" 2>&1 || status=$?
+if [ "$status" -ne 0 ] && grep -qF "container-based VPS" "$T/openvz.log" && \
+   grep -qF "or ask the provider to enable nesting" "$T/openvz.log"; then
+  ok "openvz stops with the why/what-works message"
+else
+  bad "openvz did not stop with the message ($(tail -n 1 "$T/openvz.log"))"
+fi
+if grep -q "^==> configure\$" "$T/openvz.log"; then
+  bad "the openvz stop ran configure"
+else
+  ok "the openvz stop happens before configure"
 fi
 
 # --- 3. --yes needs --domain and never prompts --------------------------
@@ -357,6 +434,52 @@ if grep -qF ".env kept: domain is chat.example.com" "$T/reused.log"; then
   ok "a re-run warns that the new --domain was ignored"
 else
   bad "a re-run did not warn the new --domain was ignored"
+fi
+
+# --- 5d. AI computers turn on only when the gVisor sandbox passes -------
+
+# phase_desks runs one real sandbox after host-setup. When it passes it sets
+# DESKS_ENABLED=true in $DIR/.env; when it fails, DESKS_ENABLED stays false and
+# the install continues. The pre-made .env keeps configure from calling init.
+mkdir -p "$T/sandbox-fail"
+printf 'DESKS_ENABLED=false\n' >"$T/sandbox-fail/.env"
+mkdir -p "$T/runscbin"
+cat >"$T/runscbin/docker" <<'STUB'
+#!/bin/sh
+for a in "$@"; do
+  case "$a" in --runtime=runsc) echo "runsc: no such file or directory" >&2; exit 1 ;; esac
+done
+exit 0
+STUB
+chmod +x "$T/runscbin/docker"
+status=0
+PATH="$T/runscbin:$T/bin:$PATH" ZILAR_INSTALL_TARBALL="$STUB_TARBALL" \
+  ZILAR_INSTALL_SKIP_CHECKS=1 \
+  sh "$INSTALL" --yes --desks --domain chat.example.com --admin-email ops@example.com \
+  --version main --dir "$T/sandbox-fail" >"$T/sandbox-fail.log" 2>&1 || status=$?
+if [ "$status" -eq 0 ] && grep -qF "AI computers stay off:" "$T/sandbox-fail.log"; then
+  ok "a failed sandbox keeps the install running with a clear message"
+else
+  bad "a failed sandbox did not continue cleanly ($(tail -n 1 "$T/sandbox-fail.log"))"
+fi
+if grep -q '^DESKS_ENABLED=false$' "$T/sandbox-fail/.env"; then
+  ok "a failed sandbox leaves DESKS_ENABLED=false"
+else
+  bad "a failed sandbox changed DESKS_ENABLED ($(grep DESKS_ENABLED "$T/sandbox-fail/.env" || true))"
+fi
+
+# The passing case flips the switch.
+mkdir -p "$T/sandbox-pass"
+printf 'DESKS_ENABLED=false\n' >"$T/sandbox-pass/.env"
+status=0
+PATH="$T/bin:$PATH" ZILAR_INSTALL_TARBALL="$STUB_TARBALL" \
+  ZILAR_INSTALL_SKIP_CHECKS=1 \
+  sh "$INSTALL" --yes --desks --domain chat.example.com --admin-email ops@example.com \
+  --version main --dir "$T/sandbox-pass" >"$T/sandbox-pass.log" 2>&1 || status=$?
+if [ "$status" -eq 0 ] && grep -q '^DESKS_ENABLED=true$' "$T/sandbox-pass/.env"; then
+  ok "a passing sandbox sets DESKS_ENABLED=true"
+else
+  bad "a passing sandbox did not set DESKS_ENABLED=true ($(tail -n 1 "$T/sandbox-pass.log"))"
 fi
 
 # --- 6. a re-run keeps the existing .env --------------------------------

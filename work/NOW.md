@@ -80,13 +80,11 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - live moves to the users' published-images layout "without downtime or strange hacks", after one planned ~2 min cutover;
       - `get.zilar.app` is served by the landing app.
     - **He said:** "start all code steps", and keep the earlier work going too.
-  - **Running (6):**
-    - T-1582 (desk images in CI; the plain stack pulls them; `zilar up` pins `DESK_IMAGE`);
-    - T-1583 (fresh-install CI test after Production images);
-    - T-1584 (Coolify split layout: `zilar-core.yml` and `LAYOUT.md`);
-    - T-1585 (installer bootstrap, check report and Docker stop; AI computers on only after a real sandbox run);
-    - T-1586 (questions step 8: "AIs here" opens the question);
-    - T-1587 (phone channel Content, Settings and More; the mock channel opens).
+  - **Running (4):**
+    - T-1583 (fresh-install CI test after Production images; autofix round 1 done, pre-review again);
+    - T-1584 (Coolify split layout: `zilar-core.yml` and `LAYOUT.md`; autofix round 1);
+    - T-1585 (installer bootstrap, check report and Docker stop; AI computers on only after a real sandbox run; pre-review);
+    - T-1587 (phone channel Content, Settings and More; lead fix round 1: the smoke still lands on the chat list for `/group/g-acme`).
   - **Next:**
     - the Coolify-mode installer, after T-1584 and T-1585;
     - `get.zilar.app` on the landing app (needs Julio's DNS record);
@@ -95,21 +93,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - `install.sh --desks` runs host-setup but never sets `DESKS_ENABLED=true` (T-1585 fixes it);
     - Coolify runs on the VPS itself, so a reset loses every secret unless Julio exports them (OPS-9).
   - **Live at `df406f717`** (includes the questions server work): 0 errors and 2 "AI is offline" warnings at container start; `/api/me`, `/api/chats`, `/api/topics/x` and `/api/agents/tasks/x/steps` answer 401 signed out.
-  - **Next:**
-    - step 8 (the "AIs here" row opens the question; a question refreshes the topic list), after T-1578, so it can seed the mock's `questionId`;
-    - Group info T6 (channel content, settings, Delete in More), after T-1581;
-    - `group-turn-body.ts` (374) is near the limit: split it before the next gateway change.
-  - **Notes for the later question steps:** step 4 must stamp `message_id` only on an open row. Steps 6 and 7 must check that the person can see the topic (same 404 for unknown and forbidden), and step 7 must add a `LIMIT` to `listOpenQuestions`.
+  - **Merged since:**
+    - T-1582 (CI publishes `zilar-desk-agent` and `zilar-desk`; the plain stack pulls them; `zilar up` pins `DESK_IMAGE`; plan doc committed with it). **Check the next green-main Production images run publishes both.**
+    - T-1586 (questions step 8: a waiting AI opens its question; headless check passed). **The AI questions plan is complete: steps 1–8.**
+  - **Still to do from the earlier work:**
+    - AI work T8 (drop kind/status/owner after a phone release);
+    - before the next change to them, split `group-turn-body.ts` (374 lines) and `packages/xmpp-core/src/core-effect/lifecycle.ts` (exactly 400 lines).
+  - **The 15 October backlog below is done** (T-1502 to T-1535 and later), apart from T8.
   - **Full check on main `2c2c08d25`:** green, with typecheck 16/16 and 1,917 tests (13 packages).
   - **Decisions (Julio, 10-15):** the topic link moves to a row in the topic info panel (T8 keeps `link_url`/`link_label`); the last @mentioned AI follows a topic.
-  - **Next to spec:**
-    - AI work T8 (drop kind/status/owner after a phone release);
-    - phone Group info T3–T6 from the plan, one at a time (each touches `root-page.tsx` and the screen); T3 after T-1569;
-    - handoff lines and question chips, the plan's steps in order:
-      - step 1 (the handoff marker) after T-1570, then step 2 (the web and phone line);
-      - steps 4 → 5 → 6 after T-1571;
-      - then 7 → 8;
-    - `packages/xmpp-core/src/core-effect/lifecycle.ts` is exactly 400 lines (one big closure); split it before any change touches it.
 - **1. Web and server, while Julio is at the PC (2 workers at a time):**
   1. web sticker upload keeps motion (today a GIF freezes on its first frame) and the New pack grid;
   2. the Telegram importer keeps video stickers (split `stickers/telegram.ts`, 399 lines, first);
