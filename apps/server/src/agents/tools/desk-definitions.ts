@@ -26,7 +26,11 @@ const DESK_TOOLS: ChatToolDefinition[] = [
       description:
         "Run a shell command on the AI's Linux computer. `command` runs in " +
         '`/bin/bash -lc`; set `cwd` to pick a working directory inside the ' +
-        'workspace, and `timeout_ms` for a long command.',
+        'workspace, and `timeout_ms` for a long command. `/workspace` persists ' +
+        'between jobs and `/tmp` is scratch. The public web works through the ' +
+        'built-in proxy (curl, pip, git clone) but not raw IP addresses or ' +
+        'private networks. Installed: git, python3 with pip, build-essential, ' +
+        'curl, jq and ripgrep. It runs as a normal user without root.',
       parameters: {
         type: 'object',
         properties: {
