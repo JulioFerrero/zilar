@@ -1471,3 +1471,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1459](T-1459-web-compatible-preselect.md) | Web: compatible provider never reuses an old endpoint | 2026-10-15 |
 | [T-1458](T-1458-split-small-overs.md) | 400-line splits: mock group members, xmpp-core operations types | 2026-10-15 |
 | [T-1456](T-1456-split-runner-tunnel.md) | 400-line split of runner-tunnel runner, server and mux | 2026-10-15 |
+| [T-1463](T-1463-chat-row-title-shrink.md) | Mobile chat row title truncates; no overlap at large fonts | 2026-10-15 |

@@ -44,7 +44,25 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1456: the runner-tunnel split;
   - T-1460: the server `app.ts` split.
 - **Next:** `main.ts` after `app.ts` deploys cleanly, then the mobile Connections add-key sheet after T-1445.
-- **For the canvas list:** the Connections page itself (it still has the "active" word badges and a subtitle).
+- **New canvas for Julio: "Connections"**, https://claude.ai/artifact/FVDHKSMiJaWvjxXx5sa8on. Web and phone, lean:
+  - no subtitle and no duplicate heading; "Add key" is the page's primary;
+  - the status is a dot (green works, red rejected), not the "active" word;
+  - one ⋮ menu per row (Test key, Replace key, Delete) replaces the three loose icon keys. On the phone, a row opens a kit sheet with those actions.
+  - **Open point:** today nothing ever marks a key bad (status is always `active`). The red dot needs either a test result kept for the session only, or a small server field set by Test and by a provider 401 during a turn. The lead's pick is the server field.
+- **New canvas for Julio: "Topic status"**, https://claude.ai/artifact/Nps8Bw9wgCq8swJZoRx3T7.
+  - **Five status shapes** replace the dot plus word chips. Each shape reads without colour: ring = Open, half = In progress, three quarters = In review, struck = Blocked, full with a check = Done.
+  - **Web:** the sidebar's topic rows gain the icon. Today the web shows no status there at all, a parity gap with mobile.
+  - **The topic strip:** type and status become icon keys, and the status key opens a menu with the five statuses. "Owner: Dev-1" becomes Dev-1's orb plus name, the PR link is `#42`, and Edit is a pencil key.
+  - **Phone:** the topic list shows the icon before the title, with no chip row.
+- **New canvas for Julio: "AI health"** (AI-22), https://claude.ai/artifact/GjRvtcBhPcRNpqTL6w4Z9b. My AIs on web and phone, lean:
+  - **Header:** no subtitle and no duplicate heading; "New AI" replaces "Create AI", matching the dialog.
+  - **Rows:** each row is the orb, name, and model · provider, with the spend on the right in mono (`$1.70 / $5` plus a thin meter when a daily limit is set).
+  - **Health:** a dot on the orb (green works, red failing, amber paused by its limit), plus a short reason in place of the model line, from the real failure kinds (`key_rejected` → "Key rejected · Replace key", `budget` → "Daily limit reached").
+  - **Actions:** one ⋮ key per row on web replaces the three icon keys.
+  - **Server part, after approval:** keep the last turn failure (kind and time) per AI, return it as `lastFailure` on `GET /api/ais`, and clear it on the next good turn. A `key_rejected` would also mark the key in Connections.
+- **More lean gaps seen at font scale 1.3** (each needs a canvas):
+  - Settings has a subtitle on every row and under the title;
+  - mobile Connections has a subtitle (it is in the Connections canvas).
 - **Kept over 400 lines on purpose:** the lead tooling files (`autopilot.ts`, `cli.ts`, `client.ts`) stay over 400 for now, because the autopilot runs from them.
 - **New canvas for Julio: "View steps"**, https://claude.ai/artifact/7YV3tdKH1k8LSBBZtsXzxk.
   - Web: a right panel. Phone: a hugging sheet.

@@ -95,7 +95,7 @@ export function ChatListItem({ chat, onPress, onLongPress }: ChatListItemProps) 
         <View className="flex-1 justify-center">
           <View className="flex-row items-center justify-between">
             <View className="min-w-0 flex-1 flex-row items-center">
-              <Text numberOfLines={1} className="text-[16px] font-semibold text-foreground">
+              <Text numberOfLines={1} className="shrink text-[16px] font-semibold text-foreground">
                 {chat.title}
               </Text>
               {chat.isAI ? <AiBadge className="ml-1.5" /> : null}
