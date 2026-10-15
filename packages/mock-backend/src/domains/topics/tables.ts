@@ -20,6 +20,8 @@ export interface MockTopicActivity {
   readonly aiId: string;
   readonly name: string;
   readonly avatarUrl?: string;
+  /** T-1577: an open question's card message id, so the row can open it. */
+  readonly questionId?: string;
   readonly state: MockTopicAiState;
 }
 

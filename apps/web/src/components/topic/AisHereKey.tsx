@@ -13,6 +13,8 @@ import { listAis, stopAiTurn } from '@/lib/api/ais';
 import { fromApi } from '@/lib/effect/api-effect';
 import { useQuery } from '@/lib/effect/use-query';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { scrollToMessage } from '@/lib/scrollToMessage';
+import { useChatStoreApi } from '@/store/ChatStoreProvider';
 import { IconButton } from '../ui/icon-button';
 import { Menu } from '../ui/menu';
 import { AiActivityMark, AiActivityMarks } from './AiActivityMarks';
@@ -35,6 +37,20 @@ export function AisHereKey({ chat }: { chat: ChatSummary }) {
   const ownIds = AsyncResult.isSuccess(aisResult)
     ? new Set(aisResult.value.map((ai) => ai.id))
     : undefined;
+  // T-1586: a waiting AI with an open question opens that question card in
+  // this topic instead of going to Approvals, the same jump a search hit makes.
+  // The action lives here, not on the row: closing the popover unmounts the
+  // row and would interrupt the row's own action mid-jump.
+  const storeApi = useChatStoreApi();
+  const [, openQuestion] = useAction((messageId: string) =>
+    fromApi(() => storeApi.getState().openAtMessage(chat.id, messageId)).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          window.requestAnimationFrame(() => scrollToMessage(messageId));
+        }),
+      ),
+    ),
+  );
   if (activity.length === 0) {
     return null;
   }
@@ -60,6 +76,7 @@ export function AisHereKey({ chat }: { chat: ChatSummary }) {
             chatId={chat.id}
             canStop={ownIds?.has(entry.aiId) === true}
             onNavigate={() => setOpen(false)}
+            openQuestion={openQuestion}
           />
         ))}
       </div>
@@ -73,11 +90,13 @@ function AisHereRow({
   chatId,
   canStop,
   onNavigate,
+  openQuestion,
 }: {
   entry: TopicAiActivity;
   chatId: string;
   canStop: boolean;
   onNavigate: () => void;
+  openQuestion: (messageId: string) => void;
 }) {
   const [stopState, stop] = useAction<void, { stopped: boolean }, StopFailed>(() =>
     Effect.tryPromise({
@@ -118,6 +137,22 @@ function AisHereRow({
           </p>
         )}
       </div>
+    );
+  }
+  const questionId = entry.questionId;
+  if (entry.state === 'waiting' && questionId !== undefined) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          onNavigate();
+          openQuestion(questionId);
+        }}
+        className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-list-hover"
+      >
+        {picture}
+        {lines}
+      </button>
     );
   }
   if (entry.state === 'waiting') {

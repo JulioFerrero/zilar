@@ -41,6 +41,8 @@ export interface TopicActivityEntry {
   /** T-1537: the AI's bare JID, so the client can match its live card. */
   jid?: string;
   avatarUrl?: string;
+  /** T-1577: an open question makes the AI wait; this is the card's message id. */
+  questionId?: string;
   state: AiActivityState;
 }
 

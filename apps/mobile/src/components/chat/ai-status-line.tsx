@@ -4,6 +4,7 @@ import {
   topicActivityView,
   type ChatSummary,
 } from '@zilar/chat-core';
+import { Effect } from 'effect';
 import { View } from 'react-native';
 
 import { EntityAvatar } from '@/components/chat/entity-avatar';
@@ -18,6 +19,7 @@ import { useChatStore } from '@/store/chat-store-provider';
  */
 export function AiStatusLine({ chat }: { chat: ChatSummary }) {
   const messages = useChatStore((state) => state.messagesByChat[chat.id]);
+  const openAtMessage = useChatStore((state) => state.openAtMessage);
   const topic = chat.topic;
   const entries = topic === undefined ? [] : topicActivityView(topic.activity, topic.doneAt).active;
   const first = entries[0];
@@ -30,6 +32,18 @@ export function AiStatusLine({ chat }: { chat: ChatSummary }) {
       ? `· ${stage}`
       : topicActivityLine(first.state);
   const extra = entries.length - 1;
+  // T-1586: a waiting AI with an open question opens its card in this chat,
+  // the way a search hit jumps; the line's text is unchanged. A failed jump is
+  // best effort and ignored.
+  const openQuestion = (messageId: string): void => {
+    Effect.runFork(
+      Effect.tryPromise({
+        try: () => openAtMessage(chat.id, messageId),
+        catch: (cause) => cause,
+      }).pipe(Effect.ignore),
+    );
+  };
+  const questionId = first.questionId;
   return (
     <View
       accessibilityRole="text"
@@ -42,7 +56,14 @@ export function AiStatusLine({ chat }: { chat: ChatSummary }) {
         ai
       />
       <Text numberOfLines={1} className="min-w-0 shrink text-[13px] text-muted-foreground">
-        <Text className="text-foreground">{first.name}</Text> {text}
+        {first.state === 'waiting' && questionId !== undefined ? (
+          <Text className="text-foreground" onPress={() => openQuestion(questionId)}>
+            {first.name}
+          </Text>
+        ) : (
+          <Text className="text-foreground">{first.name}</Text>
+        )}{' '}
+        {text}
       </Text>
       {extra > 0 ? (
         <Text className="shrink-0 font-mono text-[13px] text-muted-foreground">+{extra}</Text>

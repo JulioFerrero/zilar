@@ -54,7 +54,7 @@ const devTeamTopics: readonly MockTopic[] = [
     approverRoleId: null,
     activity: [
       { aiId: 'ai-dev-1', name: 'Dev-1', state: 'working' },
-      { aiId: 'ai-qa-1', name: 'QA-1', state: 'waiting' },
+      { aiId: 'ai-qa-1', name: 'QA-1', state: 'waiting', questionId: 'bug-3' },
     ],
   },
   {

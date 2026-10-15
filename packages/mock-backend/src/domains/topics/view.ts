@@ -67,6 +67,7 @@ export function buildTopicView(topic: MockTopic, source: TopicViewSource): Topic
         name: entry.name,
         ...(jid === undefined ? {} : { jid }),
         ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
+        ...(entry.questionId === undefined ? {} : { questionId: entry.questionId }),
         state: entry.state,
       };
     }),

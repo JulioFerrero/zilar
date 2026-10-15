@@ -46,6 +46,12 @@ const approvalRequest: Payload = {
   },
 };
 
+const questionCard: Payload = {
+  v: 0,
+  type: 'question',
+  data: { id: 'q-1', ai: AI, question: 'Which iPhone?', options: ['iPhone 15', 'iPhone 12'] },
+};
+
 const correction = { targetId: 'o-1' };
 
 describe('isAiActivityMessage', () => {
@@ -65,6 +71,10 @@ describe('isAiActivityMessage', () => {
 
   it('accepts an approval request', () => {
     expect(isAiActivityMessage(message({ id: 'm-1', payload: approvalRequest }))).toBe(true);
+  });
+
+  it('accepts a question card', () => {
+    expect(isAiActivityMessage(message({ id: 'm-1', payload: questionCard }))).toBe(true);
   });
 
   it('ignores a plain text message', () => {

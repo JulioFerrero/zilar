@@ -17,8 +17,8 @@ const ACTIVITY_REFRESH_KEY = 'ai-activity-refresh';
 /**
  * True for the live group messages whose card changes a topic's AI activity: a
  * new `progress` card (a turn started), its terminal correction (the turn
- * ended) or an `approval.request` (a card that waits). A mid-turn correction
- * and every non-group message are not activity.
+ * ended), an `approval.request` or a `question` (a card that waits). A mid-turn
+ * correction and every non-group message are not activity.
  */
 export function isAiActivityMessage(message: ChatMessage): boolean {
   if (message.kind !== 'groupchat') {
@@ -37,7 +37,10 @@ export function isAiActivityMessage(message: ChatMessage): boolean {
       state === 'stopped'
     );
   }
-  return payload.type === 'approval.request' && message.correction === undefined;
+  return (
+    (payload.type === 'approval.request' || payload.type === 'question') &&
+    message.correction === undefined
+  );
 }
 
 /**

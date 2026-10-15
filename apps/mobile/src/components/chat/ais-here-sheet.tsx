@@ -14,6 +14,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
 import { MUTED_FOREGROUND } from '@/lib/colors';
 import { useQuery } from '@/lib/effect/use-query';
+import { useChatStore } from '@/store/chat-store-provider';
 
 /** One AI in the "AIs here" sheet: its picture with its mark, name and line, plus Stop. */
 function AisHereRow({
@@ -21,11 +22,13 @@ function AisHereRow({
   chatId,
   canStop,
   onOpenApprovals,
+  onOpenQuestion,
 }: {
   entry: TopicAiActivity;
   chatId: string;
   canStop: boolean;
   onOpenApprovals: () => void;
+  onOpenQuestion: (messageId: string) => void;
 }) {
   const { api } = useAisApi();
   const [stopping, setStopping] = useState(false);
@@ -60,13 +63,18 @@ function AisHereRow({
   );
 
   const waiting = entry.state === 'waiting';
+  // T-1586: a waiting AI with an open question opens that card in this chat;
+  // one waiting for an approval still goes to Approvals.
+  const questionId = entry.questionId;
+  const onPress =
+    waiting && questionId !== undefined ? () => onOpenQuestion(questionId) : onOpenApprovals;
   return (
     <View>
       {waiting ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`${entry.name} ${topicActivityLine(entry.state)}`}
-          onPress={onOpenApprovals}
+          onPress={onPress}
           className="flex-row items-center gap-3 px-4 py-3 active:bg-list-hover"
         >
           {picture}
@@ -95,7 +103,9 @@ function AisHereRow({
 /**
  * The topic header's "AIs here" sheet (T-1539), the mobile twin of the web
  * popover: every AI at work in the topic with what it is doing, Stop for a
- * working AI the viewer owns, and a row to Approvals for one waiting for you.
+ * working AI the viewer owns, and a row that opens the question card for one
+ * waiting on a question (T-1586) or goes to Approvals for one waiting on an
+ * approval.
  */
 export function AisHereSheet({
   visible,
@@ -115,10 +125,19 @@ export function AisHereSheet({
     ? new Set(aisResult.value.map((ai) => ai.id))
     : undefined;
   const activity = chat.topic?.activity ?? [];
+  const openAtMessage = useChatStore((state) => state.openAtMessage);
 
   const openApprovals = (): void => {
     onClose();
     router.push('/settings/approvals');
+  };
+
+  // T-1586: the sheet is open inside this chat, so the jump only has to set the
+  // store's `jumpTarget`; the message list scrolls to the card the way a search
+  // hit does (`search-jump.ts`).
+  const openQuestion = (messageId: string): void => {
+    onClose();
+    void openAtMessage(chat.id, messageId).catch(() => undefined);
   };
 
   return (
@@ -130,6 +149,7 @@ export function AisHereSheet({
           chatId={chat.id}
           canStop={ownIds?.has(entry.aiId) === true}
           onOpenApprovals={openApprovals}
+          onOpenQuestion={openQuestion}
         />
       ))}
     </ActionSheet>
