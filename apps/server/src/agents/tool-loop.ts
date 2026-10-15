@@ -77,6 +77,9 @@ export interface ToolExecution {
   // T-1426: the process exit code when the tool ran one (the desk tools), so
   // the session log can carry it. Absent for every other tool.
   exitCode?: number;
+  // T-1530: the approval a `request_action` call raised, so the session log can
+  // tie the tool result to its later decision. Absent for every other tool.
+  approvalId?: string;
 }
 
 export type ExecuteToolCall = (call: ValidToolCall) => Promise<ToolExecution>;

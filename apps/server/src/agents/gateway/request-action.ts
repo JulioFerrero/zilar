@@ -70,12 +70,14 @@ export function createRequestActionRunner(
         // short fixed line so it knows to wait. The wording differs by
         // chat: in DMs the card appears in the owner's chat, in groups
         // it appears in the room and only group admins / owners / the
-        // AI's owner get the buttons.
+        // AI's owner get the buttons. T-1530: the approval id travels
+        // with the result so the session log can record it.
         return {
           content:
             chat === undefined
               ? "waiting for your owner's approval; a card was posted in this chat"
               : "waiting for an admin's approval; a card was posted in this room",
+          approvalId: outcome.approvalId,
         };
       case 'failed':
         return { content: 'the action failed' };

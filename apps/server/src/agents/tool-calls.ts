@@ -34,6 +34,9 @@ export interface ToolCallOutcome {
   content: string;
   durationMs: number;
   exitCode?: number;
+  // T-1530: the approval a `request_action` call raised, carried to the
+  // session log so a step's approval decision can be joined later.
+  approvalId?: string;
 }
 
 // Parses one raw tool call's `arguments`, runs the executor on it, and turns
@@ -129,6 +132,7 @@ async function executeOneToolCall(
       content: execution.content,
       durationMs: Date.now() - startedMs,
       ...(execution.exitCode === undefined ? {} : { exitCode: execution.exitCode }),
+      ...(execution.approvalId === undefined ? {} : { approvalId: execution.approvalId }),
     },
   };
 }

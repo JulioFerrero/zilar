@@ -42,6 +42,39 @@ export const TaskEventPage = Schema.Struct({
 
 export type TaskEventPage = typeof TaskEventPage.Type;
 
+// T-1530: one row of a step's activity — a tool call and its result, flattened
+// to a short command plus its outcome. `error` is the stored (redacted and
+// truncated) output, present only when the call failed.
+export const TaskStepAction = Schema.Struct({
+  command: Schema.String,
+  ok: Schema.Boolean,
+  durationMs: Schema.Int,
+  error: Schema.optional(Schema.String),
+});
+
+export type TaskStepAction = typeof TaskStepAction.Type;
+
+// T-1530: one card step. The steps mirror the card's list (title first, then
+// `step-<n>`, capped at 20); `approved` is true when one of the step's actions
+// raised an approval that was granted.
+export const TaskStep = Schema.Struct({
+  id: Schema.String,
+  label: Schema.String,
+  state: Schema.Literals(['done', 'failed', 'stopped', 'doing']),
+  durationMs: Schema.Int,
+  approved: Schema.Boolean,
+  actions: Schema.Array(TaskStepAction),
+});
+
+export type TaskStep = typeof TaskStep.Type;
+
+/** The whole card's steps, in order. */
+export const TaskSteps = Schema.Struct({
+  steps: Schema.Array(TaskStep),
+});
+
+export type TaskSteps = typeof TaskSteps.Type;
+
 const TaskIdParams = Schema.Struct({ taskId: Schema.String });
 
 export const AgentTasksGroup = HttpApiGroup.make('agentTasks')
@@ -52,6 +85,11 @@ export const AgentTasksGroup = HttpApiGroup.make('agentTasks')
       // handler owns the clamping.
       query: { after: RawQueryValue, limit: RawQueryValue },
       success: TaskEventPage,
+    }),
+    // T-1530: the assembled "View steps" payload, owner only like `events`.
+    HttpApiEndpoint.get('steps', '/agents/tasks/:taskId/steps', {
+      params: TaskIdParams,
+      success: TaskSteps,
     }),
   )
   .middleware(Session)

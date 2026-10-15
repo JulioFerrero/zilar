@@ -185,6 +185,7 @@ export async function runLoopRound(input: {
           output_bytes: byteLength(outcome.content),
           ok: outcome.ok,
           ...(outcome.exitCode === undefined ? {} : { exit_code: outcome.exitCode }),
+          ...(outcome.approvalId === undefined ? {} : { approval_id: outcome.approvalId }),
         },
         outcome.durationMs,
       );

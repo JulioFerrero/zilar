@@ -11,6 +11,7 @@ import type { ServerDatabase } from '../../db/client';
 import { handler, mountApi, sessionLayer, type EffectApiMount } from '../../effect/http-core';
 import { HttpError } from '../../errors';
 import { listTaskEvents, loadTaskOwnerId, normalizeLimit } from './read';
+import { taskSteps } from './steps';
 
 export interface AgentTasksApiDependencies {
   auth: Auth;
@@ -46,26 +47,41 @@ function parseLimit(value: unknown): number {
 
 export function createAgentTasksApi(deps: AgentTasksApiDependencies): EffectApiMount {
   const groupLayer = HttpApiBuilder.group(AgentTasksApi, 'agentTasks', (handlers) =>
-    handlers.handle(
-      'events',
-      handler(deps.logger, (request, user) =>
-        Effect.gen(function* () {
-          const taskId = request.params.taskId;
-          const ownerId = yield* Effect.promise(() => loadTaskOwnerId(deps.db, taskId));
-          if (ownerId === null || ownerId !== user.id) {
-            throw new HttpError(404, 'not_found', 'Task not found');
-          }
-          return yield* Effect.promise(() =>
-            listTaskEvents(deps.db, {
-              taskId,
-              ownerId,
-              after: parseAfter(request.query.after),
-              limit: parseLimit(request.query.limit),
-            }),
-          );
-        }),
+    handlers
+      .handle(
+        'events',
+        handler(deps.logger, (request, user) =>
+          Effect.gen(function* () {
+            const taskId = request.params.taskId;
+            const ownerId = yield* Effect.promise(() => loadTaskOwnerId(deps.db, taskId));
+            if (ownerId === null || ownerId !== user.id) {
+              throw new HttpError(404, 'not_found', 'Task not found');
+            }
+            return yield* Effect.promise(() =>
+              listTaskEvents(deps.db, {
+                taskId,
+                ownerId,
+                after: parseAfter(request.query.after),
+                limit: parseLimit(request.query.limit),
+              }),
+            );
+          }),
+        ),
+      )
+      .handle(
+        'steps',
+        handler(deps.logger, (request, user) =>
+          Effect.gen(function* () {
+            const taskId = request.params.taskId;
+            const ownerId = yield* Effect.promise(() => loadTaskOwnerId(deps.db, taskId));
+            if (ownerId === null || ownerId !== user.id) {
+              throw new HttpError(404, 'not_found', 'Task not found');
+            }
+            // T-1530: the assembled "View steps" payload for the same owner.
+            return yield* Effect.promise(() => taskSteps(deps.db, taskId));
+          }),
+        ),
       ),
-    ),
   );
 
   const apiLayer = HttpApiBuilder.layer(AgentTasksApi).pipe(
