@@ -22,6 +22,15 @@ export interface StickerPack {
   stickers: StickerItem[];
 }
 
+/**
+ * One pack by id for its link page (T-1524): the pack fields plus the owner's
+ * handle (null when they have none) and whether the caller's own panel holds it.
+ */
+export interface StickerPackDetail extends StickerPack {
+  ownerHandle: string | null;
+  inPanel: boolean;
+}
+
 /** One sticker row: the send payload minus the pack id. */
 export interface StickerItem {
   id: string;
@@ -119,6 +128,19 @@ export function stickerImageSource(
   }
   const uri = url.startsWith('/') ? `${apiOrigin(apiUrl)}${url}` : url;
   return token === undefined ? { uri } : { uri, headers: { authorization: `Bearer ${token}` } };
+}
+
+/** The public web host a pack link uses (`app.json` maps `/stickers/`). */
+export const STICKER_PACK_HOST = 'chat.zilar.app';
+
+/** The pack link, as copied and shared (T-1524). */
+export function stickerPackUrl(packId: string): string {
+  return `https://${STICKER_PACK_HOST}/stickers/${encodeURIComponent(packId)}`;
+}
+
+/** The pack link as shown: host plus path, without the scheme. */
+export function stickerPackUrlText(packId: string): string {
+  return `${STICKER_PACK_HOST}/stickers/${packId}`;
 }
 
 /** Parses stored JSON; text that does not parse gives `undefined`, never a throw. */

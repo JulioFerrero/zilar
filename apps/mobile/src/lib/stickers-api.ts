@@ -4,6 +4,7 @@ import {
   runApi,
   Sticker as ContractSticker,
   StickerPack as ContractStickerPack,
+  type StickerPackDetail as ContractStickerPackDetail,
   type TelegramImportResult as ContractTelegramImportResult,
 } from '@zilar/api-contract';
 
@@ -11,7 +12,7 @@ import { API_URL } from './auth';
 import { errorFieldsOf } from './api-error-body';
 import { createApiClient } from './effect/api-client';
 import { getSessionToken } from './session-token';
-import type { StickerItem, StickerPack } from './stickers';
+import type { StickerItem, StickerPack, StickerPackDetail } from './stickers';
 
 /**
  * The sticker panel client (T-0143), the mobile twin of the web sticker list
@@ -74,6 +75,15 @@ function toStickerPack(row: ContractStickerPack): StickerPack | null {
       : { importedFrom: row.importedFrom }),
     stickers: row.stickers.flatMap((sticker) => toStickerItem(sticker) ?? []),
   };
+}
+
+/** One contract pack detail as its link page shows it; a malformed pack is null. */
+function toStickerPackDetail(row: ContractStickerPackDetail): StickerPackDetail | null {
+  const pack = toStickerPack(row);
+  if (pack === null) {
+    return null;
+  }
+  return { ...pack, ownerHandle: row.ownerHandle, inPanel: row.inPanel };
 }
 
 /** One sticker row the panel may show; malformed rows return null. */
@@ -155,6 +165,8 @@ async function defaultBinaryUpload(
 
 export interface StickersApi {
   listStickerPacks(): Promise<StickerPack[]>;
+  /** One pack by id, for its link page (web `getStickerPack`); a 404 rejects with an `ApiError`. */
+  getStickerPack(packId: string): Promise<StickerPackDetail>;
   /** Shared packs anyone on this server may add (web `discoverStickerPacks`). */
   discoverStickerPacks(query?: string): Promise<{ packs: StickerPack[]; next: string | null }>;
   addStickerPanelPack(packId: string): Promise<void>;
@@ -249,6 +261,14 @@ export function createStickersApi(
       runApi(client.stickers.listPacks()).then((body) =>
         body.packs.flatMap((p) => toStickerPack(p) ?? []),
       ),
+    getStickerPack: (packId) =>
+      runApi(client.stickers.getPack({ params: { id: packId } })).then((row) => {
+        const pack = toStickerPackDetail(row);
+        if (pack === null) {
+          throw new ApiError(200, 'invalid_response', INVALID_RESPONSE);
+        }
+        return pack;
+      }),
     discoverStickerPacks: (query) => {
       const trimmed = query?.trim() ?? '';
       return runApi(client.stickers.discover({ query: trimmed === '' ? {} : { q: trimmed } })).then(

@@ -30,6 +30,7 @@
             { "scheme": "https", "host": "chat.zilar.app", "pathPrefix": "/j/" },
             { "scheme": "https", "host": "chat.zilar.app", "pathPrefix": "/u/" },
             { "scheme": "https", "host": "chat.zilar.app", "pathPrefix": "/settings/" },
+            { "scheme": "https", "host": "chat.zilar.app", "pathPrefix": "/stickers/" },
             { "scheme": "https", "host": "chat.zilar.app", "pathPrefix": "/@" },
             { "scheme": "https", "host": "chat.zilar.app", "path": "/" }
           ]

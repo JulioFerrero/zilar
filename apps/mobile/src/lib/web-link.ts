@@ -80,7 +80,7 @@ function rewriteWebUrl({ path, search }: WebTarget): string {
   if (join) {
     return `/join/${join[1]}${search}`;
   }
-  if (/^\/(?:invite|u)\/.+$/.test(path)) {
+  if (/^\/(?:invite|u|stickers)\/.+$/.test(path)) {
     return path + search;
   }
   const at = /^\/@(.+)$/.exec(path);
