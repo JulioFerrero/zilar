@@ -83,6 +83,54 @@ function proxyFlags(proxyUrl: string | null): readonly string[] {
   ];
 }
 
+function isIpv4Literal(host: string): boolean {
+  const parts = host.split('.');
+  return (
+    parts.length === 4 &&
+    parts.every(
+      (part) => /^\d{1,3}$/.test(part) && String(Number(part)) === part && Number(part) <= 255,
+    )
+  );
+}
+
+/**
+ * Finds the egress proxy's IPv4 on the jail network. gVisor's own network stack
+ * cannot reach Docker's embedded DNS, so the proxy name is pinned in the jail's
+ * /etc/hosts instead (the lead's live check, plan §4.4).
+ */
+export async function proxyAddress(network: string, host: string): Promise<string | null> {
+  if (isIpv4Literal(host)) {
+    return host;
+  }
+  try {
+    const found = await execFile('docker', [
+      'ps',
+      '-q',
+      '--filter',
+      `network=${network}`,
+      '--filter',
+      `label=com.docker.compose.service=${host}`,
+    ]);
+    const id = found
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.length > 0);
+    if (id === undefined) {
+      return null;
+    }
+    const output = await execFile('docker', [
+      'inspect',
+      '-f',
+      `{{with index .NetworkSettings.Networks "${network}"}}{{.IPAddress}}{{end}}`,
+      id,
+    ]);
+    const address = output.trim();
+    return address.length > 0 ? address : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The §4.2 run flags, fixed in code; only validated numbers come from the spec. */
 export function createArgs(
   name: string,
@@ -90,6 +138,7 @@ export function createArgs(
   workspaceDir: string,
   settings: DockerSettings,
   proxyUrl: string | null,
+  proxyAddress: string | null = null,
 ): readonly string[] {
   const memory = spec.limits.memoryBytes;
   return [
@@ -122,6 +171,9 @@ export function createArgs(
     ...(settings.cgroupParent === null ? [] : ['--cgroup-parent', settings.cgroupParent]),
     '--network',
     settings.network,
+    ...(proxyUrl !== null && proxyAddress !== null
+      ? ['--add-host', `${new URL(proxyUrl).hostname}:${proxyAddress}`]
+      : []),
     ...proxyFlags(proxyUrl),
     ...keepAliveFlags(spec.imageDigest),
   ];
@@ -217,7 +269,19 @@ function decodeDaemonLine(line: string): { readonly chunk: DeskChunk; readonly d
 export function createDockerLayer(settings: DockerSettings): DockerLayer {
   return {
     async create(name, spec, workspaceDir, proxyUrl) {
-      const args = createArgs(name, spec, workspaceDir, settings, proxyUrl);
+      let address: string | null = null;
+      if (proxyUrl !== null) {
+        const host = new URL(proxyUrl).hostname;
+        address = await proxyAddress(settings.network, host);
+        if (address === null) {
+          // A computer with no web still beats no computer; say why it has none.
+          process.stderr.write(
+            `desk-agent: could not find ${host} on network ${settings.network}; ` +
+              `the jail for ${name} will have no web access\n`,
+          );
+        }
+      }
+      const args = createArgs(name, spec, workspaceDir, settings, proxyUrl, address);
       try {
         await execFile('docker', args);
       } catch {

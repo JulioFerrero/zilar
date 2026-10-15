@@ -75,6 +75,33 @@ describe('desk-agent server', () => {
     expect(args).toContain(PACKAGE);
   });
 
+  it('pins the egress proxy host in the jail /etc/hosts', () => {
+    const workspace = path.join(agent.directory, 'workspace');
+    const proxyUrl = 'http://u:p@desk-egress:3128';
+
+    const withAddress = createArgs(
+      'desk-ai1-p1',
+      spec(),
+      workspace,
+      agent.config.docker,
+      proxyUrl,
+      '10.0.6.2',
+    );
+    const index = withAddress.indexOf('--add-host');
+    expect(index).toBeGreaterThan(-1);
+    expect(withAddress[index + 1]).toBe('desk-egress:10.0.6.2');
+
+    const withoutAddress = createArgs(
+      'desk-ai1-p1',
+      spec(),
+      workspace,
+      agent.config.docker,
+      proxyUrl,
+      null,
+    );
+    expect(withoutAddress).not.toContain('--add-host');
+  });
+
   it('binds the workspace directory and the pinned image into the jail', async () => {
     await send(agent.socketPath, { id: 1, method: 'provision', params: { spec: spec() } }, one);
     expect(agent.docker.calls).toHaveLength(1);

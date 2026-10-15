@@ -8,13 +8,14 @@
 # Re-pin by rerunning that command and replacing the digest below.
 FROM node:24-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20
 
-# git, a shell, ripgrep, python3, build-essential, ca-certificates and jq; the
-# system git config disables hooks and fsmonitor for every repo in the jail
+# git, a shell, ripgrep, curl, python3, build-essential, ca-certificates and jq;
+# the system git config disables hooks and fsmonitor for every repo in the jail
 # (the daemon also passes -c core.hooksPath=/dev/null on every call).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         git \
         ripgrep \
+        curl \
         python3 \
         python3-pip \
         build-essential \
