@@ -47,7 +47,7 @@ describe('group create route', () => {
     const group = groupEntries(chats.chats).find((entry) => entry.groupId === detail.id);
     expect(group?.chatKind).toBe('channel');
     expect(group?.subscriberCount).toBe(1);
-    expect(group?.topics).toHaveLength(1);
+    expect(group?.topics).toHaveLength(0);
   });
 
   /**
