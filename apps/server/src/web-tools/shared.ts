@@ -31,12 +31,20 @@ export const MAX_WIKIPEDIA_EXTRACT_CHARS = 3000;
 
 export type WebSearchProviderName = 'duckduckgo-html' | 'none';
 
+// The slice of the server logger the web tools use: one structured warn
+// line per provider failure. A no-op stands in when the caller passes none,
+// so tests need no logger.
+export interface WebToolsLogger {
+  warn: (fields: Record<string, unknown>, message: string) => void;
+}
+
 export interface BuildWebToolsAdaptersDeps {
   rateLimitNow?: () => number;
   dnsLookup?: DnsLookup;
   fetcher?: PinnedFetcher;
   searchProviderName?: WebSearchProviderName;
   searchProvider?: WebSearchProvider;
+  logger?: WebToolsLogger;
 }
 
 export interface WebToolsState {
@@ -45,6 +53,7 @@ export interface WebToolsState {
   fetcher: PinnedFetcher | undefined;
   searchProviderName: WebSearchProviderName;
   searchProvider: WebSearchProvider;
+  logger: WebToolsLogger;
 }
 
 export function createWebToolsState(deps: BuildWebToolsAdaptersDeps): WebToolsState {
@@ -58,6 +67,7 @@ export function createWebToolsState(deps: BuildWebToolsAdaptersDeps): WebToolsSt
     fetcher: deps.fetcher,
     searchProviderName: deps.searchProviderName ?? 'duckduckgo-html',
     searchProvider: deps.searchProvider ?? duckduckgoProvider(deps.fetcher, deps.dnsLookup),
+    logger: deps.logger ?? { warn: () => {} },
   };
 }
 

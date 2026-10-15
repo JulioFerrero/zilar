@@ -1632,3 +1632,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1623](T-1623-desk-tool-says-what-it-has.md) | The bash tool tells the AI what its computer has | 2026-10-15 |
 | [T-1619](T-1619-phone-work-card-standalone.md) | Phone work card stands alone: no bubble or meta row | 2026-10-15 |
 | [T-1620](T-1620-recreate-unknown-jails.md) | Desk agent recreates jails left from an earlier run | 2026-10-15 |
+| [T-1624](T-1624-web-tools-logger.md) | Web tools log through the server logger | 2026-10-15 |

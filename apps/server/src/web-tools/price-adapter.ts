@@ -38,8 +38,11 @@ function statusFromSummary(summary: string): number | null {
 
 // One warn line per failed provider request: the action, the fixed host
 // and the status, never a URL, a symbol or response content.
-function warnFetchFailure(host: string, summary: string): void {
-  console.warn(JSON.stringify({ action: 'web.price', host, status: statusFromSummary(summary) }));
+function warnFetchFailure(state: WebToolsState, host: string, summary: string): void {
+  state.logger.warn(
+    { action: 'web.price', host, status: statusFromSummary(summary) },
+    'web tool provider failed',
+  );
 }
 
 function yahooStamp(quote: { time: number | undefined }): string {
@@ -78,7 +81,7 @@ export function webPriceAdapter(state: WebToolsState): ActionAdapter<unknown> {
           guardedOptions(state, { allowedHosts: [COINGECKO_HOST], headers: { accept: '*/*' } }),
         );
         if (!fetched.ok) {
-          warnFetchFailure(COINGECKO_HOST, fetched.summary);
+          warnFetchFailure(state, COINGECKO_HOST, fetched.summary);
           for (const symbol of cryptoSymbols) {
             lines.push(`${symbol} unavailable (${fetched.summary})`);
           }
@@ -103,7 +106,7 @@ export function webPriceAdapter(state: WebToolsState): ActionAdapter<unknown> {
           }),
         );
         if (!fetched.ok) {
-          warnFetchFailure(YAHOO_HOST, fetched.summary);
+          warnFetchFailure(state, YAHOO_HOST, fetched.summary);
           lines.push(`${symbol} unavailable (${fetched.summary})`);
           continue;
         }

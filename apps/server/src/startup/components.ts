@@ -128,7 +128,7 @@ export function startComponents(boot: BootedServer, running: RunningServer): Eff
     // unregisters `web.search`. Nothing changes when the flag is off.
     const webToolsAdapters =
       config.WEB_TOOLS_ENABLED === true
-        ? buildWebToolsAdapters({ searchProviderName: config.WEB_SEARCH_PROVIDER })
+        ? buildWebToolsAdapters({ searchProviderName: config.WEB_SEARCH_PROVIDER, logger })
         : [];
     const actionAdapters = [
       ...(config.ACTION_DEMO_ENABLED ? [buildDemoEchoAdapter()] : []),
