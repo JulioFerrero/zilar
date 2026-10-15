@@ -1,9 +1,31 @@
 import { describe, expect, it } from 'vitest';
-import { topicActivityView } from './topic-activity';
-import type { TopicAiActivity, TopicAiState } from './types';
+import { liveStageFor, topicActivityView } from './topic-activity';
+import type { TopicAiActivity, TopicAiState, UiMessage } from './types';
 
 function ai(name: string, state: TopicAiState): TopicAiActivity {
   return { aiId: name, name, state };
+}
+
+const AI_JID = 'dev-1@ai.example.com';
+
+function message(id: string, card: NonNullable<UiMessage['card']>): UiMessage {
+  return {
+    id,
+    chatId: 't-devteam-bug@rooms.zilar.test',
+    senderId: AI_JID,
+    senderName: 'Dev-1',
+    createdAt: new Date(0),
+    status: 'sent',
+    card,
+  };
+}
+
+function progressCard(stage: string, state?: 'working' | 'done'): NonNullable<UiMessage['card']> {
+  return {
+    v: 0,
+    type: 'progress',
+    data: { ai: AI_JID, stage, ...(state === undefined ? {} : { state }) },
+  };
 }
 
 describe('topicActivityView', () => {
@@ -47,5 +69,16 @@ describe('topicActivityView', () => {
 
     expect(view.done).toBe(false);
     expect(view.label).toBe('Dev-1 is working');
+  });
+});
+
+describe('liveStageFor', () => {
+  it('shows a live card stage and hides it behind a newer finished card', () => {
+    const live = message('1', progressCard('Running the tests'));
+
+    expect(liveStageFor([live], AI_JID)).toBe('Running the tests');
+    expect(
+      liveStageFor([live, message('2', progressCard('Done', 'done'))], AI_JID),
+    ).toBeUndefined();
   });
 });

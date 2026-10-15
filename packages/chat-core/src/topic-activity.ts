@@ -1,4 +1,4 @@
-import type { TopicAiActivity, TopicAiState } from './types';
+import type { TopicAiActivity, TopicAiState, UiMessage } from './types';
 
 /** What a topic's AI activity reads as, for the list row and the "AIs here" key. */
 export interface TopicActivityView {
@@ -47,4 +47,29 @@ export function topicActivityView(
         ? 'Done'
         : '';
   return { active, done, label };
+}
+
+/**
+ * T-1551 (moved from web's `AiStatusLine`, T-1537): the newest progress card of
+ * one AI in the chat. Its `stage` shows only while that card is live (`working`
+ * or no state yet); a newer finished card means the AI has no current stage, so
+ * the status line falls back to "is working".
+ */
+export function liveStageFor(
+  messages: readonly UiMessage[] | undefined,
+  jid: string | undefined,
+): string | undefined {
+  if (messages === undefined || jid === undefined) {
+    return undefined;
+  }
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const card = messages[index]?.card;
+    if (card === undefined || card.type !== 'progress' || card.data.ai !== jid) {
+      continue;
+    }
+    return card.data.state === undefined || card.data.state === 'working'
+      ? card.data.stage
+      : undefined;
+  }
+  return undefined;
 }

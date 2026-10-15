@@ -1,6 +1,7 @@
 // effect-plain: moved unchanged from apps/mobile/src/app/chat/[id].tsx (size split)
 import { useMemo } from 'react';
 
+import { AiStatusLine } from '@/components/chat/ai-status-line';
 import { ChannelComposerBar } from '@/components/chat/channel-composer-bar';
 import { Composer } from '@/components/chat/composer';
 import { SelectionBar } from '@/components/chat/selection-bar';
@@ -149,22 +150,25 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
           onForward={screen.forwardSelected}
         />
       ) : variant === 'composer' ? (
-        <Composer
-          chatKey={chat.id}
-          title={chat.title}
-          onSend={sendTextNow}
-          mentionMembers={mentionMembers}
-          onSendSticker={onSendSticker}
-          onSendAttachment={onSendAttachment}
-          onSendVoice={sendVoiceNow}
-          replyTo={replyTo}
-          onCancelReply={cancelReply}
-          onTyping={() => sendTyping(chat.id)}
-          onStopTyping={() => stopTyping(chat.id)}
-          stickersApi={stickersApi}
-          demoAttachments={demoAttachments}
-          gifsApi={gifsApi}
-        />
+        <>
+          <AiStatusLine chat={chat} />
+          <Composer
+            chatKey={chat.id}
+            title={chat.title}
+            onSend={sendTextNow}
+            mentionMembers={mentionMembers}
+            onSendSticker={onSendSticker}
+            onSendAttachment={onSendAttachment}
+            onSendVoice={sendVoiceNow}
+            replyTo={replyTo}
+            onCancelReply={cancelReply}
+            onTyping={() => sendTyping(chat.id)}
+            onStopTyping={() => stopTyping(chat.id)}
+            stickersApi={stickersApi}
+            demoAttachments={demoAttachments}
+            gifsApi={gifsApi}
+          />
+        </>
       ) : (
         <ChannelComposerBar
           chat={chat}

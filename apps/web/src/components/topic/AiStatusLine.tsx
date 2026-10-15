@@ -1,4 +1,4 @@
-import type { ChatSummary, TopicAiActivity, UiMessage } from '@zilar/chat-core';
+import { liveStageFor, type ChatSummary, type TopicAiActivity } from '@zilar/chat-core';
 import { EntityAvatar } from '@/components/EntityAvatar';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 
@@ -10,30 +10,6 @@ function activeAis(activity: readonly TopicAiActivity[]): TopicAiActivity[] {
   return activity
     .filter((entry) => entry.state !== 'done')
     .sort((left, right) => STATE_ORDER[left.state] - STATE_ORDER[right.state]);
-}
-
-/**
- * The newest progress card of one AI in the chat. Its `stage` shows only while
- * that card is live (`working` or no state yet); a newer finished card means the
- * AI has no current stage, so the line falls back to "is working".
- */
-function liveStage(
-  messages: readonly UiMessage[] | undefined,
-  jid: string | undefined,
-): string | undefined {
-  if (messages === undefined || jid === undefined) {
-    return undefined;
-  }
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const card = messages[index]?.card;
-    if (card === undefined || card.type !== 'progress' || card.data.ai !== jid) {
-      continue;
-    }
-    return card.data.state === undefined || card.data.state === 'working'
-      ? card.data.stage
-      : undefined;
-  }
-  return undefined;
 }
 
 /** The one sentence after the name: "· running the tests" or "is waiting for you". */
@@ -74,7 +50,7 @@ export function AiStatusLine({ chat }: { chat: ChatSummary }) {
           />
           <span className="min-w-0 truncate">
             <span className="text-foreground">{entry.name}</span>{' '}
-            {entryText(entry, liveStage(messages, entry.jid))}
+            {entryText(entry, liveStageFor(messages, entry.jid))}
           </span>
         </span>
       ))}
