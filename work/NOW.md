@@ -16,8 +16,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1492 merged: AIs count as members (server, mock, web topic panel). Headless check: Dev team › General reads "6 members" in the header and "All 6 members" in the panel.
   - T-1493 merged: the Stop pause is saved (migration 0062, `topics.follow_paused_at`, loaded at gateway start). Left as they are: a stale pause after the owner AI is removed (ignored by the reload) and a rare Stop/mention write race.
   - T-1494 is live (`12f9f8aed`), with 0 errors and 0 warnings.
-- **Approvals canvas redone** (Julio: "too many things", "make it simpler and more clear"):
-  - one request per card: "Dev-1 asks", the summary, "Up to €0.40", then Deny / Approve, with "Always allow" as quiet text;
+- **T-1493 is live** (`0df7d74e3`): the live database has `topics.follow_paused_at` (timestamptz) with 0 paused rows, and the server shows 0 errors and 0 warnings.
+- **Approved today, boards plus README parked in the job's tmp folder `parked/<name>/`; each rides its first task into `docs/design/mockups/<name>/`:** Group info (on T-1494, merged), Stickers (on T-1495), Approvals, Lean settings, AI health. Specs for the last three are not written yet.
+- **Approvals canvas redone and approved** (Julio first said "too many things", "make it simpler and more clear"; then "much better i like it now"):
+  - one request per card: "Dev-1 asks", the summary, then Deny / Approve, with "Always allow" as quiet text. No money shown anywhere (Julio: "i dont like the money part");
   - a decided request is one line with a check or cross icon;
   - Approvals page: one row per request (orb, summary, AI · chat, ✕ and ✓ keys);
   - Machines: the code plus Deny / Approve for a new machine, and plain rows for the rest (specs and chips move to the machine's page);
@@ -43,7 +45,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 - **Gap found:** web (`<canvas>`) and phone (`expo-image-manipulator`) re-encode every upload to a still WebP, so a GIF or animated WebP freezes on its first frame today. The phone picker takes images only.
 - **Stickers canvas approved** (Julio: "looks good the sticker part"; videos up to 3 s as drawn).
   - The boards and README are parked in the job's tmp folder (`parked/stickers/`); they ride the first Stickers task (T-1495) into `docs/design/mockups/stickers/`.
-  - **T-1495 (server: pack links), spec-check passed, waiting for a slot.** Imported Telegram packs keep today's rule (`imported_private`, `packs.ts:141`): no link, owner only.
+  - **T-1495 (server: pack links) merged.** Imported Telegram packs keep today's rule (`imported_private`, `packs.ts:141`): no link, owner only. The Stickers boards are now in `docs/design/mockups/stickers/`.
     - a new `GET /sticker-packs/:id` returns any pack by id, with the owner's handle and `inPanel`;
     - `requireVisiblePack` lets a private pack be added by id; Discover still lists shared packs only;
     - tests cover the permission change.

@@ -18,6 +18,7 @@ import {
 } from './schemas';
 import {
   escapeLike,
+  loadPackStickers,
   requireOwnedPack,
   resolveStorageDir,
   toAuditEntry,
@@ -199,15 +200,7 @@ export async function patchPack(
   if (!updated) {
     throw new HttpError(404, 'not_found', 'Sticker pack not found');
   }
-  const rows = await runSql(
-    deps.db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<StickerRow>`SELECT * FROM stickers WHERE pack_id = ${packId}
-        ORDER BY position ASC`;
-    }),
-  );
-  return toPackView(deps, updated, [...rows]);
+  return toPackView(deps, updated, await loadPackStickers(deps, packId));
 }
 
 export async function deletePack(

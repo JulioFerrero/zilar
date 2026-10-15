@@ -109,6 +109,17 @@ export const StickerPack = Schema.Struct({
 
 export type StickerPack = typeof StickerPack.Type;
 
+// `GET /sticker-packs/:id` (T-1495): a pack link any signed-in user can open
+// by id. The owner's handle is null when they have none; `inPanel` says whether
+// the caller's own panel holds the pack.
+export const StickerPackDetail = Schema.Struct({
+  ...StickerPack.fields,
+  ownerHandle: Schema.NullOr(Schema.String),
+  inPanel: Schema.Boolean,
+});
+
+export type StickerPackDetail = typeof StickerPackDetail.Type;
+
 // The list responses drop a malformed row and keep the rest (a client shows
 // the good packs and stickers), see `lenientArray`.
 export const StickerPackList = Schema.Struct({ packs: lenientArray(StickerPack) });
@@ -147,6 +158,12 @@ export const StickersGroup = HttpApiGroup.make('stickers')
     HttpApiEndpoint.get('discover', '/sticker-packs/discover', {
       query: { q: RawQueryValue, cursor: RawQueryValue },
       success: StickerDiscoverPage,
+    }),
+    // The pack link (T-1495). Declared after `discover` so the fixed
+    // `/sticker-packs/discover` segment keeps its own route.
+    HttpApiEndpoint.get('getPack', '/sticker-packs/:id', {
+      params: { id: Schema.String },
+      success: StickerPackDetail,
     }),
     HttpApiEndpoint.post('importTelegram', '/sticker-packs/import/telegram', {
       payload: ImportTelegramPayload,

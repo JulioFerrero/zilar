@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stickers, phone, pack actions</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed}a:hover{color:#ffffff}
+.key-icon{background:linear-gradient(180deg,#2c2c2c,#151515);border:1px solid #050505;color:#d4d4d4;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.65),0 1px 0 rgba(0,0,0,.95),0 3px 6px -1px rgba(0,0,0,.75)}
+.row{display:flex;align-items:center;gap:12px;min-height:64px;padding:0 14px;border-bottom:1px solid #1a1a1a;box-sizing:border-box}
+.st{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:19px;line-height:1}
+.name{font-size:16px;font-weight:600}
+.meta{font-size:14px;color:#a1a1a1}
+.action{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 16px;border:0;border-bottom:1px solid #1a1a1a;background:transparent;color:#ededed;font:16px 'Geist',sans-serif;text-align:left;width:100%;box-sizing:border-box}
+.big{aspect-ratio:1;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:30px;line-height:1}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #0a0a0a; display: flex; flex-direction: column">
+  <div style="height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px">
+    <span class="key-icon" aria-hidden="true" style="width: 40px; height: 40px; box-sizing: border-box; border-radius: 12px"></span>
+    <span class="key-icon" aria-hidden="true" style="width: 40px; height: 40px; box-sizing: border-box; border-radius: 12px"></span>
+  </div>
+  <div style="margin: 4px 16px 16px 16px; font-size: 28px; font-weight: 600; letter-spacing: -0.02em">Stickers</div>
+  <div style="margin: 0 16px 16px 16px; height: 42px; border-radius: 10px; background: #0c0c0c; border: 1px solid #1a1a1a"></div>
+  <div style="margin: 0 16px; background: #111111; border: 1px solid #1f1f1f; border-radius: 14px; overflow: hidden">
+    <div class="row"><span class="st" style="background: linear-gradient(135deg, #fbbf24, #f97316)">🐱</span><span class="st" style="background: linear-gradient(135deg, #a78bfa, #7c3aed)">😹</span><span class="st" style="background: linear-gradient(135deg, #6ee7b7, #059669)">🙀</span><span style="display: flex; flex-direction: column; gap: 2px"><span class="name">Cats</span><span class="meta">6 stickers</span></span></div>
+    <div class="row" style="background: #171717"><span class="st" style="background: linear-gradient(135deg, #fde047, #ca8a04)">😂</span><span class="st" style="background: linear-gradient(135deg, #fca5a5, #dc2626)">🔥</span><span class="st" style="background: linear-gradient(135deg, #c4b5fd, #6d28d9)">😎</span><span style="display: flex; flex-direction: column; gap: 2px"><span class="name">Moods</span><span class="meta">6 stickers</span></span></div>
+    <div class="row" style="border-bottom: 0"><span class="st" style="background: linear-gradient(135deg, #7dd3fc, #0284c7)">🐈</span><span class="st" style="background: linear-gradient(135deg, #fde68a, #d97706)">😺</span><span class="st" style="background: linear-gradient(135deg, #d4d4d8, #52525b)">💼</span><span style="display: flex; flex-direction: column; gap: 2px"><span class="name">Office cats</span><span class="meta">12 stickers · Telegram</span></span></div>
+  </div>
+
+  <div style="position: absolute; inset: 0; background: rgba(0,0,0,0.6)"></div>
+  <div role="dialog" aria-label="Moods" style="position: absolute; left: 0; right: 0; bottom: -1px; background: #0a0a0a; border-top: 1px solid #1f1f1f; border-radius: 16px 16px 0 0; display: flex; flex-direction: column; padding-bottom: 34px">
+    <span aria-hidden="true" style="align-self: center; width: 36px; height: 4px; margin-top: 8px; border-radius: 2px; background: #333333"></span>
+    <div style="padding: 10px 16px 12px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #1f1f1f">
+      <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+        <h2 style="margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.02em; display: flex; align-items: center; gap: 6px">Moods
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Shared"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"></path></svg>
+        </h2>
+        <span class="meta">6 stickers</span>
+      </div>
+      <a href="Phone.dc.html" aria-label="Close" class="key-icon" style="width: 40px; height: 40px; box-sizing: border-box; border-radius: 12px; display: flex; align-items: center; justify-content: center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+      </a>
+    </div>
+    <div aria-hidden="true" style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; padding: 14px 16px; border-bottom: 1px solid #1f1f1f">
+      <span class="big" style="background: linear-gradient(135deg, #fde047, #ca8a04)">😂</span>
+      <span class="big" style="background: linear-gradient(135deg, #fca5a5, #dc2626)">🔥</span>
+      <span class="big" style="background: linear-gradient(135deg, #c4b5fd, #6d28d9)">😎</span>
+      <span class="big" style="background: linear-gradient(135deg, #86efac, #16a34a)">🎉</span>
+      <span class="big" style="background: linear-gradient(135deg, #93c5fd, #1d4ed8)">❤️</span>
+      <span class="big" style="background: linear-gradient(135deg, #fdba74, #ea580c)">👍</span>
+    </div>
+    <button type="button" class="action">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 6l-4-4-4 4M12 2v13"></path></svg>
+      <span style="flex-grow: 1">Share</span>
+    </button>
+    <button type="button" class="action">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+      <span style="flex-grow: 1">Edit</span>
+    </button>
+    <button type="button" class="action">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+      <span style="flex-grow: 1">Make private</span>
+    </button>
+    <button type="button" class="action">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 12h8"></path></svg>
+      <span style="flex-grow: 1">Remove from panel</span>
+    </button>
+    <button type="button" class="action" style="color: #ef4444; border-bottom: 0">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg>
+      <span style="flex-grow: 1">Delete</span>
+    </button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

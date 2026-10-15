@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New sticker pack, phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed}a:hover{color:#ffffff}
+.key-icon{background:linear-gradient(180deg,#2c2c2c,#151515);border:1px solid #050505;color:#d4d4d4;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.65),0 1px 0 rgba(0,0,0,.95),0 3px 6px -1px rgba(0,0,0,.75)}
+.key-primary{background:linear-gradient(180deg,rgba(255,255,255,.40),rgba(255,255,255,.08) 48%,rgba(0,0,0,0) 52%,rgba(0,0,0,.14)),#ededed;color:#0a0a0a;border:0;text-shadow:0 1px 0 rgba(255,255,255,.7);box-shadow:inset 0 1px 0 rgba(255,255,255,.85),inset 0 -2px 0 rgba(0,0,0,.2),inset 0 0 0 1px rgba(255,255,255,.12),0 1px 0 rgba(0,0,0,.95),0 2px 3px rgba(0,0,0,.7),0 10px 18px -8px rgba(0,0,0,.95)}
+.well{background:#0c0c0c;border:1px solid #1f1f1f;box-shadow:inset 0 2px 6px rgba(0,0,0,.9),inset 0 1px 1px rgba(0,0,0,.8),inset 0 0 0 1px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.06)}
+.track{display:flex;padding:3px;border-radius:10px;background:#0c0c0c;border:1px solid #1a1a1a;box-shadow:inset 0 2px 6px rgba(0,0,0,.9),inset 0 1px 1px rgba(0,0,0,.8),inset 0 0 0 1px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.06)}
+.tab{flex:1;height:34px;border:0;border-radius:7px;background:transparent;color:#a1a1a1;font:500 14px 'Geist',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px}
+.tab-on{background:linear-gradient(180deg,#333,#1c1c1c);color:#ededed;text-shadow:0 -1px 0 rgba(0,0,0,.7);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.6),0 1px 0 rgba(0,0,0,.9),0 2px 4px rgba(0,0,0,.7)}
+.kb{width:40px;height:40px;box-sizing:border-box;border-radius:12px;display:flex;align-items:center;justify-content:center}
+.cell{position:relative;aspect-ratio:1;border-radius:14px;background:#111111;border:1px solid #1f1f1f;display:flex;align-items:center;justify-content:center;box-sizing:border-box}
+.art{width:72%;height:72%;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:30px;line-height:1}
+.emo{position:absolute;right:4px;bottom:4px;width:22px;height:22px;border-radius:999px;background:#0a0a0a;border:1px solid #262626;display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1}
+.moves{position:absolute;left:5px;top:5px;width:18px;height:18px;border-radius:6px;background:rgba(10,10,10,.85);display:flex;align-items:center;justify-content:center}
+.label{font-size:14px;font-weight:500;color:#a1a1a1}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #0a0a0a; display: flex; flex-direction: column">
+  <div style="height: 56px; flex-shrink: 0; display: flex; align-items: center; padding: 0 16px">
+    <a href="Phone.dc.html" aria-label="Back" class="key-icon kb">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>
+    </a>
+  </div>
+  <h1 style="margin: 4px 16px 16px 16px; font-size: 28px; font-weight: 600; letter-spacing: -0.02em">New pack</h1>
+
+  <label style="margin: 0 16px 12px 16px; display: flex; flex-direction: column; gap: 6px">
+    <span class="label">Name</span>
+    <span class="well" style="height: 46px; border-radius: 12px; display: flex; align-items: center; padding: 0 14px">
+      <input type="text" value="Office cats" aria-label="Pack name" style="flex-grow: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #ededed; font: 16px 'Geist', sans-serif">
+    </span>
+  </label>
+
+  <div role="radiogroup" aria-label="Who can find this pack" class="track" style="margin: 0 16px 18px 16px">
+    <button type="button" role="radio" aria-checked="true" class="tab tab-on">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+      Private
+    </button>
+    <button type="button" role="radio" aria-checked="false" class="tab">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"></path></svg>
+      Shared
+    </button>
+  </div>
+
+  <div style="margin: 0 16px 10px 16px; display: flex; align-items: baseline; gap: 8px">
+    <span class="label">Stickers</span>
+    <span class="mono" style="font-size: 12px; color: #737373">7 / 120</span>
+  </div>
+
+  <div role="list" aria-label="Stickers in this pack" style="margin: 0 16px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+    <div role="listitem" class="cell"><span class="art" style="background: linear-gradient(135deg, #7dd3fc, #0284c7)">🐈</span><span class="emo">🐈</span></div>
+    <div role="listitem" class="cell"><span class="art" style="background: linear-gradient(135deg, #fde68a, #d97706)">😺</span><span class="emo">😺</span>
+      <span class="moves" role="img" aria-label="Moves"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ededed" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"></path></svg></span>
+    </div>
+    <div role="listitem" class="cell"><span class="art" style="background: linear-gradient(135deg, #d4d4d8, #52525b)">💼</span><span class="emo">💼</span></div>
+    <div role="listitem" class="cell"><span class="art" style="background: linear-gradient(135deg, #fdba74, #ea580c)">☕</span><span class="emo">☕</span>
+      <span class="moves" role="img" aria-label="Moves"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ededed" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"></path></svg></span>
+    </div>
+    <div role="listitem" class="cell"><span class="art" style="background: linear-gradient(135deg, #a5b4fc, #4338ca)">💻</span>
+      <span class="emo" style="color: #737373"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" role="img" aria-label="No emoji"><path d="M12 5v14M5 12h14"></path></svg></span>
+    </div>
+    <div role="listitem" class="cell" aria-label="Converting video">
+      <span class="art" style="background: linear-gradient(135deg, #86efac, #16a34a); opacity: .35">😸</span>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ededed" stroke-width="2.4" stroke-linecap="round" aria-hidden="true" style="position: absolute"><path d="M12 3a9 9 0 1 0 9 9"></path><path d="M21 12a9 9 0 0 0-9-9" opacity=".25"></path></svg>
+    </div>
+    <div role="listitem" class="cell" aria-label="Too long: videos are up to 3 seconds" style="border-color: #7f1d1d">
+      <span class="art" style="background: linear-gradient(135deg, #fca5a5, #dc2626); opacity: .4">🙀</span>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="position: absolute"><circle cx="12" cy="12" r="10"></circle><path d="M12 7v6M12 17h.01"></path></svg>
+    </div>
+    <button type="button" class="cell" aria-label="Add photos, GIFs or videos" style="border: 1.5px dashed #333333; background: transparent; color: #a1a1a1; flex-direction: column; gap: 4px; font: 500 13px 'Geist', sans-serif">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+      Add
+    </button>
+  </div>
+
+  <div style="margin-top: auto; padding: 12px 16px 34px 16px">
+    <button type="button" class="key-primary" style="width: 100%; height: 48px; border-radius: 12px; font: 600 16px 'Geist', sans-serif">Create</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

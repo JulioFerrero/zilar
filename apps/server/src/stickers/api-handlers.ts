@@ -47,6 +47,7 @@ import {
   spendTelegramImportBudget,
 } from './api-decode';
 import { runUploadSticker, type UploadStickerRequest } from './api-upload';
+import { getPackDetail } from './pack-link';
 import type { StickersApiDependencies } from './api';
 
 export function createStickersGroupLayer(
@@ -118,6 +119,14 @@ export function createStickersGroupLayer(
           }
           return discoverPacks(serviceDeps(), decoded.value.q, decoded.value.cursor);
         }),
+      )
+      // The pack link (T-1495): the id is decoded like every other path id,
+      // so a malformed escape is the same 404 as an unknown pack.
+      .handle(
+        'getPack',
+        handler(logger, (request, user) =>
+          getPackDetail(serviceDeps(), decodePathId(request.params.id), user.id),
+        ),
       )
       // The body is decoded manually inside the handler, after the 501
       // token check: the framework-level payload decode used to run before

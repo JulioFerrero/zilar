@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stickers, phone, my packs</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed}a:hover{color:#ffffff}
+.key-icon{background:linear-gradient(180deg,#2c2c2c,#151515);border:1px solid #050505;color:#d4d4d4;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.65),0 1px 0 rgba(0,0,0,.95),0 3px 6px -1px rgba(0,0,0,.75)}
+.track{display:flex;padding:3px;border-radius:10px;background:#0c0c0c;border:1px solid #1a1a1a;box-shadow:inset 0 2px 6px rgba(0,0,0,.9),inset 0 1px 1px rgba(0,0,0,.8),inset 0 0 0 1px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.06)}
+.tab{flex:1;height:34px;border:0;border-radius:7px;background:transparent;color:#a1a1a1;font:500 14px 'Geist',sans-serif}
+.tab-on{background:linear-gradient(180deg,#333,#1c1c1c);color:#ededed;text-shadow:0 -1px 0 rgba(0,0,0,.7);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.6),0 1px 0 rgba(0,0,0,.9),0 2px 4px rgba(0,0,0,.7)}
+.row{display:flex;align-items:center;gap:12px;min-height:64px;padding:0 8px 0 14px;border:0;border-bottom:1px solid #1a1a1a;background:transparent;color:#ededed;text-align:left;width:100%;box-sizing:border-box;font-family:'Geist',sans-serif;text-decoration:none}
+.thumbs{display:flex;gap:3px;flex-shrink:0}
+.st{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:19px;line-height:1}
+.name{font-size:16px;font-weight:600;display:flex;align-items:center;gap:6px}
+.meta{font-size:14px;color:#a1a1a1}
+.label{font-size:12px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:#737373;margin:0 0 8px 4px}
+.kb{width:40px;height:40px;box-sizing:border-box;border-radius:12px;display:flex;align-items:center;justify-content:center}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; position: relative; overflow: hidden; background: #0a0a0a; display: flex; flex-direction: column">
+  <div style="height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 16px">
+    <button type="button" aria-label="Back" class="key-icon kb">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>
+    </button>
+    <button type="button" aria-label="New pack" class="key-icon kb">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+    </button>
+  </div>
+  <h1 style="margin: 4px 16px 16px 16px; font-size: 28px; font-weight: 600; letter-spacing: -0.02em">Stickers</h1>
+
+  <div style="margin: 0 16px 16px 16px">
+    <div role="tablist" aria-label="Sticker sections" class="track">
+      <button type="button" role="tab" aria-selected="true" class="tab tab-on">My packs</button>
+      <button type="button" role="tab" aria-selected="false" class="tab">Discover</button>
+      <button type="button" role="tab" aria-selected="false" class="tab">Favorites</button>
+    </div>
+  </div>
+
+  <div style="margin: 0 16px; background: #111111; border: 1px solid #1f1f1f; border-radius: 14px; overflow: hidden; flex-shrink: 0">
+    <div class="row">
+      <div class="thumbs" aria-hidden="true">
+        <span class="st" style="background: linear-gradient(135deg, #fbbf24, #f97316)">🐱</span>
+        <span class="st" style="background: linear-gradient(135deg, #a78bfa, #7c3aed)">😹</span>
+        <span class="st" style="background: linear-gradient(135deg, #6ee7b7, #059669)">🙀</span>
+      </div>
+      <a href="PhoneSheet.dc.html" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-decoration: none">
+        <span class="name">Cats
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Shared"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"></path></svg>
+        </span>
+        <span class="meta">6 stickers</span>
+      </a>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+    </div>
+    <div class="row" style="background: #171717">
+      <div class="thumbs" aria-hidden="true">
+        <span class="st" style="background: linear-gradient(135deg, #fde047, #ca8a04)">😂</span>
+        <span class="st" style="background: linear-gradient(135deg, #fca5a5, #dc2626)">🔥</span>
+        <span class="st" style="background: linear-gradient(135deg, #c4b5fd, #6d28d9)">😎</span>
+      </div>
+      <a href="PhoneSheet.dc.html" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-decoration: none">
+        <span class="name">Moods
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Shared"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"></path></svg>
+        </span>
+        <span class="meta">6 stickers</span>
+      </a>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+    </div>
+    <div class="row">
+      <div class="thumbs" aria-hidden="true">
+        <span class="st" style="background: linear-gradient(135deg, #7dd3fc, #0284c7)">🐈</span>
+        <span class="st" style="background: linear-gradient(135deg, #fde68a, #d97706)">😺</span>
+        <span class="st" style="background: linear-gradient(135deg, #d4d4d8, #52525b)">💼</span>
+      </div>
+      <a href="PhoneSheet.dc.html" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-decoration: none">
+        <span class="name">Office cats</span>
+        <span class="meta">12 stickers · Telegram</span>
+      </a>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+    </div>
+    <button type="button" class="row" style="border-bottom: 0; min-height: 52px; color: #a1a1a1; font-size: 15px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"></path></svg>
+      Import from Telegram
+    </button>
+  </div>
+
+  <section aria-label="Added packs" style="margin: 24px 16px 0 16px; flex-shrink: 0">
+    <h2 class="label">Added</h2>
+    <div style="background: #111111; border: 1px solid #1f1f1f; border-radius: 14px; overflow: hidden">
+      <div class="row" style="border-bottom: 0">
+        <div class="thumbs" aria-hidden="true">
+          <span class="st" style="background: linear-gradient(135deg, #312e81, #0f172a)">🚀</span>
+          <span class="st" style="background: linear-gradient(135deg, #a5b4fc, #4338ca)">🪐</span>
+          <span class="st" style="background: linear-gradient(135deg, #fef08a, #eab308)">⭐</span>
+        </div>
+        <a href="PhonePack.dc.html" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-decoration: none">
+          <span class="name">Space cats</span>
+          <span class="meta">8 stickers · @marta</span>
+        </a>
+        <button type="button" aria-label="Remove Space cats from panel" class="key-icon kb">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"></path></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

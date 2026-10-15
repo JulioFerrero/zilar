@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stickers, web, my packs</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed}a:hover{color:#ffffff}
+.key-icon{background:linear-gradient(180deg,#2c2c2c,#151515);border:1px solid #050505;color:#d4d4d4;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.65),0 1px 0 rgba(0,0,0,.95),0 3px 6px -1px rgba(0,0,0,.75)}
+.key-icon-pressed{background:linear-gradient(180deg,#1c1c1c,#111111);border:1px solid #050505;color:#ededed;box-shadow:inset 0 2px 5px rgba(0,0,0,.9)}
+.key-primary{background:linear-gradient(180deg,rgba(255,255,255,.40),rgba(255,255,255,.08) 48%,rgba(0,0,0,0) 52%,rgba(0,0,0,.14)),#ededed;color:#0a0a0a;border:0;text-shadow:0 1px 0 rgba(255,255,255,.7);box-shadow:inset 0 1px 0 rgba(255,255,255,.85),inset 0 -2px 0 rgba(0,0,0,.2),inset 0 0 0 1px rgba(255,255,255,.12),0 1px 0 rgba(0,0,0,.95),0 2px 3px rgba(0,0,0,.7),0 10px 18px -8px rgba(0,0,0,.95)}
+.track{display:flex;padding:3px;border-radius:10px;background:#0c0c0c;border:1px solid #1a1a1a;box-shadow:inset 0 2px 6px rgba(0,0,0,.9),inset 0 1px 1px rgba(0,0,0,.8),inset 0 0 0 1px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.06)}
+.tab{flex:1;height:30px;border:0;border-radius:7px;background:transparent;color:#a1a1a1;font:500 13px 'Geist',sans-serif}
+.tab-on{background:linear-gradient(180deg,#333,#1c1c1c);color:#ededed;text-shadow:0 -1px 0 rgba(0,0,0,.7);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.6),0 1px 0 rgba(0,0,0,.9),0 2px 4px rgba(0,0,0,.7)}
+.row{display:flex;align-items:center;gap:12px;padding:10px 10px 10px 6px;border-bottom:1px solid #1a1a1a}
+.grip{width:24px;height:36px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;color:#525252;cursor:grab}
+.thumbs{display:flex;gap:4px;flex-shrink:0}
+.st{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;line-height:1}
+.name{font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px}
+.meta{font-size:13px;color:#a1a1a1}
+.label{font-size:11px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:#737373;margin:0 0 8px 4px}
+.item{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:#ededed;font:14px 'Geist',sans-serif;text-align:left;width:100%;box-sizing:border-box}
+.kb{width:36px;height:36px;box-sizing:border-box;border-radius:10px;display:flex;align-items:center;justify-content:center}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; background: #0a0a0a; display: flex; flex-direction: column">
+  <header style="height: 64px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid #1f1f1f">
+    <button type="button" aria-label="Back" class="key-icon kb">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>
+    </button>
+    <h1 style="margin: 0; flex-grow: 1; font-size: 17px; font-weight: 600; letter-spacing: -0.02em">Stickers</h1>
+    <button type="button" class="key-icon" style="height: 36px; padding: 0 12px; border-radius: 10px; display: flex; align-items: center; gap: 6px; font: 500 14px 'Geist', sans-serif">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"></path></svg>
+      Import from Telegram
+    </button>
+    <button type="button" class="key-primary" style="height: 36px; padding: 0 14px 0 12px; border-radius: 10px; display: flex; align-items: center; gap: 6px; font: 600 14px 'Geist', sans-serif">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+      New pack
+    </button>
+  </header>
+
+  <main style="width: 640px; align-self: center; padding-top: 24px; display: flex; flex-direction: column; gap: 24px">
+    <div role="tablist" aria-label="Sticker sections" class="track">
+      <button type="button" role="tab" aria-selected="true" class="tab tab-on">My packs</button>
+      <a href="WebDiscover.dc.html" role="tab" aria-selected="false" class="tab" style="display: flex; align-items: center; justify-content: center; text-decoration: none">Discover</a>
+      <button type="button" role="tab" aria-selected="false" class="tab">Favorites</button>
+    </div>
+
+    <div style="background: #111111; border: 1px solid #1f1f1f; border-radius: 12px; position: relative">
+      <div class="row">
+        <button type="button" class="grip" aria-label="Drag Cats to reorder">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"></circle><circle cx="15" cy="6" r="1.6"></circle><circle cx="9" cy="12" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="9" cy="18" r="1.6"></circle><circle cx="15" cy="18" r="1.6"></circle></svg>
+        </button>
+        <div class="thumbs" aria-hidden="true">
+          <span class="st" style="background: linear-gradient(135deg, #fbbf24, #f97316)">🐱</span>
+          <span class="st" style="background: linear-gradient(135deg, #a78bfa, #7c3aed)">😹</span>
+          <span class="st" style="background: linear-gradient(135deg, #6ee7b7, #059669)">🙀</span>
+          <span class="st" style="background: linear-gradient(135deg, #fda4af, #e11d48)">😻</span>
+        </div>
+        <a href="WebPack.dc.html" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-decoration: none">
+          <span class="name">Cats
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Shared"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"></path></svg>
+          </span>
+          <span class="meta">6 stickers</span>
+        </a>
+        <button type="button" aria-label="Cats actions" class="key-icon kb">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="12" cy="19" r="1.7"></circle></svg>
+        </button>
+      </div>
+
+      <div class="row" style="background: #171717">
+        <button type="button" class="grip" aria-label="Drag Moods to reorder">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"></circle><circle cx="15" cy="6" r="1.6"></circle><circle cx="9" cy="12" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="9" cy="18" r="1.6"></circle><circle cx="15" cy="18" r="1.6"></circle></svg>
+        </button>
+        <div class="thumbs" aria-hidden="true">
+          <span class="st" style="background: linear-gradient(135deg, #fde047, #ca8a04)">😂</span>
+          <span class="st" style="background: linear-gradient(135deg, #fca5a5, #dc2626)">🔥</span>
+          <span class="st" style="background: linear-gradient(135deg, #c4b5fd, #6d28d9)">😎</span>
+          <span class="st" style="background: linear-gradient(135deg, #86efac, #16a34a)">🎉</span>
+        </div>
+        <a href="WebPack.dc.html" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-decoration: none">
+          <span class="name">Moods
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Shared"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20M2 12h20"></path></svg>
+          </span>
+          <span class="meta">6 stickers</span>
+        </a>
+        <button type="button" aria-label="Moods actions" aria-expanded="true" class="key-icon-pressed kb">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="12" cy="19" r="1.7"></circle></svg>
+        </button>
+      </div>
+
+      <div class="row" style="border-bottom: 0">
+        <button type="button" class="grip" aria-label="Drag Office cats to reorder">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"></circle><circle cx="15" cy="6" r="1.6"></circle><circle cx="9" cy="12" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="9" cy="18" r="1.6"></circle><circle cx="15" cy="18" r="1.6"></circle></svg>
+        </button>
+        <div class="thumbs" aria-hidden="true">
+          <span class="st" style="background: linear-gradient(135deg, #7dd3fc, #0284c7)">🐈</span>
+          <span class="st" style="background: linear-gradient(135deg, #fde68a, #d97706)">😺</span>
+          <span class="st" style="background: linear-gradient(135deg, #d4d4d8, #52525b)">💼</span>
+          <span class="st" style="background: linear-gradient(135deg, #fdba74, #ea580c)">☕</span>
+        </div>
+        <a href="WebPack.dc.html" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-decoration: none">
+          <span class="name">Office cats</span>
+          <span class="meta">12 stickers · Telegram</span>
+        </a>
+        <button type="button" aria-label="Office cats actions" class="key-icon kb">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="12" cy="19" r="1.7"></circle></svg>
+        </button>
+      </div>
+
+      <div role="menu" aria-label="Moods" style="position: absolute; top: 112px; right: 10px; width: 210px; padding: 4px; background: #141414; border: 1px solid #262626; border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 1px 0 rgba(0,0,0,.95), 0 16px 32px -8px rgba(0,0,0,.95); display: flex; flex-direction: column; gap: 2px; z-index: 2">
+        <button type="button" role="menuitem" class="item" style="background: #1f1f1f">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 6l-4-4-4 4M12 2v13"></path></svg>
+          Share
+        </button>
+        <button type="button" role="menuitem" class="item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+          Edit
+        </button>
+        <button type="button" role="menuitem" class="item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+          Make private
+        </button>
+        <button type="button" role="menuitem" class="item">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 12h8"></path></svg>
+          Remove from panel
+        </button>
+        <span aria-hidden="true" style="height: 1px; margin: 2px 6px; background: #262626"></span>
+        <button type="button" role="menuitem" class="item" style="color: #ef4444">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg>
+          Delete
+        </button>
+      </div>
+    </div>
+
+    <section aria-label="Added packs">
+      <h2 class="label">Added</h2>
+      <div style="background: #111111; border: 1px solid #1f1f1f; border-radius: 12px">
+        <div class="row" style="border-bottom: 0; padding-left: 14px">
+          <div class="thumbs" aria-hidden="true">
+            <span class="st" style="background: linear-gradient(135deg, #312e81, #0f172a)">🚀</span>
+            <span class="st" style="background: linear-gradient(135deg, #a5b4fc, #4338ca)">🪐</span>
+            <span class="st" style="background: linear-gradient(135deg, #fef08a, #eab308)">⭐</span>
+            <span class="st" style="background: linear-gradient(135deg, #e0e7ff, #6366f1)">🌙</span>
+          </div>
+          <a href="WebPack.dc.html" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-decoration: none">
+            <span class="name">Space cats</span>
+            <span class="meta">8 stickers · @marta</span>
+          </a>
+          <button type="button" aria-label="Remove Space cats from panel" class="key-icon kb">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"></path></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

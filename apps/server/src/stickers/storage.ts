@@ -74,8 +74,11 @@ export function serverPackageRoot(from: string = fileURLToPath(import.meta.url))
 
 export const SERVER_PACKAGE_ROOT: string = serverPackageRoot();
 
-// A private pack the caller does not own is the same 404 as a missing id, so
-// pack ids cannot be probed.
+// A pack link makes the id the capability: any signed-in caller may read any
+// pack by id, private or shared, because pack ids are random UUIDs and a link
+// cannot be guessed. An imported pack stays personal to the user who imported
+// it, so for anyone else it is the same 404 as a missing id and ids cannot be
+// probed.
 export async function requireVisiblePack(
   deps: StickersServiceDeps,
   packId: string,
@@ -91,10 +94,27 @@ export async function requireVisiblePack(
   if (!pack) {
     throw new HttpError(404, 'not_found', 'Sticker pack not found');
   }
-  if (pack.visibility !== 'server' && pack.ownerId !== userId) {
+  const imported = pack.importedFrom !== null && pack.importedFrom !== '';
+  if (imported && pack.ownerId !== userId) {
     throw new HttpError(404, 'not_found', 'Sticker pack not found');
   }
   return pack;
+}
+
+/** The stickers of one pack in pack order, as `toPackView` renders them. */
+export async function loadPackStickers(
+  deps: StickersServiceDeps,
+  packId: string,
+): Promise<StickerRow[]> {
+  const rows = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<StickerRow>`SELECT * FROM stickers WHERE pack_id = ${packId}
+        ORDER BY position ASC`;
+    }),
+  );
+  return [...rows];
 }
 
 export async function requireOwnedPack(

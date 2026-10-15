@@ -11,7 +11,8 @@ import {
   type MockHttpRequest,
 } from '../../http/shared';
 import { handlePacks } from './packs';
-import { stickerArt, type MockSticker } from './seed';
+import { stickerArt, type MockSticker, type MockStickerPack } from './seed';
+import { personHandle } from '../handles/check';
 
 const MAX_PANEL_PACKS = 200;
 const MAX_FAVORITES = 200;
@@ -19,7 +20,7 @@ const MAX_FAVORITES = 200;
 export function handleStickers(data: MockData, request: MockHttpRequest): Response | undefined {
   const [head, first, second] = request.segments;
   if (head === 'sticker-packs') {
-    return handlePacks(data, request);
+    return handlePackLink(data, request) ?? handlePacks(data, request);
   }
   if (head === 'sticker-panel') {
     return handlePanel(data, request, first);
@@ -66,10 +67,13 @@ function handlePanel(
   }
   const packId = decodeURIComponent(first);
   if (request.method === 'PUT') {
-    if (
-      data.stickerPacks.some((pack) => pack.id === packId) &&
-      !data.stickerPanel.includes(packId)
-    ) {
+    const pack = data.stickerPacks.find((row) => row.id === packId);
+    // Like the server's `requireVisiblePack` (T-1495): a missing pack and an
+    // imported pack owned by someone else are the same 404.
+    if (pack === undefined || isHiddenImported(data, pack)) {
+      return notFound('Sticker pack not found');
+    }
+    if (!data.stickerPanel.includes(packId)) {
       if (data.stickerPanel.length >= MAX_PANEL_PACKS) {
         return errorResponse('panel_full', 'A panel holds at most 200 packs', 400);
       }
@@ -82,6 +86,44 @@ function handlePanel(
     return jsonResponse({ ok: true });
   }
   return undefined;
+}
+
+// The pack link (T-1495): `GET /sticker-packs/:id` returns any pack by id,
+// private or shared, with the owner's handle and whether it is in the viewer's
+// panel. Imported packs stay personal to their importer; anyone else gets the
+// same 404 as an unknown id. `handlePacks` keeps its own `/discover` route.
+function handlePackLink(data: MockData, request: MockHttpRequest): Response | undefined {
+  const [, first, second] = request.segments;
+  if (request.method !== 'GET' || first === undefined || second !== undefined) {
+    return undefined;
+  }
+  if (first === 'discover' || first === 'import') {
+    return undefined;
+  }
+  const packId = decodeURIComponent(first);
+  const pack = data.stickerPacks.find((row) => row.id === packId);
+  if (pack === undefined || isHiddenImported(data, pack)) {
+    return notFound('Sticker pack not found');
+  }
+  return jsonResponse({
+    ...pack,
+    ownerHandle: ownerHandle(data, pack.ownerId),
+    inPanel: data.stickerPanel.includes(packId),
+  });
+}
+
+/** An imported pack is visible only to the viewer who imported it. */
+function isHiddenImported(data: MockData, pack: MockStickerPack): boolean {
+  return pack.importedFrom !== undefined && pack.ownerId !== data.me.id;
+}
+
+/** The owner's handle, from the viewer row or a seed person, else null. */
+function ownerHandle(data: MockData, ownerId: string): string | null {
+  if (ownerId === data.me.id) {
+    return data.me.handle;
+  }
+  const person = data.people.find((entry) => entry.id === ownerId);
+  return person === undefined ? null : personHandle(data, person.id);
 }
 
 function handleFavorites(data: MockData, request: MockHttpRequest): Response | undefined {
