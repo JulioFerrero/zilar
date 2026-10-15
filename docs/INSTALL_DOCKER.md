@@ -151,14 +151,14 @@ is that same host. There is nothing to configure besides the domain.
    domain must be verified in Resend first. The server emails a 6-digit code to
    the admin address — enter it and the first admin account is created. No
    terminal, no invite code to copy.
-4. **AI computers (optional, off by default).** Run the host setup command once
-   (it installs gVisor and the shared memory-pool slice):
+4. **AI computers (optional).** They run in every stack and stay idle until the
+   host has gVisor. Run the host setup command once (it installs gVisor and the
+   shared memory-pool slice):
    `curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host`. It prints
-   four variables; set them in the Service's Environment Variables and
-   redeploy: `DESKS_ENABLED=true`, `COMPOSE_PROFILES=desks`,
-   `DESK_IMAGE=<jail image pinned by digest>` and
-   `DESK_AGENT_SOCKET=/run/zilar/desk.sock`. The two desk services sit behind
-   the `desks` profile and stay stopped unless all four are set.
+   one line when the host is ready; computers turn on within about a minute,
+   with nothing to set on the Service and no redeploy. Set `DESK_IMAGE` in the
+   Service's Environment Variables only to override the jail image with one
+   pinned by digest.
 
 Verify: the web app loads, sign-in codes arrive by email, chat connects (the
 browser devtools Network tab shows the `/xmpp-ws/ws` WebSocket as

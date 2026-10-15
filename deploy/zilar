@@ -49,9 +49,6 @@ ENV_FILE=""
 # script grows by nothing but the dispatch line below.
 # shellcheck source=lib/host-setup.sh
 . "$DEPLOY_DIR/lib/host-setup.sh"
-# The desk jail-image pin (`./zilar up` fills an empty DESK_IMAGE).
-# shellcheck source=lib/desk-image.sh
-. "$DEPLOY_DIR/lib/desk-image.sh"
 
 die() {
   echo "$PROG: error: $*" >&2
@@ -86,25 +83,10 @@ run() {
 # under its own project name).
 compose() {
   _file="${COMPOSE_FILE_OVERRIDE:-$COMPOSE_FILE}"
-  # Desk services sit behind the `desks` Compose profile so a default install
-  # is unchanged; DESKS_ENABLED=true turns the profile on here. (The Coolify
-  # app, which does not run this script, sets COMPOSE_PROFILES=desks instead.)
-  _profile=""
-  _desk_socket=""
-  if [ "$(env_get DESKS_ENABLED)" = "true" ]; then
-    _profile="--profile desks"
-    # The server builds its Hands client only when DESK_AGENT_SOCKET is set.
-    # Derive it from the one flag so a self-host install needs no second edit;
-    # an explicit value in the env file wins.
-    if [ -z "$(env_get DESK_AGENT_SOCKET)" ]; then
-      _desk_socket="DESK_AGENT_SOCKET=/run/zilar/desk.sock"
-    fi
-  fi
   if [ "$DRY_RUN" -eq 1 ]; then
-    echo "+ ${_desk_socket:+$_desk_socket }docker compose -f $_file --env-file $ENV_FILE $_profile $*"
+    echo "+ docker compose -f $_file --env-file $ENV_FILE $*"
   else
-    # shellcheck disable=SC2086
-    env $_desk_socket docker compose -f "$_file" --env-file "$ENV_FILE" $_profile "$@"
+    docker compose -f "$_file" --env-file "$ENV_FILE" "$@"
   fi
 }
 
@@ -114,6 +96,21 @@ compose() {
 env_get() {
   [ -f "$ENV_FILE" ] || return 0
   sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1 | sed 's/^"//; s/"$//'
+}
+
+# Replace `KEY=…` in the env file (append it when absent). Atomic: a temp file
+# next to the env file, then a rename, so a crash never truncates the secrets
+# (cp -p keeps the file's mode and owner). Values are machine-generated (no
+# spaces, no quotes).
+env_set() { # KEY VALUE
+  _tmp="$ENV_FILE.tmp.$$"
+  cp -p "$ENV_FILE" "$_tmp" || die "cannot write next to $ENV_FILE"
+  if grep -q "^$1=" "$ENV_FILE"; then
+    sed "s|^$1=.*|$1=$2|" "$ENV_FILE" >"$_tmp"
+  else
+    printf '\n%s=%s\n' "$1" "$2" >>"$_tmp"
+  fi
+  mv -f "$_tmp" "$ENV_FILE"
 }
 
 require_env_file() {
@@ -346,8 +343,9 @@ cmd_init() {
 +   3 generated secrets (base64: XMPP_JWT <64 chars>, BETTER_AUTH <44 chars>,
 +     KEY_ENCRYPTION <64 chars>)
 +   push: $([ "$_push_enabled" -eq 1 ] && echo "ENABLED (VAPID pair + PUSH_VAPID_SUBJECT=$_push_subject + component/secret storage keys generated)" || echo "disabled (PUSH_ENABLED=false, no keys written)")
-+   feature flags otherwise all false (gateway, tools, routines, runner hub,
-+    desks — the AI-computer host prep is a separate 'sudo $PROG host-setup')
++   feature flags otherwise all false (gateway, tools, routines, runner hub)
++   AI computers need only 'sudo $PROG host-setup' (the desk services run in
++    every stack)
 + secrets would NOT be printed — they would live only in $ENV_FILE
 EOF
     [ "$_node_env" = "production" ] && echo "+ (production:) fill SMTP_HOST/SMTP_USER/SMTP_PASSWORD in $ENV_FILE before 'up'"
@@ -472,25 +470,22 @@ TOOLS_ENABLED=false
 ROUTINES_ENABLED=false
 WEB_TOOLS_ENABLED=false
 
-# --- Optional: AI computers (desks). Default OFF.
+# --- AI computers (desks). Always on; idle until the host has gVisor.
 # Sandboxed computers (gVisor jails) run on this host, in one shared 4 GB
-# pool, with an egress proxy as their only route out. Nothing changes until
-# you flip the switch, and the switch is only useful after the host prep:
+# pool, with an egress proxy as their only route out. The desk services run in
+# every stack and stay idle until the host is prepared; the one step is:
 #   1. sudo ./zilar host-setup            # pinned gVisor + the 4 GB slice
-#   2. set DESKS_ENABLED=true             # './zilar up' then pins DESK_IMAGE below
-#   3. ./zilar up
-DESKS_ENABLED=false
-# './zilar up' sets the server's DESK_AGENT_SOCKET automatically while
-# DESKS_ENABLED is true; set DESK_AGENT_SOCKET here only to override it.
-# The one jail image every AI runs, pinned by digest (…@sha256:…). With desks
-# on and this empty, './zilar up' pulls the published image
-# (ghcr.io/<IMAGE_OWNER>/zilar-desk:<IMAGE_TAG>) and writes its digest here;
-# a value set by hand wins. Left unset because './zilar up' fills it.
-# DESK_IMAGE=
+# Computers then turn on within about a minute, with nothing to set here.
 # gVisor runtime for the jails (the VPS has no /dev/kvm, so runsc uses systrap).
 DESK_RUNTIME=runsc
 # The running-jail cap. The 4 GB slice, not this number, is the real limiter.
 DESK_MAX_RUNNING=12
+# Optional override: the one jail image every AI runs, pinned by digest
+# (…@sha256:…). Leave it unset to follow the release
+# (ghcr.io/<IMAGE_OWNER>/zilar-desk:<IMAGE_TAG>). './zilar update' clears a
+# digest that './zilar' itself pinned, and keeps one you set by hand (with a
+# warning that it overrides the release image).
+# DESK_IMAGE=
 EOF
   chmod 600 "$ENV_FILE"
 
@@ -511,7 +506,6 @@ EOF
 cmd_up() {
   require_env_file
   require_docker
-  pin_desk_image
   _domain="$(env_get ZILAR_DOMAIN)"
   info "starting Zilar (${_domain:-unknown domain})..."
   compose up -d --wait "$@"
@@ -545,10 +539,31 @@ cmd_status() {
   compose ps
 }
 
+# `./zilar update` moves the jail image to the release image. A digest this
+# script pinned itself (ghcr.io/<owner>/zilar-desk@sha256:…) is cleared so the
+# agent follows the new release; a value set by hand is kept, with a warning.
+clear_auto_desk_pin() {
+  _image="$(env_get DESK_IMAGE)"
+  [ -n "$_image" ] || return 0
+  case "$_image" in
+    ghcr.io/*/zilar-desk@sha256:*)
+      if [ "$DRY_RUN" -eq 1 ]; then
+        echo "+ clear DESK_IMAGE in $ENV_FILE (it now follows the release)"
+      else
+        env_set DESK_IMAGE ""
+      fi
+      info "the jail image now follows the release"
+      ;;
+    *)
+      warn "DESK_IMAGE=$_image overrides the release jail image; leave it empty to follow the release"
+      ;;
+  esac
+}
+
 cmd_update() {
   require_env_file
   require_docker
-  pin_desk_image
+  clear_auto_desk_pin
   info "pulling the latest images for IMAGE_TAG=$(env_get IMAGE_TAG)..."
   compose pull
   info "restarting and waiting for health..."
@@ -838,14 +853,12 @@ cmd_doctor() {
     esac
   fi
 
-  # 8. Desks (only when DESKS_ENABLED=true): the host is prepared and the
-  #    sidecar answers. Off by default, so most installs see a skip here.
-  if [ "$(env_get DESKS_ENABLED)" = "true" ]; then
-    if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"runsc"'; then
-      doctor_ok "the runsc runtime is registered with Docker"
-    else
-      doctor_bad "the runsc runtime is not registered with Docker" "run 'sudo $PROG host-setup' (installs gVisor and reloads Docker)"
-    fi
+  # 8. Desks: the desk services run in every stack, so check the host prep
+  #    (gVisor, the 4 GB slice) and that the sidecar answers. A host without
+  #    gVisor is a warning, not a failure: the stack is fine, computers just
+  #    stay idle until 'sudo ./zilar host-setup' runs.
+  if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q '"runsc"'; then
+    doctor_ok "the runsc runtime is registered with Docker"
     # Read the unit's *configured* limit, not the live cgroup: a freshly
     # prepared host has the unit but no materialised cgroup until the first
     # jail joins it, so a cgroup-path check would false-FAIL there.
@@ -866,8 +879,11 @@ cmd_doctor() {
     else
       doctor_bad "$DESK_WORKSPACE_ROOT is missing" "run 'sudo $PROG host-setup' (creates it, mode 0700)"
     fi
-    if compose ps --status running desk-agent 2>/dev/null | grep -q desk-agent; then
-      if compose exec -T desk-agent node - >/dev/null 2>&1 <<'NODE'
+  else
+    warn "host not set up for AI computers: run 'sudo $PROG host-setup' (computers stay idle until then)"
+  fi
+  if compose ps --status running desk-agent 2>/dev/null | grep -q desk-agent; then
+    if compose exec -T desk-agent node - >/dev/null 2>&1 <<'NODE'
 const net = require('node:net');
 const socket = net.connect(process.env.DESK_AGENT_SOCKET || '/run/zilar/desk.sock');
 let buffer = '';
@@ -880,16 +896,13 @@ socket.on('data', (chunk) => {
   if (buffer.includes('\n')) process.exit(buffer.includes('"ok":true') ? 0 : 1);
 });
 NODE
-      then
-        doctor_ok "the desk-agent socket answers status"
-      else
-        doctor_bad "the desk-agent socket does not answer status" "run '$PROG logs desk-agent' and look for startup errors"
-      fi
+    then
+      doctor_ok "the desk-agent socket answers status"
     else
-      echo "skip: desk-agent is not running (run '$PROG up' first)"
+      doctor_bad "the desk-agent socket does not answer status" "run '$PROG logs desk-agent' and look for startup errors"
     fi
   else
-    echo "skip: desks are off (DESKS_ENABLED is not true — see $ENV_FILE)"
+    echo "skip: desk-agent is not running (run '$PROG up' first)"
   fi
 
   if [ "$doctor_fail" -ne 0 ]; then

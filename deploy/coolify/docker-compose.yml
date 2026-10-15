@@ -40,12 +40,12 @@
 # (apps/web/Caddyfile). The XMPP domain is that same host, so there is nothing to
 # configure besides the domain itself.
 #
-# AI computers ("desks") are off by default. To turn them on: run the host
-# setup command once (written by the host-command task), then set
-# DESKS_ENABLED=true, COMPOSE_PROFILES=desks,
-# DESK_IMAGE=<jail image pinned by digest> and
-# DESK_AGENT_SOCKET=/run/zilar/desk.sock in this Service's Environment
-# Variables and redeploy (see docs/INSTALL_DOCKER.md, "The Coolify path").
+# AI computers ("desks") run in every stack: the desk-agent and desk-egress
+# services are always part of this Compose file and stay idle until the host
+# has gVisor. Run the host setup command once on the host
+# (curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host); computers
+# then turn on within about a minute with no redeploy and nothing to set on
+# the service (see docs/INSTALL_DOCKER.md, "The Coolify path").
 
 services:
   postgres:
@@ -209,15 +209,14 @@ services:
       TOOLS_ENABLED: ${TOOLS_ENABLED:-false}
       ROUTINES_ENABLED: ${ROUTINES_ENABLED:-false}
       WEB_TOOLS_ENABLED: ${WEB_TOOLS_ENABLED:-false}
-      # Desk sidecar socket (T-1407): the cloud `Hands` adapter is built only
-      # when this is set (empty means unset, apps/server/src/config.ts), and it
-      # talks to the desk-agent service over the shared `desk-socket` volume.
-      # Empty by default, so with desks off no Hands client is built and a
-      # default install behaves as today. AI computers: set it to
-      # /run/zilar/desk.sock together with DESKS_ENABLED=true (see the
-      # desk services below and docs/INSTALL_DOCKER.md, "The Coolify path").
-      DESK_AGENT_SOCKET: ${DESK_AGENT_SOCKET:-}
-      # The pinned jail image the Hands client runs; empty means unset (off).
+      # Desk sidecar socket (T-1407): the cloud `Hands` adapter talks to the
+      # desk-agent service over the shared `desk-socket` volume. Fixed: the
+      # desk agent runs in every stack, and computers turn on as soon as the
+      # host has gVisor.
+      DESK_AGENT_SOCKET: /run/zilar/desk.sock
+      # Optional override: the jail image the agent runs, pinned by digest.
+      # Empty means the agent follows the release
+      # (ghcr.io/<IMAGE_OWNER>/zilar-desk:<IMAGE_TAG>).
       DESK_IMAGE: ${DESK_IMAGE:-}
     expose:
       - '3000'
@@ -238,8 +237,8 @@ services:
     volumes:
       - sticker-data:/data/stickers
       - avatar-data:/data/avatars
-      # The desk-agent socket (DESK_AGENT_SOCKET above): empty unless the desk
-      # services run (DESKS_ENABLED=true). Shared with desk-agent only.
+      # The desk-agent socket (DESK_AGENT_SOCKET above), shared with
+      # desk-agent only.
       - desk-socket:/run/zilar
 
   web:
@@ -261,43 +260,35 @@ services:
       retries: 12
       start_period: 10s
 
-  # --- AI computers (desks), off unless DESKS_ENABLED=true (profile `desks`) ---
-  # The Coolify Service does not run ./zilar, so set COMPOSE_PROFILES=desks
-  # (and DESKS_ENABLED=true) in the Service's environment to start these.
-  # desk-agent runs the sandboxed jails (plan §4.4): it is the only service
-  # that has the Docker socket, and the app never does. desk-egress is a
-  # jail's only way to the web (plan §5.1). The host prep that Compose cannot
-  # do (the gVisor runtime and the shared memory-pool slice) is the host setup
-  # command run once (see docs/INSTALL_DOCKER.md, "The Coolify path").
+  # --- AI computers (desks) -----------------------------------------------
+  # The Coolify Service does not run ./zilar: run the host setup command once
+  # on the host and these services turn computers on within about a minute,
+  # with nothing to set here. desk-agent runs the sandboxed jails (plan §4.4):
+  # it is the only service that has the Docker socket, and the app never does.
+  # desk-egress is a jail's only way to the web (plan §5.1). The host prep that
+  # Compose cannot do (the gVisor runtime and the shared memory-pool slice) is
+  # `curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host` (see
+  # docs/INSTALL_DOCKER.md, "The Coolify path").
   desk-agent:
-    profiles: ['desks']
     image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-desk-agent:${IMAGE_TAG:-latest}
-    # on-failure, not unless-stopped: the guard below exits 0 while desks are
-    # off, and an exit-0 container must stay stopped.
-    restart: on-failure
+    restart: unless-stopped
     # Root, the Docker socket and /dev: it creates the jails with gVisor and
     # loop-mounts each desk's ext4 workspace image (plan §4.2).
     user: '0:0'
     privileged: true
     # One image, two entry points: this service is the sidecar (desk-egress
-    # picks the proxy below). The guard is belt-and-braces: even if Coolify
-    # ignores the `desks` profile, the container exits 0 at once unless
-    # DESKS_ENABLED=true.
-    command:
-      - sh
-      - -c
-      - >-
-        test "$${DESKS_ENABLED:-false}" = "true" ||
-        { echo "desks disabled (DESKS_ENABLED is not true)"; exit 0; };
-        exec node /app/desk-agent
+    # picks the proxy below).
+    command: ['node', '/app/desk-agent']
     environment:
-      DESKS_ENABLED: ${DESKS_ENABLED:-false}
       DESK_RUNTIME: ${DESK_RUNTIME:-runsc}
       DESK_NETWORK: desk-net
       DESK_CGROUP_PARENT: zilar-desks.slice
       DESK_MAX_RUNNING: ${DESK_MAX_RUNNING:-12}
-      # The pinned jail image; required once desks run (empty = the sidecar
-      # refuses to start, said clearly in its log).
+      # The jail image every AI runs. By default it follows the release,
+      # ghcr.io/<IMAGE_OWNER>/zilar-desk:<IMAGE_TAG>, so a redeploy moves the
+      # jail image along; DESK_IMAGE overrides it with one pinned by digest.
+      DESK_IMAGE_OWNER: ${IMAGE_OWNER:-julioferrero}
+      DESK_IMAGE_TAG: ${IMAGE_TAG:-latest}
       DESK_IMAGE: ${DESK_IMAGE:-}
       DESK_WORKSPACE_ROOT: /var/lib/zilar/desks
       DESK_WORKSPACE_MODE: image
@@ -320,24 +311,12 @@ services:
       start_period: 10s
 
   desk-egress:
-    profiles: ['desks']
     image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-desk-agent:${IMAGE_TAG:-latest}
-    # on-failure, not unless-stopped: the guard below exits 0 while desks are
-    # off, and an exit-0 container must stay stopped.
-    restart: on-failure
+    restart: unless-stopped
     # Unprivileged: the proxy only makes outbound connections. It is the only
     # member of the internal desk-net that can also reach the web (desk-out).
-    # The guard is belt-and-braces: even if Coolify ignores the `desks`
-    # profile, the container exits 0 at once unless DESKS_ENABLED=true.
-    command:
-      - sh
-      - -c
-      - >-
-        test "$${DESKS_ENABLED:-false}" = "true" ||
-        { echo "desks disabled (DESKS_ENABLED is not true)"; exit 0; };
-        exec node /app/desk-egress
+    command: ['node', '/app/desk-egress']
     environment:
-      DESKS_ENABLED: ${DESKS_ENABLED:-false}
       DESK_EGRESS_PORT: '3128'
       DESK_EGRESS_REGISTRY_SOCKET: /run/zilar-egress/desk-egress.sock
     volumes:

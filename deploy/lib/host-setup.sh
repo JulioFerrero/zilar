@@ -9,7 +9,8 @@
 # It prepares the host pieces Docker Compose cannot: a pinned gVisor runtime
 # for the Docker daemon, and the shared cgroup memory pool every jail joins.
 # The desk services themselves are Compose services (deploy/docker-compose.yml
-# and deploy/coolify/docker-compose.app.yml, behind DESKS_ENABLED).
+# and deploy/coolify/docker-compose.app.yml) that run in every stack and stay
+# idle until this prep runs.
 #
 # Plan: docs/audit/desk-runner-plan.md §4.1-4.2.
 
@@ -166,12 +167,12 @@ cmd_host_setup() {
   fi
 
   echo ""
-  echo "Smoke test (after starting the desk services with DESKS_ENABLED=true):"
+  echo "Smoke test:"
   echo "  docker run --rm --runtime=runsc alpine uname -r   # expect 4.4.0 (gVisor's kernel, not the host's)"
   echo ""
   if [ "$DRY_RUN" -eq 1 ]; then
     info "host-setup: dry run — nothing changed"
   else
-    info "host-setup done. Enable desks with DESKS_ENABLED=true, then '$PROG up'."
+    info "host-setup done. The desk services pick it up within about a minute; nothing else to set."
   fi
 }

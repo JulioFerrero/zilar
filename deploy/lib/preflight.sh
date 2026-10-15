@@ -140,7 +140,7 @@ preflight_decide() {
   if [ "$PREFLIGHT_COOLIFY" -eq 1 ]; then
     echo ""
     info "Coolify found. Install Zilar from Coolify: New Resource → Docker Compose Empty → paste https://raw.githubusercontent.com/JulioFerrero/zilar/main/deploy/coolify/docker-compose.yml (or pick \"Zilar\" once it is in Coolify's catalog), set the domain on web, deploy."
-    info "AI computers on this host: curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host"
+    info "AI computers on this host: curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host (the desk services already run in the stack; nothing to set there)"
     exit 0
   fi
   case "$PREFLIGHT_VIRT" in

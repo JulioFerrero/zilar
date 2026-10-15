@@ -49,9 +49,9 @@ exactly one public host.
   service in this file (see the volume note under "To verify").
 - **stop_grace_period:** `ejabberd` 20s (in the Compose file). The other
   components are single-process and exit at once.
-- **Desks:** `desk-agent` and `desk-egress` stay behind `profiles: ['desks']`
-  with their guards; start them with `COMPOSE_PROFILES=desks` and
-  `DESKS_ENABLED=true`.
+- **Desks:** `desk-agent` and `desk-egress` run in this Service always and stay
+  idle until the host has gVisor; prepare the host once with
+  `curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host`.
 
 ### zilar-server
 
@@ -63,8 +63,8 @@ exactly one public host.
   `wget -qO- http://127.0.0.1:3000/health` (the image is `node:alpine`, so
   busybox `wget` is present; the Dockerfile's own `HEALTHCHECK` uses `node`).
 - **Volumes:** mount the named volumes `sticker-data` → `/data/stickers` and
-  `avatar-data` → `/data/avatars`; with desks on, also `desk-socket` →
-  `/run/zilar` and set `DESK_AGENT_SOCKET=/run/zilar/desk.sock`.
+  `avatar-data` → `/data/avatars`; also `desk-socket` → `/run/zilar` (the
+  server reaches `desk-agent` at the fixed `/run/zilar/desk.sock`).
 - **Reaches:** `postgres-<core uuid>` and `ejabberd-<core uuid>`
   (`DATABASE_URL`, `XMPP_ARCHIVE_DATABASE_URL`, `EJABBERD_API_URL`,
   `PUSH_COMPONENT_HOST`), with **Connect to predefined network** on.
@@ -148,11 +148,12 @@ carry a different name on the resource: `ARCHIVE_DB_PASSWORD` is
 | `EJABBERD_ADMIN_PASSWORD`              | zilar-core (ejabberd), zilar-server                                        | generated                                                                                                      |
 | `ZILAR_XMPP_JWT_SECRET`                | zilar-core (ejabberd), zilar-server                                        | generated (installer's `XMPP_JWT_SECRET`)                                                                      |
 | `SERVICE_URL_EJABBERD_5280`            | zilar-core (ejabberd)                                                      | fixed path `/xmpp-ws` (Coolify magic variable; the `/upload` path is added in the component's Domains field)   |
-| `DESKS_ENABLED`                        | zilar-core (desk-agent, desk-egress)                                       | user-given (optional, default `false`)                                                                         |
 | `DESK_RUNTIME`                         | zilar-core (desk-agent)                                                    | user-given (optional, default `runsc`)                                                                         |
 | `DESK_MAX_RUNNING`                     | zilar-core (desk-agent)                                                    | user-given (optional, default `12`)                                                                            |
-| `DESK_IMAGE`                           | zilar-core (desk-agent), zilar-server                                      | user-given (the pinned jail digest; required when desks are on)                                                |
-| `DESK_AGENT_SOCKET`                    | zilar-core (desk-agent), zilar-server                                      | fixed `/run/zilar/desk.sock` (empty on the server app means desks off)                                         |
+| `DESK_IMAGE_OWNER`                     | zilar-core (desk-agent)                                                    | fixed (derived from `IMAGE_OWNER`, default `julioferrero`)                                                     |
+| `DESK_IMAGE_TAG`                       | zilar-core (desk-agent)                                                    | fixed (derived from `IMAGE_TAG`, default `latest`)                                                             |
+| `DESK_IMAGE`                           | zilar-core (desk-agent), zilar-server                                      | user-given (optional override: a jail image pinned by digest; empty follows the release)                       |
+| `DESK_AGENT_SOCKET`                    | zilar-core (desk-agent), zilar-server                                      | fixed `/run/zilar/desk.sock`                                                                                   |
 | `DESK_NETWORK`                         | zilar-core (desk-agent)                                                    | fixed `desk-net`                                                                                               |
 | `DESK_CGROUP_PARENT`                   | zilar-core (desk-agent)                                                    | fixed `zilar-desks.slice`                                                                                      |
 | `DESK_WORKSPACE_ROOT`                  | zilar-core (desk-agent)                                                    | fixed `/var/lib/zilar/desks`                                                                                   |
@@ -263,9 +264,10 @@ create body carries `/api` and `/health`), so the install's
    both, and reconnects after a core Service restart.
 9. **The server drain.** Re-run the spike's rolling-update test with the 5 s
    SIGTERM drain so the server App's deploy loses no requests.
-10. **Desk profiles and guards.** Confirm Coolify honours `profiles: ['desks']`
-    for the Service and that both desk containers exit 0 while
-    `DESKS_ENABLED` is not `true`.
+10. **Desk services run everywhere.** Confirm the core Service starts
+    `desk-agent` and `desk-egress` without a profile, that they stay idle (no
+    running jails) until the host prep has run, and that computers then turn
+    on within about a minute with no redeploy.
 11. **Deploys.** CI's `POST /deploy` rebuilds only `zilar-server` or
     `zilar-web` (whichever image it published), and neither restarts
     `zilar-core`.

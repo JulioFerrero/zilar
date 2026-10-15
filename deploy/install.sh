@@ -47,9 +47,10 @@ Usage: install.sh [--version TAG|main] [--dir PATH] [--domain HOST]
   --version  release to install (default: the latest v* tag, else main)
   --dir      where deploy/ is extracted (default: $DEFAULT_DIR)
   --domain / --admin-email  passed to ./zilar init; it prompts when omitted
-  --desks    also run ./zilar host-setup   --yes  no prompts   --dry-run  plan
-  --desks-host  run only the AI-computer host prep and the sandbox check, then
-             print the variables to set on the Zilar service in Coolify
+  --desks    also prepare the host for AI computers (./zilar host-setup)
+             --yes  no prompts   --dry-run  plan
+  --desks-host  run only the AI-computer host prep and the sandbox check, for a
+             host whose Zilar stack runs in Coolify
 
 On a host that already runs Coolify, Zilar is a one-click template: create a new
 Docker Compose Empty resource, paste
@@ -261,23 +262,8 @@ phase_configure() {
 
 # --- 6. AI computers (optional) -----------------------------------------
 
-# Replace KEY=VALUE in $DIR/.env in place, or append it (a temp file; `sed -i`
-# differs between GNU and BSD).
-set_env_var() { # KEY VALUE
-  _file="$DIR/.env"
-  [ -f "$_file" ] || return 0
-  _new="$(mktemp "${TMPDIR:-/tmp}/zilar-env.XXXXXX")"
-  _found=0
-  while IFS= read -r _line || [ -n "$_line" ]; do
-    case "$_line" in "$1="*) printf '%s=%s\n' "$1" "$2"; _found=1 ;; *) printf '%s\n' "$_line" ;; esac
-  done <"$_file" >"$_new"
-  [ "$_found" -eq 1 ] || printf '%s=%s\n' "$1" "$2" >>"$_new"
-  cat "$_new" >"$_file"
-  rm -f "$_new"
-}
-
 # One real gVisor sandbox (0 = pass). On a failure DESK_SANDBOX_ERR holds the
-# first error line, and desks stay off.
+# first error line.
 desk_sandbox() {
   if _err="$($SUDO docker run --rm --runtime=runsc hello-world 2>&1)"; then return 0; fi
   DESK_SANDBOX_ERR="$(printf '%s\n' "${_err:-docker run failed}" | head -n 1)"
@@ -289,12 +275,11 @@ phase_desks() {
     if [ "$YES" -eq 1 ]; then return 0; fi
     if [ "$DRY_RUN" -eq 1 ]; then
       phase "host-setup"
-      echo "    asks 'Enable AI computers?'; installs gVisor and changes Docker's config (reload, no restart)"
+      echo "    asks 'Prepare this host for AI computers?'; installs gVisor and changes Docker's config (reload, no restart)"
       echo "    + $SUDO docker run --rm --runtime=runsc hello-world   # proves the sandbox runs"
-      echo "    + sets DESKS_ENABLED=true in $DIR/.env when the sandbox passes"
       return 0
     fi
-    if ! consent "Enable AI computers (gVisor + a Docker config change; Docker is reloaded, never restarted)?"; then return 0; fi
+    if ! consent "Prepare this host for AI computers (gVisor + a Docker config change; Docker is reloaded, never restarted)?"; then return 0; fi
     DESKS=1
   fi
   phase "host-setup"
@@ -302,35 +287,28 @@ phase_desks() {
   run $SUDO "$DIR/zilar" host-setup
   if [ "$DRY_RUN" -eq 1 ]; then
     echo "    + $SUDO docker run --rm --runtime=runsc hello-world   # proves the sandbox runs"
-    echo "    + sets DESKS_ENABLED=true in $DIR/.env when the sandbox passes"
     return 0
   fi
-  if desk_sandbox; then set_env_var DESKS_ENABLED true; info "AI computers are on (DESKS_ENABLED=true)"
-  else info "AI computers stay off: $DESK_SANDBOX_ERR"; fi
+  if desk_sandbox; then info "the gVisor sandbox runs; AI computers are ready on this host"
+  else warn "AI computers cannot run here yet: $DESK_SANDBOX_ERR"; fi
 }
 
 # --- 6b. AI computers on a Coolify host (--desks-host) ------------------
 
 # `--desks-host` skips the install. On a Linux host with Docker it runs only
-# the AI-computer host prep and the sandbox check, then prints the variables
-# that turn AI computers on in the Coolify template. A Coolify host has no
-# deploy/.env to edit, so the values are printed, not written.
+# the AI-computer host prep and the sandbox check. The stack itself runs the
+# desk services already, so there is nothing to set: computers turn on within
+# a minute.
 desks_host() {
   if [ "$DRY_RUN" -eq 1 ]; then
     phase "host-setup"
     echo "    + $SUDO <tmp>/deploy/zilar host-setup"
     echo "    + $SUDO docker run --rm --runtime=runsc hello-world   # proves the sandbox runs"
-    echo "    + docker pull ghcr.io/$IMAGE_OWNER/zilar-desk:<version tag>, then inspect for its digest"
-    echo "    + prints DESKS_ENABLED=true, COMPOSE_PROFILES=desks, DESK_IMAGE=<repo>@sha256:<digest>,"
-    echo "             DESK_AGENT_SOCKET=/run/zilar/desk.sock"
+    echo "    + prints: AI computers are ready on this host; Zilar turns them on within a minute, nothing to set on the service."
     return 0
   fi
 
-  [ -f "$_root/deploy/lib/desk-image.sh" ] || die "the release has no deploy/lib/desk-image.sh"
-  . "$_root/deploy/lib/desk-image.sh"
   command -v docker >/dev/null 2>&1 || die "--desks-host needs Docker installed and running"
-  _tag="latest"; case "$VERSION" in v*) _tag="$VERSION" ;; esac
-  _ref="$(_desk_image_ref "$IMAGE_OWNER" "$_tag")"
 
   phase "host-setup"
   info "installing gVisor and changing Docker's config; Docker is reloaded (SIGHUP), never restarted"
@@ -341,15 +319,8 @@ desks_host() {
   fi
   info "the gVisor sandbox runs (docker run --rm --runtime=runsc hello-world passed)"
 
-  _digest="$(resolve_desk_digest "$_ref")" ||
-    die "cannot pin the jail image $_ref — check the network and that the image is published"
-
   echo ""
-  echo "Set these on the Zilar service in Coolify, then redeploy:"
-  echo "DESKS_ENABLED=true"
-  echo "COMPOSE_PROFILES=desks"
-  echo "DESK_IMAGE=$_digest"
-  echo "DESK_AGENT_SOCKET=/run/zilar/desk.sock"
+  echo "AI computers are ready on this host; Zilar turns them on within a minute, nothing to set on the service."
 }
 
 # --- 7. start -----------------------------------------------------------

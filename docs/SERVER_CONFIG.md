@@ -15,7 +15,8 @@ error. The config code names the variable but never prints a value back.
 The plain install (`deploy/docker-compose.yml`) runs one Postgres, one ejabberd, the server, the web
 build and a Caddy reverse proxy (the only service publishing host ports). The Coolify template
 (`deploy/coolify/docker-compose.yml`) is the same shape behind Coolify's Traefik. The AI-computer
-services sit behind the `desks` profile and are off unless `DESKS_ENABLED=true`.
+services run in every stack. The desk agent stays idle until the host has gVisor (`--desks-host`, or
+`sudo ./zilar host-setup`), then turns ready on its own; there is no variable to set (T-1602, T-1605).
 
 | Process | What it is | Port(s) | Set by |
 |---|---|---|---|
@@ -26,8 +27,8 @@ services sit behind the `desks` profile and are off unless `DESKS_ENABLED=true`.
 | Caddy | reverse proxy + automatic HTTPS, plain stack only | `HTTP_PORT`/`HTTPS_PORT`, default `80`/`443` | `deploy/docker-compose.yml:255-293` |
 | Runner hub (optional) | tunnel for approved AI runners, loopback only | `RUNNER_HUB_PORT`, default `3189` | `apps/server/src/config/server-schema.ts:174`, started `apps/server/src/leader/start.ts:147-167` |
 | Push component (optional) | XEP-0114 component for web/native push, no host port | `PUSH_COMPONENT_PORT`, default `5347` | `apps/server/src/push/config.ts:45-68`, started `apps/server/src/leader/start.ts:78-141` |
-| `desk-agent` (optional, profile `desks`) | runs the sandboxed desk jails; only holder of the Docker socket | unix socket `/run/zilar/desk.sock` | `deploy/docker-compose.yml:300-345` |
-| `desk-egress` (optional, profile `desks`) | a jail's only route to the web | `3128` (internal) | `deploy/docker-compose.yml:352-374` |
+| `desk-agent` (always; idle until gVisor) | runs the sandboxed desk jails; only holder of the Docker socket | unix socket `/run/zilar/desk.sock` | `deploy/docker-compose.yml:301-343` |
+| `desk-egress` (always) | a jail's only route to the web | `3128` (internal) | `deploy/docker-compose.yml:344-373` |
 
 ## 2. Every variable
 
@@ -132,8 +133,8 @@ Empty `PUSH_*`/`FCM_*` values mean "unset" so Compose's `${VAR:-}` can leave the
 
 | Variable | Required | Default | What it does | Secret? |
 |---|---|---|---|---|
-| `DESK_AGENT_SOCKET` | No | — | Socket of the host desk sidecar; unset means no cloud computer is offered (`server-schema.ts:187-189`, `hands/wiring.ts:7-21`). | No |
-| `DESK_IMAGE` | No | — | The pinned jail image (`<name>@sha256:<64 hex>`); unset or a tag-only value means off (`server-schema.ts:190-191`, `hands/wiring.ts:24-26`). | No |
+| `DESK_AGENT_SOCKET` | No | `/run/zilar/desk.sock` | Socket of the desk agent. The server asks it for `status` (cached ~10 s) and offers Zilar cloud computers only while the agent answers ready (T-1603, `hands/desk-status.ts`). | No |
+| `DESK_IMAGE` | No | — | Optional override, pinned by digest (`<name>@sha256:<64 hex>`). Unset: the agent pulls `ghcr.io/<IMAGE_OWNER>/zilar-desk:<IMAGE_TAG>` (default `latest`) and pins it itself, so updates move the image along (T-1602). An old agent without a `ready` field uses this value. | No |
 
 ### Limits and ports
 
@@ -169,6 +170,6 @@ Leader-only loops start after the HTTP edge is up and this instance wins the adv
 
 ## 5. Where to set them
 
-- **Plain stack:** copy `deploy/.env.example` to `deploy/.env` and fill it in; `./zilar init` writes that file (generating passwords, the VAPID pair and the storage keys) and `./zilar up` starts the stack, turning on the `desks` profile from `DESKS_ENABLED` and setting `DESK_AGENT_SOCKET` for you (`deploy/zilar`). The Compose files pass each variable to the `server` service (`deploy/docker-compose.yml:109-214`).
-- **Coolify:** the same variables are set in the Coolify app's environment UI; Coolify derives `SERVICE_*` secrets and URLs and the app compose reads them (`deploy/coolify/docker-compose.yml:121-221`, `deploy/coolify/docker-compose.app.yml:120-221`). Set `DESK_AGENT_SOCKET=/run/zilar/desk.sock` by hand next to `DESKS_ENABLED=true`.
+- **Plain stack:** copy `deploy/.env.example` to `deploy/.env` and fill it in; `./zilar init` writes that file (generating passwords, the VAPID pair and the storage keys) and `./zilar up` starts the stack, AI-computer services included (`deploy/zilar`). `./zilar update` clears a `DESK_IMAGE` pin it wrote itself, so the jail image follows the release. The Compose files pass each variable to the `server` service (`deploy/docker-compose.yml:109-214`).
+- **Coolify:** the same variables are set in the Coolify app's environment UI; Coolify derives `SERVICE_*` secrets and URLs and the app compose reads them (`deploy/coolify/docker-compose.yml:121-221`, `deploy/coolify/docker-compose.app.yml:120-221`). AI computers need no variable: run `curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host` once on the host.
 - **Live:** change the value in the same place (Coolify app variables or `deploy/.env`) and restart the `server` service. Variables the server does not read — `ZILAR_DOMAIN`, `ACME_EMAIL`, `HTTP_PORT`, `HTTPS_PORT`, `POSTGRES_PASSWORD`, `IMAGE_OWNER`, `IMAGE_TAG`, `ZILAR_DB_PASSWORD`, `EJABBERD_DB_PASSWORD`, `ZILAR_ARCHIVE_DB_PASSWORD`, `DESKS_ENABLED`, `DESK_RUNTIME`, `DESK_MAX_RUNNING`, `DESK_NETWORK`, `DESK_CGROUP_PARENT`, `DESK_WORKSPACE_*`, `DESK_EGRESS_*` and the Coolify `SERVICE_*` names — configure the containers or the `./zilar` CLI, not `@zilar`.

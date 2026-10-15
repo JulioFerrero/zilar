@@ -24,8 +24,8 @@
 #   Applications (see LAYOUT.md);
 # - the sticker-data and avatar-data volumes stay declared (the zilar-server
 #   app mounts them), even though no service in this file uses them yet.
-# Everything else (environment, volumes, health checks, networks, the desk
-# guards) is copied from that file unchanged.
+# Everything else (environment, volumes, health checks, networks) is copied
+# from that file unchanged.
 #
 # Coolify conventions used (https://coolify.io/docs/services/configuration/docker-compose):
 # - `${VAR:-default}` supplies a fallback.
@@ -112,38 +112,29 @@ services:
       retries: 30
       start_period: 20s
 
-  # --- AI computers (desks), off unless DESKS_ENABLED=true ---------------
-  # A Coolify Service does not run ./zilar: set COMPOSE_PROFILES=desks (and
-  # DESKS_ENABLED=true) in the Service environment to start these. desk-agent
-  # is the only service with the Docker socket; desk-egress is a jail's only
-  # way to the web. The host prep Compose cannot do (gVisor, the shared
-  # memory-pool slice) is `sudo ./zilar host-setup` on the host once. Both
+  # --- AI computers (desks) -----------------------------------------------
+  # A Coolify Service does not run ./zilar: run the host setup command once on
+  # the host and these services turn computers on within about a minute, with
+  # nothing to set here. desk-agent is the only service with the Docker
+  # socket; desk-egress is a jail's only way to the web. The host prep Compose
+  # cannot do (gVisor, the shared memory-pool slice) is
+  # `curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host`. Both
   # images come from the published zilar-desk-agent tag (T-1582).
   desk-agent:
-    profiles: ['desks']
     image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-desk-agent:${IMAGE_TAG:-latest}
-    # on-failure, not unless-stopped: the guard below exits 0 while desks are
-    # off, and an exit-0 container must stay stopped.
-    restart: on-failure
+    restart: unless-stopped
     user: '0:0'
     privileged: true
     # One image, two entry points: this service is the sidecar (desk-egress
-    # picks the proxy below). The guard is belt-and-braces: even if Coolify
-    # ignores the `desks` profile, the container exits 0 at once unless
-    # DESKS_ENABLED=true.
-    command:
-      - sh
-      - -c
-      - >-
-        test "$${DESKS_ENABLED:-false}" = "true" ||
-        { echo "desks disabled (DESKS_ENABLED is not true)"; exit 0; };
-        exec node /app/desk-agent
+    # picks the proxy below).
+    command: ['node', '/app/desk-agent']
     environment:
-      DESKS_ENABLED: ${DESKS_ENABLED:-false}
       DESK_RUNTIME: ${DESK_RUNTIME:-runsc}
       DESK_NETWORK: desk-net
       DESK_CGROUP_PARENT: zilar-desks.slice
       DESK_MAX_RUNNING: ${DESK_MAX_RUNNING:-12}
+      DESK_IMAGE_OWNER: ${IMAGE_OWNER:-julioferrero}
+      DESK_IMAGE_TAG: ${IMAGE_TAG:-latest}
       DESK_IMAGE: ${DESK_IMAGE:-}
       DESK_WORKSPACE_ROOT: /var/lib/zilar/desks
       DESK_WORKSPACE_MODE: image
@@ -165,22 +156,10 @@ services:
       start_period: 10s
 
   desk-egress:
-    profiles: ['desks']
     image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-desk-agent:${IMAGE_TAG:-latest}
-    # on-failure, not unless-stopped: the guard below exits 0 while desks are
-    # off, and an exit-0 container must stay stopped.
-    restart: on-failure
-    # The guard is belt-and-braces: even if Coolify ignores the `desks`
-    # profile, the container exits 0 at once unless DESKS_ENABLED=true.
-    command:
-      - sh
-      - -c
-      - >-
-        test "$${DESKS_ENABLED:-false}" = "true" ||
-        { echo "desks disabled (DESKS_ENABLED is not true)"; exit 0; };
-        exec node /app/desk-egress
+    restart: unless-stopped
+    command: ['node', '/app/desk-egress']
     environment:
-      DESKS_ENABLED: ${DESKS_ENABLED:-false}
       DESK_EGRESS_PORT: '3128'
       DESK_EGRESS_REGISTRY_SOCKET: /run/zilar-egress/desk-egress.sock
     volumes:

@@ -27,8 +27,10 @@
 #  13. Coolify found prints the template path and the --desks-host command and
 #      exits 0, touching neither deploy/ nor Docker;
 #  14. a container-based VPS (openvz) stops with the why/what-works message;
-#  15. AI computers (--desks) turn on only after the gVisor sandbox passes;
-#  16. --desks-host prints the four Coolify variables once the sandbox passes;
+#  15. AI computers (--desks) run the host prep and the gVisor sandbox only:
+#      no DESKS_ENABLED switch is written;
+#  16. --desks-host runs the host prep and prints the one ready line, no
+#      variables and no redeploy;
 #  17. a failed sandbox makes --desks-host exit 1 with the reason.
 #
 # Usage: sh deploy/tests/install.test.sh
@@ -66,7 +68,6 @@ STUB
 chmod +x "$T/zilar-main/deploy/zilar"
 printf 'services: {}\n' >"$T/zilar-main/deploy/docker-compose.yml"
 cp "$ROOT/deploy/lib/preflight.sh" "$T/zilar-main/deploy/lib/preflight.sh"
-cp "$ROOT/deploy/lib/desk-image.sh" "$T/zilar-main/deploy/lib/desk-image.sh"
 printf '#!/bin/sh\nexit 0\n' >"$T/zilar-main/deploy/tests/host-setup.test.sh"
 tar -czf "$T/zilar-main.tar.gz" -C "$T" zilar-main
 STUB_TARBALL="$T/zilar-main.tar.gz"
@@ -299,21 +300,15 @@ else
   ok "the openvz stop happens before configure"
 fi
 
-# --- 2g. --desks-host runs only the host prep and prints the variables ----
+# --- 2g. --desks-host runs only the host prep and prints one line --------
 
 # On a Coolify host the stack lives in Coolify, so --desks-host skips the
-# install: it runs host-setup from the fetched tree, proves the gVisor sandbox,
-# pins the jail image by digest and prints the four variables as KEY=value.
-# The stub tarball's `zilar` is a stub, and a stub `docker` answers the sandbox
-# run, the pull and the inspect, so the test is offline.
+# install: it runs host-setup from the fetched tree, proves the gVisor sandbox
+# and prints one ready line. There are no variables to set and no redeploy.
+# The stub tarball's `zilar` is a stub and a stub `docker` answers the sandbox
+# run, so the test is offline.
 mkdir -p "$T/deskbin"
-cat >"$T/deskbin/docker" <<'STUB'
-#!/bin/sh
-case "$1" in
-  image) echo "ghcr.io/julioferrero/zilar-desk@sha256:1111111111111111111111111111111111111111111111111111111111111111" ;;
-esac
-exit 0
-STUB
+printf '#!/bin/sh\nexit 0\n' >"$T/deskbin/docker"
 printf '#!/bin/sh\nexec "$@"\n' >"$T/deskbin/sudo"
 chmod +x "$T/deskbin/docker" "$T/deskbin/sudo"
 : >"$T/desks-host.log"
@@ -324,23 +319,20 @@ PATH="$T/deskbin:$T/bin:$PATH" ZILAR_INSTALL_TARBALL="$STUB_TARBALL" \
   sh "$INSTALL" --desks-host --version main --dir "$DESK_DIR" \
   >"$T/desks-host.log" 2>&1 || status=$?
 if [ "$status" -eq 0 ] && \
-   grep -qF "ghcr.io/julioferrero/zilar-desk@sha256:" "$T/desks-host.log"; then
-  ok "--desks-host prints a jail image pinned by digest"
+   grep -qF "AI computers are ready on this host; Zilar turns them on within a minute, nothing to set on the service." "$T/desks-host.log"; then
+  ok "--desks-host prints the one ready line"
 else
-  bad "--desks-host did not print a pinned image ($(tail -n 1 "$T/desks-host.log"))"
+  bad "--desks-host did not print the ready line ($(tail -n 1 "$T/desks-host.log"))"
 fi
-if grep -q '^DESKS_ENABLED=true$' "$T/desks-host.log" && \
-   grep -q '^COMPOSE_PROFILES=desks$' "$T/desks-host.log" && \
-   grep -q '^DESK_IMAGE=ghcr.io/julioferrero/zilar-desk@sha256:' "$T/desks-host.log" && \
-   grep -q '^DESK_AGENT_SOCKET=/run/zilar/desk.sock$' "$T/desks-host.log"; then
-  ok "--desks-host prints the four Coolify variables"
+if grep -qE '^(DESKS_ENABLED|COMPOSE_PROFILES|DESK_IMAGE|DESK_AGENT_SOCKET)=' "$T/desks-host.log"; then
+  bad "--desks-host still prints variables to set"
 else
-  bad "--desks-host did not print the four variables ($(tail -n 1 "$T/desks-host.log"))"
+  ok "--desks-host prints no variables"
 fi
-if grep -qF "redeploy" "$T/desks-host.log" && grep -q "^host-setup$" "$T/desks-host.stub"; then
-  ok "--desks-host runs host-setup and says to redeploy"
+if grep -q "^host-setup$" "$T/desks-host.stub"; then
+  ok "--desks-host runs host-setup"
 else
-  bad "--desks-host did not run host-setup or say to redeploy"
+  bad "--desks-host did not run host-setup"
 fi
 if [ -e "$DESK_DIR/zilar" ]; then
   bad "--desks-host installed the stack"
@@ -348,7 +340,7 @@ else
   ok "--desks-host skips the install"
 fi
 
-# A failing sandbox stops with the reason and exit 1, printing no variables.
+# A failing sandbox stops with the reason and exit 1, printing no ready line.
 mkdir -p "$T/deskfailbin"
 cat >"$T/deskfailbin/docker" <<'STUB'
 #!/bin/sh
@@ -370,10 +362,10 @@ if [ "$status" -ne 0 ] && grep -qF "AI computers can't run on this host: runsc: 
 else
   bad "--desks-host did not stop on a failed sandbox ($(tail -n 1 "$T/desks-host-fail.log"))"
 fi
-if grep -q '^DESK_IMAGE=' "$T/desks-host-fail.log"; then
-  bad "--desks-host printed the variables after a failed sandbox"
+if grep -qF "AI computers are ready" "$T/desks-host-fail.log"; then
+  bad "--desks-host printed the ready line after a failed sandbox"
 else
-  ok "--desks-host prints no variables when the sandbox fails"
+  ok "--desks-host prints no ready line when the sandbox fails"
 fi
 
 # --- 3. --yes needs --domain and never prompts --------------------------
@@ -522,13 +514,14 @@ else
   bad "a re-run did not warn the new --domain was ignored"
 fi
 
-# --- 5d. AI computers turn on only when the gVisor sandbox passes -------
+# --- 5d. --desks prepares the host; the gVisor sandbox is only checked ---
 
-# phase_desks runs one real sandbox after host-setup. When it passes it sets
-# DESKS_ENABLED=true in $DIR/.env; when it fails, DESKS_ENABLED stays false and
-# the install continues. The pre-made .env keeps configure from calling init.
+# phase_desks runs host-setup and one real sandbox. It writes no switch: the
+# desk services run in every stack, so a pass or a fail leaves .env untouched
+# and the install continues either way. The pre-made .env keeps configure from
+# calling init.
 mkdir -p "$T/sandbox-fail"
-printf 'DESKS_ENABLED=false\n' >"$T/sandbox-fail/.env"
+printf 'ZILAR_DOMAIN=chat.example.com\n' >"$T/sandbox-fail/.env"
 mkdir -p "$T/runscbin"
 cat >"$T/runscbin/docker" <<'STUB'
 #!/bin/sh
@@ -543,29 +536,34 @@ PATH="$T/runscbin:$T/bin:$PATH" ZILAR_INSTALL_TARBALL="$STUB_TARBALL" \
   ZILAR_INSTALL_SKIP_CHECKS=1 \
   sh "$INSTALL" --yes --desks --domain chat.example.com --admin-email ops@example.com \
   --version main --dir "$T/sandbox-fail" >"$T/sandbox-fail.log" 2>&1 || status=$?
-if [ "$status" -eq 0 ] && grep -qF "AI computers stay off:" "$T/sandbox-fail.log"; then
-  ok "a failed sandbox keeps the install running with a clear message"
+if [ "$status" -eq 0 ] && grep -qF "AI computers cannot run here yet:" "$T/sandbox-fail.log"; then
+  ok "a failed sandbox keeps the install running with a clear warning"
 else
   bad "a failed sandbox did not continue cleanly ($(tail -n 1 "$T/sandbox-fail.log"))"
 fi
-if grep -q '^DESKS_ENABLED=false$' "$T/sandbox-fail/.env"; then
-  ok "a failed sandbox leaves DESKS_ENABLED=false"
+if [ "$(cat "$T/sandbox-fail/.env")" = "ZILAR_DOMAIN=chat.example.com" ]; then
+  ok "a failed sandbox leaves .env untouched"
 else
-  bad "a failed sandbox changed DESKS_ENABLED ($(grep DESKS_ENABLED "$T/sandbox-fail/.env" || true))"
+  bad "a failed sandbox changed .env ($(cat "$T/sandbox-fail/.env"))"
 fi
 
-# The passing case flips the switch.
+# A passing sandbox reports the host ready, still writing no switch.
 mkdir -p "$T/sandbox-pass"
-printf 'DESKS_ENABLED=false\n' >"$T/sandbox-pass/.env"
+printf 'ZILAR_DOMAIN=chat.example.com\n' >"$T/sandbox-pass/.env"
 status=0
 PATH="$T/bin:$PATH" ZILAR_INSTALL_TARBALL="$STUB_TARBALL" \
   ZILAR_INSTALL_SKIP_CHECKS=1 \
   sh "$INSTALL" --yes --desks --domain chat.example.com --admin-email ops@example.com \
   --version main --dir "$T/sandbox-pass" >"$T/sandbox-pass.log" 2>&1 || status=$?
-if [ "$status" -eq 0 ] && grep -q '^DESKS_ENABLED=true$' "$T/sandbox-pass/.env"; then
-  ok "a passing sandbox sets DESKS_ENABLED=true"
+if [ "$status" -eq 0 ] && grep -qF "AI computers are ready on this host" "$T/sandbox-pass.log"; then
+  ok "a passing sandbox reports the host ready"
 else
-  bad "a passing sandbox did not set DESKS_ENABLED=true ($(tail -n 1 "$T/sandbox-pass.log"))"
+  bad "a passing sandbox did not report the host ready ($(tail -n 1 "$T/sandbox-pass.log"))"
+fi
+if [ "$(cat "$T/sandbox-pass/.env")" = "ZILAR_DOMAIN=chat.example.com" ]; then
+  ok "a passing sandbox writes no DESKS_ENABLED switch"
+else
+  bad "a passing sandbox changed .env ($(cat "$T/sandbox-pass/.env"))"
 fi
 
 # --- 6. a re-run keeps the existing .env --------------------------------

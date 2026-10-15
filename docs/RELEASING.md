@@ -181,11 +181,11 @@ The dump task covers both databases, and the `postgres-data` backup carries the 
 
 ## 10. AI computers (desks)
 
-Desks are sandboxed AI computers (gVisor jails) that run on the install host. They are **off by default** and change nothing until enabled. The pieces are Compose services (`deploy/docker-compose.yml`, behind the `desks` profile) plus one host prep step Compose cannot do.
+Desks are sandboxed AI computers (gVisor jails) that run on the install host. The `desk-agent` and `desk-egress` Compose services run in every stack and stay idle until the host has gVisor.
 
 ### A new or wiped host (plain stack)
 
-1. The usual install, then the one-time host prep (needs root):
+1. The usual install. AI computers need one host prep (needs root):
 
    ```
    ./deploy/zilar init ...
@@ -194,37 +194,24 @@ Desks are sandboxed AI computers (gVisor jails) that run on the install host. Th
 
    `host-setup` installs the pinned gVisor runtime, reloads Docker (a SIGHUP — the running containers keep running; never a restart), writes the 4 GB `zilar-desks.slice` and creates the workspace root. It is idempotent.
 
-2. Turn desks on and start the stack:
+2. That is all: no variable to set and no redeploy. The desk services pick the prepared host up within about a minute.
 
-   ```
-   # in deploy/.env: DESKS_ENABLED=true
-   ./deploy/zilar up
-   ```
+   The jail image follows the release: the agent runs `ghcr.io/<IMAGE_OWNER>/zilar-desk:<IMAGE_TAG>`, so `./deploy/zilar update` moves it along. A digest an older `./zilar up` had pinned (`DESK_IMAGE=…@sha256:…`) is cleared on `update`; a value set by hand is kept, with a warning that it overrides the release image.
 
-   `./deploy/zilar up` pins `DESK_IMAGE` for you: while `DESKS_ENABLED=true` and
-   `DESK_IMAGE` is empty, it pulls the published jail image
-   (`ghcr.io/<IMAGE_OWNER>/zilar-desk:<IMAGE_TAG>`) and writes its digest into
-   `deploy/.env` as `DESK_IMAGE=…@sha256:…`. A value set by hand wins. A failed
-   pull or digest read stops `up` with a clear message — it never writes a tag
-   without a digest.
-
-   One flag is enough: `./deploy/zilar up` turns the `desks` profile on and sets the server's `DESK_AGENT_SOCKET` to `/run/zilar/desk.sock` while `DESKS_ENABLED=true` (set it in `deploy/.env` only to override). With the flag off, `DESK_AGENT_SOCKET` stays empty and the server builds no Hands client.
-
-`./deploy/zilar doctor` then checks the host prep and that the desk-agent socket answers `status`.
+`./deploy/zilar doctor` checks the host prep and that the desk-agent socket answers `status`. A host without gVisor is a warning, not a failure: the stack is fine, computers just stay idle.
 
 ### Coolify
 
-`host-setup` runs once on the host (it is not a container). In the Application's environment set `DESKS_ENABLED=true`, `DESK_IMAGE=...@sha256:...`, `DESK_AGENT_SOCKET=/run/zilar/desk.sock` and `COMPOSE_PROFILES=desks` (the Coolify app does not run `./zilar`, so it never auto-pins: both the digest, the profile and the socket come from variables). The next deploy starts `desk-agent` and `desk-egress`. Until the layout change (plan step 8), the Coolify app still builds `desk-agent` from git (`deploy/coolify/docker-compose.app.yml`), not from the published image.
+`host-setup` runs once on the host (it is not a container), through the same one command: `curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host`. The stack already runs the desk services, so there is nothing to set on the Service and no redeploy. Until the layout change (plan step 8), the Coolify app still builds `desk-agent` from git (`deploy/coolify/docker-compose.app.yml`), not from the published image.
 
 ### How it fits together
 
-- `desk-agent` is the only service with the Docker socket; the app (`server`) never gets it and reaches the sidecar only through the `desk-socket` volume.
+- `desk-agent` is the only service with the Docker socket; the app (`server`) never gets it and reaches the sidecar only through the `desk-socket` volume (fixed at `/run/zilar/desk.sock`).
 - `desk-egress` is the only way a jail reaches the web; `desk-net` is internal.
-- Both desk services run a guard that exits 0 at once unless `DESKS_ENABLED=true` and use `restart: on-failure`, so a platform that ignores the `desks` profile still never starts them by accident.
+- Both desk services run in every stack with `restart: unless-stopped` and stay idle until the host has gVisor, so there is no profile or flag that starts them and no guard.
 - The gVisor runtime and the `zilar-desks.slice` pool are host pieces (`host-setup`); everything else is Compose, so a wiped VPS comes back with the usual install plus `host-setup`.
 
 ### Roll back
 
-- Set `DESKS_ENABLED=false` (and remove `COMPOSE_PROFILES=desks` on Coolify) and restart; the desk services stop and the rest of the stack is untouched.
-- Undo the host prep: delete the `runtimes.runsc` key from `/etc/docker/daemon.json` and `systemctl reload docker`; remove `/etc/systemd/system/zilar-desks.slice` and `systemctl daemon-reload`. There is a `daemon.json.bak` from the first `host-setup`.
+- Undo the host prep: delete the `runtimes.runsc` key from `/etc/docker/daemon.json` and `systemctl reload docker`; remove `/etc/systemd/system/zilar-desks.slice` and `systemctl daemon-reload`. There is a `daemon.json.bak` from the first `host-setup`. The desk services keep running and go idle again.
 
