@@ -19,9 +19,16 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1483: "2 members, 3 online";
   - T-1484: Escape closing the chat during a reply;
   - T-1485: web accessibility fixes from an axe-core audit, which now reports no violations;
-  - T-1486: mobile tables at large font sizes.
+  - T-1486: mobile tables at large font sizes;
+  - T-1487: a flaky sandbox test (it failed CI once on main);
+  - T-1488: a React duplicate key on the web Contact info panel.
+- **Full check on main** (typecheck plus every suite, 1,849 tests) is green.
 - **T-1481:** the last file over 400 lines (`lead/autopilot.ts`) is split. The autopilot was restarted on it and runs clean.
 - **Live:** every deploy was checked (`/health`, routes, the SSH error count), with 0 errors after each.
+- **Phone APK ready:** `~/Downloads/zilar-c4e85ae5.apk`. It is the prod build of main `c4e85ae52`, signed with the same debug key as the earlier APKs, so it installs as an update.
+  - It carries tonight's mobile work: New AI; Add key; the new AI chat on top; the one-line placeholder; Reply and Edit focus; the member count; tables at large fonts; the "Page not found" screen; the search field and row fixes at large fonts.
+  - Checked: `chat.zilar.app` is in the bundle, and it opens to Sign in on the emulator.
+- **New decision for you:** do AIs count as members? Headers count them now; the topic panel doesn't. The details are under "Decision" below.
 - **New canvas: "Stickers"** (lean pass, web and phone), https://claude.ai/artifact/GiBcaeJcuprSGGFBb3Xc3H. Eight canvases now wait for you: View steps, Connections, Topic status, AI health, Lean settings, Approvals, Empty chat and files, and Stickers.
 
 **2026-10-15, night (updated 03:10 CEST): what merged since the 03:00 entry, in order.** Earlier versions of this entry carried wrong clock times; the order is right.
@@ -136,10 +143,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - At 1.3, "Medium" stays whole and the table scrolls; at 1.0 nothing changed.
   - The emulator is back at font scale 1.0.
   - **Its CI on main failed once** on a flaky server sandbox test (`run-tool.test.ts` › "truncates 100 KB of console.log output", default 2 s CPU limit on a saturated runner). It was the first CI failure in 30 main runs.
-  - Because of it, T-1486 did not deploy (live stayed at `756f7276e`). The lead re-ran the failed job.
+  - The lead re-ran the failed job, and it went green.
+  - T-1486 did not deploy, which is expected: `zilar-chat`'s Coolify watch paths skip `apps/mobile/**`. (The lead first blamed CI. Deploys don't wait for CI, as the T-1488 deploy shows.)
 - **Merged: T-1487.** The flaky test gets the wide limits its sibling tests already use (test-only, 48 of 48 pass). The rerun of the failed CI job went green.
   - Live at `15d19fa73` (T-1486 plus T-1487): health ok, 0 errors.
-- **Running: T-1488.** On web, opening a DM's Contact info logged React's duplicate-key error: `MessageList` and `ContactPanel` are siblings keyed by the same chat id. Found in a headless walk of the info panels.
+- **Merged: T-1488.** On web, opening a DM's Contact info logged React's duplicate-key error: `MessageList` and `ContactPanel` were siblings keyed by the same chat id. Found in a headless walk of the info panels.
+  - The fix is verified headless.
+  - It also carried a handoff note about CI and deploys that turned out wrong. The correction, from the app's real watch paths, rides the next merge.
+  - Live at `c4e85ae52`, health ok.
+- **Console sweep of web main** (22 routes plus 4 opened chats, errors and warnings): 0 of either.
   - The topic and group panels are clean.
 - **Mobile interaction walk (emulator, mock):** send, reply with quote, the 👍 reaction and the @mention picker work. Two bugs found: T-1482 and T-1483.
 - **Web interaction walk (headless, mock, 1280 px):** send, reply, edit and New group all work, and the sent chat moves to the top of the list. 0 errors.
@@ -230,6 +242,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - Today web keeps only the first file of a mixed pick (`useComposerAttachments.ts:123-131`), and the mobile file picker takes one file.
 - **Morning UI list (each needs a canvas or a decision):**
   - predictive back (MUX-24), which needs a native build to test.
+- **Decision: do AIs count as members?**
+  - Since T-1483, a group header counts everyone in the room, so Dev team › General reads "5 members, 5 online" (4 people plus Dev-1).
+  - The topic panel says "All 4 members of Dev team" (people only).
+  - Telegram counts bots as members. The lead's pick is to count AIs everywhere (header, panel and the group list), but it is your call.
 - **Decision to confirm (T-1448):** Stop pauses following until the AI is @mentioned again or re-assigned. The pause lives in memory, so a server restart resumes following.
 - **Waiting for Julio:**
   - **get.zilar.app:** the Porkbun A record `get` → 152.53.146.96. Then the lead adds the domain to zilar-chat in Coolify (already OK'd).

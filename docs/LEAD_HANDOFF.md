@@ -100,9 +100,10 @@ The autopilot starts a Muse doctor session once main stays quiet 10 minutes: it 
 - **Web tests: never prove "X did not happen" by throwing inside an event listener (T-0320).** jsdom reports an exception thrown in a listener through `window` error and the console, and does not rethrow it into the test, so the test passes even when the event arrived. Use a `vi.fn()` spy with `not.toHaveBeenCalled()`, plus a control test showing that the spy does see the event.
 
 ## Server and deploy facts
-Coolify service `zilar` uuid `zogjtvwnoh9rqo96h7e7ajz1` (restart with `pull_latest: true`, verify the server `hostname` in the logs changes and an authed route answers 401). CI on main has a known flaky test (`packages/runner-tunnel`/runner `connect.test.ts`) and a legacy-name guard (`packages/devtools/src/no-legacy-name.test.ts`: the old product name must not appear in tracked files).
+The old Coolify service `zilar` (`zogjtvwnoh9rqo96h7e7ajz1`) was deleted on 2026-10-11; see the next paragraph. After a deploy, verify that the server container name in `sudo docker ps` changed and that an authed route answers 401. CI on main has a known flaky test (`packages/runner-tunnel`/runner `connect.test.ts`) and a legacy-name guard (`packages/devtools/src/no-legacy-name.test.ts`: the old product name must not appear in tracked files).
 
-**A merge deploys only after CI on main is green.** "Production images" runs on CI's success, then Coolify builds.
-- When `/health` does not move to the new commit within about 5 minutes, check CI first: `gh run list --workflow ci.yml --branch main --limit 3`.
-- A one-off test flake there skips the deploy silently. Rerun it with `gh run rerun <id> --failed`, then spec a stabilising task.
-- On 2026-10-15 the sandbox log test did this to T-1486; T-1487 fixed it.
+**Live deploys come from the Coolify Application `zilar-chat`** (uuid `qccydpow4rw0zcel9yisk44s`). It auto-deploys on every push to main that touches its watch paths, and it does **not** wait for CI.
+- **The watch paths:** `apps/server/**`, `apps/web/**`, `packages/**`, `deploy/**`, the root `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `turbo.json` and `tsconfig.base.json`.
+- **A mobile-only merge** (only `apps/mobile/**` and `work/`) does not deploy, so `/health` keeps the previous commit. That is expected.
+- **CI on main** still guards history. Check `gh run list --workflow ci.yml --branch main --limit 3` after merges.
+- **A one-off test flake:** rerun it with `gh run rerun <id> --failed`, then spec a stabilising task. On 2026-10-15 the sandbox log test failed once; T-1487 stabilised it.
