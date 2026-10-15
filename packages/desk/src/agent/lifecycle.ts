@@ -154,11 +154,17 @@ export class Lifecycle {
     try {
       const proxyUrl = await this.registerEgress(name, spec);
       registered = proxyUrl !== null;
-      if (!(await this.deps.docker.inspect(name))) {
-        const directory = await this.deps.workspaces.ensure(spec.key, spec.limits.diskBytes);
-        await this.deps.docker.create(name, spec, directory, proxyUrl);
-        await this.deps.docker.start(name);
+      if (await this.deps.docker.inspect(name)) {
+        // A jail that survived an earlier agent process (a crash skips `stopAll`)
+        // still carries that process's proxy secret; `records` has no entry for
+        // it, since `provision` returns early for known ones. Remove it so the
+        // recreate below mints the current secret and proxy IP.
+        this.log(`desk ${name}: removed a jail left from an earlier agent run`);
+        await this.deps.docker.remove(name);
       }
+      const directory = await this.deps.workspaces.ensure(spec.key, spec.limits.diskBytes);
+      await this.deps.docker.create(name, spec, directory, proxyUrl);
+      await this.deps.docker.start(name);
       this.records.set(name, { ref, spec, lastUsedAt: this.now() });
       return { kind: 'ready', ref };
     } catch (error) {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Admission } from './admission';
 import { loadAgentConfig, type AgentConfig } from './config';
+import type { EgressRegistrar } from './egress';
 import { Lifecycle } from './lifecycle';
 import { runIdleSweep } from './main';
 import { FakeDocker, PACKAGE, fakeWorkspaces, one, send, setupAgent, spec } from './test-harness';
@@ -65,6 +66,46 @@ describe('desk-agent lifecycle', () => {
     await expect(second).resolves.toMatchObject({ kind: 'ready' });
     expect(agent.docker.created).toEqual(['desk-ai1-p1']);
     expect(agent.docker.started).toEqual(['desk-ai1-p1']);
+  });
+
+  it('recreates a jail left from an earlier agent run with the current proxy URL', async () => {
+    const docker = new FakeDocker();
+    const makeEgress = (secret: string): EgressRegistrar => ({
+      register: () => Promise.resolve(`http://desk-ai1-p1:${secret}@proxy:8080`),
+      unregister: () => Promise.resolve(),
+    });
+    const build = (egress: EgressRegistrar, log?: (message: string) => void): Lifecycle =>
+      new Lifecycle({
+        docker,
+        workspaces: fakeWorkspaces(agent.directory),
+        admission: new Admission({
+          maxRunning: 4,
+          memoryRatioLimit: 0.75,
+          pool: () => Promise.resolve(null),
+        }),
+        config: agent.config,
+        egress,
+        ...(log === undefined ? {} : { log }),
+      });
+
+    const before = build(makeEgress('old-secret'));
+    await before.checkReadiness();
+    await before.provision(spec());
+    expect(docker.running.has('desk-ai1-p1')).toBe(true);
+
+    // A new agent process: fresh records and a fresh egress secret, but the jail
+    // from the earlier process is still there.
+    const logs: string[] = [];
+    const after = build(makeEgress('new-secret'), (message) => logs.push(message));
+    await after.checkReadiness();
+    const result = await after.provision(spec());
+
+    expect(result.kind).toBe('ready');
+    expect(docker.removed).toEqual(['desk-ai1-p1']);
+    expect(docker.created).toEqual(['desk-ai1-p1', 'desk-ai1-p1']);
+    expect(docker.calls[1]?.proxyUrl).toBe('http://desk-ai1-p1:new-secret@proxy:8080');
+    expect(docker.started).toEqual(['desk-ai1-p1', 'desk-ai1-p1']);
+    expect(logs).toContain('desk desk-ai1-p1: removed a jail left from an earlier agent run');
   });
 
   it('frees the admission slot even when the workspace release throws', async () => {
