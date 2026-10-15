@@ -20,18 +20,20 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - T-1530 (View steps route);
     - T-1529 (the last @mentioned AI follows a topic; migration 0065);
     - T-1534 (web drops the task strip; link row and Mark as done);
-    - T-1525 (phone sticker upload keeps motion; **check a moving GIF upload on Julio's next phone build**).
+    - T-1525 (phone sticker upload keeps motion; **check a moving GIF upload on Julio's next phone build**);
+    - T-1533 (phone Stickers My packs, smoke checked);
+    - T-1541 (web sends an album's photos together).
     
-    The deploy check for `22755dff7` (migration 0065 plus the steps route) is running.
-  - **Running (7):**
-    - T-1533 (phone Stickers My packs; smoke running);
+    **Live at `4dca770cc`:** 0 errors; `/api/chats`, `/api/agents/tasks/x/steps` and `/api/sticker-packs` answer 401 signed out; the `topics.follower_ai_id` column exists (backfill 0 rows: no live topic had an owner AI).
+  - **Running (8):**
     - T-1535 (web View steps panel);
     - T-1536 (phone several files; fix round: photos send first as the album, then files);
     - T-1537 (web status line; fix round: use only the AI's newest card);
     - T-1539 (AI work 7a: phone topic marks and the "AIs here" sheet);
-    - T-1541 (web: the same album-order fix);
-    - T-1542 (phone Group info audit, plan only).
-  - **Written, waiting:** T-1540 (AI work 7b: phone drops the task strip; launch when a mobile slot frees).
+    - T-1540 (AI work 7b: phone drops the task strip);
+    - T-1542 (phone Group info audit, plan only);
+    - T-1543 (split `chats/api.ts`);
+    - T-1544 (split `chats/unread.ts`).
   - **Next free web slot:** split `apps/server/src/topics/access.ts` and `packages/client-core/src/store/chat-rows.ts` (399 lines each after T-1537), after T-1537 merges.
   - **Decisions (Julio, 10-15):** the topic link moves to a row in the topic info panel (T8 keeps `link_url`/`link_label`); the last @mentioned AI follows a topic.
   - **Next to spec:**
