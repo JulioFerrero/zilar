@@ -27,11 +27,6 @@ export interface PageSetters {
   readonly setActionError: Dispatch<SetStateAction<string>>;
 }
 
-export interface MoveRequest {
-  readonly packId: string;
-  readonly direction: -1 | 1;
-}
-
 /**
  * The text a failed call shows. A call that never got an answer shows the
  * component's fixed sentence (AGENTS.md); an answer shows the server's sentence.
@@ -63,15 +58,6 @@ export const loadPanel = (
         setters.setFavorites(starred);
       }),
     ),
-    Effect.asVoid,
-  );
-
-/** Discover on first paint is best-effort: a failure leaves the section loading. */
-export const loadDiscover = (
-  setters: Pick<PageSetters, 'setDiscover'>,
-): Effect.Effect<void, ApiFailure> =>
-  fromApi(() => discoverStickerPacks()).pipe(
-    Effect.tap((page) => Effect.sync(() => setters.setDiscover(page.packs))),
     Effect.asVoid,
   );
 
@@ -212,18 +198,25 @@ const reorderPanel = (
     ),
   );
 
-export const movePack = (
+export const dragPack = (
   ordered: StickerPack[],
-  { packId, direction }: MoveRequest,
+  activeId: string,
+  overId: string,
   setters: PageSetters,
 ): Effect.Effect<void> => {
-  const index = ordered.findIndex((pack) => pack.id === packId);
-  const target = index + direction;
-  if (index < 0 || target < 0 || target >= ordered.length) {
+  if (activeId === overId) {
+    return Effect.void;
+  }
+  const from = ordered.findIndex((pack) => pack.id === activeId);
+  const to = ordered.findIndex((pack) => pack.id === overId);
+  if (from < 0 || to < 0) {
     return Effect.void;
   }
   const next = [...ordered];
-  const [moved] = next.splice(index, 1);
-  next.splice(target, 0, moved!);
+  const [moved] = next.splice(from, 1);
+  if (moved === undefined) {
+    return Effect.void;
+  }
+  next.splice(to, 0, moved);
   return reorderPanel(next, ordered, setters);
 };

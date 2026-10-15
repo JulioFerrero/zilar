@@ -1,26 +1,28 @@
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
+import { Plus, Upload } from 'lucide-react';
 import { useAuth } from '@/auth/AuthProvider';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { PackEditor } from '@/components/PackEditor';
 import { TelegramImportDialog } from '@/components/TelegramImportDialog';
 import { Button } from '@/components/ui/button';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { StateMessage } from '@/components/ui/state-message';
 import { SearchField } from '@/components/ui/search-field';
+import { SortableList } from '@/components/ui/sortable-list';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { type Sticker, type StickerPack } from '@/lib/api';
 import {
-  type MoveRequest,
   type PageSetters,
   type PageStatus,
+  dragPack,
   failureText,
-  loadDiscover,
   loadPanel,
-  movePack,
   refreshPanel,
   searchPacks,
 } from '@/components/sticker/pageActions';
@@ -28,8 +30,9 @@ import { AddedPackRow, DiscoverPackRow, MyPackRow } from '@/components/sticker/P
 import { FavoriteRow } from '@/components/sticker/FavoriteRow';
 
 /**
- * Settings → Stickers (T-0121): my packs, packs I added, discover with
- * search, favorites, and the pack creator/editor.
+ * Settings → Stickers (T-0121, T-1523): three tabs — my packs (drag to
+ * reorder), discover (search as you type) and favorites — plus the pack
+ * creator/editor.
  */
 
 // The column comes from the shared shell (T-0153); the local constant stays
@@ -37,12 +40,21 @@ import { FavoriteRow } from '@/components/sticker/FavoriteRow';
 export { SETTINGS_COLUMN };
 export type { PackRowThumb } from '@/components/sticker/PackThumbs';
 
+const DISCOVER_SEARCH_DEBOUNCE_MS = 300;
+
+const TABS = [
+  { value: 'mine', label: 'My packs' },
+  { value: 'discover', label: 'Discover' },
+  { value: 'favorites', label: 'Favorites' },
+];
+
 export function StickersPage() {
   const navigate = useNavigate();
   const auth = useAuth();
   const userId =
     auth.status === 'authenticated' && auth.user !== undefined ? auth.user.id : undefined;
 
+  const [tab, setTab] = useState<string>('mine');
   const [packs, setPacks] = useState<StickerPack[] | undefined>(undefined);
   const [favorites, setFavorites] = useState<Sticker[] | undefined>(undefined);
   const [query, setQuery] = useState('');
@@ -68,7 +80,7 @@ export function StickersPage() {
     setDeletingPack(undefined);
     deleteRunners.current.get(packId)?.();
   };
-  // Telegram import (T-0123, T-0162): the dialog opens from "My packs" and
+  // Telegram import (T-0123, T-0162): the dialog opens from the header and
   // always stays visible. A 501 only disables the button's usual flow (the
   // server has no token); the dialog itself shows why. The shared owner
   // hook decides whether the dialog links the settings page — it starts as
@@ -79,14 +91,19 @@ export function StickersPage() {
 
   // The first load (and the retry): both lists must answer.
   const [loadState, reloadPage] = useQuery(() => loadPanel(setters), []);
-  const [discoverOnMount] = useQuery(() => loadDiscover(setters), []);
-  const [searchState, runSearch] = useAction<void, void, never>(() => searchPacks(query, setters));
+  // Discover searches as you type: each keystroke restarts the 300 ms wait,
+  // and a new keystroke interrupts the wait or search still running.
+  useQuery(
+    () =>
+      Effect.sleep(DISCOVER_SEARCH_DEBOUNCE_MS).pipe(Effect.andThen(searchPacks(query, setters))),
+    [query],
+  );
   const [, runRefresh] = useAction<void, void, never>(() => refreshPanel(setters), {
     mode: 'replace',
   });
-  // Moves are disabled while one runs, so the page-level action never drops a click.
-  const [moveState, runMove] = useAction<MoveRequest, void, never>((request) =>
-    movePack(packs ?? [], request, setters),
+  // Moves are disabled while one runs, so the page-level action never drops a drag.
+  const [moveState, runMove] = useAction<{ activeId: string; overId: string }, void, never>(
+    ({ activeId, overId }) => dragPack(packs ?? [], activeId, overId, setters),
   );
 
   const loadFailure = isWaiting(loadState) ? undefined : failureOf(loadState);
@@ -97,7 +114,6 @@ export function StickersPage() {
       : 'loading';
   const loadError =
     loadFailure !== undefined ? failureText(loadFailure, 'Could not load stickers') : '';
-  const discoverBusy = isWaiting(discoverOnMount) || isWaiting(searchState);
   const moving = isWaiting(moveState);
 
   const myPacks = (packs ?? []).filter((pack) => userId !== undefined && pack.ownerId === userId);
@@ -138,8 +154,24 @@ export function StickersPage() {
   return (
     <SettingsShell
       title="Stickers"
-      subtitle="Make packs from your images, share them, and star favorites."
       onBack={() => navigate('/settings')}
+      action={
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            aria-label="Import from Telegram"
+            onClick={() => setImporting(true)}
+          >
+            <Upload className="size-4" aria-hidden="true" />
+            <span className="hidden sm:inline">Import from Telegram</span>
+          </Button>
+          <Button type="button" aria-label="New pack" onClick={() => setCreating(true)}>
+            <Plus className="size-4" aria-hidden="true" />
+            <span className="hidden sm:inline">New pack</span>
+          </Button>
+        </div>
+      }
     >
       {status === 'loading' && <StateMessage kind="loading" title="Loading…" />}
 
@@ -159,118 +191,112 @@ export function StickersPage() {
             </p>
           )}
 
-          <section aria-label="My packs" className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-[16px] font-semibold">My packs</h2>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="default"
-                  onClick={() => setImporting(true)}
-                >
-                  Import from Telegram
-                </Button>
-                <Button type="button" size="default" onClick={() => setCreating(true)}>
-                  Create pack
-                </Button>
-              </div>
-            </div>
-            {myPacks.length === 0 ? (
-              <p className="text-[14px] text-muted-foreground">
-                No packs yet. Make one from your photos with Create pack, or import one from
-                Telegram.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {myPacks.map((pack) => (
-                  <MyPackRow
-                    key={pack.id}
-                    pack={pack}
-                    moving={moving}
-                    setters={setters}
-                    onMove={(packId, direction) => runMove({ packId, direction })}
-                    onEdit={(packId) => setEditingPackId(packId)}
-                    onDelete={(target) => setDeletingPack(target)}
-                    registerDelete={registerDelete}
-                  />
-                ))}
-              </ul>
-            )}
-          </section>
+          <SegmentedControl
+            options={TABS}
+            value={tab}
+            onChange={setTab}
+            ariaLabel="Sticker sections"
+            mode="tabs"
+          />
 
-          {addedPacks.length > 0 && (
-            <section aria-label="Packs I added" className="flex flex-col gap-2">
-              <h2 className="text-[16px] font-semibold">Packs I added</h2>
-              <ul className="flex flex-col gap-2">
-                {addedPacks.map((pack) => (
-                  <AddedPackRow key={pack.id} pack={pack} setters={setters} />
-                ))}
-              </ul>
-            </section>
+          {tab === 'mine' && (
+            <>
+              <section aria-label="My packs">
+                {myPacks.length === 0 ? (
+                  <p className="text-[14px] text-muted-foreground">
+                    No packs yet. Make one from your photos with Create pack, or import one from
+                    Telegram.
+                  </p>
+                ) : (
+                  <SortableList
+                    ids={myPacks.map((pack) => pack.id)}
+                    disabled={moving}
+                    labelOf={(id) => myPacks.find((pack) => pack.id === id)?.title ?? id}
+                    onReorder={(fromId, toId) => runMove({ activeId: fromId, overId: toId })}
+                  >
+                    <ul className="overflow-hidden rounded-xl border border-border bg-surface">
+                      {myPacks.map((pack) => (
+                        <MyPackRow
+                          key={pack.id}
+                          pack={pack}
+                          disabled={moving}
+                          setters={setters}
+                          onEdit={(packId) => setEditingPackId(packId)}
+                          onDelete={(target) => setDeletingPack(target)}
+                          registerDelete={registerDelete}
+                        />
+                      ))}
+                    </ul>
+                  </SortableList>
+                )}
+              </section>
+
+              {addedPacks.length > 0 && (
+                <section aria-label="Added packs" className="flex flex-col gap-2">
+                  <h2 className="px-1 text-[11px] font-medium uppercase tracking-[0.06em] text-subtle-foreground">
+                    Added
+                  </h2>
+                  <ul className="overflow-hidden rounded-xl border border-border bg-surface">
+                    {addedPacks.map((pack) => (
+                      <AddedPackRow key={pack.id} pack={pack} setters={setters} />
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </>
           )}
 
-          <section aria-label="Discover" className="flex flex-col gap-2">
-            <h2 className="text-[16px] font-semibold">Discover</h2>
-            <p className="text-[14px] text-muted-foreground">
-              Find shared packs from anyone on this server and add them to your panel.
-            </p>
-            <form
-              className="mb-1 flex gap-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                runSearch();
-              }}
-            >
+          {tab === 'discover' && (
+            <section aria-label="Discover" className="flex flex-col gap-2">
               <SearchField
                 value={query}
-                aria-label="Search sticker packs"
+                aria-label="Search shared packs"
                 placeholder="Search shared packs"
                 maxLength={60}
                 onChange={(event) => setQuery(event.target.value)}
-                className="min-w-0 flex-1"
               />
-              <Button type="submit" size="lg" disabled={discoverBusy}>
-                Search
-              </Button>
-            </form>
-            {discover === undefined ? (
-              <StateMessage kind="loading" size="inline" title="Loading…" />
-            ) : discover.length === 0 ? (
-              <p className="text-[14px] text-muted-foreground">
-                No shared packs found. Try another search, or make your own with Create pack.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {discover.map((pack) => (
-                  <DiscoverPackRow
-                    key={pack.id}
-                    pack={pack}
-                    added={panelIds.has(pack.id)}
-                    setters={setters}
-                  />
-                ))}
-              </ul>
-            )}
-          </section>
+              {discover === undefined ? (
+                <StateMessage kind="loading" size="inline" title="Loading…" />
+              ) : discover.length === 0 ? (
+                <p className="text-[14px] text-muted-foreground">
+                  No shared packs found. Try another search, or make your own with Create pack.
+                </p>
+              ) : (
+                <ul className="overflow-hidden rounded-xl border border-border bg-surface">
+                  {discover.map((pack) => (
+                    <DiscoverPackRow
+                      key={pack.id}
+                      pack={pack}
+                      added={panelIds.has(pack.id)}
+                      setters={setters}
+                    />
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
 
-          <section aria-label="Favorites" className="flex flex-col gap-2">
-            <h2 className="text-[16px] font-semibold">Favorites</h2>
-            {favorites === undefined ? (
-              <StateMessage kind="loading" size="inline" title="Loading…" />
-            ) : favorites.length === 0 ? (
-              <p className="text-[14px] text-muted-foreground">
-                No favorites yet. Open the sticker panel in any chat and tap the star on a sticker
-                to keep it here.
-              </p>
-            ) : (
-              <ul className="grid grid-cols-4 gap-2 sm:grid-cols-6" aria-label="Favorite stickers">
-                {favorites.map((sticker) => (
-                  <FavoriteRow key={sticker.id} sticker={sticker} setters={setters} />
-                ))}
-              </ul>
-            )}
-          </section>
+          {tab === 'favorites' && (
+            <section aria-label="Favorites" className="flex flex-col gap-2">
+              {favorites === undefined ? (
+                <StateMessage kind="loading" size="inline" title="Loading…" />
+              ) : favorites.length === 0 ? (
+                <p className="text-[14px] text-muted-foreground">
+                  No favorites yet. Open the sticker panel in any chat and tap the star on a sticker
+                  to keep it here.
+                </p>
+              ) : (
+                <ul
+                  className="grid grid-cols-4 gap-2 sm:grid-cols-6"
+                  aria-label="Favorite stickers"
+                >
+                  {favorites.map((sticker) => (
+                    <FavoriteRow key={sticker.id} sticker={sticker} setters={setters} />
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
         </div>
       )}
 
