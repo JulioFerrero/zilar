@@ -1,6 +1,8 @@
 import { Exit, Schema } from 'effect';
 import { firstIssueReason } from '../tool-arg-issues';
 import {
+  ASK_PEOPLE_TOOL,
+  AskPeopleArgsSchema,
   BASH_TOOL,
   BashArgsSchema,
   DELEGATE_TOOL,
@@ -68,6 +70,7 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
     toolName !== REMEMBER_TOOL &&
     toolName !== DELEGATE_TOOL &&
     toolName !== TASK_STATUS_TOOL &&
+    toolName !== ASK_PEOPLE_TOOL &&
     !isDeskToolName(toolName)
   ) {
     return { ok: false, reason: `unknown tool: ${safeToolName(toolName)}` };
@@ -147,6 +150,18 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
       return { ok: false, reason: parsed.reason };
     }
     return { ok: true, tool: TASK_STATUS_TOOL, task_id: parsed.value.task_id };
+  }
+  if (toolName === ASK_PEOPLE_TOOL) {
+    const parsed = decodeToolArguments(AskPeopleArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
+    }
+    return {
+      ok: true,
+      tool: ASK_PEOPLE_TOOL,
+      question: parsed.value.question,
+      options: parsed.value.options,
+    };
   }
   if (toolName === BASH_TOOL) {
     const parsed = decodeToolArguments(BashArgsSchema, parsedJson);

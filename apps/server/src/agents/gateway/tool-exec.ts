@@ -6,6 +6,7 @@ import { looksLikeSecret } from '../memory/secrets';
 import { addFact, recallMemory, zoomMemory } from '../memory/store';
 import { type ExecuteToolCall, type ToolExecution, type ValidToolCall } from '../reply';
 import {
+  ASK_PEOPLE_TOOL,
   DELEGATE_TOOL,
   formatPersonaUpdatedLine,
   formatRememberedLine,
@@ -24,6 +25,7 @@ import {
   runDeskCall,
   type DeskTurnContext,
 } from './desk-exec';
+import { createAskPeopleRunner } from './ask-people';
 import { createRequestActionRunner } from './request-action';
 import {
   ROUND_MAX_HOPS,
@@ -53,14 +55,26 @@ interface ToolExecContext {
   sessionIsLive: LiveSession['sessionIsLive'];
   pumpRoom: (session: AiSession, roomJid: string) => Promise<void>;
   secretsFor: (secret?: string) => string[];
+  /** T-1576: the `ask_people` runner posts its card through this wrapper. */
+  liveSendMessage: LiveSession['liveSendMessage'];
 }
 
 export function createToolExec(ctx: ToolExecContext) {
-  const { deps, logger, sessions, roomRounds, sessionIsLive, pumpRoom, secretsFor } = ctx;
+  const {
+    deps,
+    logger,
+    sessions,
+    roomRounds,
+    sessionIsLive,
+    pumpRoom,
+    secretsFor,
+    liveSendMessage,
+  } = ctx;
   const { runRequestAction, runRequestActionEffect } = createRequestActionRunner(
     deps.actions,
     logger,
   );
+  const { runAskPeopleEffect } = createAskPeopleRunner(deps.db, logger, liveSendMessage);
 
   // Runs one validated tool call against the gateway's own AI id. The id
   // comes from the session, never from the model's arguments, and the
@@ -111,13 +125,24 @@ export function createToolExec(ctx: ToolExecContext) {
         // read to the two involved AIs, so it must still fall through when
         // there are no delegation targets.
         const isDelegationTool = call.tool === DELEGATE_TOOL || call.tool === TASK_STATUS_TOOL;
-        if (!isMemoryTool && !isDelegationTool && call.tool !== REQUEST_ACTION_TOOL) {
+        if (
+          !isMemoryTool &&
+          !isDelegationTool &&
+          call.tool !== REQUEST_ACTION_TOOL &&
+          call.tool !== ASK_PEOPLE_TOOL
+        ) {
           return { content: 'invalid: unknown tool' };
         }
         if (call.tool === DELEGATE_TOOL && context.delegateTargetIds.size === 0) {
           return { content: 'invalid: unknown tool' };
         }
         if (call.tool === REQUEST_ACTION_TOOL && !context.allowActions) {
+          return { content: 'invalid: unknown tool' };
+        }
+        // T-1576: `ask_people` is offered only when a person triggered the
+        // turn; an AI handoff or a delegated trigger that improvises it gets
+        // the same unknown-tool answer.
+        if (call.tool === ASK_PEOPLE_TOOL && !context.askPeople) {
           return { content: 'invalid: unknown tool' };
         }
       }
@@ -286,6 +311,18 @@ export function createToolExec(ctx: ToolExecContext) {
             result: view.resultSummary,
           }),
         };
+      }
+      if (call.tool === ASK_PEOPLE_TOOL) {
+        // Only reachable in a group turn that offered the tool; a DM (which
+        // has no context) or a turn where the flag was off got the guard above.
+        if (context === undefined) {
+          return { content: 'invalid: unknown tool' };
+        }
+        return yield* runAskPeopleEffect(session, call, {
+          groupId: context.groupId,
+          topicId: context.topicId,
+          roomJid: context.roomJid,
+        });
       }
       if (call.tool === UPDATE_PERSONA_TOOL) {
         yield* Effect.promise(() => setPersonaFromChat(deps.db, aiId, call.persona));

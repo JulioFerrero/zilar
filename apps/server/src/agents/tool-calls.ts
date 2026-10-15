@@ -3,6 +3,7 @@
 // wording are unchanged.
 import { redactError } from './redact-error';
 import {
+  ASK_PEOPLE_TOOL,
   DELEGATE_TOOL,
   MEMORY_ZOOM_TOOL,
   RECALL_TOOL,
@@ -214,6 +215,9 @@ function toCall(parsed: ParsedToolArgumentsOk, id: string): ValidToolCall {
   }
   if (parsed.tool === TASK_STATUS_TOOL) {
     return { id, tool: TASK_STATUS_TOOL, taskId: parsed.task_id };
+  }
+  if (parsed.tool === ASK_PEOPLE_TOOL) {
+    return { id, tool: ASK_PEOPLE_TOOL, question: parsed.question, options: parsed.options };
   }
   // T-1409: the desk tools carry their validated args straight to the executor.
   if (isDeskParsedTool(parsed)) {

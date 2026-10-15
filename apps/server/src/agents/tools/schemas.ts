@@ -10,6 +10,17 @@ export const REMEMBER_TOOL = 'remember';
 // T-0482: the delegation tools (plan `listener-delegation-plan.md` §4.1-§4.3).
 export const DELEGATE_TOOL = 'delegate';
 export const TASK_STATUS_TOOL = 'task_status';
+// T-1576: the `ask_people` tool asks the people in a room one question with
+// 2-4 short reply options (plan §7 step 4). The stored question and options
+// share the caps `questions/service.ts` enforces, so a valid parse is a valid
+// row.
+export const ASK_PEOPLE_TOOL = 'ask_people';
+
+const ASK_PEOPLE_QUESTION_MAX_LENGTH = 300;
+const ASK_PEOPLE_OPTION_MIN = 2;
+const ASK_PEOPLE_OPTION_MAX = 4;
+const ASK_PEOPLE_OPTION_MAX_LENGTH = 40;
+
 // T-1409: the desk tools, offered only when the AI has a cloud computer. The
 // names match the daemon's tool table (`packages/desk/README.md`) and OpenCode's
 // where they overlap (plan §3.3).
@@ -181,6 +192,20 @@ export const RequestActionArgsSchema = struct({
   args: Schema.Record(Schema.String, Schema.Unknown),
 });
 
+// T-1576: the `ask_people` arguments: one question and 2-4 short options. The
+// service trims and validates them again, so this is only the shape check.
+export const AskPeopleArgsSchema = struct({
+  question: Schema.Trim.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(ASK_PEOPLE_QUESTION_MAX_LENGTH),
+  ),
+  options: Schema.mutable(
+    Schema.Array(
+      Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(ASK_PEOPLE_OPTION_MAX_LENGTH)),
+    ),
+  ).check(Schema.isMinLength(ASK_PEOPLE_OPTION_MIN), Schema.isMaxLength(ASK_PEOPLE_OPTION_MAX)),
+});
+
 export type ParsedToolArguments =
   | { ok: true; tool: typeof UPDATE_PERSONA_TOOL; persona: string; summary: string }
   | { ok: true; tool: typeof REVERT_PERSONA_TOOL }
@@ -203,5 +228,6 @@ export type ParsedToolArguments =
       return_format?: string;
     }
   | { ok: true; tool: typeof TASK_STATUS_TOOL; task_id: string }
+  | { ok: true; tool: typeof ASK_PEOPLE_TOOL; question: string; options: string[] }
   | { ok: true; tool: DeskToolName; args: Record<string, unknown> }
   | { ok: false; reason: string };

@@ -16,6 +16,7 @@ import { costOf, modelPricesFor } from '../ai/cost';
 import type { ModelTarget } from '../ai/providers';
 import type { TurnLog } from './log/append';
 import {
+  ASK_PEOPLE_TOOL,
   DELEGATE_TOOL,
   MEMORY_ZOOM_TOOL,
   RECALL_TOOL,
@@ -61,6 +62,9 @@ export type ValidToolCall =
       returnFormat?: string;
     }
   | { id: string; tool: typeof TASK_STATUS_TOOL; taskId: string }
+  // T-1576: `ask_people` asks the people in a group room one question with 2-4
+  // reply options. Only offered when a person triggered the turn.
+  | { id: string; tool: typeof ASK_PEOPLE_TOOL; question: string; options: string[] }
   // T-1409: the desk tools. `args` is the already-validated argument object;
   // the daemon validates it again.
   | { id: string; tool: DeskToolName; args: Record<string, unknown> };

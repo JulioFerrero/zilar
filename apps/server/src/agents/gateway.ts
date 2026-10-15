@@ -159,6 +159,9 @@ export function createAgentGateway(
     sessionIsLive,
     pumpRoom: (session, roomJid) => pumpRoom(session, roomJid),
     secretsFor,
+    // T-1576: the `ask_people` runner posts its card through the same live
+    // send wrapper the other runs use.
+    liveSendMessage,
   });
 
   // T-0540 (plan §3, G7): the DM turn lives in `agents/gateway/dm-turn.ts`.

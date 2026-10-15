@@ -52,6 +52,10 @@ export interface RequestActionContext {
   triggerId: string;
   isStillAllowed: () => Promise<boolean>;
   allowActions: boolean;
+  /** T-1576: true only when a person (not an AI handoff/delegation) triggered
+   * the turn, so `ask_people` is offered. When false, an improvised call gets
+   * the same `invalid: unknown tool` as any other unadvertised tool. */
+  askPeople: boolean;
   /** T-0482: the AI ids in this room that may receive a delegation. Empty
    * when this AI may not delegate or no accepting AI is present, which makes
    * both delegation tools answer `invalid: unknown tool`. */

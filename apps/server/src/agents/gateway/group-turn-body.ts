@@ -198,6 +198,10 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     const allowedForAction = triggerRole === 'owner' || triggerRole === 'admin';
     const actionsList = deps.actions?.listActions() ?? [];
     const allowActions = allowedForAction && actionsList.length > 0;
+    // T-1576: `ask_people` is offered only when a person triggered the turn. An
+    // AI-to-AI handoff or a `delegate`-queued trigger is not the people in the
+    // room, so those turns never get the question tool.
+    const askPeople = trigger.handoff !== true;
     // T-0482: offer the delegation tools only when this AI may delegate and
     // at least one accepting AI is in the room. The target list is the id
     // and room nick of each accepting session.
@@ -211,6 +215,8 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     const groupTools = buildGroupTools(allowedForAction ? actionsList : [], delegateTargets, {
       // T-1409: the desk tools ride the same flag as their executor.
       desk: deskEnabled,
+      // T-1576: the question tool rides the same flag as its executor branch.
+      askPeople,
     });
     // The re-check callback runs at tool-execution time. A `plain
     // member` turn never offers `request_action`, so this never fires for
@@ -280,6 +286,7 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
             triggerId: trigger.id,
             isStillAllowed,
             allowActions,
+            askPeople,
             delegateTargetIds: new Set(delegateTargets?.map((entry) => entry.id) ?? []),
           },
           deskEnabled

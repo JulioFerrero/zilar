@@ -1,5 +1,6 @@
 import {
   ACTION_NAME_MAX_LENGTH,
+  ASK_PEOPLE_TOOL,
   DELEGATE_TOOL,
   MEMORY_ZOOM_TOOL,
   PERSONA_MAX_LENGTH,
@@ -201,6 +202,36 @@ export function buildDelegateTool(
   };
 }
 
+// T-1576: the `ask_people` tool definition, offered only when a person (not
+// another AI) triggered the turn. The model asks one decision question and
+// gives 2-4 short options; the card's chips let people answer with one tap, but
+// a free reply is still allowed.
+export const ASK_PEOPLE_TOOL_DEF: ChatToolDefinition = {
+  type: 'function',
+  function: {
+    name: ASK_PEOPLE_TOOL,
+    description:
+      'Ask the people in this room to decide something only they can decide. Offer ' +
+      '2-4 short options for the likely answers: they can tap one, and a free reply ' +
+      'is still allowed. Ask one question at a time and never ask the same thing ' +
+      'twice.',
+    parameters: {
+      type: 'object',
+      properties: {
+        question: { type: 'string', minLength: 1, maxLength: 300 },
+        options: {
+          type: 'array',
+          items: { type: 'string', minLength: 1, maxLength: 40 },
+          minItems: 2,
+          maxItems: 4,
+        },
+      },
+      required: ['question', 'options'],
+      additionalProperties: false,
+    },
+  },
+};
+
 // The `task_status` tool definition, the same for every room that offers the
 // delegation tools: it reads one delegation row for the two AIs involved.
 export const TASK_STATUS_TOOL_DEF: ChatToolDefinition = {
@@ -247,11 +278,12 @@ export function buildTools(
 // T-0482: when `delegateTargets` is non-empty (the AI may delegate and at
 // least one accepting AI is in the room) `delegate` and `task_status` are
 // appended. Without targets the output is unchanged. T-1409: `opts.desk`
-// appends the seven desk tools when the AI has a cloud computer.
+// appends the seven desk tools when the AI has a cloud computer. T-1576:
+// `opts.askPeople` appends `ask_people` when a person triggered the turn.
 export function buildGroupTools(
   actions: ReadonlyArray<{ name: string; description: string }>,
   delegateTargets?: ReadonlyArray<{ id: string; name: string }>,
-  opts?: { desk?: boolean },
+  opts?: { desk?: boolean; askPeople?: boolean },
 ): ChatToolDefinition[] {
   const base =
     actions.length === 0 ? [...MEMORY_TOOLS] : [...MEMORY_TOOLS, buildRequestActionTool(actions)];
@@ -259,5 +291,7 @@ export function buildGroupTools(
     delegateTargets === undefined || delegateTargets.length === 0
       ? base
       : [...base, buildDelegateTool(delegateTargets), TASK_STATUS_TOOL_DEF];
-  return opts?.desk === true ? [...withDelegation, ...deskToolDefinitions()] : withDelegation;
+  const withAskPeople =
+    opts?.askPeople === true ? [...withDelegation, ASK_PEOPLE_TOOL_DEF] : withDelegation;
+  return opts?.desk === true ? [...withAskPeople, ...deskToolDefinitions()] : withAskPeople;
 }

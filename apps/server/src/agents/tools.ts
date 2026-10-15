@@ -7,6 +7,7 @@
 // working with the same names and kinds.
 export {
   ACTION_NAME_MAX_LENGTH,
+  ASK_PEOPLE_TOOL,
   BASH_TOOL,
   DELEGATE_TOOL,
   DESK_TOOL_NAMES,
@@ -26,6 +27,7 @@ export {
   TASK_STATUS_TOOL,
   UPDATE_PERSONA_TOOL,
   WRITE_TOOL,
+  AskPeopleArgsSchema,
   BashArgsSchema,
   DelegateArgsSchema,
   EditArgsSchema,
@@ -50,6 +52,7 @@ export { TOOL_NAME_MAX_LENGTH, parseToolArguments, safeToolName } from './tools/
 export type { ChatToolDefinition } from './tools/definitions';
 export { deskToolDefinitions } from './tools/desk-definitions';
 export {
+  ASK_PEOPLE_TOOL_DEF,
   MEMORY_TOOLS,
   PERSONA_TOOLS,
   TASK_STATUS_TOOL_DEF,

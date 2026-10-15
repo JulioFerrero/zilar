@@ -125,7 +125,10 @@ export async function createQuestion(
   return created;
 }
 
-// Records the posted card's stanza id, once. Returns whether the row changed.
+// Records the posted card's stanza id, once. T-1576: only a row still `open`
+// is stamped — a question answered or closed before the card went out keeps a
+// null message id, so `findOpenQuestionByMessage` can never match its reply.
+// Returns whether the row changed.
 export async function setQuestionMessageId(
   db: ServerDatabase,
   id: string,
@@ -137,7 +140,27 @@ export async function setQuestionMessageId(
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<{ id: string }>`UPDATE ai_questions
         SET message_id = ${messageId}
-        WHERE id = ${id} AND message_id IS NULL
+        WHERE id = ${id} AND message_id IS NULL AND status = 'open'
+        RETURNING id`;
+    }),
+  );
+  return updated.length > 0;
+}
+
+// Refunds the cap slot for a card that never went out. The send failed after
+// `createQuestion` wrote the row, so it sits `open` with a null message id —
+// invisible to every read, but still counted by `createQuestion`'s per-AI cap
+// until it expires. Marking it expired frees the slot. Only an unstamped row
+// is touched: a stamped row has a visible card. Returns whether the row
+// changed.
+export async function expireQuestion(db: ServerDatabase, id: string): Promise<boolean> {
+  const updated = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`UPDATE ai_questions
+        SET status = 'expired'
+        WHERE id = ${id} AND status = 'open' AND message_id IS NULL
         RETURNING id`;
     }),
   );

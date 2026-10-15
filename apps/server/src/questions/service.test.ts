@@ -8,6 +8,7 @@ import { HttpError } from '../errors';
 import {
   answerQuestion,
   createQuestion,
+  expireQuestion,
   findOpenQuestionByMessage,
   listOpenQuestions,
   MAX_OPEN_QUESTIONS_PER_AI,
@@ -100,6 +101,54 @@ describe('questions service', () => {
     expect(await answerQuestion(context.db, row.id, { answer: 'Yes', answeredBy: 'user-1' })).toBe(
       false,
     );
+  });
+
+  it('does not stamp a closed row', async () => {
+    const aiId = await seedAiId();
+    const row = await createQuestion(context.db, {
+      aiId,
+      roomJid: 'room@rooms.zilar.localhost',
+      question: 'Ship it?',
+      options: ['Yes', 'No'],
+    });
+    // Answered before the card went out: the row is no longer open.
+    expect(await answerQuestion(context.db, row.id, { answer: 'Yes', answeredBy: 'user-1' })).toBe(
+      true,
+    );
+
+    expect(await setQuestionMessageId(context.db, row.id, randomUUID())).toBe(false);
+    const [stored] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ messageId: string | null }>`SELECT message_id FROM ai_questions
+          WHERE id = ${row.id}`;
+      }),
+    );
+    expect(stored?.messageId).toBeNull();
+  });
+
+  it('expires an unposted open row so it stops counting against the cap', async () => {
+    const aiId = await seedAiId();
+    const row = await createQuestion(context.db, {
+      aiId,
+      roomJid: 'room@rooms.zilar.localhost',
+      question: 'Which ship date?',
+      options: ['Friday', 'Monday'],
+    });
+
+    expect(await expireQuestion(context.db, row.id)).toBe(true);
+    expect(await questionStatus(context, row.id)).toBe('expired');
+
+    // A stamped row has a visible card and is left alone.
+    const stamped = await createQuestion(context.db, {
+      aiId,
+      roomJid: 'room@rooms.zilar.localhost',
+      question: 'And this one?',
+      options: ['Yes', 'No'],
+    });
+    await setQuestionMessageId(context.db, stamped.id, randomUUID());
+    expect(await expireQuestion(context.db, stamped.id)).toBe(false);
+    expect(await questionStatus(context, stamped.id)).toBe('open');
   });
 
   it('refuses a question with too few or too many options', async () => {
