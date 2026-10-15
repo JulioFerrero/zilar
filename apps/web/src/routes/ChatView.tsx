@@ -303,7 +303,19 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
         )}
         {panel === 'ai' && chat.isAI && <AiPanel chat={chat} onClose={() => setPanel(undefined)} />}
         {panel === 'group' && groupChat !== undefined && chat.chatKind !== 'channel' && (
-          <GroupPanel chat={groupChat} onClose={() => setPanel(undefined)} />
+          <GroupPanel
+            key={`group:${groupChat.id}`}
+            chat={groupChat}
+            onClose={() => setPanel(undefined)}
+            onSearch={() => {
+              setPanel(undefined);
+              startChatSearch();
+            }}
+            onOpenMedia={() => {
+              setPanel(undefined);
+              setMediaOpen(true);
+            }}
+          />
         )}
         {panel === 'topic' && chat.topic !== undefined && chat.chatKind !== 'channel' && (
           <TopicPanel

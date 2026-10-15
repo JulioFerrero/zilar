@@ -1,7 +1,7 @@
 import type { ChatSummary } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { Image, X } from 'lucide-react';
+import { Image } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { CreatedInviteLink, GroupAi, GroupInviteLink, GroupRole, PublicAi } from '@/lib/api';
 import { createGroupInviteLink, revokeGroupInviteLink } from '@/lib/api';
@@ -10,14 +10,14 @@ import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { GroupMembersSection } from './GroupMembersSection';
+import { GroupInfoPage } from './group-info/GroupInfoPage';
+import { GROUP_INFO_TITLES, GroupInfoRoot } from './group-info/GroupInfoRoot';
+import type { GroupInfoPageId } from './group-info/GroupInfoRoot';
 import { ActivitySection } from './ais/AiActivity';
 import { AiMemoryDialog } from './ais/AiMemoryDialog';
 import { AlwaysAllowedList } from './approvals/AlwaysAllowedList';
-import { PinsSection } from './PinsPanel';
 import { ChatBackgroundDialog } from './ChatBackgroundDialog';
 import { FieldError } from './ais/AiPageShell';
-import { EntityAvatar } from './EntityAvatar';
-import { Button } from './ui/button';
 import { ListRow } from './ui/list-row';
 import { Sheet } from './ui/sheet';
 import { StateMessage } from './ui/state-message';
@@ -33,11 +33,23 @@ import { apiStep, loadLinks, loadRoles, messageOf, rolesViewOf } from './panels/
 import type { PanelFailure } from './panels/groupPanelOps';
 
 /**
- * The group info panel: the people, the AIs (with their owner), add one of my
- * AIs, remove one. It slides in from the right on wide screens and fills the
- * screen on narrow ones, opened with `?panel=group` (T-0055).
+ * The group info panel (T-1494): a root page with the picture, the member count
+ * and the Mute / Search / Add keys over three grouped lists, and one subpage per
+ * row holding the sections that used to stack in a single scroll. It slides in
+ * from the right on wide screens and fills the screen on narrow ones, opened
+ * with `?panel=group` (T-0055).
  */
-export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () => void }) {
+export function GroupPanel({
+  chat,
+  onClose,
+  onSearch,
+  onOpenMedia,
+}: {
+  chat: ChatSummary;
+  onClose: () => void;
+  onSearch: () => void;
+  onOpenMedia: () => void;
+}) {
   const storeApi = useChatStoreApi();
 
   const info = useChatSelector((s) => s.groupInfo(chat.id));
@@ -55,6 +67,9 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
   const [memoryAi, setMemoryAi] = useState<{ id: string; name: string } | undefined>(undefined);
   /** T-0466: the manager-only group background dialog. */
   const [backgroundOpen, setBackgroundOpen] = useState(false);
+  /** T-1494: the open subpage, and whether the members page opens its picker. */
+  const [page, setPage] = useState<GroupInfoPageId>('root');
+  const [pickerOnMount, setPickerOnMount] = useState(false);
 
   // T-0115: invite links for owners/admins. The list carries hints, never
   // tokens; the created URL is shown once with a Copy button.
@@ -147,189 +162,208 @@ export function GroupPanel({ chat, onClose }: { chat: ChatSummary; onClose: () =
   // `title` is the topic name ("General"), so show the group title instead.
   const panelTitle = chat.groupTitle ?? chat.title;
 
+  const openPage = (next: GroupInfoPageId): void => {
+    setPickerOnMount(false);
+    setPage(next);
+  };
+
+  // The root's Add key: the members page, with the picker already open.
+  const openMembersWithPicker = (): void => {
+    setPickerOnMount(true);
+    setPage('members');
+  };
+
   return (
     <Sheet open onClose={onClose} ariaLabel={`${panelTitle} info`}>
-      <header className="flex shrink-0 items-center gap-3 border-b border-divider p-4">
-        <EntityAvatar
-          chat={{ id: chat.id, title: panelTitle, avatarUrl: chat.avatarUrl }}
-          size={44}
+      {page === 'root' ? (
+        <GroupInfoRoot
+          chat={chat}
+          title={panelTitle}
+          memberCount={memberCount}
+          aisCount={info?.ais.length ?? 0}
+          linksCount={isManager ? links.length : undefined}
+          isManager={isManager}
+          onClose={onClose}
+          onSearch={onSearch}
+          onOpenMedia={onOpenMedia}
+          onOpenPage={openPage}
+          onAddMembers={openMembersWithPicker}
         />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[16px] font-semibold">{panelTitle}</div>
-          <p className="text-[13px] text-muted-foreground">
-            {memberCount} {memberCount === 1 ? 'member' : 'members'}
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-lg"
-          aria-label="Close group panel"
-          onClick={onClose}
-          className="shrink-0 rounded-full text-muted-foreground"
+      ) : (
+        <GroupInfoPage
+          title={GROUP_INFO_TITLES[page]}
+          onBack={() => setPage('root')}
+          onClose={onClose}
         >
-          <X className="size-5" aria-hidden="true" />
-        </Button>
-      </header>
+          {info === undefined ? (
+            <StateMessage kind="loading" size="inline" title="Loading…" />
+          ) : (
+            <>
+              {page === 'members' && (
+                <>
+                  <GroupMembersSection
+                    chatId={chat.id}
+                    info={info}
+                    me={me}
+                    rolesByUser={rolesByUser}
+                    onClose={onClose}
+                    openPickerOnMount={pickerOnMount}
+                  />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-        {info === undefined && <StateMessage kind="loading" size="inline" title="Loading…" />}
+                  {/* T-0116: custom group roles — managers only. Everyone sees
+                        the chips next to the member names above. */}
+                  {isManager && (
+                    <GroupRolesSection
+                      groupId={info.id}
+                      members={info.members.map((member) => ({
+                        userId: member.userId,
+                        name: member.name,
+                        ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
+                      }))}
+                      rolesState={rolesState}
+                      onReload={refreshRoles}
+                    />
+                  )}
+                </>
+              )}
 
-        {info !== undefined && (
-          <>
-            {/* T-0165: the group's picture, for owners and admins. */}
-            {isManager && (
-              <GroupPictureSection
-                groupId={info.id}
-                title={info.title}
-                currentUrl={info.avatarUrl}
-                chatId={chat.id}
-              />
-            )}
-            <GroupMembersSection
-              chatId={chat.id}
-              info={info}
-              me={me}
-              rolesByUser={rolesByUser}
-              onClose={onClose}
-            />
+              {page === 'ais' && (
+                <>
+                  <GroupAiSection
+                    ais={info.ais}
+                    chatId={chat.id}
+                    ownerNameOf={ownerName}
+                    canRemove={(ai) => ai.ownerId === me || isManager}
+                    isManager={isManager}
+                    eligibleAis={eligibleAis}
+                    pickerChoices={pickerChoices}
+                    onOpenPicker={() => setPickerChoices(eligibleAis)}
+                    onClosePicker={() => setPickerChoices(undefined)}
+                    onOpenMemory={(ai) => setMemoryAi(ai)}
+                    onError={setErrorMessage}
+                  />
 
-            {/* T-0116: custom group roles — managers only. Everyone sees
-                  the chips next to the member names above. */}
-            {isManager && info !== undefined && (
-              <GroupRolesSection
-                groupId={info.id}
-                members={info.members.map((member) => ({
-                  userId: member.userId,
-                  name: member.name,
-                  ...(member.avatarUrl === undefined ? {} : { avatarUrl: member.avatarUrl }),
-                }))}
-                rolesState={rolesState}
-                onReload={refreshRoles}
-              />
-            )}
+                  {memoryAi !== undefined && (
+                    <AiMemoryDialog
+                      chat={chat.id}
+                      aiId={memoryAi.id}
+                      aiName={memoryAi.name}
+                      onClose={() => setMemoryAi(undefined)}
+                    />
+                  )}
 
-            <GroupAiSection
-              ais={info.ais}
-              chatId={chat.id}
-              ownerNameOf={ownerName}
-              canRemove={(ai) => ai.ownerId === me || isManager}
-              isManager={isManager}
-              eligibleAis={eligibleAis}
-              pickerChoices={pickerChoices}
-              onOpenPicker={() => setPickerChoices(eligibleAis)}
-              onClosePicker={() => setPickerChoices(undefined)}
-              onOpenMemory={(ai) => setMemoryAi(ai)}
-              onError={setErrorMessage}
-            />
+                  {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
+                </>
+              )}
 
-            {memoryAi !== undefined && (
-              <AiMemoryDialog
-                chat={chat.id}
-                aiId={memoryAi.id}
-                aiName={memoryAi.name}
-                onClose={() => setMemoryAi(undefined)}
-              />
-            )}
-
-            {/* T-0086: room activity for owners and admins. Plain members
-                  get no section and no request is made. The section handles
-                  its own load / error states; a failure here cannot break
-                  the rest of the panel. */}
-            {isManager && <ActivitySection scope={{ groupId: info.id }} />}
-
-            {/* T-0100: the standing rules for this group, same visibility
-                  as Activity — owners and admins only. */}
-            {isManager && <AlwaysAllowedList scope={{ groupId: info.id }} />}
-
-            {/* T-0107: tools and routines of the group (General). Plain
-                  members read; managers get the actions. */}
-            <ToolsSection
-              scope={{ groupId: info.id }}
-              scopeKey={`group:${info.id}`}
-              canManage={isManager}
-            />
-            <RoutinesSection
-              scope={{ groupId: info.id }}
-              scopeKey={`group-routines:${info.id}`}
-              canManage={isManager}
-            />
-
-            <PinsSection
-              chatId={chat.id}
-              onOpen={() => storeApi.getState().setPinsPanel(chat.id)}
-            />
-
-            {/* T-0115: shareable invite links, same visibility —
-                  owners and admins only. */}
-            {isManager && (
-              <InviteLinksSection
-                links={links}
-                busy={linksBusy}
-                error={linksError}
-                created={createdLink === undefined ? undefined : { url: createdLink.url }}
-                onCreate={(input) => createLink(input)}
-                onRevoke={revokeLink}
-                onDismissCreated={() => setCreatedLink(undefined)}
-              />
-            )}
-
-            {/* T-0111: "Members can create topics", same visibility —
-                  owners and admins only. */}
-            {isManager && (
-              <GroupTopicSetting chatId={chat.id} canCreateTopics={info.membersCanCreateTopics} />
-            )}
-
-            {/* T-0478: the AI listener switch and eagerness, same visibility —
-                  owners and admins only. */}
-            {isManager && (
-              <GroupListenerSetting
-                chatId={chat.id}
-                enabled={info.listener?.enabled === true}
-                available={info.listener?.available === true}
-                eagerness={info.listener?.eagerness ?? 'normal'}
-              />
-            )}
-
-            {/* T-0466: the group's shared background, same visibility —
-                  owners and admins only. */}
-            {isManager && (
-              <section aria-label="Group background" className="px-2">
-                <ListRow
-                  icon={<Image />}
-                  title="Group background"
-                  chevron
-                  onClick={() => setBackgroundOpen(true)}
+              {/* T-0115: shareable invite links, owners and admins only. */}
+              {page === 'links' && isManager && (
+                <InviteLinksSection
+                  links={links}
+                  busy={linksBusy}
+                  error={linksError}
+                  created={createdLink === undefined ? undefined : { url: createdLink.url }}
+                  onCreate={(input) => createLink(input)}
+                  onRevoke={revokeLink}
+                  onDismissCreated={() => setCreatedLink(undefined)}
                 />
-              </section>
-            )}
+              )}
 
-            {/* T-0164: public visibility with a handle — the owner only.
-                  Going private removes the group from Explore at once;
-                  going public puts it in the directory with one tap join. */}
-            {isOwner && (
-              <VisibilitySection
-                chatId={chat.id}
-                groupId={info.id}
-                visibility={info.visibility ?? 'private'}
-                handle={info.handle ?? null}
-                title={info.title}
-              />
-            )}
+              {/* T-0107: tools and routines of the group (General). Plain
+                    members read; managers get the actions. */}
+              {page === 'tools' && (
+                <>
+                  <ToolsSection
+                    scope={{ groupId: info.id }}
+                    scopeKey={`group:${info.id}`}
+                    canManage={isManager}
+                  />
+                  <RoutinesSection
+                    scope={{ groupId: info.id }}
+                    scopeKey={`group-routines:${info.id}`}
+                    canManage={isManager}
+                  />
+                </>
+              )}
 
-            {errorMessage !== '' && <FieldError>{errorMessage}</FieldError>}
+              {/* T-0086: room activity, owners and admins only. The section
+                    handles its own load / error states. */}
+              {page === 'activity' && isManager && <ActivitySection scope={{ groupId: info.id }} />}
 
-            {isManager && info !== undefined && (
-              <ChatBackgroundDialog
-                chat={chat}
-                groupId={info.id}
-                open={backgroundOpen}
-                onClose={() => setBackgroundOpen(false)}
-              />
-            )}
-          </>
-        )}
-      </div>
+              {/* T-0100: the standing rules for this group, owners and admins
+                    only. */}
+              {page === 'allowed' && isManager && (
+                <AlwaysAllowedList scope={{ groupId: info.id }} />
+              )}
+
+              {page === 'settings' && (
+                <>
+                  {/* T-0165: the group's picture, for owners and admins. */}
+                  {isManager && (
+                    <GroupPictureSection
+                      groupId={info.id}
+                      title={info.title}
+                      currentUrl={info.avatarUrl}
+                      chatId={chat.id}
+                    />
+                  )}
+
+                  {/* T-0111: "Members can create topics", managers only. */}
+                  {isManager && (
+                    <GroupTopicSetting
+                      chatId={chat.id}
+                      canCreateTopics={info.membersCanCreateTopics}
+                    />
+                  )}
+
+                  {/* T-0478: the AI listener switch and eagerness, managers
+                        only. */}
+                  {isManager && (
+                    <GroupListenerSetting
+                      chatId={chat.id}
+                      enabled={info.listener?.enabled === true}
+                      available={info.listener?.available === true}
+                      eagerness={info.listener?.eagerness ?? 'normal'}
+                    />
+                  )}
+
+                  {/* T-0466: the group's shared background, managers only. */}
+                  {isManager && (
+                    <section aria-label="Group background" className="px-2">
+                      <ListRow
+                        icon={<Image />}
+                        title="Group background"
+                        chevron
+                        onClick={() => setBackgroundOpen(true)}
+                      />
+                    </section>
+                  )}
+
+                  {/* T-0164: public visibility with a handle — the owner only. */}
+                  {isOwner && (
+                    <VisibilitySection
+                      chatId={chat.id}
+                      groupId={info.id}
+                      visibility={info.visibility ?? 'private'}
+                      handle={info.handle ?? null}
+                      title={info.title}
+                    />
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </GroupInfoPage>
+      )}
+
+      {isManager && info !== undefined && (
+        <ChatBackgroundDialog
+          chat={chat}
+          groupId={info.id}
+          open={backgroundOpen}
+          onClose={() => setBackgroundOpen(false)}
+        />
+      )}
     </Sheet>
   );
 }

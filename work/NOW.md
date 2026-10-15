@@ -17,13 +17,38 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1493: the Stop pause is saved (migration 0062, `topics.follow_paused_at`, loaded at gateway start).
   - After both merge, the lead installs a fresh build on Julio's phone (it is connected).
 - **Group info canvas approved** (Julio: "looks right"). After his review the keys use the kit sizes and no list clips.
-  - Boards and README: `docs/design/mockups/group-info/`, untracked; they ride T-1494.
+  - Boards and README: committed on T-1494's branch (`docs/design/mockups/group-info/`).
   - **More** (Julio): a menu with Group background (managers) and Delete group (owner). The red bottom row is Leave group, for non-owners.
   - **Web plan:**
-    - T-1494, step 1: the root page and subpages, the Mute/Search/Add keys, and a shared `PanelKey` that ContactPanel uses too. Spec ready; it launches when a slot frees.
+    - T-1494, step 1, merged: the root page and subpages, the Mute/Search/Add keys, and a shared `PanelKey` that ContactPanel uses too. Headless check passed at 1280 and 390 px. To fix in step 2 (older bug): one member row on the Members page shows no name.
     - Step 2: Leave on the root, More, and the member rows with icons and a ⋮ menu.
     - Step 3: the channel panel and Subscribers.
   - **Mobile twins:** specced in the same batch, launched when Julio is away from the PC.
+- **Stickers decisions (Julio, morning):**
+  - every pack has a link, `chat.zilar.app/stickers/<packId>`, and a Share key; anyone signed in who has the link can open it and add it;
+  - `.webm` video stickers are accepted and converted on the server to animated WebP, which moves and loops;
+  - the phone's sticker renderer moves to `expo-image`.
+- **Stickers canvas updated:**
+  - real sticker art; kit key sizes; Share in both menus;
+  - new boards: Pack link (web and phone) and New pack (web and phone).
+  - **New pack** is a grid editor: an Add tile for photos, GIFs and videos; a "moves" badge; a converting state; an error tile; and an emoji per tile.
+- **Empty chat canvas (Julio: no Telegram-style greeting sticker, simpler):** the empty DM now shows only the person's avatar, name and @handle, centered like the AI chat. A web twin board was added. Waiting for his OK.
+- **Gap found:** web (`<canvas>`) and phone (`expo-image-manipulator`) re-encode every upload to a still WebP, so a GIF or animated WebP freezes on its first frame today. The phone picker takes images only.
+- **Stickers canvas approved** (Julio: "looks good the sticker part"; videos up to 3 s as drawn).
+  - The boards and README are parked in the job's tmp folder (`parked/stickers/`); they ride the first Stickers task (T-1495) into `docs/design/mockups/stickers/`.
+  - **T-1495 (server: pack links), spec-check passed, waiting for a slot.** Imported Telegram packs keep today's rule (`imported_private`, `packs.ts:141`): no link, owner only.
+    - a new `GET /sticker-packs/:id` returns any pack by id, with the owner's handle and `inPanel`;
+    - `requireVisiblePack` lets a private pack be added by id; Discover still lists shared packs only;
+    - tests cover the permission change.
+  - **T-1496 (server: moving stickers), spec-check passed, waiting for a slot:**
+    - GIF, WebM, MP4 and MOV are converted with ffmpeg to an animated WebP that loops (alpha kept, at most 3 s, 512 px, 512 KiB);
+    - the input cap is 4 MiB; at most 2 conversions run at once;
+    - `runCommand` moves from `voice/engine.ts` to `media/run-command.ts`.
+    - The Mac's Homebrew ffmpeg has no WebP encoder; before merge, the lead checks the exact arguments in the live container (needs Julio's OK). The live image has ffmpeg 8.0.1 with `libwebp_anim` and the VP8/VP9 decoders.
+  - **Next specs:**
+    - Telegram importer: keep `.webm` (split `stickers/telegram.ts` first; it is at 399 lines);
+    - web: the link page, Share, the New pack grid, and upload without flattening;
+    - phone: `expo-image`, the link page plus the `/stickers/` app link, the New pack grid, and the video picker.
 - **New AI waves are done:**
   - T-1445: mobile New AI;
   - T-1469 to T-1475: the follow-ups (key cleanup, OpenAI-compatible label, partial notice, the mobile Add key sheet, the provider chip);

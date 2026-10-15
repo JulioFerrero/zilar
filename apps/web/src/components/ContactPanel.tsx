@@ -10,7 +10,6 @@ import {
   MessageCircle,
   Search,
   X,
-  type LucideIcon,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import type { HandleProfile } from '@/lib/api';
@@ -29,6 +28,7 @@ import { EntityAvatar } from './EntityAvatar';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Button } from './ui/button';
 import { ListRow } from './ui/list-row';
+import { PanelKey } from './ui/panel-key';
 import { Sheet } from './ui/sheet';
 import { useToast } from './ui/toast';
 
@@ -39,34 +39,6 @@ const UNBLOCK_ERROR = 'Could not unblock. Try again.';
 
 /** A failed panel action; `message` is the fixed sentence the panel shows. */
 class ContactFailure extends Data.TaggedError('ContactFailure')<{ readonly message: string }> {}
-
-/** One round key of the action row: an icon tile with its label under it. */
-function ActionButton({
-  label,
-  icon: Icon,
-  onClick,
-  disabled,
-}: {
-  label: string;
-  icon: LucideIcon;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      disabled={disabled}
-      onClick={onClick}
-      className="flex min-w-[68px] flex-col items-center gap-2 rounded-xl px-2 py-1 focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:outline-none disabled:opacity-50"
-    >
-      <span className="flex size-12 items-center justify-center rounded-full bg-surface-raised">
-        <Icon className="size-5" aria-hidden="true" />
-      </span>
-      <span className="text-[12px] text-muted-foreground">{label}</span>
-    </button>
-  );
-}
 
 /** One grouped info row: a small muted label over the value. */
 function InfoRow({ label, children }: { label: string; children: ReactNode }) {
@@ -241,14 +213,14 @@ export function ContactPanel({
         </div>
 
         <div className="flex flex-wrap justify-center gap-4">
-          <ActionButton label="Message" icon={MessageCircle} onClick={startMessage} />
-          <ActionButton
+          <PanelKey label="Message" icon={MessageCircle} onClick={startMessage} />
+          <PanelKey
             label={muted ? 'Unmute' : 'Mute'}
             icon={muted ? BellOff : Bell}
             onClick={toggleMute}
             disabled={muteBusy}
           />
-          <ActionButton label="Search" icon={Search} onClick={onSearch} />
+          <PanelKey label="Search" icon={Search} onClick={onSearch} />
         </div>
 
         {(handle !== undefined || (bio !== undefined && bio !== '')) && (

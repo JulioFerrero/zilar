@@ -26,12 +26,15 @@ export function GroupMembersSection({
   me,
   rolesByUser,
   onClose,
+  openPickerOnMount = false,
 }: {
   chatId: string;
   info: GroupDetail;
   me: string | undefined;
   rolesByUser: Map<string, GroupRole[]>;
   onClose: () => void;
+  /** T-1494: the root's Add key lands here with the picker already open. */
+  openPickerOnMount?: boolean;
 }) {
   const storeApi = useChatStoreApi();
   const navigate = useNavigate();
@@ -40,7 +43,7 @@ export function GroupMembersSection({
   const isManager = meRole === 'owner' || meRole === 'admin';
   const isOwner = meRole === 'owner';
 
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(openPickerOnMount);
   const [selected, setSelected] = useState<string[]>([]);
   const [confirmingId, setConfirmingId] = useState<string | undefined>(undefined);
   const [transferConfirmingId, setTransferConfirmingId] = useState<string | undefined>(undefined);

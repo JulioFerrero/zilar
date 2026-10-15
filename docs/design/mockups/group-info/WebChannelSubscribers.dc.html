@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Channel subscribers, web</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed;text-decoration:none}a:hover{color:#ffffff}
+.key-icon{background:linear-gradient(180deg,#2c2c2c,#151515);border:1px solid #050505;color:#d4d4d4;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.65),0 1px 0 rgba(0,0,0,.95),0 3px 6px -1px rgba(0,0,0,.75)}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.group{background:#111111;border:1px solid #1f1f1f;border-radius:12px}
+.row{display:flex;align-items:center;gap:12px;min-height:56px;padding:0 8px 0 12px;border-bottom:1px solid #1a1a1a;color:#ededed;font-size:14px;box-sizing:border-box;position:relative}
+.orb{width:36px;height:36px;border-radius:999px;flex-shrink:0;box-shadow:0 6px 14px -6px rgba(0,0,0,.9)}
+.more{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;color:#737373}
+.head{font-size:13px;font-weight:600;color:#a1a1a1;padding:0 4px}
+.menu{position:absolute;right:8px;top:48px;z-index:2;width:200px;background:#161616;border:1px solid #2a2a2a;border-radius:12px;padding:4px;box-shadow:0 18px 40px -12px rgba(0,0,0,.9);display:flex;flex-direction:column}
+.item{display:flex;align-items:center;gap:10px;height:38px;padding:0 10px;border-radius:8px;background:transparent;border:0;color:#ededed;font:14px 'Geist',sans-serif;text-align:left}
+.item:hover{background:#1f1f1f}
+.ghost{height:14px;border-radius:7px;background:#161616}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; background: #0a0a0a; display: flex; gap: 12px; padding: 12px; box-sizing: border-box">
+  <div aria-hidden="true" style="width: 300px; border-radius: 16px; background: #0d0d0d; border: 1px solid #1a1a1a; padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px">
+    <div class="ghost" style="width: 70%"></div><div class="ghost" style="width: 55%"></div><div class="ghost" style="width: 80%"></div><div class="ghost" style="width: 60%"></div>
+  </div>
+  <div aria-hidden="true" style="flex-grow: 1; border-radius: 16px; background: #0d0d0d; border: 1px solid #1a1a1a; padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px">
+    <div class="ghost" style="width: 30%; height: 18px"></div>
+    <div class="ghost" style="width: 45%; height: 34px; border-radius: 12px; margin-top: 30px"></div>
+  </div>
+
+  <aside aria-label="Acme Announcements subscribers" style="width: 380px; flex-shrink: 0; border-radius: 16px; background: #0d0d0d; border: 1px solid #1f1f1f; display: flex; flex-direction: column; overflow: hidden">
+    <div style="height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 12px">
+      <a href="WebChannel.dc.html" aria-label="Back to channel info" class="key-icon" style="width: 36px; height: 36px; box-sizing: border-box; border-radius: 10px; display: flex; align-items: center; justify-content: center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>
+      </a>
+      <h2 style="margin: 0; flex-grow: 1; font-size: 16px; font-weight: 600">Subscribers <span class="mono" style="font-size: 13px; font-weight: 400; color: #a1a1a1">120</span></h2>
+      <button type="button" aria-label="Close channel info" class="key-icon" style="width: 36px; height: 36px; box-sizing: border-box; border-radius: 10px; display: flex; align-items: center; justify-content: center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+      </button>
+    </div>
+
+    <div style="flex-grow: 1; padding: 0 12px 12px 12px; display: flex; flex-direction: column; gap: 10px">
+      <label style="display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px; border-radius: 10px; background: #111111; border: 1px solid #1f1f1f">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Search subscribers</span>
+        <input type="search" placeholder="Search" style="flex-grow: 1; min-width: 0; background: transparent; border: 0; outline: none; color: #ededed; font: 14px 'Geist', sans-serif">
+      </label>
+
+      <span class="head">Admins</span>
+      <ul aria-label="Admins" class="group" style="list-style: none; margin: 0; padding: 0">
+        <li class="row">
+          <span class="orb" style="background: radial-gradient(circle at 34% 30%, #e0f2fe 0%, #38bdf8 25%, #2563eb 60%, #172554 100%)" aria-hidden="true"></span>
+          <span style="flex-grow: 1; display: flex; align-items: center; gap: 6px">You
+            <svg role="img" aria-label="Owner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e5b84b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l4 4 5-7 5 7 4-4-2 11H5z"></path></svg>
+          </span>
+        </li>
+        <li class="row" style="border-bottom: 0">
+          <span class="orb" style="background: radial-gradient(circle at 34% 30%, #fef3c7 0%, #fbbf24 25%, #d97706 60%, #451a03 100%)" aria-hidden="true"></span>
+          <span style="flex-grow: 1; display: flex; align-items: center; gap: 6px">Ana
+            <svg role="img" aria-label="Admin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          </span>
+          <button type="button" aria-label="Options for Ana" class="more"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="12" cy="19" r="1.8"></circle></svg></button>
+        </li>
+      </ul>
+
+      <span class="head">Subscribers</span>
+      <ul aria-label="Subscribers" class="group" style="list-style: none; margin: 0; padding: 0">
+        <li class="row" style="border-bottom: 0">
+          <span class="orb" style="background: radial-gradient(circle at 34% 30%, #dcfce7 0%, #4ade80 25%, #16a34a 60%, #052e16 100%)" aria-hidden="true"></span>
+          <span style="flex-grow: 1">Luis</span>
+          <button type="button" aria-label="Options for Luis" aria-expanded="true" class="more" style="background: #1f1f1f; color: #ededed"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="12" cy="19" r="1.8"></circle></svg></button>
+          <div role="menu" aria-label="Luis" class="menu">
+            <button type="button" role="menuitem" class="item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+              Make admin
+            </button>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
