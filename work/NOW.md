@@ -49,10 +49,12 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - **T-1464:** the mobile search field stays centred and unclipped at large fonts.
   - **T-1465:** mobile unknown routes show the Zilar "Page not found" instead of Expo's stock page with its Sitemap link.
 - **Found:** local phone builds reuse Metro's cache, which silently dropped T-1465's new route file from the APK. Clearing `$TMPDIR/metro-cache` fixed it, and T-1467 makes the scripts and the release recipe clear it. **Any APK built locally for Julio must use a clean cache**; CI releases are not affected.
+- **Then:**
+  - **T-1466: `main.ts` split into `startup/`.** It is live at `332501d75` with a clean boot, 0 errors, 0 warnings, and the same route answers.
+  - T-1467: phone builds and the local release recipe clear Metro's cache.
+- **400-line rule:** every source file is now at or under 400 lines except the three lead tooling files (`autopilot.ts` 671, `client.ts` 421, `cli.ts` 414), kept on purpose.
 - **Running:**
-  - T-1445: mobile New AI, last round (error text, orb size guard), then the lead's phone walk;
-  - T-1466: the server `main.ts` split;
-  - T-1467: the Metro cache fix.
+  - T-1445: mobile New AI. The latest round adds double-tap guards on Create and Continue and resets after a failed check. Then the lead's phone walk.
 - **Next:** `main.ts` after `app.ts` deploys cleanly, then the mobile Connections add-key sheet after T-1445.
 - **New canvas for Julio: "Connections"**, https://claude.ai/artifact/FVDHKSMiJaWvjxXx5sa8on. Web and phone, lean:
   - no subtitle and no duplicate heading; "Add key" is the page's primary;

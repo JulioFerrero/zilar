@@ -1,33 +1,19 @@
 // The `lead watch` entry points: the one-shot `--data` child process and the
 // live Ink app. Moved unchanged from `lead/watch.ts` (size split).
 
-import fs from 'node:fs';
 import path from 'node:path';
 import React from 'react';
 import { render as renderInk } from 'ink';
 import { OpencodeCliClient } from '../client.js';
 import { loadGitCache, saveGitCache } from '../collect-snapshot.js';
 import { RealGitRunner } from '../git.js';
+import { findRepoRoot } from '../repo-root.js';
 import { stateFilePath } from '../state.js';
 import { buildView } from './collect.js';
 import { formatClock } from './format.js';
 import type { WatchView } from './view.js';
 
 export const REFRESH_INTERVAL_MS = 10_000;
-
-function findRepoRoot(): string {
-  let dir = path.resolve(process.cwd());
-  for (;;) {
-    if (fs.existsSync(path.join(dir, 'work', 'BOARD.md'))) {
-      return dir;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) {
-      throw new Error('not inside a Zilar checkout (no work/BOARD.md above the cwd)');
-    }
-    dir = parent;
-  }
-}
 
 // One-shot mode used by the watcher's child process: build the view once
 // and print it as a single JSON line. Hidden `--data` flag on `lead watch`.
