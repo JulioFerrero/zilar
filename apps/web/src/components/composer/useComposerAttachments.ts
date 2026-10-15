@@ -303,11 +303,13 @@ export function useComposerAttachments({
     [chatId, onCancelReply, replyTo, storeApi, value],
   );
 
-  // Sends every staged file in order. Two or more photos get one album id
-  // (`urn:zilar:album:0`), each with its `index`, and only the first carries
-  // the caption and the reply. Uploads then run in parallel and the list renders
-  // by `index`. "Send as files" drops the album marker so each photo is its own
-  // message (the app never compresses, so the bytes are the same).
+  // Sends every staged file. Two or more photos get one album id, each with its
+  // `index`, and only the first message sent carries the caption and the reply.
+  // When the album applies the photos go first, in pick order, then the other
+  // files, so a mixed pick (photo, PDF, photo) makes one album instead of two
+  // albums of one. Uploads then run in parallel and the list renders by `index`.
+  // "Send as files" drops the album marker so each photo is its own message (the
+  // app never compresses, so the bytes are the same) and keeps pick order.
   const sendPending = useCallback(
     (options?: SendPendingOptions): void => {
       const store = storeApi.getState();
@@ -315,8 +317,15 @@ export function useComposerAttachments({
       const asFiles = options?.asFiles === true;
       const count = asFiles ? 0 : staged.filter((item) => item.kind === 'image').length;
       const albumId = count >= 2 ? crypto.randomUUID() : undefined;
+      const ordered =
+        albumId === undefined
+          ? staged
+          : [
+              ...staged.filter((item) => item.kind === 'image'),
+              ...staged.filter((item) => item.kind !== 'image'),
+            ];
       let imageIndex = 0;
-      staged.forEach((item, index) => {
+      ordered.forEach((item, index) => {
         const isImage = item.kind === 'image';
         store.sendAttachment(chatId, item.file, {
           ...(index === 0 && caption.length > 0 ? { caption } : {}),

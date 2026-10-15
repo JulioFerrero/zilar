@@ -1548,3 +1548,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1534](T-1534-web-remove-task-strip.md) | Web drops the task strip; link row and Mark as done in info | 2026-10-15 |
 | [T-1525](T-1525-mobile-sticker-motion.md) | Phone sticker upload keeps GIF and video motion | 2026-10-15 |
 | [T-1533](T-1533-mobile-my-packs.md) | Phone Stickers My packs: lean rows and a pack sheet with Share | 2026-10-15 |
+| [T-1541](T-1541-web-album-order.md) | Web sends an album's photos together, then the other files | 2026-10-15 |
