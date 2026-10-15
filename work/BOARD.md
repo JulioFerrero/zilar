@@ -1569,3 +1569,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1553](T-1553-split-avatars-service.md) | Split avatars/service.ts: the byte check and file read move out | 2026-10-15 |
 | [T-1561](T-1561-web-dead-format-limits.md) | Web drops the unused formatLimits | 2026-10-15 |
 | [T-1551](T-1551-mobile-ai-status-line.md) | Phone status line above a topic's composer shows the AIs at work | 2026-10-15 |
+| [T-1558](T-1558-split-build-outgoing.md) | Split build-outgoing.ts: the control stanza builders move out | 2026-10-15 |
