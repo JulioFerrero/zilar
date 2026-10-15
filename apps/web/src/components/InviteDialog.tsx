@@ -36,17 +36,9 @@ export function InviteDialog({ onClose }: { onClose: () => void }) {
       title="Invite a friend"
       description="Send them this link. They join Zilar already connected to you."
       size="sm"
-      actions={
-        <Button type="button" size="lg" onClick={onClose}>
-          Close
-        </Button>
-      }
+      {...(failed ? { error: 'Could not create an invite link. Try again.' } : {})}
     >
-      {failed ? (
-        <p role="alert" className="mt-4 text-[14px] text-danger">
-          Could not create an invite link. Try again.
-        </p>
-      ) : (
+      {failed ? null : (
         <div className="mt-4 flex items-center gap-2 rounded-lg border border-divider bg-muted px-2 py-1.5">
           <span className="min-w-0 flex-1 truncate text-[13px]">{url ?? 'Creating link…'}</span>
           <Button

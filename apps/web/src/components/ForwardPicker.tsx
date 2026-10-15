@@ -83,15 +83,14 @@ export function ForwardPicker({
       open
       onClose={onClose}
       title="Forward"
+      onSubmit={(event) => {
+        event.preventDefault();
+        send();
+      }}
       actions={
-        <>
-          <Button type="button" variant="outline" size="lg" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="button" size="lg" disabled={selected.length === 0} onClick={send}>
-            {selected.length > 1 ? `Send to ${selected.length} chats` : 'Send'}
-          </Button>
-        </>
+        <Button type="submit" size="lg" disabled={selected.length === 0}>
+          {selected.length > 1 ? `Send to ${selected.length} chats` : 'Send'}
+        </Button>
       }
     >
       <SearchField
@@ -99,6 +98,7 @@ export function ForwardPicker({
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Search chats"
         aria-label="Search chats"
+        data-autofocus
         className="mt-3"
       />
       <div className="mt-2">

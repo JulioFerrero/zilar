@@ -256,7 +256,13 @@ export function ChatBackgroundDialog({
   }
 
   return (
-    <Dialog open={open} onClose={close} title={isGroup ? 'Group background' : 'Chat background'}>
+    <Dialog
+      open={open}
+      onClose={close}
+      title={isGroup ? 'Group background' : 'Chat background'}
+      busy={busy}
+      {...(error ? { error: "Couldn't save the background" } : {})}
+    >
       {!isGroup && (
         <SegmentedControl
           options={[
@@ -294,7 +300,7 @@ export function ChatBackgroundDialog({
         onStartUpload={startUpload}
         onChangeDim={changeDim}
       />
-      <div className="mt-4 flex items-center justify-between gap-3">
+      <div className="mt-4">
         <button
           type="button"
           onClick={() => choose(null)}
@@ -302,11 +308,6 @@ export function ChatBackgroundDialog({
         >
           {isGroup ? 'No group background' : 'Use default'}
         </button>
-        {error && (
-          <span role="alert" className="text-[12px] text-danger">
-            Couldn&apos;t save the background
-          </span>
-        )}
       </div>
     </Dialog>
   );

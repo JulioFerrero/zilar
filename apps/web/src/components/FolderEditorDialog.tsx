@@ -110,6 +110,21 @@ export function FolderEditorDialog({
         title={folder === null ? 'New folder' : 'Edit folder'}
         ariaLabel={folder === null ? 'New folder' : `Edit folder ${folder.name}`}
         size="lg"
+        busy={busy}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSave && !busy) {
+            runWrite('save');
+          }
+        }}
+        {...(writeFailure === undefined
+          ? {}
+          : {
+              error:
+                writeFailure._tag === 'FolderDeleteFailed'
+                  ? 'Could not delete the folder. Try again.'
+                  : saveErrorMessage(writeFailure),
+            })}
         actions={
           <>
             {folder !== null && (
@@ -122,24 +137,15 @@ export function FolderEditorDialog({
                 Delete folder
               </Button>
             )}
-            <div className="ml-auto flex gap-2">
-              <Button type="button" variant="ghost" size="lg" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="default"
-                size="lg"
-                disabled={!canSave || busy}
-                onClick={() => {
-                  if (canSave) {
-                    runWrite('save');
-                  }
-                }}
-              >
-                {busy ? 'Saving…' : 'Save'}
-              </Button>
-            </div>
+            <Button
+              type="submit"
+              variant="default"
+              size="lg"
+              className="ml-auto"
+              disabled={!canSave || busy}
+            >
+              {busy ? 'Saving…' : 'Save'}
+            </Button>
           </>
         }
       >
@@ -194,14 +200,6 @@ export function FolderEditorDialog({
           toggle={toggle}
           chats={chats}
         />
-
-        {writeFailure !== undefined && (
-          <p role="alert" className="mt-4 text-[14px] text-danger">
-            {writeFailure._tag === 'FolderDeleteFailed'
-              ? 'Could not delete the folder. Try again.'
-              : saveErrorMessage(writeFailure)}
-          </p>
-        )}
 
         {/* T-1351: the confirm is a React child of the dialog, not a sibling,
             so Base UI nests it and Escape closes only the confirm. */}

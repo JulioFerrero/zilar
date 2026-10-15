@@ -320,20 +320,16 @@ export function GroupMembersSection({
         title="Add members"
         ariaLabel="Add members"
         size="sm"
+        busy={busy}
         actions={
-          <>
-            <Button type="button" variant="ghost" size="lg" disabled={busy} onClick={closePicker}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              size="lg"
-              disabled={selected.length === 0 || busy}
-              onClick={addMembers}
-            >
-              Add
-            </Button>
-          </>
+          <Button
+            type="button"
+            size="lg"
+            disabled={selected.length === 0 || busy}
+            onClick={addMembers}
+          >
+            Add
+          </Button>
         }
       >
         <div className="mt-3">

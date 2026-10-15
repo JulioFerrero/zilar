@@ -51,16 +51,11 @@ export function CropDialog({
       onClose={onClose}
       title="Crop your picture"
       size="sm"
-      dismissable={!busy}
+      busy={busy}
       actions={
-        <>
-          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={onSave} disabled={busy}>
-            {busy ? 'Saving…' : 'Save picture'}
-          </Button>
-        </>
+        <Button type="button" onClick={onSave} disabled={busy}>
+          {busy ? 'Saving…' : 'Save picture'}
+        </Button>
       }
     >
       <div className="flex flex-col items-center gap-3">

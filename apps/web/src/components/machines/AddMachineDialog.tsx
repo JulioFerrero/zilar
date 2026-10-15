@@ -88,25 +88,13 @@ export function AddMachineDialog({ onClose }: { onClose: () => void }) {
 
   const actions =
     status === 'error' ? (
-      <>
-        <Button type="button" variant="ghost" size="lg" onClick={onClose}>
-          Close
-        </Button>
-        <Button type="button" onClick={refresh} size="lg">
-          Try again
-        </Button>
-      </>
-    ) : (status === 'ready' || status === 'expired') && pairing !== null ? (
-      <>
-        {status === 'expired' ? (
-          <Button type="button" onClick={refresh} size="lg">
-            New code
-          </Button>
-        ) : null}
-        <Button type="button" onClick={onClose} size="lg">
-          Done
-        </Button>
-      </>
+      <Button type="button" onClick={refresh} size="lg">
+        Try again
+      </Button>
+    ) : status === 'expired' ? (
+      <Button type="button" onClick={refresh} size="lg">
+        New code
+      </Button>
     ) : undefined;
 
   return (

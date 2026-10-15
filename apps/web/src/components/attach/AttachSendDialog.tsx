@@ -1,5 +1,5 @@
 import { FileText, Film, X } from 'lucide-react';
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import { cn } from '@/lib/utils';
 import type { PendingAttachment } from '@/lib/attachments';
 import { Button } from '../ui/button';
@@ -101,7 +101,6 @@ export function AttachSendDialog({
   onClose: () => void;
 }) {
   const [asFiles, setAsFiles] = useState(false);
-  const captionRef = useRef<HTMLTextAreaElement>(null);
   const first = attachments[0];
 
   const send = (): void => {
@@ -123,16 +122,15 @@ export function AttachSendDialog({
       onClose={onClose}
       title={titleFor(attachments)}
       ariaLabel="Send attachments"
-      initialFocusRef={captionRef}
+      onSubmit={(event) => {
+        event.preventDefault();
+        send();
+      }}
+      {...(error === undefined ? {} : { error })}
       actions={
-        <>
-          <Button type="button" variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={send} disabled={attachments.length === 0}>
-            Send
-          </Button>
-        </>
+        <Button type="submit" disabled={attachments.length === 0}>
+          Send
+        </Button>
       }
     >
       {attachments.length === 0 ? (
@@ -161,7 +159,7 @@ export function AttachSendDialog({
           )}
           <Well className="mt-3 rounded-[10px] px-2 py-1.5">
             <textarea
-              ref={captionRef}
+              data-autofocus
               value={caption}
               onChange={(event) => onCaptionChange(event.target.value)}
               onKeyDown={onCaptionKeyDown}
@@ -175,11 +173,6 @@ export function AttachSendDialog({
             <Checkbox checked={asFiles} onCheckedChange={setAsFiles} />
             Send as files
           </label>
-          {error !== undefined && (
-            <div className="mt-3 text-[12px] text-danger" role="alert">
-              {error}
-            </div>
-          )}
         </div>
       )}
     </Dialog>

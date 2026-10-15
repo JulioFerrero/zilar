@@ -1457,3 +1457,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1440](T-1440-ai-local-time.md) | AIs know the user's local date and time zone | 2026-10-15 |
 | [T-1446](T-1446-web-dialogs-create.md) | Web create dialogs: one close key, Enter submits, step bar | 2026-10-15 |
 | [T-1443](T-1443-mobile-sheets-forms.md) | Mobile sheets on the kit: default close key, one footer primary | 2026-10-15 |
+| [T-1447](T-1447-web-dialogs-other.md) | Web dialogs: no Cancel/Close footer, kit error line and busy | 2026-10-15 |
