@@ -9,6 +9,7 @@ import {
   type RegisteredDevice,
   type Sticker,
   type StickerPack as ContractStickerPack,
+  type StickerPackDetail as ContractStickerPackDetail,
   type TelegramImportResult as ContractTelegramImportResult,
 } from '@zilar/api-contract';
 import { callApi, callApiAbortable } from '@/lib/effect/api-client';
@@ -30,10 +31,24 @@ function toStickerPack(pack: ContractStickerPack): StickerPack {
   return { ...pack, stickers: [...pack.stickers] };
 }
 
+// The pack link (T-1495): a pack plus the owner's handle and whether the
+// caller's panel holds it, as its own page reads it.
+export type StickerPackDetail = Omit<ContractStickerPackDetail, 'stickers'> & {
+  stickers: Sticker[];
+};
+
 export function listStickerPacks(): Promise<StickerPack[]> {
   return callApi((client) => client.stickers.listPacks()).then((body) =>
     body.packs.map(toStickerPack),
   );
+}
+
+/** One pack by id, for its link page; a 404 rejects with an `ApiError`. */
+export function getStickerPack(packId: string): Promise<StickerPackDetail> {
+  return callApi((client) => client.stickers.getPack({ params: { id: packId } })).then((pack) => ({
+    ...pack,
+    stickers: [...pack.stickers],
+  }));
 }
 
 // The contract encodes the trimmed title (the server trimmed it anyway).

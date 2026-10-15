@@ -39,6 +39,9 @@ const IntegrationsPage = lazy(() =>
 const StickersPage = lazy(() =>
   import('./StickersPage').then((m) => ({ default: m.StickersPage })),
 );
+const StickerPackPage = lazy(() =>
+  import('./StickerPackPage').then((m) => ({ default: m.StickerPackPage })),
+);
 const ApprovalsPage = lazy(() =>
   import('./ApprovalsPage').then((m) => ({ default: m.ApprovalsPage })),
 );
@@ -199,6 +202,14 @@ export function AppRoutes() {
           element={
             <RequireAuth>
               <StickersPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/stickers/:packId"
+          element={
+            <RequireAuth>
+              <StickerPackPage />
             </RequireAuth>
           }
         />

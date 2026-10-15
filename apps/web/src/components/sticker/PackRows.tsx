@@ -1,16 +1,12 @@
 import { type ReactNode, useEffect } from 'react';
+import { Link } from 'react-router';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAction } from '@/lib/effect/use-action';
 import type { StickerPack } from '@/lib/api';
 import { PackThumbs, VisibilityBadge, thumbsOf } from './PackThumbs';
-import {
-  type PageSetters,
-  addToPanel,
-  deletePack,
-  removeFromPanel,
-  toggleVisibility,
-} from './pageActions';
+import { PackMenu } from './PackMenu';
+import { type PageSetters, addToPanel, deletePack, removeFromPanel } from './pageActions';
 
 /**
  * A pack I own. Each button has its own action, so two rows (or two buttons)
@@ -33,31 +29,20 @@ export function MyPackRow({
   onDelete: (pack: StickerPack) => void;
   registerDelete: (packId: string, run: () => void) => () => void;
 }) {
-  const [, runVisibility] = useAction<void, void, never>(() => toggleVisibility(pack, setters));
-  const [, runRemove] = useAction<void, void, never>(() => removeFromPanel(pack.id, setters));
   const [, runDelete] = useAction<void, void, never>(() => deletePack(pack.id, setters));
   // The page-level confirm dialog calls this row's own delete action.
   useEffect(() => registerDelete(pack.id, () => runDelete()), [pack.id, registerDelete, runDelete]);
-  const importedShareLocked = pack.importedFrom !== undefined;
-  const shareReasonId = `share-reason-${pack.id}`;
-  const shareButton = (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      onClick={() => runVisibility()}
-      disabled={importedShareLocked}
-      aria-describedby={importedShareLocked ? shareReasonId : undefined}
-    >
-      {pack.visibility === 'server' ? 'Make private' : 'Share'}
-    </Button>
-  );
   return (
     <li className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
       <PackThumbs thumbs={thumbsOf(pack)} />
       <span className="min-w-0 flex-1 basis-40">
         <span className="flex flex-wrap items-center gap-2">
-          <span className="truncate text-[15px] font-medium">{pack.title}</span>
+          <Link
+            to={`/stickers/${pack.id}`}
+            className="truncate text-[15px] font-medium hover:underline"
+          >
+            {pack.title}
+          </Link>
           <VisibilityBadge
             label={
               pack.importedFrom !== undefined || pack.visibility !== 'server' ? 'Private' : 'Shared'
@@ -92,25 +77,7 @@ export function MyPackRow({
         >
           <ChevronDown aria-hidden="true" />
         </Button>
-        {importedShareLocked ? (
-          <span title="Imported packs stay private for personal use" className="inline-flex">
-            {shareButton}
-            <span id={shareReasonId} className="sr-only">
-              Imported packs stay private for personal use
-            </span>
-          </span>
-        ) : (
-          shareButton
-        )}
-        <Button type="button" variant="outline" size="sm" onClick={() => onEdit(pack.id)}>
-          Edit
-        </Button>
-        <Button type="button" variant="outline" size="sm" onClick={() => runRemove()}>
-          Remove from panel
-        </Button>
-        <Button type="button" variant="destructive" size="sm" onClick={() => onDelete(pack)}>
-          Delete
-        </Button>
+        <PackMenu pack={pack} setters={setters} onEdit={onEdit} onDelete={onDelete} />
       </span>
     </li>
   );
@@ -122,7 +89,11 @@ function PackRowShell({ pack, children }: { pack: StickerPack; children: ReactNo
     <li className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2.5">
       <PackThumbs thumbs={thumbsOf(pack)} />
       <span className="min-w-0 flex-1 basis-40">
-        <span className="block truncate text-[15px] font-medium">{pack.title}</span>
+        <span className="block truncate text-[15px] font-medium">
+          <Link to={`/stickers/${pack.id}`} className="hover:underline">
+            {pack.title}
+          </Link>
+        </span>
         <span className="mt-0.5 block text-[13px] text-muted-foreground">
           {pack.stickers.length} sticker{pack.stickers.length === 1 ? '' : 's'}
         </span>

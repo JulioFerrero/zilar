@@ -15,6 +15,7 @@ import {
 } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
+import { getStickerPack, type StickerPackDetail } from '@/lib/api/stickers';
 
 export type PageStatus = 'loading' | 'ready' | 'error';
 
@@ -37,6 +38,16 @@ export interface MoveRequest {
  */
 export function failureText(failure: ApiFailure, fallback: string): string {
   return failure.status === 0 ? fallback : failure.message;
+}
+
+/** The pack link, as copied and shared (T-1495, T-1497). */
+export function stickerPackUrl(packId: string): string {
+  return `${window.location.origin}/stickers/${encodeURIComponent(packId)}`;
+}
+
+/** The pack link as shown: host plus path, without the scheme. */
+export function stickerPackUrlText(packId: string): string {
+  return `${window.location.host}/stickers/${packId}`;
 }
 
 /** Loads the panel and the favorites; both must answer, or the page shows the error. */
@@ -137,6 +148,17 @@ export const removeFromPanel = (packId: string, setters: PageSetters): Effect.Ef
       Effect.sync(() => setters.setActionError(failureText(failure, 'Could not remove the pack'))),
     ),
   );
+
+/** Loads one pack for its link page (T-1497); a 404 fails with `ApiFailure`. */
+export const loadPackDetail = (packId: string): Effect.Effect<StickerPackDetail, ApiFailure> =>
+  fromApi(() => getStickerPack(packId));
+
+/** Adds a pack from its link page; the page shows the in-panel state itself. */
+export const addPackToPanel = (packId: string): Effect.Effect<void, ApiFailure> =>
+  fromApi(() => addStickerPanelPack(packId));
+
+export const removePackFromPanel = (packId: string): Effect.Effect<void, ApiFailure> =>
+  fromApi(() => removeStickerPanelPack(packId));
 
 export const deletePack = (packId: string, setters: PageSetters): Effect.Effect<void> =>
   Effect.sync(() => setters.setActionError('')).pipe(

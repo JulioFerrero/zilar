@@ -1509,3 +1509,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1493](T-1493-save-follow-pause.md) | Save an AI's Stop pause on a followed topic | 2026-10-15 |
 | [T-1495](T-1495-sticker-pack-link.md) | Sticker pack links: open and add any pack by its id | 2026-10-15 |
 | [T-1496](T-1496-sticker-motion-server.md) | Moving stickers: GIF and video become animated WebP | 2026-10-15 |
+| [T-1497](T-1497-web-sticker-pack-page.md) | Web sticker pack link page and pack menu with Share | 2026-10-15 |
