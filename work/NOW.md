@@ -29,7 +29,26 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - It carries tonight's mobile work: New AI; Add key; the new AI chat on top; the one-line placeholder; Reply and Edit focus; the member count; tables at large fonts; the "Page not found" screen; the search field and row fixes at large fonts.
   - Checked: `chat.zilar.app` is in the bundle, and it opens to Sign in on the emulator.
 - **New decision for you:** do AIs count as members? Headers count them now; the topic panel doesn't. The details are under "Decision" below.
-- **New canvas: "Stickers"** (lean pass, web and phone), https://claude.ai/artifact/GiBcaeJcuprSGGFBb3Xc3H. Eight canvases now wait for you: View steps, Connections, Topic status, AI health, Lean settings, Approvals, Empty chat and files, and Stickers.
+- **New canvas: "Stickers"** (lean pass, web and phone), https://claude.ai/artifact/GiBcaeJcuprSGGFBb3Xc3H.
+- **New canvas: "Group info"** (lean pass, web and phone), https://claude.ai/artifact/Qo4Luy8PKr8auHcxsZEEbH.
+  - Today's web group panel stacks 14 sections in one scroll: roles, AIs, activity, tools, routines, pins, links, switches, background and visibility.
+  - The canvas folds them into a Telegram-like page: picture, name and "4 members · 2 AIs"; four keys (Mute, Search, Add, More); three grouped lists (People, Content, Settings); and Leave group.
+  - Members is its own page: Add members, Invite with a link, people with roles as tags, owner and admin as icons, AIs, then Roles.
+  - The switches and the background move under Settings. The count line assumes AIs are counted apart; see the members decision below.
+- **Nine canvases now wait for you:** View steps, Connections, Topic status, AI health, Lean settings, Approvals, Empty chat and files, Stickers, and Group info.
+- **T-1489 merged: Android predictive back is on (MUX-24).**
+  - It is a mobile-only change, so there is no web deploy, and it ships in the next APK.
+  - The lead tested it on the Android 16 emulator with the back key and the edge swipe. All pass:
+    - chat to list;
+    - the attach, emoji, sticker and GIF sheets;
+    - the message menu;
+    - message selection;
+    - the delete dialog and the image viewer;
+    - Settings subpages;
+    - back on the list leaves the app.
+- **Running (09:10):**
+  - T-1490, CI: it deletes the dead Coolify Service deploy job (OPS-18) and adds a daily certificate-expiry check for `chat.zilar.app` and `zilar.app` (OPS-19). `docs/RELEASING.md` rides it, rewritten for the git-built Application (OPS-5 rollback, §9).
+- **Audit rows the lead closed:** MP-9 is not actionable, because a group's first reader marking a message read matches Telegram's two checks.
 
 **2026-10-15, night (updated 03:10 CEST): what merged since the 03:00 entry, in order.** Earlier versions of this entry carried wrong clock times; the order is right.
 - **Merged, first batch:**
@@ -152,6 +171,9 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - It also carried a handoff note about CI and deploys that turned out wrong. The correction, from the app's real watch paths, rides the next merge.
   - Live at `c4e85ae52`, health ok.
 - **Console sweep of web main** (22 routes plus 4 opened chats, errors and warnings): 0 of either.
+- **Housekeeping:**
+  - the emulator is stopped to free memory;
+  - six leftover `zilar-T-*` folders (old tasks T-0177 to T-1323), each holding only a stray `PREREVIEW.md` written after its worktree was removed, are deleted.
   - The topic and group panels are clean.
 - **Mobile interaction walk (emulator, mock):** send, reply with quote, the 👍 reaction and the @mention picker work. Two bugs found: T-1482 and T-1483.
 - **Web interaction walk (headless, mock, 1280 px):** send, reply, edit and New group all work, and the sent chat moves to the top of the list. 0 errors.
@@ -241,7 +263,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - Send posts the photos as one album and each file as its own message, with the caption on the first.
     - Today web keeps only the first file of a mixed pick (`useComposerAttachments.ts:123-131`), and the mobile file picker takes one file.
 - **Morning UI list (each needs a canvas or a decision):**
-  - predictive back (MUX-24), which needs a native build to test.
+  - predictive back (MUX-24) is now T-1489, tested by the lead on the emulator.
 - **Decision: do AIs count as members?**
   - Since T-1483, a group header counts everyone in the room, so Dev team › General reads "5 members, 5 online" (4 people plus Dev-1).
   - The topic panel says "All 4 members of Dev team" (people only).
