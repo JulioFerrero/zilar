@@ -1474,3 +1474,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1463](T-1463-chat-row-title-shrink.md) | Mobile chat row title truncates; no overlap at large fonts | 2026-10-15 |
 | [T-1462](T-1462-cert-expiry-check.md) | Daily TLS certificate expiry check for chat.zilar.app | 2026-10-15 |
 | [T-1464](T-1464-search-field-font-scale.md) | Mobile search field stays centred and unclipped at large fonts | 2026-10-15 |
+| [T-1460](T-1460-split-server-app.md) | Split server app.ts into app/ route modules | 2026-10-15 |

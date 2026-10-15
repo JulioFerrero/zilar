@@ -1,68 +1,27 @@
-import type { Logger } from 'pino';
-import { createAisApi } from './ais/api';
-import type { TurnStopper } from './agents/gateway/stop-types';
-import type { AiLogger } from './ais/service';
-import { createAiMemoryApi } from './agents/memory/api';
-import { createAgentTasksApi } from './agents/log/api';
-import { createActionGateway, type ActionGateway } from './actions/gateway';
-import type { AlwaysEligiblePredicate } from './approvals/service';
-import { createApprovalsApi } from './approvals/api';
-import { createAuditRecorder, type AuditRecorder } from './audit/service';
-import { createAuditApi } from './audit/api';
-import type { Auth } from './auth/auth';
-import { createAuthApi } from './auth/api';
+// The one place that wires every route to the edge. The mounting itself lives
+// in the area modules under `app/` (T-1460, plan #48): `messagingRoutes`,
+// `mediaRoutes` and `aiRoutes` return their mounts in today's order, and
+// `healthRoutes` returns the `/health` probe. Behaviour is unchanged.
+import { createActionGateway } from './actions/gateway';
+import { type AppDependencies, type BaseDeps, type RouteWiring } from './app/deps';
+import { aiRoutes } from './app/routes-ai';
+import { healthRoutes } from './app/routes-health';
+import { mediaRoutes } from './app/routes-media';
+import { messagingRoutes } from './app/routes-messaging';
+import { createAuditRecorder } from './audit/service';
 import { CurrentMailer, createMailer } from './auth/mailer';
-import { createSetupApi, type SetupApiDependencies } from './setup/api';
-import { createGetBotToken } from './integrations/routes';
-import { createIntegrationsApi } from './integrations/api';
-import { settingsCipherFor } from './setup/settings';
-import { createChatsApi } from './chats/api';
-import { createChatPrefsApi } from './chat-prefs/api';
-import { createChatFoldersApi } from './chat-folders/api';
-import type { ServerConfig } from './config';
-import { loadPushConfig, type PushConfig } from './push/config';
-import { createDraftsApi } from './drafts/api';
-import { createKeyCipher, type KeyCipher } from './connections/crypto';
-import type { ProviderProbe } from './connections/probe';
-import { createConnectionsApi } from './connections/api';
-import { type ConnectionsLogger } from './connections/api';
-import { createBlocksApi } from './blocks/api';
-import { createContactsApi } from './contacts/api';
-import { createContactRequestsApi } from './contact-requests/api';
-import { createDirectoryApi } from './directory/api';
-import { createHandlesApi } from './handles/api';
-import type { EffectApiMount } from './effect/http-core';
 import { createEdge, type EdgeHealth, type ZilarEdge } from './effect/edge';
+import type { EffectApiMount } from './effect/http-core';
 import { registerSqlRuntime } from './effect/sql';
-import type { ServerDatabase } from './db/client';
-import { createGroupsApi } from './groups/api';
-import { createInviteLinksApi, type TestInviteLinksOverrides } from './invite-links/api';
-import { createPinsApi } from './pins/api';
-import { createPushApi } from './push/api';
-import { createRolesApi } from './roles/api';
-import { createSearchApi, type SearchRoutesDependencies } from './search/api';
-import { createMediaApi } from './media/api';
-import { createFilesApi } from './files/api';
-import { createGifsApi } from './gifs/api';
-import { createAvatarsApi } from './avatars/api';
-import { createBackgroundsApi } from './backgrounds/api';
-import { createStickersApi } from './stickers/api';
-import { createTopicsApi } from './topics/api';
-import { createMachinesApi } from './machines/api';
-import { createDbMachineRegistry, type DbMachineRegistry } from './machines/registry';
-import { createHealthCheck } from './health';
-import { createToolsApi, type ToolsApiDependencies } from './tools/api';
-import { createRoutinesApi } from './routines/api';
-import type { ToolRunner } from './tools/types';
-import type { VoiceEngine } from './voice/engine';
-import { createVoiceApi } from './voice/api';
-import { createVoiceTranscriptionApi } from './voice-transcription/api';
-import type { EjabberdAdminClient } from './xmpp/admin-client';
-import { createXmppApi } from './xmpp/api';
+import type { TestInviteLinksOverrides } from './invite-links/api';
 
 // Re-exported for the authz sweep and the scheduler test, which read the
 // edge's route manifest through `app.routes`.
 export type { EdgeHealth, ZilarEdge };
+
+// `AppDependencies` moved to `app/deps.ts` so the area modules can share it;
+// it stays part of this module's surface.
+export type { AppDependencies };
 
 // Test seam for the join rate windows (T-0115): the invite-links tests set
 // an injected clock and client IP through `setTestAppInviteLinks` so the
@@ -73,139 +32,6 @@ export function setTestAppInviteLinks(overrides: TestInviteLinksOverrides | unde
   testInviteLinksOverrides = overrides;
 }
 
-export interface AppDependencies {
-  db: ServerDatabase;
-  logger: Logger;
-  config: ServerConfig;
-  auth: Auth;
-  adminClient: EjabberdAdminClient;
-  /** T-0161: the live mailer (swapped by the setup screen, no restart). */
-  mailer?: CurrentMailer;
-  /** T-0161: overrides the setup routes (tests inject a fake sender). */
-  setup?:
-    | Partial<
-        Pick<SetupApiDependencies, 'limiter' | 'getClientIp' | 'trustedProxyHops' | 'sendTestCode'>
-      >
-    | undefined;
-  /** Overrides the ffmpeg engine; tests inject a fake. */
-  voice?: VoiceEngine;
-  /** Overrides the upload size cap; tests use a small one. */
-  voiceMaxBytes?: number;
-  /** Overrides the connections routes; tests inject a fake probe and key. */
-  connections?: {
-    cipher?: KeyCipher;
-    probe?: ProviderProbe;
-    logger?: ConnectionsLogger;
-  };
-  /** Overrides the AI routes; tests inject a fake cipher. */
-  ais?: {
-    cipher?: KeyCipher;
-    logger?: AiLogger;
-    /** T-1425: whether Zilar cloud desks are wired. Defaults to false. */
-    cloud?: boolean;
-  };
-  /** T-1422: the live agent gateway's turn-stop hook. Read lazily because the
-   * app is built before the gateway; absent = the route answers `stopped: false`. */
-  getGateway?: () => TurnStopper | null;
-  /** Injected by index.ts when the runner hub is on; absent = hub off. */
-  isMachineOnline?: (machineId: string) => boolean;
-  /**
-   * Shared with the runner hub so route-level notifies (approve / revoke)
-   * reach the same listener set. Defaults to a fresh registry over `db`,
-   * which is fine when no hub is running.
-   */
-  machineRegistry?: DbMachineRegistry;
-  /**
-   * Audit recorder shared with the approvals and machines routes. Tests may
-   * pass a recorder backed by the same database to observe what the routes
-   * write; production wires the recorder built above.
-   */
-  audit?: AuditRecorder;
-  /**
-   * Action gateway (T-0090): wires `onDecided` into the approvals route so
-   * a successful decision executes the matching pending action. Production
-   * passes the gateway built in `index.ts` with an empty adapter
-   * registry; tests pass their own to inject fake adapters.
-   */
-  actionGateway?: ActionGateway;
-  /**
-   * T-0099: predicate the approvals route uses to decide whether an
-   * `approve_always` decision is a real choice. Built from the
-   * adapter registry by `buildAlwaysEligible` in `actions/registry.ts`.
-   * Absent = nothing is always-eligible.
-   */
-  alwaysEligible?: AlwaysEligiblePredicate;
-  /**
-   * T-0103: tool runner port the tools routes use for manual runs. Absent
-   * = no runner (every run answers 501 `runner_unavailable`); T-0105
-   * wires the real sandbox.
-   */
-  toolRunner?: ToolRunner;
-  /**
-   * T-0117: read-only pool on the ejabberd MAM archive. Absent = search is
-   * unconfigured (every search answers 501 `search_unavailable`).
-   */
-  archive?: SearchRoutesDependencies['archive'];
-  /** T-0117: injected in tests so the search rate window can advance. */
-  searchNow?: () => number;
-  /** T-0120: sticker storage dir override; defaults to the parsed config. */
-  stickerStorageDir?: string;
-  /** T-0165: avatar storage dir override; defaults to the parsed config. */
-  avatarStorageDir?: string;
-  /** T-0165: injected in tests so the avatar upload rate window can advance. */
-  avatarNow?: () => number;
-  /** T-0165: overrides the avatar upload limiter (tests inject a window). */
-  avatarUploadLimiter?: { allow: (key: string) => boolean };
-  /** T-0460: background storage dir override; defaults to the parsed config. */
-  backgroundStorageDir?: string;
-  /** T-0460: injected in tests so the background upload rate window can advance. */
-  backgroundNow?: () => number;
-  /** T-0460: overrides the background upload limiter (tests inject a window). */
-  backgroundUploadLimiter?: { allow: (key: string) => boolean };
-  /** T-0120: injected in tests so the upload rate window can advance. */
-  stickerNow?: () => number;
-  /** T-0120: overrides the sticker upload limiter (cap tests inject a pass). */
-  uploadLimiter?: { allow: (key: string) => boolean };
-  /** T-0123: overrides the Telegram import client (tests inject a fake). */
-  telegramClient?: import('./stickers/telegram-import').TelegramClient;
-  /** T-0123: overrides the Telegram import limiter (tests inject a window). */
-  telegramImportNow?: () => number;
-  /** T-0170: overrides the voice transcription routes (tests inject fakes). */
-  voiceTranscription?:
-    | Partial<
-        Pick<
-          import('./voice-transcription/routes').VoiceTranscriptionRoutesDependencies,
-          'transcriptLimiter' | 'settingsLimiter' | 'now' | 'audioFetcher' | 'transcribe'
-        >
-      >
-    | undefined;
-  /** T-0162: overrides the integrations routes (tests inject fake senders). */
-  integrations?:
-    | Partial<
-        Pick<
-          import('./integrations/routes').IntegrationsRoutesDependencies,
-          | 'createTelegram'
-          | 'telegramLimiter'
-          | 'emailLimiter'
-          | 'now'
-          | 'sendTestMail'
-          | 'swapMailer'
-        >
-      >
-    | undefined;
-  /**
-   * T-0119: push env (kept separate from the server config so push stays
-   * optional). Absent = push off (every push route answers 404).
-   */
-  push?: PushConfig;
-  /** T-0122: overrides the GIF provider port; tests inject the fake. */
-  gifProvider?: import('./gifs/provider').GifProvider;
-  /** T-0122: overrides the GIF media fetch; tests inject a fake. */
-  gifMediaFetcher?: import('./gifs/routes').GifsRoutesDependencies['mediaFetcher'];
-  /** T-0122: injected in tests so token expiry and the rate window advance. */
-  gifNow?: () => number;
-}
-
 const mountsByApp = new WeakMap<ZilarEdge, ReadonlyArray<EffectApiMount>>();
 
 /** The Effect module mounts of an app built by `createApp`, in mount order. */
@@ -213,374 +39,44 @@ export function effectMountsOf(app: ZilarEdge): ReadonlyArray<EffectApiMount> {
   return mountsByApp.get(app) ?? [];
 }
 
-export function createApp({
-  db,
-  logger,
-  config,
-  auth,
-  adminClient,
-  mailer,
-  setup,
-  voice,
-  voiceMaxBytes,
-  connections,
-  ais,
-  getGateway,
-  isMachineOnline,
-  machineRegistry,
-  audit,
-  actionGateway,
-  alwaysEligible,
-  toolRunner,
-  archive,
-  searchNow,
-  stickerStorageDir,
-  stickerNow,
-  uploadLimiter,
-  avatarStorageDir,
-  avatarNow,
-  avatarUploadLimiter,
-  backgroundStorageDir,
-  backgroundNow,
-  backgroundUploadLimiter,
-  telegramClient,
-  telegramImportNow,
-  voiceTranscription,
-  integrations,
-  push,
-  gifProvider,
-  gifMediaFetcher,
-  gifNow,
-}: AppDependencies): ZilarEdge {
+export function createApp(deps: AppDependencies): ZilarEdge {
+  const { db, config, logger, auth } = deps;
   // Bind the `effect/sql` runtime for this database once, before any module
   // that runs queries through it is built. The registry memoizes per handle,
   // so building routes (pins, blocks) no longer has to register it.
   registerSqlRuntime(db, config.DATABASE_URL);
-  const auditRecorder = audit ?? createAuditRecorder({ db, logger });
+  const audit = deps.audit ?? createAuditRecorder({ db, logger });
   // Default gateway: empty registry. Every action is denied
   // `unknown_action` until a later task registers an adapter, and there is
   // no HTTP route to request an action yet.
   const gateway =
-    actionGateway ??
+    deps.actionGateway ??
     createActionGateway({
       db,
       adapters: {},
-      audit: auditRecorder,
+      audit,
       logger,
     });
+  // Without an explicit mailer the setup and integrations routes build one
+  // from the config, like `index.ts` does for production.
+  const mailer = deps.mailer ?? new CurrentMailer(createMailer(config, logger));
 
-  const mounts: EffectApiMount[] = [];
-  const authApi = createAuthApi({ auth, db, config, adminClient, logger });
-  mounts.push(authApi);
-  // First-run setup (T-0161): public while no user exists, same 404 as an
-  // unknown route once setup is done. Allowlisted in the authz sweep.
-  // Without an explicit mailer the routes build one from the config, like
-  // `index.ts` does for production.
-  const currentMailer = mailer ?? new CurrentMailer(createMailer(config, logger));
-  const setupApi = createSetupApi({
-    auth,
-    db,
-    config,
-    mailer: currentMailer,
-    logger,
-    audit: auditRecorder,
-    ...setup,
-  });
-  mounts.push(setupApi);
-  const contactsApi = createContactsApi({ auth, db, config, logger, adminClient });
-  mounts.push(contactsApi);
-  // @usernames and contact requests (T-0163): session-required, rate
-  // limited; the sweep asserts every one of them answers 401 unauthenticated.
-  const handlesApi = createHandlesApi({ auth, db, audit: auditRecorder, logger });
-  mounts.push(handlesApi);
-  const contactRequestsApi = createContactRequestsApi({
-    auth,
-    db,
-    config,
-    adminClient,
-    audit: auditRecorder,
-    logger,
-  });
-  mounts.push(contactRequestsApi);
-  // User blocks (T-0171): session-required, write-rate-limited; the sweep
-  // asserts every one of them answers 401 unauthenticated.
-  const blocksApi = createBlocksApi({
-    auth,
-    db,
-    config,
-    adminClient,
-    audit: auditRecorder,
-    logger,
-  });
-  mounts.push(blocksApi);
-  // Public groups and channels (T-0164): the Explore directory and the
-  // exact `@handle` lookup — public rows only, session-required, rate
-  // limited; the sweep asserts both answer 401 unauthenticated.
-  const directoryApi = createDirectoryApi({ auth, db, logger });
-  mounts.push(directoryApi);
-  const machinesApi = createMachinesApi({
-    auth,
-    db,
-    logger,
-    audit: auditRecorder,
-    registry: machineRegistry ?? createDbMachineRegistry(db),
-    ...(isMachineOnline === undefined ? {} : { isMachineOnline }),
-  });
-  mounts.push(machinesApi);
-  const groupsApi = createGroupsApi({
-    auth,
-    db,
-    config,
-    adminClient,
-    logger,
-    audit: auditRecorder,
-  });
-  mounts.push(groupsApi);
-  const inviteLinksApi = createInviteLinksApi({
-    auth,
-    db,
-    config,
-    adminClient,
-    logger,
-    audit: auditRecorder,
-    ...(testInviteLinksOverrides === undefined ? {} : testInviteLinksOverrides),
-  });
-  mounts.push(inviteLinksApi);
-  const rolesApi = createRolesApi({ auth, db, config, adminClient, logger, audit: auditRecorder });
-  mounts.push(rolesApi);
-  const aiMemoryApi = createAiMemoryApi({ auth, db, config, logger });
-  mounts.push(aiMemoryApi);
-  // The AI session log behind "View steps" (T-1426): owner-only, session
-  // required, so the 401 sweep covers it.
-  const agentTasksApi = createAgentTasksApi({ auth, db, logger });
-  mounts.push(agentTasksApi);
-  const pinsApi = createPinsApi({ auth, db, config, audit: auditRecorder, logger });
-  mounts.push(pinsApi);
-  const topicsApi = createTopicsApi({
-    auth,
-    db,
-    config,
-    adminClient,
-    logger,
-    audit: auditRecorder,
-  });
-  mounts.push(topicsApi);
-  const chatsApi = createChatsApi({ auth, db, config, logger, archive, adminClient });
-  mounts.push(chatsApi);
-  // Chat prefs and folders (T-0113/T-0232) on the Effect adapter: session
-  // required, one write budget each; the sweep asserts every route answers 401
-  // unauthenticated.
-  const chatPrefsApi = createChatPrefsApi({ auth, db, config, logger });
-  mounts.push(chatPrefsApi);
-  const chatFoldersApi = createChatFoldersApi({ auth, db, config, logger });
-  mounts.push(chatFoldersApi);
-  // Push devices and settings (T-0119) mount always: with push off or
-  // unconfigured every route answers 404/503 instead of disappearing, so
-  // the web can show the matching state.
-  const pushApi = createPushApi({
-    auth,
-    db,
-    config,
-    push: push ?? loadPushConfig({}),
-    adminClient,
-    logger,
-    ...(archive === undefined ? {} : { archive }),
-  });
-  mounts.push(pushApi);
-  // Message search (T-0117) mounts always: without an archive pool every
-  // search answers 501 `search_unavailable` instead of 404ing, so the web
-  // can hide the feature. Never used by the AI gateway.
-  const searchApi = createSearchApi({
-    auth,
-    db,
-    config,
-    logger,
-    ...(archive === undefined ? {} : { archive }),
-    ...(searchNow === undefined ? {} : { now: searchNow }),
-  });
-  mounts.push(searchApi);
-  // Media gallery (T-0431) mounts the same way: without an archive pool every
-  // request answers 501 `media_unavailable` instead of 404ing.
-  const mediaApi = createMediaApi({
-    auth,
-    db,
-    config,
-    logger,
-    ...(archive === undefined ? {} : { archive }),
-    ...(searchNow === undefined ? {} : { now: searchNow }),
-  });
-  mounts.push(mediaApi);
-  const filesApi = createFilesApi({
-    auth,
-    db,
-    config,
-    logger,
-    ...(archive === undefined ? {} : { archive }),
-    ...(searchNow === undefined ? {} : { now: searchNow }),
-  });
-  mounts.push(filesApi);
-  const draftsApi = createDraftsApi({ auth, logger });
-  mounts.push(draftsApi);
-  // Stickers (T-0120): packs, uploads and file serving. The storage dir
-  // comes from `STICKER_STORAGE_DIR`; tests override it with a temp dir.
-  // The bot token resolves per request: env wins, else the stored
-  // integrations value, else none (T-0162), so saving needs no restart.
-  const getBotToken = createGetBotToken({
-    config,
-    db,
-    cipher: settingsCipherFor(config),
-    logger,
-  });
-  // The Effect api serves all 14 sticker routes, binary upload and file GET
-  // included (T-0582 part A, T-0602 part B).
-  const stickersDeps = {
-    auth,
-    db,
-    config,
-    storageDir: stickerStorageDir ?? config.STICKER_STORAGE_DIR,
-    audit: auditRecorder,
-    logger,
-    getBotToken,
-    ...(stickerNow === undefined ? {} : { now: stickerNow }),
-    ...(uploadLimiter === undefined ? {} : { uploadLimiter }),
-    ...(telegramClient === undefined ? {} : { telegramClient }),
-    ...(telegramImportNow === undefined ? {} : { now: telegramImportNow }),
+  const base: BaseDeps = { db, config, logger, auth };
+  const wiring: RouteWiring = {
+    deps,
+    base,
+    audit,
+    mailer,
+    gateway,
+    inviteLinksOverrides: testInviteLinksOverrides,
   };
-  const stickersApi = createStickersApi(stickersDeps);
-  mounts.push(stickersApi);
-  // Avatars (T-0165): upload / remove / serve profile pictures for
-  // people, AIs, groups and channels. The storage dir comes from
-  // `AVATAR_STORAGE_DIR`; tests override it with a temp dir.
-  const avatarsApi = createAvatarsApi({
-    auth,
-    db,
-    config,
-    storageDir: avatarStorageDir ?? config.AVATAR_STORAGE_DIR,
-    audit: auditRecorder,
-    logger,
-    ...(avatarNow === undefined ? {} : { now: avatarNow }),
-    ...(avatarUploadLimiter === undefined ? {} : { uploadLimiter: avatarUploadLimiter }),
-  });
-  mounts.push(avatarsApi);
-  // Background images (T-0460): upload / list / serve / delete personal
-  // wallpapers, owner-only. The storage dir comes from
-  // `BACKGROUND_STORAGE_DIR`; tests override it with a temp dir.
-  const backgroundsApi = createBackgroundsApi({
-    auth,
-    db,
-    storageDir: backgroundStorageDir ?? config.BACKGROUND_STORAGE_DIR,
-    logger,
-    ...(backgroundNow === undefined ? {} : { now: backgroundNow }),
-    ...(backgroundUploadLimiter === undefined ? {} : { uploadLimiter: backgroundUploadLimiter }),
-  });
-  mounts.push(backgroundsApi);
-  // Integration settings (T-0162 + Email): owner-only; everyone else gets
-  // the same 404 as an unknown route. Covered by the 401 sweep as
-  // session-required routes (never allowlisted).
-  const integrationsApi = createIntegrationsApi({
-    auth,
-    db,
-    config,
-    logger,
-    mailer: currentMailer,
-    audit: auditRecorder,
-    ...integrations,
-  });
-  mounts.push(integrationsApi);
-  const auditApi = createAuditApi({ auth, db, logger });
-  mounts.push(auditApi);
-  // GIFs (T-0122): search, trending and the media proxy. Mounted always: an
-  // unconfigured provider answers 501 `gifs_unavailable` instead of 404ing,
-  // so the web can hide the tab.
-  const gifsApi = createGifsApi({
-    auth,
-    config,
-    logger,
-    ...(gifProvider === undefined ? {} : { provider: gifProvider }),
-    ...(gifMediaFetcher === undefined ? {} : { mediaFetcher: gifMediaFetcher }),
-    ...(gifNow === undefined ? {} : { now: gifNow }),
-  });
-  mounts.push(gifsApi);
-  const approvalsApi = createApprovalsApi({
-    auth,
-    db,
-    audit: auditRecorder,
-    logger,
-    onDecided: (approvalId) => gateway.onApprovalDecided(approvalId),
-    ...(alwaysEligible === undefined ? {} : { alwaysEligible }),
-  });
-  mounts.push(approvalsApi);
-  const toolsDeps: Omit<ToolsApiDependencies, 'logger'> = {
-    auth,
-    db,
-    audit: auditRecorder,
-    ...(toolRunner === undefined ? {} : { toolRunner }),
-  };
-  const toolsApi = createToolsApi({ ...toolsDeps, logger });
-  mounts.push(toolsApi);
-  const routinesApi = createRoutinesApi({ auth, db, audit: auditRecorder, logger });
-  mounts.push(routinesApi);
-  const xmppApi = createXmppApi({ auth, db, adminClient, xmppConfig: config.xmpp, logger });
-  mounts.push(xmppApi);
-  const voiceApi = createVoiceApi({
-    auth,
-    logger,
-    ...(voice === undefined ? {} : { engine: voice }),
-    ...(voiceMaxBytes === undefined ? {} : { maxBytes: voiceMaxBytes }),
-  });
-  mounts.push(voiceApi);
-  // Voice transcripts on demand (T-0170): the enabled flag plus the
-  // transcript route for any signed-in user, and the owner-only endpoint
-  // settings. Covered by the 401 sweep as session-required routes (never
-  // allowlisted). Tests inject the audio fetcher and the transcriber so no
-  // request ever reaches ejabberd or a real provider.
-  const voiceTranscriptionApi = createVoiceTranscriptionApi({
-    auth,
-    db,
-    config,
-    logger,
-    audit: auditRecorder,
-    ...voiceTranscription,
-  });
-  mounts.push(voiceTranscriptionApi);
 
-  // Provider-key connections always mount: with no envelope-encryption master
-  // key configured, each route answers 503 (`connections_unavailable`) rather
-  // than disappearing into a bare 404. The key is validated at startup by the
-  // config schema when present. Tests override the cipher and probe so no
-  // request ever reaches a real provider.
-  const connectionsCipher =
-    connections?.cipher ??
-    (config.ZILAR_KEY_ENCRYPTION_KEY === undefined
-      ? undefined
-      : createKeyCipher(config.ZILAR_KEY_ENCRYPTION_KEY));
-  const connectionsApi = createConnectionsApi({
-    auth,
-    db,
-    logger: connections?.logger ?? logger,
-    ...(connectionsCipher === undefined ? {} : { cipher: connectionsCipher }),
-    ...(connections?.probe === undefined ? {} : { probe: connections.probe }),
-  });
-  mounts.push(connectionsApi);
-
-  // AIs always mount. Creating one needs the key cipher (to seal the provider
-  // connection's key); when it is missing every write route answers 503
-  // (`ais_unavailable`) rather than failing halfway.
-  const aisCipher = ais?.cipher ?? connectionsCipher;
-  const aisApi = createAisApi({
-    auth,
-    db,
-    config,
-    adminClient,
-    logger: ais?.logger ?? logger,
-    audit: auditRecorder,
-    cloud: ais?.cloud ?? false,
-    ...(aisCipher === undefined ? {} : { cipher: aisCipher }),
-    ...(getGateway === undefined ? {} : { getGateway }),
-  });
-  mounts.push(aisApi);
-
-  const health = createHealthCheck({ db, adminClient });
+  const mounts: EffectApiMount[] = [
+    ...messagingRoutes(wiring),
+    ...mediaRoutes(wiring),
+    ...aiRoutes(wiring),
+  ];
+  const health = healthRoutes(wiring);
 
   const edge = createEdge({ mounts, auth, config, logger, health });
   mountsByApp.set(edge, mounts);
