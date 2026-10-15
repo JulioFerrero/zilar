@@ -149,10 +149,16 @@ export async function removeTopicAi(
       yield* sql`
         DELETE FROM topic_ais WHERE topic_id = ${topic.id} AND ai_id = ${aiId}`;
       // T-1455: a removed AI stops owning the topic, so the owner chip never
-      // names an AI that is no longer there.
+      // names an AI that is no longer there. T-1529: it also stops following if
+      // it was the follower. `NULLIF` clears each only when it is this AI, so a
+      // different AI's owner or follower survives.
       yield* sql`
-        UPDATE topics SET owner_ai_id = NULL, updated_at = now()
-        WHERE id = ${topic.id} AND owner_ai_id = ${aiId}`;
+        UPDATE topics SET
+          owner_ai_id = NULLIF(owner_ai_id, ${aiId}),
+          follower_ai_id = NULLIF(follower_ai_id, ${aiId}),
+          updated_at = now()
+        WHERE id = ${topic.id}
+          AND (owner_ai_id = ${aiId} OR follower_ai_id = ${aiId})`;
     }),
   );
   // T-1448/T-1455: the owner changed, so drop the room's cached follow lookup

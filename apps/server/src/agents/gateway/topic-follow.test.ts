@@ -17,12 +17,18 @@ import {
 } from '../../test-support';
 import { seedAi, seedGroup, seedUser } from '../../test-support/seed';
 import { assertOwner, removeTopicMember } from '../../topics/members';
+import { patchTopic } from '../../topics/patch';
 import { archiveTopic } from '../../topics/service';
 import type { AgentGatewayDeps, AiSession, GatewayLogger } from './contracts';
 import { createGroupIngest } from './group-ingest';
 import { tick, waitFor } from '../gateway.test-harness';
 import { createStopTurn } from './stop';
-import { followingAiFor, initTopicFollow, resetTopicFollowStateForTests } from './topic-follow';
+import {
+  followingAiFor,
+  initTopicFollow,
+  isFollowPaused,
+  resetTopicFollowStateForTests,
+} from './topic-follow';
 
 const silentLogger: GatewayLogger = { info: () => {}, warn: () => {} };
 
@@ -52,6 +58,7 @@ async function seedOwnedTopic(
         kind: 'chat',
         status: 'open',
         owner_ai_id: ownerAiId,
+        follower_ai_id: ownerAiId,
         is_general: false,
         created_by: createdBy,
       })}`;
@@ -117,6 +124,30 @@ async function waitForFollowPaused(
     await tick(10);
   }
   throw new Error(`the topic follow pause never became ${paused ? 'set' : 'clear'}`);
+}
+
+// The `follower_ai_id` of a room's topic (T-1529). The follower moves on a
+// human mention through the fire-and-forget write, so a test polls this.
+async function followerOf(context: TestContext, room: string): Promise<string | null> {
+  const localpart = room.split('@')[0] ?? room;
+  const [row] = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ followerAiId: string | null }>`
+        SELECT follower_ai_id FROM topics WHERE room_localpart = ${localpart}`;
+    }),
+  );
+  return row?.followerAiId ?? null;
+}
+
+async function waitForFollower(context: TestContext, room: string, aiId: string): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if ((await followerOf(context, room)) === aiId) {
+      return;
+    }
+    await tick(10);
+  }
+  throw new Error(`the topic follower never became ${aiId}`);
 }
 
 function ingestFor(context: TestContext, sessions: Map<string, AiSession>, turns: Turn[]) {
@@ -285,9 +316,9 @@ describe('a topic owner follows its topic (T-1448)', () => {
     await initTopicFollow(context.db);
 
     // The reloaded pause holds: a plain human message queues nothing. The
-    // paused room short-circuits before the async owner lookup, so
+    // paused room short-circuits before the async follower lookup, so
     // `handleRoomIncoming` returns no promise; awaiting a broken check (which
-    // returns `followOwnedTopic`'s promise) would let a queued turn appear only
+    // returns `followTopic`'s promise) would let a queued turn appear only
     // after the assertion, so asserting the absence of the promise pins it down.
     const pending = ingest.handleRoomIncoming(
       session,
@@ -419,6 +450,250 @@ describe('a topic owner follows its topic (T-1448)', () => {
 
     // The cached owner must not keep the archived topic followed.
     expect(await followingAiFor(context.db, room)).toBeNull();
+  });
+
+  // T-1529: following moved from the owner to the last human-mentioned AI.
+  it('moves following to a human-mentioned AI, and off the previous follower', async () => {
+    const human = await seedUser(context);
+    const { aiId: aiA, jid: jidA } = await seedAi(context, human);
+    const { aiId: aiB, jid: jidB } = await seedAi(context, human);
+    const room = roomJid();
+    const { groupId } = await seedGroup(
+      context,
+      human,
+      [{ userId: human, role: 'owner' }],
+      [aiA, aiB],
+    );
+    await seedOwnedTopic(context, groupId, human, room, aiA);
+
+    const followerA = sessionFor(aiA, jidA, room);
+    const followerB = sessionFor(aiB, jidB, room);
+    const turns: Turn[] = [];
+    const ingest = ingestFor(
+      context,
+      new Map([
+        [aiA, followerA],
+        [aiB, followerB],
+      ]),
+      turns,
+    );
+
+    // Gateway start: remember the database so the follower write is saved.
+    await initTopicFollow(context.db);
+
+    // A person mentions B: B becomes the follower and answers the mention.
+    ingest.handleRoomIncoming(
+      followerB,
+      message(room, expectedJid(human), 'm-1', '@B hi', [{ jid: jidB, begin: 0, end: 2 }]),
+    );
+    await waitFor(() => turns.length === 1);
+    await waitForFollower(context, room, aiB);
+    expect(turns).toEqual([{ aiId: aiB, roomJid: room }]);
+
+    // The next plain message reaches B only; A no longer follows.
+    turns.length = 0;
+    const plain = message(room, expectedJid(human), 'm-2', 'plain after mention');
+    ingest.handleRoomIncoming(followerA, plain);
+    ingest.handleRoomIncoming(followerB, plain);
+    await waitFor(() => turns.length === 1);
+    expect(turns).toEqual([{ aiId: aiB, roomJid: room }]);
+  });
+
+  it('does not resume following when an AI sender mentions another AI', async () => {
+    const human = await seedUser(context);
+    const { aiId: followerId, jid: followerJid } = await seedAi(context, human);
+    const { aiId: senderId, jid: senderJid } = await seedAi(context, human);
+    const room = roomJid();
+    const { groupId } = await seedGroup(
+      context,
+      human,
+      [{ userId: human, role: 'owner' }],
+      [followerId, senderId],
+    );
+    await seedOwnedTopic(context, groupId, human, room, followerId);
+
+    const follower = sessionFor(followerId, followerJid, room);
+    const sender = sessionFor(senderId, senderJid, room);
+    const turns: Turn[] = [];
+    const sessions = new Map([
+      [followerId, follower],
+      [senderId, sender],
+    ]);
+    const ingest = ingestFor(context, sessions, turns);
+    await initTopicFollow(context.db);
+
+    // A human message opens the round and is followed by the follower.
+    ingest.handleRoomIncoming(follower, message(room, expectedJid(human), 'm-1', 'hello'));
+    await waitFor(() => turns.length === 1);
+
+    // The follower pressed Stop ...
+    createStopTurn(sessions).stopTurn(followerId, room);
+    expect(isFollowPaused(followerId, room)).toBe(true);
+
+    // ... and another AI's mention is a handoff, not a human mention: it queues
+    // the turn but leaves following paused and the follower unchanged.
+    ingest.handleRoomIncoming(
+      follower,
+      message(room, senderJid, 'm-2', '@Helper hi', [{ jid: followerJid, begin: 0, end: 7 }]),
+    );
+    await waitFor(() => turns.length === 2);
+    await tick(20);
+    expect(isFollowPaused(followerId, room)).toBe(true);
+    expect(await followerOf(context, room)).toBe(followerId);
+  });
+
+  it('never follows the General topic', async () => {
+    const human = await seedUser(context);
+    const { aiId, jid } = await seedAi(context, human);
+    const { generalTopicId } = await seedGroup(
+      context,
+      human,
+      [{ userId: human, role: 'owner' }],
+      [aiId],
+    );
+    const [row] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ roomLocalpart: string }>`
+          SELECT room_localpart FROM topics WHERE id = ${generalTopicId} LIMIT 1`;
+      }),
+    );
+    const room = `${row?.roomLocalpart ?? ''}@${TEST_XMPP_MUC_DOMAIN}`;
+
+    // Even with a follower value on the row, General is never followed.
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`UPDATE topics SET follower_ai_id = ${aiId}, owner_ai_id = ${aiId}
+          WHERE id = ${generalTopicId}`;
+      }),
+    );
+    expect(await followingAiFor(context.db, room)).toBeNull();
+
+    const session = sessionFor(aiId, jid, room);
+    const turns: Turn[] = [];
+    const ingest = ingestFor(context, new Map([[aiId, session]]), turns);
+    await initTopicFollow(context.db);
+
+    // A person's mention in General is answered once (the mention turn), but
+    // must not make the AI the follower — the follow cache must not carry a
+    // General follow either.
+    ingest.handleRoomIncoming(
+      session,
+      message(room, expectedJid(human), 'm-1', '@Helper hi', [{ jid, begin: 0, end: 7 }]),
+    );
+    await waitFor(() => turns.length === 1);
+
+    // A plain human message inside the 15 s cache window queues no second,
+    // unmentioned follow turn.
+    ingest.handleRoomIncoming(
+      session,
+      message(room, expectedJid(human), 'm-2', 'plain in general'),
+    );
+    await tick(20);
+    expect(turns).toHaveLength(1);
+    expect(await followingAiFor(context.db, room)).toBeNull();
+  });
+
+  it('pauses the new follower when done and an owner change arrive in one request', async () => {
+    const human = await seedUser(context);
+    const { aiId: followerId } = await seedAi(context, human);
+    const { aiId: newOwnerId, jid: newOwnerJid } = await seedAi(context, human);
+    const room = roomJid();
+    const { groupId } = await seedGroup(
+      context,
+      human,
+      [{ userId: human, role: 'owner' }],
+      [followerId, newOwnerId],
+    );
+    const topicId = await seedOwnedTopic(context, groupId, human, room, followerId);
+    // A new AI owner must be one of the topic's AIs.
+    await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO topic_ais (topic_id, ai_id, added_by)
+          VALUES (${topicId}, ${newOwnerId}, ${human})`;
+      }),
+    );
+
+    const newOwner = sessionFor(newOwnerId, newOwnerJid, room);
+    const turns: Turn[] = [];
+    const ingest = ingestFor(context, new Map([[newOwnerId, newOwner]]), turns);
+    await initTopicFollow(context.db);
+
+    await patchTopic(
+      {
+        db: context.db,
+        adminClient: context.adminClient,
+        domain: TEST_XMPP_DOMAIN,
+        logger: context.logger,
+      },
+      { topicId, actorId: human, owner: { kind: 'ai', id: newOwnerId }, done: true },
+    );
+    await waitForFollowPaused(context, room, true);
+
+    // The new owner is now the follower, and the pause landed on it (before the
+    // fix the pause landed on the old follower). A plain message queues nothing.
+    await waitForFollower(context, room, newOwnerId);
+    expect(isFollowPaused(newOwnerId, room)).toBe(true);
+    const pending = ingest.handleRoomIncoming(
+      newOwner,
+      message(room, expectedJid(human), 'm-1', 'plain while done'),
+    );
+    expect(pending).toBeUndefined();
+    await pending;
+    expect(turns).toHaveLength(0);
+
+    // A mention resumes following and clears the saved pause.
+    ingest.handleRoomIncoming(
+      newOwner,
+      message(room, expectedJid(human), 'm-2', '@Helper hi', [
+        { jid: newOwnerJid, begin: 0, end: 7 },
+      ]),
+    );
+    await waitFor(() => turns.length === 1);
+    await waitForFollowPaused(context, room, false);
+  });
+
+  it('pauses following when the topic is marked done, and a mention resumes it', async () => {
+    const human = await seedUser(context);
+    const { aiId, jid } = await seedAi(context, human);
+    const room = roomJid();
+    const { groupId } = await seedGroup(context, human, [{ userId: human, role: 'owner' }], [aiId]);
+    const topicId = await seedOwnedTopic(context, groupId, human, room, aiId);
+
+    const session = sessionFor(aiId, jid, room);
+    const turns: Turn[] = [];
+    const ingest = ingestFor(context, new Map([[aiId, session]]), turns);
+    await initTopicFollow(context.db);
+
+    await patchTopic(
+      {
+        db: context.db,
+        adminClient: context.adminClient,
+        domain: TEST_XMPP_DOMAIN,
+        logger: context.logger,
+      },
+      { topicId, actorId: human, done: true },
+    );
+    await waitForFollowPaused(context, room, true);
+
+    // Done pauses the follower, like a Stop: a plain message queues nothing.
+    const pending = ingest.handleRoomIncoming(
+      session,
+      message(room, expectedJid(human), 'm-1', 'plain while done'),
+    );
+    expect(pending).toBeUndefined();
+    await pending;
+    expect(turns).toHaveLength(0);
+
+    // A mention resumes following and clears the saved pause.
+    ingest.handleRoomIncoming(
+      session,
+      message(room, expectedJid(human), 'm-2', '@Helper hi', [{ jid, begin: 0, end: 7 }]),
+    );
+    await waitFor(() => turns.length === 1);
+    await waitForFollowPaused(context, room, false);
   });
 });
 

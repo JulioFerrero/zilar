@@ -212,10 +212,10 @@ export async function removeGroupAi(
               yield* sql`DELETE FROM topic_ais
                 WHERE topic_id IN ${sql.in(topicIds)} AND ai_id = ${input.aiId}`;
             }
-            // T-1455: the removed AI stops owning any topic of the group,
-            // General included, so no owner chip names an AI that is gone.
-            yield* sql`UPDATE topics SET owner_ai_id = NULL, updated_at = now()
-              WHERE group_id = ${input.groupId} AND owner_ai_id = ${input.aiId}`;
+            // T-1455/T-1529: the removed AI stops owning or following any topic
+            // of the group (General included); `NULLIF` clears each matching one.
+            yield* sql`UPDATE topics SET owner_ai_id = NULLIF(owner_ai_id, ${input.aiId}), follower_ai_id = NULLIF(follower_ai_id, ${input.aiId}), updated_at = now()
+              WHERE group_id = ${input.groupId} AND (owner_ai_id = ${input.aiId} OR follower_ai_id = ${input.aiId})`;
             // T-0099: an "always" rule tied to this (AI, group) pair must
             // die with the membership. Personal rules and other-group rules
             // are unaffected. `now` is the same timestamp the admin client

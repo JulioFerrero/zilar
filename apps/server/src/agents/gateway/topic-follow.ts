@@ -1,17 +1,20 @@
 // T-1448 (UX Task I): an AI assigned as a topic's owner follows that topic.
-// Every new human message there reaches it with no `@`, until the owner changes
-// or the owner presses Stop. The room's owner is read from the `topics` row by
-// room localpart, cached briefly because a busy followed room asks on every
-// message. T-1493: a Stop pause is saved in `topics.follow_paused_at` and
-// reloaded at start, so a restart or a deploy never resumes following on its own.
+// T-1529: following moved off the owner to the last @mentioned AI — the
+// `topics.follower_ai_id` column. Every new human message there reaches the
+// follower with no `@`, until the topic is marked done or the follower presses
+// Stop. The room's follower is read from the `topics` row by room localpart,
+// cached briefly because a busy followed room asks on every message. T-1493: a
+// Stop pause is saved in `topics.follow_paused_at` and reloaded at start, so a
+// restart or a deploy never resumes following on its own. The General topic is
+// never followed (T-1529).
 import { Cause, Effect } from 'effect';
 import { SqlClient, type SqlError } from 'effect/sql';
 import type { ServerDatabase } from '../../db/client';
 import { runSql } from '../../effect/sql';
 import { bareJid } from '../../jid';
 
-// How long a room's owner lookup is cached. The owner changes rarely, and a
-// followed room reads it on every message, so a short cache keeps the fan-out
+// How long a room's follower lookup is cached. The follower changes rarely, and
+// a followed room reads it on every message, so a short cache keeps the fan-out
 // across the room's AI sessions cheap.
 const FOLLOW_CACHE_TTL_MS = 15_000;
 
@@ -42,14 +45,14 @@ function roomLocalpart(roomJid: string): string {
   return bareJid(roomJid).split('@')[0] ?? '';
 }
 
-/** Forgets a room's cached owner after its topic changes. */
+/** Forgets a room's cached follower after its topic changes. */
 export function invalidateTopicFollow(roomLocalpart: string): void {
   followCache.delete(roomLocalpart);
 }
 
 /**
- * The AI that owns the non-archived topic behind this room, or `null` when no
- * topic owns it. Cached for {@link FOLLOW_CACHE_TTL_MS}.
+ * The AI that follows the non-archived, non-General topic behind this room, or
+ * `null` when no topic follows it. Cached for {@link FOLLOW_CACHE_TTL_MS}.
  */
 export async function followingAiFor(db: ServerDatabase, roomJid: string): Promise<string | null> {
   const localpart = roomLocalpart(roomJid);
@@ -61,13 +64,14 @@ export async function followingAiFor(db: ServerDatabase, roomJid: string): Promi
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ ownerAiId: string | null }>`
-        SELECT owner_ai_id FROM topics
+      return yield* sql<{ followerAiId: string | null }>`
+        SELECT follower_ai_id FROM topics
         WHERE room_localpart = ${localpart} AND archived_at IS NULL
+          AND is_general = false
         LIMIT 1`;
     }),
   );
-  const aiId = row?.ownerAiId ?? null;
+  const aiId = row?.followerAiId ?? null;
   rememberRoom(localpart, aiId);
   return aiId;
 }
@@ -95,18 +99,19 @@ export async function initTopicFollow(database: ServerDatabase): Promise<void> {
     database,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ ownerAiId: string | null; roomLocalpart: string }>`
-        SELECT owner_ai_id, room_localpart FROM topics
-        WHERE follow_paused_at IS NOT NULL AND owner_ai_id IS NOT NULL AND archived_at IS NULL`;
+      return yield* sql<{ followerAiId: string | null; roomLocalpart: string }>`
+        SELECT follower_ai_id, room_localpart FROM topics
+        WHERE follow_paused_at IS NOT NULL AND follower_ai_id IS NOT NULL
+          AND archived_at IS NULL AND is_general = false`;
     }),
   );
   for (const row of rows) {
-    if (row.ownerAiId === null) {
+    if (row.followerAiId === null) {
       continue;
     }
-    const rooms = pausedFollows.get(row.ownerAiId) ?? new Set<string>();
+    const rooms = pausedFollows.get(row.followerAiId) ?? new Set<string>();
     rooms.add(row.roomLocalpart);
-    pausedFollows.set(row.ownerAiId, rooms);
+    pausedFollows.set(row.followerAiId, rooms);
   }
 }
 
@@ -132,7 +137,7 @@ export function pauseFollow(aiId: string, roomJid: string): Promise<void> {
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* sql`UPDATE topics SET follow_paused_at = now()
-        WHERE room_localpart = ${localpart} AND owner_ai_id = ${aiId}`;
+        WHERE room_localpart = ${localpart} AND follower_ai_id = ${aiId}`;
     }),
   );
 }
@@ -152,8 +157,37 @@ export function resumeFollow(aiId: string, roomJid: string): Promise<void> {
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       yield* sql`UPDATE topics SET follow_paused_at = NULL
-        WHERE room_localpart = ${localpart} AND owner_ai_id = ${aiId}
+        WHERE room_localpart = ${localpart} AND follower_ai_id = ${aiId}
           AND follow_paused_at IS NOT NULL`;
+    }),
+  );
+}
+
+/**
+ * Makes an AI the topic's follower and clears any Stop pause, so a person's
+ * @mention or reply moves following to that AI (T-1529). The write is
+ * fire-and-forget like {@link pauseFollow}; General is never followed.
+ */
+export function setTopicFollower(roomJid: string, aiId: string): Promise<void> {
+  const localpart = roomLocalpart(roomJid);
+  const rooms = pausedFollows.get(aiId);
+  if (rooms !== undefined) {
+    rooms.delete(localpart);
+    if (rooms.size === 0) {
+      pausedFollows.delete(aiId);
+    }
+  }
+  // Drop the cached lookup rather than writing the new follower into it. A
+  // mention in the General topic must not be cached as its follower — the
+  // `is_general = false` guard only runs on the read — and the fire-and-forget
+  // write may still be in flight, so the next plain message re-reads the row.
+  invalidateTopicFollow(localpart);
+  return saveFollowChange(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`UPDATE topics SET follower_ai_id = ${aiId}, follow_paused_at = NULL
+        WHERE room_localpart = ${localpart} AND archived_at IS NULL
+          AND is_general = false`;
     }),
   );
 }

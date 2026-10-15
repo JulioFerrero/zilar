@@ -4,7 +4,7 @@
 // name/glyph/visibility/archive/memberIds need a manager.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
-import { invalidateTopicFollow, resumeFollow } from '../agents/gateway/topic-follow';
+import { invalidateTopicFollow, pauseFollow, resumeFollow } from '../agents/gateway/topic-follow';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
 import {
@@ -126,13 +126,27 @@ export async function patchTopic(
   if (input.owner !== undefined) {
     patch.ownerUserId = ownerUserId ?? null;
     patch.ownerAiId = ownerAiId ?? null;
+    // T-1529: assigning an AI owner also makes it the follower, so the owner
+    // chip keeps following until the owner is dropped (T8). General is never
+    // followed; clearing the owner leaves the follower as is.
+    if (ownerAiId !== undefined && ownerAiId !== null && !topic.isGeneral) {
+      patch.followerAiId = ownerAiId;
+    }
     // T-1493: a new owner never inherits the old owner's Stop pause.
     patch.followPausedAt = null;
+  }
+  // T-1529: marking the topic done pauses its follower, like a Stop, even when
+  // a new owner is set in the same request.
+  if (input.done === true) {
+    patch.followPausedAt = new Date();
   }
   if (input.linkUrl !== undefined) patch.linkUrl = input.linkUrl ?? null;
   if (input.linkLabel !== undefined) patch.linkLabel = input.linkLabel ?? null;
   if (input.visibility !== undefined) patch.visibility = input.visibility;
   if (input.archived === true) patch.archivedAt = new Date();
+  // T-1529: who follows the topic once this update lands — the AI owner set in
+  // this request, otherwise the row's current follower. `done` pauses it.
+  const nextFollowerAiId = patch.followerAiId ?? topic.followerAiId;
 
   const visibilityChanged = topic.visibility !== nextVisibility;
   const goingPrivate = topic.visibility === 'public' && nextVisibility === 'private';
@@ -145,14 +159,21 @@ export async function patchTopic(
       yield* sql`UPDATE topics SET ${sql.update(snakeCaseKeys(patch))} WHERE id = ${topic.id}`;
     }),
   );
-  // T-1448: a new owner, or a change to the archive flag, decides who follows
+  // T-1448/T-1529: a new owner, the archive flag or done decides who follows
   // this topic, so drop the cached lookup. Assigning an AI owner again also
-  // clears its Stop pause, so following restarts without waiting for a mention.
-  if (input.owner !== undefined || input.archived !== undefined) {
+  // clears its Stop pause, so following restarts without waiting for a mention
+  // — unless this same request marks the topic done, whose pause must stand.
+  if (input.owner !== undefined || input.archived !== undefined || input.done !== undefined) {
     invalidateTopicFollow(topic.roomLocalpart);
-    if (ownerAiId !== undefined && ownerAiId !== null) {
+    if (ownerAiId !== undefined && ownerAiId !== null && input.done !== true) {
       resumeFollow(ownerAiId, topic.roomLocalpart);
     }
+  }
+  // T-1529: marking the topic done pauses its current follower, like a Stop.
+  // A new AI owner in the same request becomes the follower, so pause the
+  // post-update one, not the pre-update row (whose row no longer matches).
+  if (input.done === true && nextFollowerAiId !== null) {
+    pauseFollow(nextFollowerAiId, topic.roomLocalpart);
   }
   if (goingPrivate) {
     const memberIds = [...new Set(input.memberIds ?? [])];

@@ -85,6 +85,7 @@ export interface TopicRow {
   status: 'open' | 'in_progress' | 'in_review' | 'blocked' | 'done';
   ownerUserId: string | null;
   ownerAiId: string | null;
+  followerAiId: string | null;
   followPausedAt: Date | null;
   doneAt: Date | null;
   linkUrl: string | null;

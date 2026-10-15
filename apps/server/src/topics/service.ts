@@ -93,6 +93,7 @@ export async function createTopic(
           status: 'open',
           owner_user_id: ownerUserId,
           owner_ai_id: ownerAiId,
+          follower_ai_id: ownerAiId,
           link_url: input.linkUrl ?? null,
           link_label: input.linkLabel ?? null,
           is_general: false,

@@ -1544,3 +1544,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1532](T-1532-web-topic-activity-marks.md) | Web topic rows and the AIs here key show the AIs at work | 2026-10-15 |
 | [T-1538](T-1538-web-ai-health-shared.md) | Web AI health row uses chat-core's aiHealth and formatUsd | 2026-10-15 |
 | [T-1530](T-1530-view-steps-server.md) | View steps route: a task's card steps with their actions | 2026-10-15 |
+| [T-1529](T-1529-mention-follow.md) | The last @mentioned AI follows a topic (topics.follower_ai_id) | 2026-10-15 |

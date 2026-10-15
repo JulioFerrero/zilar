@@ -14,7 +14,7 @@ import {
   type RoomRound,
 } from './contracts';
 import type { createRoomListener } from './listener';
-import { followingAiFor, isFollowPaused, resumeFollow } from './topic-follow';
+import { followingAiFor, isFollowPaused, setTopicFollower } from './topic-follow';
 
 // T-1176 (AI-8): a reply to the AI's own message wakes it, like Telegram,
 // even without an `@` mention. Zilar's own clients quote a reply by id only
@@ -151,14 +151,13 @@ export function createGroupIngest(ctx: GroupIngestContext) {
       noteListenerMessage(roomJid, room, message, body);
     }
     if (!mentioned) {
-      // T-1448: an AI that owns this topic follows it — a plain human message
-      // reaches it with no `@`, until Stop pauses it. AI senders never trigger
-      // following, so two AIs cannot loop. The returned promise settles when
-      // the check is done; the gateway ignores it, tests await it.
-      return followOwnedTopic(session, message, roomJid, body);
+      // T-1448/T-1529: the topic's follower — the last AI a person mentioned —
+      // follows it: a plain human message reaches it with no `@`, until Stop
+      // pauses it. AI senders never trigger following, so two AIs cannot loop.
+      // The returned promise settles when the check is done; the gateway
+      // ignores it, tests await it.
+      return followTopic(session, message, roomJid, body);
     }
-    // T-1448: a real mention or reply restarts following for this room.
-    resumeFollow(session.aiId, roomJid);
     const fromBare = normBareJid(message.fromJid);
     let handoff = false;
     if (isAiSender(fromBare)) {
@@ -185,16 +184,21 @@ export function createGroupIngest(ctx: GroupIngestContext) {
         round.hops += 1;
       }
       handoff = true;
+    } else {
+      // T-1529: a person's mention or reply moves following to this AI. An AI
+      // sender's mention is a handoff and changes nothing.
+      setTopicFollower(roomJid, session.aiId);
     }
     queueRoomTurn(session, roomJid, message, body, handoff);
   }
 
-  // T-1448: the topic owner is read asynchronously (the cache may miss), so
-  // the follow check runs on the effect runtime like the pump. A sender that
-  // is an AI, or a room this AI paused with Stop, is skipped without a read;
-  // those paths return no promise. The returned promise settles when the check
-  // is done, so a caller can wait for it instead of guessing at a delay.
-  function followOwnedTopic(
+  // T-1448/T-1529: the topic's follower is read asynchronously (the cache may
+  // miss), so the follow check runs on the effect runtime like the pump. A
+  // sender that is an AI, or a room this AI paused with Stop, is skipped
+  // without a read; those paths return no promise. The returned promise
+  // settles when the check is done, so a caller can wait for it instead of
+  // guessing at a delay.
+  function followTopic(
     session: AiSession,
     message: ChatMessage,
     roomJid: string,
@@ -205,11 +209,11 @@ export function createGroupIngest(ctx: GroupIngestContext) {
     }
     return Effect.runPromise(
       Effect.promise(() => followingAiFor(deps.db, roomJid)).pipe(
-        Effect.flatMap((ownerAiId) =>
+        Effect.flatMap((followerAiId) =>
           Effect.sync(() => {
-            // Re-check the pause: Stop can land while the owner lookup is in
-            // flight, and it must suppress this follow too.
-            if (ownerAiId === session.aiId && !isFollowPaused(session.aiId, roomJid)) {
+            // Re-check the pause: Stop can land while the follower lookup is
+            // in flight, and it must suppress this follow too.
+            if (followerAiId === session.aiId && !isFollowPaused(session.aiId, roomJid)) {
               queueRoomTurn(session, roomJid, message, body, false);
             }
           }),
