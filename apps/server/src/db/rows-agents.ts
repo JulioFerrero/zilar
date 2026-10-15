@@ -40,6 +40,42 @@ export interface ApprovalInsert {
   createdAt?: Date | undefined;
 }
 
+// Row of the `ai_questions` table.
+export interface AiQuestionRow {
+  id: string;
+  aiId: string;
+  groupId: string | null;
+  topicId: string | null;
+  roomJid: string;
+  messageId: string | null;
+  question: string;
+  options: string[];
+  status: 'open' | 'answered' | 'expired';
+  answer: string | null;
+  answeredBy: string | null;
+  expiresAt: Date;
+  createdAt: Date;
+  answeredAt: Date | null;
+}
+
+// Insert shape of the `ai_questions` table.
+export interface AiQuestionInsert {
+  id: string;
+  aiId: string;
+  groupId?: string | null | undefined;
+  topicId?: string | null | undefined;
+  roomJid: string;
+  messageId?: string | null | undefined;
+  question: string;
+  options: string[];
+  status?: 'open' | 'answered' | 'expired' | undefined;
+  answer?: string | null | undefined;
+  answeredBy?: string | null | undefined;
+  expiresAt: Date;
+  createdAt?: Date | undefined;
+  answeredAt?: Date | null | undefined;
+}
+
 // Row of the `pending_actions` table.
 export interface PendingActionRow {
   id: string;
