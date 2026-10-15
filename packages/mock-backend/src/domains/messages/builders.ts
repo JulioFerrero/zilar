@@ -111,6 +111,12 @@ export function handoffLine(from: string, to: string[], task: string): Payload {
   return { v: 0, type: 'handoff.line', data: { from, to, task } };
 }
 
+/** The question card QA-1 posts to a room (T-1578): the question and its reply
+ * chips. `id` is the `ai_questions` row id and `ai` the asking AI's bare JID. */
+export function questionCard(id: string, question: string, options: string[]): Payload {
+  return { v: 0, type: 'question', data: { id, ai: JIDS.qa1, question, options } };
+}
+
 /** The seeded approval request the Dev AI posts in the Dev team room. */
 export function approvalCard(): Payload {
   return {

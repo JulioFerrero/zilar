@@ -12,6 +12,7 @@ import { mediaSrc } from '@/lib/attachments';
 import { AlbumGrid } from './AlbumGrid';
 import { MediaMetaPill } from './MediaMetaPill';
 import { MessageMeta } from './MessageMeta';
+import { QuestionCard } from './QuestionCard';
 import { SendFailure } from './SendFailure';
 
 /** No known media host (mock store, signed out): every absolute URL is untrusted. */
@@ -249,6 +250,14 @@ export function AttachmentBody({
             <ApprovalCard
               request={message.card.data}
               {...(chat.topic !== undefined ? { topicName: chat.title } : {})}
+            />
+          )}
+          {message.card.type === 'question' && (
+            <QuestionCard
+              question={message.card.data}
+              aiName={message.senderName}
+              chatId={chat.id}
+              messageId={message.id}
             />
           )}
         </div>

@@ -8,6 +8,7 @@ import { BigEmoji } from './message/BigEmoji';
 import { MessageActionsButton, MessageMenu } from './message/MessageMenu';
 import { MessageSender } from './message/MessageMeta';
 import { MessageTextBody } from './message/MessageTextBody';
+import { hidesBodyText } from './message/QuestionCard';
 import { MessageTombstone } from './message/MessageTombstone';
 import { bubbleFlags, draftAnimates } from './message/bubbleFlags';
 import { ReactionChips } from './ReactionChips';
@@ -121,6 +122,10 @@ export const MessageBubble = memo(function MessageBubble({
     chatCanPin,
     now: new Date(),
   });
+  // A question card draws itself in place of the fallback body text (T-1578):
+  // the bubble hides the text body, but keeps `hasText` for copy and the text
+  // on the message for replies and search.
+  const bodyText = hasText && !hidesBodyText(message.card);
 
   // A reply quote click: scroll when loaded, else load around it then scroll (PinnedBanner.tsx:40-55).
   const [, openQuote] = useAction((messageId: string) =>
@@ -301,7 +306,7 @@ export const MessageBubble = memo(function MessageBubble({
                   message={message}
                   chat={chat}
                   own={own}
-                  hasText={hasText}
+                  hasText={bodyText}
                   imageOnly={imageOnly}
                   attachmentImage={attachmentImage}
                   attachmentFile={attachmentFile}
@@ -320,7 +325,7 @@ export const MessageBubble = memo(function MessageBubble({
                   generating={generating}
                   markdown={markdown}
                   meJid={meJid}
-                  hasText={hasText}
+                  hasText={bodyText}
                 />
               </>
             )}

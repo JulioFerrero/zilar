@@ -2,6 +2,7 @@
 // a contact's JID for a DM, an AI's JID for an AI DM, a room JID for a group.
 import { acmeMessages } from './acme';
 import { anaMessages } from './ana';
+import { checkoutMessages } from './checkout';
 import { devAiMessages } from './dev-ai';
 import { devTeamMessages } from './dev-team';
 import { familiaMessages } from './familia';
@@ -20,6 +21,7 @@ export const messageSeeds: Readonly<Record<string, readonly MockMessageSeed[]>> 
   'ana@zilar.test': anaMessages,
   'acme@rooms.zilar.test': acmeMessages,
   'dev-team@rooms.zilar.test': devTeamMessages,
+  't-devteam-bug@rooms.zilar.test': checkoutMessages,
   'viernes@rooms.zilar.test': viernesMessages,
   'ai-dev-1@zilar.test': devAiMessages,
   'marta@zilar.test': martaMessages,

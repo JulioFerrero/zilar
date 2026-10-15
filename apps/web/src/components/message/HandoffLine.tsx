@@ -2,6 +2,7 @@ import type { Contact } from '@zilar/api-contract';
 import type { AvatarPersonInput, ChatSummary, MentionMember } from '@zilar/chat-core';
 import { type HandoffLine as HandoffLineData, jidLocal } from '@zilar/protocol';
 import { ArrowRight } from 'lucide-react';
+import { useState } from 'react';
 import { EntityAvatar } from '../EntityAvatar';
 import { useChatSelector } from '@/store/ChatStoreProvider';
 
@@ -53,13 +54,19 @@ export function HandoffLine({ card, chat, senderName, onToggle }: HandoffLinePro
   const targets = to.map((person) => person.name).join(', ');
   const handedOff = `${from.name} handed off to ${targets}`;
   const label = card.task === '' ? handedOff : `${handedOff}: ${card.task}`;
+  // The row owns the bubble's visibility, so this local flag mirrors it: both
+  // flip on the same click and stay in step. It only feeds `aria-expanded`.
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <button
       type="button"
-      role="note"
       aria-label={label}
-      onClick={onToggle}
+      aria-expanded={expanded}
+      onClick={() => {
+        setExpanded((open) => !open);
+        onToggle();
+      }}
       className="my-0.5 flex max-w-full items-center gap-2 self-center rounded-[8px] px-2 py-1 text-[13px] text-muted-foreground transition-colors hover:bg-white/5"
     >
       <EntityAvatar person={from} size={16} ai className="shrink-0" />
