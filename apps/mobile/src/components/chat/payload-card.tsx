@@ -1,9 +1,11 @@
-import type { Payload, Sticker } from '@zilar/protocol';
+import type { Payload, Progress, Sticker } from '@zilar/protocol';
 import { StickerSchema, isValid } from '@zilar/protocol';
+import { View } from 'react-native';
 
 import { ApprovalCard } from '@/components/chat/approval-card';
 import { ProgressCard } from '@/components/chat/progress-card';
 import { QuestionCard } from '@/components/chat/question-card';
+import { bubbleStyle } from '@/lib/depth';
 
 /**
  * Parses the sticker card of a message: a `sticker` payload whose `data`
@@ -20,11 +22,24 @@ export function stickerOf(message: {
   return isValid(StickerSchema)(card.data) ? card.data : undefined;
 }
 
+/**
+ * The progress card alone (T-1619): it renders without a bubble, the way a
+ * sticker does, so it carries the incoming surface itself and shows no time or
+ * "edited" row under it.
+ */
+function ProgressCardSurface({ data }: { data: Progress }) {
+  return (
+    <View className="rounded-[12px] p-2.5" style={bubbleStyle('incoming', false)}>
+      <ProgressCard data={data} />
+    </View>
+  );
+}
+
 /** Renders the AI card payloads from `@zilar/protocol`. */
 export function PayloadCard({ card }: { card: Payload }) {
   switch (card.type) {
     case 'progress':
-      return <ProgressCard data={card.data} />;
+      return <ProgressCardSurface data={card.data} />;
     case 'approval.request':
       return <ApprovalCard data={card.data} />;
     case 'question':

@@ -182,12 +182,16 @@ export function MessageBubbleContent({
       ) : message.card && isRenderedCard(message.card) ? (
         <>
           <PayloadCard card={message.card} />
-          <BubbleMeta
-            message={message}
-            outgoing={outgoing}
-            color={metaColor}
-            className="mt-1 justify-end"
-          />
+          {/* T-1619: the progress card stands alone, so it shows no time or
+              "edited" row; approval and question cards keep theirs. */}
+          {message.card.type === 'progress' ? null : (
+            <BubbleMeta
+              message={message}
+              outgoing={outgoing}
+              color={metaColor}
+              className="mt-1 justify-end"
+            />
+          )}
         </>
       ) : hasAttachment ? (
         <AttachmentBody

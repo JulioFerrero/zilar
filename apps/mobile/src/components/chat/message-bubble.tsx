@@ -152,6 +152,9 @@ function MessageBubbleImpl({
   // A sticker renders without a bubble (validated against `StickerSchema`;
   // an invalid payload falls back to the body text like an unknown client).
   const sticker = stickerOf(message);
+  // T-1619: the AI work card renders without a bubble, the way a sticker skips
+  // it; the card carries its own surface (payload-card.tsx) and no meta row.
+  const standaloneCard = message.card?.type === 'progress';
   // T-1575: a `handoff.line` card renders the small centred line instead of the
   // bubble, exactly like a sticker skips it.
   const handoff = message.card?.type === 'handoff.line' ? message.card.data : undefined;
@@ -184,6 +187,32 @@ function MessageBubbleImpl({
     );
   }
 
+  const bubbleBody = (
+    <MessageMenuProvider openMenu={generating ? undefined : openMenu}>
+      <MessageBubbleContent
+        message={message}
+        outgoing={outgoing}
+        generating={generating}
+        showSenderName={showSenderName}
+        hasAttachment={hasAttachment}
+        mediaFirst={mediaFirst}
+        showMarkdown={showMarkdown}
+        text={text}
+        textColor={textColor}
+        metaColor={metaColor}
+        reduceMotion={reduceMotion}
+        meJid={meJid}
+        onRetryAttachment={onRetryAttachment}
+        onCancelAttachment={onCancelAttachment}
+        onOpenAttachment={onOpenAttachment}
+        openingAttachmentId={openingAttachmentId}
+        onRetryVoice={onRetryVoice}
+        onCancelVoice={onCancelVoice}
+        voiceHost={voiceHost}
+      />
+    </MessageMenuProvider>
+  );
+
   const bubbleColumn = (
     <View className={cn('max-w-[80%] shrink', outgoing ? 'items-end' : 'items-start')}>
       <BubbleGesture
@@ -202,6 +231,14 @@ function MessageBubbleImpl({
             onRetry={onRetrySticker}
             onLongPress={openMenu}
           />
+        ) : standaloneCard ? (
+          <Pressable
+            onLongPress={generating ? undefined : openMenu}
+            delayLongPress={LONG_PRESS_MS}
+            accessibilityLabel={messageAccessibilityLabel(message, outgoing)}
+          >
+            {bubbleBody}
+          </Pressable>
         ) : bigEmoji ? (
           <BigEmojiBubble
             message={message}
@@ -232,29 +269,7 @@ function MessageBubbleImpl({
                 ]}
               />
             ) : null}
-            <MessageMenuProvider openMenu={generating ? undefined : openMenu}>
-              <MessageBubbleContent
-                message={message}
-                outgoing={outgoing}
-                generating={generating}
-                showSenderName={showSenderName}
-                hasAttachment={hasAttachment}
-                mediaFirst={mediaFirst}
-                showMarkdown={showMarkdown}
-                text={text}
-                textColor={textColor}
-                metaColor={metaColor}
-                reduceMotion={reduceMotion}
-                meJid={meJid}
-                onRetryAttachment={onRetryAttachment}
-                onCancelAttachment={onCancelAttachment}
-                onOpenAttachment={onOpenAttachment}
-                openingAttachmentId={openingAttachmentId}
-                onRetryVoice={onRetryVoice}
-                onCancelVoice={onCancelVoice}
-                voiceHost={voiceHost}
-              />
-            </MessageMenuProvider>
+            {bubbleBody}
           </Pressable>
         )}
         {isLastInGroup ? (
