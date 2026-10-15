@@ -1,0 +1,84 @@
+import { ChevronRight, type LucideIcon } from 'lucide-react-native';
+import { Children, type ReactNode } from 'react';
+import { Pressable, View } from 'react-native';
+
+import { IconTile } from '@/components/ui/icon-tile';
+import { Text } from '@/components/ui/text';
+import { DANGER, ICON, MUTED_FOREGROUND } from '@/lib/colors';
+import { cn } from '@/lib/utils';
+
+type InfoRowProps = {
+  icon: LucideIcon;
+  label: string;
+  /** The mono number at the right; hidden when the screen has no loaded count. */
+  count?: number | undefined;
+  /** The red bottom row: no tile, no count, no chevron. */
+  danger?: boolean | undefined;
+  onPress: () => void;
+  accessibilityLabel?: string | undefined;
+};
+
+/**
+ * One group info row (T-1552), after `Phone.dc.html`: a 48 px row with a 34 px
+ * `IconTile`, the label, an optional mono count and a chevron. The `danger`
+ * variant is the red Leave group row (an 18 px icon, no tile or chevron).
+ */
+export function InfoRow({
+  icon: Icon,
+  label,
+  count,
+  danger = false,
+  onPress,
+  accessibilityLabel,
+}: InfoRowProps) {
+  if (danger) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? label}
+        onPress={onPress}
+        className="min-h-[48px] flex-row items-center gap-3 px-3.5 active:bg-surface-raised"
+      >
+        <Icon size={18} color={DANGER} />
+        <Text className="text-[15px] text-danger">{label}</Text>
+      </Pressable>
+    );
+  }
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      onPress={onPress}
+      className="min-h-[48px] flex-row items-center gap-3 px-3 active:bg-surface-raised"
+    >
+      <IconTile>
+        <Icon size={16} color={ICON} />
+      </IconTile>
+      <Text numberOfLines={1} className="min-w-0 flex-1 text-[15px] text-foreground">
+        {label}
+      </Text>
+      {count === undefined ? null : (
+        <Text className="font-mono text-[13px] text-muted-foreground">{count}</Text>
+      )}
+      <ChevronRight size={14} color={MUTED_FOREGROUND} />
+    </Pressable>
+  );
+}
+
+/**
+ * The rounded list that holds rows (T-1552): a hairline between rows, none
+ * after the last one, matching the app's grouped settings lists.
+ */
+export function InfoRowGroup({ children }: { children: ReactNode }) {
+  const items = Children.toArray(children);
+  return (
+    <View className="overflow-hidden rounded-xl border border-border bg-surface">
+      {items.map((child, index) => (
+        <View key={index} className={cn(index > 0 && 'border-t border-divider')}>
+          {child}
+        </View>
+      ))}
+    </View>
+  );
+}

@@ -226,13 +226,17 @@ function GroupTopics() {
         title={groupTitle}
         avatarId={groupChatId}
         subtitle={topicsHeaderSubtitle({
-          memberCount: general?.memberCount ?? members.length,
-          aiCount: groupAis.length,
+          // T-1552: AIs count as members, so the header shows one combined count.
+          memberCount:
+            (groupDetail === undefined
+              ? (general?.memberCount ?? members.length)
+              : members.length) + groupAis.length,
           topicCount: activeTopics.length,
         })}
         canManageLinks={canManageLinks}
         canChangeVisibility={canChangeVisibility}
         onBack={() => goBackOrHome(router)}
+        onOpenInfo={() => router.push({ pathname: '/group-info/[id]', params: { id: groupId } })}
         onOpenLinks={links.open}
         onOpenVisibility={visibility.open}
         onOpenRoles={roles.open}

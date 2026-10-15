@@ -224,15 +224,10 @@ export function mayArchiveTopic(
   return mayManageTopic(input);
 }
 
-/** "8 members, 2 AIs, 6 topics" for the topics screen header. */
-export function topicsHeaderSubtitle(options: {
-  memberCount: number;
-  aiCount: number;
-  topicCount: number;
-}): string {
+/** "8 members, 6 topics" for the topics screen header. AIs count as members (T-1552). */
+export function topicsHeaderSubtitle(options: { memberCount: number; topicCount: number }): string {
   const members = options.memberCount === 1 ? '1 member' : `${options.memberCount} members`;
-  const ais = options.aiCount === 1 ? '1 AI' : `${options.aiCount} AIs`;
-  return `${members}, ${ais}, ${topicCountLabel(options.topicCount)}`;
+  return `${members}, ${topicCountLabel(options.topicCount)}`;
 }
 
 /** "N topics" for a group row, singular for one (T-0112 should-fix). */
