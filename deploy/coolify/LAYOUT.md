@@ -70,8 +70,9 @@ exactly one public host.
   `PUSH_COMPONENT_HOST`), with **Connect to predefined network** on.
 - **stop_grace_period:** 20s, so the old container drains its in-flight
   requests (zero-downtime plan, spike fix) instead of cutting them.
-- **Watch paths:** `apps/server/**`, `packages/**`, `pnpm-lock.yaml`,
-  `package.json`, `pnpm-workspace.yaml` (so a web push does not restart it).
+- **Deploys:** CI calls Coolify's `POST /deploy` for this App after it publishes
+  a new `zilar-server` image tag (plan, target layout item 5); the App has no
+  watch paths — nothing builds on the server.
 
 ### zilar-web
 
@@ -88,18 +89,18 @@ exactly one public host.
 - **Reaches:** nobody once Traefik routes `/api`, `/xmpp-ws` and `/upload`
   itself (see "The web app and its Caddy").
 - **stop_grace_period:** about 20s, for the same drain reason.
-- **Watch paths:** `apps/web/**`, `packages/**`, `pnpm-lock.yaml`,
-  `package.json`, `pnpm-workspace.yaml`.
+- **Deploys:** CI calls `POST /deploy` for this App after it publishes a new
+  `zilar-web` image tag; like `zilar-server` it has no watch paths.
 
 ## Routing (Traefik)
 
-| Public path | Reaches                                              | Strip prefix | Why                                                                                                                  |
-| ----------- | ---------------------------------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `/`         | `zilar-web:80`                                       | n/a          | static build and SPA fallback                                                                                        |
-| `/api`      | `zilar-server:3000`                                  | **off**      | the server serves `/api/...`                                                                                         |
-| `/xmpp-ws`  | `ejabberd-<core uuid>:5280`                          | **on**       | ejabberd answers `/ws` (`request_handlers` in `deploy/ejabberd/ejabberd.yml`), so `/xmpp-ws/ws` must arrive as `/ws` |
-| `/upload`   | `ejabberd-<core uuid>:5280`                          | **off**      | `mod_http_upload` serves `/upload/...` as written                                                                    |
-| `/health`   | `zilar-server:3000` (if anything checks it publicly) | n/a          | see "The web app and its Caddy"                                                                                      |
+| Public path | Reaches                     | Strip prefix | Why                                                                                                                  |
+| ----------- | --------------------------- | ------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `/`         | `zilar-web:80`              | n/a          | static build and SPA fallback                                                                                        |
+| `/api`      | `zilar-server:3000`         | **off**      | the server serves `/api/...`                                                                                         |
+| `/xmpp-ws`  | `ejabberd-<core uuid>:5280` | **on**       | ejabberd answers `/ws` (`request_handlers` in `deploy/ejabberd/ejabberd.yml`), so `/xmpp-ws/ws` must arrive as `/ws` |
+| `/upload`   | `ejabberd-<core uuid>:5280` | **off**      | `mod_http_upload` serves `/upload/...` as written                                                                    |
+| `/health`   | `zilar-server:3000`         | **off**      | the installer routes its install/uptime check to the server                                                          |
 
 The paths `/api`, `/xmpp-ws`, `/upload` are exact enough for the apps behind
 them because they existed the same way in `apps/web/Caddyfile`.
@@ -220,9 +221,10 @@ reached, because `server` and `ejabberd` are not DNS names on the web App's
 network. **`apps/web/Caddyfile` needs no change for the split** (not made in
 this task): the same blocks still serve the live Compose app and
 `deploy/docker-compose.yml`, and they are harmless once Traefik routes the
-paths itself. The one open question is `/health`: if anything checks
-`https://ZILAR_DOMAIN/health` after the cutover, it now reaches the web App and
-must be routed to `zilar-server` instead (see the table above).
+paths itself. The installer also routes `/health` to `zilar-server` (the App's
+create body carries `/api` and `/health`), so the install's
+`https://ZILAR_DOMAIN/health` wait reaches the server rather than the web App
+(see the table above).
 
 ## To verify in the rehearsal (plan step 7)
 
@@ -249,9 +251,10 @@ must be routed to `zilar-server` instead (see the table above).
 5. **Path priorities.** `/` on `zilar-web`, `/api` on `zilar-server` and the
    two ejabberd paths on one host: confirm each path reaches its own app and
    nothing falls through to web.
-6. **`/health` after the split** (routing table above): decide whether it is
-   routed to `zilar-server` or dropped, and check whichever uptime or install
-   check uses it.
+6. **`/health` after the split** (routing table above): the installer now routes
+   it to `zilar-server` (the App's create body carries `/api` and `/health`).
+   Confirm the rehearsal reaches the server on both `https://ZILAR_DOMAIN/api/...`
+   and `https://ZILAR_DOMAIN/health`.
 7. **Container-internal health checks.** The spike showed Coolify checks health
    with `curl`/`wget` inside the container; both images ship `wget`, but confirm
    the health check path/port Coolify runs for each App.
@@ -263,5 +266,6 @@ must be routed to `zilar-server` instead (see the table above).
 10. **Desk profiles and guards.** Confirm Coolify honours `profiles: ['desks']`
     for the Service and that both desk containers exit 0 while
     `DESKS_ENABLED` is not `true`.
-11. **Watch paths.** A server push rebuilds only `zilar-server`, a web push only
-    `zilar-web`, and neither restarts `zilar-core`.
+11. **Deploys.** CI's `POST /deploy` rebuilds only `zilar-server` or
+    `zilar-web` (whichever image it published), and neither restarts
+    `zilar-core`.

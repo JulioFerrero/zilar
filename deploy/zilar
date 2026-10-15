@@ -548,6 +548,7 @@ cmd_status() {
 cmd_update() {
   require_env_file
   require_docker
+  pin_desk_image
   info "pulling the latest images for IMAGE_TAG=$(env_get IMAGE_TAG)..."
   compose pull
   info "restarting and waiting for health..."

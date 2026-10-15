@@ -132,15 +132,16 @@ pf_coolify() {
   fi
 }
 
-# The decision after the report. Exits 0 on the Coolify path (host untouched),
-# stops with the clear message on a host that cannot run Docker, and otherwise
-# returns so install.sh follows the plain Docker path.
+# The decision after the report. Exits 0 on the Coolify path (through Coolify's
+# API), stops with the clear message on a host that cannot run Docker, and
+# otherwise returns so install.sh follows the plain Docker path.
 preflight_decide() {
   if [ "$PREFLIGHT_COOLIFY" -eq 1 ]; then
     echo ""
-    info "Coolify detected: Zilar will install into Coolify."
-    echo "    Coolify mode needs a Coolify API token."
-    echo "    Coolify mode is not available in this version yet; nothing was changed."
+    info "Coolify detected: installing Zilar into Coolify through its API (Coolify mode)."
+    command -v coolify_run >/dev/null 2>&1 ||
+      die "this release has no Coolify mode (deploy/lib/coolify-mode.sh)"
+    coolify_run   # ask for the token, create the layout, deploy, wait for health
     exit 0
   fi
   case "$PREFLIGHT_VIRT" in

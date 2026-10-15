@@ -87,8 +87,13 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - T-1583 (fresh-install CI workflow `install-test.yml`).
       - **First manual run, 38772833055:** the install on an empty runner worked; `/health` 200 `ok:true` (image commit `047f7377d`); `/api/me` 401.
       - **But `/xmpp-ws/ws` answered 200, not 101:** curl most likely negotiated HTTP/2. **T-1589** forces HTTP/1.1; the migrations check is still to run.
-  - **Running (2):**
-    - T-1589 (the WebSocket check over HTTP/1.1; dispatch the workflow again after merge);
+    - T-1589 merged (the WebSocket check over HTTP/1.1). **The second run, 38773650186, is green in 54 s:**
+      - install on an empty runner; `/health` 200 `ok:true` (`0bdd29272`); `/api/me` 401; WebSocket 101;
+      - `effect_sql_migrations` rows=67, drizzle files=67;
+      - so a fresh database takes every migration in a row;
+      - the plain stack builds postgres and ejabberd locally from `deploy/` and pulls server, web and caddy.
+    - **DNS:** Julio added `get` → CNAME `zilar.app` at Porkbun; `get.zilar.app` resolves to 152.53.146.96. The landing app doesn't answer on it yet (needs Julio's OK).
+  - **Running (1):**
     - T-1588 (installer Coolify mode through Coolify's API; reference `docs/deploy/coolify-api-notes.md`, committed on its branch). The lead refused an outside call to httpbin.org.
   - **Phone follow-ups:**
     - a failed channel delete says "group";

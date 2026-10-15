@@ -1601,3 +1601,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1587](T-1587-mobile-channel-content-settings.md) | Phone channel Content, Settings and More; channel opens on start | 2026-10-15 |
 | [T-1583](T-1583-fresh-install-ci-test.md) | CI installs Zilar fresh after each image publish and checks it | 2026-10-15 |
 | [T-1589](T-1589-install-test-ws-http11.md) | Fresh-install test checks the WebSocket over HTTP/1.1 | 2026-10-15 |
+| [T-1588](T-1588-install-coolify-mode.md) | Installer Coolify mode: the whole layout through Coolify's API | 2026-10-15 |

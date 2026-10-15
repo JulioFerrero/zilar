@@ -24,8 +24,8 @@
 #  11. a failed get.docker.com download dies at the docker step — after the
 #      fetch, before configure;
 #  12. a re-run with a new --domain prints the kept .env domain and warns;
-#  13. Coolify found exits 0 with its message, touching neither deploy/ nor
-#      Docker;
+#  13. Coolify found hands over to Coolify mode (needs a Coolify API token:
+#      with --yes, ZILAR_COOLIFY_TOKEN), touching neither deploy/ nor Docker;
 #  14. a container-based VPS (openvz) stops with the why/what-works message;
 #  15. AI computers (--desks) turn on only after the gVisor sandbox passes.
 #
@@ -64,6 +64,8 @@ STUB
 chmod +x "$T/zilar-main/deploy/zilar"
 printf 'services: {}\n' >"$T/zilar-main/deploy/docker-compose.yml"
 cp "$ROOT/deploy/lib/preflight.sh" "$T/zilar-main/deploy/lib/preflight.sh"
+cp "$ROOT/deploy/lib/coolify-api.sh" "$T/zilar-main/deploy/lib/coolify-api.sh"
+cp "$ROOT/deploy/lib/coolify-mode.sh" "$T/zilar-main/deploy/lib/coolify-mode.sh"
 printf '#!/bin/sh\nexit 0\n' >"$T/zilar-main/deploy/tests/host-setup.test.sh"
 tar -czf "$T/zilar-main.tar.gz" -C "$T" zilar-main
 STUB_TARBALL="$T/zilar-main.tar.gz"
@@ -234,33 +236,44 @@ else
   ok "a failed Docker download stops before configure"
 fi
 
-# --- 2e. Coolify found: exit 0, the plain install untouched -------------
+# --- 2e. Coolify found: the Coolify path runs, the plain install untouched ---
 
-# A running `coolify` container means the host runs Coolify: the installer says
-# so, points at Coolify mode, and exits 0 without copying deploy/ or touching
-# Docker. The docker stub answers `ps` with a coolify container.
+# A running `coolify` container means the host runs Coolify: the installer hands
+# over to Coolify mode instead of the plain install. Coolify mode needs a
+# Coolify API token; with --yes and no ZILAR_COOLIFY_TOKEN it stops with a clear
+# message naming the variable, before copying deploy/ or touching Docker. (The
+# full Coolify flow has its own test, deploy/tests/coolify-mode.test.sh.)
 mkdir -p "$T/coolifybin"
 cat >"$T/coolifybin/docker" <<'STUB'
 #!/bin/sh
 case "$1" in ps) echo coolify ;; esac
 exit 0
 STUB
-chmod +x "$T/coolifybin/docker"
+# Stub jq and openssl so the run stops at the token, not at a missing tool.
+printf '#!/bin/sh\nexit 0\n' >"$T/coolifybin/jq"
+printf '#!/bin/sh\nexit 0\n' >"$T/coolifybin/openssl"
+chmod +x "$T/coolifybin/docker" "$T/coolifybin/jq" "$T/coolifybin/openssl"
 COOLIFY_DIR="$T/coolify"
 status=0
 PATH="$T/coolifybin:$PATH" ZILAR_INSTALL_TARBALL="$STUB_TARBALL" \
   ZILAR_INSTALL_SKIP_CHECKS=1 \
   sh "$INSTALL" --yes --domain chat.example.com --admin-email ops@example.com \
   --version main --dir "$COOLIFY_DIR" >"$T/coolify.log" 2>&1 || status=$?
-if [ "$status" -eq 0 ] && grep -qF "Coolify mode" "$T/coolify.log"; then
-  ok "Coolify found exits 0 with the Coolify-mode message"
+if [ "$status" -ne 0 ] && grep -qF "Coolify mode" "$T/coolify.log" && \
+   grep -qF "ZILAR_COOLIFY_TOKEN" "$T/coolify.log"; then
+  ok "Coolify found hands over to Coolify mode and names ZILAR_COOLIFY_TOKEN"
 else
-  bad "Coolify found did not exit 0 with the message ($(tail -n 1 "$T/coolify.log"))"
+  bad "Coolify found did not hand over to Coolify mode ($(tail -n 1 "$T/coolify.log"))"
 fi
 if [ -e "$COOLIFY_DIR/zilar" ] || grep -q "^==> docker\$" "$T/coolify.log"; then
   bad "the Coolify path copied deploy/ or reached Docker"
 else
   ok "the Coolify path leaves the host untouched"
+fi
+if grep -qF "not available in this version" "$T/coolify.log"; then
+  bad "the Coolify path still prints the old 'not in this version' message"
+else
+  ok "the old 'not in this version' message is gone"
 fi
 
 # --- 2f. a container-based VPS stops with the clear message -------------
@@ -288,6 +301,43 @@ if grep -q "^==> configure\$" "$T/openvz.log"; then
   bad "the openvz stop ran configure"
 else
   ok "the openvz stop happens before configure"
+fi
+
+# --- 2g. a release from before T-1588 has no Coolify libs ----------------
+
+# install.sh --version T fetches release T; a release from before this task has
+# no deploy/lib/coolify-*.sh. Requiring them would kill the plain Docker path on
+# a non-Coolify host, so their absence must be tolerated: only the Coolify
+# branch needs them (and it stops clearly when they are gone).
+mkdir -p "$T/zilar-old/deploy/lib"
+cp "$ROOT/deploy/lib/preflight.sh" "$T/zilar-old/deploy/lib/preflight.sh"
+cat >"$T/zilar-old/deploy/zilar" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >>"${ZILAR_STUB_LOG:-/dev/null}"
+exit 0
+STUB
+chmod +x "$T/zilar-old/deploy/zilar"
+printf 'services: {}\n' >"$T/zilar-old/deploy/docker-compose.yml"
+tar -czf "$T/zilar-old.tar.gz" -C "$T" zilar-old
+mkdir -p "$T/plainbin"
+printf '#!/bin/sh\nexit 0\n' >"$T/plainbin/docker"
+printf '#!/bin/sh\nexec "$@"\n' >"$T/plainbin/sudo"
+chmod +x "$T/plainbin/docker" "$T/plainbin/sudo"
+OLD_DIR="$T/old"
+status=0
+PATH="$T/plainbin:$PATH" ZILAR_INSTALL_TARBALL="$T/zilar-old.tar.gz" \
+  ZILAR_INSTALL_SKIP_CHECKS=1 \
+  sh "$INSTALL" --yes --domain chat.example.com --admin-email ops@example.com \
+  --version v1.2.3 --dir "$OLD_DIR" >"$T/old.log" 2>&1 || status=$?
+if [ "$status" -eq 0 ] && [ -x "$OLD_DIR/zilar" ]; then
+  ok "an old release without the Coolify libs still installs on a plain host"
+else
+  bad "an old release without the Coolify libs died ($(tail -n 1 "$T/old.log"))"
+fi
+if grep -qF "no deploy/lib/coolify" "$T/old.log"; then
+  bad "the plain path still requires the Coolify libs"
+else
+  ok "the plain path does not require the Coolify libs"
 fi
 
 # --- 3. --yes needs --domain and never prompts --------------------------

@@ -48,6 +48,11 @@ Usage: install.sh [--version TAG|main] [--dir PATH] [--domain HOST]
   --dir      where deploy/ is extracted (default: $DEFAULT_DIR)
   --domain / --admin-email  passed to ./zilar init; it prompts when omitted
   --desks    also run ./zilar host-setup   --yes  no prompts   --dry-run  plan
+
+On a host that already runs Coolify, Zilar installs into Coolify through its API
+instead of on the host: the installer asks for a Coolify API token (with --yes,
+ZILAR_COOLIFY_TOKEN) and creates project Zilar with zilar-core, zilar-server and
+zilar-web.
 EOF
 }
 
@@ -140,7 +145,9 @@ resolve_commit() {
 # untouched: a cut-off download, or a stop in the report, must change nothing.
 fetch_release() {
   _tmp="$(mktemp -d "${TMPDIR:-/tmp}/zilar-install.XXXXXX")"
-  trap 'rm -rf "$_tmp"' EXIT INT TERM
+  # The exit trap also removes COOLIFY_TMP (Coolify mode's root-only dir with the
+  # token and the request bodies), whether or not it lives under $_tmp.
+  trap 'rm -rf "$_tmp"; [ -z "${COOLIFY_TMP:-}" ] || rm -rf "$COOLIFY_TMP"' EXIT INT TERM
   if [ -n "${ZILAR_INSTALL_TARBALL:-}" ]; then
     [ -f "$ZILAR_INSTALL_TARBALL" ] || die "ZILAR_INSTALL_TARBALL=$ZILAR_INSTALL_TARBALL is not a file"
     cp "$ZILAR_INSTALL_TARBALL" "$_tmp/zilar.tar.gz"
@@ -176,7 +183,13 @@ preflight_plan() {
   echo "    items: os and version (/etc/os-release); CPU architecture, RAM and free disk;"
   echo "           ports 80 and 443; Docker (docker info); virtualization (systemd-detect-virt);"
   echo "           Coolify (a container named coolify, or /data/coolify/source)."
-  echo "    branch: Coolify found -> Coolify mode (needs a Coolify API token; not in this version)"
+  echo "    branch: Coolify found -> Coolify mode: ask for a Coolify API token (or ZILAR_COOLIFY_TOKEN"
+  echo "            with --yes) and create the layout through the Coolify API, in order:"
+  echo "            GET /version, GET /servers, GET /projects, POST /projects, POST /services,"
+  echo "            PATCH /services/{uuid}, PATCH /services/{uuid}/envs/bulk, POST /deploy,"
+  echo "            POST /applications/dockerimage (server), storages, envs/bulk, POST /deploy,"
+  echo "            POST /applications/dockerimage (web), POST /deploy, then wait for /health;"
+  echo "            then the AI computers, the root-only secrets copy and the first invite code"
   echo "    branch: container-based VPS (openvz, or lxc without Docker) -> stop and explain"
   echo "    branch: Docker cannot run (docker run --rm hello-world fails) -> stop and explain"
   echo "    branch: otherwise -> the plain Docker install below"
@@ -194,6 +207,13 @@ phase_report() {
   phase "host report"
   if [ "$DRY_RUN" -eq 1 ]; then preflight_plan; return 0; fi
   [ -f "$_root/deploy/lib/preflight.sh" ] || die "the release has no deploy/lib/preflight.sh"
+  # Coolify mode is sourced first so preflight_decide can run it. A release from
+  # before T-1588 has neither lib and the plain path never needs them, so their
+  # absence is not an error: preflight_decide stops clearly if Coolify is found.
+  if [ -f "$_root/deploy/lib/coolify-api.sh" ] && [ -f "$_root/deploy/lib/coolify-mode.sh" ]; then
+    . "$_root/deploy/lib/coolify-api.sh"
+    . "$_root/deploy/lib/coolify-mode.sh"
+  fi
   . "$_root/deploy/lib/preflight.sh"
   preflight_run      # prints the report; exits 0 on Coolify, or stops clearly
   install_deploy     # plain path only (the Coolify branch exited above)
