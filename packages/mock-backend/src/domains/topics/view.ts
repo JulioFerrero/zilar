@@ -28,12 +28,14 @@ export function buildTopicView(topic: MockTopic, source: TopicViewSource): Topic
     .map((role) => ({ id: role.id, name: role.name, memberCount: role.memberIds.length }));
   const approver =
     topic.approverRoleId === null ? null : (source.role(topic.approverRoleId) ?? null);
+  // T-1492: AIs count as members. A private topic adds the AIs it lists; a
+  // public topic shows the whole group, people and AIs (see `groupMemberCount`).
   const memberCount =
     topic.visibility === 'private'
       ? new Set([
           ...topic.memberIds,
           ...topic.roleIds.flatMap((roleId) => source.role(roleId)?.memberIds ?? []),
-        ]).size
+        ]).size + topic.aiIds.length
       : source.groupMemberCount(topic.groupId);
   return {
     id: topic.id,
@@ -59,7 +61,10 @@ export function buildTopicView(topic: MockTopic, source: TopicViewSource): Topic
 /** A view source over the live tables of the merged `MockData`. */
 export function viewSourceFromData(data: MockData): TopicViewSource {
   return {
-    groupMemberCount: (groupId) => data.findGroup(groupId)?.members.length ?? 0,
+    groupMemberCount: (groupId) => {
+      const group = data.findGroup(groupId);
+      return (group?.members.length ?? 0) + (group?.ais.length ?? 0);
+    },
     role: (roleId) => {
       const role = data.findGroupRole(roleId);
       return role === undefined

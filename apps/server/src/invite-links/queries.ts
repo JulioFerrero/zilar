@@ -210,8 +210,11 @@ export async function countGroupMembers(db: ServerDatabase, groupId: string): Pr
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM group_members
-        WHERE group_id = ${groupId}`;
+      // T-1492: a group's members are its people and its AIs.
+      return yield* sql<{ total: number }>`SELECT (
+          (SELECT count(*) FROM group_members WHERE group_id = ${groupId})
+          + (SELECT count(*) FROM group_ais WHERE group_id = ${groupId})
+        )::int AS total`;
     }),
   );
   return Number(row?.total ?? 0);

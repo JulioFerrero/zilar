@@ -266,13 +266,19 @@ async function countMembers(db: ServerDatabase, groupIds: string[]): Promise<Map
   if (groupIds.length === 0) {
     return new Map();
   }
+  const ids = [...new Set(groupIds)];
+  // T-1492: a group's members are its people and its AIs, so the count sums
+  // `group_members` and `group_ais` in one grouped query.
   const rows = await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<{ groupId: string; total: number }>`SELECT group_id, count(*)::int AS total
-        FROM group_members
-        WHERE group_id IN ${sql.in([...new Set(groupIds)])}
+        FROM (
+          SELECT group_id FROM group_members WHERE group_id IN ${sql.in(ids)}
+          UNION ALL
+          SELECT group_id FROM group_ais WHERE group_id IN ${sql.in(ids)}
+        ) AS participants
         GROUP BY group_id`;
     }),
   );

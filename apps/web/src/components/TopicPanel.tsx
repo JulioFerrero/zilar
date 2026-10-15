@@ -101,6 +101,9 @@ function TopicPanelBody({
       member.userId !== me && !membersState.members.some((item) => item.userId === member.userId),
   );
   const groupAis = info?.ais ?? [];
+  // T-1492: AIs count as members, like in `GroupPanel`.
+  const memberCount =
+    info === undefined ? (chat.memberCount ?? 0) : info.members.length + info.ais.length;
   const myAisInGroup = myAis.filter((ai) => groupAis.some((item) => item.aiId === ai.id));
   const addableAis = myAisInGroup.filter((ai) => !aisState.ais.some((item) => item.id === ai.id));
   const aiOwnerName = (aiId: string): string => {
@@ -121,7 +124,7 @@ function TopicPanelBody({
     isPrivate && membersState.status === 'ready'
       ? ` · ${membersState.members.length} members`
       : !isPrivate && info !== undefined
-        ? ` · All ${info.members.length} members`
+        ? ` · All ${memberCount} members`
         : '';
   const iAmMember = membersState.members.some((member) => member.userId === me);
   const visibilityBusy = isWaiting(visibilityState);
@@ -144,7 +147,7 @@ function TopicPanelBody({
             state={membersState}
             groupMembers={groupMembers}
             addableMembers={addableMembers}
-            allMembersText={`All ${info?.members.length ?? chat.memberCount ?? 0} members of ${groupTitle} can read and write here.`}
+            allMembersText={`All ${memberCount} members of ${groupTitle} can read and write here.`}
             me={me}
             isManager={isManager}
             iAmMember={iAmMember}

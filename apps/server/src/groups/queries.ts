@@ -214,12 +214,19 @@ export async function listGroupsForUser(db: ServerDatabase, userId: string): Pro
         FROM groups WHERE id IN ${sql.in(groupIds)}`;
     }),
   );
+  // T-1492: a group's members are its people and its AIs, so the count sums
+  // `group_members` and `group_ais` in one grouped query.
   const counts = await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
       return yield* sql<{ groupId: string; total: number }>`SELECT group_id, count(*)::int AS total
-        FROM group_members WHERE group_id IN ${sql.in(groupIds)} GROUP BY group_id`;
+        FROM (
+          SELECT group_id FROM group_members WHERE group_id IN ${sql.in(groupIds)}
+          UNION ALL
+          SELECT group_id FROM group_ais WHERE group_id IN ${sql.in(groupIds)}
+        ) AS participants
+        GROUP BY group_id`;
     }),
   );
   // T-0164: the `@handle` of every public group on the list, in the same

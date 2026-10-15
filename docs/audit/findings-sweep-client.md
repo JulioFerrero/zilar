@@ -95,6 +95,7 @@ The table and counts above are as of the sweep. Since then:
   - WUX-18: the invite check shows a spinner (T-1435).
 - **Partly done before, now complete:**
   - MUX-17: the search clear key is easier to hit (T-1436);
-  - MUX-22: send and the quick reactions give haptics (T-1436).
+  - MUX-22: send and the quick reactions give haptics (T-1436);
+  - WUX-44: a waiting service worker now offers Reload (`useServiceWorkerUpdate`, `apps/web/src/App.tsx:15`, `controllerchange` at `apps/web/src/lib/push.ts:133`, T-1435).
 - **Not actionable:** MP-9, because the group rule matches Telegram (see its row).
 - **Still open:** UI-15 and MUX-19, both on Julio's list.

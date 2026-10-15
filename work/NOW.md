@@ -2,7 +2,28 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
-**Morning summary for Julio (2026-10-15, written 07:50 CEST).** Details for each item are further down.
+**Morning summary for Julio (2026-10-15, written 07:50 CEST, updated 09:30).** Details for each item are further down.
+- **Since 07:50:**
+  - T-1489: Android predictive back is on, tested on every back path;
+  - T-1490: the dead CI deploy job is gone, the certificate check covers `zilar.app`, and `docs/RELEASING.md` matches the real deploy;
+  - T-1491: the mock AI DM is called "Dev-1".
+  - The Group info canvas gained two channel boards.
+  - An iOS Simulator check passed for the chat list. The audit sweeps record what closed tonight.
+  - A full check on main `e011d859e` is green: typecheck 16/16, 1,849 tests.
+  - **Lead patch waiting for the next task branch:** a WUX-44 line for the client sweep's update list. WUX-44 is done by T-1435. The patch is `sweep-wux44.patch` in the job's tmp folder.
+- **Julio's decisions (morning):** AIs count as members everywhere, and the Stop pause is saved.
+- **Running (11:00):**
+  - T-1492 merged: AIs count as members (server, mock, web topic panel). Headless check: Dev team › General reads "6 members" in the header and "All 6 members" in the panel.
+  - T-1493: the Stop pause is saved (migration 0062, `topics.follow_paused_at`, loaded at gateway start).
+  - After both merge, the lead installs a fresh build on Julio's phone (it is connected).
+- **Group info canvas approved** (Julio: "looks right"). After his review the keys use the kit sizes and no list clips.
+  - Boards and README: `docs/design/mockups/group-info/`, untracked; they ride T-1494.
+  - **More** (Julio): a menu with Group background (managers) and Delete group (owner). The red bottom row is Leave group, for non-owners.
+  - **Web plan:**
+    - T-1494, step 1: the root page and subpages, the Mute/Search/Add keys, and a shared `PanelKey` that ContactPanel uses too. Spec ready; it launches when a slot frees.
+    - Step 2: Leave on the root, More, and the member rows with icons and a ⋮ menu.
+    - Step 3: the channel panel and Subscribers.
+  - **Mobile twins:** specced in the same batch, launched when Julio is away from the PC.
 - **New AI waves are done:**
   - T-1445: mobile New AI;
   - T-1469 to T-1475: the follow-ups (key cleanup, OpenAI-compatible label, partial notice, the mobile Add key sheet, the provider chip);
@@ -35,6 +56,9 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - The canvas folds them into a Telegram-like page: picture, name and "4 members · 2 AIs"; four keys (Mute, Search, Add, More); three grouped lists (People, Content, Settings); and Leave group.
   - Members is its own page: Add members, Invite with a link, people with roles as tags, owner and admin as icons, AIs, then Roles.
   - The switches and the background move under Settings. The count line assumes AIs are counted apart; see the members decision below.
+  - Two channel boards share the same shape:
+    - **Acme Announcements:** handle, subscriber count, description; then Admins, Subscribers, AIs and Invite links.
+    - **Subscribers:** owner and admin are icons instead of the word chips, and a row's ⋮ menu holds "Make admin" instead of a Promote key. Removing a subscriber isn't a feature today, so the menu doesn't show it.
 - **Nine canvases now wait for you:** View steps, Connections, Topic status, AI health, Lean settings, Approvals, Empty chat and files, Stickers, and Group info.
 - **T-1489 merged: Android predictive back is on (MUX-24).**
   - It is a mobile-only change, so there is no web deploy, and it ships in the next APK.
@@ -56,7 +80,8 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - The chat list matches Android: recency order, requests on top.
   - At the accessibility-large text size the rows grow, text is capped at 1.4×, and long lines truncate cleanly.
   - **Not checked on iOS:** the screens behind a deep link. iOS asks "Open in Zilar?" for `zilar://`, and this Mac has no tool to tap the Simulator. `idb` isn't installed, and scripting the Simulator window needs macOS accessibility permission, which the lead won't grant. If you want deeper iOS QA at night, installing `idb` would allow it; that is your call.
-- **T-1491 merged:** the mock AI DM is titled "Dev-1" (the AI's name, as in production) instead of "Dev AI". Checked headless on web mock. It touches `packages/`, so it deploys; mock data only.
+- **T-1491 merged:** the mock AI DM is titled "Dev-1" (the AI's name, as in production) instead of "Dev AI". Checked headless on web mock.
+  - It went live at `e011d859e`: `/api/me` and `/api/chats` answer 401, `/install.sh` answers 200, and the new server container has 0 errors and 0 warnings.
 - **Lead slip:** `lead merge` adds the `T-XXXX:` prefix itself, so the T-1489 and T-1490 subjects read "T-1489: T-1489: …". They are pushed and left as they are; the memory now notes it.
 - **Audit rows the lead closed:** MP-9 is not actionable, because a group's first reader marking a message read matches Telegram's two checks.
 

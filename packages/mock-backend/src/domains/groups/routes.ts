@@ -136,7 +136,8 @@ function createGroup(data: MockData, request: MockHttpRequest): Response {
 
 /** The `/chats` row of a freshly created group: the creator owns it. */
 function chatEntryOf(group: MockGroup, chatJid: string): GroupChatEntry {
-  const memberCount = group.members.length;
+  // T-1492: AIs count as members.
+  const memberCount = group.members.length + group.ais.length;
   return {
     kind: 'group',
     chatJid,

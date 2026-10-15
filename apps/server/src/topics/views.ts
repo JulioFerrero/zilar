@@ -11,20 +11,24 @@ import { rolesOfTopic, topicRoleHolderIds } from '../roles/service';
 import type { TopicAiView, TopicOwnerView, TopicView } from './access';
 
 export async function countTopicMembers(db: ServerDatabase, topic: TopicRow): Promise<number> {
+  // T-1492: a public topic is the whole group — its people and its AIs.
   if (topic.visibility !== 'private') {
     const [row] = await runSql(
       db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM group_members
-          WHERE group_id = ${topic.groupId}`;
+        return yield* sql<{ total: number }>`SELECT (
+          (SELECT count(*) FROM group_members WHERE group_id = ${topic.groupId})
+          + (SELECT count(*) FROM group_ais WHERE group_id = ${topic.groupId})
+        )::int AS total`;
       }),
     );
     return row?.total ?? 0;
   }
   // T-0116: `topic_members` plus the holders of its roles (still group
   // members). A holder who is also a direct member counts once.
-  const [direct, holders] = await Promise.all([
+  // T-1492: a private topic adds the AIs it lists in `topic_ais`.
+  const [direct, holders, ais] = await Promise.all([
     runSql(
       db,
       Effect.gen(function* () {
@@ -34,12 +38,20 @@ export async function countTopicMembers(db: ServerDatabase, topic: TopicRow): Pr
       }),
     ),
     topicRoleHolderIds(db, topic.id, topic.groupId),
+    runSql(
+      db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ total: number }>`SELECT count(*)::int AS total FROM topic_ais
+          WHERE topic_id = ${topic.id}`;
+      }),
+    ),
   ]);
   const ids = new Set(direct.map((row) => row.userId));
   for (const id of holders) {
     ids.add(id);
   }
-  return ids.size;
+  return ids.size + (ais[0]?.total ?? 0);
 }
 
 export async function resolveOwnerName(
@@ -181,6 +193,7 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
     userRows,
     aiOwnerRows,
     aiRows,
+    groupAiRows,
     approverRows,
   ] = await runSql(
     db,
@@ -208,6 +221,12 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
             FROM topic_ais ta
             INNER JOIN ais a ON a.id = ta.ai_id
             WHERE ta.topic_id IN ${sql.in(topicIds)}`,
+        // T-1492: a public topic's count adds the group's AIs.
+        sql<{
+          groupId: string;
+          total: number;
+        }>`SELECT group_id, count(*)::int AS total FROM group_ais
+            WHERE group_id IN ${sql.in(groupIds)} GROUP BY group_id`,
         sql<{ id: string; approverRoleId: string | null }>`SELECT id, approver_role_id FROM topics
             WHERE id IN ${sql.in(topicIds)}`,
       ]);
@@ -237,6 +256,7 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
   const holdersByRole = groupBy(holderRows, (row) => row.roleId);
   const directByTopic = groupBy(directRows, (row) => row.topicId);
   const aisByTopic = groupBy(aiRows, (row) => row.topicId);
+  const groupAiCounts = new Map(groupAiRows.map((row) => [row.groupId, Number(row.total)]));
   const userNames = new Map(userRows.map((row) => [row.id, row.name]));
   const aiNames = new Map(aiOwnerRows.map((row) => [row.id, row.name]));
   const approverByTopic = new Map(approverRows.map((row) => [row.id, row.approverRoleId]));
@@ -249,6 +269,7 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
   };
   for (const topic of rows) {
     const groupMembers = membersByGroup.get(topic.groupId) ?? new Set<string>();
+    const groupAiCount = groupAiCounts.get(topic.groupId) ?? 0;
     const groupRoles = rolesByGroup.get(topic.groupId) ?? [];
     const wanted = new Set((roleIdsByTopic.get(topic.id) ?? []).map((row) => row.roleId));
     const attached = groupRoles.filter((role) => wanted.has(role.id));
@@ -267,7 +288,7 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
     });
 
     if (topic.visibility !== 'private') {
-      parts.memberCounts.set(topic.id, groupMembers.size);
+      parts.memberCounts.set(topic.id, groupMembers.size + groupAiCount);
     } else {
       const ids = new Set((directByTopic.get(topic.id) ?? []).map((row) => row.userId));
       for (const role of attached) {
@@ -275,7 +296,7 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
           ids.add(row.userId);
         }
       }
-      parts.memberCounts.set(topic.id, ids.size);
+      parts.memberCounts.set(topic.id, ids.size + (aisByTopic.get(topic.id)?.length ?? 0));
     }
 
     let owner: TopicOwnerView | null = null;
