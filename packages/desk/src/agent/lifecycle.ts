@@ -129,6 +129,16 @@ export class Lifecycle {
     const existing = this.records.get(name);
     if (existing !== undefined) {
       existing.lastUsedAt = this.now();
+      // Re-register with the same secret the jail carries, so a proxy restart
+      // that lost its in-memory registry heals instead of answering 407. A
+      // failure is logged and dropped: the jail is still usable as it was.
+      try {
+        await this.registerEgress(name, existing.spec);
+      } catch (error) {
+        this.log(
+          `desk ${name}: could not re-register with the egress proxy: ${errorMessage(error)}`,
+        );
+      }
       return { kind: 'ready', ref: existing.ref };
     }
     // One in-flight provision per key: a concurrent caller joins the same

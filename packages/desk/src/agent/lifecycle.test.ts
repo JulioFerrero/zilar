@@ -108,6 +108,70 @@ describe('desk-agent lifecycle', () => {
     expect(logs).toContain('desk desk-ai1-p1: removed a jail left from an earlier agent run');
   });
 
+  it('re-registers a known desk with the egress proxy on every provision', async () => {
+    const docker = new FakeDocker();
+    const registered: string[] = [];
+    const lifecycle = new Lifecycle({
+      docker,
+      workspaces: fakeWorkspaces(agent.directory),
+      admission: new Admission({
+        maxRunning: 4,
+        memoryRatioLimit: 0.75,
+        pool: () => Promise.resolve(null),
+      }),
+      config: agent.config,
+      egress: {
+        register: (deskId) => {
+          registered.push(deskId);
+          return Promise.resolve(`http://${deskId}:secret@proxy:8080`);
+        },
+        unregister: () => Promise.resolve(),
+      },
+    });
+    await lifecycle.checkReadiness();
+
+    await lifecycle.provision(spec());
+    const second = await lifecycle.provision(spec());
+
+    expect(second).toMatchObject({ kind: 'ready' });
+    expect(registered).toEqual(['desk-ai1-p1', 'desk-ai1-p1']);
+    // The jail stays as it is; only the proxy registry is refreshed.
+    expect(docker.created).toEqual(['desk-ai1-p1']);
+  });
+
+  it('still returns ready when re-registering a known desk fails', async () => {
+    const docker = new FakeDocker();
+    const logs: string[] = [];
+    let calls = 0;
+    const lifecycle = new Lifecycle({
+      docker,
+      workspaces: fakeWorkspaces(agent.directory),
+      admission: new Admission({
+        maxRunning: 4,
+        memoryRatioLimit: 0.75,
+        pool: () => Promise.resolve(null),
+      }),
+      config: agent.config,
+      egress: {
+        register: (deskId) => {
+          calls += 1;
+          return calls === 1
+            ? Promise.resolve(`http://${deskId}:secret@proxy:8080`)
+            : Promise.reject(new Error('proxy down'));
+        },
+        unregister: () => Promise.resolve(),
+      },
+      log: (message) => logs.push(message),
+    });
+    await lifecycle.checkReadiness();
+
+    await lifecycle.provision(spec());
+    const second = await lifecycle.provision(spec());
+
+    expect(second).toMatchObject({ kind: 'ready' });
+    expect(logs.some((line) => line.includes('could not re-register'))).toBe(true);
+  });
+
   it('frees the admission slot even when the workspace release throws', async () => {
     const admission = new Admission({
       maxRunning: 1,
