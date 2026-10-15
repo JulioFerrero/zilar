@@ -1603,3 +1603,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1589](T-1589-install-test-ws-http11.md) | Fresh-install test checks the WebSocket over HTTP/1.1 | 2026-10-15 |
 | [T-1588](T-1588-install-coolify-mode.md) | Installer Coolify mode: the whole layout through Coolify's API | 2026-10-15 |
 | [T-1590](T-1590-landing-serves-installer.md) | Landing app serves the installer on get.zilar.app | 2026-10-15 |
+| [T-1592](T-1592-coolify-template.md) | Coolify one-click template with AI computer services | 2026-10-15 |

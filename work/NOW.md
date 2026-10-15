@@ -93,7 +93,16 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - so a fresh database takes every migration in a row;
       - the plain stack builds postgres and ejabberd locally from `deploy/` and pulls server, web and caddy.
     - **DNS:** Julio added `get` → CNAME `zilar.app` at Porkbun; `get.zilar.app` resolves to 152.53.146.96. The landing app doesn't answer on it yet (needs Julio's OK).
-  - **Running (1):**
+  - **Julio, evening: Coolify ships as a standard one-click template.**
+    - The API-token mode is removed (T-1593) and T-1591 is parked (blocked, not to merge). The template is T-1592.
+    - The plan doc has a "Change of course" section.
+  - **`get.zilar.app` is live** (T-1590 merged; Julio OK'd the landing change).
+    - The landing app's domains are now `zilar.app`, `www.zilar.app` and `get.zilar.app`. A manual deploy (`7rjctopzgikchutmruiyov4u`, 31 s) shipped `54633f5b9`.
+    - `curl https://get.zilar.app` answers 200 `text/x-shellscript` with a valid certificate, byte-identical to `deploy/install.sh`. `zilar.app` still redirects 301 to www; www answers 200, and before/after screenshots match (0 page errors).
+    - **Found:** the landing had not deployed since 2026-10-02. Its only deployments were API-made, and auto-deploy never fired, so the 10-02→now site changes (file splits only, same `index.html`) shipped with this deploy. `watch_paths` is empty. **Follow-up:** find out why the landing gets no push webhooks (zilar-chat does).
+  - **Running:** T-1592 (Coolify template), T-1593 (the installer's Coolify branch and `--desks-host`).
+  - **Still before users can use the one-liner by default:** the rehearsal (now the template in a scratch project, no token), then tag v0.2.0 (Julio OK'd after the rehearsal). The latest tag, v0.1.13, has no `preflight.sh`, so until then use `--version main`.
+  - **Old Running list:**
     - T-1588 (installer Coolify mode through Coolify's API; reference `docs/deploy/coolify-api-notes.md`, committed on its branch). The lead refused an outside call to httpbin.org.
   - **Phone follow-ups:**
     - a failed channel delete says "group";

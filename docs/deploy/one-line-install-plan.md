@@ -2,10 +2,22 @@
 
 Julio asked for one command that installs Zilar, including AI computers, on a server that already runs Coolify or on plain Docker, served from `get.zilar.app`.
 
+## Change of course (Julio, 2026-10-15 evening): a standard Coolify template
+
+Julio asked how other open-source projects ship on Coolify. The usual way is a **one-click template**: one compose file in Coolify's catalog (`coollabsio/coolify` `templates/compose/<name>.yaml`; Umami's is an example), using Coolify's magic variables (`SERVICE_URL_*`, `SERVICE_PASSWORD_*`, `SERVICE_USER_*`). The user picks it, sets a domain and deploys. There's no token and no script.
+
+**His decision:** a template for users.
+- **AI computers:** off by default; one host command turns them on (`zilar host-setup` plus the sandbox check).
+- **The token-based API mode is removed** (T-1588's `coolify-mode.sh` and `coolify-api.sh`; T-1591 is dropped).
+- **The split layout** (`deploy/coolify/zilar-core.yml` and `LAYOUT.md`) is kept only for our own `chat.zilar.app`, for deploys without downtime. Updates to a template install redeploy the whole stack: about a minute without chat, which is normal for self-hosters.
+- **The rehearsal** deploys the template into a scratch project through the lead's existing Coolify access. No token from Julio is needed.
+
+The decisions below are the earlier ones; the API-mode line is superseded.
+
 ## Julio's decisions (2026-10-15)
 
 - **Coolify:**
-  - **Coolify found:** the script sets Zilar up through **Coolify's API**. The user pastes an API token, and the script creates everything, fills in every variable, deploys and checks it.
+  - ~~**Coolify found:** the script sets Zilar up through **Coolify's API**.~~ Superseded by the template (above).
   - **No Docker:** on a server where Docker can't run, the script **stops with a clear message** (why, and which servers work). Bare metal stays a manual guide (`docs/INSTALL_BARE_METAL.md`) and is not part of the one-liner.
 - **Live runs what users get:** `chat.zilar.app` moves to the same published-images setup, "without downtime or strange hacks".
 - **The URL:** `get.zilar.app` is served by the existing landing app on Coolify.
