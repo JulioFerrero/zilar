@@ -80,11 +80,16 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - live moves to the users' published-images layout "without downtime or strange hacks", after one planned ~2 min cutover;
       - `get.zilar.app` is served by the landing app.
     - **He said:** "start all code steps", and keep the earlier work going too.
-  - **Running (4):**
-    - T-1583 (fresh-install CI test after Production images; autofix round 1 done, pre-review again);
-    - T-1584 (Coolify split layout: `zilar-core.yml` and `LAYOUT.md`; autofix round 1);
-    - T-1585 (installer bootstrap, check report and Docker stop; AI computers on only after a real sandbox run; pre-review);
-    - T-1587 (phone channel Content, Settings and More; lead fix round 1: the smoke still lands on the chat list for `/group/g-acme`).
+  - **Merged:**
+    - T-1585 (installer check report and Docker stop; AI computers on only after a real sandbox run; 50 install tests pass);
+    - T-1584 (Coolify layout files; **the rehearsal must prove `/xmpp-ws/api` is unreachable**, since the ejabberd admin API shares that listener);
+    - T-1587 (phone channel Content, Settings and More. The channel screen now opens: a boot race had sent it to the chat list. **The phone Group info plan T1–T6 is done.**)
+  - **Running (2):**
+    - T-1583 (fresh-install CI test; pre-review);
+    - T-1588 (installer Coolify mode through Coolify's API; reference `docs/deploy/coolify-api-notes.md`, committed on its branch). The lead refused an outside call to httpbin.org.
+  - **Phone follow-ups:**
+    - a failed channel delete says "group";
+    - offline from a cold start, a group link with no topics shows the empty shell.
   - **Next:**
     - the Coolify-mode installer, after T-1584 and T-1585;
     - `get.zilar.app` on the landing app (needs Julio's DNS record);
@@ -94,7 +99,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - Coolify runs on the VPS itself, so a reset loses every secret unless Julio exports them (OPS-9).
   - **Live at `df406f717`** (includes the questions server work): 0 errors and 2 "AI is offline" warnings at container start; `/api/me`, `/api/chats`, `/api/topics/x` and `/api/agents/tasks/x/steps` answer 401 signed out.
   - **Merged since:**
-    - T-1582 (CI publishes `zilar-desk-agent` and `zilar-desk`; the plain stack pulls them; `zilar up` pins `DESK_IMAGE`; plan doc committed with it). **Check the next green-main Production images run publishes both.**
+    - T-1582 (CI publishes `zilar-desk-agent` and `zilar-desk`; the plain stack pulls them; `zilar up` pins `DESK_IMAGE`; plan doc committed with it). **Verified:** run 38770812784 on `8ba0466fb` built all six images, and `ghcr.io/julioferrero/zilar-desk:latest`, `zilar-desk-agent:latest` and `zilar-server:latest` all answer an anonymous manifest pull with 200.
     - T-1586 (questions step 8: a waiting AI opens its question; headless check passed). **The AI questions plan is complete: steps 1–8.**
   - **Still to do from the earlier work:**
     - AI work T8 (drop kind/status/owner after a phone release);

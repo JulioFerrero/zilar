@@ -471,3 +471,10 @@ the server talks to ejabberd directly on the internal network. A real
 domain (ACME issuance) and the Coolify path were NOT verified live. The
 proof used a scratch-only mailer patch (see the T-0126 Report); real
 production email needs T-0128.
+
+The `.github/workflows/install-test.yml` workflow repeats the same proof on a
+fresh GitHub runner after every green main (T-1583): it runs `install.sh` from a
+packed checkout of the images' commit, then asserts `/health` is 200 with
+`ok:true`, `/api/me` is 401, `/xmpp-ws/ws` upgrades with 101, and the
+`effect_sql_migrations` journal has one row per `apps/server/drizzle/*.sql`
+file, so every migration ran on an empty database.

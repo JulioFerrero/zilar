@@ -1,0 +1,154 @@
+name: Fresh install
+
+# Step 2 of docs/deploy/one-line-install-plan.md: every green main proves a
+# fresh install works. The plain Docker install was proven once by hand (T-0126,
+# docs/INSTALL_DOCKER.md -> "What was tested"); no CI job applied all of
+# apps/server/drizzle/*.sql to an empty database. This one does, on a throwaway
+# runner: it runs deploy/install.sh against the images "Production images" just
+# published for the same commit and asserts the stack answers.
+on:
+  # "Production images" publishes :latest for a green main push, so this runs
+  # after it completes (see the job `if`, which needs a successful main push).
+  workflow_run:
+    workflows: [Production images]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# One fresh install at a time: every run holds ports 80 and 443 on its runner
+# and pulls the same :latest images. A newer run waits for the one in flight.
+concurrency:
+  group: install-test
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: Install and check a fresh stack
+    runs-on: ubuntu-latest
+    # The install pulls four images, applies 67 migrations and waits for the
+    # stack, so keep a ceiling above the usual 8-12 minutes.
+    timeout-minutes: 25
+    # workflow_run fires for failed and PR runs too; run only after a green main
+    # push. "Production images" is itself workflow_run-triggered by a green CI on
+    # main, so its successful main runs report event == 'workflow_run'; a version
+    # tag reports 'push'. Accept both (and reject a fork PR whose head branch is
+    # named main, as images.yml does). A manual dispatch always runs.
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_run'))
+    steps:
+      # images.yml's tip job lets a stale workflow_run finish green without
+      # publishing (:25-55), so :latest can still be an older commit. Only the
+      # run that published the current tip of main may be installed: otherwise
+      # this job checks out a stale head_sha and pulls an older :latest, and the
+      # migration-count assertion below fails on version skew rather than on a
+      # broken install. Replicate that tip check here.
+      - name: Check out main to find its code tip
+        if: github.event_name == 'workflow_run'
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check the images run published the current tip of main
+        id: tip
+        if: github.event_name == 'workflow_run'
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # Same rule as images.yml's tip job: docs-only pushes skip CI (T-0754),
+          # so work/, docs/ and *.md commits do not count.
+          code_tip="$(git log -1 --format=%H origin/main -- . ':(exclude)work/**' ':(exclude)docs/**' ':(exclude)**/*.md')"
+          if [ "$code_tip" = "$HEAD_SHA" ]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+            echo "${HEAD_SHA} is the last code commit on main; installing."
+          else
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping: ${HEAD_SHA} is no longer the last code commit on main (it is ${code_tip}); this run published no :latest for it."
+          fi
+
+      # On a workflow_run, install the exact commit the images were built from.
+      # Skip everything when the tip check says this run published no :latest
+      # (a manual dispatch has no tip output, so it always proceeds).
+      - name: Check out the commit the images run built
+        if: steps.tip.outputs.latest != 'false'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      # do_fetch (deploy/install.sh) extracts the archive and takes the first
+      # entry as the root, which must hold deploy/. `git archive --prefix` gives
+      # it exactly that single top-level directory, like codeload's tarball, so
+      # this runs install.sh off the checkout instead of the network.
+      - name: Pack the checkout as install.sh expects
+        if: steps.tip.outputs.latest != 'false'
+        run: |
+          git archive --format=tar --prefix=zilar/ HEAD | gzip > "$RUNNER_TEMP/zilar.tar.gz"
+          echo "packed $(du -h "$RUNNER_TEMP/zilar.tar.gz" | cut -f1) into $RUNNER_TEMP/zilar.tar.gz"
+
+      # --yes runs init without prompts (it adds --acme-email and --push-subject
+      # itself); main maps to the :latest images the triggering run published.
+      - name: Install Zilar from the packed checkout
+        if: steps.tip.outputs.latest != 'false'
+        run: |
+          sudo ZILAR_INSTALL_TARBALL="$RUNNER_TEMP/zilar.tar.gz" \
+            sh deploy/install.sh --yes --domain localhost --admin-email ci@example.com \
+            --dir /opt/zilar --version main
+
+      - name: Assert /health, /api/me and the XMPP WebSocket
+        if: steps.tip.outputs.latest != 'false'
+        run: |
+          set -euo pipefail
+          curl_https="curl -k -sS --max-time 15 --resolve localhost:443:127.0.0.1"
+
+          echo "GET /health"
+          health="$($curl_https -w '\n%{http_code}' https://localhost/health)"
+          printf '%s\n' "$health"
+          code="$(printf '%s\n' "$health" | tail -n 1)"
+          [ "$code" = "200" ] || { echo "::error::/health answered $code, want 200"; exit 1; }
+          printf '%s\n' "$health" | grep -q '"ok":true' || { echo "::error::/health is missing ok:true"; exit 1; }
+
+          echo "GET /api/me"
+          code="$($curl_https -o /dev/null -w '%{http_code}' https://localhost/api/me)"
+          [ "$code" = "401" ] || { echo "::error::/api/me answered $code, want 401"; exit 1; }
+
+          echo "GET /xmpp-ws/ws (WebSocket upgrade)"
+          code="$($curl_https -o /dev/null -w '%{http_code}' \
+            -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+            -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+            https://localhost/xmpp-ws/ws || true)"
+          [ "$code" = "101" ] || { echo "::error::/xmpp-ws/ws answered $code, want 101"; exit 1; }
+
+          echo "health, auth and WebSocket checks passed"
+
+      # migrateSql journals one row per apps/server/drizzle/*.sql file in
+      # effect_sql_migrations (apps/server/src/effect/sql.ts:27); an empty
+      # database that ran them all has as many rows as there are files. The
+      # server finished its migrations before /health answered above.
+      - name: Assert every migration is applied
+        if: steps.tip.outputs.latest != 'false'
+        run: |
+          set -euo pipefail
+          want="$(ls apps/server/drizzle/*.sql | wc -l | tr -d '[:space:]')"
+          got="$(sudo docker compose -f /opt/zilar/docker-compose.yml --env-file /opt/zilar/.env \
+            exec -T postgres psql -U postgres -d zilar -tAc 'select count(*) from effect_sql_migrations' \
+            | tr -d '[:space:]')"
+          echo "effect_sql_migrations rows=$got, drizzle files=$want"
+          [ "$got" = "$want" ] || { echo "::error::journal has $got rows, want $want"; exit 1; }
+
+      # A fresh run with throwaway secrets may print these; .env never prints
+      # (it holds the generated secrets).
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          echo "::group::zilar status"
+          cd /opt/zilar && sudo ./zilar status || true
+          echo "::endgroup::"
+          echo "::group::server logs (last 200 lines)"
+          sudo docker compose -f /opt/zilar/docker-compose.yml --env-file /opt/zilar/.env \
+            logs --no-color --tail=200 server || true
+          echo "::endgroup::"
+          echo "::group::ejabberd logs (last 200 lines)"
+          sudo docker compose -f /opt/zilar/docker-compose.yml --env-file /opt/zilar/.env \
+            logs --no-color --tail=200 ejabberd || true
+          echo "::endgroup::"
