@@ -49,7 +49,7 @@ export interface StickerImagePicker {
 /** One prepared sticker file, ready for the binary upload. */
 export interface PreparedStickerImage {
   uri: string;
-  mimeType: 'image/webp' | 'image/png';
+  mimeType: string;
   width: number;
   height: number;
   bytes: number;
@@ -173,8 +173,8 @@ const motionKindEffect = (
 /**
  * A GIF, video, animated WebP or APNG goes to the server raw (T-1525/T-1496):
  * the file is kept as it is, the server sniffs the bytes. The declared type
- * stays WebP (PNG for an APNG), the type the server stores, because the tile
- * and upload seams only carry `image/webp` | `image/png`; the bytes decide.
+ * is the picked asset's own type, or `application/octet-stream` when the
+ * picker reports none (T-1564); the bytes decide either way.
  * A GIF or video is capped at 4 MiB (the server converts it); a moving WebP
  * or PNG is already a sticker and is capped at 512 KiB, refused here exactly
  * as web's `keepAnimatedFile` does (T-1525 fix round).
@@ -205,7 +205,7 @@ const keepMovingEffect = (
       status: 'prepared',
       image: {
         uri: image.uri,
-        mimeType: image.mimeType === 'image/png' ? 'image/png' : 'image/webp',
+        mimeType: image.mimeType ?? 'application/octet-stream',
         width: 0,
         height: 0,
         bytes: bytes ?? 0,

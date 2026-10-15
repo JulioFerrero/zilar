@@ -6,7 +6,7 @@ import { SearchField } from '@/components/ui/search-field';
 import { StateMessage } from '@/components/ui/state-message';
 import { Text } from '@/components/ui/text';
 import { ICON, SEEN } from '@/lib/colors';
-import type { StickerPack } from '@/lib/stickers';
+import type { PanelPack } from '@/lib/stickers-api';
 import { PackCard } from '@/components/stickers/pack-card';
 import { DISCOVER_ERROR } from '@/components/stickers/use-stickers-panel';
 
@@ -31,7 +31,7 @@ export function DiscoverTab({
   onRemove,
   onOpenPackLink,
 }: {
-  discover: StickerPack[] | undefined;
+  discover: PanelPack[] | undefined;
   discoverBusy: boolean;
   discoverError: string;
   query: string;
@@ -43,7 +43,7 @@ export function DiscoverTab({
   onQueryChange: (value: string) => void;
   onSearch: (search: string) => void;
   onAdd: (packId: string) => void;
-  onRemove: (pack: StickerPack) => void;
+  onRemove: (pack: PanelPack) => void;
   /** Opens the pack link page (`/stickers/<id>`). */
   onOpenPackLink: (packId: string) => void;
 }) {

@@ -23,8 +23,8 @@ function packMeta(pack: PanelPack, own: boolean): string {
 
 /**
  * One lean pack row (T-1533): four 36 px thumbs, the name with a globe when
- * shared, the meta line and a trailing control. My packs and Added render it
- * as a row inside one bordered list; Discover keeps its own card.
+ * shared, the meta line and a trailing control. My packs, Added and Discover
+ * all render it as a row inside one bordered list.
  */
 export function PackCard({
   pack,

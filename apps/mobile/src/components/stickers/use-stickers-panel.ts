@@ -8,6 +8,7 @@ import { fromApi } from '@/lib/effect/api-effect';
 import { interruptFiber } from '@/lib/effect/timers';
 import { getSessionToken } from '@/lib/session-token';
 import type { StickerItem, StickerPack } from '@/lib/stickers';
+import type { PanelPack } from '@/lib/stickers-api';
 import { movedOrder, panelIdSet } from '@/components/stickers/order';
 import { favoriteTileSize } from '@/components/stickers/tile-size';
 import { useStickersApi } from '@/components/stickers/use-stickers-api';
@@ -35,7 +36,7 @@ export function useStickersPanel() {
   const [packs, setPacks] = useState<StickerPack[]>([]);
   const [favorites, setFavorites] = useState<StickerItem[]>([]);
   const [status, setStatus] = useState<PageStatus>('loading');
-  const [discover, setDiscover] = useState<StickerPack[] | undefined>(undefined);
+  const [discover, setDiscover] = useState<PanelPack[] | undefined>(undefined);
   const [discoverBusy, setDiscoverBusy] = useState(false);
   const [discoverError, setDiscoverError] = useState('');
   const [query, setQuery] = useState('');

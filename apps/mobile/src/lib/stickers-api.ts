@@ -61,9 +61,10 @@ function toStickerItem(row: ContractSticker): StickerItem | null {
 }
 
 /**
- * One panel pack as My packs shows it: the list rows may carry the owner's
- * handle. The list and Discover payloads do not include it yet (T-1531 adds it
- * on the server), so it stays absent and the Added rows show only the count.
+ * One panel pack as My packs, Added and Discover show it: the list, Discover
+ * and detail payloads carry the owner's handle when the owner has one
+ * (T-1531). The handle stays absent when the server sends none, and the rows
+ * then show only the count.
  */
 export type PanelPack = StickerPack & { ownerHandle?: string | null };
 
@@ -181,7 +182,7 @@ export interface StickersApi {
   /** One pack by id, for its link page (web `getStickerPack`); a 404 rejects with an `ApiError`. */
   getStickerPack(packId: string): Promise<StickerPackDetail>;
   /** Shared packs anyone on this server may add (web `discoverStickerPacks`). */
-  discoverStickerPacks(query?: string): Promise<{ packs: StickerPack[]; next: string | null }>;
+  discoverStickerPacks(query?: string): Promise<{ packs: PanelPack[]; next: string | null }>;
   addStickerPanelPack(packId: string): Promise<void>;
   removeStickerPanelPack(packId: string): Promise<void>;
   /** Reorders the whole panel; `order` is the complete id list, new order. */
@@ -214,7 +215,7 @@ export interface StickersApi {
    */
   uploadStickerFile(
     packId: string,
-    file: { uri: string; mimeType: 'image/webp' | 'image/png' },
+    file: { uri: string; mimeType: string },
     emoji?: string,
   ): Promise<StickerItem>;
 }

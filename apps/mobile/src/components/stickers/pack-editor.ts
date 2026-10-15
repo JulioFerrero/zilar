@@ -12,7 +12,7 @@ export const MAX_PACK_STICKERS = 120;
 export interface EditorNewItem {
   key: string;
   uri: string;
-  mimeType: 'image/webp' | 'image/png';
+  mimeType: string;
   width: number;
   height: number;
   bytes: number;
@@ -120,7 +120,7 @@ export function lookupFailureKind(error: unknown): 'not-found' | 'forbidden' | '
 export interface SavePendingItem {
   key: string;
   uri: string;
-  mimeType: 'image/webp' | 'image/png';
+  mimeType: string;
   emoji: string;
 }
 
@@ -139,7 +139,7 @@ export interface SavePackApi {
   deletePackSticker(packId: string, stickerId: string): Promise<void>;
   uploadStickerFile(
     packId: string,
-    file: { uri: string; mimeType: 'image/webp' | 'image/png' },
+    file: { uri: string; mimeType: string },
     emoji?: string,
   ): Promise<{ id: string }>;
 }
