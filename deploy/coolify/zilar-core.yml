@@ -1,0 +1,228 @@
+# Zilar core: the stateful half of the split stack, as a Coolify **Service**
+# (Docker Compose, published ghcr.io images, no build).
+#
+# Target layout (docs/deploy/zero-downtime-plan.md Phase 2, and
+# deploy/coolify/LAYOUT.md): Zilar runs as three Coolify resources so that a
+# server or web push is a rolling update instead of a whole-stack recreate:
+#   - zilar-core   (this file): postgres, ejabberd, desk-agent and desk-egress.
+#                  It owns the data volumes and routes /xmpp-ws and /upload to
+#                  ejabberd so a web deploy never cuts chat sockets.
+#   - zilar-server a Docker-image Application (ghcr.io/.../zilar-server).
+#   - zilar-web    a Docker-image Application (ghcr.io/.../zilar-web).
+# LAYOUT.md is the source for every variable, domain, volume and health check
+# of the three resources. Nothing here touches live: it is the definition the
+# installer (docs/deploy/one-line-install-plan.md step 3) creates and the
+# cutover (plan step 8) follows.
+#
+# Differences from deploy/coolify/docker-compose.app.yml (the one built from
+# git), besides `image:` replacing `build:`:
+# - every secret is a **plain variable** the installer generates once and sets
+#   on zilar-server as well; no SERVICE_PASSWORD_* magic variables, so the two
+#   sides can never disagree on a secret;
+# - the public host is the plain variable ZILAR_DOMAIN, not SERVICE_FQDN_WEB;
+# - only the stateful services live here; `server` and `web` moved to their own
+#   Applications (see LAYOUT.md);
+# - the sticker-data and avatar-data volumes stay declared (the zilar-server
+#   app mounts them), even though no service in this file uses them yet.
+# Everything else (environment, volumes, health checks, networks, the desk
+# guards) is copied from that file unchanged.
+#
+# Coolify conventions used (https://coolify.io/docs/services/configuration/docker-compose):
+# - `${VAR:-default}` supplies a fallback.
+# - `SERVICE_URL_<SERVICE>_<PORT>` (with an optional path suffix) asks Coolify
+#   to generate a domain for that Compose service on that internal port.
+# - Components in one stack reach each other by Compose service name; from
+#   another resource use `<service>-<this resource uuid>` (LAYOUT.md).
+# - Health checks live in Compose (Services have no separate health-check UI).
+
+services:
+  postgres:
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-postgres:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+      ZILAR_DB_PASSWORD: ${ZILAR_DB_PASSWORD}
+      EJABBERD_DB_PASSWORD: ${EJABBERD_DB_PASSWORD}
+      ZILAR_ARCHIVE_DB_PASSWORD: ${ARCHIVE_DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
+      interval: 5s
+      start_interval: 1s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  ejabberd:
+    # Production config (ejabberd.yml + jwt-entrypoint.sh) is baked into the
+    # image; hosts, passwords, the upload URL and the JWT secret arrive as
+    # environment below.
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-ejabberd:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    stop_grace_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ['foreground']
+    environment:
+      # Traefik terminates TLS; ejabberd serves plain HTTP on the Service
+      # network. The public host is the plain variable ZILAR_DOMAIN (the
+      # installer sets the same host on zilar-server and zilar-web).
+      EJABBERD_MACRO_HOST: ${ZILAR_DOMAIN}
+      EJABBERD_MACRO_MUC_HOST: rooms.${ZILAR_DOMAIN}
+      EJABBERD_MACRO_ADMIN: admin@${ZILAR_DOMAIN}
+      # T-0167: read by our own entrypoint (baked into the image), which
+      # registers the admin account with all output discarded. Never use the
+      # base image's REGISTER_ADMIN_PASSWORD here: it echoes the
+      # `ejabberdctl register ... <password>` command line into the log.
+      EJABBERD_ADMIN_PASSWORD: ${EJABBERD_ADMIN_PASSWORD}
+      EJABBERD_MACRO_SQL_PASSWORD: ${EJABBERD_DB_PASSWORD}
+      # Push component (T-0145, XEP-0114): the secret the server's component
+      # authenticates with. Must equal zilar-server's PUSH_COMPONENT_SECRET.
+      EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${PUSH_COMPONENT_SECRET}
+      # push.<XMPP domain> is derived at container start from ZILAR_DOMAIN
+      # (see deploy/ejabberd/push-entrypoint.sh): set it to the same value as
+      # the server's XMPP_DOMAIN so the entrypoint writes push.<XMPP_DOMAIN>,
+      # matching the server's PUSH_COMPONENT_JID.
+      ZILAR_DOMAIN: ${ZILAR_DOMAIN}
+      ZILAR_XMPP_JWT_SECRET: ${XMPP_JWT_SECRET}
+      EJABBERD_MACRO_UPLOAD_URL: https://${ZILAR_DOMAIN}/upload
+      # T-1584: the public path Traefik sends straight to ejabberd: the
+      # WebSocket. ejabberd answers it at /ws (request_handlers in
+      # deploy/ejabberd/ejabberd.yml), and Coolify strips the path prefix, so
+      # /xmpp-ws/ws arrives as /ws, exactly like apps/web/Caddyfile today.
+      # The second path (/upload) cannot be a second SERVICE_URL_* suffix;
+      # per the Coolify docs it goes in the ejabberd component's Domains field
+      # after parsing. Both paths, and the strip-prefix question they raise,
+      # are "to verify" items in LAYOUT.md.
+      SERVICE_URL_EJABBERD_5280: /xmpp-ws
+    expose:
+      - '5280'
+    volumes:
+      - ejabberd-database:/opt/ejabberd/database
+      - ejabberd-uploads:/opt/ejabberd/upload
+    healthcheck:
+      test: ['CMD', 'ejabberdctl', 'status']
+      interval: 10s
+      start_interval: 1s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+
+  # --- AI computers (desks), off unless DESKS_ENABLED=true ---------------
+  # A Coolify Service does not run ./zilar: set COMPOSE_PROFILES=desks (and
+  # DESKS_ENABLED=true) in the Service environment to start these. desk-agent
+  # is the only service with the Docker socket; desk-egress is a jail's only
+  # way to the web. The host prep Compose cannot do (gVisor, the shared
+  # memory-pool slice) is `sudo ./zilar host-setup` on the host once. Both
+  # images come from the published zilar-desk-agent tag (T-1582).
+  desk-agent:
+    profiles: ['desks']
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-desk-agent:${IMAGE_TAG:-latest}
+    # on-failure, not unless-stopped: the guard below exits 0 while desks are
+    # off, and an exit-0 container must stay stopped.
+    restart: on-failure
+    user: '0:0'
+    privileged: true
+    # One image, two entry points: this service is the sidecar (desk-egress
+    # picks the proxy below). The guard is belt-and-braces: even if Coolify
+    # ignores the `desks` profile, the container exits 0 at once unless
+    # DESKS_ENABLED=true.
+    command:
+      - sh
+      - -c
+      - >-
+        test "$${DESKS_ENABLED:-false}" = "true" ||
+        { echo "desks disabled (DESKS_ENABLED is not true)"; exit 0; };
+        exec node /app/desk-agent
+    environment:
+      DESKS_ENABLED: ${DESKS_ENABLED:-false}
+      DESK_RUNTIME: ${DESK_RUNTIME:-runsc}
+      DESK_NETWORK: desk-net
+      DESK_CGROUP_PARENT: zilar-desks.slice
+      DESK_MAX_RUNNING: ${DESK_MAX_RUNNING:-12}
+      DESK_IMAGE: ${DESK_IMAGE:-}
+      DESK_WORKSPACE_ROOT: /var/lib/zilar/desks
+      DESK_WORKSPACE_MODE: image
+      DESK_AGENT_SOCKET: /run/zilar/desk.sock
+      DESK_EGRESS_PROXY: http://desk-egress:3128
+      DESK_EGRESS_REGISTRY_SOCKET: /run/zilar-egress/desk-egress.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/zilar/desks:/var/lib/zilar/desks
+      - /dev:/dev
+      - desk-socket:/run/zilar
+      - desk-egress-socket:/run/zilar-egress
+    healthcheck:
+      test: ['CMD-SHELL', 'test -S /run/zilar/desk.sock']
+      interval: 15s
+      start_interval: 2s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  desk-egress:
+    profiles: ['desks']
+    image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-desk-agent:${IMAGE_TAG:-latest}
+    # on-failure, not unless-stopped: the guard below exits 0 while desks are
+    # off, and an exit-0 container must stay stopped.
+    restart: on-failure
+    # The guard is belt-and-braces: even if Coolify ignores the `desks`
+    # profile, the container exits 0 at once unless DESKS_ENABLED=true.
+    command:
+      - sh
+      - -c
+      - >-
+        test "$${DESKS_ENABLED:-false}" = "true" ||
+        { echo "desks disabled (DESKS_ENABLED is not true)"; exit 0; };
+        exec node /app/desk-egress
+    environment:
+      DESKS_ENABLED: ${DESKS_ENABLED:-false}
+      DESK_EGRESS_PORT: '3128'
+      DESK_EGRESS_REGISTRY_SOCKET: /run/zilar-egress/desk-egress.sock
+    volumes:
+      - desk-egress-socket:/run/zilar-egress
+    networks:
+      - desk-net
+      - desk-out
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          const s=require('node:net').connect(3128,'127.0.0.1');
+          s.on('connect',()=>process.exit(0));
+          s.on('error',()=>process.exit(1));
+      interval: 15s
+      start_interval: 2s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+networks:
+  # The jails' network: internal (no route out), and only desk-egress is on it
+  # as the way off. A fixed name so the sidecar's `--network desk-net` finds it.
+  desk-net:
+    name: desk-net
+    internal: true
+  # desk-egress's own way out to the public web; no other desk container joins.
+  desk-out:
+
+volumes:
+  postgres-data:
+  ejabberd-database:
+  ejabberd-uploads:
+  # Sticker files (STICKER_STORAGE_DIR=/data/stickers on zilar-server).
+  sticker-data:
+  # Profile pictures and backgrounds (AVATAR_STORAGE_DIR=/data/avatars on
+  # zilar-server): mounted by that app, not by a service in this file, so the
+  # data survives the cutover and every later server replace.
+  avatar-data:
+  # The desk-agent unix socket, shared with zilar-server (DESK_AGENT_SOCKET).
+  desk-socket:
+  # The egress policy registry socket, shared by desk-agent and desk-egress.
+  desk-egress-socket:
