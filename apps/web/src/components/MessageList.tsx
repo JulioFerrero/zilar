@@ -15,6 +15,7 @@ import { useInitialScroll, useScrollMemory } from './useScrollMemory';
 import { IconButton } from './ui/icon-button';
 import { Badge } from './ui/badge';
 import { StateMessage } from './ui/state-message';
+import { EmptyChat } from './message/EmptyChat';
 import { isBlockedSender, useBlockedJids } from '@/lib/blockedJids';
 import { chatBackgroundStyle, effectiveBackground } from '@/lib/chatBackground';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -329,7 +330,7 @@ export const MessageList = memo(function MessageList({
           className="chat-background flex h-full items-center justify-center p-8 text-center"
           style={backgroundStyle}
         >
-          <StateMessage kind="empty" title="No messages yet" />
+          <EmptyChat chat={chat} />
         </div>
       </div>
     );
