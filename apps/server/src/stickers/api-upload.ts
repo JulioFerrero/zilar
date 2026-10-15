@@ -12,7 +12,7 @@ import { Effect } from 'effect';
 import { HttpServerRequest } from 'effect/http';
 import { HttpError } from '../errors';
 import { readCapped } from '../http/read-capped';
-import { STICKER_MAX_BYTES } from './image';
+import { STICKER_MAX_UPLOAD_BYTES } from './image';
 import { uploadSticker, type StickersServiceDeps } from './service';
 import { decodePathId } from './api-decode';
 
@@ -35,8 +35,8 @@ export function runUploadSticker(
     let emoji: string | undefined;
     if (contentType.includes('multipart/form-data')) {
       const declared = Number(request.request.headers['content-length'] ?? '');
-      if (Number.isFinite(declared) && declared > STICKER_MAX_BYTES + 64 * 1024) {
-        throw new HttpError(413, 'sticker_too_large', 'The sticker is larger than 512 KiB');
+      if (Number.isFinite(declared) && declared > STICKER_MAX_UPLOAD_BYTES + 64 * 1024) {
+        throw new HttpError(413, 'sticker_too_large', 'The file is larger than 4 MiB');
       }
       const webRequest = yield* HttpServerRequest.toWeb(request.request).pipe(Effect.orDie);
       const form = yield* Effect.promise(() => webRequest.formData().catch(() => null));
@@ -50,8 +50,8 @@ export function runUploadSticker(
       const buffer = new Uint8Array(
         yield* Effect.promise(() => file.arrayBuffer().catch(() => new ArrayBuffer(0))),
       );
-      if (buffer.byteLength > STICKER_MAX_BYTES) {
-        throw new HttpError(413, 'sticker_too_large', 'The sticker is larger than 512 KiB');
+      if (buffer.byteLength > STICKER_MAX_UPLOAD_BYTES) {
+        throw new HttpError(413, 'sticker_too_large', 'The file is larger than 4 MiB');
       }
       bytes = buffer;
       const rawEmoji = form.get('emoji');
@@ -70,14 +70,14 @@ export function runUploadSticker(
       // Raw bytes: the client POSTs the file with an optional
       // `x-emoji` header.
       const declared = Number(request.request.headers['content-length'] ?? '');
-      if (Number.isFinite(declared) && declared > STICKER_MAX_BYTES) {
-        throw new HttpError(413, 'sticker_too_large', 'The sticker is larger than 512 KiB');
+      if (Number.isFinite(declared) && declared > STICKER_MAX_UPLOAD_BYTES) {
+        throw new HttpError(413, 'sticker_too_large', 'The file is larger than 4 MiB');
       }
-      const capped = yield* readCapped(request.request.stream, STICKER_MAX_BYTES).pipe(
+      const capped = yield* readCapped(request.request.stream, STICKER_MAX_UPLOAD_BYTES).pipe(
         Effect.orDie,
       );
       if (capped === undefined) {
-        throw new HttpError(413, 'sticker_too_large', 'The sticker is larger than 512 KiB');
+        throw new HttpError(413, 'sticker_too_large', 'The file is larger than 4 MiB');
       }
       bytes = capped;
       const rawEmoji = request.request.headers['x-emoji'];

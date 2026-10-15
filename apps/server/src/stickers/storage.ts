@@ -7,8 +7,14 @@ import { Effect, Option, Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
 import { runSql } from '../effect/sql';
 import { HttpError, xmppUnavailable } from '../errors';
-import { probeErrorCode, probeStickerBytes, STICKER_MAX_BYTES } from './image';
+import {
+  probeErrorCode,
+  probeStickerBytes,
+  STICKER_MAX_BYTES,
+  STICKER_MAX_UPLOAD_BYTES,
+} from './image';
 import type { StickerImageInfo } from './image';
+import { convertibleKind, defaultConverter } from './convert';
 import {
   emojiSchema,
   STICKERS_MAX_PER_PACK,
@@ -209,6 +215,13 @@ export async function uploadSticker(
   await requireOwnedPack(deps, packId, userId);
   if (bytes.byteLength === 0) {
     throw new HttpError(400, 'sticker_empty', 'The sticker file is empty');
+  }
+  if (bytes.byteLength > STICKER_MAX_UPLOAD_BYTES) {
+    throw new HttpError(413, 'sticker_too_large', 'The file is larger than 4 MiB');
+  }
+  const kind = convertibleKind(bytes);
+  if (kind !== null) {
+    bytes = await (deps.converter ?? defaultConverter).toAnimatedWebp(bytes, kind);
   }
   if (bytes.byteLength > STICKER_MAX_BYTES) {
     throw new HttpError(413, 'sticker_too_large', 'The sticker is larger than 512 KiB');

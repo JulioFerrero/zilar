@@ -18,6 +18,9 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1494 is live (`12f9f8aed`), with 0 errors and 0 warnings.
 - **T-1493 is live** (`0df7d74e3`): the live database has `topics.follow_paused_at` (timestamptz) with 0 paused rows, and the server shows 0 errors and 0 warnings.
 - **Approved today, boards plus README parked in the job's tmp folder `parked/<name>/`; each rides its first task into `docs/design/mockups/<name>/`:** Group info (on T-1494, merged), Stickers (on T-1495), Approvals, Lean settings, AI health. Specs for the last three are not written yet.
+- **Approvals work:**
+  - **T-1498 (server: approvals carry `aiName` and `groupName`, one query each), spec-check passed, waiting for a slot;**
+  - next: the web card and Approvals page per the boards (needs T-1498), then web Machines, then the phone twins.
 - **Approvals canvas redone and approved** (Julio first said "too many things", "make it simpler and more clear"; then "much better i like it now"):
   - one request per card: "Dev-1 asks", the summary, then Deny / Approve, with "Always allow" as quiet text. No money shown anywhere (Julio: "i dont like the money part");
   - a decided request is one line with a check or cross icon;
@@ -49,11 +52,16 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - a new `GET /sticker-packs/:id` returns any pack by id, with the owner's handle and `inPanel`;
     - `requireVisiblePack` lets a private pack be added by id; Discover still lists shared packs only;
     - tests cover the permission change.
-  - **T-1496 (server: moving stickers), spec-check passed, waiting for a slot:**
+  - **T-1496 (server: moving stickers) merged.** Live container test (Julio OK'd it): a VP9-alpha WebM became an animated WebP with alpha (30 frames, 445 KB), and a GIF became 10 frames, 153 KB. Follow-ups: log through pino, cancellable queue waits.
     - GIF, WebM, MP4 and MOV are converted with ffmpeg to an animated WebP that loops (alpha kept, at most 3 s, 512 px, 512 KiB);
     - the input cap is 4 MiB; at most 2 conversions run at once;
     - `runCommand` moves from `voice/engine.ts` to `media/run-command.ts`.
     - The Mac's Homebrew ffmpeg has no WebP encoder; before merge, the lead checks the exact arguments in the live container (needs Julio's OK). The live image has ffmpeg 8.0.1 with `libwebp_anim` and the VP8/VP9 decoders.
+  - **T-1497 (web: pack link page), running:**
+    - `/stickers/:packId` with Share, Copy link, and Add or a green check;
+    - pack names open it;
+    - My packs rows get the ⋮ menu (Share first, Edit, Make private or Make shared, Remove from panel, Delete). The Up/Down keys stay for now.
+  - **T-1495 is live** (`0bc73e94e`): the new route and Discover both answer 401 signed out, and the server logs are clean.
   - **Next specs:**
     - Telegram importer: keep `.webm` (split `stickers/telegram.ts` first; it is at 399 lines);
     - web: the link page, Share, the New pack grid, and upload without flattening;

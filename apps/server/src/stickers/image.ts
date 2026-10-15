@@ -6,6 +6,9 @@
 // headers by small pure functions, with no new dependency.
 
 export const STICKER_MAX_BYTES = 512 * 1024;
+/** Cap on the raw upload, before an animated sticker is converted to WebP
+ *  (T-1496): a short video or GIF is bigger than the 512 KiB stored limit. */
+export const STICKER_MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 export const STICKER_MAX_DIMENSION = 512;
 /** Decoded pixels (width × height × RGBA) stay under this: a PNG header
  *  claiming 60 000 × 60 000 is a decompression bomb, not a sticker. */

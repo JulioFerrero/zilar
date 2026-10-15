@@ -9,6 +9,7 @@ import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { StickerPackRow, StickerRow } from '../db/rows';
 import { HttpError, xmppUnavailable } from '../errors';
+import type { StickerConverter } from './convert';
 
 export const STICKER_PACKS_MAX_PER_USER = 100;
 // The pack, title and panel limits are part of the wire contract
@@ -53,6 +54,8 @@ export interface StickersServiceDeps {
   /** Base path of the file route, e.g. `/api/stickers`. */
   fileBasePath?: string;
   audit?: AuditRecorder;
+  /** Overrides the ffmpeg sticker converter; tests may inject a fake. */
+  converter?: StickerConverter;
 }
 
 // A pack or panel write answers 503 for any failure that is not the module's
