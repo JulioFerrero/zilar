@@ -109,45 +109,29 @@ export function StickersPage() {
   if (editingPackId !== undefined) {
     const pack = packs?.find((row) => row.id === editingPackId);
     return (
-      <SettingsShell
-        title="Edit sticker pack"
-        subtitle="Change the title and stickers."
-        onBack={() => setEditingPackId(undefined)}
-      >
-        <div className={SETTINGS_COLUMN}>
-          <PackEditor
-            packId={editingPackId}
-            initialTitle={pack?.title ?? ''}
-            initialVisibility={pack?.visibility ?? 'private'}
-            initialStickers={pack?.stickers ?? []}
-            onDone={() => {
-              setEditingPackId(undefined);
-              runRefresh();
-            }}
-            onCancel={() => setEditingPackId(undefined)}
-          />
-        </div>
-      </SettingsShell>
+      <PackEditor
+        packId={editingPackId}
+        initialTitle={pack?.title ?? ''}
+        initialVisibility={pack?.visibility ?? 'private'}
+        initialStickers={pack?.stickers ?? []}
+        onDone={() => {
+          setEditingPackId(undefined);
+          runRefresh();
+        }}
+        onCancel={() => setEditingPackId(undefined)}
+      />
     );
   }
 
   if (creating) {
     return (
-      <SettingsShell
-        title="New sticker pack"
-        subtitle="Give it a title, then add stickers."
-        onBack={() => setCreating(false)}
-      >
-        <div className={SETTINGS_COLUMN}>
-          <PackEditor
-            onDone={() => {
-              setCreating(false);
-              runRefresh();
-            }}
-            onCancel={() => setCreating(false)}
-          />
-        </div>
-      </SettingsShell>
+      <PackEditor
+        onDone={() => {
+          setCreating(false);
+          runRefresh();
+        }}
+        onCancel={() => setCreating(false)}
+      />
     );
   }
 

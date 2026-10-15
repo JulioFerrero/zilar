@@ -11,6 +11,18 @@ export type MotionKind = 'gif' | 'video' | 'animated-webp' | 'apng';
 
 const SNIFF_BYTES = 65536;
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
+/** `ftyp` major brands that are still photos (HEIF/AVIF), never video. */
+const STILL_FTYP_BRANDS = new Set([
+  'avif',
+  'avis',
+  'heic',
+  'heix',
+  'heim',
+  'heis',
+  'hevc',
+  'mif1',
+  'msf1',
+]);
 
 export async function sniffMotion(file: Blob): Promise<MotionKind | null> {
   const bytes = new Uint8Array(await file.slice(0, SNIFF_BYTES).arrayBuffer());
@@ -27,8 +39,11 @@ export async function sniffMotion(file: Blob): Promise<MotionKind | null> {
   ) {
     return 'video';
   }
+  // An `ftyp` box also opens still HEIF/AVIF photos, so only a major brand
+  // outside the still set counts as video; the rest go down the still path,
+  // where the browser decodes them or reports them (T-1501 Review).
   if (startsWithAscii(bytes, 4, 'ftyp')) {
-    return 'video';
+    return STILL_FTYP_BRANDS.has(asciiAt(bytes, 8, 4)) ? null : 'video';
   }
   if (isAnimatedWebp(bytes)) {
     return 'animated-webp';

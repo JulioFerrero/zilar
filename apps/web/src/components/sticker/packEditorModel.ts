@@ -73,10 +73,6 @@ export function takeSingleEmoji(value: string): string {
   return Array.from(value).slice(0, 1).join('');
 }
 
-export function isEmojiLike(value: string): boolean {
-  return value !== '' && /\p{Extended_Pictographic}/u.test(value);
-}
-
 function describePrepError(error: unknown, name: string): string {
   if (error instanceof PrepError) {
     return error.message;

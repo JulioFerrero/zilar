@@ -7,6 +7,7 @@ import {
 } from '@/lib/api';
 import { prepareStickerImage } from '@/lib/sticker-images';
 import { Button } from '@/components/ui/button';
+import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { PackEditorForm } from './sticker/PackEditorForm';
 import { PackEditorItems } from './sticker/PackEditorItems';
 import {
@@ -26,13 +27,9 @@ export type {
 export { PACK_ACCEPT, takeSingleEmoji } from './sticker/packEditorModel';
 
 /**
- * The sticker pack editor (T-0121): title, visibility, a drop zone / file
- * picker that prepares several images at once, per-sticker emoji / remove /
- * reorder (drag plus Up/Down buttons), then a sequential upload with
- * per-file retry.
- *
- * T-0152: rendered inside the centered settings column (the caller wraps it
- * in the page's column class), so the form uses the full column width.
+ * The sticker pack editor (T-0121): its own settings shell (title, Create or
+ * Save, Back), then the name and visibility row, a grid of sticker tiles with
+ * an Add tile (T-1509), and the per-file preparation, upload and errors.
  */
 export function PackEditor({
   packId,
@@ -73,6 +70,8 @@ export function PackEditor({
   }, [items]);
   const [preparing, setPreparing] = useState(0);
   const [batches, setBatches] = useState<PrepareBatchJob[]>([]);
+  // The hidden picker lives in the form; the grid's Add tile opens it.
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addFiles = (files: FileList | File[]): void => {
     const list = Array.from(files);
@@ -160,59 +159,66 @@ export function PackEditor({
   // removes it first, so a re-save can never skip a failed file and close
   // as success. `save()` re-checks the same condition defensively.
   const errorCount = items.filter((item) => item.error !== undefined).length;
+  const saveDisabled =
+    busy || preparing > 0 || errorCount > 0 || (packId === undefined && readyCount === 0);
 
   return (
-    <div className="flex flex-col gap-4">
-      <PackEditorForm
-        title={title}
-        onTitleChange={setTitle}
-        visibility={visibility}
-        onVisibilityChange={setVisibility}
-        busy={busy}
-        preparing={preparing}
-        batches={batches}
-        prepare={prepare}
-        onAddFiles={addFiles}
-        onPrepared={finishPreparing}
-        onBatchFinished={removeBatch}
-      />
-
-      <PackEditorItems
-        items={items}
-        busy={busy}
-        onMove={moveItem}
-        onMoveByIndex={moveByIndex}
-        onRetry={retryItem}
-        onSetEmoji={setEmoji}
-        onRemove={removeItem}
-      />
-
-      {progress !== undefined && (
-        <p role="status" className="text-[14px] text-muted-foreground">
-          {progress}
-        </p>
-      )}
-      {shownFormError !== '' && (
-        <p role="alert" className="text-[14px] text-danger">
-          {shownFormError}
-        </p>
-      )}
-
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          disabled={
-            busy || preparing > 0 || errorCount > 0 || (packId === undefined && readyCount === 0)
+    <SettingsShell
+      title={packId === undefined ? 'New pack' : 'Edit pack'}
+      onBack={onCancel}
+      action={
+        <Button type="button" size="lg" disabled={saveDisabled} onClick={save}>
+          {packId === undefined ? 'Create' : 'Save'}
+        </Button>
+      }
+    >
+      <div
+        className={SETTINGS_COLUMN}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          if (!busy && event.dataTransfer?.files !== undefined) {
+            addFiles(event.dataTransfer.files);
           }
-          onClick={save}
-          size="lg"
-        >
-          {packId === undefined ? 'Create pack' : 'Save'}
-        </Button>
-        <Button type="button" variant="ghost" size="lg" disabled={busy} onClick={onCancel}>
-          Cancel
-        </Button>
+        }}
+      >
+        <PackEditorForm
+          title={title}
+          onTitleChange={setTitle}
+          visibility={visibility}
+          onVisibilityChange={setVisibility}
+          busy={busy}
+          count={items.length}
+          preparing={preparing}
+          batches={batches}
+          prepare={prepare}
+          onAddFiles={addFiles}
+          onPrepared={finishPreparing}
+          onBatchFinished={removeBatch}
+          fileInputRef={fileInputRef}
+        />
+
+        <PackEditorItems
+          items={items}
+          busy={busy}
+          onMove={moveItem}
+          onRetry={retryItem}
+          onSetEmoji={setEmoji}
+          onRemove={removeItem}
+          onPickFiles={() => fileInputRef.current?.click()}
+        />
+
+        {progress !== undefined && (
+          <p role="status" className="text-[14px] text-muted-foreground">
+            {progress}
+          </p>
+        )}
+        {shownFormError !== '' && (
+          <p role="alert" className="text-[14px] text-danger">
+            {shownFormError}
+          </p>
+        )}
       </div>
-    </div>
+    </SettingsShell>
   );
 }
