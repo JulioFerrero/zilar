@@ -1580,3 +1580,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1567](T-1567-sticker-convert-logs-pino.md) | Sticker conversion failures log through pino | 2026-10-15 |
 | [T-1568](T-1568-card-timer-mss.md) | Task card timers show m:ss on web and phone | 2026-10-15 |
 | [T-1552](T-1552-mobile-group-info-root.md) | Phone Group info root: identity, four keys, people rows, Leave | 2026-10-15 |
+| [T-1566](T-1566-audit-handoff-questions.md) | Audit: handoff lines and question chips plan | 2026-10-15 |

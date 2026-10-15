@@ -41,19 +41,22 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - T-1561 (web dead `formatLimits`);
     - T-1564 (phone sticker types: a kept moving file declares its real MIME type; **check a moving GIF upload on Julio's next phone build**);
     - T-1565 (split `push/api-handlers.ts`);
-    - T-1562 (phone View steps sheet; one fix round so the steps load only when the sheet opens; smoke checked).
+    - T-1562 (phone View steps sheet; one fix round so the steps load only when the sheet opens; smoke checked);
+    - T-1567 (sticker conversion failures log through pino; one fix round);
+    - T-1568 (task card timers show `m:ss` on web and phone; checked on both);
+    - T-1552 (phone Group info root, plan T1; smoke: "6 members", Members 4).
+
+    **Live at `b6b5d4923`** (every server change so far): 0 errors and only the 3 usual "AI is offline" warnings at container start; `/api/me`, avatars, push, AIs, chats and sticker packs answer 401 signed out. A 502 in between was a container restart.
     
     **Live at `6676826c9`** (includes every server change above; later commits are phone and docs only): 0 errors, 0 warnings; `/api/chats`, `/api/agents/tasks/x/steps`, `/api/topics/x` and `/api/sticker-packs` answer 401 signed out. The `topics.follower_ai_id` column exists (backfill 0 rows: no live topic had an owner AI).
-  - **Running (4):**
-    - T-1552 (phone Group info root; plan T1);
+  - **Running (2):**
     - T-1566 (audit and step plan: handoff lines and question reply chips; no "ask people" tool exists yet);
-    - T-1567 (sticker conversion failures log through pino; fix round: the converter was dropped by `serviceDeps()`);
-    - T-1568 (web and phone task cards show `m:ss`; the steps fallbacks map a leftover `doing` step to stopped).
-  - **Deploy check running** for `851f68e7d` (every server change so far: `/api/me`, avatars, push, AIs, chats, sticker packs).
+    - T-1569 (phone Group info T2: Members and AIs pages, store add/remove actions, T1 nits).
+  - **Full check on main `2c2c08d25`:** green, with typecheck 16/16 and 1,917 tests (13 packages).
   - **Decisions (Julio, 10-15):** the topic link moves to a row in the topic info panel (T8 keeps `link_url`/`link_label`); the last @mentioned AI follows a topic.
   - **Next to spec:**
     - AI work T8 (drop kind/status/owner after a phone release);
-    - phone Group info T2–T6 from the plan (after T-1552);
+    - phone Group info T3–T6 from the plan, one at a time (each touches `root-page.tsx` and the screen); T3 after T-1569;
     - handoff lines and question chips: the steps from T-1566's plan, web and phone twins together;
     - `packages/xmpp-core/src/core-effect/lifecycle.ts` is exactly 400 lines (one big closure); split it before any change touches it.
 - **1. Web and server, while Julio is at the PC (2 workers at a time):**
