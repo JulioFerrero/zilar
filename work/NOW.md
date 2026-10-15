@@ -31,24 +31,25 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - T-1536 (phone several files; photos first as one album; **check on Julio's next phone build:** 2 photos and a PDF);
     - T-1547, T-1546 and T-1549 (splits of `chat-rows.ts`, `topics/access.ts` and `MessageBubble.tsx`; the bubble render is identical on main and the branch);
     - T-1550 (phone dead label helpers);
-    - T-1542 (phone Group info plan `docs/audit/phone-group-info-plan.md`; the lead's answers are in its Review).
-    
-    **Live at `4dca770cc`:** 0 errors; `/api/chats`, `/api/agents/tasks/x/steps` and `/api/sticker-packs` answer 401 signed out; the `topics.follower_ai_id` column exists (backfill 0 rows: no live topic had an owner AI). The deploy check for `50b55d59c` is running.
-  - **Running (8):**
-    - T-1535 (web View steps panel; approved, waiting for the worker to finish a rebase conflict in `ChatView.tsx`);
-    - T-1548 (phone New/Edit pack as one grid; smoke running);
-    - T-1551 (phone status line; `liveStage` moves to chat-core);
-    - T-1552 (phone Group info root; plan T1);
+    - T-1542 (phone Group info plan `docs/audit/phone-group-info-plan.md`; the lead's answers are in its Review);
+    - T-1548 (phone pack editor as one grid; smoke checked);
+    - T-1535 (web View steps panel; re-checked headless after its rebase);
     - T-1553, T-1554, T-1555 and T-1556 (splits of `avatars/service.ts`, `actions/decisions.ts`, client-core `lifecycle.ts` and web `ports.ts`).
+    
+    **Live at `6676826c9`** (includes every server change above; later commits are phone and docs only): 0 errors, 0 warnings; `/api/chats`, `/api/agents/tasks/x/steps`, `/api/topics/x` and `/api/sticker-packs` answer 401 signed out. The `topics.follower_ai_id` column exists (backfill 0 rows: no live topic had an owner AI).
+  - **Running (8):**
+    - T-1551 (phone status line; fix round: "+1" right after the text; smoke running);
+    - T-1552 (phone Group info root; plan T1);
+    - T-1557 (phone stickers polish: large titles, Private/Shared switch, lean Discover rows);
+    - T-1558, T-1559 and T-1560 (splits of `build-outgoing.ts`, `auth/api.ts` and client-core `history.ts`);
+    - T-1561 (web dead `formatLimits`).
   - **Decisions (Julio, 10-15):** the topic link moves to a row in the topic info panel (T8 keeps `link_url`/`link_label`); the last @mentioned AI follows a topic.
   - **Next to spec:**
     - View steps: phone sheet (after T-1535);
     - AI work T8 (drop kind/status/owner after a phone release);
     - phone Group info T2–T6 from the plan (after T-1552);
-    - phone stickers: Discover rows and the 28 px large title follow-ups from T-1533;
     - phone sticker MIME follow-up from T-1525 (widen the `'image/webp' | 'image/png'` union in `pack-editor.ts`, `stickers-api.ts`, `use-pack-items.ts`);
-    - web dead code: `formatLimits` in `apps/web/src/components/ais/limits.ts`;
-    - more 400-line splits: `packages/xmpp-core/src/core-effect/lifecycle.ts` (400, one big function), `apps/server/src/push/api-handlers.ts` (one big function), `packages/xmpp-core/src/stanza/build-outgoing.ts`, `packages/client-core/src/store/history.ts`, `apps/server/src/auth/api.ts`, `apps/mobile/src/store/effects/history.ts` (399 each).
+    - more 400-line splits: `packages/xmpp-core/src/core-effect/lifecycle.ts` (400, one big function), `apps/server/src/push/api-handlers.ts` (one big function), `apps/mobile/src/store/effects/history.ts` (399).
 - **1. Web and server, while Julio is at the PC (2 workers at a time):**
   1. web sticker upload keeps motion (today a GIF freezes on its first frame) and the New pack grid;
   2. the Telegram importer keeps video stickers (split `stickers/telegram.ts`, 399 lines, first);

@@ -1567,3 +1567,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1535](T-1535-web-view-steps.md) | Web View steps panel: a task card's steps with their actions | 2026-10-15 |
 | [T-1554](T-1554-split-actions-decisions.md) | Split actions/decisions.ts: the approval path moves out | 2026-10-15 |
 | [T-1553](T-1553-split-avatars-service.md) | Split avatars/service.ts: the byte check and file read move out | 2026-10-15 |
+| [T-1561](T-1561-web-dead-format-limits.md) | Web drops the unused formatLimits | 2026-10-15 |
