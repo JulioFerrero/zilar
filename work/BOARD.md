@@ -1589,3 +1589,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1575](T-1575-handoff-line-render.md) | Handoff line on web and phone: from → to · task | 2026-10-15 |
 | [T-1577](T-1577-activity-open-question.md) | An open AI question shows as waiting, with its message id | 2026-10-15 |
 | [T-1576](T-1576-ask-people-tool.md) | AI ask_people tool posts a question card | 2026-10-15 |
+| [T-1580](T-1580-split-tool-exec.md) | Split tool-exec.ts: the delegate and task_status runners move | 2026-10-15 |

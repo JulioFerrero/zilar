@@ -65,14 +65,16 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - T-1572 (handoff step 1: AI replies carry a `handoff.line` payload; the phone falls back to text for a card it does not render);
     - T-1573 (phone Group info T3: the Content group and its pages; smoke checked).
     - T-1575 (handoff step 2: web and phone draw the handoff line; checked headless on web; phone read in code because the smoke can't scroll to it).
+    - T-1577 (questions step 7: an open question makes its AI "waiting", and the activity carries `questionId`; 11 activity tests passed);
+    - T-1576 (questions step 4: the `ask_people` tool and the `question` payload; 12 tests passed).
   - **Running (3):**
-    - T-1574 (phone Group info T4: the Settings page; the old group-header keys go; the phone detail parser gains `listener` and `avatarUrl`);
-    - T-1576 (questions step 4: the `ask_people` tool and the `question` payload; unblocked with the parse-pipeline files);
-    - T-1577 (questions step 7: an open question makes its AI "waiting"; the activity carries `questionId`).
+    - T-1574 (phone Group info T4: the Settings page; the header keys are gone (smoke checked); fix round: the Settings row for managers, like web);
+    - T-1578 (questions step 5: the question card with chips on web and phone; mock question in the Checkout topic; web handoff line a11y);
+    - T-1579 (questions step 6: a reply closes the question; the row is re-keyed to the archive stanza id that clients quote).
   - **Next:**
-    - step 5 (web and phone question card with chips), after T-1576; it also fixes the web handoff line's `role="note"`;
-    - step 6 (a reply closes the question), after T-1576;
-    - step 8 (the "AIs here" row opens the question), after T-1577.
+    - step 8 (the "AIs here" row opens the question; a question refreshes the topic list), after T-1578, so it can seed the mock's `questionId`;
+    - Group info T5 (channel root), after T-1574;
+    - `gateway/tool-exec.ts` (376) and `group-turn-body.ts` (374) are near the limit: split them before the next gateway change.
   - **Notes for the later question steps:** step 4 must stamp `message_id` only on an open row. Steps 6 and 7 must check that the person can see the topic (same 404 for unknown and forbidden), and step 7 must add a `LIMIT` to `listOpenQuestions`.
   - **Full check on main `2c2c08d25`:** green, with typecheck 16/16 and 1,917 tests (13 packages).
   - **Decisions (Julio, 10-15):** the topic link moves to a row in the topic info panel (T8 keeps `link_url`/`link_label`); the last @mentioned AI follows a topic.
