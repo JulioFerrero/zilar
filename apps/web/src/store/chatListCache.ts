@@ -47,6 +47,17 @@ const cacheSchema = struct({
   chats: Schema.mutable(Schema.Array(cachedChatSchema)),
 });
 
+// A cached `Date` comes back as a string. A valid date string becomes a
+// `Date`; anything else is dropped, so no caller can `.getTime()` a string
+// (T-1479: a leftover string blanked the web list).
+function rehydrateDate(value: unknown): Date | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 /** The cached list for `userId`, or null when there is none or it is unusable. */
 export function readChatListCache(
   storage: StorageLike | null,
@@ -65,14 +76,29 @@ export function readChatListCache(
       return null;
     }
     const chats = parsed.success.chats.map((chat) => {
-      const { lastMessage, lastSeenAt: _lastSeenAt, online: _online, ...rest } = chat;
+      const {
+        lastMessage,
+        lastSeenAt: _lastSeenAt,
+        online: _online,
+        createdAt: rawCreatedAt,
+        pinnedAt: rawPinnedAt,
+        ...rest
+      } = chat;
       const summary = { ...rest } as unknown as ChatSummary;
+      const createdAt = rehydrateDate(rawCreatedAt);
+      if (createdAt !== undefined) {
+        summary.createdAt = createdAt;
+      }
+      const pinnedAt = rehydrateDate(rawPinnedAt);
+      if (pinnedAt !== undefined) {
+        summary.pinnedAt = pinnedAt;
+      }
       if (lastMessage !== undefined) {
-        const createdAt = new Date(lastMessage.createdAt);
-        if (!Number.isNaN(createdAt.getTime())) {
+        const messageCreatedAt = new Date(lastMessage.createdAt);
+        if (!Number.isNaN(messageCreatedAt.getTime())) {
           summary.lastMessage = {
             ...(lastMessage as unknown as NonNullable<ChatSummary['lastMessage']>),
-            createdAt,
+            createdAt: messageCreatedAt,
           };
         }
       }

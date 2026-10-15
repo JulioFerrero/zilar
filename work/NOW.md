@@ -82,6 +82,13 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - The headless check caught a NaN comparator (`-Infinity - -Infinity`) that made the first version a no-op.
   - Mobile's `chat-list.ts:72` has the same NaN pattern, and T-1474 is fixing it.
 - **Live at 06:32:** `27a3ddb8e` (T-1476), `/health` ok, baseline routes unchanged, 0 errors and 0 warnings in 20 min.
+- **LIVE REGRESSION from T-1476, found at about 07:15 and being fixed (T-1479, urgent):**
+  - web can go blank on reload when the cached chat list holds a group whose General has no message;
+  - the cache keeps `createdAt` as a JSON string, and T-1476's sort calls `chatSortTime` on every row, which throws `createdAt?.getTime is not a function`;
+  - reproduced headless on main; the pre-T-1476 tree is clean.
+  - **The fix:** the web cache rehydrates `createdAt` and `pinnedAt`, and `chatSortTime` tolerates strings.
+  - **Workaround until it deploys:** if the page is blank, clear the site's storage (the `zilar:chatList` key) and reload.
+  - The pre-review of T-1474 found the same gap in the mobile cache (a cold-start crash); T-1474 fixes it before merging.
 - **T-1474 found the real mobile cause:** the same NaN comparator in `chat-list.ts:72` (Hermes-specific, V8 hides it). With the fix, the emulator shows the new AI chat on top. The packet is pending.
 - **Merged: T-1477.** Web mock mode no longer opens a live `/api/drafts/stream` (it 404'd 12 times per sweep).
 - **Running: T-1478.** At 390 px on web, an AI reply with a code block or table stretched its bubble past the screen and clipped the text. The fix caps the bubble at `min(560px, 100%)`.

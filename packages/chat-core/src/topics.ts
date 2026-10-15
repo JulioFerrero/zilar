@@ -1,15 +1,32 @@
 import type { ChatSummary } from './types';
 
 /**
+ * A date field as a sort stamp, tolerating a raw string a cache left behind:
+ * a `Date` gives its time; a string is parsed; anything unparsable or of
+ * another type is the oldest possible time. A defence, so a cache gap never
+ * throws here (T-1479).
+ */
+function sortStamp(value: unknown): number {
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+  if (typeof value !== 'string') {
+    return Number.NEGATIVE_INFINITY;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+}
+
+/**
  * The time a chat sorts by (T-1318): its newest message, else when it was
  * created or joined, else the oldest. A chat with messages is never moved by
  * its creation time, so a just-created group with no messages still leads the
  * list like Telegram.
  */
 export function chatSortTime(chat: ChatSummary): number {
-  return (
-    chat.lastMessage?.createdAt.getTime() ?? chat.createdAt?.getTime() ?? Number.NEGATIVE_INFINITY
-  );
+  return chat.lastMessage === undefined
+    ? sortStamp(chat.createdAt)
+    : sortStamp(chat.lastMessage.createdAt);
 }
 
 /** Topics of one group: pinned first (newer pins first), then General, then newest message. */

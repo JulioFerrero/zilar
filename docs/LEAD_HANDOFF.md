@@ -74,6 +74,11 @@ The autopilot starts a Muse doctor session once main stays quiet 10 minutes: it 
 
 ## Hard-won pitfalls (React Native 0.86 / Expo SDK 57 / Hermes / Android)
 - **A new expo-router route file can be missing from a local APK** when Metro's cache is stale. Expo Router's route list comes from `require.context`, and Metro caches it. T-1467 makes `scripts/phone/install.sh` and the `docs/RELEASING.md` recipe delete `${TMPDIR}/metro-cache` first. When a smoke doesn't show a new screen, grep the installed APK's bundle (`adb shell pm path app.zilar.chat`, pull it, `unzip -p … assets/index.android.bundle | strings | grep`) before blaming the code.
+- **The chat-list caches** (web `apps/web/src/store/chatListCache.ts`, mobile `apps/mobile/src/lib/chat-list-cache.ts`) paint the last list from JSON at start. Only the fields they rehydrate come back as `Date`s.
+  - A change that reads a new `Date` field on rows (sorting by `createdAt` or `pinnedAt`) must be checked with a cached list on reload, not only on a fresh mock load.
+  - T-1476 (2026-10-15) blanked web on reload this way, fixed in T-1479.
+  - The headless reproduction seeds `localStorage['zilar:chatList']` in `addInitScript` (lead tmp `pw/cache-crash.mjs`).
+- **Sort comparators must never subtract two `-Infinity` values** (`NaN`). V8 reads `NaN` as "equal"; Hermes misorders around it. T-1474 and T-1476 hit this (2026-10-15).
 - Never swap one gradient style for another on a live view (`iconKey` to `segment`, `raisedPill` to `primaryKey`): Android crashes in `LinearGradient.nativeCreate`. Give the element a `key` that changes with the look. Guard test: `apps/mobile/src/lib/gradient-swap.test.ts`.
 - Expo modules: `AsyncFunction(...) Coroutine { ..., promise: Promise -> }` is invalid (no converter for `Promise`; the module shows "not available"). Return a value or use a plain `AsyncFunction` with a `Promise` parameter.
 - Hermes has no `crypto.subtle`: hash natively. JS hands `file://` URIs; normalise them in Kotlin.
