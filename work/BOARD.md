@@ -1492,3 +1492,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1478](T-1478-web-bubble-max-width.md) | Web message bubble fits its column at narrow widths | 2026-10-15 |
 | [T-1479](T-1479-web-cache-date-crash.md) | Web cache rehydrates dates so a reload never goes blank | 2026-10-15 |
 | [T-1474](T-1474-new-ai-chat-leads-list.md) | A new AI's chat leads the chat list on web and mobile | 2026-10-15 |
+| [T-1480](T-1480-composer-placeholder-one-line.md) | Composer placeholder stays on one line on web and mobile | 2026-10-15 |

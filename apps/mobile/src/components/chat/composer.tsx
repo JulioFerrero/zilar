@@ -20,7 +20,7 @@ import type { CaretSelection } from '@/lib/emoji-data';
 import type { GifsApi } from '@/lib/gifs-api';
 import type { StickersApi } from '@/lib/stickers-api';
 import type { ReplyRef } from '@/lib/types';
-import type { MentionMember, UiMention } from '@zilar/chat-core';
+import { composerPlaceholder, type MentionMember, type UiMention } from '@zilar/chat-core';
 import type {
   SendAttachmentOptions,
   SendStickerChoice,
@@ -179,7 +179,7 @@ export function Composer({
     onCloseSheet: sheet.closeSheet,
   });
 
-  const placeholder = title === undefined ? 'Message' : `Message ${title}`;
+  const placeholder = composerPlaceholder(title);
   // The staged files as the strip renders them: a thumbnail, the name and the
   // size, in the order the user picked them (T-1246).
   const pickedPreviews = media.picks.map((file) => ({
@@ -245,7 +245,7 @@ export function Composer({
         selection={selection}
         onSelectionChange={setSelection}
         inputHeight={inputHeight}
-        onInputHeightChange={setInputHeight}
+        onInputHeightChange={(height) => setInputHeight(text === '' ? MIN_INPUT_HEIGHT : height)}
         canSend={media.canSend}
         editing={editTarget !== undefined}
         onSend={handleSend}

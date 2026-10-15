@@ -1,4 +1,4 @@
-import { canEditMessage, type ReplyRef } from '@zilar/chat-core';
+import { canEditMessage, composerPlaceholder, type ReplyRef } from '@zilar/chat-core';
 import { Effect, Schedule } from 'effect';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ComposerControls } from './composer/ComposerControls';
@@ -80,8 +80,7 @@ export function Composer({
     attachments.reset();
   }
 
-  const title = chat?.title;
-  const placeholder = title === undefined ? 'Message' : `Message ${title}`;
+  const placeholder = composerPlaceholder(chat?.title);
 
   // Entering edit mode prefills the composer with the message's text (caret at
   // the end); leaving it restores the draft kept aside (WUX-3).

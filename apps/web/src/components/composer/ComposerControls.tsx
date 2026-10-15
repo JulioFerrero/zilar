@@ -100,6 +100,9 @@ export function ComposerControls({
       return;
     }
     element.style.height = 'auto';
+    if (value === '') {
+      return;
+    }
     const maxHeight = LINE_HEIGHT * MAX_LINES;
     element.style.height = `${Math.min(Math.max(element.scrollHeight, LINE_HEIGHT), maxHeight)}px`;
   }, [value, textareaRef]);

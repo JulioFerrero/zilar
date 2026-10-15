@@ -71,12 +71,18 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - the emulator checks passed: Save adds a row, closing after a check leaves no key, and New AI still works.
   - Nit for later: the done Provider chip reads "✓ Provider", not the provider's name.
 - **Merged: T-1475.** The Add key chip shows the provider's name ("✓ DeepSeek"), checked on the emulator.
-- **Running:**
-  - **T-1474: a new AI's chat leads the chat list.**
-    - Web works.
-    - Mobile needed a NaN-safe sort (`chat-list.ts:72`). On the emulator the new chat now leads.
-    - The pre-review found the mobile cache dropped `createdAt` as a string (a cold-start crash); the autofix rehydrates `createdAt` and `pinnedAt`.
-    - It is a server change, so a deploy check follows the merge.
+- **Merged: T-1474.** A new AI's chat leads the chat list on web and mobile.
+  - The server sends `createdAt` for AI DMs.
+  - Mobile also needed a NaN-safe sort (`chat-list.ts:72`).
+  - The mobile cache rehydrates `createdAt` and `pinnedAt`. Without that, the next cold start would have crashed.
+  - Emulator: Heron leads, and a cold start is clean.
+  - **Live at `8746ae2e8`:** health ok, routes unchanged, 0 errors and 0 warnings.
+  - The new `createdAt` on `/api/chats` is not called live; it needs a session.
+- **Running: T-1480.** The composer placeholder stays on one line on web and mobile.
+  - A long topic title wrapped "Message <title>": web grew the empty composer, and mobile clipped the second line.
+  - A shared helper falls back to "Message" for titles over 18 characters, and an empty composer stays one line tall.
+- **Web sweep (lead, headless, mock, 390 and 1280 px, 23 routes):** no page overflows and no console errors after T-1477. Found and fixed: T-1477, T-1478, T-1479, T-1480.
+- **For a canvas: the Stickers page is below the lean standard.** Each pack row has six loose keys (↑, ↓, Make private, Edit, Remove from panel, Delete) and a "Shared" word chip.
 - **Merged: T-1476.** The web sidebar orders groups and chats together by recency, like mobile.
   - It used to list every group above every DM.
   - The headless check caught a NaN comparator (`-Infinity - -Infinity`) that made the first version a no-op.
