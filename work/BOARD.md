@@ -1522,3 +1522,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1511](T-1511-web-empty-chats.md) | Web empty chats: quiet DM, AI with model line and suggestions | 2026-10-15 |
 | [T-1512](T-1512-web-several-files.md) | Web composer sends several files of any kind at once | 2026-10-15 |
 | [T-1505](T-1505-ai-activity-read-model.md) | AI work step 1: per-topic AI activity read model | 2026-10-15 |
+| [T-1513](T-1513-mobile-approvals-simple.md) | Phone approvals: simple card and one list of rows | 2026-10-15 |

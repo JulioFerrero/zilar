@@ -31,6 +31,8 @@ export interface PublicApproval {
   id: string;
   aiId: string;
   groupId: string | null;
+  aiName: string;
+  groupName: string | null;
   action: string;
   summary: string;
   details: string | null;
@@ -42,6 +44,7 @@ export interface PublicApproval {
   note: string | null;
   expiresAt: string;
   createdAt: string;
+  alwaysEligible: boolean;
 }
 
 export interface ApprovalsApi {
@@ -79,12 +82,15 @@ export function buildDecisionBody(
 }
 
 // This app shows the fields below; the topic and approver fields of the wire
-// payload are for the web.
+// payload are for the web. A name or flag an older server omits reads as its
+// empty default (the contract does the same).
 function toPublicApproval(row: ContractApproval): PublicApproval {
   return {
     id: row.id,
     aiId: row.aiId,
     groupId: row.groupId,
+    aiName: row.aiName ?? '',
+    groupName: row.groupName ?? null,
     action: row.action,
     summary: row.summary,
     details: row.details,
@@ -96,6 +102,7 @@ function toPublicApproval(row: ContractApproval): PublicApproval {
     note: row.note,
     expiresAt: row.expiresAt,
     createdAt: row.createdAt,
+    alwaysEligible: row.alwaysEligible ?? false,
   };
 }
 

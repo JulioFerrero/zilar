@@ -1,85 +1,111 @@
-import { ShieldAlert } from 'lucide-react-native';
-import { View } from 'react-native';
+import { Check, X } from 'lucide-react-native';
+import { Pressable, View } from 'react-native';
 
-import { Button } from '@/components/ui/button';
+import { EntityAvatar } from '@/components/chat/entity-avatar';
+import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
-import { ACCENT } from '@/lib/colors';
-import type { PublicApproval } from '@/lib/approvals-api';
+import { useKeyPress } from '@/components/ui/use-key-press';
+import type { ApprovalDecision, PublicApproval } from '@/lib/approvals-api';
+import { ACCENT_FOREGROUND, ICON } from '@/lib/colors';
+import { KEY_PRIMARY_PRESSED_SHADOW, pressStyle, primaryKey } from '@/lib/depth';
+import { cn } from '@/lib/utils';
 
-import { expiresInText, worstCaseText } from './format-relative';
-import { SCREEN_DECISIONS, type RowBusy } from './rows';
-import type { ApprovalDecision } from '@/lib/approvals-api';
+import type { RowBusy } from './rows';
 
 /**
- * One pending approval in the inbox: AI, summary, worst case, the relative
- * expiry, and Approve once / Always / Deny. Mirrors web's `ApprovalRow`.
+ * One pending approval in the inbox: the AI's picture, the summary and
+ * "AI · chat", then Deny and Approve as icon keys. No "always allow", no
+ * money, no expiry. It is one row of the list `PendingTab` wraps.
  */
 export function PendingApprovalRow({
   approval,
   aiName,
-  now,
   busy,
   actionError,
+  last,
   onDecide,
 }: {
   approval: PublicApproval;
   /** The AI's display name when the list of AIs loaded; the id otherwise. */
   aiName: string;
-  now: Date;
   busy: RowBusy;
   actionError: string;
+  /** The last row of the list drops its bottom hairline. */
+  last: boolean;
   onDecide: (id: string, decision: ApprovalDecision) => void;
 }) {
-  const cost = worstCaseText(approval.worstCase);
+  const name = approval.aiName === '' ? aiName : approval.aiName;
+  const where =
+    name === '' ? '' : approval.groupName === null ? name : `${name} · ${approval.groupName}`;
+  const disabled = busy !== null;
   return (
-    <View className="gap-2 rounded-xl border border-divider bg-surface p-4">
-      <View className="flex-row items-start justify-between gap-3">
-        <View className="min-w-0 flex-1 flex-row items-center gap-2">
-          <ShieldAlert size={16} color={ACCENT} aria-hidden />
-          <Text numberOfLines={1} className="min-w-0 flex-1 text-[16px] font-semibold">
-            {approval.action}
+    <View className={cn('flex-col', !last && 'border-b border-divider')}>
+      <View className="flex-row items-center gap-3 p-3.5">
+        <EntityAvatar person={{ id: approval.aiId, name }} size={40} ai />
+        <View className="min-w-0 flex-1 flex-col gap-[3px]">
+          <Text numberOfLines={2} className="text-[15px] font-medium">
+            {approval.summary}
           </Text>
+          {where !== '' ? (
+            <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
+              {where}
+            </Text>
+          ) : null}
         </View>
-        <View className="shrink-0 rounded-full bg-badge-muted px-2 py-0.5">
-          <Text className="text-[11px]">pending</Text>
-        </View>
-      </View>
-
-      <Text className="text-[14px] text-muted-foreground">
-        {aiName} · {approval.summary}
-      </Text>
-
-      {approval.details !== null ? (
-        <Text className="text-[13px] leading-5 text-muted-foreground">{approval.details}</Text>
-      ) : null}
-
-      {cost !== '' ? <Text className="text-[13px] text-muted-foreground">{cost}</Text> : null}
-
-      <Text className="text-[13px] text-muted-foreground">
-        expires {expiresInText(approval.expiresAt, now)}
-      </Text>
-
-      <View className="flex-row flex-wrap gap-2">
-        {SCREEN_DECISIONS.map((option) => (
-          <Button
-            key={option.decision}
-            size="sm"
-            variant={option.decision === 'deny' ? 'outline' : 'default'}
-            className="px-3"
-            disabled={busy !== null}
-            accessibilityLabel={`${option.label} ${approval.action}`}
-            onPress={() => onDecide(approval.id, option.decision)}
-          >
-            <Text>{busy === option.decision ? option.busyLabel : option.label}</Text>
-          </Button>
-        ))}
+        <IconButton
+          label={`Deny: ${approval.summary}`}
+          className={disabled ? 'opacity-50' : undefined}
+          disabled={disabled}
+          onPress={() => onDecide(approval.id, 'deny')}
+        >
+          <X size={17} color={ICON} />
+        </IconButton>
+        <PrimaryIconKey
+          label={`Approve: ${approval.summary}`}
+          disabled={disabled}
+          onPress={() => onDecide(approval.id, 'approve_once')}
+        />
       </View>
 
       {actionError !== '' ? (
-        <Text accessibilityRole="alert" className="text-[13px] text-danger">
-          {actionError}
-        </Text>
+        <View className="px-4 pb-3.5">
+          <Text accessibilityRole="alert" className="text-[13px] text-danger">
+            {actionError}
+          </Text>
+        </View>
       ) : null}
     </View>
+  );
+}
+
+/**
+ * The Approve key. The kit's `IconButton` is the dark icon key only, so this
+ * uses the same 40 px, 12 radius recipe with the primary look, like the other
+ * primary icon keys in the app (`depth.ts`).
+ */
+function PrimaryIconKey({
+  label,
+  disabled,
+  onPress,
+}: {
+  label: string;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const { pressed, reduceMotion, setPressed } = useKeyPress();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      disabled={disabled}
+      hitSlop={8}
+      onPress={onPress}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      className={cn('h-10 w-10 items-center justify-center rounded-xl', disabled && 'opacity-50')}
+      style={[primaryKey, pressStyle(pressed, KEY_PRIMARY_PRESSED_SHADOW, reduceMotion)]}
+    >
+      <Check size={17} color={ACCENT_FOREGROUND} />
+    </Pressable>
   );
 }

@@ -13,12 +13,12 @@ import type { RowBusy } from './rows';
 
 export function PendingTab({
   rows,
-  now,
   nameFor,
   onDecide,
   onRefresh,
 }: {
   rows: { approval: PublicApproval; busy: RowBusy; error: string }[];
+  /** Kept for the screen's call site; the row no longer shows a timer. */
   now: Date;
   nameFor: (aiId: string) => string;
   onDecide: (id: string, decision: ApprovalDecision) => Effect.Effect<void>;
@@ -38,13 +38,13 @@ export function PendingTab({
     );
   }
   return (
-    <View className="gap-2">
-      {rows.map((row) => (
+    <View className="overflow-hidden rounded-xl border border-divider bg-surface">
+      {rows.map((row, index) => (
         <DecidingRow
           key={row.approval.id}
           row={row}
           aiName={nameFor(row.approval.aiId)}
-          now={now}
+          last={index === rows.length - 1}
           onDecide={onDecide}
         />
       ))}
@@ -56,12 +56,12 @@ export function PendingTab({
 function DecidingRow({
   row,
   aiName,
-  now,
+  last,
   onDecide,
 }: {
   row: { approval: PublicApproval; busy: RowBusy; error: string };
   aiName: string;
-  now: Date;
+  last: boolean;
   onDecide: (id: string, decision: ApprovalDecision) => Effect.Effect<void>;
 }) {
   const [, decideRun] = useAction((input: { id: string; decision: ApprovalDecision }) =>
@@ -71,9 +71,9 @@ function DecidingRow({
     <PendingApprovalRow
       approval={row.approval}
       aiName={aiName}
-      now={now}
       busy={row.busy}
       actionError={row.error}
+      last={last}
       onDecide={(id, decision) => decideRun({ id, decision })}
     />
   );

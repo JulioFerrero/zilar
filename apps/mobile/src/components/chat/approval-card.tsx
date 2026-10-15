@@ -1,6 +1,7 @@
 import type { ApprovalRequest } from '@zilar/protocol';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
+import { Check, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -8,14 +9,14 @@ import { useApprovalsApi } from '@/components/chat/use-approvals-api';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { useKeyPress } from '@/components/ui/use-key-press';
-import type { ApprovalDecision, ApprovalsApi, PublicApproval } from '@/lib/approvals-api';
-import {
-  applyDecision,
-  approvalStatusLabel,
-  loadApprovalCardState,
-  type ApprovalCardState,
-} from '@/lib/approval-state';
-import { formatMoney } from '@/lib/chat';
+import type {
+  ApprovalDecision,
+  ApprovalStatus,
+  ApprovalsApi,
+  PublicApproval,
+} from '@/lib/approvals-api';
+import { applyDecision, loadApprovalCardState, type ApprovalCardState } from '@/lib/approval-state';
+import { DANGER, SEEN } from '@/lib/colors';
 import { KEY_ICON_PRESSED_SHADOW, iconKey, pressStyle } from '@/lib/depth';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
@@ -44,7 +45,7 @@ interface DecidedCard {
   readonly approval: PublicApproval;
 }
 
-/** Title, summary, cost and Approve (primary key) / Deny (outline key). */
+/** "<AI> asks", the summary, Deny/Approve, and a quiet "Always allow" when eligible. */
 export function ApprovalCard({ data }: { data: ApprovalRequest }) {
   const { api } = useApprovalsApi();
   // The read runs on mount and when the api or the request changes; Retry refreshes it.
@@ -53,7 +54,9 @@ export function ApprovalCard({ data }: { data: ApprovalRequest }) {
     [api, data.id],
   );
   const [decided, setDecided] = useState<DecidedCard | null>(null);
-  const [inFlight, setInFlight] = useState<null | 'approve' | 'deny'>(null);
+  const [inFlight, setInFlight] = useState<null | 'approve' | 'deny' | 'always'>(null);
+  // T-0100's two-step confirm, kept: the first tap arms, the second decides.
+  const [confirmingAlways, setConfirmingAlways] = useState(false);
   const [decision, decide] = useAction((next: ApprovalDecision) =>
     Effect.promise(() => applyDecision(api, data.id, next)).pipe(
       Effect.tap((outcome) =>
@@ -83,6 +86,7 @@ export function ApprovalCard({ data }: { data: ApprovalRequest }) {
   // (see `toPublicApproval`), so a `pending` status is already "pending and
   // not expired" from the user's perspective.
   const isPending = approval !== null && approval.status === 'pending';
+  const showAlways = approval !== null && isPending && approval.alwaysEligible;
   const busy = inFlight !== null;
   // The last decision's inline failure, hidden while a new decision runs.
   const outcome =
@@ -90,22 +94,32 @@ export function ApprovalCard({ data }: { data: ApprovalRequest }) {
   const actionError = outcome?.kind === 'error' ? outcome.message : '';
 
   const startDecision = (next: ApprovalDecision): void => {
-    setInFlight(next === 'deny' ? 'deny' : 'approve');
+    setInFlight(next === 'deny' ? 'deny' : next === 'approve_always' ? 'always' : 'approve');
     decide(next);
   };
 
+  // The one-line label: the AI's name when the read carries one, "Approval" otherwise.
+  const label =
+    approval !== null && approval.aiName !== '' ? `${approval.aiName} asks` : 'Approval';
+
+  // A decided request shrinks to one line: a status icon and the summary.
+  if (approval !== null && !isPending) {
+    return (
+      <View className="min-w-[230px] py-0.5">
+        <View className="flex-row items-center gap-2">
+          <DecidedIcon status={approval.status} />
+          <Text className="min-w-0 flex-1 text-[14px] text-muted-foreground">{data.summary}</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View className="min-w-[230px] gap-2 py-0.5">
-      <Text className="text-[15px] font-semibold text-foreground">{data.action}</Text>
-      <Text className="text-[13px] leading-4 text-muted-foreground">{data.summary}</Text>
-      {data.details !== undefined ? (
-        <Text className="text-[12px] leading-4 text-muted-foreground">{data.details}</Text>
-      ) : null}
-      {data.worst_case_cost !== undefined ? (
-        <Text className="text-[13px] text-muted-foreground">
-          Max cost: {formatMoney(data.worst_case_cost)}
-        </Text>
-      ) : null}
+      <View className="gap-1">
+        <Text className="text-[13px] text-muted-foreground">{label}</Text>
+        <Text className="text-[16px] font-semibold text-foreground">{data.summary}</Text>
+      </View>
 
       {state.kind === 'loading' ? (
         <View
@@ -131,34 +145,49 @@ export function ApprovalCard({ data }: { data: ApprovalRequest }) {
         </View>
       ) : null}
 
-      {approval !== null && !isPending ? (
-        <Text className="text-[12px] text-muted-foreground">{approvalStatusLabel(approval)}</Text>
-      ) : null}
-
       {isPending ? (
-        <View className="mt-1 gap-2">
+        <View className="gap-2">
           <View className="flex-row gap-2">
             <Button
-              variant="key"
-              size="sm"
-              className="flex-1"
-              disabled={busy}
-              accessibilityLabel="Approve"
-              onPress={() => startDecision('approve_once')}
-            >
-              <Text>{inFlight === 'approve' ? 'Approving…' : 'Approve'}</Text>
-            </Button>
-            <Button
-              size="sm"
               variant="outline"
-              className="flex-1"
+              className="h-11 flex-1"
               disabled={busy}
               accessibilityLabel="Deny"
               onPress={() => startDecision('deny')}
             >
               <Text>{inFlight === 'deny' ? 'Denying…' : 'Deny'}</Text>
             </Button>
+            <Button
+              variant="key"
+              className="h-11 flex-1"
+              disabled={busy}
+              accessibilityLabel="Approve"
+              onPress={() => startDecision('approve_once')}
+            >
+              <Text>{inFlight === 'approve' ? 'Approving…' : 'Approve'}</Text>
+            </Button>
           </View>
+
+          {showAlways ? (
+            <Button
+              variant="ghost"
+              className="h-9 self-center px-2"
+              disabled={busy}
+              accessibilityLabel="Always allow"
+              onPress={() =>
+                confirmingAlways ? startDecision('approve_always') : setConfirmingAlways(true)
+              }
+            >
+              <Text className="text-[13px] font-medium text-muted-foreground">
+                {inFlight === 'always'
+                  ? 'Allowing…'
+                  : confirmingAlways
+                    ? 'Tap again to always allow'
+                    : 'Always allow'}
+              </Text>
+            </Button>
+          ) : null}
+
           {actionError !== '' ? (
             <Text className="text-[12px] text-muted-foreground">{actionError}</Text>
           ) : null}
@@ -166,4 +195,12 @@ export function ApprovalCard({ data }: { data: ApprovalRequest }) {
       ) : null}
     </View>
   );
+}
+
+/** The decided status as one icon: a green check, or a red cross when not approved. */
+function DecidedIcon({ status }: { status: ApprovalStatus }) {
+  if (status === 'denied' || status === 'expired') {
+    return <X size={14} color={DANGER} aria-hidden />;
+  }
+  return <Check size={14} color={SEEN} aria-hidden />;
 }
