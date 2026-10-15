@@ -1499,3 +1499,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1484](T-1484-escape-cancels-reply-first.md) | Escape cancels a reply before it closes the chat | 2026-10-15 |
 | [T-1485](T-1485-web-a11y-axe-fixes.md) | Web fixes from an axe audit: composer, code blocks, Accept | 2026-10-15 |
 | [T-1486](T-1486-mobile-table-font-scale.md) | Mobile table columns follow the system font scale | 2026-10-15 |
+| [T-1487](T-1487-sandbox-log-test-flake.md) | Sandbox log test gets wide limits, ending a CI flake | 2026-10-15 |

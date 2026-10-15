@@ -238,7 +238,9 @@ describe('runTool limits', () => {
     }
   });
 
-  it('truncates 100 KB of console.log output', async () => {
+  // wallMs and cpuMs are wide so a slow worker start on a saturated host cannot
+  // trip them before the truncation under test happens.
+  it('truncates 100 KB of console.log output', { timeout: 30000 }, async () => {
     const result = await runTool({
       source: `export default async function run() {
         for (let i = 0; i < 2000; i++) { console.log('line-' + i + '-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'); }
@@ -247,6 +249,7 @@ describe('runTool limits', () => {
       input: null,
       allowedHosts: [],
       fetcher: NO_NETWORK_FETCHER,
+      limits: { cpuMs: 20000, wallMs: 20000 },
     });
     expect(result.ok).toBe(true);
     expect(Buffer.byteLength(result.logs, 'utf8')).toBeLessThanOrEqual(4 * 1024 + 64);

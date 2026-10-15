@@ -18,7 +18,8 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1482: Reply and Edit focus the composer;
   - T-1483: "2 members, 3 online";
   - T-1484: Escape closing the chat during a reply;
-  - T-1485: web accessibility fixes from an axe-core audit, which now reports no violations.
+  - T-1485: web accessibility fixes from an axe-core audit, which now reports no violations;
+  - T-1486: mobile tables at large font sizes.
 - **T-1481:** the last file over 400 lines (`lead/autopilot.ts`) is split. The autopilot was restarted on it and runs clean.
 - **Live:** every deploy was checked (`/health`, routes, the SSH error count), with 0 errors after each.
 - **New canvas: "Stickers"** (lean pass, web and phone), https://claude.ai/artifact/GiBcaeJcuprSGGFBb3Xc3H. Eight canvases now wait for you: View steps, Connections, Topic status, AI health, Lean settings, Approvals, Empty chat and files, and Stickers.
@@ -128,8 +129,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - A second axe pass on main covered 10 more settings pages plus the New chat menu, New group, New AI, the message menu and Forward. No violations.
 - **Also checked, all fine:** Forward (390 px), in-chat search, contact-request Accept and Decline with Undo, the mobile Attach and Emoji sheets. T-1485 is live at `756f7276e` with 0 errors.
 - **Mobile at font scale 1.3 (emulator):** the chat list, Settings and Stickers truncate cleanly. The Dev AI table broke "Medium" mid-word.
-- **Running: T-1486.** Table column widths follow the font scale (capped at the app's 1.4).
-  - The emulator's font scale stays at 1.3 until its check; the lead resets it to 1.0 afterwards.
+- **Full check on main `b52d1ec8d` (quiet stretch, 08:05):** typecheck 16/16 and every test suite green, 1,849 tests in total:
+  - server 720, mobile 249, client-core 162, xmpp-core 150, chat-core 123;
+  - devtools 97, desk 96, runner 77, web 71, protocol 55, runner-tunnel 25, site 17, mock-backend 7.
+- **Merged: T-1486.** Mobile table column widths follow the font scale (capped at the app's 1.4).
+  - At 1.3, "Medium" stays whole and the table scrolls; at 1.0 nothing changed.
+  - The emulator is back at font scale 1.0.
+  - **Its CI on main failed once** on a flaky server sandbox test (`run-tool.test.ts` › "truncates 100 KB of console.log output", default 2 s CPU limit on a saturated runner). It was the first CI failure in 30 main runs.
+  - Because of it, T-1486 did not deploy (live stayed at `756f7276e`). The lead re-ran the failed job.
+- **Running: T-1487.** The flaky test gets the wide limits its sibling tests already use. Test-only.
 - **Mobile interaction walk (emulator, mock):** send, reply with quote, the 👍 reaction and the @mention picker work. Two bugs found: T-1482 and T-1483.
 - **Web interaction walk (headless, mock, 1280 px):** send, reply, edit and New group all work, and the sent chat moves to the top of the list. 0 errors.
 - **Web sweep (lead, headless, mock, 390 and 1280 px, 23 routes):** no page overflows and no console errors after T-1477. Found and fixed: T-1477, T-1478, T-1479, T-1480.
