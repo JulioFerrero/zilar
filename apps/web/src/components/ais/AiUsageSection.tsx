@@ -1,5 +1,5 @@
+import { formatUsd } from '@zilar/chat-core';
 import type { PublicAi } from '@/lib/api';
-import { formatUsd } from '@/lib/format-usd';
 import { cn } from '@/lib/utils';
 
 /**

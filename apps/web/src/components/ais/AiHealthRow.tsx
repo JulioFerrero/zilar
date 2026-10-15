@@ -3,11 +3,11 @@ import { Link } from 'react-router';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
 import { MessageSquare, MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import { aiHealth, formatUsd, spendFraction, type AiHealthInput } from '@zilar/chat-core';
 import { ApiError, deleteAi, type PublicAi } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
-import { formatUsd } from '@/lib/format-usd';
 import { cn } from '@/lib/utils';
 import { AiBadge } from '@/components/AiBadge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -36,16 +36,6 @@ function aiFailureText(failure: ApiFailure, fallback: string): string {
     fallback,
   ).message;
 }
-
-// The reason words for a failed turn, by `kind` (apps/server/src/agents/failure-class.ts).
-const FAILURE_REASONS: Record<string, string> = {
-  key_rejected: 'Key rejected',
-  model_not_found: 'Model not found',
-  rate_limited: 'Rate limited',
-  budget: 'Provider budget reached',
-  context_too_long: 'Too much context',
-  timeout: 'Timed out',
-};
 
 // The fix link inside the muted line: a bright, underline-on-hover link.
 const FIX_LINK = 'text-accent underline-offset-2 hover:underline';
@@ -91,30 +81,40 @@ export function AiHealthRow({
     setConfirming(false);
   };
 
-  const lastFailure = ai.lastFailure ?? null;
   const usage = ai.usage ?? null;
   const dailyLimit = ai.limits.perDayUsd;
-  const paused = dailyLimit !== null && usage !== null && usage.todayUsd >= dailyLimit;
 
-  // The health dot is the status; first match wins.
-  const health =
-    ai.status !== 'active'
+  // The helper's input: an older payload may leave `usage`/`lastFailure`
+  // absent, which normalises to `null` under exactOptionalPropertyTypes.
+  const healthInput: AiHealthInput = {
+    status: ai.status,
+    limits: ai.limits,
+    usage,
+    lastFailure: ai.lastFailure ?? null,
+  };
+
+  // The health rules come from @zilar/chat-core (T-1538), shared with the phone.
+  const health = aiHealth(healthInput);
+
+  // The health dot: the state's label and colour; first match wins.
+  const dot =
+    health.state === 'stopped'
       ? { label: 'Stopped', colour: 'bg-subtle-foreground' }
-      : lastFailure !== null
+      : health.state === 'failing'
         ? { label: 'Failing', colour: 'bg-danger' }
-        : paused
+        : health.state === 'paused'
           ? { label: 'Paused by its limit', colour: 'bg-[#f59e0b]' }
           : { label: 'Working', colour: 'bg-online' };
 
   // One muted line: the model and provider, a failure reason with its fix, or
   // the daily-limit pause. Stopped and failing win over the pause.
   const mutedLine: ReactNode = (() => {
-    if (ai.status !== 'active') {
+    if (health.state === 'stopped') {
       return `Stopped · ${ai.model}`;
     }
-    if (lastFailure !== null) {
-      const reason = FAILURE_REASONS[lastFailure.kind] ?? 'Last reply failed';
-      if (lastFailure.kind === 'key_rejected') {
+    if (health.state === 'failing') {
+      const reason = health.reason ?? 'Last reply failed';
+      if (health.fix === 'replace_key') {
         return (
           <>
             <span className="text-danger">{reason}</span>
@@ -125,7 +125,7 @@ export function AiHealthRow({
           </>
         );
       }
-      if (lastFailure.kind === 'model_not_found') {
+      if (health.fix === 'change_model') {
         return (
           <>
             <span className="text-danger">{reason}</span>
@@ -143,7 +143,7 @@ export function AiHealthRow({
         </>
       );
     }
-    if (paused) {
+    if (health.state === 'paused') {
       return (
         <>
           <span className="text-[#f59e0b]">Daily limit reached</span>
@@ -154,9 +154,8 @@ export function AiHealthRow({
     return providerName === undefined ? ai.model : `${ai.model} · ${providerName}`;
   })();
 
-  const usedFraction =
-    dailyLimit !== null && usage !== null ? Math.min(1, usage.todayUsd / dailyLimit) : 0;
-  const full = dailyLimit !== null && usage !== null && usage.todayUsd >= dailyLimit;
+  const usedFraction = spendFraction(healthInput) ?? 0;
+  const full = usedFraction === 1;
 
   return (
     <li className="flex items-center gap-3.5 border-b border-divider py-3 pr-2.5 pl-3.5 last:border-b-0">
@@ -168,10 +167,10 @@ export function AiHealthRow({
         />
         <span
           role="img"
-          aria-label={health.label}
+          aria-label={dot.label}
           className={cn(
             'absolute -right-px -bottom-px size-3 rounded-full ring-2 ring-surface',
-            health.colour,
+            dot.colour,
           )}
         />
       </span>
