@@ -1,7 +1,8 @@
-import { formatListTime, previewMessage } from '@zilar/chat-core';
+import { formatListTime, previewMessage, topicActivityView } from '@zilar/chat-core';
 import { Lock, Pin, VolumeX } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
+import { AiActivityMarks } from '@/components/chat/ai-activity-marks';
 import { AiBadge } from '@/components/chat/ai-badge';
 import { plainPreviewBody } from '@/components/chat/markdown-decision';
 import { PreviewIcon } from '@/components/chat/preview-icon';
@@ -13,7 +14,6 @@ import { MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { primaryKey, raisedPill } from '@/lib/depth';
 import { useBlockedJids } from '@/lib/blocked-users';
 import { previewParts, typingLabel } from '@/lib/format';
-import { topicStatusLabel } from '@/lib/topics';
 import { type ChatSummary, type MessageStatus } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -39,20 +39,13 @@ function TopicUnreadBadge({ count, muted }: { count: number; muted: boolean }) {
   );
 }
 
-const STATUS_DOT: Record<string, string> = {
-  open: 'bg-[#8a8a8a]',
-  in_progress: 'bg-amber-400',
-  in_review: 'bg-blue-400',
-  blocked: 'bg-red-400',
-  done: 'bg-green-400',
-};
-
 /**
  * One topic row on the topics screen (T-0112): the raised glyph tile, name
  * with a lock for private topics, pin/muted icons like the chat list rows
- * (T-0135), the status chip (dot + text, never color alone), a one-line
- * preview, the time and the unread badge (grey while muted). General renders
- * like every other topic; ordering lives in `lib/topics`.
+ * (T-0135), the AIs at work as state marks (T-1539), a one-line preview, the
+ * time and the unread badge (grey while muted). A topic whose AIs are done
+ * shows the green check and a muted name. General renders like every other
+ * topic; ordering lives in `lib/topics`.
  */
 export function TopicRow({
   chat,
@@ -81,7 +74,7 @@ export function TopicRow({
   const deletedPreview = previewed?.deleted === true ? 'Message deleted' : undefined;
   const body = plainPreviewBody(chat, previewed, preview.body, currentUserId);
   const showTicks = chat.unread === 0 && last?.senderId === currentUserId;
-  const status = topic?.status ?? 'open';
+  const activityDone = topic !== undefined && topicActivityView(topic.activity, topic.doneAt).done;
   return (
     <Pressable
       accessibilityRole="button"
@@ -97,7 +90,13 @@ export function TopicRow({
         <View className="flex-1 justify-center">
           <View className="flex-row items-center justify-between">
             <View className="min-w-0 flex-1 flex-row items-center">
-              <Text numberOfLines={1} className="text-[16px] font-semibold text-foreground">
+              <Text
+                numberOfLines={1}
+                className={cn(
+                  'text-[16px] font-semibold',
+                  activityDone ? 'text-muted-foreground' : 'text-foreground',
+                )}
+              >
                 {chat.title}
               </Text>
               {topic?.visibility === 'private' ? (
@@ -121,6 +120,13 @@ export function TopicRow({
                 </View>
               ) : null}
             </View>
+            {topic !== undefined ? (
+              <AiActivityMarks
+                activity={topic.activity}
+                doneAt={topic.doneAt}
+                className="ml-2 shrink-0"
+              />
+            ) : null}
             {last ? (
               <Text className="ml-2 shrink-0 font-mono text-[12px] text-subtle-foreground">
                 {formatListTime(last.createdAt, new Date())}
@@ -128,16 +134,6 @@ export function TopicRow({
             ) : null}
           </View>
           <View className="mt-0.5 flex-row items-center gap-1.5">
-            <View className="shrink-0 flex-row items-center gap-1 rounded-full border border-divider px-1.5 py-0.5">
-              <View
-                accessibilityElementsHidden
-                importantForAccessibility="no"
-                className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT[status] ?? STATUS_DOT['open'])}
-              />
-              <Text className="text-[11px] font-medium text-muted-foreground">
-                {topicStatusLabel(status)}
-              </Text>
-            </View>
             {label !== undefined ? (
               <View className="mr-2 flex-1 flex-row items-center gap-1.5">
                 <PulseDot color={MUTED_FOREGROUND} />

@@ -1553,3 +1553,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1543](T-1543-split-chats-api.md) | Split chats/api.ts: the list and mark handlers move out | 2026-10-15 |
 | [T-1537](T-1537-web-ai-status-line.md) | Web status line above a topic's composer shows the AIs at work | 2026-10-15 |
 | [T-1545](T-1545-split-web-store-types.md) | Split the web store types: group and topic members move out | 2026-10-15 |
+| [T-1539](T-1539-mobile-topic-activity-marks.md) | Phone topic rows and the AIs here sheet show the AIs at work | 2026-10-15 |

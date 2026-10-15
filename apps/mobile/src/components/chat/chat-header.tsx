@@ -1,8 +1,13 @@
+import { topicActivityView } from '@zilar/chat-core';
+import { palette } from '@zilar/ui-tokens';
 import { useRouter } from 'expo-router';
 import { ChevronLeft, Images, Lock, Megaphone, MoreVertical, Search } from 'lucide-react-native';
+import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { AiActivityMarks } from '@/components/chat/ai-activity-marks';
 import { AiBadge } from '@/components/chat/ai-badge';
+import { AisHereSheet } from '@/components/chat/ais-here-sheet';
 import { EntityAvatar } from '@/components/chat/entity-avatar';
 import { TypingDots } from '@/components/chat/typing-dots';
 import { IconButton } from '@/components/ui/icon-button';
@@ -64,6 +69,8 @@ type ChatHeaderProps = {
  * it to a sheet (topics today: the topic-info sheet; other chats have no
  * menu yet, shown as no button rather than a dead one). T-1192 (MUX-11) adds
  * the DM case: with the peer's `@handle` known, the title opens their profile.
+ * T-1539 adds the topic's "AIs here" key: a topic with a working or waiting AI
+ * shows that AI's marks first among the keys, opening the "AIs here" sheet.
  */
 export function ChatHeader({
   chat,
@@ -95,7 +102,13 @@ export function ChatHeader({
   const subtitle =
     connection ?? aiLine ?? (writing ? 'writing…' : (typing ?? chatSubtitle(chat, new Date())));
   const working = chat.isAI && chat.aiStatus === 'working';
-  const isTopic = chat.topic !== undefined;
+  const topic = chat.topic;
+  const isTopic = topic !== undefined;
+  const [aisHereOpen, setAisHereOpen] = useState(false);
+  // The AIs at work decide the "AIs here" key: only a topic with something
+  // active (working or waiting) shows it.
+  const topicActivity =
+    topic === undefined ? undefined : topicActivityView(topic.activity, topic.doneAt);
   const groupTarget = onOpenGroup !== undefined ? (chat.groupId ?? undefined) : undefined;
   const title = (
     // `justify-center` keeps the two text lines on the avatar's centre line:
@@ -142,56 +155,73 @@ export function ChatHeader({
     </View>
   );
   return (
-    <View className="min-h-16 flex-row items-center gap-1 border-b border-divider bg-surface px-1">
-      <IconButton label="Back" onPress={onBack}>
-        <ChevronLeft size={24} color={iconColor} />
-      </IconButton>
-      <EntityAvatar chat={chat} size={36} online={chat.online} ai={chat.isAI} />
-      {isTopic && onOpenInfo !== undefined ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Topic info for ${chat.title}`}
-          onPress={onOpenInfo}
-          className="min-w-0 flex-1 justify-center"
-        >
-          {title}
-        </Pressable>
-      ) : groupTarget !== undefined ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Open group ${chat.title}`}
-          onPress={() => onOpenGroup?.(groupTarget)}
-          className="min-w-0 flex-1 justify-center"
-        >
-          {title}
-        </Pressable>
-      ) : dmHandle !== undefined ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Open ${chat.title}'s profile`}
-          onPress={() => router.push({ pathname: '/u/[handle]', params: { handle: dmHandle } })}
-          className="min-w-0 flex-1 justify-center"
-        >
-          {title}
-        </Pressable>
-      ) : (
-        title
-      )}
-      {onOpenMedia !== undefined ? (
-        <IconButton label="Media, files and links" onPress={onOpenMedia}>
-          <Images size={20} color={iconColor} />
+    <>
+      <View className="min-h-16 flex-row items-center gap-1 border-b border-divider bg-surface px-1">
+        <IconButton label="Back" onPress={onBack}>
+          <ChevronLeft size={24} color={iconColor} />
         </IconButton>
+        <EntityAvatar chat={chat} size={36} online={chat.online} ai={chat.isAI} />
+        {isTopic && onOpenInfo !== undefined ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Topic info for ${chat.title}`}
+            onPress={onOpenInfo}
+            className="min-w-0 flex-1 justify-center"
+          >
+            {title}
+          </Pressable>
+        ) : groupTarget !== undefined ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Open group ${chat.title}`}
+            onPress={() => onOpenGroup?.(groupTarget)}
+            className="min-w-0 flex-1 justify-center"
+          >
+            {title}
+          </Pressable>
+        ) : dmHandle !== undefined ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${chat.title}'s profile`}
+            onPress={() => router.push({ pathname: '/u/[handle]', params: { handle: dmHandle } })}
+            className="min-w-0 flex-1 justify-center"
+          >
+            {title}
+          </Pressable>
+        ) : (
+          title
+        )}
+        {topic !== undefined && topicActivity !== undefined && topicActivity.active.length > 0 ? (
+          <IconButton
+            label={`AIs here: ${topicActivity.label}`}
+            onPress={() => setAisHereOpen(true)}
+          >
+            <AiActivityMarks
+              activity={topic.activity}
+              doneAt={topic.doneAt}
+              ringColor={palette.surface}
+            />
+          </IconButton>
+        ) : null}
+        {onOpenMedia !== undefined ? (
+          <IconButton label="Media, files and links" onPress={onOpenMedia}>
+            <Images size={20} color={iconColor} />
+          </IconButton>
+        ) : null}
+        {onSearchInChat !== undefined ? (
+          <IconButton label="Search in chat" onPress={onSearchInChat}>
+            <Search size={20} color={iconColor} />
+          </IconButton>
+        ) : null}
+        {isTopic && onOpenInfo !== undefined ? (
+          <IconButton label="More options" onPress={onOpenInfo}>
+            <MoreVertical size={20} color={iconColor} />
+          </IconButton>
+        ) : null}
+      </View>
+      {topic !== undefined ? (
+        <AisHereSheet visible={aisHereOpen} onClose={() => setAisHereOpen(false)} chat={chat} />
       ) : null}
-      {onSearchInChat !== undefined ? (
-        <IconButton label="Search in chat" onPress={onSearchInChat}>
-          <Search size={20} color={iconColor} />
-        </IconButton>
-      ) : null}
-      {isTopic && onOpenInfo !== undefined ? (
-        <IconButton label="More options" onPress={onOpenInfo}>
-          <MoreVertical size={20} color={iconColor} />
-        </IconButton>
-      ) : null}
-    </View>
+    </>
   );
 }
