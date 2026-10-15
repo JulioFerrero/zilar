@@ -147,6 +147,33 @@ export async function setQuestionMessageId(
   return updated.length > 0;
 }
 
+// T-1579: the card an AI posts comes back from the room as an outgoing
+// reflection whose stanza id (XEP-0359) is what clients quote in `replyTo.id`,
+// while the row was stamped with the origin id the gateway chose when sending.
+// Moves `message_id` from the origin id to the stanza id, only for a still
+// `open` row; a no-op when the two ids are equal. Returns whether the row
+// changed.
+export async function rekeyQuestionMessage(
+  db: ServerDatabase,
+  fromId: string,
+  toId: string,
+): Promise<boolean> {
+  if (fromId === toId) {
+    return false;
+  }
+  const updated = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string }>`UPDATE ai_questions
+        SET message_id = ${toId}
+        WHERE message_id = ${fromId} AND status = 'open'
+        RETURNING id`;
+    }),
+  );
+  return updated.length > 0;
+}
+
 // Refunds the cap slot for a card that never went out. The send failed after
 // `createQuestion` wrote the row, so it sits `open` with a null message id —
 // invisible to every read, but still counted by `createQuestion`'s per-AI cap

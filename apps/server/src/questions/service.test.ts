@@ -12,6 +12,7 @@ import {
   findOpenQuestionByMessage,
   listOpenQuestions,
   MAX_OPEN_QUESTIONS_PER_AI,
+  rekeyQuestionMessage,
   setQuestionMessageId,
 } from './service';
 
@@ -125,6 +126,47 @@ describe('questions service', () => {
       }),
     );
     expect(stored?.messageId).toBeNull();
+  });
+
+  it('re-keys an open question to the stanza id and leaves a closed one alone', async () => {
+    const aiId = await seedAiId();
+    const row = await createQuestion(context.db, {
+      aiId,
+      roomJid: 'room@rooms.zilar.localhost',
+      question: 'Which ship date?',
+      options: ['Friday', 'Monday'],
+    });
+    const originId = randomUUID();
+    const stanzaId = randomUUID();
+    await setQuestionMessageId(context.db, row.id, originId);
+
+    expect(await rekeyQuestionMessage(context.db, originId, stanzaId)).toBe(true);
+    expect(await findOpenQuestionByMessage(context.db, originId)).toBeNull();
+    expect((await findOpenQuestionByMessage(context.db, stanzaId))?.id).toBe(row.id);
+
+    // Re-keying to the same id changes nothing.
+    expect(await rekeyQuestionMessage(context.db, stanzaId, stanzaId)).toBe(false);
+
+    // A row already closed keeps the id it was stamped with.
+    const closed = await createQuestion(context.db, {
+      aiId,
+      roomJid: 'room@rooms.zilar.localhost',
+      question: 'And this one?',
+      options: ['Yes', 'No'],
+    });
+    const closedOrigin = randomUUID();
+    await setQuestionMessageId(context.db, closed.id, closedOrigin);
+    await answerQuestion(context.db, closed.id, { answer: 'Yes', answeredBy: 'user-1' });
+
+    expect(await rekeyQuestionMessage(context.db, closedOrigin, randomUUID())).toBe(false);
+    const [stored] = await testSql(context)(
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<{ messageId: string | null }>`SELECT message_id FROM ai_questions
+          WHERE id = ${closed.id}`;
+      }),
+    );
+    expect(stored?.messageId).toBe(closedOrigin);
   });
 
   it('expires an unposted open row so it stops counting against the cap', async () => {

@@ -14,6 +14,7 @@ import {
   type RoomRound,
 } from './contracts';
 import type { createRoomListener } from './listener';
+import { answerOnReply, rekeyOnReflection } from './question-answer';
 import { followingAiFor, isFollowPaused, setTopicFollower } from './topic-follow';
 
 // T-1176 (AI-8): a reply to the AI's own message wakes it, like Telegram,
@@ -104,6 +105,9 @@ export function createGroupIngest(ctx: GroupIngestContext) {
         if (message.originId !== undefined) {
           rememberRoomSentId(session, ownRoomJid, message.originId);
         }
+        // T-1579: re-key a question card's row from the origin id to the
+        // stanza id a reply quotes. Best-effort, never awaited.
+        void rekeyOnReflection(deps.db, session, message, logger);
       }
       return;
     }
@@ -126,6 +130,8 @@ export function createGroupIngest(ctx: GroupIngestContext) {
     // Every AI session receives the same stanza, so an id we already opened on
     // leaves the running count alone.
     if (!isAiSender(normBareJid(message.fromJid))) {
+      // T-1579: a person's reply to a question card answers it, mention or not.
+      void answerOnReply(deps.db, session, message, logger);
       const round = roomRounds.get(roomJid);
       if (round === undefined || round.humanMessageId !== message.id) {
         roomRounds.set(roomJid, {
