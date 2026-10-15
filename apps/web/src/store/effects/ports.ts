@@ -64,37 +64,6 @@ import {
   setMembersCanCreateTopics as setMembersCanCreateTopicsRequest,
   setTopicRoles as setTopicRolesRequest,
   unpinMessage as unpinMessageRequest,
-  type ChatEntry,
-  type ChatPref,
-  type ChatBackgroundChoice,
-  type Contact,
-  type CreateGroupInviteLinkInput,
-  type CreatedInviteLink,
-  type CreateTopicInput,
-  type DirectoryEntry,
-  type DirectoryPage,
-  type GroupBackground,
-  type GroupDetail,
-  type GroupInviteLink,
-  type GroupMember,
-  type Invite,
-  type JoinPreview,
-  type JoinResult,
-  type ListChatMediaInput,
-  type Me,
-  type MediaPage,
-  type PatchTopicInput,
-  type Pin,
-  type PinMessageInput,
-  type PublicAi,
-  type PublicJoinResult,
-  type PutChatPrefInput,
-  type Topic,
-  type TopicAi,
-  type TopicMember,
-  type SetGroupListenerInput,
-  type SetTopicRolesInput,
-  type XmppToken,
 } from '@/lib/api';
 import {
   checkSession as checkSessionAdapter,
@@ -114,95 +83,9 @@ import {
   voiceFromPort,
   webFlags,
 } from './portAdapters';
+import type { ApiClient, StorageLike } from './portTypes';
 
-export interface ApiClient {
-  getMe(): Promise<Me>;
-  getChats(): Promise<ChatEntry[]>;
-  getContacts(): Promise<Contact[]>;
-  getGroup(groupId: string): Promise<GroupDetail>;
-  getXmppToken(): Promise<XmppToken>;
-  /** Stores the caller's read mark (T-1207); the id must be numeric. Optional
-   * so existing fakes keep working; the core only calls it when present. */
-  markChatRead?(jid: string, messageId: string): Promise<void>;
-  /** Confirms the caller's device holds these messages (T-1238); the ids are
-   * origin ids, 1 to 50 per call. Optional so fakes keep working. */
-  markChatDelivered?(jid: string, originIds: string[]): Promise<void>;
-  /** Deletes one message from the caller's own copy of a DM (T-1247).
-   * Optional so fakes keep working. */
-  deleteMessageForMe?(jid: string, archiveId: string): Promise<void>;
-  /** Clears the caller's own copy of a DM's history (T-1247). Optional. */
-  clearChatHistory?(jid: string): Promise<void>;
-  createGroup(input: {
-    title: string;
-    memberIds: string[];
-    kind?: 'group' | 'channel';
-    description?: string;
-    // T-0164: `public` creates the group with a handle in one transaction.
-    visibility?: 'private' | 'public';
-    handle?: string;
-  }): Promise<GroupDetail>;
-  listGroupMembers(groupId: string): Promise<GroupMember[]>;
-  // T-0164: public visibility with a handle (directory + open join), the
-  // Explore search, the exact by-handle lookup, and the one-tap join.
-  setGroupVisibility(
-    groupId: string,
-    input: { visibility: 'private' | 'public'; handle?: string },
-  ): Promise<GroupDetail>;
-  searchDirectory(input: {
-    q?: string;
-    kind?: 'group' | 'channel';
-    cursor?: string;
-  }): Promise<DirectoryPage>;
-  lookupGroupByHandle(handle: string): Promise<DirectoryEntry>;
-  joinPublicGroup(groupId: string): Promise<PublicJoinResult>;
-  createInvite(): Promise<Invite>;
-  createGroupInviteLink(
-    groupId: string,
-    input: CreateGroupInviteLinkInput,
-  ): Promise<CreatedInviteLink>;
-  listGroupInviteLinks(groupId: string): Promise<GroupInviteLink[]>;
-  revokeGroupInviteLink(groupId: string, linkId: string): Promise<void>;
-  previewJoinLink(token: string): Promise<JoinPreview>;
-  joinByLink(token: string): Promise<JoinResult>;
-  changeGroupMemberRole(
-    groupId: string,
-    userId: string,
-    role: 'admin' | 'member',
-  ): Promise<GroupDetail>;
-  removeGroupMember(groupId: string, userId: string): Promise<GroupDetail>;
-  listAis(): Promise<PublicAi[]>;
-  addGroupAi(groupId: string, aiId: string): Promise<GroupDetail>;
-  removeGroupAi(groupId: string, aiId: string): Promise<GroupDetail>;
-  createTopic(groupId: string, input: CreateTopicInput): Promise<Topic>;
-  getTopic(topicId: string): Promise<Topic>;
-  patchTopic(topicId: string, input: PatchTopicInput): Promise<Topic>;
-  archiveTopic(topicId: string): Promise<Topic>;
-  listGroupTopics(groupId: string): Promise<Topic[]>;
-  listTopicMembers(topicId: string): Promise<TopicMember[]>;
-  addTopicMember(topicId: string, userId: string): Promise<Topic>;
-  removeTopicMember(topicId: string, userId: string): Promise<Topic>;
-  listTopicAis(topicId: string): Promise<TopicAi[]>;
-  addTopicAi(topicId: string, aiId: string): Promise<Topic>;
-  removeTopicAi(topicId: string, aiId: string): Promise<Topic>;
-  setTopicRoles(topicId: string, input: SetTopicRolesInput): Promise<Topic>;
-  setMembersCanCreateTopics(groupId: string, allowed: boolean): Promise<GroupDetail>;
-  setGroupBackground(groupId: string, background: GroupBackground): Promise<GroupDetail>;
-  setGroupListener(groupId: string, input: SetGroupListenerInput): Promise<GroupDetail>;
-  listChatPrefs(): Promise<ChatPref[]>;
-  getChatBackgroundDefault(): Promise<ChatBackgroundChoice>;
-  putChatBackgroundDefault(input: ChatBackgroundChoice): Promise<ChatBackgroundChoice>;
-  putChatPref(chatJid: string, input: PutChatPrefInput): Promise<ChatPref | null>;
-  listPins(chat: string): Promise<Pin[]>;
-  listChatMedia(input: ListChatMediaInput): Promise<MediaPage>;
-  pinMessage(input: PinMessageInput): Promise<Pin>;
-  unpinMessage(id: string): Promise<void>;
-}
-
-export interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
-}
+export type { ApiClient, StorageLike } from './portTypes';
 
 /** What a caller of `createRealChatStore` may override; every field is optional. */
 export interface RealStoreDeps {
