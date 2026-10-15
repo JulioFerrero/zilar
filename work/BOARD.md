@@ -1593,3 +1593,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1574](T-1574-mobile-group-info-settings.md) | Phone Group info Settings page; the group header drops its keys | 2026-10-15 |
 | [T-1579](T-1579-question-answer-path.md) | A person's reply closes the AI's open question | 2026-10-15 |
 | [T-1578](T-1578-question-card-chips.md) | Question card with reply chips on web and phone | 2026-10-15 |
+| [T-1581](T-1581-mobile-channel-info-root.md) | Phone channel info root and Subscribers page | 2026-10-15 |

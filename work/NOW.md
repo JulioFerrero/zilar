@@ -70,9 +70,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - T-1574 (phone Group info T4: the Settings page and the phone detail `listener`/`avatarUrl`; the group header has no keys; smoke checked);
     - T-1579 (questions step 6: a reply closes the question; the row is re-keyed to the archive stanza id that clients quote; 13 tests passed);
     - T-1580 (split `tool-exec.ts`: the delegate and task_status runners move out; now 256 lines).
-  - **Running (2):**
-    - T-1578 (questions step 5: the question card with chips on web and phone; mock question in the Checkout topic; web handoff line a11y);
-    - T-1581 (phone Group info T5: the channel info root and its subscribers page).
+    - T-1578 (questions step 5: the question card with reply chips on web and phone; checked headless and on the phone).
+  - **Julio, 17:45: no new tasks until we talk.** He also asked about running AIs on Zilar cloud. The lead's check: desks are off on live (no `runsc`, no desk containers, no desk image built in CI, 0 paired machines). The enable steps are in `docs/RELEASING.md` §10 and wait for his decision.
+    - T-1581 (phone Group info T5: the channel info root and its subscribers page; code-checked; the mock channel has no feed topic, so `/group/g-acme` can't be smoke-checked; fix that in T6).
+  - **Running: none.** Waiting to talk with Julio before launching anything.
   - **Live at `df406f717`** (includes the questions server work): 0 errors and 2 "AI is offline" warnings at container start; `/api/me`, `/api/chats`, `/api/topics/x` and `/api/agents/tasks/x/steps` answer 401 signed out.
   - **Next:**
     - step 8 (the "AIs here" row opens the question; a question refreshes the topic list), after T-1578, so it can seed the mock's `questionId`;

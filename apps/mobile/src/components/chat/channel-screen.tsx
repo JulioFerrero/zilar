@@ -1,32 +1,30 @@
 import { useRouter } from 'expo-router';
-import { Megaphone } from 'lucide-react-native';
 import { Effect, Option } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { useEffect } from 'react';
-import { Pressable, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useEffect, useState } from 'react';
+import { Share } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
-import { EntityAvatar } from '@/components/chat/entity-avatar';
-import { ChannelMembers } from '@/components/chat/channel-members';
+import { ChannelPeoplePage } from '@/components/channel-info/people-page';
+import { ChannelInfoRoot } from '@/components/channel-info/root-page';
 import { InviteLinksSheet } from '@/components/chat/invite-links-sheet';
 import {
   ChannelCallFailed,
   callStore,
   useChannelInvites,
 } from '@/components/chat/use-channel-invites';
-import { Text } from '@/components/ui/text';
-import { Button } from '@/components/ui/button';
+import { AisPage } from '@/components/group-info/ais-page';
 import {
-  channelAdminsOf,
   channelDescription,
-  channelInfoSubtitle,
   channelSubscriberCount,
   channelViewerRole,
   mayManageChannel,
 } from '@/lib/channels';
 import { failureOf, isWaiting, useAction } from '@/lib/effect/use-action';
+import { goBackOrHome } from '@/lib/navigation';
 import { useChatStore } from '@/store/chat-store-provider';
+
+const WEB_HOST = 'https://chat.zilar.app';
 
 type ChannelScreenProps = {
   groupId: string;
@@ -34,14 +32,17 @@ type ChannelScreenProps = {
   title: string;
 };
 
+/** The channel screen's pages: the root, the Subscribers page and the AIs page. */
+type ChannelPage = 'root' | 'people' | 'ais';
+
 /**
- * The channel screen (T-0144), the mobile twin of web's `ChannelPanel`: the
- * channel's title, description and subscriber count; the feed row (the
- * General topic — tapping opens it); the admins/owner list (subscribers see
- * only that slice, never the audience); invite links for owners/admins via
- * the existing sheet; Leave channel for subscribers; promote/demote for the
- * owner (`PUT /api/groups/:id/members/:userId/role`, the last-admin guard
- * reads as a plain message).
+ * The channel screen (T-0144, T-1581), the mobile twin of web's
+ * `ChannelInfoRoot`: the channel root — picture, name, `@handle` and
+ * subscriber count, description, the Mute/Search/Share keys, the Feed row, the
+ * People group (Admins and subscribers, AIs, Invite links) and Leave channel
+ * for subscribers — plus the Subscribers page and the reused AIs page. This
+ * component owns the data, the pages and the invite-links sheet; the pages are
+ * thin views.
  *
  * The subscriber audience is visible to managers only — the detail carries
  * the full list for them (the server strips `members` for subscribers), and
@@ -57,6 +58,7 @@ export function ChannelScreen({ groupId, feedId, title }: ChannelScreenProps) {
 
 function Channel({ groupId, feedId, title }: ChannelScreenProps) {
   const router = useRouter();
+  const [page, setPage] = useState<ChannelPage>('root');
   const groupDetail = useChatStore((state) => state.groupDetail(groupId));
   const ensureGroupDetail = useChatStore((state) => state.ensureGroupDetail);
   const currentUserId = useChatStore((state) => state.currentUserId);
@@ -108,6 +110,16 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
   const slice = Option.getOrUndefined(AsyncResult.value(sliceState));
   const sliceFailed = failureOf(sliceState) !== undefined;
 
+  // `Share.share` sends the same `https://<host>/@handle` link the web channel
+  // root copies; a cancelled share is ignored.
+  const [, share] = useAction(
+    (url: string) =>
+      Effect.tryPromise({ try: () => Share.share({ message: url }), catch: (cause) => cause }).pipe(
+        Effect.ignore,
+      ),
+    { mode: 'replace' },
+  );
+
   useEffect(() => {
     if (groupId !== '') {
       ensureGroupDetail(groupId);
@@ -144,100 +156,72 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
 
   const members = groupDetail?.members ?? [];
   const shown = isManager ? members : (slice ?? []);
-  const admins = channelAdminsOf(shown);
-  // Managers see the audience below the posters; subscribers never do.
-  const subscribers = isManager ? members.filter((member) => member.role === 'member') : [];
   const count = channelSubscriberCount(
     feedRow ?? {},
     members.length === 0 ? undefined : members.length,
   );
   const description = channelDescription(feedRow ?? {}, groupDetail);
+  const rawHandle = feedRow?.handle ?? null;
+  const handle = rawHandle === '' ? null : rawHandle;
+  const shareUrl = handle === null ? null : `${WEB_HOST}/@${encodeURIComponent(handle)}`;
 
-  const flipRole = (userId: string, role: 'admin' | 'member') => {
-    changeRole({ userId, role });
-  };
+  const closePage = () => setPage('root');
 
-  const leave = () => {
-    if (leaving) {
-      return;
-    }
-    leaveAction(undefined);
-  };
+  if (page === 'ais') {
+    return (
+      <AisPage
+        groupId={groupId}
+        ais={groupDetail?.ais ?? []}
+        isManager={isManager}
+        onBack={closePage}
+      />
+    );
+  }
+
+  if (page === 'people') {
+    return (
+      <ChannelPeoplePage
+        people={shown}
+        me={currentUserId}
+        isOwner={isOwner}
+        loading={groupDetail === undefined && slice === undefined}
+        loadFailed={sliceFailed}
+        roleBusy={roleBusy}
+        roleError={roleError}
+        onFlipRole={(userId, role) => changeRole({ userId, role })}
+        onBack={closePage}
+      />
+    );
+  }
 
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      <View className="flex-1 px-4 py-4">
-        <View className="flex-row items-center gap-1.5">
-          <Text className="text-[22px] font-semibold text-foreground">{title}</Text>
-          <View accessibilityRole="image" accessibilityLabel="Channel">
-            <Megaphone size={18} color="#8a8a8a" />
-          </View>
-        </View>
-        <Text className="mt-0.5 text-[13px] text-muted-foreground">
-          {channelInfoSubtitle(count)}
-        </Text>
-        {description !== null && description !== '' ? (
-          <Text className="mt-2 text-[14px] text-muted-foreground">{description}</Text>
-        ) : null}
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Open the ${title} feed`}
-          onPress={() => router.push({ pathname: '/chat/[id]', params: { id: feedId } })}
-          className="mt-4 flex-row items-center gap-3 rounded-2xl bg-surface px-4 py-3 active:bg-surface-raised"
-        >
-          <EntityAvatar chat={{ id: feedId, title, avatarUrl: feedRow?.avatarUrl }} size={40} />
-          <View className="min-w-0 flex-1">
-            <Text numberOfLines={1} className="text-[15px] font-semibold text-foreground">
-              Feed
-            </Text>
-            <Text numberOfLines={1} className="text-[13px] text-muted-foreground">
-              {feedRow?.lastMessage?.text ?? 'Open the feed'}
-            </Text>
-          </View>
-        </Pressable>
-
-        <ChannelMembers
-          isManager={isManager}
-          isOwner={isOwner}
-          currentUserId={currentUserId}
-          loading={groupDetail === undefined && slice === undefined}
-          admins={admins}
-          adminsLoadFailed={sliceFailed}
-          subscribers={subscribers}
-          roleBusy={roleBusy}
-          roleError={roleError}
-          onFlipRole={flipRole}
-        />
-
-        {isManager ? (
-          <Button
-            accessibilityLabel="Invite links"
-            onPress={links.open}
-            variant="default"
-            size="default"
-            className="mt-4 self-start"
-          >
-            <Text>Invite links</Text>
-          </Button>
-        ) : (
-          <Button
-            accessibilityLabel="Leave channel"
-            disabled={leaving}
-            onPress={leave}
-            variant="outline"
-            size="default"
-            className="mt-4 self-start"
-          >
-            <Text>{leaving ? 'Leaving…' : 'Leave channel'}</Text>
-          </Button>
-        )}
-        {!isManager && leaveFailed ? (
-          <Text role="alert" className="mt-2 text-[13px] text-danger">
-            Could not leave the channel. Try again.
-          </Text>
-        ) : null}
-      </View>
+    <>
+      <ChannelInfoRoot
+        feedId={feedId}
+        title={title}
+        avatarUrl={feedRow?.avatarUrl}
+        handle={handle}
+        subscriberCount={count}
+        description={description}
+        aisCount={groupDetail === undefined ? undefined : (groupDetail.ais ?? []).length}
+        feedPreview={feedRow?.lastMessage?.text}
+        isManager={isManager}
+        canLeave={!isOwner}
+        leaving={leaving}
+        leaveError={leaveFailed ? 'Could not leave the channel. Try again.' : ''}
+        onBack={() => goBackOrHome(router)}
+        onSearch={() => router.push({ pathname: '/', params: { searchChat: feedId } })}
+        onShare={shareUrl === null ? undefined : () => share(shareUrl)}
+        onOpenFeed={() => router.push({ pathname: '/chat/[id]', params: { id: feedId } })}
+        onOpenPeople={() => setPage('people')}
+        onOpenAis={() => setPage('ais')}
+        onOpenLinks={links.open}
+        onLeave={() => {
+          if (!leaving) {
+            leaveAction(undefined);
+          }
+        }}
+      />
       <InviteLinksSheet
         visible={links.visible}
         links={links.links}
@@ -252,6 +236,6 @@ function Channel({ groupId, feedId, title }: ChannelScreenProps) {
         onDismissCreated={links.onDismissCreated}
         onClose={links.onClose}
       />
-    </SafeAreaView>
+    </>
   );
 }

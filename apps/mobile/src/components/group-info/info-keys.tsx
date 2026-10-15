@@ -1,4 +1,4 @@
-import { Bell, BellOff, MoreHorizontal, Search, UserPlus } from 'lucide-react-native';
+import { Bell, BellOff, MoreHorizontal, Search, Share2, UserPlus } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
@@ -15,20 +15,25 @@ const MUTE_ERROR = 'Could not update notifications. Try again.';
 type InfoKeysProps = {
   /** The group's own chat row: the General topic, the row Mute writes to. */
   groupChatId: string;
-  /** Managers (owner/admin) get the Add key. */
+  /** Managers (owner/admin) get the Add key, when the screen passes one. */
   canManage: boolean;
   /** The owner gets the More key. */
   isOwner: boolean;
   onSearch: () => void;
-  onAdd: () => void;
-  onMore: () => void;
+  /** Managers only. The channel root omits it, so no Add key shows. */
+  onAdd?: (() => void) | undefined;
+  /** The channel's Share key: given only when the channel has a handle. */
+  onShare?: (() => void) | undefined;
+  /** The owner's More key. The channel root omits it until T6. */
+  onMore?: (() => void) | undefined;
 };
 
 /**
- * The four group info keys (T-1552), after `Phone.dc.html`: 40 px `IconButton`
+ * The group info keys (T-1552), after `Phone.dc.html`: 40 px `IconButton`
  * keys with a label under each. Mute flips the group's own chat row
  * (`setChatPref`), forever or unmute; a failure shows one line. Add is for
- * managers and More for the owner, so a member sees fewer keys.
+ * managers and More for the owner, so a member sees fewer keys. T-1581 adds
+ * the channel's Share key and drops Add when the screen passes none.
  */
 export function InfoKeys({
   groupChatId,
@@ -36,6 +41,7 @@ export function InfoKeys({
   isOwner,
   onSearch,
   onAdd,
+  onShare,
   onMore,
 }: InfoKeysProps) {
   const setChatPref = useChatStore((state) => state.setChatPref);
@@ -63,12 +69,17 @@ export function InfoKeys({
         <InfoKey label="Search" onPress={onSearch}>
           <Search size={20} color={ICON} />
         </InfoKey>
-        {canManage ? (
+        {canManage && onAdd !== undefined ? (
           <InfoKey label="Add" onPress={onAdd}>
             <UserPlus size={20} color={ICON} />
           </InfoKey>
         ) : null}
-        {isOwner ? (
+        {onShare !== undefined ? (
+          <InfoKey label="Share" onPress={onShare}>
+            <Share2 size={20} color={ICON} />
+          </InfoKey>
+        ) : null}
+        {isOwner && onMore !== undefined ? (
           <InfoKey label="More" onPress={onMore}>
             <MoreHorizontal size={20} color={ICON} />
           </InfoKey>

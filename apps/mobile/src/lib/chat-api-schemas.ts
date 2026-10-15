@@ -147,7 +147,10 @@ const GroupDetailRawSchema = struct({
   // AI-listener settings. Both are absent on older servers, like web's
   // contract detail; the parsed detail then matches the contract type.
   avatarUrl: Schema.optional(Schema.String),
-  listener: Schema.optional(GroupListener),
+  // T-1581: a present-but-malformed `listener` block must drop only the
+  // listener, not the whole detail (T-1574 nit). The raw value is decoded
+  // separately in `parseGroupDetail`.
+  listener: Schema.Unknown.pipe(Schema.withDecodingDefault(Effect.succeed(undefined))),
   // T-0144: absent on older servers (treated as a group); malformed channel
   // fields reject the detail rather than rendering half of it.
   kind: Schema.optional(Schema.Literals(['group', 'channel'])),
@@ -265,6 +268,9 @@ export function parseGroupDetail(value: unknown): GroupDetail | null {
       ais.push(ai.value);
     }
   }
+  // T-1581: a present-but-malformed `listener` drops only the listener; the
+  // rest of the detail is kept (T-1574 nit).
+  const listener = Schema.decodeUnknownExit(GroupListener)(raw.listener);
   return {
     id: raw.id,
     title: raw.title,
@@ -275,7 +281,7 @@ export function parseGroupDetail(value: unknown): GroupDetail | null {
       ? {}
       : { membersCanCreateTopics: raw.membersCanCreateTopics }),
     ...(raw.avatarUrl === undefined ? {} : { avatarUrl: raw.avatarUrl }),
-    ...(raw.listener === undefined ? {} : { listener: raw.listener }),
+    ...(Exit.isSuccess(listener) ? { listener: listener.value } : {}),
     ...(raw.kind === undefined ? {} : { kind: raw.kind }),
     ...(raw.description === undefined ? {} : { description: raw.description }),
   };
