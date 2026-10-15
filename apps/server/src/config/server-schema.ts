@@ -135,8 +135,7 @@ export const serverConfigSchema = Schema.Struct({
   ACTION_DEMO_ENABLED: booleanFlagSchema(),
   // Runner hub (T-0071): off by default. When enabled, the server accepts
   // tunnel connections from approved machines on RUNNER_HUB_PORT (default
-  // 3189) bound to 127.0.0.1. The HTTP-only gateway requirement is checked
-  // at startup.
+  // 3189) bound to 127.0.0.1.
   RUNNER_HUB_ENABLED: booleanFlagSchema(),
   // Routines scheduler (T-0104): when true, `index.ts` starts the
   // scheduler that fires due routines. Off by default; enabling it also
