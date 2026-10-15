@@ -64,3 +64,21 @@ If sshd only allows some users (`AllowUsers` / `AllowGroups` in `/etc/ssh/sshd_c
 ssh -i ~/.ssh/zilar_logs_ed25519 zilar-logs@152.53.146.96 list
 ssh -i ~/.ssh/zilar_logs_ed25519 zilar-logs@152.53.146.96 server 500
 ```
+
+## Resetting the instance owner (SEC-12)
+
+The instance owner (who manages the integration and voice-transcription
+settings) is stored once in `instance_settings` under the key
+`instance.owner_user_id`. The first owner check stores the oldest account, and
+the value never changes afterwards, so deleting or recreating accounts does not
+move ownership. To hand ownership to another account, an operator updates that
+one row manually:
+
+```sql
+UPDATE instance_settings SET value = '<user id>', updated_at = now()
+WHERE key = 'instance.owner_user_id';
+```
+
+The value is a `user.id`. If the stored user no longer exists, nobody is the
+owner until this row is updated.
+

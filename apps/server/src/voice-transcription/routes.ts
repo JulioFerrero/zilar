@@ -41,13 +41,11 @@
 import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
 import { Effect } from 'effect';
-import { SqlClient } from 'effect/sql';
 import type { Logger } from 'pino';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
 import type { ServerConfig } from '../config';
 import type { ServerDatabase } from '../db/client';
-import { runSql } from '../effect/sql';
 import type { RateLimiter } from '../rate-limit';
 import { classifyIp } from '../sandbox/ip-guard';
 import { settingsCipherFor } from '../setup/settings';
@@ -85,21 +83,6 @@ export type { AudioFetcher, FetchedAudio, Transcriber } from './pipeline';
 // the fetch leg); re-exported here so existing importers keep working.
 export { AudioUnavailableError } from './pipeline';
 
-// The server owner is the user with the earliest `createdAt`: there is no
-// global admin role, so the first account to exist owns the integrations.
-// `"user"` is a reserved word, so it stays quoted.
-export async function isOwner(db: ServerDatabase, userId: string): Promise<boolean> {
-  const [first] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ id: string }>`SELECT id FROM "user"
-        ORDER BY created_at ASC, id ASC LIMIT 1`;
-    }),
-  );
-  return first !== undefined && first.id === userId;
-}
-
 export function voiceTranscriptUrlHash(url: string): string {
   return createHash('sha256').update(url, 'utf8').digest('hex');
 }
@@ -116,16 +99,17 @@ export async function voiceTranscriptionStatusFor(
   config: Pick<ServerConfig, 'ZILAR_KEY_ENCRYPTION_KEY' | 'BETTER_AUTH_SECRET'>,
   logger?: { warn: (fields: Record<string, unknown>, message: string) => void } | undefined,
 ): Promise<VoiceTranscriptionPublicStatus> {
-  let settings: VoiceTranscriptionSettings | null = null;
-  try {
-    settings = await getVoiceTranscriptionSettings(db, settingsCipherFor(config));
-  } catch {
-    // Fail closed (reads as "not configured"), but say so: a DB or decrypt
-    // failure must not silently look like an unset endpoint. The message is
-    // fixed — no error text, no key.
-    logger?.warn({}, 'voice transcription settings could not be read');
-    settings = null;
-  }
+  const settings = await Effect.runPromise(
+    Effect.tryPromise(() => getVoiceTranscriptionSettings(db, settingsCipherFor(config))).pipe(
+      Effect.orElseSucceed((): VoiceTranscriptionSettings | null => {
+        // Fail closed (reads as "not configured"), but say so: a DB or decrypt
+        // failure must not silently look like an unset endpoint. The message is
+        // fixed — no error text, no key.
+        logger?.warn({}, 'voice transcription settings could not be read');
+        return null;
+      }),
+    ),
+  );
   if (settings === null) {
     return { configured: false, baseUrl: null, model: null };
   }

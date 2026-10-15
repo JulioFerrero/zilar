@@ -29,7 +29,6 @@ import {
 } from './pipeline';
 import { silentVerificationWav, TranscriptionProviderError } from './provider';
 import {
-  isOwner,
   normalizeBaseUrl,
   toInternalUploadUrl,
   voiceTranscriptUrlHash,
@@ -46,6 +45,7 @@ import {
   VOICE_TRANSCRIPTION_DEFAULT_MODEL,
   type VoiceTranscriptionSettings,
 } from './settings';
+import { isInstanceOwner } from '../setup/instance-owner';
 import { settingsCipherFor } from '../setup/settings';
 
 const VoiceTranscriptionApi = HttpApi.make('voiceTranscription').add(VoiceTranscriptionGroup);
@@ -261,7 +261,7 @@ export function createVoiceTranscriptionApi(
       .handle(
         'removeSettings',
         handler(logger, async (_request, user) => {
-          if (!(await isOwner(deps.db, user.id))) {
+          if (!(await isInstanceOwner(deps.db, user.id, logger))) {
             throw new HttpError(404, 'not_found', 'Not found');
           }
           await deleteVoiceTranscriptionSettings(deps.db);
@@ -287,7 +287,10 @@ export function createVoiceTranscriptionApi(
     Layer.provide(sessionLayer(deps.auth, logger)),
     Layer.provide(transcriptConfiguredLayer(storedSettings)),
     Layer.provide(
-      voiceSettingsOwnerLimitLayer((userId) => isOwner(deps.db, userId), settingsLimiter),
+      voiceSettingsOwnerLimitLayer(
+        (userId) => isInstanceOwner(deps.db, userId, logger),
+        settingsLimiter,
+      ),
     ),
     Layer.provide(schemaErrorLayer(logger)),
   );

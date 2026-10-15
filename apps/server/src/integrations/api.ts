@@ -9,6 +9,7 @@ import { Effect, Layer } from 'effect';
 import { HttpServerRequest } from 'effect/http';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import { SqlClient } from 'effect/sql';
+import type { Logger } from 'pino';
 import {
   CurrentUser,
   IntegrationsEmailRateLimit,
@@ -30,6 +31,7 @@ import {
 } from '../effect/http-core';
 import { runSql } from '../effect/sql';
 import { createRateLimiter, type RateLimiter } from '../rate-limit';
+import { isInstanceOwner } from '../setup/instance-owner';
 import { getMailSettings, saveMailSettingsEffect, settingsCipherFor } from '../setup/settings';
 import { createTelegramClient } from '../stickers/telegram-import';
 import { voiceTranscriptionStatusFor } from '../voice-transcription/routes';
@@ -41,7 +43,6 @@ import {
   deleteStoredTelegramToken,
   envMailConfigured,
   isInvalidToken,
-  isOwner,
   mailStatusFor,
   notFound,
   ownerEmailFor,
@@ -62,6 +63,7 @@ const MAIL_SEND_FAILED =
 function telegramRateLimitLayer(
   limiter: RateLimiter,
   db: ServerDatabase,
+  logger: Logger,
 ): Layer.Layer<IntegrationsTelegramRateLimit> {
   return Layer.succeed(
     IntegrationsTelegramRateLimit,
@@ -70,7 +72,7 @@ function telegramRateLimitLayer(
         const user = yield* CurrentUser;
         const request = yield* HttpServerRequest.HttpServerRequest;
         const requestId = requestIdOf(request);
-        const owned = yield* Effect.promise(() => isOwner(db, user.id));
+        const owned = yield* Effect.promise(() => isInstanceOwner(db, user.id, logger));
         if (!owned) {
           return httpErrorResponse(requestId, notFound());
         }
@@ -93,6 +95,7 @@ function emailRateLimitLayer(
   limiter: RateLimiter,
   db: ServerDatabase,
   config: ServerConfig,
+  logger: Logger,
 ): Layer.Layer<IntegrationsEmailRateLimit> {
   return Layer.succeed(
     IntegrationsEmailRateLimit,
@@ -101,7 +104,7 @@ function emailRateLimitLayer(
         const user = yield* CurrentUser;
         const request = yield* HttpServerRequest.HttpServerRequest;
         const requestId = requestIdOf(request);
-        const owned = yield* Effect.promise(() => isOwner(db, user.id));
+        const owned = yield* Effect.promise(() => isInstanceOwner(db, user.id, logger));
         if (!owned) {
           return httpErrorResponse(requestId, notFound());
         }
@@ -151,7 +154,7 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
   const swap = deps.swapMailer ?? ((mailer) => deps.mailer.use(mailer));
 
   async function requireOwner(userId: string): Promise<void> {
-    if (!(await isOwner(deps.db, userId))) {
+    if (!(await isInstanceOwner(deps.db, userId, logger))) {
       throw notFound();
     }
   }
@@ -280,8 +283,8 @@ export function createIntegrationsApi(deps: IntegrationsRoutesDependencies): Eff
   const apiLayer = HttpApiBuilder.layer(IntegrationsApi).pipe(
     Layer.provide(groupLayer),
     Layer.provide(sessionLayer(deps.auth, logger)),
-    Layer.provide(telegramRateLimitLayer(telegramLimiter, deps.db)),
-    Layer.provide(emailRateLimitLayer(emailLimiter, deps.db, deps.config)),
+    Layer.provide(telegramRateLimitLayer(telegramLimiter, deps.db, logger)),
+    Layer.provide(emailRateLimitLayer(emailLimiter, deps.db, deps.config, logger)),
     Layer.provide(schemaErrorLayer(logger)),
   );
 

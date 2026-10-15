@@ -2,10 +2,10 @@
 // themselves live on the Effect `HttpApi` adapter in `./api.ts`; this module
 // keeps the rate-limit constants, the dependencies, the per-request bot token
 // resolver the import route uses, and the shared helpers the handlers call.
-// The server owner — the user with the earliest `createdAt` (there is no
-// global admin role) — manages the integration keys from Settings →
-// Integrations. Every route needs a session, and anyone who is not the owner
-// gets the same 404 as an unknown route, so existence is never leaked.
+// The stored server owner (`setup/instance-owner.ts`) manages the integration
+// keys from Settings → Integrations. Every route needs a session, and anyone
+// who is not the owner gets the same 404 as an unknown route, so existence is
+// never leaked.
 
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
@@ -63,21 +63,6 @@ export interface IntegrationsRoutesDependencies {
 
 export function notFound(): HttpError {
   return new HttpError(404, 'not_found', 'Not found');
-}
-
-// The server owner is the user with the earliest `createdAt`: there is no
-// global admin role, so the first account to exist owns the integrations.
-// `"user"` is a reserved word, so it stays quoted.
-export async function isOwner(db: ServerDatabase, userId: string): Promise<boolean> {
-  const [first] = await runSql(
-    db,
-    Effect.gen(function* () {
-      const sql = yield* SqlClient.SqlClient;
-      return yield* sql<{ id: string }>`SELECT id FROM "user"
-        ORDER BY created_at ASC, id ASC LIMIT 1`;
-    }),
-  );
-  return first !== undefined && first.id === userId;
 }
 
 export type IntegrationSource = 'env' | 'stored' | null;
