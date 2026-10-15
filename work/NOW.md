@@ -17,7 +17,8 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - T-1480: the placeholder wrapping;
   - T-1482: Reply and Edit focus the composer;
   - T-1483: "2 members, 3 online";
-  - T-1484: Escape closing the chat during a reply.
+  - T-1484: Escape closing the chat during a reply;
+  - T-1485: web accessibility fixes from an axe-core audit, which now reports no violations.
 - **T-1481:** the last file over 400 lines (`lead/autopilot.ts`) is split. The autopilot was restarted on it and runs clean.
 - **Live:** every deploy was checked (`/health`, routes, the SSH error count), with 0 errors after each.
 - **New canvas: "Stickers"** (lean pass, web and phone), https://claude.ai/artifact/GiBcaeJcuprSGGFBb3Xc3H. Eight canvases now wait for you: View steps, Connections, Topic status, AI health, Lean settings, Approvals, Empty chat and files, and Stickers.
@@ -121,8 +122,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 - **axe-core audit of web (lead, headless, 8 routes, 1280 and 390 px):** only two rules fail:
   - the composer textarea's disallowed `aria-expanded`;
   - a code block that scrolls but can't be reached by keyboard.
-- **Running: T-1485.** It fixes both, plus the request Accept key, which gets "Accept {name}" like mobile.
-- **Also checked, all fine:** Forward (390 px), in-chat search, contact-request Accept and Decline with Undo, the mobile Attach and Emoji sheets.
+- **Merged: T-1485.** It fixes both, plus the request Accept key, which now reads "Accept {name}" like mobile.
+  - The axe re-run reports no violations.
+  - Fix round 1 stopped react-markdown's `node` object from leaking into the DOM as an attribute.
+  - A second axe pass on main covered 10 more settings pages plus the New chat menu, New group, New AI, the message menu and Forward. No violations.
+- **Also checked, all fine:** Forward (390 px), in-chat search, contact-request Accept and Decline with Undo, the mobile Attach and Emoji sheets. T-1485 is live at `756f7276e` with 0 errors.
+- **Mobile at font scale 1.3 (emulator):** the chat list, Settings and Stickers truncate cleanly. The Dev AI table broke "Medium" mid-word.
+- **Running: T-1486.** Table column widths follow the font scale (capped at the app's 1.4).
+  - The emulator's font scale stays at 1.3 until its check; the lead resets it to 1.0 afterwards.
 - **Mobile interaction walk (emulator, mock):** send, reply with quote, the 👍 reaction and the @mention picker work. Two bugs found: T-1482 and T-1483.
 - **Web interaction walk (headless, mock, 1280 px):** send, reply, edit and New group all work, and the sent chat moves to the top of the list. 0 errors.
 - **Web sweep (lead, headless, mock, 390 and 1280 px, 23 routes):** no page overflows and no console errors after T-1477. Found and fixed: T-1477, T-1478, T-1479, T-1480.

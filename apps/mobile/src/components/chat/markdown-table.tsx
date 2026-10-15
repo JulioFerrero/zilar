@@ -1,6 +1,13 @@
 import type { ReactNode } from 'react';
-import { ScrollView, Text as RNText, View, type TextStyle } from 'react-native';
+import {
+  ScrollView,
+  Text as RNText,
+  View,
+  useWindowDimensions,
+  type TextStyle,
+} from 'react-native';
 
+import { MAX_FONT_SCALE } from '@/components/ui/text';
 import { BORDER, well } from '@/lib/depth';
 
 /**
@@ -193,8 +200,13 @@ const CELL_PADDING = 16;
 const MIN_COLUMN_WIDTH = 72;
 const MAX_COLUMN_WIDTH = 220;
 
-/** Column widths from the widest cell, floored so the longest word always fits. */
-function columnWidths(table: MarkdownTableData): number[] {
+/**
+ * Column widths from the widest cell, floored so the longest word always fits.
+ * Cells use the system font scale (capped at MAX_FONT_SCALE), so the pixel
+ * estimate and both bounds grow with `scale`; otherwise a scaled glyph is wider
+ * than the column and a word breaks mid-word.
+ */
+function columnWidths(table: MarkdownTableData, scale: number): number[] {
   return table.header.map((_, column) => {
     const cells = [table.header[column] ?? '', ...table.rows.map((row) => row[column] ?? '')];
     let widest = 0;
@@ -205,8 +217,8 @@ function columnWidths(table: MarkdownTableData): number[] {
         longestWord = Math.max(longestWord, word.length);
       }
     }
-    const width = Math.max(widest, longestWord) * CHAR_WIDTH + CELL_PADDING;
-    return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, width));
+    const width = Math.max(widest, longestWord) * CHAR_WIDTH * scale + CELL_PADDING;
+    return Math.min(MAX_COLUMN_WIDTH * scale, Math.max(MIN_COLUMN_WIDTH * scale, width));
   });
 }
 
@@ -234,7 +246,9 @@ export function MarkdownTable({
   color: string;
   renderCell: (cell: string) => ReactNode;
 }) {
-  const widths = columnWidths(table);
+  const { fontScale } = useWindowDimensions();
+  const scale = Math.min(fontScale, MAX_FONT_SCALE);
+  const widths = columnWidths(table, scale);
   const row = (cells: string[], header: boolean, key: number) => (
     <View key={key} style={{ flexDirection: 'row' }}>
       {cells.map((cell, column) => (
@@ -250,6 +264,7 @@ export function MarkdownTable({
           }}
         >
           <RNText
+            maxFontSizeMultiplier={MAX_FONT_SCALE}
             style={[
               CELL_TEXT,
               header ? HEADER_TEXT : undefined,

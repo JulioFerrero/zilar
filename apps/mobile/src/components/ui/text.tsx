@@ -62,13 +62,16 @@ const ARIA_LEVEL: Partial<Record<TextVariant, string>> = {
 
 const TextClassContext = React.createContext<string | undefined>(undefined);
 
+/** The app's font scale cap (T-1436): text never grows past the system scale's 1.4. */
+export const MAX_FONT_SCALE = 1.4;
+
 function Text({
   className,
   asChild = false,
   variant = 'default',
   color,
   style,
-  maxFontSizeMultiplier = 1.4,
+  maxFontSizeMultiplier = MAX_FONT_SCALE,
   ...props
 }: React.ComponentProps<typeof RNText> &
   React.RefAttributes<typeof RNText> &
