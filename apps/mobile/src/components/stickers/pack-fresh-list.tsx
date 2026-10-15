@@ -1,11 +1,21 @@
-import { TriangleAlert, X } from 'lucide-react-native';
+import { Image } from 'expo-image';
+import { Repeat, TriangleAlert, X } from 'lucide-react-native';
 import { Image as RNImage, Pressable, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { DANGER, ICON } from '@/lib/colors';
+import { DANGER, FOREGROUND, ICON } from '@/lib/colors';
 import { well } from '@/lib/depth';
 import { formatPreparedSize, type EditorNewItem } from '@/components/stickers/pack-editor';
+
+/**
+ * A moving file (GIF, video, animated WebP or APNG) keeps its bytes and
+ * reports `width: 0, height: 0` (sticker-native.ts), so its first frame is
+ * shown through `expo-image` with a loop badge (T-1525).
+ */
+function isMoving(item: EditorNewItem): boolean {
+  return item.width === 0 && item.height === 0;
+}
 
 /**
  * The freshly picked stickers with their per-row status, optional emoji,
@@ -40,6 +50,21 @@ export function PackFreshList({
             <View className="h-14 w-14 items-center justify-center rounded-lg bg-well">
               <TriangleAlert size={22} color={DANGER} />
             </View>
+          ) : isMoving(item) ? (
+            <View className="h-14 w-14 overflow-hidden rounded-lg bg-well">
+              <Image
+                source={{ uri: item.uri }}
+                style={{ width: 56, height: 56 }}
+                contentFit="contain"
+              />
+              <View
+                accessible
+                accessibilityLabel="Moves"
+                className="absolute left-1 top-1 items-center justify-center rounded-full bg-black/70 p-0.5"
+              >
+                <Repeat size={12} color={FOREGROUND} />
+              </View>
+            </View>
           ) : (
             <RNImage
               source={{ uri: item.uri }}
@@ -59,7 +84,7 @@ export function PackFreshList({
                   : item.status === 'uploaded'
                     ? 'Uploaded'
                     : 'Ready'}
-                {item.bytes > 0
+                {item.bytes > 0 && !isMoving(item)
                   ? ` · ${formatPreparedSize(item.width, item.height, item.bytes)}`
                   : ''}
               </Text>

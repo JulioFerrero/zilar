@@ -1546,3 +1546,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1530](T-1530-view-steps-server.md) | View steps route: a task's card steps with their actions | 2026-10-15 |
 | [T-1529](T-1529-mention-follow.md) | The last @mentioned AI follows a topic (topics.follower_ai_id) | 2026-10-15 |
 | [T-1534](T-1534-web-remove-task-strip.md) | Web drops the task strip; link row and Mark as done in info | 2026-10-15 |
+| [T-1525](T-1525-mobile-sticker-motion.md) | Phone sticker upload keeps GIF and video motion | 2026-10-15 |
