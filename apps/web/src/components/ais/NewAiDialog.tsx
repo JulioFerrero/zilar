@@ -32,6 +32,9 @@ export function NewAiDialog({ onClose }: { onClose: () => void }) {
         unread: 0,
         muted: false,
         online: false,
+        // T-1474: an empty new AI chat sorts by the AI's creation time, so it
+        // leads the list until a message lands.
+        createdAt: new Date(created.createdAt),
       };
       // Show the new AI in the list immediately; the roster refresh reconciles
       // it a moment later and a chat already there is kept.

@@ -73,25 +73,26 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
 - **Merged: T-1475.** The Add key chip shows the provider's name ("✓ DeepSeek"), checked on the emulator.
 - **Running:**
   - **T-1474: a new AI's chat leads the chat list.**
-    - The first fix added `createdAt` to mobile's own `DmEntrySchema`, but the emulator still shows the new chat near the bottom.
-    - Web works: the new chat leads the DMs.
-    - The worker is tracing the mobile cause with a store test.
+    - Web works.
+    - Mobile needed a NaN-safe sort (`chat-list.ts:72`). On the emulator the new chat now leads.
+    - The pre-review found the mobile cache dropped `createdAt` as a string (a cold-start crash); the autofix rehydrates `createdAt` and `pinnedAt`.
     - It is a server change, so a deploy check follows the merge.
 - **Merged: T-1476.** The web sidebar orders groups and chats together by recency, like mobile.
   - It used to list every group above every DM.
   - The headless check caught a NaN comparator (`-Infinity - -Infinity`) that made the first version a no-op.
   - Mobile's `chat-list.ts:72` has the same NaN pattern, and T-1474 is fixing it.
 - **Live at 06:32:** `27a3ddb8e` (T-1476), `/health` ok, baseline routes unchanged, 0 errors and 0 warnings in 20 min.
-- **LIVE REGRESSION from T-1476, found at about 07:15 and being fixed (T-1479, urgent):**
-  - web can go blank on reload when the cached chat list holds a group whose General has no message;
-  - the cache keeps `createdAt` as a JSON string, and T-1476's sort calls `chatSortTime` on every row, which throws `createdAt?.getTime is not a function`;
-  - reproduced headless on main; the pre-T-1476 tree is clean.
-  - **The fix:** the web cache rehydrates `createdAt` and `pinnedAt`, and `chatSortTime` tolerates strings.
-  - **Workaround until it deploys:** if the page is blank, clear the site's storage (the `zilar:chatList` key) and reload.
+- **Live regression from T-1476, fixed by T-1479 (live at `81a028f15`, 06:58 CEST; health ok, 0 errors):**
+  - web could go blank on reload when the cached chat list held a group whose General had no message;
+  - the cause: the cache kept `createdAt` as a JSON string, and T-1476's sort calls `chatSortTime` on every row, which threw `createdAt?.getTime is not a function`;
+  - the fix: the web cache rehydrates `createdAt` and `pinnedAt`, and `chatSortTime` tolerates strings;
+  - the headless reproduction gives a blank page on the T-1476 main and renders the list on the T-1479 main.
+  - The window was about 28 minutes, from T-1476's deploy (06:30 CEST) to T-1479's (06:58 CEST), and only for a reload with such a cached row.
   - The pre-review of T-1474 found the same gap in the mobile cache (a cold-start crash); T-1474 fixes it before merging.
-- **T-1474 found the real mobile cause:** the same NaN comparator in `chat-list.ts:72` (Hermes-specific, V8 hides it). With the fix, the emulator shows the new AI chat on top. The packet is pending.
+- **T-1474 found the real mobile cause:** the same NaN comparator in `chat-list.ts:72` (Hermes-specific, V8 hides it). With the fix, the emulator shows the new AI chat on top. Its autofix round (mobile cache dates) is in pre-review.
 - **Merged: T-1477.** Web mock mode no longer opens a live `/api/drafts/stream` (it 404'd 12 times per sweep).
-- **Running: T-1478.** At 390 px on web, an AI reply with a code block or table stretched its bubble past the screen and clipped the text. The fix caps the bubble at `min(560px, 100%)`.
+- **Merged: T-1478.** At 390 px on web, an AI reply with a code block or table stretched its bubble past the screen and clipped the text. The bubble is now capped at `min(560px, 100%)`.
+- **Lead pitfalls added to `docs/LEAD_HANDOFF.md`:** check list changes with a cached list on reload; never subtract two `-Infinity` values in a comparator.
 - **T-1445 history:**
   - **T-1445: mobile New AI.** The phone walk passed every step:
     - the footer, the provider dots and the keyboard-safe key step;

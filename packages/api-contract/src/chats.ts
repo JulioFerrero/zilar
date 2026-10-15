@@ -60,6 +60,12 @@ export const DmChatEntry = mutableStruct({
    * the caller's own row is the only one.
    */
   readUntil: Schema.optional(Schema.String),
+  /**
+   * T-1474: for an AI DM, when the AI was created, an ISO datetime. It rides
+   * an AI DM with no `lastMessage` yet so the list can sort a just-created AI
+   * chat first, like Telegram. Absent on human DMs and on older payloads.
+   */
+  createdAt: Schema.optional(Schema.String),
 });
 
 export type DmChatEntry = typeof DmChatEntry.Type;

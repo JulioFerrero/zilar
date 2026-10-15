@@ -100,6 +100,19 @@ async function deleteCacheFile(): Promise<void> {
 }
 
 /**
+ * A cached ISO string back to a `Date`, or undefined when it is absent or
+ * unusable. JSON keeps a `Date` as a string, and the list sorts on these with
+ * `.getTime()`, so a string here would throw on the next cold start.
+ */
+function parseCachedDate(value: unknown): Date | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+/**
  * The cached list, or null when there is none, it is unusable, or its user did
  * not match. `chats` keeps unknown fields, so a newer build's cache still paints.
  */
@@ -119,12 +132,16 @@ export async function readChatListCache(): Promise<{
     const chats = parsed.success.chats.map((chat) => {
       const { lastMessage, lastSeenAt: _lastSeenAt, online: _online, ...rest } = chat;
       const summary = { ...rest } as unknown as ChatSummary;
+      // T-1474: the row's own date fields survive as ISO strings; the list
+      // compares and sorts on them, so rehydrate them like `lastMessage` below.
+      summary.createdAt = parseCachedDate(rest.createdAt);
+      summary.pinnedAt = parseCachedDate(rest.pinnedAt);
       if (lastMessage !== undefined) {
-        const createdAt = new Date(lastMessage.createdAt);
-        if (!Number.isNaN(createdAt.getTime())) {
+        const lastMessageCreatedAt = new Date(lastMessage.createdAt);
+        if (!Number.isNaN(lastMessageCreatedAt.getTime())) {
           summary.lastMessage = {
             ...(lastMessage as unknown as NonNullable<ChatSummary['lastMessage']>),
-            createdAt,
+            createdAt: lastMessageCreatedAt,
           };
         }
       }

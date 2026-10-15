@@ -29,6 +29,7 @@ import { httpErrorResponse, requestIdOf } from '../effect/http-core';
 import { ownBareJid } from '../jid';
 import { allowedArchives } from '../search/service';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
+import { aiDmEntries } from './ai-entries';
 import { putChatRead, readForChats, requireChatReadAccess } from './reads';
 import { deliveredForChats, mergeTopicMarks, type DeliveryLookup } from './deliveries';
 import { deleteOwnHandlers } from './delete-own';
@@ -185,20 +186,10 @@ export function createChatsApi(deps: ChatsApiDependencies): EffectApiMount {
                 isAi: false,
                 ...(contact.avatarUrl ? { avatarUrl: contact.avatarUrl } : {}),
               })),
-              // Each active AI the caller owns is a DM with its own XMPP account,
-              // so "Open chat" from My AIs has somewhere to land. Disabled AIs
-              // and other people's AIs are left out.
-              ...ais
-                .filter((ai) => ai.status === 'active')
-                .map((ai): ChatListEntry => ({
-                  kind: 'dm',
-                  chatJid: ai.jid,
-                  title: ai.name,
-                  isAi: true,
-                  ...(aiAvatars.get(ai.id) === undefined
-                    ? {}
-                    : { avatarUrl: avatarUrlFor(aiAvatars.get(ai.id)!) }),
-                })),
+              // T-1474: each active AI the caller owns is a DM with its own XMPP
+              // account, carrying the AI's `createdAt` so an empty new AI chat
+              // leads the list (built in `ai-entries.ts`).
+              ...aiDmEntries(ais, aiAvatars),
               ...groups.map((group): ChatListEntry => ({
                 kind: 'group',
                 chatJid: `${group.roomLocalpart}@${deps.config.xmpp.mucDomain}`,

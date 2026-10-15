@@ -190,6 +190,9 @@ function AisList() {
       unread: 0,
       muted: false,
       online: false,
+      // T-1474: an empty new AI chat sorts by the AI's creation time, so it
+      // leads the list until a message lands.
+      createdAt: new Date(ai.createdAt),
     };
     store.setState((state) => ({
       chats: state.chats.some((chat) => chat.id === summary.id)

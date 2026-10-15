@@ -68,7 +68,16 @@ export function chatListModel(
     if (leftPinned !== rightPinned) {
       return leftPinned ? -1 : 1;
     }
-    return timeOf(right) - timeOf(left);
+    // T-1474: never subtract. Two rows with neither a message nor a creation
+    // time both sort at `-Infinity`, and `-Infinity - -Infinity` is `NaN`, which
+    // makes the comparator inconsistent (Hermes then misplaces the other rows,
+    // so a new AI chat no longer leads). Compare explicitly instead.
+    const leftTime = timeOf(left);
+    const rightTime = timeOf(right);
+    if (leftTime === rightTime) {
+      return 0;
+    }
+    return rightTime > leftTime ? 1 : -1;
   });
   return { rows, archived: archivedChats(filtered) };
 }

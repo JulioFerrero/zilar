@@ -5,8 +5,26 @@
 import { CONNECT_RETRY_DELAYS_MS } from '@zilar/client-core/store';
 import type { XmppCore } from '@zilar/xmpp-core';
 import { createFakeXmppCore } from '@zilar/xmpp-core/testing';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { chatListModel } from '../lib/chat-list';
+import { parseChatsList } from '../lib/chat-api-schemas';
+import { readChatListCache } from '../lib/chat-list-cache';
+
+// A writable stand-in for the cache file: the read/write go through
+// `expo-file-system/legacy` behind a dynamic import, so the real native module
+// never loads under Vitest (like the offline cache's port seam).
+const cacheFile = vi.hoisted(() => ({ contents: null as string | null }));
+vi.mock('expo-file-system/legacy', () => ({
+  documentDirectory: '/documents/',
+  readAsStringAsync: async () => cacheFile.contents,
+  writeAsStringAsync: async (_uri: string, contents: string) => {
+    cacheFile.contents = contents;
+  },
+  deleteAsync: async () => {
+    cacheFile.contents = null;
+  },
+}));
 import type { ChatFoldersApi } from '../lib/chat-folders-api';
 import type { ChatPrefsApi } from '../lib/chat-prefs-api';
 import { createRealChatStore, type AppStateLike, type RealStoreDeps } from './real-store';
@@ -67,6 +85,10 @@ function storeWith(deps: Partial<RealStoreDeps> = {}) {
 }
 
 describe('mobile store lifecycle (T-0918)', () => {
+  beforeEach(() => {
+    cacheFile.contents = null;
+  });
+
   it('boot loads the chats and the contacts', async () => {
     const { store } = storeWith();
 
@@ -77,6 +99,89 @@ describe('mobile store lifecycle (T-0918)', () => {
     expect(store.getState().contacts.map((contact) => contact.jid)).toEqual([ANA]);
 
     store.getState().stop();
+  });
+
+  it('a new AI DM with a newer creation time leads the chat list (T-1474)', async () => {
+    const AI = 'ai-heron@zilar.test';
+    // Decode the raw wire payload through the phone's own schema, the path that
+    // only mobile has (web decodes with the contract).
+    const entries = parseChatsList({
+      chats: [
+        // Two rows with neither a message nor a creation time (as in mock):
+        // their sort time is `-Infinity`, and the old `right - left` comparator
+        // made two of them subtract to `NaN`, which destabilised the whole sort
+        // (T-1474).
+        { kind: 'dm', chatJid: ANA, title: 'Ana', userId: 'u-ana' },
+        {
+          kind: 'group',
+          chatJid: 'v-1@rooms.zilar.test',
+          title: 'Viernes',
+          groupId: 'g-viernes',
+          memberCount: 5,
+          role: 'member',
+        },
+        { kind: 'dm', chatJid: AI, title: 'Heron', isAi: true, createdAt: '2026-09-28T11:59:00Z' },
+      ],
+    });
+    expect(entries).not.toBeNull();
+    const api = fakeApi({ getChats: vi.fn(async () => entries ?? []) });
+    const store = createRealChatStore({
+      api,
+      appState: fakeAppState(),
+      now: () => new Date('2026-09-28T12:00:00Z'),
+      createXmpp: () => createFakeXmppCore(),
+      openDrafts: () => () => {},
+    });
+
+    store.getState().start();
+    await waitFor(() => store.getState().chatsLoad === 'loaded');
+
+    const { rows } = chatListModel(store.getState().chats, { folder: undefined, search: '' });
+    expect(rows[0]).toMatchObject({ kind: 'chat', chat: { id: AI } });
+
+    store.getState().stop();
+  });
+
+  it('a cold start rehydrates a cached row created time, so a new AI chat leads (T-1474)', async () => {
+    const AI = 'ai-finch@zilar.test';
+    // JSON keeps a `Date` as an ISO string. The cold start paints this cache and
+    // the list sorts it through `chatSortTime`, so the read must bring
+    // `createdAt` back to a `Date`; before the fix the string reached `.getTime()`
+    // and threw on the first render.
+    cacheFile.contents = JSON.stringify({
+      version: 1,
+      userId: 'u-me',
+      chats: [
+        {
+          id: ANA,
+          title: 'Ana',
+          kind: 'dm',
+          isAI: false,
+          space: 'personal',
+          unread: 0,
+          muted: false,
+        },
+        {
+          id: AI,
+          title: 'Finch',
+          kind: 'dm',
+          isAI: true,
+          space: 'personal',
+          unread: 0,
+          muted: false,
+          createdAt: '2026-09-28T11:59:00Z',
+        },
+      ],
+    });
+
+    const cached = await readChatListCache();
+    expect(cached).not.toBeNull();
+    const ai = cached?.chats.find((chat) => chat.id === AI);
+    expect(ai?.createdAt).toBeInstanceOf(Date);
+    expect(ai?.createdAt?.getTime()).toBe(Date.parse('2026-09-28T11:59:00Z'));
+
+    const { rows } = chatListModel(cached?.chats ?? [], { folder: undefined, search: '' });
+    expect(rows[0]).toMatchObject({ kind: 'chat', chat: { id: AI } });
   });
 
   it('boot loads the chat folders and the chat prefs', async () => {

@@ -58,6 +58,8 @@ const DmEntrySchema = struct({
   // Absent on older servers (still parses), so they stay optional.
   deliveredUntil: Schema.optional(Schema.String),
   readUntil: Schema.optional(Schema.String),
+  // T-1474: an AI DM's creation time, as the contract's `DmChatEntry`.
+  createdAt: Schema.optional(Schema.String),
 });
 
 const GroupEntryRawSchema = struct({

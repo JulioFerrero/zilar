@@ -107,7 +107,15 @@ function createAi(data: MockData, request: MockHttpRequest): Response {
     createdAt: new Date().toISOString(),
   };
   data.putAi(created);
-  addChat(data, { kind: 'dm', chatJid: created.jid, title: created.name, isAi: true });
+  addChat(data, {
+    kind: 'dm',
+    chatJid: created.jid,
+    title: created.name,
+    isAi: true,
+    // T-1474: the AI's chat carries its creation time so an empty new AI chat
+    // leads the list, matching the real server.
+    createdAt: created.createdAt,
+  });
   return jsonResponse(created, 201);
 }
 
