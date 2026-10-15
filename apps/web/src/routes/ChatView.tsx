@@ -19,7 +19,6 @@ import { MediaViewerProvider } from '@/components/media/MediaViewer';
 import { SelectionBar } from '@/components/SelectionBar';
 import { PinnedBanner } from '@/components/PinnedBanner';
 import { PinsPanel } from '@/components/PinsPanel';
-import { TaskStrip } from '@/components/TaskStrip';
 import { TopicPanel } from '@/components/TopicPanel';
 import { useChatSelector, useChatStoreApi } from '@/store/ChatStoreProvider';
 import { runWeb } from '@/lib/effect/runtime';
@@ -257,7 +256,6 @@ export function ChatView({ chat }: { chat: ChatSummary }) {
               : {})}
           />
         )}
-        {chat.topic !== undefined && <TaskStrip chat={chat} />}
         <PinnedBanner chatId={chat.id} />
         {notice !== undefined && (
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-divider bg-panel px-4 py-2">

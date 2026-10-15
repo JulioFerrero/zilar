@@ -1,5 +1,7 @@
 import type { ChatSummary } from '@zilar/chat-core';
-import { isWaiting } from '@/lib/effect/use-action';
+import { Effect } from 'effect';
+import { CheckCircle2, RotateCcw } from 'lucide-react';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { AiMemoryDialog } from './ais/AiMemoryDialog';
 import { FieldError } from './ais/AiPageShell';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -10,9 +12,12 @@ import { TopicHeader } from './panels/TopicHeader';
 import { TopicMembersSection } from './panels/TopicMembersSection';
 import { TopicRolesSection } from './panels/TopicRolesSection';
 import { TopicRulesSection } from './panels/TopicRulesSection';
-import { useTopicPanelOps } from './panels/topicPanelOps';
+import { failInline } from './panels/topic-failure';
+import { storeCall, useTopicPanelOps } from './panels/topicPanelOps';
 import { RoutinesSection } from './tools/RoutinesSection';
 import { ToolsSection } from './tools/ToolsSection';
+import { TopicLinkRow } from './topic/TopicLinkRow';
+import { ListRow } from './ui/list-row';
 import { Sheet } from './ui/sheet';
 
 /**
@@ -129,6 +134,19 @@ function TopicPanelBody({
   const iAmMember = membersState.members.some((member) => member.userId === me);
   const visibilityBusy = isWaiting(visibilityState);
 
+  // T-1534: any member who can see the topic may mark it done or reopen it.
+  // The store repaints the row from the server's answer, then `refreshChats`
+  // updates the sidebar's mark.
+  const [, runToggleDone] = useAction<void, void, never>(() =>
+    Effect.sync(() => setErrorMessage('')).pipe(
+      Effect.andThen(
+        storeCall(() => storeApi.getState().patchTopic(chat.id, { done: topic.doneAt === null })),
+      ),
+      Effect.tap(() => Effect.sync(() => storeApi.getState().refreshChats())),
+      Effect.catchTag('ApiFailure', failInline(setErrorMessage, 'Could not update the topic.')),
+    ),
+  );
+
   return (
     <>
       <Sheet open onClose={onClose} ariaLabel={`${chat.title} topic info`}>
@@ -160,6 +178,24 @@ function TopicPanelBody({
             addMember={addMember}
             onError={setErrorMessage}
           />
+
+          {/* T-1534: the topic's link and its done switch. Every member who
+              can see the topic may use both. */}
+          <section aria-label="Topic" className="flex flex-col gap-1">
+            <h2 className="px-2 text-[13px] font-semibold text-muted-foreground">Topic</h2>
+            <TopicLinkRow chat={chat} onError={setErrorMessage} />
+            <ListRow
+              icon={
+                topic.doneAt === null ? (
+                  <CheckCircle2 className="size-4" aria-hidden="true" />
+                ) : (
+                  <RotateCcw className="size-4" aria-hidden="true" />
+                )
+              }
+              title={topic.doneAt === null ? 'Mark as done' : 'Reopen'}
+              onClick={() => runToggleDone()}
+            />
+          </section>
 
           <TopicAisSection
             state={aisState}

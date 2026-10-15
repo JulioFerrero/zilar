@@ -65,6 +65,8 @@ export interface PatchTopicInput {
   visibility?: TopicVisibility;
   memberIds?: string[];
   confirmExposeHistory?: boolean;
+  /** T-1521/T-1534: a person marks the topic done (`true`) or reopens it (`false`). */
+  done?: boolean;
 }
 
 export function listGroupTopics(groupId: string): Promise<Topic[]> {
