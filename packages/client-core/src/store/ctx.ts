@@ -132,6 +132,12 @@ export interface CoreCtx {
 
   /** The connected XMPP core of the current session. */
   core: XmppCore | undefined;
+  /**
+   * T-1449: the last connection status client-core wrote to the app, kept here
+   * so the polling loops can slow down while XMPP pushes changes live.
+   * Undefined before the first write.
+   */
+  connectionStatus?: ConnectionStatus | undefined;
   /** The last message read in each chat, by chat id. */
   lastRead: Record<string, string>;
   /** The user whose last-read map is loaded, and saved under their key. */
@@ -151,3 +157,16 @@ export interface CoreCtx {
 /** One Promise call as an Effect; a rejection (or a sync throw) keeps its value as the failure. */
 export const fromPromise = <A>(thunk: () => Promise<A>): Effect.Effect<A, unknown> =>
   Effect.tryPromise({ try: () => thunk(), catch: (error) => error });
+
+/**
+ * T-1449: writes the connection status to the app and remembers it on the ctx
+ * (`ctx.connectionStatus`) for the poll gate, in one place. Desktop and mobile
+ * build their ctx with `StoreAppHooks`, so both contexts take this.
+ */
+export function setConnectionStatus(
+  ctx: CoreCtx & { readonly fx: StoreAppHooks },
+  status: ConnectionStatus,
+): void {
+  ctx.connectionStatus = status;
+  ctx.fx.setStatus(status);
+}

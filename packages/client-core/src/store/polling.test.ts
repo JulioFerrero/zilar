@@ -10,6 +10,7 @@ import {
   DRAFT_IDLE_MS,
   DRAFT_STREAM_WATCH_MS,
   markTurnFinished,
+  ONLINE_REFRESH_INTERVAL_MS,
   PINS_REFRESH_INTERVAL_MS,
   ROSTER_REFRESH_DEBOUNCE_MS,
   scheduleChatsRefreshBurst,
@@ -265,6 +266,56 @@ describe('polling loops', () => {
     vi.advanceTimersByTime(TOPIC_REFRESH_INTERVAL_MS);
     expect(refreshChats).toHaveBeenCalledTimes(2);
   });
+
+  it('refreshes the chat list on the 60 s tick only every 5 min while online (T-1449)', () => {
+    const { ctx, rt, refreshChats, focus } = pollingCtx();
+    ctx.connectionStatus = 'online';
+    const session = rt.beginSession();
+    Effect.runSync(startChatsPolling(ctx, session));
+
+    // A focus refreshes at once, and sets the baseline.
+    focus();
+    expect(refreshChats).toHaveBeenCalledTimes(1);
+
+    // The 60 s tick is skipped while online.
+    vi.advanceTimersByTime(TOPIC_REFRESH_INTERVAL_MS);
+    expect(refreshChats).toHaveBeenCalledTimes(1);
+
+    // Five minutes after the focus, a tick refreshes again.
+    vi.advanceTimersByTime(ONLINE_REFRESH_INTERVAL_MS - TOPIC_REFRESH_INTERVAL_MS);
+    expect(refreshChats).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes the pins on the 60 s tick only every 5 min while online (T-1449)', () => {
+    const { ctx, rt, refreshActiveChatPins, focus } = pollingCtx(undefined, 'ana');
+    ctx.connectionStatus = 'online';
+    const session = rt.beginSession();
+    Effect.runSync(startPinsPolling(ctx, session));
+
+    focus();
+    expect(refreshActiveChatPins).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(PINS_REFRESH_INTERVAL_MS);
+    expect(refreshActiveChatPins).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(ONLINE_REFRESH_INTERVAL_MS - PINS_REFRESH_INTERVAL_MS);
+    expect(refreshActiveChatPins).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['offline', 'connecting'] as const)(
+    'refreshes the chat list on every 60 s tick while %s (T-1449)',
+    (status) => {
+      const { ctx, rt, refreshChats } = pollingCtx();
+      ctx.connectionStatus = status;
+      const session = rt.beginSession();
+      Effect.runSync(startChatsPolling(ctx, session));
+
+      vi.advanceTimersByTime(TOPIC_REFRESH_INTERVAL_MS);
+      expect(refreshChats).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(TOPIC_REFRESH_INTERVAL_MS);
+      expect(refreshChats).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it('refreshes only the open chat pins', () => {
     const { ctx, rt, refreshActiveChatPins } = pollingCtx(undefined, 'ana');

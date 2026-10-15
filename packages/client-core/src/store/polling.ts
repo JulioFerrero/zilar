@@ -16,6 +16,9 @@ import { coreKind, FINISHED_TURNS_MAX, withoutDraft } from './rows';
 export const TOPIC_REFRESH_INTERVAL_MS = 60_000;
 // T-0114: the open chat's pins refresh on the same cadence (no realtime channel).
 export const PINS_REFRESH_INTERVAL_MS = 60_000;
+// T-1449 (PERF-11): while XMPP is online and pushes changes live, a tick still
+// runs every 60 s but refetches only every 5 min; a focus or push still refreshes.
+export const ONLINE_REFRESH_INTERVAL_MS = 300_000;
 
 // PERF-11: a focus refresh right after a poll is wasted. A poll that ran within
 // this window coalesces the next focus refresh into it (both the chat list and
@@ -100,23 +103,32 @@ export function clearActiveChatRead(ctx: CoreCtx): void {
   }
 }
 
-/** A refresh that ran, and the time it ran at, so a focus can coalesce into it. */
+/** A refresh that ran, and the time it ran at, so a later one can be gated. */
 interface RefreshGate {
   readonly ifStale: () => void;
+  readonly ifDue: () => void;
 }
 
 // PERF-11: wraps a refresh so it is skipped when the previous one is younger
-// than `CHAT_REFRESH_COALESCE_MS` (something else polled just before the focus).
+// than `minAgeMs`. `ifStale` (a focus or a push) coalesces into a poll within
+// `CHAT_REFRESH_COALESCE_MS`; `ifDue` (a 60 s tick) waits
+// `ONLINE_REFRESH_INTERVAL_MS` while XMPP is online, whose pushes keep the
+// state fresh, and falls back to the coalesce window otherwise (T-1449).
 function refreshGate(ctx: PollingCtx, refresh: () => void): RefreshGate {
   let lastRunAt = Number.NEGATIVE_INFINITY;
+  const run = (minAgeMs: number): void => {
+    const now = ctx.ports.now().getTime();
+    if (now - lastRunAt < minAgeMs) {
+      return;
+    }
+    lastRunAt = now;
+    refresh();
+  };
+  const dueMinAgeMs = (): number =>
+    ctx.connectionStatus === 'online' ? ONLINE_REFRESH_INTERVAL_MS : CHAT_REFRESH_COALESCE_MS;
   return {
-    ifStale: () => {
-      if (ctx.ports.now().getTime() - lastRunAt < CHAT_REFRESH_COALESCE_MS) {
-        return;
-      }
-      lastRunAt = ctx.ports.now().getTime();
-      refresh();
-    },
+    ifStale: () => run(CHAT_REFRESH_COALESCE_MS),
+    ifDue: () => run(dueMinAgeMs()),
   };
 }
 
@@ -132,7 +144,7 @@ const chatsPolling = (ctx: PollingCtx): Effect.Effect<void> =>
         TOPIC_REFRESH_INTERVAL_MS,
         Effect.sync(() => {
           if (ctx.ports.visibility.isVisible()) {
-            refresh.ifStale();
+            refresh.ifDue();
           }
         }),
       );
@@ -155,7 +167,7 @@ const pinsPolling = (ctx: PollingCtx): Effect.Effect<void> =>
         PINS_REFRESH_INTERVAL_MS,
         Effect.sync(() => {
           if (ctx.ports.visibility.isVisible()) {
-            refresh.ifStale();
+            refresh.ifDue();
           }
         }),
       );

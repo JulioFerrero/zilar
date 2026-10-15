@@ -10,7 +10,7 @@
 import { Effect, Exit, Fiber, Scope } from 'effect';
 import { trustedMediaHosts, type MediaTokenShape } from '@zilar/chat-core';
 import type { ConnectionStatus, XmppCore, XmppCoreOptions } from '@zilar/xmpp-core';
-import { fromPromise, type StoreAppHooks } from './ctx';
+import { fromPromise, setConnectionStatus, type StoreAppHooks } from './ctx';
 import { handleDeliveredMark } from './delivered';
 import { flushPending, type HistoryCtx } from './history';
 import { loadPreviews } from './previews';
@@ -185,7 +185,7 @@ export const reconnect = (ctx: LifecycleCtx): Effect.Effect<void> =>
     return wakeAndResend(ctx, current).pipe(
       Effect.andThen(
         Effect.gen(function* () {
-          ctx.fx.setStatus('online');
+          setConnectionStatus(ctx, 'online');
           flushOnline(ctx);
           const me = ctx.get().me;
           if (me !== undefined && me !== null) {
@@ -196,7 +196,7 @@ export const reconnect = (ctx: LifecycleCtx): Effect.Effect<void> =>
           // F3: catch up the messages missed while suspended here.
         }),
       ),
-      Effect.catchCause(() => Effect.sync(() => ctx.fx.setStatus('offline'))),
+      Effect.catchCause(() => Effect.sync(() => setConnectionStatus(ctx, 'offline'))),
     );
   });
 
@@ -223,7 +223,7 @@ const boot = (ctx: LifecycleCtx, session: Fibers<never>): Effect.Effect<void> =>
       ),
     );
     if (Exit.isFailure(loaded)) {
-      ctx.fx.setStatus('offline');
+      setConnectionStatus(ctx, 'offline');
       ctx.fx.setChatsLoad('error');
       return;
     }
@@ -297,7 +297,7 @@ function subscribeToCore(
 ): () => void {
   const unsubscribers = [
     current.on('status', (status: ConnectionStatus) => {
-      ctx.fx.setStatus(status);
+      setConnectionStatus(ctx, status);
       if (status === 'online') {
         flushOnline(ctx);
       }
@@ -338,7 +338,7 @@ const connectXmpp = (ctx: LifecycleCtx, session: Fibers<never>, me: CoreMe): Eff
     const { api, createXmpp } = ctx.ports;
     const tokenExit = yield* Effect.exit(fromPromise(() => api.getXmppToken()));
     if (Exit.isFailure(tokenExit)) {
-      ctx.fx.setStatus('offline');
+      setConnectionStatus(ctx, 'offline');
       yield* scheduleConnectRetry(ctx, session, me);
       return;
     }
@@ -383,13 +383,13 @@ const connectXmpp = (ctx: LifecycleCtx, session: Fibers<never>, me: CoreMe): Eff
 
     const connected = yield* Effect.exit(fromPromise(() => current.connect()));
     if (Exit.isFailure(connected)) {
-      ctx.fx.setStatus('offline');
+      setConnectionStatus(ctx, 'offline');
       yield* Scope.close(attempt, Exit.void);
       yield* scheduleConnectRetry(ctx, session, me);
       return;
     }
     ctx.connectRetryAttempt = 0;
-    ctx.fx.setStatus('online');
+    setConnectionStatus(ctx, 'online');
     flushPending(ctx);
     yield* fromPromise(() => ctx.fx.joinGroups(current, me)).pipe(Effect.ignore);
     ctx.groupsJoined = true;
