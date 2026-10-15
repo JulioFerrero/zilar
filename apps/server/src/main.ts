@@ -59,6 +59,7 @@ import {
   warnOnGifConfig,
 } from './startup';
 import { createEjabberdAdminClient } from './xmpp/admin-client';
+import { startEjabberdSchemaCheck } from './xmpp/schema-check';
 import { runTool } from './sandbox/run-tool';
 import { buildToolAdapters, type BuildToolAdaptersDeps } from './tools/adapters';
 import type { ToolRunner } from './tools/types';
@@ -421,12 +422,11 @@ export function startServer(running: RunningServer): Effect.Effect<void> {
       announce: announcer,
     });
 
-    // The archive pool is shared with push below: one pool, two readers.
+    // The archive pool is shared with push, search and the OPS-7 schema check.
     const archivePool =
       config.XMPP_ARCHIVE_DATABASE_URL === undefined
         ? undefined
-        : createArchivePool(config.XMPP_ARCHIVE_DATABASE_URL);
-
+        : startEjabberdSchemaCheck(createArchivePool(config.XMPP_ARCHIVE_DATABASE_URL), logger);
     // Push env (T-0119): separate from the server config so push stays optional.
     // An invalid PUSH_COMPONENT_HOST refuses to boot below (fixed message, no
     // value echoed) instead of dialling a broken URL — see push/config.ts.

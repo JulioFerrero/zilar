@@ -7,6 +7,7 @@ import { sqlRuntimeFor } from './effect/sql';
 import { healthSnapshot, type HealthSnapshot } from './health-status';
 import { serverVersion } from './version';
 import type { EjabberdAdminClient } from './xmpp/admin/types';
+import { ejabberdSchemaStatus, type EjabberdSchemaStatus } from './xmpp/schema-check';
 
 const DB_HEALTH_TIMEOUT_MS = 1000;
 const EJABBERD_HEALTH_TIMEOUT_MS = 2000;
@@ -25,6 +26,8 @@ export type HealthBody = {
   db: 'ok' | 'down';
   ejabberd: 'ok' | 'down';
   push: 'online' | 'offline' | 'unknown';
+  /** OPS-7: the startup ejabberd schema check's result. Absent without a pool. */
+  ejabberdSchema?: EjabberdSchemaStatus;
   leader: boolean;
   draining: boolean;
   lastPushSentAt?: string;
@@ -38,10 +41,10 @@ export type HealthCheckDeps = {
 
 // Builds the `/health` handler. The status code reflects Postgres and the
 // drain: a draining instance answers 503 with `draining: true` so Traefik drops
-// it, while the process keeps serving (T-1316). The ejabberd and push fields
-// are informational and never make the container unhealthy. ejabberd is probed
-// at most once per `EJABBERD_HEALTH_CACHE_MS`, so Coolify's frequent healthcheck
-// does not hammer the admin API.
+// it, while the process keeps serving (T-1316). The ejabberd, push and
+// ejabberdSchema fields are informational and never make the container
+// unhealthy. ejabberd is probed at most once per `EJABBERD_HEALTH_CACHE_MS`, so
+// Coolify's frequent healthcheck does not hammer the admin API.
 export function createHealthCheck(deps: HealthCheckDeps): () => Promise<EdgeHealth> {
   let ejabberd: { at: number; status: 'ok' | 'down' } | undefined;
 
@@ -75,6 +78,7 @@ async function probeEjabberd(adminClient: EjabberdAdminClient): Promise<'ok' | '
 }
 
 function healthBody(dbUp: boolean, ejabberd: 'ok' | 'down', snapshot: HealthSnapshot): HealthBody {
+  const ejabberdSchema = ejabberdSchemaStatus();
   return {
     ok: dbUp && !snapshot.draining,
     name: 'zilar-server',
@@ -84,6 +88,7 @@ function healthBody(dbUp: boolean, ejabberd: 'ok' | 'down', snapshot: HealthSnap
     minClientProtocol,
     db: dbUp ? 'ok' : 'down',
     ejabberd,
+    ...(ejabberdSchema === undefined ? {} : { ejabberdSchema }),
     ...snapshot,
   };
 }
