@@ -65,6 +65,10 @@ export interface TopicView {
   linkLabel: string | null;
   isGeneral: boolean;
   archived: boolean;
+  /** T-1521: when a person marked the topic done, an ISO time, null when open.
+   * Set on every route by `buildTopicView`; optional only so older fixtures
+   * that predate the field still typecheck. */
+  doneAt?: string | null;
   memberCount: number;
   /** AIs added to this topic (never private names). */
   ais: TopicAiView[];

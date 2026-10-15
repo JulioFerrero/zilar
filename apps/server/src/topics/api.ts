@@ -40,12 +40,12 @@ import {
   archiveTopic,
   createTopic,
   listTopicMembers,
-  patchTopic,
   removeTopicAi,
   removeTopicMember,
   setTopicRoles,
   type TopicServiceDeps,
 } from './service';
+import { patchTopic } from './patch';
 
 export const TOPIC_CREATE_RATE_LIMIT_MAX = 30;
 export const TOPIC_CREATE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
@@ -162,6 +162,7 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
                 ...(payload.confirmExposeHistory === undefined
                   ? {}
                   : { confirmExposeHistory: payload.confirmExposeHistory }),
+                ...(payload.done === undefined ? {} : { done: payload.done }),
               }),
             );
             return yield* Effect.promise(() => toTopicView(deps.db, topic, mucDomain));

@@ -86,6 +86,7 @@ export interface TopicRow {
   ownerUserId: string | null;
   ownerAiId: string | null;
   followPausedAt: Date | null;
+  doneAt: Date | null;
   linkUrl: string | null;
   linkLabel: string | null;
   approverRoleId: string | null;

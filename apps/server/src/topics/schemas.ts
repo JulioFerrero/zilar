@@ -29,6 +29,7 @@ export interface PatchTopicBody {
   visibility?: TopicVisibility | undefined;
   memberIds?: string[] | undefined;
   confirmExposeHistory?: boolean | undefined;
+  done?: boolean | undefined;
 }
 
 export interface TopicServiceDeps {

@@ -117,6 +117,7 @@ function buildTopicView(
     linkLabel: topic.linkLabel,
     isGeneral: topic.isGeneral,
     archived: topic.archivedAt !== null,
+    doneAt: topic.doneAt?.toISOString() ?? null,
     memberCount,
     ais: aiList,
     roles: roleInfo.roles,

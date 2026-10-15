@@ -41,6 +41,8 @@ export interface MockTopic {
   linkLabel: string | null;
   isGeneral: boolean;
   archived: boolean;
+  /** T-1521: when a person marked the topic done, an ISO time; absent when open. */
+  doneAt?: string | null;
   memberIds: string[];
   aiIds: string[];
   roleIds: string[];

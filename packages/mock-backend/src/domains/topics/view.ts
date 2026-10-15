@@ -51,6 +51,7 @@ export function buildTopicView(topic: MockTopic, source: TopicViewSource): Topic
     linkLabel: topic.linkLabel,
     isGeneral: topic.isGeneral,
     archived: topic.archived,
+    doneAt: topic.doneAt ?? null,
     memberCount,
     ais: topic.aiIds.map((aiId) => ({ id: aiId, name: source.aiName(aiId) })),
     roles,

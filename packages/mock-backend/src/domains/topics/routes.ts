@@ -113,6 +113,9 @@ function patchTopic(data: MockData, topic: MockTopic, request: MockHttpRequest):
   }
   if (isTopicKind(body.kind)) updated = { ...updated, kind: body.kind };
   if (isTopicStatus(body.status)) updated = { ...updated, status: body.status };
+  if (typeof body.done === 'boolean') {
+    updated = { ...updated, doneAt: body.done ? new Date().toISOString() : null };
+  }
   const owner = readOwner(data, body.owner);
   if (owner !== undefined) updated = { ...updated, owner };
   if (body.linkUrl === null) {

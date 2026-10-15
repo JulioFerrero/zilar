@@ -188,6 +188,7 @@ function topicInfoOf(topic: Topic): TopicInfo {
     visibility: topic.visibility,
     isGeneral: topic.isGeneral,
     archived: false,
+    doneAt: topic.doneAt ?? null,
     owner: topic.owner,
     linkUrl: topic.linkUrl,
     linkLabel: topic.linkLabel,

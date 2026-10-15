@@ -154,6 +154,8 @@ export interface TopicInfo {
   visibility: TopicVisibility;
   isGeneral: boolean;
   archived: boolean;
+  /** T-1521: when a person marked the topic done, an ISO time; null when open. */
+  doneAt: string | null;
   owner: TopicOwner | null;
   linkUrl: string | null;
   linkLabel: string | null;

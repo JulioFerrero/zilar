@@ -119,6 +119,7 @@ export const PatchTopicPayload = Schema.Struct({
   visibility: Schema.optional(TopicVisibilitySchema),
   memberIds: Schema.optional(MemberIds),
   confirmExposeHistory: Schema.optional(Schema.Boolean),
+  done: Schema.optional(Schema.Boolean),
 });
 
 /** One non-empty user id. */
@@ -211,6 +212,9 @@ export const Topic = mutableStruct({
   linkLabel: Schema.NullOr(Schema.String),
   isGeneral: Schema.Boolean,
   archived: Schema.Boolean,
+  /** T-1521: when a person marked the topic done, an ISO time; absent on older
+   * servers. */
+  doneAt: Schema.optional(Schema.NullOr(Schema.String)),
   memberCount: Schema.Number,
   ais: Schema.mutable(Schema.Array(TopicAi)),
   roles: Schema.optional(Schema.mutable(Schema.Array(TopicRole))),
