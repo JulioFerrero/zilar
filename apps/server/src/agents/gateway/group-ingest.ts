@@ -16,6 +16,7 @@ import {
 import type { createRoomListener } from './listener';
 import { answerOnReply, rekeyOnReflection } from './question-answer';
 import { followingAiFor, isFollowPaused, setTopicFollower } from './topic-follow';
+import { bodyAddressesAi } from './typed-mention';
 
 // T-1176 (AI-8): a reply to the AI's own message wakes it, like Telegram,
 // even without an `@` mention. Zilar's own clients quote a reply by id only
@@ -143,6 +144,10 @@ export function createGroupIngest(ctx: GroupIngestContext) {
       }
     }
     const aiBare = normBareJid(session.aiJid);
+    const fromBare = normBareJid(message.fromJid);
+    // T-1617: a person who types the AI's nick or username instead of picking
+    // it from the list wakes it too. Only a person's typed mention counts, so
+    // two AIs cannot wake each other by naming one another.
     const mentioned =
       (message.mentions ?? []).some((mention) => normBareJid(mention.jid) === aiBare) ||
       replyTargetsAi({
@@ -150,7 +155,8 @@ export function createGroupIngest(ctx: GroupIngestContext) {
         aiBare,
         aiOccupantJid: `${roomJid}/${room.nick}`,
         sentIds: session.roomSentIds.get(roomJid),
-      });
+      }) ||
+      (!isAiSender(fromBare) && bodyAddressesAi(body, [room.nick, aiBare.split('@')[0] ?? '']));
     // T-0475: the listener sees every human room message, mention or not,
     // before the mention early-return below. AI senders never feed it.
     if (deps.listener !== undefined && !isAiSender(normBareJid(message.fromJid))) {
@@ -164,7 +170,6 @@ export function createGroupIngest(ctx: GroupIngestContext) {
       // ignores it, tests await it.
       return followTopic(session, message, roomJid, body);
     }
-    const fromBare = normBareJid(message.fromJid);
     let handoff = false;
     if (isAiSender(fromBare)) {
       // T-0481: an AI mentioning another AI hands the question over, inside
