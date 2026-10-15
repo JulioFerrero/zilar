@@ -7,6 +7,7 @@
 import type { ChatSummary, UiMessage } from '@zilar/chat-core';
 import { isAiJid } from '@zilar/protocol';
 import type { ChatMessage, Occupant, PresenceEvent } from '@zilar/xmpp-core';
+import { isAiActivityMessage, scheduleActivityRefresh } from './activity-refresh';
 import type { CoreCtx } from './ctx';
 import { confirmDelivered } from './delivered';
 import { recordRead } from './reads';
@@ -98,6 +99,7 @@ function handleOutgoingEcho(ctx: CoreCtx, message: ChatMessage, ui: UiMessage): 
 
 export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
   const { k } = ctx;
+  if (isAiActivityMessage(message)) scheduleActivityRefresh(ctx);
   // A correction or a retraction is never a chat message: it edits another
   // one, so it is ingested and returns before any rendering.
   if (k.isEditStanza(message)) {
