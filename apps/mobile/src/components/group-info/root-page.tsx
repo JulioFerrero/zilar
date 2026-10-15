@@ -1,4 +1,4 @@
-import { ChevronLeft, Link2, LogOut, Settings, Users } from 'lucide-react-native';
+import { Bot, ChevronLeft, Link2, LogOut, Settings, Users } from 'lucide-react-native';
 import { ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -12,11 +12,15 @@ import { ICON } from '@/lib/colors';
 type GroupInfoRootProps = {
   /** The group's own chat row: the General topic, for the picture and Mute. */
   groupChatId: string;
+  /** Whether that chat row is loaded; until then Mute and Search are disabled. */
+  chatReady: boolean;
   title: string;
   /** People plus AIs; `undefined` while the detail is not loaded (no number). */
   memberCount: number | undefined;
   /** People only, for the Members row; `undefined` when not loaded. */
   peopleCount: number | undefined;
+  /** The group's AIs, for the AIs row; `undefined` when not loaded. */
+  aisCount: number | undefined;
   isManager: boolean;
   isOwner: boolean;
   onBack: () => void;
@@ -24,6 +28,7 @@ type GroupInfoRootProps = {
   onAdd: () => void;
   onMore: () => void;
   onOpenMembers: () => void;
+  onOpenAis: () => void;
   onOpenLinks: () => void;
   onOpenSettings: () => void;
   onLeave: () => void;
@@ -35,13 +40,16 @@ const memberLabel = (count: number): string => `${count} ${count === 1 ? 'member
  * The group info root page (T-1552), after `Phone.dc.html`: a back key, the
  * group picture, name and combined member count, the four keys, the People and
  * Settings rows, and the red Leave group row for non-owners. Thin view: the
- * route mounts the sheets and owns the writes.
+ * route mounts the sheets and owns the writes. T-1569 adds the AIs row and
+ * disables the keys until the group's own chat row is loaded.
  */
 export function GroupInfoRoot({
   groupChatId,
+  chatReady,
   title,
   memberCount,
   peopleCount,
+  aisCount,
   isManager,
   isOwner,
   onBack,
@@ -49,6 +57,7 @@ export function GroupInfoRoot({
   onAdd,
   onMore,
   onOpenMembers,
+  onOpenAis,
   onOpenLinks,
   onOpenSettings,
   onLeave,
@@ -74,18 +83,27 @@ export function GroupInfoRoot({
           )}
         </View>
 
-        <InfoKeys
-          groupChatId={groupChatId}
-          canManage={isManager}
-          isOwner={isOwner}
-          onSearch={onSearch}
-          onAdd={onAdd}
-          onMore={onMore}
-        />
+        {/* T-1569: Mute and Search act on the group's own chat row, so they stay
+            disabled (dimmed, non-interactive) until that row is loaded, instead
+            of falling back to the raw group id. */}
+        <View
+          className={chatReady ? undefined : 'opacity-40'}
+          pointerEvents={chatReady ? 'auto' : 'none'}
+        >
+          <InfoKeys
+            groupChatId={groupChatId}
+            canManage={isManager}
+            isOwner={isOwner}
+            onSearch={onSearch}
+            onAdd={onAdd}
+            onMore={onMore}
+          />
+        </View>
 
         <View className="gap-3 px-4">
           <InfoRowGroup>
             <InfoRow icon={Users} label="Members" count={peopleCount} onPress={onOpenMembers} />
+            <InfoRow icon={Bot} label="AIs" count={aisCount} onPress={onOpenAis} />
             {isManager ? <InfoRow icon={Link2} label="Invite links" onPress={onOpenLinks} /> : null}
           </InfoRowGroup>
 

@@ -150,6 +150,29 @@ export interface ChatStoreGroups {
    */
   deleteGroup: (groupId: string) => Promise<void>;
   /**
+   * Adds people to a group (T-1569): the detail is reloaded so the members
+   * page repaints with server truth, and the chat list refreshes.
+   * Owners/admins only, enforced by the server. Rejects on failure.
+   */
+  addGroupMembers: (groupId: string, userIds: string[]) => Promise<void>;
+  /**
+   * Removes someone else from a group (T-1569): the detail is reloaded and
+   * the chat list refreshes. Owners/admins only, enforced by the server.
+   * Rejects on failure.
+   */
+  removeGroupMember: (groupId: string, userId: string) => Promise<void>;
+  /**
+   * Adds one of the viewer's AIs to a group (T-1569): the detail is reloaded
+   * and the chat list refreshes. Owners/admins only, enforced by the server.
+   * Rejects on failure.
+   */
+  addGroupAi: (groupId: string, aiId: string) => Promise<void>;
+  /**
+   * Removes one AI from a group (T-1569): the AI's owner or a manager may.
+   * The detail is reloaded and the chat list refreshes. Rejects on failure.
+   */
+  removeGroupAi: (groupId: string, aiId: string) => Promise<void>;
+  /**
    * Reads the members slice for one group (T-0144): the full audience for
    * owners/admins, the owner/admins slice for channel subscribers (never the
    * audience). Rejects on failure.

@@ -13,6 +13,10 @@ import type { ChatEntry, GroupDetail, Me } from '../../lib/chat-api';
 import type { Topic } from '../../lib/topics-api';
 import type { ChatStoreState } from '../types';
 import { makeGroupActions } from './group-actions';
+import {
+  makeGroupMembershipActions,
+  type GroupMembershipActions,
+} from './group-membership-actions';
 import { Ports } from './ports';
 import { failAfter, lift, orElse, type StoreCtx } from './runtime';
 
@@ -55,7 +59,7 @@ export type GroupActions = Pick<
 >;
 
 export interface Groups {
-  readonly actions: GroupActions;
+  readonly actions: GroupActions & GroupMembershipActions;
   /** Loads the detail of a group once; `force` reloads it. A load in flight serves every caller. */
   ensureGroupDetail(groupId: string, force?: boolean): Effect.Effect<void, never, Ports>;
   /** The member names of a chat's group, from the shared detail load. */
@@ -264,20 +268,23 @@ export function makeGroups(ctx: StoreCtx): Groups {
       () => refreshQuietly,
     );
 
-  const actions = makeGroupActions(ctx, {
-    groupDetails,
-    groupRolesById,
-    topicRolesById,
-    bumpRevision,
-    ensureGroupDetail,
-    ensureGroupRoles,
-    ensureTopicRoles,
-    actionStore,
-    applyTopicRow,
-    joinRoomQuietly,
-    refreshQuietly,
-    removeTopicMemberEffect,
-  });
+  const actions: GroupActions & GroupMembershipActions = {
+    ...makeGroupActions(ctx, {
+      groupDetails,
+      groupRolesById,
+      topicRolesById,
+      bumpRevision,
+      ensureGroupDetail,
+      ensureGroupRoles,
+      ensureTopicRoles,
+      actionStore,
+      applyTopicRow,
+      joinRoomQuietly,
+      refreshQuietly,
+      removeTopicMemberEffect,
+    }),
+    ...makeGroupMembershipActions(ctx, { ensureGroupDetail, refreshQuietly }),
+  };
 
   return { actions, ensureGroupDetail, ensureGroupMembers, joinGroups };
 }

@@ -1582,3 +1582,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1552](T-1552-mobile-group-info-root.md) | Phone Group info root: identity, four keys, people rows, Leave | 2026-10-15 |
 | [T-1566](T-1566-audit-handoff-questions.md) | Audit: handoff lines and question chips plan | 2026-10-15 |
 | [T-1570](T-1570-split-group-turn-body.md) | Split group-turn-body.ts: the handoff roster read moves out | 2026-10-15 |
+| [T-1569](T-1569-mobile-group-info-people.md) | Phone Group info: Members and AIs pages, add and remove | 2026-10-15 |

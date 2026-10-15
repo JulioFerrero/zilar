@@ -12,6 +12,8 @@ import { useGroupRoles } from '@/components/chat/use-group-roles';
 import { useGroupVisibility } from '@/components/chat/use-group-visibility';
 import { VisibilitySheet } from '@/components/chat/visibility-sheet';
 import { GroupInfoRoot } from '@/components/group-info/root-page';
+import { AisPage } from '@/components/group-info/ais-page';
+import { MembersPage } from '@/components/group-info/members-page';
 import { ActionSheet, ActionSheetItem } from '@/components/ui/action-sheet';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
@@ -39,12 +41,18 @@ function GroupInfo() {
   const groupDetail = useChatStore((state) => state.groupDetail(groupId));
   const ensureGroupDetail = useChatStore((state) => state.ensureGroupDetail);
   const currentUserId = useChatStore((state) => state.currentUserId);
+  const contacts = useChatStore((state) => state.contacts);
 
   const [moreOpen, setMoreOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteName, setDeleteName] = useState('');
   const [leaveOpen, setLeaveOpen] = useState(false);
+  // T-1569: the Group info page switch. The pages are rendered beside the
+  // sheets so the Members page's Invite links and Roles rows reuse them.
+  const [page, setPage] = useState<'root' | 'members' | 'ais'>('root');
+  // The root's Add key lands on the Members page with the picker already open.
+  const [pickerOnMount, setPickerOnMount] = useState(false);
 
   useEffect(() => {
     if (groupId !== '') {
@@ -56,7 +64,9 @@ function GroupInfo() {
   const general = topics.find((topic) => topic.topic?.isGeneral === true);
   const groupTitle = general?.groupTitle ?? general?.title ?? groupDetail?.title ?? 'Group';
   // Mute and Search act on the group's own chat row, the General topic (T-1552).
-  const groupChatId = general?.id ?? topics[0]?.id ?? groupId;
+  // T-1569: without it the keys stay disabled; the raw group id is no fallback.
+  const groupChatId = general?.id ?? topics[0]?.id;
+  const chatReady = groupChatId !== undefined;
 
   const members = useMemo(() => groupDetail?.members ?? [], [groupDetail]);
   const groupAis = useMemo(() => groupDetail?.ais ?? [], [groupDetail]);
@@ -64,7 +74,7 @@ function GroupInfo() {
   const isOwner = myRole === 'owner';
   const isManager = isOwner || myRole === 'admin';
 
-  const manage = useGroupManage({ groupId, groupChatId, isOwner });
+  const manage = useGroupManage({ groupId, groupChatId: groupChatId ?? groupId, isOwner });
   const roles = useGroupRoles(groupId, members);
   const links = useGroupInviteLinks(groupId);
   const visibility = useGroupVisibility(groupId);
@@ -91,24 +101,79 @@ function GroupInfo() {
     }
   };
 
-  return (
-    <>
+  const openMembers = () => {
+    setPickerOnMount(false);
+    setPage('members');
+  };
+
+  const openRoles = () => {
+    if (isManager) {
+      roles.open();
+    }
+  };
+
+  const openMembersWithPicker = () => {
+    if (isManager) {
+      setPickerOnMount(true);
+      setPage('members');
+    }
+  };
+
+  const openAis = () => {
+    setPage('ais');
+  };
+
+  const closePage = () => {
+    setPickerOnMount(false);
+    setPage('root');
+  };
+
+  const pageContent =
+    page === 'members' ? (
+      <MembersPage
+        groupId={groupId}
+        members={members}
+        roles={roles.roles}
+        me={currentUserId}
+        isManager={isManager}
+        isOwner={isOwner}
+        contacts={contacts}
+        openPickerOnMount={pickerOnMount}
+        onOpenLinks={openLinks}
+        onOpenRoles={openRoles}
+        onBack={closePage}
+      />
+    ) : page === 'ais' ? (
+      <AisPage groupId={groupId} ais={groupAis} isManager={isManager} onBack={closePage} />
+    ) : (
       <GroupInfoRoot
-        groupChatId={groupChatId}
+        groupChatId={groupChatId ?? groupId}
+        chatReady={chatReady}
         title={groupTitle}
         memberCount={groupDetail === undefined ? undefined : members.length + groupAis.length}
         peopleCount={groupDetail === undefined ? undefined : members.length}
+        aisCount={groupDetail === undefined ? undefined : groupAis.length}
         isManager={isManager}
         isOwner={isOwner}
         onBack={() => goBackOrHome(router)}
-        onSearch={() => router.push({ pathname: '/', params: { searchChat: groupChatId } })}
-        onAdd={openLinks}
+        onSearch={() => {
+          if (groupChatId !== undefined) {
+            router.push({ pathname: '/', params: { searchChat: groupChatId } });
+          }
+        }}
+        onAdd={openMembersWithPicker}
         onMore={() => setMoreOpen(true)}
-        onOpenMembers={roles.open}
+        onOpenMembers={openMembers}
+        onOpenAis={openAis}
         onOpenLinks={openLinks}
         onOpenSettings={openSettings}
         onLeave={() => setLeaveOpen(true)}
       />
+    );
+
+  return (
+    <>
+      {pageContent}
 
       <ActionSheet
         visible={moreOpen}
@@ -135,7 +200,7 @@ function GroupInfo() {
       <ConfirmDialog
         visible={leaveOpen}
         title={`Leave ${groupTitle}?`}
-        message="You will stop receiving messages from this group. You can be added back later."
+        message="You can rejoin only with an invite."
         confirmLabel="Leave"
         busyLabel="Leaving…"
         busy={manage.busy}

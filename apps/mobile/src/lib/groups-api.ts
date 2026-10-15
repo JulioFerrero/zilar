@@ -51,6 +51,22 @@ export interface GroupsApi {
    */
   removeGroupMember(groupId: string, userId: string): Promise<void>;
   /**
+   * Adds people to a group or channel (owners/admins only, T-1569). The fresh
+   * detail the route answers is dropped: the store reloads it. Rejects on
+   * failure.
+   */
+  addGroupMembers(groupId: string, userIds: string[]): Promise<void>;
+  /**
+   * Adds one of the caller's AIs to a group (owners/admins only, T-1569).
+   * Rejects on failure.
+   */
+  addGroupAi(groupId: string, aiId: string): Promise<void>;
+  /**
+   * Removes one AI from a group (its owner or a manager, T-1569). Rejects on
+   * failure.
+   */
+  removeGroupAi(groupId: string, aiId: string): Promise<void>;
+  /**
    * Hands one group over (T-1190): only the owner, and the target becomes
    * the owner while the caller becomes an admin. Rejects on failure.
    */
@@ -121,6 +137,17 @@ export function createGroupsApi(
     },
     removeGroupMember: async (groupId, userId) => {
       await runApi(client.groups.removeMember({ params: { id: groupId, userId } }));
+    },
+    // T-1569: the fresh detail the route answers is dropped here; the store
+    // reloads it through `ensureGroupDetail`, so the cache is one source.
+    addGroupMembers: async (groupId, userIds) => {
+      await runApi(client.groups.addMembers({ params: { id: groupId }, payload: { userIds } }));
+    },
+    addGroupAi: async (groupId, aiId) => {
+      await runApi(client.groups.addAi({ params: { id: groupId }, payload: { aiId } }));
+    },
+    removeGroupAi: async (groupId, aiId) => {
+      await runApi(client.groups.removeAi({ params: { id: groupId, aiId } }));
     },
     // T-1190: the fresh detail the route answers is dropped here; the store
     // reloads it through `ensureGroupDetail`, so the cache is one source.
