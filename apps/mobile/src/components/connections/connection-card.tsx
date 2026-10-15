@@ -1,11 +1,11 @@
-import { Trash2, Zap } from 'lucide-react-native';
-import { View } from 'react-native';
+import { MoreHorizontal } from 'lucide-react-native';
+import { Pressable, View } from 'react-native';
 
 import { providerLabel } from '@/components/ais/providers';
-import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { ICON } from '@/lib/colors';
+import { MUTED_FOREGROUND } from '@/lib/colors';
 import type { ProviderConnection } from '@/lib/connections-api';
+import { cn } from '@/lib/utils';
 
 /**
  * The host of a custom connection's base URL, e.g. `api.groq.com`. The server
@@ -16,117 +16,62 @@ function hostOf(baseUrl: string): string {
   return withoutScheme.split('/')[0] ?? baseUrl;
 }
 
+/** The short date a connection was added, e.g. `Sep 20`. */
+function addedDate(createdAt: string): string {
+  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(
+    new Date(createdAt),
+  );
+}
+
 /**
- * One provider row, either the normal view with Test / Remove or the inline
- * confirm that replaces it. The parent keys it by connection id.
+ * One connection row (T-1516): a status dot, the provider name, a muted line
+ * and a ⋯ glyph; the whole row opens the key's action sheet. The dot is the
+ * status — there is no status word — and a failed test in this screen reddens
+ * it and its reason joins the line in red. The parent keys it by connection id.
  */
-export function ConnectionCard({
+export function ConnectionRow({
   connection,
-  confirming,
-  removeError,
-  busy,
-  testing,
-  works,
-  testError,
-  onCancelRemove,
-  onConfirmRemove,
-  onTest,
-  onAskRemove,
+  working,
+  reason,
+  last,
+  onPress,
 }: {
   connection: ProviderConnection;
-  confirming: boolean;
-  removeError: string;
-  busy: boolean;
-  testing: boolean;
-  works: boolean;
-  testError: string | undefined;
-  onCancelRemove: () => void;
-  onConfirmRemove: () => void;
-  onTest: () => void;
-  onAskRemove: () => void;
+  /** Green dot and no reason; a failed test or a revoked key gives false. */
+  working: boolean;
+  /** The red reason when not working, e.g. "Key rejected" or "Key revoked". */
+  reason: string | undefined;
+  /** Drops the bottom hairline on the list's last row. */
+  last: boolean;
+  onPress: () => void;
 }) {
-  if (confirming) {
-    return (
-      <View className="gap-2 px-3 py-2.5">
-        <Text className="text-[15px] font-medium text-foreground">
-          Remove {providerLabel(connection.provider)}?
-        </Text>
-        {removeError !== '' ? (
-          <Text accessibilityRole="alert" className="text-[13px] text-danger">
-            {removeError}
-          </Text>
-        ) : null}
-        <View className="flex-row justify-end gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            accessibilityLabel="Cancel removing"
-            disabled={busy}
-            onPress={onCancelRemove}
-          >
-            <Text>Cancel</Text>
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            accessibilityLabel="Confirm remove"
-            disabled={busy}
-            onPress={onConfirmRemove}
-          >
-            <Text>{busy ? 'Removing…' : 'Remove'}</Text>
-          </Button>
-        </View>
-      </View>
-    );
-  }
-
+  const label = providerLabel(connection.provider);
   return (
-    <View className="flex-row items-center gap-3 px-3 py-2.5">
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${label} key actions`}
+      onPress={onPress}
+      className={cn(
+        'min-h-[64px] flex-row items-center gap-3 pl-4 pr-3 active:bg-list-hover',
+        last ? undefined : 'border-b border-divider',
+      )}
+    >
+      <View
+        accessibilityRole="image"
+        accessibilityLabel={working ? 'Working' : 'Not working'}
+        className={cn('h-2 w-2 shrink-0 rounded-full', working ? 'bg-online' : 'bg-danger')}
+      />
       <View className="min-w-0 flex-1">
-        <View className="flex-row flex-wrap items-center gap-2">
-          <Text className="text-[15px] font-medium text-foreground">
-            {providerLabel(connection.provider)}
-          </Text>
-          <Text className="rounded-full bg-surface-raised px-2 py-0.5 text-[11px] text-foreground">
-            {connection.status}
-          </Text>
-        </View>
-        <Text numberOfLines={1} className="mt-0.5 text-[13px] text-muted-foreground">
-          {connection.label ?? 'No label'}
+        <Text className="text-[16px] font-semibold text-foreground">{label}</Text>
+        <Text numberOfLines={1} className="text-[14px] text-muted-foreground">
+          {reason !== undefined ? <Text className="text-danger">{reason}</Text> : null}
+          {reason !== undefined ? ' · ' : ''}
+          {connection.label !== null ? `${connection.label} · ` : ''}
+          {connection.baseUrl !== null ? `${hostOf(connection.baseUrl)} · ` : ''}
+          {addedDate(connection.createdAt)}
         </Text>
-        {connection.baseUrl !== null ? (
-          <Text numberOfLines={1} className="mt-0.5 text-[13px] text-muted-foreground">
-            {hostOf(connection.baseUrl)}
-          </Text>
-        ) : null}
-        {works ? <Text className="text-[13px] text-online">Key works</Text> : null}
-        {testError !== undefined ? (
-          <Text accessibilityRole="alert" className="text-[13px] text-danger">
-            {testError}
-          </Text>
-        ) : null}
       </View>
-      <View className="flex-row shrink-0 gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 rounded-full"
-          accessibilityLabel={`Test ${providerLabel(connection.provider)} key`}
-          disabled={testing}
-          onPress={onTest}
-        >
-          <Zap size={16} color={ICON} />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 rounded-full"
-          accessibilityLabel={`Remove ${providerLabel(connection.provider)} connection`}
-          onPress={onAskRemove}
-        >
-          <Trash2 size={16} color={ICON} />
-        </Button>
-      </View>
-    </View>
+      <MoreHorizontal size={18} color={MUTED_FOREGROUND} />
+    </Pressable>
   );
 }

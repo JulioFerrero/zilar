@@ -1532,3 +1532,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1520](T-1520-mobile-empty-chats.md) | Phone empty chats; the mock gets handles and two empty chats | 2026-10-15 |
 | [T-1521](T-1521-topic-done-flag.md) | AI work step 3: a person marks a topic done (topics.done_at) | 2026-10-15 |
 | [T-1518](T-1518-web-machines.md) | Web Machines: pending code card, plain rows with a details sheet | 2026-10-15 |
+| [T-1516](T-1516-mobile-connections.md) | Phone Connections: one key list with dots and a key sheet | 2026-10-15 |
