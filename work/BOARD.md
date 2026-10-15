@@ -1497,3 +1497,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1483](T-1483-subtitle-online-not-above-members.md) | Group header never shows more online than members | 2026-10-15 |
 | [T-1482](T-1482-reply-edit-focus-composer.md) | Reply and Edit focus the composer on web and mobile | 2026-10-15 |
 | [T-1484](T-1484-escape-cancels-reply-first.md) | Escape cancels a reply before it closes the chat | 2026-10-15 |
+| [T-1485](T-1485-web-a11y-axe-fixes.md) | Web fixes from an axe audit: composer, code blocks, Accept | 2026-10-15 |

@@ -33,6 +33,15 @@ const components: Components = {
     // A remote image would leak the reader's IP, so show the alt text instead.
     return <span>{alt ?? ''}</span>;
   },
+  // A code block or table can scroll sideways, so make it keyboard-focusable.
+  pre({ node: _node, ...props }) {
+    void _node;
+    return <pre {...props} tabIndex={0} />;
+  },
+  table({ node: _node, ...props }) {
+    void _node;
+    return <table {...props} tabIndex={0} />;
+  },
 };
 
 /**

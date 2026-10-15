@@ -196,7 +196,6 @@ export function ComposerControls({
               aria-label="Message"
               title="**bold**, _italic_, `code`, ``` for a block"
               aria-autocomplete="list"
-              aria-expanded={pickerOpen}
               {...(pickerOpen ? { 'aria-controls': MENTION_PICKER_ID } : {})}
               {...(pickerOpen && candidates[activeRow] !== undefined
                 ? { 'aria-activedescendant': `mention-option-${candidates[activeRow].jid}` }

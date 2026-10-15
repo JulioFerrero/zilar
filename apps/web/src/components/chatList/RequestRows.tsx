@@ -256,7 +256,13 @@ function RequestRow({
         </Link>
       )}
       <span className={cn('flex shrink-0 items-center gap-2', isWide ? 'pr-[10px]' : 'pr-4')}>
-        <Button type="button" size="sm" disabled={busy} onClick={onAccept}>
+        <Button
+          type="button"
+          size="sm"
+          aria-label={`Accept ${name}`}
+          disabled={busy}
+          onClick={onAccept}
+        >
           Accept
         </Button>
         <Button

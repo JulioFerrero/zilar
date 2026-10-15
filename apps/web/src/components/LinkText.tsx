@@ -38,6 +38,7 @@ export function LinkText({
           return (
             <pre
               key={index}
+              tabIndex={0}
               className="my-1 max-w-full overflow-x-auto rounded-[10px] border border-border bg-well p-3 font-mono text-[12.5px] leading-5 whitespace-pre text-foreground shadow-[inset_0_2px_6px_rgba(0,0,0,0.9),inset_0_1px_1px_rgba(0,0,0,0.8),inset_0_0_0_1px_rgba(0,0,0,0.4),0_1px_0_rgba(255,255,255,0.06)]"
             >
               <code>{block.text}</code>

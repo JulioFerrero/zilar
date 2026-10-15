@@ -2,6 +2,26 @@
 
 The live picture: what runs, what is next, what waits for Julio. The lead rewrites this file after every launch, merge or block, and commits it with the board. The full task list is `BOARD.md`; the rules are `CLAUDE.md` and `docs/LEAD_LOOP.md`.
 
+**Morning summary for Julio (2026-10-15, written 07:50 CEST).** Details for each item are further down.
+- **New AI waves are done:**
+  - T-1445: mobile New AI;
+  - T-1469 to T-1475: the follow-ups (key cleanup, OpenAI-compatible label, partial notice, the mobile Add key sheet, the provider chip);
+  - T-1474: a new AI's chat leads the chat list.
+- **One live regression, fixed in about 28 minutes:**
+  - T-1476 (the web sidebar sorted by recency) blanked web on reload for a cached list holding a group whose General had no message;
+  - T-1479 fixed it (live 06:58);
+  - the lesson is in `docs/LEAD_HANDOFF.md`.
+- **QA hunt (headless web plus the emulator) found and fixed:**
+  - T-1477: mock draft-stream 404s;
+  - T-1478: bubbles clipped at 390 px;
+  - T-1480: the placeholder wrapping;
+  - T-1482: Reply and Edit focus the composer;
+  - T-1483: "2 members, 3 online";
+  - T-1484: Escape closing the chat during a reply.
+- **T-1481:** the last file over 400 lines (`lead/autopilot.ts`) is split. The autopilot was restarted on it and runs clean.
+- **Live:** every deploy was checked (`/health`, routes, the SSH error count), with 0 errors after each.
+- **New canvas: "Stickers"** (lean pass, web and phone), https://claude.ai/artifact/GiBcaeJcuprSGGFBb3Xc3H. Eight canvases now wait for you: View steps, Connections, Topic status, AI health, Lean settings, Approvals, Empty chat and files, and Stickers.
+
 **2026-10-15, night (updated 03:10 CEST): what merged since the 03:00 entry, in order.** Earlier versions of this entry carried wrong clock times; the order is right.
 - **Merged, first batch:**
   - T-1428: the one-line installer. `https://chat.zilar.app/install.sh` is live as `text/x-shellscript`.
@@ -96,8 +116,13 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - Mobile showed "QA squad › General, 2 members, 3 online": the AI counts as online but not as a member.
   - The fix applies the store's `max(members, online)` rule inside the shared `chatSubtitle`.
 - **Merged: T-1482.** Reply and Edit focus the composer on both apps. Edit puts the caret at the end; fix round 1 corrected mobile, which had it at the start. Checked on the emulator and headless.
-- **Merged: T-1483.** The function was checked from the worktree; the emulator check runs on the main APK being built.
-- **Running: T-1484.** On web, one Escape while replying cancels the reply *and* closes the chat (an existing bug on main). The fix makes the first Escape cancel the reply only.
+- **Merged: T-1483.** On the emulator (main APK `d3bbe952f`), QA squad › General reads "3 members, 3 online", matching web. Live at `d3bbe952f` with 0 errors.
+- **Merged: T-1484.** On web, the first Escape while replying cancels the reply only, and the second closes the chat. Before, one Escape did both. Checked headless, and live at `c1434e747` with 0 errors.
+- **axe-core audit of web (lead, headless, 8 routes, 1280 and 390 px):** only two rules fail:
+  - the composer textarea's disallowed `aria-expanded`;
+  - a code block that scrolls but can't be reached by keyboard.
+- **Running: T-1485.** It fixes both, plus the request Accept key, which gets "Accept {name}" like mobile.
+- **Also checked, all fine:** Forward (390 px), in-chat search, contact-request Accept and Decline with Undo, the mobile Attach and Emoji sheets.
 - **Mobile interaction walk (emulator, mock):** send, reply with quote, the 👍 reaction and the @mention picker work. Two bugs found: T-1482 and T-1483.
 - **Web interaction walk (headless, mock, 1280 px):** send, reply, edit and New group all work, and the sent chat moves to the top of the list. 0 errors.
 - **Web sweep (lead, headless, mock, 390 and 1280 px, 23 routes):** no page overflows and no console errors after T-1477. Found and fixed: T-1477, T-1478, T-1479, T-1480.
