@@ -1,11 +1,11 @@
 // T-1505 (docs/audit/ai-work-plan.md §7 step 1): the per-topic AI activity read
 // model. For a batch of topics it answers, per topic, each AI that is not idle:
 // `working` when the gateway has a turn in flight in the topic's room,
-// `waiting` when the AI has a live pending approval there, `done` when its last
-// task card there finished `done`. Working wins over waiting, waiting over
-// done. The whole batch costs two reads plus the gateway call — never one read
-// per topic. Every read is best-effort: a failure reads as empty and never
-// throws, so a chat list can always render.
+// `waiting` when the AI has a live pending approval there or an open question,
+// `done` when its last task card there finished `done`. Working wins over
+// waiting, waiting over done. The whole batch costs three reads plus the
+// gateway call — never one read per topic. Every read is best-effort: a failure
+// reads as empty and never throws, so a chat list can always render.
 
 import { Effect } from 'effect';
 import { SqlClient, type Statement } from 'effect/sql';
@@ -13,6 +13,7 @@ import type { ServerDatabase } from '../db/client';
 import type { TurnStopper, TurnWatcher } from '../agents/gateway/stop-types';
 import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import { runSql } from '../effect/sql';
+import { listOpenQuestionsForTopics, type OpenQuestionForActivity } from '../questions/service';
 import type { TopicActivityEntry, TopicView } from './access';
 
 export type AiActivityState = 'working' | 'waiting' | 'done';
@@ -20,6 +21,8 @@ export type AiActivityState = 'working' | 'waiting' | 'done';
 export interface TopicAiActivity {
   aiId: string;
   state: AiActivityState;
+  /** T-1577: the newest open question card's message id, if the AI has one. */
+  questionId?: string;
 }
 
 export interface AiActivityDeps {
@@ -61,9 +64,10 @@ export async function topicAiActivity(
     }
   }
 
-  const [pendingRows, cardRows] = await Promise.all([
+  const [pendingRows, cardRows, questionRows] = await Promise.all([
     loadPendingApprovals(deps.db, topicIds, [...generalTopics.keys()]),
     loadLastCardStates(deps.db, roomJids),
+    loadOpenQuestions(deps.db, topicIds, [...generalTopics.keys()]),
   ]);
 
   const waiting = new Map<string, Set<string>>();
@@ -73,6 +77,24 @@ export async function topicAiActivity(
     if (topicId !== undefined && activity.has(topicId)) {
       addTo(waiting, topicId, row.aiId);
     }
+  }
+
+  // An open question makes its AI waiting in its topic too (T-1577). The rows
+  // are newest first, so the first one seen for an AI in a topic is the card
+  // the "AIs here" row opens.
+  const questionByTopic = new Map<string, Map<string, string>>();
+  for (const row of questionRows) {
+    const topicId =
+      row.topicId ?? (row.groupId === null ? undefined : generalTopics.get(row.groupId));
+    if (topicId === undefined || !activity.has(topicId)) {
+      continue;
+    }
+    addTo(waiting, topicId, row.aiId);
+    const byAi = questionByTopic.get(topicId) ?? new Map<string, string>();
+    if (!byAi.has(row.aiId)) {
+      byAi.set(row.aiId, row.messageId);
+    }
+    questionByTopic.set(topicId, byAi);
   }
 
   const topicsByRoom = new Map<string, string[]>();
@@ -119,9 +141,13 @@ export async function topicAiActivity(
     for (const aiId of working.get(topic.topicId) ?? []) {
       states.set(aiId, 'working');
     }
+    const questionByAi = questionByTopic.get(topic.topicId);
     activity.set(
       topic.topicId,
-      [...states].map(([aiId, state]) => ({ aiId, state })),
+      [...states].map(([aiId, state]) => {
+        const questionId = questionByAi?.get(aiId);
+        return { aiId, state, ...(questionId === undefined ? {} : { questionId }) };
+      }),
     );
   }
   return activity;
@@ -177,14 +203,19 @@ export async function withTopicActivity(
 
 const STATE_ORDER: Record<AiActivityState, number> = { working: 0, waiting: 1, done: 2 };
 
+// The entry the response carries: the view entry plus the open question card's
+// message id (T-1577), which an "AIs here" row opens. The shared view type in
+// `./types` keeps its shape; the richer entry travels as JSON.
+type ActivityEntry = TopicActivityEntry & { questionId?: string };
+
 // The entries of one view, named by the AI rows and ordered working, then
 // waiting, then done, then by name. An AI with no name row is left out.
 function activityEntries(
   entries: TopicAiActivity[],
   names: Map<string, { name: string; jid: string }>,
   avatars: Map<string, string>,
-): TopicActivityEntry[] {
-  const rows: TopicActivityEntry[] = [];
+): ActivityEntry[] {
+  const rows: ActivityEntry[] = [];
   for (const entry of entries) {
     const ai = names.get(entry.aiId);
     if (ai === undefined) {
@@ -196,6 +227,7 @@ function activityEntries(
       name: ai.name,
       jid: ai.jid,
       ...(avatarId === undefined ? {} : { avatarUrl: avatarUrlFor(avatarId) }),
+      ...(entry.questionId === undefined ? {} : { questionId: entry.questionId }),
       state: entry.state,
     });
   }
@@ -261,6 +293,21 @@ async function loadPendingApprovals(
             AND ${sql.or(scope)}`;
       }),
     );
+  } catch {
+    return [];
+  }
+}
+
+// One read for the whole batch: the open, posted, unexpired questions of the
+// batch's topics (T-1577). Best-effort like the read above: a failure reads as
+// no open questions, never failing the whole activity answer.
+async function loadOpenQuestions(
+  db: ServerDatabase,
+  topicIds: string[],
+  generalGroupIds: string[],
+): Promise<readonly OpenQuestionForActivity[]> {
+  try {
+    return await listOpenQuestionsForTopics(db, topicIds, generalGroupIds);
   } catch {
     return [];
   }

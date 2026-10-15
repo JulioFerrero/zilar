@@ -190,6 +190,8 @@ export const TopicActivity = mutableStruct({
   /** T-1537: the AI's bare JID, so the client can match its live card. */
   jid: Schema.optional(Schema.String),
   avatarUrl: Schema.optional(Schema.String),
+  /** T-1577: the open question card's message id, so the row can open it. */
+  questionId: Schema.optional(Schema.String),
   state: Schema.String,
 });
 

@@ -5,6 +5,7 @@ import { SqlClient } from 'effect/sql';
 import type { TurnWatcher } from '../agents/gateway/stop-types';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedGroup, seedUser } from '../test-support/seed';
+import { createQuestion, setQuestionMessageId } from '../questions/service';
 import {
   topicAiActivity,
   withTopicActivity,
@@ -69,6 +70,31 @@ async function seedApproval(context: TestContext, input: SeedApprovalInput): Pro
       })}`;
     }),
   );
+}
+
+interface SeedQuestionInput {
+  aiId: string;
+  groupId: string;
+  topicId: string;
+  /** `null` leaves the question unposted (`message_id` stays NULL). */
+  messageId: string | null;
+  /** A negative TTL makes an already-expired question. */
+  ttlMs?: number;
+}
+
+async function seedQuestion(context: TestContext, input: SeedQuestionInput): Promise<void> {
+  const row = await createQuestion(context.db, {
+    aiId: input.aiId,
+    groupId: input.groupId,
+    topicId: input.topicId,
+    roomJid: ROOM_SECOND,
+    question: 'Which one?',
+    options: ['A', 'B'],
+    ...(input.ttlMs === undefined ? {} : { ttlMs: input.ttlMs }),
+  });
+  if (input.messageId !== null) {
+    await setQuestionMessageId(context.db, row.id, input.messageId);
+  }
 }
 
 interface SeedCardInput {
@@ -140,7 +166,7 @@ function fakeGateway(runningByRoom: Record<string, string[]>): TurnWatcher {
 }
 
 function states(
-  activity: Map<string, Array<{ aiId: string; state: AiActivityState }>>,
+  activity: Map<string, Array<{ aiId: string; state: AiActivityState; questionId?: string }>>,
   topicId: string,
 ) {
   return (activity.get(topicId) ?? []).sort((left, right) => left.aiId.localeCompare(right.aiId));
@@ -200,6 +226,40 @@ describe('topicAiActivity (T-1505)', () => {
 
     expect(states(activity, fixture.secondTopicId)).toEqual([
       { aiId: fixture.aiId, state: 'waiting' },
+    ]);
+    expect(states(activity, fixture.generalTopicId)).toEqual([]);
+  });
+
+  it('marks an AI waiting on an open posted question and carries its message id', async () => {
+    await seedQuestion(fixture.context, {
+      aiId: fixture.aiId,
+      groupId: fixture.groupId,
+      topicId: fixture.secondTopicId,
+      messageId: 'question-card-1',
+    });
+    // A question that was never posted (`message_id` NULL) and an expired one
+    // never make the AI waiting.
+    await seedQuestion(fixture.context, {
+      aiId: fixture.aiId,
+      groupId: fixture.groupId,
+      topicId: fixture.generalTopicId,
+      messageId: null,
+    });
+    await seedQuestion(fixture.context, {
+      aiId: fixture.aiId,
+      groupId: fixture.groupId,
+      topicId: fixture.generalTopicId,
+      messageId: 'question-card-expired',
+      ttlMs: -60_000,
+    });
+
+    const activity = await topicAiActivity(
+      { db: fixture.context.db, getGateway: () => fakeGateway({}) },
+      topicsFor(fixture),
+    );
+
+    expect(states(activity, fixture.secondTopicId)).toEqual([
+      { aiId: fixture.aiId, state: 'waiting', questionId: 'question-card-1' },
     ]);
     expect(states(activity, fixture.generalTopicId)).toEqual([]);
   });

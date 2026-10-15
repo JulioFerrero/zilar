@@ -140,6 +140,8 @@ export interface TopicAiActivity {
   /** T-1537: the AI's bare JID, to match the live card in the chat. */
   jid?: string;
   avatarUrl?: string;
+  /** T-1577: the open question card's message id, so the row can open it. */
+  questionId?: string;
   state: TopicAiState;
 }
 

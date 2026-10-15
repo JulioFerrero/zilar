@@ -70,6 +70,7 @@ function topicActivityOf(topic: Topic): TopicAiActivity[] {
         name: entry.name,
         ...(entry.jid === undefined ? {} : { jid: entry.jid }),
         ...(entry.avatarUrl === undefined ? {} : { avatarUrl: entry.avatarUrl }),
+        ...(entry.questionId === undefined ? {} : { questionId: entry.questionId }),
         state: entry.state,
       });
     }

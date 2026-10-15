@@ -64,10 +64,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
     - T-1571 (questions step 3: migration `0066_ai_questions.sql` and the service, with a cap of 20 open questions per AI). **Live at `55db3a8e1`:** 0 errors; the `ai_questions` table has 14 columns, its 3 indexes and the primary key.
     - T-1572 (handoff step 1: AI replies carry a `handoff.line` payload; the phone falls back to text for a card it does not render);
     - T-1573 (phone Group info T3: the Content group and its pages; smoke checked).
+    - T-1575 (handoff step 2: web and phone draw the handoff line; checked headless on web; phone read in code because the smoke can't scroll to it).
   - **Running (3):**
     - T-1574 (phone Group info T4: the Settings page; the old group-header keys go; the phone detail parser gains `listener` and `avatarUrl`);
-    - T-1575 (handoff step 2: web and phone draw the handoff line; a mock example in Dev team General);
-    - T-1576 (questions step 4: the `ask_people` tool and the `question` payload).
+    - T-1576 (questions step 4: the `ask_people` tool and the `question` payload; unblocked with the parse-pipeline files);
+    - T-1577 (questions step 7: an open question makes its AI "waiting"; the activity carries `questionId`).
+  - **Next:**
+    - step 5 (web and phone question card with chips), after T-1576; it also fixes the web handoff line's `role="note"`;
+    - step 6 (a reply closes the question), after T-1576;
+    - step 8 (the "AIs here" row opens the question), after T-1577.
   - **Notes for the later question steps:** step 4 must stamp `message_id` only on an open row. Steps 6 and 7 must check that the person can see the topic (same 404 for unknown and forbidden), and step 7 must add a `LIMIT` to `listOpenQuestions`.
   - **Full check on main `2c2c08d25`:** green, with typecheck 16/16 and 1,917 tests (13 packages).
   - **Decisions (Julio, 10-15):** the topic link moves to a row in the topic info panel (T8 keeps `link_url`/`link_label`); the last @mentioned AI follows a topic.

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Effect } from 'effect';
-import { SqlClient } from 'effect/sql';
+import { SqlClient, type Statement } from 'effect/sql';
 import type { ServerDatabase } from '../db/client';
 import type { AiQuestionInsert, AiQuestionRow } from '../db/rows';
 import { runSql } from '../effect/sql';
@@ -185,9 +185,9 @@ export async function answerQuestion(
   return updated.length > 0;
 }
 
-// The open, unexpired questions of a topic, oldest first. Only rows whose card
-// was posted (`message_id` set) are returned: a question the activity read
-// cannot open has no place there.
+// The open, unexpired questions of a topic, oldest first, capped at 100. Only
+// rows whose card was posted (`message_id` set) are returned: a question the
+// activity read cannot open has no place there.
 export async function listOpenQuestions(
   db: ServerDatabase,
   params: { topicId: string },
@@ -199,7 +199,53 @@ export async function listOpenQuestions(
       return yield* sql<AiQuestionRow>`SELECT * FROM ai_questions
         WHERE topic_id = ${params.topicId} AND status = 'open' AND expires_at > now()
           AND message_id IS NOT NULL
-        ORDER BY created_at`;
+        ORDER BY created_at
+        LIMIT 100`;
+    }),
+  );
+  return [...rows];
+}
+
+// One open, posted question of a batch of topics, for the topic activity read
+// (T-1577). A question that was never posted (`message_id` NULL) or has expired
+// is left out. A NULL `topic_id` belongs to its group's General topic; the
+// caller attributes it.
+export interface OpenQuestionForActivity {
+  topicId: string | null;
+  groupId: string | null;
+  aiId: string;
+  messageId: string;
+  createdAt: Date;
+}
+
+// The open, unexpired, posted questions of a batch of topics, newest first. One
+// read covers the whole activity call: the batch's topic ids plus the
+// NULL-topic rows of its General-topic groups, the same scope shape as
+// `loadPendingApprovals` in `../topics/ai-activity`. The `LIMIT` bounds a topic
+// with a large backlog, and newest-first keeps the questions the "AIs here"
+// row should open.
+export async function listOpenQuestionsForTopics(
+  db: ServerDatabase,
+  topicIds: string[],
+  generalGroupIds: string[],
+): Promise<OpenQuestionForActivity[]> {
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      // `sql.in([])` compiles to `IN ()`, which Postgres rejects: only add the
+      // NULL-topic branch when there is a General group to attribute it to.
+      const scope: Array<Statement.Fragment> = [sql`topic_id IN ${sql.in(topicIds)}`];
+      if (generalGroupIds.length > 0) {
+        scope.push(sql`(topic_id IS NULL AND group_id IN ${sql.in(generalGroupIds)})`);
+      }
+      return yield* sql<OpenQuestionForActivity>`SELECT
+          topic_id, group_id, ai_id, message_id, created_at
+        FROM ai_questions
+        WHERE status = 'open' AND expires_at > now() AND message_id IS NOT NULL
+          AND ${sql.or(scope)}
+        ORDER BY created_at DESC
+        LIMIT 200`;
     }),
   );
   return [...rows];
