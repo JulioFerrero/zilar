@@ -23,6 +23,10 @@ export interface DockerLayer {
   remove(name: string): Promise<void>;
   /** Every live desk container, so `Stop all` can kill them across restarts. */
   listDeskNames(): Promise<readonly string[]>;
+  /** True when the configured runtime is registered with the docker daemon. */
+  runtimeAvailable(): Promise<boolean>;
+  /** Pulls `ref` and returns its repo digest, or null when either step fails. */
+  pullAndResolveDigest(ref: string): Promise<string | null>;
 }
 
 export const DESK_LABEL = 'zilar.desk';
@@ -57,8 +61,8 @@ function daemonRequest(call: DeskToolCall): Request {
 }
 
 /** Keeps a jail alive; every tool then runs in the daemon via `docker exec`. */
-function keepAliveFlags(settings: DockerSettings): readonly string[] {
-  return ['--entrypoint', 'sleep', settings.image, 'infinity'];
+function keepAliveFlags(image: string): readonly string[] {
+  return ['--entrypoint', 'sleep', image, 'infinity'];
 }
 
 function mountFlags(workspaceDir: string): readonly string[] {
@@ -119,7 +123,7 @@ export function createArgs(
     '--network',
     settings.network,
     ...proxyFlags(proxyUrl),
-    ...keepAliveFlags(settings),
+    ...keepAliveFlags(spec.imageDigest),
   ];
 }
 
@@ -261,6 +265,39 @@ export function createDockerLayer(settings: DockerSettings): DockerLayer {
         .split('\n')
         .map((line) => line.trim())
         .filter((line) => line.length > 0);
+    },
+    async runtimeAvailable() {
+      if (settings.runtime === null) {
+        return true;
+      }
+      try {
+        const output = await execFile('docker', ['info', '--format', '{{json .Runtimes}}']);
+        const parsed: unknown = JSON.parse(output);
+        return (
+          typeof parsed === 'object' &&
+          parsed !== null &&
+          Object.prototype.hasOwnProperty.call(parsed, settings.runtime)
+        );
+      } catch {
+        // The daemon is unreachable or answered something unexpected; not ready.
+        return false;
+      }
+    },
+    async pullAndResolveDigest(ref) {
+      try {
+        await execFile('docker', ['pull', ref]);
+        const output = await execFile('docker', [
+          'image',
+          'inspect',
+          '--format',
+          '{{index .RepoDigests 0}}',
+          ref,
+        ]);
+        const digest = output.trim();
+        return digest.includes('@sha256:') ? digest : null;
+      } catch {
+        return null;
+      }
     },
   };
 }

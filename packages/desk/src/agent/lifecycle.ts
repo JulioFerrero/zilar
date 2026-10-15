@@ -8,9 +8,16 @@ import type { DockerLayer } from './docker';
 import type { EgressRegistrar } from './egress';
 import { deskName, type Workspaces } from './workspace';
 
+export type DeskReadinessDetail = 'host_not_set_up' | 'image_unresolved' | null;
+
 export interface DeskStatus {
   readonly running: readonly DeskRef[];
   readonly queued: number;
+  readonly ready: boolean;
+  /** The pinned ref `<repo>@sha256:<hex>`, or null until resolved. */
+  readonly imageDigest: string | null;
+  /** Why the agent is not ready, or null once it is. */
+  readonly detail: DeskReadinessDetail;
 }
 
 export type ProvisionResult =
@@ -49,6 +56,9 @@ export class Lifecycle {
   private readonly now: () => number;
   private readonly log: (message: string) => void;
   private readonly egress: EgressRegistrar | null;
+  private ready = false;
+  private imageDigest: string | null = null;
+  private detail: DeskReadinessDetail = 'host_not_set_up';
 
   constructor(private readonly deps: LifecycleDeps) {
     this.now = deps.now ?? (() => Date.now());
@@ -56,9 +66,47 @@ export class Lifecycle {
     this.egress = deps.egress ?? null;
   }
 
-  /** The sidecar only ever runs the configured pinned image. */
+  /**
+   * Resolves readiness once: the runtime must be registered, then the image
+   * source becomes the pin (an override) or is pulled for its digest. The pin
+   * lives for the process lifetime; a new release is a new agent container.
+   */
+  async checkReadiness(): Promise<void> {
+    if (this.ready) {
+      return;
+    }
+    if (!(await this.deps.docker.runtimeAvailable())) {
+      this.detail = 'host_not_set_up';
+      return;
+    }
+    const source = this.deps.config.docker.image;
+    if (source.includes('@sha256:')) {
+      this.markReady(source);
+      return;
+    }
+    const resolved = await this.deps.docker.pullAndResolveDigest(source);
+    if (resolved === null) {
+      this.detail = 'image_unresolved';
+      return;
+    }
+    this.markReady(resolved);
+  }
+
+  private markReady(imageDigest: string): void {
+    this.ready = true;
+    this.imageDigest = imageDigest;
+    this.detail = null;
+  }
+
+  /**
+   * The sidecar only ever runs the pinned image: nothing before readiness, and
+   * then only the digest resolved at readiness time.
+   */
   private assertPinnedImage(spec: DeskSpec): void {
-    if (spec.imageDigest !== this.deps.config.docker.image) {
+    if (!this.ready) {
+      throw new DeskError('jail_unavailable', 'this server has not set up AI computers yet');
+    }
+    if (spec.imageDigest !== this.imageDigest) {
       throw new DeskError('jail_unavailable', 'image digest is not the pinned desk image');
     }
   }
@@ -211,6 +259,9 @@ export class Lifecycle {
     return {
       running: [...this.records.values()].map((record) => record.ref),
       queued: this.deps.admission.queued,
+      ready: this.ready,
+      imageDigest: this.imageDigest,
+      detail: this.detail,
     };
   }
 

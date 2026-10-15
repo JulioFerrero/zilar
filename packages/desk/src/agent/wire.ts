@@ -8,6 +8,7 @@ import {
   type SnapshotRef,
 } from '../hands';
 import { DeskError } from '../protocol';
+import type { DeskStatus } from './lifecycle';
 
 /**
  * The sidecar's unix-socket wire protocol: one JSON object per newline. A
@@ -85,7 +86,7 @@ export interface SnapshotReply {
 export interface StatusReply {
   readonly id: number;
   readonly ok: true;
-  readonly status: { readonly running: readonly DeskRef[]; readonly queued: number };
+  readonly status: DeskStatus;
 }
 
 export interface ChunkReply {

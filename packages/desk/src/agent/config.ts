@@ -7,7 +7,11 @@ import { DEFAULT_REGISTRY_SOCKET } from '../egress/registry';
 export interface DockerSettings {
   /** The runtime for `--runtime`, or null to leave the docker daemon's default. */
   readonly runtime: string | null;
-  /** The pinned base image; the only image a jail ever runs. */
+  /**
+   * The image source: the `DESK_IMAGE` override (a pinned digest), or the
+   * `ghcr.io/<owner>/zilar-desk:<tag>` ref the lifecycle resolves. The resolved
+   * pin lives in the lifecycle, not here.
+   */
   readonly image: string;
   readonly network: string;
   /** The parent cgroup every jail runs under (`zilar-desks.slice`), or null. */
@@ -45,6 +49,13 @@ export const DEFAULT_CGROUP_PARENT = 'zilar-desks.slice';
 export const DEFAULT_MAX_RUNNING = 12;
 export const DEFAULT_IDLE_MS = 120_000;
 export const MEMORY_RATIO_LIMIT = 0.75;
+export const DEFAULT_IMAGE_OWNER = 'julioferrero';
+export const DEFAULT_IMAGE_TAG = 'latest';
+
+/** The owner part of the jail image ref; a strict lowercase docker-safe set. */
+const IMAGE_OWNER_PATTERN = /^[a-z0-9._-]+$/;
+/** The tag of the jail image ref; docker-safe and bounded. */
+const IMAGE_TAG_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 
 function intFromEnv(value: string | undefined, fallback: number, max: number): number {
   if (value === undefined || value === '') {
@@ -72,20 +83,40 @@ function workspaceModeFromEnv(value: string | undefined): 'image' | 'dir' {
 }
 
 /**
- * Reads the sidecar's settings from the environment. `DESK_IMAGE` is required
- * and, unless `DESK_ALLOW_UNPINNED_IMAGE=true` (local development only), must
- * be pinned by digest: the sidecar only ever runs that one image (plan §4.4).
+ * The image source the lifecycle resolves: the `DESK_IMAGE` override when set
+ * (still digest-checked unless `DESK_ALLOW_UNPINNED_IMAGE=true`), else the
+ * published ref `ghcr.io/<owner>/zilar-desk:<tag>`. Both owner and tag are
+ * validated here, because this text reaches a `docker` argument.
+ */
+function imageFromEnv(env: NodeJS.ProcessEnv): string {
+  const override = env.DESK_IMAGE;
+  if (override !== undefined && override.length > 0) {
+    if (env.DESK_ALLOW_UNPINNED_IMAGE !== 'true' && !override.includes('@sha256:')) {
+      throw new Error(
+        'DESK_IMAGE must be pinned by digest (…@sha256:…), or set DESK_ALLOW_UNPINNED_IMAGE=true',
+      );
+    }
+    return override;
+  }
+  const owner = textFromEnv(env.DESK_IMAGE_OWNER, DEFAULT_IMAGE_OWNER);
+  if (!IMAGE_OWNER_PATTERN.test(owner)) {
+    throw new Error('DESK_IMAGE_OWNER must match [a-z0-9._-]');
+  }
+  const tag = textFromEnv(env.DESK_IMAGE_TAG, DEFAULT_IMAGE_TAG);
+  if (!IMAGE_TAG_PATTERN.test(tag)) {
+    throw new Error('DESK_IMAGE_TAG must match [A-Za-z0-9._-] and be 1-128 characters');
+  }
+  return `ghcr.io/${owner}/zilar-desk:${tag}`;
+}
+
+/**
+ * Reads the sidecar's settings from the environment. `DESK_IMAGE` is the
+ * optional override and, unless `DESK_ALLOW_UNPINNED_IMAGE=true` (local
+ * development only), must be pinned by digest. When it is absent the agent
+ * resolves its own image from `DESK_IMAGE_OWNER`/`DESK_IMAGE_TAG` (plan §4.4).
  */
 export function loadAgentConfig(env: NodeJS.ProcessEnv): AgentConfig {
-  const image = env.DESK_IMAGE;
-  if (image === undefined || image.length === 0) {
-    throw new Error('DESK_IMAGE is required');
-  }
-  if (env.DESK_ALLOW_UNPINNED_IMAGE !== 'true' && !image.includes('@sha256:')) {
-    throw new Error(
-      'DESK_IMAGE must be pinned by digest (…@sha256:…), or set DESK_ALLOW_UNPINNED_IMAGE=true',
-    );
-  }
+  const image = imageFromEnv(env);
   const cgroupParent = textFromEnv(env.DESK_CGROUP_PARENT, DEFAULT_CGROUP_PARENT);
   const poolCgroupPath =
     env.DESK_POOL_CGROUP_PATH ??

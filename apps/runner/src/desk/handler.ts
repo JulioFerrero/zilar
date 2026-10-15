@@ -79,9 +79,9 @@ export class RunnerDeskHandler implements DeskRunnerHandler {
           message: 'desk id does not match the ai and project',
         };
       }
-      const result = await this.lifecycleFor(frame.image_digest).provision(
-        this.specFor(frame, key),
-      );
+      const lifecycle = this.lifecycleFor(frame.image_digest);
+      await lifecycle.checkReadiness();
+      const result = await lifecycle.provision(this.specFor(frame, key));
       if (result.kind === 'queued') {
         return { kind: 'queued', position: result.position };
       }

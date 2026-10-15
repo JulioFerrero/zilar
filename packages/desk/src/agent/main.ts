@@ -31,6 +31,7 @@ export function runIdleSweep(lifecycle: Lifecycle, log: (message: string) => voi
 export interface RunningAgent {
   readonly server: AgentServer;
   readonly lifecycle: Lifecycle;
+  readonly config: AgentConfig;
 }
 
 /** Builds the sidecar from the environment and starts listening. */
@@ -51,17 +52,43 @@ export async function start(env: NodeJS.ProcessEnv = process.env): Promise<Runni
   });
   const server = createAgentServer(config, lifecycle);
   await server.listen();
-  return { server, lifecycle };
+  return { server, lifecycle, config };
 }
 
 /** `desk-agent`: runs until SIGTERM/SIGINT, then closes the socket. */
 export async function main(): Promise<number> {
   const running = await start();
+  const log = (message: string): void => {
+    process.stderr.write(`desk-agent: ${message}\n`);
+  };
+  // One log line per readiness change, never raw command output.
+  let loggedReadiness: string | undefined;
+  const pollReadiness = async (): Promise<void> => {
+    try {
+      await running.lifecycle.checkReadiness();
+    } catch (error) {
+      log(`readiness check failed: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    const status = running.lifecycle.status();
+    const key = status.ready ? 'ready' : (status.detail ?? 'ready');
+    if (key === loggedReadiness) {
+      return;
+    }
+    loggedReadiness = key;
+    if (status.ready) {
+      log(`ready (${status.imageDigest})`);
+    } else if (status.detail === 'host_not_set_up') {
+      log(`waiting for the ${running.config.docker.runtime ?? 'docker'} runtime`);
+    } else {
+      log('jail image not resolved, retrying');
+    }
+  };
+  void pollReadiness();
   await new Promise<void>((resolve) => {
     const timer = setInterval(() => {
-      runIdleSweep(running.lifecycle, (message) => {
-        process.stderr.write(`desk-agent: ${message}\n`);
-      });
+      runIdleSweep(running.lifecycle, log);
+      void pollReadiness();
     }, IDLE_SWEEP_MS);
     const shutdown = (): void => {
       clearInterval(timer);

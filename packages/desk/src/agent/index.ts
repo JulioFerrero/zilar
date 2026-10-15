@@ -28,7 +28,13 @@ export {
   createDockerLayer,
   type DockerLayer,
 } from './docker';
-export { Lifecycle, type DeskStatus, type LifecycleDeps, type ProvisionResult } from './lifecycle';
+export {
+  Lifecycle,
+  type DeskReadinessDetail,
+  type DeskStatus,
+  type LifecycleDeps,
+  type ProvisionResult,
+} from './lifecycle';
 export {
   assertSafeId,
   createWorkspaces,

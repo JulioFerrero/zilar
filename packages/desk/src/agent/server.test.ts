@@ -207,6 +207,7 @@ describe('desk-agent server', () => {
       config: agent.config,
       log: (message) => logs.push(message),
     });
+    await local.checkReadiness();
     agent.docker.failStart = true;
 
     await expect(local.provision(spec())).rejects.toMatchObject({ code: 'jail_unavailable' });
@@ -217,9 +218,20 @@ describe('desk-agent server', () => {
   it('lists running desks and kills them all', async () => {
     await send(agent.socketPath, { id: 1, method: 'provision', params: { spec: spec() } }, one);
     const status = await send(agent.socketPath, { id: 2, method: 'status' }, one);
-    const statusReply = status[0]?.status as { running: unknown[]; queued: number } | undefined;
+    const statusReply = status[0]?.status as
+      | {
+          running: unknown[];
+          queued: number;
+          ready: boolean;
+          imageDigest: string | null;
+          detail: string | null;
+        }
+      | undefined;
     expect(statusReply?.queued).toBe(0);
     expect(statusReply?.running).toHaveLength(1);
+    expect(statusReply?.ready).toBe(true);
+    expect(statusReply?.imageDigest).toBe(PACKAGE);
+    expect(statusReply?.detail).toBeNull();
 
     await send(agent.socketPath, { id: 3, method: 'stop_all' }, one);
     expect(agent.docker.removed).toEqual(['desk-ai1-p1']);
@@ -245,6 +257,7 @@ describe('desk-agent server', () => {
       config: agent.config,
       log: () => {},
     });
+    await local.checkReadiness();
     await local.provision(spec('ai1', 'p1'));
     await local.provision(spec('ai2', 'p1'));
 

@@ -1,11 +1,32 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Admission } from './admission';
+import { loadAgentConfig, type AgentConfig } from './config';
 import { Lifecycle } from './lifecycle';
 import { runIdleSweep } from './main';
-import { fakeWorkspaces, one, send, setupAgent, spec } from './test-harness';
+import { FakeDocker, PACKAGE, fakeWorkspaces, one, send, setupAgent, spec } from './test-harness';
 import type { Workspaces } from './workspace';
 
 const agent = setupAgent();
+
+const REF = 'ghcr.io/julioferrero/zilar-desk:latest';
+const DIGEST = `ghcr.io/julioferrero/zilar-desk@sha256:${'a'.repeat(64)}`;
+
+function localLifecycle(docker: FakeDocker, config: AgentConfig): Lifecycle {
+  return new Lifecycle({
+    docker,
+    workspaces: fakeWorkspaces(agent.directory),
+    admission: new Admission({
+      maxRunning: 4,
+      memoryRatioLimit: 0.75,
+      pool: () => Promise.resolve(null),
+    }),
+    config,
+  });
+}
+
+function refConfig(): AgentConfig {
+  return { ...agent.config, docker: { ...agent.config.docker, image: REF } };
+}
 
 describe('desk-agent lifecycle', () => {
   it('removes a partial jail when provision fails, so the key is usable again', async () => {
@@ -62,6 +83,7 @@ describe('desk-agent lifecycle', () => {
       admission,
       config: agent.config,
     });
+    await local.checkReadiness();
 
     await local.provision(spec());
     await expect(
@@ -87,6 +109,7 @@ describe('desk-agent lifecycle', () => {
       config: agent.config,
       now: () => clock,
     });
+    await local.checkReadiness();
     await local.provision(spec());
     clock = agent.config.idleMs + 1;
     agent.docker.failRemove = true;
@@ -95,5 +118,104 @@ describe('desk-agent lifecycle', () => {
     runIdleSweep(local, (message) => messages.push(message));
     await vi.waitFor(() => expect(messages).toHaveLength(1));
     expect(messages[0]).toContain('boom');
+  });
+});
+
+describe('desk-agent readiness', () => {
+  it('refuses provision and reports host_not_set_up while the runtime is missing', async () => {
+    const docker = new FakeDocker();
+    docker.runtimeReady = false;
+    const lifecycle = localLifecycle(docker, agent.config);
+    await lifecycle.checkReadiness();
+
+    expect(lifecycle.status()).toMatchObject({
+      ready: false,
+      imageDigest: null,
+      detail: 'host_not_set_up',
+    });
+    await expect(lifecycle.provision(spec())).rejects.toMatchObject({
+      code: 'jail_unavailable',
+    });
+    expect(docker.created).toHaveLength(0);
+  });
+
+  it('resolves the ref, turns ready, and accepts a provision with the resolved digest', async () => {
+    const docker = new FakeDocker();
+    docker.resolveDigest = DIGEST;
+    const lifecycle = localLifecycle(docker, refConfig());
+    await lifecycle.checkReadiness();
+
+    expect(lifecycle.status()).toMatchObject({
+      ready: true,
+      imageDigest: DIGEST,
+      detail: null,
+    });
+    expect(docker.pulled).toEqual([REF]);
+
+    const result = await lifecycle.provision({ ...spec(), imageDigest: DIGEST });
+    expect(result.kind).toBe('ready');
+    expect(docker.calls[0]?.spec.imageDigest).toBe(DIGEST);
+  });
+
+  it('refuses a provision whose digest is not the resolved pin', async () => {
+    expect(agent.lifecycle.status().ready).toBe(true);
+    await expect(
+      agent.lifecycle.provision({ ...spec(), imageDigest: 'other@sha256:deadbeef' }),
+    ).rejects.toMatchObject({ code: 'jail_unavailable' });
+    expect(agent.docker.created).toHaveLength(0);
+  });
+
+  it('stays image_unresolved on a failed pull, then turns ready on a later check', async () => {
+    const docker = new FakeDocker();
+    docker.resolveDigest = null;
+    const lifecycle = localLifecycle(docker, refConfig());
+
+    await lifecycle.checkReadiness();
+    expect(lifecycle.status()).toMatchObject({
+      ready: false,
+      imageDigest: null,
+      detail: 'image_unresolved',
+    });
+
+    docker.resolveDigest = DIGEST;
+    await lifecycle.checkReadiness();
+    expect(lifecycle.status()).toMatchObject({
+      ready: true,
+      imageDigest: DIGEST,
+      detail: null,
+    });
+  });
+
+  it('turns ready from a pinned DESK_IMAGE override without pulling', async () => {
+    const docker = new FakeDocker();
+    const lifecycle = localLifecycle(docker, agent.config);
+    await lifecycle.checkReadiness();
+
+    expect(lifecycle.status()).toMatchObject({
+      ready: true,
+      imageDigest: PACKAGE,
+      detail: null,
+    });
+    expect(docker.pulled).toEqual([]);
+  });
+});
+
+describe('desk-agent config', () => {
+  it('rejects a DESK_IMAGE_TAG that could reach a docker argument', () => {
+    expect(() => loadAgentConfig({ DESK_IMAGE_TAG: 'x;rm' })).toThrow(/DESK_IMAGE_TAG/);
+  });
+
+  it('rejects a DESK_IMAGE_OWNER with characters outside the strict set', () => {
+    expect(() => loadAgentConfig({ DESK_IMAGE_OWNER: 'Julio/../x' })).toThrow(/DESK_IMAGE_OWNER/);
+  });
+
+  it('starts with no DESK_IMAGE and builds the published ref from the defaults', () => {
+    expect(loadAgentConfig({}).docker.image).toBe('ghcr.io/julioferrero/zilar-desk:latest');
+  });
+
+  it('honours DESK_IMAGE_OWNER and DESK_IMAGE_TAG for the ref', () => {
+    expect(
+      loadAgentConfig({ DESK_IMAGE_OWNER: 'zilar', DESK_IMAGE_TAG: 'sha-abc123' }).docker.image,
+    ).toBe('ghcr.io/zilar/zilar-desk:sha-abc123');
   });
 });

@@ -28,6 +28,9 @@ export class FakeDocker implements DockerLayer {
   failStart = false;
   failRemove = false;
   beforeCreate: (() => Promise<void>) | null = null;
+  runtimeReady = true;
+  resolveDigest: string | null = null;
+  readonly pulled: string[] = [];
 
   async create(
     name: string,
@@ -69,6 +72,15 @@ export class FakeDocker implements DockerLayer {
 
   async listDeskNames(): Promise<readonly string[]> {
     return [...this.running];
+  }
+
+  async runtimeAvailable(): Promise<boolean> {
+    return this.runtimeReady;
+  }
+
+  async pullAndResolveDigest(ref: string): Promise<string | null> {
+    this.pulled.push(ref);
+    return this.resolveDigest;
   }
 }
 
@@ -194,6 +206,9 @@ export function setupAgent(): AgentHarness {
     });
     harness.server = createAgentServer(harness.config, harness.lifecycle);
     await harness.server.listen();
+    // The pinned override resolves without a pull, so the harness agent starts
+    // ready; tests that need the not-ready path build their own lifecycle.
+    await harness.lifecycle.checkReadiness();
   });
   afterEach(async () => {
     await harness.server.close();

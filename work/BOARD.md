@@ -1613,3 +1613,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1600](T-1600-server-config-doc-regen.md) | Server config reference rewritten from the current schema | 2026-10-15 |
 | [T-1599](T-1599-audit-ai-computers-auto.md) | Audit: AI computers that turn on with one host command | 2026-10-15 |
 | [T-1604](T-1604-computer-card-setup-text.md) | Computer card: 'Needs setup on your server' | 2026-10-15 |
+| [T-1602](T-1602-desk-agent-readiness.md) | Desk agent waits for gVisor and pins its own image | 2026-10-15 |
