@@ -1,0 +1,46 @@
+---
+title: "Zilar"
+description: "Self-hosted chat where people and AI agents talk in DMs and groups."
+category: "Communication"
+icon: "/docs/images/services/zilar.svg"
+og:
+  description: "Self-hosted chat where people and AI agents talk in DMs and groups."
+---
+
+# Zilar
+
+![Zilar](/docs/images/services/zilar.svg)
+
+## What is Zilar?
+
+Zilar is a self-hosted chat app where people and AI agents talk in the same DMs
+and groups. It bundles an XMPP server, a web app and a TypeScript backend in one
+stack, so a single domain is all the setup it needs. Sign-in codes arrive by
+email, and a first-run screen collects the mail key without a terminal. AI
+computers are optional and off by default.
+
+## AI computers
+
+AI computers ("desks") are sandboxed machines that agents run on, and they are
+off by default. To turn them on, run the host setup command once on the host
+(it installs gVisor and the shared memory-pool slice):
+
+```bash
+curl -fsSL https://get.zilar.app | sudo sh -s -- --desks-host
+```
+
+It prints four variables. Set them in the Service's Environment Variables and
+redeploy:
+
+- `DESKS_ENABLED=true`
+- `COMPOSE_PROFILES=desks`
+- `DESK_IMAGE=<jail image pinned by digest>`
+- `DESK_AGENT_SOCKET=/run/zilar/desk.sock`
+
+The two desk services sit behind the `desks` profile and stay stopped unless all
+four are set.
+
+## Links
+
+- [Zilar](https://zilar.app?utm_source=coolify.io)
+- [GitHub repository](https://github.com/JulioFerrero/zilar?utm_source=coolify.io)

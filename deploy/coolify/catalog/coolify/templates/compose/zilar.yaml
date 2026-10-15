@@ -1,0 +1,251 @@
+# documentation: https://github.com/JulioFerrero/zilar
+# slogan: Self-hosted chat where people and AIs work together.
+# category: messaging
+# tags: chat, xmpp, ai, messaging
+# logo: svgs/zilar.svg
+# port: 80
+#
+# One domain: Coolify routes the install's single domain to the `web` service,
+# and the web container forwards /api to the server and /xmpp-ws and /upload to
+# ejabberd. The XMPP domain is that same host, so there is nothing to configure
+# besides the domain itself.
+#
+# AI computers ("desks") are off by default. To turn them on: run the host
+# setup command once on the host, then set DESKS_ENABLED=true,
+# COMPOSE_PROFILES=desks, DESK_IMAGE=<jail image pinned by digest> and
+# DESK_AGENT_SOCKET=/run/zilar/desk.sock in this Service's Environment
+# Variables and redeploy (see the docs page).
+
+services:
+  postgres:
+    image: ghcr.io/julioferrero/zilar-postgres:v0.2.0
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES}
+      POSTGRES_DB: postgres
+      ZILAR_DB_PASSWORD: ${SERVICE_PASSWORD_ZILARDB}
+      EJABBERD_DB_PASSWORD: ${SERVICE_PASSWORD_EJABBERDDB}
+      ZILAR_ARCHIVE_DB_PASSWORD: ${SERVICE_PASSWORD_ARCHIVEDB}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  ejabberd:
+    image: ghcr.io/julioferrero/zilar-ejabberd:v0.2.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ['foreground']
+    environment:
+      EJABBERD_MACRO_HOST: ${SERVICE_FQDN_WEB}
+      EJABBERD_MACRO_MUC_HOST: rooms.${SERVICE_FQDN_WEB}
+      EJABBERD_MACRO_ADMIN: admin@${SERVICE_FQDN_WEB}
+      EJABBERD_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERDADMIN}
+      EJABBERD_MACRO_SQL_PASSWORD: ${SERVICE_PASSWORD_EJABBERDDB}
+      EJABBERD_MACRO_PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSHCOMPONENT}
+      ZILAR_DOMAIN: ${SERVICE_FQDN_WEB}
+      ZILAR_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPPJWT}
+      EJABBERD_MACRO_UPLOAD_URL: https://${SERVICE_FQDN_WEB}/upload
+    expose:
+      - '5280'
+    volumes:
+      - ejabberd-database:/opt/ejabberd/database
+      - ejabberd-uploads:/opt/ejabberd/upload
+    healthcheck:
+      test: ['CMD', 'ejabberdctl', 'status']
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
+
+  server:
+    image: ghcr.io/julioferrero/zilar-server:v0.2.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ejabberd:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      DATABASE_URL: postgres://zilar:${SERVICE_PASSWORD_ZILARDB}@postgres:5432/zilar
+      XMPP_ARCHIVE_DATABASE_URL: postgres://zilar_archive:${SERVICE_PASSWORD_ARCHIVEDB}@postgres:5432/ejabberd
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PUBLIC_URL: ${SERVICE_URL_WEB}
+      BETTER_AUTH_SECRET: ${SERVICE_PASSWORD_BETTERAUTH}
+      WEB_ORIGINS: ${SERVICE_URL_WEB}
+      EJABBERD_API_URL: http://ejabberd:5280/api
+      EJABBERD_ADMIN_JID: admin@${SERVICE_FQDN_WEB}
+      EJABBERD_ADMIN_PASSWORD: ${SERVICE_PASSWORD_EJABBERDADMIN}
+      XMPP_DOMAIN: ${SERVICE_FQDN_WEB}
+      XMPP_MUC_DOMAIN: rooms.${SERVICE_FQDN_WEB}
+      XMPP_WS_PUBLIC_URL: wss://${SERVICE_FQDN_WEB}/xmpp-ws/ws
+      ZILAR_XMPP_JWT_SECRET: ${SERVICE_PASSWORD_XMPPJWT}
+      ZILAR_KEY_ENCRYPTION_KEY: ${SERVICE_PASSWORD_KEYENCRYPTION}
+      STICKER_STORAGE_DIR: /data/stickers
+      AVATAR_STORAGE_DIR: /data/avatars
+      BACKGROUND_STORAGE_DIR: /data/avatars/backgrounds
+      AGENT_GATEWAY_ENABLED: ${AGENT_GATEWAY_ENABLED:-false}
+      ACTION_DEMO_ENABLED: ${ACTION_DEMO_ENABLED:-false}
+      RUNNER_HUB_ENABLED: ${RUNNER_HUB_ENABLED:-false}
+      RUNNER_HUB_PORT: 3189
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
+      PUSH_ENABLED: ${PUSH_ENABLED:-false}
+      PUSH_VAPID_PUBLIC_KEY: ${PUSH_VAPID_PUBLIC_KEY:-}
+      PUSH_VAPID_PRIVATE_KEY: ${PUSH_VAPID_PRIVATE_KEY:-}
+      PUSH_VAPID_SUBJECT: ${PUSH_VAPID_SUBJECT:-}
+      PUSH_COMPONENT_JID: push.${SERVICE_FQDN_WEB}
+      PUSH_COMPONENT_SECRET: ${SERVICE_PASSWORD_PUSHCOMPONENT}
+      PUSH_COMPONENT_HOST: ejabberd
+      PUSH_STORAGE_KEY: ${PUSH_STORAGE_KEY:-}
+      FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+      TOOLS_ENABLED: ${TOOLS_ENABLED:-false}
+      ROUTINES_ENABLED: ${ROUTINES_ENABLED:-false}
+      WEB_TOOLS_ENABLED: ${WEB_TOOLS_ENABLED:-false}
+      DESK_AGENT_SOCKET: ${DESK_AGENT_SOCKET:-}
+      DESK_IMAGE: ${DESK_IMAGE:-}
+    expose:
+      - '3000'
+    healthcheck:
+      test: ['CMD', 'node', '/app/deploy-scripts/healthcheck.mjs']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    volumes:
+      - sticker-data:/data/stickers
+      - avatar-data:/data/avatars
+      - desk-socket:/run/zilar
+
+  web:
+    image: ghcr.io/julioferrero/zilar-web:v0.2.0
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      SERVICE_URL_WEB_80: /
+    expose:
+      - '80'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1/ || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # --- AI computers (desks), off unless DESKS_ENABLED=true (profile `desks`) ---
+  # desk-agent runs the sandboxed jails: it is the only service that has the
+  # Docker socket, and the app never does. desk-egress is a jail's only way to
+  # the web. The host prep that Compose cannot do (the gVisor runtime and the
+  # shared memory-pool slice) is the host setup command run once.
+  desk-agent:
+    profiles: ['desks']
+    image: ghcr.io/julioferrero/zilar-desk-agent:v0.2.0
+    # on-failure, not unless-stopped: the guard below exits 0 while desks are
+    # off, and an exit-0 container must stay stopped.
+    restart: on-failure
+    # Root, the Docker socket and /dev: it creates the jails with gVisor and
+    # loop-mounts each desk's ext4 workspace image.
+    user: '0:0'
+    privileged: true
+    # One image, two entry points: this service is the sidecar (desk-egress
+    # picks the proxy below). The guard is belt-and-braces: even if Coolify
+    # ignores the `desks` profile, the container exits 0 at once unless
+    # DESKS_ENABLED=true.
+    command:
+      - sh
+      - -c
+      - >-
+        test "$${DESKS_ENABLED:-false}" = "true" ||
+        { echo "desks disabled (DESKS_ENABLED is not true)"; exit 0; };
+        exec node /app/desk-agent
+    environment:
+      DESKS_ENABLED: ${DESKS_ENABLED:-false}
+      DESK_RUNTIME: ${DESK_RUNTIME:-runsc}
+      DESK_NETWORK: desk-net
+      DESK_CGROUP_PARENT: zilar-desks.slice
+      DESK_MAX_RUNNING: ${DESK_MAX_RUNNING:-12}
+      # The pinned jail image; required once desks run (empty = the sidecar
+      # refuses to start, said clearly in its log).
+      DESK_IMAGE: ${DESK_IMAGE:-}
+      DESK_WORKSPACE_ROOT: /var/lib/zilar/desks
+      DESK_WORKSPACE_MODE: image
+      DESK_AGENT_SOCKET: /run/zilar/desk.sock
+      DESK_EGRESS_PROXY: http://desk-egress:3128
+      DESK_EGRESS_REGISTRY_SOCKET: /run/zilar-egress/desk-egress.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # A real host path: loop images need one.
+      - /var/lib/zilar/desks:/var/lib/zilar/desks
+      - /dev:/dev
+      - desk-socket:/run/zilar
+      - desk-egress-socket:/run/zilar-egress
+    healthcheck:
+      test: ['CMD-SHELL', 'test -S /run/zilar/desk.sock']
+      interval: 15s
+      start_interval: 2s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  desk-egress:
+    profiles: ['desks']
+    image: ghcr.io/julioferrero/zilar-desk-agent:v0.2.0
+    # on-failure, not unless-stopped: the guard below exits 0 while desks are
+    # off, and an exit-0 container must stay stopped.
+    restart: on-failure
+    # Unprivileged: the proxy only makes outbound connections. It is the only
+    # member of the internal desk-net that can also reach the web (desk-out).
+    # The guard is belt-and-braces: even if Coolify ignores the `desks`
+    # profile, the container exits 0 at once unless DESKS_ENABLED=true.
+    command:
+      - sh
+      - -c
+      - >-
+        test "$${DESKS_ENABLED:-false}" = "true" ||
+        { echo "desks disabled (DESKS_ENABLED is not true)"; exit 0; };
+        exec node /app/desk-egress
+    environment:
+      DESKS_ENABLED: ${DESKS_ENABLED:-false}
+      DESK_EGRESS_PORT: '3128'
+      DESK_EGRESS_REGISTRY_SOCKET: /run/zilar-egress/desk-egress.sock
+    volumes:
+      - desk-egress-socket:/run/zilar-egress
+    networks:
+      - desk-net
+      - desk-out
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          const s=require('node:net').connect(3128,'127.0.0.1');
+          s.on('connect',()=>process.exit(0));
+          s.on('error',()=>process.exit(1));
+      interval: 15s
+      start_interval: 2s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+networks:
+  # The jails' network: internal (no route out), and only desk-egress is on it
+  # as the way off. A fixed name so the sidecar's `--network desk-net` finds it.
+  desk-net:
+    name: desk-net
+    internal: true
+  # desk-egress's own way out to the public web; no other desk container joins.
+  desk-out:
