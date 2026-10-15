@@ -20,12 +20,10 @@ import { domainOfJid, type Contact } from '@/lib/contacts-api';
 import { fromApi } from '@/lib/effect/api-effect';
 import { interruptFiber } from '@/lib/effect/timers';
 import { useAction } from '@/lib/effect/use-action';
+import { WEB_HOST } from '@/lib/web-host';
 import { useChatStore } from '@/store/chat-store-provider';
 
 type PageStatus = 'loading' | 'ready' | 'error';
-
-/** The public web host share links use (`web-link.ts:13`; `app.json:33` maps `/@`). */
-const WEB_HOST = 'https://chat.zilar.app';
 
 /**
  * Settings → Contacts (T-1237, T-1314 Telegram-style): the people you can chat

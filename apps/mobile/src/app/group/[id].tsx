@@ -46,6 +46,12 @@ function GroupTopics() {
 
   const chats = useChatStore((state) => state.chats);
   const chatsLoad = useChatStore((state) => state.chatsLoad);
+  // The boot arrives with `me`; until then the list may be the cached one and
+  // `groupIdForChat`'s map (filled by the boot) is empty (T-1587).
+  const me = useChatStore((state) => state.me);
+  // A channel's chat row carries no `groupId` (T-1355: it is not a topic row),
+  // so the row is resolved through the store's remembered entry map.
+  const groupIdForChat = useChatStore((state) => state.groupIdForChat);
   const groupDetail = useChatStore((state) => state.groupDetail(groupId));
   // Mount loads the detail only when nothing fresh is cached: the cached
   // path dedupes in-flight loads too, so the group screen after the chat
@@ -179,20 +185,32 @@ function GroupTopics() {
     setSheetFor(chat);
   };
 
-  if (topics.length === 0 && chatsLoad === 'loaded') {
-    goBackOrHome(router);
-    return null;
-  }
-
-  // T-0144: a channel renders its own screen (info, feed, admins, invite
-  // links, leave, promote/demote) instead of the topics list — a channel has
-  // exactly one topic, its feed, and no topic creation. The feed row carries
-  // `chatKind: 'channel'`; the detail backs it up once loaded.
-  const channelFeed = topics.find((topic) => topic.chatKind === 'channel');
+  // T-0144/T-1587: a channel renders its own screen (info, feed, admins,
+  // invite links, leave, promote/demote) instead of the topics list. A
+  // channel's chat row is a single `chatKind: 'channel'` summary — its feed —
+  // and never a topic row (T-1355), so `topicsOfGroup` yields none for it;
+  // the row itself is the feed. The detail's `kind` backs a topic that still
+  // carries the marker. This check runs before the empty-topics return so a
+  // channel opens instead of going home.
+  const channelRow = chats.find(
+    (chat) => chat.chatKind === 'channel' && groupIdForChat(chat.id) === groupId,
+  );
+  const channelFeed = channelRow ?? topics.find((topic) => topic.chatKind === 'channel');
   const channelByDetail = groupDetail?.kind === 'channel';
   if (channelFeed !== undefined || (channelByDetail && topics.length > 0)) {
     const feed = channelFeed ?? topics[0]!;
-    return <ChannelScreen groupId={groupId} feedId={feed.id} title={groupTitle} />;
+    const feedTitle = channelRow === undefined ? groupTitle : channelRow.title;
+    return <ChannelScreen groupId={groupId} feedId={feed.id} title={feedTitle} />;
+  }
+
+  // T-1587: the cached chat list (`prepareStart`) can paint `chatsLoad` as
+  // 'loaded' before the boot runs, and only the boot's `rememberGroupIds`
+  // fills `groupIdForChat`; a channel's row cannot be resolved from the cache
+  // alone. So never leave a group for the chat list until the boot has landed
+  // (`me` is set with the fresh rows), or a cached list hides the channel.
+  if (topics.length === 0 && chatsLoad === 'loaded' && me !== undefined) {
+    goBackOrHome(router);
+    return null;
   }
 
   return (

@@ -1598,3 +1598,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1586](T-1586-ais-here-opens-question.md) | A waiting AI in AIs here opens its question in the chat | 2026-10-15 |
 | [T-1585](T-1585-install-preflight.md) | Installer checks the host first and stops clearly without Docker | 2026-10-15 |
 | [T-1584](T-1584-coolify-split-layout.md) | Coolify target layout: zilar-core compose and LAYOUT.md | 2026-10-15 |
+| [T-1587](T-1587-mobile-channel-content-settings.md) | Phone channel Content, Settings and More; channel opens on start | 2026-10-15 |
