@@ -273,6 +273,40 @@ describe('mergeTask happy path', () => {
     expect(harness.dropped).toEqual(['T-0099']);
   });
 
+  it('leaves origin/main behind when push is false, but still cleans up', async () => {
+    const harness = setup('todo', 'merged');
+    fs.writeFileSync(path.join(harness.worktree, 'feature.txt'), 'new\n');
+    git(harness.worktree, ['add', '.']);
+    git(harness.worktree, ['commit', '-qam', 'feature']);
+    const originBefore = spawnSync('git', ['rev-parse', 'main'], {
+      cwd: harness.origin,
+      encoding: 'utf8',
+    }).stdout.trim();
+
+    await mergeTask({ ...options(harness), push: false });
+
+    // The squash landed on local main but origin/main still points at the old
+    // commit: the merge is held, ready for a later `lead push`.
+    const localHead = spawnSync('git', ['rev-parse', 'main'], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout.trim();
+    const originHead = spawnSync('git', ['rev-parse', 'main'], {
+      cwd: harness.origin,
+      encoding: 'utf8',
+    }).stdout.trim();
+    expect(originHead).toBe(originBefore);
+    expect(originHead).not.toBe(localHead);
+    // Cleanup still ran: worktree removed, branch deleted, state dropped.
+    expect(fs.existsSync(harness.worktree)).toBe(false);
+    const branches = spawnSync('git', ['branch', '--list', harness.branch], {
+      cwd: harness.root,
+      encoding: 'utf8',
+    }).stdout.trim();
+    expect(branches).toBe('');
+    expect(harness.dropped).toEqual(['T-0099']);
+  });
+
   it('squashes a three-commit branch into one commit on main', async () => {
     const harness = setup('todo', 'merged');
     fs.writeFileSync(path.join(harness.worktree, 'a.txt'), 'a\n');

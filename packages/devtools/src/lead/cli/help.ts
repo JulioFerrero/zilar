@@ -10,8 +10,11 @@ Usage: lead <command> [options]
   doctor [--since <sha>]                                    audit main now with a Muse doctor session
   prereview <T-XXXX>                                        start a Muse pre-review manually
   reply <T-XXXX> <prompt-file> [--fresh]                   interrupt the worker and re-prompt it
-  merge <T-XXXX> --summary "<one line>" [--skip-gate]       rebase, run the gate, squash onto main, board, push, clean up
+  merge <T-XXXX> --summary "<one line>" [--skip-gate] [--hold]
+                                                            rebase, run the gate, squash onto main, board, push, clean up
+                                                            (--hold merges without pushing; run \`lead push\` to deploy)
                                                             ("T-XXXX: summary" is the commit subject, at most 72 characters)
+  push                                                      push main to origin (deploys; use after \`lead merge --hold\`)
   batch check <T-A> <T-B> ...                               combine the branches on a wave worktree, run install, typecheck and every
                                                             package's tests, write one fix file per task under ~/.zilar-lead/wave/
   batch merge <T-A> <T-B> ...                               merge a checked wave task by task, no gate (refuses when the check is stale)

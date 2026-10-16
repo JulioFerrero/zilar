@@ -102,9 +102,15 @@ export async function runBatchMerge(
       worktree: taskWorktree(deps.root, task),
       branch: frontMatter['branch'] ?? entry.branch,
       summary: titles.get(task) as string,
+      push: false,
     });
     merged.push(task);
     deps.print(`${task} merged`);
+  }
+
+  const pushed = deps.git.run(deps.root, ['push', '-q', 'origin', 'main']);
+  if (!pushed.ok) {
+    throw new BatchError(`push of main failed; merged locally: ${merged.join(' ')}`);
   }
 
   const same = deps.git.run(deps.root, [

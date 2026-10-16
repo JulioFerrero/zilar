@@ -45,6 +45,9 @@ export interface MergeOptions {
   // Runs the checks in the rebased worktree (production: `pnpm gate`). A red
   // result stops the merge before main is touched. Omitted: no gate.
   gate?: (worktree: string) => { ok: boolean; output: string };
+  // Whether to push main to origin after the squash. Defaults to true; a
+  // `--hold` merge and `batch merge` set it false so a batch is one push.
+  push?: boolean;
 }
 
 function taskStatus(options: MergeOptions): string {
@@ -252,9 +255,11 @@ export async function mergeTask(options: MergeOptions): Promise<void> {
   if (!same.ok) {
     throw new MergeError(`squash result differs from ${options.branch}; nothing pushed`);
   }
-  const pushed = options.runner.run(options.root, ['push', '-q', 'origin', 'main']);
-  if (!pushed.ok) {
-    throw new MergeError('push of main failed; the merge is local only');
+  if (options.push !== false) {
+    const pushed = options.runner.run(options.root, ['push', '-q', 'origin', 'main']);
+    if (!pushed.ok) {
+      throw new MergeError('push of main failed; the merge is local only');
+    }
   }
   // Stop worktree processes right before the worktree is removed. Anything
   // earlier (before the rebase, before the board commit) would risk killing

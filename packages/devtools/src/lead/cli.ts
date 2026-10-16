@@ -16,7 +16,7 @@ import {
   runSpecCheck,
   runSwitchModel,
 } from './cli/commands.js';
-import { runBatch, runMerge } from './cli/merge.js';
+import { runBatch, runMerge, runPush } from './cli/merge.js';
 
 export async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
@@ -45,6 +45,8 @@ export async function main(argv: string[]): Promise<void> {
     runSpecCheck(positional);
   } else if (command === 'merge') {
     await runMerge(positional, rest);
+  } else if (command === 'push') {
+    await runPush();
   } else if (command === 'batch') {
     await runBatch(positional);
   } else if (command === 'forget') {

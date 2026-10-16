@@ -51,6 +51,7 @@ export async function runMerge(positional: string[], args: string[]): Promise<vo
   const dir = taskFileDir(root, task, statePath);
   const file = findTaskFile(dir, task);
   const frontMatter = parseTaskFrontMatter(fs.readFileSync(path.join(dir, 'work', file), 'utf8'));
+  const held = args.includes('--hold');
   await mergeTask({
     root,
     task,
@@ -62,6 +63,7 @@ export async function runMerge(positional: string[], args: string[]): Promise<vo
     runner: new RealGitRunner(),
     readText: (entry) => fs.readFileSync(entry, 'utf8'),
     writeText: (entry, text) => fs.writeFileSync(entry, text),
+    ...(held ? { push: false } : {}),
     ...(args.includes('--skip-gate') ? {} : { gate: runGate }),
     dropFromState: (entry) => {
       updateState(statePath, (state) => {
@@ -69,7 +71,16 @@ export async function runMerge(positional: string[], args: string[]): Promise<vo
       });
     },
   });
-  console.log(`${task} merged`);
+  console.log(held ? `${task} merged (held: run \`lead push\` to deploy)` : `${task} merged`);
+}
+
+export async function runPush(): Promise<void> {
+  const root = findRepoRoot();
+  const pushed = new RealGitRunner().run(root, ['push', '-q', 'origin', 'main']);
+  if (!pushed.ok) {
+    throw new Error('push of main failed');
+  }
+  console.log('main pushed');
 }
 
 export async function runBatch(positional: string[]): Promise<void> {
