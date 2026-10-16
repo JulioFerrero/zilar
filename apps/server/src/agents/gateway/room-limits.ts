@@ -14,7 +14,8 @@ import {
 export type RoomLimitResult = 'ok' | 'rate' | 'round';
 
 // The fixed text a rate-limited AI sends at most once per AI per room per
-// window. The asker's name is prefixed as an `@` mention by the caller.
+// window. T-1761: the notice no longer tags the asker with `@name`; it quotes
+// the trigger like every other reply.
 export const ROOM_RATE_LIMIT_NOTICE =
   "I've answered a lot here in the last few minutes. Please try again shortly.";
 
@@ -84,5 +85,5 @@ export const sendRoomRateNotice = Effect.fnUntraced(function* (
   // The stamp is set before the send: a failed notice never repeats inside the
   // window, matching "one message per window".
   input.notices.set(input.roomJid, input.atMs);
-  yield* Effect.promise(() => input.send(`@${input.askerName} ${ROOM_RATE_LIMIT_NOTICE}`));
+  yield* Effect.promise(() => input.send(ROOM_RATE_LIMIT_NOTICE));
 });

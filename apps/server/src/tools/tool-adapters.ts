@@ -1,7 +1,9 @@
 // effect-plain: moved unchanged from apps/server/src/tools/adapters.ts (size split)
 // T-0966: the `tool.*` adapters, split out of `tools/adapters.ts` unchanged.
 import type { Schema } from 'effect';
+import type { Payload } from '@zilar/protocol';
 import type { ActionAdapter, ActionContext } from '../actions/registry';
+import { buildBlocksPayload } from '../message-blocks/build';
 import { truncateChars } from '../text';
 import {
   MAX_SAVE_MODEL_TEXT_CHARS,
@@ -261,21 +263,42 @@ export function toolRunAdapter(state: AdapterState): ActionAdapter<unknown> {
         };
       }
       const text = ran.result.output.text;
-      // The live example the user sees: the output posted as the AI into
-      // the topic. A `false` answer (stopped AI, left room) still returns
-      // the normal result — delivery is best-effort.
+      // T-1761: a saved tool may return `blocks`. A valid set rides on the post
+      // as a `blocks` card; a broken set falls back to today's plain text (the
+      // reason is never logged, the AI id only). The live example the user
+      // sees is still the output posted as the AI into the topic. A `false`
+      // answer (stopped AI, left room) still returns the normal result —
+      // delivery is best-effort.
+      const blocks = ran.result.output.blocks;
+      const postText = `${found.name}\n${truncateChars(text, MAX_TOOL_POST_CHARS)}`;
+      const postArgs = (payload?: Payload) => ({
+        aiId: actionCtx.aiId,
+        groupId: actionCtx.groupId,
+        ...(actionCtx.topicId === null ? {} : { topicId: actionCtx.topicId }),
+        text: postText,
+        ...(payload === undefined ? {} : { payload }),
+      });
+      let posted = false;
       try {
-        await state.post({
-          aiId: actionCtx.aiId,
-          groupId: actionCtx.groupId,
-          ...(actionCtx.topicId === null ? {} : { topicId: actionCtx.topicId }),
-          text: `${found.name}\n${truncateChars(text, MAX_TOOL_POST_CHARS)}`,
-        });
+        if (blocks === undefined) {
+          posted = await state.post(postArgs());
+        } else {
+          const built = buildBlocksPayload({ title: found.name, blocks }, text);
+          if (built.ok) {
+            posted = await state.post(postArgs(built.payload));
+          } else {
+            // T-1761: route the ops warning through the gateway's redacting
+            // logger (the one `ActionContext` carries), not `console.warn`;
+            // ids only, never the reason.
+            actionCtx.logger?.warn({ aiId: actionCtx.aiId }, 'tool.run blocks invalid');
+            posted = await state.post(postArgs());
+          }
+        }
       } catch {
         // Best-effort like the gateway announcer: a throwing chat layer
         // never turns a good run into a failure.
       }
-      return { summary: 'ok', modelText: text };
+      return { summary: 'ok', modelText: text, ...(posted ? { posted: true } : {}) };
     },
   };
 }

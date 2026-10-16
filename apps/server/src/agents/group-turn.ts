@@ -61,13 +61,14 @@ async function reportFailure(
 // reach the action gateway). The tool path is the DM tool
 // loop applied to a room: one model call with tools, parsed calls run
 // through `executeTool`, one follow-up call, then the final text is sent
-// with the `@Name` prefix and `replyTo` on the trigger. A model failure
+// with `replyTo` on the trigger (T-1761: no `@Name` prefix; a call that
+// posted a card sends no echo reply at all). A model failure
 // posts the honest failure text in the room (never the raw error). XMPP
 // send failures are logged, never thrown.
 export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> {
   const secrets = [deps.target.apiKey, ...(deps.secrets ?? [])];
-  // The mention needs a non-empty name for its offsets: fall back to the
-  // sender's JID when no display name is known.
+  // T-1625: the model's own leading `@asker` is stripped; the name is still
+  // read for that. Fall back to the sender's JID when no display name is known.
   const name = deps.senderName.trim() === '' ? deps.senderJid : deps.senderName.trim();
   // T-1572: the handoff marker attached to a success reply only. A fixed
   // failure reply never carries it (see the `withHandoff` flag below).
@@ -83,16 +84,14 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
     return line === null ? undefined : { v: 0, type: 'handoff.line', data: line };
   };
   const wire = (text: string, withHandoff = false): { text: string; opts: SendMessageOptions } => {
-    const prefix = `@${name} `;
-    // T-1625: the model sometimes echoes the asker's `@mention` at the start of
-    // its text; drop it before measuring handoff offsets, so the wire text has
-    // exactly one leading mention and the offsets stay right.
+    // T-1761: the room reply no longer tags the asker; it quotes the trigger
+    // with `replyTo` instead. The model's own leading `@asker` is still
+    // stripped (T-1625) so a mention never sneaks back in.
     const body = stripLeadingMention(text, name);
-    const mentions: NonNullable<SendMessageOptions['mentions']> = [
-      { jid: deps.senderJid.toLowerCase(), begin: 0, end: name.length + 1 },
-    ];
+    const mentions: NonNullable<SendMessageOptions['mentions']> = [];
     for (const target of deps.handoffTargets ?? []) {
-      if (mentions.length >= 3) {
+      // At most two handoff mentions, the same cap `buildHandoffLine` applies.
+      if (mentions.length >= 2) {
         break;
       }
       const nick = target.nick.trim();
@@ -105,13 +104,13 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
       }
       mentions.push({
         jid: target.jid.toLowerCase(),
-        begin: prefix.length + index,
-        end: prefix.length + index + nick.length + 1,
+        begin: index,
+        end: index + nick.length + 1,
       });
     }
     const payload = withHandoff ? handoffPayload(body) : undefined;
     return {
-      text: prefix + body,
+      text: body,
       opts: {
         // T-1738: a synthetic follow-up has no real message to quote.
         ...(deps.syntheticTrigger === true ? {} : { replyTo: { id: deps.triggerId } }),
@@ -192,8 +191,8 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
 // The group variant of the DM tool loop: every path below runs the shared
 // `runToolLoop` — DM and group turns share one implementation, no copy.
 // The only differences are the executor (only an advertised tool may run,
-// through `executeAdvertised`) and the final send (the room with `@Name`
-// and `replyTo` instead of the owner's DM).
+// through `executeAdvertised`) and the final send (the room with `replyTo`
+// instead of the owner's DM).
 //
 // `maxRounds: 1` (the default) keeps today's behaviour byte for byte:
 // round 1 offers tools, executes, and the tail makes exactly one more
@@ -239,6 +238,7 @@ async function runGroupToolTurn(
     rounds: number;
     toolCalls: number;
     messages: ModelRequestMessage[];
+    postedToRoom: boolean;
   };
   try {
     loop = await runToolLoop({
@@ -273,6 +273,14 @@ async function runGroupToolTurn(
     await finishProgressQuietly(deps, secrets, 'failed');
     await reportFailure(deps, secrets, loop.failure.reply);
     return await sendGroupReply(deps, secrets, wire(GROUP_FAILURE_REPLY), { failure: true });
+  }
+  // T-1761: a call already posted the answer into the room (a `blocks` card),
+  // so the room gets no echo reply. The card still finishes `done`, exactly
+  // like a normal reply would.
+  if (loop.postedToRoom) {
+    if (turnStopped(deps)) return await stoppedTurn(deps, secrets);
+    await finishProgressQuietly(deps, secrets, 'done');
+    return { kind: 'replied', text: '' };
   }
   if (loop.text === null) {
     // The caps stopped the loop with no text: one last call so the AI must

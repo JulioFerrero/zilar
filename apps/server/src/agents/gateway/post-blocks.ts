@@ -99,7 +99,8 @@ export function createPostBlocksRunner(
       return { content: FAILED_TEXT };
     }
     logger.info({ aiId: session.aiId, tool: POST_BLOCKS_TOOL, ok: true }, 'AI post_blocks posted');
-    return { content: POSTED_TEXT };
+    // T-1761: the card is in the room, so the group turn sends no echo reply.
+    return { content: POSTED_TEXT, postedToRoom: true };
   });
 
   const runPostBlocks = (

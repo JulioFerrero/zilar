@@ -81,6 +81,8 @@ export async function runToolLoop(input: {
   rounds: number;
   toolCalls: number;
   messages: ModelRequestMessage[];
+  /** T-1761: true when any executed call posted into the room itself. */
+  postedToRoom: boolean;
 }> {
   const startedAt = input.turnStartMs;
   const caps = input.caps ?? CHAT_TURN_CAPS;
@@ -93,6 +95,22 @@ export async function runToolLoop(input: {
   // Progress and the counts line both key off multi-round turns; a legacy
   // single-round turn reports nothing and stays byte for byte.
   const multiRound = input.maxRounds > 1;
+  // T-1761: a call that posted into the room itself (a `blocks` card) sets
+  // this flag. The group turn reads it and sends no echo reply. Both executor
+  // seams are wrapped so the flag is captured from every executed call.
+  let postedToRoom = false;
+  const recordPosted = (exec: ExecuteToolCall | undefined): ExecuteToolCall | undefined =>
+    exec === undefined
+      ? undefined
+      : async (call) => {
+          const result = await exec(call);
+          if (result.postedToRoom === true) {
+            postedToRoom = true;
+          }
+          return result;
+        };
+  const executeTool = recordPosted(input.executeTool);
+  const executeAdvertised = recordPosted(input.executeAdvertised);
 
   try {
     for (let round = 1; round <= input.maxRounds; round += 1) {
@@ -111,6 +129,7 @@ export async function runToolLoop(input: {
             rounds,
             toolCalls: executedCalls,
             messages,
+            postedToRoom,
           };
         }
       }
@@ -143,6 +162,7 @@ export async function runToolLoop(input: {
             rounds,
             toolCalls: executedCalls,
             messages,
+            postedToRoom,
           };
         }
         return {
@@ -152,6 +172,7 @@ export async function runToolLoop(input: {
           rounds,
           toolCalls: executedCalls,
           messages,
+          postedToRoom,
         };
       }
       if (lastCall) {
@@ -167,6 +188,7 @@ export async function runToolLoop(input: {
           rounds,
           toolCalls: executedCalls,
           messages,
+          postedToRoom,
         };
       }
       const step = await runLoopRound({
@@ -176,8 +198,8 @@ export async function runToolLoop(input: {
         previousSignature,
         executedCalls,
         maxCalls: caps.maxCalls,
-        ...(input.executeTool === undefined ? {} : { executeTool: input.executeTool }),
-        ...(input.executeAdvertised === undefined ? {} : { executeTool: input.executeAdvertised }),
+        ...(executeTool === undefined ? {} : { executeTool }),
+        ...(executeAdvertised === undefined ? {} : { executeTool: executeAdvertised }),
         logger: input.logger,
         secrets: input.secrets,
         ...(input.reportProgress === undefined || !multiRound
@@ -196,7 +218,15 @@ export async function runToolLoop(input: {
         break;
       }
     }
-    return { text: null, notices, failure: null, rounds, toolCalls: executedCalls, messages };
+    return {
+      text: null,
+      notices,
+      failure: null,
+      rounds,
+      toolCalls: executedCalls,
+      messages,
+      postedToRoom,
+    };
   } finally {
     // One counts line per turn on every exit (text, failure, caps, throw):
     // ids and counts only, never content.

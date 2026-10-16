@@ -110,16 +110,19 @@ async function runAllowedAction(
     groupId: params.groupId ?? null,
     topicId: params.topicId ?? null,
     requestId: 'allow-' + randomUUID(),
+    logger: deps.logger,
   };
 
   let outcome: 'ok' | 'error';
   let summary: string | null = null;
   let modelText: string | undefined;
+  let posted = false;
   try {
     const result: ActionResult = await adapter.execute(ctx, parsedArgs);
     outcome = 'ok';
     summary = truncateSummary(result.summary);
     modelText = sanitiseModelText(result.modelText);
+    posted = result.posted === true;
   } catch (error) {
     outcome = 'error';
     // The error text is never stored, never returned, never logged with
@@ -134,10 +137,15 @@ async function runAllowedAction(
   await writeAllowAudit(deps, params, outcome);
   // `modelText` rides back to the model only: it is never stored on a row
   // (there is no row on this path), never audited, never announced below.
+  // T-1761: `posted` rides back the same way, telling the turn a card already
+  // reached the room.
   return outcome === 'ok' && summary !== null
-    ? modelText === undefined
-      ? { status: 'executed', summary }
-      : { status: 'executed', summary, modelText }
+    ? {
+        status: 'executed',
+        summary,
+        ...(modelText === undefined ? {} : { modelText }),
+        ...(posted ? { posted: true } : {}),
+      }
     : { status: 'failed' };
 }
 
@@ -169,16 +177,19 @@ async function runAutoApprovedAction(
     groupId: params.groupId ?? null,
     topicId: params.topicId ?? null,
     requestId: 'rule-' + ruleId,
+    logger: deps.logger,
   };
 
   let outcome: 'ok' | 'error';
   let summary: string | null = null;
   let modelText: string | undefined;
+  let posted = false;
   try {
     const result: ActionResult = await adapter.execute(ctx, parsedArgs);
     outcome = 'ok';
     summary = truncateSummary(result.summary);
     modelText = sanitiseModelText(result.modelText);
+    posted = result.posted === true;
   } catch (error) {
     outcome = 'error';
     // Adapter error text is never stored, never returned, never logged
@@ -232,8 +243,11 @@ async function runAutoApprovedAction(
   });
 
   return outcome === 'ok' && summary !== null
-    ? modelText === undefined
-      ? { status: 'executed', summary }
-      : { status: 'executed', summary, modelText }
+    ? {
+        status: 'executed',
+        summary,
+        ...(modelText === undefined ? {} : { modelText }),
+        ...(posted ? { posted: true } : {}),
+      }
     : { status: 'failed' };
 }

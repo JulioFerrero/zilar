@@ -510,7 +510,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
             - **About 21:25 UTC: pushed `ab10220d5`** (blocks Wave 1 on server, web and phone code; T-1753, T-1754 and T-1760).
               - Health was OK: 6 containers healthy, 0 errors, migration 0069 applied, and the new routes answer 401, not 404.
             - **T-1757 was merged on main (`ab2ad0cd0`), then reverted (`dfec87794`)** so Julio's card fix can deploy. Main is pushable again.
-              - **Superseded: T-1762 (running) re-applies T-1757 behind a compat switch.**
+              - **Superseded: T-1762 (merged `70b6823e3`, held for the push with T-1761) re-applies T-1757 behind a compat switch.**
                 - `PUBLIC_TOPICS_START_EMPTY = false` in `topics/public-compat.ts`: new public topics and new group members still get everyone. Users see no change, so any deploy is safe.
                 - The Join UI batch (W9/W10) sets it to `true`.
             - **Julio's card test (about 21:28 UTC):**

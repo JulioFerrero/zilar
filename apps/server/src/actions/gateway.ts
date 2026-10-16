@@ -4,7 +4,7 @@ import type { ActionAnnouncer } from './announce';
 import { runRequest } from './decisions';
 import type { PolicyDenialReason } from './policy';
 import { runOnApprovalDecided } from './queries';
-import type { ActionRegistry } from './registry';
+import type { ActionContextLogger, ActionRegistry } from './registry';
 import { runRecoverStuck } from './recovery';
 
 export type { ActionAnnouncer };
@@ -17,7 +17,7 @@ export type { ActionAnnouncer };
 // audited the failure, and the caller learns it failed, not why (the
 // adapter's error text must never leak).
 export type RequestOutcome =
-  | { status: 'executed'; summary: string; modelText?: string }
+  | { status: 'executed'; summary: string; modelText?: string; posted?: boolean }
   | { status: 'failed' }
   | { status: 'denied'; reason: PolicyDenialReason }
   | { status: 'pending_approval'; approvalId: string };
@@ -25,8 +25,7 @@ export type RequestOutcome =
 // The narrow slice of pino the gateway needs. Real wiring passes the
 // server's logger; tests pass a captor that records the `err` field
 // without echoing rows or arguments.
-export interface ActionGatewayLogger {
-  warn: (fields: Record<string, unknown>, message: string) => void;
+export interface ActionGatewayLogger extends ActionContextLogger {
   error: (fields: Record<string, unknown>, message: string) => void;
 }
 

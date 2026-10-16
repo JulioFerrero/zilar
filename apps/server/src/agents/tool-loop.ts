@@ -96,6 +96,10 @@ export interface ToolExecution {
   // T-1530: the approval a `request_action` call raised, so the session log can
   // tie the tool result to its later decision. Absent for every other tool.
   approvalId?: string;
+  // T-1761: true when the call posted the answer into the room itself (a
+  // `blocks` card), so the group turn knows the room already got it and sends
+  // no echo reply. Absent for every other tool.
+  postedToRoom?: boolean;
 }
 
 export type ExecuteToolCall = (call: ValidToolCall) => Promise<ToolExecution>;

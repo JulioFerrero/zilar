@@ -69,7 +69,12 @@ export function createRequestActionRunner(
     }
     switch (outcome.status) {
       case 'executed':
-        return { content: `done: ${outcome.summary}${formatModelText(outcome.modelText)}` };
+        return {
+          content: `done: ${outcome.summary}${formatModelText(outcome.modelText)}`,
+          // T-1761: the adapter posted the answer into the room itself (a
+          // `blocks` card), so the group turn sends no echo reply.
+          ...(outcome.posted === true ? { postedToRoom: true } : {}),
+        };
       case 'pending_approval':
         // The card message is the owner's view; the model just gets a
         // short fixed line so it knows to wait. The wording differs by

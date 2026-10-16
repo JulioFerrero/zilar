@@ -166,7 +166,7 @@ describe('group reply wakes the AI (T-1176)', () => {
     expect(roomJid).not.toBe('');
 
     const isReply = (message: FakeCore['sent'][number]): boolean =>
-      message.to === roomJid && message.text.startsWith('@Owner ');
+      message.to === roomJid && message.text.startsWith('AI answer');
     core.receive({
       id: 'msg-1',
       chatJid: roomJid,
@@ -310,7 +310,7 @@ describe('group mentions from different senders (T-1290)', () => {
 
     const jidFor = (userId: string): string => `${localpartFor(userId)}@${TEST_XMPP_DOMAIN}`;
     const isReply = (message: FakeCore['sent'][number]): boolean =>
-      message.to === roomJid && message.kind === 'groupchat' && message.text.startsWith('@');
+      message.to === roomJid && message.kind === 'groupchat' && message.text.includes('answer');
     const mention = (id: string, fromJid: string, nick: string) => ({
       id,
       chatJid: roomJid,
@@ -334,9 +334,13 @@ describe('group mentions from different senders (T-1290)', () => {
 
     await waitFor(() => core.sent.filter(isReply).length === 3);
     const texts = core.sent.filter(isReply).map((message) => message.text);
-    expect(texts.some((text) => text.startsWith('@Owner '))).toBe(true);
-    expect(texts.some((text) => text.startsWith('@Second '))).toBe(true);
-    expect(texts.some((text) => text.startsWith('@Third '))).toBe(true);
+    // T-1761: replies no longer tag the asker; each still quotes its trigger.
+    expect(texts).toHaveLength(3);
+    expect(texts.every((text) => !text.startsWith('@'))).toBe(true);
+    const quoted = core.sent
+      .filter(isReply)
+      .map((message) => (message.opts as { replyTo?: { id?: string } } | undefined)?.replyTo?.id);
+    expect(new Set(quoted)).toEqual(new Set(['m-1', 'm-2', 'm-3']));
   });
 });
 

@@ -19,6 +19,15 @@ export function decodeActionArgs<Args>(
   return Exit.isSuccess(exit) ? { ok: true, value: exit.value } : { ok: false };
 }
 
+// T-1761: the redacting logger the gateway passes an adapter for ops
+// warnings. It is the same logger the gateway itself logs through (`pino`
+// in production), so a warning goes through the same redaction wiring as
+// every other gateway log. Adapters log ids only — never message text,
+// args or tool output.
+export interface ActionContextLogger {
+  warn: (fields: Record<string, unknown>, message: string) => void;
+}
+
 // The context the adapter receives at execution time. `aiId`, `groupId`
 // and `topicId` come from the gateway (never from the request), so an
 // adapter can never be tricked into acting on a different AI's behalf.
@@ -26,12 +35,15 @@ export function decodeActionArgs<Args>(
 // set (T-0110 scope). `requestId` is the id of the pending-action row the
 // gateway wrote, in case the adapter wants to log it for its own
 // bookkeeping (the adapter never sees the stored args outside of the
-// `args` argument).
+// `args` argument). `logger` (T-1761) is optional so a caller that builds
+// a context by hand (tests, the approval path) still compiles; the
+// gateway always sets it.
 export interface ActionContext {
   aiId: string;
   groupId: string | null;
   topicId: string | null;
   requestId: string;
+  logger?: ActionContextLogger;
 }
 
 // The result an adapter returns on success. `summary` is what gets stored on
@@ -44,6 +56,12 @@ export interface ActionContext {
 export interface ActionResult {
   summary: string;
   modelText?: string;
+  /**
+   * T-1761: true when the adapter posted the answer into the room itself (a
+   * `blocks` card). The group turn sees it on the executed outcome and sends
+   * no echo reply, so the room gets the card and nothing else.
+   */
+  posted?: boolean;
 }
 
 // The hard ceiling on an adapter's `modelText`: longer text is truncated
