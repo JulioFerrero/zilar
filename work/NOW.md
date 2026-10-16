@@ -321,7 +321,22 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - **Julio's next asks:**
         - routines every **1 minute** with a cap of **1440 a day**: T-1707, which also stops a routine from running twice at once;
         - the app icon: T-1705, approved.
-      - **Merging now:** T-1708, T-1706 (SEC-13b) and T-1705 (icon).
+      - **Merged and live 08:37 UTC (`95ddf0d58`):** T-1708, T-1706 (SEC-13b), T-1705 (icon) and T-1707 (1-minute routines).
+      - **Julio's second test, 10:37 Madrid:**
+        - @Deepseek wrote its own saved tool `market-prices` (`ai_tools`, 08:38) and asked for a host approval. Julio allowed it (08:38:36).
+        - **Nothing happened after that.** An approval decision doesn't wake the AI, so no routine was made (the `routines` table is empty) and no first message was posted. This needs a fix: the AI continues its turn after a decision.
+        - **Julio's asks:**
+          - shorter AI replies;
+          - one live routine message that each run edits;
+          - no tool names or full URLs in the chat;
+          - AIs keep writing their own tools, and later share them with other AIs.
+        - **Canvas** (the "Routines" row on the AI work card canvas: https://claude.ai/artifact/CydmLX7ieYyYdUdsWrPbwW): a compact routine approval card (Allow, Deny, a details chevron, no hosts) and the single live message ("edited 10:45"), on web and phone.
+          - **Julio approved the Routines row:** "i love the routines".
+          - **Waiting on his OK:** a Settings › Routines page (Running and Paused groups; each row has the AI orb, the title with a status dot, the schedule, the AI and the chat, plus Ask and Pause or Resume keys), on web and phone.
+          - **Then:** copy the boards into `docs/design/mockups/routines/` and spec the UI work for web and phone, plus the server side of the single edited routine message.
+        - **Running:**
+          - T-1709 (after an approval, the AI continues with a follow-up turn from the person who approved);
+          - T-1710 (short chat replies; no tool names, hosts or URLs in messages).
       - **Running:**
         - T-1692 (phone per-chat scroll memory, gap 7). Fix rounds:
           - 1: retry the restore until the content covers the spot;
