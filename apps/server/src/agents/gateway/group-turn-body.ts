@@ -26,6 +26,7 @@ import {
   type AiSession,
   type RoomPendingMessage,
   type RoomSubscription,
+  type ScheduledTurnOutcome,
 } from './contracts';
 import { loadRoomGateState, type RoomGateState } from './db';
 import { resolveTurnDesk, TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER } from './desk-exec';
@@ -55,6 +56,8 @@ export interface GroupTurnBodyInput {
   /** T-1290: filled with the decrypted key so the caller's failure path can
    * redact it from the log line without holding the key itself. */
   secretRef: { value?: string };
+  /** T-1646: reports this turn's outcome for a scheduled routine's trigger. */
+  settle: (outcome: ScheduledTurnOutcome) => void;
 }
 
 // T-1290 (AI-10): the room hears the fixed `GROUP_FAILURE_REPLY`; the owner
@@ -91,6 +94,7 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     topicName,
     log,
     secretRef,
+    settle,
   } = input;
   const {
     deps,
@@ -194,20 +198,24 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     // sender or an unknown occupant does not get `request_action`. Every
     // room turn still carries the three memory tools (T-0444), so the tool
     // loop always runs.
+    // T-1646: an unattended scheduled routine gets none of the interactive
+    // tools — no `request_action`, no `ask_people`, no delegation (plan §2.5).
+    const scheduledTrigger = trigger.scheduled !== undefined;
     const triggerBare = normBareJid(trigger.fromJid);
     const triggerRole = gate.memberRolesByJid.get(triggerBare);
-    const allowedForAction = triggerRole === 'owner' || triggerRole === 'admin';
+    const allowedForAction =
+      !scheduledTrigger && (triggerRole === 'owner' || triggerRole === 'admin');
     const actionsList = deps.actions?.listActions() ?? [];
     const allowActions = allowedForAction && actionsList.length > 0;
     // T-1576: `ask_people` is offered only when a person triggered the turn. An
-    // AI-to-AI handoff or a `delegate`-queued trigger is not the people in the
-    // room, so those turns never get the question tool.
-    const askPeople = trigger.handoff !== true;
+    // AI-to-AI handoff, a `delegate`-queued trigger or a scheduled routine is
+    // not the people in the room, so those turns never get the question tool.
+    const askPeople = !scheduledTrigger && trigger.handoff !== true;
     // T-0482: offer the delegation tools only when this AI may delegate and
     // at least one accepting AI is in the room. The target list is the id
     // and room nick of each accepting session.
     const delegateTargets =
-      canDelegate && handoffTargets.length > 0
+      !scheduledTrigger && canDelegate && handoffTargets.length > 0
         ? handoffTargets.map((target) => ({ id: target.aiId, name: target.nick }))
         : undefined;
     // T-1423: resolve the AI's computer for this turn (cloud or its runner).
@@ -339,6 +347,9 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         log,
       }),
     ).pipe(Effect.ensuring(Effect.sync(() => clearTurnAbort(session, roomJid, groupAbort))));
+    // T-1646: report the turn's outcome for a scheduled routine's trigger
+    // exactly once; a non-scheduled batch has nothing to settle.
+    settle(turnOutcome.kind);
     // T-0482: a delegated turn stores its result on the row. The worker's
     // posted text (with the `@<boss> ` prefix) is the stored summary; a
     // failed turn stores whatever was posted instead. Log ids only.

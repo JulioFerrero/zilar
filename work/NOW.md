@@ -216,7 +216,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - DM and topics both;
       - keep the failure pings;
       - on a scheduled run, the computer stays on and `request_action`, `ask_people` and delegation are off.
-    - **Running:** T-1614 (plan review), T-1641, T-1642, T-1643 (pin the ejabberd image by digest, OPS-7).
+    - **Scheduled jobs progress (03:00 local):**
+      - merged: T-1641 (`createPromptRoutine`), T-1642 (the DM queue takes a scheduled run), T-1645 (the executor runs prompt routines with an atomic 24/day cap);
+      - running: T-1646 (the room queue), T-1649 (the `routine.schedule` prompt card; **the lead holds its merge until the runner is wired**), T-1651 ("runs a prompt" in the lists, web and phone);
+      - next: T-1647 (the gateway runner) and T-1648 (wiring).
+      - **Goal by morning:** Julio tells @Deepseek "every morning at 8 post BTC, gold and S&P 500", approves one card, and it runs at 08:00 his time.
+      - **Tool surface:** a scheduled run gets the computer but no `request_action`, so an AI without a computer can't fetch prices on schedule yet. Follow-up: allow tier-0/1 actions (`web.price` and similar) in scheduled runs.
+    - **Also merged:** T-1643 (ejabberd pinned by digest, OPS-7; live and healthy), T-1644 (a CI job runs the offline deploy tests and renders all four compose files, OPS-12). T-1650 is running (the backup doc wording, so `scheduled-backups.test.sh` passes and joins CI).
+    - **Main is green at T-1645:** server tsc clean, full server suite 121 files / 870 tests passed (the lead ran it at 02:45).
     - **In group rooms, actions (`web.*`, routines) are offered only when an owner or admin triggers the turn** (`group-turn-body.ts:199`), so @claude_test can't test `web.price` or routines. **Julio must test the morning-prices routine himself.**
     - **❓ Decision for Julio (SEC-13b):** the computer IS offered to any group member who mentions the AI.
       - **What that means:** tonight @claude_test, a plain member, ran Julio's AI's computer. A computer reply can take 15 minutes and 80 calls on the owner's key, and with no daily limit set nothing caps it.

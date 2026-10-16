@@ -29,6 +29,7 @@ import { type DeskTurnContext } from './desk-exec';
 import { runDmTurnInput } from './dm-turn-input';
 import type { RequestActionContext } from './group-turn';
 import { openTurnLog } from '../log/append';
+import { settleFor } from './scheduled-settle';
 import { reportDmTurnDefect } from './turn-defect';
 import type { createLiveSession } from './live';
 import type { MemoryRunner } from './memory';
@@ -79,24 +80,6 @@ export function createDmTurn(ctx: DmTurnContext) {
     withToolGuide,
     draftHub,
   } = ctx;
-
-  // T-1642 (plan §2.2): a scheduled routine queues a synthetic trigger like an
-  // owner message. This builds the once-only reporter for one batch: the first
-  // outcome wins, whatever the exit (`effect.ensuring` below reports the
-  // catch-all 'failed', harmless because a settled item is skipped).
-  function settleFor(batch: PendingMessage[]): (outcome: ScheduledTurnOutcome) => void {
-    const scheduled = batch.filter((item) => item.scheduled !== undefined);
-    const settled = new Set<string>();
-    return (outcome) => {
-      for (const item of scheduled) {
-        if (item.scheduled === undefined || settled.has(item.id)) {
-          continue;
-        }
-        settled.add(item.id);
-        item.scheduled.onOutcome(outcome);
-      }
-    };
-  }
 
   // One turn at a time per AI. Messages arriving during a turn are coalesced:
   // when the turn ends, one more turn runs if new owner messages came in.

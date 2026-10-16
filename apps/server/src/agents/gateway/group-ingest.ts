@@ -327,15 +327,22 @@ export function createGroupIngest(ctx: GroupIngestContext) {
         // with a mention or another delegation, only the last item would be
         // the trigger and the other delegation rows would stay `working`
         // forever.
+        // T-1646: a scheduled routine's trigger is always its own turn for the
+        // same reason: it must settle its own outcome and never hides behind a
+        // mention's trigger.
         // T-1290 (AI-9): mentions coalesce only when they come from the same
         // sender. A different sender starts a new turn that runs after this
         // one, so the reply is tagged to the person it answers, in order.
         const first = queued[0] as RoomPendingMessage;
         let take = 1;
-        if (first.delegationId === undefined) {
+        if (first.delegationId === undefined && first.scheduled === undefined) {
           while (take < queued.length) {
             const item = queued[take];
-            if (item === undefined || item.delegationId !== undefined) {
+            if (
+              item === undefined ||
+              item.delegationId !== undefined ||
+              item.scheduled !== undefined
+            ) {
               break;
             }
             if (normBareJid(item.fromJid) !== normBareJid(first.fromJid)) {

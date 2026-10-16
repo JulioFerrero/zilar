@@ -174,6 +174,14 @@ export interface RoomPendingMessage {
   /** T-0482: set on the synthetic trigger `delegate` queues on the worker's
    * session; its id is the delegation row to finish when the turn ends. */
   delegationId?: string;
+  /** T-1646: a routine's synthetic trigger, never from the network. It is
+   * always its own turn, is admitted before the member checks (its owner may
+   * not be a room member), and reports its turn's outcome through `onOutcome`
+   * exactly once. */
+  scheduled?: {
+    routineId: string;
+    onOutcome: (outcome: ScheduledTurnOutcome) => void;
+  };
 }
 
 // T-0479: the per-room round budget, shared by every AI session in the room

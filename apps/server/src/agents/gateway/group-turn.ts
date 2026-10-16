@@ -16,6 +16,7 @@ import {
   type GatewayLogger,
   type RoomPendingMessage,
   type RoomRound,
+  type ScheduledTurnOutcome,
 } from './contracts';
 import { checkRoomLimits, sendRoomRateNotice } from './room-limits';
 import { loadActiveAi, loadGroupTitle, loadRoomGateState, loadTopicName } from './db';
@@ -24,6 +25,7 @@ import type { createLiveSession } from './live';
 import type { MemoryRunner } from './memory';
 import type { DeskTurnContext } from './desk-exec';
 import { notifyOwnerOfFailure, runGroupTurnBody } from './group-turn-body';
+import { settleFor } from './scheduled-settle';
 import { openTurnLog } from '../log/append';
 
 type LiveSession = ReturnType<typeof createLiveSession>;
@@ -108,6 +110,7 @@ export function createGroupTurn(ctx: GroupTurnContext) {
     session: AiSession,
     roomJid: string,
     batch: RoomPendingMessage[],
+    settle: (outcome: ScheduledTurnOutcome) => void,
   ): Effect.fn.Return<void> {
     // The AI id below is the gateway's own: it keyed this session, so nothing
     // here can be aimed at an id taken from message content.
@@ -118,10 +121,12 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       yield* Effect.promise(() => disconnectAi(session.aiId)).pipe(
         Effect.catchDefect(() => Effect.void),
       );
+      settle('offline');
       return;
     }
     const room = session.rooms.get(roomJid);
     if (room === undefined) {
+      settle('offline');
       return;
     }
     const gate = yield* Effect.promise(() =>
@@ -129,10 +134,18 @@ export function createGroupTurn(ctx: GroupTurnContext) {
     ).pipe(Effect.catchDefect(() => Effect.succeed(null)));
     if (gate === null) {
       logger.warn({ aiId: session.aiId, groupId: room.groupId }, 'AI group state lookup failed');
+      settle('failed');
       return;
     }
     const eligible: RoomPendingMessage[] = [];
     for (const item of batch) {
+      if (item.scheduled !== undefined) {
+        // T-1646: a routine's trigger, never from the network. Admitted before
+        // the AI-sender, `fromResolved` and member checks: its owner may not
+        // be a room member.
+        eligible.push(item);
+        continue;
+      }
       const fromBare = normBareJid(item.fromJid);
       if (isAiSender(fromBare)) {
         // T-0481: an AI sender passes only for a queued handoff, and only
@@ -211,6 +224,7 @@ export function createGroupTurn(ctx: GroupTurnContext) {
     );
     if (groupBudget.limited) {
       yield* failDelegationQuietly(trigger.delegationId);
+      settle('limited');
       return;
     }
 
@@ -236,6 +250,7 @@ export function createGroupTurn(ctx: GroupTurnContext) {
           : 'AI round budget spent; dropping the turn',
       );
       yield* failDelegationQuietly(trigger.delegationId);
+      settle('limited');
       return;
     }
 
@@ -285,6 +300,7 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       topicName,
       log: turnLog,
       secretRef,
+      settle,
     }).pipe(
       Effect.catchDefect((error) =>
         Effect.gen(function* () {
@@ -295,6 +311,7 @@ export function createGroupTurn(ctx: GroupTurnContext) {
             'AI group turn failed',
           );
           turnLog.append('error', failureLogFields(error));
+          settle('failed');
           // T-0482: if this was a delegated turn, the model call never happened
           // (or the turn failed around it), so the row must not stay `working`.
           yield* failDelegationQuietly(trigger.delegationId);
@@ -333,6 +350,15 @@ export function createGroupTurn(ctx: GroupTurnContext) {
       session: AiSession,
       roomJid: string,
       batch: RoomPendingMessage[],
-    ): Promise<void> => Effect.runPromise(runGroupSessionTurnEffect(session, roomJid, batch)),
+    ): Promise<void> => {
+      // T-1646: the once-only settle for this batch. The `ensuring` reports the
+      // catch-all 'failed' after every exit (an already-settled item is skipped).
+      const settle = settleFor(batch);
+      return Effect.runPromise(
+        runGroupSessionTurnEffect(session, roomJid, batch, settle).pipe(
+          Effect.ensuring(Effect.sync(() => settle('failed'))),
+        ),
+      );
+    },
   };
 }

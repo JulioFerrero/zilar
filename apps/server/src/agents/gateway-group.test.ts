@@ -1,21 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FetchLike } from '../ai/http';
+import { createKeyCipher } from '../connections/crypto';
 import { TEST_XMPP_DOMAIN, createTestContext, type TestContext } from '../test-support';
 import { seedGroup, seedUser } from '../test-support/seed';
 import { localpartFor } from '../xmpp/provisioning';
+import { normBareJid } from './context';
 import {
   GROUP_RATE_WINDOW_MS,
   GROUP_TURNS_PER_WINDOW,
   ROUND_MAX_AI_TURNS,
+  toRedactedError,
+  type AgentGatewayDeps,
+  type AiSession,
+  type GatewayLogger,
+  type RoomPendingMessage,
   type RoomRound,
+  type ScheduledTurnOutcome,
 } from './gateway/contracts';
-import { replyTargetsAi } from './gateway/group-ingest';
+import { createGroupIngest, replyTargetsAi } from './gateway/group-ingest';
+import { createGroupTurn } from './gateway/group-turn';
+import { createBudgetGate } from './gateway/budget';
+import { createLiveSession } from './gateway/live';
+import { createMemoryRunner } from './gateway/memory';
 import { checkRoomLimits, shouldSendRateNotice } from './gateway/room-limits';
 import { GROUP_FAILURE_REPLY, PROVIDER_KEY_REJECTED_REPLY } from './replies';
 import { TOOL_TURN_WALL_CLOCK_MS } from './tool-loop';
 import { TOOL_TURN_MIN_CALL_MS, remainingTurnBudgetMs } from './turn-budget';
 import {
   FakeCore,
+  MASTER_KEY,
   completionResponse,
   createGatewayHelpers,
   jsonResponse,
@@ -576,5 +589,232 @@ describe('smart wake rules (T-1633)', () => {
     secondCore.receive(followUp);
     await waitFor(() => roomReplies(core, roomJid).length === 2);
     expect(roomReplies(secondCore, roomJid)).toHaveLength(0);
+  });
+});
+
+// T-1646 (plan §2.2/§2.5): a scheduled routine rides the room queue as a
+// synthetic trigger on `session.roomPending` that is admitted past the member
+// checks, runs without the interactive tools and settles one outcome. The
+// gateway harness drives turns through `core.receive`, which can only inject
+// network messages, so this builds the group turn factory directly — the same
+// wiring `createAgentGateway` uses — and drives `runGroupSessionTurn`.
+function scheduledRoomSession(
+  aiId: string,
+  aiJid: string,
+  roomJid: string,
+  groupId: string,
+  topicId: string,
+): AiSession {
+  return {
+    aiId,
+    aiJid,
+    core: new FakeCore({
+      service: '',
+      domain: TEST_XMPP_DOMAIN,
+      getToken: async () => ({ jid: aiJid, token: 'test-token' }),
+    }),
+    busy: false,
+    pending: [],
+    stopped: false,
+    retryAttempt: 0,
+    retryTimer: undefined,
+    unsubs: [],
+    turnAborts: new Map(),
+    rooms: new Map([[roomJid, { groupId, topicId, joinedAtMs: 0, nick: 'Gateway AI' }]]),
+    roomPending: new Map(),
+    roomBusy: new Set(),
+    roomTurns: new Map(),
+    roomRateNotices: new Map(),
+    roomSentIds: new Map(),
+  };
+}
+
+function scheduledRoomItem(ownerJid: string, outcomes: ScheduledTurnOutcome[]): RoomPendingMessage {
+  return {
+    id: 'scheduled-1',
+    body: 'run the routine',
+    fromJid: ownerJid,
+    fromResolved: true,
+    fromNick: 'Owner',
+    timestamp: ROOM_DAY,
+    scheduled: { routineId: 'routine-1', onOutcome: (outcome) => outcomes.push(outcome) },
+  };
+}
+
+function groupTurnFor(
+  context: TestContext,
+  session: AiSession,
+  options: { toolsEnabled?: boolean; actions?: AgentGatewayDeps['actions'] } = {},
+): {
+  runGroupSessionTurn: (
+    session: AiSession,
+    roomJid: string,
+    batch: RoomPendingMessage[],
+  ) => Promise<void>;
+  requests: Call[];
+} {
+  const logger: GatewayLogger = { info: () => {}, warn: () => {} };
+  const requests: Call[] = [];
+  const fetchImpl: FetchLike = (url, init) => {
+    requests.push({ url, init });
+    return Promise.resolve(completionResponse('the routine ran'));
+  };
+  const deps = {
+    db: context.db,
+    xmpp: context.xmppConfig,
+    adminClient: context.adminClient,
+    cipher: createKeyCipher(MASTER_KEY),
+    logger,
+    fetchImpl,
+    now: () => ROOM_DAY,
+    ...(options.toolsEnabled === undefined ? {} : { toolsEnabled: options.toolsEnabled }),
+    ...(options.actions === undefined ? {} : { actions: options.actions }),
+  } as unknown as AgentGatewayDeps;
+  const secretsFor = (): string[] => [];
+  const sessions = new Map<string, AiSession>([[session.aiId, session]]);
+  const live = createLiveSession({
+    sessions,
+    deps,
+    logger,
+    secretsFor,
+    roomJidFor: (localpart) => `${localpart}@${context.xmppConfig.mucDomain}`,
+  });
+  const budgetGate = createBudgetGate({
+    deps,
+    logger,
+    sessionIsLive: live.sessionIsLive,
+    secretsFor,
+  });
+  const { loadMemoryContext, startCompaction } = createMemoryRunner({
+    deps,
+    logger,
+    secretsFor,
+    nowMs: () => ROOM_DAY.getTime(),
+    toRedactedError,
+    checkDmRoundGate: budgetGate.checkDmRoundGate,
+  });
+  const { runGroupSessionTurn } = createGroupTurn({
+    deps,
+    logger,
+    turnLogger: logger,
+    sessions,
+    roomRounds: new Map(),
+    sessionForAiJid: (bare) => (bare === normBareJid(session.aiJid) ? session : undefined),
+    liveSendMessage: live.liveSendMessage,
+    liveSendTyping: live.liveSendTyping,
+    liveProgressReporter: live.liveProgressReporter,
+    budgetGate,
+    loadMemoryContext,
+    startCompaction,
+    disconnectAi: async () => undefined,
+    secretsFor,
+    executeToolCall: () => async () => ({ content: 'ok' }),
+    withToolGuide: (messages) => messages,
+    nowMs: () => ROOM_DAY.getTime(),
+  });
+  return { runGroupSessionTurn, requests };
+}
+
+describe('a scheduled item rides the room queue (T-1646)', () => {
+  let context: TestContext;
+
+  beforeEach(async () => {
+    context = await createTestContext();
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  it("runs past the member checks for a non-member owner and settles 'replied' once", async () => {
+    const member = await seedUser(context);
+    const { aiId, ownerJid, aiJid } = await seedGatewayAi(context);
+    // The AI's owner is not in this group: only `member` is.
+    const { groupId, generalTopicId } = await seedGroup(
+      context,
+      member,
+      [{ userId: member, role: 'owner' }],
+      [aiId],
+    );
+    const roomJid = 'scheduled@rooms.zilar.localhost';
+    const session = scheduledRoomSession(aiId, aiJid, roomJid, groupId, generalTopicId);
+    const { runGroupSessionTurn } = groupTurnFor(context, session);
+    const outcomes: ScheduledTurnOutcome[] = [];
+
+    await runGroupSessionTurn(session, roomJid, [scheduledRoomItem(ownerJid, outcomes)]);
+
+    expect(outcomes).toEqual(['replied']);
+    const core = session.core as FakeCore;
+    expect(
+      core.sent.some(
+        (message) => message.to === roomJid && message.text.includes('the routine ran'),
+      ),
+    ).toBe(true);
+  });
+
+  it('offers no request_action and no ask_people, even for an owner trigger', async () => {
+    const { aiId, ownerId, ownerJid, aiJid } = await seedGatewayAi(context);
+    const { groupId, generalTopicId } = await seedGroup(
+      context,
+      ownerId,
+      [{ userId: ownerId, role: 'owner' }],
+      [aiId],
+    );
+    const roomJid = 'scheduled@rooms.zilar.localhost';
+    const session = scheduledRoomSession(aiId, aiJid, roomJid, groupId, generalTopicId);
+    const { runGroupSessionTurn, requests } = groupTurnFor(context, session, {
+      toolsEnabled: true,
+      actions: {
+        listActions: () => [{ name: 'do_thing', description: 'Does a thing' }],
+      } as unknown as AgentGatewayDeps['actions'],
+    });
+    const outcomes: ScheduledTurnOutcome[] = [];
+
+    await runGroupSessionTurn(session, roomJid, [scheduledRoomItem(ownerJid, outcomes)]);
+
+    expect(outcomes).toEqual(['replied']);
+    const body = JSON.parse(String(requests[0]?.init.body)) as {
+      tools?: Array<{ function: { name: string } }>;
+    };
+    const names = (body.tools ?? []).map((tool) => tool.function.name);
+    expect(names).not.toContain('request_action');
+    expect(names).not.toContain('ask_people');
+  });
+
+  it('a scheduled item behind a same-sender mention runs as its own turn', async () => {
+    const human = await seedUser(context);
+    const aiId = 'ai-coalesce-test';
+    const aiJid = `ai-coalesce-test@${TEST_XMPP_DOMAIN}`;
+    const roomJid = 'coalesce@rooms.zilar.localhost';
+    const session = scheduledRoomSession(aiId, aiJid, roomJid, 'g-1', 't-1');
+    const batches: string[][] = [];
+    const outcomes: ScheduledTurnOutcome[] = [];
+    const ingest = createGroupIngest({
+      deps: { db: context.db } as unknown as AgentGatewayDeps,
+      logger: { info: () => {}, warn: () => {} },
+      sessions: new Map([[aiId, session]]),
+      roomRounds: new Map(),
+      noteListenerMessage: () => {},
+      secretsFor: () => [],
+      runGroupSessionTurn: async (_session, _roomJid, batch) => {
+        batches.push(batch.map((item) => item.id));
+      },
+    });
+    const fromJid = `${human}@${TEST_XMPP_DOMAIN}`;
+    session.roomPending.set(roomJid, [
+      {
+        id: 'm-1',
+        body: '@Gateway AI hi',
+        fromJid,
+        fromResolved: true,
+        fromNick: 'Owner',
+        timestamp: ROOM_DAY,
+      },
+      scheduledRoomItem(fromJid, outcomes),
+    ]);
+
+    await ingest.pumpRoom(session, roomJid);
+
+    expect(batches).toEqual([['m-1'], ['scheduled-1']]);
   });
 });
