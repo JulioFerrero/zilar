@@ -1,12 +1,14 @@
 // T-0984: size split of `routines/service.ts`. The routine limits, service
 // error, types and title schema live here; the old path stays the barrel.
-import { Schema } from 'effect';
+import { Exit, Schema } from 'effect';
 import type { RoutineRow } from '../db/rows';
+import { firstIssueMessage } from '../effect/schema-issues';
 import type { RoutineSchedule } from './schedule';
 
 export const MAX_ROUTINES_PER_TOPIC = 10;
 export const MAX_ROUTINE_TITLE_CHARS = 80;
 export const MAX_ROUTINE_INPUT_BYTES = 2 * 1024;
+export const MAX_ROUTINE_PROMPT_CHARS = 2000;
 
 export class RoutineServiceError extends Error {
   readonly errorCode: string;
@@ -57,12 +59,24 @@ export interface CreateRoutineInput {
   userId: string;
 }
 
+export interface CreatePromptRoutineInput {
+  aiId: string;
+  groupId: string | null;
+  topicId: string | null;
+  title: string;
+  schedule: unknown;
+  prompt: string;
+  userId: string;
+}
+
 export interface PublicRoutine {
   id: string;
   aiId: string;
   groupId: string | null;
   topicId: string | null;
+  kind: 'tool' | 'prompt';
   toolId: string | null;
+  prompt: string | null;
   toolName: string;
   title: string;
   schedule: RoutineSchedule;
@@ -115,3 +129,21 @@ export const titleSchema = Schema.String.pipe(
     }),
   ),
 );
+
+// T-1641: the title decode shared by `createRoutine` and
+// `createPromptRoutine`. Throws the same `invalid_request` service error the
+// inline copy in `support.ts` used to.
+export function parseRoutineTitle(title: unknown): string {
+  const decoded = Schema.decodeUnknownExit(titleSchema)(title);
+  if (!Exit.isSuccess(decoded)) {
+    let message: string | undefined;
+    for (const reason of decoded.cause.reasons) {
+      if (reason._tag === 'Fail') {
+        message = firstIssueMessage(reason.error.issue);
+        break;
+      }
+    }
+    throw new RoutineServiceError('invalid_request', message ?? 'Invalid title');
+  }
+  return decoded.value;
+}

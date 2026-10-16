@@ -189,9 +189,31 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
   - **Night 10-16 results (live):**
     - **Verified at 01:41:** a typed `@Deepseek` (T-1617) woke the AI. Its computer ran `curl` through the proxy (`HTTP/1.1 200 Connection Established`), wrote `/workspace/hello.txt` (owned by `desk`, 6 bytes; T-1615), and listed it. The web work card showed no bubble, no fallback text and no "edited" row (T-1618).
     - **Phone twin T-1619:** verified on the emulator (mock smoke) — the card is one box.
-    - **Then at 01:45 the proxy returned 407:** the jail from 23:41 outlived two deploys (`desk-agent` never runs `stopAll` on SIGTERM), and the restarted proxy had lost its in-memory registration. **T-1626 is running:** `stopAll` on SIGTERM and at start, and re-register a known jail on each provision. T-1620 (merged) recreates unknown jails.
-    - **Merged tonight:** T-1616 (Yahoo prices plus `argsExample`), T-1617, T-1618, T-1619, T-1620, T-1622 (group-turn split), T-1623 (the bash tool says what the computer has), T-1624 (web tools logger).
-    - **Running:** T-1625 (no doubled `@Name @Name` at the start of a reply), T-1626, T-1627 and T-1628 (size splits), T-1614 (scheduled-jobs plan), T-1621 (smart-wake plan).
+    - **Then at 01:45 the proxy returned 407:** the jail from 23:41 outlived two deploys, and the restarted proxy had lost its in-memory registration.
+      - **Fixed by T-1626 (merged, live 02:04):** the agent removes its jails on stop and at start, and a known jail re-registers on every provision. The live log shows "stopped 1 jail(s), 0 failed".
+      - **Trade-off:** every deploy now ends a running computer turn. The workspace survives.
+    - **Merged tonight:**
+      - T-1616 (Yahoo prices plus `argsExample`), T-1617, T-1618, T-1619, T-1620, T-1623 (the bash tool says what the computer has), T-1624 (web tools logger);
+      - T-1625 (no doubled `@Name @Name`), T-1626;
+      - T-1629 (log rotation in all compose files, OPS-8);
+      - T-1630 and T-1632 (fresh findings sweeps: server 34 fixed / 13 partly / 3 open / 9 Julio; client 42 / 7 / 2);
+      - **smart wake:** T-1621 (plan), T-1631 (`decideWake`), T-1633 (wired);
+      - **size splits:** T-1622, T-1627, T-1628, T-1634, T-1635, T-1636, T-1637;
+      - **scheduled AI jobs:** T-1638 (migration 0067, prompt routines), T-1639 (a Stop is not a failure), T-1640 (the guide says to use the person's zone).
+    - **Smart wake is live once deployed (T-1633).** A person's message wakes the AI without a picked mention when:
+      - it addresses the AI by name (start, `@Name`, or `Name,`);
+      - it's a question in a room with exactly one AI;
+      - it's a question within 2 minutes of the AI's own reply.
+
+      If it's noisy, trim the question words in `agents/gateway/addressing.ts`. The General follow window and the paid listener wait for the plan's questions (`docs/plan/smart-wake.md` §6).
+    - **Scheduled AI jobs (plan T-1614, in review):** the steps run in order. Done: migration, stopped outcome, guide line. Running: T-1641 (create a prompt routine), T-1642 (the DM queue takes a scheduled run). Next: the group side, the runner, the scheduler dispatch, then the `routine.schedule` prompt card, in a later release. **The lead applies the plan's recommendations to §5 Q1-Q5; Julio can overrule:**
+      - post in the routine's chat;
+      - 24 prompt runs per AI per day;
+      - always an approval card;
+      - DM and topics both;
+      - keep the failure pings;
+      - on a scheduled run, the computer stays on and `request_action`, `ask_people` and delegation are off.
+    - **Running:** T-1614 (plan review), T-1641, T-1642, T-1643 (pin the ejabberd image by digest, OPS-7).
     - **In group rooms, actions (`web.*`, routines) are offered only when an owner or admin triggers the turn** (`group-turn-body.ts:199`), so @claude_test can't test `web.price` or routines. **Julio must test the morning-prices routine himself.**
     - **❓ Decision for Julio (SEC-13b):** the computer IS offered to any group member who mentions the AI.
       - **What that means:** tonight @claude_test, a plain member, ran Julio's AI's computer. A computer reply can take 15 minutes and 80 calls on the owner's key, and with no daily limit set nothing caps it.

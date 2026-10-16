@@ -2,19 +2,18 @@
 // pause, resume, delete) and their result types live here; the old path stays
 // the barrel.
 import { randomUUID } from 'node:crypto';
-import { Effect, Exit, Schema } from 'effect';
+import { Effect } from 'effect';
 import { SqlClient, SqlError } from 'effect/sql';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
-import { firstIssueMessage } from '../effect/schema-issues';
 import { enforceRoutineLimit, toPublicRoutine } from './queries';
 import { nextRunAfter, parseRoutineSchedule } from './schedule';
 import {
   MAX_ROUTINE_INPUT_BYTES,
   RoutineServiceError,
-  titleSchema,
+  parseRoutineTitle,
   type CreateRoutineInput,
   type DeleteRoutineResult,
   type PauseRoutineResult,
@@ -45,17 +44,7 @@ export async function createRoutine(
       'groupId and topicId must both be set or both be null',
     );
   }
-  const title = Schema.decodeUnknownExit(titleSchema)(input.title);
-  if (!Exit.isSuccess(title)) {
-    let message: string | undefined;
-    for (const reason of title.cause.reasons) {
-      if (reason._tag === 'Fail') {
-        message = firstIssueMessage(reason.error.issue);
-        break;
-      }
-    }
-    throw new RoutineServiceError('invalid_request', message ?? 'Invalid title');
-  }
+  const title = parseRoutineTitle(input.title);
   const schedule = parseRoutineSchedule(input.schedule);
   if (!schedule.ok) {
     throw new RoutineServiceError('invalid_request', schedule.message);
@@ -136,7 +125,7 @@ export async function createRoutine(
           deleted_at
         ) VALUES (
           ${randomUUID()}, ${input.aiId}, ${input.groupId}, ${input.topicId},
-          ${tool.id}, ${title.value}, ${JSON.stringify(schedule.value)}::jsonb,
+          ${tool.id}, ${title}, ${JSON.stringify(schedule.value)}::jsonb,
           ${routineInput}, ${JSON.stringify(approved)}::jsonb, 'active', NULL,
           ${nextRunAt.toISOString()}, NULL, NULL, 0, ${input.userId},
           ${now.toISOString()}, ${now.toISOString()}, NULL
