@@ -164,10 +164,23 @@ export function ProgressCard({ progress }: { progress: Progress }) {
     setSearchParams(next, { replace: true });
   };
 
+  // A finished card is one line: clicking it opens the Steps panel for the
+  // viewer's own AI, or toggles the inline checklist otherwise. A working card
+  // only toggles its checklist.
+  const finished = !isLive(progress.state);
+  const actable = finished ? canViewSteps || expandable : expandable;
+  const activate = (): void => {
+    if (finished && canViewSteps) {
+      viewSteps();
+      return;
+    }
+    setExpanded((open) => !open);
+  };
+
   const header = (
     <>
       <StateIcon state={progress.state} reduceMotion={reduceMotion} />
-      <span className="min-w-0 flex-1 truncate text-[14px] font-medium">
+      <span className="min-w-0 flex-1 line-clamp-2 text-[14px] font-medium">
         {progress.title ?? progress.stage}
       </span>
       {elapsed !== undefined && (
@@ -183,14 +196,21 @@ export function ProgressCard({ progress }: { progress: Progress }) {
       {/* T-1422: the Stop button sits at the right of the collapsed line; the
           expand control and the button are siblings, never nested buttons. */}
       <div className="flex items-center gap-2">
-        {expandable ? (
+        {actable ? (
           <button
             type="button"
-            onClick={() => setExpanded((open) => !open)}
+            onClick={activate}
             aria-expanded={expanded}
+            aria-label={finished ? 'View steps' : undefined}
             className="flex min-w-0 flex-1 items-center gap-2 text-left"
           >
             {header}
+            {finished && (
+              <ChevronRight
+                className="size-3.5 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+            )}
           </button>
         ) : (
           <div className="flex min-w-0 flex-1 items-center gap-2">{header}</div>
@@ -209,41 +229,30 @@ export function ProgressCard({ progress }: { progress: Progress }) {
         )}
       </div>
 
-      {expandable ? (
-        expanded && (
-          <div className="mt-2 flex flex-col gap-1.5">
-            {steps.map((step) => (
-              <div key={step.id} className="flex items-center gap-2">
-                <StepIcon state={step.state} reduceMotion={reduceMotion} />
-                <span className="min-w-0 flex-1 text-[13px] text-foreground">{step.label}</span>
-              </div>
-            ))}
-            {progress.summary !== undefined && (
-              <p className="mt-1 text-[13px] text-muted-foreground">{progress.summary}</p>
-            )}
-          </div>
-        )
-      ) : (
-        <>
-          {progress.title !== undefined && (
-            <p className="mt-1 text-[13px] text-muted-foreground">{progress.stage}</p>
+      {expandable
+        ? expanded && (
+            <div className="mt-2 flex flex-col gap-1.5">
+              {steps.map((step) => (
+                <div key={step.id} className="flex items-center gap-2">
+                  <StepIcon state={step.state} reduceMotion={reduceMotion} />
+                  <span className="min-w-0 flex-1 text-[13px] text-foreground">{step.label}</span>
+                </div>
+              ))}
+              {progress.summary !== undefined && (
+                <p className="mt-1 text-[13px] text-muted-foreground">{progress.summary}</p>
+              )}
+            </div>
+          )
+        : isLive(progress.state) && (
+            <>
+              {progress.title !== undefined && (
+                <p className="mt-1 text-[13px] text-muted-foreground">{progress.stage}</p>
+              )}
+              {progress.detail !== undefined && (
+                <p className="mt-1 text-[13px] text-muted-foreground">{progress.detail}</p>
+              )}
+            </>
           )}
-          {progress.detail !== undefined && (
-            <p className="mt-1 text-[13px] text-muted-foreground">{progress.detail}</p>
-          )}
-        </>
-      )}
-
-      {canViewSteps && (
-        <button
-          type="button"
-          onClick={viewSteps}
-          className="mt-2 flex w-full items-center gap-1.5 border-t border-divider pt-2 text-left text-[13px] font-medium"
-        >
-          <span className="min-w-0 flex-1">View steps</span>
-          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        </button>
-      )}
     </div>
   );
 }
