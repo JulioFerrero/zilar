@@ -167,6 +167,15 @@ export class TopicsCreateRateLimit extends HttpApiMiddleware.Service<
 >()('zilar/effect/http/TopicsCreateRateLimit') {}
 
 /**
+ * The topic-join budget (T-1760): joining hits ejabberd through the room sync,
+ * so it is capped per user.
+ */
+export class TopicsJoinRateLimit extends HttpApiMiddleware.Service<
+  TopicsJoinRateLimit,
+  { requires: CurrentUser }
+>()('zilar/effect/http/TopicsJoinRateLimit') {}
+
+/**
  * The AI-memory write budget. It runs before the query or payload is decoded,
  * so an invalid request still spends budget.
  */

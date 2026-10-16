@@ -6,7 +6,7 @@
 import { Schema } from 'effect';
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from 'effect/http-api';
 import { lenientLiterals } from './lenient';
-import { SchemaErrors, Session, TopicsCreateRateLimit } from './middleware';
+import { SchemaErrors, Session, TopicsCreateRateLimit, TopicsJoinRateLimit } from './middleware';
 import { mutableStruct } from './mutable-struct';
 
 export const TOPIC_NAME_MAX = 80;
@@ -287,6 +287,10 @@ export const TopicsGroup = HttpApiGroup.make('topics')
       params: TopicMemberParams,
       success: Topic,
     }),
+    HttpApiEndpoint.post('join', '/topics/:id/join', {
+      params: TopicIdParams,
+      success: Topic,
+    }).middleware(TopicsJoinRateLimit),
     HttpApiEndpoint.put('setRoles', '/topics/:id/roles', {
       params: TopicIdParams,
       payload: SetTopicRolesPayload,

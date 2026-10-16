@@ -163,6 +163,52 @@ export async function addTopicMember(
   return updated;
 }
 
+// T-1760: a group member joins a public topic themselves. A private topic
+// already contains anyone who can see it and General holds everyone, so both
+// are no-ops; only a real public insert syncs the room and audits.
+export async function joinTopic(
+  deps: TopicServiceDeps,
+  topicId: string,
+  actorId: string,
+): Promise<TopicRow> {
+  const topic = await getTopic(deps.db, topicId);
+  if (!topic || !(await canSeeTopic(deps.db, topic, actorId))) {
+    throw toMissingTopic();
+  }
+  if (topic.isGeneral) {
+    throw new HttpError(400, 'is_general', 'Everyone in the group is in General');
+  }
+  if (topic.visibility === 'private') {
+    return topic;
+  }
+  const inserted = await runSql(
+    deps.db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ userId: string }>`
+        INSERT INTO topic_members (topic_id, user_id, added_by)
+        VALUES (${topic.id}, ${actorId}, ${actorId})
+        ON CONFLICT DO NOTHING
+        RETURNING user_id`;
+    }),
+  );
+  const updated = await getTopic(deps.db, topic.id);
+  if (!updated) {
+    throw toMissingTopic();
+  }
+  try {
+    await syncTopicRoom(deps, updated);
+  } catch (error) {
+    throw error instanceof HttpError ? error : xmppUnavailable();
+  }
+  if (inserted.length > 0 && deps.audit) {
+    await deps.audit.record(
+      toAuditEntry(updated, 'topic.member_added', actorId, { subjectUserId: actorId }),
+    );
+  }
+  return updated;
+}
+
 export async function removeTopicMember(
   deps: TopicServiceDeps,
   topicId: string,
@@ -176,8 +222,14 @@ export async function removeTopicMember(
   if (!(await canSeeTopic(deps.db, topic, actorId))) {
     throw toMissingTopic();
   }
-  if (topic.visibility !== 'private') {
-    throw new HttpError(400, 'not_private', 'Only private topics have members');
+  if (topic.isGeneral) {
+    throw new HttpError(400, 'is_general', 'Leaving General is leaving the group');
+  }
+  const isSelf = actorId === targetUserId;
+  // T-1760: on a public topic only the person themselves can leave; a manager
+  // cannot remove anyone. This replaces the old `not_private` guard.
+  if (topic.visibility !== 'private' && !isSelf) {
+    throw new HttpError(403, 'forbidden', 'People leave a public topic themselves');
   }
   const [existing] = await runSql(
     deps.db,
@@ -192,8 +244,11 @@ export async function removeTopicMember(
   if (!existing) {
     throw new HttpError(404, 'not_found', 'That user is not a member of this topic');
   }
-  const isSelf = actorId === targetUserId;
-  if (!isSelf && !(await canManageTopic(deps.db, topic, actorId))) {
+  if (
+    topic.visibility === 'private' &&
+    !isSelf &&
+    !(await canManageTopic(deps.db, topic, actorId))
+  ) {
     throw new HttpError(
       403,
       'forbidden',
@@ -220,11 +275,13 @@ export async function removeTopicMember(
   // T-0116: the topic drains only when the direct rows AND the role holders
   // are gone — a holder the role still grants access to keeps it alive.
   const holders =
-    remaining.length === 0
+    topic.visibility === 'private' && remaining.length === 0
       ? await topicRoleHolderIds(deps.db, topic.id, topic.groupId)
       : new Set<string>();
   let updated = (await getTopic(deps.db, topic.id)) ?? topic;
-  if (remaining.length === 0 && holders.size === 0) {
+  // T-1760: only a private topic archives when it drains; a public topic with
+  // no members stays live and joinable.
+  if (topic.visibility === 'private' && remaining.length === 0 && holders.size === 0) {
     await runSql(
       deps.db,
       Effect.gen(function* () {

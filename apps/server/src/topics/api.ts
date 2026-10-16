@@ -9,7 +9,7 @@
 import { Effect, Layer } from 'effect';
 import { HttpApi, HttpApiBuilder } from 'effect/http-api';
 import type { Logger } from 'pino';
-import { TopicsCreateRateLimit, TopicsGroup } from '@zilar/api-contract';
+import { TopicsCreateRateLimit, TopicsGroup, TopicsJoinRateLimit } from '@zilar/api-contract';
 import type { TurnWatcher } from '../agents/gateway/stop-types';
 import type { AuditRecorder } from '../audit/service';
 import type { Auth } from '../auth/auth';
@@ -45,10 +45,13 @@ import {
   setTopicRoles,
   type TopicServiceDeps,
 } from './service';
+import { joinTopic } from './members';
 import { patchTopic } from './patch';
 
 export const TOPIC_CREATE_RATE_LIMIT_MAX = 30;
 export const TOPIC_CREATE_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+export const TOPIC_JOIN_RATE_LIMIT_MAX = 60;
+export const TOPIC_JOIN_RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
 const TopicsApi = HttpApi.make('topics').add(TopicsGroup);
 
@@ -71,6 +74,11 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
   const createLimiter = createRateLimiter({
     max: TOPIC_CREATE_RATE_LIMIT_MAX,
     windowMs: TOPIC_CREATE_RATE_LIMIT_WINDOW_MS,
+    now: deps.now ?? Date.now,
+  });
+  const joinLimiter = createRateLimiter({
+    max: TOPIC_JOIN_RATE_LIMIT_MAX,
+    windowMs: TOPIC_JOIN_RATE_LIMIT_WINDOW_MS,
     now: deps.now ?? Date.now,
   });
 
@@ -203,6 +211,17 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
         ),
       )
       .handle(
+        'join',
+        handler(logger, (request, user) =>
+          Effect.gen(function* () {
+            const topic = yield* Effect.promise(() =>
+              joinTopic(serviceDeps(), request.params.id, user.id),
+            );
+            return yield* Effect.promise(() => toTopicView(deps.db, topic, mucDomain));
+          }),
+        ),
+      )
+      .handle(
         'removeMember',
         handler(logger, (request, user) =>
           Effect.gen(function* () {
@@ -286,6 +305,11 @@ export function createTopicsApi(deps: TopicsApiDependencies): EffectApiMount {
     // `createLimiter.allow` -> decode order.
     Layer.provide(
       rateLimitLayer(TopicsCreateRateLimit, createLimiter, 'Too many topics, try again later'),
+    ),
+    // T-1760: joining a topic syncs the room on ejabberd, so it is capped per
+    // user too.
+    Layer.provide(
+      rateLimitLayer(TopicsJoinRateLimit, joinLimiter, 'Too many joins, try again later'),
     ),
     Layer.provide(schemaErrorLayer(logger)),
   );
