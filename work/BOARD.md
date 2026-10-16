@@ -1756,3 +1756,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1739](T-1739-phone-ai-cards.md) | phone AI cards as drawn, no empty quotes, jump via archive id | 2026-10-16 |
 | [T-1745](T-1745-ai-names-task.md) | the AI names its work card (task_title on its first call) | 2026-10-16 |
 | [T-1735](T-1735-site-swap.md) | new landing replaces apps/site (Next.js static export) | 2026-10-16 |
+| [T-1746](T-1746-tool-routines-first.md) | AIs schedule saved-tool routines for fixed data jobs | 2026-10-16 |
