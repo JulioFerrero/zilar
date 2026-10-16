@@ -144,8 +144,8 @@ function RoutineRow({ routine, actions }: { routine: Routine; actions?: RoutineR
       <View className="min-w-0">
         <Text className="truncate text-[14px] font-medium">{routine.title}</Text>
         <Text className="truncate text-[12px] text-muted-foreground">
-          {describeRoutineSchedule(routine.schedule)} · runs {routine.toolName} ·{' '}
-          {routineStatusText(routine)}
+          {describeRoutineSchedule(routine.schedule)} · runs{' '}
+          {routine.kind === 'prompt' ? 'a prompt' : routine.toolName} · {routineStatusText(routine)}
         </Text>
         <Text className="truncate text-[12px] text-muted-foreground">
           {nextRunText(routine)} · {routineLastText(routine)}

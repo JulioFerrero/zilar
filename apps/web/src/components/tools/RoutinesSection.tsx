@@ -256,8 +256,8 @@ function RoutineRow({
         <div className="min-w-0 flex-1">
           <p className="truncate text-[14px] font-medium">{current.title}</p>
           <p className="truncate text-[12px] text-muted-foreground">
-            {describeRoutineSchedule(current.schedule)} · runs {current.toolName} ·{' '}
-            {statusText(current)}
+            {describeRoutineSchedule(current.schedule)} · runs{' '}
+            {current.kind === 'prompt' ? 'a prompt' : current.toolName} · {statusText(current)}
           </p>
           <p className="truncate text-[12px] text-muted-foreground">
             {nextRunText(current)} · {lastStatusText(current)}

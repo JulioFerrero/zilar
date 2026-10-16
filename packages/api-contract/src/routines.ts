@@ -11,6 +11,7 @@ export const Routine = Schema.Struct({
   aiId: Schema.optional(Schema.String),
   groupId: Schema.optional(Schema.NullOr(Schema.String)),
   topicId: Schema.optional(Schema.NullOr(Schema.String)),
+  kind: Schema.optional(Schema.Literals(['tool', 'prompt'])),
   toolId: Schema.optional(Schema.String),
   title: Schema.String,
   toolName: Schema.String,

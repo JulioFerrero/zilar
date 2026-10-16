@@ -6,6 +6,7 @@ export function toListWire(routine: PublicRoutine) {
     aiId: routine.aiId,
     groupId: routine.groupId,
     topicId: routine.topicId,
+    kind: routine.kind,
     toolId: routine.toolId ?? undefined,
     toolName: routine.toolName,
     title: routine.title,
@@ -32,11 +33,13 @@ export function toDetailWire(
     lastStatus: 'ok' | 'error' | 'skipped' | null;
     approvedHosts: string[];
     groupId: string | null;
+    kind: 'tool' | 'prompt';
   },
   toolName: string,
 ) {
   return {
     id: routine.id,
+    kind: routine.kind,
     title: routine.title,
     toolName,
     schedule: routine.schedule,

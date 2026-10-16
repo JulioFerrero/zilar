@@ -96,6 +96,8 @@ export interface Routine {
   aiId?: string;
   groupId?: string | null;
   topicId?: string | null;
+  // T-1651: optional so old servers still decode; `prompt` routines have no tool.
+  kind?: 'tool' | 'prompt';
   toolId?: string;
   title: string;
   toolName: string;
