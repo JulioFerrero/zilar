@@ -420,7 +420,7 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
         - a "zilar" finale.
         - Checked headless (desktop and phone): no script errors.
       - **About 16:40 UTC, Julio approved the landing** ("much much much better, lets build the real deal with the correct 3d model"). The prototype and brief are committed in `docs/design/mockups/landing/` (`adcd0919b`). The build runs in a new `apps/site-next`, so the live site keeps working, then swaps in:
-        - **T-1728:** the scaffold (Next 16.4.2 static export, Lenis and GSAP provider, header and footer, section ids) is running;
+        - **T-1728:** the scaffold (Next 16.4.2 static export, Lenis and GSAP provider, header and footer, section ids) is merged with `--hold`, not pushed. Fix round 1 was mine: `lib/gsap.ts`, and `anim` set before paint. **T-1729 and T-1731 are running**;
         - **after T-1728, two at a time:**
           - T-1729: the real planet (the `apps/site` scene with its HDRI, textures, nebula and dust) on scroll stations;
           - T-1730: the hero and the ownership line;

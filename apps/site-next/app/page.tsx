@@ -1,6 +1,7 @@
 import { Header } from '@/components/header';
 import { Footer } from '@/components/footer';
 import { SmoothScroll } from '@/components/smooth-scroll';
+import { Planet } from '@/components/planet/planet';
 import { Hero } from '@/components/sections/hero';
 import { Statement } from '@/components/sections/statement';
 import { Story } from '@/components/sections/story';
@@ -14,7 +15,7 @@ export default function Home() {
   return (
     <SmoothScroll>
       <Header />
-      {/* planet */}
+      <Planet />
       <main id="top">
         <Hero />
         <Statement />
