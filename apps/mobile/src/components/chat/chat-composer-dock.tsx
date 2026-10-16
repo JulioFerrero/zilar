@@ -145,7 +145,8 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
     <>
       {screen.selectedIds.length > 0 ? (
         <SelectionBar
-          count={screen.selectedIds.length}
+          chat={chat}
+          selectedIds={screen.selectedIds}
           onCancel={() => screen.setSelectedIds([])}
           onForward={screen.forwardSelected}
         />
