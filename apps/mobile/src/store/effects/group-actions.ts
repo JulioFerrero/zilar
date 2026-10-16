@@ -254,6 +254,19 @@ export function makeGroupActions(
           yield* refreshQuietly;
         }),
       ),
+    // T-1741: the owner promotes a member to admin or demotes one back, keyed
+    // by GROUP id (the group-info screen has no chat row). The detail is
+    // reloaded so the members page repaints with the admin mark, and the chat
+    // list refreshes. A channel's last-admin demotion rejects with 409
+    // `channel_needs_admin`.
+    changeGroupMemberRole: (groupId, userId, role) =>
+      ctx.run(
+        Effect.gen(function* () {
+          yield* lift(() => groupsApi.changeGroupMemberRole(groupId, userId, role));
+          yield* ensureGroupDetail(groupId, true);
+          yield* refreshQuietly;
+        }),
+      ),
     // T-1243: the owner deletes the group for everyone; the list refresh
     // drops its rows. The room-destroyed presence drops the chat on every
     // other device (xmpp-core), and the caller navigates away.
@@ -269,10 +282,10 @@ export function makeGroupActions(
     // audience), 404 for strangers. The server enforces the rule; the
     // client renders whatever it answers.
     listChannelMembers: (groupId) => ctx.run(lift(() => groupsApi.listGroupMembers(groupId))),
-    // T-0144: promote/demote through the role route (owner only, channels
-    // only). The detail refreshes first so the channel screen updates at
-    // once, then the chat list — the acting device's rows (myRole, counts)
-    // match server truth and the composer bar flips. Demoting the last
+    // T-0144: promote/demote through the role route (owner only; groups and
+    // channels since T-1741). The detail refreshes first so the channel screen
+    // updates at once, then the chat list — the acting device's rows (myRole,
+    // counts) match server truth and the composer bar flips. Demoting the last
     // admin rejects with 409 `channel_needs_admin`.
     changeChannelRole: (chatId, userId, role: ChannelMemberRole) =>
       ctx.run(

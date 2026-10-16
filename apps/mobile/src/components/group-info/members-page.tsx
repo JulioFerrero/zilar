@@ -6,6 +6,7 @@ import {
   MoreVertical,
   Shield,
   ShieldCheck,
+  ShieldOff,
   UserMinus,
   UserPlus,
 } from 'lucide-react-native';
@@ -35,12 +36,13 @@ import { useChatStore } from '@/store/chat-store-provider';
 /** The owner crown from the web `MemberRow` (`#e5b84b`); mobile has no token for it. */
 const OWNER_COLOR = '#e5b84b';
 
-type MemberWriteKind = 'add' | 'remove' | 'transfer';
+type MemberWriteKind = 'add' | 'remove' | 'transfer' | 'role';
 
 const WRITE_ERRORS: Record<MemberWriteKind, string> = {
   add: 'Could not add the members.',
   remove: 'Could not remove the member.',
   transfer: 'Could not hand over the group.',
+  role: 'Could not change the member role.',
 };
 
 type MemberWrite = {
@@ -89,6 +91,7 @@ export function MembersPage({
   const addGroupMembers = useChatStore((state) => state.addGroupMembers);
   const removeGroupMember = useChatStore((state) => state.removeGroupMember);
   const transferGroupOwner = useChatStore((state) => state.transferGroupOwner);
+  const changeGroupMemberRole = useChatStore((state) => state.changeGroupMemberRole);
   const { height } = useWindowDimensions();
   // `NewGroupMembers` fills a screen with `flex-1`; inside the sheet's scroll
   // view it needs a definite height or it collapses.
@@ -265,6 +268,21 @@ export function MembersPage({
         closeLabel="Close member options"
         title={menuFor?.name}
       >
+        {isOwner && menuFor !== undefined && menuFor.userId !== me && menuFor.role !== 'owner' ? (
+          <ActionSheetItem
+            label={menuFor.role === 'admin' ? 'Remove admin' : 'Make admin'}
+            icon={menuFor.role === 'admin' ? ShieldOff : ShieldCheck}
+            onPress={() => {
+              const member = menuFor;
+              const role = member.role === 'admin' ? 'member' : 'admin';
+              setMenuFor(undefined);
+              runWrite({
+                kind: 'role',
+                call: () => changeGroupMemberRole(groupId, member.userId, role),
+              });
+            }}
+          />
+        ) : null}
         {isOwner && menuFor !== undefined && menuFor.userId !== me ? (
           <ActionSheetItem
             label="Make owner"

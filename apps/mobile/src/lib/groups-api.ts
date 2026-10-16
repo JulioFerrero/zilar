@@ -38,8 +38,8 @@ export interface GroupsApi {
    */
   listGroupMembers(groupId: string): Promise<GroupMember[]>;
   /**
-   * Promotes a subscriber to admin or demotes one back (owner only,
-   * channels only — plain groups answer the same 404 as an unknown id).
+   * Promotes a member to admin or demotes one back (owner only; groups and
+   * channels since T-1741, a non-owner sees the same 404 as an unknown id).
    * The last-admin demotion answers 409 `channel_needs_admin`. Rejects on
    * failure.
    */

@@ -145,6 +145,18 @@ export interface ChatStoreGroups {
    */
   transferGroupOwner: (groupId: string, userId: string) => Promise<void>;
   /**
+   * Promotes a group member to admin or demotes one back (T-1741), keyed by
+   * GROUP id like the group detail; owners only, enforced by the server. The
+   * detail is reloaded so the members page repaints with the admin mark, and
+   * the chat list refreshes. A channel's last-admin demotion rejects. Rejects
+   * on failure.
+   */
+  changeGroupMemberRole: (
+    groupId: string,
+    userId: string,
+    role: 'admin' | 'member',
+  ) => Promise<void>;
+  /**
    * Deletes one group for everyone (T-1243): every topic room is destroyed
    * and the group's rows cascade. The chat list refreshes, so the rows drop.
    * Rejects on failure.
@@ -190,10 +202,11 @@ export interface ChatStoreGroups {
     groupId: string,
   ) => Promise<{ userId: string; name: string; role: 'owner' | 'admin' | 'member' }[]>;
   /**
-   * Promotes a subscriber to admin or demotes one back (T-0144, owner only,
-   * channels only). Refreshes the detail and the chat list, so the acting
-   * device's rows (myRole, counts) match server truth and the composer bar
-   * flips. The last-admin demotion rejects. Rejects on failure.
+   * Promotes a member to admin or demotes one back (T-0144, owner only; the
+   * route serves groups and channels since T-1741). Keyed by the channel CHAT
+   * id. Refreshes the detail and the chat list, so the acting device's rows
+   * (myRole, counts) match server truth and the composer bar flips. The
+   * last-admin demotion rejects. Rejects on failure.
    */
   changeChannelRole: (chatId: string, userId: string, role: 'admin' | 'member') => Promise<void>;
   /** Previews a join-by-link token: group title and member count only. */

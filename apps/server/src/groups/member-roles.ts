@@ -17,15 +17,16 @@ import {
 } from './schemas';
 
 // Promotes a member to admin (or demotes an admin back to member). Only the
-// owner may change roles. The database row commits first; the room
-// affiliation follows outside the transaction (best effort + log, like
-// `addGroupMembers`): a room failure never rolls back the committed row,
-// and the caller reconciles with `syncChannelVoice` so the affiliation
-// heals on the next write. In a channel's moderated room an admin gains
-// voice (affiliation `admin`) and a demoted admin loses it (`member`
-// again), so the posting rule is enforced by the room, not by the UI.
-// Demoting the channel's last admin is refused (`channel_needs_admin`), so
-// the feed can never fall silent.
+// owner may change roles. Plain groups and channels both use this route
+// (T-1741): a group admin gets the same approval powers as a channel admin.
+// The database row commits first; the room affiliation follows outside the
+// transaction (best effort + log, like `addGroupMembers`): a room failure
+// never rolls back the committed row, and the caller reconciles with
+// `syncChannelVoice` so the affiliation heals on the next write. In a channel's
+// moderated room an admin gains voice (affiliation `admin`) and a demoted admin
+// loses it (`member` again), so the posting rule is enforced by the room, not
+// by the UI. Demoting the channel's last admin is refused
+// (`channel_needs_admin`), so the feed can never fall silent.
 export async function changeMemberRole(
   db: ServerDatabase,
   adminClient: EjabberdAdminClient,
@@ -37,12 +38,6 @@ export async function changeMemberRole(
   // group route). A plain member sees it too: 403 here would tell them the
   // group exists and they are in it, an oracle strangers don't get.
   if (!group || !actor || actor.role !== 'owner') {
-    throw new HttpError(404, 'not_found', 'Group not found');
-  }
-  // T-0124: channels only. Plain groups answer the same 404 as an unknown
-  // group — the spec asks for channel rules only, and no group UI calls
-  // this route.
-  if (group.kind !== 'channel') {
     throw new HttpError(404, 'not_found', 'Group not found');
   }
   const target = await getMembership(db, input.groupId, input.targetUserId);

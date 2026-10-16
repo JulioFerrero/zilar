@@ -194,8 +194,9 @@ export function createGroupsApi(deps: GroupsApiDependencies): EffectApiMount {
           return { members };
         }),
       )
-      // Promotes or demotes a member (owner only, channels only). The limiter
-      // middleware already charged the budget, before the payload decode.
+      // Promotes or demotes a member (owner only; groups and channels since
+      // T-1741). The limiter middleware already charged the budget, before the
+      // payload decode.
       .handle(
         'changeRole',
         handler(logger, async (request, user) =>

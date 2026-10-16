@@ -1,4 +1,4 @@
-import { Crown, MoreVertical, Shield, UserMinus } from 'lucide-react';
+import { Crown, MoreVertical, Shield, ShieldCheck, ShieldOff, UserMinus } from 'lucide-react';
 import { useState } from 'react';
 import type { GroupMember } from '@/lib/api';
 import { useChatStoreApi } from '@/store/ChatStoreProvider';
@@ -12,8 +12,8 @@ import { Menu, MenuItem } from '../ui/menu';
  * One member row of the Members page (T-1508, WebMembers.dc.html): the avatar
  * and the name, the owner or admin shown as an icon and never a word, the
  * custom role tags on a second line under the name, and a ⋮ menu with Make
- * owner (the owner only, never on yourself) and Remove (managers only, never on
- * the owner or yourself).
+ * admin / Remove admin (the owner only, T-1741), Make owner (the owner only,
+ * never on yourself) and Remove (managers only, never on the owner or yourself).
  */
 export function MemberRow({
   member,
@@ -40,6 +40,7 @@ export function MemberRow({
   const [removeOpen, setRemoveOpen] = useState(false);
 
   const transferable = isOwner && member.userId !== me;
+  const roleChangeable = isOwner && member.userId !== me && member.role !== 'owner';
   const removable = isManager && member.role !== 'owner' && member.userId !== me;
 
   const transferOwner = (): void => {
@@ -47,6 +48,13 @@ export function MemberRow({
       () => storeApi.getState().transferGroupOwner(chatId, member.userId),
       'Could not hand over the group.',
       () => setTransferOpen(false),
+    );
+  };
+
+  const changeRole = (role: 'admin' | 'member'): void => {
+    run(
+      () => storeApi.getState().changeChannelRole(chatId, member.userId, role),
+      'Could not change the member role.',
     );
   };
 
@@ -99,6 +107,17 @@ export function MemberRow({
               </IconButton>
             }
           >
+            {roleChangeable && (
+              <MenuItem
+                icon={member.role === 'admin' ? ShieldOff : ShieldCheck}
+                onSelect={() => {
+                  setMenuOpen(false);
+                  changeRole(member.role === 'admin' ? 'member' : 'admin');
+                }}
+              >
+                {member.role === 'admin' ? 'Remove admin' : 'Make admin'}
+              </MenuItem>
+            )}
             {transferable && (
               <MenuItem
                 icon={Crown}

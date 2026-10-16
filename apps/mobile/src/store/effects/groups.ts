@@ -46,6 +46,7 @@ export type GroupActions = Pick<
   | 'createGroup'
   | 'leaveChannel'
   | 'transferGroupOwner'
+  | 'changeGroupMemberRole'
   | 'deleteGroup'
   | 'listChannelMembers'
   | 'changeChannelRole'
