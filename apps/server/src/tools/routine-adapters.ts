@@ -88,10 +88,10 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
   return {
     name: 'routine.schedule',
     description:
-      'Schedule a routine in this chat (needs approval): either a prompt you run yourself on that schedule and answer here (use your computer or actions as needed), or a saved tool whose result is posted.',
+      'Schedule a routine here (needs approval): a prompt you run and answer, or a saved tool whose result is posted. Use the exact schedule asked for: daily HH:MM in an IANA zone, or every 1-10080 min.',
     tier: 2,
     argsExample:
-      '{"title":"Morning prices","schedule":{"kind":"daily","time":"08:00","timezone":"Europe/Madrid"},"prompt":"Post the current BTC, gold and S&P 500 prices with their sources."}',
+      '{"title":"Release notes digest","schedule":{"kind":"interval","everyMinutes":120},"prompt":"Summarise the release notes posted in this chat since the last run."}',
     argsSchema: routineScheduleArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
       const parsed = args as {

@@ -4,7 +4,7 @@
 // absent in production, so every prompt routine is recorded `skipped`.
 //
 // A run takes one slot from a per-AI, per-UTC-day cap first
-// (`routine_prompt_runs`, 24/day), atomically, so parallel schedulers cannot
+// (`routine_prompt_runs`, 1440/day), atomically, so parallel schedulers cannot
 // overshoot. Then it runs the prompt once through the port and records the
 // outcome:
 //   replied              -> ok
@@ -35,7 +35,7 @@ export type PromptRunner = (input: {
 
 // At most this many prompt runs per AI per UTC day. Scheduled work is
 // valuable but a runaway routine must not burn the whole budget.
-export const MAX_PROMPT_RUNS_PER_DAY = 24;
+export const MAX_PROMPT_RUNS_PER_DAY = 1440;
 
 interface PromptRunCountRow {
   count: number;

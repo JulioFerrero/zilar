@@ -10,7 +10,7 @@ import type { RoutineRow } from '../db/rows';
 import { createTestContext, testSql, type TestContext } from '../test-support';
 import { seedAi, seedUser } from '../test-support/seed';
 import { executeRoutine, FAILURE_PAUSE_NOTICE } from './execute';
-import type { PromptRunner } from './execute-prompt';
+import { MAX_PROMPT_RUNS_PER_DAY, type PromptRunner } from './execute-prompt';
 
 const NOW = new Date('2026-01-05T12:00:00.000Z');
 const DAY = '2026-01-05';
@@ -167,7 +167,7 @@ describe('executePromptRoutine', () => {
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* sql`INSERT INTO routine_prompt_runs (ai_id, day, count)
-          VALUES (${aiId}, ${DAY}, 24)`;
+          VALUES (${aiId}, ${DAY}, ${MAX_PROMPT_RUNS_PER_DAY})`;
       }),
     );
 

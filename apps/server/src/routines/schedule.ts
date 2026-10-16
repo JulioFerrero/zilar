@@ -9,11 +9,11 @@
 //   moment after it that day (02:30 becomes 03:00); an ambiguous wall time
 //   (fall back) runs once, at the first occurrence.
 // - `{ kind: 'interval', everyMinutes: number }` with
-//   60 <= everyMinutes <= 10 080: nothing runs more often than hourly.
+//   1 <= everyMinutes <= 10 080.
 import { Exit, Schema, SchemaIssue } from 'effect';
 import { struct } from '@zilar/protocol';
 
-export const MIN_INTERVAL_MINUTES = 60;
+export const MIN_INTERVAL_MINUTES = 1;
 export const MAX_INTERVAL_MINUTES = 10_080;
 
 // Every custom message is a `makeFilter` text: effect 4 drops the

@@ -23,6 +23,7 @@ export const MAX_CONCURRENT_RUNS = 2;
 export const MISSED_AFTER_LATE_MS = 3_600_000;
 
 export interface RoutineLogger {
+  info: (fields: Record<string, unknown>, message: string) => void;
   warn: (fields: Record<string, unknown>, message: string) => void;
   error: (fields: Record<string, unknown>, message: string) => void;
 }
@@ -67,6 +68,12 @@ export function createRoutineScheduler(
   const queue: ClaimedRoutine[] = [];
   let activeRuns = 0;
   let idleResolvers: Array<() => void> = [];
+
+  // T-1707: routine ids with a claimed run queued or in flight. A routine
+  // whose previous run is still queued or running is not queued again: its
+  // claim already advanced `next_run_at`, so that slot is skipped. Without
+  // this a 1-minute schedule whose AI turn takes minutes would pile up runs.
+  const inFlight = new Set<string>();
 
   function notifyIfIdle(): void {
     if (activeRuns !== 0 || queue.length !== 0) {
@@ -138,6 +145,7 @@ export function createRoutineScheduler(
       }
       activeRuns += 1;
       void runOne(queued).finally(() => {
+        inFlight.delete(queued.row.id);
         activeRuns -= 1;
         pump();
         notifyIfIdle();
@@ -150,7 +158,17 @@ export function createRoutineScheduler(
     // Claims and enqueues. The claim is a compare-and-set, so two ticks
     // racing on the same rows is safe; the pool below bounds how many run.
     const claimed = await claimDue(options.db, now(), maxPerTick, options.logger);
-    queue.push(...claimed);
+    for (const routine of claimed) {
+      if (inFlight.has(routine.row.id)) {
+        options.logger.info(
+          { routineId: routine.row.id },
+          'routine is still queued or running; skipping this run',
+        );
+        continue;
+      }
+      inFlight.add(routine.row.id);
+      queue.push(routine);
+    }
     pump();
   }
 

@@ -62,7 +62,7 @@ function parseSchedule(schedule: unknown): IntervalSchedule | DailySchedule | nu
     if (
       typeof record.everyMinutes === 'number' &&
       Number.isInteger(record.everyMinutes) &&
-      record.everyMinutes >= 60
+      record.everyMinutes >= 1
     ) {
       return { kind: 'interval', everyMinutes: record.everyMinutes };
     }

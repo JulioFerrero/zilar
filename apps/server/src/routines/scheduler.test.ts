@@ -19,12 +19,14 @@ interface CapturedLog {
 }
 
 function captureLogger(): {
+  info: (fields: Record<string, unknown>, message: string) => void;
   warn: (fields: Record<string, unknown>, message: string) => void;
   error: (fields: Record<string, unknown>, message: string) => void;
   calls: CapturedLog[];
 } {
   const calls: CapturedLog[] = [];
   return {
+    info: (fields, message) => calls.push({ fields, message }),
     warn: (fields, message) => calls.push({ fields, message }),
     error: (fields, message) => calls.push({ fields, message }),
     calls,
@@ -62,6 +64,7 @@ async function seedRoutine(
     createdBy: string;
     title: string;
     nextRunAt: Date;
+    everyMinutes?: number;
   },
 ): Promise<string> {
   const id = randomUUID();
@@ -75,7 +78,7 @@ async function seedRoutine(
         deleted_at
       ) VALUES (
         ${id}, ${input.aiId}, NULL, NULL, ${input.toolId}, ${input.title},
-        ${JSON.stringify({ kind: 'interval', everyMinutes: 60 })}::jsonb, NULL,
+        ${JSON.stringify({ kind: 'interval', everyMinutes: input.everyMinutes ?? 60 })}::jsonb, NULL,
         '[]'::jsonb, 'active', NULL, ${input.nextRunAt.toISOString()}, NULL,
         NULL, 0, ${input.createdBy}, ${NOW.toISOString()}, ${NOW.toISOString()},
         NULL
@@ -259,5 +262,68 @@ describe('createRoutineScheduler', () => {
     // The claim advanced next_run_at; the missed-at-dequeue path must not move
     // it again.
     expect(queued.nextRunAt.getTime()).toBe(NOW.getTime() + 3_600_000);
+  });
+
+  it('does not run a routine again while its previous run is still running', async () => {
+    const ownerId = await seedUser(context);
+    const { aiId } = await seedAi(context, ownerId);
+    const toolId = await seedTool(context, aiId, ownerId);
+    const routineId = await seedRoutine(context, {
+      aiId,
+      toolId,
+      createdBy: ownerId,
+      title: 'Minute digest',
+      nextRunAt: new Date(NOW.getTime() - 60_000),
+      everyMinutes: 1,
+    });
+
+    let calls = 0;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let signalStarted: () => void = () => undefined;
+    const runStarted = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    const runTool = async (): Promise<ToolRunResult> => {
+      calls += 1;
+      signalStarted();
+      await gate;
+      return { ok: true, output: { text: 'ran' }, logs: '', durationMs: 1, fetchCount: 0 };
+    };
+    const posts: string[] = [];
+    const logger = captureLogger();
+    let clock = NOW;
+    const scheduler = createRoutineScheduler({
+      db: context.db,
+      runTool,
+      post: async (input) => {
+        posts.push(input.text);
+        return true;
+      },
+      audit: silentAudit,
+      logger,
+      now: () => clock,
+    });
+
+    await scheduler.tick();
+    await runStarted;
+    // A minute later the routine is due again, but its first run is still in
+    // flight, so the second tick skips it: the claim already advanced
+    // `next_run_at`.
+    clock = new Date(NOW.getTime() + 60_000);
+    await scheduler.tick();
+
+    expect(calls).toBe(1);
+    expect(
+      logger.calls.some(
+        (call) => call.fields.routineId === routineId && call.message.includes('still'),
+      ),
+    ).toBe(true);
+
+    release();
+    await scheduler.whenIdle();
+    expect(posts).toHaveLength(1);
   });
 });
