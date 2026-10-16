@@ -111,3 +111,15 @@ pnpm gate
   GATE PASS
   ```
   The two changed files are `packages/mock-backend/src/domains/handles/check.ts` and this task file, both Allowed.
+
+## Review (written by Claude)
+
+**Approved and merged.**
+
+- **Pre-review:** clean after one automatic round; 1 nit, 2 follow-ups.
+- **The change:** in mock `handleUserId`, a handle that names a seed person returns that person's seed id, so `by-handle/marta` → `u-marta` with relation `contact`. `taken_user` still maps to Ana, and an unknown handle still gives `u-handle-*` and `none`. Blocked and pending requests still win over `contact`.
+- **Follow-ups, recorded (mock only, low value):**
+  - `checkHandle` still calls a seed handle such as `marta` "available";
+  - a contact request to an existing contact isn't refused.
+- **Still to check:** the emulator check (Marta's profile shows Shared media) is in the next phone QA pass.
+- **Lead slip:** this Review missed T-1672's own review commit (the Edit matched twice and failed), so it was added in T-1682's review commit.
