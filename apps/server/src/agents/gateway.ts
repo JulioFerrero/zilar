@@ -24,6 +24,8 @@ import { createGatewayLifecycle } from './gateway/lifecycle';
 import { createStopTurn } from './gateway/stop';
 import type { TurnWatcher } from './gateway/stop-types';
 import { createToolExec } from './gateway/tool-exec';
+import { createRoutineRunner } from './gateway/routine-run';
+import { loadOwnerName } from './gateway/db';
 
 export type {
   AgentGateway,
@@ -79,6 +81,9 @@ export function createAgentGateway(
     liveSendTyping,
     liveMarkDisplayed,
     postToChat,
+    loadOwnerId,
+    loadRoomJid,
+    loadTopicRoomJid,
   } = createLiveSession({ sessions, deps, logger, secretsFor, roomJidFor });
   // T-0479: per-room round budgets (see RoomRound). In memory: a restart
   // safely resets it, a fresh start can only wake fewer AIs.
@@ -282,8 +287,14 @@ export function createAgentGateway(
       return;
     }
     session.pending.push({ id: message.id, body, fromJid: message.fromJid });
-    // `busy` is reset in the pump's `finally`, but a truly unexpected throw
-    // still needs a redacted log line rather than an unhandled rejection.
+    kickDm(session);
+  }
+
+  // T-1647: the fire-and-forget DM pump fork, shared by `handleIncoming` and
+  // the routine runner. `busy` is reset in the pump's `finally`, but a truly
+  // unexpected throw still needs a redacted log line rather than an unhandled
+  // rejection.
+  function kickDm(session: AiSession): void {
     Effect.runFork(
       pumpSessionEffect(session).pipe(
         Effect.catchDefect((error) =>
@@ -297,6 +308,33 @@ export function createAgentGateway(
       ),
     );
   }
+
+  // T-1647: the routine runner's room kick. `pumpRoom` returns the pump's
+  // promise, whose own `catchDefect` logs a failure; the runner only ever
+  // awaits the turn's outcome, never this fork.
+  function kickRoom(session: AiSession, roomJid: string): void {
+    void pumpRoom(session, roomJid).catch((error) => {
+      logger.warn(
+        { err: toRedactedError(error, secretsFor()), aiId: session.aiId },
+        'AI group pump failed',
+      );
+    });
+  }
+
+  // T-1647 (plan §2.2): the routine scheduler's port. It queues a routine's
+  // synthetic trigger on the AI's own DM or room queue and resolves with the
+  // turn's outcome; it is never reached from the network.
+  const { runScheduledTurn } = createRoutineRunner({
+    sessions,
+    sessionIsLive,
+    loadOwnerId,
+    loadRoomJid,
+    loadTopicRoomJid,
+    loadOwnerName: (ownerId) => loadOwnerName(deps.db, ownerId),
+    domain: deps.xmpp.domain,
+    kickDm,
+    kickRoom,
+  });
 
   // (T-0549: `sessionForAiJid`, `handleRoomIncoming` and `pumpRoom` now live
   // in `agents/gateway/group-ingest.ts`; the destructured names above keep
@@ -321,5 +359,6 @@ export function createAgentGateway(
     },
     postToChat,
     stopTurn,
+    runScheduledTurn,
   };
 }

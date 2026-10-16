@@ -335,5 +335,10 @@ export function createLiveSession(ctx: LiveSessionContext) {
     liveSendStatus,
     liveMarkDisplayed,
     postToChat,
+    // T-1647: the routine runner resolves the owner JID and the room JID the
+    // same way `postToChatEffect` does, so it needs the same loaders.
+    loadOwnerId,
+    loadRoomJid,
+    loadTopicRoomJid,
   };
 }

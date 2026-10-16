@@ -28,6 +28,10 @@ export interface DmTurnInput {
   chatKey: string;
   drafts: ReturnType<DraftHub['publishTurn']>;
   log: TurnLog;
+  /** T-1647: a routine's synthetic trigger. The action tools (`request_action`)
+   * are off, so an unattended run parks no approval card; the computer/desk
+   * tools are unchanged. */
+  scheduled?: boolean;
 }
 
 // T-1423: resolve the AI's computer for this turn (cloud or its runner).
@@ -38,7 +42,7 @@ export interface DmTurnInput {
 // that lands between the LLM call and the final send drops the reply instead
 // of delivering it.
 export function runDmTurnInput(input: DmTurnInput): Effect.Effect<DmTurnOutcome> {
-  const { ctx, ai, session, ownerJid, messages, target, chatKey, drafts, log } = input;
+  const { ctx, ai, session, ownerJid, messages, target, chatKey, drafts, log, scheduled } = input;
   const {
     deps,
     logger,
@@ -75,7 +79,9 @@ export function runDmTurnInput(input: DmTurnInput): Effect.Effect<DmTurnOutcome>
             ? { ownerUserId: ai.owner, client: turnDesk.client, signal: dmAbort.signal }
             : undefined,
         ),
-        tools: buildTools(deps.actions?.listActions() ?? [], { desk: deskEnabled }),
+        tools: buildTools(scheduled === true ? [] : (deps.actions?.listActions() ?? []), {
+          desk: deskEnabled,
+        }),
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
         ...turnLimits(deps.toolMaxRounds, deskEnabled),
         checkRoundGate: () => budgetGate.checkDmRoundGate(session),

@@ -158,9 +158,13 @@ export function createDmTurn(ctx: DmTurnContext) {
     // AIs returned above, before this point. The `liveMarkDisplayed` wrapper
     // drops the marker when the AI was stopped between the message arriving
     // and the marker going out. T-1642: a scheduled trigger has no real
-    // incoming message to mark, so the marker is skipped for it.
-    if (trigger.scheduled === undefined) {
-      liveMarkDisplayed(session, ownerJid, 'chat', trigger.id);
+    // incoming message to mark, so when it coalesced with a real owner message,
+    // T-1647 marks that last owner message instead.
+    const lastOwnerMessage = [...ownerMessages]
+      .reverse()
+      .find((item) => item.scheduled === undefined);
+    if (lastOwnerMessage !== undefined) {
+      liveMarkDisplayed(session, ownerJid, 'chat', lastOwnerMessage.id);
     }
 
     // The soft daily limit holds even when the marker above already went out:
@@ -271,8 +275,10 @@ export function createDmTurn(ctx: DmTurnContext) {
       // T-0106: the guide rides as a trailing user turn only when tools are
       // enabled and tool/routine adapters are registered (a non-empty
       // action list, so `request_action` is actually offered). Otherwise
-      // today's messages, byte for byte.
-      const dmActionsList = deps.actions?.listActions() ?? [];
+      // today's messages, byte for byte. T-1647: a scheduled run offers no
+      // `request_action`, so it parks no approval card and gets no guide.
+      const dmActionsList =
+        trigger.scheduled === undefined ? (deps.actions?.listActions() ?? []) : [];
       const dmMessages =
         deps.toolsEnabled === true && dmActionsList.length > 0 ? withToolGuide(messages) : messages;
 
@@ -295,6 +301,9 @@ export function createDmTurn(ctx: DmTurnContext) {
         chatKey: dmChatKey,
         drafts: turnDrafts,
         log: turnLog,
+        // T-1647: a routine's synthetic trigger. The action tools are off, so
+        // an unattended run parks no approval card; the desk tools stay on.
+        scheduled: trigger.scheduled !== undefined,
       });
       turnDrafts.end(outcome.kind === 'replied' && sessionIsLive(session) ? 'sent' : 'failed');
       settle(outcome.kind);

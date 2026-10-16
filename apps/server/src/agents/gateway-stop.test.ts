@@ -23,8 +23,11 @@ import { createBudgetGate } from './gateway/budget';
 import { createDmTurn } from './gateway/dm-turn';
 import { createLiveSession } from './gateway/live';
 import { createMemoryRunner } from './gateway/memory';
+import { createRoutineRunner } from './gateway/routine-run';
+import { seedGroup } from '../test-support/seed';
 import {
   toRedactedError,
+  type AgentGateway,
   type AgentGatewayDeps,
   type AiSession,
   type GatewayLogger,
@@ -157,16 +160,17 @@ function scheduledSession(aiId: string, aiJid: string): AiSession {
 function dmPumpFor(
   context: TestContext,
   session: AiSession,
-  options: { limited?: boolean } = {},
+  options: { limited?: boolean; fetchImpl?: FetchLike } = {},
 ): ReturnType<typeof createDmTurn>['pumpSessionEffect'] {
   const logger: GatewayLogger = { info: () => {}, warn: () => {} };
+  const defaultFetch = (() => Promise.resolve(completionResponse('the routine ran'))) as FetchLike;
   const deps = {
     db: context.db,
     xmpp: context.xmppConfig,
     adminClient: context.adminClient,
     cipher: createKeyCipher(MASTER_KEY),
     logger,
-    fetchImpl: (() => Promise.resolve(completionResponse('the routine ran'))) as FetchLike,
+    fetchImpl: options.fetchImpl ?? defaultFetch,
   } as unknown as AgentGatewayDeps;
   const secretsFor = (): string[] => [];
   const live = createLiveSession({
@@ -262,5 +266,123 @@ describe('a scheduled item rides the DM queue (T-1642)', () => {
 
     expect(outcomes).toEqual(['limited']);
     expect((session.core as FakeCore).displayed).toEqual([]);
+  });
+});
+
+// T-1647 (plan §2.2, step 4d): the gateway's scheduled-turn runner. It queues a
+// routine's synthetic trigger on the AI's own DM or room queue and resolves
+// with the turn's outcome; the scheduler only ever calls it, never the network.
+describe('the gateway runs a scheduled turn (T-1647)', () => {
+  let context: TestContext;
+
+  beforeEach(async () => {
+    context = await createTestContext();
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  function startGateway(content = 'the routine ran') {
+    const helpers = createGatewayHelpers({
+      getContext: () => context,
+      setGateway: () => undefined,
+    });
+    const completion = helpers.completionFetch(content);
+    const cores: FakeCore[] = [];
+    const { gateway } = helpers.harness(cores, completion.fetchImpl);
+    return { helpers, gateway, cores, completion };
+  }
+
+  function runDm(gateway: Pick<AgentGateway, 'runScheduledTurn'>, aiId: string) {
+    return gateway.runScheduledTurn({
+      aiId,
+      groupId: null,
+      topicId: null,
+      routineId: 'routine-1',
+      title: 'Daily digest',
+      prompt: 'Summarize the day.',
+    });
+  }
+
+  it("queues a DM routine and resolves 'replied' with the trigger text", async () => {
+    const { helpers, gateway, cores, completion } = startGateway();
+    const { aiId, ownerJid, aiJid } = await seedAi(context);
+    await gateway.start();
+    await waitFor(() => gateway.aiIds().length === 1);
+    const core = await helpers.coreFor(cores, aiJid);
+
+    expect(await runDm(gateway, aiId)).toBe('replied');
+    expect(
+      core.sent.some((message) => message.to === ownerJid && message.text === 'the routine ran'),
+    ).toBe(true);
+    const body = helpers.bodyOf(completion.calls[completion.calls.length - 1] as Call);
+    const seen = body.messages.map((message) => message.content).join('\n');
+    expect(seen).toContain('Scheduled run "Daily digest".\nSummarize the day.');
+  });
+
+  it("answers 'offline' for an unknown AI", async () => {
+    const { gateway } = startGateway();
+    await gateway.start();
+
+    expect(await runDm(gateway, 'ai-unknown')).toBe('offline');
+  });
+
+  it("answers 'not_in_room' for a topic room the AI's session has not joined", async () => {
+    const { gateway } = startGateway();
+    const { aiId, ownerId } = await seedAi(context);
+    // The group and its General topic exist, but the AI is not a member, so its
+    // live session never joins the room.
+    const { groupId, generalTopicId } = await seedGroup(
+      context,
+      ownerId,
+      [{ userId: ownerId, role: 'owner' }],
+      [],
+    );
+    await gateway.start();
+    await waitFor(() => gateway.aiIds().length === 1);
+
+    const outcome = await gateway.runScheduledTurn({
+      aiId,
+      groupId,
+      topicId: generalTopicId,
+      routineId: 'routine-1',
+      title: 'Morning',
+      prompt: 'Greet the room.',
+    });
+
+    expect(outcome).toBe('not_in_room');
+  });
+
+  it("resolves 'failed' when the turn never settles", async () => {
+    const { aiId, ownerId, aiJid } = await seedAi(context);
+    const session = scheduledSession(aiId, aiJid);
+    // The model call hangs past the runner's timeout; releasing it afterwards
+    // lets the turn finish so the test leaves nothing pending.
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const pump = dmPumpFor(context, session, {
+      fetchImpl: () => gate.then(() => completionResponse('late answer')),
+    });
+    const runner = createRoutineRunner({
+      sessions: new Map([[aiId, session]]),
+      sessionIsLive: () => true,
+      loadOwnerId: () => Effect.succeed<string | null>(ownerId),
+      loadTopicRoomJid: () => Effect.succeed<string | null>(null),
+      loadRoomJid: () => Effect.succeed<string | null>(null),
+      loadOwnerName: async () => 'Owner',
+      domain: TEST_XMPP_DOMAIN,
+      kickDm: (target) => {
+        void Effect.runPromise(pump(target)).catch(() => undefined);
+      },
+      kickRoom: () => undefined,
+      timeoutMs: 50,
+    });
+
+    expect(await runDm(runner, aiId)).toBe('failed');
+    release();
+    await tick(20);
   });
 });

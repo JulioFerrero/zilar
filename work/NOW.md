@@ -223,6 +223,13 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - **Goal by morning:** Julio tells @Deepseek "every morning at 8 post BTC, gold and S&P 500", approves one card, and it runs at 08:00 his time.
       - **Tool surface:** a scheduled run gets the computer but no `request_action`, so an AI without a computer can't fetch prices on schedule yet. Follow-up: allow tier-0/1 actions (`web.price` and similar) in scheduled runs.
     - **Also merged:** T-1643 (ejabberd pinned by digest, OPS-7; live and healthy), T-1644 (a CI job runs the offline deploy tests and renders all four compose files, OPS-12). T-1650 is running (the backup doc wording, so `scheduled-backups.test.sh` passes and joins CI).
+    - **Merged after 03:00:**
+      - T-1646 (the room queue takes a scheduled run as its own turn, with no `request_action`, `ask_people` or delegation);
+      - T-1650 (the backup doc wording; its test joins CI);
+      - T-1651 ("runs a prompt" in the routines lists, web and phone);
+      - T-1652 (GNU-first `stat`: CI's Deploy checks job failed on Linux, and `zilar doctor` on real Linux servers never read the backup age; fixed).
+    - **Approved, merge held:** T-1649 (`routine.schedule` accepts a prompt; a tier-2 card with the prompt text). It merges after T-1647/T-1648 wire the runner.
+    - **T-1653 (plan only):** GitHub access for AI computers (desk-runner plan Task F). Today only the `GITHUB_APP_*` env keys exist; no token minting or injection.
     - **Main is green at T-1645:** server tsc clean, full server suite 121 files / 870 tests passed (the lead ran it at 02:45).
     - **In group rooms, actions (`web.*`, routines) are offered only when an owner or admin triggers the turn** (`group-turn-body.ts:199`), so @claude_test can't test `web.price` or routines. **Julio must test the morning-prices routine himself.**
     - **❓ Decision for Julio (SEC-13b):** the computer IS offered to any group member who mentions the AI.

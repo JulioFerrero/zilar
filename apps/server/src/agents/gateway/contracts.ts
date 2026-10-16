@@ -13,6 +13,17 @@ import type { XmppConfig } from '../../xmpp/config';
 import type { completeChat } from '../reply';
 import type { RunnerDeskSource } from '../../hands/resolve';
 import type { DeskClient } from './desk-exec';
+import type { PendingMessage, RoomPendingMessage, ScheduledRunOutcome } from './pending';
+
+// T-1647: the queue item types and the scheduled-run outcome live in
+// `pending.ts` to keep this file under the 400-line cap. Re-exported here so
+// every existing import of these names keeps working.
+export type {
+  PendingMessage,
+  RoomPendingMessage,
+  ScheduledRunOutcome,
+  ScheduledTurnOutcome,
+} from './pending';
 
 export interface GatewayLogger {
   info: (fields: Record<string, unknown>, message: string) => void;
@@ -140,49 +151,6 @@ export const GROUP_JOIN_SKEW_MS = 60_000;
 // many human messages have queued without a mention (plan §2.1).
 export const LISTENER_QUIET_MS_DEFAULT = 20_000;
 export const LISTENER_EVERY_N_DEFAULT = 12;
-
-// T-1642 (plan §2.2): the outcome a scheduled routine's DM turn reports back
-// through its `onOutcome`. The three owner-message outcomes plus the two
-// exits a synthetic trigger can hit before a turn starts: `limited` is the
-// daily budget gate, `offline` a disconnected AI.
-export type ScheduledTurnOutcome = 'replied' | 'failed' | 'stopped' | 'limited' | 'offline';
-
-export interface PendingMessage {
-  id: string;
-  body: string;
-  fromJid: string;
-  /** T-1642: a routine's synthetic trigger, never from the network. It counts
-   * as the owner's message, gets no read marker, and reports its turn's
-   * outcome through `onOutcome` exactly once. */
-  scheduled?: {
-    routineId: string;
-    onOutcome: (outcome: ScheduledTurnOutcome) => void;
-  };
-}
-
-export interface RoomPendingMessage {
-  id: string;
-  body: string;
-  fromJid: string;
-  fromResolved: boolean;
-  fromNick?: string;
-  timestamp: Date;
-  /** T-0479: set by a listener wake, never by a mention. */
-  wake?: true;
-  /** T-0481: set on an AI-to-AI handoff queued by another AI's @mention. */
-  handoff?: true;
-  /** T-0482: set on the synthetic trigger `delegate` queues on the worker's
-   * session; its id is the delegation row to finish when the turn ends. */
-  delegationId?: string;
-  /** T-1646: a routine's synthetic trigger, never from the network. It is
-   * always its own turn, is admitted before the member checks (its owner may
-   * not be a room member), and reports its turn's outcome through `onOutcome`
-   * exactly once. */
-  scheduled?: {
-    routineId: string;
-    onOutcome: (outcome: ScheduledTurnOutcome) => void;
-  };
-}
 
 // T-0479: the per-room round budget, shared by every AI session in the room
 // and keyed by the human message that opened it.
@@ -315,6 +283,23 @@ export interface AgentGateway {
    * route; this only reaches the gateway's own sessions.
    */
   stopTurn: (aiId: string, chatJid: string) => boolean;
+  /**
+   * T-1647 (plan §2.2): the routine scheduler's port, never reached from the
+   * network. Queues a routine's synthetic trigger on the AI's own DM or room
+   * queue — the same queue a live turn uses, so it never overlaps one — and
+   * resolves with the turn's outcome: `replied`, `failed`, `stopped`,
+   * `limited`, `offline`, or `not_in_room` when a room routine's room does not
+   * exist or the AI's session has not joined it. A turn that never settles
+   * resolves `failed` after the runner's timeout.
+   */
+  runScheduledTurn: (input: {
+    aiId: string;
+    groupId: string | null;
+    topicId: string | null;
+    routineId: string;
+    title: string;
+    prompt: string;
+  }) => Promise<ScheduledRunOutcome>;
 }
 
 export function isAiSender(bare: string): boolean {
