@@ -1711,3 +1711,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1695](T-1695-split-web-push.md) | Split the badge code out of the web push.ts | 2026-10-16 |
 | [T-1692](T-1692-phone-scroll-memory.md) | Phone remembers where you left each chat | 2026-10-16 |
 | [T-1698](T-1698-split-collect-snapshot.md) | Split the worktree git cache out of lead collect-snapshot.ts | 2026-10-16 |
+| [T-1701](T-1701-split-contact-requests.md) | Split the request decisions out of contact-requests/service | 2026-10-16 |
