@@ -22,7 +22,13 @@ import { HttpError } from '../errors';
 import { findGroupMembership } from '../groups/access';
 import { canSeeTopic } from '../topics/access';
 import { routineAccess, routineAccessIncludingDeleted } from './access';
-import { findOwnedAiRow, findTopicById, listTopicsByGroup } from './reads';
+import {
+  findOwnedAiRow,
+  findTopicById,
+  listMyRoutines,
+  listTopicsByGroup,
+  type MyRoutineView,
+} from './reads';
 import {
   deleteRoutine,
   getRoutine,
@@ -52,6 +58,21 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
 
   const groupLayer = HttpApiBuilder.group(RoutinesApi, 'routines', (handlers) =>
     handlers
+      .handle(
+        'listMine',
+        handler(logger, async (_request, user) => {
+          // Running first, then by title: the Settings › Routines page groups
+          // Running and Paused, so the server sends them in order.
+          const routines = await listMyRoutines(deps.db, user.id);
+          routines.sort(
+            (a, b) =>
+              routineRank(a.routine.status) - routineRank(b.routine.status) ||
+              a.routine.title.localeCompare(b.routine.title) ||
+              a.routine.id.localeCompare(b.routine.id),
+          );
+          return routines.map(toMyRoutineWire);
+        }),
+      )
       .handle(
         'listForAi',
         handler(logger, async (request, user) => {
@@ -163,4 +184,18 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
   );
 
   return mountApi(RoutinesApi, apiLayer);
+}
+
+// Running routines sort ahead of paused and needs-approval ones.
+function routineRank(status: PublicRoutine['status']): number {
+  return status === 'active' ? 0 : 1;
+}
+
+function toMyRoutineWire(view: MyRoutineView) {
+  return {
+    ...toListWire(view.routine),
+    aiName: view.aiName,
+    aiAvatarUrl: view.aiAvatarUrl,
+    chatName: view.chatName,
+  };
 }

@@ -1727,3 +1727,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1715](T-1715-edited-time.md) | 'edited' shows the latest edit time on web and phone | 2026-10-16 |
 | [T-1714](T-1714-routine-send.md) | A routine posts one message and later runs edit it | 2026-10-16 |
 | [T-1716](T-1716-quiet-approvals.md) | Quieter approvals: no extra messages, no hosts in the card | 2026-10-16 |
+| [T-1717](T-1717-my-routines-api.md) | GET /api/routines: all routines of the AIs I own | 2026-10-16 |

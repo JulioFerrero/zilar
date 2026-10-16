@@ -1,8 +1,11 @@
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import { avatarIdsByOwner, avatarUrlFor } from '../avatars/service';
 import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
-import type { TopicRow } from '../topics/access';
+import { canSeeTopic, type TopicRow } from '../topics/access';
+import { toPublicRoutines } from './queries';
+import type { PublicRoutine } from './schemas';
 import type { RoutineRow } from './service';
 
 // The module's own reads on `effect/sql`. `SELECT *` returns camelCased
@@ -68,4 +71,134 @@ export async function findOwnedAiRow(db: ServerDatabase, aiId: string, ownerId: 
     }),
   );
   return row ?? null;
+}
+
+// T-1717: a routine row plus the name of the AI it belongs to (`ai_name` is
+// camelCased to `aiName` like every other column).
+export interface MyRoutineRow extends RoutineRow {
+  aiName: string;
+}
+
+// One entry of the caller's own routine list: the routine, the AI's name and
+// picture, and the chat it runs in.
+export interface MyRoutineView {
+  routine: PublicRoutine;
+  aiName: string;
+  aiAvatarUrl: string | undefined;
+  chatName: string | null;
+}
+
+// Every non-deleted routine of every AI the caller owns, across all their
+// chats, with the AI's name. The topic visibility filter runs in
+// `listMyRoutines`.
+export async function listRoutinesForOwner(
+  db: ServerDatabase,
+  ownerId: string,
+): Promise<MyRoutineRow[]> {
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<MyRoutineRow>`SELECT r.*, a.name AS ai_name FROM routines r
+        INNER JOIN ais a ON a.id = r.ai_id
+        WHERE a.owner = ${ownerId} AND r.deleted_at IS NULL`;
+    }),
+  );
+  return [...rows];
+}
+
+async function findTopicsByIds(
+  db: ServerDatabase,
+  topicIds: string[],
+): Promise<Map<string, TopicRow>> {
+  if (topicIds.length === 0) {
+    return new Map();
+  }
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<TopicRow>`SELECT * FROM topics WHERE id IN ${sql.in(topicIds)}`;
+    }),
+  );
+  return new Map(rows.map((row) => [row.id, row]));
+}
+
+async function findGroupTitlesByIds(
+  db: ServerDatabase,
+  groupIds: string[],
+): Promise<Map<string, string>> {
+  if (groupIds.length === 0) {
+    return new Map();
+  }
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ id: string; title: string }>`SELECT id, title FROM groups
+        WHERE id IN ${sql.in(groupIds)}`;
+    }),
+  );
+  return new Map(rows.map((row) => [row.id, row.title]));
+}
+
+// T-1717: the caller's routines across every AI they own, with the AI's name
+// and picture and the chat name, for Settings › Routines. A routine in a
+// private topic the caller cannot see is left out, the same filter `listForAi`
+// applies. `chatName` is null for a personal chat, the topic name otherwise,
+// and the group name when the topic is the group's General topic. One query
+// each for the routines, the topics, the groups and the AI avatars.
+export async function listMyRoutines(db: ServerDatabase, userId: string): Promise<MyRoutineView[]> {
+  const rows = await listRoutinesForOwner(db, userId);
+
+  const topicIds = [...new Set(rows.flatMap((row) => (row.topicId === null ? [] : [row.topicId])))];
+  const topics = await findTopicsByIds(db, topicIds);
+  const groupIds = [
+    ...new Set(
+      [...topics.values()].filter((topic) => topic.isGeneral).map((topic) => topic.groupId),
+    ),
+  ];
+  const groupTitles = await findGroupTitlesByIds(db, groupIds);
+
+  const visible: MyRoutineRow[] = [];
+  const chatNames = new Map<string, string | null>();
+  for (const row of rows) {
+    if (row.topicId === null) {
+      visible.push(row);
+      continue;
+    }
+    const topic = topics.get(row.topicId);
+    if (!topic || !(await canSeeTopic(db, topic, userId))) {
+      continue;
+    }
+    visible.push(row);
+    chatNames.set(
+      row.id,
+      topic.isGeneral ? (groupTitles.get(topic.groupId) ?? topic.name) : topic.name,
+    );
+  }
+
+  const byId = new Map(visible.map((row) => [row.id, row]));
+  const routines = await toPublicRoutines(db, visible);
+  const avatars = await avatarIdsByOwner(
+    db,
+    'ai',
+    routines.map((routine) => routine.aiId),
+  );
+
+  const result: MyRoutineView[] = [];
+  for (const routine of routines) {
+    const row = byId.get(routine.id);
+    if (!row) {
+      continue;
+    }
+    const avatarId = avatars.get(routine.aiId);
+    result.push({
+      routine,
+      aiName: row.aiName,
+      aiAvatarUrl: avatarId === undefined ? undefined : avatarUrlFor(avatarId),
+      chatName: chatNames.get(routine.id) ?? null,
+    });
+  }
+  return result;
 }

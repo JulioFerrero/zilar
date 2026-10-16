@@ -27,10 +27,26 @@ export const Routine = Schema.Struct({
 
 export type Routine = typeof Routine.Type;
 
+// T-1717: one routine in the caller's own list (Settings › Routines), across
+// every AI they own. `aiName` and `aiAvatarUrl` describe the AI; `chatName` is
+// the topic name, the group name for a General topic, or null for a personal
+// chat with the AI.
+export const MyRoutine = Schema.Struct({
+  ...Routine.fields,
+  aiName: Schema.String,
+  aiAvatarUrl: Schema.optional(Schema.String),
+  chatName: Schema.NullOr(Schema.String),
+});
+
+export type MyRoutine = typeof MyRoutine.Type;
+
 const RoutineIdParams = Schema.Struct({ id: Schema.String });
 
 export const RoutinesGroup = HttpApiGroup.make('routines')
   .add(
+    HttpApiEndpoint.get('listMine', '/routines', {
+      success: Schema.Array(MyRoutine),
+    }),
     HttpApiEndpoint.get('listForAi', '/ais/:id/routines', {
       params: RoutineIdParams,
       success: Schema.Array(Routine),
