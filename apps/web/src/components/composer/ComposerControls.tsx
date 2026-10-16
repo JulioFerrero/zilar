@@ -12,7 +12,7 @@ import { IconButton } from '../ui/icon-button';
 import { Well } from '../ui/well';
 import type { ComposerAttachments, SendPendingOptions } from './useComposerAttachments';
 import type { Mentions } from './useMentions';
-import type { VoiceRecorderController } from './useVoiceRecorder';
+import type { VoiceRecorderController } from './composerShared';
 
 const MENTION_PICKER_ID = 'mention-picker';
 const LINE_HEIGHT = 22;

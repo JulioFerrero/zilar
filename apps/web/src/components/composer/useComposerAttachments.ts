@@ -22,7 +22,7 @@ import {
   objectUrlFor,
   type PendingAttachment,
 } from '@/lib/attachments';
-import { ComposerFailure, fork } from './useVoiceRecorder';
+import { ComposerFailure, fork } from './composerShared';
 
 const GIF_LOAD_FAILED = 'Could not load that GIF. Try another.';
 /** Telegram's cap, and the mobile picker's `selectionLimit` (T-1246). */

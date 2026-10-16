@@ -1,6 +1,6 @@
 import { Effect, Schedule } from 'effect';
 import { useEffect } from 'react';
-import { stopTimer, type VoiceRecorderController } from './useVoiceRecorder';
+import { stopTimer, type VoiceRecorderController } from './composerShared';
 
 /**
  * Owns the voice-recording lifecycle of the composer: cancelling on unmount,
