@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Routines, phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed}a:hover{color:#ffffff}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.key-icon{background:linear-gradient(180deg,#2c2c2c,#151515);border:1px solid #050505;color:#d4d4d4;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.65),0 1px 0 rgba(0,0,0,.95),0 3px 6px -1px rgba(0,0,0,.75)}
+.kb{width:44px;height:44px;box-sizing:border-box;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer}
+.row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid #1a1a1a}
+.orb{width:36px;height:36px;border-radius:999px;flex-shrink:0}
+.what{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.where{font-size:13px;color:#a1a1a1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dot{width:8px;height:8px;border-radius:999px;flex-shrink:0}
+.label{margin:0 0 8px 6px;font-size:11px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:#8a8a8a}
+.list{background:#111111;border:1px solid #1f1f1f;border-radius:14px;overflow:hidden}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; background: #0a0a0a; display: flex; flex-direction: column">
+  <header style="height: 64px; flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-bottom: 1px solid #1f1f1f">
+    <button type="button" aria-label="Back" class="key-icon kb">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>
+    </button>
+    <h1 style="margin: 0; flex-grow: 1; font-size: 18px; font-weight: 600; letter-spacing: -0.02em">Routines</h1>
+  </header>
+
+  <main style="flex-grow: 1; padding: 20px 12px; display: flex; flex-direction: column; gap: 24px">
+    <section aria-label="Running" style="flex-shrink: 0">
+      <h2 class="label">Running</h2>
+      <div class="list">
+        <div class="row">
+          <span class="orb" aria-hidden="true" style="background: radial-gradient(circle at 35% 30%, #c4b5fd, #4338ca 55%, #1e1b4b)"></span>
+          <a href="#routine" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; text-decoration: none">
+            <span class="what"><span class="dot" role="img" aria-label="Running" style="background: #22c55e"></span>Prices</span>
+            <span class="where"><span class="mono">every 5 min</span> · Deepseek</span>
+          </a>
+          <button type="button" aria-label="Ask Deepseek about Prices" class="key-icon kb">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path></svg>
+          </button>
+          <button type="button" aria-label="Pause Prices" class="key-icon kb">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
+          </button>
+        </div>
+
+        <div class="row" style="border-bottom: 0">
+          <span class="orb" aria-hidden="true" style="background: radial-gradient(circle at 35% 30%, #a7f3d0, #047857 55%, #022c22)"></span>
+          <a href="#routine" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; text-decoration: none">
+            <span class="what"><span class="dot" role="img" aria-label="Running" style="background: #22c55e"></span>Release notes digest</span>
+            <span class="where"><span class="mono">every 2 hours</span> · Dev-1</span>
+          </a>
+          <button type="button" aria-label="Ask Dev-1 about Release notes digest" class="key-icon kb">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path></svg>
+          </button>
+          <button type="button" aria-label="Pause Release notes digest" class="key-icon kb">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section aria-label="Paused" style="flex-shrink: 0">
+      <h2 class="label">Paused</h2>
+      <div class="list">
+        <div class="row" style="border-bottom: 0">
+          <span class="orb" aria-hidden="true" style="background: radial-gradient(circle at 35% 30%, #fef9c3, #a16207 55%, #3f2a05)"></span>
+          <a href="#routine" style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; text-decoration: none">
+            <span class="what"><span class="dot" role="img" aria-label="Paused" style="background: #525252"></span>Weekly digest</span>
+            <span class="where"><span class="mono">Mon 09:00</span> · Marketing AI</span>
+          </a>
+          <button type="button" aria-label="Ask Marketing AI about Weekly digest" class="key-icon kb">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path></svg>
+          </button>
+          <button type="button" aria-label="Resume Weekly digest" class="key-icon kb">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"></path></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -337,6 +337,23 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
         - **Running:**
           - T-1709 (after an approval, the AI continues with a follow-up turn from the person who approved);
           - T-1710 (short chat replies; no tool names, hosts or URLs in messages).
+      - **Status about 09:20 UTC:**
+        - T-1710 is live (`17dbdb4f6`);
+        - T-1711's plan is merged (`docs/plan/routine-live-message.md`);
+        - T-1709 is in fix round 1: the runner typecheck failed because `routes-ai.ts` now reaches `contracts.ts`;
+        - T-1712 (`lead merge --hold` and `lead push`, so a batch is one deploy) is running.
+      - **Routines approved:** the boards are in `docs/design/mockups/routines/` with a README. Julio's answers:
+        - "edited" shows the edit time;
+        - **each run bumps the chat** (preview and unread);
+        - a scheduled run is one message, with no card and no @mention;
+        - Settings › Routines is built as drawn.
+      - **Build queue** (2 workers while Julio is up):
+        - the plan's tasks 1–8;
+        - a ninth task: a routine's edit bumps the chat;
+        - the UI: the compact approval card, the routine message header, Settings › Routines (web and phone), and an "all my routines" read.
+      - **Restarts:**
+        - Julio chose **Phase 2 of `docs/deploy/zero-downtime-plan.md` later**, and Phase 3 (AI turns survive a deploy) after it;
+        - until then, merges are batched (T-1712), with a push at most every 30 minutes.
       - **Running:**
         - T-1692 (phone per-chat scroll memory, gap 7). Fix rounds:
           - 1: retry the restore until the content covers the spot;

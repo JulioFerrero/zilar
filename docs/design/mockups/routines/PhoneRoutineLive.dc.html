@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Routine, phone, live message</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed}a:hover{color:#ffffff}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.well{background:#0c0c0c;box-shadow:inset 0 2px 6px rgba(0,0,0,.9),inset 0 1px 1px rgba(0,0,0,.8),inset 0 0 0 1px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.06)}
+.dev{background:radial-gradient(circle at 35% 30%,#c4b5fd,#4338ca 55%,#1e1b4b)}
+.dur{font-family:'Geist Mono',monospace;font-size:12px;color:#8a8a8a;font-variant-numeric:tabular-nums}
+.badge{font-family:'Geist Mono',monospace;font-size:10px;color:#a1a1a1;border:1px solid #333;border-radius:5px;padding:1px 5px}
+.num{font-family:'Geist Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;text-align:right}
+.up{color:#4ade80}
+.down{color:#f87171}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; overflow: hidden; background-color: #0a0a0a; background-image: radial-gradient(#1c1c1c 1px, transparent 1px); background-size: 22px 22px">
+  <div style="height: 64px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid #1f1f1f; background: #0a0a0a">
+    <span aria-hidden="true" class="dev" style="width: 36px; height: 36px; border-radius: 999px"></span>
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 600">Deepseek <span class="badge">AI</span></span>
+      <span style="font-size: 13px; color: #a1a1a1">online</span>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; padding: 16px 12px; display: flex; flex-direction: column; justify-content: flex-end; gap: 12px">
+    <div style="align-self: flex-end; max-width: 290px; padding: 9px 14px; border-radius: 16px; background: #ededed; color: #0a0a0a; font-size: 15px; line-height: 21px">can you make a btc, gold and sp500 message, simple and clear and do a routine every 5min saying this message</div>
+
+    <div style="align-self: stretch; display: flex; gap: 8px; align-items: flex-end">
+      <span aria-hidden="true" style="width: 28px; height: 28px; flex-shrink: 0"></span>
+      <section aria-label="Routine allowed" style="flex-grow: 1; min-width: 0; box-sizing: border-box; min-height: 48px; padding: 0 14px; border-radius: 14px; background: #141414; border: 1px solid #232323; display: flex; align-items: center; gap: 8px">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" role="img" aria-label="Allowed"><circle cx="8" cy="8" r="7" fill="#22c55e"></circle><path d="M4.9 8.3l2.1 2.1 4.1-4.5" stroke="#0a0a0a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <span style="flex-grow: 1; font-size: 15px; font-weight: 500">Prices</span>
+        <span class="dur">every 5 min</span>
+      </section>
+    </div>
+
+    <div style="align-self: stretch; display: flex; gap: 8px; align-items: flex-end">
+      <span aria-hidden="true" class="dev" style="width: 28px; height: 28px; border-radius: 999px; flex-shrink: 0"></span>
+      <section aria-label="Prices, updated 10:45" style="width: 280px; box-sizing: border-box; padding: 12px 14px 8px 14px; border-radius: 16px; background: #141414; border: 1px solid #232323; display: flex; flex-direction: column; gap: 10px">
+        <a href="#routine" style="display: flex; align-items: center; gap: 8px; min-height: 24px; text-decoration: none">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 2l4 4-4 4"></path><path d="M3 11V9a3 3 0 0 1 3-3h15"></path><path d="M7 22l-4-4 4-4"></path><path d="M21 13v2a3 3 0 0 1-3 3H3"></path></svg>
+          <span style="flex-grow: 1; font-size: 14px; font-weight: 500; color: #a1a1a1">Prices</span>
+          <span class="dur">every 5 min</span>
+        </a>
+        <div style="display: grid; grid-template-columns: 1fr auto auto; column-gap: 12px; row-gap: 6px; font-size: 15px; line-height: 21px">
+          <span>BTC</span><span class="num">$67,420</span><span class="num up">▲ 1.2%</span>
+          <span>Gold</span><span class="num">$2,412</span><span class="num down">▼ 0.3%</span>
+          <span>S&amp;P 500</span><span class="num">5,812</span><span class="num up">▲ 0.4%</span>
+        </div>
+        <span class="mono" style="align-self: flex-end; font-size: 10px; color: #8a8a8a">edited 10:45</span>
+      </section>
+    </div>
+  </div>
+
+  <div style="flex-shrink: 0; padding: 8px 12px 34px 12px; border-top: 1px solid #1f1f1f; background: #0a0a0a">
+    <div class="well" style="height: 44px; border-radius: 14px; display: flex; align-items: center; padding: 0 14px; font-size: 15px; color: #8a8a8a">Message General</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
