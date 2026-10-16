@@ -1669,3 +1669,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1658](T-1658-scheduled-run-routine-fixes.md) | Prompt routines refund offline slots; bad schedules park one row | 2026-10-16 |
 | [T-1659](T-1659-back-cancels-reply.md) | Phone: Android back cancels an armed reply or edit first | 2026-10-16 |
 | [T-1657](T-1657-scheduled-run-gateway-fixes.md) | Scheduled runs: timeout from turn start, own DM turn | 2026-10-16 |
+| [T-1660](T-1660-phone-emoji-search.md) | Phone: search the Emoji tab by name | 2026-10-16 |

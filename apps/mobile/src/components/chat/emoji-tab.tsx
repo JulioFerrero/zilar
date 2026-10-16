@@ -1,3 +1,4 @@
+import { searchEmoji } from '@zilar/chat-core';
 import {
   Clock,
   Hand,
@@ -10,12 +11,17 @@ import {
   Smile,
   Trophy,
 } from 'lucide-react-native';
+import { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { SearchField } from '@/components/ui/search-field';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
 import { EMOJI_BY_CATEGORY, EMOJI_CATEGORIES, type EmojiCategoryId } from '@/lib/emoji-data';
+
+/** Every glyph of every category, in category order; the search corpus. */
+const ALL_EMOJI: readonly string[] = Object.values(EMOJI_BY_CATEGORY).flat();
 
 const CATEGORY_ICONS: Record<EmojiCategoryId, typeof Smile> = {
   smileys: Smile,
@@ -45,66 +51,84 @@ type EmojiTabProps = {
 export const EMOJI_GRID_COLUMNS = 8;
 
 /**
- * The Emoji tab body (T-0175): a category strip (Recent first, then the nine
+ * The Emoji tab (T-0175): a category strip (Recent first, then the nine
  * categories) and a grid of plain-Unicode emoji. Tapping inserts at the
  * caret and never closes the sheet; a Lucide icon per category, emoji
  * characters only as emoji content.
+ *
+ * T-1660 adds a search field (in the body below): a non-empty query hides the
+ * strip and filters every category by name. The query lives in the body, which
+ * unmounts while the sheet is closed, so reopening starts on an empty query.
  */
-export function EmojiTab({
-  open,
-  recents,
-  activeCategory,
-  onSelectCategory,
-  onPick,
-}: EmojiTabProps) {
+export function EmojiTab({ open, ...props }: EmojiTabProps) {
   useSafeAreaInsets();
-  const iconColor = ICON;
   if (!open) {
     return null;
   }
+  return <EmojiTabBody {...props} />;
+}
+
+type EmojiTabBodyProps = Omit<EmojiTabProps, 'open'>;
+
+function EmojiTabBody({ recents, activeCategory, onSelectCategory, onPick }: EmojiTabBodyProps) {
+  const iconColor = ICON;
+  const [query, setQuery] = useState('');
+  const searching = query.trim() !== '';
   const active: EmojiCategoryId | 'recent' =
     activeCategory ?? (recents.length > 0 ? 'recent' : 'smileys');
   const emoji =
     active === 'recent' ? recents : (EMOJI_BY_CATEGORY[active] ?? EMOJI_BY_CATEGORY.smileys);
+  const list = searching ? searchEmoji(query, ALL_EMOJI) : emoji;
   return (
     <View className="flex min-h-0 flex-1 flex-col">
-      <ScrollView
-        horizontal
-        accessibilityRole="toolbar"
-        accessibilityLabel="Emoji categories"
-        // A horizontal ScrollView grows to fill the free height; without this
-        // the category strip floats in a big empty gap under the tabs.
-        style={{ flexGrow: 0 }}
-        contentContainerStyle={{
-          flexDirection: 'row',
-          gap: 2,
-          paddingHorizontal: 8,
-          paddingVertical: 4,
-        }}
-      >
-        <CategoryButton
-          label="Recent emoji"
-          selected={active === 'recent'}
-          onPress={() => onSelectCategory('recent')}
-          icon={<Clock size={18} color={iconColor} />}
+      <View className="p-2">
+        <SearchField
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search emoji"
+          accessibilityLabel="Search emoji"
+          onClear={() => setQuery('')}
         />
-        {EMOJI_CATEGORIES.map((category) => {
-          const Icon = CATEGORY_ICONS[category.id];
-          return (
-            <CategoryButton
-              key={category.id}
-              label={`${category.label} emoji`}
-              selected={active === category.id}
-              onPress={() => onSelectCategory(category.id)}
-              icon={<Icon size={18} color={iconColor} />}
-            />
-          );
-        })}
-      </ScrollView>
-      {emoji.length === 0 ? (
+      </View>
+      {searching ? null : (
+        <ScrollView
+          horizontal
+          accessibilityRole="toolbar"
+          accessibilityLabel="Emoji categories"
+          // A horizontal ScrollView grows to fill the free height; without this
+          // the category strip floats in a big empty gap under the tabs.
+          style={{ flexGrow: 0 }}
+          contentContainerStyle={{
+            flexDirection: 'row',
+            gap: 2,
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+          }}
+        >
+          <CategoryButton
+            label="Recent emoji"
+            selected={active === 'recent'}
+            onPress={() => onSelectCategory('recent')}
+            icon={<Clock size={18} color={iconColor} />}
+          />
+          {EMOJI_CATEGORIES.map((category) => {
+            const Icon = CATEGORY_ICONS[category.id];
+            return (
+              <CategoryButton
+                key={category.id}
+                label={`${category.label} emoji`}
+                selected={active === category.id}
+                onPress={() => onSelectCategory(category.id)}
+                icon={<Icon size={18} color={iconColor} />}
+              />
+            );
+          })}
+        </ScrollView>
+      )}
+      {list.length === 0 ? (
         <View className="h-[180px] items-center justify-center px-4">
           <Text className="text-center text-[13px] text-muted-foreground">
-            Tap an emoji below to keep it here.
+            {searching ? 'No emoji found.' : 'Tap an emoji below to keep it here.'}
           </Text>
         </View>
       ) : (
@@ -113,7 +137,7 @@ export function EmojiTab({
           className="min-h-0 flex-1"
           contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', padding: 8 }}
         >
-          {emoji.map((item) => (
+          {list.map((item) => (
             <Pressable
               key={item}
               accessibilityRole="button"

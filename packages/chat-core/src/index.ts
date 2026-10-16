@@ -9,6 +9,7 @@ export * from './messages';
 export * from './sender-color';
 export * from './text';
 export * from './emoji';
+export * from './emoji-names';
 export * from './links';
 export * from './light-markdown';
 export * from './markdown';
