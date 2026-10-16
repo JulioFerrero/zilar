@@ -506,6 +506,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
               - self-leave only on public topics; General can't be left;
               - no archive-on-drain for public topics.
             - **T-1750 round 4** (sent about 21:10 UTC): the round-1 sections now follow the membership rule; the `memberIds` and `addTopicMember` fixes; the S6 room JID.
+            - **T-1760 (S5, join and leave) is merged and held.** It's safe to deploy before T-1757.
+            - **Push plan:**
+              1. Once T-1755 merges: `lead push`, which deploys blocks plus T-1753, T-1754 and T-1760. Check `/health`.
+              2. Then merge T-1757 to main **and do not push main again until W9/W10 (the Join UI) merge.** S1, S2, S6 and the W tasks build on it.
             - **Hold T-1757 (S4b, the reads switch) unmerged** until S5 (join and leave) and W9/W10 (the Join preview) are ready.
               - Once it's live, new public topics hold only their creator, and nobody can join them without the Join UI.
               - Merge them together. T-1757's 0070 re-backfill covers the gap.
