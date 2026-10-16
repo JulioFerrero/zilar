@@ -34,7 +34,7 @@ a{color:#ededed;text-decoration:none}a:hover{color:#ffffff}
 .chev{flex-shrink:0}
 </style>
 </helmet>
-<div style="width: 390px; height: 900px; background: #0a0a0a; display: flex; flex-direction: column; overflow: hidden">
+<div style="width: 390px; height: 1060px; background: #0a0a0a; display: flex; flex-direction: column; overflow: hidden">
   <div style="height: 56px; flex-shrink: 0; display: flex; align-items: center; padding: 0 12px; margin-top: 28px">
     <button type="button" aria-label="Back" class="key-icon" style="width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></button>
   </div>
@@ -61,7 +61,7 @@ a{color:#ededed;text-decoration:none}a:hover{color:#ffffff}
     </a>
 
     <div style="display: flex; flex-direction: column; gap: 8px">
-      <span class="sec">Topics</span>
+      <span class="sec">Your topics</span>
       <nav aria-label="Topics" class="group">
         <a href="#general" class="row">
           <span class="tg" aria-hidden="true">#</span>
@@ -78,6 +78,7 @@ a{color:#ededed;text-decoration:none}a:hover{color:#ffffff}
         <a href="#design" class="row">
           <span class="tg" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#d4d4d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Private"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg></span>
           <span style="flex-grow: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0"><span>Design</span><span style="font-size: 13px; color: #8a8a8a">Julio, Marta · Claude</span></span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8a8a8a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Muted" style="flex-shrink: 0"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M23 9l-6 6M17 9l6 6"></path></svg>
           <span class="st" aria-hidden="true"><span class="cl"></span><span class="p1"></span><span class="p4"></span></span>
           <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#525252" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
         </a>
@@ -86,6 +87,26 @@ a{color:#ededed;text-decoration:none}a:hover{color:#ffffff}
           <span style="flex-grow: 1">New topic</span>
         </a>
       </nav>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span class="sec">Other topics</span>
+      <div class="group">
+        <div class="row">
+          <a href="PhoneJoin.dc.html" style="flex-grow: 1; min-width: 0; display: flex; align-items: center; gap: 12px">
+            <span class="tg" aria-hidden="true">#</span>
+            <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span>Marketing</span><span style="font-size: 13px; color: #8a8a8a">6 people · Claude</span></span>
+          </a>
+          <button type="button" aria-label="Join Marketing" style="box-sizing: border-box; height: 32px; padding: 0 14px; border-radius: 10px; border: 1px solid #ffffff; color: #0a0a0a; background: linear-gradient(180deg, #ffffff, #d9d9d9); box-shadow: 0 1px 0 rgba(255,255,255,.4) inset, 0 2px 6px rgba(0,0,0,.6); font: 500 14px 'Geist', sans-serif; cursor: pointer">Join</button>
+        </div>
+        <div class="row" style="border-bottom: 0">
+          <a href="PhoneJoin.dc.html" style="flex-grow: 1; min-width: 0; display: flex; align-items: center; gap: 12px">
+            <span class="tg" aria-hidden="true">#</span>
+            <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0"><span>Random</span><span style="font-size: 13px; color: #8a8a8a">3 people</span></span>
+          </a>
+          <button type="button" aria-label="Join Random" style="box-sizing: border-box; height: 32px; padding: 0 14px; border-radius: 10px; border: 1px solid #ffffff; color: #0a0a0a; background: linear-gradient(180deg, #ffffff, #d9d9d9); box-shadow: 0 1px 0 rgba(255,255,255,.4) inset, 0 2px 6px rgba(0,0,0,.6); font: 500 14px 'Geist', sans-serif; cursor: pointer">Join</button>
+        </div>
+      </div>
     </div>
 
     <nav aria-label="More" class="group">
@@ -108,7 +129,7 @@ a{color:#ededed;text-decoration:none}a:hover{color:#ffffff}
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1060}}'>
 class Component extends DCLogic {
 renderVals() {
 return {};
