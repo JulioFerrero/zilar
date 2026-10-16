@@ -4,7 +4,15 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { fallbackModel } from './fallback.js';
 import { goPause, isGoPaused, withoutPausedGoModel } from './go-pause.js';
-import { DEEPSEEK_FLASH, FREE_MUSE, GO_DEEPSEEK_FLASH, GO_MUSE, PAID_MUSE } from './models.js';
+import {
+  DEEPSEEK_FLASH,
+  FREE_DEEPSEEK_FLASH,
+  FREE_GLM_FLASH,
+  FREE_MUSE,
+  GO_DEEPSEEK_FLASH,
+  GO_MUSE,
+  PAID_MUSE,
+} from './models.js';
 import { resolveWorkerModel } from './model-schedule.js';
 
 const UNTIL = '2026-10-26';
@@ -42,23 +50,33 @@ describe('goPause', () => {
 });
 
 describe('while Go is paused', () => {
-  it('starts an auto worker on the metered DeepSeek API', () => {
+  it('still starts an auto worker on the free DeepSeek Flash (T-1718)', () => {
     const file = writeConfig(`{ "goPausedUntil": "${UNTIL}" }`);
     const goPaused = isGoPaused(BEFORE, file);
     expect(resolveWorkerModel('auto', BEFORE, goPaused)).toEqual({
-      model: DEEPSEEK_FLASH,
+      model: FREE_DEEPSEEK_FLASH,
       effortOverride: 'default',
     });
   });
 
   it('never falls back to a Go model', () => {
-    for (const model of [GO_DEEPSEEK_FLASH, DEEPSEEK_FLASH, GO_MUSE, FREE_MUSE, PAID_MUSE]) {
+    for (const model of [
+      FREE_DEEPSEEK_FLASH,
+      GO_DEEPSEEK_FLASH,
+      DEEPSEEK_FLASH,
+      FREE_MUSE,
+      FREE_GLM_FLASH,
+      GO_MUSE,
+      PAID_MUSE,
+    ]) {
       const next = fallbackModel(model, true);
       expect(next === undefined || !next.startsWith('opencode-go/')).toBe(true);
     }
+    expect(fallbackModel(FREE_DEEPSEEK_FLASH, true)).toBe(DEEPSEEK_FLASH);
     expect(fallbackModel(GO_DEEPSEEK_FLASH, true)).toBe(DEEPSEEK_FLASH);
     expect(fallbackModel(DEEPSEEK_FLASH, true)).toBe(PAID_MUSE);
-    expect(fallbackModel(FREE_MUSE, true)).toBe(PAID_MUSE);
+    expect(fallbackModel(FREE_MUSE, true)).toBe(FREE_GLM_FLASH);
+    expect(fallbackModel(FREE_GLM_FLASH, true)).toBe(PAID_MUSE);
   });
 
   it('moves a Go Muse pre-review or doctor to the paid Muse', () => {

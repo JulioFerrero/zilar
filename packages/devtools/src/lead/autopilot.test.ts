@@ -12,8 +12,8 @@ import { newTaskRecord } from './types.js';
 const TASK = 'T-9001';
 
 // A `model: auto` task whose front matter pins `effort: low`. Auto resolution
-// overrides that to `default` (Go), so any in-place switch must keep `default`,
-// never fall back to the raw `low` (T-1242 finding 1).
+// overrides that to `default` (the free listing needs it), so any in-place
+// switch must keep `default`, never fall back to the raw `low` (T-1242 finding 1).
 function taskFile(): string {
   return [
     '---',
@@ -72,7 +72,7 @@ function setup(): { deps: AutopilotDeps; client: FakeOpenCodeClient } {
 }
 
 describe('tickOnce worker fallback keeps the resolved variant (T-1242)', () => {
-  it('moves auto from Go to the DeepSeek API at variant default, not the raw effort', async () => {
+  it('moves a quota-hit auto worker from the Go listing to the DeepSeek API at variant default, not the raw effort', async () => {
     const { deps, client } = setup();
     await tickOnce(deps, { dryRun: false, now: Date.now() });
     expect(client.switched).toEqual([

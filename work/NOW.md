@@ -361,6 +361,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
           - T-1712 (`lead merge --hold` and `lead push` now exist);
         - **running:** T-1714 (the routine send: one message, later runs edit it, no card or mention) and T-1715 ("edited HH:MM" on web and phone);
         - **queued:** a routine's edit bumps the chat; the compact routine approval card and the message header; Settings › Routines.
+      - **About 09:55 UTC** (Julio: "dont stop working untill all the features and changes i ask are done", then ask him to test once):
+        - **held on local main, push about 10:00:** T-1714, T-1715, T-1716 and T-1717;
+        - **running:**
+          - T-1718 (free OpenCode models first; Julio approved);
+          - T-1719 (web Settings › Routines, plus `chatJid` and the shared row);
+          - T-1721 (the `routine` payload; a scheduled run's failure posts nothing);
+        - **specced:** T-1720 (the phone screen, after T-1719) and T-1722 (the header and the bump, after T-1721);
+        - **then:** the final push, a live check, ask about an APK (icon and phone changes), and one test list for Julio.
       - **Running:**
         - T-1692 (phone per-chat scroll memory, gap 7). Fix rounds:
           - 1: retry the restore until the content covers the spot;

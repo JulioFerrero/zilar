@@ -4,8 +4,9 @@ import { extractCounts, extractVerdict } from './autopilot/task-info.js';
 import { type OpenCodeClient } from './client.js';
 import type { FindingCounts } from './decide.js';
 import type { GitRunner } from './git.js';
-import { fallbackModel, FREE_MUSE, PAID_MUSE } from './fallback.js';
+import { fallbackModel, FREE_MUSE } from './fallback.js';
 import { isGoPaused, withoutPausedGoModel } from './go-pause.js';
+import { modelLabel } from './models.js';
 import { loadPrompt, loadRulesFile, renderPrompt } from './prompts.js';
 import type { SessionState } from './session.js';
 import { reviewModel } from './task-file.js';
@@ -201,16 +202,15 @@ export function decideDoctor(input: DecideDoctorInput): DoctorAction[] {
     actions.push({ kind: 'escalate', line });
   };
   if (input.mainHead === input.doctor?.head) {
-    // A quota-hit free doctor moves to the Go Muse, then the paid Muse, in
-    // place, like workers and pre-reviews (T-1362). Once there is nothing to
-    // fall back to, the idle checks below run the normal STALLED path.
+    // A quota-hit free doctor moves to the free GLM Flash, then the Go Muse,
+    // then the paid Muse, in place, like workers and pre-reviews (T-1718).
+    // Once there is nothing to fall back to, the idle checks below run the
+    // normal STALLED path.
     if (input.quotaError) {
       const fallback = fallbackModel(input.doctor.model ?? FREE_MUSE, input.goPaused);
       if (fallback !== undefined) {
         actions.push({ kind: 'fallback-doctor', model: fallback });
-        escalate(
-          `LEAD: FALLBACK doctor continues on ${fallback === PAID_MUSE ? 'paid Muse' : 'Go Muse'}`,
-        );
+        escalate(`LEAD: FALLBACK doctor continues on ${modelLabel(fallback)}`);
         return actions;
       }
     }
