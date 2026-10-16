@@ -116,9 +116,23 @@ export function ChatHeader({
     // sticks to the top and reads about 11 dp too high (T-1308).
     <View className="ml-2.5 min-w-0 flex-1 justify-center">
       {isTopic && topicGroupName !== undefined && topicGroupName !== '' ? (
-        <Text numberOfLines={1} className="shrink text-[11px] leading-4 text-subtle-foreground">
-          {topicGroupName}
-        </Text>
+        groupTarget !== undefined ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Open group ${topicGroupName}`}
+            onPress={() => onOpenGroup?.(groupTarget)}
+            hitSlop={{ top: 6, bottom: 4 }}
+            className="self-start"
+          >
+            <Text numberOfLines={1} className="shrink text-[11px] leading-4 text-subtle-foreground">
+              {topicGroupName}
+            </Text>
+          </Pressable>
+        ) : (
+          <Text numberOfLines={1} className="shrink text-[11px] leading-4 text-subtle-foreground">
+            {topicGroupName}
+          </Text>
+        )
       ) : null}
       <View className="flex-row items-center gap-1.5">
         <Text
