@@ -14,6 +14,9 @@ export interface GroupTurnAccessInput {
   actionsList: ReadonlyArray<{ name: string; description: string; argsExample?: string }>;
   canDelegate: boolean;
   handoffTargets: HandoffTarget[];
+  /** SEC-13b: the AI owner's bare JID, so a turn they trigger may use the
+   * AI's computer even when they are only a plain room member. */
+  aiOwnerBare: string;
 }
 
 export interface GroupTurnAccess {
@@ -21,12 +24,13 @@ export interface GroupTurnAccess {
   triggerBare: string;
   allowedForAction: boolean;
   allowActions: boolean;
+  allowDesk: boolean;
   askPeople: boolean;
   delegateTargets: { id: string; name: string }[] | undefined;
 }
 
 export function groupTurnAccess(input: GroupTurnAccessInput): GroupTurnAccess {
-  const { trigger, gate, actionsList, canDelegate, handoffTargets } = input;
+  const { trigger, gate, actionsList, canDelegate, handoffTargets, aiOwnerBare } = input;
   // T-0098/T-0444: decide per turn, from the database, whether the
   // trigger's sender is allowed to ask the AI for an action. The role
   // lives on the `roomGate` we already loaded; a plain `member`, an AI
@@ -42,6 +46,11 @@ export function groupTurnAccess(input: GroupTurnAccessInput): GroupTurnAccess {
   const triggerRole = gate.memberRolesByJid.get(triggerBare);
   const allowedForAction = scheduledTrigger || triggerRole === 'owner' || triggerRole === 'admin';
   const allowActions = allowedForAction && actionsList.length > 0;
+  // SEC-13b (Julio chose (a), 2026-10-16): the AI's computer is used only
+  // when the AI's owner, or a room owner or admin, triggers the turn. A
+  // scheduled routine counts too, because its creator was checked when the
+  // routine was approved (T-1646/T-1655), the same rule actions use.
+  const allowDesk = allowedForAction || triggerBare === aiOwnerBare;
   // T-1576: `ask_people` is offered only when a person triggered the turn. An
   // AI-to-AI handoff, a `delegate`-queued trigger or a scheduled routine is
   // not the people in the room, so those turns never get the question tool.
@@ -58,6 +67,7 @@ export function groupTurnAccess(input: GroupTurnAccessInput): GroupTurnAccess {
     triggerBare,
     allowedForAction,
     allowActions,
+    allowDesk,
     askPeople,
     delegateTargets,
   };

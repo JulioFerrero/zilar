@@ -311,6 +311,17 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
           - T-1704 (a neutral `routine.schedule` example plus the schedule rules in its description);
           - T-1705 (the phone app icon from the flat favicon mark; Julio's request; ships with the next native build).
         - **next:** the SEC-13b gate (desk tools only for an owner, admin, AI owner or scheduled trigger).
+      - **Prod outage, 07:54–08:20 UTC:**
+        - **cause:** T-1704's `routine.schedule` description went over the registry's 200-character limit, so the server threw `AdapterRegistryError` at start and the restart loop answered "No available server";
+        - **fix:** reverted on main (`f57785344`, Julio OK'd it), healthy again from 08:20;
+        - **follow-ups:**
+          - T-1708 (the gate always runs `actions/args-example.test.ts` for server changes);
+          - T-1707 redoes the text within 200 characters.
+        - **Open for Julio:** Coolify replaced the healthy container with the crashing one. A deploy that waits on the health check would have kept the old one, but that's a Coolify setting, so it's his call.
+      - **Julio's next asks:**
+        - routines every **1 minute** with a cap of **1440 a day**: T-1707, which also stops a routine from running twice at once;
+        - the app icon: T-1705, approved.
+      - **Merging now:** T-1708, T-1706 (SEC-13b) and T-1705 (icon).
       - **Running:**
         - T-1692 (phone per-chat scroll memory, gap 7). Fix rounds:
           - 1: retry the restore until the content covers the spot;

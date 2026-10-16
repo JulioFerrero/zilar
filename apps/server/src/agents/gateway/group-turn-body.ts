@@ -29,8 +29,9 @@ import {
   type ScheduledTurnOutcome,
 } from './contracts';
 import type { RoomGateState } from './db';
-import { resolveTurnDesk, TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER } from './desk-exec';
+import { resolveTurnDesk, TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER, type TurnDesk } from './desk-exec';
 import { groupTurnAccess, makeIsStillAllowed } from './group-turn-access';
+import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import { resolveHandoffRoster } from './group-turn-roster';
 import { loadModelTarget } from './model-target';
 import { clearTurnAbort, registerTurnAbort } from './stop';
@@ -194,10 +195,21 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     });
 
     const actionsList = deps.actions?.listActions() ?? [];
-    const { scheduledTrigger, triggerBare, allowActions, askPeople, delegateTargets } =
-      groupTurnAccess({ trigger, gate, actionsList, canDelegate, handoffTargets });
+    const { scheduledTrigger, triggerBare, allowActions, allowDesk, askPeople, delegateTargets } =
+      groupTurnAccess({
+        trigger,
+        gate,
+        actionsList,
+        canDelegate,
+        handoffTargets,
+        aiOwnerBare: normBareJid(jidFor(localpartFor(ai.owner), deps.xmpp.domain)),
+      });
     // T-1423: resolve the AI's computer for this turn (cloud or its runner).
-    const turnDesk = yield* Effect.promise(() => resolveTurnDesk(deps, ai));
+    // SEC-13b: a plain member's or another AI's mention must not use the
+    // owner's computer, so the desk is not even resolved for those turns.
+    const turnDesk: TurnDesk = allowDesk
+      ? yield* Effect.promise(() => resolveTurnDesk(deps, ai))
+      : { waiting: false };
     const deskEnabled = turnDesk.client !== undefined;
     const groupTools = buildGroupTools(allowActions ? actionsList : [], delegateTargets, {
       // T-1409: the desk tools ride the same flag as their executor.
