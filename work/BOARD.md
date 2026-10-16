@@ -1714,3 +1714,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1701](T-1701-split-contact-requests.md) | Split the request decisions out of contact-requests/service | 2026-10-16 |
 | [T-1703](T-1703-split-sticker-storage.md) | Split the sticker view mappers out of stickers/storage.ts | 2026-10-16 |
 | [T-1702](T-1702-split-routine-support.md) | Split the bulk routine deletes out of routines/support.ts | 2026-10-16 |
+| [T-1704](T-1704-routine-schedule-example.md) | routine.schedule: neutral example and the hourly minimum | 2026-10-16 |

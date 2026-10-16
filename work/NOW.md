@@ -299,7 +299,18 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
         - T-1677: New message lists the contacts, and "mar" filters to Marta, Marco and Marketing AI;
         - **still unchecked on a device:** T-1672 (Marta's shared media) and T-1674 (long hold on a sticker's quote).
       - **The emulator overloaded the Mac again:** about 30 minutes of stalls, and `lead merge` hit git timeouts after the squash for T-1695 and T-1700 (cleanup finished by hand). Main and origin are in sync.
-      - **Running:** T-1702 (`routines/support.ts`: the bulk deletes) and T-1703 (`stickers/storage.ts`: the view mappers).
+      - **Merged:** T-1702 (`routines/support.ts` 380 → 324) and T-1703 (`stickers/storage.ts` 384 → 333).
+      - **Julio is up (09:30 Madrid):**
+        - **his answers:**
+          - 2 workers, web and server only, no emulator;
+          - **SEC-13b = (a)**: the AI's computer only when the AI's owner or a room owner or admin triggers the turn; the per-AI setting comes later.
+        - **his test:** he asked @Deepseek for prices "every 5min". The AI proposed the tool's example word for word ("Morning prices", daily 08:00 Europe/Madrid). Routines are hourly at most (`MIN_INTERVAL_MINUTES = 60`).
+          - The card's "Could not load the decision state" happened because my T-1702 deploy restarted the server at 07:37:17, about 30 s after the approval was saved (07:36:48, pending).
+          - **Lesson:** no server merges while Julio tests an AI turn.
+        - **running:**
+          - T-1704 (a neutral `routine.schedule` example plus the schedule rules in its description);
+          - T-1705 (the phone app icon from the flat favicon mark; Julio's request; ships with the next native build).
+        - **next:** the SEC-13b gate (desk tools only for an owner, admin, AI owner or scheduled trigger).
       - **Running:**
         - T-1692 (phone per-chat scroll memory, gap 7). Fix rounds:
           - 1: retry the restore until the content covers the spot;
