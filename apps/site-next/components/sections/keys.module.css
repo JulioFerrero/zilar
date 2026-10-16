@@ -1,0 +1,59 @@
+.keys {
+  padding-block: 120px 140px;
+  overflow: hidden;
+}
+
+.band {
+  white-space: nowrap;
+  font-family: var(--display);
+  font-variation-settings: 'wdth' 125;
+  font-weight: 800;
+  font-size: clamp(64px, 11vw, 190px);
+  letter-spacing: -0.04em;
+  line-height: 1;
+  will-change: transform;
+}
+
+.band span {
+  display: inline-block;
+  padding-right: 0.45em;
+  color: transparent;
+  -webkit-text-stroke: 1.5px rgba(237, 237, 237, 0.55);
+}
+
+.band span.on {
+  color: var(--fg);
+  -webkit-text-stroke: 0;
+}
+
+.band2 span {
+  -webkit-text-stroke-color: rgba(240, 180, 69, 0.5);
+}
+
+.band2 span.on {
+  color: var(--gold);
+}
+
+.copy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 32px;
+  margin-top: 56px;
+}
+
+.copy h2 {
+  font-size: clamp(34px, 4.4vw, 64px);
+}
+
+.copy p {
+  color: var(--muted);
+  margin: 0;
+  max-width: 30em;
+  align-self: end;
+}
+
+@media (max-width: 860px) {
+  .copy {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
