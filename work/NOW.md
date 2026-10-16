@@ -374,6 +374,13 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
         - **the autopilot was restarted** for T-1718's free-first chain. So far the free listings (DeepSeek and GLM) fail at once and fall through to the API or paid Muse;
         - **running:** T-1720 (the phone Routines screen) and T-1721 (the routine payload);
         - **next:** T-1722.
+      - **10:50 UTC:**
+        - **held on local main:** T-1721, T-1720 and T-1723 (the routine approval card as drawn);
+        - **T-1722** is in its second pre-review (on the paid Muse). The lead's fix round 2 (`fix-T-1722-2.md`) is ready: a routine edit in the open chat must not add unread. It goes out with any new findings once the packet arrives;
+        - **then:** one push, a live check, the APK question, and the test list.
+      - **11:00 UTC:**
+        - **live `b3a9965bf`:** T-1721, T-1720 and T-1723; healthy, 0 errors; `/api/routines` answers 401 signed out. Prod has 0 routines, so Julio's test exercises the path;
+        - **T-1722:** the lead's fix round 2 was sent (open chat, no unread). It's the last task before the test list.
       - **Running:**
         - T-1692 (phone per-chat scroll memory, gap 7). Fix rounds:
           - 1: retry the restore until the content covers the spot;
