@@ -752,7 +752,7 @@ describe('a scheduled item rides the room queue (T-1646)', () => {
     ).toBe(true);
   });
 
-  it('offers no request_action and no ask_people, even for an owner trigger', async () => {
+  it('offers request_action (unattended) and still no ask_people for a scheduled trigger', async () => {
     const { aiId, ownerId, ownerJid, aiJid } = await seedGatewayAi(context);
     const { groupId, generalTopicId } = await seedGroup(
       context,
@@ -777,7 +777,10 @@ describe('a scheduled item rides the room queue (T-1646)', () => {
       tools?: Array<{ function: { name: string } }>;
     };
     const names = (body.tools ?? []).map((tool) => tool.function.name);
-    expect(names).not.toContain('request_action');
+    // T-1655: a scheduled trigger gets `request_action` again (the executor
+    // marks the request unattended, so a tier-2 action without a standing rule
+    // is refused instead of parking a card), but still no `ask_people`.
+    expect(names).toContain('request_action');
     expect(names).not.toContain('ask_people');
   });
 

@@ -59,6 +59,7 @@ export interface DmTurnContext {
     chatKey: string,
     context?: RequestActionContext,
     desk?: DeskTurnContext,
+    options?: { unattended?: boolean },
   ) => ExecuteToolCall;
   withToolGuide: (messages: ChatCompletionMessage[]) => ChatCompletionMessage[];
   draftHub: DraftHub;
@@ -275,10 +276,10 @@ export function createDmTurn(ctx: DmTurnContext) {
       // T-0106: the guide rides as a trailing user turn only when tools are
       // enabled and tool/routine adapters are registered (a non-empty
       // action list, so `request_action` is actually offered). Otherwise
-      // today's messages, byte for byte. T-1647: a scheduled run offers no
-      // `request_action`, so it parks no approval card and gets no guide.
-      const dmActionsList =
-        trigger.scheduled === undefined ? (deps.actions?.listActions() ?? []) : [];
+      // today's messages, byte for byte. T-1655: a scheduled run offers
+      // `request_action` again (T-1647 had turned it off); the unattended
+      // flag the executor passes keeps it from parking a card.
+      const dmActionsList = deps.actions?.listActions() ?? [];
       const dmMessages =
         deps.toolsEnabled === true && dmActionsList.length > 0 ? withToolGuide(messages) : messages;
 
@@ -301,8 +302,10 @@ export function createDmTurn(ctx: DmTurnContext) {
         chatKey: dmChatKey,
         drafts: turnDrafts,
         log: turnLog,
-        // T-1647: a routine's synthetic trigger. The action tools are off, so
-        // an unattended run parks no approval card; the desk tools stay on.
+        // T-1647/T-1655: a routine's synthetic trigger. The action tools are
+        // offered again, but the run is marked unattended so a tier-2 request
+        // without a standing rule is refused instead of parking a card; the
+        // desk tools stay on.
         scheduled: trigger.scheduled !== undefined,
       });
       turnDrafts.end(outcome.kind === 'replied' && sessionIsLive(session) ? 'sent' : 'failed');

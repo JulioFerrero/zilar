@@ -228,7 +228,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - T-1650 (the backup doc wording; its test joins CI);
       - T-1651 ("runs a prompt" in the routines lists, web and phone);
       - T-1652 (GNU-first `stat`: CI's Deploy checks job failed on Linux, and `zilar doctor` on real Linux servers never read the backup age; fixed).
-    - **Approved, merge held:** T-1649 (`routine.schedule` accepts a prompt; a tier-2 card with the prompt text). It merges after T-1647/T-1648 wire the runner.
+    - **✅ Scheduled AI jobs are complete (merged ~03:40 local):**
+      - T-1647 (the gateway runs a routine's turn on the AI's own queue);
+      - T-1648 (the scheduler calls it);
+      - T-1649 (`routine.schedule` accepts `{ title, schedule, prompt }`, with a tier-2 card that shows the prompt and no "always allow").
+      - **Julio's test, in "ai test › General" or his DM with @Deepseek:** write "@Deepseek every day at 08:00 post the BTC, gold and S&P 500 prices with sources". Approve the card. The routine then shows "runs a prompt" in the AI's Routines list, and at 08:00 (his zone) the AI runs it with its computer and posts the answer.
+      - **Limits:** 24 prompt runs per AI per UTC day; three failures pause it with a notice; Stop is not a failure.
+      - **Gotcha:** every deploy restarts the desk agent and ends a running computer turn, so the lead doesn't merge around 08:00.
+      - **T-1655 (running):** scheduled runs may also use the no-approval actions (`web.price` …), so AIs without a computer can do it too; tier-2 actions are refused with "needs approval".
     - **❓ T-1653 (merged plan, `docs/plan/git-credentials.md`):** GitHub access for AI computers. Recommended: a git endpoint on the egress proxy that injects a short-lived GitHub App token for **one repo per AI** (the owner sets it) and refuses pushes outside `agent/<ai>/*`. No CA, and no token in the jail. Six tasks. **Waiting for Julio's answers to §6 Q1-Q6** (repo per AI? endpoint option c? one global App install for v1? the proxy enforces the branch rule? public clones keep working? one-hour token OK?).
     - **Main is green at T-1645:** server tsc clean, full server suite 121 files / 870 tests passed (the lead ran it at 02:45).
     - **In group rooms, actions (`web.*`, routines) are offered only when an owner or admin triggers the turn** (`group-turn-body.ts:199`), so @claude_test can't test `web.price` or routines. **Julio must test the morning-prices routine himself.**

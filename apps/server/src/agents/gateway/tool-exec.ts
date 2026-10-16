@@ -93,6 +93,7 @@ export function createToolExec(ctx: ToolExecContext) {
     chatKey: string,
     context?: RequestActionContext,
     desk?: DeskTurnContext,
+    options?: { unattended?: boolean },
   ): ExecuteToolCall {
     const aiId = session.aiId;
     // T-1409: one desk runner per turn, created only when the turn offered the
@@ -210,12 +211,16 @@ export function createToolExec(ctx: ToolExecContext) {
         return { content: 'ok', notice: formatPersonaUpdatedLine(call.summary) };
       }
       if (call.tool === REQUEST_ACTION_TOOL) {
-        if (context !== undefined) {
-          // The triggering user's role may have changed during a long turn
-          // (T-0098): re-check the database before calling the action
-          // gateway, and short-circuit to `denied: not allowed` when they
-          // are no longer an owner or admin. The gateway is never invoked
-          // in that case, so no audit row is written and no card appears.
+        const unattended = options?.unattended === true;
+        // The triggering user's role may have changed during a long turn
+        // (T-0098): re-check the database before calling the action
+        // gateway, and short-circuit to `denied: not allowed` when they
+        // are no longer an owner or admin. The gateway is never invoked
+        // in that case, so no audit row is written and no card appears.
+        // T-1655: a scheduled (unattended) run has no live person whose
+        // role could change mid-turn — the routine's creator was checked
+        // when it was approved — so the re-check is skipped.
+        if (context !== undefined && !unattended) {
           const stillAllowed = yield* Effect.promise(() => context.isStillAllowed());
           if (!stillAllowed) {
             logger.info(
@@ -231,6 +236,7 @@ export function createToolExec(ctx: ToolExecContext) {
           context === undefined
             ? undefined
             : { groupId: context.groupId, topicId: context.topicId },
+          unattended,
         );
       }
       const outcome = yield* Effect.promise(() => revertPersonaFromChat(deps.db, aiId));

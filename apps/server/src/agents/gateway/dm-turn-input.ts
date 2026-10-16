@@ -28,9 +28,11 @@ export interface DmTurnInput {
   chatKey: string;
   drafts: ReturnType<DraftHub['publishTurn']>;
   log: TurnLog;
-  /** T-1647: a routine's synthetic trigger. The action tools (`request_action`)
-   * are off, so an unattended run parks no approval card; the computer/desk
-   * tools are unchanged. */
+  /** T-1647/T-1655: a routine's synthetic trigger. The action tools
+   * (`request_action`) are offered again, but the call is marked unattended,
+   * so tier 0/1 run and a tier-2 request without a standing rule is refused
+   * with `needs_approval` instead of parking a card nobody will see; the
+   * computer/desk tools are unchanged. */
   scheduled?: boolean;
 }
 
@@ -78,8 +80,15 @@ export function runDmTurnInput(input: DmTurnInput): Effect.Effect<DmTurnOutcome>
           deskEnabled
             ? { ownerUserId: ai.owner, client: turnDesk.client, signal: dmAbort.signal }
             : undefined,
+          // T-1655: a routine's synthetic trigger is unattended, so the
+          // action gateway runs tier 0/1 and refuses a tier-2 request with
+          // `needs_approval` instead of parking a card.
+          { unattended: scheduled === true },
         ),
-        tools: buildTools(scheduled === true ? [] : (deps.actions?.listActions() ?? []), {
+        // T-1655: the full action list is offered again (T-1647 had turned it
+        // off for a scheduled run); `unattended` above is what keeps a
+        // scheduled run from parking a card.
+        tools: buildTools(deps.actions?.listActions() ?? [], {
           desk: deskEnabled,
         }),
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),

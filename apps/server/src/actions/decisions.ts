@@ -79,6 +79,16 @@ export async function runRequest(
     }
   }
 
+  // T-1655: a scheduled run has no person to approve a card, so a tier-2
+  // request that reached this point (no matching standing rule) is refused
+  // with `needs_approval` instead of parking a card nobody will see. Tier 0/1
+  // and the standing-rule auto-approval above returned earlier and are
+  // unchanged; like every policy denial this writes no approval row and
+  // announces nothing.
+  if (params.unattended === true) {
+    return { status: 'denied', reason: 'needs_approval' };
+  }
+
   return runApprovalPath(deps, params, adapter, at);
 }
 

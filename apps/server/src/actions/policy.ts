@@ -4,7 +4,14 @@ import { decodeActionArgs, type ActionAdapter } from './registry';
 // audit log and any future client of `request` see; the strings are the
 // values that end up in audit `detail` and `reason`.
 export type PolicyDenialReason =
-  'unknown_action' | 'invalid_args' | 'ai_not_active' | 'ai_not_in_group';
+  | 'unknown_action'
+  | 'invalid_args'
+  | 'ai_not_active'
+  | 'ai_not_in_group'
+  // T-1655: the policy never returns this; the gateway answers it for an
+  // unattended (scheduled) tier-2 request that has no standing rule, so the
+  // run refuses clearly instead of parking a card nobody will see.
+  | 'needs_approval';
 
 export type PolicyVerdict =
   | { kind: 'allow'; tier: 0 | 1 }

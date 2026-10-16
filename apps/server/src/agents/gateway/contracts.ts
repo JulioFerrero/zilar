@@ -342,6 +342,8 @@ export function denialReasonForModel(reason: DeniedReason): string {
       return 'the AI is not active';
     case 'ai_not_in_group':
       return 'the AI is not in that topic';
+    case 'needs_approval':
+      return 'this action needs a person to approve it, which a scheduled run cannot ask for; do the job another way or say in your answer what needs approval';
   }
 }
 

@@ -84,6 +84,7 @@ export interface GroupTurnContext {
     chatKey: string,
     context?: RequestActionContext,
     desk?: DeskTurnContext,
+    options?: { unattended?: boolean },
   ) => ExecuteToolCall;
   withToolGuide: (messages: ChatCompletionMessage[]) => ChatCompletionMessage[];
   nowMs: () => number;

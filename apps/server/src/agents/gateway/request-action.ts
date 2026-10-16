@@ -32,6 +32,7 @@ export function createRequestActionRunner(
     session: AiSession,
     call: RequestActionCall,
     chat?: RequestActionChat,
+    unattended?: boolean,
   ): Effect.fn.Return<ToolExecution> {
     if (actions === undefined) {
       // No action gateway wired: the tool was never offered, so this call
@@ -45,6 +46,10 @@ export function createRequestActionRunner(
         action: call.action,
         args: call.args,
         requestedBy: session.aiJid,
+        // T-1655: a scheduled (unattended) run. The gateway runs tier 0/1 as
+        // usual and refuses a tier-2 request without a standing rule with
+        // `needs_approval` instead of parking a card.
+        ...(unattended === true ? { unattended: true } : {}),
       }),
     ).pipe(
       Effect.catchDefect((error) =>
@@ -90,7 +95,9 @@ export function createRequestActionRunner(
     session: AiSession,
     call: RequestActionCall,
     chat?: RequestActionChat,
-  ): Promise<ToolExecution> => Effect.runPromise(runRequestActionEffect(session, call, chat));
+    unattended?: boolean,
+  ): Promise<ToolExecution> =>
+    Effect.runPromise(runRequestActionEffect(session, call, chat, unattended));
 
   return { runRequestAction, runRequestActionEffect };
 }

@@ -74,6 +74,11 @@ export interface RequestParams {
   action: string;
   args: unknown;
   requestedBy: string;
+  /** T-1655: a scheduled run, where no person is watching. Tier 0/1 and
+   *  standing-rule auto-approvals are unchanged; a tier-2 request without a
+   *  matching standing rule is denied `needs_approval` instead of parking a
+   *  card nobody will see. */
+  unattended?: boolean;
 }
 
 // Re-export the policy reason enum so callers can branch without depending

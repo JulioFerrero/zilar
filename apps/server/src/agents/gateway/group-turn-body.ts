@@ -198,13 +198,14 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     // sender or an unknown occupant does not get `request_action`. Every
     // room turn still carries the three memory tools (T-0444), so the tool
     // loop always runs.
-    // T-1646: an unattended scheduled routine gets none of the interactive
-    // tools — no `request_action`, no `ask_people`, no delegation (plan §2.5).
+    // T-1646/T-1655: a scheduled routine's creator was checked when the
+    // routine was approved, so a scheduled trigger is allowed to ask for an
+    // action. The run is marked unattended, so `request_action` stays on for
+    // tier 0/1 while `ask_people` and delegation stay off (plan §2.5).
     const scheduledTrigger = trigger.scheduled !== undefined;
     const triggerBare = normBareJid(trigger.fromJid);
     const triggerRole = gate.memberRolesByJid.get(triggerBare);
-    const allowedForAction =
-      !scheduledTrigger && (triggerRole === 'owner' || triggerRole === 'admin');
+    const allowedForAction = scheduledTrigger || triggerRole === 'owner' || triggerRole === 'admin';
     const actionsList = deps.actions?.listActions() ?? [];
     const allowActions = allowedForAction && actionsList.length > 0;
     // T-1576: `ask_people` is offered only when a person triggered the turn. An
@@ -301,6 +302,10 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
           deskEnabled
             ? { ownerUserId: ai.owner, client: turnDesk.client, signal: groupAbort.signal }
             : undefined,
+          // T-1655: a scheduled trigger's turn is unattended, so the action
+          // gateway runs tier 0/1 and refuses a tier-2 request without a
+          // standing rule with `needs_approval` instead of parking a card.
+          { unattended: scheduledTrigger },
         ),
         ...turnLimits(deps.toolMaxRounds, deskEnabled),
         ...(handoffTargets.length === 0 ? {} : { handoffTargets }),
