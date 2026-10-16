@@ -19,7 +19,7 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, View } from 'react-native';
 
 import { RequireAuth } from '@/auth/RequireAuth';
 import { useAuthStore } from '@/auth/session';
@@ -35,6 +35,7 @@ import { interruptFiber } from '@/lib/effect/timers';
 import type { MyProfile } from '@/lib/profile-api';
 
 import { useContactsApi } from '@/components/contacts/use-contacts-api';
+import { AppVersionRow } from '@/components/settings/app-version-row';
 import { settingsHubGroups, type SettingsHubGroup } from '@/components/settings/hub';
 import { SettingsScreenShell } from '@/components/settings/screen-shell';
 import { useProfileApi } from '@/components/settings/use-profile-api';
@@ -221,6 +222,14 @@ function SettingsHub() {
             onOpen={(href) => router.push(href)}
           />
         ))}
+        {Platform.OS === 'android' ? (
+          <View className="gap-2">
+            <SectionLabel>This app</SectionLabel>
+            <Card>
+              <AppVersionRow />
+            </Card>
+          </View>
+        ) : null}
         <Card>
           <ListRow
             icon={

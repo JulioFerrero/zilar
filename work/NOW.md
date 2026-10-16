@@ -392,6 +392,11 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
         - **T-1724:** the lead rewrote the spec to the round-2 flow, and its re-review is running;
         - **Julio's chat test:** JULITO is a plain member of "ai test", so the turn had no `request_action` (only two `recall` calls, prices from memory, "no scheduler tool"). Julio chose "Members can ask": approvals stay with owners, and the computer stays owner/admin;
         - **T-1727 is running:** members can ask, no card for memory-only turns, no repeated title and first step, and the live-facts sentence in the prompt.
+      - **15:00 UTC:**
+        - **live `1cbd8e0e8`:** T-1727, T-1724 and T-1726, plus the updater boards; healthy, 0 errors. Julio was asked to retry the prices routine as JULITO;
+        - **T-1725 (the updater UI) is running;**
+        - **then:** ask about the v0.2.4 tag (the updater, the icon at 390 px, T-1720/T-1722/T-1723 on the phone);
+        - **follow-up:** the stale T-0098 comments (`agents/gateway/db.ts:314-316`, `agents/group-turn.ts:60-61`, `agents/tools/definitions.ts:286`).
         - **T-1724 is running:** the core with no UI (GitHub latest release, version compare, the arm64 download, the installer intent, `REQUEST_INSTALL_PACKAGES`, the `useAppUpdate()` hook);
         - **the canvas** for the prompt and the Settings "This app" row: https://claude.ai/artifact/AMYshRxWEz3Ur5F9wAbNvQ. It waits for Julio's OK, then the UI spec;
         - **open choice:** quiet download on Wi-Fi (this needs `expo-network`) or always ask first.

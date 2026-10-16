@@ -58,9 +58,9 @@ export type AppUpdateStatus =
   | { status: 'upToDate' }
   | { status: 'available'; version: string; sizeBytes: number }
   | { status: 'ready'; version: string; sizeBytes: number; fileUri: string }
-  | { status: 'downloading'; version: string; progress: number; quiet: boolean }
-  | { status: 'installing'; version: string }
-  | { status: 'failed'; message: string };
+  | { status: 'downloading'; version: string; progress: number; quiet: boolean; sizeBytes: number }
+  | { status: 'installing'; version: string; sizeBytes: number }
+  | { status: 'failed'; message: string; source: 'check' | 'download' | 'install' };
 
 /** The status the UI reads, plus the shared Settings-row timestamp. */
 export type AppUpdateState = AppUpdateStatus & { lastCheckedAt: string | null };
@@ -69,6 +69,8 @@ export interface AppUpdate {
   state: AppUpdateState;
   /** The installed version name, or `null` when the build has none. */
   installed: string | null;
+  /** True only where the updater runs: a real Android release build. */
+  enabled: boolean;
   /** Checks now, ignoring the 6-hour throttle and the snooze. */
   checkNow: () => void;
   /** Downloads the offered version on the user's command (mobile data). */
@@ -166,14 +168,26 @@ async function pruneDownloaded(currentVersion: string | null): Promise<void> {
   }
 }
 
-async function runDownload(quiet: boolean): Promise<void> {
+async function runDownload(quiet: boolean, fallback: AppUpdateStatus | null = null): Promise<void> {
   const release = latest;
   if (release === null) {
     return;
   }
-  setStatus({ status: 'downloading', version: release.version, progress: 0, quiet });
+  setStatus({
+    status: 'downloading',
+    version: release.version,
+    progress: 0,
+    quiet,
+    sizeBytes: release.sizeBytes,
+  });
   const download = downloadApk(release.apkUrl, (progress) => {
-    setStatus({ status: 'downloading', version: release.version, progress, quiet });
+    setStatus({
+      status: 'downloading',
+      version: release.version,
+      progress,
+      quiet,
+      sizeBytes: release.sizeBytes,
+    });
   });
   cancelDownload = download.cancel;
   let fileUri: string | null;
@@ -181,15 +195,20 @@ async function runDownload(quiet: boolean): Promise<void> {
     fileUri = await download.result;
   } catch {
     cancelDownload = null;
-    // A quiet download that fails is invisible; the next check retries it.
-    setStatus(quiet ? { status: 'idle' } : { status: 'failed', message: DOWNLOAD_FAILED_MESSAGE });
+    // A quiet download that fails is invisible; restore the state the check
+    // replaced, so an offer the user had not dismissed survives the retry.
+    setStatus(
+      quiet
+        ? (fallback ?? { status: 'idle' })
+        : { status: 'failed', message: DOWNLOAD_FAILED_MESSAGE, source: 'download' },
+    );
     return;
   }
   cancelDownload = null;
   if (fileUri === null) {
     setStatus(
       quiet
-        ? { status: 'idle' }
+        ? (fallback ?? { status: 'idle' })
         : { status: 'available', version: release.version, sizeBytes: release.sizeBytes },
     );
     return;
@@ -208,6 +227,9 @@ async function runCheck(auto: boolean): Promise<void> {
     return;
   }
   inFlight = true;
+  // The state to fall back to when an automatic check fails: a background
+  // failure must never raise the failure prompt, so it stays silent.
+  let previous: AppUpdateStatus = current;
   try {
     const stored = await readLastCheck();
     if (stored !== null) {
@@ -216,6 +238,7 @@ async function runCheck(auto: boolean): Promise<void> {
     if (auto && withinThrottle(stored)) {
       return;
     }
+    previous = current;
     setStatus({ status: 'checking' });
     const release = await checkLatest();
     const at = new Date().toISOString();
@@ -245,14 +268,19 @@ async function runCheck(auto: boolean): Promise<void> {
       });
       return;
     }
-    // Wi-Fi/Ethernet: download quietly; anything else asks first.
+    // Wi-Fi/Ethernet: download quietly; anything else asks first. A quiet
+    // download that fails restores the pre-check state passed as the fallback.
     if (await isUnmeteredConnection()) {
-      await runDownload(true);
+      await runDownload(true, previous);
       return;
     }
     setStatus({ status: 'available', version: release.version, sizeBytes: release.sizeBytes });
   } catch {
-    setStatus({ status: 'failed', message: CHECK_FAILED_MESSAGE });
+    // An automatic check that fails goes back to where it was, keeping
+    // `lastCheckedAt`; only a check the user asked for reports a failure.
+    setStatus(
+      auto ? previous : { status: 'failed', message: CHECK_FAILED_MESSAGE, source: 'check' },
+    );
   } finally {
     inFlight = false;
   }
@@ -279,10 +307,10 @@ function install(): void {
     return;
   }
   const { version, sizeBytes, fileUri } = current;
-  setStatus({ status: 'installing', version });
+  setStatus({ status: 'installing', version, sizeBytes });
   void installApk(fileUri).then(
     () => setStatus({ status: 'ready', version, sizeBytes, fileUri }),
-    () => setStatus({ status: 'failed', message: INSTALL_FAILED_MESSAGE }),
+    () => setStatus({ status: 'failed', message: INSTALL_FAILED_MESSAGE, source: 'install' }),
   );
 }
 
@@ -325,5 +353,14 @@ export function startAppUpdateChecks(): void {
 /** The one updater state the root dialog and the Settings row both read. */
 export function useAppUpdate(): AppUpdate {
   const state = useSyncExternalStore(subscribe, getSnapshot);
-  return { state, installed: installedVersion(), checkNow, download, install, cancel, later };
+  return {
+    state,
+    installed: installedVersion(),
+    enabled: updateEnabled(),
+    checkNow,
+    download,
+    install,
+    cancel,
+    later,
+  };
 }

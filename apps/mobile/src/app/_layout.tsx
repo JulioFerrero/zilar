@@ -25,7 +25,9 @@ import { Effect } from 'effect';
 
 import { useAuthStore } from '@/auth/session';
 import { ClientVersionBanner } from '@/components/client-version-banner';
+import { UpdateDialog } from '@/components/update/update-dialog';
 import { mobileRuntime } from '@/lib/effect/runtime';
+import { startAppUpdateChecks } from '@/lib/use-app-update';
 import { setActiveChatId } from '@/lib/push/active-chat';
 import { NotificationRouter } from '@/lib/push/tap';
 import { markStartup } from '@/lib/startup-timing';
@@ -101,6 +103,12 @@ export default function RootLayout() {
     colorScheme.set('dark');
   }, []);
 
+  // Starts the Android updater once (T-1725): one auto check and one on each
+  // return to the foreground. It does nothing on iOS, in dev or in local builds.
+  useEffect(() => {
+    startAppUpdateChecks();
+  }, []);
+
   useEffect(() => {
     if (fontsReady) {
       markStartup('fonts-ready');
@@ -124,6 +132,7 @@ export default function RootLayout() {
             <View style={{ flex: 1 }}>
               <ClientVersionBanner />
               <Stack screenOptions={{ headerShown: false }} />
+              <UpdateDialog />
             </View>
           </ChatStoreProvider>
           <PortalHost />
