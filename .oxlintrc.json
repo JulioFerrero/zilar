@@ -36,13 +36,7 @@
       }
     },
     {
-      "files": [
-        "apps/mobile/src/mock/**",
-        "apps/web/src/mock/**",
-        "packages/mock-backend/**",
-        "apps/mobile/src/store/chat-store.ts",
-        "apps/mobile/src/lib/emoji-data.ts"
-      ],
+      "files": ["apps/mobile/src/mock/**", "apps/web/src/mock/**", "packages/mock-backend/**"],
       "rules": {
         "max-lines": "off"
       }
