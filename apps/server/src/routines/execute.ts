@@ -25,6 +25,7 @@
 // audit `routine.paused` with the reason.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import type { Payload } from '@zilar/protocol';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
@@ -71,6 +72,7 @@ export interface ExecuteRoutinePorts {
     groupId: string | null;
     topicId?: string;
     text: string;
+    payload?: Payload;
   }) => Promise<boolean>;
   /**
    * T-1645: runs one scheduled prompt turn (the AI gateway's scheduled turn),
@@ -176,6 +178,7 @@ export async function executeRoutine(
 
   // Step 4: run the current version with the routine's input.
   let outputText: string | null = null;
+  let outputBlocks: unknown = undefined;
   try {
     const { result } = await runToolVersion(
       { db, runner: ports.runTool },
@@ -187,6 +190,7 @@ export async function executeRoutine(
       return;
     }
     outputText = result.output.text;
+    outputBlocks = result.output.blocks;
   } catch (error) {
     // `runToolVersion` throws `ai_not_active` when the AI stopped between
     // the step-1 check and the run, and `not_found` when the tool was
@@ -209,10 +213,10 @@ export async function executeRoutine(
   // is stopped or not in the room. AI-18: a post during the AI's reconnect
   // also answers `false`, so retry once after a short wait before giving up;
   // only then is the run `skipped` with no failure count.
-  let posted = await postResult(ports, options, row, outputText);
+  let posted = await postResult(ports, options, row, outputText, outputBlocks);
   if (!posted) {
     await sleep(postRetryDelayMs);
-    posted = await postResult(ports, options, row, outputText);
+    posted = await postResult(ports, options, row, outputText, outputBlocks);
   }
   if (!posted) {
     await markSkipped(db, options, row, at, startedAt);

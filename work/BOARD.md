@@ -1764,3 +1764,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1752](T-1752-blocks-shared-model.md) | chat-core block view helpers (tones, sparkline, host) | 2026-10-16 |
 | [T-1753](T-1753-topic-routines-read.md) | GET /api/topics/:id/routines for a topic's routines | 2026-10-16 |
 | [T-1754](T-1754-topic-members-backfill.md) | public topics get real members + backfill 0069 | 2026-10-16 |
+| [T-1759](T-1759-blocks-tool-output.md) | saved tools return blocks; tool routines post block cards | 2026-10-16 |

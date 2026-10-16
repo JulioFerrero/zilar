@@ -11,9 +11,14 @@ export default async function run(input) {
 ```
 
 `input` is any JSON value (default `null`). The function may return a
-**string** (treated as `{ text }`) or `{ text: string, data?: JSON }`.
-Anything else is `invalid_output`. `runTool` never throws for a problem in
-the tool's code: every failure is `{ ok: false, error: { kind, message } }`.
+**string** (treated as `{ text }`) or `{ text: string, data?: JSON,
+blocks?: Block[] }`. `blocks` uses the same kinds as `post_blocks` (figure,
+number, checklist, status, link, callout) with pre-formatted string values;
+when a scheduled tool routine returns valid `blocks`, it posts them as a card
+whose header is the routine title and its schedule, while `text` stays the
+plain message body. Anything else is `invalid_output`. `runTool` never throws
+for a problem in the tool's code: every failure is
+`{ ok: false, error: { kind, message } }`.
 
 ## Limits (defaults)
 

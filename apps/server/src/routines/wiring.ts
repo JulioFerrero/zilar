@@ -4,6 +4,7 @@
 // when `ROUTINES_ENABLED=true` **and** a tool runner is configured: with
 // the flag on and no runner it logs one warning and stays off (the unit
 // tests cover this builder, not `index.ts`).
+import type { Payload } from '@zilar/protocol';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { ToolRunner } from '../tools/types';
@@ -27,6 +28,7 @@ export interface BuildRoutineSchedulerDeps {
     groupId: string | null;
     topicId?: string;
     text: string;
+    payload?: Payload;
   }) => Promise<boolean>;
   /** Runs a prompt routine through the gateway (`runScheduledTurn`); absent
    * while the gateway is null, so the run is recorded `skipped`. */

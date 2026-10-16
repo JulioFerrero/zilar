@@ -10,7 +10,7 @@ export type ToolRunner = (params: {
 export type ToolRunResult =
   | {
       ok: true;
-      output: { text: string; data?: unknown };
+      output: { text: string; data?: unknown; blocks?: unknown };
       logs: string;
       durationMs: number;
       fetchCount: number;

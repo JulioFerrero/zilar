@@ -3,12 +3,16 @@
 // here; the old path stays the barrel.
 import { Effect } from 'effect';
 import { SqlClient } from 'effect/sql';
+import type { Payload } from '@zilar/protocol';
 import type { ServerDatabase } from '../db/client';
 import type { RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
+import { buildBlocksPayload } from '../message-blocks/build';
 import { truncateChars } from '../text';
+import { describeSchedule } from '../tools/routine-adapters';
 import { auditPaused, auditRun } from './audit';
 import type { ExecuteRoutineOptions, ExecuteRoutinePorts } from './execute';
+import { parseRoutineSchedule } from './schedule';
 
 export const MAX_POST_TEXT_CHARS = 4_000;
 export const MAX_CONSECUTIVE_FAILURES = 3;
@@ -24,14 +28,17 @@ export async function postResult(
   options: ExecuteRoutineOptions,
   row: RoutineRow,
   outputText: string,
+  outputBlocks: unknown,
 ): Promise<boolean> {
   const text = `${row.title}\n${truncateChars(outputText, MAX_POST_TEXT_CHARS)}`;
+  const payload = routineBlocksPayload(row, outputText, outputBlocks, options);
   try {
     return await ports.post({
       aiId: row.aiId,
       groupId: row.groupId,
       ...(row.topicId === null ? {} : { topicId: row.topicId }),
       text,
+      ...(payload === undefined ? {} : { payload }),
     });
   } catch {
     // A throwing post is a `skipped` like a `false` answer: the chat
@@ -39,6 +46,36 @@ export async function postResult(
     options.logger.warn({ routineId: row.id }, 'routine post threw');
     return false;
   }
+}
+
+// T-1759: a saved tool may return blocks. A valid set rides on the post as a
+// `blocks` payload whose header is the routine title and whose meta line is
+// the schedule text; the plain text goes out unchanged either way, so
+// previews, push and old clients keep working. Invalid blocks log only the
+// routine id (never the reason) and fall back to today's plain post.
+function routineBlocksPayload(
+  row: RoutineRow,
+  outputText: string,
+  outputBlocks: unknown,
+  options: ExecuteRoutineOptions,
+): Payload | undefined {
+  if (outputBlocks === undefined) {
+    return undefined;
+  }
+  const parsed = parseRoutineSchedule(row.schedule);
+  const built = buildBlocksPayload(
+    {
+      title: row.title,
+      ...(parsed.ok ? { meta: describeSchedule(parsed.value) } : {}),
+      blocks: outputBlocks,
+    },
+    outputText,
+  );
+  if (!built.ok) {
+    options.logger.warn({ routineId: row.id }, 'routine blocks invalid');
+    return undefined;
+  }
+  return built.payload;
 }
 
 export async function markSkipped(

@@ -474,24 +474,44 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
           - **The cause:** `android-release.yml` passes the version only to prebuild, so the APK's `assets/app.config` says 0.1.0 with no versionCode (checked in the v0.2.5 APK).
           - **T-1748 is running.** Julio OK'd tagging **v0.2.6** once it merges.
           - **Then:** verify `assets/app.config` in the APK, and tell Julio to install it by hand once.
-          - **About 20:35 UTC:** T-1748 is merged and pushed (`7f2961c30`), and **v0.2.6 is tagged and building.**
+          - **About 19:30 UTC:** T-1748 is merged and pushed (`7f2961c30`), and **v0.2.6 is tagged and building.**
         - **New ask: group and topic flow** ("non intuitive… I don't see what people are in what topic, I cant add AIS or people"):
           - **Julio's case:** @Deepseek is in no topic list of Financial, so the mention was silent. The phone topic sheet can't add AIs; only web has `TopicAisSection`.
           - **The model today:** `group_members`, `group_ais`, per-topic `topic_ais`, and `topic_members` for private topics. An AI has to join the group, then each topic.
           - **Julio chose "Per topic, one step":** Add inside a topic shows people and AIs together, and adding an AI also adds it to the group.
-          - **About 21:00 UTC, approved after round 1** ("much much much better thanks we can implement"). Round 1:
+          - **About 19:50 UTC, approved after round 1** ("much much much better thanks we can implement"). Round 1:
             - tools and routines per topic;
             - no "not in topic" list in @;
             - a two-line header;
             - the writing states.
           - **Boards** are in `docs/design/mockups/topic-people/` (`e7653e860`). **T-1750 (the plan) is running.**
-          - **Round 2 (about 21:30 UTC),** boards `b7c239dc5`:
+          - **Round 2 (about 20:00 UTC),** boards `b7c239dc5`:
             - join, leave and mute a topic;
             - **new public topics start empty** (Julio's choice); existing ones get a backfill.
             - **When T-1750's packet arrives,** send it `~/.claude/jobs/ab934c68/tmp/T-1750-round2.md` before merging.
             - **Julio approved round 2** ("you have my okay"), so the plan then turns into specs.
             - **The round 2 scope was sent to T-1750** after its clean packet; it's working.
-            - **Server wave running:**
+            - **About 20:25 UTC, merged and held (not pushed):**
+              - T-1749 (blocks schema);
+              - T-1751 (`buildBlocksPayload`);
+              - T-1752 (chat-core block helpers);
+              - T-1753 (`GET /api/topics/:id/routines`);
+              - T-1754 (public topic members plus backfill 0069). It's safe to deploy alone: the reads still treat public topics as the whole group.
+            - **Hold T-1757 (S4b, the reads switch) unmerged** until S5 (join and leave) and W9/W10 (the Join preview) are ready.
+              - Once it's live, new public topics hold only their creator, and nobody can join them without the Join UI.
+              - Merge them together. T-1757's 0070 re-backfill covers the gap.
+            - **T-1750 round 3** (sent about 20:50 UTC):
+              - S6 `GET /api/topics/:id/preview` for non-member reads (rooms are members-only, and history is MUC MAM);
+              - public topics: self-leave only, no archive-on-drain;
+              - `joined` and `muted` on `Topic` go into S2.
+            - **Running:**
+              - T-1758 (B6, the `post_blocks` AI tool, group turns);
+              - T-1759 (B7, saved tools return `blocks`, so tool routines post cards);
+              - T-1755 (blocks web, six blocks, Cosmos fixture);
+              - T-1756 (blocks phone, six blocks, `zilar://dev/blocks`);
+              - T-1757 (S4b: the reads switch to "General is the whole group");
+              - T-1750 (plan round 2).
+            - **Server wave (earlier):**
               - T-1753 (S3, `GET /api/topics/:id/routines`);
               - T-1754 (S4a, public topics get real members: creator row, going public keeps members, backfill migration 0069). It's a DB task: one at a time.
               - **Next:**

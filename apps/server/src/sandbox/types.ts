@@ -26,6 +26,7 @@ export type SandboxErrorKind =
 export interface ToolOutput {
   text: string;
   data?: unknown;
+  blocks?: unknown;
 }
 
 export type RunToolResult =
@@ -47,6 +48,7 @@ export type RunToolResult =
 const toolOutputSchema = Schema.Struct({
   text: Schema.String,
   data: Schema.optional(Schema.Unknown),
+  blocks: Schema.optional(Schema.Unknown),
 });
 
 export function parseToolOutput(value: unknown, maxBytes: number): ToolOutput | null {
@@ -58,7 +60,11 @@ export function parseToolOutput(value: unknown, maxBytes: number): ToolOutput | 
   if (output.text.length > maxBytes) {
     return null;
   }
-  return output.data === undefined
-    ? { text: output.text }
-    : { text: output.text, data: output.data };
+  // `blocks` passes through unchecked: a broken shape is rejected later by
+  // `buildBlocksPayload`, so a bad tool never breaks its own run.
+  return {
+    text: output.text,
+    ...(output.data === undefined ? {} : { data: output.data }),
+    ...(output.blocks === undefined ? {} : { blocks: output.blocks }),
+  };
 }

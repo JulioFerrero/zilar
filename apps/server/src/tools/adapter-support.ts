@@ -2,6 +2,7 @@
 // adapters. Split out of `tools/adapters.ts` unchanged.
 import { Effect, type Schema } from 'effect';
 import { SqlClient } from 'effect/sql';
+import type { Payload } from '@zilar/protocol';
 import type { ActionAdapter, ActionContext } from '../actions/registry';
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
@@ -25,6 +26,7 @@ export interface BuildToolAdaptersDeps {
     groupId: string | null;
     topicId?: string;
     text: string;
+    payload?: Payload;
   }) => Promise<boolean>;
   now?: () => Date;
   /** When false, `routine.schedule` is not registered (tools still work). */

@@ -234,7 +234,7 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
           settle(
             fail(
               'invalid_output',
-              'tool must return a string or { text, data }',
+              'tool must return a string or { text, data?, blocks? }',
               message.fetchCount,
             ),
           );
@@ -246,7 +246,7 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
             settle(
               fail(
                 'invalid_output',
-                'tool must return a string or { text, data }',
+                'tool must return a string or { text, data?, blocks? }',
                 message.fetchCount,
               ),
             );
@@ -266,7 +266,7 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
           settle(
             fail(
               'invalid_output',
-              'tool must return a string or { text, data }',
+              'tool must return a string or { text, data?, blocks? }',
               message.fetchCount,
             ),
           );
@@ -277,7 +277,7 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
           settle(
             fail(
               'invalid_output',
-              'tool must return a string or { text, data }',
+              'tool must return a string or { text, data?, blocks? }',
               message.fetchCount,
             ),
           );
