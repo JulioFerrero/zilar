@@ -42,6 +42,10 @@ export function createZilarAuthClient(options: AuthClientOptions) {
     baseURL: options.baseURL,
     plugins: [emailOTPClient()],
     fetchOptions: {
+      // The bearer token authenticates every call; cookies must never be sent.
+      // A native cookie jar keeps a stale session cookie and, since React Native
+      // sends no `Origin`, each request would answer 403 MISSING_OR_NULL_ORIGIN.
+      credentials: 'omit' as const,
       ...(options.fetchImpl === undefined ? {} : { customFetchImpl: options.fetchImpl }),
       ...(options.getToken === undefined
         ? {}

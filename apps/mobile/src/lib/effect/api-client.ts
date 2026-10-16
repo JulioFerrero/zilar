@@ -24,6 +24,7 @@ export function createApiClient({ getToken, fetchImpl, apiUrl }: ApiTransport): 
       String(input),
       {
         ...init,
+        credentials: 'omit',
         headers: { ...(init.headers as Record<string, string>) },
       },
       API_TIMEOUT_MS,

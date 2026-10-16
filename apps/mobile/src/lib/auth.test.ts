@@ -12,6 +12,7 @@ interface CapturedRequest {
   url: string;
   headers: Headers;
   body: unknown;
+  credentials: RequestCredentials | undefined;
 }
 
 function jsonResponse(body: unknown, headers: Record<string, string> = {}): Response {
@@ -31,7 +32,7 @@ function capture(requests: CapturedRequest[]): typeof fetch {
           : (input as Request).url;
     const headers = new Headers(init?.headers);
     const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
-    requests.push({ url, headers, body });
+    requests.push({ url, headers, body, credentials: init?.credentials });
     if (url.includes('/sign-in/email-otp')) {
       return jsonResponse(
         { token: 'SESSION-TOKEN-abc', user: { id: 'u1', email: 'new@example.com', name: '' } },
@@ -81,6 +82,21 @@ describe('sign-in requests', () => {
     expect(requests[1]?.headers.get('x-zilar-invite')).toBe('INVITE-123');
   });
 
+  it('never sends cookies', async () => {
+    const requests: CapturedRequest[] = [];
+    const client = createZilarAuthClient({
+      baseURL: 'http://server.test',
+      fetchImpl: capture(requests),
+    });
+
+    await sendSignInCode(client, 'new@example.com', 'INVITE-123');
+    await verifySignInCode(client, 'new@example.com', '123456', 'INVITE-123');
+
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.credentials).toBe('omit');
+    expect(requests[1]?.credentials).toBe('omit');
+  });
+
   it('omits the invite header for an existing user sign-in', async () => {
     const requests: CapturedRequest[] = [];
     const client = createZilarAuthClient({
@@ -119,7 +135,12 @@ describe('the session token is never logged', () => {
     const requests: CapturedRequest[] = [];
     const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : (input as Request).url;
-      requests.push({ url, headers: new Headers(init?.headers), body: init?.body });
+      requests.push({
+        url,
+        headers: new Headers(init?.headers),
+        body: init?.body,
+        credentials: init?.credentials,
+      });
       return jsonResponse(
         { token, user: { id: 'u1', email: 'new@example.com', name: '' } },
         { 'set-auth-token': token },

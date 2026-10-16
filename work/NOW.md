@@ -429,6 +429,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
           - T-1733: the details cards;
           - T-1734: install and the finale;
         - **T-1735:** swap into `apps/site`, with the Dockerfile serving `out/` and every Caddy redirect kept. Its push redeploys www.zilar.app.
+      - **About 17:20 UTC, Julio's phone sign-in fails after sign-out** ("something went wrong" on email):
+        - **The cause:** React Native's native cookie jar keeps Better Auth's session cookie, because the auth client defaults to `credentials: "include"`. A POST with a cookie and no `Origin` gets a 403 `MISSING_OR_NULL_ORIGIN`, which isn't logged. The sign-out 403'd at 16:55, so the cookie stuck.
+        - **Workaround sent to Julio:** Android Settings › Apps › Zilar › Storage › Clear storage.
+        - **The fix, T-1736, is running:** `credentials: 'omit'` on the auth and API clients, plus a message for the code. It's phone only and needs the next APK.
         - **T-1724 is running:** the core with no UI (GitHub latest release, version compare, the arm64 download, the installer intent, `REQUEST_INSTALL_PACKAGES`, the `useAppUpdate()` hook);
         - **the canvas** for the prompt and the Settings "This app" row: https://claude.ai/artifact/AMYshRxWEz3Ur5F9wAbNvQ. It waits for Julio's OK, then the UI spec;
         - **open choice:** quiet download on Wi-Fi (this needs `expo-network`) or always ask first.

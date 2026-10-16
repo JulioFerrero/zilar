@@ -1743,3 +1743,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1731](T-1731-site-next-story.md) | pinned phone story on the new landing | 2026-10-16 |
 | [T-1730](T-1730-site-next-hero.md) | hero and ownership line on the new landing | 2026-10-16 |
 | [T-1733](T-1733-site-next-details.md) | details strip with live demos on the new landing | 2026-10-16 |
+| [T-1736](T-1736-mobile-no-cookies.md) | phone never sends cookies (403 on sign-in after sign-out) | 2026-10-16 |

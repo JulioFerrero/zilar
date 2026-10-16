@@ -15,6 +15,9 @@ export function errorMessageFor(error: AuthError | undefined): string {
   if (code === 'INVALID_OTP' || code === 'OTP_EXPIRED') {
     return 'Wrong code';
   }
+  if (code === 'MISSING_OR_NULL_ORIGIN' || code === 'INVALID_ORIGIN') {
+    return 'Sign-in was blocked. Close the app and try again.';
+  }
   return 'Something went wrong. Try again.';
 }
 
