@@ -1731,3 +1731,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1718](T-1718-free-models-first.md) | Free models first: free DeepSeek workers, free GLM reviews | 2026-10-16 |
 | [T-1719](T-1719-web-routines-page.md) | Web Settings › Routines: every routine, Ask and Pause | 2026-10-16 |
 | [T-1721](T-1721-routine-payload.md) | Routine messages carry a routine payload; failures post nothing | 2026-10-16 |
+| [T-1720](T-1720-phone-routines-screen.md) | Phone Settings › Routines: every routine, Ask and Pause | 2026-10-16 |

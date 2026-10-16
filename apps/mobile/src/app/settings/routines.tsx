@@ -1,0 +1,251 @@
+import { Effect } from 'effect';
+import { useRouter } from 'expo-router';
+import { Repeat } from 'lucide-react-native';
+import { useEffect, useState, type ReactNode } from 'react';
+import { RefreshControl, ScrollView, View } from 'react-native';
+
+import { RequireAuth } from '@/auth/RequireAuth';
+import {
+  routineActionMessage,
+  type RoutineAction,
+  type RoutineActionMessage,
+} from '@/components/ais/routines-section';
+import { AisScreenShell } from '@/components/ais/screen-shell';
+import { useToolsApi } from '@/components/ais/use-tools-api';
+import { RoutineRow } from '@/components/routines/routine-row';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { StateMessage } from '@/components/ui/state-message';
+import { Text } from '@/components/ui/text';
+import { MUTED_FOREGROUND } from '@/lib/colors';
+import { interruptFiber } from '@/lib/effect/timers';
+import { isWaiting, useAction } from '@/lib/effect/use-action';
+import { ToolsApiError, type AiToolsApi, type MyRoutine } from '@/lib/tools-api';
+
+/** The list failed to load: a fixed sentence, never server text. */
+const LIST_FAILED_MESSAGE = 'Could not load your routines. Try again.';
+
+/**
+ * Loads every routine the viewer owns. A 404 or an unparseable response reads
+ * as an empty list, not an error, like the per-AI routines section.
+ */
+function loadMyRoutinesEffect(api: AiToolsApi): Effect.Effect<MyRoutine[], unknown> {
+  return Effect.tryPromise({ try: () => api.listMyRoutines(), catch: (cause) => cause }).pipe(
+    Effect.catch((error) =>
+      error instanceof ToolsApiError && (error.status === 404 || error.code === 'invalid_response')
+        ? Effect.succeed<MyRoutine[]>([])
+        : Effect.fail(error),
+    ),
+  );
+}
+
+type LoadStatus = 'loading' | 'ready' | 'error';
+
+/**
+ * Settings → Routines (T-1720, the phone twin of web's `RoutinesPage`): every
+ * routine of every AI the viewer owns, in Running and Paused groups. Each row
+ * carries the AI's ball, its title with a status dot, the schedule · AI line,
+ * an Ask key that opens the chat and a Pause or Resume key; tapping a row
+ * reveals its Delete key behind a confirm.
+ */
+export default function RoutinesScreen() {
+  return (
+    <RequireAuth>
+      <RoutinesBody />
+    </RequireAuth>
+  );
+}
+
+function RoutinesBody() {
+  const router = useRouter();
+  const { api } = useToolsApi();
+  const [status, setStatus] = useState<LoadStatus>('loading');
+  const [routines, setRoutines] = useState<MyRoutine[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [notice, setNotice] = useState<RoutineActionMessage | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
+  const [revealedId, setRevealedId] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Unmount or a new load interrupts the fiber, so a late answer never lands.
+    const fiber = Effect.runFork(
+      loadMyRoutinesEffect(api).pipe(
+        Effect.matchEffect({
+          onFailure: () =>
+            Effect.sync(() => {
+              setStatus('error');
+              setRefreshing(false);
+            }),
+          onSuccess: (list) =>
+            Effect.sync(() => {
+              setRoutines(list);
+              setStatus('ready');
+              setRefreshing(false);
+            }),
+        }),
+      ),
+    );
+    return () => {
+      interruptFiber(fiber);
+    };
+  }, [api, reloadTick]);
+
+  const reload = (): void => setReloadTick((tick) => tick + 1);
+
+  const [actionState, runAction] = useAction(
+    (work: { action: RoutineAction; id: string }) =>
+      Effect.tryPromise({
+        try: async () => {
+          if (work.action === 'delete') {
+            await api.deleteRoutine(work.id);
+            return;
+          }
+          if (work.action === 'pause') {
+            await api.pauseRoutine(work.id);
+            return;
+          }
+          await api.resumeRoutine(work.id);
+        },
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            setNotice(null);
+            setRevealedId(null);
+            setConfirmingId(null);
+            reload();
+          }),
+        ),
+        Effect.tapError((error) =>
+          Effect.sync(() => {
+            setConfirmingId(null);
+            setNotice(routineActionMessage(error));
+          }),
+        ),
+      ),
+    { mode: 'replace' },
+  );
+  const busy = isWaiting(actionState);
+
+  const running = routines.filter((routine) => routine.status === 'active');
+  const paused = routines.filter((routine) => routine.status !== 'active');
+
+  const rowActions = (routine: MyRoutine, divider: boolean) => (
+    <RoutineRow
+      key={routine.id}
+      routine={routine}
+      busy={busy}
+      revealed={revealedId === routine.id}
+      divider={divider}
+      onToggle={() => {
+        setConfirmingId(null);
+        setRevealedId((current) => (current === routine.id ? null : routine.id));
+      }}
+      onAsk={() => {
+        if (routine.chatJid !== null) {
+          router.push({ pathname: '/chat/[id]', params: { id: routine.chatJid } });
+        }
+      }}
+      onTogglePause={() =>
+        runAction({ action: routine.status === 'active' ? 'pause' : 'resume', id: routine.id })
+      }
+      onAskDelete={() => setConfirmingId(routine.id)}
+    />
+  );
+
+  return (
+    <AisScreenShell title="Routines" onBack={() => router.back()}>
+      {status === 'loading' ? <StateMessage kind="loading" title="Loading routines…" /> : null}
+
+      {status === 'error' ? (
+        <StateMessage
+          kind="error"
+          title={LIST_FAILED_MESSAGE}
+          action={{
+            label: 'Retry',
+            accessibilityLabel: 'Retry loading routines',
+            onPress: () => {
+              setStatus('loading');
+              reload();
+            },
+          }}
+        />
+      ) : null}
+
+      {status === 'ready' ? (
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{ paddingBottom: 24 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              tintColor={MUTED_FOREGROUND}
+              onRefresh={() => {
+                setRefreshing(true);
+                reload();
+              }}
+            />
+          }
+        >
+          {routines.length === 0 ? (
+            <StateMessage kind="empty" icon={Repeat} title="No routines yet" />
+          ) : (
+            <View className="gap-6">
+              {running.length > 0 ? (
+                <RoutineGroup label="Running">
+                  {running.map((routine, index) => rowActions(routine, index < running.length - 1))}
+                </RoutineGroup>
+              ) : null}
+              {paused.length > 0 ? (
+                <RoutineGroup label="Paused">
+                  {paused.map((routine, index) => rowActions(routine, index < paused.length - 1))}
+                </RoutineGroup>
+              ) : null}
+            </View>
+          )}
+
+          {notice === null ? null : notice.kind === 'hint' ? (
+            <Text role="status" className="mt-3 px-2 text-[13px] text-muted-foreground">
+              {notice.text}
+            </Text>
+          ) : (
+            <Text role="status" className="mt-3 px-2 text-[13px] text-danger">
+              {notice.text}
+            </Text>
+          )}
+        </ScrollView>
+      ) : null}
+
+      <ConfirmDialog
+        visible={confirmingId !== null}
+        title="Delete this routine?"
+        message="The routine stops running and is removed for good. This cannot be undone."
+        confirmLabel="Delete"
+        busyLabel="Deleting…"
+        busy={busy}
+        onCancel={() => setConfirmingId(null)}
+        onConfirm={() => {
+          if (confirmingId !== null) {
+            runAction({ action: 'delete', id: confirmingId });
+          }
+        }}
+        confirmAccessibilityLabel="Confirm delete routine"
+        accessibilityLabel="Delete routine"
+      />
+    </AisScreenShell>
+  );
+}
+
+/** One labelled group of routines, keeping the server's order. */
+function RoutineGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <View accessibilityLabel={label} className="gap-2">
+      <Text className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </Text>
+      <View className="overflow-hidden rounded-2xl border border-border bg-surface">
+        {children}
+      </View>
+    </View>
+  );
+}

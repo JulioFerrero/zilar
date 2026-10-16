@@ -1,4 +1,4 @@
-import { ApiError, runApi } from '@zilar/api-contract';
+import { ApiError, runApi, type MyRoutine } from '@zilar/api-contract';
 
 import { API_URL } from './auth';
 import { createApiClient } from './effect/api-client';
@@ -151,8 +151,23 @@ export interface ToolActionsApi {
   deleteTool(id: string): Promise<void>;
 }
 
+/**
+ * The caller's own routines across every AI they own (T-1717, `GET /api/routines`):
+ * the Settings › Routines list. A `MyRoutine` carries the AI's name and picture
+ * and the chat JID the Ask key opens, so the screen renders without extra reads.
+ */
+export interface MyRoutinesApi {
+  listMyRoutines(): Promise<MyRoutine[]>;
+}
+
+export type { MyRoutine };
+
 /** The full API the AI edit screen works against: lists plus mutations. */
-export type AiToolsApi = ToolsApi & RoutineActionsApi & ToolDetailsApi & ToolActionsApi;
+export type AiToolsApi = ToolsApi &
+  RoutineActionsApi &
+  ToolDetailsApi &
+  ToolActionsApi &
+  MyRoutinesApi;
 
 /** The shared `ApiError` under this module's old name, so `instanceof` sites keep working. */
 export const ToolsApiError = ApiError;
@@ -177,6 +192,9 @@ export function createToolsApi(
     },
     async listGroupRoutines(groupId) {
       return [...(await runApi(client.routines.listForGroup({ params: { id: groupId } })))];
+    },
+    async listMyRoutines() {
+      return [...(await runApi(client.routines.listMine()))];
     },
     pauseRoutine(id) {
       return runApi(client.routines.pause({ params: { id } }));
