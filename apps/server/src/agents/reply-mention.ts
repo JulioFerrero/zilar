@@ -1,9 +1,9 @@
-// T-1625: a group reply is wired as `@<asker> ` plus the model's text. When the
-// model's text already starts with `@<asker>` (live "ai test › General" showed
-// `@Claude Test @Claude Test …`), drop the model's copy so the reply has exactly
-// one leading mention. Case-insensitive, and repeated copies are all dropped.
-// If stripping would leave nothing, the input is returned unchanged so a reply
-// of just `@<asker>` is never emptied.
+// T-1625: a group reply is wired with `replyTo` on the trigger and no
+// `@<asker> ` prefix (T-1761). The model may still open with a leading
+// `@<asker>` of its own (live "ai test › General" showed `@Claude Test @Claude
+// Test …`), so drop that copy and any repeats so no mention sneaks back in.
+// Case-insensitive. If stripping would leave nothing, the input is returned
+// unchanged so a reply of just `@<asker>` is never emptied.
 //
 // T-1625 finding 1: `@<nick>` only counts when the nick ends at a word
 // boundary, the same rule `findHandoffIndex` uses for handoff mentions.

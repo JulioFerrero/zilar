@@ -1,11 +1,15 @@
 // T-1761: the message pipeline facts Julio asked for. A group tool turn whose
 // call posted a card sends no echo reply, and a plain group reply no longer
 // tags the asker with `@name` while still quoting the trigger.
+import type { XmppCore } from '@zilar/xmpp-core';
 import { describe, expect, it } from 'vitest';
+import type { ActionGateway } from '../actions/gateway';
 import type { FetchLike } from '../ai/http';
 import type { ModelTarget } from '../ai/model-client';
+import type { AiSession } from './gateway/contracts';
+import { createRequestActionRunner } from './gateway/request-action';
 import { runGroupTurn } from './group-turn';
-import type { ChatToolDefinition } from './tools';
+import { REQUEST_ACTION_TOOL, buildRequestActionTool, type ChatToolDefinition } from './tools';
 
 const TARGET: ModelTarget = {
   provider: 'deepseek',
@@ -66,6 +70,29 @@ function toolCall(name: string, argsJson: string): Response {
     ),
     'data: [DONE]\n\n',
   ]);
+}
+
+// A minimal live session, the same shape the other gateway unit tests build:
+// `request-action.ts` reads only `aiId` and `aiJid` off it.
+function sessionFor(): AiSession {
+  return {
+    aiId: 'ai-1',
+    aiJid: 'ai-1@zilar.localhost',
+    core: {} as XmppCore,
+    busy: false,
+    pending: [],
+    stopped: false,
+    retryAttempt: 0,
+    retryTimer: undefined,
+    unsubs: [],
+    turnAborts: new Map(),
+    rooms: new Map(),
+    roomPending: new Map(),
+    roomBusy: new Set(),
+    roomTurns: new Map(),
+    roomRateNotices: new Map(),
+    roomSentIds: new Map(),
+  };
 }
 
 describe('a group turn that posted a card sends no echo reply (T-1761)', () => {
@@ -140,5 +167,57 @@ describe('a group reply quotes the asker without the @name tag (T-1761)', () => 
     const opts = reply?.opts as { replyTo?: { id?: string }; mentions?: unknown[] } | undefined;
     expect(opts?.replyTo).toEqual({ id: 'msg-1' });
     expect(opts?.mentions).toEqual([]);
+  });
+});
+
+// T-1763: the `posted` → `postedToRoom` → no-echo link, exercised through the
+// real `request_action` mapping instead of a hand-written tool result: an
+// `executed` outcome with `posted: true` must end the turn with no reply.
+describe('a request_action that posted a card sends no echo reply (T-1763)', () => {
+  it('maps an executed+posted outcome to postedToRoom and stays quiet', async () => {
+    const sent: string[] = [];
+    let requests = 0;
+    const actions: ActionGateway = {
+      request: () => {
+        requests += 1;
+        return Promise.resolve({ status: 'executed', summary: 'posted a card', posted: true });
+      },
+      onApprovalDecided: () => Promise.resolve(),
+      recoverStuck: () => Promise.resolve(),
+      listActions: () => [],
+    };
+    const session = sessionFor();
+    const { runRequestAction } = createRequestActionRunner(actions, {
+      info: () => undefined,
+      warn: () => undefined,
+    });
+    const fetchImpl: FetchLike = () =>
+      Promise.resolve(toolCall('request_action', '{"action":"market.prices","args":{}}'));
+
+    const outcome = await runGroupTurn({
+      aiId: 'ai-1',
+      aiJid: session.aiJid,
+      roomJid: 'room@conference.zilar.localhost',
+      triggerId: 'msg-1',
+      senderJid: 'person@zilar.localhost',
+      senderName: 'Person',
+      messages: [{ role: 'user', content: 'post the prices as a card' }],
+      target: TARGET,
+      fetchImpl,
+      tools: [buildRequestActionTool([{ name: 'market.prices', description: 'Prices' }])],
+      executeTool: (call) =>
+        call.tool === REQUEST_ACTION_TOOL
+          ? runRequestAction(session, call, { groupId: 'g-1', topicId: 't-1' })
+          : Promise.resolve({ content: 'invalid: unknown tool' }),
+      sendMessage: async (_to, _kind, text) => {
+        sent.push(text);
+      },
+      sendTyping: () => undefined,
+      logger: { warn: () => undefined },
+    });
+
+    expect(requests).toBe(1);
+    expect(outcome).toEqual({ kind: 'replied', text: '' });
+    expect(sent).toEqual([]);
   });
 });

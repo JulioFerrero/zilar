@@ -245,7 +245,6 @@ export function createGroupTurn(ctx: GroupTurnContext) {
           notices: session.roomRateNotices,
           roomJid,
           atMs,
-          askerName: displayNameOf({ fromJid: trigger.fromJid, fromNick: trigger.fromNick }),
           send: (text) => liveSendMessage(session, roomJid, 'groupchat', text),
         }).pipe(Effect.catchDefect(() => Effect.void));
       }
@@ -322,7 +321,6 @@ export function createGroupTurn(ctx: GroupTurnContext) {
           // (or the turn failed around it), so the row must not stay `working`.
           yield* failDelegationQuietly(trigger.delegationId);
           const reason = mapFailureToReply(error);
-          const name = senderName.trim() === '' ? normBareJid(trigger.fromJid) : senderName.trim();
           // T-1290 (AI-10): the owner hears the real reason (once a day per
           // room); the room only hears the fixed reply.
           yield* Effect.promise(() => notifyOwnerOfFailure(ctx, session, roomJid, reason)).pipe(
@@ -340,11 +338,16 @@ export function createGroupTurn(ctx: GroupTurnContext) {
           // posts no @mention fallback in the room.
           if (trigger.scheduled === undefined) {
             yield* Effect.promise(() =>
-              liveSendMessage(session, roomJid, 'groupchat', `@${name} ${GROUP_FAILURE_REPLY}`, {
-                // T-1743: a synthetic follow-up has no real message to quote.
-                ...(trigger.synthetic === true ? {} : { replyTo: { id: trigger.id } }),
-                mentions: [{ jid: normBareJid(trigger.fromJid), begin: 0, end: name.length + 1 }],
-              }),
+              // T-1763: like every other group reply since T-1761, the crash
+              // reply is untagged; it only quotes the trigger. T-1743: a
+              // synthetic follow-up has no real message to quote.
+              liveSendMessage(
+                session,
+                roomJid,
+                'groupchat',
+                GROUP_FAILURE_REPLY,
+                trigger.synthetic === true ? {} : { replyTo: { id: trigger.id } },
+              ),
             ).pipe(Effect.catchDefect(() => Effect.void));
           }
           // Typing state is best-effort.

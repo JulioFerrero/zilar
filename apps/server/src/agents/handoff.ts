@@ -3,7 +3,7 @@
 // A handoff mention is only offered when the `@<nick>` in the reply text is a
 // whole word: the character after the nick must end the text or be
 // whitespace / punctuation. Case-insensitive, and offsets are in the final
-// wire text (the `@<sender> ` prefix shifted by its length).
+// wire text, which no longer carries a leading `@<sender> ` prefix (T-1761).
 import type { HandoffLine } from '@zilar/protocol';
 
 const HANDOFF_BOUNDARY = /[\s.,!?;:'"()[\]{}<>|\u2014\u2013-]/;

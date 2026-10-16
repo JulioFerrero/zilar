@@ -360,17 +360,21 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     // settles `stopped`.
     const sessionLive = !session.stopped && sessions.get(session.aiId) === session;
     settle(turnOutcome.kind === 'replied' && !sessionLive ? 'stopped' : turnOutcome.kind);
-    // T-0482: a delegated turn stores its result on the row. The worker's
-    // posted text (with the `@<boss> ` prefix) is the stored summary; a
-    // failed turn stores whatever was posted instead. Log ids only.
+    // T-0482: a delegated turn stores its result on the row: a normal reply
+    // stores its text, a failed turn whatever was posted, and T-1763 a card
+    // turn (empty text) a fixed summary. Log ids only.
     const finishedDelegationId = trigger.delegationId;
     if (finishedDelegationId !== undefined) {
+      const resultSummary =
+        turnOutcome.kind === 'replied' && turnOutcome.text.trim() === ''
+          ? 'Posted a card in the room.'
+          : turnOutcome.text;
       yield* Effect.promise(() =>
         finishDelegation(deps.db, {
           id: finishedDelegationId,
           aiId: session.aiId,
           status: turnOutcome.kind === 'replied' ? 'completed' : 'failed',
-          resultSummary: turnOutcome.text,
+          resultSummary,
         }),
       ).pipe(
         Effect.catchDefect((error) =>

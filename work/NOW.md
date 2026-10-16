@@ -516,8 +516,9 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
             - **Julio's card test (about 21:28 UTC):**
               - `tool.run` posted plain text, ignoring `blocks`;
               - the AI then sent a second message echoing the prices and tagging @Julio ("we really dont need the second message … and taging me").
-              - **Fix: T-1761 (running).** `tool.run` posts the card; no final reply after a card; group replies quote but don't @tag.
-              - **Push as soon as it merges.**
+              - **Fix: T-1761 (merged `9ff1e88f3`, live about 22:16 UTC, together with T-1762).** `tool.run` posts the card; no final reply after a card; group replies quote but don't @tag.
+                - Health OK: 6 containers healthy, 0 level-50 errors.
+                - Julio asked to retest. Follow-up T-1763 is running (the crash reply's @tag, the approval-path logger, the delegated card summary).
             - **Push plan (done up to step 2):**
               1. Once T-1755 merges: `lead push`, which deploys blocks plus T-1753, T-1754 and T-1760. Check `/health`.
               2. Then merge T-1757 to main **and do not push main again until W9/W10 (the Join UI) merge.** S1, S2, S6 and the W tasks build on it.

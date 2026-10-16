@@ -305,6 +305,9 @@ export async function runOnApprovalDecided(
         groupId: pending.groupId,
         topicId: pending.topicId,
         requestId: pending.id,
+        // T-1763: the same gateway logger the request path uses, so an
+        // approved `tool.run` with invalid blocks logs its ids-only warning.
+        logger: deps.logger,
       },
       pending.args,
     );

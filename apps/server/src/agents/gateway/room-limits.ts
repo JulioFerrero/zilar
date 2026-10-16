@@ -63,7 +63,6 @@ export interface RateNoticeInput {
   notices: Map<string, number>;
   roomJid: string;
   atMs: number;
-  askerName: string;
   send: (text: string) => Promise<unknown>;
 }
 
