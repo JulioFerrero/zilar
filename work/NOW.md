@@ -397,6 +397,28 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
         - **T-1725 (the updater UI) is running;**
         - **then:** ask about the v0.2.4 tag (the updater, the icon at 390 px, T-1720/T-1722/T-1723 on the phone);
         - **follow-up:** the stale T-0098 comments (`agents/gateway/db.ts:314-316`, `agents/group-turn.ts:60-61`, `agents/tools/definitions.ts:286`).
+      - **15:32 UTC:**
+        - **T-1725 is merged and pushed** (phone only, so no redeploy; prod stays on `1cbd8e0e8`);
+        - **v0.2.4 was tagged with Julio's OK** on `9dcc70b1d`, and the Android release run is building. It's the first build with the updater: Julio installs it by hand once, and later tags arrive in the app.
+      - **About 15:50 UTC, new ask (Julio): a full rework of the landing (www.zilar.app, `apps/site`).**
+        - **His choices:** Next.js, pre-rendered and served by the same Caddy container (the Coolify app and the `get.zilar.app` redirect stay), and a lenis.dev-style scroll experience. The 3D can be reused, but it's a "full full full rework".
+        - **Live prototype:** https://claude.ai/artifact/S32YQ8mbFaydP4ZUoJB2yr (Lenis plus GSAP ScrollTrigger):
+          - a pinned hero where the moon orbits with scroll;
+          - a word-by-word statement;
+          - a pinned phone with four chapters (chat, an AI at work, the approval, a routine editing one message);
+          - a pinned terminal for AI computers;
+          - a sideways feature strip;
+          - a one-line install plus the Android download.
+        - **Next:** Julio iterates, then the specs (a Next.js scaffold in `apps/site` with the Dockerfile and Caddy kept, the sections, the WebGL planet ported from `src/scene.ts`).
+      - **15:58 UTC:** the v0.2.4 APKs (arm64 and universal) are on https://github.com/JulioFerrero/zilar/releases/tag/v0.2.4.
+      - **About 16:20 UTC, landing prototype v2** (Julio: "more flair and detail, no nonsense text"), same link:
+        - a WebGL planet (three 0.160: brushed metal, RoomEnvironment reflections, a gold moon with a point light, an orbit-dust trail) in a fixed canvas behind the whole page, moving between stations per section;
+        - letter-by-letter headline intro and breakup;
+        - the phone story with a 3D tilt;
+        - a provider band that skews with scroll speed;
+        - eight detail cards with live micro-demos;
+        - a "zilar" finale.
+        - Checked headless (desktop and phone): no script errors.
         - **T-1724 is running:** the core with no UI (GitHub latest release, version compare, the arm64 download, the installer intent, `REQUEST_INSTALL_PACKAGES`, the `useAppUpdate()` hook);
         - **the canvas** for the prompt and the Settings "This app" row: https://claude.ai/artifact/AMYshRxWEz3Ur5F9wAbNvQ. It waits for Julio's OK, then the UI spec;
         - **open choice:** quiet download on Wi-Fi (this needs `expo-network`) or always ask first.
