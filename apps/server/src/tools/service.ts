@@ -119,8 +119,7 @@ export {
   deleteTool,
   deleteToolsForAiInGroupEffect,
   deleteToolsForAiInTopicEffect,
-  revertTool,
-  saveToolVersion,
-} from './mutations';
+} from './deletes';
+export { revertTool, saveToolVersion } from './mutations';
 export { approveToolHosts, revokeToolHosts } from './hosts';
 export { runToolVersion } from './runner';
