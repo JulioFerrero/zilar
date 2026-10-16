@@ -7,19 +7,17 @@ import type { ServerDatabase } from '../db/client';
 import type { TopicRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { topicRoleHolderIds } from '../roles/service';
-import { canSeeTopic } from './access';
+import { getGroupMembership, isTopicMember } from './access';
 
 // Whether an AI may currently be in a topic's room: the derived rule that
-// keeps an AI from reading a conversation its owner cannot see. For a public
-// non-General topic a `topic_ais` row counts as today (the AI must also be
-// active and in the group — checked by the callers). For a private topic the
-// row counts only while the AI's owner holds a `topic_members` row for that
-// topic (and is still a group member): when the owner is removed from the
-// topic, or the topic is made private without the owner in `memberIds`, the
-// AI drops out of the room automatically, and comes back when the owner is
-// added again. The rows are never deleted: this is evaluated live, so it can
-// never drift. General topics have no `topic_ais` rows and always answer
-// false here.
+// keeps an AI from reading a conversation its owner cannot see. T-1757: only
+// General is the whole group, and General has no `topic_ais` rows, so for
+// every other topic a `topic_ais` row counts only while the AI's owner is a
+// topic member (`topic_members` or a role holder) who is still in the group.
+// When the owner leaves the
+// topic, the AI drops out of the room automatically, and comes back when the
+// owner joins again. The rows are never deleted: this is evaluated live, so
+// it can never drift.
 export async function aiMayBeInTopic(
   db: ServerDatabase,
   topic: TopicRow,
@@ -40,10 +38,15 @@ export async function aiMayBeInTopic(
   if (!row) {
     return false;
   }
-  if (topic.visibility !== 'private') {
-    return true;
+  // T-1757: a non-General topic of either visibility allows the AI only while
+  // its owner is a topic member. `canSeeTopic` cannot be used here: it stays
+  // true for every group member on a public topic.
+  if (!(await isTopicMember(db, topic.id, ai.owner))) {
+    return false;
   }
-  return canSeeTopic(db, topic, ai.owner);
+  // The owner must still be in the group too, like `allowedTopicAiIds`, so a
+  // half-finished leave cannot make the two AI rules disagree.
+  return (await getGroupMembership(db, topic.groupId, ai.owner)) !== null;
 }
 
 // The AI ids currently allowed in one topic under `aiMayBeInTopic`: the
@@ -72,9 +75,6 @@ export async function allowedTopicAiIds(
     }),
   );
   const active = rows.filter((row) => row.status === 'active');
-  if (topic.visibility !== 'private') {
-    return new Set(active.map((row) => row.aiId));
-  }
   const memberRows = await runSql(
     db,
     Effect.gen(function* () {
@@ -84,7 +84,7 @@ export async function allowedTopicAiIds(
     }),
   );
   const memberIds = new Set(memberRows.map((row) => row.userId));
-  // T-0116: an owner who reaches the private topic only through a role
+  // T-0116: an owner who reaches the non-General topic only through a role
   // keeps their AI in the room, like the room sync does.
   for (const holder of await topicRoleHolderIds(db, topic.id, topic.groupId)) {
     memberIds.add(holder);

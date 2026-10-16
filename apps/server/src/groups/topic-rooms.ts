@@ -62,7 +62,9 @@ export async function syncGroupTopicRooms(
 export async function emitDroppedGroupTopicAis(db: ServerDatabase, groupId: string): Promise<void> {
   const topicRows = await groupTopicRows(db, groupId);
   for (const topic of topicRows) {
-    if (topic.isGeneral || topic.archivedAt !== null || topic.visibility !== 'private') {
+    // T-1757: every non-General topic now follows the derived rule, so a
+    // dropped AI is announced for public topics too.
+    if (topic.isGeneral || topic.archivedAt !== null) {
       continue;
     }
     const aiRows = await runSql(

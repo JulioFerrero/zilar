@@ -5,6 +5,7 @@ import type { ServerDatabase } from '../db/client';
 import { runSql } from '../effect/sql';
 import { HttpError } from '../errors';
 import { dropMemberRoles } from '../roles/service';
+import { addToPublicTopics } from '../topics/public-compat';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { archiveDrainedPrivateTopics, emitDroppedGroupTopicAis, syncGroupTopicRooms } from './ais';
@@ -95,9 +96,20 @@ export async function addGroupMembers(
     } catch (error) {
       throw mapXmppError(error);
     }
-    // T-0108: public topics gain the new members. The sync is best effort —
-    // the members are in the database even if a room call fails (the failure
-    // is logged with the group id, never a topic name).
+    // T-0108/T-1762: public topics gain the new members before the sync, so
+    // the rooms see them. The membership is already committed, so this write
+    // and the sync below are best effort: a failure is logged (ids only, never
+    // a topic name) and never thrown. Throwing here would fail the request
+    // while the members are already in the group, and every retry stops at the
+    // `toAdd` filter above, so the topic rows would never be written.
+    try {
+      await addToPublicTopics(db, input.groupId, toAdd);
+    } catch (error) {
+      input.logger.warn(
+        { err: error, groupId: input.groupId, userIds: toAdd },
+        'could not add the new members to the public topics',
+      );
+    }
     await syncGroupTopicRooms(db, adminClient, input.groupId, input.domain, input.logger);
   }
 
@@ -158,14 +170,15 @@ export async function removeGroupMember(
             });
             yield* sql`DELETE FROM group_members
               WHERE group_id = ${input.groupId} AND user_id = ${input.targetUserId}`;
-            // T-0108: a removed person loses their private-topic rows too. The
-            // topic room sync below then drops them from every topic room.
+            // T-0108: a removed person loses their `topic_members` rows for
+            // every topic of the group. The topic room sync below then drops
+            // them from every topic room.
             const topicRows = yield* sql<{ id: string }>`SELECT id FROM topics
               WHERE group_id = ${input.groupId}`;
-            const privateIds = topicRows.map((row) => row.id);
-            if (privateIds.length > 0) {
+            const topicIds = topicRows.map((row) => row.id);
+            if (topicIds.length > 0) {
               yield* sql`DELETE FROM topic_members
-                WHERE topic_id IN ${sql.in(privateIds)} AND user_id = ${input.targetUserId}`;
+                WHERE topic_id IN ${sql.in(topicIds)} AND user_id = ${input.targetUserId}`;
             }
           }),
         );

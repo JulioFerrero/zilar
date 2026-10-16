@@ -101,9 +101,9 @@ async function holderUserIds(
   return new Set(rows.map((row) => row.userId).filter((id) => memberIds.has(id)));
 }
 
-// The private member list of one topic: `topic_members` plus the holders of
-// its roles who are still group members. Sorted by user id; callers join
-// names. Public topics have no rows here.
+// The member list of one non-General topic: `topic_members` plus the holders
+// of its roles who are still group members. Sorted by user id; callers join
+// names. General topics have no rows here.
 export async function topicRoleHolderIds(
   db: ServerDatabase,
   topicId: string,

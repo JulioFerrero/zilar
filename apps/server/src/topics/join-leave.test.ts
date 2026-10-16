@@ -41,6 +41,21 @@ async function archivedAtOf(context: TestContext, topicId: string): Promise<stri
   return row?.archivedAt ?? null;
 }
 
+// T-1762: the compat default seeds every group member into a new public topic,
+// so a test that wants to exercise a real join first drops the row.
+async function deleteTopicMember(
+  context: TestContext,
+  topicId: string,
+  userId: string,
+): Promise<void> {
+  await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`DELETE FROM topic_members WHERE topic_id = ${topicId} AND user_id = ${userId}`;
+    }),
+  );
+}
+
 describe('topic join and leave (T-1760)', () => {
   let context: TestContext;
 
@@ -69,6 +84,9 @@ describe('topic join and leave (T-1760)', () => {
       actorId: owner,
       name: 'Announcements',
     });
+    // T-1762: the compat default seeds every group member, so remove the
+    // member to make this a real join rather than an already-in no-op.
+    await deleteTopicMember(context, topic.id, member);
     expect(await memberIdsOf(context, topic.id)).toEqual([owner]);
 
     await joinTopic(depsFor(context), topic.id, member);
@@ -136,7 +154,10 @@ describe('topic join and leave (T-1760)', () => {
     await expect(
       removeTopicMember(depsFor(context), topic.id, owner, member),
     ).rejects.toMatchObject({ status: 403, code: 'forbidden' });
-    expect(await memberIdsOf(context, topic.id)).toEqual([owner]);
+    // T-1762: the refused removal must leave the topic untouched. Under the
+    // compat default `createTopic` seeded every group member, so owner and
+    // member are both there and the list is unchanged.
+    expect(await memberIdsOf(context, topic.id)).toEqual([owner, member].sort());
   });
 
   it('keeps an emptied public topic live', async () => {

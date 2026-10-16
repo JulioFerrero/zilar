@@ -8,6 +8,7 @@ import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { canCreateTopic, getGroupMembership, getTopic, type TopicRow } from './access';
 import { assertLink, assertMembersAreGroupMembers, assertNameFree, assertOwner } from './members';
 import { deleteTopicRows, uniqueRoomLocalpart } from './queries';
+import { initialPublicMemberIds } from './public-compat';
 import { syncTopicRoom } from './rooms';
 import {
   defaultGlyph,
@@ -101,9 +102,13 @@ export async function createTopic(
         })}`;
       }),
     );
-    // Private topics carry the invited members; a public topic starts with
-    // only its creator, and others join it from "Other topics".
-    const initialMemberIds = visibility === 'private' ? memberIds : [input.actorId];
+    // Private topics carry the invited members. A public topic starts with
+    // every group member until the Join UI ships (T-1762), then with only its
+    // creator, and others join it from "Other topics".
+    const initialMemberIds =
+      visibility === 'private'
+        ? memberIds
+        : await initialPublicMemberIds(deps.db, input.groupId, input.actorId);
     await runSql(
       deps.db,
       Effect.gen(function* () {

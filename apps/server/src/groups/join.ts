@@ -16,6 +16,7 @@ import type { InviteLogger } from './service';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { PUBLIC_GROUP_MAX_MEMBERS } from '../directory/service';
+import { addToPublicTopics } from '../topics/public-compat';
 import { groupOwnerId } from './queries';
 
 export interface JoinPublicGroupDeps {
@@ -135,6 +136,19 @@ export async function joinPublicGroup(
   );
   if (!joined) {
     return { groupId, alreadyMember: true };
+  }
+  // T-1762: the newcomer joins every existing public topic before the sync
+  // reads the room members. Best effort, like the sync below: the membership
+  // is already committed, so a failure is logged (ids only) and never thrown
+  // (throwing would fail the join while the user is already a member, and the
+  // retry stops at the `existing` check above, so it could never be repaired).
+  try {
+    await addToPublicTopics(deps.db, groupId, [userId]);
+  } catch (error) {
+    deps.logger.warn(
+      { err: error, groupId, userIds: [userId] },
+      'could not add the newcomer to the public topics',
+    );
   }
   await syncPublicTopicsByLink(linkDeps, groupId);
   try {

@@ -8,6 +8,7 @@ import { HttpError, xmppUnavailable } from '../errors';
 import { MAX_GROUP_MEMBERS } from '../groups/service';
 import { groupOwnerId } from '../groups/queries';
 import type { TopicRow } from '../topics/access';
+import { addToPublicTopics } from '../topics/public-compat';
 import { syncTopicRoom } from '../topics/rooms';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { countGroupMembers, findLinkRow, isGroupMember, linkIsUsable, serviceNow } from './queries';
@@ -160,6 +161,20 @@ export async function joinByInviteLink(
   );
   if (!joined) {
     return { groupId: link.groupId, alreadyMember: true };
+  }
+  // T-1762: the newcomer joins every existing public topic before the sync
+  // reads the room members. Best effort, like the sync below: the membership
+  // is already committed, so a failure is logged (ids only) and never thrown
+  // (throwing would fail the join while the user is already a member, and the
+  // retry stops at the in-transaction re-check above, so it could never be
+  // repaired).
+  try {
+    await addToPublicTopics(deps.db, link.groupId, [userId]);
+  } catch (error) {
+    deps.logger.warn(
+      { err: error, groupId: link.groupId, userIds: [userId] },
+      'could not add the newcomer to the public topics',
+    );
   }
   await syncPublicTopicsByLink(deps, link.groupId);
   try {

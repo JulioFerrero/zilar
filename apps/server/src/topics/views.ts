@@ -11,8 +11,10 @@ import { rolesOfTopic, topicRoleHolderIds } from '../roles/service';
 import type { TopicAiView, TopicOwnerView, TopicView } from './access';
 
 export async function countTopicMembers(db: ServerDatabase, topic: TopicRow): Promise<number> {
-  // T-1492: a public topic is the whole group — its people and its AIs.
-  if (topic.visibility !== 'private') {
+  // T-1757: only General is "the whole group — its people and its AIs" (Julio's
+  // rule, 2026-10-16). Every other topic counts its `topic_members` plus role
+  // holders and its `topic_ais` rows.
+  if (topic.isGeneral) {
     const [row] = await runSql(
       db,
       Effect.gen(function* () {
@@ -27,7 +29,7 @@ export async function countTopicMembers(db: ServerDatabase, topic: TopicRow): Pr
   }
   // T-0116: `topic_members` plus the holders of its roles (still group
   // members). A holder who is also a direct member counts once.
-  // T-1492: a private topic adds the AIs it lists in `topic_ais`.
+  // T-1757: every non-General topic adds the AIs it lists in `topic_ais`.
   const [direct, holders, ais] = await Promise.all([
     runSql(
       db,
@@ -177,7 +179,9 @@ function groupBy<T>(rows: readonly T[], key: (row: T) => string): Map<string, T[
 async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise<TopicViewParts> {
   const topicIds = rows.map((row) => row.id);
   const groupIds = [...new Set(rows.map((row) => row.groupId))];
-  const privateIds = rows.filter((row) => row.visibility === 'private').map((row) => row.id);
+  // The direct `topic_members` rows are needed for every non-General topic
+  // (T-1757); General's members are the group.
+  const directMemberTopicIds = rows.filter((row) => !row.isGeneral).map((row) => row.id);
   const ownerUserIds = [
     ...new Set(rows.flatMap((row) => (row.ownerUserId ? [row.ownerUserId] : []))),
   ];
@@ -206,10 +210,10 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
         sql<{ groupId: string; userId: string }>`SELECT group_id, user_id FROM group_members
             WHERE group_id IN ${sql.in(groupIds)}`,
         sql<GroupRoleRow>`SELECT * FROM group_roles WHERE group_id IN ${sql.in(groupIds)}`,
-        privateIds.length === 0
+        directMemberTopicIds.length === 0
           ? Effect.succeed([] as Array<{ topicId: string; userId: string }>)
           : sql<{ topicId: string; userId: string }>`SELECT topic_id, user_id FROM topic_members
-                WHERE topic_id IN ${sql.in(privateIds)}`,
+                WHERE topic_id IN ${sql.in(directMemberTopicIds)}`,
         ownerUserIds.length === 0
           ? Effect.succeed([] as Array<{ id: string; name: string }>)
           : sql<{ id: string; name: string }>`SELECT id, name FROM "user"
@@ -222,7 +226,7 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
             FROM topic_ais ta
             INNER JOIN ais a ON a.id = ta.ai_id
             WHERE ta.topic_id IN ${sql.in(topicIds)}`,
-        // T-1492: a public topic's count adds the group's AIs.
+        // T-1757: only General's count adds the group's AIs.
         sql<{
           groupId: string;
           total: number;
@@ -288,7 +292,7 @@ async function loadTopicViewParts(db: ServerDatabase, rows: TopicRow[]): Promise
       approverRole: approver === null ? null : { id: approver.id, name: approver.name },
     });
 
-    if (topic.visibility !== 'private') {
+    if (topic.isGeneral) {
       parts.memberCounts.set(topic.id, groupMembers.size + groupAiCount);
     } else {
       const ids = new Set((directByTopic.get(topic.id) ?? []).map((row) => row.userId));
