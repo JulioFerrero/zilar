@@ -259,10 +259,17 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
         - T-1669: the emoji/GIF sheet rises above the keyboard, so results show while typing;
         - T-1670: the select bar reads "✕ 2 selected 🗑 ⧉ Forward".
       - **Also merged:** T-1614 (the scheduled-jobs plan doc, after two auto rounds); T-1671 (split of web `TopicRow.tsx`, 398 → 218).
+      - **Merged after that:**
+        - T-1673 (one emoji table in chat-core for web and phone: 328 glyphs, all named; web goes from 102 to 328 and its old list is deleted);
+        - T-1674 (split of the phone `message-bubble.tsx` 392 → 365, plus the sticker reply-quote long hold);
+        - T-1675 (split of the web `Composer.tsx` 394 → 239);
+        - T-1676 (channel manage errors say "channel");
+        - T-1677 (the phone New message sheet lists contacts with a filter, like web).
+      - **Full check on main at T-1669:** typecheck 16/16, every package's tests pass, server 123 files / 891 tests (one flaky failure under load, green on the re-run).
       - **Running:**
         - T-1672 (mock: a seed person's @handle resolves to their seed id, with relation "contact");
-        - T-1673 (one emoji table for web and phone, about 328 glyphs);
-        - T-1674 (split of the phone `message-bubble.tsx`, plus the sticker reply-quote long hold).
+        - T-1678 and T-1679 (splits of `groups/members.ts` and client-core `polling.ts`, both 393 lines).
+      - **Gap 5 (export on the phone) needs a design:** the export route wants a sign-in from the last 30 minutes (403 "reauth"), and the phone has no step-up re-sign-in, so a plain button would mostly fail.
       - **Emulator QA of T-1659..T-1667** (mock build of main, Pixel 7, 03:40 local):
         - ✅ T-1659: back cancels an armed reply and stays in the chat.
         - ✅ T-1660/T-1665: "fire" → 🚒 🔥, and a tap inserts it.

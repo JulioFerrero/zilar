@@ -14,7 +14,7 @@ import { HttpError } from '../errors';
 import type { EjabberdAdminClient } from '../xmpp/admin-client';
 import { jidFor, localpartFor } from '../xmpp/provisioning';
 import { syncGroupTopicRooms } from './ais';
-import { syncChannelVoice } from './members';
+import { syncChannelVoice } from './member-roles';
 import { getGroupDetail, requireGroup } from './queries';
 import type { GroupDetail, GroupRole, InviteLogger } from './schemas';
 

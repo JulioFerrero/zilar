@@ -293,5 +293,6 @@ export type {
   RemoveGroupMemberInput,
 } from './schemas';
 export { getGroupDetail, getMembership, listGroupsForUser, listMembersForViewer } from './queries';
-export { addGroupMembers, changeMemberRole, removeGroupMember, syncChannelVoice } from './members';
+export { addGroupMembers, removeGroupMember } from './members';
+export { changeMemberRole, syncChannelVoice } from './member-roles';
 export { addGroupAi, removeGroupAi } from './ais';
