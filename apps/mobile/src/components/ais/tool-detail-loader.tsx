@@ -139,7 +139,7 @@ export function ToolDetailLoader({
   );
 
   // One action at a time: a revert, run or delete in flight blocks the
-  // others, like `runningRef` in `routines-section.tsx`.
+  // others, like `runningRef` in `use-routine-actions.ts`.
   const [revertState, startRevert, revertControls] = useAction((version: number) =>
     toolCall(() => api.revertTool(toolId, version)).pipe(
       Effect.tap(() =>

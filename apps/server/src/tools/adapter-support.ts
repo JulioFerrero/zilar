@@ -166,11 +166,21 @@ export async function findRoutineTarget(
   if (target.id !== undefined) {
     const id = target.id;
     const exact = routines.find((routine) => routine.id === id);
+    if (exact !== undefined) {
+      return { status: 'found', id: exact.id, title: exact.title, routineStatus: exact.status };
+    }
     const prefixed = routines.filter((routine) => routine.id.startsWith(id));
-    const match = exact ?? (prefixed.length === 1 ? prefixed[0] : undefined);
-    if (match === undefined) {
+    if (prefixed.length === 0) {
       return { status: 'error', summary: 'no such routine' };
     }
+    if (prefixed.length > 1) {
+      const ids = prefixed.map((routine) => routine.id).join(', ');
+      return {
+        status: 'error',
+        summary: `that id matches several routines: ${ids}; use the full id`,
+      };
+    }
+    const match = prefixed[0] as { id: string; title: string; status: string };
     return { status: 'found', id: match.id, title: match.title, routineStatus: match.status };
   }
   const title = target.title as string;

@@ -1752,3 +1752,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1734](T-1734-site-next-install-finale.md) | install and finale on the new landing | 2026-10-16 |
 | [T-1744](T-1744-web-ai-card.md) | web work card: one-line finished card with chevron, 2-line title | 2026-10-16 |
 | [T-1742](T-1742-site-next-polish.md) | landing polish: hero planet clears headline, static fallback | 2026-10-16 |
+| [T-1743](T-1743-review-follow-ups.md) | review follow-ups: quotes, routine messages, group wording | 2026-10-16 |

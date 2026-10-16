@@ -104,7 +104,7 @@ export const changeChannelRole = (
     yield* changeGroupCore<GroupDetail, Ports>(
       groupChangeStore(ctx, ctx.groupIds.get(chatId)),
       chatId,
-      'This channel is not available yet.',
+      'This group is not available yet.',
       (groupId) => api.changeGroupMemberRole(groupId, userId, role),
       true,
     );

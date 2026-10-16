@@ -27,6 +27,7 @@ export async function rawRequest<T>(
       `${apiUrl}${path}`,
       {
         ...init,
+        credentials: 'omit',
         headers: {
           accept: 'application/json',
           authorization: `Bearer ${token}`,

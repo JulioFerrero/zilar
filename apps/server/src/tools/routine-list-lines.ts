@@ -12,7 +12,12 @@ import { describeSchedule } from './routine-adapters';
 // One routine line: `- <title> [id <first 8 chars>]: runs tool <name>, <schedule> [<status>]`,
 // or `runs a prompt` for a prompt routine.
 export function routineLine(routine: PublicRoutine): string {
-  const target = routine.kind === 'prompt' ? 'runs a prompt' : `runs tool ${routine.toolName}`;
+  const target =
+    routine.kind === 'prompt'
+      ? 'runs a prompt'
+      : routine.toolName === ''
+        ? 'runs a deleted tool'
+        : `runs tool ${routine.toolName}`;
   return `- ${routine.title} [id ${routine.id.slice(0, 8)}]: ${target}, ${describeSchedule(routine.schedule)} [${routine.status}]`;
 }
 

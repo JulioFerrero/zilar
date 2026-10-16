@@ -341,7 +341,8 @@ export function createGroupTurn(ctx: GroupTurnContext) {
           if (trigger.scheduled === undefined) {
             yield* Effect.promise(() =>
               liveSendMessage(session, roomJid, 'groupchat', `@${name} ${GROUP_FAILURE_REPLY}`, {
-                replyTo: { id: trigger.id },
+                // T-1743: a synthetic follow-up has no real message to quote.
+                ...(trigger.synthetic === true ? {} : { replyTo: { id: trigger.id } }),
                 mentions: [{ jid: normBareJid(trigger.fromJid), begin: 0, end: name.length + 1 }],
               }),
             ).pipe(Effect.catchDefect(() => Effect.void));
