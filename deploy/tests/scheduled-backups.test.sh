@@ -198,7 +198,7 @@ D="$T/doc"
 mkdir -p "$D/bk"
 printf 'ZILAR_DOMAIN=sched-test.example\n' > "$D/.env"
 echo "bytes-not-secret" > "$D/bk/zilar-backup-20250101T000000Z.tgz"
-_MTIME="$(stat -f %m "$D/bk/zilar-backup-20250101T000000Z.tgz" 2>/dev/null || stat -c %Y "$D/bk/zilar-backup-20250101T000000Z.tgz")"
+_MTIME="$(stat -c %Y "$D/bk/zilar-backup-20250101T000000Z.tgz" 2>/dev/null || stat -f %m "$D/bk/zilar-backup-20250101T000000Z.tgz" 2>/dev/null)"
 # Fresh: ok on stdout, nothing on stderr. Exit code is NOT asserted
 # here: machine-specific checks (ports) may fail on the machine running
 # this test. The boundary cases below assert exit codes where freshness
@@ -461,7 +461,7 @@ if PATH="$T/stubbin:$PATH" PGPASSFILE="$T/pgpass-good" BACKUP_DIR="$T/bmdir" \
   fi
   _bm_new="$(find "$T/bmdir" -maxdepth 1 -type f -name 'zilar-backup-*.tgz' | sort | tail -n 1)"
   if [ -n "$_bm_new" ] && tar -tzf "$_bm_new" > /dev/null 2>&1 \
-    && [ "$(stat -f %Lp "$_bm_new" 2>/dev/null || stat -c %a "$_bm_new")" = "600" ]; then
+    && [ "$(stat -c %a "$_bm_new" 2>/dev/null || stat -f %Lp "$_bm_new" 2>/dev/null)" = "600" ]; then
     ok "bare-metal stub run writes a verified 0600 archive under the live name"
   else
     bad "bare-metal stub run left no verified archive"

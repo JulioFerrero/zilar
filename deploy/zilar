@@ -826,7 +826,8 @@ cmd_doctor() {
   else
     _mtime_epoch=""
     if command -v stat >/dev/null 2>&1; then
-      _mtime_epoch="$(stat -f %m "$_newest" 2>/dev/null || stat -c %Y "$_newest" 2>/dev/null || true)"
+      # GNU first: GNU/busybox `stat -f` is file-system mode and exits 0 with junk.
+      _mtime_epoch="$(stat -c %Y "$_newest" 2>/dev/null || stat -f %m "$_newest" 2>/dev/null || true)"
     fi
     case "$_mtime_epoch" in
       ""|*[!0-9]*)

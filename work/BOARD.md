@@ -1658,3 +1658,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1646](T-1646-room-scheduled-item.md) | Room queue accepts a scheduled run as its own turn | 2026-10-16 |
 | [T-1650](T-1650-backup-doc-test-ci.md) | Backup doc says ejabberd-database is not covered; test joins CI | 2026-10-16 |
 | [T-1651](T-1651-routine-row-prompt-label.md) | Routines lists say 'runs a prompt' for prompt routines | 2026-10-16 |
+| [T-1652](T-1652-stat-gnu-first.md) | Shell scripts try GNU stat before BSD stat (Linux fix) | 2026-10-16 |

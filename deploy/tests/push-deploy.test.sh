@@ -59,7 +59,7 @@ T="$(make_env "push-test.example")"
 ENV_FILE="$T/.env"
 
 # 1. File mode is 0600.
-if [ "$(stat -f %Lp "$ENV_FILE" 2>/dev/null || stat -c %a "$ENV_FILE")" = "600" ]; then
+if [ "$(stat -c %a "$ENV_FILE" 2>/dev/null || stat -f %Lp "$ENV_FILE" 2>/dev/null)" = "600" ]; then
   ok "wizard env is mode 0600"
 else
   bad "wizard env is not mode 0600"
