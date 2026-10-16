@@ -14,7 +14,7 @@ import {
   serviceFailure,
   type AdapterState,
 } from './adapter-support';
-import { describeSchedule } from './routine-adapters';
+import { routineLine, pendingApprovalLine, pendingRoutineApprovals } from './routine-list-lines';
 import {
   getTool,
   getVersion,
@@ -48,17 +48,17 @@ export function toolListAdapter(state: AdapterState): ActionAdapter<unknown> {
         topicId: actionCtx.topicId,
       });
       const routines = await routinesInScope(state, actionCtx);
+      const pending = await pendingRoutineApprovals(state, actionCtx);
       const toolLines = tools.map(
         (tool) =>
           `- ${tool.name} v${tool.currentVersion}: ${tool.description} (${hostsLine(tool.hosts)})`,
       );
-      const routineLines = routines.map(
-        (routine) =>
-          `- ${routine.title}: runs ${routine.toolName}, ${describeSchedule(routine.schedule)} [${routine.status}]`,
-      );
-      const lines = [...toolLines, ...routineLines];
+      const routineLines = routines.map(routineLine);
+      const pendingLines = pending.map(pendingApprovalLine);
+      const lines = [...toolLines, ...routineLines, ...pendingLines];
+      const waiting = pending.length === 0 ? '' : `, ${plural(pending.length, 'approval')} waiting`;
       return {
-        summary: `${plural(tools.length, 'tool')}, ${plural(routines.length, 'routine')}`,
+        summary: `${plural(tools.length, 'tool')}, ${plural(routines.length, 'routine')}${waiting}`,
         modelText: lines.length === 0 ? 'No tools or routines in this topic.' : lines.join('\n'),
       };
     },

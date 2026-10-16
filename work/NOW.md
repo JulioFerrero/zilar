@@ -432,7 +432,24 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - **About 17:20 UTC, Julio's phone sign-in fails after sign-out** ("something went wrong" on email):
         - **The cause:** React Native's native cookie jar keeps Better Auth's session cookie, because the auth client defaults to `credentials: "include"`. A POST with a cookie and no `Origin` gets a 403 `MISSING_OR_NULL_ORIGIN`, which isn't logged. The sign-out 403'd at 16:55, so the cookie stuck.
         - **Workaround sent to Julio:** Android Settings › Apps › Zilar › Storage › Clear storage.
-        - **The fix, T-1736, is running:** `credentials: 'omit'` on the auth and API clients, plus a message for the code. It's phone only and needs the next APK.
+        - **The fix, T-1736, is merged (held):** `credentials: 'omit'` on the auth and API clients, plus a message for the code. It's phone only and needs the next APK.
+      - **About 17:25 UTC, Julio's routine test** ("a lot of bugs … the UI and system is ugly and broken"; "in the design looks so nice … in the app is ugly"; plus "we need the option to have admins"):
+        - **Cleanup with his OK:** both duplicate "Market prices" prompt routines were soft-deleted at 17:21 UTC.
+        - **The causes, from live `agent_task_events`:**
+          - the tool form needs `hosts`, so the AI fell back to prompt routines;
+          - two turns made two approval cards;
+          - delete matches by title only;
+          - the approval follow-up quotes a synthetic message id ("Message" quote) and posts verbose text;
+          - a typed answer never closes the question;
+          - the jump uses the archive id;
+          - the work card is 220 px with a cut title.
+        - **The tasks:**
+          - T-1737: routine actions (running);
+          - T-1738: AI turn behaviour (running);
+          - T-1739: the phone AI cards per the boards;
+          - T-1740: the phone group routines actions, plus cookies;
+          - T-1741: group admins on web and phone (server `changeRole` allowed for groups).
+        - **After them:** deploy, then a v0.2.5 APK (ask), then ask Julio to test.
         - **T-1724 is running:** the core with no UI (GitHub latest release, version compare, the arm64 download, the installer intent, `REQUEST_INSTALL_PACKAGES`, the `useAppUpdate()` hook);
         - **the canvas** for the prompt and the Settings "This app" row: https://claude.ai/artifact/AMYshRxWEz3Ur5F9wAbNvQ. It waits for Julio's OK, then the UI spec;
         - **open choice:** quiet download on Wi-Fi (this needs `expo-network`) or always ask first.

@@ -12,7 +12,8 @@ import {
   pauseRoutine,
 } from '../routines/service';
 import {
-  findRoutineByTitle,
+  activeRoutineWithTitleExists,
+  findRoutineTarget,
   findToolByName,
   hostsEqualAsSets,
   hostsLine,
@@ -23,7 +24,7 @@ import {
   type AdapterState,
 } from './adapter-support';
 import { getTool } from './service';
-import { routineScheduleArgsSchema, routineTitleArgsSchema } from './tool-arg-schemas';
+import { routineScheduleArgsSchema, routineTargetArgsSchema } from './tool-arg-schemas';
 
 const WEEKDAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -88,11 +89,31 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
   return {
     name: 'routine.schedule',
     description:
-      'Schedule a routine here (needs approval): a prompt you run and answer, or a saved tool whose result is posted. Use the exact schedule asked for: daily HH:MM in an IANA zone, or every 1-10080 min.',
+      'Schedule a routine (needs approval). Prefer the saved-tool form when a saved tool does the job: {"title":"Prices","schedule":{"kind":"interval","everyMinutes":5},"tool":"market-prices"}',
     tier: 2,
     argsExample:
       '{"title":"Release notes digest","schedule":{"kind":"interval","everyMinutes":120},"prompt":"Summarise the release notes posted in this chat since the last run."}',
     argsSchema: routineScheduleArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
+    // T-1737: the tool form may omit `hosts`; bind the saved tool's CURRENT
+    // hosts here, before the args hash is computed and the card described,
+    // so the card lists them and `execute`'s fail-safe still compares equal
+    // sets. A missing tool throws, which the gateway answers as `failed`.
+    prepareArgs: async (ctx, args) => {
+      const parsed = args as { tool?: string; hosts?: string[]; prompt?: string };
+      if (parsed.prompt !== undefined || parsed.tool === undefined || parsed.hosts !== undefined) {
+        return args;
+      }
+      const actionCtx = ctx as ActionContext;
+      const found = await findToolByName(state, actionCtx, parsed.tool);
+      if (!found) {
+        throw new Error('no such tool');
+      }
+      const detail = await getTool(state.db, found.id);
+      if (!detail) {
+        throw new Error('no such tool');
+      }
+      return { ...parsed, hosts: [...detail.hosts] };
+    },
     describe: (args) => {
       const parsed = args as {
         tool: string;
@@ -123,6 +144,12 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
         input?: unknown;
         prompt?: string;
       };
+      // T-1737: a second approval for the same title must not make a second
+      // routine. Checked before either create path so a retry after an
+      // already-approved schedule creates nothing and says so.
+      if (await activeRoutineWithTitleExists(state, actionCtx, parsed.title)) {
+        return { summary: `a routine called "${parsed.title}" already exists here` };
+      }
       // T-1649: the prompt form needs no tool and no hosts check; it creates
       // a `kind = 'prompt'` routine the AI runs itself and posts here.
       if (parsed.prompt !== undefined) {
@@ -211,21 +238,23 @@ export function routinePauseAdapter(state: AdapterState): ActionAdapter<unknown>
     name: 'routine.pause',
     description: 'Pause a routine in this topic so it stops running.',
     tier: 1,
-    argsExample: '{"title":"Daily report"}',
-    argsSchema: routineTitleArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
+    argsExample: '{"id":"1a2b3c4d"}',
+    argsSchema: routineTargetArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
-      const parsed = args as { title: string };
-      return { summary: `Pause the routine "${parsed.title}"` };
+      const parsed = args as { id?: string; title?: string };
+      return {
+        summary:
+          parsed.title === undefined
+            ? `Pause the routine with id ${parsed.id}`
+            : `Pause the routine "${parsed.title}"`,
+      };
     },
     execute: async (ctx, args) => {
       const actionCtx = ctx as ActionContext;
-      const parsed = args as { title: string };
-      const found = await findRoutineByTitle(state, actionCtx, parsed.title);
-      if (found.status === 'missing') {
-        return { summary: 'no such routine' };
-      }
-      if (found.status === 'ambiguous') {
-        return { summary: 'ambiguous routine title' };
+      const parsed = args as { id?: string; title?: string };
+      const found = await findRoutineTarget(state, actionCtx, parsed);
+      if (found.status === 'error') {
+        return { summary: found.summary };
       }
       if (found.routineStatus !== 'active') {
         return { summary: `already paused "${found.title}"` };
@@ -255,21 +284,23 @@ export function routineDeleteAdapter(state: AdapterState): ActionAdapter<unknown
     name: 'routine.delete',
     description: 'Delete a routine in this topic.',
     tier: 1,
-    argsExample: '{"title":"Daily report"}',
-    argsSchema: routineTitleArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
+    argsExample: '{"id":"1a2b3c4d"}',
+    argsSchema: routineTargetArgsSchema as unknown as Schema.Codec<unknown, unknown, never>,
     describe: (args) => {
-      const parsed = args as { title: string };
-      return { summary: `Delete the routine "${parsed.title}"` };
+      const parsed = args as { id?: string; title?: string };
+      return {
+        summary:
+          parsed.title === undefined
+            ? `Delete the routine with id ${parsed.id}`
+            : `Delete the routine "${parsed.title}"`,
+      };
     },
     execute: async (ctx, args) => {
       const actionCtx = ctx as ActionContext;
-      const parsed = args as { title: string };
-      const found = await findRoutineByTitle(state, actionCtx, parsed.title);
-      if (found.status === 'missing') {
-        return { summary: 'no such routine' };
-      }
-      if (found.status === 'ambiguous') {
-        return { summary: 'ambiguous routine title' };
+      const parsed = args as { id?: string; title?: string };
+      const found = await findRoutineTarget(state, actionCtx, parsed);
+      if (found.status === 'error') {
+        return { summary: found.summary };
       }
       const owner = await ownerOf(state.db, actionCtx.aiId);
       try {

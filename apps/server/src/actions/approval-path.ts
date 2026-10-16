@@ -72,6 +72,7 @@ export async function runApprovalPath(
   }
 
   const expiresAt = new Date(at.getTime() + APPROVAL_TTL_MS);
+  const summary = truncateText(described.summary, 500);
 
   // One transaction: the approval row and the `pending_actions` row commit
   // together or not at all. The approval row carries `args_hash`; the
@@ -82,20 +83,38 @@ export async function runApprovalPath(
   // `ApprovalServiceError` (e.g. `pending_limit`), which the catch below maps
   // to a stable reason.
   let approvalId: string;
+  let reused = false;
   try {
-    approvalId = await runSql(
+    const result = await runSql(
       deps.db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         return yield* sql.withTransaction(
           Effect.gen(function* () {
+            // T-1737: an identical request (same AI, action, topic/group and
+            // summary) that is still pending reuses its open card instead of
+            // parking a second one. Read inside the transaction so the diff
+            // is against committed state.
+            const [existing] = yield* sql<{ id: string }>`SELECT id FROM approvals
+              WHERE ai_id = ${params.aiId}
+                AND action = ${params.action}
+                AND status = 'pending'
+                AND expires_at > ${at}
+                AND summary = ${summary}
+                AND topic_id IS NOT DISTINCT FROM ${params.topicId ?? null}
+                AND group_id IS NOT DISTINCT FROM ${params.groupId ?? null}
+              ORDER BY created_at ASC
+              LIMIT 1`;
+            if (existing) {
+              return { id: existing.id, reused: true };
+            }
             const approval = yield* createApprovalEffect(
               {
                 aiId: params.aiId,
                 ...(params.groupId === undefined ? {} : { groupId: params.groupId }),
                 ...(params.topicId === undefined ? {} : { topicId: params.topicId }),
                 action: params.action,
-                summary: truncateText(described.summary, 500),
+                summary,
                 ...(described.details === undefined
                   ? {}
                   : { details: truncateText(described.details, 20000) }),
@@ -122,11 +141,13 @@ export async function runApprovalPath(
                 ${params.requestedBy},
                 'waiting'
               )`;
-            return approval.id;
+            return { id: approval.id, reused: false };
           }),
         );
       }),
     );
+    approvalId = result.id;
+    reused = result.reused;
   } catch {
     // The approval service throws `ApprovalServiceError` (e.g.
     // `pending_limit`); the gateway answers `denied` with a stable reason
@@ -139,6 +160,12 @@ export async function runApprovalPath(
       'failed to create approval+pending-action pair',
     );
     return { status: 'denied', reason: 'ai_not_active' };
+  }
+
+  // T-1737: the request reused an open card; nothing new was written and
+  // nothing is announced, so the caller sees the same approval id again.
+  if (reused) {
+    return { status: 'pending_approval', approvalId };
   }
 
   // Audit after the commit. The approval id is the subject so the audit

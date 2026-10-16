@@ -148,24 +148,56 @@ export async function routinesInScope(state: AdapterState, ctx: ActionContext) {
   return all.filter((routine) => routine.topicId === ctx.topicId);
 }
 
-export async function findRoutineByTitle(
+// T-1737: resolves the `{id, title}` target `routine.pause` and
+// `routine.delete` accept. An `id` matches the full id or the 8-character
+// prefix `tool.list` prints; a `title` matches every routine in scope with
+// that title. Ambiguity (several routines sharing a title, or two ids
+// sharing a prefix) is an error summary the model can act on.
+export type RoutineTarget =
+  | { status: 'found'; id: string; title: string; routineStatus: string }
+  | { status: 'error'; summary: string };
+
+export async function findRoutineTarget(
   state: AdapterState,
   ctx: ActionContext,
-  title: string,
-): Promise<
-  | { status: 'missing' }
-  | { status: 'ambiguous' }
-  | { status: 'found'; id: string; title: string; routineStatus: string }
-> {
-  const matches = (await routinesInScope(state, ctx)).filter((routine) => routine.title === title);
+  target: { id?: string; title?: string },
+): Promise<RoutineTarget> {
+  const routines = await routinesInScope(state, ctx);
+  if (target.id !== undefined) {
+    const id = target.id;
+    const exact = routines.find((routine) => routine.id === id);
+    const prefixed = routines.filter((routine) => routine.id.startsWith(id));
+    const match = exact ?? (prefixed.length === 1 ? prefixed[0] : undefined);
+    if (match === undefined) {
+      return { status: 'error', summary: 'no such routine' };
+    }
+    return { status: 'found', id: match.id, title: match.title, routineStatus: match.status };
+  }
+  const title = target.title as string;
+  const matches = routines.filter((routine) => routine.title === title);
   if (matches.length === 0) {
-    return { status: 'missing' };
+    return { status: 'error', summary: 'no such routine' };
   }
   if (matches.length > 1) {
-    return { status: 'ambiguous' };
+    const ids = matches.map((routine) => routine.id).join(', ');
+    return {
+      status: 'error',
+      summary: `several routines are called "${title}": ids ${ids}; use id`,
+    };
   }
   const match = matches[0] as { id: string; title: string; status: string };
   return { status: 'found', id: match.id, title: match.title, routineStatus: match.status };
+}
+
+// T-1737: true when a live, active routine with this title already exists in
+// scope, so an approved `routine.schedule` creates nothing and says so.
+export async function activeRoutineWithTitleExists(
+  state: AdapterState,
+  ctx: ActionContext,
+  title: string,
+): Promise<boolean> {
+  const routines = await routinesInScope(state, ctx);
+  return routines.some((routine) => routine.title === title && routine.status === 'active');
 }
 
 export function hostsEqualAsSets(current: readonly string[], approved: readonly string[]): boolean {

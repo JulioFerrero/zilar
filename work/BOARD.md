@@ -1745,3 +1745,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1733](T-1733-site-next-details.md) | details strip with live demos on the new landing | 2026-10-16 |
 | [T-1736](T-1736-mobile-no-cookies.md) | phone never sends cookies (403 on sign-in after sign-out) | 2026-10-16 |
 | [T-1732](T-1732-site-next-keys-computer.md) | provider band and pinned terminal on the new landing | 2026-10-16 |
+| [T-1737](T-1737-routine-actions-fixes.md) | routines: tool form without hosts, ids, delete by id, one card | 2026-10-16 |

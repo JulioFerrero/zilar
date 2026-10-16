@@ -95,12 +95,15 @@ const routinePromptSchema = Schema.String.check(
   ),
 );
 
-// The saved-tool form: a tool the routine runs on the schedule.
+// The saved-tool form: a tool the routine runs on the schedule. T-1737:
+// `hosts` is optional; when the model leaves it out the adapter binds the
+// saved tool's current hosts in `prepareArgs` before the card is described,
+// so the card still lists them and the fail-safe still compares equal sets.
 const routineToolScheduleArgsSchema = struct({
   tool: toolNameSchema,
   title: routineTitleSchema,
   schedule: routineScheduleSchema,
-  hosts: toolHostsSchema,
+  hosts: Schema.optional(toolHostsSchema),
   input: Schema.optional(inputField(MAX_ROUTINE_INPUT_BYTES)),
 });
 
@@ -119,6 +122,24 @@ export const routineScheduleArgsSchema = Schema.Union([
   routinePromptScheduleArgsSchema,
 ]);
 
-export const routineTitleArgsSchema = struct({
-  title: routineTitleSchema,
-});
+// T-1737: `routine.pause` and `routine.delete` name a routine by `id` (the
+// full id or the 8-character prefix `tool.list` prints) or by `title`. At
+// least one field is required; an empty object fails the filter.
+const routineIdSchema = Schema.String.check(
+  Schema.makeFilter((value: string) =>
+    /^[0-9a-fA-F-]{8,36}$/.test(value)
+      ? undefined
+      : 'id must be a routine id or its 8-character prefix',
+  ),
+);
+
+export const routineTargetArgsSchema = struct({
+  id: Schema.optional(routineIdSchema),
+  title: Schema.optional(routineTitleSchema),
+}).check(
+  Schema.makeFilter((value) =>
+    value.id !== undefined || value.title !== undefined
+      ? undefined
+      : 'provide the routine id or title',
+  ),
+);
