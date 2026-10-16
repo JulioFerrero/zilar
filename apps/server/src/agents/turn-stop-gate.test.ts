@@ -72,7 +72,7 @@ describe('a stop during the budget gate ends the turn quietly (T-1422)', () => {
       logger: { warn: () => undefined },
     });
 
-    expect(outcome).toEqual({ kind: 'failed', text: '' });
+    expect(outcome).toEqual({ kind: 'stopped', text: '' });
     expect(sent).toEqual([]);
     expect(failures).toEqual([]);
     expect(finished).toEqual(['stopped']);
@@ -108,7 +108,7 @@ describe('a stop during the budget gate ends the turn quietly (T-1422)', () => {
       logger: { warn: () => undefined },
     });
 
-    expect(outcome).toEqual({ kind: 'failed', text: '' });
+    expect(outcome).toEqual({ kind: 'stopped', text: '' });
     expect(sent).toEqual([]);
     expect(finished).toEqual(['stopped']);
   });

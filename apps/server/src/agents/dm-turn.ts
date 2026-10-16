@@ -118,7 +118,11 @@ export interface DmTurnDeps {
   log?: TurnLog;
 }
 
-export type DmTurnOutcome = { kind: 'replied'; text: string } | { kind: 'failed'; text: string };
+export type DmTurnOutcome =
+  | { kind: 'replied'; text: string }
+  | { kind: 'failed'; text: string }
+  // A turn the owner stopped: the text is always '', and it is never a failure.
+  | { kind: 'stopped'; text: string };
 
 // Runs one turn: typing on, model call, reply into the DM, typing off. When
 // the model asks for tools, the shared multi-round `runToolLoop` runs
@@ -149,7 +153,7 @@ export async function runDmTurn(deps: DmTurnDeps): Promise<DmTurnOutcome> {
     // T-1422: a stopped turn posts no reply; the card ends `stopped`.
     if (deps.signal?.aborted === true) {
       await finishProgressQuietly(deps, secrets, 'stopped');
-      return { kind: 'failed', text: '' };
+      return { kind: 'stopped', text: '' };
     }
     const reply = mapFailureToReply(error);
     deps.log?.append('error', failureLogFields(error));

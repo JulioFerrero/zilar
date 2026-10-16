@@ -37,5 +37,5 @@ export async function finishProgressQuietly(
 /** Closes the card as `stopped` and returns the quiet outcome. */
 export async function stoppedTurn(deps: TurnDeps, secrets: string[]): Promise<DmTurnOutcome> {
   await finishProgressQuietly(deps, secrets, 'stopped');
-  return { kind: 'failed', text: '' };
+  return { kind: 'stopped', text: '' };
 }

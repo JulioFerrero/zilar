@@ -1649,3 +1649,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1638](T-1638-routine-kind-migration.md) | Routines can hold a prompt: migration 0067 and the row type | 2026-10-16 |
 | [T-1630](T-1630-findings-resweep.md) | Fresh status for the open server findings | 2026-10-16 |
 | [T-1640](T-1640-routine-timezone-guide.md) | Tool guide: routines use the person's own time zone | 2026-10-16 |
+| [T-1639](T-1639-turn-outcome-stopped.md) | A stopped AI turn has its own outcome, not a failure | 2026-10-16 |
