@@ -126,6 +126,10 @@ jobs:
         env:
           EXPO_PUBLIC_ZILAR_API_URL: ${{ env.ZILAR_API_URL }}
           NODE_ENV: production
+          # Expo evaluates app.config.ts again here, so the version it embeds in
+          # assets/app.config (which the in-app updater reads) must come from the tag.
+          ZILAR_VERSION_NAME: ${{ steps.version.outputs.name }}
+          ZILAR_VERSION_CODE: ${{ steps.version.outputs.code }}
           ZILAR_UPLOAD_STORE_FILE: ${{ env.ZILAR_UPLOAD_STORE_FILE }}
           ZILAR_UPLOAD_STORE_PASSWORD: ${{ secrets.ZILAR_ANDROID_KEYSTORE_PASSWORD }}
           ZILAR_UPLOAD_KEY_ALIAS: ${{ secrets.ZILAR_ANDROID_KEY_ALIAS }}
@@ -143,6 +147,8 @@ jobs:
       - name: Verify the signatures and the baked server URL
         env:
           API_URL: ${{ env.ZILAR_API_URL }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/zilar"
@@ -159,8 +165,20 @@ jobs:
               echo "::error::$(basename "$apk") does not contain the server URL ${API_URL}."
               exit 1
             }
+            # T-1748: the app reads its own version from the bundled app config, so a
+            # release must embed the tag's version or the in-app updater sees "Local build".
+            bundle="$(unzip -p "$apk" assets/app.config)" || {
+              echo "::error::$(basename "$apk") has no assets/app.config; the in-app updater reads its version from it."
+              exit 1
+            }
+            if ! printf '%s' "$bundle" | jq -e --arg name "$VERSION_NAME" --argjson code "$VERSION_CODE" \
+              '.version == $name and .android.versionCode == $code' > /dev/null; then
+              actual="$(printf '%s' "$bundle" | jq -r '"\(.version) (versionCode \(.android.versionCode))"' 2>/dev/null || echo 'unreadable')"
+              echo "::error::$(basename "$apk") bundles version ${actual}, but the tag ${RELEASE_TAG} needs ${VERSION_NAME} (versionCode ${VERSION_CODE})."
+              exit 1
+            fi
           done
-          echo "Both APKs are release-signed and carry ${API_URL}."
+          echo "Both APKs are release-signed, carry ${API_URL} and bundle version ${VERSION_NAME} (${VERSION_CODE})."
 
       - name: Write the SHA-256 sums
         run: |

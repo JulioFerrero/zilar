@@ -469,6 +469,11 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
           - **The canvas:** https://claude.ai/artifact/G2tL9QnT7dYgD5SxeYreLr (10 boards: in a chat, numbers 01–07, progress 08–12, choices 13–18, content 19–25). It's waiting for Julio's rounds.
           - **The canvas files:** `.git/zilar-canvas/blocks/project/`, outside git status, so merges aren't blocked.
           - **After approval:** copy the boards into `docs/design/mockups/blocks/`, then a plan (the payload schema, a tool output `blocks` field, the reply path for buttons, polls and forms), then the specs.
+          - **About 20:00 UTC, Julio approved it** ("OH i love it"). The boards are committed in `docs/design/mockups/blocks/` (`7a5043a0a`), and **T-1747 (the plan) is running.**
+        - **Updater bug (Julio's phone shows "Zilar 0.1.0 · Local build" on 0.2.4):**
+          - **The cause:** `android-release.yml` passes the version only to prebuild, so the APK's `assets/app.config` says 0.1.0 with no versionCode (checked in the v0.2.5 APK).
+          - **T-1748 is running.** Julio OK'd tagging **v0.2.6** once it merges.
+          - **Then:** verify `assets/app.config` in the APK, and tell Julio to install it by hand once.
         - **T-1724 is running:** the core with no UI (GitHub latest release, version compare, the arm64 download, the installer intent, `REQUEST_INSTALL_PACKAGES`, the `useAppUpdate()` hook);
         - **the canvas** for the prompt and the Settings "This app" row: https://claude.ai/artifact/AMYshRxWEz3Ur5F9wAbNvQ. It waits for Julio's OK, then the UI spec;
         - **open choice:** quiet download on Wi-Fi (this needs `expo-network`) or always ask first.
