@@ -39,9 +39,13 @@
   }
 
   # Hashed build assets never change: cache them for a year. The page itself revalidates.
-  @assets path /assets/*
+  @assets path /_next/static/*
   header @assets Cache-Control "public, max-age=31536000, immutable"
   header /index.html Cache-Control "no-cache"
+
+  # The static export writes /docs.html or /docs/index.html, so resolve a clean
+  # URL to the file that exists.
+  try_files {path} {path}.html {path}/index.html
 
   file_server
 }

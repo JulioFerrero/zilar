@@ -1,4 +1,4 @@
-# Zilar landing page image (apps/site): a static Vite build served by Caddy.
+# Zilar landing page image (apps/site): a static Next.js export served by Caddy.
 #
 # Build from the repo root so the workspace layout is visible:
 #
@@ -7,6 +7,7 @@
 FROM node:24.11.1-alpine AS builder
 
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
 WORKDIR /repo
@@ -24,7 +25,7 @@ RUN pnpm --filter @zilar/site build
 FROM caddy:2.10.2-alpine AS runtime
 
 COPY apps/site/Caddyfile /etc/caddy/Caddyfile
-COPY --from=builder /repo/apps/site/dist /srv/zilar-site
+COPY --from=builder /repo/apps/site/out /srv/zilar-site
 
 EXPOSE 80
 

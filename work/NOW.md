@@ -456,6 +456,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
           - T-1745 (the AI names the work card, Julio's choice) is in review.
           - **Open:** the "waiting for you" jump is only fixed when the question is the chat's last message (T-1739). The worker says live rows may already be keyed by the stanza-id, so the real cause needs a runtime check (emulator at night, or Julio's phone on v0.2.5).
         - **Julio, about 18:10 UTC: "we can use as many workers we like"**, so up to 8 workers even while he's up.
+        - **About 19:05 UTC:**
+          - **pushed `7f8a6ea03`:** T-1739, T-1740, T-1741, T-1743, T-1744, T-1745, plus the landing T-1734 and T-1742 (both inside `apps/site-next`, not served yet);
+          - **T-1735** (the switch to www) is in pre-review. Before its push: screenshots at 1440 and 390 to Julio;
+          - **then:** ask about v0.2.5 (T-1736, T-1739, T-1740, T-1741 on the phone) and send one test list.
         - **T-1724 is running:** the core with no UI (GitHub latest release, version compare, the arm64 download, the installer intent, `REQUEST_INSTALL_PACKAGES`, the `useAppUpdate()` hook);
         - **the canvas** for the prompt and the Settings "This app" row: https://claude.ai/artifact/AMYshRxWEz3Ur5F9wAbNvQ. It waits for Julio's OK, then the UI spec;
         - **open choice:** quiet download on Wi-Fi (this needs `expo-network`) or always ask first.

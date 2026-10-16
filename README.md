@@ -124,7 +124,7 @@ pnpm format:check && pnpm lint && pnpm typecheck && pnpm test
 | --------------------------------------------------------- | ------------------------------------------------- |
 | `apps/web`, `apps/mobile`                                 | The web app (React) and the phone app (Expo)      |
 | `apps/server`                                             | API, AI turns, approvals, audit log, tool sandbox |
-| `apps/site`                                               | The website at zilar.app                          |
+| `apps/site`                                               | The website at www.zilar.app (Next.js, static export) |
 | `packages/xmpp-core`, `packages/chat-core`                | The XMPP client and the chat logic both apps share |
 | `packages/desk`                                           | AI computers                                      |
 | `deploy`                                                  | The installer and the Docker and Coolify setups   |
