@@ -7,6 +7,7 @@ import type { ChatUsage } from '../ai/model-client';
 import type { DmTurnOutcome } from './dm-turn';
 import { runToolLoop } from './dm-tool-turn';
 import { buildHandoffLine, findHandoffIndex } from './handoff';
+import { stripLeadingMention } from './reply-mention';
 import { finishProgressQuietly, stoppedTurn, turnStopped } from './turn-stop';
 import { GROUP_FAILURE_REPLY, cutShortSuffix } from './replies';
 import { sendGroupReply } from './turn-send';
@@ -83,6 +84,10 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
   };
   const wire = (text: string, withHandoff = false): { text: string; opts: SendMessageOptions } => {
     const prefix = `@${name} `;
+    // T-1625: the model sometimes echoes the asker's `@mention` at the start of
+    // its text; drop it before measuring handoff offsets, so the wire text has
+    // exactly one leading mention and the offsets stay right.
+    const body = stripLeadingMention(text, name);
     const mentions: NonNullable<SendMessageOptions['mentions']> = [
       { jid: deps.senderJid.toLowerCase(), begin: 0, end: name.length + 1 },
     ];
@@ -94,7 +99,7 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
       if (nick === '') {
         continue;
       }
-      const index = findHandoffIndex(text, nick);
+      const index = findHandoffIndex(body, nick);
       if (index === null) {
         continue;
       }
@@ -104,9 +109,9 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
         end: prefix.length + index + nick.length + 1,
       });
     }
-    const payload = withHandoff ? handoffPayload(text) : undefined;
+    const payload = withHandoff ? handoffPayload(body) : undefined;
     return {
-      text: prefix + text,
+      text: prefix + body,
       opts: {
         replyTo: { id: deps.triggerId },
         mentions,
