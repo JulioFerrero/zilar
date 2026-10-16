@@ -33,7 +33,12 @@ function apply(state: EditsState, update: EditUpdate, target?: EditAuthor) {
 describe('applyEdit corrections', () => {
   it('applies a correction from the original sender', () => {
     const state = apply(emptyEdits(), correction('m-1', 'fixed', 1));
-    expect(editsFor(state, 'm-1')).toEqual({ edited: true, deleted: false, text: 'fixed' });
+    expect(editsFor(state, 'm-1')).toEqual({
+      edited: true,
+      deleted: false,
+      text: 'fixed',
+      editedAt: 1,
+    });
   });
 
   it('keeps the latest correction in stanza order', () => {
@@ -52,7 +57,12 @@ describe('applyEdit corrections', () => {
   it('ignores a retraction from a foreign sender', () => {
     let state = apply(emptyEdits(), correction('m-1', 'fixed', 1));
     state = applyEdit(state, retraction('m-1', 2, LUIS), ANA);
-    expect(editsFor(state, 'm-1')).toEqual({ edited: true, deleted: false, text: 'fixed' });
+    expect(editsFor(state, 'm-1')).toEqual({
+      edited: true,
+      deleted: false,
+      text: 'fixed',
+      editedAt: 1,
+    });
   });
 
   it('carries the mention ranges of the correction', () => {
@@ -141,7 +151,12 @@ describe('pending updates', () => {
     expect(editsFor(state, 'm-1')).toEqual({ edited: false, deleted: false });
 
     state = resolveEdits(state, 'm-1', ANA);
-    expect(editsFor(state, 'm-1')).toEqual({ edited: true, deleted: false, text: 'fixed' });
+    expect(editsFor(state, 'm-1')).toEqual({
+      edited: true,
+      deleted: false,
+      text: 'fixed',
+      editedAt: 1,
+    });
   });
 
   it('keeps a retraction until its target loads, then applies it', () => {

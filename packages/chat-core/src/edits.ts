@@ -110,6 +110,8 @@ export interface MessageEdits {
   deleted: boolean;
   /** The corrected text, when `edited` is true. */
   text?: string;
+  /** The latest correction's stanza time in ms, when `edited` is true. */
+  editedAt?: number;
   mentions?: EditMention[];
 }
 
@@ -234,7 +236,12 @@ export function editsFor(state: EditsState, targetId: string): MessageEdits {
   if (correction === undefined) {
     return { edited: false, deleted: false };
   }
-  const result: MessageEdits = { edited: true, deleted: false, text: correction.text };
+  const result: MessageEdits = {
+    edited: true,
+    deleted: false,
+    text: correction.text,
+    editedAt: correction.order,
+  };
   if (correction.mentions !== undefined) {
     result.mentions = correction.mentions;
   }

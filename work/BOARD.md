@@ -1724,3 +1724,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1709](T-1709-continue-after-approval.md) | The AI continues its task after an approval | 2026-10-16 |
 | [T-1713](T-1713-routine-message-store.md) | Routines store their live message id (migration 0068) | 2026-10-16 |
 | [T-1712](T-1712-merge-hold-push.md) | lead merge --hold and lead push: one deploy per batch | 2026-10-16 |
+| [T-1715](T-1715-edited-time.md) | 'edited' shows the latest edit time on web and phone | 2026-10-16 |

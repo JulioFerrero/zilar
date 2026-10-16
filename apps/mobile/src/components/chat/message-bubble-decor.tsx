@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Animated, AppState, Pressable, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
+import { metaTimeText } from '@/components/chat/meta-time';
 import { Ticks } from '@/components/chat/ticks';
 import { PulseDot } from '@/components/chat/typing-dots';
 import { Text } from '@/components/ui/text';
@@ -153,10 +154,7 @@ export function BigEmoji({
         className="mt-1 flex-row items-center gap-1 self-center rounded-full px-2 py-0.5"
         style={raisedPill}
       >
-        <Text className="font-mono text-[11px] text-muted-foreground">
-          {message.edited === true ? 'edited ' : ''}
-          {formatTime(message.createdAt)}
-        </Text>
+        <Text className="font-mono text-[11px] text-muted-foreground">{metaTimeText(message)}</Text>
         {outgoing ? (
           <Ticks
             status={message.status}

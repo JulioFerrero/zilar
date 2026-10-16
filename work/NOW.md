@@ -354,6 +354,13 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - **Restarts:**
         - Julio chose **Phase 2 of `docs/deploy/zero-downtime-plan.md` later**, and Phase 3 (AI turns survive a deploy) after it;
         - until then, merges are batched (T-1712), with a push at most every 30 minutes.
+      - **About 09:30 UTC:**
+        - **live at `7c5754082`:**
+          - T-1709 (the AI continues after an approval);
+          - T-1713 (migration 0068 ran, and the `last_message_*` columns are on prod);
+          - T-1712 (`lead merge --hold` and `lead push` now exist);
+        - **running:** T-1714 (the routine send: one message, later runs edit it, no card or mention) and T-1715 ("edited HH:MM" on web and phone);
+        - **queued:** a routine's edit bumps the chat; the compact routine approval card and the message header; Settings › Routines.
       - **Running:**
         - T-1692 (phone per-chat scroll memory, gap 7). Fix rounds:
           - 1: retry the restore until the content covers the spot;

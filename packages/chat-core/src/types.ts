@@ -102,6 +102,11 @@ export interface UiMessage {
   /** True when the message was corrected (XEP-0308) after it was sent. */
   edited?: boolean;
   /**
+   * When the message was last corrected (XEP-0308). Present only together with
+   * `edited`; readers show this time instead of the original send time.
+   */
+  editedAt?: Date;
+  /**
    * True when the message was retracted for everyone (XEP-0424). A deleted
    * message carries no text, payload or reactions.
    */

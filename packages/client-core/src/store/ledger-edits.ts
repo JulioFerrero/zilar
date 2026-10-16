@@ -190,6 +190,7 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
       }
       const plain: StoreMessage = { ...message };
       delete plain.edited;
+      delete plain.editedAt;
       delete plain.deleted;
       if (restoreText) {
         if (base === undefined) {
@@ -211,6 +212,7 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
         message.reactions === undefined &&
         message.mentions === undefined &&
         message.edited === undefined &&
+        message.editedAt === undefined &&
         message.failed === undefined &&
         message.failureReason === undefined &&
         message.localUri === undefined &&
@@ -229,6 +231,7 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
       delete deleted.reactions;
       delete deleted.mentions;
       delete deleted.edited;
+      delete deleted.editedAt;
       delete deleted.failed;
       delete deleted.failureReason;
       return deleted;
@@ -236,16 +239,23 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     const text = state.text ?? message.text;
     const mentions =
       state.mentions === undefined ? undefined : mapMentions(chatId, state.mentions, text ?? '');
+    const editedAt = state.editedAt === undefined ? undefined : new Date(state.editedAt);
     if (
       message.edited === true &&
       message.deleted === undefined &&
       message.text === text &&
-      mentionsEqual(message.mentions, mentions)
+      mentionsEqual(message.mentions, mentions) &&
+      message.editedAt?.getTime() === state.editedAt
     ) {
       return message;
     }
     const edited: StoreMessage = { ...message, edited: true };
     delete edited.deleted;
+    if (editedAt === undefined) {
+      delete edited.editedAt;
+    } else {
+      edited.editedAt = editedAt;
+    }
     if (text === undefined) {
       delete edited.text;
     } else {

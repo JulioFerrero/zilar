@@ -1,10 +1,11 @@
-import { formatTime, splitCodeBlocks, splitLinks, type UiMessage } from '@zilar/chat-core';
+import { splitCodeBlocks, splitLinks, type UiMessage } from '@zilar/chat-core';
 import { View, type ViewStyle } from 'react-native';
 
 import { LinkPreviewCard } from '@/components/chat/link-preview-card';
 import { LinkText } from '@/components/chat/link-text';
 import { CodeBlock } from '@/components/chat/markdown-text';
 import { DraftCaret, GeneratingLabel } from '@/components/chat/message-bubble-decor';
+import { metaTimeText } from '@/components/chat/meta-time';
 import { Ticks } from '@/components/chat/ticks';
 import { Text } from '@/components/ui/text';
 import { DANGER, FOREGROUND, SEEN } from '@/lib/colors';
@@ -82,8 +83,7 @@ export function BubbleInlineMeta({
         : {})}
     >
       {'  '}
-      {message.edited === true ? 'edited ' : ''}
-      {formatTime(message.createdAt)}
+      {metaTimeText(message)}
       {/* A failed own text names the failure, like the voice and card meta
           does (`BubbleMeta`): a red "Not sent" next to the red alert icon. */}
       {outgoing && message.status === 'failed' ? (

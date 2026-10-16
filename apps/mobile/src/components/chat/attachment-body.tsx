@@ -1,4 +1,4 @@
-import { formatTime, parseUrl, photosOf, type UiMessage, type ViewerPhoto } from '@zilar/chat-core';
+import { parseUrl, photosOf, type UiMessage, type ViewerPhoto } from '@zilar/chat-core';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -6,6 +6,7 @@ import { AlbumGrid } from '@/components/chat/album-grid';
 import { AttachmentImage, AttachmentViewer } from '@/components/chat/attachment-message';
 import { AttachmentFileRow } from '@/components/chat/file-bubble';
 import { AttachmentVideo } from '@/components/chat/attachment-video';
+import { metaTimeText } from '@/components/chat/meta-time';
 import { isGifVideoAttachment } from '@/lib/attachments';
 import { BUBBLE_COLORS, FOREGROUND, MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { Text } from '@/components/ui/text';
@@ -154,13 +155,8 @@ export function AttachmentBody({
         </Text>
       ) : null}
       <View className="mt-1 flex-row items-center justify-end gap-1">
-        {message.edited === true ? (
-          <Text className="font-mono text-[11px]" color={metaColor}>
-            edited
-          </Text>
-        ) : null}
         <Text className="font-mono text-[11px]" color={metaColor}>
-          {formatTime(message.createdAt)}
+          {metaTimeText(message)}
         </Text>
         {outgoing ? (
           <Ticks

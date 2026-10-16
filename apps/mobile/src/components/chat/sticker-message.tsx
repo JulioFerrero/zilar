@@ -1,10 +1,11 @@
-import { formatTime, type UiMessage } from '@zilar/chat-core';
+import type { UiMessage } from '@zilar/chat-core';
 import type { Sticker } from '@zilar/protocol';
 import { Effect, Fiber } from 'effect';
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
+import { metaTimeText } from '@/components/chat/meta-time';
 import { Ticks } from '@/components/chat/ticks';
 import { Text } from '@/components/ui/text';
 import { API_URL } from '@/lib/auth';
@@ -89,10 +90,7 @@ export function StickerMessage({ sticker, message, outgoing, onLongPress }: Stic
         className="absolute right-1 bottom-1 flex-row items-center gap-1 rounded-full px-2 py-0.5"
         style={raisedPill}
       >
-        <Text className="font-mono text-[11px] text-muted-foreground">
-          {message.edited === true ? 'edited ' : ''}
-          {formatTime(message.createdAt)}
-        </Text>
+        <Text className="font-mono text-[11px] text-muted-foreground">{metaTimeText(message)}</Text>
         {outgoing ? (
           <Ticks
             status={message.status}

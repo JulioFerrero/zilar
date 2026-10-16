@@ -56,8 +56,14 @@ export function StickerMessage({ sticker, message, own }: StickerMessageProps) {
         title={formatFullDateTime(message.createdAt)}
         className="raised-pill absolute right-1 bottom-1 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground tabular-nums"
       >
-        {message.edited === true && <span>edited</span>}
-        {formatTime(message.createdAt)}
+        {message.edited === true && message.editedAt !== undefined ? (
+          <span>edited {formatTime(message.editedAt)}</span>
+        ) : (
+          <>
+            {message.edited === true && <span>edited</span>}
+            {formatTime(message.createdAt)}
+          </>
+        )}
         {own && <MessageTicks status={message.status} />}
       </span>
     </div>

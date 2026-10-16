@@ -28,8 +28,14 @@ export function MessageMeta({
         className,
       )}
     >
-      {edited && <span>edited</span>}
-      {formatTime(message.createdAt)}
+      {edited && message.editedAt !== undefined ? (
+        <span>edited {formatTime(message.editedAt)}</span>
+      ) : (
+        <>
+          {edited && <span>edited</span>}
+          {formatTime(message.createdAt)}
+        </>
+      )}
       {showTicks && <MessageTicks status={message.status} />}
     </span>
   );
