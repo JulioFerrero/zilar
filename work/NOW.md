@@ -291,6 +291,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
         - the changed routes (`/api/gifs/*`, `/api/media`, `/api/groups/x/members`, `/api/tools/*`, `/api/approvals*`) answer 401 signed out;
         - 0 errors in the last 40 min, and only the usual 3 "AI is offline" warnings at container start.
       - **Doctor audit** of the 21 commits since T-1669 (`8cd8e9be4`) is running.
+      - **Merged 05:15–07:30 UTC:**
+        - size splits T-1695 (web `push.ts`), T-1698 (lead `collect-snapshot.ts`), T-1699 (phone `ai-memory-section.tsx`), T-1700 (`guarded-fetch.ts`) and T-1701 (`contact-requests/service.ts`);
+        - T-1692 (phone per-chat scroll memory, gap 7).
+      - **Emulator check (mock build of T-1692's branch, 06:00–07:10 UTC):**
+        - T-1692: a reopened chat lands on the same messages with the jump button; one left at the bottom reopens at the bottom;
+        - T-1677: New message lists the contacts, and "mar" filters to Marta, Marco and Marketing AI;
+        - **still unchecked on a device:** T-1672 (Marta's shared media) and T-1674 (long hold on a sticker's quote).
+      - **The emulator overloaded the Mac again:** about 30 minutes of stalls, and `lead merge` hit git timeouts after the squash for T-1695 and T-1700 (cleanup finished by hand). Main and origin are in sync.
+      - **Running:** T-1702 (`routines/support.ts`: the bulk deletes) and T-1703 (`stickers/storage.ts`: the view mappers).
       - **Running:**
         - T-1692 (phone per-chat scroll memory, gap 7). Fix rounds:
           - 1: retry the restore until the content covers the spot;
