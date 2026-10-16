@@ -18,6 +18,7 @@ import { buildActions, ProfileActions } from '@/components/profile/profile-actio
 import { ProfileBlock } from '@/components/profile/profile-block';
 import { ProfileHeader } from '@/components/profile/profile-header';
 import { ProfileInfo } from '@/components/profile/profile-info';
+import { ProfileMedia } from '@/components/profile/profile-media';
 import type { ProfilePerson } from '@/components/profile/profile-person';
 import { useProfileDm } from '@/components/profile/use-profile-dm';
 import { IconButton } from '@/components/ui/icon-button';
@@ -292,6 +293,7 @@ function HandleProfileView() {
                 bio={profile.bio}
                 onCopyUsername={copyUsername}
               />
+              {dmChatId !== undefined ? <ProfileMedia chatId={dmChatId} /> : null}
               <ProfileBlock
                 userId={profile.userId}
                 name={profile.name}
