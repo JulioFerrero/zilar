@@ -1,8 +1,9 @@
 // Shared handle and directory helpers for the contact-requests, blocks and
 // handles domains, mirroring web's mock (`apps/web/src/mock/api.ts:1081-1196`).
 // The handle rules come from `@zilar/protocol`; the always-taken `taken_user`
-// resolves to the seed's Ana and every other valid free handle to a synthetic
-// stranger. Reserved words and malformed shapes stay invisible (null/404).
+// resolves to the seed's Ana, a handle that names a seed person resolves to that
+// person's seed id, and every other valid free handle to a synthetic stranger.
+// Reserved words and malformed shapes stay invisible (null/404).
 
 import type { HandleCheck, HandleProfile } from '@zilar/api-contract';
 import { RESERVED_HANDLES } from '@zilar/protocol';
@@ -39,6 +40,10 @@ export function handleUserId(data: MockData, raw: string): string | null {
   if (!HANDLE_PATTERN.test(trimmed)) {
     return null;
   }
+  const person = data.people.find((entry) => entry.handle === normalized);
+  if (person !== undefined) {
+    return person.id;
+  }
   if (normalized === TAKEN_HANDLE) {
     return anaId(data) ?? null;
   }
@@ -52,13 +57,15 @@ export function handleProfile(data: MockData, raw: string): HandleProfile | null
     return null;
   }
   const trimmed = raw.trim().replace(/^@/, '');
+  const normalized = trimmed.toLowerCase();
   const person = data.people.find((entry) => entry.id === userId);
   const name = person?.name ?? displayNameForHandle(trimmed);
+  const handle = normalized === TAKEN_HANDLE ? trimmed : (person?.handle ?? trimmed);
   if (userId === currentUser.id) {
-    return { userId, name, handle: trimmed, image: null, relation: 'self' };
+    return { userId, name, handle, image: null, relation: 'self' };
   }
   if (data.isBlocked(userId)) {
-    return { userId, name, handle: trimmed, image: null, relation: 'blocked' };
+    return { userId, name, handle, image: null, relation: 'blocked' };
   }
   const outgoing = data.contactRequests.find(
     (row) =>
@@ -71,14 +78,16 @@ export function handleProfile(data: MockData, raw: string): HandleProfile | null
   return {
     userId,
     name,
-    handle: trimmed,
+    handle,
     image: null,
     relation:
       outgoing !== undefined
         ? 'request_sent'
         : incoming !== undefined
           ? 'request_received'
-          : 'none',
+          : person !== undefined && data.isContact(userId)
+            ? 'contact'
+            : 'none',
   };
 }
 

@@ -1690,3 +1690,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1678](T-1678-split-group-members.md) | Split member roles out of groups/members.ts | 2026-10-16 |
 | [T-1680](T-1680-split-mobile-ports.md) | Split the media helpers out of the phone store ports | 2026-10-16 |
 | [T-1681](T-1681-oxlint-stale-exemptions.md) | Drop two stale max-lines lint exemptions | 2026-10-16 |
+| [T-1672](T-1672-mock-handle-identity.md) | Mock: a seed person's handle resolves to their seed id | 2026-10-16 |
