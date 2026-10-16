@@ -25,6 +25,7 @@ import { startGroupNotifier } from '../push/group-notifier';
 import { createNativeSender } from '../push/native-sender';
 import { createWebPushSender } from '../push/sender';
 import { buildRoutineScheduler, type RoutineSchedulerHandle } from '../routines/wiring';
+import type { PromptRunner } from '../routines/execute-prompt';
 import type { ArchivePool } from '../search/service';
 import type { BuildToolAdaptersDeps } from '../tools/adapters';
 import type { ToolRunner } from '../tools/types';
@@ -44,6 +45,9 @@ export interface LeaderWorkDeps {
   audit: AuditRecorder;
   toolRunner: ToolRunner | undefined;
   post: BuildToolAdaptersDeps['post'];
+  /** Runs a prompt routine through the gateway; the scheduler records
+   * `skipped` while it is absent. */
+  runPrompt: PromptRunner;
   /**
    * Called with the runner hub while it runs and with `null` when it stops, so
    * the per-request `isMachineOnline` closure follows the leader.
@@ -214,6 +218,7 @@ export function createLeaderWork(deps: LeaderWorkDeps): LeaderWork {
         audit: deps.audit,
         logger,
         post: deps.post,
+        runPrompt: deps.runPrompt,
       });
     },
     // Today's stop order (main.ts): runner hub, push, the agent gateway, the

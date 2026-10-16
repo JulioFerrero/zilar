@@ -7,6 +7,7 @@
 import type { AuditRecorder } from '../audit/service';
 import type { ServerDatabase } from '../db/client';
 import type { ToolRunner } from '../tools/types';
+import type { PromptRunner } from './execute-prompt';
 import {
   createRoutineScheduler,
   type RoutineLogger,
@@ -27,6 +28,9 @@ export interface BuildRoutineSchedulerDeps {
     topicId?: string;
     text: string;
   }) => Promise<boolean>;
+  /** Runs a prompt routine through the gateway (`runScheduledTurn`); absent
+   * while the gateway is null, so the run is recorded `skipped`. */
+  runPrompt?: PromptRunner;
   audit: AuditRecorder;
   logger: RoutineLogger;
 }
@@ -51,6 +55,7 @@ export function buildRoutineScheduler(
     db: deps.db,
     runTool: deps.toolRunner,
     post: deps.post,
+    ...(deps.runPrompt === undefined ? {} : { runPrompt: deps.runPrompt }),
     audit: deps.audit,
     logger: deps.logger,
   });

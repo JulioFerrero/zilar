@@ -27,6 +27,7 @@ import { createLeaderWork } from '../leader/start';
 import type { RunnerHub } from '../machines/hub';
 import { createDbMachineRegistry } from '../machines/registry';
 import { loadPushConfigOrExit, type PushConfig } from '../push/config';
+import type { PromptRunner } from '../routines/execute-prompt';
 import { runTool } from '../sandbox/run-tool';
 import { createArchivePool } from '../search/service';
 import { buildToolAdapters, type BuildToolAdaptersDeps } from '../tools/adapters';
@@ -91,6 +92,16 @@ export function startComponents(boot: BootedServer, running: RunningServer): Eff
         ...(topicId === undefined ? {} : { topicId }),
         text,
       });
+    };
+
+    // Runs a prompt routine's scheduled turn through the agent gateway;
+    // `offline` while it does not exist yet. Shared by the routine scheduler.
+    const runPrompt: PromptRunner = (input) => {
+      const gateway = running.gateway;
+      if (gateway === null) {
+        return Promise.resolve('offline');
+      }
+      return gateway.runScheduledTurn(input);
     };
 
     // Action gateway (T-0090): wired in production with an empty adapter
@@ -271,6 +282,7 @@ export function startComponents(boot: BootedServer, running: RunningServer): Eff
       audit: auditRecorder,
       toolRunner,
       post,
+      runPrompt,
       onRunnerHub: (hub) => {
         runnerHub = hub as RunnerHub | null;
       },

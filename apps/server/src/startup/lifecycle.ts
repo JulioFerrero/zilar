@@ -26,7 +26,7 @@ export interface RunningServer {
   db: ServerDatabase | null;
   closeDb: (() => Promise<void>) | null;
   closeHttp: (() => Promise<void>) | null;
-  gateway: Pick<AgentGateway, 'stop' | 'postToChat' | 'stopTurn'> | null;
+  gateway: Pick<AgentGateway, 'stop' | 'postToChat' | 'stopTurn' | 'runScheduledTurn'> | null;
   leader: Pick<LeaderLock, 'stepDown' | 'close'> | null;
   /** How long to keep serving (health 503) before stepping down. 0 in tests. */
   drainMs: number;
