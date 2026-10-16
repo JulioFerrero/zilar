@@ -1674,3 +1674,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1661](T-1661-split-group-turn-body.md) | Split the room turn's access rules into group-turn-access.ts | 2026-10-16 |
 | [T-1663](T-1663-confirm-archive-topic.md) | Phone: archiving a topic for everyone asks first | 2026-10-16 |
 | [T-1664](T-1664-profile-shared-media.md) | Phone: Shared media row in the contact panel | 2026-10-16 |
+| [T-1665](T-1665-phone-emoji-common.md) | Phone emoji picker adds common emoji; table split under 400 | 2026-10-16 |

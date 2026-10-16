@@ -235,9 +235,32 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - **Julio's test, in "ai test › General" or his DM with @Deepseek:** write "@Deepseek every day at 08:00 post the BTC, gold and S&P 500 prices with sources". Approve the card. The routine then shows "runs a prompt" in the AI's Routines list, and at 08:00 (his zone) the AI runs it with its computer and posts the answer.
       - **Limits:** 24 prompt runs per AI per UTC day; three failures pause it with a notice; Stop is not a failure.
       - **Gotcha:** every deploy restarts the desk agent and ends a running computer turn, so the lead doesn't merge around 08:00.
-      - **T-1655 (running):** scheduled runs may also use the no-approval actions (`web.price` …), so AIs without a computer can do it too; tier-2 actions are refused with "needs approval".
+      - **T-1655 (merged):** scheduled runs may also use the no-approval actions (`web.price` …), so AIs without a computer can do it too. Tier-2 actions are refused with "needs approval", so no card is parked that nobody will see.
+      - **The end-to-end trace (T-1656, `docs/audit/scheduled-path-trace.md`) found 9 gaps; the ones that mattered are fixed:**
+        - **T-1657:** the 20-minute timeout starts when the turn starts (plus a 60-minute queue cap); a turn cut by a deploy records "stopped", not "ok"; a scheduled DM run is always its own turn;
+        - **T-1658:** an offline AI doesn't burn the daily slot and is logged; one bad schedule can't stop the scheduler's tick.
+        - **Not changed:** the 10-per-topic limit is check-then-insert (cosmetic). Prompt routines also need `TOOLS_ENABLED` and the gateway on; both are on live.
+      - **Live at `05bce2524`** (all of the above): healthy.
     - **❓ T-1653 (merged plan, `docs/plan/git-credentials.md`):** GitHub access for AI computers. Recommended: a git endpoint on the egress proxy that injects a short-lived GitHub App token for **one repo per AI** (the owner sets it) and refuses pushes outside `agent/<ai>/*`. No CA, and no token in the jail. Six tasks. **Waiting for Julio's answers to §6 Q1-Q6** (repo per AI? endpoint option c? one global App install for v1? the proxy enforces the branch rule? public clones keep working? one-hour token OK?).
-    - **Main is green at T-1645:** server tsc clean, full server suite 121 files / 870 tests passed (the lead ran it at 02:45).
+    - **Main is green at T-1649:** server tsc clean, full server suite 122 files / 882 tests passed (the lead ran it at ~03:05). CI on `528cbb110` is all green, including the new Deploy checks job.
+    - **Phone parity re-check (T-1654, `docs/audit/parity-2026-10-16.md`):** 123 web changes from 10-10..10-16, with 95 present on the phone, 24 partial and 4 missing → 16 gap tasks.
+      - **Merged:**
+        - T-1659 (Android back cancels an armed reply or edit first);
+        - T-1660 (Emoji tab search by name; shared names table in chat-core);
+        - T-1662 (the topic header's group name opens the group);
+        - T-1663 (archiving a topic for everyone asks first, with web's copy);
+        - T-1664 (Shared media row in the contact panel).
+      - **Running:** T-1665 (the phone picker lacked 🔥 🎉 😭 👀 ✅ ❌ 💯 ✨; they're added, and the table is split under 400 lines).
+      - **Not gaps after reading the code:**
+        - gap 12: the phone asks for a handle once, in the sign-up chain, so there's nothing to remember;
+        - gap 10 (Download in the menu): opening a file already goes through the system share sheet, so a separate Download is your call.
+      - **Waiting for a canvas (visual):** gaps 11, 13, 15, 16.
+      - **Later:**
+        - gap 6 (a "Copied" toast: Android 13+ shows its own, and the prop path runs through `message-bubble.tsx` at 392 lines);
+        - the reply-quote tap (second half of gap 3);
+        - gaps 1, 2, 5, 7.
+    - **`docs/FEATURES.md`** now lists smart wake and prompt routines.
+    - **Size split:** T-1661 (`group-turn-body.ts` 394 → 350 lines).
     - **In group rooms, actions (`web.*`, routines) are offered only when an owner or admin triggers the turn** (`group-turn-body.ts:199`), so @claude_test can't test `web.price` or routines. **Julio must test the morning-prices routine himself.**
     - **❓ Decision for Julio (SEC-13b):** the computer IS offered to any group member who mentions the AI.
       - **What that means:** tonight @claude_test, a plain member, ran Julio's AI's computer. A computer reply can take 15 minutes and 80 calls on the owner's key, and with no daily limit set nothing caps it.
