@@ -36,6 +36,10 @@ export const MyRoutine = Schema.Struct({
   aiName: Schema.String,
   aiAvatarUrl: Schema.optional(Schema.String),
   chatName: Schema.NullOr(Schema.String),
+  // T-1719: the room JID of the chat a routine runs in, so the page can open
+  // it. A group routine carries its topic's room JID, a personal one the AI's
+  // own DM JID; null only when the server was not given a MUC domain.
+  chatJid: Schema.NullOr(Schema.String),
 });
 
 export type MyRoutine = typeof MyRoutine.Type;

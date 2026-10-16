@@ -6,6 +6,7 @@
 
 import { callApi } from '@/lib/effect/api-client';
 import type {
+  MyRoutine,
   Routine,
   ToolDetail,
   ToolListItem,
@@ -15,7 +16,7 @@ import type {
   ToolVersionDetail,
 } from '@zilar/api-contract';
 
-export type { Routine, ToolDetail, ToolListItem, ToolRun, ToolRunResult, ToolVersion };
+export type { MyRoutine, Routine, ToolDetail, ToolListItem, ToolRun, ToolRunResult, ToolVersion };
 export type { ToolVersionDetail };
 
 // --- Tools ---------------------------------------------------------------
@@ -81,6 +82,16 @@ export async function deleteTool(id: string): Promise<void> {
 }
 
 // --- Routines ------------------------------------------------------------
+
+/**
+ * Every routine of every AI the caller owns, across all their chats, with the
+ * AI's name and picture, the chat name and the chat's JID (Settings ›
+ * Routines). Running routines come first.
+ */
+export async function listMyRoutines(): Promise<MyRoutine[]> {
+  const rows = await callApi((client) => client.routines.listMine());
+  return [...rows];
+}
 
 /** Routines of one AI (the AI owner; every topic, with scope). */
 export async function listAiRoutines(aiId: string): Promise<Routine[]> {

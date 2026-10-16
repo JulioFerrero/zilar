@@ -1729,3 +1729,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1716](T-1716-quiet-approvals.md) | Quieter approvals: no extra messages, no hosts in the card | 2026-10-16 |
 | [T-1717](T-1717-my-routines-api.md) | GET /api/routines: all routines of the AIs I own | 2026-10-16 |
 | [T-1718](T-1718-free-models-first.md) | Free models first: free DeepSeek workers, free GLM reviews | 2026-10-16 |
+| [T-1719](T-1719-web-routines-page.md) | Web Settings › Routines: every routine, Ask and Pause | 2026-10-16 |

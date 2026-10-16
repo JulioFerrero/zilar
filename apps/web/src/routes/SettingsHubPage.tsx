@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
+import { AsyncResult } from 'effect/reactivity';
 import { ChevronRight, LogOut } from 'lucide-react';
 import { APPROVAL_BADGE_CAP } from '@/components/chatList/rowsSelector';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -9,6 +10,9 @@ import { ListRow } from '@/components/ui/list-row';
 import { SETTINGS_COLUMN, SettingsShell } from '@/components/SettingsShell';
 import { SETTINGS_HUB_ICONS, webSettingsGroups } from '@/components/settings/hub/rows';
 import { useAuth } from '@/auth/AuthProvider';
+import { fromApi } from '@/lib/effect/api-effect';
+import { useQuery } from '@/lib/effect/use-query';
+import { listMyRoutines } from '@/lib/tools';
 import { useContactRequestCount } from '@/lib/useContactRequestCount';
 import { usePendingApprovalCount } from '@/lib/usePendingApprovalCount';
 import { useIsServerOwner } from '@/lib/useIsServerOwner';
@@ -38,6 +42,8 @@ export function SettingsHubPage() {
   const isServerOwner = useIsServerOwner();
   const incomingRequests = useContactRequestCount(true);
   const pendingApprovals = usePendingApprovalCount(true);
+  // Running routines for the Routines row's pill; null while unknown or failed.
+  const [routines] = useQuery(() => fromApi(() => listMyRoutines()), []);
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
 
   const user = auth.user;
@@ -48,6 +54,10 @@ export function SettingsHubPage() {
         ? '9+'
         : String(pendingApprovals)
       : null;
+  const runningRoutines = AsyncResult.isSuccess(routines)
+    ? routines.value.filter((routine) => routine.status === 'active').length
+    : 0;
+  const routinesBadge = runningRoutines > 0 ? String(runningRoutines) : null;
 
   // The profile card above already opens Profile, so the row is hidden from the
   // Account card. Integrations is owner-only (the same condition as the menu
@@ -96,6 +106,8 @@ export function SettingsHubPage() {
                       label={`${approvalsBadge} pending approvals`}
                       text={approvalsBadge}
                     />
+                  ) : row.id === 'routines' && routinesBadge !== null ? (
+                    <CountPill label={`${routinesBadge} running routines`} text={routinesBadge} />
                   ) : undefined;
                 return (
                   <ListRow

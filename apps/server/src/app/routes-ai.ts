@@ -62,7 +62,7 @@ export function aiRoutes({ deps, base, audit, mailer, gateway }: RouteWiring): E
   };
   const toolsApi = createToolsApi({ ...toolsDeps, logger });
   mounts.push(toolsApi);
-  const routinesApi = createRoutinesApi({ ...base, audit });
+  const routinesApi = createRoutinesApi({ ...base, audit, mucDomain: config.xmpp.mucDomain });
   mounts.push(routinesApi);
   const xmppApi = createXmppApi({
     ...base,

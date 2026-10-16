@@ -1,7 +1,9 @@
 // T-1717: `listMyRoutines` returns the caller's routines across every AI they
 // own, with the AI's name and picture and the chat name. It never returns
 // another user's routines, and it leaves out a routine in a private topic the
-// caller cannot see (the same filter `listForAi` applies).
+// caller cannot see (the same filter `listForAi` applies). T-1719 adds
+// `chatJid`: a group routine carries its topic's room JID, a personal one the
+// AI's own DM JID.
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Effect } from 'effect';
@@ -13,6 +15,21 @@ import { listMyRoutines } from './reads';
 
 const NOW = new Date('2026-01-05T12:00:00.000Z');
 const SCHEDULE = { kind: 'interval', everyMinutes: 60 };
+const MUC_DOMAIN = 'conference.zilar.localhost';
+
+async function roomLocalpartOf(context: TestContext, topicId: string): Promise<string> {
+  const [row] = await testSql(context)(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ roomLocalpart: string }>`SELECT room_localpart FROM topics
+        WHERE id = ${topicId} LIMIT 1`;
+    }),
+  );
+  if (!row) {
+    throw new Error(`topic ${topicId} not found`);
+  }
+  return row.roomLocalpart;
+}
 
 async function seedPrivateTopic(
   context: TestContext,
@@ -70,7 +87,7 @@ describe('listMyRoutines', () => {
 
   it("returns the caller's routines across their AIs with aiName, aiAvatarUrl and chatName", async () => {
     const ownerId = await seedUser(context);
-    const { aiId } = await seedAi(context, ownerId, { name: 'Helper AI' });
+    const { aiId, jid: aiJid } = await seedAi(context, ownerId, { name: 'Helper AI' });
     const avatarId = await seedAiAvatar(context, aiId);
     const { groupId, generalTopicId } = await seedGroup(
       context,
@@ -107,7 +124,7 @@ describe('listMyRoutines', () => {
       NOW,
     );
 
-    const routines = await listMyRoutines(context.db, ownerId);
+    const routines = await listMyRoutines(context.db, ownerId, MUC_DOMAIN);
 
     expect(routines.map((entry) => entry.routine.id).sort()).toEqual(
       [personal.id, inGroup.id].sort(),
@@ -117,10 +134,16 @@ describe('listMyRoutines', () => {
     expect(personalEntry?.aiName).toBe('Helper AI');
     expect(personalEntry?.aiAvatarUrl).toBe(`/api/avatars/${avatarId}`);
     expect(personalEntry?.chatName).toBeNull();
+    // A personal routine opens the AI's own DM chat.
+    expect(personalEntry?.chatJid).toBe(aiJid);
 
     const groupEntry = routines.find((entry) => entry.routine.id === inGroup.id);
     expect(groupEntry?.aiName).toBe('Helper AI');
     expect(groupEntry?.chatName).toBe('Trip');
+    // A group routine opens its topic's room JID, lowercased.
+    expect(groupEntry?.chatJid).toBe(
+      `${await roomLocalpartOf(context, generalTopicId)}@${MUC_DOMAIN}`.toLowerCase(),
+    );
   });
 
   it("never returns another user's AI routines", async () => {

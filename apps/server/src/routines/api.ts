@@ -50,6 +50,8 @@ export interface RoutinesApiDependencies {
   audit?: AuditRecorder;
   /** Injected in tests so pause/resume/delete timestamps can advance. */
   now?: () => Date;
+  /** T-1719: the MUC domain room JIDs are built from. Optional so tests can omit it. */
+  mucDomain?: string;
 }
 
 export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount {
@@ -63,7 +65,7 @@ export function createRoutinesApi(deps: RoutinesApiDependencies): EffectApiMount
         handler(logger, async (_request, user) => {
           // Running first, then by title: the Settings › Routines page groups
           // Running and Paused, so the server sends them in order.
-          const routines = await listMyRoutines(deps.db, user.id);
+          const routines = await listMyRoutines(deps.db, user.id, deps.mucDomain);
           routines.sort(
             (a, b) =>
               routineRank(a.routine.status) - routineRank(b.routine.status) ||
@@ -197,5 +199,6 @@ function toMyRoutineWire(view: MyRoutineView) {
     aiName: view.aiName,
     aiAvatarUrl: view.aiAvatarUrl,
     chatName: view.chatName,
+    chatJid: view.chatJid,
   };
 }

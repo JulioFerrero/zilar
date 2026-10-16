@@ -55,6 +55,14 @@ export const SETTINGS_ITEMS = [
     group: 'ais',
   },
   {
+    id: 'routines',
+    title: 'Routines',
+    subtitle: 'Scheduled AI jobs you can pause or ask about.',
+    icon: 'routines',
+    href: '/settings/routines',
+    group: 'ais',
+  },
+  {
     id: 'machines',
     title: 'Machines',
     subtitle: 'Computers where your AIs can work.',

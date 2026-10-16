@@ -45,6 +45,9 @@ const StickerPackPage = lazy(() =>
 const ApprovalsPage = lazy(() =>
   import('./ApprovalsPage').then((m) => ({ default: m.ApprovalsPage })),
 );
+const RoutinesPage = lazy(() =>
+  import('./RoutinesPage').then((m) => ({ default: m.RoutinesPage })),
+);
 
 // The session check usually answers within a frame or two; the text only
 // shows when it is slow, so a reload doesn't flash a "Loading…" page.
@@ -186,6 +189,14 @@ export function AppRoutes() {
           element={
             <RequireAuth>
               <ApprovalsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/settings/routines"
+          element={
+            <RequireAuth>
+              <RoutinesPage />
             </RequireAuth>
           }
         />

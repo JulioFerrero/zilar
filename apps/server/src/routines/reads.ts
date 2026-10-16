@@ -74,18 +74,21 @@ export async function findOwnedAiRow(db: ServerDatabase, aiId: string, ownerId: 
 }
 
 // T-1717: a routine row plus the name of the AI it belongs to (`ai_name` is
-// camelCased to `aiName` like every other column).
+// camelCased to `aiName` like every other column). T-1719 adds the AI's own
+// JID (`ai_jid`), the DM chat of a personal routine.
 export interface MyRoutineRow extends RoutineRow {
   aiName: string;
+  aiJid: string;
 }
 
 // One entry of the caller's own routine list: the routine, the AI's name and
-// picture, and the chat it runs in.
+// picture, the chat it runs in and that chat's JID.
 export interface MyRoutineView {
   routine: PublicRoutine;
   aiName: string;
   aiAvatarUrl: string | undefined;
   chatName: string | null;
+  chatJid: string | null;
 }
 
 // Every non-deleted routine of every AI the caller owns, across all their
@@ -99,7 +102,7 @@ export async function listRoutinesForOwner(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<MyRoutineRow>`SELECT r.*, a.name AS ai_name FROM routines r
+      return yield* sql<MyRoutineRow>`SELECT r.*, a.name AS ai_name, a.jid AS ai_jid FROM routines r
         INNER JOIN ais a ON a.id = r.ai_id
         WHERE a.owner = ${ownerId} AND r.deleted_at IS NULL`;
     }),
@@ -148,7 +151,17 @@ async function findGroupTitlesByIds(
 // applies. `chatName` is null for a personal chat, the topic name otherwise,
 // and the group name when the topic is the group's General topic. One query
 // each for the routines, the topics, the groups and the AI avatars.
-export async function listMyRoutines(db: ServerDatabase, userId: string): Promise<MyRoutineView[]> {
+//
+// T-1719: each entry also carries `chatJid`, the room JID of its chat. A group
+// routine uses its topic's `<roomLocalpart>@<mucDomain>` (lowercased, like
+// `delete-group`); a personal one uses the AI's own DM JID. `mucDomain` is
+// optional so a caller without the config still gets the personal JIDs and a
+// null for the group ones.
+export async function listMyRoutines(
+  db: ServerDatabase,
+  userId: string,
+  mucDomain?: string,
+): Promise<MyRoutineView[]> {
   const rows = await listRoutinesForOwner(db, userId);
 
   const topicIds = [...new Set(rows.flatMap((row) => (row.topicId === null ? [] : [row.topicId])))];
@@ -162,9 +175,11 @@ export async function listMyRoutines(db: ServerDatabase, userId: string): Promis
 
   const visible: MyRoutineRow[] = [];
   const chatNames = new Map<string, string | null>();
+  const chatJids = new Map<string, string | null>();
   for (const row of rows) {
     if (row.topicId === null) {
       visible.push(row);
+      chatJids.set(row.id, row.aiJid);
       continue;
     }
     const topic = topics.get(row.topicId);
@@ -175,6 +190,10 @@ export async function listMyRoutines(db: ServerDatabase, userId: string): Promis
     chatNames.set(
       row.id,
       topic.isGeneral ? (groupTitles.get(topic.groupId) ?? topic.name) : topic.name,
+    );
+    chatJids.set(
+      row.id,
+      mucDomain === undefined ? null : `${topic.roomLocalpart}@${mucDomain}`.toLowerCase(),
     );
   }
 
@@ -198,6 +217,7 @@ export async function listMyRoutines(db: ServerDatabase, userId: string): Promis
       aiName: row.aiName,
       aiAvatarUrl: avatarId === undefined ? undefined : avatarUrlFor(avatarId),
       chatName: chatNames.get(routine.id) ?? null,
+      chatJid: chatJids.get(routine.id) ?? null,
     });
   }
   return result;
