@@ -37,6 +37,7 @@ import { createEjabberdAdminClient } from '../xmpp/admin-client';
 import { startEjabberdSchemaCheck } from '../xmpp/schema-check';
 import type { BootedServer } from './boot';
 import { CONNECTION_GRACE_MS, type RunningServer } from './lifecycle';
+import { postAsAi } from './post-as-ai';
 
 /** Builds and starts the components, the HTTP listener and the leader lock. */
 export function startComponents(boot: BootedServer, running: RunningServer): Effect.Effect<void> {
@@ -81,18 +82,7 @@ export function startComponents(boot: BootedServer, running: RunningServer): Eff
 
     // Posts as the AI through the agent gateway; `false` while it does not
     // exist yet. Shared by the tool adapters and the routine scheduler.
-    const post: BuildToolAdaptersDeps['post'] = ({ aiId, groupId, topicId, text }) => {
-      const gateway = running.gateway;
-      if (gateway === null) {
-        return Effect.runPromise(Effect.succeed(false));
-      }
-      return gateway.postToChat({
-        aiId,
-        groupId,
-        ...(topicId === undefined ? {} : { topicId }),
-        text,
-      });
-    };
+    const post: BuildToolAdaptersDeps['post'] = postAsAi(() => running.gateway);
 
     // Runs a prompt routine's scheduled turn through the agent gateway;
     // `offline` while it does not exist yet. Shared by the routine scheduler.

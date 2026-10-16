@@ -1773,3 +1773,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1762](T-1762-topic-reads-compat.md) | topic reads: only General is everyone, behind a compat switch | 2026-10-16 |
 | [T-1761](T-1761-ai-card-no-echo.md) | tool.run posts blocks; no echo after a card; no @asker tag | 2026-10-16 |
 | [T-1763](T-1763-card-follow-ups.md) | untagged crash reply, approval logger, card delegation summary | 2026-10-16 |
+| [T-1765](T-1765-post-forwards-payload.md) | the post port forwards the card payload | 2026-10-16 |
