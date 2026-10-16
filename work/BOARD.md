@@ -1761,3 +1761,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1747](T-1747-message-blocks-plan.md) | plan: message blocks (25 native blocks, web + phone) | 2026-10-16 |
 | [T-1749](T-1749-blocks-schema.md) | blocks payload schema (25 kinds, caps, https links) | 2026-10-16 |
 | [T-1751](T-1751-blocks-build.md) | server buildBlocksPayload for AI and tool blocks | 2026-10-16 |
+| [T-1752](T-1752-blocks-shared-model.md) | chat-core block view helpers (tones, sparkline, host) | 2026-10-16 |

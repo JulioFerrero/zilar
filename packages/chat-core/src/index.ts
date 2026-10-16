@@ -7,6 +7,7 @@ export * from './avatar-seed';
 export * from './avatar-identity';
 export * from './messages';
 export * from './sender-color';
+export * from './blocks';
 export * from './text';
 export * from './emoji';
 export * from './emoji-table';
