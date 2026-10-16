@@ -1,7 +1,7 @@
 import { canAct, canDeleteMessage, type UiMessage } from '@zilar/chat-core';
 import { Effect } from 'effect';
 import * as Clipboard from 'expo-clipboard';
-import { Forward } from 'lucide-react-native';
+import { Copy, Forward, Trash2, X } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,7 +9,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SelectionDeleteConfirm } from '@/components/chat/selection-delete';
 import { useBackCancel } from '@/components/chat/use-back-cancel';
 import { Button } from '@/components/ui/button';
+import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
+import { DANGER, ICON } from '@/lib/colors';
 import { useChatStore } from '@/store/chat-store-provider';
 
 const EMPTY_MESSAGES: UiMessage[] = [];
@@ -109,6 +111,9 @@ export function SelectionBar({
   return (
     <View className="px-2 pt-1.5" style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
       <View className="flex-row items-center gap-2 rounded-[14px] bg-surface-raised px-4 py-2.5">
+        <IconButton label="Cancel" onPress={onCancel}>
+          <X size={20} color={ICON} />
+        </IconButton>
         <Text
           accessibilityLiveRegion="polite"
           numberOfLines={1}
@@ -116,28 +121,19 @@ export function SelectionBar({
         >
           {count} selected
         </Text>
-        <Button variant="ghost" size="sm" onPress={onCancel}>
-          <Text>Cancel</Text>
-        </Button>
         {deletable.length > 0 ? (
-          <Button
-            variant="destructive"
-            size="sm"
-            accessibilityLabel="Delete selected messages"
-            onPress={() => setConfirmOpen(true)}
-          >
-            <Text>Delete</Text>
-          </Button>
+          <IconButton label="Delete selected messages" onPress={() => setConfirmOpen(true)}>
+            <Trash2 size={20} color={DANGER} />
+          </IconButton>
         ) : null}
-        <Button
-          variant="outline"
-          size="sm"
-          accessibilityLabel="Copy selected messages"
+        <IconButton
+          label="Copy selected messages"
           disabled={copyable.length === 0}
+          className={copyable.length === 0 ? 'opacity-50' : undefined}
           onPress={copySelected}
         >
-          <Text>Copy</Text>
-        </Button>
+          <Copy size={20} color={ICON} />
+        </IconButton>
         <Button disabled={count === 0} onPress={onForward}>
           <Forward size={16} />
           <Text>Forward</Text>
