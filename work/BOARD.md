@@ -1692,3 +1692,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1681](T-1681-oxlint-stale-exemptions.md) | Drop two stale max-lines lint exemptions | 2026-10-16 |
 | [T-1672](T-1672-mock-handle-identity.md) | Mock: a seed person's handle resolves to their seed id | 2026-10-16 |
 | [T-1679](T-1679-split-client-polling.md) | Split the draft stream out of client-core polling.ts | 2026-10-16 |
+| [T-1683](T-1683-split-topic-panel-ops.md) | Split the list helpers out of the web topicPanelOps.ts | 2026-10-16 |
