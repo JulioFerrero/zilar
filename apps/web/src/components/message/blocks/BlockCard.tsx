@@ -1,6 +1,10 @@
 import type { Block, BlockIcon as BlockIconName, BlocksData } from '@zilar/protocol';
 import { Info, type LucideIcon } from 'lucide-react';
 import { Fragment, type ReactNode } from 'react';
+import { renderChartBlock } from './ChartBlocks';
+import { renderContentBlock } from './ContentBlocks';
+import { renderDataBlock } from './DataBlocks';
+import { renderProgressBlock } from './ProgressBlocks';
 import { BLOCK_ICONS } from './blockIcons';
 import { CalloutBlock } from './CalloutBlock';
 import { ChecklistBlock } from './ChecklistBlock';
@@ -24,6 +28,20 @@ function renderBlock(block: Block): ReactNode {
       return <LinkBlock block={block} />;
     case 'callout':
       return <CalloutBlock block={block} />;
+    case 'stats':
+    case 'table':
+      return renderDataBlock(block);
+    case 'bars':
+    case 'line':
+    case 'gauge':
+      return renderChartBlock(block);
+    case 'progress':
+    case 'timeline':
+    case 'countdown':
+      return renderProgressBlock(block);
+    case 'weather':
+    case 'event':
+      return renderContentBlock(block);
     default:
       return null;
   }

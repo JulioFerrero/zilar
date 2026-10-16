@@ -527,7 +527,19 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                   - The gaps come from the tool's JSON and the missing server support.
                   - **The fix is T-1766 (running):** a tool can set `card {title, icon, meta}`; tool.run titles default to a readable name; a sandbox `fmt` helper (QuickJS has no Intl); the guide gets the board's example.
                   - After it deploys, Julio asks Deepseek to update `market-prices` to the board's shape.
-                - T-1764 (S2 memberIds) is merged and held; push it with T-1766.
+                - **T-1764 (S2) and T-1766 are live (`b188fe043`, about 22:52 UTC).** Health OK.
+            - **The general cards pass** (Julio 10-17: "jack-of-all-trades"; "both in parallel"; live test OK in a new topic "cards test" as @claude_test):
+              - **T-1767 (running):** the group seams on web and phone.
+                - Then 4 web group tasks (data / charts / progress / content) and 4 phone twins, at most 3 mobile at once.
+              - **T-1768 (running):** the shared card guide, `fmt` date helpers and `tool.save` card reports.
+                - **Hold its merge** until the web group renderers merge.
+              - **Then:** the live test of about 20 varied requests, with screenshots against the boards.
+                - It goes through the **Claude Chrome extension, as Julio** (his OK, 10-17), **only in a new topic "cards test"** in "ai test".
+                - Run it after T-1768 and the web groups deploy.
+              - **Later:** Wave 2 (interactive kinds: block_responses + the response path), and media kinds (images/file).
+            - **Topic server:**
+              - **T-1769 S1 (running):** the one-step add, plus the cap under the advisory lock.
+              - **S6 (preview) next**, then W1–W10.
             - **Push plan (done up to step 2):**
               1. Once T-1755 merges: `lead push`, which deploys blocks plus T-1753, T-1754 and T-1760. Check `/health`.
               2. Then merge T-1757 to main **and do not push main again until W9/W10 (the Join UI) merge.** S1, S2, S6 and the W tasks build on it.

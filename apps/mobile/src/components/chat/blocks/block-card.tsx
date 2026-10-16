@@ -4,10 +4,14 @@ import { View } from 'react-native';
 
 import { BLOCK_ICONS } from '@/components/chat/blocks/block-icons';
 import { CalloutBlock } from '@/components/chat/blocks/callout-block';
+import { renderChartBlock, CHART_KINDS } from '@/components/chat/blocks/chart-blocks';
 import { ChecklistBlock } from '@/components/chat/blocks/checklist-block';
+import { renderContentBlock, CONTENT_KINDS } from '@/components/chat/blocks/content-blocks';
+import { renderDataBlock, DATA_KINDS } from '@/components/chat/blocks/data-blocks';
 import { FigureBlock } from '@/components/chat/blocks/figure-block';
 import { LinkBlock } from '@/components/chat/blocks/link-block';
 import { NumberBlock } from '@/components/chat/blocks/number-block';
+import { renderProgressBlock, PROGRESS_KINDS } from '@/components/chat/blocks/progress-blocks';
 import { StatusBlock } from '@/components/chat/blocks/status-block';
 import { Text, TextClassContext } from '@/components/ui/text';
 
@@ -20,6 +24,10 @@ const RENDERED: ReadonlySet<Block['kind']> = new Set([
   'status',
   'link',
   'callout',
+  ...DATA_KINDS,
+  ...CHART_KINDS,
+  ...PROGRESS_KINDS,
+  ...CONTENT_KINDS,
 ]);
 
 const HEADER_ICON_COLOR = '#a1a1a1';
@@ -68,6 +76,20 @@ function BlockBody({ block, showHeading }: { block: Block; showHeading: boolean 
       return <LinkBlock block={block} />;
     case 'callout':
       return <CalloutBlock block={block} />;
+    case 'stats':
+    case 'table':
+      return renderDataBlock(block, showHeading);
+    case 'bars':
+    case 'line':
+    case 'gauge':
+      return renderChartBlock(block, showHeading);
+    case 'progress':
+    case 'timeline':
+    case 'countdown':
+      return renderProgressBlock(block, showHeading);
+    case 'weather':
+    case 'event':
+      return renderContentBlock(block, showHeading);
     default:
       return null;
   }
