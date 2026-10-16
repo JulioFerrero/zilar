@@ -187,10 +187,19 @@ export function MessageBubbleContent({
         />
       ) : message.card && isRenderedCard(message.card) ? (
         <>
-          <PayloadCard card={message.card} />
+          {/* T-1756: a blocks card carries its own time row as its card footer. */}
+          <PayloadCard
+            card={message.card}
+            footer={
+              message.card.type === 'blocks' ? (
+                <BubbleMeta message={message} outgoing={outgoing} color={metaColor} />
+              ) : undefined
+            }
+          />
           {/* T-1619: the progress card stands alone, so it shows no time or
-              "edited" row; approval and question cards keep theirs. */}
-          {message.card.type === 'progress' ? null : (
+              "edited" row; a blocks card shows its time inside the card. Approval
+              and question cards keep theirs. */}
+          {message.card.type === 'progress' || message.card.type === 'blocks' ? null : (
             <BubbleMeta
               message={message}
               outgoing={outgoing}

@@ -497,6 +497,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
               - T-1752 (chat-core block helpers);
               - T-1753 (`GET /api/topics/:id/routines`);
               - T-1754 (public topic members plus backfill 0069). It's safe to deploy alone: the reads still treat public topics as the whole group.
+            - **Also merged and held:** T-1758 (`post_blocks`) and T-1759 (tool routines post blocks). The server half of blocks Wave 1 is done.
+            - **T-1756 (phone blocks):** sent a fix round (the compact callout row and 2 nits).
+              - **The emulator check of `zilar://dev/blocks` against `PhoneNumbers`, `PhoneProgress` and `PhoneContent` is still to do,** when Julio isn't at the PC.
+            - **T-1755 (web blocks):** the Cosmos screenshot was compared with the boards; it needs the same compact callout fix when its packet arrives.
             - **Hold T-1757 (S4b, the reads switch) unmerged** until S5 (join and leave) and W9/W10 (the Join preview) are ready.
               - Once it's live, new public topics hold only their creator, and nobody can join them without the Join UI.
               - Merge them together. T-1757's 0070 re-backfill covers the gap.

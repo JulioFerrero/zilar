@@ -1,8 +1,10 @@
 import type { Payload, Progress, Sticker } from '@zilar/protocol';
 import { StickerSchema, isValid } from '@zilar/protocol';
+import type { ReactNode } from 'react';
 import { View } from 'react-native';
 
 import { ApprovalCard } from '@/components/chat/approval-card';
+import { BlockCard } from '@/components/chat/blocks/block-card';
 import { ProgressCard } from '@/components/chat/progress-card';
 import { QuestionCard } from '@/components/chat/question-card';
 import { bubbleStyle } from '@/lib/depth';
@@ -36,7 +38,7 @@ function ProgressCardSurface({ data }: { data: Progress }) {
 }
 
 /** Renders the AI card payloads from `@zilar/protocol`. */
-export function PayloadCard({ card }: { card: Payload }) {
+export function PayloadCard({ card, footer }: { card: Payload; footer?: ReactNode }) {
   switch (card.type) {
     case 'progress':
       return <ProgressCardSurface data={card.data} />;
@@ -44,6 +46,8 @@ export function PayloadCard({ card }: { card: Payload }) {
       return <ApprovalCard data={card.data} />;
     case 'question':
       return <QuestionCard question={card.data} />;
+    case 'blocks':
+      return <BlockCard data={card.data} footer={footer} />;
     default:
       return null;
   }
@@ -57,6 +61,7 @@ const RENDERED_CARD_TYPES: ReadonlySet<string> = new Set([
   'progress',
   'approval.request',
   'question',
+  'blocks',
 ]);
 
 export function isRenderedCard(card: { type: string }): boolean {

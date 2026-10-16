@@ -125,7 +125,8 @@ function MessageBubbleImpl({
   const sticker = stickerOf(message);
   // T-1619: the AI work card renders without a bubble, the way a sticker skips
   // it; the card carries its own surface (payload-card.tsx) and no meta row.
-  const standaloneCard = message.card?.type === 'progress';
+  // T-1756: a blocks card is standalone the same way.
+  const standaloneCard = message.card?.type === 'progress' || message.card?.type === 'blocks';
   // T-1575: a `handoff.line` card renders the small centred line instead of the
   // bubble, exactly like a sticker skips it.
   const handoff = message.card?.type === 'handoff.line' ? message.card.data : undefined;

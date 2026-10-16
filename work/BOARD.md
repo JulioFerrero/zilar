@@ -1766,3 +1766,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1754](T-1754-topic-members-backfill.md) | public topics get real members + backfill 0069 | 2026-10-16 |
 | [T-1759](T-1759-blocks-tool-output.md) | saved tools return blocks; tool routines post block cards | 2026-10-16 |
 | [T-1758](T-1758-blocks-ai-tool.md) | post_blocks tool: AIs post block cards in groups | 2026-10-16 |
+| [T-1756](T-1756-blocks-phone-six.md) | phone blocks card and the first six blocks | 2026-10-16 |
