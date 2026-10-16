@@ -168,6 +168,9 @@ export interface RoutineRow {
   nextRunAt: Date;
   lastRunAt: Date | null;
   lastStatus: 'ok' | 'error' | 'skipped' | null;
+  // T-1713: the routine's single live message; both null until it posts.
+  lastMessageId: string | null;
+  lastMessageAt: Date | null;
   consecutiveFailures: number;
   createdBy: string;
   createdAt: Date;
