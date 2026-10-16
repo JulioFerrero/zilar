@@ -31,6 +31,8 @@ export interface CreateRoutineSchedulerOptions {
   db: ServerDatabase;
   runTool: ExecuteRoutinePorts['runTool'];
   post: ExecuteRoutinePorts['post'];
+  /** T-1645: the prompt-routine runner; absent until the gateway is wired. */
+  runPrompt?: ExecuteRoutinePorts['runPrompt'];
   audit: AuditRecorder;
   logger: RoutineLogger;
   /** Tick cadence in milliseconds. Defaults to 30 s. */
@@ -101,12 +103,20 @@ export function createRoutineScheduler(
           await markQueuedMissed(options.db, row, at, lateByMs, options.logger);
           return;
         }
-        await executeRoutine({ runTool: options.runTool, post: options.post }, row, {
-          db: options.db,
-          now,
-          audit: options.audit,
-          logger: options.logger,
-        });
+        await executeRoutine(
+          {
+            runTool: options.runTool,
+            post: options.post,
+            ...(options.runPrompt === undefined ? {} : { runPrompt: options.runPrompt }),
+          },
+          row,
+          {
+            db: options.db,
+            now,
+            audit: options.audit,
+            logger: options.logger,
+          },
+        );
       }).pipe(
         Effect.catchCause((cause) =>
           Effect.sync(() => {

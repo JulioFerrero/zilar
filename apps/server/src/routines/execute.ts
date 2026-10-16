@@ -4,6 +4,8 @@
 //
 // 1. The AI must be `active` and (for a topic routine) still a member of
 //    the topic's room — otherwise `skipped`, post nothing, stay active.
+//    Both kinds share this step; a prompt routine then takes its own path
+//    (`executePromptRoutine`, T-1645) and skips step 2 onwards.
 // 2. The tool must exist (not deleted) — otherwise `paused`/`failures`
 //    with the fixed 3-failure notice.
 // 3. Host pinning: the tool's current version `hosts` must be a subset of
@@ -29,6 +31,7 @@ import type { RoutineRow } from '../db/rows';
 import { runSql } from '../effect/sql';
 import { runToolVersion, ToolServiceError } from '../tools/service';
 import type { ToolRunner } from '../tools/types';
+import { executePromptRoutine, type PromptRunner } from './execute-prompt';
 import {
   markOk,
   markSkipped,
@@ -69,6 +72,12 @@ export interface ExecuteRoutinePorts {
     topicId?: string;
     text: string;
   }) => Promise<boolean>;
+  /**
+   * T-1645: runs one scheduled prompt turn (the AI gateway's scheduled turn),
+   * for a `kind = 'prompt'` routine. Absent until a later task wires it; a
+   * prompt routine is then recorded `skipped`.
+   */
+  runPrompt?: PromptRunner;
 }
 
 export interface RoutineRunLogger {
@@ -125,10 +134,19 @@ export async function executeRoutine(
     return;
   }
 
+  // T-1645: a prompt routine needs no tool. Both kinds share the AI/room
+  // preflight above; a prompt run then goes through its own path (daily cap,
+  // the `runPrompt` port, `replied`/`failed`/`skipped`).
+  if (row.kind === 'prompt') {
+    await executePromptRoutine(ports, row, options, at, startedAt);
+    return;
+  }
+
   // Step 2: the tool must exist (not deleted).
   const toolId = row.toolId;
   if (toolId === null) {
-    // Prompt routines come in a later task: with no tool, fail like a missing one.
+    // A malformed tool row (a `kind = 'tool'` routine with no tool): fail
+    // like a deleted tool.
     await pauseForFailures(db, options, ports, row, at, startedAt, true);
     return;
   }

@@ -1653,3 +1653,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1641](T-1641-create-prompt-routine.md) | createPromptRoutine stores a prompt routine (service only) | 2026-10-16 |
 | [T-1643](T-1643-pin-ejabberd-digest.md) | Pin the ejabberd base image by digest (OPS-7) | 2026-10-16 |
 | [T-1642](T-1642-dm-scheduled-item.md) | DM queue accepts a scheduled run and reports its outcome | 2026-10-16 |
+| [T-1645](T-1645-execute-prompt-routine.md) | Routine executor runs prompt routines with a daily cap | 2026-10-16 |
