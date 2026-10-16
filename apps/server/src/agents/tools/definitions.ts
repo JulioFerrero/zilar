@@ -214,23 +214,24 @@ export function buildDelegateTool(
 // T-1576: the `ask_people` tool definition, offered only when a person (not
 // another AI) triggered the turn. The model asks one decision question and
 // gives 2-4 short options; the card's chips let people answer with one tap, but
-// a free reply is still allowed.
+// a free reply is still allowed. T-1738: one short question in plain words,
+// with chip-sized options.
 export const ASK_PEOPLE_TOOL_DEF: ChatToolDefinition = {
   type: 'function',
   function: {
     name: ASK_PEOPLE_TOOL,
     description:
-      'Ask the people in this room to decide something only they can decide. Offer ' +
-      '2-4 short options for the likely answers: they can tap one, and a free reply ' +
-      'is still allowed. Ask one question at a time and never ask the same thing ' +
-      'twice.',
+      'Ask the people in this room to decide something only they can decide. Ask ' +
+      'one short question in plain words; options of one to three words: they can ' +
+      'tap one, and a free reply is still allowed. Ask one question at a time and ' +
+      'never ask the same thing twice.',
     parameters: {
       type: 'object',
       properties: {
-        question: { type: 'string', minLength: 1, maxLength: 300 },
+        question: { type: 'string', minLength: 1, maxLength: 140 },
         options: {
           type: 'array',
-          items: { type: 'string', minLength: 1, maxLength: 40 },
+          items: { type: 'string', minLength: 1, maxLength: 24 },
           minItems: 2,
           maxItems: 4,
         },

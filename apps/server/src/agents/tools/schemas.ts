@@ -16,10 +16,10 @@ export const TASK_STATUS_TOOL = 'task_status';
 // row.
 export const ASK_PEOPLE_TOOL = 'ask_people';
 
-const ASK_PEOPLE_QUESTION_MAX_LENGTH = 300;
+const ASK_PEOPLE_QUESTION_MAX_LENGTH = 140;
 const ASK_PEOPLE_OPTION_MIN = 2;
 const ASK_PEOPLE_OPTION_MAX = 4;
-const ASK_PEOPLE_OPTION_MAX_LENGTH = 40;
+const ASK_PEOPLE_OPTION_MAX_LENGTH = 24;
 
 // T-1409: the desk tools, offered only when the AI has a cloud computer. The
 // names match the daemon's tool table (`packages/desk/README.md`) and OpenCode's

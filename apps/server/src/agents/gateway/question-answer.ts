@@ -8,6 +8,7 @@ import type { ServerDatabase } from '../../db/client';
 import {
   answerQuestion,
   findOpenQuestionByMessage,
+  listOpenQuestionsForAiInRoom,
   rekeyQuestionMessage,
 } from '../../questions/service';
 import { normBareJid } from '../context';
@@ -83,6 +84,53 @@ export async function answerOnReply(
   );
   if (answered) {
     logger.info({ aiId: session.aiId }, 'AI question answered');
+  }
+}
+
+// T-1738: a person's typed message that reaches an AI in a topic answers the
+// AI's open questions there, so the topic stops showing "waiting for you". The
+// message text is the answer and its sender is `answered_by`. Best-effort, like
+// the reply path above: a failure is a logged no-op.
+export async function answerOpenQuestionsOnTurn(
+  db: ServerDatabase,
+  session: AiSession,
+  message: { fromJid: string; body: string },
+  roomJid: string,
+  logger: GatewayLogger,
+): Promise<void> {
+  const fromBare = normBareJid(message.fromJid);
+  if (isAiSender(fromBare)) {
+    return;
+  }
+  const bareRoom = normBareJid(roomJid);
+  const nick = session.rooms.get(bareRoom)?.nick;
+  const answered = await Effect.runPromise(
+    Effect.gen(function* () {
+      const open = yield* Effect.tryPromise(() =>
+        listOpenQuestionsForAiInRoom(db, { aiId: session.aiId, roomJid: bareRoom }),
+      );
+      let count = 0;
+      for (const question of open) {
+        const closed = yield* Effect.tryPromise(() =>
+          answerQuestion(db, question.id, {
+            answer: answerText(message.body, nick),
+            answeredBy: fromBare,
+          }),
+        );
+        if (closed) {
+          count += 1;
+        }
+      }
+      return count;
+    }).pipe(
+      Effect.orElseSucceed((error) => {
+        logger.warn({ aiId: session.aiId, err: errorName(error) }, 'AI question answer failed');
+        return 0;
+      }),
+    ),
+  );
+  if (answered > 0) {
+    logger.info({ aiId: session.aiId, questions: answered }, 'AI questions answered');
   }
 }
 

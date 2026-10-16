@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FetchLike } from '../ai/http';
 import { createKeyCipher } from '../connections/crypto';
-import { TEST_XMPP_DOMAIN, createTestContext, type TestContext } from '../test-support';
+import {
+  TEST_XMPP_DOMAIN,
+  createTestContext,
+  expectedJid,
+  type TestContext,
+} from '../test-support';
 import { seedGroup, seedUser } from '../test-support/seed';
 import { localpartFor } from '../xmpp/provisioning';
 import { normBareJid } from './context';
@@ -819,5 +824,53 @@ describe('a scheduled item rides the room queue (T-1646)', () => {
     await ingest.pumpRoom(session, roomJid);
 
     expect(batches).toEqual([['m-1'], ['scheduled-1']]);
+  });
+});
+
+// T-1738: a follow-up queued after an approval is synthetic, so its room reply
+// carries no `replyTo` for a message that exists in no chat.
+describe('a synthetic follow-up carries no quote (T-1738)', () => {
+  let context: TestContext;
+
+  beforeEach(async () => {
+    context = await createTestContext();
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  it('sends the reply without replyTo', async () => {
+    const member = await seedUser(context);
+    const { aiId, aiJid } = await seedGatewayAi(context);
+    const { groupId, generalTopicId } = await seedGroup(
+      context,
+      member,
+      [{ userId: member, role: 'owner' }],
+      [aiId],
+    );
+    const roomJid = 'followup@rooms.zilar.localhost';
+    const session = scheduledRoomSession(aiId, aiJid, roomJid, groupId, generalTopicId);
+    const { runGroupSessionTurn } = groupTurnFor(context, session);
+
+    await runGroupSessionTurn(session, roomJid, [
+      {
+        id: 'synthetic-1',
+        body: 'Approved: "Run the routine". Continue the task from where you stopped.',
+        fromJid: expectedJid(member),
+        fromResolved: true,
+        fromNick: 'Owner',
+        timestamp: ROOM_DAY,
+        synthetic: true,
+      },
+    ]);
+
+    const core = session.core as FakeCore;
+    const replies = core.sent.filter(
+      (message) => message.to === roomJid && message.kind === 'groupchat',
+    );
+    expect(replies.length).toBeGreaterThan(0);
+    const opts = replies.at(-1)?.opts as { replyTo?: unknown } | undefined;
+    expect(opts?.replyTo).toBeUndefined();
   });
 });

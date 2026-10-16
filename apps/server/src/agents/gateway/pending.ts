@@ -17,6 +17,9 @@ export interface PendingMessage {
   id: string;
   body: string;
   fromJid: string;
+  /** T-1738: a follow-up queued after an approval continues a task but is not
+   * a real message, so a room reply must not quote it. */
+  synthetic?: true;
   /** T-1642: a routine's synthetic trigger, never from the network. It counts
    * as the owner's message, gets no read marker, and reports its turn's
    * outcome through `onOutcome` exactly once. */
@@ -36,6 +39,9 @@ export interface RoomPendingMessage {
   fromResolved: boolean;
   fromNick?: string;
   timestamp: Date;
+  /** T-1738: a follow-up queued after an approval continues a task but is not
+   * a real message, so the room reply carries no `replyTo`. */
+  synthetic?: true;
   /** T-0479: set by a listener wake, never by a mention. */
   wake?: true;
   /** T-0481: set on an AI-to-AI handoff queued by another AI's @mention. */

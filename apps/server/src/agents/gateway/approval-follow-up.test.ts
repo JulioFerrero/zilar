@@ -105,6 +105,22 @@ describe('approval follow-up', () => {
     expect(session.pending).toHaveLength(0);
   });
 
+  it.each(['routine.schedule', 'routine.pause', 'routine.delete'])(
+    'queues nothing after a %s approval',
+    async (action) => {
+      const session = sessionFor();
+      const row = approvalRow({ action });
+      const { deps, kicked } = depsFor(session, row);
+
+      await createApprovalFollowUp(deps).continueAfterApproval(row.id);
+
+      expect(session.roomPending.size).toBe(0);
+      expect(session.pending).toHaveLength(0);
+      expect(kicked.rooms).toEqual([]);
+      expect(kicked.dm).toBe(0);
+    },
+  );
+
   it('queues nothing after a deny', async () => {
     const session = sessionFor();
     const row = approvalRow({ status: 'denied' });

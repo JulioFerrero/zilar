@@ -18,6 +18,10 @@ export interface GroupTurnDeps {
   roomJid: string;
   /** The room message that mentioned the AI; the reply points at it. */
   triggerId: string;
+  /** T-1738: set when the trigger is a synthetic follow-up after an approval.
+   * There is no real room message to quote, so the reply carries no
+   * `replyTo`. */
+  syntheticTrigger?: boolean;
   /** Bare JID of the mentioning person, carried on the reply mention. */
   senderJid: string;
   /** Display name of the mentioner, prefixing the reply text. */

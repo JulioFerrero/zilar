@@ -113,7 +113,8 @@ export async function runGroupTurn(deps: GroupTurnDeps): Promise<DmTurnOutcome> 
     return {
       text: prefix + body,
       opts: {
-        replyTo: { id: deps.triggerId },
+        // T-1738: a synthetic follow-up has no real message to quote.
+        ...(deps.syntheticTrigger === true ? {} : { replyTo: { id: deps.triggerId } }),
         mentions,
         ...(payload === undefined ? {} : { payload }),
       },

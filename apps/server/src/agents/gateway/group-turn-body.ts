@@ -31,6 +31,7 @@ import {
 import type { RoomGateState } from './db';
 import { resolveTurnDesk, TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER, type TurnDesk } from './desk-exec';
 import { groupTurnAccess, makeIsStillAllowed } from './group-turn-access';
+import { answerOpenQuestionsOnTurn } from './question-answer';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import { resolveHandoffRoster } from './group-turn-roster';
 import { loadModelTarget } from './model-target';
@@ -205,6 +206,13 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         handoffTargets,
         aiOwnerBare: normBareJid(jidFor(localpartFor(ai.owner), deps.xmpp.domain)),
       });
+    // T-1738: a person's message that reached this AI answers its open
+    // questions in this topic, so the topic stops showing "waiting for you".
+    if (askPeople && trigger.synthetic !== true) {
+      yield* Effect.promise(() =>
+        answerOpenQuestionsOnTurn(deps.db, session, trigger, roomJid, logger),
+      );
+    }
     // T-1423: resolve the AI's computer for this turn (cloud or its runner).
     // SEC-13b: a plain member's or another AI's mention must not use the
     // owner's computer, so the desk is not even resolved for those turns.
@@ -265,6 +273,7 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         aiJid: ai.jid,
         roomJid,
         triggerId: trigger.id,
+        ...(trigger.synthetic === true ? { syntheticTrigger: true } : {}),
         senderJid: normBareJid(trigger.fromJid),
         senderName,
         messages: groupMessages,

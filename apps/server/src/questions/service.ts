@@ -9,10 +9,10 @@ import { HttpError } from '../errors';
 // A question with reply chips lives 24 hours by default.
 export const DEFAULT_QUESTION_TTL_MS = 24 * 60 * 60 * 1000;
 
-const MAX_QUESTION_LENGTH = 300;
+const MAX_QUESTION_LENGTH = 140;
 const MIN_OPTIONS = 2;
 const MAX_OPTIONS = 4;
-const MAX_OPTION_LENGTH = 40;
+const MAX_OPTION_LENGTH = 24;
 
 // Per-AI cap on open questions, like `MAX_PENDING_APPROVALS_PER_AI` on approvals.
 export const MAX_OPEN_QUESTIONS_PER_AI = 20;
@@ -210,6 +210,25 @@ export async function findOpenQuestionByMessage(
     }),
   );
   return row ?? null;
+}
+
+// T-1738: the open, unexpired questions of one AI in one room, oldest first.
+// A person's typed message that reaches the AI in that room answers them all.
+export async function listOpenQuestionsForAiInRoom(
+  db: ServerDatabase,
+  params: { aiId: string; roomJid: string },
+): Promise<AiQuestionRow[]> {
+  const rows = await runSql(
+    db,
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<AiQuestionRow>`SELECT * FROM ai_questions
+        WHERE ai_id = ${params.aiId} AND room_jid = ${params.roomJid}
+          AND status = 'open' AND expires_at > now()
+        ORDER BY created_at`;
+    }),
+  );
+  return [...rows];
 }
 
 // Marks an open, unexpired question answered. The conditional update makes

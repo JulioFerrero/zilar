@@ -21,7 +21,7 @@ import {
   setQuestionMessageId,
 } from '../../questions/service';
 import type { AiSession, GatewayLogger } from './contracts';
-import { answerOnReply, rekeyOnReflection } from './question-answer';
+import { answerOnReply, answerOpenQuestionsOnTurn, rekeyOnReflection } from './question-answer';
 
 const silentLogger: GatewayLogger = { info: () => {}, warn: () => {} };
 
@@ -222,5 +222,24 @@ describe('a reply closes the question (T-1579)', () => {
 
     expect((await findOpenQuestionByMessage(context.db, stanzaId))?.id).toBe(asked.questionId);
     expect(await storedAnswer(context, asked.questionId)).toMatchObject({ status: 'open' });
+  });
+
+  it('answers the open question when a person types in the room', async () => {
+    const asked = await askQuestion();
+    const session = sessionFor(asked.aiId, asked.aiJid, asked.room, 'Helper');
+
+    await answerOpenQuestionsOnTurn(
+      context.db,
+      session,
+      { fromJid: expectedJid(asked.ownerId), body: 'Delete one yes' },
+      asked.room,
+      silentLogger,
+    );
+
+    expect(await storedAnswer(context, asked.questionId)).toMatchObject({
+      status: 'answered',
+      answer: 'Delete one yes',
+      answeredBy: expectedJid(asked.ownerId),
+    });
   });
 });

@@ -44,6 +44,12 @@ export function createApprovalFollowUp(deps: ApprovalFollowUpDeps): ApprovalFoll
       ) {
         return;
       }
+      // T-1738: a routine card's result is its check line plus the routine's
+      // own message, so approving it queues no follow-up turn. Every other
+      // action keeps the follow-up.
+      if (row.action.startsWith('routine.')) {
+        return;
+      }
       const session = deps.sessions.get(row.aiId);
       if (session === undefined || !deps.sessionIsLive(session)) {
         return;
@@ -52,7 +58,7 @@ export function createApprovalFollowUp(deps: ApprovalFollowUpDeps): ApprovalFoll
       const body = `Approved: "${row.summary}". Continue the task from where you stopped. Do not repeat what you already said.`;
 
       if (row.groupId === null) {
-        session.pending.push({ id: randomUUID(), body, fromJid });
+        session.pending.push({ id: randomUUID(), body, fromJid, synthetic: true });
         deps.kickDm(session);
         return;
       }
@@ -73,6 +79,7 @@ export function createApprovalFollowUp(deps: ApprovalFollowUpDeps): ApprovalFoll
         fromResolved: true,
         fromNick,
         timestamp: new Date(),
+        synthetic: true,
       });
       session.roomPending.set(roomJid, queued);
       deps.kickRoom(session, roomJid);
