@@ -183,3 +183,15 @@ pnpm gate
 - `payload.test.ts` is now **399 lines** (was 396), still under the 400-line cap and
   prettier-clean.
 - Changed in this round: `packages/protocol/src/payload.test.ts` and this Report only.
+
+## Review (written by Claude)
+
+- **Accepted at `5da91c5f3`.** It's clean after two automatic rounds; both should-fixes were test precision (the `http:` link now has a title, so it fails on https alone).
+- **The schema matches the plan.**
+  - All 25 kinds are split into four group files plus the aggregator `blocks.ts`. The largest file is 209 lines.
+  - The shared helpers live in `blocks-numbers.ts` to avoid an ESM cycle.
+  - Fixed lucide icon names, https-only links, unique ids for checklist items, 12 blocks at most, a 16 KiB cap, and a required `fallback` of 1–1000 characters.
+- **The lead ran `payload.test.ts`:** 17 pass. The 2 new tests (one decode round trip, one reject case) stay in the message pipeline.
+- **Follow-ups:**
+  - T-1751 (B2, the server `buildBlocksPayload`) and T-1752 (B3, the chat-core view helpers) launch now.
+  - `payload.test.ts` is at 399 lines; new tests go in another file.
