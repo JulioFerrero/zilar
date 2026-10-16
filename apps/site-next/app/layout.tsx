@@ -45,9 +45,16 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" suppressHydrationWarning>
       <head>
         {/* Runs before first paint, so the pinned layouts apply with no flash; without
-            JavaScript the class never appears and the static layout still works. */}
+            JavaScript the class never appears and the static layout still works. If the
+            bundle never runs, the timer drops the class so the static layout returns. */}
         <script
-          dangerouslySetInnerHTML={{ __html: "document.documentElement.classList.add('anim')" }}
+          dangerouslySetInnerHTML={{
+            __html:
+              "document.documentElement.classList.add('anim');" +
+              'setTimeout(function () {' +
+              "  if (!window.__zilarReady) document.documentElement.classList.remove('anim');" +
+              '}, 4000);',
+          }}
         />
       </head>
       <body className={`${display.variable} ${body.variable} ${mono.variable}`}>{children}</body>

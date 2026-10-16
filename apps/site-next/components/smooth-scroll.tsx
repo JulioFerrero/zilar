@@ -3,6 +3,7 @@
 // effect-plain: DOM/scroll wiring for the landing; the Promise edge is document.fonts.ready, not app logic.
 import { createContext, useContext, useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { gsap, ScrollTrigger } from '@/lib/gsap';
+import { markReady } from '@/lib/ready';
 import Lenis from 'lenis';
 
 // The Lenis instance lives outside React: the provider creates it on mount and
@@ -41,6 +42,7 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
   const lenis = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   useEffect(() => {
+    markReady();
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     let instance: Lenis | null = null;
@@ -60,7 +62,12 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
       const anchor = event.currentTarget as HTMLAnchorElement;
       const href = anchor.getAttribute('href');
       if (href === null || href.length < 2) return;
-      const target = document.querySelector<HTMLElement>(href);
+      let target: HTMLElement | null;
+      try {
+        target = document.querySelector<HTMLElement>(href);
+      } catch {
+        return;
+      }
       if (target === null) return;
       event.preventDefault();
       if (instance !== null) instance.scrollTo(target, { duration: 1.8 });
@@ -89,6 +96,7 @@ export function SmoothScroll({ children }: { children: ReactNode }) {
     return () => {
       for (const anchor of anchors) anchor.removeEventListener('click', onClick);
       window.removeEventListener('load', onLoad);
+      progress.scrollTrigger?.kill();
       progress.kill();
       if (instance !== null) {
         instance.destroy();

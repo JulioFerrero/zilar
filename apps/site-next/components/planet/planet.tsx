@@ -16,7 +16,10 @@ export function Planet() {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let disposed = false;
     import('./scene')
-      .then(({ startScene }) => startScene(canvas, { reducedMotion }))
+      .then(({ startScene }) => {
+        if (disposed) return;
+        return startScene(canvas, { reducedMotion });
+      })
       .then(() => {
         if (!disposed) root.classList.add('webgl');
       })

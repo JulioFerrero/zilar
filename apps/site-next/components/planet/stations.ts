@@ -18,7 +18,7 @@ type Row = readonly [cx: number, cy: number, size: number, o: number];
 // keys middle, computer start, computer end − 0.2 viewport, details start + 15%, details end,
 // install middle, page end.
 const WIDE: readonly Row[] = [
-  [0.34, 0.02, 0.72, 1],
+  [0.5, 0.02, 0.62, 1],
   [0.04, 0, 1.19, 1],
   [0.6, 0.25, 0.61, 0.4],
   [0.39, -0.04, 0.94, 0.55],
