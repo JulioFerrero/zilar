@@ -250,7 +250,24 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
         - T-1662 (the topic header's group name opens the group);
         - T-1663 (archiving a topic for everyone asks first, with web's copy);
         - T-1664 (Shared media row in the contact panel).
-      - **Running:** T-1665 (the phone picker lacked 🔥 🎉 😭 👀 ✅ ❌ 💯 ✨; they're added, and the table is split under 400 lines).
+      - **Also merged:**
+        - T-1665 (the phone picker lacked 🔥 🎉 😭 👀 ✅ ❌ 💯 ✨; 31 common emoji added with names, and the table split under 400 lines);
+        - T-1666 (select mode: Delete and Copy beside Forward, with web's rules);
+        - T-1667 (tap a reply quote to jump to the quoted message).
+      - **Running:**
+        - T-1668 (chat-list search finds people by name or @username prefix, like web; in a fix round for web's 300 ms debounce);
+        - T-1669 and T-1670 (the two QA fixes below).
+      - **Emulator QA of T-1659..T-1667** (mock build of main, Pixel 7, 03:40 local):
+        - ✅ T-1659: back cancels an armed reply and stays in the chat.
+        - ✅ T-1660/T-1665: "fire" → 🚒 🔥, and a tap inserts it.
+        - ✅ T-1662: the topic header's group name pushes the group screen; back returns to the topic; the title still opens topic info.
+        - ✅ T-1663: both entry points ask first, with web's copy.
+        - ✅ T-1667: tapping a quote scrolls to the quoted message; a long hold opens the menu.
+        - ✅ T-1666: Delete opens the right confirm; back closes it first; Copy puts "Marta: …" lines on the clipboard.
+        - ✅ T-1664: the Shared media row and sheet show. The media load fails only in mock: mock Marta isn't a contact and her mock JID doesn't follow the user-id rule; live resolves the DM like the profile's Mute and Search do.
+        - **Found, fixing:**
+          - the emoji/GIF sheet doesn't rise above the keyboard, so search results are hidden while typing (an old sheet bug; T-1669);
+          - the select bar squeezes "2 selected" to "2 …" (T-1670: icon keys).
       - **Not gaps after reading the code:**
         - gap 12: the phone asks for a handle once, in the sign-up chain, so there's nothing to remember;
         - gap 10 (Download in the menu): opening a file already goes through the system share sheet, so a separate Download is your call.
