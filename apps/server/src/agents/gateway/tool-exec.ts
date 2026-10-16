@@ -212,11 +212,12 @@ export function createToolExec(ctx: ToolExecContext) {
       }
       if (call.tool === REQUEST_ACTION_TOOL) {
         const unattended = options?.unattended === true;
-        // The triggering user's role may have changed during a long turn
-        // (T-0098): re-check the database before calling the action
-        // gateway, and short-circuit to `denied: not allowed` when they
-        // are no longer an owner or admin. The gateway is never invoked
-        // in that case, so no audit row is written and no card appears.
+        // The triggering user's membership may have changed during a long
+        // turn (T-1727): re-check the database before calling the action
+        // gateway, and short-circuit to `denied: not allowed` when the
+        // sender is no longer a member of this topic. The gateway is never
+        // invoked in that case, so no audit row is written and no card
+        // appears.
         // T-1655: a scheduled (unattended) run has no live person whose
         // role could change mid-turn — the routine's creator was checked
         // when it was approved — so the re-check is skipped.

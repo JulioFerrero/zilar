@@ -1736,3 +1736,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1722](T-1722-routine-header-bump.md) | Routine header in chat; each routine edit bumps the chat | 2026-10-16 |
 | [T-1726](T-1726-android-icon-size.md) | Android icon: smaller mark inside the launcher circle | 2026-10-16 |
 | [T-1724](T-1724-android-update-core.md) | Android updater core: check, download, install | 2026-10-16 |
+| [T-1727](T-1727-members-ask-card-reply.md) | Members can ask AIs; no memory-only card; live-facts rule | 2026-10-16 |

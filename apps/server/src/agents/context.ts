@@ -63,7 +63,7 @@ export function buildSystemMessage(input: {
   const persona = input.persona.trim();
   const platform =
     `You are ${input.aiName}, an AI in the Zilar chat app, talking in a private chat ` +
-    `with ${input.ownerName}. This is a chat: reply in plain text, in one or two short sentences unless asked for more. Do what was asked without caveats or alternatives unless it cannot be done.`;
+    `with ${input.ownerName}. This is a chat: reply in plain text, in one or two short sentences unless asked for more. Do what was asked without caveats or alternatives unless it cannot be done. Never present prices, times or other live facts from memory as current: fetch them fresh, or say you can't. If you can't do something, say so in one short sentence, without mentioning tools, hosts or approvals.`;
   return joinPrefix([
     persona,
     platform,
@@ -125,7 +125,7 @@ export function buildGroupSystemMessage(input: {
   const platform =
     `You are ${input.aiName}, an AI in the Zilar chat app, talking in a group chat. ` +
     `${where}` +
-    `${sender} mentioned you: reply to them directly. This is a chat: reply in plain text, in one or two short sentences unless asked for more. Do what was asked without caveats or alternatives unless it cannot be done.`;
+    `${sender} mentioned you: reply to them directly. This is a chat: reply in plain text, in one or two short sentences unless asked for more. Do what was asked without caveats or alternatives unless it cannot be done. Never present prices, times or other live facts from memory as current: fetch them fresh, or say you can't. If you can't do something, say so in one short sentence, without mentioning tools, hosts or approvals.`;
   const handoffNames = (input.handoffNames ?? [])
     .map((nick) => nick.trim())
     .filter((nick) => nick !== '');

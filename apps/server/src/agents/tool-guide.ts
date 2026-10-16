@@ -3,6 +3,14 @@
 // routine adapters registered for that context. Fixed text: no user data,
 // no persona, no tool output inside — the model can never smuggle content
 // in through it.
+import {
+  MEMORY_ZOOM_TOOL,
+  RECALL_TOOL,
+  REMEMBER_TOOL,
+  REVERT_PERSONA_TOOL,
+  UPDATE_PERSONA_TOOL,
+} from './tools/schemas';
+
 export const TOOL_GUIDE_MAX_CHARS = 6000;
 
 const TOOL_GUIDE_LINES = [
@@ -59,6 +67,17 @@ const TOOL_STAGE_BY_ACTION: Record<string, string> = {
 };
 
 export const TOOL_STAGE_FALLBACK = 'Working on it';
+
+// T-1727: a round whose calls are all memory or persona tools does not open a
+// work card. `tool-exec` reports the first call outside this set and nothing
+// when every call is inside it, so a memory-only turn shows no card.
+export const QUIET_TOOLS: ReadonlySet<string> = new Set([
+  RECALL_TOOL,
+  REMEMBER_TOOL,
+  MEMORY_ZOOM_TOOL,
+  UPDATE_PERSONA_TOOL,
+  REVERT_PERSONA_TOOL,
+]);
 
 /** T-1406: the status the AI carries before its first tool stage. */
 export const TOOL_STAGE_THINKING = 'Thinking';

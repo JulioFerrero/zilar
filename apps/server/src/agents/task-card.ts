@@ -51,6 +51,12 @@ export function startTaskCard(stage: string, startedAt: string): TaskCard {
  * one `doing`. At the cap the newest label renames the last step instead of
  * adding a 21st. */
 export function addTaskCardStep(card: TaskCard, label: string): TaskCard {
+  // T-1727: the opening stage is also the card title, so repeating it as the
+  // first step would print the same line twice. Skip that first step and keep
+  // the stage in sync; a later, different label still opens step 1.
+  if (card.steps.length === 0 && label === card.title) {
+    return { ...card, stage: label };
+  }
   const steps: ProgressStep[] = card.steps.map((step) => ({ ...step }));
   const last = steps[steps.length - 1];
   if (last !== undefined) {

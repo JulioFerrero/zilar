@@ -69,10 +69,10 @@ describe('stop a running AI turn (T-1422)', () => {
     const fetchImpl: FetchLike = (url, init) => {
       calls.push({ url, init });
       if (calls.length === 1) {
-        return Promise.resolve(toolCallResponse('call-1', 'recall', '{"query":"cats"}'));
+        return Promise.resolve(toolCallResponse('call-1', 'bash', '{"command":"echo cats"}'));
       }
       if (calls.length === 2) {
-        return Promise.resolve(toolCallResponse('call-2', 'recall', '{"query":"dogs"}'));
+        return Promise.resolve(toolCallResponse('call-2', 'read', '{"path":"notes.txt"}'));
       }
       return gate.then(() => completionResponse('late answer'));
     };

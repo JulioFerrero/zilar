@@ -1,7 +1,7 @@
 // effect-plain: moved unchanged from apps/server/src/agents/reply.ts (size split)
 import { classifyFailure } from './failure-class';
 import { REQUEST_ACTION_TOOL } from './tools';
-import { stageForToolCall } from './tool-guide';
+import { QUIET_TOOLS, stageForToolCall } from './tool-guide';
 import {
   BUDGET_EXCEEDED_REPLY,
   CONTEXT_TOO_LONG_REPLY,
@@ -133,7 +133,10 @@ export async function runLoopRound(input: {
   }
   let progressPosted = input.progressPosted ?? false;
   if (input.reportProgress !== undefined) {
-    const first = input.result.toolCalls[0];
+    // T-1727: skip the memory and persona tools. A round that only recalls or
+    // remembers has no stage worth a card, so it opens none; the first call
+    // that is not one of them reports progress as before.
+    const first = input.result.toolCalls.find((call) => !QUIET_TOOLS.has(call.name));
     if (first !== undefined) {
       const stage = stageForToolCall(first.name, input.actionOf?.(first.name, first.argsJson));
       try {

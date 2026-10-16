@@ -71,6 +71,22 @@ describe('addTaskCardStep', () => {
       state: 'doing',
     });
   });
+
+  it('skips the first step when its label repeats the title (T-1727)', () => {
+    const card = addTaskCardStep(startTaskCard('Reading files', STARTED_AT), 'Reading files');
+
+    expect(card.steps).toEqual([]);
+    expect(card.stage).toBe('Reading files');
+    expect(card.title).toBe('Reading files');
+  });
+
+  it('opens step 1 with a later, different label (T-1727)', () => {
+    const opened = addTaskCardStep(startTaskCard('Reading files', STARTED_AT), 'Reading files');
+    const card = addTaskCardStep(opened, 'Running the tool');
+
+    expect(card.steps).toEqual([{ id: 'step-1', label: 'Running the tool', state: 'doing' }]);
+    expect(card.stage).toBe('Running the tool');
+  });
 });
 
 describe('failTaskCard and finishTaskCard', () => {
