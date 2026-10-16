@@ -195,3 +195,20 @@ Round 2 checks (run after all three commits):
   size: every changed source file is within 400 lines
   GATE PASS
   ```
+
+## Review (written by Claude)
+
+Merged. Checked on 2026-10-17:
+- The packet matches HEAD `4b3d2577d`. The review was rerun on paid Muse.
+- **Route** (`topics/api.ts:245-274`):
+  - `requireVisibleTopic` runs first, so a topic the caller can't see stays 404;
+  - General and private topics answer the same 404;
+  - no archive gives 501;
+  - a failed archive read gives 502, and only the topic id is logged.
+- **Round 2:**
+  - each row keeps its original target `id: key` (`preview.ts:121`);
+  - the fake archive asserts the scan is scoped to the full room JID (`preview.test.ts:47`);
+  - live AI cards are dropped, edits included (`preview.ts:112`).
+- I ran `preview.test.ts`: 2 passed.
+- **Nit, left open:** no test pins the private-topic 404 for that topic's own members. The guard is one plain line.
+- The client (W9/W10) uses this route.
