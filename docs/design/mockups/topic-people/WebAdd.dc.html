@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Add people or AIs, web</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed;text-decoration:none}a:hover{color:#ffffff}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.panel{background:#0a0a0a;border:1px solid #1f1f1f;border-radius:16px;overflow:hidden}
+.key-icon{background:linear-gradient(180deg,#2c2c2c,#151515);border:1px solid #050505;color:#d4d4d4;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.65),0 1px 0 rgba(0,0,0,.95),0 3px 6px -1px rgba(0,0,0,.75)}
+.ik{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;box-sizing:border-box}
+.well{background:#0c0c0c;border:1px solid #1f1f1f;box-shadow:inset 0 2px 6px rgba(0,0,0,.9),inset 0 1px 1px rgba(0,0,0,.8),inset 0 0 0 1px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.06)}
+.group{background:#111111;border:1px solid #1f1f1f;border-radius:12px;overflow:hidden}
+.row{display:flex;align-items:center;gap:10px;min-height:52px;padding:0 10px 0 12px;border-bottom:1px solid #1a1a1a;font-size:14px;box-sizing:border-box}
+.sec{font-family:'Geist Mono',monospace;font-size:11px;letter-spacing:.06em;color:#8a8a8a;padding:0 2px}
+.av{width:30px;height:30px;border-radius:999px;flex-shrink:0}
+.tag{font-family:'Geist Mono',monospace;font-size:11px;color:#8a8a8a}
+.p5{background:radial-gradient(circle at 34% 30%,#ccfbf1 0%,#2dd4bf 25%,#0f766e 60%,#042f2e 100%)}
+.p6{background:radial-gradient(circle at 34% 30%,#fef9c3 0%,#facc15 25%,#a16207 60%,#422006 100%)}
+.p7{background:radial-gradient(circle at 34% 30%,#e0e7ff 0%,#818cf8 25%,#3730a3 60%,#1e1b4b 100%)}
+.seg{display:flex;padding:3px;gap:2px;border-radius:10px;background:#0c0c0c;border:1px solid #1a1a1a;box-shadow:inset 0 2px 6px rgba(0,0,0,.9),0 1px 0 rgba(255,255,255,.06)}
+.seg button{flex:1 1 0;height:30px;border:0;border-radius:7px;background:transparent;color:#a1a1a1;font:500 13px 'Geist',sans-serif;cursor:pointer}
+.seg .on{background:linear-gradient(180deg,#333,#1c1c1c);color:#ededed;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.6),0 1px 0 rgba(0,0,0,.9),0 2px 4px rgba(0,0,0,.7)}
+.key{box-sizing:border-box;height:32px;padding:0 12px;border-radius:10px;font-family:'Geist',system-ui,sans-serif;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.key-light{border:1px solid #ffffff;color:#0a0a0a;background:linear-gradient(180deg,#ffffff,#d9d9d9);box-shadow:0 1px 0 rgba(255,255,255,.4) inset,0 2px 6px rgba(0,0,0,.6)}
+.key-dark{border:1px solid #2a2a2a;color:#ededed;background:linear-gradient(180deg,#1c1c1c,#121212);box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 2px 6px rgba(0,0,0,.6)}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; padding: 12px; display: flex; gap: 12px; background: #000000; position: relative">
+  <div aria-hidden="true" class="panel" style="width: 300px; flex-shrink: 0"></div>
+  <div aria-hidden="true" class="panel" style="flex-grow: 1; background-image: radial-gradient(#1c1c1c 1px, transparent 1px); background-size: 22px 22px"></div>
+  <div aria-hidden="true" class="panel" style="width: 340px; flex-shrink: 0"></div>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0,0,0,.6)"></div>
+
+  <section role="dialog" aria-label="Add to Financial" style="position: absolute; left: 50%; top: 96px; transform: translateX(-50%); width: 440px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 16px; background: #0d0d0d; border: 1px solid #262626; box-shadow: 0 30px 60px -20px rgba(0,0,0,.95)">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <span style="flex-grow: 1; font-size: 17px; font-weight: 600; letter-spacing: -0.02em">Add to Financial</span>
+      <a href="WebTopic.dc.html" aria-label="Close" class="key-icon ik"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></a>
+    </div>
+    <div class="seg" role="tablist" aria-label="Add">
+      <button type="button" role="tab" aria-selected="true" class="on">People</button>
+      <button type="button" role="tab" aria-selected="false">AIs</button>
+    </div>
+    <label class="well" style="height: 40px; border-radius: 12px; display: flex; align-items: center; gap: 10px; padding: 0 12px; box-sizing: border-box">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8a8a8a" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+      <input aria-label="Search people" placeholder="Name or @handle" style="flex-grow: 1; background: transparent; border: 0; outline: none; color: #ededed; font: 14px 'Geist', sans-serif">
+    </label>
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span class="sec">YOUR CONTACTS</span>
+      <div class="group">
+        <div class="row"><span aria-hidden="true" class="av p5"></span><span style="flex-grow: 1; display: flex; flex-direction: column; gap: 1px"><span>Ana</span><span class="tag">+ joins ai test</span></span><button type="button" class="key key-light">Add</button></div>
+        <div class="row"><span aria-hidden="true" class="av p6"></span><span style="flex-grow: 1; display: flex; flex-direction: column; gap: 1px"><span>Mikel</span><span class="tag">+ joins ai test</span></span><button type="button" class="key key-light">Add</button></div>
+        <div class="row" style="border-bottom: 0"><span aria-hidden="true" class="av p7"></span><span style="flex-grow: 1; display: flex; flex-direction: column; gap: 1px"><span>test_julio</span><span class="tag">+ joins ai test</span></span><button type="button" class="key key-light">Add</button></div>
+      </div>
+    </div>
+    <div class="group" style="display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 10px 0 12px">
+      <span class="key-icon" style="width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#e5e5e5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"></path></svg></span>
+      <span style="flex-grow: 1; font-size: 14px">Invite with a link</span>
+      <button type="button" class="key key-dark">Copy</button>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

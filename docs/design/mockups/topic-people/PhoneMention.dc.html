@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mention list, phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed;text-decoration:none}a:hover{color:#ffffff}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.key-icon{background:linear-gradient(180deg,#2c2c2c,#151515);border:1px solid #050505;color:#d4d4d4;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.65),0 1px 0 rgba(0,0,0,.95),0 3px 6px -1px rgba(0,0,0,.75)}
+.hk{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;box-sizing:border-box}
+.well{background:#0c0c0c;border:1px solid #1f1f1f;box-shadow:inset 0 2px 6px rgba(0,0,0,.9),inset 0 1px 1px rgba(0,0,0,.8),inset 0 0 0 1px rgba(0,0,0,.4),0 1px 0 rgba(255,255,255,.06)}
+.st{display:flex;align-items:center}
+.st span{width:22px;height:22px;border-radius:999px;border:2px solid #0a0a0a;margin-left:-7px;box-sizing:border-box}
+.st span:first-child{margin-left:0}
+.dev{background:radial-gradient(circle at 35% 30%,#c4b5fd,#4338ca 55%,#1e1b4b)}
+.p1{background:radial-gradient(circle at 34% 30%,#e0f2fe 0%,#38bdf8 25%,#0369a1 60%,#082f49 100%)}
+.p2{background:radial-gradient(circle at 34% 30%,#fde68a 0%,#f59e0b 25%,#b45309 60%,#451a03 100%)}
+.p3{background:radial-gradient(circle at 34% 30%,#d1fae5 0%,#34d399 25%,#047857 60%,#022c22 100%)}
+.p4{background:radial-gradient(circle at 34% 30%,#ffd6f1 0%,#f472b6 25%,#c026d3 60%,#4a044e 100%)}
+.topic{background:radial-gradient(circle at 70% 25%,#e9d5ff 0%,#a78bfa 18%,#34d399 55%,#064e3b 100%)}
+.badge{font-family:'Geist Mono',monospace;font-size:10px;color:#a1a1a1;border:1px solid #333;border-radius:5px;padding:1px 5px}
+.sec{font-family:'Geist Mono',monospace;font-size:11px;letter-spacing:.06em;color:#8a8a8a;padding:10px 14px 4px 14px}
+.opt{display:flex;align-items:center;gap:12px;min-height:48px;padding:0 10px 0 14px;font-size:16px;box-sizing:border-box}
+.av{width:30px;height:30px;border-radius:999px;flex-shrink:0}
+.key{box-sizing:border-box;height:32px;padding:0 12px;border-radius:10px;font-family:'Geist',system-ui,sans-serif;font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.key-light{border:1px solid #ffffff;color:#0a0a0a;background:linear-gradient(180deg,#ffffff,#d9d9d9);box-shadow:0 1px 0 rgba(255,255,255,.4) inset,0 2px 6px rgba(0,0,0,.6)}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; display: flex; flex-direction: column; overflow: hidden; background-color: #0a0a0a; background-image: radial-gradient(#1c1c1c 1px, transparent 1px); background-size: 22px 22px">
+  <header style="flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 36px 10px 10px 10px; border-bottom: 1px solid #1f1f1f; background: #0a0a0a">
+    <button type="button" aria-label="Back" class="key-icon hk"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></button>
+    <a href="PhonePeople.dc.html" aria-label="Financial, who's here" style="flex-grow: 1; min-width: 0; display: flex; align-items: center; gap: 10px">
+      <span aria-hidden="true" class="topic" style="width: 40px; height: 40px; border-radius: 999px; flex-shrink: 0"></span>
+      <span style="display: flex; flex-direction: column; gap: 3px; min-width: 0">
+        <span style="font-size: 17px; font-weight: 600; letter-spacing: -0.02em">Financial</span>
+        <span style="display: flex; align-items: center; gap: 6px">
+          <span class="st" aria-hidden="true"><span class="dev"></span><span class="p1"></span><span class="p2"></span><span class="p3"></span></span>
+          <span style="font-size: 13px; color: #a1a1a1">ai test · 5</span>
+        </span>
+      </span>
+    </a>
+    <button type="button" aria-label="Search" class="key-icon hk"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg></button>
+    <button type="button" aria-label="More" class="key-icon hk"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="12" cy="19" r="1.8"></circle></svg></button>
+  </header>
+
+  <div style="flex-grow: 1"></div>
+
+  <div role="listbox" aria-label="Mention" style="flex-shrink: 0; margin: 0 12px 8px 12px; border-radius: 16px; background: #111111; border: 1px solid #1f1f1f; box-shadow: 0 12px 28px -8px rgba(0,0,0,.95); padding-bottom: 6px">
+    <div style="height: 6px"></div>
+    <button type="button" role="option" class="opt" style="all: unset; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 14px; font-size: 16px; cursor: pointer"><span aria-hidden="true" class="av dev"></span><span style="flex-grow: 1; display: flex; align-items: center; gap: 6px">Deepseek <span class="badge">AI</span></span><span class="mono" style="font-size: 12px; color: #8a8a8a">@deepseek</span></button>
+    <button type="button" role="option" class="opt" style="all: unset; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 14px; font-size: 16px; cursor: pointer"><span aria-hidden="true" class="av p2"></span><span style="flex-grow: 1">JULITO</span><span class="mono" style="font-size: 12px; color: #8a8a8a">@julito</span></button>
+    <button type="button" role="option" class="opt" style="all: unset; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 14px; font-size: 16px; cursor: pointer"><span aria-hidden="true" class="av p3"></span><span style="flex-grow: 1">claude_test</span><span class="mono" style="font-size: 12px; color: #8a8a8a">@claude_test</span></button>
+    <button type="button" role="option" class="opt" style="all: unset; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 14px; font-size: 16px; cursor: pointer"><span aria-hidden="true" class="av p4"></span><span style="flex-grow: 1">Marta</span><span class="mono" style="font-size: 12px; color: #8a8a8a">@marta</span></button>
+  </div>
+
+  <div style="flex-shrink: 0; padding: 8px 12px 30px 12px; border-top: 1px solid #1f1f1f; background: #0a0a0a">
+    <div class="well" style="height: 48px; border-radius: 16px; display: flex; align-items: center; gap: 8px; padding: 0 6px; box-sizing: border-box">
+      <button type="button" aria-label="Attach" class="key-icon" style="width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.5l-8.6 8.6a5 5 0 0 1-7.1-7.1l8.6-8.6a3.5 3.5 0 0 1 5 5l-8.6 8.6a2 2 0 0 1-2.8-2.8l7.9-7.9"></path></svg></button>
+      <span style="flex-grow: 1; font-size: 16px; color: #ededed">@<span style="display: inline-block; width: 2px; height: 18px; background: #bdbdbd; vertical-align: -3px; margin-left: 1px"></span></span>
+      <button type="button" aria-label="Send" style="width: 38px; height: 38px; border-radius: 12px; border: 1px solid #ffffff; background: linear-gradient(180deg, #ffffff, #d9d9d9); display: flex; align-items: center; justify-content: center; color: #0a0a0a"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"></path></svg></button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
