@@ -381,6 +381,14 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
       - **11:00 UTC:**
         - **live `b3a9965bf`:** T-1721, T-1720 and T-1723; healthy, 0 errors; `/api/routines` answers 401 signed out. Prod has 0 routines, so Julio's test exercises the path;
         - **T-1722:** the lead's fix round 2 was sent (open chat, no unread). It's the last task before the test list.
+      - **12:01 UTC, all of the 10-16 asks are live at `a271f523b`:**
+        - T-1722 (the routine header and chat bump) is merged; healthy, 0 errors;
+        - **waiting on Julio:** the v0.2.3 tag for the phone build (icon, phone Routines, routine header and card, "edited HH:MM"), and his test pass.
+      - **12:35 UTC:** v0.2.3 was tagged with Julio's OK. Its signed APKs (arm64 and universal) are on the GitHub release. The test list was sent to Julio, and the lead is waiting for his results.
+      - **13:10 UTC, new ask (Julio):** an Android in-app updater: check, download, prompt to install.
+        - **T-1724 is running:** the core with no UI (GitHub latest release, version compare, the arm64 download, the installer intent, `REQUEST_INSTALL_PACKAGES`, the `useAppUpdate()` hook);
+        - **the canvas** for the prompt and the Settings "This app" row: https://claude.ai/artifact/AMYshRxWEz3Ur5F9wAbNvQ. It waits for Julio's OK, then the UI spec;
+        - **open choice:** quiet download on Wi-Fi (this needs `expo-network`) or always ask first.
       - **Running:**
         - T-1692 (phone per-chat scroll memory, gap 7). Fix rounds:
           - 1: retry the restore until the content covers the spot;
