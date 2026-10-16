@@ -39,6 +39,7 @@ function renderBlock(block: Block): ReactNode {
     case 'timeline':
     case 'countdown':
       return renderProgressBlock(block);
+    case 'place':
     case 'weather':
     case 'event':
       return renderContentBlock(block);
