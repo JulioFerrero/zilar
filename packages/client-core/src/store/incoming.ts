@@ -101,9 +101,19 @@ export function handleMessage(ctx: CoreCtx, message: ChatMessage): void {
   const { k } = ctx;
   if (isAiActivityMessage(message)) scheduleActivityRefresh(ctx);
   // A correction or a retraction is never a chat message: it edits another
-  // one, so it is ingested and returns before any rendering.
+  // one, so it is ingested and returns before any rendering. A routine edit in
+  // the chat I'm looking at is read, like a live message there (the same test
+  // below): the edit path never reaches the unread test, so its bump would
+  // otherwise add one unread a minute while I watch.
   if (k.isEditStanza(message)) {
     k.ingestEdit(message);
+    if (
+      message.payload?.type === 'routine' &&
+      ctx.get().activeChatId === message.chatJid &&
+      ctx.ports.isVisible()
+    ) {
+      recordRead(ctx, message.chatJid, message.correction?.targetId);
+    }
     return;
   }
   // A reactions message that is only that (no body, no payload) must never

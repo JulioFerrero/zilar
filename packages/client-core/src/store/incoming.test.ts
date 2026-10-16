@@ -1,3 +1,4 @@
+import type { Payload } from '@zilar/protocol';
 import type { ChatMessage } from '@zilar/xmpp-core';
 import { Effect } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -30,6 +31,12 @@ function message(fields: Partial<ChatMessage> & { id: string }): ChatMessage {
     ...fields,
   };
 }
+
+const routine = (title: string): Payload => ({
+  v: 0,
+  type: 'routine',
+  data: { id: 'routine-1', title, schedule: 'every 5 min' },
+});
 
 describe('handleMessage (core)', () => {
   it('adds a message to a closed chat as unread and re-syncs the badge', () => {
@@ -96,6 +103,36 @@ describe('handleMessage (core)', () => {
 
     expect(state().chats.find((chat) => chat.id === ANA)?.unread).toBe(1);
     expect(core.markDisplayed).not.toHaveBeenCalled();
+  });
+
+  // A routine edit for the chat I'm looking at is read, like a live message
+  // there: the edit path returns before the unread test, so its bump must not
+  // add one unread a minute while I watch (F2).
+  it('reads a routine correction in the open, visible chat without unread', () => {
+    const { ctx, state } = testCtx({
+      ports: { isVisible: () => true },
+      state: { activeChatId: ANA },
+    });
+    handleMessage(
+      ctx,
+      message({ id: 'routine-msg', body: 'BTC $67,420', payload: routine('Prices') }),
+    );
+    expect(state().chats.find((chat) => chat.id === ANA)?.unread).toBe(0);
+
+    handleMessage(
+      ctx,
+      message({
+        id: 'routine-fix',
+        timestamp: new Date('2026-09-28T12:01:00Z'),
+        body: 'BTC $68,100',
+        correction: { targetId: 'routine-msg' },
+        payload: routine('Prices'),
+      }),
+    );
+
+    expect(state().chats.find((chat) => chat.id === ANA)?.unread).toBe(0);
+    expect(state().chats.find((chat) => chat.id === ANA)?.lastMessage?.text).toBe('BTC $68,100');
+    expect(ctx.lastRead[ANA]).toBe('routine-msg');
   });
 
   it('replaces the optimistic bubble with its echo and forgets the retry bytes', () => {

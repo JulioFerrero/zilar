@@ -17,6 +17,7 @@ import { ANA, testCtx } from './test-ctx';
 
 const ME = 'me@zilar.test';
 const BOB = 'bob@zilar.test';
+const EVE = 'eve@zilar.test';
 const ROOM = 'room@groups.zilar.test';
 
 const room: ChatSummary = { id: ROOM, kind: 'group', title: 'Room', unread: 0 } as ChatSummary;
@@ -25,10 +26,10 @@ const room: ChatSummary = { id: ROOM, kind: 'group', title: 'Room', unread: 0 } 
 // (`apps/web/src/store/effects/send.ts`) and the incoming handler
 // (`apps/web/src/store/effects/incoming.ts`) do: the same ledger calls in the
 // same order, with the echo queue keyed by `signatureFor`.
-function harness() {
+function harness(leading: ChatSummary[] = []) {
   let state: LedgerState = {
     messagesByChat: {},
-    chats: [room],
+    chats: [...leading, room],
     edits: {},
     reactions: {},
     contacts: [{ jid: BOB, name: 'Bob' }],
@@ -146,7 +147,15 @@ function harness() {
     ledger.refreshEdits(ROOM);
   }
 
-  return { ledger, send, resolve, echo, receive, messages: () => ledger.listFor(state, ROOM) };
+  return {
+    ledger,
+    send,
+    resolve,
+    echo,
+    receive,
+    messages: () => ledger.listFor(state, ROOM),
+    chats: () => state.chats,
+  };
 }
 
 const stanza = (fields: Partial<LedgerStanza> & { id: string }): LedgerStanza => ({
@@ -520,5 +529,232 @@ describe('the message ledger: payload cards', () => {
       }),
     );
     expect(h.messages()[0]?.card).toEqual(card('Done', 'done'));
+  });
+});
+
+describe('the message ledger: the routine edit bump (T-1722)', () => {
+  const routine = (title: string): Payload => ({
+    v: 0,
+    type: 'routine',
+    data: { id: 'routine-1', title, schedule: 'every 5 min' },
+  });
+  const other: ChatSummary = { id: ANA, kind: 'dm', title: 'Ana', unread: 0 } as ChatSummary;
+
+  // A correction carrying a routine payload bumps its chat like a new incoming
+  // message: to the top, with the edited text as its preview, and one unread.
+  it('moves the chat to the top with the new preview and counts as unread', () => {
+    const h = harness([other]);
+    h.receive(
+      stanza({
+        id: 'routine-msg',
+        fromJid: BOB,
+        outgoing: false,
+        body: 'BTC $67,420',
+        payload: routine('Prices'),
+      }),
+    );
+    expect(h.chats().map((chat) => chat.id)).toEqual([ANA, ROOM]);
+
+    h.receive(
+      stanza({
+        id: 'routine-fix',
+        fromJid: BOB,
+        outgoing: false,
+        timestamp: new Date(6_000),
+        body: 'BTC $68,100',
+        correction: { targetId: 'routine-msg' },
+        payload: routine('Prices'),
+      }),
+    );
+    expect(h.chats().map((chat) => chat.id)).toEqual([ROOM, ANA]);
+    expect(h.chats()[0]?.lastMessage?.text).toBe('BTC $68,100');
+    expect(h.chats()[0]?.unread).toBe(1);
+  });
+
+  // A plain correction still only changes edit state: no move, no preview, no
+  // unread.
+  it('a plain correction moves nothing and leaves its count alone', () => {
+    const h = harness([other]);
+    h.receive(stanza({ id: 'plain-msg', fromJid: BOB, outgoing: false, body: 'hello' }));
+    h.receive(
+      stanza({
+        id: 'plain-fix',
+        fromJid: BOB,
+        outgoing: false,
+        timestamp: new Date(6_000),
+        body: 'hello there',
+        correction: { targetId: 'plain-msg' },
+      }),
+    );
+    expect(h.chats().map((chat) => chat.id)).toEqual([ANA, ROOM]);
+    expect(h.chats()[1]?.lastMessage).toBeUndefined();
+    expect(h.chats()[1]?.unread).toBe(0);
+  });
+
+  // My own routine edit bumps the preview but never counts as unread, like my
+  // own message.
+  it('never counts an edit of my own routine message as unread', () => {
+    const h = harness([other]);
+    h.receive(
+      stanza({
+        id: 'my-routine',
+        fromJid: ME,
+        outgoing: true,
+        body: 'BTC $67,420',
+        payload: routine('Prices'),
+      }),
+    );
+    h.receive(
+      stanza({
+        id: 'my-routine-fix',
+        fromJid: ME,
+        outgoing: true,
+        timestamp: new Date(6_000),
+        body: 'BTC $68,100',
+        correction: { targetId: 'my-routine' },
+        payload: routine('Prices'),
+      }),
+    );
+    expect(h.chats()[0]?.id).toBe(ROOM);
+    expect(h.chats()[0]?.lastMessage?.text).toBe('BTC $68,100');
+    expect(h.chats()[0]?.unread).toBe(0);
+  });
+
+  // History loads ingest edits too (`ingestHistoryEdits`), at boot and on every
+  // open. A routine correction read back from an old page must not reorder the
+  // chat or inflate its count (F1).
+  it('does not bump when the routine correction comes from history', () => {
+    const h = harness([other]);
+    h.receive(
+      stanza({
+        id: 'routine-msg',
+        fromJid: BOB,
+        outgoing: false,
+        body: 'BTC $67,420',
+        payload: routine('Prices'),
+      }),
+    );
+    expect(h.chats().map((chat) => chat.id)).toEqual([ANA, ROOM]);
+
+    h.ledger.ingestHistoryEdits([
+      stanza({
+        id: 'routine-fix',
+        fromJid: BOB,
+        outgoing: false,
+        timestamp: new Date(6_000),
+        body: 'BTC $68,100',
+        correction: { targetId: 'routine-msg' },
+        payload: routine('Prices'),
+      }),
+    ]);
+
+    expect(h.chats().map((chat) => chat.id)).toEqual([ANA, ROOM]);
+    expect(h.chats()[1]?.unread).toBe(0);
+  });
+
+  // `applyEdit` ignores a correction from anyone but the target's author, so
+  // the bump must not fire either: no peer can reorder or inflate the chat
+  // (F4).
+  it('does not bump when the routine correction is not from the author', () => {
+    const h = harness([other]);
+    h.receive(
+      stanza({
+        id: 'routine-msg',
+        fromJid: BOB,
+        outgoing: false,
+        body: 'BTC $67,420',
+        payload: routine('Prices'),
+      }),
+    );
+    h.receive(
+      stanza({
+        id: 'routine-fix',
+        fromJid: EVE,
+        outgoing: false,
+        timestamp: new Date(6_000),
+        body: 'BTC $0',
+        correction: { targetId: 'routine-msg' },
+        payload: routine('Prices'),
+      }),
+    );
+
+    expect(h.chats().map((chat) => chat.id)).toEqual([ANA, ROOM]);
+    expect(h.chats()[1]?.lastMessage).toBeUndefined();
+    expect(h.chats()[1]?.unread).toBe(0);
+  });
+
+  // An XMPP stream resumption can redeliver the same correction stanza. The
+  // second copy changes nothing, so it must not add a second unread or move the
+  // chat again (finding 1).
+  it('does not count a redelivered routine correction as unread again', () => {
+    const h = harness([other]);
+    h.receive(
+      stanza({
+        id: 'routine-msg',
+        fromJid: BOB,
+        outgoing: false,
+        body: 'BTC $67,420',
+        payload: routine('Prices'),
+      }),
+    );
+    const fix = stanza({
+      id: 'routine-fix',
+      fromJid: BOB,
+      outgoing: false,
+      timestamp: new Date(6_000),
+      body: 'BTC $68,100',
+      correction: { targetId: 'routine-msg' },
+      payload: routine('Prices'),
+    });
+    h.receive(fix);
+    expect(h.chats()[0]?.id).toBe(ROOM);
+    expect(h.chats()[0]?.unread).toBe(1);
+
+    // The server resends the same stanza; nothing changed.
+    h.receive(fix);
+    expect(h.chats().map((chat) => chat.id)).toEqual([ROOM, ANA]);
+    expect(h.chats()[0]?.lastMessage?.text).toBe('BTC $68,100');
+    expect(h.chats()[0]?.unread).toBe(1);
+  });
+
+  // A correction older than the one already stored never wins, so it must not
+  // bump either (finding 1).
+  it('does not bump for a routine correction older than the stored one', () => {
+    const h = harness([other]);
+    h.receive(
+      stanza({
+        id: 'routine-msg',
+        fromJid: BOB,
+        outgoing: false,
+        body: 'BTC $67,420',
+        payload: routine('Prices'),
+      }),
+    );
+    h.receive(
+      stanza({
+        id: 'routine-fix',
+        fromJid: BOB,
+        outgoing: false,
+        timestamp: new Date(6_000),
+        body: 'BTC $68,100',
+        correction: { targetId: 'routine-msg' },
+        payload: routine('Prices'),
+      }),
+    );
+    expect(h.chats()[0]?.unread).toBe(1);
+
+    h.receive(
+      stanza({
+        id: 'routine-stale',
+        fromJid: BOB,
+        outgoing: false,
+        timestamp: new Date(3_000),
+        body: 'BTC $1',
+        correction: { targetId: 'routine-msg' },
+        payload: routine('Prices'),
+      }),
+    );
+    expect(h.chats()[0]?.lastMessage?.text).toBe('BTC $68,100');
+    expect(h.chats()[0]?.unread).toBe(1);
   });
 });

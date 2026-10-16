@@ -8,6 +8,7 @@ import { BigEmoji } from './message/BigEmoji';
 import { MessageActionsButton, MessageMenu } from './message/MessageMenu';
 import { MessageSender } from './message/MessageMeta';
 import { MessageTextBody } from './message/MessageTextBody';
+import { RoutineHeader } from './message/RoutineHeader';
 import { hidesBodyText } from './message/QuestionCard';
 import { MessageTombstone } from './message/MessageTombstone';
 import { bubbleFlags, draftAnimates } from './message/bubbleFlags';
@@ -304,6 +305,12 @@ export const MessageBubble = memo(function MessageBubble({
             {message.replyTo !== undefined && (
               <div className="px-3 pt-2">
                 <ReplyQuote message={message} onOpen={() => openQuote(message.replyTo!.id)} />
+              </div>
+            )}
+
+            {message.card?.type === 'routine' && (
+              <div className="px-3 pt-2">
+                <RoutineHeader routine={message.card.data} />
               </div>
             )}
 

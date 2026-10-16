@@ -20,6 +20,7 @@ import {
   PlainBubbleBody,
 } from '@/components/chat/plain-bubble-body';
 import { ReplyQuote } from '@/components/chat/reply-quote';
+import { RoutineHeader } from '@/components/chat/routine-header';
 import { StickerMessage } from '@/components/chat/sticker-message';
 import { VoiceMessage } from '@/components/chat/voice-message';
 import type { VoicePlayerHost } from '@/components/chat/voice-player';
@@ -165,6 +166,11 @@ export function MessageBubbleContent({
       {message.replyTo ? (
         <View className={cn(mediaFirst && 'px-3 pt-2')}>
           <ReplyQuote message={message} />
+        </View>
+      ) : null}
+      {message.card?.type === 'routine' ? (
+        <View className={cn(mediaFirst && 'px-3 pt-2')}>
+          <RoutineHeader routine={message.card.data} />
         </View>
       ) : null}
       {mediaFirst ? (

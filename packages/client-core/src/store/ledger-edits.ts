@@ -16,6 +16,7 @@ import type { Payload } from '@zilar/protocol';
 import { authorOfChatMessage, isEditStanza, listFor, previewFor } from './ledger-signatures';
 import type { LedgerIds } from './ledger-ids';
 import type { LedgerIncoming } from './ledger-incoming';
+import { correctionChanged, createRoutineBump } from './ledger-routine-bump';
 import type { CardEdit, LedgerSet, LedgerState, LedgerStanza, StoreMessage } from './ledger-types';
 
 interface LedgerEditsDeps {
@@ -31,6 +32,7 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
   const { get, set, cards } = deps;
   const { aliasRoot, authorFor, baseTextFor, sameMessage } = deps.ids;
   const { mapMentions } = deps.incoming;
+  const routineBump = createRoutineBump({ get, set, sameMessage, render: withEdits });
 
   function editUpdateFor(message: LedgerStanza): EditUpdate | undefined {
     const order = message.timestamp.getTime();
@@ -97,29 +99,41 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
     cards.set(root, entry);
   }
 
-  function applyEditUpdate(chatId: string, update: EditUpdate): void {
+  // Whether the correction changed the target's edit state. `applyEdit` returns
+  // a fresh object even for a stale order or a redelivered duplicate stanza.
+  function applyEditUpdate(chatId: string, update: EditUpdate): boolean {
     const target = authorFor(update.targetId);
+    const before = get().edits[chatId]?.targets[update.targetId];
     set((state) => ({
       edits: {
         ...state.edits,
         [chatId]: applyEdit(state.edits[chatId] ?? emptyEdits(), update, target),
       },
     }));
+    const after = get().edits[chatId]?.targets[update.targetId];
     resolvePendingEdits(chatId);
     refreshEdits(chatId);
+    return target !== undefined && correctionChanged(before, after);
   }
 
   // A correction or retraction message only changes edit state; it never
   // touches the preview or the unread count. A correction may also carry a
-  // task-card payload, which is remembered even when its body is empty.
-  function ingestEdit(message: LedgerStanza): void {
+  // task-card payload, which is remembered even when its body is empty. A live
+  // routine correction is the one exception (T-1722): it bumps its chat, but
+  // only when it arrives live — `ingestHistoryEdits` passes `bumpRoutine` false,
+  // so an old page read back at boot or on open never reorders or inflates.
+  function ingestEdit(message: LedgerStanza, bumpRoutine = true): void {
     const card = cardEditFor(message);
     if (card !== undefined && message.correction !== undefined) {
       rememberCard(message.correction.targetId, card);
     }
     const update = editUpdateFor(message);
     if (update !== undefined) {
-      applyEditUpdate(message.chatJid, update);
+      const applied = applyEditUpdate(message.chatJid, update);
+      const routine = update.kind === 'correction' && message.payload?.type === 'routine';
+      if (bumpRoutine && applied && routine) {
+        routineBump.bumpRoutineChat(message.chatJid, update.targetId, update.author);
+      }
       return;
     }
     if (card !== undefined) {
@@ -130,7 +144,7 @@ export function createLedgerEdits(deps: LedgerEditsDeps) {
   function ingestHistoryEdits(messages: readonly LedgerStanza[]): void {
     for (const message of messages) {
       if (isEditStanza(message)) {
-        ingestEdit(message);
+        ingestEdit(message, false);
       }
     }
   }
