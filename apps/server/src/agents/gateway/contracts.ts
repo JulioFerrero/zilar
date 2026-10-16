@@ -300,6 +300,13 @@ export interface AgentGateway {
     title: string;
     prompt: string;
   }) => Promise<ScheduledRunOutcome>;
+  /**
+   * T-1709: after a person decides an approval, the approvals route queues a
+   * follow-up turn on the AI's own DM or room queue so it continues the task
+   * it stopped at. An approve queues one turn, from the person who decided; a
+   * deny, a still-open request or a stopped/offline AI queues nothing.
+   */
+  continueAfterApproval: (approvalId: string) => Promise<void>;
 }
 
 export function isAiSender(bare: string): boolean {

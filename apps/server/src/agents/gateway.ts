@@ -1,5 +1,9 @@
 import { Effect } from 'effect';
+import { SqlClient } from 'effect/sql';
 import { createXmppCore, type ChatMessage } from '@zilar/xmpp-core';
+import { runSql } from '../effect/sql';
+import { toApprovalRow, type ApprovalSqlRow } from '../approvals/queries';
+import type { ApprovalRow } from '../db/rows';
 import { sharedDraftHub } from '../drafts/hub';
 import { normBareJid } from './context';
 import {
@@ -25,6 +29,7 @@ import { createStopTurn } from './gateway/stop';
 import type { TurnWatcher } from './gateway/stop-types';
 import { createToolExec } from './gateway/tool-exec';
 import { createRoutineRunner } from './gateway/routine-run';
+import { createApprovalFollowUp } from './gateway/approval-follow-up';
 import { loadOwnerName } from './gateway/db';
 
 export type {
@@ -336,6 +341,31 @@ export function createAgentGateway(
     kickRoom,
   });
 
+  // T-1709: the approvals route asks the AI to continue its task after a
+  // person decides. The row read mirrors `approvals/service.ts`.
+  async function loadApproval(id: string): Promise<ApprovalRow | null> {
+    const [raw] = await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        return yield* sql<ApprovalSqlRow>`SELECT * FROM approvals WHERE id = ${id} LIMIT 1`;
+      }),
+    );
+    return raw === undefined ? null : toApprovalRow(raw);
+  }
+
+  const { continueAfterApproval } = createApprovalFollowUp({
+    sessions,
+    sessionIsLive,
+    loadRoomJid,
+    loadTopicRoomJid,
+    loadOwnerName: (ownerId) => loadOwnerName(deps.db, ownerId),
+    domain: deps.xmpp.domain,
+    kickDm,
+    kickRoom,
+    loadApproval,
+  });
+
   // (T-0549: `sessionForAiJid`, `handleRoomIncoming` and `pumpRoom` now live
   // in `agents/gateway/group-ingest.ts`; the destructured names above keep
   // every call site unchanged.)
@@ -360,5 +390,6 @@ export function createAgentGateway(
     postToChat,
     stopTurn,
     runScheduledTurn,
+    continueAfterApproval,
   };
 }

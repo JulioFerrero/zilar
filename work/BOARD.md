@@ -1721,3 +1721,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1707](T-1707-minute-routines.md) | Routines every minute, 1440 runs a day, no overlapping runs | 2026-10-16 |
 | [T-1710](T-1710-short-chat-replies.md) | Short chat replies: no narration, tool names or URLs | 2026-10-16 |
 | [T-1711](T-1711-audit-routine-live-message.md) | Plan: a routine's single live message | 2026-10-16 |
+| [T-1709](T-1709-continue-after-approval.md) | The AI continues its task after an approval | 2026-10-16 |

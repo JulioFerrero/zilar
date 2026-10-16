@@ -2,6 +2,8 @@
 // last, in mount order (T-1460, plan #48).
 import type { EffectApiMount } from '../effect/http-core';
 import { createAisApi } from '../ais/api';
+import { approvalFollowerOf } from '../agents/gateway/stop-types';
+import { createOnDecided } from '../agents/gateway/approval-on-decided';
 import { createApprovalsApi } from '../approvals/api';
 import { createAuditApi } from '../audit/api';
 import { createConnectionsApi } from '../connections/api';
@@ -45,7 +47,10 @@ export function aiRoutes({ deps, base, audit, mailer, gateway }: RouteWiring): E
   const approvalsApi = createApprovalsApi({
     ...base,
     audit,
-    onDecided: (approvalId) => gateway.onApprovalDecided(approvalId),
+    onDecided: createOnDecided({
+      runAction: (approvalId) => gateway.onApprovalDecided(approvalId),
+      follower: () => approvalFollowerOf(deps.getGateway?.() ?? null),
+    }),
     ...opt('alwaysEligible', deps.alwaysEligible),
   });
   mounts.push(approvalsApi);
