@@ -325,13 +325,17 @@ export async function runOnApprovalDecided(
     outcome === 'ok' ? 'action.executed' : 'action.failed',
     outcome,
   );
-  await safeAnnounce(deps, {
-    outcome: {
-      aiId: pending.aiId,
-      groupId: pending.groupId,
-      ...(pending.topicId === null ? {} : { topicId: pending.topicId }),
-      status: outcome === 'ok' ? 'executed' : 'failed',
-      summary: outcome === 'ok' ? summary : null,
-    },
-  });
+  // T-1716: on success the approval card already shows the decided result, so
+  // post an outcome message only when the action failed.
+  if (outcome !== 'ok') {
+    await safeAnnounce(deps, {
+      outcome: {
+        aiId: pending.aiId,
+        groupId: pending.groupId,
+        ...(pending.topicId === null ? {} : { topicId: pending.topicId }),
+        status: 'failed',
+        summary: null,
+      },
+    });
+  }
 }

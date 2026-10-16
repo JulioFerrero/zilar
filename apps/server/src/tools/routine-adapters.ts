@@ -101,7 +101,7 @@ export function routineScheduleAdapter(state: AdapterState): ActionAdapter<unkno
         hosts: string[];
         prompt?: string;
       };
-      const summary = `Schedule "${parsed.title}": ${describeSchedule(parsed.schedule)}`;
+      const summary = `${parsed.title} · ${describeSchedule(parsed.schedule)}`;
       if (parsed.prompt !== undefined) {
         return {
           summary,

@@ -105,7 +105,7 @@ describe('routine.schedule prompt variant', () => {
 
     const card = adapter.describe(PROMPT_ARGS);
 
-    expect(card.summary).toBe('Schedule "Morning prices": daily at 08:00 Europe/Madrid');
+    expect(card.summary).toBe('Morning prices · daily at 08:00 Europe/Madrid');
     expect(card.details).toContain(PROMPT_ARGS.prompt);
     expect(card.details).not.toContain('contact:');
   });

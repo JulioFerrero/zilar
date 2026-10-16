@@ -212,7 +212,7 @@ export function toolApproveHostsAdapter(state: AdapterState): ActionAdapter<unkn
     describe: (args) => {
       const parsed = args as ApproveHostsBoundArgs;
       return {
-        summary: `Allow the tool "${parsed.name}" to contact: ${hostsLine(parsed.hosts)}`,
+        summary: `Allow "${parsed.name}" to use the web`,
         details: `The tool ${parsed.name} may contact: ${hostsLine(parsed.hosts)}. Approving replaces the tool's approved hosts with exactly this set.`,
       };
     },
