@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View } from 'react-native';
 
+import { ChatJumpProvider } from '@/components/chat/chat-jump-context';
 import { MessageList } from '@/components/chat/message-list';
 import type { ChatScreen } from '@/components/chat/use-chat-screen';
 import { useVoicePlayerHost } from '@/components/chat/voice-player';
@@ -158,28 +159,31 @@ export function ChatThread({ screen, chat }: ChatThreadProps) {
 
   return (
     <View className="flex-1">
-      <MessageList
-        chat={chat}
-        onReply={screen.startReply}
-        onReact={(message, emoji) => react(chat.id, message.id, emoji)}
-        onEdit={(message) => startEdit(chat.id, message.id)}
-        onDelete={(message) => deleteForEveryone(chat.id, message.id)}
-        onForward={forward}
-        selection={screen.selection}
-        onPin={pin}
-        onUnpin={unpin}
-        pinnedIds={screen.pinnedIds}
-        jumpToMessageId={screen.jumpToMessageId}
-        onJumped={() => screen.setJumpToMessageId(undefined)}
-        onRetrySticker={(message) => retrySticker(chat.id, message.id)}
-        onRetryAttachment={(message) => retryAttachment(chat.id, message.id)}
-        onCancelAttachment={(message) => cancelAttachment(chat.id, message.id)}
-        onRetryVoice={(message) => retryVoice(chat.id, message.id)}
-        onCancelVoice={(message) => cancelVoice(chat.id, message.id)}
-        onOpenAttachment={openAttachment}
-        openingAttachmentId={openingId}
-        voiceHost={voiceHost}
-      />
+      {/* In select mode the taps belong to selecting, so the quote stays plain. */}
+      <ChatJumpProvider jumpTo={screen.selectedIds.length > 0 ? undefined : screen.jumpTo}>
+        <MessageList
+          chat={chat}
+          onReply={screen.startReply}
+          onReact={(message, emoji) => react(chat.id, message.id, emoji)}
+          onEdit={(message) => startEdit(chat.id, message.id)}
+          onDelete={(message) => deleteForEveryone(chat.id, message.id)}
+          onForward={forward}
+          selection={screen.selection}
+          onPin={pin}
+          onUnpin={unpin}
+          pinnedIds={screen.pinnedIds}
+          jumpToMessageId={screen.jumpToMessageId}
+          onJumped={() => screen.setJumpToMessageId(undefined)}
+          onRetrySticker={(message) => retrySticker(chat.id, message.id)}
+          onRetryAttachment={(message) => retryAttachment(chat.id, message.id)}
+          onCancelAttachment={(message) => cancelAttachment(chat.id, message.id)}
+          onRetryVoice={(message) => retryVoice(chat.id, message.id)}
+          onCancelVoice={(message) => cancelVoice(chat.id, message.id)}
+          onOpenAttachment={openAttachment}
+          openingAttachmentId={openingId}
+          voiceHost={voiceHost}
+        />
+      </ChatJumpProvider>
       <Toast toast={toast} onDismiss={dismissToast} />
     </View>
   );
