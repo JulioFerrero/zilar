@@ -1667,3 +1667,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1656](T-1656-scheduled-path-trace.md) | Audit: scheduled prompt routine traced end to end | 2026-10-16 |
 | [T-1654](T-1654-parity-recheck.md) | Audit: phone parity re-check for 10-10..10-16 web changes | 2026-10-16 |
 | [T-1658](T-1658-scheduled-run-routine-fixes.md) | Prompt routines refund offline slots; bad schedules park one row | 2026-10-16 |
+| [T-1659](T-1659-back-cancels-reply.md) | Phone: Android back cancels an armed reply or edit first | 2026-10-16 |

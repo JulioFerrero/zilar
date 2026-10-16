@@ -1,8 +1,8 @@
 import { Forward } from 'lucide-react-native';
-import { useEffect } from 'react';
-import { BackHandler, View } from 'react-native';
+import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useBackCancel } from '@/components/chat/use-back-cancel';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 
@@ -22,13 +22,7 @@ export function SelectionBar({
 }) {
   const insets = useSafeAreaInsets();
 
-  useEffect(() => {
-    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      onCancel();
-      return true;
-    });
-    return () => subscription.remove();
-  }, [onCancel]);
+  useBackCancel(onCancel);
 
   return (
     <View className="px-2 pt-1.5" style={{ paddingBottom: Math.max(insets.bottom, 8) }}>

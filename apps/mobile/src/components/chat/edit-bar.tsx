@@ -1,6 +1,7 @@
 import { Pencil, X } from 'lucide-react-native';
 import { Pressable, View } from 'react-native';
 
+import { useBackCancel } from '@/components/chat/use-back-cancel';
 import { Text } from '@/components/ui/text';
 import { ICON } from '@/lib/colors';
 import { well } from '@/lib/depth';
@@ -8,8 +9,11 @@ import { well } from '@/lib/depth';
 /**
  * The composer's edit bar (T-0085): names the action, shows the original
  * message text and closes with the × button. Mirrors the web `EditBar.tsx`.
+ * Android back cancels the edit while it's shown.
  */
 export function EditBar({ text, onCancel }: { text: string; onCancel: () => void }) {
+  useBackCancel(onCancel);
+
   return (
     <View className="mb-2 flex-row items-stretch overflow-hidden rounded-[10px]" style={well}>
       <View className="w-[3px] bg-[#333333]" />

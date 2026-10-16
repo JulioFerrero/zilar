@@ -4,6 +4,7 @@ import type { RefObject } from 'react';
 import { Pressable, TextInput, View } from 'react-native';
 
 import { tap } from '@/components/chat/haptics';
+import { useBackCancel } from '@/components/chat/use-back-cancel';
 import { VoiceRecorderButton } from '@/components/chat/voice-recorder';
 import { IconButton } from '@/components/ui/icon-button';
 import { Text } from '@/components/ui/text';
@@ -43,6 +44,8 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export function ReplyBar({ reply, onCancel }: { reply: ReplyRef; onCancel: () => void }) {
+  useBackCancel(onCancel);
+
   return (
     <View className="mb-2 flex-row items-stretch overflow-hidden rounded-[10px]" style={well}>
       <View className="w-[3px] bg-[#333333]" />
