@@ -491,7 +491,17 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
             - **When T-1750's packet arrives,** send it `~/.claude/jobs/ab934c68/tmp/T-1750-round2.md` before merging.
             - **Julio approved round 2** ("you have my okay"), so the plan then turns into specs.
             - **The round 2 scope was sent to T-1750** after its clean packet; it's working.
-          - **Blocks:** the specs for T-1751 (B2, server `buildBlocksPayload`) and T-1752 (B3, chat-core view helpers) are written and pass spec-check. They launch when T-1749 merges.
+            - **Server wave running:**
+              - T-1753 (S3, `GET /api/topics/:id/routines`);
+              - T-1754 (S4a, public topics get real members: creator row, going public keeps members, backfill migration 0069). It's a DB task: one at a time.
+              - **Next:**
+                1. S4b, the reads switch to General-only "everyone"; after T-1754.
+                2. Then S1 (one-step add), S2 (memberIds and avatarUrl) and S5 (join and leave).
+                3. S1 and S5 both touch `topics/members.ts`, so they run one after the other.
+          - **Blocks:**
+            - **T-1749 (schema) is merged and held** (`f4dbb2939`), not pushed yet.
+            - **T-1751 (B2) and T-1752 (B3) are running.**
+            - **Next:** B4 and B5 (web and phone, 6 blocks) after B3; B6 and B7 (the AI and tool paths) after B2.
           - **v0.2.6 is verified:** the APK embeds 0.2.6 / 206. Julio installs it by hand once. The blocks plan T-1747 is merged; **T-1749 (the blocks schema) is running.**
           - **Canvas:** https://claude.ai/artifact/UT7nHBowuCSmev1xLBdMxA (8 boards: the header people stack, the "isn't in Financial · Add" line, the @ list with who's here, the In this topic sheet and panel, Add people or AIs, the group screen with who's in each topic). It's waiting for Julio's rounds; the files are in `.git/zilar-canvas/topics/`.
         - **T-1724 is running:** the core with no UI (GitHub latest release, version compare, the arm64 download, the installer intent, `REQUEST_INSTALL_PACKAGES`, the `useAppUpdate()` hook);
