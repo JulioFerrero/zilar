@@ -32,12 +32,10 @@ export type {
 
 export { getRoutine, listRoutinesForAi, listRoutinesForTopic } from './queries';
 
+export { createRoutine, pauseRoutine, resumeRoutine, deleteRoutine } from './support';
+
 export {
-  createRoutine,
-  pauseRoutine,
-  resumeRoutine,
-  deleteRoutine,
   deleteRoutinesForAiInTopic,
   deleteRoutinesForAiInGroupEffect,
   deleteRoutinesForTool,
-} from './support';
+} from './deletes';
