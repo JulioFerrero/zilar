@@ -375,3 +375,21 @@ GATE PASS
 ```
 
 `status: review` kept.
+
+## Review (written by Claude)
+
+- **Accepted at `daa9a97b1`,** after four rounds: round 2 was Julio's join, leave and mute scope; rounds 3 and 4 were lead fixes from the prereviews.
+- **The plan:**
+  - `topic_members` holds a public topic's people, and only General is "the whole group";
+  - S6 adds a server preview read, because rooms are members-only and history is MUC MAM, scoped to the room JID;
+  - public topics: self-leave only, and no archive-on-drain;
+  - `joined`, `muted`, `memberIds` and `avatarUrl` go into S2;
+  - S1 is the one-step add for any non-General topic.
+- **Already done:** S3 (T-1753), S4a (T-1754) and S5 (T-1760) are merged. S4b (T-1757) is done and merges before S1 and S2; the lead won't push main from then until the Join UI lands.
+- **Nits:**
+  - nit 1 is the T-1757 state above;
+  - nit 2: S1 keeps refusing General (400). The lead puts that in S1's spec.
+- **The open questions keep the recommended answers:**
+  - web keeps its sheet with the board's contents;
+  - bringing an AI into the group needs an owner or admin;
+  - a leaver's routines stay untouched.
