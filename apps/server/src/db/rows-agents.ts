@@ -155,7 +155,10 @@ export interface RoutineRow {
   aiId: string;
   groupId: string | null;
   topicId: string | null;
-  toolId: string;
+  kind: 'tool' | 'prompt';
+  // T-1638: a prompt routine has no tool.
+  toolId: string | null;
+  prompt: string | null;
   title: string;
   schedule: unknown;
   input: unknown;

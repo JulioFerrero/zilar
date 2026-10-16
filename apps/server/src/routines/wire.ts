@@ -6,7 +6,7 @@ export function toListWire(routine: PublicRoutine) {
     aiId: routine.aiId,
     groupId: routine.groupId,
     topicId: routine.topicId,
-    toolId: routine.toolId,
+    toolId: routine.toolId ?? undefined,
     toolName: routine.toolName,
     title: routine.title,
     schedule: routine.schedule,

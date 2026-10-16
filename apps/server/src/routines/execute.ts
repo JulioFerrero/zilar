@@ -126,11 +126,17 @@ export async function executeRoutine(
   }
 
   // Step 2: the tool must exist (not deleted).
+  const toolId = row.toolId;
+  if (toolId === null) {
+    // Prompt routines come in a later task: with no tool, fail like a missing one.
+    await pauseForFailures(db, options, ports, row, at, startedAt, true);
+    return;
+  }
   const [tool] = await runSql(
     db,
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
-      return yield* sql<ToolRow>`SELECT deleted_at, current_version FROM ai_tools WHERE id = ${row.toolId} LIMIT 1`;
+      return yield* sql<ToolRow>`SELECT deleted_at, current_version FROM ai_tools WHERE id = ${toolId} LIMIT 1`;
     }),
   );
   if (!tool || tool.deletedAt !== null) {
@@ -140,7 +146,7 @@ export async function executeRoutine(
 
   // Step 3: host pinning against the current version. Fewer hosts (or a
   // code-only change) keep running; a new host pauses before any run.
-  const currentHosts = await readCurrentHosts(db, row.toolId, tool.currentVersion);
+  const currentHosts = await readCurrentHosts(db, toolId, tool.currentVersion);
   if (currentHosts === null) {
     await pauseForFailures(db, options, ports, row, at, startedAt, true);
     return;
@@ -155,7 +161,7 @@ export async function executeRoutine(
   try {
     const { result } = await runToolVersion(
       { db, runner: ports.runTool },
-      { toolId: row.toolId, input: row.input ?? null, trigger: 'routine' },
+      { toolId, input: row.input ?? null, trigger: 'routine' },
       at,
     );
     if (!result.ok) {

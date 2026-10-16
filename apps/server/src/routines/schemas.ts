@@ -62,7 +62,7 @@ export interface PublicRoutine {
   aiId: string;
   groupId: string | null;
   topicId: string | null;
-  toolId: string;
+  toolId: string | null;
   toolName: string;
   title: string;
   schedule: RoutineSchedule;
