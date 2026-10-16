@@ -1665,3 +1665,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1649](T-1649-routine-schedule-prompt-card.md) | routine.schedule accepts a prompt the AI runs on schedule | 2026-10-16 |
 | [T-1655](T-1655-scheduled-safe-actions.md) | Scheduled runs use no-approval actions; tier 2 needs a person | 2026-10-16 |
 | [T-1656](T-1656-scheduled-path-trace.md) | Audit: scheduled prompt routine traced end to end | 2026-10-16 |
+| [T-1654](T-1654-parity-recheck.md) | Audit: phone parity re-check for 10-10..10-16 web changes | 2026-10-16 |
