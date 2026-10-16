@@ -16,7 +16,8 @@
 # Published per release tag by .github/workflows/images.yml as
 # ghcr.io/<owner>/zilar-ejabberd.
 
-FROM ghcr.io/processone/ejabberd:26.07
+# Digest pins the 26.07 index (OPS-7); to upgrade, change the tag and the digest together.
+FROM ghcr.io/processone/ejabberd:26.07@sha256:5aeb0faa39cfe38792c5eea9cc6344ba9ab6c59c708a24e897d6b471882c8497
 
 COPY ejabberd/ejabberd.yml /opt/ejabberd/conf/ejabberd.yml
 COPY --chmod=755 ejabberd/jwt-entrypoint.sh /zilar/jwt-entrypoint.sh

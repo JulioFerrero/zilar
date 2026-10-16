@@ -41,7 +41,7 @@ services:
 
   ejabberd:
     # XMPP server, pinned to the 26.07 release.
-    image: ghcr.io/processone/ejabberd:26.07
+    image: ghcr.io/processone/ejabberd:26.07@sha256:5aeb0faa39cfe38792c5eea9cc6344ba9ab6c59c708a24e897d6b471882c8497
     restart: unless-stopped
     depends_on:
       postgres:
