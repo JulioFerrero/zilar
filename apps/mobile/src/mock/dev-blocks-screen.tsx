@@ -21,6 +21,10 @@ const PRICE_ROWS = [
   { label: 'S&P 500', value: '7,744', change: { direction: 'up', text: '0.4%' } },
 ] as const;
 
+// The countdown example counts to a target a little over two hours out from
+// load, so the card ticks down while the catalog is open.
+const COUNTDOWN_TARGET = new Date(Date.now() + 2 * 60 * 60 * 1000 + 14 * 60 * 1000 + 9 * 1000);
+
 const EXAMPLES: readonly Example[] = [
   {
     label: '01 · FIGURES',
@@ -186,6 +190,61 @@ const EXAMPLES: readonly Example[] = [
             ['Total', '241', '2.3M', '$1.50'],
           ],
           total: true,
+        },
+      ],
+    },
+  },
+  {
+    label: '09 · PROGRESS',
+    time: '03:02',
+    data: {
+      fallback: 'Backup: 70% uploaded, 1.4 of 2.0 GB, about 1 min left.',
+      blocks: [
+        {
+          kind: 'progress',
+          label: 'Uploading the backup',
+          ratio: 0.7,
+          detail: '1.4 / 2.0 GB',
+          note: 'about 1 min left',
+        },
+      ],
+    },
+  },
+  {
+    label: '10 · TIMELINE',
+    time: '07:15',
+    data: {
+      fallback: 'Parcel 4417: ordered Mon 10:02, shipped Tue 08:40, out for delivery, delivered.',
+      blocks: [
+        {
+          kind: 'timeline',
+          title: 'Parcel 4417',
+          steps: [
+            { label: 'Ordered', at: 'Mon 10:02', state: 'done' },
+            { label: 'Shipped', at: 'Tue 08:40', state: 'done' },
+            {
+              label: 'Out for delivery',
+              at: '07:15',
+              detail: 'Arrives 12:00 to 14:00',
+              state: 'current',
+            },
+            { label: 'Delivered', state: 'todo' },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    label: '11 · COUNTDOWN',
+    time: '16:05',
+    data: {
+      fallback: 'Flight to Barcelona: boarding 18:40, gate K72.',
+      blocks: [
+        {
+          kind: 'countdown',
+          label: 'Flight to Barcelona',
+          targetAt: COUNTDOWN_TARGET.toISOString(),
+          note: 'Boarding 18:40 · Gate K72',
         },
       ],
     },
