@@ -100,6 +100,7 @@ export async function tickOnce(
       let prereviewSessionState: SessionState | 'none' = 'none';
       let prereviewPermissions: ParsedPermission[] = [];
       let prereviewQuotaError = false;
+      let prereviewFailed = false;
       if (record.prereview !== undefined) {
         try {
           const summary = summarizeSession(
@@ -107,6 +108,7 @@ export async function tickOnce(
           );
           prereviewSessionState = summary.state;
           prereviewQuotaError = summary.quotaError;
+          prereviewFailed = summary.state === 'idle' && summary.outcome === 'failed';
         } catch {
           prereviewSessionState = 'unknown';
         }
@@ -140,6 +142,7 @@ export async function tickOnce(
         prereviewCounts: review.counts,
         prereviewSessionState,
         prereviewQuotaError,
+        prereviewFailed,
       });
       if (options.dryRun) {
         for (const action of actions) {

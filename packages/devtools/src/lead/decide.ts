@@ -44,6 +44,10 @@ export interface DecideInput {
   prereviewCounts: FindingCounts | undefined;
   prereviewSessionState: SessionState | 'none';
   prereviewQuotaError: boolean;
+  // T-1778: the pre-review went idle with outcome `failed` and no PREREVIEW.md,
+  // i.e. it never produced anything. Treated like a quota error so it falls back
+  // to the next model instead of only escalating STALLED.
+  prereviewFailed: boolean;
 }
 
 export type Action =
@@ -180,7 +184,8 @@ export function decide(input: DecideInput): Action[] {
   }
 
   // 4. Review: start one pre-review per HEAD, then report the packet once.
-  // A pre-review that goes idle without writing PREREVIEW.md failed; say so once.
+  // A pre-review that goes idle without writing PREREVIEW.md failed; fall back
+  // to the next model first, then say so once when the chain is exhausted.
   if (input.taskStatus === 'review' && input.sessionState === 'idle') {
     // Fix rounds: the worker stays on the task while status is review, so a
     // quota error here must fall back in place just like todo/in-progress.
@@ -199,7 +204,7 @@ export function decide(input: DecideInput): Action[] {
       input.head !== undefined &&
       input.record.prereview !== undefined &&
       input.record.prereview.head === input.head &&
-      input.prereviewQuotaError
+      (input.prereviewQuotaError || (input.prereviewFailed && !input.prereviewFilePresent))
     ) {
       const fallback = fallbackModel(input.record.prereview.model ?? FREE_MUSE, input.goPaused);
       if (fallback !== undefined) {

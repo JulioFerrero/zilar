@@ -4,7 +4,8 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { tickOnce, type AutopilotDeps } from './autopilot.js';
 import { FakeOpenCodeClient } from './client.js';
-import { GO_DEEPSEEK_FLASH } from './models.js';
+import { decide, type DecideInput } from './decide.js';
+import { FREE_GLM_FLASH, FREE_MUSE, GO_DEEPSEEK_FLASH, PAID_MUSE, modelLabel } from './models.js';
 import { promptsDir } from './prompts.js';
 import { saveState } from './state.js';
 import { newTaskRecord } from './types.js';
@@ -81,5 +82,75 @@ describe('tickOnce worker fallback keeps the resolved variant (T-1242)', () => {
         model: { providerID: 'deepseek', id: 'deepseek-flash', variant: 'default' },
       },
     ]);
+  });
+});
+
+// A status-review task whose pre-review runs on `head` and is idle. The
+// `prereviewFailed` flag is the T-1778 signal: the session ended idle with
+// outcome `failed` and wrote no PREREVIEW.md, so nothing came out of the start.
+function prereviewInput(model: string = FREE_MUSE): DecideInput {
+  const record = newTaskRecord({
+    task: TASK,
+    sessionId: 'ses_worker',
+    worktree: '/tmp/zilar-T-9001',
+    model: 'auto',
+    role: 'worker',
+    startedAt: '2026-10-16T23:14:00.000Z',
+  });
+  record.prereview = {
+    sessionId: 'ses_prereview',
+    head: 'abc123',
+    startedAt: '2026-10-16T23:14:00.000Z',
+    model,
+  };
+  return {
+    now: Date.now(),
+    task: TASK,
+    worktree: record.worktree,
+    record,
+    sessionState: 'idle',
+    quotaError: false,
+    goPaused: false,
+    questionRunning: false,
+    questionText: '',
+    questionIds: [],
+    permissions: [],
+    prereviewPermissions: [],
+    taskStatus: 'review',
+    taskFilePresent: true,
+    blockedText: '',
+    head: 'abc123',
+    prereviewFilePresent: false,
+    prereviewVerdict: '',
+    prereviewCounts: undefined,
+    prereviewSessionState: 'idle',
+    prereviewQuotaError: false,
+    prereviewFailed: true,
+  };
+}
+
+describe('a failed pre-review start falls back on the next model (T-1778)', () => {
+  it('moves an idle pre-review with outcome failed and no PREREVIEW.md to the next model', () => {
+    const actions = decide(prereviewInput());
+    expect(actions).toContainEqual({
+      kind: 'fallback-model',
+      session: 'prereview',
+      model: FREE_GLM_FLASH,
+    });
+    const lines = actions
+      .filter((action) => action.kind === 'escalate')
+      .map((action) => action.line);
+    expect(lines).toContain(
+      `LEAD: FALLBACK ${TASK} pre-review continues on ${modelLabel(FREE_GLM_FLASH)}`,
+    );
+  });
+
+  it('escalates PRE-REVIEW STALLED once when the chain is exhausted', () => {
+    const actions = decide(prereviewInput(PAID_MUSE));
+    expect(actions.some((action) => action.kind === 'fallback-model')).toBe(false);
+    const lines = actions
+      .filter((action) => action.kind === 'escalate')
+      .map((action) => action.line);
+    expect(lines).toEqual([`LEAD: PRE-REVIEW STALLED ${TASK} (idle, no PREREVIEW.md)`]);
   });
 });
