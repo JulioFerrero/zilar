@@ -101,21 +101,22 @@ export async function createTopic(
         })}`;
       }),
     );
-    if (visibility === 'private') {
-      await runSql(
-        deps.db,
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          yield* sql`INSERT INTO topic_members ${sql.insert(
-            memberIds.map((userId) => ({
-              topic_id: topicId,
-              user_id: userId,
-              added_by: input.actorId,
-            })),
-          )}`;
-        }),
-      );
-    }
+    // Private topics carry the invited members; a public topic starts with
+    // only its creator, and others join it from "Other topics".
+    const initialMemberIds = visibility === 'private' ? memberIds : [input.actorId];
+    await runSql(
+      deps.db,
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`INSERT INTO topic_members ${sql.insert(
+          initialMemberIds.map((userId) => ({
+            topic_id: topicId,
+            user_id: userId,
+            added_by: input.actorId,
+          })),
+        )}`;
+      }),
+    );
   } catch (error) {
     if (roomCreated || roomLocalpart !== '') {
       await destroyQuietly(deps.adminClient, roomLocalpart);

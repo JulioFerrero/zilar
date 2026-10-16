@@ -194,16 +194,16 @@ export async function patchTopic(
       }),
     );
   }
-  // Going public ends everything private access rested on: direct members,
-  // attached roles and the approver role. Clearing the roles now keeps them
-  // from silently coming back if the topic is made private again.
+  // Going public ends what private access rested on: attached roles and the
+  // approver role. Direct members stay and become the public topic's members.
+  // Clearing the roles now keeps them from silently coming back if the topic
+  // is made private again.
   let clearedRoleIds: string[] = [];
   if (goingPublic) {
     clearedRoleIds = await runSql(
       deps.db,
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        yield* sql`DELETE FROM topic_members WHERE topic_id = ${topic.id}`;
         const attached = yield* sql<{ roleId: string }>`
           SELECT role_id FROM topic_role_access WHERE topic_id = ${topic.id}`;
         yield* sql`DELETE FROM topic_role_access WHERE topic_id = ${topic.id}`;

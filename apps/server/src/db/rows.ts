@@ -65,6 +65,14 @@ export interface GroupMemberRow {
   addedAt: Date;
 }
 
+// Row of the `topic_members` table.
+export interface TopicMemberRow {
+  topicId: string;
+  userId: string;
+  addedBy: string;
+  addedAt: Date;
+}
+
 // Row of the `group_ais` table.
 export interface GroupAiRow {
   groupId: string;
