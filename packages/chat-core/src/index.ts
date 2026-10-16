@@ -18,6 +18,7 @@ export * from './markdown';
 export * from './mentions';
 export * from './reactions';
 export * from './edits';
+export * from './block-progress';
 export * from './folders';
 export * from './ai';
 export * from './blocked';
