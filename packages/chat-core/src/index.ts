@@ -1,6 +1,7 @@
 export * from './types';
 export * from './format';
 export * from './format-duration';
+export * from './block-charts';
 export * from './failures';
 export * from './avatar';
 export * from './avatar-seed';
