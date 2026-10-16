@@ -28,8 +28,9 @@ import {
   type RoomSubscription,
   type ScheduledTurnOutcome,
 } from './contracts';
-import { loadRoomGateState, type RoomGateState } from './db';
+import type { RoomGateState } from './db';
 import { resolveTurnDesk, TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER } from './desk-exec';
+import { groupTurnAccess, makeIsStillAllowed } from './group-turn-access';
 import { resolveHandoffRoster } from './group-turn-roster';
 import { loadModelTarget } from './model-target';
 import { clearTurnAbort, registerTurnAbort } from './stop';
@@ -192,64 +193,19 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
       memory,
     });
 
-    // T-0098/T-0444: decide per turn, from the database, whether the
-    // trigger's sender is allowed to ask the AI for an action. The role
-    // lives on the `roomGate` we already loaded; a plain `member`, an AI
-    // sender or an unknown occupant does not get `request_action`. Every
-    // room turn still carries the three memory tools (T-0444), so the tool
-    // loop always runs.
-    // T-1646/T-1655: a scheduled routine's creator was checked when the
-    // routine was approved, so a scheduled trigger is allowed to ask for an
-    // action. The run is marked unattended, so `request_action` stays on for
-    // tier 0/1 while `ask_people` and delegation stay off (plan §2.5).
-    const scheduledTrigger = trigger.scheduled !== undefined;
-    const triggerBare = normBareJid(trigger.fromJid);
-    const triggerRole = gate.memberRolesByJid.get(triggerBare);
-    const allowedForAction = scheduledTrigger || triggerRole === 'owner' || triggerRole === 'admin';
     const actionsList = deps.actions?.listActions() ?? [];
-    const allowActions = allowedForAction && actionsList.length > 0;
-    // T-1576: `ask_people` is offered only when a person triggered the turn. An
-    // AI-to-AI handoff, a `delegate`-queued trigger or a scheduled routine is
-    // not the people in the room, so those turns never get the question tool.
-    const askPeople = !scheduledTrigger && trigger.handoff !== true;
-    // T-0482: offer the delegation tools only when this AI may delegate and
-    // at least one accepting AI is in the room. The target list is the id
-    // and room nick of each accepting session.
-    const delegateTargets =
-      !scheduledTrigger && canDelegate && handoffTargets.length > 0
-        ? handoffTargets.map((target) => ({ id: target.aiId, name: target.nick }))
-        : undefined;
+    const { scheduledTrigger, triggerBare, allowActions, askPeople, delegateTargets } =
+      groupTurnAccess({ trigger, gate, actionsList, canDelegate, handoffTargets });
     // T-1423: resolve the AI's computer for this turn (cloud or its runner).
     const turnDesk = yield* Effect.promise(() => resolveTurnDesk(deps, ai));
     const deskEnabled = turnDesk.client !== undefined;
-    const groupTools = buildGroupTools(allowedForAction ? actionsList : [], delegateTargets, {
+    const groupTools = buildGroupTools(allowActions ? actionsList : [], delegateTargets, {
       // T-1409: the desk tools ride the same flag as their executor.
       desk: deskEnabled,
       // T-1576: the question tool rides the same flag as its executor branch.
       askPeople,
     });
-    // The re-check callback runs at tool-execution time. A `plain
-    // member` turn never offers `request_action`, so this never fires for
-    // them; for an admin/owner turn it queries the same gate so a
-    // demotion that landed between the mention and the tool call
-    // short-circuits to `denied: not allowed` without invoking the
-    // action gateway.
-    const isStillAllowed = (): Promise<boolean> =>
-      Effect.runPromise(
-        Effect.promise(() =>
-          loadRoomGateState(deps.db, room.groupId, deps.xmpp.domain, room.topicId),
-        ).pipe(
-          Effect.map((fresh) => {
-            if (fresh === null) {
-              return false;
-            }
-            const role = fresh.memberRolesByJid.get(triggerBare);
-            // T-0109: the sender must still be a group owner/admin AND a member
-            // of this topic. Either check failing denies the action.
-            return (role === 'owner' || role === 'admin') && fresh.memberJids.has(triggerBare);
-          }),
-        ),
-      );
+    const isStillAllowed = makeIsStillAllowed(deps.db, deps.xmpp.domain, room, triggerBare);
 
     // No persona tools in groups and no drafts: the reply goes straight to
     // the room with `composing`/`paused` chat states around it. The 80%
