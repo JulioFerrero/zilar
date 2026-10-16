@@ -67,12 +67,8 @@ magick "$BRAND/icon.png" -resize 512x512 "$WEB/icons/icon-512.png"
 magick "$BRAND/icon-bleed.png" -resize 512x512 "$WEB/icons/icon-maskable-512.png"
 magick "$BRAND/icon-bleed.png" -resize 180x180 "$WEB/icons/apple-touch-icon.png"
 
-# --- mobile: store icon, Android adaptive layers, themed (monochrome) icon, splash, favicon
-magick "$BRAND/icon-bleed.png" "$MOBILE/icon.png"
-magick out/icon-foreground-2048.png -filter Lanczos -resize 1024x1024 "$MOBILE/android-icon-foreground.png"
-magick out/icon-background-2048.png -filter Lanczos -resize 1024x1024 -background '#0a0a0a' -alpha remove -alpha off "$MOBILE/android-icon-background.png"
-magick out/icon-mono-2048.png -alpha off -colorspace Gray -negate -filter Lanczos -resize 1024x1024 out/mono-mask.png
-magick -size 1024x1024 xc:white out/mono-mask.png -compose CopyOpacity -composite "$MOBILE/android-icon-monochrome.png"
+# --- mobile: flat app icon and Android adaptive layers (build-app-icon.sh), splash, favicon
+sh build-app-icon.sh
 magick out/icon-foreground-2048.png -trim +repage -filter Lanczos -resize 480x480 -background none -gravity center -extent 512x512 "$MOBILE/splash-icon.png"
 rsvg-convert -w 48 -h 48 "$BRAND/icon-flat.svg" -o "$MOBILE/favicon.png"
 echo "brand assets ready"

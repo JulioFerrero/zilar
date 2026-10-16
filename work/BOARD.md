@@ -1717,3 +1717,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1704](T-1704-routine-schedule-example.md) | routine.schedule: neutral example and the hourly minimum | 2026-10-16 |
 | [T-1708](T-1708-gate-boot-guard.md) | Gate always runs the server's boot-guard test | 2026-10-16 |
 | [T-1706](T-1706-sec13b-desk-gate.md) | SEC-13b: only the owner or an admin can use the AI's computer | 2026-10-16 |
+| [T-1705](T-1705-flat-app-icon.md) | Phone app icon from the flat Zilar mark | 2026-10-16 |
