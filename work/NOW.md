@@ -460,6 +460,15 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
           - **pushed `7f8a6ea03`:** T-1739, T-1740, T-1741, T-1743, T-1744, T-1745, plus the landing T-1734 and T-1742 (both inside `apps/site-next`, not served yet);
           - **T-1735** (the switch to www) is in pre-review. Before its push: screenshots at 1440 and 390 to Julio;
           - **then:** ask about v0.2.5 (T-1736, T-1739, T-1740, T-1741 on the phone) and send one test list.
+        - **About 19:40 UTC, everything asked is live:**
+          - **www.zilar.app is the new landing.** The Coolify app "landing" doesn't deploy on push; the lead deployed it through the Coolify API, with Julio's OK.
+          - **v0.2.5 is tagged with Julio's OK.** Its APKs are on the release.
+          - **chat `4c5d758d9`:** healthy, 0 errors.
+          - **T-1746:** AIs schedule saved-tool routines for fixed data jobs.
+        - **New ask: message blocks.** Julio chose native blocks, about 25, on web and phone.
+          - **The canvas:** https://claude.ai/artifact/G2tL9QnT7dYgD5SxeYreLr (10 boards: in a chat, numbers 01–07, progress 08–12, choices 13–18, content 19–25). It's waiting for Julio's rounds.
+          - **The canvas files:** `.git/zilar-canvas/blocks/project/`, outside git status, so merges aren't blocked.
+          - **After approval:** copy the boards into `docs/design/mockups/blocks/`, then a plan (the payload schema, a tool output `blocks` field, the reply path for buttons, polls and forms), then the specs.
         - **T-1724 is running:** the core with no UI (GitHub latest release, version compare, the arm64 download, the installer intent, `REQUEST_INSTALL_PACKAGES`, the `useAppUpdate()` hook);
         - **the canvas** for the prompt and the Settings "This app" row: https://claude.ai/artifact/AMYshRxWEz3Ur5F9wAbNvQ. It waits for Julio's OK, then the UI spec;
         - **open choice:** quiet download on Wi-Fi (this needs `expo-network`) or always ask first.

@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Number blocks, web</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed}a:hover{color:#ffffff}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.num{font-family:'Geist Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;text-align:right}
+.up{color:#4ade80}.down{color:#f87171}
+.dev{background:radial-gradient(circle at 35% 30%,#c4b5fd,#4338ca 55%,#1e1b4b)}
+.av{width:28px;height:28px;border-radius:999px;flex-shrink:0}
+.msg{display:flex;gap:10px;align-items:flex-end}
+.blk{display:flex;flex-direction:column;gap:8px}
+.lbl{font-family:'Geist Mono',monospace;font-size:11px;color:#8a8a8a;letter-spacing:.06em;padding-left:38px}
+.card{box-sizing:border-box;flex:1 1 auto;min-width:0;background:#141414;border:1px solid #232323;border-radius:16px;padding:12px 14px 8px 14px;display:flex;flex-direction:column;gap:10px;font-size:14px;line-height:20px}
+.head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:#a1a1a1}
+.time{align-self:flex-end;font-family:'Geist Mono',monospace;font-size:10px;color:#8a8a8a}
+.tile{background:#101010;border:1px solid #1f1f1f;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.track{height:6px;border-radius:999px;background:#0c0c0c;box-shadow:inset 0 1px 2px rgba(0,0,0,.9),0 1px 0 rgba(255,255,255,.05);overflow:hidden}
+.fill{height:100%;border-radius:999px;background:linear-gradient(180deg,#f5f5f5,#b5b5b5)}
+.bar{width:100%;border-radius:6px 6px 3px 3px;background:linear-gradient(180deg,#333,#1c1c1c);box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 1px 0 rgba(0,0,0,.9)}
+.bar-on{background:linear-gradient(180deg,#ffffff,#c8c8c8);box-shadow:inset 0 1px 0 #fff,0 1px 0 rgba(0,0,0,.9)}
+</style>
+</helmet>
+<div style="width: 1000px; height: 1000px; box-sizing: border-box; padding: 12px; background: #000000">
+  <div style="height: 100%; box-sizing: border-box; padding: 28px; display: flex; gap: 32px; align-items: flex-start; background-color: #0a0a0a; background-image: radial-gradient(#1c1c1c 1px, transparent 1px); background-size: 22px 22px; border: 1px solid #1f1f1f; border-radius: 16px; overflow: hidden">
+
+    <div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+      <div class="blk">
+        <span class="lbl">01 · FIGURES</span>
+        <div class="msg"><span aria-hidden="true" class="dev av"></span>
+          <section class="card" aria-label="Prices">
+            <span>Here's the first one.</span>
+            <div style="display: grid; grid-template-columns: 1fr auto; column-gap: 16px; row-gap: 6px">
+              <span>BTC</span><span class="num">$82,302</span>
+              <span>Gold</span><span class="num">$4,152</span>
+              <span>S&amp;P 500</span><span class="num">7,744</span>
+            </div>
+            <span class="time">09:00</span>
+          </section>
+        </div>
+      </div>
+
+      <div class="blk">
+        <span class="lbl">02 · BIG NUMBER + CHANGE</span>
+        <div class="msg"><span aria-hidden="true" class="dev av"></span>
+          <section class="card" aria-label="Bitcoin price">
+            <div class="head"><span style="flex-grow: 1">Bitcoin</span><span class="mono" style="font-size: 12px">BTC</span></div>
+            <div style="display: flex; align-items: baseline; gap: 10px">
+              <span class="num" style="font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em">$82,302</span>
+              <span class="num up" style="font-size: 13px">▲ 2.1% today</span>
+            </div>
+            <svg width="100%" height="40" viewBox="0 0 360 40" preserveAspectRatio="none" aria-hidden="true"><polyline points="0,32 30,30 60,33 90,26 120,28 150,22 180,24 210,17 240,19 270,13 300,15 330,8 360,6" fill="none" stroke="#4ade80" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline></svg>
+            <span class="time">09:00</span>
+          </section>
+        </div>
+      </div>
+
+      <div class="blk">
+        <span class="lbl">06 · LINE CHART</span>
+        <div class="msg"><span aria-hidden="true" class="dev av"></span>
+          <section class="card" aria-label="Bitcoin, last 24 hours">
+            <div class="head"><span style="flex-grow: 1">BTC · 24 h</span><span class="num" style="color: #ededed">$82,302</span></div>
+            <div style="display: flex; gap: 8px">
+              <svg width="100%" height="110" viewBox="0 0 320 110" preserveAspectRatio="none" role="img" aria-label="Rising from 79.1k to 82.3k">
+                <path d="M0 27.5H320M0 55H320M0 82.5H320" stroke="#1f1f1f" stroke-width="1" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"></path>
+                <path d="M0 90 L25 82 L50 86 L75 70 L100 74 L125 62 L150 68 L175 54 L200 58 L225 44 L250 48 L275 34 L300 36 L320 22 L320 110 L0 110 Z" fill="rgba(237,237,237,.06)"></path>
+                <polyline points="0,90 25,82 50,86 75,70 100,74 125,62 150,68 175,54 200,58 225,44 250,48 275,34 300,36 320,22" fill="none" stroke="#ededed" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline>
+                <circle cx="320" cy="22" r="3" fill="#ededed"></circle>
+              </svg>
+              <div style="display: flex; flex-direction: column; justify-content: space-between; padding: 14px 0 12px 0">
+                <span class="num" style="font-size: 10px; color: #8a8a8a">82.3k</span>
+                <span class="num" style="font-size: 10px; color: #8a8a8a">79.1k</span>
+              </div>
+            </div>
+            <div class="mono" style="display: flex; justify-content: space-between; font-size: 10px; color: #8a8a8a; padding-right: 34px"><span>09:00</span><span>15:00</span><span>21:00</span><span>03:00</span><span>now</span></div>
+            <span class="time">09:00</span>
+          </section>
+        </div>
+      </div>
+
+      <div class="blk">
+        <span class="lbl">07 · GAUGE</span>
+        <div class="msg"><span aria-hidden="true" class="dev av"></span>
+          <section class="card" aria-label="Daily limit, 62 percent used" style="flex-direction: row; align-items: center; gap: 16px; padding: 14px">
+            <svg width="76" height="76" viewBox="0 0 80 80" aria-hidden="true">
+              <circle cx="40" cy="40" r="32" fill="none" stroke="#0c0c0c" stroke-width="9"></circle>
+              <circle cx="40" cy="40" r="32" fill="none" stroke="#ededed" stroke-width="9" stroke-linecap="round" stroke-dasharray="124.7 201.1" transform="rotate(-90 40 40)"></circle>
+              <text x="40" y="45" text-anchor="middle" font-family="Geist Mono, monospace" font-size="15" fill="#ededed">62%</text>
+            </svg>
+            <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1">
+              <span style="font-size: 13px; color: #a1a1a1">Daily limit</span>
+              <span class="num" style="text-align: left; font-size: 18px; line-height: 26px">$0.62 of $1.00</span>
+              <span style="font-size: 12px; color: #8a8a8a">resets at 00:00</span>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+      <div class="blk">
+        <span class="lbl">03 · STAT TILES</span>
+        <div class="msg"><span aria-hidden="true" class="dev av"></span>
+          <section class="card" aria-label="Server status">
+            <div class="head">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"></rect><rect x="3" y="13" width="18" height="7" rx="2"></rect><path d="M7 7.5h.01M7 16.5h.01"></path></svg>
+              <span style="flex-grow: 1">chat.zilar.app</span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+              <div class="tile"><span style="font-size: 12px; color: #a1a1a1">CPU</span><span class="num" style="text-align: left; font-size: 18px; line-height: 24px">23%</span><div class="track"><div class="fill" style="width: 23%"></div></div></div>
+              <div class="tile"><span style="font-size: 12px; color: #a1a1a1">Memory</span><span class="num" style="text-align: left; font-size: 18px; line-height: 24px">3.1 / 8 GB</span><div class="track"><div class="fill" style="width: 39%"></div></div></div>
+              <div class="tile"><span style="font-size: 12px; color: #a1a1a1">Disk</span><span class="num" style="text-align: left; font-size: 18px; line-height: 24px">41%</span><div class="track"><div class="fill" style="width: 41%"></div></div></div>
+              <div class="tile"><span style="font-size: 12px; color: #a1a1a1">Uptime</span><span class="num" style="text-align: left; font-size: 18px; line-height: 24px">12 d</span><span style="height: 6px"></span></div>
+            </div>
+            <span class="time">10:30</span>
+          </section>
+        </div>
+      </div>
+
+      <div class="blk">
+        <span class="lbl">04 · TABLE</span>
+        <div class="msg"><span aria-hidden="true" class="dev av"></span>
+          <section class="card" aria-label="AI spend this week">
+            <div class="head"><span style="flex-grow: 1">AI spend this week</span></div>
+            <div style="display: grid; grid-template-columns: 1fr auto auto auto; column-gap: 18px">
+              <span style="font-size: 12px; color: #8a8a8a; padding-bottom: 6px; border-bottom: 1px solid #232323">AI</span>
+              <span class="num" style="font-size: 12px; color: #8a8a8a; padding-bottom: 6px; border-bottom: 1px solid #232323">Turns</span>
+              <span class="num" style="font-size: 12px; color: #8a8a8a; padding-bottom: 6px; border-bottom: 1px solid #232323">Tokens</span>
+              <span class="num" style="font-size: 12px; color: #8a8a8a; padding-bottom: 6px; border-bottom: 1px solid #232323">Cost</span>
+              <span style="padding: 6px 0; border-bottom: 1px solid #1c1c1c">Deepseek</span><span class="num" style="padding: 6px 0; border-bottom: 1px solid #1c1c1c">142</span><span class="num" style="padding: 6px 0; border-bottom: 1px solid #1c1c1c">1.2M</span><span class="num" style="padding: 6px 0; border-bottom: 1px solid #1c1c1c">$0.38</span>
+              <span style="padding: 6px 0; border-bottom: 1px solid #1c1c1c">Claude</span><span class="num" style="padding: 6px 0; border-bottom: 1px solid #1c1c1c">38</span><span class="num" style="padding: 6px 0; border-bottom: 1px solid #1c1c1c">410k</span><span class="num" style="padding: 6px 0; border-bottom: 1px solid #1c1c1c">$1.12</span>
+              <span style="padding: 6px 0; border-bottom: 1px solid #1c1c1c">GLM</span><span class="num" style="padding: 6px 0; border-bottom: 1px solid #1c1c1c">61</span><span class="num" style="padding: 6px 0; border-bottom: 1px solid #1c1c1c">650k</span><span class="num" style="padding: 6px 0; border-bottom: 1px solid #1c1c1c">$0.00</span>
+              <span style="padding-top: 6px; font-weight: 600">Total</span><span class="num" style="padding-top: 6px">241</span><span class="num" style="padding-top: 6px">2.3M</span><span class="num" style="padding-top: 6px; font-weight: 600">$1.50</span>
+            </div>
+            <span class="time">Sun 20:00</span>
+          </section>
+        </div>
+      </div>
+
+      <div class="blk">
+        <span class="lbl">05 · BAR CHART</span>
+        <div class="msg"><span aria-hidden="true" class="dev av"></span>
+          <section class="card" aria-label="Messages per day">
+            <div class="head"><span style="flex-grow: 1">Messages per day</span><span class="num">1,284</span></div>
+            <div style="height: 120px; display: flex; align-items: flex-end; gap: 10px">
+              <div style="flex: 1 1 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px"><span class="num" style="font-size: 10px; color: #8a8a8a">142</span><div class="bar" style="height: 48%"></div></div>
+              <div style="flex: 1 1 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px"><span class="num" style="font-size: 10px; color: #8a8a8a">188</span><div class="bar" style="height: 64%"></div></div>
+              <div style="flex: 1 1 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px"><span class="num" style="font-size: 10px; color: #8a8a8a">161</span><div class="bar" style="height: 55%"></div></div>
+              <div style="flex: 1 1 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px"><span class="num" style="font-size: 10px; color: #8a8a8a">203</span><div class="bar" style="height: 69%"></div></div>
+              <div style="flex: 1 1 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px"><span class="num" style="font-size: 10px; color: #8a8a8a">256</span><div class="bar" style="height: 87%"></div></div>
+              <div style="flex: 1 1 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px"><span class="num" style="font-size: 10px; color: #8a8a8a">97</span><div class="bar" style="height: 33%"></div></div>
+              <div style="flex: 1 1 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px"><span class="num" style="font-size: 10px; color: #ededed">237</span><div class="bar bar-on" style="height: 80%"></div></div>
+            </div>
+            <div class="mono" style="display: flex; gap: 10px; font-size: 10px; color: #8a8a8a; text-align: center"><span style="flex: 1 1 0">Mon</span><span style="flex: 1 1 0">Tue</span><span style="flex: 1 1 0">Wed</span><span style="flex: 1 1 0">Thu</span><span style="flex: 1 1 0">Fri</span><span style="flex: 1 1 0">Sat</span><span style="flex: 1 1 0; color: #ededed">Sun</span></div>
+            <span class="time">Sun 20:00</span>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1000,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

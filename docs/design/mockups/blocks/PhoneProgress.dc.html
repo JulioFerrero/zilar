@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Progress blocks, phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed}a:hover{color:#ffffff}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.num{font-family:'Geist Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;text-align:right}
+.dev{background:radial-gradient(circle at 35% 30%,#c4b5fd,#4338ca 55%,#1e1b4b)}
+.av{width:28px;height:28px;border-radius:999px;flex-shrink:0}
+.msg{display:flex;gap:8px;align-items:flex-end}
+.blk{display:flex;flex-direction:column;gap:8px}
+.lbl{font-family:'Geist Mono',monospace;font-size:11px;color:#8a8a8a;letter-spacing:.06em;padding-left:36px}
+.card{box-sizing:border-box;flex:1 1 auto;min-width:0;background:#141414;border:1px solid #232323;border-radius:16px;padding:12px 14px 8px 14px;display:flex;flex-direction:column;gap:10px;font-size:15px;line-height:21px}
+.head{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:#a1a1a1}
+.time{align-self:flex-end;font-family:'Geist Mono',monospace;font-size:10px;color:#8a8a8a}
+.track{height:6px;border-radius:999px;background:#0c0c0c;box-shadow:inset 0 1px 2px rgba(0,0,0,.9),0 1px 0 rgba(255,255,255,.05);overflow:hidden}
+.fill{height:100%;border-radius:999px;background:linear-gradient(180deg,#f5f5f5,#b5b5b5)}
+.box{width:20px;height:20px;border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.box-on{background:linear-gradient(180deg,#ffffff,#d4d4d4);box-shadow:inset 0 1px 0 #fff,0 1px 2px rgba(0,0,0,.8)}
+.box-off{box-sizing:border-box;background:#0c0c0c;border:1px solid #2a2a2a;box-shadow:inset 0 1px 2px rgba(0,0,0,.9)}
+.sr{position:absolute;opacity:0;width:1px;height:1px}
+.row{display:flex;align-items:center;gap:12px;min-height:44px}
+.dot{width:8px;height:8px;border-radius:999px;flex-shrink:0}
+.ok{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.14)}
+.warn{background:#fbbf24;box-shadow:0 0 0 3px rgba(251,191,36,.14)}
+.bad{background:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.14)}
+.cd{flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;border-radius:12px;background:#0c0c0c;box-shadow:inset 0 2px 6px rgba(0,0,0,.9),0 1px 0 rgba(255,255,255,.06)}
+</style>
+</helmet>
+<div style="width: 390px; height: 1420px; box-sizing: border-box; padding: 16px 12px; display: flex; flex-direction: column; gap: 24px; background-color: #0a0a0a; background-image: radial-gradient(#1c1c1c 1px, transparent 1px); background-size: 22px 22px">
+
+  <div class="blk">
+    <span class="lbl">08 · CHECKLIST</span>
+    <div class="msg"><span aria-hidden="true" class="dev av"></span>
+      <section class="card" aria-label="Groceries">
+        <div class="head">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="21" r="1"></circle><circle cx="19" cy="21" r="1"></circle><path d="M2 2h3l2.7 12.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"></path></svg>
+          <span style="flex-grow: 1">Groceries</span>
+          <span class="num" style="font-size: 12px; color: #8a8a8a">2 of 5</span>
+        </div>
+        <div style="display: flex; flex-direction: column">
+          <label class="row"><input type="checkbox" checked class="sr"><span class="box box-on" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span><span style="flex-grow: 1; color: #8a8a8a; text-decoration: line-through">Eggs</span><span style="font-size: 13px; color: #8a8a8a">Ana</span></label>
+          <label class="row"><input type="checkbox" checked class="sr"><span class="box box-on" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#0a0a0a" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span><span style="flex-grow: 1; color: #8a8a8a; text-decoration: line-through">Milk</span><span style="font-size: 13px; color: #8a8a8a">you</span></label>
+          <label class="row"><input type="checkbox" class="sr"><span class="box box-off" aria-hidden="true"></span><span style="flex-grow: 1">Tomatoes</span></label>
+          <label class="row"><input type="checkbox" class="sr"><span class="box box-off" aria-hidden="true"></span><span style="flex-grow: 1">Bread</span></label>
+          <label class="row"><input type="checkbox" class="sr"><span class="box box-off" aria-hidden="true"></span><span style="flex-grow: 1">Coffee beans</span></label>
+        </div>
+        <span class="time">18:12</span>
+      </section>
+    </div>
+  </div>
+
+  <div class="blk">
+    <span class="lbl">09 · PROGRESS</span>
+    <div class="msg"><span aria-hidden="true" class="dev av"></span>
+      <section class="card" aria-label="Backup, 70 percent">
+        <div class="head">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 13v8M8 17l4-4 4 4"></path><path d="M20 16.6A5 5 0 0 0 18 7h-1.3A8 8 0 1 0 4 15.3"></path></svg>
+          <span style="flex-grow: 1">Uploading the backup</span>
+          <span class="num" style="color: #ededed">70%</span>
+        </div>
+        <div class="track" style="height: 8px"><div class="fill" style="width: 70%"></div></div>
+        <div style="display: flex; justify-content: space-between; font-size: 13px; color: #8a8a8a"><span class="num">1.4 / 2.0 GB</span><span>about 1 min left</span></div>
+        <span class="time">03:02</span>
+      </section>
+    </div>
+  </div>
+
+  <div class="blk">
+    <span class="lbl">10 · TIMELINE</span>
+    <div class="msg"><span aria-hidden="true" class="dev av"></span>
+      <section class="card" aria-label="Parcel tracking">
+        <div class="head">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.7z"></path><path d="M3.3 7L12 12l8.7-5M12 22V12"></path></svg>
+          <span style="flex-grow: 1">Parcel 4417</span>
+        </div>
+        <div style="display: flex; flex-direction: column">
+          <div style="display: flex; gap: 12px">
+            <div style="display: flex; flex-direction: column; align-items: center; width: 16px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="#ededed"></circle><path d="M4.9 8.3l2.1 2.1 4.1-4.5" stroke="#0a0a0a" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="width: 2px; flex-grow: 1; background: #ededed; min-height: 22px"></span></div>
+            <div style="display: flex; justify-content: space-between; flex-grow: 1; padding-bottom: 12px"><span>Ordered</span><span class="num" style="font-size: 12px; color: #8a8a8a">Mon 10:02</span></div>
+          </div>
+          <div style="display: flex; gap: 12px">
+            <div style="display: flex; flex-direction: column; align-items: center; width: 16px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="#ededed"></circle><path d="M4.9 8.3l2.1 2.1 4.1-4.5" stroke="#0a0a0a" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg><span style="width: 2px; flex-grow: 1; background: #ededed; min-height: 22px"></span></div>
+            <div style="display: flex; justify-content: space-between; flex-grow: 1; padding-bottom: 12px"><span>Shipped</span><span class="num" style="font-size: 12px; color: #8a8a8a">Tue 08:40</span></div>
+          </div>
+          <div style="display: flex; gap: 12px">
+            <div style="display: flex; flex-direction: column; align-items: center; width: 16px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="#ededed" stroke-width="1.5"></circle><circle cx="8" cy="8" r="3" fill="#ededed"></circle></svg><span style="width: 2px; flex-grow: 1; background: #2a2a2a; min-height: 22px"></span></div>
+            <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; padding-bottom: 12px"><div style="display: flex; justify-content: space-between"><span style="font-weight: 500">Out for delivery</span><span class="num" style="font-size: 12px; color: #8a8a8a">07:15</span></div><span style="font-size: 13px; color: #a1a1a1">Arrives 12:00 to 14:00</span></div>
+          </div>
+          <div style="display: flex; gap: 12px">
+            <div style="display: flex; flex-direction: column; align-items: center; width: 16px"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="#0c0c0c" stroke="#2a2a2a" stroke-width="1.5"></circle></svg></div>
+            <div style="display: flex; justify-content: space-between; flex-grow: 1"><span style="color: #8a8a8a">Delivered</span></div>
+          </div>
+        </div>
+        <span class="time">07:15</span>
+      </section>
+    </div>
+  </div>
+
+  <div class="blk">
+    <span class="lbl">11 · COUNTDOWN</span>
+    <div class="msg"><span aria-hidden="true" class="dev av"></span>
+      <section class="card" aria-label="Flight leaves in 2 hours 14 minutes">
+        <div class="head">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+          <span style="flex-grow: 1">Flight to Barcelona</span>
+        </div>
+        <div style="display: flex; gap: 8px">
+          <div class="cd"><span class="num" style="font-size: 28px; line-height: 34px; text-align: center">02</span><span style="font-size: 12px; color: #8a8a8a">hours</span></div>
+          <div class="cd"><span class="num" style="font-size: 28px; line-height: 34px; text-align: center">14</span><span style="font-size: 12px; color: #8a8a8a">min</span></div>
+          <div class="cd"><span class="num" style="font-size: 28px; line-height: 34px; text-align: center">09</span><span style="font-size: 12px; color: #8a8a8a">sec</span></div>
+        </div>
+        <span style="font-size: 13px; color: #a1a1a1">Boarding 18:40 · Gate K72</span>
+        <span class="time">16:05</span>
+      </section>
+    </div>
+  </div>
+
+  <div class="blk">
+    <span class="lbl">12 · STATUS LIST</span>
+    <div class="msg"><span aria-hidden="true" class="dev av"></span>
+      <section class="card" aria-label="Services">
+        <div class="head">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a1a1a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+          <span style="flex-grow: 1">Services</span>
+        </div>
+        <div style="display: flex; flex-direction: column">
+          <div class="row" style="border-bottom: 1px solid #1c1c1c"><span class="dot ok" role="img" aria-label="Up"></span><span style="flex-grow: 1">chat.zilar.app</span><span class="num" style="font-size: 13px; color: #a1a1a1">99.98%</span></div>
+          <div class="row" style="border-bottom: 1px solid #1c1c1c"><span class="dot ok" role="img" aria-label="Up"></span><span style="flex-grow: 1">www.zilar.app</span><span class="num" style="font-size: 13px; color: #a1a1a1">100%</span></div>
+          <div class="row" style="border-bottom: 1px solid #1c1c1c"><span class="dot warn" role="img" aria-label="Late"></span><span style="flex-grow: 1">Nightly backup</span><span class="num" style="font-size: 13px; color: #a1a1a1">2 h late</span></div>
+          <div class="row"><span class="dot bad" role="img" aria-label="Down"></span><span style="flex-grow: 1">Desk egress</span><span class="num" style="font-size: 13px; color: #a1a1a1">since 06:58</span></div>
+        </div>
+        <span class="time">07:00</span>
+      </section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1420}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

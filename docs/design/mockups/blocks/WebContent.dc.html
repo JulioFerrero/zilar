@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Content blocks, web</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#000;font-family:'Geist',system-ui,sans-serif;color:#ededed}
+a{color:#ededed}a:hover{color:#ffffff}
+.mono{font-family:'Geist Mono',ui-monospace,monospace}
+.num{font-family:'Geist Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;text-align:right}
+.dev{background:radial-gradient(circle at 35% 30%,#c4b5fd,#4338ca 55%,#1e1b4b)}
+.av{width:28px;height:28px;border-radius:999px;flex-shrink:0}
+.msg{display:flex;gap:10px;align-items:flex-end}
+.blk{display:flex;flex-direction:column;gap:8px}
+.lbl{font-family:'Geist Mono',monospace;font-size:11px;color:#8a8a8a;letter-spacing:.06em;padding-left:38px}
+.card{box-sizing:border-box;flex:1 1 auto;min-width:0;background:#141414;border:1px solid #232323;border-radius:16px;padding:12px 14px 8px 14px;display:flex;flex-direction:column;gap:10px;font-size:14px;line-height:20px}
+.head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:#a1a1a1}
+.time{align-self:flex-end;font-family:'Geist Mono',monospace;font-size:10px;color:#8a8a8a}
+.key{box-sizing:border-box;height:36px;padding:0 14px;border-radius:10px;font-family:'Geist',system-ui,sans-serif;font-size:14px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none}
+.key-dark{border:1px solid #2a2a2a;color:#ededed;background:linear-gradient(180deg,#1c1c1c,#121212);box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 2px 6px rgba(0,0,0,.6)}
+.tilekey{width:40px;height:40px;flex-shrink:0;border-radius:10px;border:1px solid #050505;background:linear-gradient(180deg,#2c2c2c,#151515);box-shadow:inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(0,0,0,.65),0 1px 0 rgba(0,0,0,.95);display:flex;align-items:center;justify-content:center}
+.ph{border-radius:10px;overflow:hidden;background:#101010;border:1px solid #1f1f1f}
+.icon-c{width:32px;height:32px;border-radius:999px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+</style>
+</helmet>
+<div style="width: 1000px; height: 1000px; box-sizing: border-box; padding: 12px; background: #000000">
+  <div style="height: 100%; box-sizing: border-box; padding: 28px; display: flex; gap: 32px; align-items: flex-start; background-color: #0a0a0a; background-image: radial-gradient(#1c1c1c 1px, transparent 1px); background-size: 22px 22px; border: 1px solid #1f1f1f; border-radius: 16px; overflow: hidden">
+
+    <div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+      <div class="blk">
+        <span class="lbl">19 · LINK CARD</span>
+        <div class="msg"><span aria-hidden="true" class="dev av"></span>
+          <section class="card" aria-label="Link">
+            <a href="https://github.com/JulioFerrero/zilar" style="display: flex; gap: 12px; text-decoration: none; padding: 10px; border-radius: 12px; background: #101010; border: 1px solid #1f1f1f">
+              <div style="display: flex; flex-direction: column; gap: 4px; flex-grow: 1; min-width: 0">
+                <span class="mono" style="font-size: 11px; color: #8a8a8a">github.com</span>
+                <span style="font-weight: 500">JulioFerrero/zilar</span>
+                <span style="font-size: 13px; color: #a1a1a1">A messenger you host yourself. Your friends and your AIs in one chat.</span>
+              </div>
+              <div class="tilekey" style="width: 56px; height: 56px; border-radius: 12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d4d4d4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"></path><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"></path></svg></div>
+            </a>
+            <span class="time">11:20</span>
+          </section>
+        </div>
+      </div>
+
+      <div class="blk">
+        <span class="lbl">21 · PLACE</span>
+        <div class="msg"><span aria-hidden="true" class="dev av"></span>
+          <section class="card" aria-label="Casa Paco on the map">
+            <div class="ph" style="height: 140px">
+              <svg width="100%" height="140" viewBox="0 0 380 140" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                <rect width="380" height="140" fill="#101010"></rect>
+                <rect x="20" y="18" width="90" height="46" rx="4" fill="#151515"></rect>
+                <rect x="130" y="18" width="120" height="46" rx="4" fill="#151515"></rect>
+                <rect x="270" y="18" width="100" height="46" rx="4" fill="#132016"></rect>
+                <rect x="20" y="82" width="140" height="44" rx="4" fill="#151515"></rect>
+                <rect x="180" y="82" width="70" height="44" rx="4" fill="#151515"></rect>
+                <rect x="270" y="82" width="100" height="44" rx="4" fill="#151515"></rect>
+                <path d="M0 73H380M120 0V140M260 0V140" stroke="#262626" stroke-width="10"></path>
+                <path d="M60 140 L60 104 L120 73 L190 73 L215 58" stroke="#ededed" stroke-width="2.5" stroke-dasharray="5 5" fill="none" stroke-linecap="round"></path>
+                <circle cx="60" cy="118" r="6" fill="#0a0a0a" stroke="#ededed" stroke-width="2"></circle>
+                <path d="M215 58c0-9 7-15 15-15s15 6 15 15c0 11-15 24-15 24s-15-13-15-24z" fill="#ededed" transform="translate(-15 -24)"></path>
+                <circle cx="215" cy="34" r="5" fill="#0a0a0a"></circle>
+              </svg>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px">
+              <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0">
+                <span style="font-weight: 500">Casa Paco</span>
+                <span style="font-size: 12px; color: #a1a1a1">Calle Mayor 12 · 650 m · 8 min walk</span>
+              </div>
+              <a href="#directions" class="key key-dark"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d4d4d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l19-9-9 19-2-8z"></path></svg>Directions</a>
+            </div>
+            <span class="time">20:31</span>
+          </section>
+        </div>
+      </div>
+
+      <div class="blk">
+        <span class="lbl">24 · FILE</span>
+        <div class="msg"><span aria-hidden="true" class="dev av"></span>
+          <section class="card" aria-label="File prices-october.csv">
+            <div style="display: flex; align-items: center; gap: 12px">
+              <div class="tilekey"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d4d4d4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><path d="M14 2v6h6"></path></svg></div>
+              <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0">
+                <span style="font-weight: 500">prices-october.csv</span>
+                <span class="mono" style="font-size: 11px; color: #8a8a8a">12 KB · CSV · 31 rows</span>
+              </div>
+              <button type="button" aria-label="Download" class="key key-dark" style="width: 36px; padding: 0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d4d4d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"></path><path d="M5 21h14"></path></svg></button>
+            </div>
+            <span class="time">Sat 10:00</span>
+          </section>
+        </div>
+      </div>
+
+      <div class="blk">
+        <span class="lbl">25 · CALLOUT</span>
+        <div class="msg"><span aria-hidden="true" class="dev av"></span>
+          <section class="card" aria-label="Backup finished" style="flex-direction: row; align-items: center; gap: 12px; padding: 12px 14px">
+            <span class="icon-c" style="background: rgba(34,197,94,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span>
+            <span style="flex-grow: 1">Backup finished · 2.0 GB</span>
+            <span class="num" style="font-size: 10px; color: #8a8a8a">03:04</span>
+          </section>
+        </div>
+        <div class="msg"><span aria-hidden="true" class="av"></span>
+          <section class="card" aria-label="Daily limit almost used" style="flex-direction: row; align-items: center; gap: 12px; padding: 12px 14px">
+            <span class="icon-c" style="background: rgba(251,191,36,.14)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path><path d="M12 9v4M12 17h.01"></path></svg></span>
+            <span style="flex-grow: 1">Daily limit almost used · $0.92 of $1.00</span>
+            <span class="num" style="font-size: 10px; color: #8a8a8a">19:40</span>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+      <div class="blk">
+        <span class="lbl">20 · IMAGES</span>
+        <div class="msg"><span aria-hidden="true" class="dev av"></span>
+          <section class="card" aria-label="Four photos" style="padding: 6px 6px 8px 6px">
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px">
+              <div class="ph" style="height: 120px; border-radius: 12px 6px 6px 6px"><svg width="100%" height="120" viewBox="0 0 200 120" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Photo: hills at sunset"><rect width="200" height="120" fill="#1b1b1b"></rect><circle cx="140" cy="44" r="16" fill="#3d3d3d"></circle><path d="M0 120 L0 84 L50 56 L96 86 L140 64 L200 92 L200 120Z" fill="#2a2a2a"></path><path d="M0 120 L0 100 L70 80 L130 104 L200 96 L200 120Z" fill="#121212"></path></svg></div>
+              <div class="ph" style="height: 120px; border-radius: 6px 12px 6px 6px"><svg width="100%" height="120" viewBox="0 0 200 120" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Photo: the city at night"><rect width="200" height="120" fill="#141414"></rect><path d="M10 120V70h24v50M44 120V40h30v80M84 120V60h22v60M116 120V30h34v90M160 120V76h30v44" fill="#232323"></path><path d="M52 52h4M62 52h4M52 64h4M124 44h4M136 44h4M124 58h4" stroke="#5a5a5a" stroke-width="3"></path></svg></div>
+              <div class="ph" style="height: 120px; border-radius: 6px 6px 6px 12px"><svg width="100%" height="120" viewBox="0 0 200 120" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Photo: the sea"><rect width="200" height="120" fill="#1e1e1e"></rect><rect y="64" width="200" height="56" fill="#141414"></rect><path d="M0 78c20-6 40 6 60 0s40 6 60 0 40 6 80 0M0 96c20-6 40 6 60 0s40 6 60 0 40 6 80 0" stroke="#2e2e2e" stroke-width="2" fill="none"></path></svg></div>
+              <div class="ph" style="height: 120px; border-radius: 6px 6px 12px 6px; position: relative"><svg width="100%" height="120" viewBox="0 0 200 120" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="200" height="120" fill="#181818"></rect><circle cx="70" cy="70" r="30" fill="#262626"></circle><circle cx="130" cy="58" r="22" fill="#222222"></circle></svg><span style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); font-size: 20px; font-weight: 500">+3</span></div>
+            </div>
+            <span class="time" style="padding-right: 8px">13:52</span>
+          </section>
+        </div>
+      </div>
+
+      <div class="blk">
+        <span class="lbl">22 · WEATHER</span>
+        <div class="msg"><span aria-hidden="true" class="dev av"></span>
+          <section class="card" aria-label="Weather in Madrid">
+            <div style="display: flex; align-items: center; gap: 12px">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ededed" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+              <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1">
+                <span style="font-weight: 500">Madrid</span>
+                <span style="font-size: 12px; color: #a1a1a1">Clear · H 22° · L 11°</span>
+              </div>
+              <span class="num" style="font-size: 34px; line-height: 40px; font-weight: 500; letter-spacing: -0.02em">18°</span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 8px; border-radius: 12px; background: #101010; border: 1px solid #1f1f1f">
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><span class="mono" style="font-size: 10px; color: #8a8a8a">10:00</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d4d4d4" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v1.5M12 19.5V21M3 12h1.5M19.5 12H21"></path></svg><span class="num" style="font-size: 13px; text-align: center">19°</span></div>
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><span class="mono" style="font-size: 10px; color: #8a8a8a">12:00</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d4d4d4" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v1.5M12 19.5V21M3 12h1.5M19.5 12H21"></path></svg><span class="num" style="font-size: 13px; text-align: center">21°</span></div>
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><span class="mono" style="font-size: 10px; color: #8a8a8a">14:00</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d4d4d4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9z"></path></svg><span class="num" style="font-size: 13px; text-align: center">22°</span></div>
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><span class="mono" style="font-size: 10px; color: #8a8a8a">16:00</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d4d4d4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9z"></path></svg><span class="num" style="font-size: 13px; text-align: center">21°</span></div>
+              <div style="display: flex; flex-direction: column; align-items: center; gap: 6px"><span class="mono" style="font-size: 10px; color: #8a8a8a">18:00</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d4d4d4" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v1.5M12 19.5V21M3 12h1.5M19.5 12H21"></path></svg><span class="num" style="font-size: 13px; text-align: center">18°</span></div>
+            </div>
+            <span class="time">08:00</span>
+          </section>
+        </div>
+      </div>
+
+      <div class="blk">
+        <span class="lbl">23 · EVENT</span>
+        <div class="msg"><span aria-hidden="true" class="dev av"></span>
+          <section class="card" aria-label="Event: dinner at Casa Paco">
+            <div style="display: flex; align-items: center; gap: 12px">
+              <div style="width: 48px; height: 52px; flex-shrink: 0; border-radius: 12px; border: 1px solid #050505; background: linear-gradient(180deg, #2c2c2c, #151515); box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 1px 0 rgba(0,0,0,.95); display: flex; flex-direction: column; align-items: center; justify-content: center">
+                <span class="mono" style="font-size: 10px; color: #a1a1a1">OCT</span>
+                <span class="num" style="font-size: 20px; line-height: 24px; font-weight: 600; text-align: center">17</span>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1; min-width: 0">
+                <span style="font-weight: 500">Dinner at Casa Paco</span>
+                <span style="font-size: 12px; color: #a1a1a1">Fri 21:00 – 23:00 · 4 people</span>
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px">
+              <button type="button" class="key key-dark" style="flex: 1 1 0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d4d4d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>Add to calendar</button>
+              <a href="#map" class="key key-dark" style="flex: 1 1 0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d4d4d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>Map</a>
+            </div>
+            <span class="time">17:42</span>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1000,"height":1000}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
