@@ -10,8 +10,13 @@ import type { AiSession, ScheduledRunOutcome, ScheduledTurnOutcome } from './con
 
 // A turn that never settles resolves `'failed'` after this. A computer turn is
 // capped at 15 minutes (T-1611), so 20 minutes leaves room for the model calls
-// and tools around it.
+// and tools around it. T-1657 (audit G2): it starts when the turn starts, not
+// at enqueue.
 export const ROUTINE_TIMEOUT_MS = 20 * 60 * 1000;
+
+// T-1657 (audit G2): a run whose turn never starts — the AI's queue is busy
+// behind a long computer turn — is settled `failed` after this queue wait.
+export const ROUTINE_QUEUE_WAIT_MS = 60 * 60 * 1000;
 
 export interface ScheduledTurnInput {
   aiId: string;
@@ -38,6 +43,8 @@ export interface RoutineRunnerDeps {
   kickDm: (session: AiSession) => void;
   kickRoom: (session: AiSession, roomJid: string) => void;
   timeoutMs?: number;
+  /** T-1657 (audit G2): how long a queued run may wait for its turn to start. */
+  queueWaitMs?: number;
 }
 
 export interface RoutineRunner {
@@ -46,6 +53,7 @@ export interface RoutineRunner {
 
 export function createRoutineRunner(deps: RoutineRunnerDeps): RoutineRunner {
   const timeoutMs = deps.timeoutMs ?? ROUTINE_TIMEOUT_MS;
+  const queueWaitMs = deps.queueWaitMs ?? ROUTINE_QUEUE_WAIT_MS;
 
   async function runScheduledTurn(input: ScheduledTurnInput): Promise<ScheduledRunOutcome> {
     const session = deps.sessions.get(input.aiId);
@@ -74,14 +82,27 @@ export function createRoutineRunner(deps: RoutineRunnerDeps): RoutineRunner {
       settled = true;
       resolveOutcome(value);
     };
-    const timer = setTimeout(() => settle('failed'), timeoutMs);
+    // T-1657 (audit G2): the turn's own cap starts when the turn starts, not at
+    // enqueue, so a run waiting behind a long turn is not settled `failed`
+    // early. A separate queue wait covers a turn that never starts at all.
+    // Both timers are cleared in the `finally`.
+    let turnTimer: ReturnType<typeof setTimeout> | undefined;
+    let queueTimer: ReturnType<typeof setTimeout> | undefined;
+    const startTurn = (): void => {
+      if (turnTimer !== undefined) {
+        return;
+      }
+      clearTimeout(queueTimer);
+      turnTimer = setTimeout(() => settle('failed'), timeoutMs);
+    };
+    queueTimer = setTimeout(() => settle('failed'), queueWaitMs);
     try {
       if (input.groupId === null) {
         session.pending.push({
           id: randomUUID(),
           body,
           fromJid: ownerJid,
-          scheduled: { routineId: input.routineId, onOutcome: settle },
+          scheduled: { routineId: input.routineId, onOutcome: settle, onStart: startTurn },
         });
         deps.kickDm(session);
       } else {
@@ -101,14 +122,17 @@ export function createRoutineRunner(deps: RoutineRunnerDeps): RoutineRunner {
           fromResolved: true,
           fromNick: ownerName,
           timestamp: new Date(),
-          scheduled: { routineId: input.routineId, onOutcome: settle },
+          scheduled: { routineId: input.routineId, onOutcome: settle, onStart: startTurn },
         });
         session.roomPending.set(roomJid, queued);
         deps.kickRoom(session, roomJid);
       }
       return await outcome;
     } finally {
-      clearTimeout(timer);
+      clearTimeout(queueTimer);
+      if (turnTimer !== undefined) {
+        clearTimeout(turnTimer);
+      }
     }
   }
 

@@ -353,8 +353,11 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
       }),
     ).pipe(Effect.ensuring(Effect.sync(() => clearTurnAbort(session, roomJid, groupAbort))));
     // T-1646: report the turn's outcome for a scheduled routine's trigger
-    // exactly once; a non-scheduled batch has nothing to settle.
-    settle(turnOutcome.kind);
+    // exactly once; a non-scheduled batch has nothing to settle. T-1657
+    // (audit G3): a `replied` turn whose session stopped before the send
+    // settles `stopped`.
+    const sessionLive = !session.stopped && sessions.get(session.aiId) === session;
+    settle(turnOutcome.kind === 'replied' && !sessionLive ? 'stopped' : turnOutcome.kind);
     // T-0482: a delegated turn stores its result on the row. The worker's
     // posted text (with the `@<boss> ` prefix) is the stored summary; a
     // failed turn stores whatever was posted instead. Log ids only.

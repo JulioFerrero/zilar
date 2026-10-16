@@ -113,6 +113,11 @@ export function createGroupTurn(ctx: GroupTurnContext) {
     batch: RoomPendingMessage[],
     settle: (outcome: ScheduledTurnOutcome) => void,
   ): Effect.fn.Return<void> {
+    // T-1657 (audit G2): the turn starts now, so a scheduled item's runner
+    // starts its timeout here instead of at enqueue.
+    for (const item of batch) {
+      item.scheduled?.onStart?.();
+    }
     // The AI id below is the gateway's own: it keyed this session, so nothing
     // here can be aimed at an id taken from message content.
     const ai = yield* Effect.promise(() => loadActiveAi(deps.db, session.aiId)).pipe(

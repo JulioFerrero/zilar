@@ -22,6 +22,9 @@ export interface PendingMessage {
    * outcome through `onOutcome` exactly once. */
   scheduled?: {
     routineId: string;
+    /** T-1657 (audit G2): called once when the turn that carries this item
+     * starts, so the runner's timeout can begin then instead of at enqueue. */
+    onStart?: () => void;
     onOutcome: (outcome: ScheduledTurnOutcome) => void;
   };
 }
@@ -46,6 +49,9 @@ export interface RoomPendingMessage {
    * exactly once. */
   scheduled?: {
     routineId: string;
+    /** T-1657 (audit G2): called once when the turn that carries this item
+     * starts, so the runner's timeout can begin then instead of at enqueue. */
+    onStart?: () => void;
     onOutcome: (outcome: ScheduledTurnOutcome) => void;
   };
 }

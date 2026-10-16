@@ -93,7 +93,22 @@ export function createDmTurn(ctx: DmTurnContext) {
     session.busy = true;
     yield* Effect.gen(function* () {
       while (session.pending.length > 0 && !session.stopped) {
-        const batch = session.pending.splice(0, session.pending.length);
+        // T-1657 (audit G5): a scheduled routine's item is always its own turn,
+        // the same rule the room pump applies (T-1646): it must settle its own
+        // outcome and never hides behind an owner message's trigger. Otherwise
+        // coalesce the run of owner messages up to the first scheduled item.
+        const first = session.pending[0] as PendingMessage;
+        let take = 1;
+        if (first.scheduled === undefined) {
+          while (take < session.pending.length) {
+            const item = session.pending[take];
+            if (item === undefined || item.scheduled !== undefined) {
+              break;
+            }
+            take += 1;
+          }
+        }
+        const batch = session.pending.splice(0, take);
         const settle = settleFor(batch);
         yield* runSessionTurnEffect(session, batch, settle).pipe(
           Effect.ensuring(Effect.sync(() => settle('failed'))),
@@ -116,6 +131,11 @@ export function createDmTurn(ctx: DmTurnContext) {
     batch: PendingMessage[],
     settle: (outcome: ScheduledTurnOutcome) => void,
   ): Effect.fn.Return<void> {
+    // T-1657 (audit G2): the turn starts now, so a scheduled item's runner
+    // starts its timeout here instead of at enqueue.
+    for (const item of batch) {
+      item.scheduled?.onStart?.();
+    }
     // The owner JID comes from the database, never from the message. The AI
     // id below is the gateway's own: it keyed this session, so the connection
     // lookup can never be aimed at an id taken from message content.
@@ -308,8 +328,9 @@ export function createDmTurn(ctx: DmTurnContext) {
         // desk tools stay on.
         scheduled: trigger.scheduled !== undefined,
       });
-      turnDrafts.end(outcome.kind === 'replied' && sessionIsLive(session) ? 'sent' : 'failed');
-      settle(outcome.kind);
+      const live = sessionIsLive(session);
+      turnDrafts.end(outcome.kind === 'replied' && live ? 'sent' : 'failed');
+      settle(outcome.kind === 'replied' && !live ? 'stopped' : outcome.kind);
       // The 80% heads-ups go out after the reply, so the owner reads the
       // answer first. A failed warning send only logs and never fails the
       // turn.
