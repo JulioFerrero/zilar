@@ -1,22 +1,17 @@
 import { useFocusEffect } from 'expo-router';
 import { Data, Effect } from 'effect';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { useAuthStore } from '@/auth/session';
 import { API_URL } from '@/lib/auth';
 import { fetchMe, updateBio } from '@/lib/auth-api';
-import { interruptFiber } from '@/lib/effect/timers';
 import { useAction } from '@/lib/effect/use-action';
 import { type MyProfile } from '@/lib/profile-api';
 import { getSessionToken } from '@/lib/session-token';
 import { mockToken } from '@/mock/gate';
 
-import {
-  friendlyClaimError,
-  handleAvailabilityFor,
-  isHandleRateLimited,
-  type HandleAvailability,
-} from '@/components/settings/profile-logic';
+import { friendlyClaimError, type HandleAvailability } from '@/components/settings/profile-logic';
+import { useHandleCheck } from '@/components/settings/use-handle-check';
 import { useProfileApi } from '@/components/settings/use-profile-api';
 import { useProfileAvatar } from '@/components/settings/use-profile-avatar';
 
@@ -27,7 +22,6 @@ export class ProfileFailed extends Data.TaggedError('ProfileFailed')<{
   readonly message: string;
 }> {}
 
-const HANDLE_CHECK_DEBOUNCE_MS = 300;
 const NAME_SAVE_ERROR = 'Could not save your name. Try again.';
 const BIO_SAVE_ERROR = 'Could not save your bio.';
 export const LOAD_ERROR = 'Could not load your profile.';
@@ -169,54 +163,11 @@ export function useProfileSettings() {
 
   const reload = load;
 
-  // Debounced live availability for a changed handle. A forked fiber waits
-  // the debounce, then applies the result; a handle change interrupts it. Your
-  // own handle (any casing) skips the check: the server sees its live row
-  // and would report "taken", which is misleading next to an enabled Save.
+  // The trimmed handle and the two flags the debounced check and the Save share.
   const trimmed = handle.trim();
   const current = profile?.handle ?? '';
   const ownHandle = current !== '' && trimmed.toLowerCase() === current.toLowerCase();
-  useEffect(() => {
-    if (trimmed === '' || ownHandle) {
-      return;
-    }
-    const value = trimmed;
-    const check = Effect.sleep(HANDLE_CHECK_DEBOUNCE_MS).pipe(
-      Effect.andThen(
-        Effect.sync(() => {
-          setAvailability({ state: 'checking' });
-        }),
-      ),
-      Effect.andThen(
-        Effect.tryPromise({
-          try: () => api.checkHandle(value),
-          catch: (cause) => cause,
-        }),
-      ),
-      Effect.match({
-        onSuccess: (result) =>
-          handleAvailabilityFor(value, {
-            ok: true,
-            available: result.available,
-            reason: result.reason,
-          }),
-        onFailure: (checkError) =>
-          handleAvailabilityFor(value, {
-            ok: false,
-            rateLimited: isHandleRateLimited(checkError),
-          }),
-      }),
-      Effect.andThen((next: HandleAvailability) =>
-        Effect.sync(() => {
-          setAvailability(next);
-        }),
-      ),
-    );
-    const fiber = Effect.runFork(check);
-    return () => {
-      interruptFiber(fiber);
-    };
-  }, [api, trimmed, ownHandle]);
+  useHandleCheck({ api, trimmed, ownHandle, setAvailability });
 
   /**
    * T-1329: one Save for the whole form, the mobile twin of web's `save()`.
