@@ -1696,3 +1696,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1682](T-1682-split-giphy.md) | Split the Giphy parser out of giphy.ts; drop the dead fake | 2026-10-16 |
 | [T-1684](T-1684-split-group-actions.md) | Split the role actions out of the phone group-actions.ts | 2026-10-16 |
 | [T-1685](T-1685-split-tool-mutations.md) | Split the tool deletes out of tools/mutations.ts | 2026-10-16 |
+| [T-1686](T-1686-split-tool-queries.md) | Split the row mappers out of tools/queries.ts | 2026-10-16 |

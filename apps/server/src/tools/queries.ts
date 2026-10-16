@@ -10,6 +10,9 @@ import type {
   ToolDetail,
   ToolVersionDetail,
 } from './service';
+import { toPublicRun, toPublicVersion, toToolDetail, toVersionDetail } from './tool-views';
+
+export { toPublicRun, toToolDetail, toVersionDetail } from './tool-views';
 
 // Caps: at most 20 active tools per (AI, topic), at most 200 versions per
 // tool. The runner output stored on a run row is truncated to 2 KiB, and
@@ -288,58 +291,6 @@ export function listViewExtras(
     }
     return { hosts, status };
   });
-}
-
-export function toToolDetail(
-  tool: ToolRow,
-  current: VersionRow,
-  lastRunStatus: 'ok' | 'error' | null,
-): ToolDetail {
-  return {
-    id: tool.id,
-    aiId: tool.aiId,
-    groupId: tool.groupId,
-    topicId: tool.topicId,
-    name: tool.name,
-    description: tool.description,
-    currentVersion: tool.currentVersion,
-    hosts: current.hosts,
-    approvedHosts: [...(tool.approvedHosts ?? [])],
-    source: current.source,
-    lastRunStatus,
-    updatedAt: tool.updatedAt,
-  };
-}
-
-function toPublicVersion(row: VersionRow): PublicToolVersion {
-  return {
-    id: row.id,
-    toolId: row.toolId,
-    version: row.version,
-    message: row.message,
-    hosts: row.hosts,
-    createdBy: row.createdBy,
-    createdAt: row.createdAt,
-  };
-}
-
-export function toVersionDetail(row: VersionRow): ToolVersionDetail {
-  return { ...toPublicVersion(row), source: row.source };
-}
-
-export function toPublicRun(row: RunRow): PublicToolRun {
-  return {
-    id: row.id,
-    toolId: row.toolId,
-    version: row.version,
-    trigger: row.trigger,
-    status: row.status,
-    errorKind: row.errorKind,
-    durationMs: row.durationMs,
-    fetchCount: row.fetchCount,
-    outputText: row.outputText,
-    createdAt: row.createdAt,
-  };
 }
 
 // Counts the active tools of one AI across every topic, for the route that
