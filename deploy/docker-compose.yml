@@ -55,6 +55,11 @@ services:
       start_period: 10s
     networks:
       - zilar
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 
   ejabberd:
     # Config is baked into the zilar-ejabberd image (built from
@@ -105,6 +110,11 @@ services:
       start_period: 20s
     networks:
       - zilar
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 
   server:
     image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-server:${IMAGE_TAG:-latest}
@@ -234,6 +244,11 @@ services:
       - desk-socket:/run/zilar
     networks:
       - zilar
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 
   web:
     image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-web:${IMAGE_TAG:-latest}
@@ -250,6 +265,11 @@ services:
       start_period: 10s
     networks:
       - zilar
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 
   caddy:
     # Reverse proxy with automatic HTTPS. The only service publishing ports.
@@ -290,6 +310,11 @@ services:
       start_period: 20s
     networks:
       - zilar
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 
   # --- AI computers (desks) -----------------------------------------------
   # desk-agent runs the sandboxed jails (plan §4.4): it is the only service that
@@ -341,6 +366,11 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 
   desk-egress:
     image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-desk-agent:${IMAGE_TAG:-latest}
@@ -370,6 +400,11 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 
 networks:
   zilar:

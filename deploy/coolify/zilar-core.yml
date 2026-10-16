@@ -55,6 +55,11 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 
   ejabberd:
     # Production config (ejabberd.yml + jwt-entrypoint.sh) is baked into the
@@ -111,6 +116,11 @@ services:
       timeout: 10s
       retries: 30
       start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 
   # --- AI computers (desks) -----------------------------------------------
   # A Coolify Service does not run ./zilar: run the host setup command once on
@@ -155,6 +165,11 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 
   desk-egress:
     image: ghcr.io/${IMAGE_OWNER:-julioferrero}/zilar-desk-agent:${IMAGE_TAG:-latest}
@@ -182,6 +197,11 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
 
 networks:
   # The jails' network: internal (no route out), and only desk-egress is on it

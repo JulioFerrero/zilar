@@ -19,6 +19,9 @@
 #   5. host-setup installs a missing bzip2 (and jq) with the host's package
 #      manager before it downloads anything, and calls no package manager when
 #      both are already present (T-1610).
+#   6. every service in all four compose files caps its json-file logs
+#      (max-size 10m, max-file 3), so a fresh install cannot fill its disk
+#      (T-1629).
 #
 # Usage: sh deploy/tests/host-setup.test.sh
 # Exit 0 when every check passes, 1 on the first failure.
@@ -298,6 +301,39 @@ for _file in "deploy/docker-compose.yml" "deploy/coolify/docker-compose.yml" \
     ok "$_file mounts the desks root rshared"
   else
     bad "$_file does not mount the desks root rshared"
+  fi
+done
+
+# --- 3c. every service rotates its logs (T-1629) ------------------------
+#
+# Docker's default json-file driver never rotates, so a busy install fills its
+# disk. Every service in all four compose files must cap its logs. The raw
+# files have the same 2/4-space shape as a rendered config, so service_block
+# finds each block without needing docker or an env file.
+for _file in "deploy/docker-compose.yml" "deploy/coolify/docker-compose.yml" \
+  "deploy/coolify/docker-compose.app.yml" "deploy/coolify/zilar-core.yml"; do
+  _services="$(awk '
+    /^services:$/ { in_services = 1; next }
+    in_services && /^[^ ]/ { exit }
+    in_services && /^  [a-z][a-z0-9_-]*:$/ { print substr($0, 3, length($0) - 3) }
+  ' "$ROOT/$_file")"
+  _count="$(printf '%s\n' "$_services" | grep -c . || true)"
+  _missing=""
+  for _svc in $_services; do
+    service_block "$ROOT/$_file" "$_svc" | grep -q '^    logging:$' \
+      || _missing="$_missing $_svc"
+  done
+  if [ "$_count" -gt 0 ] && [ -z "$_missing" ]; then
+    ok "$_file: every service ($_count) rotates its logs"
+  else
+    bad "$_file: no logging block on:${_missing:- (no services found)}"
+  fi
+  if [ "$(grep -c '^      driver: json-file$' "$ROOT/$_file")" -eq "$_count" ] \
+    && [ "$(grep -c '^        max-size: 10m$' "$ROOT/$_file")" -eq "$_count" ] \
+    && [ "$(grep -c "^        max-file: '3'\$" "$ROOT/$_file")" -eq "$_count" ]; then
+    ok "$_file: json-file caps logs at 10m x 3 on every service"
+  else
+    bad "$_file: json-file max-size/max-file is not set once per service"
   fi
 done
 
