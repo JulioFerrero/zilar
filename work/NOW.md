@@ -285,12 +285,20 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
         - T-1689: web `MessageList.tsx` 393 → 246 (the scroll hook; checked in headless Chromium: opens at the bottom, the jump button works, 0 errors);
         - T-1690: phone `use-profile-settings.ts` 390 → 341 (the handle check);
         - T-1691: web `useVoiceRecorder.ts` 390 → 345 (the shared composer pieces).
-      - **Parity:** T-1693 (a phone "Copied" notice after copying, skipped on Android 13+ where the system confirms it; gap 6) is reviewed and merging.
-      - **Live (04:55 UTC):** healthy at T-1689's commit `4be53fcd0`.
+      - **Parity:** T-1693 merged (a phone "Copied" notice after copying, skipped on Android 13+ where the system confirms it; gap 6).
+      - **More splits merged:** T-1694 (`approvals/service.ts` 387 → 328: `verifyApproval`; the lead ran `src/approvals`: 85 passed). T-1697 (web `ChatView.tsx` 390 → 354: select mode) and T-1696 (ejabberd admin client 390 → 319: parsers and transport) are reviewed and merging.
+      - **Live (05:08 UTC) at `1b857bc42` (T-1691):**
+        - the changed routes (`/api/gifs/*`, `/api/media`, `/api/groups/x/members`, `/api/tools/*`, `/api/approvals*`) answer 401 signed out;
+        - 0 errors in the last 40 min, and only the usual 3 "AI is offline" warnings at container start.
+      - **Doctor audit** of the 21 commits since T-1669 (`8cd8e9be4`) is running.
       - **Running:**
-        - T-1692 (phone per-chat scroll memory, gap 7; fix round 1: retry the restore until the content covers the saved spot);
-        - T-1694 (`approvals/service.ts`: `verifyApproval`);
-        - T-1695 (web `lib/push.ts`: the badge code).
+        - T-1692 (phone per-chat scroll memory, gap 7). Fix rounds:
+          - 1: retry the restore until the content covers the spot;
+          - 2: end it when the list stops growing, and keep the spot on a no-scroll visit;
+          - an automatic round now for the viewport (`height >= offset + viewport`) and for not saving mid-restore.
+        - T-1695 (web `lib/push.ts`: the badge code);
+        - T-1698 (devtools `collect-snapshot.ts`: the worktree git cache);
+        - T-1699 (phone `ai-memory-section.tsx`: the memory logic).
       - **Phone QA pass postponed:** the emulator plus a Gradle build pushed swap to 6 GB and load to 74 alongside the workers, so it was stopped. Still waiting for an emulator check: T-1672 (Marta's shared media), T-1674 (sticker quote long hold), T-1677 (New message contacts), T-1692 and T-1693.
       - **Gap 5 (export on the phone) needs a design:** the export route wants a sign-in from the last 30 minutes (403 "reauth"), and the phone has no step-up re-sign-in, so a plain button would mostly fail.
       - **Emulator QA of T-1659..T-1667** (mock build of main, Pixel 7, 03:40 local):

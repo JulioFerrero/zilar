@@ -1,14 +1,13 @@
 import { randomBytes } from 'node:crypto';
 import { Exit, Schema } from 'effect';
-import { JidSchema, isValid } from '@zilar/protocol';
 import type { XmppConfig } from '../config';
-import { firstIssueMessage } from '../../effect/schema-issues';
-import { EjabberdApiError, errorText, isErrorBody, mentionsAlreadyExists } from './errors';
+import { errorText, isErrorBody, mentionsAlreadyExists } from './errors';
+import { parseJid, parseName, splitBareJid } from './names';
+import { createAdminTransport } from './transport';
 import {
   CheckAccountResultSchema,
   InvitationTargetsSchema,
   MutationResultSchema,
-  NameSchema,
   PasswordSchema,
   RoomAffiliationEntrySchema,
   RoomAffiliationSchema,
@@ -25,7 +24,6 @@ import {
 } from './schemas';
 import type {
   AddRosterItemOptions,
-  ApiResponse,
   CreateRoomOptions,
   CreatedResult,
   EjabberdAdminClient,
@@ -38,84 +36,15 @@ import type {
 // affiliations and subject changes never notify.
 const PUSH_SUBSCRIPTION_NODES = 'urn:xmpp:mucsub:nodes:messages';
 
-function basicAuthHeader(user: string, password: string): string {
-  return `Basic ${Buffer.from(`${user}:${password}`, 'utf8').toString('base64')}`;
-}
-
-function parseName(value: string, label: string): string {
-  const exit = Schema.decodeUnknownExit(NameSchema)(value);
-  if (Exit.isFailure(exit)) {
-    let message: string | undefined;
-    for (const reason of exit.cause.reasons) {
-      if (reason._tag === 'Fail') {
-        message = firstIssueMessage(reason.error.issue);
-        break;
-      }
-    }
-    throw new Error(`${label} "${value}" is invalid: ${message ?? 'invalid'}`);
-  }
-  return exit.value;
-}
-
-function splitBareJid(value: string): { user: string; host: string } {
-  if (!isValid(JidSchema)(value)) {
-    throw new Error(`jid "${value}" is invalid`);
-  }
-  const at = value.indexOf('@');
-  return { user: value.slice(0, at), host: value.slice(at + 1) };
-}
-
-// A JID that may carry a resource (a full JID), for `send_stanza`.
-function parseJid(value: string, label: string): string {
-  if (!isValid(JidSchema)(value)) {
-    throw new Error(`${label} jid "${value}" is invalid`);
-  }
-  return value;
-}
-
 export function createEjabberdAdminClient(
   config: XmppConfig,
   fetchImpl: FetchLike = fetch,
 ): EjabberdAdminClient {
-  async function call(command: string, body: Record<string, unknown>): Promise<ApiResponse> {
-    const response = await fetchImpl(`${config.apiUrl}/${command}`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: basicAuthHeader(config.adminJid, config.adminPassword),
-      },
-      body: JSON.stringify(body),
-    });
-    const text = await response.text();
-    let parsed: unknown = null;
-    if (text !== '') {
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        parsed = text;
-      }
-    }
-    return { status: response.status, ok: response.ok, body: parsed };
-  }
-
-  function fail(command: string, response: ApiResponse, detail?: string): never {
-    throw new EjabberdApiError(command, response.status, detail ?? errorText(response.body));
-  }
-
-  function expectOk(command: string, response: ApiResponse): unknown {
-    if (!response.ok || isErrorBody(response.body)) {
-      fail(command, response);
-    }
-    return response.body;
-  }
-
-  function expectMutationResult(command: string, response: ApiResponse): void {
-    const result = expectOk(command, response);
-    const parsed = Schema.decodeUnknownExit(MutationResultSchema)(result);
-    if (Exit.isFailure(parsed)) {
-      fail(command, response, `unexpected result: ${errorText(result)}`);
-    }
-  }
+  const transport = createAdminTransport(config, fetchImpl);
+  const { call, expectOk, expectMutationResult } = transport;
+  // `typeof` keeps `fail`'s `never` return type, so the methods' control flow
+  // still narrows after an `if (Exit.isFailure(...)) fail(...)`.
+  const fail: typeof transport.fail = transport.fail;
 
   return {
     async registerUser(localpart: string): Promise<CreatedResult> {

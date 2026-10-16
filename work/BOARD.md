@@ -1705,3 +1705,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1693](T-1693-phone-copied-notice.md) | Phone: a short Copied notice after copying messages | 2026-10-16 |
 | [T-1694](T-1694-split-approvals-service.md) | Split verifyApproval out of approvals/service.ts | 2026-10-16 |
 | [T-1697](T-1697-split-chat-view.md) | Split the select mode out of the web ChatView | 2026-10-16 |
+| [T-1696](T-1696-split-admin-client.md) | Split the ejabberd admin client's parsers and transport | 2026-10-16 |
