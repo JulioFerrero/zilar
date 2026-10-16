@@ -1647,3 +1647,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1633](T-1633-wire-smart-wake.md) | Group AIs wake on a name, a one-AI-room question or a follow-up | 2026-10-16 |
 | [T-1637](T-1637-split-run-tool.md) | Split the worker schemas out of sandbox/run-tool.ts | 2026-10-16 |
 | [T-1638](T-1638-routine-kind-migration.md) | Routines can hold a prompt: migration 0067 and the row type | 2026-10-16 |
+| [T-1630](T-1630-findings-resweep.md) | Fresh status for the open server findings | 2026-10-16 |
