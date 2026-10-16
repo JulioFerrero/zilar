@@ -16,6 +16,7 @@ import {
   type TopicSheetAction,
 } from '@/components/chat/topic-sheets';
 import { useGroupNewTopic } from '@/components/chat/use-group-new-topic';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import { mutedUntilFor } from '@/lib/chat-prefs';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
@@ -67,6 +68,7 @@ function GroupTopics() {
   const [sheetFor, setSheetFor] = useState<ChatSummary | null>(null);
   const [sheetMuteOpen, setSheetMuteOpen] = useState(false);
   const [sheetError, setSheetError] = useState('');
+  const [confirmArchive, setConfirmArchive] = useState<ChatSummary | null>(null);
   const [openedNewTopic, setOpenedNewTopic] = useState(false);
 
   // The detail is keyed by group id (not chat id): load it on mount so the
@@ -125,6 +127,7 @@ function GroupTopics() {
           Effect.sync(() => {
             setSheetFor(null);
             setSheetMuteOpen(false);
+            setConfirmArchive(null);
           }),
         ),
       ),
@@ -159,7 +162,9 @@ function GroupTopics() {
       return;
     }
     setSheetError('');
-    runArchive(chat.id);
+    setConfirmArchive(chat);
+    setSheetFor(null);
+    setSheetMuteOpen(false);
   };
 
   const runSheetPref = (action: TopicPrefAction) => {
@@ -274,7 +279,31 @@ function GroupTopics() {
           }
         }}
       />
-      {sheetError !== '' ? (
+      <ConfirmDialog
+        visible={confirmArchive !== null}
+        title={`Archive “${confirmArchive?.title ?? ''}” for everyone?`}
+        message="The topic disappears from the list for everyone. Its history stays on the server."
+        error={sheetError}
+        confirmLabel="Archive"
+        busyLabel="Archiving…"
+        busy={isWaiting(archiveState)}
+        onCancel={() => {
+          if (!isWaiting(archiveState)) {
+            setConfirmArchive(null);
+            setSheetError('');
+          }
+        }}
+        onConfirm={() => {
+          if (confirmArchive !== null) {
+            // Clear before each attempt so a stale error from a failed try
+            // cannot survive a successful retry (the sibling host clears
+            // `infoError` the same way).
+            setSheetError('');
+            runArchive(confirmArchive.id);
+          }
+        }}
+      />
+      {sheetError !== '' && confirmArchive === null ? (
         <View className="absolute bottom-24 left-4 right-4 rounded-[10px] bg-danger/20 px-3 py-2">
           <Text className="text-center text-[13px] text-danger">{sheetError}</Text>
         </View>

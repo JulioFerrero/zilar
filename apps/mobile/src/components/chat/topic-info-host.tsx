@@ -1,6 +1,9 @@
+import { useState } from 'react';
+
 import { AiMemorySheet } from '@/components/ais/ai-memory-sheet';
 import { TopicInfoSheet } from '@/components/chat/topic-sheets';
 import type { ChatScreen } from '@/components/chat/use-chat-screen';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { runInBackground } from '@/lib/effect/run-in-background';
 import { attachedRoleIds, describeRolesError, mayManageRoles } from '@/lib/roles';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -18,6 +21,8 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
   const setTopicRoles = useChatStore((state) => state.setTopicRoles);
   const refreshTopicRoles = useChatStore((state) => state.refreshTopicRoles);
   const refreshGroupRoles = useChatStore((state) => state.refreshGroupRoles);
+
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
 
   const saveTopicRoles = (roleIds: string[], approverRoleId: string | null): void => {
     screen.setInfoRolesError('');
@@ -50,10 +55,16 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
     screen.setInfoBusy(true);
     screen.setInfoError('');
     runInBackground(() => patchTopic(chat.id, { archived: true }), {
-      onSuccess: () => screen.setInfoOpen(false),
+      onSuccess: () => setConfirmingArchive(false),
       onFailure: () => screen.setInfoError('Could not archive the topic. Try again.'),
       onSettled: () => screen.setInfoBusy(false),
     });
+  };
+
+  const onAskArchive = () => {
+    screen.setInfoError('');
+    screen.setInfoOpen(false);
+    setConfirmingArchive(true);
   };
 
   const onRetryRoles = () => {
@@ -86,7 +97,7 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
         busy={screen.infoBusy}
         error={screen.infoError}
         onLeave={onLeave}
-        onArchive={onArchive}
+        onArchive={onAskArchive}
         onClose={() => {
           if (!screen.infoBusy) {
             screen.setInfoOpen(false);
@@ -114,6 +125,22 @@ export function TopicInfoHost({ screen, chat }: TopicInfoHostProps) {
           screen.setInfoOpen(false);
           screen.setMemoryAi(ai);
         }}
+      />
+      <ConfirmDialog
+        visible={confirmingArchive}
+        title={`Archive “${chat.title}” for everyone?`}
+        message="The topic disappears from the list for everyone. Its history stays on the server."
+        error={screen.infoError}
+        confirmLabel="Archive"
+        busyLabel="Archiving…"
+        busy={screen.infoBusy}
+        onCancel={() => {
+          if (!screen.infoBusy) {
+            setConfirmingArchive(false);
+            screen.setInfoError('');
+          }
+        }}
+        onConfirm={onArchive}
       />
       <AiMemorySheet
         api={screen.memoryApi}

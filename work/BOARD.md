@@ -1672,3 +1672,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1660](T-1660-phone-emoji-search.md) | Phone: search the Emoji tab by name | 2026-10-16 |
 | [T-1662](T-1662-topic-header-group-link.md) | Phone: the topic header's group name opens the group | 2026-10-16 |
 | [T-1661](T-1661-split-group-turn-body.md) | Split the room turn's access rules into group-turn-access.ts | 2026-10-16 |
+| [T-1663](T-1663-confirm-archive-topic.md) | Phone: archiving a topic for everyone asks first | 2026-10-16 |
