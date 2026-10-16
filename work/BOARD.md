@@ -1702,3 +1702,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1689](T-1689-split-message-list.md) | Split the scroll logic out of the web MessageList | 2026-10-16 |
 | [T-1690](T-1690-split-profile-settings.md) | Split the handle check out of the phone profile hook | 2026-10-16 |
 | [T-1691](T-1691-split-voice-recorder.md) | Split the shared composer pieces out of useVoiceRecorder | 2026-10-16 |
+| [T-1693](T-1693-phone-copied-notice.md) | Phone: a short Copied notice after copying messages | 2026-10-16 |

@@ -3,6 +3,7 @@ import { Effect } from 'effect';
 import * as Clipboard from 'expo-clipboard';
 
 import { useAlbumMembers } from '@/components/chat/album-members';
+import { systemConfirmsCopy, useChatNotice } from '@/components/chat/chat-notice-context';
 import { tap } from '@/components/chat/haptics';
 import { MessageActionsSheet } from '@/components/chat/message-actions-sheet';
 import { useChatStore } from '@/store/chat-store-provider';
@@ -82,6 +83,9 @@ export function BubbleActionsSheet({
   const deleteFailedMessage = useChatStore((state) => state.deleteFailedMessage);
   const deleteForMe = useChatStore((state) => state.deleteForMe);
   const currentUserId = useChatStore((state) => state.currentUserId);
+  // The chat's one toast, for the "Copied" confirmation (T-1693). A sheet
+  // drawn outside a thread gets the no-op.
+  const notify = useChatNotice();
   // T-1274: on an album bubble Delete acts on every photo. The list row hands
   // the grid its grouped members; with two or more, both confirms loop over all
   // of them (an album is one sender, so the own/peer rule is unchanged). A lone
@@ -143,6 +147,9 @@ export function BubbleActionsSheet({
       onCopy={() => {
         setMenuOpen(false);
         copyMessageText(message.text ?? '');
+        if (!systemConfirmsCopy()) {
+          notify('Copied');
+        }
       }}
       onDelete={() => {
         setConfirmOpen(true);

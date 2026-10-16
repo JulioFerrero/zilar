@@ -41,12 +41,15 @@ export function SelectionBar({
   chat,
   selectedIds,
   onForward,
+  onCopied,
   onCancel,
 }: {
   chat: { id: string; kind: string; isAI?: boolean };
   /** The checked message ids, in the order they were checked. */
   selectedIds: string[];
   onForward: () => void;
+  /** A successful copy (T-1693): the dock shows the chat's "Copied" notice. */
+  onCopied?: () => void;
   onCancel: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -92,6 +95,7 @@ export function SelectionBar({
         ),
       ).pipe(Effect.ignore),
     );
+    onCopied?.();
     onCancel();
   };
 

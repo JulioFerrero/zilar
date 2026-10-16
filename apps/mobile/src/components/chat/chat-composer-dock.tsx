@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 
 import { AiStatusLine } from '@/components/chat/ai-status-line';
 import { ChannelComposerBar } from '@/components/chat/channel-composer-bar';
+import { systemConfirmsCopy } from '@/components/chat/chat-notice-context';
 import { Composer } from '@/components/chat/composer';
 import { SelectionBar } from '@/components/chat/selection-bar';
 import type { ChatScreen } from '@/components/chat/use-chat-screen';
@@ -149,6 +150,11 @@ export function ChatComposerDock({ screen, chat, variant }: ChatComposerDockProp
           selectedIds={screen.selectedIds}
           onCancel={() => screen.setSelectedIds([])}
           onForward={screen.forwardSelected}
+          onCopied={() => {
+            if (!systemConfirmsCopy()) {
+              screen.setNotice('Copied');
+            }
+          }}
         />
       ) : variant === 'composer' ? (
         <>

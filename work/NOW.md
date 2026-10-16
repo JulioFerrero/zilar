@@ -276,12 +276,22 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
           - T-1682: `gifs/giphy.ts` 397 → 190, plus the unused fake provider deleted;
           - T-1683: web `panels/topicPanelOps.ts` 398 → 278.
       - **Tooling hiccup:** under load, `lead merge` hit `spawnSync git ETIMEDOUT` after the squash for T-1679 (branch and state cleanup) and T-1683 (the push). The lead finished them by hand (branch deleted, `lead forget`, the next merge pushed). Main and origin are in sync.
-      - **Running (more splits of 390+ line files):**
-        - T-1684 (phone `group-actions.ts`: the role actions);
-        - T-1685 (`tools/mutations.ts`: the deletes);
-        - T-1686 (`tools/queries.ts`: the row mappers);
-        - T-1687 (`groups/ais.ts`: the topic-room sync);
-        - T-1688 (`media/api.ts`: the item mapping).
+      - **Merged, 04:00–05:00 UTC (more size splits, each checked by diff as a word-for-word move):**
+        - T-1684: phone `group-actions.ts` 393 → 300 (the role actions);
+        - T-1685: `tools/mutations.ts` 393 → 334 (the deletes);
+        - T-1686: `tools/queries.ts` 392 → 343 (the row mappers);
+        - T-1687: `groups/ais.ts` 390 → 278 (the topic-room sync);
+        - T-1688: `media/api.ts` 391 → 314 (the gallery item mapping);
+        - T-1689: web `MessageList.tsx` 393 → 246 (the scroll hook; checked in headless Chromium: opens at the bottom, the jump button works, 0 errors);
+        - T-1690: phone `use-profile-settings.ts` 390 → 341 (the handle check);
+        - T-1691: web `useVoiceRecorder.ts` 390 → 345 (the shared composer pieces).
+      - **Parity:** T-1693 (a phone "Copied" notice after copying, skipped on Android 13+ where the system confirms it; gap 6) is reviewed and merging.
+      - **Live (04:55 UTC):** healthy at T-1689's commit `4be53fcd0`.
+      - **Running:**
+        - T-1692 (phone per-chat scroll memory, gap 7; fix round 1: retry the restore until the content covers the saved spot);
+        - T-1694 (`approvals/service.ts`: `verifyApproval`);
+        - T-1695 (web `lib/push.ts`: the badge code).
+      - **Phone QA pass postponed:** the emulator plus a Gradle build pushed swap to 6 GB and load to 74 alongside the workers, so it was stopped. Still waiting for an emulator check: T-1672 (Marta's shared media), T-1674 (sticker quote long hold), T-1677 (New message contacts), T-1692 and T-1693.
       - **Gap 5 (export on the phone) needs a design:** the export route wants a sign-in from the last 30 minutes (403 "reauth"), and the phone has no step-up re-sign-in, so a plain button would mostly fail.
       - **Emulator QA of T-1659..T-1667** (mock build of main, Pixel 7, 03:40 local):
         - ✅ T-1659: back cancels an armed reply and stays in the chat.

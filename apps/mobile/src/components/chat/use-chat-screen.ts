@@ -71,6 +71,9 @@ export function useChatScreen() {
   // A partial AI create lands here with `?notice=partial`: a quiet notice shown
   // once, like the search-jump miss above (T-1472).
   const [partialNotice, setPartialNotice] = useState(params.notice === 'partial');
+  // A short "Copied" notice asked for by the tiles (T-1693): the thread shows
+  // it through its one toast and clears it, like the search-jump miss above.
+  const [notice, setNotice] = useState<string | null>(null);
   // The topic rows in the info sheet (link, done) report a save failure here.
   const [topicError, setTopicError] = useState('');
   const [pinsOpen, setPinsOpen] = useState(false);
@@ -280,6 +283,8 @@ export function useChatScreen() {
     setJumpError,
     jumpMissed,
     setJumpMissed,
+    notice,
+    setNotice,
     pins,
     pinsError,
     pinIndex,
