@@ -68,6 +68,27 @@ export function typingLabel(chat: ChatSummary, names: readonly string[]): string
   return 'typing';
 }
 
+/**
+ * T-1777: the header's "… writing" line while people or AIs write, from the
+ * `PhoneHeader.dc.html` board. One writer is named; two are named; three or
+ * more read as a count. First names, like `typingLabel`.
+ */
+export function writingLabel(names: readonly string[]): string | undefined {
+  const first = names[0];
+  if (first === undefined) {
+    return undefined;
+  }
+  const second = names[1];
+  if (second === undefined) {
+    return `${firstName(first)} is writing…`;
+  }
+  const third = names[2];
+  if (third === undefined) {
+    return `${firstName(first)}, ${firstName(second)} writing…`;
+  }
+  return `${names.length} writing…`;
+}
+
 /** Reply reference built from a message, used by the composer's reply bar. */
 export function replyRef(message: UiMessage, currentUserId: string): ReplyRef {
   const text = previewBody(message);

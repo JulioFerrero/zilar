@@ -1781,3 +1781,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1772](T-1772-web-progress-blocks.md) | web progress, timeline and countdown blocks | 2026-10-16 |
 | [T-1775](T-1775-phone-data-blocks.md) | phone stats and table blocks | 2026-10-16 |
 | [T-1769](T-1769-topic-one-step-add.md) | one-step add to topics; group cap under the join lock | 2026-10-16 |
+| [T-1777](T-1777-topic-people-shared.md) | topic people shared client data | 2026-10-16 |

@@ -150,6 +150,13 @@ export interface TopicAiActivity {
   state: TopicAiState;
 }
 
+/** T-1777: one AI of a topic, as the people line shows it, with its picture. */
+export interface TopicInfoAi {
+  id: string;
+  name: string;
+  avatarUrl?: string;
+}
+
 /**
  * The task strip of a group topic (T-0111). Present only on chats that are
  * topics; absent on DMs and AI chats. The General topic carries `isGeneral`
@@ -170,6 +177,13 @@ export interface TopicInfo {
   linkLabel: string | null;
   /** T-1514: the AIs at work in this topic, idle ones left out. */
   activity: TopicAiActivity[];
+  /**
+   * T-1777: the people in this topic; General is the whole group. Absent on
+   * older servers and fixtures, which read as "nobody listed".
+   */
+  memberIds?: string[];
+  /** T-1777: the topic's AIs, with their pictures when they have one. */
+  ais?: TopicInfoAi[];
 }
 
 export interface ChatSummary {

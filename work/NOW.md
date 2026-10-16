@@ -528,6 +528,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                   - **The fix is T-1766 (running):** a tool can set `card {title, icon, meta}`; tool.run titles default to a readable name; a sandbox `fmt` helper (QuickJS has no Intl); the guide gets the board's example.
                   - After it deploys, Julio asks Deepseek to update `market-prices` to the board's shape.
                 - **T-1764 (S2) and T-1766 are live (`b188fe043`, about 22:52 UTC).** Health OK.
+            - **Night 10-17:** Julio is asleep until about 08:00 UTC ("continue with work all night"). The emulator is OK. Batched deploys only. Leave a morning summary here.
+            - **Pre-reviews on the free Muse fail at start** (outcome failed, from about 23:14 UTC).
+              - The six stuck reviews were switched to paid Muse by hand (`session.switchModel` + `session.prompt`).
+              - **The autopilot fix is T-1778 (running).**
             - **The general cards pass** (Julio 10-17: "jack-of-all-trades"; "both in parallel"; live test OK in a new topic "cards test" as @claude_test):
               - **T-1767 is merged and held** (the group seams).
                 - **Merged and held:** T-1770 (web data), T-1772 (web progress) and T-1775 (phone data), each checked in Cosmos against the board.
@@ -541,8 +545,10 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
                 - Run it after T-1768 and the web groups deploy.
               - **Later:** Wave 2 (interactive kinds: block_responses + the response path), and media kinds (images/file).
             - **Topic server:**
-              - **T-1769 S1 (running):** the one-step add, plus the cap under the advisory lock.
-              - **S6 (preview) next**, then W1–W10.
+              - **T-1769 S1 is merged and pushed** in batch `659f8125e`, together with T-1767, T-1770, T-1772 and T-1775.
+              - **T-1774 S6 (preview):** in a fix round (the original id, a scoping test, live-card edits).
+              - **T-1777 (running):** the shared client data — TopicInfo.memberIds/ais, `writingLabel`, `inTopic`, and the mock.
+              - **Then W1–W4 in parallel** (header stack + writing line; the @ filter + the "isn't in" line), then W5–W10.
             - **Push plan (done up to step 2):**
               1. Once T-1755 merges: `lead push`, which deploys blocks plus T-1753, T-1754 and T-1760. Check `/health`.
               2. Then merge T-1757 to main **and do not push main again until W9/W10 (the Join UI) merge.** S1, S2, S6 and the W tasks build on it.

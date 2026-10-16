@@ -16,8 +16,12 @@ export interface TopicRoleSource {
 export interface TopicViewSource {
   /** How many members the topic's group has (a public topic shows all of them). */
   groupMemberCount(groupId: string): number;
+  /** T-1777: the people of a group, for a public topic's `memberIds`. */
+  groupMemberIds(groupId: string): readonly string[];
   role(roleId: string): TopicRoleSource | undefined;
   aiName(aiId: string): string;
+  /** T-1777: the AI's picture url, when it has one. */
+  aiAvatarUrl(aiId: string): string | undefined;
   /** T-1537: the AI's bare JID, so the client can match its live card. */
   aiJid(aiId: string): string | undefined;
 }
@@ -39,6 +43,17 @@ export function buildTopicView(topic: MockTopic, source: TopicViewSource): Topic
           ...topic.roleIds.flatMap((roleId) => source.role(roleId)?.memberIds ?? []),
         ]).size + topic.aiIds.length
       : source.groupMemberCount(topic.groupId);
+  // T-1777: the same sets as `memberCount`, people only, so the client can tell
+  // who is in the topic.
+  const memberIds =
+    topic.visibility === 'private'
+      ? [
+          ...new Set([
+            ...topic.memberIds,
+            ...topic.roleIds.flatMap((roleId) => source.role(roleId)?.memberIds ?? []),
+          ]),
+        ]
+      : [...source.groupMemberIds(topic.groupId)];
   return {
     id: topic.id,
     groupId: topic.groupId,
@@ -55,7 +70,15 @@ export function buildTopicView(topic: MockTopic, source: TopicViewSource): Topic
     archived: topic.archived,
     doneAt: topic.doneAt ?? null,
     memberCount,
-    ais: topic.aiIds.map((aiId) => ({ id: aiId, name: source.aiName(aiId) })),
+    memberIds,
+    ais: topic.aiIds.map((aiId) => {
+      const avatarUrl = source.aiAvatarUrl(aiId);
+      return {
+        id: aiId,
+        name: source.aiName(aiId),
+        ...(avatarUrl === undefined ? {} : { avatarUrl }),
+      };
+    }),
     roles,
     approverRole: approver === null ? null : { id: approver.id, name: approver.name },
     // T-1514: the topic's AI activity, empty for an idle topic. T-1537: each
@@ -81,6 +104,8 @@ export function viewSourceFromData(data: MockData): TopicViewSource {
       const group = data.findGroup(groupId);
       return (group?.members.length ?? 0) + (group?.ais.length ?? 0);
     },
+    groupMemberIds: (groupId) =>
+      data.findGroup(groupId)?.members.map((member) => member.userId) ?? [],
     role: (roleId) => {
       const role = data.findGroupRole(roleId);
       return role === undefined
@@ -88,6 +113,7 @@ export function viewSourceFromData(data: MockData): TopicViewSource {
         : { id: role.id, name: role.name, memberIds: role.memberIds };
     },
     aiName: (aiId) => data.ais.find((ai) => ai.id === aiId)?.name ?? 'An AI',
+    aiAvatarUrl: (aiId) => data.findAi(aiId)?.avatarUrl,
     aiJid: (aiId) => data.ais.find((ai) => ai.id === aiId)?.jid,
   };
 }

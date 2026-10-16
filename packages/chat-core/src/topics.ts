@@ -60,3 +60,24 @@ export function isTopicJoined(
 ): boolean {
   return topic.isGeneral || (topic.memberIds ?? []).includes(userId);
 }
+
+/**
+ * T-1777: whether a person or an AI is in a topic. General is everyone's;
+ * otherwise a person is in when listed in `memberIds` and an AI when listed in
+ * `ais`. Older servers omit both lists, which reads as "not in".
+ */
+export function inTopic(
+  topic: {
+    isGeneral: boolean;
+    memberIds?: readonly string[];
+    ais?: readonly { id: string }[];
+  },
+  entity: { kind: 'person' | 'ai'; id: string },
+): boolean {
+  if (topic.isGeneral) {
+    return true;
+  }
+  return entity.kind === 'person'
+    ? (topic.memberIds ?? []).includes(entity.id)
+    : (topic.ais ?? []).some((ai) => ai.id === entity.id);
+}

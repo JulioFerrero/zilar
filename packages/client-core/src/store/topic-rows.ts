@@ -55,6 +55,14 @@ function topicInfoOf(topic: Topic): TopicInfo {
     linkUrl: topic.linkUrl,
     linkLabel: topic.linkLabel,
     activity: topicActivityOf(topic),
+    // T-1777: the topic's people and AIs, so both apps can paint them. An
+    // older server omits `memberIds`; the AIs always come with an `ais` array.
+    ...(topic.memberIds === undefined ? {} : { memberIds: [...topic.memberIds] }),
+    ais: topic.ais.map((ai) => ({
+      id: ai.id,
+      name: ai.name,
+      ...(ai.avatarUrl === undefined ? {} : { avatarUrl: ai.avatarUrl }),
+    })),
   };
 }
 
