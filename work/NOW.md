@@ -479,6 +479,20 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
           - **Julio's case:** @Deepseek is in no topic list of Financial, so the mention was silent. The phone topic sheet can't add AIs; only web has `TopicAisSection`.
           - **The model today:** `group_members`, `group_ais`, per-topic `topic_ais`, and `topic_members` for private topics. An AI has to join the group, then each topic.
           - **Julio chose "Per topic, one step":** Add inside a topic shows people and AIs together, and adding an AI also adds it to the group.
+          - **About 21:00 UTC, approved after round 1** ("much much much better thanks we can implement"). Round 1:
+            - tools and routines per topic;
+            - no "not in topic" list in @;
+            - a two-line header;
+            - the writing states.
+          - **Boards** are in `docs/design/mockups/topic-people/` (`e7653e860`). **T-1750 (the plan) is running.**
+          - **Round 2 (about 21:30 UTC),** boards `b7c239dc5`:
+            - join, leave and mute a topic;
+            - **new public topics start empty** (Julio's choice); existing ones get a backfill.
+            - **When T-1750's packet arrives,** send it `~/.claude/jobs/ab934c68/tmp/T-1750-round2.md` before merging.
+            - **Julio approved round 2** ("you have my okay"), so the plan then turns into specs.
+            - **The round 2 scope was sent to T-1750** after its clean packet; it's working.
+          - **Blocks:** the specs for T-1751 (B2, server `buildBlocksPayload`) and T-1752 (B3, chat-core view helpers) are written and pass spec-check. They launch when T-1749 merges.
+          - **v0.2.6 is verified:** the APK embeds 0.2.6 / 206. Julio installs it by hand once. The blocks plan T-1747 is merged; **T-1749 (the blocks schema) is running.**
           - **Canvas:** https://claude.ai/artifact/UT7nHBowuCSmev1xLBdMxA (8 boards: the header people stack, the "isn't in Financial · Add" line, the @ list with who's here, the In this topic sheet and panel, Add people or AIs, the group screen with who's in each topic). It's waiting for Julio's rounds; the files are in `.git/zilar-canvas/topics/`.
         - **T-1724 is running:** the core with no UI (GitHub latest release, version compare, the arm64 download, the installer intent, `REQUEST_INSTALL_PACKAGES`, the `useAppUpdate()` hook);
         - **the canvas** for the prompt and the Settings "This app" row: https://claude.ai/artifact/AMYshRxWEz3Ur5F9wAbNvQ. It waits for Julio's OK, then the UI spec;

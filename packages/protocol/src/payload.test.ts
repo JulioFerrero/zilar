@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { decodePayload, encodePayload, MAX_PAYLOAD_BYTES, type Payload, type Task } from './index';
+import {
+  decodePayload,
+  encodePayload,
+  MAX_BLOCKS,
+  MAX_PAYLOAD_BYTES,
+  type Payload,
+  type Task,
+} from './index';
 
 const taskData: Task = {
   id: 't-17',
@@ -346,5 +353,47 @@ describe('ProgressSchema (T-1414 task card)', () => {
     });
 
     expect(decodePayload(envelope).ok).toBe(false);
+  });
+});
+
+describe('BlocksSchema (T-1749 message blocks)', () => {
+  it('decodes a blocks payload with a figure, checklist, link and callout', () => {
+    const payload: Payload = {
+      v: 0,
+      type: 'blocks',
+      data: {
+        icon: 'info',
+        meta: '09:00',
+        fallback: 'Revenue is up, ship the release, then read the report.',
+        blocks: [
+          { kind: 'figure', rows: [{ label: 'Revenue', value: '$82,302' }] },
+          {
+            kind: 'checklist',
+            id: 'checklist-1',
+            title: 'Today',
+            items: [{ id: 'item-1', label: 'Ship the release', done: false, by: 'Ana' }],
+          },
+          { kind: 'link', url: 'https://example.com/report', site: 'example.com', title: 'Report' },
+          { kind: 'callout', tone: 'success', text: 'All systems green' },
+        ],
+      },
+    };
+
+    expect(decodePayload(encodePayload(payload))).toEqual({ ok: true, payload });
+  });
+
+  it('rejects 13 blocks, an unknown icon and an http link', () => {
+    const envelope = (data: unknown) => JSON.stringify({ v: 0, type: 'blocks', data });
+    const callout = { kind: 'callout', tone: 'info', text: 'x' };
+    const many = { fallback: 'x', blocks: Array.from({ length: MAX_BLOCKS + 1 }, () => callout) };
+    const badIcon = { icon: 'not-an-icon', fallback: 'x', blocks: [callout] };
+    const httpLink = {
+      fallback: 'x',
+      blocks: [{ kind: 'link', url: 'http://example.com', title: 'x' }],
+    };
+
+    expect(decodePayload(envelope(many)).ok).toBe(false);
+    expect(decodePayload(envelope(badIcon)).ok).toBe(false);
+    expect(decodePayload(envelope(httpLink)).ok).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 import { Schema } from 'effect';
 import { ApprovalDecisionSchema, ApprovalRequestSchema } from './approval';
 import { AttachmentSchema } from './attachment';
+import { BlocksDataSchema } from './blocks';
 import { decodeOrThrow, isValid } from './common';
 import { HandoffSchema } from './handoff';
 import { HandoffLineSchema } from './handoff-line';
@@ -53,6 +54,7 @@ export const PayloadSchema = Schema.Union([
   Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('sticker'), data: StickerSchema }),
   Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('question'), data: QuestionSchema }),
   Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('routine'), data: RoutinePostSchema }),
+  Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('blocks'), data: BlocksDataSchema }),
 ]);
 
 export type Payload = typeof PayloadSchema.Type;

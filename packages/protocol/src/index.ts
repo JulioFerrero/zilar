@@ -12,6 +12,7 @@ export * from './forward';
 export * from './handoff';
 export * from './handoff-line';
 export * from './payload';
+export * from './blocks';
 export * from './question';
 export * from './routine';
 export * from './sticker';
