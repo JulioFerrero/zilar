@@ -385,7 +385,8 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
         - T-1722 (the routine header and chat bump) is merged; healthy, 0 errors;
         - **waiting on Julio:** the v0.2.3 tag for the phone build (icon, phone Routines, routine header and card, "edited HH:MM"), and his test pass.
       - **12:35 UTC:** v0.2.3 was tagged with Julio's OK. Its signed APKs (arm64 and universal) are on the GitHub release. The test list was sent to Julio, and the lead is waiting for his results.
-      - **13:10 UTC, new ask (Julio):** an Android in-app updater: check, download, prompt to install.
+      - **About 12:40 UTC, new ask (Julio):** an Android in-app updater: check, download, prompt to install. At 12:50 Julio approved the boards as drawn, with a quiet download on Wi-Fi and asking first on mobile data. The boards are in `docs/design/mockups/updater/`. T-1724 got round 2 (that flow plus one shared store); T-1725 (the UI) is specced and launches after T-1724.
+      - **About 12:55 UTC (Julio's v0.2.3 screenshot):** the Android icon mark touches the launcher's circle (the moon's far edge is 346 px from the center; the visible radius is 341). T-1726 is running: the adaptive layers go from 563 to 390 px. It goes out in v0.2.4 with the updater.
         - **T-1724 is running:** the core with no UI (GitHub latest release, version compare, the arm64 download, the installer intent, `REQUEST_INSTALL_PACKAGES`, the `useAppUpdate()` hook);
         - **the canvas** for the prompt and the Settings "This app" row: https://claude.ai/artifact/AMYshRxWEz3Ur5F9wAbNvQ. It waits for Julio's OK, then the UI spec;
         - **open choice:** quiet download on Wi-Fi (this needs `expo-network`) or always ask first.
