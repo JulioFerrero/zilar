@@ -19,6 +19,7 @@ import {
   ASK_PEOPLE_TOOL,
   DELEGATE_TOOL,
   MEMORY_ZOOM_TOOL,
+  POST_BLOCKS_TOOL,
   RECALL_TOOL,
   REMEMBER_TOOL,
   REQUEST_ACTION_TOOL,
@@ -65,6 +66,17 @@ export type ValidToolCall =
   // T-1576: `ask_people` asks the people in a group room one question with 2-4
   // reply options. Only offered when a person triggered the turn.
   | { id: string; tool: typeof ASK_PEOPLE_TOOL; question: string; options: string[] }
+  // T-1758: `post_blocks` posts a small native card in a group room. `blocks`
+  // is the unchecked array the runner validates with `buildBlocksPayload`.
+  | {
+      id: string;
+      tool: typeof POST_BLOCKS_TOOL;
+      text: string;
+      title?: string;
+      icon?: string;
+      meta?: string;
+      blocks: unknown[];
+    }
   // T-1409: the desk tools. `args` is the already-validated argument object;
   // the daemon validates it again.
   | { id: string; tool: DeskToolName; args: Record<string, unknown> };

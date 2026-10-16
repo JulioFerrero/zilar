@@ -6,6 +6,7 @@ import {
   ASK_PEOPLE_TOOL,
   DELEGATE_TOOL,
   MEMORY_ZOOM_TOOL,
+  POST_BLOCKS_TOOL,
   RECALL_TOOL,
   REMEMBER_TOOL,
   REQUEST_ACTION_TOOL,
@@ -218,6 +219,17 @@ function toCall(parsed: ParsedToolArgumentsOk, id: string): ValidToolCall {
   }
   if (parsed.tool === ASK_PEOPLE_TOOL) {
     return { id, tool: ASK_PEOPLE_TOOL, question: parsed.question, options: parsed.options };
+  }
+  if (parsed.tool === POST_BLOCKS_TOOL) {
+    return {
+      id,
+      tool: POST_BLOCKS_TOOL,
+      text: parsed.text,
+      ...(parsed.title === undefined ? {} : { title: parsed.title }),
+      ...(parsed.icon === undefined ? {} : { icon: parsed.icon }),
+      ...(parsed.meta === undefined ? {} : { meta: parsed.meta }),
+      blocks: parsed.blocks,
+    };
   }
   // T-1409: the desk tools carry their validated args straight to the executor.
   if (isDeskParsedTool(parsed)) {

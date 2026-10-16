@@ -18,6 +18,7 @@ export {
   MEMORY_ZOOM_TOOL,
   PERSONA_MAX_LENGTH,
   PERSONA_SUMMARY_MAX_LENGTH,
+  POST_BLOCKS_TOOL,
   READ_TOOL,
   RECALL_TOOL,
   REMEMBERED_FACT_MAX_LENGTH,
@@ -35,6 +36,7 @@ export {
   GlobArgsSchema,
   GrepArgsSchema,
   MemoryZoomArgsSchema,
+  PostBlocksArgsSchema,
   ReadArgsSchema,
   RecallArgsSchema,
   RememberArgsSchema,
@@ -50,6 +52,7 @@ export type { DeskToolName, ParsedToolArguments } from './tools/schemas';
 export { TOOL_NAME_MAX_LENGTH, parseToolArguments, safeToolName } from './tools/parse';
 
 export type { ChatToolDefinition } from './tools/definitions';
+export { POST_BLOCKS_TOOL_DEF } from './tools/blocks-tool';
 export { deskToolDefinitions } from './tools/desk-definitions';
 export {
   ASK_PEOPLE_TOOL_DEF,

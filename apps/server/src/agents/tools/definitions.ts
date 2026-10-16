@@ -13,6 +13,7 @@ import {
   UPDATE_PERSONA_TOOL,
 } from './schemas';
 import { deskToolDefinitions } from './desk-definitions';
+import { POST_BLOCKS_TOOL_DEF } from './blocks-tool';
 
 export interface ChatToolDefinition {
   type: 'function';
@@ -327,6 +328,7 @@ export function buildTools(
 // appended. Without targets the output is unchanged. T-1409: `opts.desk`
 // appends the seven desk tools when the AI has a cloud computer. T-1576:
 // `opts.askPeople` appends `ask_people` when a person triggered the turn.
+// T-1758: `post_blocks` is always appended, routine runs included.
 export function buildGroupTools(
   actions: ReadonlyArray<{ name: string; description: string; argsExample?: string }>,
   delegateTargets?: ReadonlyArray<{ id: string; name: string }>,
@@ -340,7 +342,10 @@ export function buildGroupTools(
       : [...base, buildDelegateTool(delegateTargets), TASK_STATUS_TOOL_DEF];
   const withAskPeople =
     opts?.askPeople === true ? [...withDelegation, ASK_PEOPLE_TOOL_DEF] : withDelegation;
+  // T-1758: `post_blocks` is offered on every group turn, routine runs
+  // included, so it needs no flag.
+  const withBlocks = [...withAskPeople, POST_BLOCKS_TOOL_DEF];
   return withTaskTitles(
-    opts?.desk === true ? [...withAskPeople, ...deskToolDefinitions()] : withAskPeople,
+    opts?.desk === true ? [...withBlocks, ...deskToolDefinitions()] : withBlocks,
   );
 }

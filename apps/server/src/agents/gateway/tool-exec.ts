@@ -12,6 +12,7 @@ import {
   formatRememberedLine,
   MEMORY_ZOOM_TOOL,
   PERSONA_RESTORED_LINE,
+  POST_BLOCKS_TOOL,
   RECALL_TOOL,
   REMEMBER_TOOL,
   REQUEST_ACTION_TOOL,
@@ -25,6 +26,7 @@ import {
   type DeskTurnContext,
 } from './desk-exec';
 import { createAskPeopleRunner } from './ask-people';
+import { createPostBlocksRunner } from './post-blocks';
 import { createDelegateRunner } from './delegate-run';
 import { createRequestActionRunner } from './request-action';
 import {
@@ -72,6 +74,7 @@ export function createToolExec(ctx: ToolExecContext) {
     logger,
   );
   const { runAskPeopleEffect } = createAskPeopleRunner(deps.db, logger, liveSendMessage);
+  const { runPostBlocksEffect } = createPostBlocksRunner(logger, liveSendMessage);
   const { runDelegate, runTaskStatus } = createDelegateRunner({
     deps,
     logger,
@@ -135,7 +138,8 @@ export function createToolExec(ctx: ToolExecContext) {
           !isMemoryTool &&
           !isDelegationTool &&
           call.tool !== REQUEST_ACTION_TOOL &&
-          call.tool !== ASK_PEOPLE_TOOL
+          call.tool !== ASK_PEOPLE_TOOL &&
+          call.tool !== POST_BLOCKS_TOOL
         ) {
           return { content: 'invalid: unknown tool' };
         }
@@ -204,6 +208,13 @@ export function createToolExec(ctx: ToolExecContext) {
           topicId: context.topicId,
           roomJid: context.roomJid,
         });
+      }
+      if (call.tool === POST_BLOCKS_TOOL) {
+        // Offered on every group turn; a DM (no context) got the guard above.
+        if (context === undefined) {
+          return { content: 'invalid: unknown tool' };
+        }
+        return yield* runPostBlocksEffect(session, call, { roomJid: context.roomJid });
       }
       if (call.tool === UPDATE_PERSONA_TOOL) {
         yield* Effect.promise(() => setPersonaFromChat(deps.db, aiId, call.persona));

@@ -15,11 +15,24 @@ export const TASK_STATUS_TOOL = 'task_status';
 // share the caps `questions/service.ts` enforces, so a valid parse is a valid
 // row.
 export const ASK_PEOPLE_TOOL = 'ask_people';
+// T-1758: the `post_blocks` tool posts a small native card (the six Wave 1
+// kinds) in a group room. Offered on every group turn, routine runs included.
+export const POST_BLOCKS_TOOL = 'post_blocks';
 
 const ASK_PEOPLE_QUESTION_MAX_LENGTH = 140;
 const ASK_PEOPLE_OPTION_MIN = 2;
 const ASK_PEOPLE_OPTION_MAX = 4;
 const ASK_PEOPLE_OPTION_MAX_LENGTH = 24;
+
+// T-1758: the `post_blocks` caps. The body is the plain summary clients show in
+// previews and notifications; the three optional strings ride on the card. The
+// blocks themselves are checked by `buildBlocksPayload`, not here.
+const POST_BLOCKS_TEXT_MAX_LENGTH = 1000;
+const POST_BLOCKS_TITLE_MAX_LENGTH = 120;
+const POST_BLOCKS_ICON_MAX_LENGTH = 40;
+const POST_BLOCKS_META_MAX_LENGTH = 40;
+const POST_BLOCKS_BLOCK_MIN = 1;
+const POST_BLOCKS_BLOCK_MAX = 6;
 
 // T-1409: the desk tools, offered only when the AI has a cloud computer. The
 // names match the daemon's tool table (`packages/desk/README.md`) and OpenCode's
@@ -206,6 +219,21 @@ export const AskPeopleArgsSchema = struct({
   ).check(Schema.isMinLength(ASK_PEOPLE_OPTION_MIN), Schema.isMaxLength(ASK_PEOPLE_OPTION_MAX)),
 });
 
+// T-1758: the `post_blocks` arguments. `text` is the required plain summary;
+// `title`, `icon` and `meta` are optional card strings. `blocks` is only
+// counted here — `buildBlocksPayload` validates the real block shapes, so a bad
+// block comes back as a short reason the model can fix.
+export const PostBlocksArgsSchema = struct({
+  text: Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(POST_BLOCKS_TEXT_MAX_LENGTH)),
+  title: Schema.optional(Schema.Trim.check(Schema.isMaxLength(POST_BLOCKS_TITLE_MAX_LENGTH))),
+  icon: Schema.optional(Schema.Trim.check(Schema.isMaxLength(POST_BLOCKS_ICON_MAX_LENGTH))),
+  meta: Schema.optional(Schema.Trim.check(Schema.isMaxLength(POST_BLOCKS_META_MAX_LENGTH))),
+  blocks: Schema.mutable(Schema.Array(Schema.Unknown)).check(
+    Schema.isMinLength(POST_BLOCKS_BLOCK_MIN),
+    Schema.isMaxLength(POST_BLOCKS_BLOCK_MAX),
+  ),
+});
+
 export type ParsedToolArguments =
   | { ok: true; tool: typeof UPDATE_PERSONA_TOOL; persona: string; summary: string }
   | { ok: true; tool: typeof REVERT_PERSONA_TOOL }
@@ -229,5 +257,14 @@ export type ParsedToolArguments =
     }
   | { ok: true; tool: typeof TASK_STATUS_TOOL; task_id: string }
   | { ok: true; tool: typeof ASK_PEOPLE_TOOL; question: string; options: string[] }
+  | {
+      ok: true;
+      tool: typeof POST_BLOCKS_TOOL;
+      text: string;
+      title?: string;
+      icon?: string;
+      meta?: string;
+      blocks: unknown[];
+    }
   | { ok: true; tool: DeskToolName; args: Record<string, unknown> }
   | { ok: false; reason: string };

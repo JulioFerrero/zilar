@@ -17,6 +17,8 @@ import {
   GrepArgsSchema,
   MEMORY_ZOOM_TOOL,
   MemoryZoomArgsSchema,
+  POST_BLOCKS_TOOL,
+  PostBlocksArgsSchema,
   READ_TOOL,
   ReadArgsSchema,
   RECALL_TOOL,
@@ -103,6 +105,7 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
     toolName !== DELEGATE_TOOL &&
     toolName !== TASK_STATUS_TOOL &&
     toolName !== ASK_PEOPLE_TOOL &&
+    toolName !== POST_BLOCKS_TOOL &&
     !isDeskToolName(toolName)
   ) {
     return { ok: false, reason: `unknown tool: ${safeToolName(toolName)}` };
@@ -194,6 +197,21 @@ export function parseToolArguments(toolName: string, argsJson: string): ParsedTo
       tool: ASK_PEOPLE_TOOL,
       question: parsed.value.question,
       options: parsed.value.options,
+    };
+  }
+  if (toolName === POST_BLOCKS_TOOL) {
+    const parsed = decodeToolArguments(PostBlocksArgsSchema, parsedJson);
+    if (!parsed.ok) {
+      return { ok: false, reason: parsed.reason };
+    }
+    return {
+      ok: true,
+      tool: POST_BLOCKS_TOOL,
+      text: parsed.value.text,
+      ...(parsed.value.title === undefined ? {} : { title: parsed.value.title }),
+      ...(parsed.value.icon === undefined ? {} : { icon: parsed.value.icon }),
+      ...(parsed.value.meta === undefined ? {} : { meta: parsed.value.meta }),
+      blocks: parsed.value.blocks,
     };
   }
   if (toolName === BASH_TOOL) {
