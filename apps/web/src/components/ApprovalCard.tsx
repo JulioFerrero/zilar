@@ -1,7 +1,8 @@
 import { Effect } from 'effect';
 import { useState } from 'react';
+import { routineCardTitle } from '@zilar/chat-core';
 import type { ApprovalRequest } from '@zilar/protocol';
-import { Check, Clock, X } from 'lucide-react';
+import { Check, Clock, Repeat, X } from 'lucide-react';
 import { decideApproval, getApproval, type ApprovalDecision, type ApprovalStatus } from '@/lib/api';
 import { fromApi } from '@/lib/effect/api-effect';
 import type { ApiFailure } from '@/lib/effect/errors';
@@ -60,6 +61,9 @@ export function ApprovalCard({
 
   const approval = state.kind === 'ready' ? state.approval : null;
   const pending = approval !== null && approval.status === 'pending' ? approval : null;
+  // T-1723: a routine card's summary holds the title and the schedule; draw
+  // them apart, null for every other card.
+  const routine = routineCardTitle(request.action, request.summary);
   const retry = (): void => {
     setRetryToken((value) => value + 1);
   };
@@ -88,7 +92,18 @@ export function ApprovalCard({
     return (
       <div className="bubble-in flex min-w-[260px] items-center gap-2 rounded-[12px] px-3.5 py-2">
         <DecidedIcon status={approval.status} />
-        <span className="text-[14px] break-words text-muted-foreground">{request.summary}</span>
+        {routine === null ? (
+          <span className="text-[14px] break-words text-muted-foreground">{request.summary}</span>
+        ) : (
+          <>
+            <span className="min-w-0 flex-1 text-[14px] break-words text-muted-foreground">
+              {routine.title}
+            </span>
+            <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
+              {routine.schedule}
+            </span>
+          </>
+        )}
       </div>
     );
   }
@@ -100,9 +115,25 @@ export function ApprovalCard({
           <span className="text-[13px] text-muted-foreground">
             {pending.aiName === '' ? 'Asks' : `${pending.aiName} asks`}
           </span>
-          <span className="text-[16px] leading-[22px] font-semibold break-words">
-            {request.summary}
-          </span>
+          {routine === null ? (
+            <span className="text-[16px] leading-[22px] font-semibold break-words">
+              {request.summary}
+            </span>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Repeat
+                className="size-[15px] shrink-0 text-muted-foreground"
+                role="img"
+                aria-label="Repeats"
+              />
+              <span className="min-w-0 flex-1 text-[16px] leading-[22px] font-semibold break-words">
+                {routine.title}
+              </span>
+              <span className="shrink-0 font-mono text-[12px] text-muted-foreground">
+                {routine.schedule}
+              </span>
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex items-center gap-2">

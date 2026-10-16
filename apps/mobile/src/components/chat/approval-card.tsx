@@ -1,7 +1,8 @@
+import { routineCardTitle } from '@zilar/chat-core';
 import type { ApprovalRequest } from '@zilar/protocol';
 import { Effect } from 'effect';
 import { AsyncResult } from 'effect/reactivity';
-import { Check, X } from 'lucide-react-native';
+import { Check, Repeat, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 
@@ -16,7 +17,7 @@ import type {
   PublicApproval,
 } from '@/lib/approvals-api';
 import { applyDecision, loadApprovalCardState, type ApprovalCardState } from '@/lib/approval-state';
-import { DANGER, SEEN } from '@/lib/colors';
+import { DANGER, MUTED_FOREGROUND, SEEN } from '@/lib/colors';
 import { KEY_ICON_PRESSED_SHADOW, iconKey, pressStyle } from '@/lib/depth';
 import { isWaiting, useAction } from '@/lib/effect/use-action';
 import { useQuery } from '@/lib/effect/use-query';
@@ -102,13 +103,28 @@ export function ApprovalCard({ data }: { data: ApprovalRequest }) {
   const label =
     approval !== null && approval.aiName !== '' ? `${approval.aiName} asks` : 'Approval';
 
+  // T-1723: a routine card's summary holds the title and the schedule; draw
+  // them apart, null for every other card.
+  const routine = routineCardTitle(data.action, data.summary);
+
   // A decided request shrinks to one line: a status icon and the summary.
   if (approval !== null && !isPending) {
     return (
       <View className="min-w-[230px] py-0.5">
         <View className="flex-row items-center gap-2">
           <DecidedIcon status={approval.status} />
-          <Text className="min-w-0 flex-1 text-[14px] text-muted-foreground">{data.summary}</Text>
+          {routine === null ? (
+            <Text className="min-w-0 flex-1 text-[14px] text-muted-foreground">{data.summary}</Text>
+          ) : (
+            <>
+              <Text className="min-w-0 flex-1 text-[14px] text-muted-foreground">
+                {routine.title}
+              </Text>
+              <Text className="font-mono text-[12px] text-muted-foreground">
+                {routine.schedule}
+              </Text>
+            </>
+          )}
         </View>
       </View>
     );
@@ -118,7 +134,17 @@ export function ApprovalCard({ data }: { data: ApprovalRequest }) {
     <View className="min-w-[230px] gap-2 py-0.5">
       <View className="gap-1">
         <Text className="text-[13px] text-muted-foreground">{label}</Text>
-        <Text className="text-[16px] font-semibold text-foreground">{data.summary}</Text>
+        {routine === null ? (
+          <Text className="text-[16px] font-semibold text-foreground">{data.summary}</Text>
+        ) : (
+          <View className="flex-row items-center gap-2">
+            <Repeat size={15} color={MUTED_FOREGROUND} aria-hidden />
+            <Text className="min-w-0 flex-1 text-[16px] font-semibold text-foreground">
+              {routine.title}
+            </Text>
+            <Text className="font-mono text-[12px] text-muted-foreground">{routine.schedule}</Text>
+          </View>
+        )}
       </View>
 
       {state.kind === 'loading' ? (
