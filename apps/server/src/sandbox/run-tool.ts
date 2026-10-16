@@ -17,6 +17,7 @@ import {
   type SandboxErrorKind,
   type SandboxLimits,
 } from './types';
+import { outputJsonSchema, sanitizeMessage, workerEventSchema } from './run-tool-schemas';
 
 // The public entry point. It never runs tool code in this thread: every
 // execution spawns a worker with the QuickJS VM, and the worker is
@@ -32,70 +33,10 @@ export interface RunToolParams {
   resolver?: DnsResolver;
 }
 
-const nonNegativeInt = Schema.Finite.pipe(
-  Schema.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
-);
-
-const workerResultSchema = Schema.Union([
-  Schema.Struct({
-    type: Schema.Literal('result'),
-    outputJson: Schema.String,
-    fetchCount: nonNegativeInt,
-    durationMs: Schema.Finite,
-  }),
-  Schema.Struct({
-    type: Schema.Literal('error'),
-    kind: Schema.Literals([
-      'timeout',
-      'memory',
-      'runtime',
-      'syntax',
-      'invalid_output',
-      'fetch_denied',
-      'output_too_large',
-    ]),
-    message: Schema.String,
-    fetchCount: nonNegativeInt,
-    durationMs: Schema.Finite,
-  }),
-]);
-
-type WorkerResultMessage = Schema.Schema.Type<typeof workerResultSchema>;
-
-const workerEventSchema = Schema.Union([
-  workerResultSchema,
-  Schema.Struct({ type: Schema.Literal('log'), text: Schema.String }),
-  Schema.Struct({
-    type: Schema.Literal('fetch'),
-    id: nonNegativeInt,
-    url: Schema.String,
-    method: Schema.String,
-    headers: Schema.Record(Schema.String, Schema.String),
-    bodyPresent: Schema.Boolean,
-  }),
-]);
-
-const outputJsonSchema = Schema.Struct({
-  text: Schema.String,
-  data: Schema.optional(Schema.Unknown),
-});
-
 // The worker failed to start (missing tsx hook, `worker_threads` refused). It
 // is a control signal inside this module only: the Promise boundary turns it
 // into the same fixed `sandbox_failure` result the old try/catch returned.
 class SandboxStartFailed extends Data.TaggedError('SandboxStartFailed') {}
-
-function sanitizeMessage(message: string): string {
-  return message
-    .replace(/[A-Z]:[\\/][^\s]*/g, '[path]')
-    .replace(/\/(?:app|home|Users)[^\s]*/g, '[path]')
-    .replace(/node_modules[^\s]*/g, '[lib]')
-    .replace(/wasm[^:\s]*:\d+/g, '[vm]')
-    .replace(/\s+at\s+[^\n]*/g, '')
-    .trim()
-    .slice(0, 300);
-}
-
 // The worker's V8 heap holds the harness (Effect, the QuickJS glue, and the tsx
 // loader under test), ~45 MiB, plus queued log lines — never the tool's own
 // memory, which the wasm heap caps with `setMemoryLimit`. The old 16 MiB
@@ -280,7 +221,7 @@ export async function runTool(params: RunToolParams): Promise<RunToolResult> {
           })();
           return;
         }
-        const message: WorkerResultMessage = event;
+        const message = event;
         fetchCount = message.fetchCount;
         if (message.type === 'error') {
           settle(fail(message.kind, message.message, message.fetchCount));
