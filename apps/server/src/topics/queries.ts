@@ -55,7 +55,9 @@ export async function listTopicMembers(
   userId: string,
 ): Promise<Array<{ userId: string; name: string }>> {
   const topic = await requireVisibleTopic(deps.db, topicId, userId);
-  if (topic.visibility !== 'private') {
+  // T-1757: only General lists the whole group; every other topic lists its
+  // `topic_members` plus the holders of its roles.
+  if (topic.isGeneral) {
     const rows = await runSql(
       deps.db,
       Effect.gen(function* () {

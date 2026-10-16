@@ -1770,3 +1770,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1760](T-1760-topic-join-leave.md) | join and leave topics (public self-leave, no drain archive) | 2026-10-16 |
 | [T-1750](T-1750-topic-people-plan.md) | plan: group and topic people flow (web, phone, server) | 2026-10-16 |
 | [T-1755](T-1755-blocks-web-six.md) | web blocks card and the first six blocks | 2026-10-16 |
+| [T-1757](T-1757-topic-members-reads.md) | topic reads: only General is the whole group | 2026-10-16 |
