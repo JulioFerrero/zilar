@@ -1,0 +1,129 @@
+.hero {
+  position: relative;
+  height: 100vh;
+  min-height: 600px;
+  overflow: hidden;
+}
+
+.heroGrid {
+  position: relative;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 24px;
+}
+
+.title {
+  font-size: clamp(44px, 5.8vw, 88px);
+}
+
+.title .ln {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.06em;
+  margin-bottom: -0.06em;
+}
+
+/* Above the phone breakpoint the headline is three forced lines; the phone
+   layout below already wraps to three lines of its own. */
+@media (min-width: 861px) {
+  .title .ln {
+    white-space: nowrap;
+  }
+}
+
+.title .wd {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.title .ch {
+  display: inline-block;
+  will-change: transform;
+}
+
+/* The third line carries the silver gradient itself, per letter, because the
+   `.ch` spans are their own inline-blocks. */
+.title .ln.silver {
+  color: transparent;
+  background: linear-gradient(180deg, #ffffff 0%, #d4d4d4 38%, #7a7a7a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.title .ln.silver .ch {
+  color: transparent;
+  background: linear-gradient(180deg, #ffffff 0%, #d4d4d4 38%, #7a7a7a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.lede {
+  max-width: 26em;
+  color: var(--muted);
+  font-size: clamp(16px, 1.4vw, 19px);
+  margin: 28px 0 32px;
+}
+
+.cta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.planetWrap {
+  position: relative;
+  aspect-ratio: 1;
+  width: min(100%, 620px);
+  justify-self: center;
+}
+
+.planetWrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* The real planet is the WebGL canvas behind the page; the still image is the
+   fallback, and it steps aside once the scene is up. */
+:global(html.webgl) .planetWrap img {
+  visibility: hidden;
+}
+
+.heroMeta {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 26px;
+  display: flex;
+  justify-content: space-between;
+  font: 12px var(--mono);
+  letter-spacing: 0.14em;
+  color: var(--subtle);
+  text-transform: uppercase;
+}
+
+@media (max-width: 860px) {
+  .heroGrid {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: end;
+    padding-top: 72px;
+    padding-bottom: 84px;
+    gap: 0;
+  }
+
+  .planetWrap {
+    grid-row: 1;
+    width: min(76vw, 380px);
+    margin-bottom: -2%;
+  }
+
+  .lede {
+    margin: 16px 0 22px;
+  }
+
+  .heroMeta span:last-child {
+    display: none;
+  }
+}
