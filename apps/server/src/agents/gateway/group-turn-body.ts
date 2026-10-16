@@ -34,6 +34,7 @@ import { groupTurnAccess, makeIsStillAllowed } from './group-turn-access';
 import { jidFor, localpartFor } from '../../xmpp/provisioning';
 import { resolveHandoffRoster } from './group-turn-roster';
 import { loadModelTarget } from './model-target';
+import { createRoutineSend } from './routine-send';
 import { clearTurnAbort, registerTurnAbort } from './stop';
 import type { GroupTurnContext } from './group-turn';
 import type { TurnLog } from '../log/append';
@@ -230,8 +231,25 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
     // T-0106: the guide is appended to the last user turn only when tools
     // are enabled and the room offers `request_action`; the loop runs
     // `toolMaxRounds` rounds with a live progress message.
-    const groupProgress = liveProgressReporter(session, roomJid, 'groupchat', ai.jid, log);
-    if (turnDesk.waiting) {
+    // T-1714: a scheduled run posts one message per routine and edits it on
+    // later runs; it shows no progress card and no waiting-for-computer stage.
+    // A live turn keeps the T-1414 card exactly as before.
+    const routineSend =
+      trigger.scheduled === undefined
+        ? null
+        : createRoutineSend({
+            db: deps.db,
+            session,
+            routineId: trigger.scheduled.routineId,
+            isLive: (candidate) => !candidate.stopped && sessions.get(candidate.aiId) === candidate,
+            now: deps.now ?? (() => new Date()),
+            logger,
+          });
+    const groupProgress =
+      routineSend === null
+        ? liveProgressReporter(session, roomJid, 'groupchat', ai.jid, log)
+        : null;
+    if (turnDesk.waiting && groupProgress !== null) {
       yield* Effect.promise(() =>
         groupProgress.reportProgress(TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER),
       );
@@ -279,8 +297,12 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
         ...(handoffTargets.length === 0 ? {} : { handoffTargets }),
         checkRoundGate: () => budgetGate.checkDmRoundGate(session),
         onFailure: (reason) => notifyOwnerOfFailure(ctx, session, roomJid, reason),
-        reportProgress: groupProgress.reportProgress,
-        finishProgress: groupProgress.finishProgress,
+        ...(groupProgress === null
+          ? {}
+          : {
+              reportProgress: groupProgress.reportProgress,
+              finishProgress: groupProgress.finishProgress,
+            }),
         // T-0156: the per-turn counts line (ids and counts only), like the
         // DM path below.
         turnLogger,
@@ -298,7 +320,10 @@ export function runGroupTurnBody(input: GroupTurnBodyInput): Effect.Effect<void>
           );
         },
         sendMessage: async (to, kind, text, opts) => {
-          const sent = await liveSendMessage(session, to, kind, text, opts);
+          const sent =
+            routineSend === null
+              ? await liveSendMessage(session, to, kind, text, opts)
+              : await routineSend.send(to, kind, text);
           // T-1176 (AI-8): remember the id so a reply quoting this message
           // wakes the AI without a mention.
           rememberRoomSentId(session, roomJid, sent.id);

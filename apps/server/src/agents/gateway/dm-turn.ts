@@ -327,6 +327,11 @@ export function createDmTurn(ctx: DmTurnContext) {
         // without a standing rule is refused instead of parking a card; the
         // desk tools stay on.
         scheduled: trigger.scheduled !== undefined,
+        // T-1714: a routine's synthetic trigger carries the routine id, so the
+        // turn edits that routine's one message instead of posting a new one.
+        ...(trigger.scheduled === undefined
+          ? {}
+          : { scheduledRoutineId: trigger.scheduled.routineId }),
       });
       const live = sessionIsLive(session);
       turnDrafts.end(outcome.kind === 'replied' && live ? 'sent' : 'failed');

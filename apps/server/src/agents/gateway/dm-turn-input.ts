@@ -13,6 +13,7 @@ import { buildTools } from '../tools';
 import type { AiSession } from './contracts';
 import { resolveTurnDesk, TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER } from './desk-exec';
 import { type DmTurnContext } from './dm-turn';
+import { createRoutineSend } from './routine-send';
 import type { DraftHub } from '../../drafts/hub';
 import type { TurnLog } from '../log/append';
 import { clearTurnAbort, registerTurnAbort } from './stop';
@@ -34,6 +35,10 @@ export interface DmTurnInput {
    * with `needs_approval` instead of parking a card nobody will see; the
    * computer/desk tools are unchanged. */
   scheduled?: boolean;
+  /** T-1714: when set, this DM turn is a scheduled routine's run, so its
+   * send posts one message per routine (edited on later runs) and shows no
+   * progress card. */
+  scheduledRoutineId?: string;
 }
 
 // T-1423: resolve the AI's computer for this turn (cloud or its runner).
@@ -44,7 +49,19 @@ export interface DmTurnInput {
 // that lands between the LLM call and the final send drops the reply instead
 // of delivering it.
 export function runDmTurnInput(input: DmTurnInput): Effect.Effect<DmTurnOutcome> {
-  const { ctx, ai, session, ownerJid, messages, target, chatKey, drafts, log, scheduled } = input;
+  const {
+    ctx,
+    ai,
+    session,
+    ownerJid,
+    messages,
+    target,
+    chatKey,
+    drafts,
+    log,
+    scheduled,
+    scheduledRoutineId,
+  } = input;
   const {
     deps,
     logger,
@@ -59,9 +76,23 @@ export function runDmTurnInput(input: DmTurnInput): Effect.Effect<DmTurnOutcome>
   } = ctx;
 
   return Effect.gen(function* () {
-    const dmProgress = liveProgressReporter(session, ownerJid, 'chat', ai.jid, log);
+    // T-1714: a scheduled run posts one message per routine (edited on later
+    // runs) and shows no progress card; a live turn keeps the T-1414 card.
+    const routineSend =
+      scheduledRoutineId === undefined
+        ? null
+        : createRoutineSend({
+            db: deps.db,
+            session,
+            routineId: scheduledRoutineId,
+            isLive: sessionIsLive,
+            now: deps.now ?? (() => new Date()),
+            logger,
+          });
+    const dmProgress =
+      routineSend === null ? liveProgressReporter(session, ownerJid, 'chat', ai.jid, log) : null;
     const turnDesk = yield* Effect.promise(() => resolveTurnDesk(deps, ai));
-    if (turnDesk.waiting) {
+    if (turnDesk.waiting && dmProgress !== null) {
       yield* Effect.promise(() => dmProgress.reportProgress(TOOL_STAGE_WAITING_FOR_YOUR_COMPUTER));
     }
     const deskEnabled = turnDesk.client !== undefined;
@@ -94,8 +125,12 @@ export function runDmTurnInput(input: DmTurnInput): Effect.Effect<DmTurnOutcome>
         ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl }),
         ...turnLimits(deps.toolMaxRounds, deskEnabled),
         checkRoundGate: () => budgetGate.checkDmRoundGate(session),
-        reportProgress: dmProgress.reportProgress,
-        finishProgress: dmProgress.finishProgress,
+        ...(dmProgress === null
+          ? {}
+          : {
+              reportProgress: dmProgress.reportProgress,
+              finishProgress: dmProgress.finishProgress,
+            }),
         // T-0156: wires the per-turn counts line (ids and counts only, never
         // content) into production — the wire the T-0106 review deferred.
         turnLogger,
@@ -122,7 +157,10 @@ export function runDmTurnInput(input: DmTurnInput): Effect.Effect<DmTurnOutcome>
             drafts.flush(text);
           }
         },
-        sendMessage: (to, kind, text) => liveSendMessage(session, to, kind, text),
+        sendMessage: (to, kind, text) =>
+          routineSend === null
+            ? liveSendMessage(session, to, kind, text)
+            : routineSend.send(to, kind, text),
         // T-1406: a composing send opens the turn with the fixed "Thinking"
         // status; the tool stages replace it, and the final `paused` clears it.
         sendTyping: (to, kind, state) => {
