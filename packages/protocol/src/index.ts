@@ -13,5 +13,6 @@ export * from './handoff';
 export * from './handoff-line';
 export * from './payload';
 export * from './question';
+export * from './routine';
 export * from './sticker';
 export { protocolVersion, minClientProtocol, isClientOutdated } from './version';

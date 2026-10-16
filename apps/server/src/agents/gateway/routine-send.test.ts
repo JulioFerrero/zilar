@@ -4,6 +4,7 @@
 import type { XmppCore } from '@zilar/xmpp-core';
 import { describe, expect, it, vi } from 'vitest';
 import type { ServerDatabase } from '../../db/client';
+import type { RoutineRow } from '../../db/rows';
 import type { AiSession, GatewayLogger } from './contracts';
 import { createRoutineSend, ROUTINE_MESSAGE_MAX_AGE_MS, type RoutineSend } from './routine-send';
 
@@ -11,6 +12,41 @@ const silentLogger: GatewayLogger = { info: () => {}, warn: () => {} };
 
 const NOW = new Date('2026-10-16T12:00:00.000Z');
 const HOUR_MS = 60 * 60 * 1000;
+
+const routinePayloadValue = {
+  v: 0,
+  type: 'routine',
+  data: { id: 'routine-1', title: 'Morning standup', schedule: 'every 5 minutes' },
+} as const;
+
+function routineRow(overrides: Partial<RoutineRow> = {}): RoutineRow {
+  return {
+    id: 'routine-1',
+    aiId: 'ai-1',
+    groupId: null,
+    topicId: null,
+    kind: 'prompt',
+    toolId: null,
+    prompt: 'Do the thing',
+    title: 'Morning standup',
+    schedule: { kind: 'interval', everyMinutes: 5 },
+    input: null,
+    approvedHosts: [],
+    status: 'active',
+    pausedReason: null,
+    nextRunAt: NOW,
+    lastRunAt: null,
+    lastStatus: null,
+    lastMessageId: null,
+    lastMessageAt: null,
+    consecutiveFailures: 0,
+    createdBy: 'owner-1',
+    createdAt: NOW,
+    updatedAt: NOW,
+    deletedAt: null,
+    ...overrides,
+  };
+}
 
 function sessionFor(core: XmppCore): AiSession {
   return {
@@ -44,12 +80,17 @@ function makeCore() {
 }
 
 function harness(
-  options: { live?: boolean; stored?: { messageId: string; at: Date } | null } = {},
+  options: {
+    live?: boolean;
+    stored?: { messageId: string; at: Date } | null;
+    routine?: RoutineRow | null;
+  } = {},
 ) {
   const core = makeCore();
   const session = sessionFor(core.core);
   const loadMessage = vi.fn(async () => options.stored ?? null);
   const recordMessage = vi.fn(async () => undefined);
+  const loadRoutine = vi.fn(async () => ('routine' in options ? options.routine : routineRow()));
   const send: RoutineSend['send'] = createRoutineSend({
     db: {} as ServerDatabase,
     session,
@@ -59,8 +100,9 @@ function harness(
     logger: silentLogger,
     loadMessage,
     recordMessage,
+    loadRoutine,
   }).send;
-  return { send, core, loadMessage, recordMessage };
+  return { send, core, loadMessage, recordMessage, loadRoutine };
 }
 
 describe('a routine sends one message and edits it (T-1714)', () => {
@@ -87,6 +129,7 @@ describe('a routine sends one message and edits it (T-1714)', () => {
       'groupchat',
       'stored-1',
       'edited',
+      { payload: routinePayloadValue },
     );
     expect(h.recordMessage).toHaveBeenCalledWith(expect.anything(), 'routine-1', 'stored-1', NOW);
   });
@@ -120,6 +163,7 @@ describe('a routine sends one message and edits it (T-1714)', () => {
       'groupchat',
       'sent-1',
       'second',
+      { payload: routinePayloadValue },
     );
   });
 
@@ -148,11 +192,65 @@ describe('a routine sends one message and edits it (T-1714)', () => {
         throw new Error('db down');
       }),
       recordMessage: vi.fn(async () => undefined),
+      loadRoutine: vi.fn(async () => routineRow()),
     }).send;
 
     const sent = await send('room@example.test', 'groupchat', 'hello');
 
     expect(sent).toEqual({ id: 'sent-1' });
     expect(core.sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('carries the routine payload on both the send and the edit (T-1721)', async () => {
+    const h = harness({ stored: null });
+
+    const first = await h.send('room@example.test', 'groupchat', 'first');
+    const second = await h.send('room@example.test', 'groupchat', 'second');
+
+    expect(h.core.sendMessage).toHaveBeenCalledWith('room@example.test', 'groupchat', 'first', {
+      payload: routinePayloadValue,
+    });
+    expect(h.core.sendCorrection).toHaveBeenCalledWith(
+      'room@example.test',
+      'groupchat',
+      first.id,
+      'second',
+      { payload: routinePayloadValue },
+    );
+    expect(second).toEqual({ id: first.id });
+  });
+
+  it('truncates a title longer than 80 characters', async () => {
+    const h = harness({ routine: routineRow({ title: 'x'.repeat(120) }) });
+
+    await h.send('room@example.test', 'groupchat', 'hello');
+
+    expect(h.core.sendMessage).toHaveBeenCalledWith('room@example.test', 'groupchat', 'hello', {
+      payload: {
+        v: 0,
+        type: 'routine',
+        data: { id: 'routine-1', title: 'x'.repeat(80), schedule: 'every 5 minutes' },
+      },
+    });
+  });
+
+  it('sends without a payload when the routine cannot be loaded or parsed', async () => {
+    const missing = harness({ stored: null, routine: null });
+    await missing.send('room@example.test', 'groupchat', 'hello');
+    expect(missing.core.sendMessage).toHaveBeenCalledWith(
+      'room@example.test',
+      'groupchat',
+      'hello',
+      undefined,
+    );
+
+    const badSchedule = harness({ routine: routineRow({ schedule: { kind: 'nope' } }) });
+    await badSchedule.send('room@example.test', 'groupchat', 'hello');
+    expect(badSchedule.core.sendMessage).toHaveBeenCalledWith(
+      'room@example.test',
+      'groupchat',
+      'hello',
+      undefined,
+    );
   });
 });

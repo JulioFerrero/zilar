@@ -7,6 +7,7 @@ import { HandoffLineSchema } from './handoff-line';
 import { PollSchema, PollVoteSchema } from './poll';
 import { CostSchema, PreviewSchema, ProgressSchema } from './progress';
 import { QuestionSchema } from './question';
+import { RoutinePostSchema } from './routine';
 import { StickerSchema } from './sticker';
 import { BoardUpdateSchema, TaskSchema } from './task';
 import { VoiceMetaSchema } from './voice';
@@ -51,6 +52,7 @@ export const PayloadSchema = Schema.Union([
   }),
   Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('sticker'), data: StickerSchema }),
   Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('question'), data: QuestionSchema }),
+  Schema.Struct({ v: Schema.Literal(0), type: Schema.Literal('routine'), data: RoutinePostSchema }),
 ]);
 
 export type Payload = typeof PayloadSchema.Type;

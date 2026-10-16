@@ -359,6 +359,7 @@ export function createDmTurn(ctx: DmTurnContext) {
           liveSendMessage,
           liveSendTyping,
           endDrafts: () => turnDrafts.end('failed'),
+          scheduled: trigger.scheduled !== undefined,
           error,
         }),
       ),

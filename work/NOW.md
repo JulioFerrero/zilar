@@ -369,6 +369,11 @@ The live picture: what runs, what is next, what waits for Julio. The lead rewrit
           - T-1721 (the `routine` payload; a scheduled run's failure posts nothing);
         - **specced:** T-1720 (the phone screen, after T-1719) and T-1722 (the header and the bump, after T-1721);
         - **then:** the final push, a live check, ask about an APK (icon and phone changes), and one test list for Julio.
+      - **10:01 UTC:**
+        - **live `190a1c295`:** T-1714 to T-1719, healthy, 0 errors; `/api/routines` answers 401 signed out;
+        - **the autopilot was restarted** for T-1718's free-first chain. So far the free listings (DeepSeek and GLM) fail at once and fall through to the API or paid Muse;
+        - **running:** T-1720 (the phone Routines screen) and T-1721 (the routine payload);
+        - **next:** T-1722.
       - **Running:**
         - T-1692 (phone per-chat scroll memory, gap 7). Fix rounds:
           - 1: retry the restore until the content covers the spot;

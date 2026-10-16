@@ -336,12 +336,16 @@ export function createGroupTurn(ctx: GroupTurnContext) {
             ),
           );
           // There is nobody left to tell when the send itself fails.
-          yield* Effect.promise(() =>
-            liveSendMessage(session, roomJid, 'groupchat', `@${name} ${GROUP_FAILURE_REPLY}`, {
-              replyTo: { id: trigger.id },
-              mentions: [{ jid: normBareJid(trigger.fromJid), begin: 0, end: name.length + 1 }],
-            }),
-          ).pipe(Effect.catchDefect(() => Effect.void));
+          // T-1721: a scheduled run's failure is recorded by the scheduler; it
+          // posts no @mention fallback in the room.
+          if (trigger.scheduled === undefined) {
+            yield* Effect.promise(() =>
+              liveSendMessage(session, roomJid, 'groupchat', `@${name} ${GROUP_FAILURE_REPLY}`, {
+                replyTo: { id: trigger.id },
+                mentions: [{ jid: normBareJid(trigger.fromJid), begin: 0, end: name.length + 1 }],
+              }),
+            ).pipe(Effect.catchDefect(() => Effect.void));
+          }
           // Typing state is best-effort.
           yield* Effect.try({
             try: () => liveSendTyping(session, roomJid, 'groupchat', 'paused'),

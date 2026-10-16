@@ -155,6 +155,15 @@ const payloadExamples: Payload[] = [
       height: 720,
     },
   },
+  {
+    v: 0,
+    type: 'routine',
+    data: {
+      id: 'r-1',
+      title: 'Morning standup',
+      schedule: 'every 5 minutes',
+    },
+  },
 ];
 
 const expectedTypes = [
@@ -171,6 +180,7 @@ const expectedTypes = [
   'poll.vote',
   'voice',
   'attachment',
+  'routine',
 ];
 
 describe('PayloadSchema', () => {
