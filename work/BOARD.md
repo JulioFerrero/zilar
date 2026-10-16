@@ -1699,3 +1699,4 @@ Claude runs the workers (DeepSeek V4.1 Flash, MiMo-V2.6-Flash, Muse Spark 1.3; *
 | [T-1686](T-1686-split-tool-queries.md) | Split the row mappers out of tools/queries.ts | 2026-10-16 |
 | [T-1688](T-1688-split-media-api.md) | Split the gallery item mapping out of media/api.ts | 2026-10-16 |
 | [T-1687](T-1687-split-group-ais.md) | Split the topic-room sync out of groups/ais.ts | 2026-10-16 |
+| [T-1689](T-1689-split-message-list.md) | Split the scroll logic out of the web MessageList | 2026-10-16 |
